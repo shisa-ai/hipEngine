@@ -234,3 +234,94 @@ def test_margin_diagnosis_reports_rank_and_near_tie_margin() -> None:
     assert diagnosis["reference_margin"][0] == pytest.approx(0.001, abs=1e-9)
     assert diagnosis["top_k_overlap"] == [2, 2, 2]
     assert diagnosis["top_k"] == 2
+
+
+def test_reference_suffix_uses_batched_recomputation_and_keeps_serial_diagnostic():
+    from scripts import gguf_prefix_reuse_gate as gate
+
+    class Session:
+        position = 1024
+
+        def prefill_batch_native(self, prompts, **kwargs):
+            assert prompts == [(7, 8, 9)]
+            assert kwargs["sessions"] == [self]
+            assert kwargs["full_prompt_lengths"] == [1027]
+            assert kwargs["return_logits"]
+            self.position += len(prompts[0])
+            return [SimpleNamespace(token_id=17, logits=[1.0, 2.0])]
+
+        def step(self, token, *, return_logits):
+            self.position += 1
+            return SimpleNamespace(token_id=token, logits=[3.0] if return_logits else [])
+
+    session = Session()
+    result = gate._prefill_reference_suffix(
+        session, (7, 8, 9), full_prompt_length=1027, return_logits=True,
+    )
+    assert session.position == 1027
+    assert result.token_id == 17
+    session.position = 1024
+    serial = gate._prefill_reference_suffix(
+        session, (7, 8, 9), full_prompt_length=1027, return_logits=True, serial=True,
+    )
+    assert session.position == 1027
+    assert serial.token_id == 9
+    assert serial.logits == [3.0]
+
+
+def test_prefix_numerical_gate_rejects_mean_drift_below_outer_smoke_limit():
+    import numpy as np
+    from scripts import gguf_prefix_reuse_gate as gate
+
+    reference = np.tile([2.0, 0.0], (128, 1))
+    candidate = np.tile([1.75, 0.0], (128, 1))
+    result = gate._profile_metrics(reference, candidate, category="code", lifecycle="active")
+    assert result["summary"]["kl_max"] < 0.05
+    assert result["summary"]["top1_agreement"] == 1.0
+    assert result["summary"]["kl_mean"] > 0.001
+    assert not result["hard_gates_passed"]
+    exact = gate._profile_metrics(reference, reference, category="code", lifecycle="completed")
+    assert exact["hard_gates_passed"]
+
+
+def test_profile_metrics_uses_shared_teacher_labels_not_local_argmax():
+    import numpy as np
+    from scripts import gguf_prefix_reuse_gate as gate
+
+    result = gate._profile_metrics(
+        np.array([[2.0, 0.0]]), np.array([[0.0, 2.0]]),
+        category="code", lifecycle="active", teacher_token_ids=[1],
+    )
+    assert result["summary"]["strict_teacher_nll_mean"] == pytest.approx(2.126928011)
+    assert result["summary"]["candidate_teacher_nll_mean"] == pytest.approx(0.126928011)
+
+
+@pytest.mark.parametrize(
+    ("length", "segments"),
+    [(1, [1]), (17, [17]), (255, [255]), (256, [256]), (257, [257]), (258, [256, 2])],
+)
+def test_reference_suffix_matches_checkpoint_segment_boundaries(length, segments):
+    from scripts import gguf_prefix_reuse_gate as gate
+
+    calls = []
+
+    class Session:
+        position = 512
+
+        def step(self, token, *, return_logits):
+            calls.append(1)
+            self.position += 1
+            return SimpleNamespace(token_id=token)
+
+        def prefill_batch_native(self, prompts, **kwargs):
+            calls.append(len(prompts[0]))
+            self.position += len(prompts[0])
+            return [SimpleNamespace(token_id=prompts[0][-1])]
+
+    session = Session()
+    result = gate._prefill_reference_suffix(
+        session, tuple(range(length)), full_prompt_length=512 + length, return_logits=False,
+    )
+    assert calls == segments
+    assert session.position == 512 + length
+    assert result.token_id == length - 1

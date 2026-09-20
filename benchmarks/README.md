@@ -10,11 +10,12 @@ arithmetic gate. These are standalone resident-harness snapshots, not HTTP
 throughput or new arithmetic promotions. MTP, INT8 KV, and capacity were not
 re-measured. [Commands and samples](results/2026-09-20-w7900-gfx1100-v060-headline-refresh.json).
 
-HTTP prefix caching stays opt-in: the W7900 BF16 prefix packet exceeds the
-production numerical envelope on held-out code, including a completed-source
-control. INT8 prefix reuse has not been qualified by these runs.
-[Eight scopes](results/2026-09-20-w7900-gfx1100-prefix-gate-bf16.json),
-[parent-run control](results/2026-09-20-w7900-prefix-completed-code-control.json).
+HTTP prefix caching defaults to radix. On W7900, the BF16 layout repair passes
+all four categories and four heldouts with active and completed sources:
+2,048 teacher-forced rows have zero KL and exact state against private
+same-schedule recomputation. The serial-suffix arithmetic comparison is reported
+separately; this packet does not validate INT8 prefix reuse.
+[Correctness and diagnosis](results/2026-09-20-w7900-prefix-bf16-layout-repair.json).
 
 
 September 20 C1 refresh on **Framework Desktop / Radeon 8060S**, physical
@@ -365,16 +366,15 @@ sign of the result changed rather than its magnitude drifting: a reused request
 used to prefill its unmatched suffix one token at a time at **34.0 ms/token**,
 and now prefills it batched with the rest of the prompt.
 
-The gfx1151 result does not transfer to gfx1100. On the W7900 the same
-comparison fails the section 6.1 envelope in `heldout-code` (mean KL 2.264e-3
-against a 1e-3 limit, max KL 0.2753 against a 0.05 ceiling) and six
-active-lifecycle scopes fail the scheduler state-byte comparison. That gate is
-still open and tracked in `docs/REFACTOR.md`; it does not hold the default off,
-because an unqualified row falls back to a private prefill rather than failing,
-recording the reason as `prefix_fallback_reason` on the request row. The packets
-are
-[the eight-scope gate](results/2026-09-20-w7900-gfx1100-prefix-gate-bf16.json)
-and [the completed-source control](results/2026-09-20-w7900-prefix-completed-code-control.json).
+W7900 BF16 cache-hit fidelity is tested independently: all 16 category/lifecycle
+scopes pass the calibrated envelope with exact logits and state against private
+batched recomputation. Gapped prefix pages now use the registered gather so their
+attention route matches contiguous pages. Serial suffix replay uses different
+arithmetic and its KL disagreement also occurs without cache reuse; both
+comparisons are preserved in the
+[layout-repair packet](results/2026-09-20-w7900-prefix-bf16-layout-repair.json).
+Request eligibility fallbacks report `prefix_fallback_reason`; they do not
+detect numerical divergence at runtime.
 On gfx1151 the same-route packed-reference packet passes all eight suites at
 1,024 teacher-forced rows with 2 top-1 flips and 0 state mismatches
 ([artifact](results/2026-09-20-gfx1151-prefix-gate-packed-reference-1024rows.json)).

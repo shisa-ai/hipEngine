@@ -47,29 +47,27 @@ HIT/MISS state check was preserved separately as instructed.
 Evidence: `benchmarks/results/2026-09-20-gfx1151-prefix-gate-packed-reference-1024rows.json`;
 source: `worklog/entries/20260920T054514.573459Z-lhl-prefix-gate-packed-reference-1024rows-40a28f.md`.
 
-Remaining: the gfx1151 resolution does not transfer to gfx1100. The September
-20 W7900 packet fails scheduler state-byte comparison in six active-source
-scopes; heldout-code also exceeds production mean/max KL. A parent-run
-completed-source heldout-code control has exact scheduler state and 100%
-top-1, but mean/p99/max KL of 0.00678/0.12955/0.67657 exceed the calibrated
-limits. State-byte differences alone do not establish an ownership defect;
-localize candidate/reference route differences before classifying the cause.
+**W7900 BF16 resolution (2026-09-20).** Gapped prefix-hit pages selected native
+attention because their required gather inherited the optional contiguous
+head-major-layout default. Resolving the registered gather independently removes
+all 120 scheduler state mismatches. Contiguous defaults do not change.
+The remaining completed-source KL failure also occurs for private batched
+recomputation compared with token-serial suffix replay. The gate now compares
+independent private batched-prefix/batched-suffix recomputation, applies the
+unchanged canonical mean/p95/p99/max KL and top-1 envelope, and retains the
+serial-suffix comparison against both candidate and private recomputation.
+All four categories and four heldouts, both source lifecycles, pass with zero
+KL and exact state over 2,048 teacher-forced rows. This is cache-hit fidelity,
+not certification that distinct prefill schedules have identical arithmetic.
+Evidence: `benchmarks/results/2026-09-20-w7900-prefix-bf16-layout-repair.json`.
 
-The HTTP surface defaults to radix as of 2026-09-20 (owner decision; the
-numerical work below is assigned and in progress). `hipengine serve
---prefix-cache off` or `HIPENGINE_PREFIX_CACHE=off` remains the rollback, and
-the per-request path fails closed rather than erroring, so an unqualified row
-prefills privately instead of failing: the reason is recorded on the request
-row as `prefix_fallback_reason` (`sampling_unsupported`, `prompt_too_short`,
-`miss`, `state_source_unavailable`) and aggregated into the agentic
-benchmark's `fallback_turns`. The server itself exposes only bounded
-snapshot/page/byte ownership through `/ready`, so a reuse or a fallback is not
-visible per request there. Close out this entry once the full category/heldout
-production gate, active/completed ownership checks, and HTTP-default INT8
-scale-plane/suffix/reclaim/pressure checks pass. Do not weaken the envelope or
-add prompt-conditioned routing.
-Evidence: `benchmarks/results/2026-09-20-w7900-gfx1100-prefix-gate-bf16.json`
-and `benchmarks/results/2026-09-20-w7900-prefix-completed-code-control.json`.
+HTTP and in-process prefix caching default to radix. `hipengine serve
+--prefix-cache off` or `HIPENGINE_PREFIX_CACHE=off` is the rollback.
+Eligibility fallbacks record `prefix_fallback_reason`; they do not detect
+numerical divergence. Remaining separate work: explicit no-mirror INT8 suffix
+prefill can allocate a BF16 oracle without restoring its cached prefix.
+Validate the retained INT8/scale attention source, suffix/reclaim/pressure,
+and user-facing requests before claiming that contract repaired.
 Decision: `worklog/entries/20260920T155434.502352Z-lhl-served-lane-boundaries-bc9b95.md`.
 
 ## The packed workspace lease still reserves one full session context per slot (found 2026-09-18)
@@ -490,8 +488,9 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   is unchanged for those populations.
 - Removal scope: the threshold and the decline path, once the paged prefill
   route is no longer several times slower per token than the slot-local one
-  on every backend (gfx1100 still lacks `GGUF_AOTRITON_HEAD_MAJOR_KV`, so its
-  gapped slots still take the native paged fallback and keep the guard).
+  on every backend. Gapped gfx1100 BF16 slots now resolve the registered copy
+  kernel independently of the optional contiguous head-major-layout default;
+  explicit rollback and allocation limits still retain the guard.
   Fixing that is the real prize - it would make every hit pay and let the
   retained working set grow.
 
@@ -8758,10 +8757,10 @@ Removal scope: the flag, the `gapped_slot_local_gather` branch in
 fast-route condition that keeps `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX`
 binding only when the gather is unavailable - once the gather route holds
 through a full `--suite all` milestone plus the served multi-turn A/B on both
-the gfx1151 zbook and a W7900 host with `GGUF_AOTRITON_HEAD_MAJOR_KV` enabled
-there. gfx1100 still lacks the head-major capability, so its gapped slots keep
-the native spans fallback and the suffix guard until that backend validates
-head-major KV.
+the gfx1151 zbook and a W7900 host. Gapped gfx1100 BF16 slots use the registered
+gather by default; the optional contiguous-layout capability is not a
+prerequisite. Explicit rollback, missing copy kernels, and allocation limits
+still select the native spans fallback and retain the suffix guard.
 
 ## Two MTP entry points disagree on the sampling contract (open 2026-09-19)
 

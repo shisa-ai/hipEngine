@@ -26,13 +26,14 @@ Contracts under test (CPU, fake device):
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import MISSING, dataclass, field, fields, replace
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from hipengine.core.dtype import DType
+from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     _check_prefill_gqa_shape,
@@ -76,6 +77,9 @@ class _FakeSlotScratch:
     prefill_spans: KVLiveSpans
     head_major_kv_dense_prefix: bool = True
     head_major_kv_admitted: bool = True
+    head_major_key_cache: object = None
+    head_major_value_cache: object = None
+    head_major_kv_capacity: int = 0
     touched: str = "kept"
 
 
@@ -126,6 +130,9 @@ def test_gapped_bf16_slab_admits_the_gather_route() -> None:
 def test_fast_route_checks_the_request_context_not_resident_capacity() -> None:
     """Demand-sized gather buffers admit any resident class up to the 64K cap."""
 
+    from hipengine.kernels.backends import load_backend_kernel_package
+
+    load_backend_kernel_package("hip_gfx1151")
     available = dict(backend="hip_gfx1151", kv_width=512)
     # A 262,144-position resident class is fine: buffers are sized to the
     # request's own context.
@@ -142,6 +149,104 @@ def test_fast_route_checks_the_request_context_not_resident_capacity() -> None:
         )
         is False
     )
+
+
+@pytest.mark.parametrize("context_tokens", [257, 511, 513, 1224])
+def test_gapped_gather_does_not_require_contiguous_layout_optimization(
+    monkeypatch: pytest.MonkeyPatch, context_tokens: int,
+) -> None:
+    """A layout-required gather must not inherit the contiguous optimization default."""
+    monkeypatch.delenv(gguf_runner._GGUF_AOTRITON_HEAD_MAJOR_KV_ENV, raising=False)
+    monkeypatch.delenv(gguf_runner._GGUF_GAPPED_GATHER_ENV, raising=False)
+    assert not gguf_runner._gguf_aotriton_head_major_kv_enabled("hip_gfx1100")
+    scratch = replace(
+        _fake_slot_scratch(start=256, rows=2, blocks=8),
+        head_major_kv_admitted=False,
+    )
+    allocations = []
+
+    def allocate(nbytes, *, runtime):
+        buffer = DeviceBuffer(0x100000 * (len(allocations) + 1), nbytes)
+        allocations.append(buffer)
+        return buffer
+
+    monkeypatch.setattr(gguf_runner, "malloc", allocate)
+    session = SimpleNamespace(runner=SimpleNamespace(backend="hip_gfx1100"))
+    result = gguf_runner._gguf_gapped_slot_head_major_scratch(
+        session, scratch, context_tokens=context_tokens, kv_width=1024, runtime=object(),
+    )
+    assert result.head_major_kv_admitted
+    assert result.head_major_kv_capacity >= context_tokens
+    assert result.head_major_key_cache.nbytes == 4096 * 1024 * 2
+    assert result.head_major_value_cache.nbytes == 4096 * 1024 * 2
+    repeated = gguf_runner._gguf_gapped_slot_head_major_scratch(
+        session, scratch, context_tokens=context_tokens, kv_width=1024, runtime=object(),
+    )
+    assert repeated.head_major_key_cache is result.head_major_key_cache
+    assert repeated.head_major_value_cache is result.head_major_value_cache
+    assert len(allocations) == 2
+
+
+def test_gapped_gather_preserves_explicit_head_major_rollback(monkeypatch):
+    monkeypatch.setenv(gguf_runner._GGUF_AOTRITON_HEAD_MAJOR_KV_ENV, "0")
+    assert not gguf_runner._gguf_gapped_slot_local_fast_route_available(
+        backend="hip_gfx1100", context_tokens=1224, kv_width=1024,
+    )
+
+
+def test_gapped_gather_requires_a_registered_copy_kernel(monkeypatch):
+    monkeypatch.setattr(gguf_runner, "resolve", lambda **kwargs: None)
+    assert not gguf_runner._gguf_gapped_slot_local_fast_route_available(
+        backend="hip_gfx1100", context_tokens=1224, kv_width=1024,
+    )
+
+
+@pytest.mark.parametrize("slot_view", [False, True])
+def test_bf16_gather_buffers_are_freed_at_session_teardown(monkeypatch, slot_view):
+    cls = gguf_runner.Qwen35GGUFResidentSession
+    session = object.__new__(cls)
+    for descriptor in fields(cls):
+        if descriptor.default is not MISSING:
+            setattr(session, descriptor.name, descriptor.default)
+        elif descriptor.default_factory is not MISSING:
+            setattr(session, descriptor.name, descriptor.default_factory())
+    session.runtime = SimpleNamespace(device_synchronize=lambda: None)
+    session.runner = None
+    session._moe_graph = None
+    session._gapped_slot_block_table_cache = ((), DeviceBuffer(101, 16))
+    session._gapped_head_major_cache = (
+        4096, DeviceBuffer(102, 8192), DeviceBuffer(103, 8192),
+    )
+    freed = []
+    monkeypatch.setattr(gguf_runner, "free", lambda buffer, **kwargs: freed.append(buffer.ptr))
+    if slot_view:
+        session._resident_batch_owner = object()
+        session._close_resident_slot_view_buffers(runtime=session.runtime)
+    else:
+        session.close()
+    assert sorted(freed) == [101, 102, 103]
+    assert session._gapped_slot_block_table_cache is None
+    assert session._gapped_head_major_cache is None
+
+
+def test_gather_bucket_rounding_cannot_exceed_explicit_memory_cap(monkeypatch):
+    monkeypatch.setenv(gguf_runner._GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV, "1224")
+    monkeypatch.setenv(gguf_runner._GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV, "5013504")
+    sizes = []
+
+    def allocate(nbytes, **kwargs):
+        sizes.append(nbytes)
+        return DeviceBuffer(0x100000 * len(sizes), nbytes)
+
+    monkeypatch.setattr(gguf_runner, "malloc", allocate)
+    result = gguf_runner._gguf_gapped_slot_head_major_scratch(
+        SimpleNamespace(runner=SimpleNamespace(backend="hip_gfx1100")),
+        replace(_fake_slot_scratch(start=1024, rows=200, blocks=6), head_major_kv_admitted=False),
+        context_tokens=1224, kv_width=1024, runtime=object(),
+    )
+    assert result.head_major_kv_admitted
+    assert result.head_major_kv_capacity == 1224
+    assert sum(sizes) == 5013504
 
 
 def test_gapped_slab_falls_back_when_the_kill_switch_is_off(
