@@ -374,6 +374,43 @@ Pre-merge gather-route evidence:
 [default retention](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-gather-default.json);
 [off baseline](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-gather-baseline-off.json).
 
+Real agentic sessions compound the win. A session-replay lane re-sends a
+recorded coding-agent transcript exactly as its client did: 32 consecutive
+requests over one tool-using conversation, each re-sending the whole
+cumulative history, prompts growing 740 to 13,762 tokens. On the same host
+and served protocol (one process per arm), radix with 16 retained snapshots
+reuses **222,720 of 231,530 theoretically shareable tokens (96.2%)**, hits 30
+of 32 lookups, and completes the lane in **208.0 s against 581.3 s uncached
+(-64.2% wall, 2.79x; 19.69 vs 7.05 tok/s)**, cutting prefill work by 86%
+(428.4 s to 60.4 s). Default retention measures **-44.1% wall (19/32
+hits)**: it keeps only two resident cache entries, so each new completion
+evicts the previous request's snapshot and misses the reuse a cumulative
+client depends on. A coding agent's resend pattern — every tool round-trip
+re-sending the entire transcript — is the prefix cache's best case, and the
+default-vs-retained-16 gap that reads as noise on three-turn synthetic lanes
+is 20 wall points here.
+Session-replay artifacts:
+[retained-16](results/2026-09-20-gfx1151-qwen36-gguf-prefix-cache-session-replay-retained16.json);
+[default retention](results/2026-09-20-gfx1151-qwen36-gguf-prefix-cache-session-replay-default.json);
+[off baseline](results/2026-09-20-gfx1151-qwen36-gguf-prefix-cache-session-replay-baseline-off.json);
+fixture: [agentic-session-replay-v1](prompts/agentic-session-replay-v1.json).
+
+**Tuning guidance for coding-agent traffic:** on hosts with more than 24 GB
+of graphics memory, set `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`.
+The default retention count is `max(1, resident capacity)` — two resident
+entries at capacity one — which evicts a long transcript's previous-turn
+boundary while the conversation is still growing; the session-replay lane
+missed 13 of 32 resends that way. Each retained entry pins one ~64 MiB
+Conv/GDN state clone plus its conversation's KV pages (~5 MiB per 256-token
+block, shared along a chain), so the measured 32-turn / 13,762-token session
+pins **1.4 GB at 16 entries against 0.4 GB at the default** — and at the
+default 1 GiB `HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES` ceiling the clone
+budget is exactly full at 16 entries for a 35B checkpoint, so the count knob
+and the byte ceiling meet there. Memory-tight hosts keep the default; both
+knobs bound the pinned set. The wide default has not been measured under
+concurrent multi-conversation serving, where 16 slots spread across
+conversations instead of down one chain.
+
 W7900 Qwen3.6 enables automatic MTP only for its qualified single-request and
 capacity-2/two-request keys. **On W7900, Qwen3.8-27B `Q4_K_M` uses ordinary AR by default
 at every width.** Explicit MTP is available there with production/BF16 KV, context
