@@ -2,6 +2,18 @@
 
 Last updated: **2026-09-20**
 
+September 20 C1 refresh on **Framework Desktop / Radeon 8060S**, physical
+host `gfx1151`: Qwen3.6-35B-A3B `UD_Q4_K_M` measures 1,418.1 prefill and
+56.7 decode tok/s at 512/128; Qwen3.8-27B `Q4_K_M` measures 404.5 and
+12.15. Each has three timing samples and an 18-prompt graph/eager identity
+check. Qwen3.8 production MTP completes the ten-prompt natural25 category
+suite, including four heldouts, at 22.37 versus 11.30 tok/s true AR
+(1.979x), with all ten cells exact, engaged and budget-conformed.
+These are current snapshots, not an isolated optimization A/B.
+The Qwen3.6 packed c2/c4 byte-exact diagnostic fails and is not certified
+by these C1 results. Other model rows retain their stated measurement dates.
+[Commands, provenance, samples, and limitations](results/2026-09-20-gfx1151-v060-headline-refresh.json).
+
 Merged-tree working baseline on physical host `gfx1151` (Radeon 8060S): the
 upstream prefix-cache A/B reproduces the merge screening rows (35B MoE all lanes
 28.19 → 33.88 tok/s, 16/27 hits; dense 27B code lanes 5.64 → 7.35 tok/s, 9/18
@@ -118,18 +130,19 @@ Laguna: 4K prompts. 35B-A3B GGUF MTP: explicitly enabled. Qwen3.8 MTP:
 
 #### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
-| Model | Quant | Prompt processing | Text generation | With MTP | Max context |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Maple-Preview | 2-bit | **754.5** | **153.2** | — | — |
-| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1369.5** | **54.3** | 80.1 | — |
-| Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.2** | 21.0 | — |
+| Model | Quant | Prompt processing | Text generation | With MTP | AR measured |
+| --- | --- | ---: | ---: | ---: | --- |
+| Maple-Preview | 2-bit | **754.5** | **153.2** | — | 2026-08-08 |
+| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 | 2026-09-20 |
+| Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | 2026-07/08 |
+| Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | 2026-08-17 |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** | 2026-09-20 |
 
-Qwen3.8 `Q4_K_M` speculates by default at one request: **20.0** tok/s against
-a matched 11.90 tok/s AR baseline (1.68x), declining above 1,023 tokens. The
-21.0 cell is the strict/K3 protocol.
-[Measurements](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-18-gfx1151-qwen38-mtp-c1-engagement.json).
+September 20 rows: Framework Desktop. Qwen3.8 `Q4_K_M` MTP uses three drafts
+and 25 output tokens per request: **1.98x** its matched 11.30 tok/s AR,
+not the 512/128 decode column. It declines above 1,023 tokens.
+35B MTP is the July 19 opt-in result.
+[Measurements](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-20-gfx1151-v060-headline-refresh.json).
 
 **Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
 context 8192, horizon 512 forecasts in **0.082 s** on the HP ZBook Strix Halo
@@ -166,10 +179,8 @@ Direct-INT8 failed 9 of 11 quality prompts and is not a default.
 
 Multi-turn conversations resend the whole transcript, so hipEngine reuses the
 KV pages and hybrid state of any 256-token-aligned prefix a later request
-repeats. On by default; `--prefix-cache off` disables it. Reuse returns the
-same tokens as full recomputation up to 2,048 tokens of context; above that
-attention accumulates in a different order, so a cached turn can differ by one
-BF16 unit in the last place and occasionally pick a different token.
+repeats. Radix is the direct engine default; HTTP serving requires
+`--prefix-cache radix`. Different prefill routes can change generated tokens.
 Qwen3.6-35B-A3B `UD-Q4_K_M` on Strix Halo (`gfx1151`), 14 multi-turn lanes of
 three turns, reusing 42,496 of 87,582 prompt tokens:
 
@@ -1475,18 +1486,20 @@ backend-selected HIP graph path.
 
 | Shape | Prefill | AR decode | Tracked peak |
 | --- | ---: | ---: | ---: |
-| 512/128 | **404.487 tok/s** | **12.226 tok/s** | 24.153 GiB |
-| 1K/128 | **395.000 tok/s** | **11.997 tok/s** | 24.153 GiB |
-| 4K/128 | **373.218 tok/s** | **12.153 tok/s** | 24.153 GiB |
+| 512/128 | **404.474 tok/s** | **12.150 tok/s** | 37.428 GiB |
+| 1K/128 | **397.164 tok/s** | **11.843 tok/s** | 37.428 GiB |
+| 4K/128 | **376.558 tok/s** | **12.118 tok/s** | 37.428 GiB |
 
-Every prefill/decode CV is below 0.22%. All timed final logits are finite,
+Every prefill/decode CV is below 0.40%. All timed final logits are finite,
 and the graph/eager preflight matches every generated ID, final full logits,
 and state fingerprint on 18 category/heldout prompts. The public packed
 numerical gate covers 8,716 rows at KL0/top-1 100%; real-socket blocking/SSE,
 cancellation, refill and clean-drain checks pass. Tracked peak includes
 public session pools and the graph preflight; session-owned peak is 19.810 GiB.
 These memory scopes differ from the older right-sized low-level-session
-measurements. [Current profile measurements](results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json).
+measurements. The numerical/serving packet above is September 12 evidence;
+the September 20 refresh reruns graph/eager correctness, not that full packet.
+[Current profile measurements](results/2026-09-20-gfx1151-v060-headline-refresh.json).
 
 The following earlier September 12 same-file comparison used the then-current
 low-level hipEngine session. Both engines ran back to back on one host with
@@ -1632,19 +1645,24 @@ counts are reported under separate names for that reason.
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
-This is the latest clean, exact one-queue production snapshot. The artifact is a
-campaign completion gate, not a claim that its final step improved every row.
+September 20 C1 measurements use two hardware queues, graph decode, and one
+4,226-token low-level BF16 session for both shapes. Each shape has one
+discarded warmup and three measurements; all 18 category/heldout graph/eager
+checks pass. The longer rows below remain the August 6 one-queue measurements.
+The separate packed c2/c4 byte-exact gate fails on the refreshed tree; these
+C1 timings do not qualify cross-batch arithmetic.
 
 | Workload | Prefill | Decode | Tracked peak | Whole-device GTT peak |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **1369.489 tok/s** | **54.330 tok/s** | 20.566 GiB | 21.000 GiB |
-| 4K/128 | **1430.215 tok/s** | **54.798 tok/s** | 20.951 GiB | 21.499 GiB |
+| 512/128 | **1418.062 tok/s** | **56.736 tok/s** | 21.453 GiB | Not sampled |
+| 4K/128 | **1462.354 tok/s** | **56.340 tok/s** | 21.453 GiB | Not sampled |
 | 32K/128 | **1144.713 tok/s** | **46.405 tok/s** | 21.597 GiB | 22.152 GiB |
 | 64K/128 | **936.218 tok/s** | **40.180 tok/s** | 22.336 GiB | 22.890 GiB |
 | 128K/128 | — | — | — | — |
 
 Repeated 128K remains blocked by the documented later-pass lifecycle stall; no
 numeric 128K row is carried forward. Evidence:
+[September 20 C1 refresh](results/2026-09-20-gfx1151-v060-headline-refresh.json);
 [`SH14-C1 completion gate`](results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json).
 
 ### Laguna S 2.1
