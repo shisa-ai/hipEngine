@@ -8847,3 +8847,18 @@ opt-out while independent hardware transfer is evaluated; do not use it as an
 admission gate for supported requests. Dynamic constraints and forced queues
 still require the host path. The full-vocabulary kernel improvement is
 not evidence that those request shapes became supported.
+
+## Provider Prefix Checkpoint Rollback
+
+`HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES` defaults to four bounded provider
+snapshots when radix caching is enabled, and allocates none with prefix caching
+off. Zero is an explicit memory/bisection rollback. A target prefix hit alone
+cannot reconstruct the draft provider's recurrent state and KV; capture and
+restore must travel together.
+
+Keep the rollback until provider snapshots share the target cache's byte budget
+and eviction lifecycle. Then remove the independent entry-count control while
+retaining the bounded cache policy. Validate the composed user path with
+`scripts/int8_mtp_prefix_gate.py` against a radix-enabled server: it requires
+real prefix hits, compact INT8, speculative cycles and parity with the same
+prefix-reusing AR route. A cache miss or an AR-only response is not a pass.

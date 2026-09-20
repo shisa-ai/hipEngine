@@ -1,8 +1,10 @@
 import json
+from copy import deepcopy
 
 import pytest
 
 from scripts.int8_mtp_server_gate import assert_result, stream_result
+from scripts.int8_mtp_prefix_gate import assert_restored_pair
 
 
 def _events(*, cycles=1, mirror=0):
@@ -61,3 +63,27 @@ def test_server_gate_rejects_inconsistent_usage():
     result["usage"]["completion_tokens"] = 3
     with pytest.raises(AssertionError):
         assert_result(result, speculative=True, compact=True)
+
+
+@pytest.mark.parametrize("failure", [None, "miss", "partial", "ar", "ids"])
+def test_prefix_gate_requires_hit_restoration_and_matching_output(failure):
+    baseline = {
+        "generated_token_ids": [1, 2],
+        "timing": {"mtp_cycles_count": 0},
+        "diagnostics": {"prefix_cache": {"hit": True, "reused_tokens": 512}},
+    }
+    candidate = deepcopy(baseline)
+    candidate["timing"]["mtp_cycles_count"] = 1
+    if failure == "miss":
+        candidate["diagnostics"]["prefix_cache"]["hit"] = False
+    elif failure == "partial":
+        candidate["diagnostics"]["prefix_cache"]["reused_tokens"] = 256
+    elif failure == "ar":
+        candidate["timing"]["mtp_cycles_count"] = 0
+    elif failure == "ids":
+        candidate["generated_token_ids"] = [3]
+    if failure is None:
+        assert assert_restored_pair(baseline, candidate, 512) == 1
+    else:
+        with pytest.raises(AssertionError):
+            assert_restored_pair(baseline, candidate, 512)

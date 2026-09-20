@@ -5992,17 +5992,18 @@ def test_runner_publishes_the_prefix_capture_key_for_the_boundary_prefix(
     assert runner._prefix_checkpoint_block_ids(8, 512) is None
 
 
-def test_runner_capture_configuration_is_off_by_default(monkeypatch) -> None:
+def test_runner_captures_provider_prefix_when_radix_is_enabled(monkeypatch) -> None:
     runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._prefix_cache_mode = "radix"
     runner._prefix_checkpoint_block_ids = lambda request_id, prefix_len: (1,)
     adapter = SimpleNamespace()
 
     monkeypatch.delenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", raising=False)
     runner._configure_mtp2_prefix_checkpoint_capture(adapter)
 
-    assert adapter.prefix_checkpoint_capacity == 0
+    assert adapter.prefix_checkpoint_capacity > 0
     assert adapter.prefix_checkpoint_block_size == 256
-    assert adapter.prefix_checkpoint_key is None
+    assert adapter.prefix_checkpoint_key(7, 256) == (1,)
 
     monkeypatch.setenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", "4")
     runner._configure_mtp2_prefix_checkpoint_capture(adapter)
@@ -6013,6 +6014,17 @@ def test_runner_capture_configuration_is_off_by_default(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", "not-a-number")
     runner._configure_mtp2_prefix_checkpoint_capture(adapter)
 
+    assert adapter.prefix_checkpoint_capacity > 0
+    assert adapter.prefix_checkpoint_key(7, 256) == (1,)
+
+    monkeypatch.setenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", "0")
+    runner._configure_mtp2_prefix_checkpoint_capture(adapter)
+    assert adapter.prefix_checkpoint_capacity == 0
+    assert adapter.prefix_checkpoint_key is None
+
+    monkeypatch.setenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", "4")
+    runner._prefix_cache_mode = "off"
+    runner._configure_mtp2_prefix_checkpoint_capture(adapter)
     assert adapter.prefix_checkpoint_capacity == 0
     assert adapter.prefix_checkpoint_key is None
 
