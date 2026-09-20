@@ -46,7 +46,9 @@ venv/
 .vscode/
 .idea/
 
-# pi / agent harness state
+# Agent-runner config / harness state (per-user, never checked in)
+.claude/
+.codex/
 .pi/
 .multiloop/
 

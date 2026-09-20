@@ -316,9 +316,9 @@ them apart is what stops a cleanup commit from also changing behaviour. Scope a
 run by group or signal — `queue --check doc-path-drift`, `open candidate
 --signal "exactness bar"` — never "triage everything".
 
-Claude Code registers these as the `cleanup-triage` and `cleanup-fix` subagents;
-`.claude/agents/*.md` are one-line stubs pointing here, so edit the files under
-`agents/` and not the stubs.
+Any runner-specific registration (subagent stubs, agent definitions) is
+per-user setup and is not checked in. The files under `agents/` are the
+canonical copies — point whatever runner you use at them.
 
 ## Extending it
 

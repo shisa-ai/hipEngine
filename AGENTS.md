@@ -190,6 +190,7 @@ Prefixes: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `perf:`, `po
 - Model weights, `*.safetensors` outside fixtures
 - Compiled `.so` / JIT caches, `rocprofv3` dumps, raw benchmark logs
 - Local env / secrets, Python caches
+- Agent-runner config folders (`.claude/`, `.codex/`, `.pi/`, `.multiloop/`) — per-user state, git-ignored; register runner subagents locally, never in the repo
 - Vendored upstream repos (nano-vllm-amd, FastDMS, etc. — referenced by absolute path)
 
 ### Never Discard Others' Work
