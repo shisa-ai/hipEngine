@@ -741,11 +741,29 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # Rebuild the active source privately, then consume the unmatched
         # suffix one token at a time on the matched context.
         oracle_session.reset()
-        semantic_prefix_result = oracle_session.prefill(
-            prefix,
-            return_logits=False,
-            bulk_attention_mode=args.reference_prefill_mode,
-        )
+        if args.reference_prefill_mode == "packed":
+            # Build the reference prefix through the same route family the
+            # candidate and the served engine use.  The packed wave and the
+            # single-session path persist different final-state arithmetic
+            # (documented on the batch-route gate's --packed-prefill-candidate),
+            # so the single-session prefix makes every downstream comparison a
+            # cross-route comparison rather than a correctness comparison.
+            packed_prefix_results = oracle_session.prefill_batch_native(
+                [prefix],
+                sessions=[oracle_session],
+                full_prompt_lengths=[len(continued_prompt)],
+                return_logits=False,
+                return_hidden_seeds=False,
+            )
+            if len(packed_prefix_results) != 1:
+                raise RuntimeError("GGUF packed reference prefix returned the wrong result count")
+            semantic_prefix_result = packed_prefix_results[0]
+        else:
+            semantic_prefix_result = oracle_session.prefill(
+                prefix,
+                return_logits=False,
+                bulk_attention_mode=args.reference_prefill_mode,
+            )
         semantic_boundary = _capture_state(oracle_session)
         semantic_boundary_mismatches = _compare_states(
             candidate_boundary,
@@ -1212,13 +1230,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--reference-prefill-mode",
-        choices=("bulk", "native"),
-        default=None,
+        choices=("bulk", "native", "packed"),
+        default="packed",
         help=(
-            "Attention mode for the reference prefix prefill. The default (None) lets the "
-            "generator plugin pick its certified bulk scheduler, which is a different "
-            "kernel family from the native work batch that prefill_batch uses for the "
-            "candidate and that the served engine uses."
+            "Prefix prefill used to build the reference state. The default 'packed' uses "
+            "prefill_batch_native so the reference shares the candidate's and the served "
+            "engine's route family; 'native' selects the "
+            "single-session native attention mode and None lets the plugin pick its "
+            "certified bulk scheduler; both are diagnostics. The "
+            "packed wave and the single-session path persist different final-state "
+            "arithmetic, so the single-session prefix makes the numerical comparison a "
+            "cross-route comparison."
         ),
     )
     parser.add_argument(
