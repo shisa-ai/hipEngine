@@ -31389,6 +31389,9 @@ class Qwen35GGUFResidentSession:
 
         if getattr(self, "_resident_batch_owner", None) is None:
             raise RuntimeError("resident slot-view cleanup requires a batch owner")
+        pool = self.__dict__.pop("_gguf_prefix_snapshot_arena_pool", None)
+        if pool is not None:
+            pool.close()
         self._release_gapped_prefill_buffers(runtime=runtime)
         for buffer in (
             self._verify_lm_out_values,
@@ -31447,6 +31450,9 @@ class Qwen35GGUFResidentSession:
 
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
+        pool = self.__dict__.pop("_gguf_prefix_snapshot_arena_pool", None)
+        if pool is not None:
+            pool.close()
         for view in reversed(tuple(self.__dict__.pop("_resident_slot_views", ()))):
             view._close_resident_slot_view_buffers(runtime=runtime)
         recorder = self._prefill_flight_recorder
