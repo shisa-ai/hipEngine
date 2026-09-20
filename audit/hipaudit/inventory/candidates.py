@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 
 from ..core import REPO_ROOT, Row, digest, slug
-from . import doc_corpus, register
+from . import doc_corpus, register, tokens
 
 NOT_PROMOTED = re.compile(
     r"\b(rejected|deferred|parked|withdrawn|not promoted|blocked|gated off|default[- ]off|removed)\b", re.I)
@@ -78,6 +78,11 @@ def extract() -> tuple[list[Row], dict]:
                     "excerpt": stripped[:400],
                 },
                 signals=signals,
+                hints={
+                    "anchor": path,
+                    "refs": sorted(set(measurements)),
+                    "tokens": tokens(label + " " + stripped[:200]),
+                },
             ))
 
     return rows, {"campaign_docs_scanned": scanned, "candidates": len(rows)}

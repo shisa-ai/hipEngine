@@ -2,9 +2,14 @@
   "recorded": "2026-09-21",
   "note": "Untriaged rows per kind. `audit.py check` fails when a count rises. Lower it by triaging rows; raise it only with a recorded reason.",
   "open": {
+    "axis-branch": 15,
     "candidate": 225,
+    "doc-path-drift": 111,
     "flag": 745,
     "kernel": 255,
-    "ledger": 396
+    "ledger": 396,
+    "stub": 192,
+    "ungoverned-flag-branch": 95,
+    "unguarded-hip-test": 59
   }
 }
