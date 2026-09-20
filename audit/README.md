@@ -97,8 +97,9 @@ two scans is reviewable.
 
 ## Workflow 2 — Triage (decide what a row is)
 
-This is the main loop for inventory rows. Use the `cleanup-triage` agent
-(`.claude/agents/cleanup-triage.md`) or do it directly.
+This is the main loop for inventory rows. The assignment is
+[`agents/triage.md`](agents/triage.md) — hand it to an agent, or follow it
+yourself.
 
 ```bash
 python3 audit/audit.py open ledger -n 10                     # most signals first
@@ -159,7 +160,8 @@ Choosing a disposition:
 
 ## Workflow 3 — Fix (clear the queue)
 
-Findings name their own edit, so this is ordinary engineering work.
+Findings name their own edit, so this is ordinary engineering work. The
+assignment is [`agents/fix.md`](agents/fix.md).
 
 ```bash
 python3 audit/audit.py queue -n 8 -e 3        # groups, largest cause first
@@ -299,6 +301,25 @@ flags these: `audit.py open candidate --signal "exactness bar"`.
 
 Every decision requires a note. A disposition without a reason is not a decision.
 
+## Working it with agents
+
+The two assignments under [`agents/`](agents/) are tool-neutral and are the
+canonical instructions:
+
+| File | Posture | Does |
+| --- | --- | --- |
+| [`agents/triage.md`](agents/triage.md) | read-only | Decides what rows are. Writes only the triage store. |
+| [`agents/fix.md`](agents/fix.md) | edits code | Takes a queue group, fixes the shared cause, commits, closes rows out. |
+
+The split is deliberate: triage decides and fixing changes code, and keeping
+them apart is what stops a cleanup commit from also changing behaviour. Scope a
+run by group or signal — `queue --check doc-path-drift`, `open candidate
+--signal "exactness bar"` — never "triage everything".
+
+Claude Code registers these as the `cleanup-triage` and `cleanup-fix` subagents;
+`.claude/agents/*.md` are one-line stubs pointing here, so edit the files under
+`agents/` and not the stubs.
+
 ## Extending it
 
 Add an extractor when a debt surface is not catalogued; add a check when code can
@@ -373,6 +394,7 @@ audit/
   triage/*.jsonl      durable decisions for both; re-scanning never touches these
   budget.json         the untriaged ceiling the gate enforces
   runs/<stamp>/       dated REPORT.md + snapshot.json
+  agents/             assignments for whoever works the audit: triage.md, fix.md
   tests/              contract tests for durability and validation
 ```
 
