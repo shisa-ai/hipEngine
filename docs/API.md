@@ -75,11 +75,16 @@ The resident KV policy is server-wide: set `--kv-storage` (`auto`, `bf16`, or
 startup. Requests that ask for a different KV policy are rejected instead of
 rebuilding the resident model.
 
-The defaults are `--kv-storage int8_per_token_head`, `--kv-scale-dtype fp32`,
-`--kv-scale-granularity per_token_head`, and four resident request slots. On the supported
-dense GGUF artifact this selects **176,128 tokens** of resident context on a
-48 GiB W7900 at the configured KV memory budget. Context length, request
-concurrency, and KV-pool memory are independent settings.
+The defaults are `--kv-storage bf16`, `--kv-scale-dtype fp32`,
+`--kv-scale-granularity per_token_head`, and four resident request slots.
+Context length, request concurrency, and KV-pool memory are independent
+settings. BF16 is the higher-precision baseline, and it is the storage the
+speculative (MTP) route has retained evidence for. `int8_per_token_head` opts
+into the compressed policy, which stores roughly half the per-token KV bytes at
+lower KV precision; on the supported dense GGUF artifact that policy selects
+**176,128 tokens** of resident context on a 48 GiB W7900 at the configured KV
+memory budget. That figure belongs to the int8 policy, so the BF16 default
+holds proportionally less resident context at the same KV memory budget.
 
 INT8 KV is used only when the loaded artifact is qualified for it. Qualification
 is keyed on the exact artifact SHA-256, size, backend, target architecture,
@@ -87,8 +92,8 @@ weight quant, storage layout, **and scale dtype** — the retained evidence for 
 supported dense artifacts is keyed on `fp32` scales, so `--kv-scale-dtype fp16`
 matches no contract and the server falls back to BF16. An unqualified or unknown
 artifact also falls back to BF16; the reason is recorded in `/ready` and the
-KVCache summary rather than raised. Pass `--kv-storage bf16` to force the
-previous behavior outright.
+KVCache summary rather than raised. Passing `--kv-storage bf16` explicitly is
+accepted and matches the default.
 
 Set `--max-active-requests` to change the maximum number of requests processed
 in flight. Requests beyond that limit remain queued. The shared KV pool starts
