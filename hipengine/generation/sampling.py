@@ -1541,9 +1541,21 @@ def _apply_probability_filters(
     top_p: float,
     min_p: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    order = np.lexsort((token_ids, -probs))
-    sorted_ids = token_ids[order]
-    sorted_probs = probs[order]
+    # Softmax normally preserves the preceding logit sort. Check the complete
+    # probability/lower-ID order: rounding can create new probability ties, so
+    # merely assuming logit order would change the retained support and RNG map.
+    ordered = np.all(
+        (probs[:-1] > probs[1:])
+        | ((probs[:-1] == probs[1:]) & (token_ids[:-1] <= token_ids[1:]))
+    )
+    if ordered:
+        # Preserve the sort's independent output ownership as well as values.
+        sorted_ids = token_ids.copy()
+        sorted_probs = probs.copy()
+    else:
+        order = np.lexsort((token_ids, -probs))
+        sorted_ids = token_ids[order]
+        sorted_probs = probs[order]
     if sorted_ids.size == 0:
         return sorted_ids, sorted_probs
 

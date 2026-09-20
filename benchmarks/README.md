@@ -2,22 +2,32 @@
 
 Last updated: **2026-09-21**
 
-Qwen3.8-27B Q4_K_M sampling attribution on **zbook / Radeon 8060S
-(gfx1151)**: strict BF16 KV, one active request in a capacity-4 service,
-MTP/cache off, all 10 category prompts plus 8 heldouts, 16 output tokens,
-two repetitions in reversed arm order. These are instrumented component
-times, not an HTTP throughput or sampler-promotion gate; seeded repeats pass.
+Qwen3.8-27B Q4_K_M host sampling on **zbook / Radeon 8060S
+(gfx1151)**: avoiding a redundant probability sort reduces measured decode-step
+time by **17.9%**, with identical generated tokens in all 36 requests.
+The comparison uses strict BF16 KV, one active request in a capacity-4 service,
+MTP/cache off, all 10 category prompts plus 8 heldouts at natural lengths,
+16 output tokens, temperature 0.7, top-p 0.95, and two repetitions.
 
-| Decode component | Mean time per transition |
-| --- | ---: |
-| Host sampling: model step including readback | 86.31 ms |
-| Host token selection | 49.17 ms |
-| Full-logits copy after scalar synchronization | 0.088 ms |
-| Native token selection | 48.39 ms (request means 38.82–89.17 ms) |
+| Decode component | Before | After |
+| --- | ---: | ---: |
+| Host sampling: model step including readback | 86.31 ms | 86.20 ms |
+| Host token selection | 49.17 ms | 25.08 ms |
+| Total instrumented decode step | 135.59 ms | 111.38 ms |
 
-No arm uses graph replay at this short horizon. The native prefill ownership
-failure is repaired, but switching sampler placement alone does not remove
-selection cost. [Protocol, route checks, and per-request attribution](results/2026-09-21-zbook-gguf-sampling-attribution.json).
+These are mean times per steady-state transition, excluding the first two
+transitions of each request, not HTTP throughput or long-context measurements.
+Both runs use the same physical host and protocol; the baseline comes from the
+four-arm attribution run, while the candidate reruns only the affected host arm.
+No graph replay occurs at this short horizon. The optimization preserves
+probability/token-ID tie ordering and uses the original sort when needed.
+[Commands, exact-output checks, and per-request measurements](results/2026-09-21-zbook-gguf-host-sampling-sort.json).
+
+The separate native sampler still averages 48.39 ms per selection in the
+[baseline attribution](results/2026-09-21-zbook-gguf-sampling-attribution.json)
+(request means 38.82–89.17 ms) and stays opt-in. Its prefill ownership failure
+is repaired; this CPU optimization changes neither native sampling nor MTP
+admission.
 
 September 20 W7900 C1 refresh on physical host **epyc**, GPU0
 `0xe282895b62c2b295`: BF16 KV, 512/128 and 4096/128, one warmup and

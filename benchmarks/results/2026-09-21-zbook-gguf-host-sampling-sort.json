@@ -1,0 +1,2118 @@
+{
+  "schema": "hipengine.gguf_host_sampling_sort.v1",
+  "status": "accepted",
+  "date": "2026-09-21",
+  "decision": "Use ordered-input bypass by default; retain lexsort for unsorted probability/token-ID pairs.",
+  "provenance": {
+    "host": "zbook",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "backend": "hip_gfx1151",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16",
+    "execution_profile": "strict",
+    "capacity": 4,
+    "max_sequence_length": 8192,
+    "mtp": false,
+    "prefix_cache": "off",
+    "seed": 17,
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1151"
+    },
+    "suite_sha256": {
+      "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280"
+    },
+    "variant_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "hardware": [
+      "Name:                    AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+      "Marketing Name:          AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+      "Vendor Name:             CPU",
+      "Name:                    gfx1151",
+      "Marketing Name:          AMD Radeon 8060S Graphics",
+      "Vendor Name:             AMD",
+      "Name:                    amdgcn-amd-amdhsa--gfx1151",
+      "Name:                    amdgcn-amd-amdhsa--gfx11-generic"
+    ],
+    "baseline_git_head": "f9bfb3e196c29b206b012981abe8ee060bd067ab",
+    "candidate_base_commit": "18ba7b821597aaa7edbe1e9adcde11ae9b102ce6",
+    "candidate_sampling_py_sha256": "6b63dc9bd72153b8120795f5e111110e1c2cb6cd5a91d234405630150da771eb",
+    "harness_sha256": "3027ba6d5fe646d2b29d54f24d624f2d185bce61bb4b94913ac5e700b8d7baae",
+    "baseline_artifact": "benchmarks/results/2026-09-21-zbook-gguf-sampling-attribution.json",
+    "baseline_command": "/home/lhl/miniforge3/bin/python3 scripts/gguf_sampling_overhead_profile.py --max-tokens 16 --repeats 2 --json /tmp/gguf-sampling-suite.json",
+    "candidate_command": "/home/lhl/miniforge3/bin/python3 scripts/gguf_sampling_overhead_profile.py --max-tokens 16 --repeats 2 --arms host_sampled --json /tmp/gguf-sort-candidate-isolated.json"
+  },
+  "workload": {
+    "occupancy": 1,
+    "capacity": 4,
+    "prompts": 18,
+    "repeats": 2,
+    "output_tokens": 16,
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "prompt_format": "natural source message contents, no chat template",
+    "warmup": "five-token greedy warmup; first two decode transitions excluded per request"
+  },
+  "checks": {
+    "generated_ids_parent_exact": 36,
+    "fixed_seed_repeats_exact": true,
+    "matching_prompt_hashes": 36,
+    "matching_metadata": true,
+    "expected_host_sampler_and_full_logits_readback": 36,
+    "graph_replays": 0,
+    "focused_sampling_tests_passed": 328,
+    "independent_review": "No correctness findings; read-only review of supported callers, ordering, ownership, RNG mapping and tests.",
+    "cpu_validation": "Fixtures and smoke gates pass. Broad unit suite has one pre-existing VibeVoice diagnostic failure, reproduced using original sampling filter; full suite not green."
+  },
+  "summary_ms_per_transition": {
+    "step_ms": {
+      "baseline": 135.58526775429146,
+      "candidate": 111.38152432063063,
+      "delta_percent": -17.851307767096802
+    },
+    "host_selection": {
+      "baseline": 49.17334619881136,
+      "candidate": 25.075436850372178,
+      "delta_percent": -49.006039269749124
+    },
+    "host_vocab_sort": {
+      "baseline": 16.897478365403643,
+      "candidate": 23.325232929565598,
+      "delta_percent": 38.03972655069241
+    },
+    "model_step_including_readback": {
+      "baseline": 86.31365285473139,
+      "candidate": 86.19808416235298,
+      "delta_percent": -0.13389387258688767
+    }
+  },
+  "rows": [
+    {
+      "prompt_id": "code_merge_intervals",
+      "category": "code",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 28,
+      "prompt_ids_sha256": "ef73276a6920c02406c2c6cc3fcaf147906bfc30c14a3929469f37697130d107",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        12654,
+        709,
+        421,
+        78161,
+        48142,
+        7629,
+        7308,
+        26126,
+        11
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 133.69041415297454,
+        "component_ms": {
+          "model_d2h": 71.25064415483322,
+          "model_d2h_scalar": 71.18029215360785,
+          "model_d2h_large": 0.0743925388983021,
+          "readback_including_sync": 71.34738653873612,
+          "model_step_including_readback": 85.47861115389074,
+          "host_vocab_sort": 16.74471253863885,
+          "host_selection": 48.118707538658505
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 110.14674538399468,
+        "component_ms": {
+          "model_d2h": 70.45968653871498,
+          "model_d2h_scalar": 70.33423376952459,
+          "model_d2h_large": 0.13636061535530292,
+          "readback_including_sync": 70.65677961565179,
+          "model_step_including_readback": 85.49622699949676,
+          "host_vocab_sort": 22.7627101546834,
+          "host_selection": 24.545062077287675
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "code_merge_intervals",
+      "category": "code",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 28,
+      "prompt_ids_sha256": "ef73276a6920c02406c2c6cc3fcaf147906bfc30c14a3929469f37697130d107",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        12654,
+        709,
+        421,
+        78161,
+        48142,
+        7629,
+        7308,
+        26126,
+        11
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 133.95835269245885,
+        "component_ms": {
+          "model_d2h": 70.82727892282911,
+          "model_d2h_scalar": 70.73641692309488,
+          "model_d2h_large": 0.09494984568356393,
+          "readback_including_sync": 70.9248077686285,
+          "model_step_including_readback": 85.61693907652696,
+          "host_vocab_sort": 16.60940869288215,
+          "host_selection": 48.237715307970156
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 110.19173892418621,
+        "component_ms": {
+          "model_d2h": 70.27817200035386,
+          "model_d2h_scalar": 70.17017492398736,
+          "model_d2h_large": 0.11910823097703263,
+          "readback_including_sync": 70.49885384577254,
+          "model_step_including_readback": 85.49378923019574,
+          "host_vocab_sort": 22.69895815390135,
+          "host_selection": 24.58600715432952
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "code_topological_sort",
+      "category": "code",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 38,
+      "prompt_ids_sha256": "3e22780d35f01622e5b8f841dcac5859758990f55583cd108c4308cefca24986",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        12654,
+        709,
+        364,
+        1844,
+        5551,
+        27355,
+        421,
+        25,
+        198
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.1286041532988,
+        "component_ms": {
+          "model_d2h": 70.95933246063606,
+          "model_d2h_scalar": 70.86764361520181,
+          "model_d2h_large": 0.0960270763943509,
+          "readback_including_sync": 71.07842284648751,
+          "model_step_including_readback": 85.91934600022236,
+          "host_vocab_sort": 16.868971615622286,
+          "host_selection": 49.110672461280885
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 110.38458753822712,
+        "component_ms": {
+          "model_d2h": 70.85119192393344,
+          "model_d2h_scalar": 70.75447269184784,
+          "model_d2h_large": 0.10706630816387658,
+          "readback_including_sync": 71.0414226154031,
+          "model_step_including_readback": 85.58331815332238,
+          "host_vocab_sort": 22.934622923807744,
+          "host_selection": 24.698270768567454
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "code_topological_sort",
+      "category": "code",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 38,
+      "prompt_ids_sha256": "3e22780d35f01622e5b8f841dcac5859758990f55583cd108c4308cefca24986",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        12654,
+        709,
+        364,
+        1844,
+        5551,
+        27355,
+        421,
+        25,
+        198
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 134.80560000075806,
+        "component_ms": {
+          "model_d2h": 71.13716215490757,
+          "model_d2h_scalar": 71.05117846143773,
+          "model_d2h_large": 0.09005753851782244,
+          "readback_including_sync": 71.23644384717828,
+          "model_step_including_readback": 86.12553161527522,
+          "host_vocab_sort": 16.74994530773032,
+          "host_selection": 48.58519369176625
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 110.68155223116403,
+        "component_ms": {
+          "model_d2h": 70.01011915389637,
+          "model_d2h_scalar": 69.90431353887499,
+          "model_d2h_large": 0.11658807684748004,
+          "readback_including_sync": 70.21590815370124,
+          "model_step_including_readback": 85.55474030827799,
+          "host_vocab_sort": 23.187212845816525,
+          "host_selection": 25.014643922846655
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "code_lru_cache",
+      "category": "code",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 35,
+      "prompt_ids_sha256": "ffe0ab7e8a8b3822e2dc8c936f1cb8a66b49f17b10e7eba1a0b9413f41ed185f",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        1421,
+        6587,
+        264,
+        12654,
+        43072,
+        5287,
+        1714,
+        440,
+        496,
+        7,
+        16,
+        8,
+        615
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.1749238467444,
+        "component_ms": {
+          "model_d2h": 71.8418929992857,
+          "model_d2h_scalar": 71.73188353800259,
+          "model_d2h_large": 0.11425907667636728,
+          "readback_including_sync": 71.93756892313384,
+          "model_step_including_readback": 86.32239853865869,
+          "host_vocab_sort": 16.840553691928598,
+          "host_selection": 48.76319061608788
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 110.49972161512974,
+        "component_ms": {
+          "model_d2h": 70.72094430707064,
+          "model_d2h_scalar": 70.61432115453779,
+          "model_d2h_large": 0.11763315398219185,
+          "readback_including_sync": 70.92175715353314,
+          "model_step_including_readback": 85.56903784651345,
+          "host_vocab_sort": 23.087195307408155,
+          "host_selection": 24.8347300000135
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "code_lru_cache",
+      "category": "code",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 35,
+      "prompt_ids_sha256": "ffe0ab7e8a8b3822e2dc8c936f1cb8a66b49f17b10e7eba1a0b9413f41ed185f",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        1421,
+        6587,
+        264,
+        12654,
+        43072,
+        5287,
+        1714,
+        440,
+        496,
+        7,
+        16,
+        8,
+        615
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 134.90657376958274,
+        "component_ms": {
+          "model_d2h": 70.55455038593769,
+          "model_d2h_scalar": 70.47569799984697,
+          "model_d2h_large": 0.08316300031415616,
+          "readback_including_sync": 70.65683784542041,
+          "model_step_including_readback": 86.10124561584179,
+          "host_vocab_sort": 16.711961384247005,
+          "host_selection": 48.70747376956457
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 110.81454676884907,
+        "component_ms": {
+          "model_d2h": 70.08564984509856,
+          "model_d2h_scalar": 69.98009946087572,
+          "model_d2h_large": 0.11767623072955757,
+          "readback_including_sync": 70.30184538570421,
+          "model_step_including_readback": 85.84927184571055,
+          "host_vocab_sort": 23.05563838476351,
+          "host_selection": 24.854495460693634
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "code_markdown_table",
+      "category": "code",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 40,
+      "prompt_ids_sha256": "035c338b54fa108f405f7263182a14fb608a30ee8fb18f80bba19aaf0f50dbea",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        12654,
+        709,
+        1510,
+        58046,
+        5070,
+        30863,
+        44646,
+        421,
+        25
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.66156353884324,
+        "component_ms": {
+          "model_d2h": 70.85633123083076,
+          "model_d2h_scalar": 70.77027976965138,
+          "model_d2h_large": 0.09011523042527887,
+          "readback_including_sync": 70.954199461994,
+          "model_step_including_readback": 86.41931192323682,
+          "host_vocab_sort": 16.883568923591294,
+          "host_selection": 49.145467384033296
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.15461123084131,
+        "component_ms": {
+          "model_d2h": 70.46830084632697,
+          "model_d2h_scalar": 70.3717124619848,
+          "model_d2h_large": 0.10715253805616297,
+          "readback_including_sync": 70.67379938486667,
+          "model_step_including_readback": 85.81818407681287,
+          "host_vocab_sort": 23.354153153867138,
+          "host_selection": 25.236778384099196
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "code_markdown_table",
+      "category": "code",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 40,
+      "prompt_ids_sha256": "035c338b54fa108f405f7263182a14fb608a30ee8fb18f80bba19aaf0f50dbea",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        12654,
+        709,
+        1510,
+        58046,
+        5070,
+        30863,
+        44646,
+        421,
+        25
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.6990456924205,
+        "component_ms": {
+          "model_d2h": 70.39765646130455,
+          "model_d2h_scalar": 70.30832723103231,
+          "model_d2h_large": 0.09360330771484698,
+          "readback_including_sync": 70.5008968454002,
+          "model_step_including_readback": 86.24894215413056,
+          "host_vocab_sort": 16.788370769343324,
+          "host_selection": 49.35262453811727
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.01472938445603,
+        "component_ms": {
+          "model_d2h": 70.26445715354595,
+          "model_d2h_scalar": 70.16657061411443,
+          "model_d2h_large": 0.10923884642229845,
+          "readback_including_sync": 70.47047623088403,
+          "model_step_including_readback": 85.75074576947372,
+          "host_vocab_sort": 23.322031077371392,
+          "host_selection": 25.150977077058858
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "general_en_plan",
+      "category": "general_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 27,
+      "prompt_ids_sha256": "75608ee89378975938d1ad2d091be6506a683f1544a888799bb5af501d4cf8b8",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        14542,
+        11567,
+        3019,
+        364,
+        6992,
+        264,
+        2526,
+        27258,
+        878
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.4088265386683,
+        "component_ms": {
+          "model_d2h": 71.01666015324344,
+          "model_d2h_scalar": 70.93961499888863,
+          "model_d2h_large": 0.0809734612210797,
+          "readback_including_sync": 71.11460077011053,
+          "model_step_including_readback": 86.25153353820608,
+          "host_vocab_sort": 16.85285792364784,
+          "host_selection": 49.05792369166962
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.03938984608529,
+        "component_ms": {
+          "model_d2h": 71.00330546074055,
+          "model_d2h_scalar": 70.90636976919576,
+          "model_d2h_large": 0.10564992352066419,
+          "readback_including_sync": 71.17388538496854,
+          "model_step_including_readback": 85.84900192279467,
+          "host_vocab_sort": 23.396936230710708,
+          "host_selection": 25.09091984645168
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "general_en_plan",
+      "category": "general_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 27,
+      "prompt_ids_sha256": "75608ee89378975938d1ad2d091be6506a683f1544a888799bb5af501d4cf8b8",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        14542,
+        11567,
+        3019,
+        364,
+        6992,
+        264,
+        2526,
+        27258,
+        878
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.97416015349714,
+        "component_ms": {
+          "model_d2h": 70.38745669230522,
+          "model_d2h_scalar": 70.30477538557115,
+          "model_d2h_large": 0.08680838492672102,
+          "readback_including_sync": 70.4893969996192,
+          "model_step_including_readback": 86.48877230790767,
+          "host_vocab_sort": 16.826190923333904,
+          "host_selection": 49.37885499944409
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.34997553884975,
+        "component_ms": {
+          "model_d2h": 70.87683246293007,
+          "model_d2h_scalar": 70.76533069238604,
+          "model_d2h_large": 0.12001376923693058,
+          "readback_including_sync": 71.0452877689162,
+          "model_step_including_readback": 86.00030315378368,
+          "host_vocab_sort": 23.557153923320584,
+          "host_selection": 25.246633614957457
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "general_en_explain",
+      "category": "general_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 28,
+      "prompt_ids_sha256": "4338d2b19ff6beae3a4b0e87c5ca374eb383562b66afe654541195367caa4437",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        10597,
+        15673,
+        314,
+        3069,
+        41163,
+        42903,
+        318,
+        49516,
+        722
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.52992846122763,
+        "component_ms": {
+          "model_d2h": 70.723751154079,
+          "model_d2h_scalar": 70.64042730780784,
+          "model_d2h_large": 0.08739399989001237,
+          "readback_including_sync": 70.82055146188046,
+          "model_step_including_readback": 86.15642815409676,
+          "host_vocab_sort": 17.06170984555054,
+          "host_selection": 49.27382153926793
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.10883123155173,
+        "component_ms": {
+          "model_d2h": 69.89056476931393,
+          "model_d2h_scalar": 69.7895696156103,
+          "model_d2h_large": 0.11045515370474626,
+          "readback_including_sync": 70.06732699972837,
+          "model_step_including_readback": 85.94850353844006,
+          "host_vocab_sort": 23.22115930851746,
+          "host_selection": 25.04483792346526
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "general_en_explain",
+      "category": "general_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 28,
+      "prompt_ids_sha256": "4338d2b19ff6beae3a4b0e87c5ca374eb383562b66afe654541195367caa4437",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        10597,
+        15673,
+        314,
+        3069,
+        41163,
+        42903,
+        318,
+        49516,
+        722
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.41194430805405,
+        "component_ms": {
+          "model_d2h": 71.3938281537244,
+          "model_d2h_scalar": 71.3168045378832,
+          "model_d2h_large": 0.08087153848744214,
+          "readback_including_sync": 71.4813046154002,
+          "model_step_including_readback": 86.20273253836785,
+          "host_vocab_sort": 16.770661230391575,
+          "host_selection": 49.12278176897626
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.31403315392582,
+        "component_ms": {
+          "model_d2h": 70.72249176809026,
+          "model_d2h_scalar": 70.60116653827627,
+          "model_d2h_large": 0.13016723096370697,
+          "readback_including_sync": 70.89194192247724,
+          "model_step_including_readback": 86.23043046212004,
+          "host_vocab_sort": 23.251138693012763,
+          "host_selection": 24.972464307771027
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "general_ja_plan",
+      "category": "general_ja",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 31,
+      "prompt_ids_sha256": "58cf30d27d2ea0de514eca182114922ded580469b1f4c47625eaa94747a7997d",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        176034,
+        14876,
+        95872,
+        113652,
+        24950,
+        247818,
+        29292,
+        185865,
+        28452,
+        114149,
+        104119,
+        153059,
+        247864
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 136.07056092363422,
+        "component_ms": {
+          "model_d2h": 71.5599687685496,
+          "model_d2h_scalar": 71.48487684585584,
+          "model_d2h_large": 0.07874207697638597,
+          "readback_including_sync": 71.64972600031223,
+          "model_step_including_readback": 86.39300461576428,
+          "host_vocab_sort": 17.10038369268519,
+          "host_selection": 49.58575723111817
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.53552646171121,
+        "component_ms": {
+          "model_d2h": 71.03712969211091,
+          "model_d2h_scalar": 70.92494230836074,
+          "model_d2h_large": 0.12154884601701409,
+          "readback_including_sync": 71.20760038490587,
+          "model_step_including_readback": 86.37859115361397,
+          "host_vocab_sort": 23.365684999589575,
+          "host_selection": 25.049647615770272
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "general_ja_plan",
+      "category": "general_ja",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 31,
+      "prompt_ids_sha256": "58cf30d27d2ea0de514eca182114922ded580469b1f4c47625eaa94747a7997d",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        176034,
+        14876,
+        95872,
+        113652,
+        24950,
+        247818,
+        29292,
+        185865,
+        28452,
+        114149,
+        104119,
+        153059,
+        247864
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.86176730789774,
+        "component_ms": {
+          "model_d2h": 71.0512865376726,
+          "model_d2h_scalar": 70.96748876882394,
+          "model_d2h_large": 0.08780330748637565,
+          "readback_including_sync": 71.14662238410136,
+          "model_step_including_readback": 86.27483638450101,
+          "host_vocab_sort": 16.917372461578523,
+          "host_selection": 49.484137846145764
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.3717827695207,
+        "component_ms": {
+          "model_d2h": 70.49302569234547,
+          "model_d2h_scalar": 70.38492084617386,
+          "model_d2h_large": 0.11772323089714448,
+          "readback_including_sync": 70.67336938444686,
+          "model_step_including_readback": 86.28909476912948,
+          "host_vocab_sort": 23.225485154398484,
+          "host_selection": 24.9706401538368
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "general_ja_explain",
+      "category": "general_ja",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 31,
+      "prompt_ids_sha256": "7253c55e5950b67383e841ed7774b8d82d504a16a473e6e163f82f1d842f16a7",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        369,
+        9859,
+        364,
+        264,
+        10597,
+        321,
+        3050,
+        15673,
+        303,
+        10452,
+        883
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.9354835384203,
+        "component_ms": {
+          "model_d2h": 71.22548892304901,
+          "model_d2h_scalar": 71.1429822306225,
+          "model_d2h_large": 0.08696476960232338,
+          "readback_including_sync": 71.3294545384997,
+          "model_step_including_readback": 86.52989484639525,
+          "host_vocab_sort": 16.988441922876518,
+          "host_selection": 49.30304876968596
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.69880723061326,
+        "component_ms": {
+          "model_d2h": 71.11555269288007,
+          "model_d2h_scalar": 71.01767830849545,
+          "model_d2h_large": 0.1062207688496878,
+          "readback_including_sync": 71.27844307727244,
+          "model_step_including_readback": 86.39695246165502,
+          "host_vocab_sort": 23.498582076382053,
+          "host_selection": 25.197025769067785
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "general_ja_explain",
+      "category": "general_ja",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 31,
+      "prompt_ids_sha256": "7253c55e5950b67383e841ed7774b8d82d504a16a473e6e163f82f1d842f16a7",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        369,
+        9859,
+        364,
+        264,
+        10597,
+        321,
+        3050,
+        15673,
+        303,
+        10452,
+        883
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.3764226148017,
+        "component_ms": {
+          "model_d2h": 71.25802484593945,
+          "model_d2h_scalar": 71.17689323086569,
+          "model_d2h_large": 0.0853454618593857,
+          "readback_including_sync": 71.35809638510601,
+          "model_step_including_readback": 86.28401230705023,
+          "host_vocab_sort": 16.8869631533408,
+          "host_selection": 48.99207738456495
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.45959892326992,
+        "component_ms": {
+          "model_d2h": 70.89801915404118,
+          "model_d2h_scalar": 70.79920446211382,
+          "model_d2h_large": 0.10779376959992357,
+          "readback_including_sync": 71.06608369185079,
+          "model_step_including_readback": 86.38498830735514,
+          "host_vocab_sort": 23.274478692026328,
+          "host_selection": 24.970763307255066
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 52,
+      "prompt_ids_sha256": "79279a7dff54d7bb345524cbf7d459b08d0b09d904bdaeb1900a488e7861d6f1",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        728,
+        310,
+        25,
+        198,
+        16,
+        13,
+        7860,
+        5437,
+        537,
+        264
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.9296925385514,
+        "component_ms": {
+          "model_d2h": 71.50567615406963,
+          "model_d2h_scalar": 71.42450538538888,
+          "model_d2h_large": 0.08537715369199689,
+          "readback_including_sync": 71.60244622998736,
+          "model_step_including_readback": 86.5997026155058,
+          "host_vocab_sort": 17.03754784634489,
+          "host_selection": 49.24027692322852
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.25603869312236,
+        "component_ms": {
+          "model_d2h": 70.66036892305979,
+          "model_d2h_scalar": 70.5460467694278,
+          "model_d2h_large": 0.12282123078386156,
+          "readback_including_sync": 70.82760538441318,
+          "model_step_including_readback": 86.261883923166,
+          "host_vocab_sort": 23.158213461171655,
+          "host_selection": 24.88764969194353
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 52,
+      "prompt_ids_sha256": "79279a7dff54d7bb345524cbf7d459b08d0b09d904bdaeb1900a488e7861d6f1",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        728,
+        310,
+        25,
+        198,
+        16,
+        13,
+        7860,
+        5437,
+        537,
+        264
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.55672123010692,
+        "component_ms": {
+          "model_d2h": 70.80407053973221,
+          "model_d2h_scalar": 70.72289015363472,
+          "model_d2h_large": 0.08536307639308058,
+          "readback_including_sync": 70.90897915371059,
+          "model_step_including_readback": 86.25354369192232,
+          "host_vocab_sort": 16.902963230957262,
+          "host_selection": 49.200275461771525
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.60802000029854,
+        "component_ms": {
+          "model_d2h": 70.7694703067738,
+          "model_d2h_scalar": 70.66318053861883,
+          "model_d2h_large": 0.11512999956791575,
+          "readback_including_sync": 70.94325530824091,
+          "model_step_including_readback": 86.49649115390136,
+          "host_vocab_sort": 23.29530299959095,
+          "host_selection": 25.007479230295687
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 59,
+      "prompt_ids_sha256": "37a1dac938bdaa34fe2e572d7cca071b276de7d9e940c12e23ce8fc37ebafa3e",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        728,
+        310,
+        3286,
+        264,
+        87183,
+        4722,
+        5020,
+        364,
+        30246,
+        13
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.69852684640165,
+        "component_ms": {
+          "model_d2h": 71.40480307778209,
+          "model_d2h_scalar": 71.33073100004157,
+          "model_d2h_large": 0.07810030757145096,
+          "readback_including_sync": 71.49961730717152,
+          "model_step_including_readback": 86.38543646156904,
+          "host_vocab_sort": 16.90715000054647,
+          "host_selection": 49.22357053958247
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.6154904621698,
+        "component_ms": {
+          "model_d2h": 70.55075099980549,
+          "model_d2h_scalar": 70.4271364610087,
+          "model_d2h_large": 0.13223984653730161,
+          "readback_including_sync": 70.7158545382509,
+          "model_step_including_readback": 86.31088800057813,
+          "host_vocab_sort": 23.451108231081612,
+          "host_selection": 25.198045922969378
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_tokens": 59,
+      "prompt_ids_sha256": "37a1dac938bdaa34fe2e572d7cca071b276de7d9e940c12e23ce8fc37ebafa3e",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        728,
+        310,
+        3286,
+        264,
+        87183,
+        4722,
+        5020,
+        364,
+        30246,
+        13
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 136.08435192285327,
+        "component_ms": {
+          "model_d2h": 70.92790630793807,
+          "model_d2h_scalar": 70.84409015386392,
+          "model_d2h_large": 0.08800500010973059,
+          "readback_including_sync": 71.02497507674762,
+          "model_step_including_readback": 86.5298246160539,
+          "host_vocab_sort": 16.83712084643328,
+          "host_selection": 49.449362384621054
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.73269438446508,
+        "component_ms": {
+          "model_d2h": 71.07482061585941,
+          "model_d2h_scalar": 70.9708737695809,
+          "model_d2h_large": 0.11278392356381609,
+          "readback_including_sync": 71.23934769333573,
+          "model_step_including_readback": 86.34070823077658,
+          "host_vocab_sort": 23.629416692319165,
+          "host_selection": 25.296173922889956
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_code_rate_limiter",
+      "category": "code",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 43,
+      "prompt_ids_sha256": "82a17aa4d38d7a7b377369fc3803dc9c6117333abc6660aeb478a301214fba53",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        12654,
+        6638,
+        6369,
+        4127,
+        11231,
+        43,
+        17174,
+        440,
+        25
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.85899415389017,
+        "component_ms": {
+          "model_d2h": 71.25112999990681,
+          "model_d2h_scalar": 71.16992907741896,
+          "model_d2h_large": 0.08521838474105328,
+          "readback_including_sync": 71.34426207658879,
+          "model_step_including_readback": 86.48693869243009,
+          "host_vocab_sort": 16.854754692758434,
+          "host_selection": 49.28217692353288
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.69204046214313,
+        "component_ms": {
+          "model_d2h": 70.05876292196962,
+          "model_d2h_scalar": 69.9390009999311,
+          "model_d2h_large": 0.12961646168080804,
+          "readback_including_sync": 70.24963707674313,
+          "model_step_including_readback": 86.48072807717163,
+          "host_vocab_sort": 23.258391923333804,
+          "host_selection": 25.093423231178
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_code_rate_limiter",
+      "category": "code",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 43,
+      "prompt_ids_sha256": "82a17aa4d38d7a7b377369fc3803dc9c6117333abc6660aeb478a301214fba53",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        12654,
+        6638,
+        6369,
+        4127,
+        11231,
+        43,
+        17174,
+        440,
+        25
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.97615669249745,
+        "component_ms": {
+          "model_d2h": 71.22497684646916,
+          "model_d2h_scalar": 71.13964584641508,
+          "model_d2h_large": 0.08943169254612607,
+          "readback_including_sync": 71.3251609225923,
+          "model_step_including_readback": 86.46585330727528,
+          "host_vocab_sort": 17.035051307455156,
+          "host_selection": 49.40345676872172
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.5225527691319,
+        "component_ms": {
+          "model_d2h": 70.85367984501107,
+          "model_d2h_scalar": 70.75545230803144,
+          "model_d2h_large": 0.10655307694553182,
+          "readback_including_sync": 71.01191600024602,
+          "model_step_including_readback": 86.3165436147448,
+          "host_vocab_sort": 23.385955923004076,
+          "host_selection": 25.10504730805853
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_code_interval_schedule",
+      "category": "code",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 40,
+      "prompt_ids_sha256": "97651cfae42b94843c7c174ad5993cfd6748406290e66111b8c3f22b69456ab5",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        12654,
+        709,
+        421,
+        13325,
+        264,
+        6966,
+        6948,
+        25162,
+        314
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 136.24909299995545,
+        "component_ms": {
+          "model_d2h": 71.50320046191784,
+          "model_d2h_scalar": 71.41272792236683,
+          "model_d2h_large": 0.09580515464991689,
+          "readback_including_sync": 71.6296596149802,
+          "model_step_including_readback": 86.44858907707832,
+          "host_vocab_sort": 17.013809999927894,
+          "host_selection": 49.6948531536663
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.55710830728192,
+        "component_ms": {
+          "model_d2h": 70.51472423140345,
+          "model_d2h_scalar": 70.41994100011205,
+          "model_d2h_large": 0.10373384681700443,
+          "readback_including_sync": 70.68689899964599,
+          "model_step_including_readback": 86.24714423086306,
+          "host_vocab_sort": 23.478581999090515,
+          "host_selection": 25.198568230944847
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_code_interval_schedule",
+      "category": "code",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 40,
+      "prompt_ids_sha256": "97651cfae42b94843c7c174ad5993cfd6748406290e66111b8c3f22b69456ab5",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        12654,
+        709,
+        421,
+        13325,
+        264,
+        6966,
+        6948,
+        25162,
+        314
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.79638315366958,
+        "component_ms": {
+          "model_d2h": 71.67042207612002,
+          "model_d2h_scalar": 71.56541869195419,
+          "model_d2h_large": 0.10905384596508856,
+          "readback_including_sync": 71.76298430791715,
+          "model_step_including_readback": 86.51252507703387,
+          "host_vocab_sort": 16.911664308281615,
+          "host_selection": 49.19460861576506
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.77218000011635,
+        "component_ms": {
+          "model_d2h": 70.43081484740608,
+          "model_d2h_scalar": 70.31840623088871,
+          "model_d2h_large": 0.12210084661581697,
+          "readback_including_sync": 70.61189646181167,
+          "model_step_including_readback": 86.62752230800554,
+          "host_vocab_sort": 23.320132230415204,
+          "host_selection": 25.0299371537739
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_general_en_incident",
+      "category": "general_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 33,
+      "prompt_ids_sha256": "bdd48ab2b7d9d8bc1b359dc2b6a61d22d47269fbcbd9afdd66318956035f5641",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        61446,
+        10142,
+        56495,
+        50802,
+        364,
+        264,
+        3050,
+        14611,
+        25
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.93585215410434,
+        "component_ms": {
+          "model_d2h": 71.42260561662485,
+          "model_d2h_scalar": 71.34228684746911,
+          "model_d2h_large": 0.0844509226086442,
+          "readback_including_sync": 71.51828346160563,
+          "model_step_including_readback": 86.40674723070472,
+          "host_vocab_sort": 16.948633615426772,
+          "host_selection": 49.43234907645652
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.63378253891446,
+        "component_ms": {
+          "model_d2h": 70.16816230847886,
+          "model_d2h_scalar": 70.0535154618802,
+          "model_d2h_large": 0.12369461546768434,
+          "readback_including_sync": 70.3402676926299,
+          "model_step_including_readback": 86.33004538485413,
+          "host_vocab_sort": 23.47308069203371,
+          "host_selection": 25.194965230464454
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_general_en_incident",
+      "category": "general_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 33,
+      "prompt_ids_sha256": "bdd48ab2b7d9d8bc1b359dc2b6a61d22d47269fbcbd9afdd66318956035f5641",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        61446,
+        10142,
+        56495,
+        50802,
+        364,
+        264,
+        3050,
+        14611,
+        25
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.67913384618947,
+        "component_ms": {
+          "model_d2h": 70.53295546099363,
+          "model_d2h_scalar": 70.44387123012432,
+          "model_d2h_large": 0.09317323061762951,
+          "readback_including_sync": 70.63146992284321,
+          "model_step_including_readback": 86.37085869234468,
+          "host_vocab_sort": 16.807268614054642,
+          "host_selection": 49.19930623145774
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.71845338461796,
+        "component_ms": {
+          "model_d2h": 70.63129399998266,
+          "model_d2h_scalar": 70.52810530792787,
+          "model_d2h_large": 0.11177284557981274,
+          "readback_including_sync": 70.79495315394105,
+          "model_step_including_readback": 86.5368465386452,
+          "host_vocab_sort": 23.368199461401673,
+          "host_selection": 25.072883923152965
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_general_en_quant",
+      "category": "general_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 44,
+      "prompt_ids_sha256": "ee9fa1e3c6628f182ae19dcbbac0fd62fc6a2f334d970d311a1de07d0267a898",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        271,
+        248069,
+        271,
+        1206,
+        3418,
+        279,
+        6355,
+        31410,
+        1881,
+        2972,
+        19278,
+        16,
+        21,
+        93868
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.86947969284105,
+        "component_ms": {
+          "model_d2h": 71.25729569200374,
+          "model_d2h_scalar": 71.16896884634535,
+          "model_d2h_large": 0.09223153756465763,
+          "readback_including_sync": 71.35127092316488,
+          "model_step_including_readback": 86.47554630778569,
+          "host_vocab_sort": 17.077179461641485,
+          "host_selection": 49.30163961566555
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.54787176956933,
+        "component_ms": {
+          "model_d2h": 70.41098784667646,
+          "model_d2h_scalar": 70.32062430796661,
+          "model_d2h_large": 0.09883184667649822,
+          "readback_including_sync": 70.57005169274187,
+          "model_step_including_readback": 86.37232230774735,
+          "host_vocab_sort": 23.37822530870863,
+          "host_selection": 25.068689845703865
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_general_en_quant",
+      "category": "general_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 44,
+      "prompt_ids_sha256": "ee9fa1e3c6628f182ae19dcbbac0fd62fc6a2f334d970d311a1de07d0267a898",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        271,
+        248069,
+        271,
+        1206,
+        3418,
+        279,
+        6355,
+        31410,
+        1881,
+        2972,
+        19278,
+        16,
+        21,
+        93868
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.1394110777339,
+        "component_ms": {
+          "model_d2h": 70.98027069262642,
+          "model_d2h_scalar": 70.90025600085099,
+          "model_d2h_large": 0.08398369195324798,
+          "readback_including_sync": 71.07455876897663,
+          "model_step_including_readback": 86.3246608460031,
+          "host_vocab_sort": 16.74600430767616,
+          "host_selection": 48.72220607649069
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.45472838492984,
+        "component_ms": {
+          "model_d2h": 70.55044069336593,
+          "model_d2h_scalar": 70.45206461603252,
+          "model_d2h_large": 0.10736453875254554,
+          "readback_including_sync": 70.72508253846675,
+          "model_step_including_readback": 86.44587707665498,
+          "host_vocab_sort": 23.16882138508775,
+          "host_selection": 24.898426384494925
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_general_ja_migration",
+      "category": "general_ja",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 41,
+      "prompt_ids_sha256": "efe92ad99fbddda101633a23cd636a9c5e257c9bba506bdd8c9789fb9bce6915",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        369,
+        9859,
+        728,
+        310,
+        1791,
+        264,
+        61446,
+        3019,
+        303,
+        10452,
+        364
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.8115326150325,
+        "component_ms": {
+          "model_d2h": 71.18543938514239,
+          "model_d2h_scalar": 71.10426569264607,
+          "model_d2h_large": 0.08538246094338739,
+          "readback_including_sync": 71.2823676154725,
+          "model_step_including_readback": 86.4632389224985,
+          "host_vocab_sort": 16.925413153680545,
+          "host_selection": 49.246790307594125
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.7080506158415,
+        "component_ms": {
+          "model_d2h": 70.7076658456152,
+          "model_d2h_scalar": 70.60652984560315,
+          "model_d2h_large": 0.11051061581103847,
+          "readback_including_sync": 70.87521423146917,
+          "model_step_including_readback": 86.52855423105603,
+          "host_vocab_sort": 23.32767838407353,
+          "host_selection": 25.07166446174289
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_general_ja_migration",
+      "category": "general_ja",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 41,
+      "prompt_ids_sha256": "efe92ad99fbddda101633a23cd636a9c5e257c9bba506bdd8c9789fb9bce6915",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        369,
+        9859,
+        728,
+        310,
+        1791,
+        264,
+        61446,
+        3019,
+        303,
+        10452,
+        364
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.98341461553133,
+        "component_ms": {
+          "model_d2h": 70.97596330640954,
+          "model_d2h_scalar": 70.8882666921664,
+          "model_d2h_large": 0.09211123044504069,
+          "readback_including_sync": 71.07970238519975,
+          "model_step_including_readback": 86.46233223071948,
+          "host_vocab_sort": 17.013030461384915,
+          "host_selection": 49.41759669264474
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.57334599976402,
+        "component_ms": {
+          "model_d2h": 70.60597892296545,
+          "model_d2h_scalar": 70.51034484538832,
+          "model_d2h_large": 0.10430330719548062,
+          "readback_including_sync": 70.77317646158357,
+          "model_step_including_readback": 86.30557061517791,
+          "host_vocab_sort": 23.40750915419239,
+          "host_selection": 25.15089915407141
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_general_ja_speculative",
+      "category": "general_ja",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 33,
+      "prompt_ids_sha256": "238b5428625064d36a33cb42a9f0b158eb4c5a841180e7cd1b2846d5e7cbeebe",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        369,
+        9859,
+        728,
+        310,
+        10033,
+        303,
+        10452,
+        11,
+        303,
+        264,
+        10597
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 136.05293561508566,
+        "component_ms": {
+          "model_d2h": 70.7204833074334,
+          "model_d2h_scalar": 70.629697077283,
+          "model_d2h_large": 0.09586130741249341,
+          "readback_including_sync": 70.83689069203011,
+          "model_step_including_readback": 86.41139338494843,
+          "host_vocab_sort": 17.054884307771527,
+          "host_selection": 49.53686338474374
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 112.0080447687472,
+        "component_ms": {
+          "model_d2h": 70.0800393846853,
+          "model_d2h_scalar": 69.96386861590928,
+          "model_d2h_large": 0.1252505378663325,
+          "readback_including_sync": 70.25559130796374,
+          "model_step_including_readback": 86.49273776889179,
+          "host_vocab_sort": 23.52811146136866,
+          "host_selection": 25.401889384598828
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_general_ja_speculative",
+      "category": "general_ja",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 33,
+      "prompt_ids_sha256": "238b5428625064d36a33cb42a9f0b158eb4c5a841180e7cd1b2846d5e7cbeebe",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        369,
+        9859,
+        728,
+        310,
+        10033,
+        303,
+        10452,
+        11,
+        303,
+        264,
+        10597
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.73692930703356,
+        "component_ms": {
+          "model_d2h": 71.1487100771382,
+          "model_d2h_scalar": 71.06286453871199,
+          "model_d2h_large": 0.08968361558240409,
+          "readback_including_sync": 71.24117976966843,
+          "model_step_including_readback": 86.3563653077178,
+          "host_vocab_sort": 16.91692700058831,
+          "host_selection": 49.28825292350106
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.49552807630523,
+        "component_ms": {
+          "model_d2h": 70.75559615371347,
+          "model_d2h_scalar": 70.62829646131902,
+          "model_d2h_large": 0.13622792315660404,
+          "readback_including_sync": 70.91659907718378,
+          "model_step_including_readback": 86.33626861522387,
+          "host_vocab_sort": 23.318268692561944,
+          "host_selection": 25.052578692199088
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_mixed_summary",
+      "category": "mixed_ja_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 40,
+      "prompt_ids_sha256": "23a57d3dc35713b96d999d5da1da479ba3b9295a0c0b72f31fde90a228ff0d32",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        1330,
+        2433,
+        25,
+        198,
+        16,
+        13,
+        357,
+        10452,
+        11782,
+        314
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.73091369247635,
+        "component_ms": {
+          "model_d2h": 71.01750930730934,
+          "model_d2h_scalar": 70.92694923043243,
+          "model_d2h_large": 0.0948371525737457,
+          "readback_including_sync": 71.12181084532774,
+          "model_step_including_readback": 86.50884984588349,
+          "host_vocab_sort": 16.829948461516047,
+          "host_selection": 49.11591700007333
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.82570084537684,
+        "component_ms": {
+          "model_d2h": 70.03654492319373,
+          "model_d2h_scalar": 69.93322830749094,
+          "model_d2h_large": 0.11298200031608127,
+          "readback_including_sync": 70.22401869219792,
+          "model_step_including_readback": 86.42792184568512,
+          "host_vocab_sort": 23.43619384611464,
+          "host_selection": 25.281649230936846
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_mixed_summary",
+      "category": "mixed_ja_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 40,
+      "prompt_ids_sha256": "23a57d3dc35713b96d999d5da1da479ba3b9295a0c0b72f31fde90a228ff0d32",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        1330,
+        2433,
+        25,
+        198,
+        16,
+        13,
+        357,
+        10452,
+        11782,
+        314
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 136.2516465378576,
+        "component_ms": {
+          "model_d2h": 71.16419015269807,
+          "model_d2h_scalar": 71.09116638457635,
+          "model_d2h_large": 0.07776430748680678,
+          "readback_including_sync": 71.27698061510903,
+          "model_step_including_readback": 86.37088600041281,
+          "host_vocab_sort": 17.03720184573635,
+          "host_selection": 49.782209462696656
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 111.65618169252411,
+        "component_ms": {
+          "model_d2h": 70.41709746156883,
+          "model_d2h_scalar": 70.31719938375038,
+          "model_d2h_large": 0.10881799999669266,
+          "readback_including_sync": 70.5854007697221,
+          "model_step_including_readback": 86.58245484548388,
+          "host_vocab_sort": 23.293992231069403,
+          "host_selection": 24.96836584619954
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_mixed_review",
+      "category": "mixed_ja_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 44,
+      "prompt_ids_sha256": "be8f3220b46de175f55df16f91da754f02b3da62a5e50eb08ecde1c83c95ef8f",
+      "repeat": 0,
+      "generated_token_ids": [
+        271,
+        8160,
+        513,
+        279,
+        3286,
+        3387,
+        8559,
+        279,
+        30246,
+        314,
+        279,
+        87183,
+        4953,
+        11,
+        10137,
+        303
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.73631323099386,
+        "component_ms": {
+          "model_d2h": 71.67623330678907,
+          "model_d2h_scalar": 71.60323546234466,
+          "model_d2h_large": 0.07691753769624762,
+          "readback_including_sync": 71.7690813835361,
+          "model_step_including_readback": 86.43118584586773,
+          "host_vocab_sort": 16.942459460831465,
+          "host_selection": 49.212065769097535
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 112.34940992373875,
+        "component_ms": {
+          "model_d2h": 70.95124600136143,
+          "model_d2h_scalar": 70.85091807675781,
+          "model_d2h_large": 0.10894684573241438,
+          "readback_including_sync": 71.11284946166471,
+          "model_step_including_readback": 86.5448903079176,
+          "host_vocab_sort": 23.99778838466423,
+          "host_selection": 25.70318476864486
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    },
+    {
+      "prompt_id": "heldout_mixed_review",
+      "category": "mixed_ja_en",
+      "source": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_tokens": 44,
+      "prompt_ids_sha256": "be8f3220b46de175f55df16f91da754f02b3da62a5e50eb08ecde1c83c95ef8f",
+      "repeat": 1,
+      "generated_token_ids": [
+        271,
+        8160,
+        513,
+        279,
+        3286,
+        3387,
+        8559,
+        279,
+        30246,
+        314,
+        279,
+        87183,
+        4953,
+        11,
+        10137,
+        303
+      ],
+      "baseline": {
+        "steady_transitions": 13,
+        "step_ms": 135.39798553840507,
+        "component_ms": {
+          "model_d2h": 70.85310538465049,
+          "model_d2h_scalar": 70.77746900064923,
+          "model_d2h_large": 0.07997853838158056,
+          "readback_including_sync": 70.95553684624835,
+          "model_step_including_readback": 86.21348384650236,
+          "host_vocab_sort": 16.908134154129165,
+          "host_selection": 49.07723730754627
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      },
+      "candidate": {
+        "steady_transitions": 13,
+        "step_ms": 112.24147423126851,
+        "component_ms": {
+          "model_d2h": 70.10070092320137,
+          "model_d2h_scalar": 70.0037256154666,
+          "model_d2h_large": 0.10607753882560736,
+          "readback_including_sync": 70.27423907689248,
+          "model_step_including_readback": 86.55245076946673,
+          "host_vocab_sort": 23.84027192350074,
+          "host_selection": 25.570307615663086
+        },
+        "sampler_mode": "host_logits_sample",
+        "full_vocab_logits_d2h": true
+      }
+    }
+  ],
+  "limitations": [
+    "Instrumented decode-step timing, not HTTP throughput, complete-request latency or long-context performance.",
+    "Baseline and candidate are separate runs on the same physical host, not interleaved process-local A/B.",
+    "Only host sampling changed; native sampler and sampled MTP defaults are unchanged.",
+    "Earlier /tmp/gguf-sort-candidate.json overlapped CPU tests and is excluded from retained timing.",
+    "No model arithmetic or distribution change; parent ordering, ownership, and exact generated trajectories are the correctness gates."
+  ],
+  "raw_sources": {
+    "/tmp/gguf-sampling-suite.json": "fa10929495da79e4e5d451fa361d28255a255cb0ed29cf530498ae676ff0f062",
+    "/tmp/gguf-sort-candidate-isolated.json": "e3c95387a76385046a6b4a3b3492d63bc9aa55a172fa82fa9e737bee45e8ff89"
+  }
+}
