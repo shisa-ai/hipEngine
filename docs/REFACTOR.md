@@ -179,14 +179,20 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS` (16 covers the 14-lane serving
   protocol, where a conversation's next turn arrives after up to 13 other lanes
   have captured and retained their own boundaries) and
-  `HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES` (default 1 GiB). Enabling the
-  wide set today is a measured regression (docs/REFACTOR.md cost table: +11%
-  cumulative-medium_repo, +308% fixture-medium_repo) because every hit pays the
-  serial suffix prefill and, at >=1024 tokens, the contiguity gate converts hits
-  into full-prefill refusals. Promote the wide set to default only after the
-  batched suffix prefill and the paged >=1024 prefill land. The 16/1 GiB values
-  are not derived from a measured working-set distribution; re-derive them from
-  a served lane trace before claiming the retained budget is optimal.
+  `HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES` (default 1 GiB). The old
+  opt-in reason — the +11%/+308% serial-suffix regression — is gone: the
+  batched suffix prefill and the gapped-page gather route landed on
+  2026-09-19/20, and retained 16 has been the strongest configuration measured
+  on every protocol since (14-lane campaign -18.4% wall vs -17.8% default on
+  merged main; real-session replay lane -64.2% vs -44.1%, 30/32 hits, worklog
+  `20260919T202013.823662Z-lhl-agentic-session-replay-e8a2c9`). It stays
+  opt-in only because (a) the 16/1 GiB values are not derived from a measured
+  working-set distribution — re-derive them from a served lane trace before
+  claiming the retained budget is optimal — and (b) retention depth has not
+  been measured under concurrent multi-conversation load, where 16 slots
+  spread across conversations instead of down one chain. A host-sizing
+  recommendation for >=24 GB hosts is documented in benchmarks/README.md.
+  Flip the code default to the wide set only after both are measured.
 
 ## Prefix eligibility floor excludes short multi-turn traffic (found 2026-09-18)
 
