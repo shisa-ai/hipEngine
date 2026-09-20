@@ -1370,7 +1370,7 @@ def _parallelism_capability() -> dict[str, Any]:
 
 
 def test_tensor_parallel_design_doc_matches_capability_manifest() -> None:
-    doc = (REPO_ROOT / "docs" / "TENSOR_PARALLEL.md").read_text(encoding="utf-8")
+    doc = (REPO_ROOT / "docs" / "reference" / "TENSOR_PARALLEL.md").read_text(encoding="utf-8")
     tensor_parallel = _parallelism_capability()["tensor_parallel"]
 
     assert "`parallelism.tensor_parallel.enabled=false`" in doc
@@ -22389,16 +22389,19 @@ def test_server_prefix_cache_default_and_overrides(monkeypatch, mode) -> None:
 
     monkeypatch.delenv("HIPENGINE_PREFIX_CACHE", raising=False)
     assert PREFIX_CACHE_DEFAULT == "radix"
-    # The HTTP default is deliberately off while the engine loop defaults to
-    # radix. docs/REFACTOR.md "HTTP default-on is blocked" holds the measured
-    # reason (W7900/gfx1100 section 6.1 envelope and A2 agentic economics) and
-    # the removal condition, so this pin is a decision, not a stale override.
-    assert ServerConfig(model="fake-path").prefix_cache == "off"
-    assert build_parser().parse_args(["--model", "fake-path"]).prefix_cache == "off"
+    # Both surfaces default to radix as of 2026-09-20 (owner decision). The
+    # gfx1100 numerical gate is still open and tracked in docs/REFACTOR.md, so
+    # the override below is the rollback and this pin is a decision, not an
+    # oversight.
+    assert ServerConfig(model="fake-path").prefix_cache == PREFIX_CACHE_DEFAULT
+    assert (
+        build_parser().parse_args(["--model", "fake-path"]).prefix_cache
+        == PREFIX_CACHE_DEFAULT
+    )
     if mode is not None:
         monkeypatch.setenv("HIPENGINE_PREFIX_CACHE", mode)
     args = build_parser().parse_args(["--model", "fake-path"])
-    assert args.prefix_cache == (mode or "off")
+    assert args.prefix_cache == (mode or PREFIX_CACHE_DEFAULT)
     for explicit in ("off", "radix"):
         assert build_parser().parse_args(
             ["--model", "fake-path", "--prefix-cache", explicit]
@@ -22409,7 +22412,7 @@ def test_server_prefix_cache_default_and_overrides(monkeypatch, mode) -> None:
         )
         assert app.state.hipengine_prefix_cache_mode == explicit
     app = create_app(ServerConfig(model="fake-path", eager_load=False), llm=FakeLLM())
-    assert app.state.hipengine_prefix_cache_mode == "off"
+    assert app.state.hipengine_prefix_cache_mode == PREFIX_CACHE_DEFAULT
 
 
 def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch) -> None:

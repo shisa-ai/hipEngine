@@ -79,7 +79,7 @@ from hipengine.generation.qwen35_gguf_mtp2 import (
 )
 from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kernels.backends import backend_package_capability
-from hipengine.kvcache import resolve_prefix_cache_mode
+from hipengine.kvcache import PREFIX_CACHE_DEFAULT, resolve_prefix_cache_mode
 from hipengine.server.multimodal import (
     extract_chat_media,
     media_for_engine,
@@ -373,11 +373,11 @@ class ServerConfig:
     shutdown_grace_seconds: float = 5.0
     request_timeout_ms: float | None = None
     metrics: str = "off"
-    # Not PREFIX_CACHE_DEFAULT: the HTTP surface stays off until its cross-host
-    # production gate passes, while the engine loop defaults to radix. The reason
-    # and the removal condition are in docs/REFACTOR.md; the --prefix-cache
-    # default in hipengine/server/__main__.py carries the measurements.
-    prefix_cache: str = "off"
+    # The engine loop's default. The gfx1100 numerical gate is still open and
+    # tracked in docs/REFACTOR.md; the per-request path fails closed with a
+    # recorded reason, so an unqualified row prefills privately. See the
+    # --prefix-cache default in hipengine/server/__main__.py.
+    prefix_cache: str = PREFIX_CACHE_DEFAULT
     info: bool = False
     debug: bool = False
     replay_dir: str | None = None
@@ -2732,7 +2732,7 @@ def _resolve_realized_generation_route(
                 "realized_group_rows": int(group_rows),
                 "output_horizon_tokens": int(sampling.max_tokens),
                 "exact_default_required": True,
-                "evidence": "docs/SPECDEC2.md#12-s6--gfx1151-product-closure",
+                "evidence": "docs/reference/SPECDEC2.md#12-s6--gfx1151-product-closure",
             },
         )
     if route != _SPECULATIVE_MTP_AUTO_ROUTE:

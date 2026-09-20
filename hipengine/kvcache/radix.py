@@ -13,10 +13,11 @@ from dataclasses import dataclass, field
 from typing import Iterable, Sequence
 
 PREFIX_CACHE_CHOICES = ("off", "radix")
-# Prefix reuse is on by default: it measured -18.6% wall and +22.9% output
-# rate on the served multi-turn lanes. Set HIPENGINE_PREFIX_CACHE=off (or
-# --prefix-cache off) to disable it; see benchmarks/README.md for the
-# bit-exactness bound that comes with it.
+# Prefix reuse is on by default for both entry points: it measured -18.6% wall
+# and +22.9% output rate on the served multi-turn lanes. Set
+# HIPENGINE_PREFIX_CACHE=off (or --prefix-cache off) to disable it; see
+# benchmarks/README.md for the bit-exactness bound that comes with it. The
+# gfx1100 numerical gate is still open and tracked in docs/REFACTOR.md.
 PREFIX_CACHE_DEFAULT = "radix"
 
 

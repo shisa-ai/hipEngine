@@ -7,7 +7,11 @@ import os
 from collections.abc import Sequence
 
 from hipengine.execution_profiles import EXECUTION_PROFILE_ENV, ExecutionProfile
-from hipengine.kvcache import PREFIX_CACHE_CHOICES, resolve_prefix_cache_mode
+from hipengine.kvcache import (
+    PREFIX_CACHE_CHOICES,
+    PREFIX_CACHE_DEFAULT,
+    resolve_prefix_cache_mode,
+)
 from hipengine.server.api import ServerConfig, create_app
 from hipengine.server.log_style import COLOR_MODES, build_log_config
 
@@ -364,23 +368,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("HIPENGINE_METRICS", "off"),
         help="Metrics endpoint mode (env HIPENGINE_METRICS; default: off)",
     )
-    # Deliberately not PREFIX_CACHE_DEFAULT. The engine loop defaults to radix on
-    # the gfx1151 packed-reference packet; the HTTP surface stays off because the
-    # W7900/gfx1100 packet fails the section 6.1 envelope (heldout-code mean/max
-    # KL 2.26e-3/0.2753 against 1e-3/0.05) and the A2 packet rejects the agentic
-    # economics. docs/REFACTOR.md names the removal condition. Resolving through
-    # resolve_prefix_cache_mode keeps HIPENGINE_PREFIX_CACHE an override rather
-    # than a second default.
+    # The HTTP surface takes the engine loop's default (radix). The gfx1100
+    # numerical gate is still open and tracked in docs/REFACTOR.md; the path
+    # fails closed per request with a recorded reason, so an unqualified row
+    # prefills privately. HIPENGINE_PREFIX_CACHE stays an override of this flag
+    # rather than a second default.
     parser.add_argument(
         "--prefix-cache",
         choices=PREFIX_CACHE_CHOICES,
-        default=resolve_prefix_cache_mode(
-            os.environ.get("HIPENGINE_PREFIX_CACHE") or "off"
-        ),
+        default=resolve_prefix_cache_mode(os.environ.get("HIPENGINE_PREFIX_CACHE")),
         help=(
-            "Prefix-cache mode (env HIPENGINE_PREFIX_CACHE; default: off). "
-            "The engine loop defaults to radix; this HTTP surface stays off "
-            "until its cross-host production gate passes (docs/REFACTOR.md)."
+            f"Prefix-cache mode (env HIPENGINE_PREFIX_CACHE; default: "
+            f"{PREFIX_CACHE_DEFAULT})"
         ),
     )
     parser.add_argument(
