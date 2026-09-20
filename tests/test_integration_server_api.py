@@ -448,6 +448,35 @@ class SpeculativeMTPFakeLLM(FakeLLM):
         ]
 
 
+class LateResolvingMTPFakeLLM(SpeculativeMTPFakeLLM):
+    """An engine whose MTP route exists only once ``prepare`` loads the model.
+
+    Real engines behave this way: ``LLM.__init__`` builds no generator, and the
+    model plugin's speculative evidence is read during ``prepare``. So the route
+    is genuinely unknown between construction and preparation, which is the
+    window where a startup line must not claim a resolved state.
+    """
+
+    def __init__(self, token_map: dict[str, list[int]] | None = None) -> None:
+        super().__init__(token_map=token_map)
+        self.supports_speculative_mtp = False
+        self._text_generator = None
+
+    def prepare(
+        self,
+        *,
+        max_sequence_length: int | None = None,
+        sampling_params: SamplingParams,
+    ) -> int:
+        selected = super().prepare(
+            max_sequence_length=max_sequence_length,
+            sampling_params=sampling_params,
+        )
+        self.supports_speculative_mtp = True
+        self._text_generator = object()
+        return selected
+
+
 class AccountingSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
     """Streaming MTP fake that reports per-request execution accounting.
 
@@ -2437,14 +2466,15 @@ def test_server_config_accepts_an_omitted_candidate_budget() -> None:
         ServerConfig(model="fake-path", speculative_candidate_budget=0)
 
 
-def test_unprepared_engine_logs_pending_not_off(caplog) -> None:
-    """RED: startup must not report MTP as off before the engine resolves.
+def test_unprepared_engine_logs_no_mtp_state_yet(caplog) -> None:
+    """A loading engine says nothing about MTP; the resolved line carries it.
 
-    The eager path creates the model and logs before ``prepare`` resolves the
-    generator, so ``supports_speculative_mtp`` is false only because the answer
-    is not known yet. Printing ``serving=off engine_supported=False`` there
+    RED for the pre-resolution echo: reporting ``serving=off
+    engine_supported=False`` while the generator is still being prepared
     contradicts the ``serving=enabled engine_supported=True`` line the operator
-    reads a few seconds later on the same command line.
+    reads once the model is resident. Reporting ``pending`` there is the same
+    contradiction, softened: the engine is already loading, so the requested
+    values are the only content and the resolved line follows on its own.
     """
 
     from hipengine.server.api import _log_effective_mtp_config
@@ -2455,7 +2485,7 @@ def test_unprepared_engine_logs_pending_not_off(caplog) -> None:
         _text_generator = None
 
     with caplog.at_level(logging.INFO, logger="uvicorn.error"):
-        _log_effective_mtp_config(
+        logged = _log_effective_mtp_config(
             ServerConfig(
                 model="fake-path",
                 served_model_name="fake-model",
@@ -2466,9 +2496,101 @@ def test_unprepared_engine_logs_pending_not_off(caplog) -> None:
             engine=UnpreparedEngine(),
         )
 
-    assert "serving=pending engine_supported=unknown" in caplog.text
-    assert "pre-resolution" in caplog.text
-    assert "serving=off" not in caplog.text
+    assert logged is False
+    assert "EFFECTIVE_MTP" not in caplog.text
+
+
+def test_missing_engine_logs_no_mtp_state(caplog) -> None:
+    """No engine at all is not a resolved state either; lazy startup says pending."""
+
+    from hipengine.server.api import _log_effective_mtp_config
+
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        logged = _log_effective_mtp_config(
+            ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
+            engine=None,
+        )
+
+    assert logged is False
+    assert "EFFECTIVE_MTP" not in caplog.text
+
+
+def test_lazy_startup_pending_line_defers_to_the_first_request(caplog, monkeypatch) -> None:
+    """Lazy startup states the request, then the load states the outcome.
+
+    Exactly two field lines: the pending form at startup, when no engine exists,
+    and the resolved form once the first request prepares the model. The request
+    itself must not repeat either one.
+    """
+
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    fake = LateResolvingMTPFakeLLM()
+    monkeypatch.setattr("hipengine.server.api.LLM", lambda *args, **kwargs: fake)
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            speculative_mtp_serving="enabled",
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/completions",
+            json={
+                "model": "fake-model",
+                "prompt": "one",
+                "max_tokens": 1,
+                "temperature": 0.0,
+                "speculative_mtp": False,
+            },
+        )
+        second = client.post(
+            "/v1/completions",
+            json={
+                "model": "fake-model",
+                "prompt": "two",
+                "max_tokens": 1,
+                "temperature": 0.0,
+                "speculative_mtp": False,
+            },
+        )
+
+    assert response.status_code == 200
+    assert second.status_code == 200
+    assert fake.prepares, "the request path must prepare the model it reports on"
+    field_lines = [line for line in caplog.text.splitlines() if "EFFECTIVE_MTP: serving=" in line]
+    assert len(field_lines) == 2, caplog.text
+    assert "serving=pending engine_supported=unknown" in field_lines[0]
+    assert "serving=enabled engine_supported=True" in field_lines[1]
+
+
+def test_eager_startup_logs_one_resolved_mtp_line(caplog, monkeypatch) -> None:
+    """Eager startup prints the resolved state and never a pending echo.
+
+    The engine is loading for the whole startup, so a pending line would be a
+    second field line that the resolved one immediately supersedes.
+    """
+
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    fake = LateResolvingMTPFakeLLM()
+    monkeypatch.setattr("hipengine.server.api.LLM", lambda *args, **kwargs: fake)
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="enabled",
+        )
+    )
+
+    with TestClient(app):
+        pass
+
+    assert fake.prepares, "eager startup must prepare the model it reports on"
+    field_lines = [line for line in caplog.text.splitlines() if "EFFECTIVE_MTP: serving=" in line]
+    assert len(field_lines) == 1, caplog.text
+    assert "serving=enabled engine_supported=True" in field_lines[0]
 
 
 def test_resolved_engine_without_mtp_route_still_logs_off(caplog) -> None:

@@ -738,10 +738,13 @@ operators but is not an RF4/RF6 dependency:
 `hipengine_mtp_draft_acceptance_rate` gauge, and a static
 `hipengine_mtp_serving` gauge (1 when the server's effective MTP route is
 enabled for the loaded engine, 0 otherwise). Eager startup logs the effective
-state on one line, e.g. `EFFECTIVE_MTP: serving=enabled engine_supported=True
-default_enabled=True policy=enabled thinking=hint`. Lazy startup first reports
-`serving=pending engine_supported=unknown`; immediately after first-request
-model creation it logs the loaded engine's effective state.
+state on one line once the model is resident, e.g. `EFFECTIVE_MTP:
+serving=enabled engine_supported=True default_enabled=True policy=enabled
+thinking=hint`. Lazy startup first reports `serving=pending
+engine_supported=unknown` and logs the loaded engine's effective state once the
+first request prepares the model. Either way exactly one line states a resolved
+state, emitted when the engine resolves its generator rather than while the
+model is still loading.
 
 ### Choice telemetry
 
