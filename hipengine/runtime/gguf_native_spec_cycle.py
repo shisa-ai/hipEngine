@@ -555,6 +555,7 @@ def _dynamic_target_scratch(session: Any, buffers: TargetVerifyBuffers, *, rows:
         prefill_spans=prefill_spans,
         gdn_active_segments=1,
         metadata_prepare_path="native_spec_dynamic",
+        full_attn_split_root=getattr(base, "full_attn_split_root", None) or base,
     )
     return dynamic_buffers, dynamic_scratch
 
