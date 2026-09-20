@@ -2923,7 +2923,7 @@ def _log_request_info(
     """Log one compact per-request summary when ``--info`` is enabled.
 
     The line carries the request's token counts, the backend prefill phase, the
-    server-observed time to first token and decode rate, the request's
+    server-observed time to first token and stream window, the request's
     persistent KV allocation in the shared pool, and the pool state. Absent
     phases are omitted rather than reported as zero.
     """
@@ -2951,20 +2951,32 @@ def _log_request_info(
     ttft_ms = _info_number(resolved_timing.get("ttft_ms"))
     if ttft_ms is not None:
         fields.append(f"ttft_ms={ttft_ms:.1f}")
-    decode_ms = _info_number(resolved_timing.get("decode_elapsed_ms"))
-    if decode_ms is None:
-        # Blocking requests have no first-token timestamp; the engine's own
-        # phase accounting is the only decode-phase source for them.
+    # Two measurements share the units but not the basis. A streamed request is
+    # timed by the server between the first and last token it delivered, which is
+    # the window the client saw; that window collapses when the stream is delayed
+    # (for example while another request waits on the engine), so its rate is
+    # named for the window rather than presented as engine throughput. A blocking
+    # request has no first-token timestamp, so its decode phase comes from the
+    # engine's own accounting, where ``request_total_ms`` covers the whole
+    # request. Engine telemetry inside a stream carries ``request_total_ms`` as a
+    # prefill-time snapshot, which must never be read as a decode span.
+    stream_decode_ms = _info_number(resolved_timing.get("decode_elapsed_ms"))
+    if stream_decode_ms is not None:
+        fields.append(f"stream_decode_ms={stream_decode_ms:.1f}")
+        stream_tok_s = _info_number(resolved_timing.get("decode_tokens_per_second"))
+        if stream_tok_s is None and completion_tokens:
+            stream_tok_s = completion_tokens / max(stream_decode_ms, 1e-9) * 1_000.0
+        if stream_tok_s is not None:
+            fields.append(f"stream_tok_s={stream_tok_s:.2f}")
+    elif not bool(getattr(request, "stream", False)):
         request_total_ms = _info_number(resolved_timing.get("request_total_ms"))
         if request_total_ms is not None and prefill_ms is not None:
             decode_ms = max(0.0, request_total_ms - prefill_ms)
-    decode_tok_s = _info_number(resolved_timing.get("decode_tokens_per_second"))
-    if decode_tok_s is None and decode_ms and completion_tokens:
-        decode_tok_s = completion_tokens / (decode_ms / 1000.0)
-    if decode_ms is not None:
-        fields.append(f"decode_ms={decode_ms:.1f}")
-    if decode_tok_s is not None:
-        fields.append(f"decode_tok_s={decode_tok_s:.2f}")
+            fields.append(f"decode_ms={decode_ms:.1f}")
+            if completion_tokens and decode_ms > 0:
+                fields.append(
+                    f"decode_tok_s={completion_tokens / (decode_ms / 1000.0):.2f}"
+                )
     if wall_ms is None:
         # Streamed requests are measured by the server's own timing tracker.
         wall_ms = _info_number(resolved_timing.get("elapsed_ms"))

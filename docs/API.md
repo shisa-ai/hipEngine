@@ -1548,11 +1548,11 @@ HIPENGINE_INFO=1 hipengine serve --model /path/to/model
 
 Each line reports the endpoint, stream mode, served model, prompt and completion
 token counts, backend prefill time and rate, server-observed time to first token
-and decode rate, wall time, the request's persistent KV allocation in the shared
+and stream window, wall time, the request's persistent KV allocation in the shared
 pool, and the pool's own bytes, pages, pins, and growth count:
 
 ```text
-INFO:     REQUEST_INFO: endpoint=/v1/chat/completions stream=true model=qwen3.8-27b tokens_in=49 tokens_out=51 prefill_ms=345.2 prefill_tok_s=142.0 ttft_ms=364.9 decode_ms=5077.7 decode_tok_s=10.04 wall_ms=5442.6 kv_request_alloc_mib=16.0 kv_pool_gib=66.00 kv_pool_pages=4224 kv_pool_pinned_pages=4096 kv_pool_grows=0
+INFO:     REQUEST_INFO: endpoint=/v1/chat/completions stream=true model=qwen3.8-27b tokens_in=49 tokens_out=51 prefill_ms=345.2 prefill_tok_s=142.0 ttft_ms=364.9 stream_decode_ms=5077.7 stream_tok_s=10.04 wall_ms=5442.6 kv_request_alloc_mib=16.0 kv_pool_gib=66.00 kv_pool_pages=4224 kv_pool_pinned_pages=4096 kv_pool_grows=0
 ```
 
 `kv_request_alloc_mib` is the request's persistent KV allocation, meaning the
@@ -1563,11 +1563,50 @@ larger context reported 2,560 MiB and grew the pool by one chunk.
 
 Unlike `--debug`, `--info` never logs prompts, tool arguments, or generated text.
 The summary needs no client cooperation: stream timing is tracked even when the
-request did not ask for `stream_options.include_hipengine`. Blocking requests
-have no first-token timestamp, so their decode rate is derived from the engine's
-own phase accounting (`request_total_ms - prefill_ms`); streamed requests use the
-server's observed first-token time. Phases the backend does not report are
-omitted instead of logged as zero.
+request did not ask for `stream_options.include_hipengine`. Phases the backend does
+not report are omitted instead of logged as zero.
+
+A streamed request reports `stream_decode_ms` and `stream_tok_s`: the window
+between the first and last token the server delivered, which is the window the
+client saw, with `ttft_ms` marking where it starts. That window equals the engine's
+decode span only while the stream keeps moving. If the server cannot flush a token
+while the engine is generating, the delivered tokens arrive in a burst, the window
+shrinks, and the rate is inflated; an implausible `stream_tok_s` means a compressed
+window, not a fast decode. The engine's own telemetry cannot substitute here, because
+the `request_total_ms` it carries inside a stream is a prefill-time snapshot rather
+than a decode span.
+
+A blocking request has no first-token timestamp, so it reports `decode_ms` and
+`decode_tok_s` derived from the engine's phase accounting instead
+(`request_total_ms - prefill_ms`, which covers the whole blocking request). The two
+field sets never appear on the same line, so a rate is always labelled with the
+basis it was measured on.
+
+### Engine command budget
+
+The resident engine runs on a single driver thread, so a command the server issues
+to it (tokenizing a prompt, preparing a context, submitting a batch) waits behind
+whatever that thread is already doing. Preparing a context grows the KV pool and
+captures graphs, and one scheduling tick prefills a chunk of a large prompt; both
+can exceed half a minute on a long-context request. The budget is therefore a
+liveness guard for a driver that has stopped making progress, not a bound on engine
+work, and defaults to 300 seconds. Set
+`HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS` to change it.
+
+A command that waits longer than 10 seconds logs one diagnostic naming what blocked
+it:
+
+```text
+WARNING:  ENGINE_COMMAND_SLOW: method=tokenize waited_ms=41230.5 driver_command=control:prepare driver_command_s=41.2 queued_commands=1 active_requests=0 driver_alive=yes
+```
+
+`driver_command` is the command occupying the driver thread, or `driver_tick_s` when
+the driver is inside a scheduling tick; `queued_commands` and `active_requests` are
+the service's own depth; and `driver_alive` separates a busy driver from a stopped
+one. A command that exhausts its budget raises a `TimeoutError` carrying the same
+detail, which the server reports as HTTP 500 `internal_error`. The budget abandons
+the caller, not the work: the command still runs on the driver thread once that
+thread is free.
 
 Replay artifacts are separately opt-in. Pass `--replay-dir /path/to/replays` or
 set `HIPENGINE_REPLAY_DIR` to write finite JSON artifacts for failed HTTP

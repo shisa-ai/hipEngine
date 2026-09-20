@@ -943,3 +943,84 @@ def test_llm_resolves_hf_model_id_before_gguf_detection(monkeypatch, tmp_path) -
         "weight_index": fake_index,
         "model_plugin": fake_plugin,
     }
+
+
+def test_llm_engine_command_timeout_defaults_generously_and_respects_env(monkeypatch) -> None:
+    """The command budget guards liveness, so it is generous and configurable."""
+
+    import pytest
+
+    from hipengine.generation import EngineService
+    from hipengine.generation.engine_service import DEFAULT_COMMAND_TIMEOUT_SECONDS
+    from hipengine.llm import _engine_command_timeout_seconds
+
+    assert _engine_command_timeout_seconds({}) == DEFAULT_COMMAND_TIMEOUT_SECONDS
+    assert DEFAULT_COMMAND_TIMEOUT_SECONDS >= 300.0
+    assert (
+        _engine_command_timeout_seconds(
+            {"HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS": "600"}
+        )
+        == 600.0
+    )
+    assert (
+        _engine_command_timeout_seconds(
+            {"HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS": " 12.5 "}
+        )
+        == 12.5
+    )
+    with pytest.raises(ValueError):
+        _engine_command_timeout_seconds(
+            {"HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS": "soon"}
+        )
+    with pytest.raises(ValueError):
+        _engine_command_timeout_seconds(
+            {"HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS": "0"}
+        )
+
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    class NativeRunner:
+        def __init__(self, capacity: int) -> None:
+            self.capacity = capacity
+
+        def prepare(self) -> None:
+            pass
+
+    class NativeGenerator:
+        server_plain_ar_max_active_requests = 4
+
+        def create_resident_model_runner(self, *, capacity):
+            return NativeRunner(int(capacity))
+
+    fake_index = SimpleNamespace(
+        config={"architectures": ["FakeNativeForCausalLM"]},
+        model_path="/tmp/fake-model",
+    )
+    fake_plugin = SimpleNamespace(name="fake_native_service")
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(models, "resolve_model", lambda architecture: fake_plugin)
+    register_text_generator(
+        model="fake_native_service",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: NativeGenerator(),
+        replace=True,
+    )
+    monkeypatch.setenv("HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS", "600")
+
+    llm = LLM(
+        "/tmp/fake-model",
+        backend="fake_backend",
+        quant="fake_quant",
+        max_active_requests=4,
+    )
+    try:
+        assert llm.engine_command_timeout_seconds == 600.0
+        service = llm._get_text_generator()
+        assert isinstance(service, EngineService)
+        assert service._command_timeout_seconds == 600.0
+    finally:
+        llm.close()
