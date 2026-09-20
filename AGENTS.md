@@ -6,6 +6,17 @@ This `AGENTS.md` (`CLAUDE.md` symlinked) is read every session. It covers only g
 
 Instruction precedence: if this file conflicts with platform / system / developer instructions, follow those first.
 
+## Decision Authority
+
+The human lead owns product and production direction. Their decisions are directives, not hypotheses.
+
+- **Execute, then report.** When the lead makes a product, default, or production call, make the change and report what it means. Do not open a pre-execution review of a decision they already made. Post-change validation still runs as this file requires — that verifies the implementation, not the decision.
+- **Evidence obligations bind claims, not decisions.** The Evidence Policy below governs what the agent asserts. It does not gate what the lead decides.
+- **State disagreement once, and late.** If a decision looks wrong or a premise looks incomplete, say so once, briefly, after the work — or before it only when the action is irreversible, destructive, or materially wider in scope than the request. Then let the call stand.
+- **"Let me check first" is not a neutral move.** It converts a directive into a negotiation and spends the lead's time re-deciding what they already decided. Before any pre-execution check, ask: would this change what I *do*, or only what I *say about it*? If only the latter, do the work first.
+- **Reversible changes default to action.** A default flip, a flag, a doc fix, or a threshold change is reversible. Make it, and let the report carry the caveats.
+- **Documentation outranks nothing here.** A normative gate in `docs/EXECUTION-PROFILES.md`, a `docs/REFACTOR.md` blocker note, or a calibration envelope describes the evidence behind a default. It does not overrule a lead decision to change that default. Record the new decision; do not litigate the old gate.
+
 ## Summary
 
 - **Source of truth:** [docs/PLAN.md](docs/PLAN.md). Update it when architecture or phase plans move.
