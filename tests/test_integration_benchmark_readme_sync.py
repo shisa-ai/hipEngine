@@ -159,12 +159,19 @@ def test_root_readme_is_compact_model_first_and_synced() -> None:
     assert len(readme.splitlines()) <= 500
     assert readme.index("## Supported models") < readme.index("## Performance highlights")
     assert readme.index("## Performance highlights") < readme.index("## Status")
+    models = (repo_root / "docs/MODELS.md").read_text(encoding="utf-8")
+    assert "[model support reference](docs/MODELS.md)" in readme
+    model_section = readme.split("## Supported models", 1)[1].split("## Performance highlights", 1)[0]
+    assert not any(line.startswith("|") for line in model_section.splitlines())
+    assert readme.count("| KV configuration |") == 1
     for model_url in (
         "https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
         "https://huggingface.co/poolside/Laguna-S-2.1-GGUF",
         "https://huggingface.co/deepgrove/maple-preview-2bit-mlx",
     ):
-        assert model_url in readme
+        assert model_url in models
+    _assert_markdown_tables_are_rectangular(models)
+    _assert_local_markdown_links_exist(models, repo_root / "docs")
     assert readme.count("<!-- BEGIN TOPLINE:") == 1
     assert "<!-- BEGIN TOPLINE:README_HIGHLIGHTS -->" in readme
     assert "## Memory Usage" not in readme
@@ -176,7 +183,7 @@ def test_root_readme_is_compact_model_first_and_synced() -> None:
     project = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
     assert f"**Current release: v{project['project']['version']}.**" in readme
     assert "NVIDIA Blackwell (`sm_120a`)" in readme
-    assert "Current development is\ntherefore focused on GGUF compatibility" in readme
+    assert "[GGUF](docs/GGUF.md) for the\nbroader model and quantization ecosystem" in readme
     for internal_phrase in ("source-pinned", "physical c8", "packet reaches"):
         assert internal_phrase not in readme
     _assert_markdown_tables_are_rectangular(readme)

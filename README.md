@@ -5,20 +5,12 @@ Radeon GPUs. It pairs a small Python host with custom HIP kernels for torch-free
 model loading, generation, and OpenAI-compatible serving on supported hardware.
 
 **Current release: v0.6.0.** This alpha adds OCR and speech runtimes, dynamic
-GGUF quantization support, and serving improvements alongside the
-[Qwen 3.8 27B](#performance) and Qwen 3.6 PARO/GGUF models.
+GGUF quantization support, and serving improvements.
 See the [release notes](CHANGELOG.md#v060---2026-09-20) for scope and limitations.
 
-There is also initial support for Qwen 3.8 Flash Next,
-[Laguna S 2.1](https://poolside.ai/blog/introducing-laguna-s-2-1), and [Maple ternary](https://github.com/deepgrove-ai/mlx-lm-deepgrove). 
-
-Additional modalities now include:
-- [Moonshine ASR](https://github.com/moonshine-ai/moonshine) (real-time ASR)
-- [TimesFM 2.5](https://huggingface.co/google/timesfm-2.5-200m-pytorch) and [3.0](https://huggingface.co/google/timesfm-3.0-pytorch) (time series)
-- [EVIE 4.5B](https://huggingface.co/tencent/EVIE-4.5B) and [8B](https://huggingface.co/tencent/EVIE-8B) (visual document retrieval)
-- [Surya OCR 2](docs/MODEL-SURYA.md) (full-page OCR, gfx1151)
-- [VibeVoice ASR](docs/MODEL-VIBEVOICE-ASR.md) (transcription, early support)
-- [VibeVoice TTS](docs/MODEL-VIBEVOICE-TTS.md) (experimental speech synthesis)
+[Supported models](#supported-models) lists the current model families and
+hardware; the [model support reference](docs/MODELS.md) gives exact formats,
+checkpoints, and limitations for each.
 
 ## Why use hipEngine?
 
@@ -43,52 +35,42 @@ hipEngine is a from-scratch project and does not inherit any unvetted code or le
 
 ## Supported models
 
-| Model family | Tested models and formats | AMD Radeon (`gfx1100`) | Radeon 8060S (`gfx1151`) | NVIDIA Blackwell (`sm_120a`) |
-| --- | --- | :---: | :---: | :---: |
-| Qwen3.x Dense | **0.8B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q8_0`, `Q4_1`, `UD-Q4_K_XL`<br>**27B:** [GGUF](docs/GGUF.md) [`Q4_K_M`](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/65ca473/Qwen3.8-27B-Q4_K_M.gguf); Qwen3.8-27B `Q4_K_S` on `gfx1151` | Yes | Yes | — |
-| Qwen3.x MoE | **35B-A3B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q4_K_S`, `UD-Q3_K_M`, `UD-Q4_K_M`<br>[ParoQuant W4](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed) | Yes | Yes | — |
-| Qwen3.8 Flash-Next | **125B-A6B + sparse PLE:** GGUF `UD-Q4_K_XL`; optional Q8 MTP and BF16 mmproj | — | Yes — text/QSA, opt-in MTP, ≤1K image/video, c2 serving | — |
-| Laguna S 2.1 | [GGUF `Q4_K_M`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF) | — | Yes | — |
-| EVIE 4.5B / 8B | [Safetensors](docs/MODEL-EVIE.md) `fp32`, `fp16`; multimodal retrieval encoding | — | Yes | — |
-| TimesFM 2.5 / 3.0 | [Safetensors](docs/MODEL-TIMESFM.md) `fp32`; [time-series forecasting](docs/MODEL-TIMESFM3.md) | — | Yes | — |
-| Maple-Preview 20B-A1B | [2-bit MLX](https://huggingface.co/deepgrove/maple-preview-2bit-mlx) | Yes | Yes | Python API only |
+- **Language models:** Qwen3.5/3.6/3.8 dense and mixture-of-experts models,
+  Qwen3.8 Flash-Next, [Laguna S 2.1](docs/LAGUNA.md), and
+  [Maple-Preview](docs/MAPLE.md).
+- **Document understanding:** [Surya OCR 2](docs/MODEL-SURYA.md) for full-page
+  OCR and [EVIE 4.5B / 8B](docs/MODEL-EVIE.md) for visual document retrieval.
+- **Speech:** [VibeVoice ASR](docs/MODEL-VIBEVOICE-ASR.md) for transcription
+  (early support) and [VibeVoice TTS](docs/MODEL-VIBEVOICE-TTS.md) for synthesis
+  (experimental). [Moonshine ASR](docs/MOONSHINE.md) has an internal runtime;
+  public audio API support is planned.
+- **Time-series forecasting:** [TimesFM 2.5](docs/MODEL-TIMESFM.md) and
+  [TimesFM 3.0](docs/MODEL-TIMESFM3.md).
 
-**Qwen3.8-27B** is the dense model to start with: GGUF `Q4_K_M` on both AMD
-backends, and should provide top-tier performance for both single and multiple requests.
+See the [model support reference](docs/MODELS.md) for exact checkpoints,
+GGUF quantizations, ParoQuant, MLX, and safetensors formats, plus hardware
+and API limits. Qwen3.8-27B GGUF `Q4_K_M` is the dense model to start with
+on either AMD backend. Most other modalities are tested on Strix Halo;
+NVIDIA Blackwell (`sm_120a`) support is limited to Maple's Python API.
+
 An independent [survey of Qwen3.8-27B implementations on Strix Halo](docs/QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md)
 compares hipEngine against other engines on a single [Framework Desktop](https://frame.work/desktop) host.
 
-hipEngine includes [DMS](https://arxiv.org/abs/2506.05345) support and training code,
-along with a published [DMS checkpoint for Qwen3.8-27B Q4_K_M](https://huggingface.co/shisa-ai/Qwen3.8-27B-Q4_K_M-DMS-W8192).
-The 24 GB context and quality results below show DMS INT8 reaching about 5.7x the BF16 context capacity,
-with quality tests reportng 100% top-1 agreement and 0.001 mean row-KL:
-
-| KV configuration | Max context | Top-1 agreement vs BF16 | Mean row-KL |
-| --- | ---: | ---: | ---: |
-| BF16 KV | 40,960 | — | — |
-| DMS BF16 | 73,728 | — | — |
-| Direct-INT8 KV | 131,072 | 91.4% | 0.188 |
-| DMS INT8 | 232,448 | 100% | 0.001 |
+hipEngine includes [DMS](https://arxiv.org/abs/2506.05345) support and training
+code, with a published [DMS checkpoint for Qwen3.8-27B Q4_K_M](https://huggingface.co/shisa-ai/Qwen3.8-27B-Q4_K_M-DMS-W8192).
+The [DMS analysis](docs/DMS-ANALYSIS.md) records the quality bar and the
+8K–232K evidence ladder; measured capacity is in
+[Long context on a 24 GB GPU](#long-context-on-a-24-gb-gpu) below.
 
 CPU model generation is not supported. The CPU backend is used for correctness
 tests. On NVIDIA, load Maple with `backend="cuda_sm120a"`; automatic hardware
 selection currently covers AMD only.
 
-Support is specific to the listed model families and formats. hipEngine does
-not yet run every GGUF model. See the [GGUF](docs/GGUF.md),
-[Laguna](docs/LAGUNA.md), and [Maple](docs/MAPLE.md) guides for model-specific
-limits.
-
-### GGUF or ParoQuant for Qwen?
-
-For Qwen3.6 35B-A3B on RDNA3, the optimized ParoQuant W4 checkpoint currently
-slightly leads short-context generation and uses less memory, but GGUF is now extensively optimized.
-
-GGUF has a much larger model and quantization ecosystem. Current development is
-therefore focused on GGUF compatibility. Choose PARO for this exact optimized
-checkpoint or GGUF for broader compatibility.
-
-We've [tested alternative quantization formats](benchmarks/quant/README.md), including ROCmFP4/ROCmFPX variants. They trade quality against traditional GGUF Q formats and our testing/analysis did not reveal any intrinsic performance benefits.
+Choose the [ParoQuant W4 checkpoint](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed)
+for the optimized Qwen3.6 35B-A3B path, or [GGUF](docs/GGUF.md) for the
+broader model and quantization ecosystem. See the
+[quantization comparison](benchmarks/quant/README.md) for quality and speed
+trade-offs, including ROCmFP4/ROCmFPX.
 
 ## Performance highlights
 
@@ -395,6 +377,7 @@ otherwise.
 | Guide | Contents |
 | --- | --- |
 | [Server API](docs/API.md) | OpenAI-compatible endpoints, clients, authentication, and limits |
+| [Model support](docs/MODELS.md) | Exact model families, formats, checkpoints, and hardware |
 | [GGUF models](docs/GGUF.md) | Supported Qwen formats and model-specific behavior |
 | [Laguna S 2.1](docs/LAGUNA.md) | Hardware, memory, context, and serving limits |
 | [Maple-Preview](docs/MAPLE.md) | AMD and NVIDIA support, memory use, and current limits |
