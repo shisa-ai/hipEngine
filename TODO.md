@@ -24,6 +24,7 @@ Goal: basic hipEngine support for all of these. Start with models that have **no
 | BAAI/bge-m3 | XLM-RoBERTa | ✅ encoder embedding/pooling | ❌ |
 | Qwen/Qwen3-Embedding-8B | Qwen3 | ✅ qwen3 `--embeddings` | ❌ |
 | shisa-ai/chotto-e4b-20260515 | Gemma4 (not 3n) | ✅ `gemma4` + gemma4v mtmd | ❌ |
+| Qwen/Qwen-Image-2.1 | `QwenImage21Pipeline`: single-stream DiT (32 layers) + Qwen3-VL text encoder + VAE, flow-match Euler | ❌ (image-gen DiT; `qwen_image` GGUF rejected, ComfyUI / stable-diffusion.cpp are the runtimes) | ❌ (added 2026-09-20; new capability class — diffusion image generation/editing) |
 
 No llama.cpp model oracle (framework/community references exist; historical priority, easiest first): ~~EVIE (prefill-only encoder + MaxSim)~~ ✅ done → ~~shisa-asr (Phi4MM audio front end)~~ ✅ done → ~~VibeVoice-ASR~~ ✅ done → VibeVoice-TTS (diffusion head, hardest; torch oracle frozen, hipEngine port open).
 llama.cpp-oracle-available, likely cheapest: Qwen3-Embedding-8B / bge-m3 (encoder, no decode loop) → medgemma/translategemma (Gemma3 plugin) → chotto-e4b (Gemma4 plugin) → OCR VLMs (MinerU → PaddleOCR-VL → GLM-OCR → surya vision).
@@ -132,6 +133,7 @@ If hipEngine already runs Gemma 3, **MedGemma 1.5** (4B multimodal; 27B text and
 | 6 | [zai-org/GLM-OCR](https://huggingface.co/zai-org/GLM-OCR) · [repo](https://github.com/zai-org/GLM-OCR) | MIT | OCR + layout | 0.9B |
 | 7 | [microsoft/VibeVoice-ASR](https://huggingface.co/microsoft/VibeVoice-ASR) · [HF port](https://huggingface.co/microsoft/VibeVoice-ASR-HF) · [repo](https://github.com/microsoft/VibeVoice) | MIT | ASR | 9B |
 | 8 | [microsoft/VibeVoice-1.5B](https://huggingface.co/microsoft/VibeVoice-1.5B) | MIT; card describes research-only intended use | TTS | 1.5B LM + audio modules |
+| 9 | [Qwen/Qwen-Image-2.1](https://huggingface.co/Qwen/Qwen-Image-2.1) · [repo](https://github.com/QwenLM/Qwen-Image-2.1) · [blog](https://qwen.ai/blog?id=qwen-image-2.1) | Qwen Research License — non-commercial only; commercial use needs a separate Tongyi license | Image gen + editing (flow-match DiT) | 7B DiT + Qwen3-VL text encoder + VAE |
 
 **Work required:**
 
@@ -169,6 +171,19 @@ If hipEngine already runs Gemma 3, **MedGemma 1.5** (4B multimodal; 27B text and
    a pinned community loop is available for oracle qualification. The model card's
    disclosure/watermark statements do not establish that weights alone implement
    them. See [MODEL-VIBEVOICE-TTS.md](docs/model-cards/MODEL-VIBEVOICE-TTS.md).
+9. **Qwen-Image-2.1** — text-to-image generation and image editing (up to 10
+   reference images, masks/circle annotations, native RGBA transparency), released
+   2026-09-20 under the non-commercial Qwen Research License. New capability class
+   for hipEngine — no autoregressive decode at generation time. Components (from the
+   checkpoint's `model_index.json`): `QwenImage21Transformer2DModel` (32-layer
+   single-stream DiT, mixed-granularity attention, prefix KV cache reuse),
+   `Qwen3VLForConditionalGeneration` text encoder (also consumes reference images;
+   no separate vision tower), `AutoencoderKLQwenImage21` VAE,
+   `FlowMatchEulerDiscreteScheduler`. Prompt/reference encoding is prefill-only
+   through the Qwen3-VL encoder; the new machinery is the flow-match DiT sampling
+   loop and VAE decode. Oracles: diffusers `QwenImage21Pipeline` (torch; currently
+   needs `transformers>=5.17` + git diffusers) for parity, stable-diffusion.cpp as
+   the C/C++ reference for Qwen-Image-family GGUF.
 
 #### Supporting index stack (use as-is, don't port)
 
