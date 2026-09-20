@@ -1,117 +1,81 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-09-21
+This index is generated. Run `python3 scripts/docs/check_docs.py --write` after
+adding or moving a document; the prose sections below are preserved.
 
-This directory contains the project architecture, validation, benchmarking, and
-optimization notes for hipEngine. If you are new to the repo, start with
-[`PLAN.md`](PLAN.md), then use the reading paths below for the task you are
-working on.
+Every document carries front-matter declaring its `status` and what it `owns`:
 
-## Start here
+- **normative** — binding rules. Follow them.
+- **current** — the present contract or state of a subsystem. Accurate as written.
+- **closed** — a finished piece of work, kept as evidence. Not binding.
+- **superseded** — replaced; the front-matter names the replacement.
 
-| Document | Use it for |
-| --- | --- |
-| [`PLAN.md`](PLAN.md) | Source of truth for architecture, plugin boundaries, phase roadmap, LoC budgets, and invariants. |
-| [`OPTIMIZATION.md`](OPTIMIZATION.md) | **Rules** for kernel work, performance claims, and benchmark rows: evidence fields, anti-gaming, correctness gates, promotion, lineage, profiling. Scoped to those activities — it does not govern product, server, or API behavior. Distinct from the `OPTIMIZE*.md` campaign boards below. |
-| [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) | Normative strict/production/batch-invariant contracts, exact ownership rules, numerical gates, and registry resolution policy. |
-| [`PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md`](PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md) | Dated evidence review of production cutoffs, calibration limits, practical quality impact, cutoff-excluded performance, and recalibration triggers. |
-| [`PRODUCTION-NUMERICS-CAMPAIGN.md`](PRODUCTION-NUMERICS-CAMPAIGN.md) | Approved evaluator, calibration, historical-recovery, c1, and c>N/A4 campaign. |
-| [`IMPLEMENTATION.md`](IMPLEMENTATION.md) | Current implementation status, concrete milestones, and integration notes. |
-| [`API.md`](API.md) | OpenAI-compatible FastAPI server usage, endpoint support, and current limitations. |
-| [`SOL-OPTIMIZATION.md`](SOL-OPTIMIZATION.md) | Closed first-generation gfx1151/gfx1100 PARO/GGUF optimization ledger (`SOL-R0`-`R9`, `SOL-E1`/`E2`); its concurrency premise is superseded by [`CONCURRENCY.md`](CONCURRENCY.md) and it is retained as a dated record. |
-| [`OPTIMIZE.md`](OPTIMIZE.md) | Candidate *board* for Qwen3.5-35B-A3B-PARO MoE; accepted/rejected/deferred candidates. For the process these boards follow, see [`OPTIMIZATION.md`](OPTIMIZATION.md). |
-| [`OPTIMIZE-DENSE.md`](OPTIMIZE-DENSE.md) | Optimization board for Qwen3.6-27B-PARO dense; mirror lane structure to `OPTIMIZE.md`. |
-| [`QWEN35-08B-GFX1151-VULKAN-PARITY.md`](QWEN35-08B-GFX1151-VULKAN-PARITY.md) | Radeon 8060S campaign profiling every Qwen3.5-0.8B dense GGUF module against llama.cpp Vulkan; per-module owner decisions and parity gates. |
-| [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md) | RX 7900 XTX campaign to eliminate GGUF weight-layout duplication and beat same-card llama.cpp HIP/Vulkan in speed and memory. |
-| [`QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md`](QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md) | gfx1100/gfx1151 campaign plan for exact Qwen3.8-27B `UD-Q4_K_M`: dense Q3/IQ codec support, operation-complete strict execution, and same-host Q4_K_M plus llama.cpp performance gates. |
-| [`GFX1100-SHAPE-AWARE-GEMV-CAMPAIGN.md`](GFX1100-SHAPE-AWARE-GEMV-CAMPAIGN.md) | Shape-aware gfx1100 GEMV campaign plan seeded by Qingming: exact alpha/beta local128/SPLIT4 screening, cache-regime protocol, RX 7900 XTX relative comparison, and independent W7900 promotion gates. |
-| [`QWEN38-Q4KM-MTP-ACCEPTANCE.md`](QWEN38-Q4KM-MTP-ACCEPTANCE.md) | gfx1151 physical-C3 decode-economics campaign for Qwen3.8-27B `Q4_K_M` MTP; gate state and next steps are in the document header. Appendix analyzes a DFlash2 revival. |
-| [`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md) | INT8 KV continuous-batching campaign: artifact-scoped admission, compact no-mirror c>N prefill/decode, complete memory accounting, and resident lifecycle promotion. |
-| [`QWEN38-27B-GFX1100-24GB-CAPACITY.md`](QWEN38-27B-GFX1100-24GB-CAPACITY.md) | 24 GB capacity campaign for Qwen3.8-27B `Q4_K_M` on gfx1100: measured RX 7900 XTX context ceiling, the inert INT8 KV defect, per-token footprint attribution, and the evidence rules for capacity claims. |
-| [`QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md`](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md) | Active gfx1151 gap-closure campaign: measured llama.cpp gap, role-resolved profiling recipe, external fork audit, phased plan, and punchlist. |
-| [`QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md`](QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md) | Matched Strix Halo engine survey: speed, same-GGUF logits, AR/MTP exactness, test and promotion coverage, source audit, and bounded absolute-quality evidence. |
-| [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | Local do-not-chase findings and recurring kernel/runtime pitfalls. |
-| [`PLAN-WORKLOG2-revamp.md`](PLAN-WORKLOG2-revamp.md) | Approved immutable worklog design, migration contract, and acceptance punchlist. |
+Project-wide ground rules live in [`../AGENTS.md`](../AGENTS.md), which every
+session reads. Start there, then come here for the document your task touches.
 
-## Validation and benchmarking
+## Top level
 
-| Document | Use it for |
-| --- | --- |
-| [`TESTING.md`](TESTING.md) | RED/GREEN workflow, correctness oracles, fixture policy, and gate selection. |
-| [`BENCHMARK.md`](BENCHMARK.md) | Benchmark protocol, required evidence fields, correctness thresholds, and artifact format. |
-| [`PROCESS-EXPLORATION.md`](PROCESS-EXPLORATION.md) | Optional methodology for broader optimization searches, hypothesis beams, structural maturation, evaluation firewalls, and anti-overfitting gates. |
-| [`THEROCK.md`](THEROCK.md) | Current stable ROCm 10 `gfx1151` setup and rollback procedure, plus the separately retained W7900 ROCm 7.13 benchmark environment. |
-| [`DEBUG-GFX1151-STALL.md`](DEBUG-GFX1151-STALL.md) | Open gfx1151 128K prefill no-progress signature, eliminated hypotheses, KFD/MES debug plan, and upstream-report checklist. |
-| [`../benchmarks/README.md`](../benchmarks/README.md) | Canonical topline scoreboard, platform freshness, exact protocols, artifacts, and refresh commands. |
-| [`../benchmarks/HISTORY.md`](../benchmarks/HISTORY.md) | Archived experiment rollup, source-lineage targets, external baselines, and superseded diagnostics. |
-| [`../benchmarks/CHANGELOG.md`](../benchmarks/CHANGELOG.md) | Reverse-chronological summary of benchmark rollup updates. |
+<!-- BEGIN GENERATED: top -->
+| Document | Status | Owns |
+| --- | --- | --- |
+| [`API.md`](API.md) | current | OpenAI-compatible server usage, endpoint support, request/response semantics, and current limitations. |
+| [`BENCHMARK.md`](BENCHMARK.md) | **normative** | Benchmark protocols, baselines to beat, required evidence fields, correctness thresholds, and artifact/rollup format. |
+| [`ENVS.md`](ENVS.md) | current | Complete environment-variable reference and the recommended profiles for normal use, ROCm setup, and profiling. |
+| [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) | **normative** | Strict/production/batch-invariant contracts, numerical gates, exact ownership and failure-containment semantics, and registry resolution policy. |
+| [`KERNELS.md`](KERNELS.md) | current | Kernel catalog, source-lineage drift workflow, optimal path map, port playbook, JIT cache gotcha, and build profiles. |
+| [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | current | Local do-not-chase findings and recurring kernel/runtime pitfalls. Largely superseded in kernel scope by RDNA3-TUNING-GUIDE.md. |
+| [`MODELS.md`](MODELS.md) | current | Supported models, quantizations, and the backends each is qualified on. |
+| [`OPTIMIZATION.md`](OPTIMIZATION.md) | **normative** | Rules for kernel work, performance claims, and benchmark rows: evidence fields, anti-gaming, correctness gates, promotion, lineage, profiling. |
+| [`PLAN.md`](PLAN.md) | **normative** | Architecture, plugin boundaries, phase roadmap, LoC budgets, and the invariants that define hipEngine. |
+| [`RDNA3-TUNING-GUIDE.md`](RDNA3-TUNING-GUIDE.md) | current | Externally-referenced RDNA3 tuning guide; the current respin of the kernel-level findings also recorded in LESSONS-LEARNED.md. |
+| [`REFACTOR.md`](REFACTOR.md) | current | Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code to remove after optimal paths are proven. |
+| [`ROOFLINE.md`](ROOFLINE.md) | current | RDNA3 / W7900 performance model: hardware limits, regimes, decision tree, and the what-not-to-chase catalog. |
+| [`TESTING.md`](TESTING.md) | **normative** | RED/GREEN workflow, correctness oracles, fixture policy, test naming/discovery, and the validation matrix. |
+<!-- END GENERATED: top -->
 
-## Kernels and performance model
+## Sections
 
-| Document | Use it for |
-| --- | --- |
-| [`KERNELS.md`](KERNELS.md) | Kernel catalog, source-lineage drift workflow, Qwen/PARO path map, JIT cache gotchas, and build profiles. |
-| [`ROOFLINE.md`](ROOFLINE.md) | RDNA3 / W7900 roofline model, occupancy rules, decision tree, and rejected hardware-level approaches. |
-| [`RELAXED.md`](RELAXED.md) | Historical relaxed-mode inventory and first changed-arithmetic kernel provenance; superseded as normative policy by `EXECUTION-PROFILES.md`. |
-| [`MARLIN.md`](MARLIN.md) | Marlin-K / PARO W4 layout plan and porting context. |
-| [`QUANTS.md`](QUANTS.md) | GGUF tensor-type coverage, Qwen3.5 quality cliffs, Laguna S 2.1 quant targets, hardware headroom, and BF16 K/V capacity math. |
-| [`UD-QUANTS.md`](UD-QUANTS.md) | Verified dense UD K_S/K_M campaign: corrected loader/accounting audit, pinned llama.cpp/Halo/Pwilkin kernel review, reproducible metadata evidence, and staged implementation/qualification punchlist. |
-| [`OPTIMIZE-KERNEL-IQ2_XS.md`](OPTIMIZE-KERNEL-IQ2_XS.md) | IQ2_XS decode/prefill bottleneck analysis, priority list, tuning order, precedent, and Laguna acceptance gates. |
-| [`GGUF_DECODE_REPACK.md`](GGUF_DECODE_REPACK.md) | P9.H2 qwen35moe GGUF decode-side replacement layout, memory budget, and acceptance plan. |
-| [`TUNING-gguf.md`](TUNING-gguf.md) | GGUF performance tuning playbook, baseline refresh protocol, and lane backlog. |
-| [`source_lineage.json`](source_lineage.json) | Machine-readable parent-file manifest for `scripts/check_lineage.py`. |
-
-## Feature plans
-
-| Document | Use it for |
-| --- | --- |
-| [`CONCURRENCY2.md`](CONCURRENCY2.md) | Generation-2 lifecycle, scheduler, global pool/prefix, c1-c32, DMS, optional tiering, and the current executable completion/blocker audit. |
-| [`CONCURRENCY.md`](CONCURRENCY.md) | Legacy retained c=N kernel/resident-runner roadmap, readiness ledger, and evidence history. |
-| [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) | Canonical N0-N5 speculative-cycle milestone glossary, ownership boundaries, current W7900/gfx1151 scorecard, and evidence index. |
-| [`SAMPLING.md`](SAMPLING.md) | Normal sampling parameter support plan, sampler-state contract, and CPU/GPU rollout tracks. |
-| [`AGENTIC.md`](AGENTIC.md) | Serving features and functional contract for local agent harnesses built on top of sampling/decode-state primitives. |
-| [`AGENTIC-OPT.md`](AGENTIC-OPT.md) | gfx1100 agent-serving status, limitations, optimization priorities, and coding-agent benchmark plan. |
-| [`TENSOR_PARALLEL.md`](TENSOR_PARALLEL.md) | Tensor-parallel serving design gate, current disabled manifest contract, and multi-GPU validation plan. |
-| [`PREFILL.md`](PREFILL.md) | Native prefill implementation plan and compact/prompt execution details. |
-| [`KVCACHE.md`](KVCACHE.md) | KV cache ABI, policy notes, quantization path, and long-context considerations. |
-| [`DMS.md`](DMS.md) | External DMS architecture, exact-Q4 training campaign, sidecar size/timing/results, reproduction commands, and production punchlist. |
-| [`DFLASH.md`](DFLASH.md) | DFlash draft-model speculative decode plan. |
-| [`MTP.md`](MTP.md) | Multi-token prediction implementation history, economics, and provider design. |
-| [`MTP-FIX.md`](MTP-FIX.md) | Campaign to make MTP safe and useful across real contexts, lifecycle events, APIs, load, quality, and rollout. |
-| [`GGUF.md`](GGUF.md) | GGUF loading / comparison notes. |
+<!-- BEGIN GENERATED: sections -->
+| Directory | Contents | Files |
+| --- | --- | --- |
+| [`reference/`](reference/) | Current subsystem contracts. Read the one your task touches. | 38 |
+| [`campaigns/`](campaigns/) | Bounded model/hardware campaigns. Mostly closed; kept as evidence. | 61 |
+| [`model-cards/`](model-cards/) | Per-model support status, quality, and integration notes. | 10 |
+| [`archive/`](archive/) | Superseded documents, closed proposals, and frozen history. | 25 |
+<!-- END GENERATED: sections -->
 
 ## Common reading paths
 
-- **Before changing architecture or dispatch:** read [`PLAN.md`](PLAN.md), then
-  [`IMPLEMENTATION.md`](IMPLEMENTATION.md), and check [`OPTIMIZE.md`](OPTIMIZE.md)
-  if the change affects a tracked candidate.
-- **Before porting or editing a kernel:** read [`KERNELS.md`](KERNELS.md), run
-  `python3 scripts/check_lineage.py --kind kernel --diff stat`, and use
-  [`ROOFLINE.md`](ROOFLINE.md) to decide whether the proposed change matches the
-  measured bottleneck.
-- **Before optimizing a kernel or asserting any number:** read
+- **Before changing architecture or dispatch:** [`PLAN.md`](PLAN.md), then
+  [`reference/IMPLEMENTATION.md`](reference/IMPLEMENTATION.md).
+- **Before optimizing a kernel or asserting any number:**
   [`OPTIMIZATION.md`](OPTIMIZATION.md) first — it is the scoped rules file and
-  names which gates actually apply to you.
-- **Before making a performance claim:** read [`BENCHMARK.md`](BENCHMARK.md),
-  verify the host-specific ROCm environment against [`THEROCK.md`](THEROCK.md),
-  and do not compare absolute rates across its independent gfx1151/ROCm 10 and
-  W7900/ROCm 7.13 lanes. Then update
-  [`../benchmarks/README.md`](../benchmarks/README.md) and
-  [`../benchmarks/CHANGELOG.md`](../benchmarks/CHANGELOG.md), and write a compact
+  names which gates actually apply to you. Then [`KERNELS.md`](KERNELS.md) and
+  [`ROOFLINE.md`](ROOFLINE.md) to check the change matches the measured
+  bottleneck, and [`RDNA3-TUNING-GUIDE.md`](RDNA3-TUNING-GUIDE.md) for
+  RDNA3-specific technique.
+- **Before making a performance claim:** [`BENCHMARK.md`](BENCHMARK.md), verify
+  the host ROCm environment against [`reference/THEROCK.md`](reference/THEROCK.md),
+  and do not compare absolute rates across independent hardware lanes. Then
+  update [`../benchmarks/README.md`](../benchmarks/README.md),
+  [`../benchmarks/CHANGELOG.md`](../benchmarks/CHANGELOG.md), and write an
   artifact under [`../benchmarks/results/`](../benchmarks/results/).
-- **Before opening a less-bounded optimization search:** read
-  [`PROCESS-EXPLORATION.md`](PROCESS-EXPLORATION.md), freeze the evaluator and
-  generalization envelope, then seed genuinely distinct hypothesis families.
-- **Before changing math or correctness-sensitive code:** read
-  [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), the latest dated
-  [production accuracy policy review](PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md),
-  and [`TESTING.md`](TESTING.md), declare the applicable strict/production/
-  batch-invariant contract, and add or update a CPU-reference / fixture gate
-  before relying on benchmark output.
+- **Before changing math or correctness-sensitive code:**
+  [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), the dated
+  [production accuracy review](reference/PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md),
+  and [`TESTING.md`](TESTING.md). Declare the applicable contract and add a
+  CPU-reference or fixture gate before relying on benchmark output.
+- **Before changing server, API, or default behavior:** [`API.md`](API.md) and
+  [`ENVS.md`](ENVS.md), plus `AGENTS.md` "Product Defaults". Kernel promotion
+  gates do not apply to product decisions.
+- **Before opening a less-bounded optimization search:**
+  [`reference/PROCESS-EXPLORATION.md`](reference/PROCESS-EXPLORATION.md) — freeze
+  the evaluator and generalization envelope, then seed distinct hypotheses.
+- **Looking for what was already tried:** search
+  [`campaigns/`](campaigns/) before starting a new campaign, and
+  [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) for the do-not-chase catalog.
 
-Project-wide workflow rules live in [`../AGENTS.md`](../AGENTS.md);
-kernel/performance/benchmark rules live in [`OPTIMIZATION.md`](OPTIMIZATION.md)
-and apply only to those activities. Current
-immutable handoff entries live under
-[`../worklog/entries/`](../worklog/entries/); [`../WORKLOG.md`](../WORKLOG.md)
-links the entry format, local renderer, and frozen pre-Worklog2 history.
+Current immutable handoff entries live under
+[`../worklog/entries/`](../worklog/entries/);
+[`../WORKLOG.md`](../WORKLOG.md) links the entry format, local renderer, and
+frozen pre-Worklog2 history.

@@ -1451,7 +1451,7 @@ def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None
         gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out,
         replace=replace,
     )
-    # Alias matching the docs/GGUF.md pipeline shorthand
+    # Alias matching the docs/reference/GGUF.md pipeline shorthand
     # ``gguf_q4_k_selected_dual_wmma_prefill``. Future runtime code can choose
     # either spelling without changing the wrapper ABI.
     register(

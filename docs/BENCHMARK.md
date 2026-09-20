@@ -1,3 +1,7 @@
+---
+status: normative
+owns: Benchmark protocols, baselines to beat, required evidence fields, correctness thresholds, and artifact/rollup format.
+---
 # hipEngine Benchmark Procedures
 
 Protocols, baselines, and artifact formats for every perf claim hipEngine retains. This doc is the companion to [`OPTIMIZATION.md`](OPTIMIZATION.md) (the scoped kernel/performance/benchmark rules) and the "Evidence Policy" section in `docs/PLAN.md`: when the rule says "record the exact command", it means the commands here.
@@ -177,7 +181,7 @@ acceptance rows are INVALID.
 > ~3-4 min, not ~40+). **Every GGUF AR/MTP optimization must pass `--scope full`
 > before it is retained or made default; microbenches and partials routinely do
 > not translate to e2e (dp4a, split-K, rowtile, non-temporal were all isolated
-> wins that went flat at e2e).** See `docs/MTP-LLAMACPP-PARITY.md` →
+> wins that went flat at e2e).** See `docs/campaigns/MTP-LLAMACPP-PARITY.md` →
 > "Validation protocol — run the suite for EVERY change". The manual two-step
 > below is the underlying mechanism; note its `--true-ar-baseline-json` *attach*
 > is currently broken (it still demands the #8-retired `graph_replay` AR contract,
@@ -835,7 +839,7 @@ events), but run that as a separate traced-incidence experiment: profiler
 instrumentation can suppress this timing-sensitive failure, and the traced
 process must use prebuilt `require_cached` kernels. The canonical symptom,
 control matrix, KFD/MES capture plan, and upstream-report checklist live in
-[`DEBUG-GFX1151-STALL.md`](DEBUG-GFX1151-STALL.md).
+[`DEBUG-GFX1151-STALL.md`](reference/DEBUG-GFX1151-STALL.md).
 
 The APU exposes a 512 MiB visible-VRAM aperture in
 `mem_info_vram_{total,used}` but a 120 GiB system-backed allocation domain in
@@ -879,7 +883,7 @@ performance claims. Use them to answer "what does current llama.cpp do on this
 model and prompt mix?" before comparing hipEngine changes.
 
 For cross-engine decode-only tables, follow the
-[`Cross-Engine Decode Timing Boundary`](MTP-LLAMACPP-PARITY.md#cross-engine-decode-timing-boundary).
+[`Cross-Engine Decode Timing Boundary`](campaigns/MTP-LLAMACPP-PARITY.md#cross-engine-decode-timing-boundary).
 llama.cpp starts `predicted_ms` after sampling the first output while including
 that token in `predicted_n`; native `predicted_per_second` is therefore a
 self-reported diagnostic, not the cross-engine rate. Request `N+1` outputs and
@@ -946,7 +950,7 @@ numerical profiles do not unlock a context. Reduced position/control fixtures
 are exempt only when they do not instantiate a full long-context run. Existing
 long-context evidence stays retained but is not rerun below the threshold.
 Only explicit user direction may override this ladder. The campaign-specific
-basic gate and evidence are normative in `docs/QWEN3.8-FLASH-NEXT.md`.
+basic gate and evidence are normative in `docs/campaigns/QWEN3.8-FLASH-NEXT.md`.
 
 ## Standard Workloads
 
@@ -1142,7 +1146,7 @@ still requires fixed-seed repeatability, CPU-reference distribution sanity, zero
 full-vocabulary D2H on supported rows, one warmup plus three measurements for all
 frozen C1/C4/C8 conditions, no C1 regression, and the medium-C4 guard.
 
-The complete active board is [`AGENTIC-OPT.md`](AGENTIC-OPT.md).
+The complete active board is [`AGENTIC-OPT.md`](campaigns/AGENTIC-OPT.md).
 
 ### Speculative decode / DFlash rows
 
@@ -1392,7 +1396,7 @@ ledgers, final token, recurrent/KV hash, final-logit hash, and context teardown.
 Native API call wall includes the required stream drain and finite native wait;
 HIP call wall is asynchronous issue time, so synchronized replay is the primary
 cross-transport metric. The harness remains `performance_claim=false` until
-natural prompt/category and heldout gates satisfy `docs/PM4.md` promotion policy.
+natural prompt/category and heldout gates satisfy `docs/reference/PM4.md` promotion policy.
 It never performs submit-plus-queue-recreate stress.
 
 For the SOL-G6 replacement-residency gate, run a clean persistent-session

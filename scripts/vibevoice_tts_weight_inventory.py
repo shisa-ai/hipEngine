@@ -36,7 +36,7 @@ from collections import defaultdict
 from pathlib import Path
 
 DEFAULT_MODEL = "microsoft/VibeVoice-1.5B"
-# The checkpoint revision pinned in docs/MODEL-VIBEVOICE-TTS.md.
+# The checkpoint revision pinned in docs/model-cards/MODEL-VIBEVOICE-TTS.md.
 DEFAULT_MODEL_REVISION = "c00898d257e6b46004e3e2866a47534085fb685a"
 DEFAULT_OUT = Path("tests/fixtures/vibevoice_tts/weight_inventory.json")
 

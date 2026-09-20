@@ -12,7 +12,7 @@ allocation, so it is safe to run while the GPU is busy.
 
 ``AUDIT_NO_VETO=1`` plans with ``repack_veto=False``, showing what the model
 would get if the model-wide raw-IQ decode-repack veto were per-tensor. See
-docs/UD-OPTIMIZED-ROUTE-PLAN.md.
+docs/campaigns/UD-OPTIMIZED-ROUTE-PLAN.md.
 """
 import collections
 import sys

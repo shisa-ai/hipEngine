@@ -253,7 +253,7 @@ def register_gguf_q4_k_selected_pack8_gemv_kernels(*, replace: bool = True) -> N
         gguf_q4_k_selected_dual_pack8_gemv_decode_compact_fp16_fp16_out,
         replace=replace,
     )
-    # Shorthand aliases matching the docs/GGUF.md P9 pipeline language. The
+    # Shorthand aliases matching the docs/reference/GGUF.md P9 pipeline language. The
     # runtime can choose either spelling without changing the wrapper ABI.
     register(
         KernelKey(

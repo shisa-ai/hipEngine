@@ -941,7 +941,7 @@ def build_payload(*, batch_artifact: Path, prefill_artifact: Path, argv: Sequenc
             "batch_execution": batch_execution,
             "prefill_artifact": str(prefill_artifact),
             "native_prefill_plan": native_prefill_plan,
-            "docs": ["docs/DFLASH.md", "docs/MTP.md", "docs/BENCHMARK.md"],
+            "docs": ["docs/reference/DFLASH.md", "docs/reference/MTP.md", "docs/BENCHMARK.md"],
         },
         "blockers": blockers,
         "required_next_actions": [

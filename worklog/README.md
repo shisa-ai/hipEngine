@@ -6,7 +6,7 @@ workers can commit and merge distinct paths instead of appending to one shared
 file.
 
 The approved design and migration gates are in
-[`docs/PLAN-WORKLOG2-revamp.md`](../docs/PLAN-WORKLOG2-revamp.md).
+[`docs/archive/PLAN-WORKLOG2-revamp.md`](../docs/archive/PLAN-WORKLOG2-revamp.md).
 
 ## Source paths
 

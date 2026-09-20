@@ -45,7 +45,7 @@ def test_completion_audit_names_only_real_product_blockers() -> None:
 
 
 def test_completion_document_closes_load_and_keeps_remaining_product_boxes_open() -> None:
-    document = (REPO_ROOT / "docs/CONCURRENCY2.md").read_text(encoding="utf-8")
+    document = (REPO_ROOT / "docs/reference/CONCURRENCY2.md").read_text(encoding="utf-8")
 
     assert "- [x] Qualify 4K/16K/32K" in document
     assert "- [x] Run fixed, ragged, burst, Poisson" in document

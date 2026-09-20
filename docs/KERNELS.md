@@ -1,3 +1,7 @@
+---
+status: current
+owns: Kernel catalog, source-lineage drift workflow, optimal path map, port playbook, JIT cache gotcha, and build profiles.
+---
 # hipEngine Kernel Catalog and Port Playbook
 
 This document is the durable catalog of kernel families implemented in hipEngine and the stable mechanics for adding or porting one. It is intentionally **not** an experiment log.
@@ -33,7 +37,7 @@ Related documents:
 - [`BENCHMARK.md`](BENCHMARK.md) — benchmark protocols and evidence policy.
 - [`REFACTOR.md`](REFACTOR.md) — temporary flags and fallback-removal ledger.
 - [`source_lineage.json`](source_lineage.json) — external source baselines.
-- Model/path notes: [`GGUF.md`](GGUF.md), [`MAPLE.md`](MAPLE.md), [`MOONSHINE.md`](MOONSHINE.md), [`DFLASH.md`](DFLASH.md), and [`MTP.md`](MTP.md).
+- Model/path notes: [`GGUF.md`](reference/GGUF.md), [`MAPLE.md`](campaigns/MAPLE.md), [`MOONSHINE.md`](model-cards/MOONSHINE.md), [`DFLASH.md`](reference/DFLASH.md), and [`MTP.md`](reference/MTP.md).
 
 ## How to read and maintain the catalog
 
@@ -336,7 +340,7 @@ scratch cache pair reused across layers.
 Model contract, loader, NumPy oracle, GPU orchestration, and bench live in
 `models/timesfm3.py`, `loading/timesfm3.py`, `kernels/cpu_reference/timesfm3.py`,
 `runtime/timesfm3_decode.py`, and `scripts/timesfm3_gpu_bench.py`; the
-per-model record is `docs/MODEL-TIMESFM3.md`.
+per-model record is `docs/model-cards/MODEL-TIMESFM3.md`.
 
 ### Surya OCR path
 
@@ -369,7 +373,7 @@ path exercises the metadata it claims to honour.
 Model contract, loader, CPU oracle, GPU runtime, and generators live in
 `models/surya.py`, `loading/surya.py`, `kernels/cpu_reference/surya.py`,
 `runtime/surya.py`, and `generation/surya{,_gpu}.py`. The per-model record is
-`docs/MODEL-SURYA.md`; the lane comparison is
+`docs/model-cards/MODEL-SURYA.md`; the lane comparison is
 `scripts/surya_perf_compare.py`.
 
 ### Speculative decoding path

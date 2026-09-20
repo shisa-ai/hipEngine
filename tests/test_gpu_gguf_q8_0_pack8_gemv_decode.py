@@ -10,7 +10,7 @@ Each instantiation is validated against
 ``make_q8_0_weight``-generated blocks across realistic Qwen3.5-family shapes
 (``in_features`` in {32, 256, 512, 1024, 2048, 4096}; ``out_features`` in
 {8, 256, 512, 2048, 4096}). Tolerances are ``atol=5e-4, rtol=5e-3`` per
-``docs/GGUF.md`` P9 (Q8_0 has the smallest block size of any GGUF K-quant,
+``docs/reference/GGUF.md`` P9 (Q8_0 has the smallest block size of any GGUF K-quant,
 so the kernel math hits BF16 output-rounding before it hits dequant drift).
 """
 

@@ -1,7 +1,7 @@
 """PF-1b production-shape strict-parity gates for the Qwen4Exp dense owners.
 
 Covers the three PF-1 kernel families from the halo-box campaign gap ledger
-(docs/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md section 6.1, PF-1a mapping):
+(docs/campaigns/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md section 6.1, PF-1a mapping):
 
 1. The production dense MMQ chain
    (``q8_0_mmq128_quantize_f32_residual_d4`` -> ``q8_0_raw_mmq128_q8_1_d4``

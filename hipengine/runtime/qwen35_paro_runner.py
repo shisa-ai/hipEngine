@@ -10946,7 +10946,7 @@ class Qwen35ParoResidentSession:
             raise ValueError("chain_attn_mode='decode_batched' currently requires graph_mode='off'")
         # NOTE: chain_attn_mode='batched' is now allowed with graph_mode!='off';
         # the verifier graph cache key includes chain_attn_mode/linear_attn_mode
-        # so batched and c1_loop captures do not alias.  See `docs/MTP.md` M12.1.
+        # so batched and c1_loop captures do not alias.  See `docs/reference/MTP.md` M12.1.
         rows = int(batch.rows)
         if rows <= 1:
             raise ValueError("bulk verifier requires root plus at least one candidate row")

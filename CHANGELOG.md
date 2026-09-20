@@ -123,11 +123,11 @@ in [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md).
   request up to eight running at once, alongside two llama.cpp HIP builds
   measured the same way.
 - **Initial support for more model families.** EVIE-4.5B and EVIE-8B run
-  multimodal retrieval encoding ([model record](docs/MODEL-EVIE.md)), TimesFM
+  multimodal retrieval encoding ([model record](docs/model-cards/MODEL-EVIE.md)), TimesFM
   2.5 200M and TimesFM 3.0 500M run time-series forecasting
-  ([2.5](docs/MODEL-TIMESFM.md), [3.0](docs/MODEL-TIMESFM3.md)), and Qwen3.8
+  ([2.5](docs/model-cards/MODEL-TIMESFM.md), [3.0](docs/model-cards/MODEL-TIMESFM3.md)), and Qwen3.8
   Flash-Next 125B-A6B runs on Strix Halo
-  ([survey](docs/QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md)). These are early
+  ([survey](docs/campaigns/QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md)). These are early
   ports: each record names the measured performance and the current limits.
 - **The server decides when to speculate.** The default for
   `--speculative-mtp-serving` (env `HIPENGINE_SPECULATIVE_MTP_SERVING`) moved
@@ -274,7 +274,7 @@ in [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md).
 - What Qwen3.8-27B tolerates on a 24 GB card is unmeasured, and INT8 cache shows
   no saving there. The probe that would answer this needs its measurement gaps
   closed before any limit can be published
-  ([capacity notes](docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md)).
+  ([capacity notes](docs/campaigns/QWEN38-27B-GFX1100-24GB-CAPACITY.md)).
 - Many simultaneous requests work but are not inside latency targets. On Strix
   Halo, Qwen3.8-27B passes its one-to-eight physical and one-to-thirty-two
   logical request checks, yet at 32 requests it reaches 10.590 tok/s with an

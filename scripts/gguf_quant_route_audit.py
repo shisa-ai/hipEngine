@@ -1333,7 +1333,7 @@ def main(argv: list[str] | None = None) -> int:
             " treatments; shared-policy capability resolution with"
             " per-capability status; f32_contracted_slots replaces"
             " f32_contraction_applied. v1 was the implicit schema of"
-            " docs/UD-QUANTS-REVIEW.json."
+            " docs/campaigns/UD-QUANTS-REVIEW.json."
         ),
         "files": [],
     }

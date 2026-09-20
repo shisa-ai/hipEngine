@@ -3495,6 +3495,7 @@ def test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads() -> None:
     ledger_path = (
         Path(__file__).resolve().parents[1]
         / "docs"
+        / "archive"
         / "20260909-GFX1151-GFX1100-TRANSFER-AUDIT.md"
     )
     ledger_text = ledger_path.read_text()

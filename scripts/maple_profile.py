@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""rocprofv3 decode-profile of one Maple token step (docs/MAPLE-PERF.md M0).
+"""rocprofv3 decode-profile of one Maple token step (docs/campaigns/MAPLE-PERF.md M0).
 
 Method (matches AGENTS.md profiler rules):
 * ``--prebuild`` builds every Maple kernel library once outside the profiler,

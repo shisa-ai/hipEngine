@@ -3284,7 +3284,7 @@ def test_gguf_linear_dispatch_rejects_unsupported_dtype() -> None:
 
 
 # ---------------------------------------------------------------------------
-# P8: WMMA batched prefill opt-in dispatch (docs/GGUF.md "P8: real batched
+# P8: WMMA batched prefill opt-in dispatch (docs/reference/GGUF.md "P8: real batched
 # prefill GEMM").
 # ---------------------------------------------------------------------------
 

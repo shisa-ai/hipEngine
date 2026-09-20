@@ -1,6 +1,6 @@
 """gfx1100 indexed-singleton GDN decode route tests.
 
-The 2026-09-05 gfx1100 RDNA3 audit (docs/20260905-gfx1100-audit.md, packet A)
+The 2026-09-05 gfx1100 RDNA3 audit (docs/archive/20260905-gfx1100-audit.md, packet A)
 transfers the gfx1151 indexed-singleton GDN decode policy after independent
 W7900 qualification. These tests pin the route contract: the backend capability
 selects the registered one-token-per-active-row indexed singleton kernel for

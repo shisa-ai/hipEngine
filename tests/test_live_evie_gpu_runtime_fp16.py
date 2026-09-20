@@ -6,7 +6,7 @@ down the fp32 module's module-scoped fixture before this module's fixture
 creates the fp16 runner. Co-resident multi-model runs on this GTT/iGPU host
 have caused GPU stalls and a host panic (see worklog 2026-09-09 entries).
 
-The gate follows docs/MODEL-EVIE.md's production envelope: per-token embedding
+The gate follows docs/model-cards/MODEL-EVIE.md's production envelope: per-token embedding
 cosine vs the fp32 oracle and MaxSim delta, plus bit-repeatability of repeated
 encodes.
 """

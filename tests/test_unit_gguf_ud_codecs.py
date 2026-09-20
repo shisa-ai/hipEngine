@@ -122,7 +122,7 @@ def test_real_fixture_provenance_and_coverage():
     assert hashlib.sha256((FIXTURES / 'real_rows.npz').read_bytes()).hexdigest() == REAL['fixture_sha256']
     assert {e['type'] for e in REAL['entries']} == set(FORMATS)
     assert {e['shape'][-1] for e in REAL['entries']} == {5120, 17408}
-    pins = json.loads((FIXTURES.parents[2] / 'docs/UD-QUANTS-U0-IDENTITY.json').read_text())['files']
+    pins = json.loads((FIXTURES.parents[2] / 'docs/campaigns/UD-QUANTS-U0-IDENTITY.json').read_text())['files']
     for entry in REAL['entries']:
         pin = next(p for p in pins if p['file'] == entry['model'])
         assert entry['published_sha256'] == pin['published_sha256']

@@ -6,7 +6,7 @@ and asserts that the per-layer expert quant/shape/owner map matches the frozen
 contract before any layer-2 routing or timing work is trusted. Artifact drift
 fails here, before timing.
 
-Frozen MoE map (from docs/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md P1):
+Frozen MoE map (from docs/campaigns/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md P1):
 
 * 43 layers of Q4_K / Q4_K / Q5_1  (expert_gate / expert_up / expert_down)
 * layer 2 of Q5_K / Q5_K / Q8_0

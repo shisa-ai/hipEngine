@@ -2,7 +2,7 @@
 
 These tests are torch-free.  They construct fake AOTriton cache trees on disk
 and verify that the lookup chain documented in ``aotriton.py`` and
-``docs/PREFILL.md`` finds them.  The real vendored AOTriton tree is discovered
+``docs/reference/PREFILL.md`` finds them.  The real vendored AOTriton tree is discovered
 without dlopening it.
 """
 

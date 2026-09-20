@@ -1,7 +1,7 @@
 """Raw-pointer wrappers for the GGUF Q8_0 batched WMMA prefill kernel.
 
 This module owns the C ABI exports defined in ``gguf_q8_0_prefill.hip``
-(see docs/GGUF.md \"P8: real batched prefill GEMM\" for the wider plan).
+(see docs/reference/GGUF.md \"P8: real batched prefill GEMM\" for the wider plan).
 The kernel is a real GEMM-style batched WMMA prefill: one wave32 block
 computes a TM x TN output tile via
 ``__builtin_amdgcn_wmma_f32_16x16x16_f16_w32``, with Q8_0 dequant in the

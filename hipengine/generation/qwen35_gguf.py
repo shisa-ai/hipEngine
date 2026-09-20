@@ -490,7 +490,7 @@ def _gguf_prefix_suffix_segments(
 # Superset of every shared-slot AR physical width a backend may register and use.
 # Direct widths c3/c5/c6/c7 are admitted here so they can be certified via an
 # explicit env override before the default advertised capability is expanded
-# (see docs/CONCURRENCY2.md). The default non-resident set stays (1, 2, 4, 8).
+# (see docs/reference/CONCURRENCY2.md). The default non-resident set stays (1, 2, 4, 8).
 _GGUF_AR_PHYSICAL_BUCKET_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
 # Promoted 2026-08-20 after direct c3/c5/c6/c7 lifecycle certification (#36):
 # every width in the superset is now an advertised default. The env override

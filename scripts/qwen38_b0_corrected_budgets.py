@@ -148,7 +148,7 @@ def main() -> None:
             "m3_wide_closure": str(M3_WIDE.relative_to(REPO)),
             "m3_c8_attribution": "benchmarks/results/2026-09-02-gfx1151-qwen38-z4-m3-c8-accept-boundary-attribution.json",
             "f3_anchor": {
-                "source": "docs/QWEN38-GFX1151-STRUCTURAL-DIFFERENTIAL-CAMPAIGN.md section 7.1 finding F3",
+                "source": "docs/campaigns/QWEN38-GFX1151-STRUCTURAL-DIFFERENTIAL-CAMPAIGN.md section 7.1 finding F3",
                 "anchor_band_ms_per_full_pass": [ANCHOR_LO_MS, ANCHOR_HI_MS],
                 "verify_pass_today_ms": F3_VERIFY_PASS_TODAY_MS,
                 "label": "derived from measured W0 row curve and Y0/Y2 prefill sizing; not a new measurement",

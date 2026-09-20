@@ -2,7 +2,7 @@
 
 Runs the *reference* implementation -- the community fork
 ``vibevoice-community/VibeVoice`` -- under the pinned environment described in
-``docs/MODEL-VIBEVOICE-TTS.md`` "Oracle environment", and freezes the tensors
+``docs/model-cards/MODEL-VIBEVOICE-TTS.md`` "Oracle environment", and freezes the tensors
 hipEngine's port must reproduce.
 
 This script must run under the oracle venv, not the hipEngine venv:
@@ -82,7 +82,7 @@ DEFAULT_OUT_DIR = Path("tests/fixtures/vibevoice_tts")
 DEFAULT_FORK = "/home/lhl/VibeVoice-community"
 SAMPLING_RATE = 24_000
 DEFAULT_SEED = 20260915
-# The checkpoint revision pinned in docs/MODEL-VIBEVOICE-TTS.md.
+# The checkpoint revision pinned in docs/model-cards/MODEL-VIBEVOICE-TTS.md.
 DEFAULT_MODEL_REVISION = "c00898d257e6b46004e3e2866a47534085fb685a"
 # Bumped whenever fixture layout or capture semantics change. Schema 2 adds:
 # enforced snapshot loading, complete per-call diffusion capture (scaled latent,

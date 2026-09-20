@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exercise wide-to-C1 and C1-to-wide pool histories inside one server session.
 
-Packet 2 of the 24 GB capacity campaign (docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md)
+Packet 2 of the 24 GB capacity campaign (docs/campaigns/QWEN38-27B-GFX1100-24GB-CAPACITY.md)
 requires history evidence, not just single-point ceilings: a wide request must
 not leave the chunked KV pool, workspace leases or graph buckets inflated for
 the following C1 requests, and retirement must return memory to the device

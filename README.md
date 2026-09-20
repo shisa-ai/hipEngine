@@ -36,16 +36,16 @@ hipEngine is a from-scratch project and does not inherit any unvetted code or le
 ## Supported models
 
 - **Language models:** Qwen3.5/3.6/3.8 dense and mixture-of-experts models,
-  Qwen3.8 Flash-Next, [Laguna S 2.1](docs/LAGUNA.md), and
-  [Maple-Preview](docs/MAPLE.md).
-- **Document understanding:** [Surya OCR 2](docs/MODEL-SURYA.md) for full-page
-  OCR and [EVIE 4.5B / 8B](docs/MODEL-EVIE.md) for visual document retrieval.
-- **Speech:** [VibeVoice ASR](docs/MODEL-VIBEVOICE-ASR.md) for transcription
-  (early support) and [VibeVoice TTS](docs/MODEL-VIBEVOICE-TTS.md) for synthesis
-  (experimental). [Moonshine ASR](docs/MOONSHINE.md) has an internal runtime;
+  Qwen3.8 Flash-Next, [Laguna S 2.1](docs/campaigns/LAGUNA.md), and
+  [Maple-Preview](docs/campaigns/MAPLE.md).
+- **Document understanding:** [Surya OCR 2](docs/model-cards/MODEL-SURYA.md) for full-page
+  OCR and [EVIE 4.5B / 8B](docs/model-cards/MODEL-EVIE.md) for visual document retrieval.
+- **Speech:** [VibeVoice ASR](docs/model-cards/MODEL-VIBEVOICE-ASR.md) for transcription
+  (early support) and [VibeVoice TTS](docs/model-cards/MODEL-VIBEVOICE-TTS.md) for synthesis
+  (experimental). [Moonshine ASR](docs/model-cards/MOONSHINE.md) has an internal runtime;
   public audio API support is planned.
-- **Time-series forecasting:** [TimesFM 2.5](docs/MODEL-TIMESFM.md) and
-  [TimesFM 3.0](docs/MODEL-TIMESFM3.md).
+- **Time-series forecasting:** [TimesFM 2.5](docs/model-cards/MODEL-TIMESFM.md) and
+  [TimesFM 3.0](docs/model-cards/MODEL-TIMESFM3.md).
 
 See the [model support reference](docs/MODELS.md) for exact checkpoints,
 GGUF quantizations, ParoQuant, MLX, and safetensors formats, plus hardware
@@ -53,12 +53,12 @@ and API limits. Qwen3.8-27B GGUF `Q4_K_M` is the dense model to start with
 on either AMD backend. Most other modalities are tested on Strix Halo;
 NVIDIA Blackwell (`sm_120a`) support is limited to Maple's Python API.
 
-An independent [survey of Qwen3.8-27B implementations on Strix Halo](docs/QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md)
+An independent [survey of Qwen3.8-27B implementations on Strix Halo](docs/campaigns/QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md)
 compares hipEngine against other engines on a single [Framework Desktop](https://frame.work/desktop) host.
 
 hipEngine includes [DMS](https://arxiv.org/abs/2506.05345) support and training
 code, with a published [DMS checkpoint for Qwen3.8-27B Q4_K_M](https://huggingface.co/shisa-ai/Qwen3.8-27B-Q4_K_M-DMS-W8192).
-The [DMS analysis](docs/DMS-ANALYSIS.md) records the quality bar and the
+The [DMS analysis](docs/reference/DMS-ANALYSIS.md) records the quality bar and the
 8K–232K evidence ladder; measured capacity is in
 [Long context on a 24 GB GPU](#long-context-on-a-24-gb-gpu) below.
 
@@ -67,7 +67,7 @@ tests. On NVIDIA, load Maple with `backend="cuda_sm120a"`; automatic hardware
 selection currently covers AMD only.
 
 Choose the [ParoQuant W4 checkpoint](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed)
-for the optimized Qwen3.6 35B-A3B path, or [GGUF](docs/GGUF.md) for the
+for the optimized Qwen3.6 35B-A3B path, or [GGUF](docs/reference/GGUF.md) for the
 broader model and quantization ecosystem. See the
 [quantization comparison](benchmarks/quant/README.md) for quality and speed
 trade-offs, including ROCmFP4/ROCmFPX.
@@ -266,7 +266,7 @@ performance. hipEngine will not silently use PyTorch when a GPU is unsupported.
 | Published wheel | glibc 2.39 or newer, such as Ubuntu 24.04 |
 
 ROCm 7.x is the safest choice for the current wheel (ROCm 10.0 has been tested and works fine as well).
-See the [TheRock setup guide](docs/THEROCK.md) for retained ROCm 7.13 and gfx1151 ROCm 10 setup/JIT validation.
+See the [TheRock setup guide](docs/reference/THEROCK.md) for retained ROCm 7.13 and gfx1151 ROCm 10 setup/JIT validation.
 The first model load compiles and caches kernels, so it takes longer than later starts.
 
 Install from PyPI:
@@ -380,9 +380,9 @@ otherwise.
 | --- | --- |
 | [Server API](docs/API.md) | OpenAI-compatible endpoints, clients, authentication, and limits |
 | [Model support](docs/MODELS.md) | Exact model families, formats, checkpoints, and hardware |
-| [GGUF models](docs/GGUF.md) | Supported Qwen formats and model-specific behavior |
-| [Laguna S 2.1](docs/LAGUNA.md) | Hardware, memory, context, and serving limits |
-| [Maple-Preview](docs/MAPLE.md) | AMD and NVIDIA support, memory use, and current limits |
+| [GGUF models](docs/reference/GGUF.md) | Supported Qwen formats and model-specific behavior |
+| [Laguna S 2.1](docs/campaigns/LAGUNA.md) | Hardware, memory, context, and serving limits |
+| [Maple-Preview](docs/campaigns/MAPLE.md) | AMD and NVIDIA support, memory use, and current limits |
 | [Environment settings](docs/ENVS.md) | Runtime settings and overrides |
 | [Changelog](CHANGELOG.md) | User-facing changes by release |
 
@@ -392,7 +392,7 @@ otherwise.
 | --- | --- |
 | [Architecture and roadmap](docs/PLAN.md) | Engine design and planned work |
 | [Kernel catalog](docs/KERNELS.md) | Kernel implementations and source history |
-| [DMS analysis](docs/DMS-ANALYSIS.md) | DMS quality bar, paper-matched tests, and the 8K–232K evidence ladder |
+| [DMS analysis](docs/reference/DMS-ANALYSIS.md) | DMS quality bar, paper-matched tests, and the 8K–232K evidence ladder |
 | [Testing](docs/TESTING.md) | Correctness tests and release checks |
 | [Benchmark methods](docs/BENCHMARK.md) | Rules used for performance claims |
 | [Benchmark results](benchmarks/README.md) | Full result tables and evidence |

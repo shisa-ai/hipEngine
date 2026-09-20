@@ -1,3 +1,7 @@
+---
+status: current
+owns: Externally-referenced RDNA3 tuning guide; the current respin of the kernel-level findings also recorded in LESSONS-LEARNED.md.
+---
 # RDNA3 Tuning Guide
 
 This guide describes how to tune inference kernels and their runtime on AMD
@@ -1304,7 +1308,7 @@ Do not infer a large PM4 opportunity from a visual trace gap. The measured
 in one experiment but regressed complete wall. `gfx1151` currently uses HIP
 graphs rather than copying `gfx1100` packet evidence.
 
-See [PM4.md](PM4.md) for the transport contract.
+See [PM4.md](reference/PM4.md) for the transport contract.
 
 ### 7.9 Overlap only independent work
 
@@ -1792,15 +1796,15 @@ Use these paths when applying the guide:
 | Fixtures, oracles, and validation tiers | [TESTING.md](TESTING.md) |
 | Benchmark protocols and evidence policy | [BENCHMARK.md](BENCHMARK.md) |
 | W7900 hardware/roofline detail | [ROOFLINE.md](ROOFLINE.md) |
-| Strix Halo hardware/roofline detail | [ROOFLINE-gfx1151.md](ROOFLINE-gfx1151.md) |
+| Strix Halo hardware/roofline detail | [ROOFLINE-gfx1151.md](reference/ROOFLINE-gfx1151.md) |
 | General accumulated lessons | [LESSONS-LEARNED.md](LESSONS-LEARNED.md) |
-| Prefill design | [PREFILL.md](PREFILL.md) |
-| PM4 transport | [PM4.md](PM4.md) |
-| Speculative-decode economics and gates | [SPECULATIVE-DECODE.md](SPECULATIVE-DECODE.md), [MTP.md](MTP.md), [DFLASH.md](DFLASH.md) |
-| Dispatch floor, launch census, persistent kernels | [MEGAKERNEL.md](MEGAKERNEL.md) |
-| Sprint contracts, prize framing, and stop rules | [PROCESS-IMPROVEMENT.md](PROCESS-IMPROVEMENT.md) |
-| Exploration firewall and evaluation-set discipline | [PROCESS-EXPLORATION.md](PROCESS-EXPLORATION.md) |
-| Concurrent serving, admission, and c=N economics | [CONCURRENCY2.md](CONCURRENCY2.md) |
+| Prefill design | [PREFILL.md](reference/PREFILL.md) |
+| PM4 transport | [PM4.md](reference/PM4.md) |
+| Speculative-decode economics and gates | [SPECULATIVE-DECODE.md](reference/SPECULATIVE-DECODE.md), [MTP.md](reference/MTP.md), [DFLASH.md](reference/DFLASH.md) |
+| Dispatch floor, launch census, persistent kernels | [MEGAKERNEL.md](reference/MEGAKERNEL.md) |
+| Sprint contracts, prize framing, and stop rules | [PROCESS-IMPROVEMENT.md](archive/PROCESS-IMPROVEMENT.md) |
+| Exploration firewall and evaluation-set discipline | [PROCESS-EXPLORATION.md](reference/PROCESS-EXPLORATION.md) |
+| Concurrent serving, admission, and c=N economics | [CONCURRENCY2.md](reference/CONCURRENCY2.md) |
 | Tuning knobs and their measured defaults | [ENVS.md](ENVS.md) |
 | Backend policy and selectors | `hipengine/kernels/hip_gfx1100/__init__.py`, `hipengine/kernels/hip_gfx1151/__init__.py` |
 | HIP kernel bodies | `hipengine/kernels/hip_gfx1100/` and architecture-specific siblings under `hipengine/kernels/hip_gfx1151/` |
@@ -1824,7 +1828,7 @@ Start with these documents for details deliberately omitted here:
 
 - [ROOFLINE.md](ROOFLINE.md): W7900 cache, compute, memory, dispatch, and
   per-family analysis.
-- [ROOFLINE-gfx1151.md](ROOFLINE-gfx1151.md): Strix Halo geometry, unified
+- [ROOFLINE-gfx1151.md](reference/ROOFLINE-gfx1151.md): Strix Halo geometry, unified
   memory, local roofs, and architecture bring-up.
 - [KERNELS.md](KERNELS.md): active variants, source lineage, build profiles, and
   the current optimal path map.
@@ -1832,49 +1836,49 @@ Start with these documents for details deliberately omitted here:
   promotion rules.
 - [LESSONS-LEARNED.md](LESSONS-LEARNED.md): detailed case studies, including
   negative results.
-- [SOL-OPTIMIZATION.md](SOL-OPTIMIZATION.md): ordered gfx1151 PARO/GGUF
+- [SOL-OPTIMIZATION.md](archive/SOL-OPTIMIZATION.md): ordered gfx1151 PARO/GGUF
   optimization ledger; partially superseded by `CONCURRENCY.md`.
-- [GGUF-PREFILL-OPTIMIZATION.md](GGUF-PREFILL-OPTIMIZATION.md): staged prefill
+- [GGUF-PREFILL-OPTIMIZATION.md](campaigns/GGUF-PREFILL-OPTIMIZATION.md): staged prefill
   optimization.
-- [STRIX-HALO-LLAMACPP-REVIEW.md](STRIX-HALO-LLAMACPP-REVIEW.md): comparative
+- [STRIX-HALO-LLAMACPP-REVIEW.md](archive/STRIX-HALO-LLAMACPP-REVIEW.md): comparative
   `gfx1151` source and profiler review.
-- [VLLM_RDNA3.md](VLLM_RDNA3.md): external implementation patterns that were
+- [VLLM_RDNA3.md](archive/VLLM_RDNA3.md): external implementation patterns that were
   evaluated for transfer.
 
 For the topics this guide compresses to a page or two:
 
-- [SPECULATIVE-DECODE.md](SPECULATIVE-DECODE.md): the full `eta` decomposition,
+- [SPECULATIVE-DECODE.md](reference/SPECULATIVE-DECODE.md): the full `eta` decomposition,
   break-even derivation, per-architecture projections, and the procedure for
   measuring `eta` on a new model.
-- [MTP.md](MTP.md) and [DFLASH.md](DFLASH.md): the multi-token-prediction and
+- [MTP.md](reference/MTP.md) and [DFLASH.md](reference/DFLASH.md): the multi-token-prediction and
   draft-verify campaigns, their launch budgets, and their do-not-chase lists.
-- [MEGAKERNEL.md](MEGAKERNEL.md): the launch census, the measured dispatch
+- [MEGAKERNEL.md](reference/MEGAKERNEL.md): the launch census, the measured dispatch
   model, the grid-reduction analysis, and the persistent-barrier microbenchmark
   that closed the megakernel program.
-- [PROCESS-IMPROVEMENT.md](PROCESS-IMPROVEMENT.md): the sprint brief and
+- [PROCESS-IMPROVEMENT.md](archive/PROCESS-IMPROVEMENT.md): the sprint brief and
   measure-first experiment contract behind step 1.
-- [PROCESS-EXPLORATION.md](PROCESS-EXPLORATION.md): the evaluation firewall,
+- [PROCESS-EXPLORATION.md](reference/PROCESS-EXPLORATION.md): the evaluation firewall,
   discovery/qualification/confirmation sets, hypothesis beam, and stagnation
   triggers behind sections 4.8 and step 8.
-- [CONCURRENCY2.md](CONCURRENCY2.md) and [CONCURRENCY.md](CONCURRENCY.md):
+- [CONCURRENCY2.md](reference/CONCURRENCY2.md) and [CONCURRENCY.md](archive/CONCURRENCY.md):
   batched serving, scheduler ownership, admission policy, and the c=N scaling
   interpretation used in section 2.4.
-- [GFX1151-TUNING-LANDSCAPE.md](GFX1151-TUNING-LANDSCAPE.md) and
-  [TUNING-gfx1151.md](TUNING-gfx1151.md): the inherited-constant audit, the
+- [GFX1151-TUNING-LANDSCAPE.md](campaigns/GFX1151-TUNING-LANDSCAPE.md) and
+  [TUNING-gfx1151.md](reference/TUNING-gfx1151.md): the inherited-constant audit, the
   AOTriton crossover measurements, and the ranked `gfx1151` candidate ledger.
-- [TUNING-gguf.md](TUNING-gguf.md) and
-  [GGUF_DECODE_REPACK.md](GGUF_DECODE_REPACK.md): the GGUF tuning lanes and the
+- [TUNING-gguf.md](reference/TUNING-gguf.md) and
+  [GGUF_DECODE_REPACK.md](reference/GGUF_DECODE_REPACK.md): the GGUF tuning lanes and the
   tile-major decode slab layouts behind the row-amortized owners.
-- [LLAMACPP-HIP-PARITY.md](LLAMACPP-HIP-PARITY.md) and
-  [HIP-vs-VULKAN.md](HIP-vs-VULKAN.md): matched cross-implementation evidence,
+- [LLAMACPP-HIP-PARITY.md](campaigns/LLAMACPP-HIP-PARITY.md) and
+  [HIP-vs-VULKAN.md](reference/HIP-vs-VULKAN.md): matched cross-implementation evidence,
   including which structural deltas transferred and which did not.
-- [DEBUG-GFX1151-STALL.md](DEBUG-GFX1151-STALL.md): the open long-prefill
+- [DEBUG-GFX1151-STALL.md](reference/DEBUG-GFX1151-STALL.md): the open long-prefill
   no-progress hazard, its controls, and its containment path.
-- [QUANTS.md](QUANTS.md) and [KVCACHE.md](KVCACHE.md): format coverage, quality
+- [QUANTS.md](reference/QUANTS.md) and [KVCACHE.md](reference/KVCACHE.md): format coverage, quality
   cliffs, capacity math, and KV precision policy.
-- [OOM.md](OOM.md): startup accounting, runtime reserves, and capacity failure
+- [OOM.md](reference/OOM.md): startup accounting, runtime reserves, and capacity failure
   modes.
-- [PM4.md](PM4.md): the transport contract and the qualification bar an
+- [PM4.md](reference/PM4.md): the transport contract and the qualification bar an
   alternative submission path must clear.
 
 The durable lesson across all of them is simple: tune the bytes, ownership,

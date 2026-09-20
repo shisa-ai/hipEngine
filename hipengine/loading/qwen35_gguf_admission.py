@@ -1,6 +1,6 @@
 """Role-safe artifact admission and operation preflight for Qwen3.5 GGUF files.
 
-UD-U1 of ``docs/UD-QUANTS.md``.  Cold-path and CPU-only: no device work, no
+UD-U1 of ``docs/campaigns/UD-QUANTS.md``.  Cold-path and CPU-only: no device work, no
 HIP runtime, no kernel-package import, no torch, and no
 ``backend == ...``/``quant == ...`` branches in engine, model, or dispatch
 code.  This module is *policy metadata* next to the shared dense-weight policy
@@ -226,14 +226,14 @@ class Qwen35GGUFArtifactPreset:
 # separately below.
 _UD_PRESET_FINGERPRINTS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
     # Qwen3.8-27B-UD-Q4_K_M.gguf: payload sha256 322e194f..., header identity
-    # ab826936... (docs/UD-QUANTS-U0-IDENTITY.json), 866 tensors / 851 AR.
+    # ab826936... (docs/campaigns/UD-QUANTS-U0-IDENTITY.json), 866 tensors / 851 AR.
     "5535c5bd7a3e84c6381de70bf8ca5c6f4bcd804dabf8435b85c8418038c8619f": (
         GGUF_UD_Q4_K_M_PRESET,
         (GGUF_PRESET_SCOPE_AR,),
         "Pinned Unsloth Dynamic Qwen3.8-27B UD-Q4_K_M role manifest.",
     ),
     # Qwen3.8-27B-UD-Q4_K_S.gguf: payload sha256 75bc9c8a..., header identity
-    # d2568a4b... (docs/UD-QUANTS-U0-IDENTITY.json), 866 tensors / 851 AR.
+    # d2568a4b... (docs/campaigns/UD-QUANTS-U0-IDENTITY.json), 866 tensors / 851 AR.
     "91130e1698bb7fc24c89f94e8b1043dd788769682b56c6514d70b6d2cdea068c": (
         GGUF_UD_Q4_K_S_PRESET,
         (GGUF_PRESET_SCOPE_AR,),
