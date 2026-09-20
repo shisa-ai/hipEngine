@@ -6656,6 +6656,11 @@ class Qwen35GGUFResidentModelRunner:
             "kv_pool_memory_budget_mib",
             getattr(config, "kv_pool_memory_budget_mib", None),
         )
+        # Pool pressure reclaims this runner's retained prefix snapshots, so the
+        # pool-owning session is handed the handler explicitly. The session's own
+        # `_resident_batch_owner` names the session that owns shared session-level
+        # resources and has no prefix cache to reclaim from.
+        setattr(factory_session, "_kv_pool_pressure_owner", self)
         initial_pages = int(config.kv_pool_initial_pages)
         self._kv_pool_memory_budget_mib = getattr(
             config, "kv_pool_memory_budget_mib", None

@@ -1158,23 +1158,46 @@ def test_pool_pressure_callbacks_tolerate_a_session_without_a_batch_owner() -> N
         if (owner := getattr(session, "_resident_batch_owner", None)) is not None
         else None
     )
-    on_pressure = lambda required: (  # noqa: E731
-        owner.evict_prefix_cache_for_pressure(required)
-        if (owner := getattr(session, "_resident_batch_owner", None)) is not None
-        else None
-    )
     assert before_grow() is None
-    assert on_pressure(8) is None
+    # Pressure never reads ``_resident_batch_owner``: it resolves the published
+    # prefix-cache owner instead (see the published-owner contract below).
+    assert session._on_device_kv_pool_pressure(8) is None
 
-    # With an owner attached the callbacks delegate.
+    # With an owner attached the grow callback delegates.
     calls: list[object] = []
     session._resident_batch_owner = SimpleNamespace(
         _invalidate_live_packed_decode_graphs=lambda: calls.append("invalidate"),
-        evict_prefix_cache_for_pressure=lambda required: calls.append(("evict", required)),
     )
     before_grow()
-    on_pressure(8)
-    assert calls == ["invalidate", ("evict", 8)]
+    assert calls == ["invalidate"]
+
+
+def test_pool_pressure_reclaims_through_the_published_prefix_cache_owner() -> None:
+    """Pool pressure must reach the owner of the retained prefix snapshots.
+
+    The device KV pool is created by a resident session, but the retained
+    snapshots that pressure may reclaim live on the generation runner that owns
+    the session. ``_resident_batch_owner`` cannot serve that callback: on a
+    session it names the *session* holding shared session-level resources, and a
+    session has no prefix cache. Resolving the handler through it raised
+    ``AttributeError`` the first time a request needed more pages than the pool
+    floor held, and a fatal execution failure closes the engine for every later
+    request.
+    """
+
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    # A session-shaped batch owner owns shared buffers, not the prefix cache.
+    session._resident_batch_owner = SimpleNamespace(
+        _invalidate_live_packed_decode_graphs=lambda: None,
+    )
+    assert session._on_device_kv_pool_pressure(8) is None
+
+    calls: list[int] = []
+    session._kv_pool_pressure_owner = SimpleNamespace(
+        evict_prefix_cache_for_pressure=lambda required: calls.append(required) or 4,
+    )
+    assert session._on_device_kv_pool_pressure(8) == 4
+    assert calls == [8]
 
 
 def test_bound_blocks_validate_against_pool_capacity_after_growth() -> None:
