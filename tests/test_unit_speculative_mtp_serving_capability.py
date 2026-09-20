@@ -9,6 +9,11 @@ from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
 from hipengine.llm import LLM
 from hipengine.models.kv_capabilities import ModelArtifactIdentity
 from hipengine.models.qwen35 import Qwen35GGUFModel, Qwen35MoeGGUFModel
+from hipengine.server.api import (
+    ServerConfig,
+    _log_pretty_startup_summary,
+    _speculation_startup_text,
+)
 from hipengine.speculative.serving import (
     STRUCTURAL_REJECTION_AXES,
     SpeculativeMTPServingEvidence,
@@ -922,9 +927,11 @@ def test_unrelated_q4ks_artifact_runs_on_implementation_capability(
 ) -> None:
     """A Q4_K_S artifact no retained row binds still executes when requested.
 
-    Its execution identity is unknown to the evidence, so automatic intent stays
-    off, but an explicit request resolves through the dense BF16 implementation
-    declaration rather than falling through to an untracked legacy route.
+    Its execution identity is unknown to the evidence, so no measurement backs
+    it, but both intents resolve through the dense BF16 implementation
+    declaration rather than falling through to an untracked legacy route.  The
+    declaration is automatic-eligible, so automatic policy needs no measurement
+    either: the physical cell table is what bounds it.
     """
 
     monkeypatch.setattr(
@@ -955,6 +962,7 @@ def test_unrelated_q4ks_artifact_runs_on_implementation_capability(
     assert explicit is not None
     assert explicit.admitted is True
     assert explicit.as_dict()["admission_basis"] == "implementation"
+    assert explicit.automatic_eligible is True
 
     # Automatic intent takes the same capability route: an unrelated artifact
     # is unmeasured, and unmeasured never means refused.
@@ -969,6 +977,22 @@ def test_unrelated_q4ks_artifact_runs_on_implementation_capability(
     assert automatic is not None
     assert automatic.admitted is True
     assert automatic.as_dict()["admission_basis"] == "implementation"
+    assert automatic.automatic_eligible is True
+
+    # The physical cell table stays the gate: gfx1151 offers a multi-row chain
+    # only up to C4, so a wider group is a capability miss rather than a
+    # measurement miss, and it refuses in both intents.
+    wider = generator.resolve_speculative_mtp_serving_plan(
+        realized_group_rows=8,
+        resident_capacity=8,
+        candidate_budget=3,
+        sampling_mode="greedy_fast",
+        kv_storage="bf16",
+        memory_fit=True,
+    )
+    assert wider is not None
+    assert wider.admitted is False
+    assert wider.reason == "dense_group_above_offered_width"
 
 
 def test_llm_delegates_mechanical_serving_identity_to_loaded_generator() -> None:
@@ -1330,3 +1354,144 @@ def test_budget_resolution_reports_requested_resolved_and_source() -> None:
         "candidate_budget": 3,
         "candidate_budget_source": "model_plugin_evidence",
     }
+
+
+# ---------------------------------------------------------------------------
+# Startup summary states the resolved route, not the configured policy.
+#
+# ``serving_route`` is true whenever MTP is configured and the engine can serve
+# it, so a line keyed on it advertises a route the request path may refuse.
+# That is invisible to an operator reading the banner, which is how a server
+# came to report "MTP enabled" while every request ran plain AR.
+# ---------------------------------------------------------------------------
+
+_BANNER_BUDGET = {"requested": None, "resolved": 3, "source": "generator_default"}
+
+
+def _banner_text(
+    config: ServerConfig,
+    *,
+    serving_route: bool,
+    plan: dict | None,
+    budget: dict = _BANNER_BUDGET,
+) -> str:
+    return _speculation_startup_text(
+        config,
+        capability={"serving_route": serving_route},
+        budget=budget,
+        engine=SimpleNamespace(speculative_mtp_serving_capability=plan),
+    )
+
+
+def _banner_config(**changes) -> ServerConfig:
+    return ServerConfig(model="/models/example.gguf", served_model_name="example", **changes)
+
+
+def test_startup_speculation_line_never_advertises_a_refused_route() -> None:
+    """A configured route the plan refuses must not read as enabled."""
+
+    config = _banner_config(speculative_mtp_serving="auto")
+    text = _banner_text(
+        config,
+        serving_route=True,
+        plan={"admitted": False, "reason": "insufficient_memory"},
+    )
+    assert text == "MTP unavailable (insufficient_memory)"
+
+
+def test_startup_speculation_line_marks_a_depth_no_measurement_backs() -> None:
+    """Capability-only admission reads differently from a measured one."""
+
+    config = _banner_config(speculative_mtp_serving="auto")
+    unmeasured = _banner_text(
+        config,
+        serving_route=True,
+        plan={
+            "admitted": True,
+            "reason": "implemented_gguf_dense_bf16_gfx1151_c1_native_chain",
+            "selected_candidate_count": 3,
+        },
+    )
+    assert unmeasured == "MTP enabled, candidate budget 3 (unmeasured)"
+
+    measured = _banner_text(
+        config,
+        serving_route=True,
+        plan={
+            "admitted": True,
+            "reason": "qualified_automatic_realized_singleton_c1_b3",
+            "selected_candidate_count": 3,
+        },
+    )
+    assert measured == "MTP enabled, candidate budget 3"
+
+
+def test_startup_speculation_line_reports_the_resolved_depth_over_the_configured_one() -> None:
+    """The selected depth wins: a row may authorize less than the default."""
+
+    config = _banner_config(speculative_mtp_serving="auto")
+    text = _banner_text(
+        config,
+        serving_route=True,
+        plan={
+            "admitted": True,
+            "reason": "qualified_automatic_realized_singleton_c1_b2",
+            "selected_candidate_count": 2,
+        },
+    )
+    assert text == "MTP enabled, candidate budget 2"
+
+
+def test_startup_speculation_line_states_the_policy_when_no_route_is_configured() -> None:
+    config = _banner_config(speculative_mtp_serving="off")
+    assert _banner_text(config, serving_route=False, plan=None) == (
+        "MTP unavailable (policy off)"
+    )
+
+
+def test_startup_speculation_line_reports_an_unresolved_plan() -> None:
+    """An engine that exposes support but resolves no plan is not enabled."""
+
+    config = _banner_config(speculative_mtp_serving="auto")
+    assert _banner_text(config, serving_route=True, plan=None) == (
+        "MTP unavailable (unresolved)"
+    )
+
+
+def test_startup_speculation_line_reports_an_unresolved_depth() -> None:
+    """A plan that admits without a depth states that rather than "None"."""
+
+    config = _banner_config(speculative_mtp_serving="auto")
+    text = _banner_text(
+        config,
+        serving_route=True,
+        plan={"admitted": True, "reason": "implemented_x", "selected_candidate_count": None},
+        budget={"requested": None, "resolved": None, "source": "unresolved"},
+    )
+    assert text == "MTP enabled, candidate budget unresolved"
+
+
+def test_pretty_startup_summary_reads_the_resolved_speculation_route(monkeypatch) -> None:
+    """The banner call site is wired to the resolved plan, not the policy."""
+
+    messages: list[str] = []
+    monkeypatch.setattr(
+        "hipengine.server.api._LOGGER.info",
+        lambda message, *args: messages.append(message % args),
+    )
+    config = _banner_config(speculative_mtp_serving="auto")
+    engine = SimpleNamespace(
+        speculative_mtp_serving_capability={
+            "admitted": False,
+            "reason": "mtp_backend_unsupported",
+        },
+        # Required for the route to read as configured at all, which is what
+        # makes the resolved plan rather than the policy decide the line.
+        generate_speculative_mtp_detailed=lambda *args, **kwargs: None,
+        live_loop_snapshot=lambda: {},
+    )
+    _log_pretty_startup_summary(config, engine=engine, memory=None)
+
+    rendered = messages[-1]
+    assert "MTP unavailable (mtp_backend_unsupported)" in rendered
+    assert "MTP enabled" not in rendered

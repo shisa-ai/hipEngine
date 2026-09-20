@@ -129,23 +129,36 @@ Per-request deadlines are opt-in via request `timeout_ms`. Set
 deadline to requests that omit the field. A request-level `timeout_ms` overrides
 the server default.
 
-GGUF MTP serving defaults to the fail-closed `auto` policy. Most scopes use
-exact/default AR; `enabled` cannot convert a broad dense `supports_default_mtp`
-boolean into default admission. Default routing requires an immutable
-model-plugin plan with `automatic_eligible=true`.
+GGUF MTP serving defaults to the fail-closed `auto` policy: a request that does
+not ask for speculation itself receives it only from a plan the server is
+willing to select. Default routing requires an immutable model-plugin plan with
+`automatic_eligible=true`, supplied either by a retained serving-evidence row or
+by the model plugin's implementation declaration.
 
-One exact scope is automatic: content-verified Qwen3.8 Q4_K_M on gfx1151,
-strict profile/manifest, BF16 uniform KV, resident and physical C1, B3,
-max-sequence 1024, prompt context 1-67, natural25 output, raw greedy, and memory
-fit. It uses Generation-2 staged `gguf_specdec2_mtp2` and plan fingerprint
-`sha256:5bee87fc6e6a157aca61d7704795ca97aa667798f1876c958db1d19a831b7ded`.
-Capabilities expose the complete key under `certified_explicit_scope`, include
-it under `certified_default_scopes`, and report
-`automatic_route_promoted=true`/`default_enabled=true`. The same fingerprint
-appears in automatic/explicit route decisions and rollback. Wrong artifact,
-backend, quant, profile/manifest, KV, resident capacity, group, B, sampler,
-context, horizon, or memory fit selects K0 before backend mutation with a stable
-reason. Other scopes are selected from their own model-plugin policies.
+The implementation declaration is the automatic scope for every artifact the
+kernels implement, whether or not a measurement covers it. Admission is
+capability-only: backend and architecture, KV storage, layout, scale dtype and
+granularity, sampling mode, candidate depth, group width, and memory fit. A
+missing measurement never withholds the path, and an artifact that routes
+through the same kernels as a measured one inherits that measurement's identity
+by execution fingerprint rather than by file hash. A cell whose own retained row
+was measured slower than AR keeps `automatic_eligible=false` on that row, so
+automatic policy does not select it.
+
+What bounds automatic speculation is the backend's physical cell table: which
+`(width, depth)` pairs the active backend package lists, capped by resident
+capacity. A cell the table does not list falls back to whole-group AR rather
+than running a cell nothing measured, and a width no declaration covers is a
+capability miss rather than a measurement miss.
+
+Capabilities expose the resolved plan under `certified_explicit_scope`, and
+report `automatic_route_promoted`, `default_enabled`, and
+`certified_default_scopes` from it. The same plan fingerprint appears in
+automatic/explicit route decisions and rollback. Wrong backend, quant, KV,
+capacity, group, depth, sampler, or memory fit selects K0 before backend
+mutation with a stable reason. The startup summary states the resolved route and
+depth rather than the configured policy, and marks an admission that no
+measurement on this cell backs.
 
 Qwen3.8-27B Q4_K_M on gfx1151 additionally enables automatic sampled MTP for
 one through four active requests in a capacity-four server with BF16 KV and
