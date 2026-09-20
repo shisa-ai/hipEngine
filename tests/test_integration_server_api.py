@@ -2222,7 +2222,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert "guided_diff" not in body["unsupported_fields"]
 
 
-def test_capabilities_endpoint_reports_scoped_gguf_native_sampler_candidate(
+def test_capabilities_endpoint_reports_default_gguf_native_sampler(
     monkeypatch,
 ) -> None:
     monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
@@ -2236,14 +2236,14 @@ def test_capabilities_endpoint_reports_scoped_gguf_native_sampler_candidate(
     )
     assert disabled.status_code == 200
     native = disabled.json()["sampling"]["native_gpu"]
-    assert native["enabled"] is False
+    assert native["enabled"] is True
     assert native["enable_env"] == "HIPENGINE_QWEN35_NATIVE_SAMPLER=1"
     assert native["scope"] == "gguf_resident_c1_and_dense_compatible_c_gt_1"
     assert native["c_gt_1"] == (
         "single_batched_launch_when_compatible_else_native_rows"
     )
     assert native["true_batched_c_gt_1"] is True
-    assert native["default_path"] is False
+    assert native["default_path"] is True
     assert "forced_tokens_pending" in native["unsupported"]
     assert "gguf" not in native["unsupported"]
     assert "true_batched_c_gt_1" not in native["unsupported"]
@@ -2254,6 +2254,10 @@ def test_capabilities_endpoint_reports_scoped_gguf_native_sampler_candidate(
     )
     assert enabled.status_code == 200
     assert enabled.json()["sampling"]["native_gpu"]["enabled"] is True
+
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
+    rollback = TestClient(create_app(config, llm=FakeLLM())).get("/v1/hipengine/capabilities")
+    assert rollback.json()["sampling"]["native_gpu"]["enabled"] is False
 
 
 def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_support(monkeypatch) -> None:

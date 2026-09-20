@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from copy import deepcopy
+import hashlib
+import json
 from typing import Any
 
 import numpy as np
 
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipRuntime
+from hipengine.core.hip import HipRuntime, MemcpyKind
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
@@ -26,6 +29,10 @@ from hipengine.generation.sampling import (
     sampler_fast_path_blockers,
     supports_native_gpu_sampling,
 )
+from hipengine.kernels.hip_gfx1100.sampling.sampler import (
+    fast_sampler_scratch_bytes,
+    sample_sorted_f32_rows_i32,
+)
 from hipengine.kernels.hip_gfx1100.sampling import (
     apply_processors_f32_rows,
     sample_temperature_f32_rows_i32,
@@ -33,6 +40,49 @@ from hipengine.kernels.hip_gfx1100.sampling import (
     sample_top_p_temperature_f32_rows_i32,
     sample_topk_temperature_f32_rows_i32,
 )
+
+
+def native_sampler_provenance(full_vocab_algorithm: str = "sorted") -> dict[str, Any]:
+    """Report the sampler arithmetic axis independently of model arithmetic.
+
+    A strict *model* plus the default production sampler is an explicit mixed
+    configuration, not a claim that sorted sampling reproduces strict draws.
+    The original full-vocabulary variants remain a debugging opt-out. This
+    manifest describes selection, not a model/profile qualification certificate.
+    Backend identity belongs to the enclosing session; these shared HIP variant
+    names resolve through the existing four-axis registry on either gfx11 lane.
+    """
+    if full_vocab_algorithm not in {"sorted", "strict"}:
+        raise ValueError("full_vocab_algorithm must be sorted or strict")
+    sorted_path = full_vocab_algorithm == "sorted"
+    fallbacks = {
+        "full_vocab_filtered": "top_p_temperature_rows_i32",
+        "full_vocab_unfiltered": "temperature_rows_i32",
+        "full_vocab_top_logprobs": "temperature_top_logprobs_rows_i32",
+        "bounded_topk": "topk_temperature_rows_i32",
+        "processors": "processors_rows",
+    }
+    payload: dict[str, Any] = {
+        "kind": "hipengine_native_sampler_variant_manifest",
+        "schema_version": 1,
+        "full_vocab_algorithm": full_vocab_algorithm,
+        "sampler_execution_profile": "production" if sorted_path else "strict",
+        "arithmetic_class": "T2" if sorted_path else "T0",
+        "registry_layer": "sampler",
+        "registry_quant": "f32",
+        "rng_abi": "splitmix64_seed_step_physical_row_v1",
+        "selections": {
+            scope: {
+                "selected_variant": "sorted_rows_i32" if sorted_path and scope.startswith("full_vocab_") else fallback,
+                "strict_fallback_variant": fallback,
+            }
+            for scope, fallback in fallbacks.items()
+        },
+    }
+    payload["manifest_sha256"] = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return payload
 
 
 class NativeSamplerWorkspace:
@@ -50,7 +100,10 @@ class NativeSamplerWorkspace:
         runtime: HipRuntime,
         vocab_size: int,
         sampler_library: Any,
+        full_vocab_algorithm: str = "sorted",
     ) -> None:
+        self._variant_manifest = native_sampler_provenance(full_vocab_algorithm)
+        self._full_vocab_algorithm = full_vocab_algorithm
         if int(vocab_size) <= 0:
             raise ValueError("vocab_size must be positive")
         self.runtime = runtime
@@ -60,6 +113,21 @@ class NativeSamplerWorkspace:
         self._named_buffers: dict[str, DeviceBuffer] = {}
         self._cached_uploads: dict[tuple[Any, ...], DeviceBuffer] = {}
         self.closed = False
+        self._last_selection: dict[str, Any] | None = None
+
+    @property
+    def full_vocab_algorithm(self) -> str:
+        return self._full_vocab_algorithm
+
+    @property
+    def provenance(self) -> dict[str, Any]:
+        """Fresh snapshot; callers cannot mutate the live selection or its hash."""
+        payload = deepcopy(self._variant_manifest)
+        # The stable manifest describes all eligible routes. Execution metadata
+        # separately identifies the scope actually used by the last good call.
+        if self._last_selection is not None:
+            payload["last_selection"] = dict(self._last_selection)
+        return payload
 
     def sample(
         self,
@@ -125,8 +193,12 @@ class NativeSamplerWorkspace:
             )
 
         for state in state_tuple:
-            state.prepare_for_selection()
-            if state.has_forced_tokens:
+            # Dynamic preparation may mutate a thinking budget or forced queue.
+            # Probe on a clone so a rejected/invalid batch leaves request state
+            # untouched. Ordinary native rows need no clone (preparation is a no-op).
+            prepared = state.clone() if state.thinking_budget is not None else state
+            prepared.prepare_for_selection()
+            if prepared.has_forced_tokens:
                 raise NotImplementedError(
                     "native sampler does not admit dynamic forced-token queues"
                 )
@@ -198,22 +270,14 @@ class NativeSamplerWorkspace:
             "out_logprobs_f32",
             rows * DType.FP32.itemsize,
         )
-        committed_indices = (
-            int(out_indices_i64_ptr)
-            if out_indices_i64_ptr is not None
-            else self._buffer(
-                "out_indices_i64",
-                rows * DType.INT64.itemsize,
-            ).ptr
-        )
-        committed_values = (
-            int(out_values_f32_ptr)
-            if out_values_f32_ptr is not None
-            else self._buffer(
-                "out_values_f32",
-                rows * DType.FP32.itemsize,
-            ).ptr
-        )
+        # Kernels write workspace-owned staging only. A later invalid row must
+        # not publish any earlier row into the caller's resident commit buffers.
+        committed_indices = self._buffer(
+            "out_indices_i64", rows * DType.INT64.itemsize,
+        ).ptr
+        committed_values = self._buffer(
+            "out_values_f32", rows * DType.FP32.itemsize,
+        ).ptr
 
         top_ps = np.asarray(
             [float(getattr(params, "top_p", 1.0)) for params in params_rows],
@@ -270,14 +334,21 @@ class NativeSamplerWorkspace:
                 library=self.sampler_library,
                 runtime=self.runtime,
             )
-        elif uses_filter:
+        elif uses_filter or self.full_vocab_algorithm == "sorted":
             top_p_buf = self._cached_upload(("top_ps_f32", top_ps.tobytes()), top_ps)
             min_p_buf = self._cached_upload(("min_ps_f32", min_ps.tobytes()), min_ps)
             retained = self._buffer(
                 "retained_counts_i32",
                 rows * DType.INT32.itemsize,
             )
-            sample_top_p_temperature_f32_rows_i32(
+            selector = sample_top_p_temperature_f32_rows_i32
+            selection_kwargs: dict[str, Any] = {"threads": 128}
+            if self.full_vocab_algorithm == "sorted":
+                scratch_bytes = fast_sampler_scratch_bytes(rows, self.vocab_size)
+                scratch = self._buffer("sorted_sampler_scratch", scratch_bytes)
+                selector = sample_sorted_f32_rows_i32
+                selection_kwargs = {"scratch_ptr": scratch.ptr, "scratch_bytes": scratch.nbytes}
+            selector(
                 logits_ptr,
                 temperatures.ptr,
                 top_p_buf.ptr,
@@ -298,7 +369,7 @@ class NativeSamplerWorkspace:
                 out_indices_i64_ptr=committed_indices,
                 out_values_f32_ptr=committed_values,
                 step_index=step_index,
-                threads=128,
+                **selection_kwargs,
                 stream=stream,
                 library=self.sampler_library,
                 runtime=self.runtime,
@@ -377,10 +448,14 @@ class NativeSamplerWorkspace:
             ).reshape(rows, top_width)
         )
 
+        # Validate the complete batch before building any externally visible
+        # commit. In particular row 1 cannot advance row 0 and then raise.
+        for token_id in selected_ids:
+            self._validate_token(int(token_id))
+
         results: list[SampleResult] = []
-        for row, (params, state) in enumerate(zip(params_rows, states, strict=True)):
+        for row, params in enumerate(params_rows):
             token_id = int(selected_ids[row])
-            self._validate_token(token_id)
             top_pairs: list[tuple[int, float]] = []
             if requested_top > 0:
                 assert top_ids is not None and top_values is not None
@@ -409,7 +484,6 @@ class NativeSamplerWorkspace:
                     else self.vocab_size
                 )
             )
-            state.observe(token_id)
             results.append(
                 SampleResult(
                     token_id=token_id,
@@ -422,6 +496,30 @@ class NativeSamplerWorkspace:
                     fast_path_blockers=sampler_fast_path_blockers(params),
                 )
             )
+        # Publish only after all row validation/result construction succeeds.
+        # D2D copies share the selection stream and complete before the staging
+        # buffers can be reused or request histories are advanced.
+        for destination, source, itemsize in (
+            (out_indices_i64_ptr, committed_indices, DType.INT64.itemsize),
+            (out_values_f32_ptr, committed_values, DType.FP32.itemsize),
+        ):
+            if destination is not None:
+                self.runtime.memcpy_async(
+                    int(destination), source, rows * itemsize,
+                    MemcpyKind.DEVICE_TO_DEVICE, stream,
+                )
+        if out_indices_i64_ptr is not None or out_values_f32_ptr is not None:
+            self._synchronize(stream)
+        for state, result in zip(states, results, strict=True):
+            state.prepare_for_selection()
+            state.observe(result.token_id)
+        scope = "bounded_topk" if top_k > 0 else (
+            "full_vocab_filtered" if uses_filter else (
+                "full_vocab_top_logprobs" if requested_top > 0 else "full_vocab_unfiltered"
+            )
+        )
+        selection = self._variant_manifest["selections"][scope]
+        self._last_selection = {"scope": scope, **selection, "rows": rows}
         return tuple(results)
 
     def _processed_logits_ptr_rows(

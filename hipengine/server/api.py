@@ -7116,7 +7116,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         native_gpu_capability = {
             "enabled": _env_flag(
                 "HIPENGINE_QWEN35_NATIVE_SAMPLER",
-                default=not gguf_native_candidate,
+                default=True,
             ),
             "env": "HIPENGINE_QWEN35_NATIVE_SAMPLER",
             "disable_env": "HIPENGINE_QWEN35_NATIVE_SAMPLER=0",
@@ -7156,7 +7156,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         "single_batched_launch_when_compatible_else_native_rows"
                     ),
                     "true_batched_c_gt_1": True,
-                    "default_path": False,
+                    "default_path": True,
                     "unsupported": [
                         capability
                         for capability in NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES

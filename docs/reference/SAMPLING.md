@@ -4,17 +4,16 @@ owns: Sampling parameter support, sampler-state contract, and CPU/GPU rollout tr
 ---
 # Sampling Design
 
-Last updated: 2026-07-22
+Last updated: 2026-09-21
 
-This document defines how hipEngine should grow from the current greedy-only
-Qwen3.5/PARO and GGUF generation paths to normal server/library sampling
-without weakening the torch-free runtime, plugin-registry boundaries, or retained
-greedy performance path.
+This document describes sampling support and the original implementation plan
+for Qwen3.5/PARO and GGUF, including the torch-free runtime, plugin-registry
+boundaries, and separate greedy fast path.
 
 ## Current state
 
 The public API and server now expose the functional host-sampling surface for
-PARO and GGUF. PARO native GPU sampling is the default for the supported scoped
+PARO and GGUF. Native GPU sampling is the default for their supported scoped
 route, and unsupported native shapes fail closed to host logits sampling:
 
 - `hipengine.llm.SamplingParams` carries the functional sampler fields needed
@@ -31,12 +30,10 @@ route, and unsupported native shapes fail closed to host logits sampling:
   still use response post-trimming. Unknown top-level request extras are rejected
   instead of silently ignored, and rejected/failed requests log `REQUEST_FAILED`
   diagnostics for local server bring-up.
-- `Qwen35ParoOneTokenGenerator` now keeps greedy-equivalent requests on the
-  graph/argmax fast path and routes non-greedy or processed-argmax requests
-  through a correctness-first host-logits sampler.
-- `Qwen35GGUFBringupGenerator` keeps greedy-equivalent requests on its graph path
-  and routes non-greedy or processed-argmax requests through the shared
-  host-logits sampler using resident-session logits readback.
+- `Qwen35ParoOneTokenGenerator` and `Qwen35GGUFBringupGenerator` keep
+  greedy-equivalent requests on the graph/argmax fast path. Supported sampled
+  requests use native GPU selection; processed argmax and unsupported native
+  requests use the shared host-logits sampler.
 - `Qwen35ParoResidentSession._sample_device_from_hidden(...)` remains the
   device-resident greedy suffix. It has been split internally into logits
   projection plus argmax selection so `_sample_from_hidden(...)` can copy FP32
@@ -45,8 +42,8 @@ route, and unsupported native shapes fail closed to host logits sampling:
   prefill. Fully GPU-sampler-eligible rows use serial per-slot native GPU
   sampling by default when the resident session exposes the native row sampler;
   `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` disables that route for rollback or
-  bisection. The GGUF resident model owner now has a separate correctness-ready,
-  explicit `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` candidate: supported c1 rows use
+  bisection. The GGUF resident model owner also defaults to native sampling:
+  supported c1 rows use
   one native row selection, and dense compatible c>N rows use one batched
   selection launch over packed device logits. Heterogeneous/sparse native rows
   split safely, while mixed native/host sampler groups run serially so a host
@@ -88,11 +85,9 @@ route, and unsupported native shapes fail closed to host logits sampling:
   `sampler_mode="gpu_sample"`, `native_sampler_rows=true`,
   `full_vocab_logits_d2h=false`, and `logits_d2h_bytes=0`.
 
-The original user-visible failure for non-greedy Qwen3.5/PARO and GGUF requests
-is fixed for the host-logits path. The GGUF native integration is now ready for
-A3 host/native measurement but remains explicit and carries no performance
-claim. Remaining work is promotion evidence, heterogeneous/sparse batch
-selection without row splitting, and native parity for dynamic response shapes.
+Supported non-greedy Qwen3.5/PARO and GGUF requests use native sampling without
+an enable flag. Remaining work includes heterogeneous/sparse batch selection
+without row splitting and native support for dynamic response shapes.
 
 ## Native sampler promotion scope
 
@@ -121,14 +116,22 @@ Promotion blockers closed in this pass:
 - generator tests cover default c=1, default serial per-slot c>N, explicit
   opt-out host fallback, and unsupported native-shape fallback metadata.
 
-The 2026-07-21 GGUF candidate is not part of the PARO default promotion. It is
-admitted only with `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`, and only when
-`supports_native_gpu_sampling()` accepts the request. A real W7900 c4 gate
+GGUF native sampling is default-on for available resident sessions when
+`supports_native_gpu_sampling()` accepts the request. Set
+`HIPENGINE_QWEN35_NATIVE_SAMPLER=0` for host rollback. The full-vocabulary sorted
+sampler has explicit production provenance independent of model arithmetic;
+`native_sampler_algorithm="strict"` selects the debugging implementation.
+The 2026-09-21 zbook / Radeon 8060S category/heldout comparison and c1/c4 lifecycle
+gate establish the measured Qwen3.8-27B Q4_K_M path; see
+[results and commands](../../benchmarks/results/2026-09-21-zbook-fast-cpu-gpu-sampling.json).
+The default-on lifecycle rerun leaves the enable environment variable unset.
+New-kernel gfx1100 performance remains unverified. A historical W7900 c4 gate
 repeated four fixed-seed rows exactly, matched same-shape forced-host Conv/GDN
 and logical live-KV bytes, passed stop/EOS/logprob telemetry, launched six
 batched sampler transitions, and drained all refs; artifact
 `benchmarks/results/2026-07-21-w7900-gguf-native-sampler-correctness.json`.
-It records `performance_claim=false` and does not promote the route.
+That historical artifact records `performance_claim=false`; the default decision
+uses the newer implementation and evidence above.
 
 Remaining native-sampler gaps are not blockers because the planner falls back
 before native execution:
@@ -142,7 +145,11 @@ before native execution:
 - broader retained benchmarks/profiler coverage beyond the first W7900 promotion
   smoke.
 
-### Native follow-up triage
+### Historical Native Follow-up Triage
+
+The following triage records the original implementation's work items.
+The September 2026 full-vocabulary sort/merge/scan implementation addresses
+the slow selector described below and is the default for supported requests.
 
 The supported native route is promotion-ready because it avoids full-vocabulary
 logits D2H and keeps unsupported shapes on the host fallback. The remaining
@@ -185,9 +192,9 @@ Unsupported native cases, ranked by likely ease and payoff:
 | P2 | Forced-token queues when already pending | A per-step forced-token fast path can emit the queued token and metadata without host logits sampling. It needs careful interaction with sequence repair, JSON close, and thinking-budget queues. |
 | Done | Request-constant native scalar buffer caching | Implemented for request-constant native sampler scalars and logit-bias buffers; the retained profiler artifact showed warmed native sampler H2D copies/token drop to zero. Dynamic history and step-index metadata remain per-step. |
 | P3 | `top_k > 64` | Raises register/shared-memory pressure in the bounded sampler. Needs a measured reason before increasing the cap. |
-| Done (explicit candidate) | GGUF native sampling | The resident owner now keeps supported c1/dense-compatible c>N logits on device, batches compatible packed rows, reports zero full-vocabulary D2H, and passes fixed-seed/same-shape state-KV/stop/EOS/ownership gates. It remains explicit until A3 performance evidence. |
+| Done (default-on) | GGUF native sampling | The resident owner keeps supported c1/dense-compatible c>N logits on device, batches compatible packed rows, reports zero full-vocabulary D2H, and passes fixed-seed/same-shape state-KV/stop/EOS/ownership gates. Unsupported requests use the host fallback. |
 | Partial | True batched c>N native token selection | GGUF dense compatible groups use one rows kernel; heterogeneous step/top-k/top-logprob or sparse physical rows split to native row launches. PARO remains serial per slot. |
-| P3 | Faster full-vocab top-p/min-p selector | Performance work after correctness parity; current exact path is acceptable for scoped native coverage but not the greedy-comparison target. |
+| Done | Faster full-vocab top-p/min-p selector | The default sorted implementation uses full-vocabulary tile sorting, parallel merging, and FP64 scans of FP32 weights. Original strict primitives remain explicit debugging fallbacks. |
 
 ## Hardware lane for this work
 
@@ -573,7 +580,7 @@ fully vectorized at first:
 - `SamplerParamsBlock` represents all public sampler fields, not only
   temperature/top-k/top-p/repetition.
 - PARO c>N projects rows through native packed prefill and samples each row
-  serially. The explicit GGUF candidate instead samples dense compatible packed
+  serially. The GGUF native default instead samples dense compatible packed
   logits with one rows launch, falling back to native row launches for
   heterogeneous/sparse native groups and serial model steps for mixed
   native/host groups.
@@ -617,10 +624,11 @@ fully vectorized at first:
 The first useful user-facing milestone is S0+S1+S2. That gives correct normal
 sampling with a known performance tradeoff and no change to greedy performance.
 S3, S4, S5, S8, and S9 are complete for the current host/PARO/GGUF scheduler
-scope. S6 and S7 are promoted for the scoped PARO native default. GGUF native
-sampling is a correctness-ready explicit candidate with dense compatible c>N
-batch selection; A3 performance measurement and broader heterogeneous/dynamic
-processor parity remain open and do not block functional host support.
+scope. S6 and S7 are enabled for supported PARO and GGUF native requests,
+including dense compatible GGUF c>N batch selection. The track table records
+the original rollout; the current default and September 2026 full-vocabulary
+implementation are described above. Unsupported dynamic processors continue
+to use the functional host path.
 
 ## Correctness and validation gates
 

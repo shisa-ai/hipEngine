@@ -1349,6 +1349,8 @@ class Qwen35GGUFBringupGenerator:
     prefill_attn_aotriton_min_tokens: int | None = None
     native_batch_decode: bool = False
     native_batch_capacity: int = 8
+    # Independent of model execution_profile: explicit strict debugging opt-out.
+    native_sampler_algorithm: str = "sorted"
     engine_loop_config_defaults: Mapping[str, Any] = field(default_factory=dict, repr=False)
     server_plain_ar_max_active_requests: int | None = None
     server_plain_ar_max_active_requests_by_max_sequence_length: Mapping[int, int] = field(
@@ -2538,7 +2540,28 @@ class Qwen35GGUFBringupGenerator:
         if error is not None:
             raise error
 
+    @property
+    def native_sampler_provenance(self) -> dict[str, Any]:
+        from hipengine.runtime.native_sampler import native_sampler_provenance
+
+        return {
+            **native_sampler_provenance(self.native_sampler_algorithm),
+            "model_execution_profile": getattr(self, "execution_profile", None),
+            "backend": self.backend,
+        }
+
+    def _configure_native_sampler(self, session: Qwen35GGUFResidentSession) -> None:
+        # Sampling is an independently declared arithmetic axis (§3). Do not
+        # infer strict sampler parity from a model-only execution-profile label.
+        provenance = self.native_sampler_provenance
+        workspace = getattr(session, "_native_sampler_workspace", None)
+        if workspace is not None and not workspace.closed:
+            if workspace.full_vocab_algorithm != self.native_sampler_algorithm:
+                raise RuntimeError("cannot change live native sampler selection")
+        session.native_sampler_algorithm = provenance["full_vocab_algorithm"]
+
     def _configure_session(self, session: Qwen35GGUFResidentSession) -> None:
+        self._configure_native_sampler(session)
         # Prefill correctness policy is selected by the generator registry
         # factory, not by a quant branch in runtime dispatch.
         session.default_bulk_attention_mode = getattr(
@@ -2791,6 +2814,7 @@ class Qwen35GGUFBringupGenerator:
             }
         )
         with Qwen35GGUFResidentSession(self.model_path, **session_kwargs) as session:
+            self._configure_native_sampler(session)
             if plan.mode is SamplingMode.GREEDY_FAST:
                 yield from self._stream_greedy(
                     session,
@@ -9714,8 +9738,10 @@ class Qwen35GGUFResidentModelRunner:
         native_sample = None
         if row.native_sampler:
             if native_compact_prefill:
+                # Packed prefill leaves logits on its execution owner, while
+                # the selected token still belongs to the request's slot.
                 sample_native = getattr(
-                    lease.session,
+                    packed_owner,
                     "sample_native_from_packed_logits",
                     None,
                 )
@@ -12194,7 +12220,7 @@ def _gguf_native_sampler_plan_enabled(
 
 def _native_gpu_sampler_requested() -> bool:
     value = os.environ.get("HIPENGINE_QWEN35_NATIVE_SAMPLER")
-    return value is not None and value.strip().lower() not in {"", "0", "false", "no", "off"}
+    return value is None or value.strip().lower() not in {"", "0", "false", "no", "off"}
 
 
 def make_qwen35_gguf_bringup_generator(
