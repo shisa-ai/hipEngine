@@ -2465,7 +2465,18 @@ def _serving_plan_route_decision(
             static_payload
         ).fingerprint,
         "static_intent_allowed": static_intent_allowed,
-        "policy_cell": copied.get("evidence_key"),
+        "policy_cell": copied.get("implementation_key") or copied.get("evidence_key"),
+        **(
+            {
+                "admission_basis": "implementation",
+                "implementation_key": copied["implementation_key"],
+                "effective_kv_storage": key.get("kv_storage"),
+                "kv_layout": key.get("kv_layout"),
+                "kv_scale_dtype": key.get("kv_scale_dtype"),
+                "kv_scale_granularity": key.get("kv_scale_granularity"),
+            }
+            if copied.get("implementation_key") else {}
+        ),
         "selected_candidate_count": (
             int(copied.get("selected_candidate_count", 0))
             if selected_route == _SPECULATIVE_MTP_BATCH_ROUTE

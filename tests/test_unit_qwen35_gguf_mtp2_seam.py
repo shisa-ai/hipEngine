@@ -5724,6 +5724,21 @@ def test_capability_admits_a_complete_current_prompt_buffer() -> None:
     ) is not None
 
 
+def test_capability_names_missing_compact_dms_transaction_before_proposal() -> None:
+    rid = 6
+    row = _priming_gate_row(prompt_tokens=12, generated_tokens=1)
+    row.lease.session._dms_backend = object()
+    adapter = _priming_gate_adapter(
+        rows={rid: row},
+        prompt_hidden={rid: np.zeros((12, 64), dtype=np.float32)},
+    )
+    assert adapter.capability(
+        (SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25),)
+    ) is None
+    assert adapter._last_capability_decline == "compact_dms_mtp_transaction_not_implemented"
+    assert adapter._states == {}
+
+
 def test_prompt_activation_contention_preserves_speculative_intent() -> None:
     # Temporary contention is not a property of the row: the refusal is about the
     # activation claim, and whether this row can speculate is decided by its

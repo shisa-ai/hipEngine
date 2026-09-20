@@ -1051,9 +1051,19 @@ class Qwen35GGUFMTP2Adapter:
 
         if self._physical_width_depth_admitted(width, depth):
             return True
+        ids = tuple(int(value) for value in request_ids)
+        if len(ids) == int(width) == 1:
+            eligibility = self._static_eligibility(ids[0])
+            if (
+                eligibility is not None
+                and eligibility.eligible
+                and eligibility.implementation_key is not None
+                and 1 <= int(depth) <= eligibility.max_candidate_count
+                and int(width) <= eligibility.max_realized_group_rows
+            ):
+                return True
         if not unqualified_mtp_screening_enabled():
             return False
-        ids = tuple(int(value) for value in request_ids)
         if not ids:
             return False
         eligibilities = tuple(self._static_eligibility(rid) for rid in ids)
@@ -2760,6 +2770,8 @@ class Qwen35GGUFMTP2Adapter:
                 self._last_capability_silent_reason = silent_reason
                 return None
             target = row.lease.session
+            if getattr(target, "_dms_backend", None) is not None:
+                return self._decline("compact_dms_mtp_transaction_not_implemented")
             if not self._target_profile_supported(target):
                 return self._decline("target execution profile unsupported")
             targets.append(target)

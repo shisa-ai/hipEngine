@@ -1,0 +1,63 @@
+import json
+
+import pytest
+
+from scripts.int8_mtp_server_gate import assert_result, stream_result
+
+
+def _events(*, cycles=1, mirror=0):
+    metadata = {
+        "generated_token_ids": [1, 2],
+        "timing": {"mtp_cycles_count": cycles},
+        "diagnostics": {"kv_layout": {
+            "storage_dtype": "int8_per_token_head", "scale_dtype": "fp32",
+            "kv_attention_source": "bf16_mirror" if mirror else "int8_direct",
+            "persistent_bf16_mirror_bytes": mirror,
+        }},
+    }
+    return [
+        "data: " + json.dumps({"choices": [{"finish_reason": "length", "hipengine": metadata}]}),
+        "data: " + json.dumps({"choices": [], "usage": {
+            "prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5,
+        }}),
+        "data: [DONE]",
+    ]
+
+
+def test_server_gate_accepts_complete_compact_int8_stream():
+    result = stream_result(_events())
+    assert_result(result, speculative=True, compact=True)
+    assert result["ids"] == [1, 2]
+
+
+@pytest.mark.parametrize("mutation", ["no_done", "no_usage", "duplicate_finish", "after_done", "error"])
+def test_server_gate_rejects_broken_stream(mutation):
+    events = _events()
+    if mutation == "no_done":
+        events.pop()
+    elif mutation == "no_usage":
+        events.pop(1)
+    elif mutation == "duplicate_finish":
+        events.insert(1, events[0])
+    elif mutation == "after_done":
+        events.append(events[0])
+    else:
+        events.insert(0, 'data: {"error":{"code":"generation_failed"}}')
+    with pytest.raises(AssertionError):
+        stream_result(events)
+
+
+def test_server_gate_cannot_mistake_mirror_or_ar_for_compact_mtp():
+    with pytest.raises(AssertionError):
+        assert_result(stream_result(_events(mirror=256)), speculative=True, compact=True)
+    with pytest.raises(AssertionError):
+        assert_result(stream_result(_events(cycles=0)), speculative=True, compact=True)
+    with pytest.raises(AssertionError):
+        assert_result(stream_result(_events(cycles=1)), speculative=False, compact=True)
+
+
+def test_server_gate_rejects_inconsistent_usage():
+    result = stream_result(_events())
+    result["usage"]["completion_tokens"] = 3
+    with pytest.raises(AssertionError):
+        assert_result(result, speculative=True, compact=True)

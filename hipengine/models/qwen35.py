@@ -18,6 +18,7 @@ from hipengine.speculative.serving import (
     SpeculativeMTPServingKey,
     resolve_max_qualified_candidate_budget,
     resolve_speculative_mtp_serving_plan,
+    SpeculativeMTPServingImplementation,
 )
 
 
@@ -597,6 +598,16 @@ class Qwen35GGUFModel:
         + _UD_Q4K_MTP_SERVING_EVIDENCE
     )
     speculative_mtp2_adapter: str = "dense_nextn"
+    speculative_mtp_serving_implementations: tuple[SpeculativeMTPServingImplementation, ...] = (
+        SpeculativeMTPServingImplementation(
+            name="gguf_dense_int8_native_chain",
+            kv_storage="int8_per_token_head",
+            backends=(("hip_gfx1100", "gfx1100"), ("hip_gfx1151", "gfx1151")),
+            max_candidate_count=7,
+            max_group_rows=1,
+            group_rejection_reason="packed_int8_mtp_not_implemented",
+        ),
+    )
 
     def resolve_speculative_mtp_serving_plan(
         self,
@@ -605,6 +616,9 @@ class Qwen35GGUFModel:
     ) -> SpeculativeMTPServingDecision:
         """Resolve the exact Qwen dense serving scope before mutation."""
 
+        for implementation in self.speculative_mtp_serving_implementations:
+            if implementation.kv_storage == key.kv_storage:
+                return implementation.resolve(key)
         return resolve_speculative_mtp_serving_plan(
             self.speculative_mtp_serving_evidence,
             key=key,

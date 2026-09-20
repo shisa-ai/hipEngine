@@ -844,27 +844,6 @@ def _gguf_single_row_block_table_prefill_required(session: object) -> bool:
     )
 
 
-def _qualified_compact_serial_int8_max_rows(generator: object) -> int:
-    """Return the artifact-qualified logical residency bound for serial c1 INT8."""
-
-    provenance = getattr(generator, "kv_capability_provenance", None)
-    if not isinstance(provenance, Mapping):
-        return 0
-    evidence = provenance.get("evidence")
-    if not isinstance(evidence, Mapping):
-        return 0
-    if not (
-        provenance.get("status") == "qualified"
-        and provenance.get("runtime_action") == "admit"
-        and provenance.get("promotion_eligible") is True
-        and provenance.get("effective_kv_storage") == "int8_per_token_head"
-        and evidence.get("persistent_bf16_mirror") is False
-        and int(evidence.get("max_direct_rows", 0)) >= 1
-    ):
-        return 0
-    return max(0, int(evidence.get("max_serial_resident_rows", 0)))
-
-
 def _gguf_ar_stream_decode_enabled() -> bool:
     return os.environ.get(_GGUF_AR_STREAM_DECODE_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -2641,7 +2620,11 @@ class Qwen35GGUFBringupGenerator:
         from hipengine.speculative.serving import SpeculativeMTPServingKey
 
         requested_kv = str(kv_storage or "auto")
-        effective_kv = "bf16" if requested_kv == "auto" else requested_kv
+        prepared_kv = getattr(self, "_prepared_kv_signature", None)
+        effective_kv = (
+            str(prepared_kv[0]) if prepared_kv is not None
+            else "bf16" if requested_kv == "auto" else requested_kv
+        )
         evidence = tuple(
             getattr(
                 self.model_plugin,
@@ -2658,7 +2641,13 @@ class Qwen35GGUFBringupGenerator:
         except OSError:
             artifact_size = None
         weight_quant = self._kv_weight_quant_key()
-        if not any(
+        implemented_storage = any(
+            implementation.kv_storage == effective_kv
+            for implementation in getattr(
+                self.model_plugin, "speculative_mtp_serving_implementations", (),
+            )
+        )
+        if not implemented_storage and not any(
             row.artifact_size_bytes == artifact_size
             and row.weight_quant == weight_quant
             for row in evidence
@@ -2673,12 +2662,14 @@ class Qwen35GGUFBringupGenerator:
             target_arch=str(self.target_arch),
             weight_quant=weight_quant,
             kv_storage=effective_kv,
-            kv_layout="uniform",
+            kv_layout=str(prepared_kv[1]) if prepared_kv is not None else "uniform",
             realized_group_rows=int(realized_group_rows),
             resident_capacity=int(resident_capacity),
             candidate_budget=int(candidate_budget),
             sampling_mode=str(sampling_mode),
             memory_fit=bool(memory_fit),
+            kv_scale_dtype=str(prepared_kv[2]) if prepared_kv is not None else None,
+            kv_scale_granularity=str(prepared_kv[3]) if prepared_kv is not None else None,
         )
         return evidence, key
 
@@ -9086,16 +9077,6 @@ class Qwen35GGUFResidentModelRunner:
             )
             if callable(validate_layout):
                 validate_layout(sessions)
-            attention_source = getattr(batch_owner, "kv_attention_source", None)
-            if attention_source == "int8_direct" and self.capacity > 1:
-                qualified_rows = _qualified_compact_serial_int8_max_rows(
-                    self.generator
-                )
-                if self.capacity > qualified_rows:
-                    raise NotImplementedError(
-                        "compact direct INT8 residency is artifact-qualified only "
-                        f"through logical c{qualified_rows}; requested c{self.capacity}"
-                    )
         except Exception:
             if batch_owner is not None:
                 batch_owner.close()

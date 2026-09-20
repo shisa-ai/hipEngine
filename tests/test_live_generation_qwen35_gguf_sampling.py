@@ -3276,32 +3276,6 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
     assert runner._last_execution_manifest["physical_group"]["physical_rows"] == 5
 
 
-def test_gguf_compact_serial_capability_is_artifact_scoped_and_bounded() -> None:
-    qualified = SimpleNamespace(
-        kv_capability_provenance={
-            "status": "qualified",
-            "runtime_action": "admit",
-            "promotion_eligible": True,
-            "effective_kv_storage": "int8_per_token_head",
-            "evidence": {
-                "max_direct_rows": 1,
-                "max_serial_resident_rows": 4,
-                "persistent_bf16_mirror": False,
-            },
-        }
-    )
-    diagnostic = SimpleNamespace(
-        kv_capability_provenance={
-            **qualified.kv_capability_provenance,
-            "runtime_action": "diagnostic_override",
-            "promotion_eligible": False,
-        }
-    )
-
-    assert qwen35_gguf._qualified_compact_serial_int8_max_rows(qualified) == 4
-    assert qwen35_gguf._qualified_compact_serial_int8_max_rows(diagnostic) == 0
-
-
 def test_gguf_resident_request_diagnostics_retain_kv_layout_audit() -> None:
     audit = {
         "kv_attention_source": "int8_direct",

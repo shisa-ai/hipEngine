@@ -79,6 +79,8 @@ class SpeculativeMTPServingKey:
     candidate_budget: int
     sampling_mode: str
     memory_fit: bool
+    kv_scale_dtype: str | None = None
+    kv_scale_granularity: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -127,6 +129,8 @@ class SpeculativeMTPServingKey:
             "candidate_budget": self.candidate_budget,
             "sampling_mode": self.sampling_mode,
             "memory_fit": self.memory_fit,
+            **({"kv_scale_dtype": self.kv_scale_dtype} if self.kv_scale_dtype else {}),
+            **({"kv_scale_granularity": self.kv_scale_granularity} if self.kv_scale_granularity else {}),
         }
 
 
@@ -259,6 +263,7 @@ class SpeculativeMTPStaticEligibility:
     evidence_fingerprint: str | None = None
     evidence_artifacts: tuple[str, ...] = ()
     packed_c1_target: bool = False
+    implementation_key: str | None = None
 
     def __post_init__(self) -> None:
         state = SpeculativeMTPStaticState(self.state)
@@ -272,13 +277,20 @@ class SpeculativeMTPStaticEligibility:
             raise ValueError("packed_c1_target requires speculative eligibility with a positive row bound")
         if min(candidates, rows) < 0:
             raise ValueError("static eligibility bounds must be non-negative")
+        implementation = (
+            None if self.implementation_key is None
+            else _required_text(self.implementation_key, "implementation_key")
+        )
         if state is SpeculativeMTPStaticState.SPECULATIVE_CAPABLE:
             if candidates <= 0 or rows <= 0:
                 raise ValueError("speculative-capable eligibility requires positive bounds")
-            evidence_key = _required_text(self.evidence_key, "evidence_key")
-            evidence_fingerprint = _required_text(
-                self.evidence_fingerprint,
-                "evidence_fingerprint",
+            evidence_key = (
+                None if implementation is not None and self.evidence_key is None
+                else _required_text(self.evidence_key, "evidence_key")
+            )
+            evidence_fingerprint = (
+                None if implementation is not None and self.evidence_fingerprint is None
+                else _required_text(self.evidence_fingerprint, "evidence_fingerprint")
             )
         else:
             if candidates or rows or self.automatic_eligible:
@@ -305,6 +317,7 @@ class SpeculativeMTPStaticEligibility:
         object.__setattr__(self, "evidence_key", evidence_key)
         object.__setattr__(self, "evidence_fingerprint", evidence_fingerprint)
         object.__setattr__(self, "evidence_artifacts", artifacts)
+        object.__setattr__(self, "implementation_key", implementation)
 
     @property
     def eligible(self) -> bool:
@@ -327,6 +340,7 @@ class SpeculativeMTPStaticEligibility:
             "evidence_key": self.evidence_key,
             "evidence_fingerprint": self.evidence_fingerprint,
             "evidence_artifacts": list(self.evidence_artifacts),
+            **({"implementation_key": self.implementation_key} if self.implementation_key else {}),
         }
 
     @classmethod
@@ -351,6 +365,7 @@ class SpeculativeMTPStaticEligibility:
             ),
             automatic_eligible=bool(payload.get("automatic_eligible")),
             packed_c1_target=bool(payload.get("packed_c1_target", False)),
+            implementation_key=payload.get("implementation_key"),
             strict_fallback_key=str(
                 payload.get("strict_fallback_key") or _DEFAULT_STRICT_FALLBACK
             ),
@@ -391,6 +406,7 @@ class SpeculativeMTPServingDecision:
     static_eligibility_override: SpeculativeMTPStaticEligibility | None = None
     packed_c1_target: bool = False
     failed_axes: tuple[str, ...] = ()
+    implementation_key: str | None = None
 
     @property
     def structural_rejection(self) -> str | None:
@@ -436,6 +452,7 @@ class SpeculativeMTPServingDecision:
             evidence_key=self.evidence_key,
             evidence_fingerprint=self.evidence_fingerprint,
             evidence_artifacts=self.evidence_artifacts,
+            implementation_key=self.implementation_key,
         )
 
     @property
@@ -475,7 +492,56 @@ class SpeculativeMTPServingDecision:
             "static_max_realized_group_rows": self.static_max_realized_group_rows,
             "static_eligibility": self.static_eligibility.as_dict(),
             "failed_axes": list(self.failed_axes),
+            **(
+                {"admission_basis": "implementation", "implementation_key": self.implementation_key}
+                if self.implementation_key else {}
+            ),
         }
+
+
+@dataclass(frozen=True, slots=True)
+class SpeculativeMTPServingImplementation:
+    """Executable scope, independently of performance/quality evidence rows."""
+
+    name: str
+    kv_storage: str
+    backends: tuple[tuple[str, str], ...]
+    max_candidate_count: int
+    max_group_rows: int
+    group_rejection_reason: str
+    kv_layouts: tuple[str, ...] = ("uniform",)
+    sampling_modes: tuple[str, ...] = ("greedy_fast",)
+
+    def resolve(self, key: SpeculativeMTPServingKey) -> SpeculativeMTPServingDecision:
+        checks = (
+            (
+                key.content_verified and key.artifact_sha256 is not None
+                and key.artifact_size_bytes is not None,
+                "artifact_identity_unverified",
+            ),
+            ((key.backend, key.target_arch) in self.backends, "mtp_backend_unsupported"),
+            (key.memory_fit, "insufficient_memory"),
+            (key.kv_storage == self.kv_storage, "mtp_kv_storage_unsupported"),
+            (key.kv_layout in self.kv_layouts, "mtp_kv_layout_unsupported"),
+            (key.kv_scale_dtype in {None, "fp16", "fp32"}, "mtp_kv_scale_dtype_unsupported"),
+            (key.kv_scale_granularity in {None, "per_token_head"}, "mtp_kv_scale_granularity_unsupported"),
+            (key.sampling_mode in self.sampling_modes, "mtp_sampling_unsupported"),
+            (key.candidate_budget <= self.max_candidate_count, "mtp_candidate_depth_unsupported"),
+            (key.realized_group_rows <= self.max_group_rows, self.group_rejection_reason),
+        )
+        failed = tuple(reason for passed, reason in checks if not passed)
+        admitted = not failed
+        return SpeculativeMTPServingDecision(
+            key=key, admitted=admitted,
+            selected_route="speculative_mtp" if admitted else "default",
+            selected_candidate_count=key.candidate_budget if admitted else 0,
+            reason=failed[0] if failed else "implemented_native_int8_chain",
+            strict_fallback_key=_DEFAULT_STRICT_FALLBACK,
+            automatic_eligible=admitted,
+            static_max_realized_group_rows=self.max_group_rows if admitted else None,
+            failed_axes=failed,
+            implementation_key=self.name,
+        )
 
 
 def _reject(
@@ -704,6 +770,7 @@ def resolve_speculative_mtp_serving_plan(
 __all__ = [
     "SpeculativeMTPServingDecision",
     "SpeculativeMTPServingEvidence",
+    "SpeculativeMTPServingImplementation",
     "SpeculativeMTPServingKey",
     "SpeculativeMTPStaticEligibility",
     "SpeculativeMTPStaticState",
