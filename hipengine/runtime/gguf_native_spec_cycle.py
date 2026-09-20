@@ -403,7 +403,9 @@ def native_target_context_limit(backend: str, target: Any, *, default: int, grap
     policies = backend_package_capability(backend, "GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES", ())
     if not policies or target is None:
         return fallback
-    if getattr(target, "kv_storage_dtype", DType.BF16) != DType.BF16:
+    if getattr(target, "kv_storage_dtype", DType.BF16) not in {
+        DType.BF16, DType.INT8_PER_TOKEN_HEAD,
+    }:
         return fallback
     if _native_target_execution_identity(target)[1] != "fp32":
         return fallback
@@ -803,6 +805,7 @@ def _native_target_binding_signature(session: Any) -> tuple[int, ...]:
     scratch = getattr(session, "scratch", None)
     if scratch is not None:
         for name in (
+            "block_table",
             "position_buf",
             "context_buf",
             "hidden_seed_fp32",
@@ -815,9 +818,15 @@ def _native_target_binding_signature(session: Any) -> tuple[int, ...]:
             "layer_recurrent_states",
             "full_key_caches",
             "full_value_caches",
+            "full_bf16_mirror_key_caches",
+            "full_bf16_mirror_value_caches",
         ):
             for value in getattr(scratch, name, ()):
                 add(value)
+        for metadata in getattr(scratch, "full_kv_scale_metadata", ()):
+            if metadata is not None:
+                add(metadata.k_scale)
+                add(metadata.v_scale)
     bulk = getattr(session, "_bulk_prefill_scratch", None)
     if bulk is not None:
         for value in vars(bulk).values():
@@ -893,9 +902,23 @@ def _validate_capture_admission(
         raise NativeSpecTargetGraphUnsupportedError(
             "native target graph N1 requires resident replacement expert layouts"
         )
-    if DType.parse(getattr(session, "kv_storage_dtype", DType.BF16)) is not DType.BF16:
+    storage = DType.parse(getattr(session, "kv_storage_dtype", DType.BF16))
+    if storage not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
         raise NativeSpecTargetGraphUnsupportedError(
-            "native target graph N1 requires BF16 KV storage"
+            "native target graph requires BF16 or per-token/head INT8 KV storage"
+        )
+    if getattr(session, "_dms_backend", None) is not None:
+        raise NativeSpecTargetGraphUnsupportedError(
+            "native target graph does not journal compact-DMS eviction/compaction"
+        )
+    if storage == DType.INT8_PER_TOKEN_HEAD and (
+        bulk_attention_mode != "native"
+        or str(getattr(session, "kv_storage_layout", "uniform")) != "uniform"
+        or str(getattr(session, "kv_scale_granularity", "per_token_head")) != "per_token_head"
+        or bool(getattr(session, "int8_kv_value_bf16", False))
+    ):
+        raise NativeSpecTargetGraphUnsupportedError(
+            "INT8 native target graph requires uniform per-token/head K and V with native attention"
         )
     if resolve(
         backend=str(session.backend),

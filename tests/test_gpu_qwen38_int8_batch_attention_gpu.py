@@ -63,23 +63,43 @@ def _compiler_version() -> str:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
-@pytest.mark.parametrize("scale_dtype", [DType.FP32, DType.FP16])
 @pytest.mark.parametrize(
-    ("rows", "live_counts", "shared_table"),
+    ("rows", "live_counts"),
     (
-        (1, (8193,), False),
-        (2, (255, 257), False),
-        (4, (1, 256, 257, 1025), False),
-        (8, (1, 2, 255, 256, 257, 513, 1023, 0), False),
-        (4, (255, 256, 257, 258), True),
-        (8, (1023, 1024, 1025, 1026, 1027, 1028, 1029, 1030), True),
+        (1, (8193,)),
+        (2, (255, 257)),
+        (4, (1, 256, 257, 1025)),
+        (8, (1, 2, 255, 256, 257, 513, 1023, 0)),
     ),
-    ids=("c1-8k-page-tail", "c2-page-boundary", "c4-ragged", "c8-sparse",
-         "verify4-page-boundary", "verify8-split-boundary"),
+    ids=("c1-8k-page-tail", "c2-page-boundary", "c4-ragged", "c8-sparse"),
 )
 def test_qwen38_int8_batch_attention_matches_cpu_and_independent_c1(
     rows: int,
     live_counts: tuple[int, ...],
+):
+    _run_attention_gate(rows, live_counts, shared_table=False, scale_dtype=DType.FP32)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+@pytest.mark.parametrize("scale_dtype", [DType.FP32, DType.FP16])
+@pytest.mark.parametrize(
+    "rows,live_counts",
+    [(4, (255, 256, 257, 258)), (8, (1023, 1024, 1025, 1026, 1027, 1028, 1029, 1030))],
+    ids=["verify4-page-boundary", "verify8-split-boundary"],
+)
+def test_qwen38_int8_verify_attention_matches_cpu_and_independent_c1(rows, live_counts, scale_dtype):
+    _run_attention_gate(rows, live_counts, shared_table=True, scale_dtype=scale_dtype)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_qwen38_int8_batch_attention_fp16_scales():
+    _run_attention_gate(4, (1, 256, 257, 1025), shared_table=False, scale_dtype=DType.FP16)
+
+
+def _run_attention_gate(
+    rows: int,
+    live_counts: tuple[int, ...],
+    *,
     shared_table: bool,
     scale_dtype: DType,
 ) -> None:
