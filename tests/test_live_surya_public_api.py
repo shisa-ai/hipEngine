@@ -12,10 +12,13 @@ FIXTURES = Path("tests/fixtures/surya")
 
 @pytest.fixture(scope="module")
 def llm() -> LLM | None:
+    from hipengine.loading.surya import resolve_surya_path
+
     try:
-        return LLM("datalab-to/surya-ocr-2", backend="cpu_reference")
+        path = resolve_surya_path("datalab-to/surya-ocr-2")
     except FileNotFoundError:
         pytest.skip("datalab-to/surya-ocr-2 not in local HF cache")
+    return LLM(str(path), backend="cpu_reference")
 
 
 def test_plugin_and_generator_registered(llm: LLM) -> None:

@@ -47,6 +47,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
 from hipengine.quant.gguf_t16 import repack_gguf_q5_k_tile16
 
 
+@pytest.fixture(autouse=True)
+def _require_hip(hip_test_target_arch):
+    """These tests launch kernels rather than only inspecting dispatch."""
+
+
 def _bf16_bits(a: np.ndarray) -> np.ndarray:
     u32 = a.astype(np.float32).view(np.uint32)
     return ((u32 + 0x7FFF + ((u32 >> 16) & 1)) >> 16).astype(np.uint16)

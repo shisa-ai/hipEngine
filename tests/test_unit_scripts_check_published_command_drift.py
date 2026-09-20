@@ -61,6 +61,15 @@ def _make_repo(root: pathlib.Path, *, command: str, artifact: str = "a.json") ->
 GOOD = ".venv/bin/python scripts/bench.py --widths 1,2 --model m.gguf"
 
 
+def test_prompt_fixture_link_is_not_a_result_artifact(tool, tmp_path):
+    repo = _make_repo(tmp_path, command=GOOD)
+    readme = repo / "benchmarks" / "README.md"
+    readme.write_text(readme.read_text() + "\n[fixture](prompts/session.json)\n")
+    report = tool.check_repo(repo)
+    assert report["violations"] == []
+    assert report["artifacts_checked"] == 1
+
+
 def test_a_valid_command_passes(tool, tmp_path: pathlib.Path) -> None:
     repo = _make_repo(tmp_path, command=GOOD)
     report = tool.check_repo(repo)

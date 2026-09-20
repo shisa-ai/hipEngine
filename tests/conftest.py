@@ -29,6 +29,13 @@ def pytest_configure(config: pytest.Config) -> None:
 def hip_test_target_arch() -> str:
     """Return the detected device arch for tests that JIT and launch HIP kernels."""
 
+    import ctypes
+
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        pytest.skip("HIP runtime library is unavailable")
+
     from hipengine.kernels.backends import HIP_TARGET_ARCH_BACKEND, detect_hip_target_arches
 
     for target_arch in detect_hip_target_arches():

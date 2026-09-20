@@ -46,7 +46,9 @@ def test_page_filename_rejects_an_unknown_name() -> None:
 
 
 def test_pages_regenerate_byte_identically(tmp_path: Path) -> None:
-    """Every page except the A4 fixture, which has its own test below."""
+    """Pin decoded pixels, independent of PNG encoder/compression versions."""
+
+    from PIL import Image
 
     for name, generator in PAGES.items():
         if name == "a4":
@@ -55,9 +57,11 @@ def test_pages_regenerate_byte_identically(tmp_path: Path) -> None:
         generator(written)
         committed = FIXTURES / page_filename(name)
         assert committed.exists(), f"{committed} is not committed"
-        assert written.read_bytes() == committed.read_bytes(), (
-            f"{page_filename(name)} is not reproducible; regenerate the fixtures"
-        )
+        with Image.open(written) as actual, Image.open(committed) as expected:
+            assert actual.mode == expected.mode and actual.size == expected.size
+            assert actual.tobytes() == expected.tobytes(), (
+                f"{page_filename(name)} pixels differ; review fixture rendering"
+            )
 
 
 def test_fit_assertion_rejects_the_old_clipping_geometry(tmp_path: Path) -> None:
@@ -152,13 +156,14 @@ def test_a4_page_is_the_page_scale_grid_the_memory_plan_describes() -> None:
 
 
 def test_a4_page_regenerates_byte_identically(tmp_path: Path) -> None:
+    from PIL import Image
     from scripts.surya_bench_pages import make_page_a4
 
     written = tmp_path / "page_a4.png"
     make_page_a4(written)
-    assert written.read_bytes() == (FIXTURES / "page_a4.png").read_bytes(), (
-        "page_a4.png is not reproducible; regenerate the fixture"
-    )
+    with Image.open(written) as actual, Image.open(FIXTURES / "page_a4.png") as expected:
+        assert actual.mode == expected.mode and actual.size == expected.size
+        assert actual.tobytes() == expected.tobytes(), "page_a4.png pixels differ"
 
 
 def test_a4_ground_truth_is_paragraph_level_not_drawn_line_level() -> None:

@@ -2677,6 +2677,8 @@ def test_gguf_resident_full_prefill_uses_block_table_path_when_required(
     runner.generator = SimpleNamespace(tokenizer=_FakeTokenizer())
     runner._route_counts = Counter()
     runner._refresh_prefix_cache = lambda candidate: None
+    runner._mtp2_adapter = None
+    runner._mtp2_adapter_resolved = True
 
     runner._prefill_native_row(row)
 
@@ -3639,6 +3641,8 @@ def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> N
     observability = runner.observability_snapshot()
     assert observability["kv_pool"] == {
         **runner.kv_pool_stats.to_json_dict(), "max_pages": None, "budget_bytes": None,
+        "private_workspace_bytes": 0,
+        "accounted_bytes": runner.kv_pool_stats.current_bytes,
     }
     assert observability["kv_pool"]["current_pages"] == 2
     assert observability["kv_pool"]["high_water_observed_pages"] == 2
@@ -4155,6 +4159,11 @@ def test_gguf_resident_runner_skips_sampling_for_nonfinal_prefill_chunks() -> No
     )
     runner._route_counts = Counter()
     runner._refresh_prefix_cache = lambda row: None
+    runner._mtp2_adapter = None
+    runner._mtp2_adapter_resolved = True
+    runner._prefix_phase_ms = Counter()
+    runner._prefix_phase_calls = Counter()
+    runner._prefix_cache = None
 
     runner._prefill_native_chunk(row, (10, 11), final_chunk=False)
 
@@ -4358,6 +4367,7 @@ def test_gguf_resident_runner_commits_incremental_prefill_chunks() -> None:
         target_arch = "gfx1100"
         tokenizer = _FakeTokenizer()
         _prepared_max_sequence_length = 64
+        supports_speculative_mtp = False
 
         def __init__(self) -> None:
             self.session = FakeSession()
@@ -5565,6 +5575,8 @@ def test_specdec2_streaming_prompt_rollback_selects_k0_before_prefill(
     )
     runner = object.__new__(qwen35_gguf.Qwen35GGUFResidentModelRunner)
 
+    runner._mtp2_adapter = None
+    runner._mtp2_adapter_resolved = True
     assert runner._begin_mtp2_prompt_streaming((row,)) == (None,)
     assert row.mtp2_candidate_budget == 0
     assert row.mtp2_prompt_fallback_reason == "operator_disabled_streaming_prompt_k0"

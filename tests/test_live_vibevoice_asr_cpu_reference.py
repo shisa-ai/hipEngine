@@ -173,6 +173,8 @@ def test_qwen2_backbone_teacher_forced_vs_oracle() -> None:
         hf_path = resolve_model_path(PINNED_HF_MODEL_ID)
     except Exception:
         pytest.skip(f"{PINNED_HF_MODEL_ID} not in local HF cache")
+    if not hf_path.is_dir():
+        pytest.skip(f"{PINNED_HF_MODEL_ID} not in local HF cache")
     weights = load_vibevoice_qwen2(str(hf_path))
     spec = weights.spec
 

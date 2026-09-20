@@ -50,6 +50,15 @@ def _pair(tmp_path: pathlib.Path, b_extra: dict | None = None):
     )
 
 
+def test_prompt_fixture_link_is_not_a_result_artifact(tmp_path):
+    repo = _repo(tmp_path, {"a.json": dict(BASE)}, cited=[
+        "[fixture](prompts/session.json)", "[result](results/a.json)",
+    ])
+    report = _load().check_repo(repo)
+    assert report["violations"] == []
+    assert report["artifacts_checked"] == 1
+
+
 def test_clean_published_set_passes(tmp_path):
     report = _load().check_repo(_pair(tmp_path))
     assert report["violations"] == []

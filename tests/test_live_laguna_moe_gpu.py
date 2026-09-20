@@ -2225,7 +2225,9 @@ def test_laguna_iq3_wave10_signbit_runtime_selection_is_removed_but_primitive_re
 
 
 @pytest.mark.parametrize("mode", ["c1", "rows"])
-def test_laguna_moe_is_invariant_to_poisoned_scratch_memory(mode: str) -> None:
+def test_laguna_moe_is_invariant_to_poisoned_scratch_memory(
+    mode: str, hip_test_target_arch
+) -> None:
     """A second MoE run must not depend on what the first left in scratch.
 
     ``allocate_laguna_moe_scratch`` zeroes exactly one buffer (the
