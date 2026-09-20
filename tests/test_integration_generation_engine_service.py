@@ -10,6 +10,7 @@ import pytest
 
 from hipengine import LLM
 from hipengine.generation import (
+    EngineCommandTimeout,
     EngineLoopEvent,
     EngineService,
     FinishDetails,
@@ -270,7 +271,10 @@ def test_engine_service_command_timeout_names_the_blocking_activity() -> None:
         service.submit_child(_request("prompt:4"))
         assert driver.tick_entered.wait(timeout=5.0)
 
-        with pytest.raises(TimeoutError) as excinfo:
+        # The typed error is what lets the server answer 503 rather than an
+        # internal fault, while staying a TimeoutError for callers that only know
+        # it was a timeout.
+        with pytest.raises(EngineCommandTimeout) as excinfo:
             service.tokenize("hello")
         driver.tick_release.set()
         deadline = time.monotonic() + 5.0
@@ -279,6 +283,7 @@ def test_engine_service_command_timeout_names_the_blocking_activity() -> None:
     finally:
         service.close()
 
+    assert isinstance(excinfo.value, TimeoutError)
     message = str(excinfo.value)
     assert "method=tokenize" in message
     assert "budget_s=0.2" in message

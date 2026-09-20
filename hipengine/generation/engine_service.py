@@ -61,6 +61,21 @@ class EngineServiceClosed(RuntimeError):
     """
 
 
+class EngineCommandTimeout(TimeoutError):
+    """A command the resident service never answered within its liveness budget.
+
+    The driver thread owns the engine, so a command waits behind whatever the
+    engine is already doing. The budget guards liveness, not engine work: when it
+    is exhausted the service cannot say whether that work will finish, so this is
+    a property of the runtime rather than of the request that happened to be
+    waiting. The server reports it the same way it reports a closed service - a
+    retryable ``engine_unavailable`` - and the message names the method, the
+    budget, and what the driver was doing. A bare ``TimeoutError`` would instead
+    be answered as a non-retryable ``internal_error`` and blame the client's
+    request for a stalled server.
+    """
+
+
 @dataclass(slots=True)
 class _CommandResponse:
     ready: threading.Event = field(default_factory=threading.Event)
@@ -74,7 +89,7 @@ class _CommandResponse:
 
     def result(self, timeout: float | None = None) -> Any:
         if not self.ready.wait(timeout=timeout):
-            raise TimeoutError("engine service command timed out")
+            raise EngineCommandTimeout("engine service command timed out")
         if self.error is not None:
             raise self.error
         return self.value
@@ -984,7 +999,7 @@ class EngineService:
                     waited * 1000.0,
                     self._activity_snapshot(),
                 )
-        raise TimeoutError(
+        raise EngineCommandTimeout(
             "engine service command timed out: "
             f"method={method_name} "
             f"budget_s={self._command_timeout_seconds:.1f} "
@@ -1426,4 +1441,9 @@ def _stream_chunk_for_choice(
     return replace(chunk, telemetry=telemetry)
 
 
-__all__ = ["EngineService", "EngineServiceHandle"]
+__all__ = [
+    "EngineCommandTimeout",
+    "EngineService",
+    "EngineServiceClosed",
+    "EngineServiceHandle",
+]

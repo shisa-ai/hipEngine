@@ -1471,7 +1471,7 @@ when `invalid_tool_call_error_mode="hard_error"`.
 | `deadline_exceeded` | 408 | yes | `timeout_ms` or server default deadline expired. |
 | `cancelled` | 499 | yes | Client disconnect/cancel observed at server await or stream boundaries. |
 | `engine_busy` | 429 | yes | Generation queue or chat-session cap rejected the request before generation; matched request routes include `error.hipengine.routing` with an `overload_source`. |
-| `engine_unavailable` | 503 | yes | The resident engine service is closed or unhealthy and cannot accept work. `error.message` names the fatal cause the service recorded and `/ready` reports the same state as `unhealthy`; restart the server to restore serving. |
+| `engine_unavailable` | 503 | yes | The resident engine service is closed, unhealthy, or unresponsive and cannot accept work. `error.message` names the fatal cause the service recorded, or for an engine command that outlived its liveness budget the method, the budget, and the activity that held the driver thread. A closed or unhealthy service is also reported as `unhealthy` by `/ready`; restart the server to restore serving. |
 | `internal_error` | 500 | no | An unexpected server fault escaped request handling. The payload still carries `error.message`, `error.code`, and `error.hipengine.exception_type`, so a client never receives a bodyless or non-JSON 500; the traceback stays in the server log. |
 | `execution_failed` | 500 | yes | The request's own execution step failed before its result could be applied, so the engine contained the failure and kept serving; `error.hipengine.execution` names the phase, the affected `request_ids`, the `work_kind`, and whether the failed step may have mutated device state (`state_mutation`). A fatal failure that closes the resident service is reported separately: `/ready` turns `unhealthy` and in-flight requests fail with `engine_unavailable`. |
 | `model_unavailable` | 404 | no | Requested model is not served; legacy `error.code` is `model_not_found`; `error.hipengine.routing` describes the failed single-model match. |
@@ -1607,10 +1607,11 @@ WARNING:  ENGINE_COMMAND_SLOW: method=tokenize waited_ms=41230.5 driver_command=
 `driver_command` is the command occupying the driver thread, or `driver_tick_s` when
 the driver is inside a scheduling tick; `queued_commands` and `active_requests` are
 the service's own depth; and `driver_alive` separates a busy driver from a stopped
-one. A command that exhausts its budget raises a `TimeoutError` carrying the same
-detail, which the server reports as HTTP 500 `internal_error`. The budget abandons
-the caller, not the work: the command still runs on the driver thread once that
-thread is free.
+one. A command that exhausts its budget raises an error carrying the same detail,
+and the server answers the request with HTTP 503 `engine_unavailable` - retryable,
+the same shape as a closed engine service, because an engine that cannot answer is
+not the request's fault. The budget abandons the caller, not the work: the command
+still runs on the driver thread once that thread is free.
 
 Replay artifacts are separately opt-in. Pass `--replay-dir /path/to/replays` or
 set `HIPENGINE_REPLAY_DIR` to write finite JSON artifacts for failed HTTP
