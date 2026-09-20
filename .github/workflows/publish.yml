@@ -1,6 +1,12 @@
 name: Publish to PyPI
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing immutable release tag to validate and publish
+        required: true
+        type: string
   push:
     tags:
       - "v*"
@@ -20,6 +26,7 @@ jobs:
         with:
           persist-credentials: false
           lfs: true
+          ref: ${{ inputs.release_tag || github.ref }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
@@ -44,7 +51,7 @@ jobs:
 
       - name: Verify tag matches package version
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
           RELEASE_VERSION: ${{ steps.meta.outputs.version }}
         run: |
           expected="v${RELEASE_VERSION}"
@@ -52,6 +59,21 @@ jobs:
             echo "::error::Tag '${RELEASE_TAG}' does not match package version '${expected}'"
             exit 1
           fi
+          git fetch origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "${RELEASE_TAG}^{commit}")"
+
+      - name: Install OCR fixture fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk fonts-dejavu-core
+
+      - name: Register recorded benchmark checkout
+        run: |
+          # Historical commands name this checkout; the provenance gate only
+          # recognizes absolute paths belonging to registered Git worktrees.
+          sudo mkdir -p /home/lhl
+          sudo chown "$(id -u):$(id -g)" /home/lhl
+          git worktree add --detach /home/lhl/hipEngine-main HEAD
 
       - name: Install dependencies
         run: uv pip install -e '.[dev,surya]' build twine
