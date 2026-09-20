@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import warnings
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from math import ceil, prod
 from pathlib import Path
 from types import SimpleNamespace
@@ -200,6 +201,13 @@ class DMSRetrofitConfig:
     sidecar: DMSLinearSidecarSpec | None = None
     training: DMSTrainingProvenance | None = None
     prefill_selection_mode: str = "threshold"
+    artifact_fingerprint_verified: bool = True
+    """Whether the resident model matched the fingerprint this was trained on.
+
+    ``False`` means the sidecar loaded against a different artifact.  It runs --
+    geometry is what decides whether it can -- but its trained quality evidence
+    describes another file, so nothing may be claimed from it.
+    """
 
     def __post_init__(self) -> None:
         for name in (
@@ -584,13 +592,22 @@ def load_dms_retrofit_config(
         training=training_provenance,
     )
     if schema_version == 2:
-        if model.is_file():
-            if _sha256_file(model) != config.artifact_fingerprint:
-                raise ValueError("DMS model artifact hash does not match metadata")
-        elif expected_artifact_fingerprint is None:
-            raise ValueError(
-                "DMS schema v2 requires a verified model artifact fingerprint for non-file models"
+        # The artifact hash is provenance, not capability: a sidecar whose
+        # geometry fits the model runs on it.  A mismatch means the trained
+        # quality evidence describes a different file, so record it and warn
+        # rather than refusing a sidecar the caller explicitly passed.
+        if model.is_file() and _sha256_file(model) != config.artifact_fingerprint:
+            config = replace(config, artifact_fingerprint_verified=False)
+            warnings.warn(
+                "DMS sidecar was trained against a different model artifact "
+                f"({config.artifact_fingerprint}); it will run because its "
+                "geometry fits, but its trained quality evidence does not "
+                "describe this file",
+                RuntimeWarning,
+                stacklevel=2,
             )
+        # Geometry is the capability check and stays hard: a layer map that does
+        # not match the model cannot be executed at all.
         if expected_physical_layer_ids is not None and config.physical_layer_ids != tuple(
             int(layer_id) for layer_id in expected_physical_layer_ids
         ):
