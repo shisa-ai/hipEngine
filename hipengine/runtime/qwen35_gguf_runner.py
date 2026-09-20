@@ -1284,6 +1284,7 @@ class _GGUFResumablePrefillState:
     # leased session, so the identity must be written where it is read and
     # re-written on every segment in case a slot view is rebuilt mid-prompt.
     executor_mode: str = "layer_outer_packed"
+    target_hidden_chunk_sinks: tuple[TargetHiddenChunkSink | None, ...] = ()
 
     @property
     def layer_count(self) -> int:
@@ -24064,6 +24065,7 @@ class Qwen35GGUFResidentSession:
         state: _GGUFResumablePrefillState | None = None,
         layer_budget: int | None = None,
         stream: int = 0,
+        target_hidden_chunk_sinks: Sequence[TargetHiddenChunkSink | None] | None = None,
     ) -> list[Qwen35GGUFNextTokenProbeResult | None] | _GGUFResumablePrefillState:
         """Start or continue a resumable layer-outer INT8 prefill.
 
@@ -24127,6 +24129,7 @@ class Qwen35GGUFResidentSession:
                 layer_budget=layer_budget,
                 stream=stream,
                 executor_mode="layer_outer_resumable",
+                target_hidden_chunk_sinks=target_hidden_chunk_sinks,
             )
         except BaseException:
             # A failed segment cannot be resumed, so its suspended-state
@@ -24491,6 +24494,7 @@ class Qwen35GGUFResidentSession:
         resume_state: _GGUFResumablePrefillState | None = None,
         layer_budget: int | None = None,
         executor_mode: str = "layer_outer_packed",
+        target_hidden_chunk_sinks: Sequence[TargetHiddenChunkSink | None] | None = None,
     ) -> list[Qwen35GGUFNextTokenProbeResult | None] | _GGUFResumablePrefillState:
         """Execute a multi-chunk packed prompt layer-outer with one shared oracle.
 
@@ -24528,6 +24532,18 @@ class Qwen35GGUFResidentSession:
         session_tuple = tuple(sessions)
         if len(prompt_tuple) != len(session_tuple):
             raise ValueError("prompt_token_ids and sessions must have the same length")
+        sinks = (
+            (None,) * len(session_tuple)
+            if target_hidden_chunk_sinks is None else tuple(target_hidden_chunk_sinks)
+        )
+        if len(sinks) != len(session_tuple):
+            raise ValueError("target hidden sinks must align with sessions")
+        for prompt, sink in zip(prompt_tuple, sinks, strict=True):
+            if sink is not None and (
+                int(sink.total_rows) != len(prompt)
+                or int(sink.hidden_size) != int(self.runner.hidden_size)
+            ):
+                raise ValueError("target hidden sink must cover the complete prompt and hidden width")
         if len(chunks) <= 1:
             raise ValueError("layer-outer packed prefill requires multiple chunks")
         # Slot stability: every chunk must address the same sessions in the
@@ -24695,6 +24711,7 @@ class Qwen35GGUFResidentSession:
             require_logits=bool(require_logits),
             runtime=runtime,
             executor_mode=str(executor_mode),
+            target_hidden_chunk_sinks=sinks,
         )
         return self._prefill_batch_native_layer_outer_segment_guarded(
             state,
@@ -24923,6 +24940,34 @@ class Qwen35GGUFResidentSession:
                     state.scratch.nbytes
                 )
                 return state
+
+            # Publish final trunk rows before sampling reuses the hidden planes.
+            # Intermediate layer boundaries do not contain draft-provider inputs.
+            for entry in chunk_plans:
+                layout = entry["layout"]
+                for slot_index, sink in enumerate(state.target_hidden_chunk_sinks):
+                    if sink is None:
+                        continue
+                    row_start = int(layout.cu_seqlens[slot_index])
+                    row_end = int(layout.cu_seqlens[slot_index + 1])
+                    if row_end == row_start:
+                        continue
+                    start_position = int(layout.row_positions[row_start])
+                    sink.consume(
+                        request_id=int(sink.request_id),
+                        chunk_start=start_position,
+                        hidden_ptr=src.ptr + (int(entry["base"]) + row_start)
+                        * self.runner.hidden_size * DType.BF16.itemsize,
+                        rows=row_end - row_start,
+                        stream=stream,
+                    )
+            for sink in state.target_hidden_chunk_sinks:
+                if sink is not None:
+                    sink.finish(
+                        request_id=int(sink.request_id),
+                        total_rows=int(sink.total_rows),
+                        stream=stream,
+                    )
 
             # Sampling tail: only each slot's final row (last round).
             last_entry = chunk_plans[-1]

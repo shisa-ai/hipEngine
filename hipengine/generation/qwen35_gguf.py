@@ -10276,17 +10276,34 @@ class Qwen35GGUFResidentModelRunner:
         else:
             budget = max(1, -(-remaining_layers // remaining_polls))
         started = time.perf_counter()
+        streaming_sinks = (
+            self._begin_mtp2_prompt_streaming((row,))
+            if state is None and int(getattr(row, "mtp2_candidate_budget", 0)) > 0
+            else tuple(getattr(state, "target_hidden_chunk_sinks", ())) or (None,)
+        )
         try:
             if state is None:
-                result = resume(prompts, sessions=sessions, layer_budget=budget)
+                streaming_kwargs = (
+                    {"target_hidden_chunk_sinks": streaming_sinks}
+                    if any(sink is not None for sink in streaming_sinks) else {}
+                )
+                result = resume(
+                    prompts, sessions=sessions, layer_budget=budget, **streaming_kwargs,
+                )
             else:
                 result = resume(state=state, layer_budget=budget)
         except NotImplementedError:
+            if any(sink is not None for sink in streaming_sinks):
+                self._finish_mtp2_prompt_streaming((row,), streaming_sinks, success=False)
             if state is None:
                 # The layer-outer executor declined this shape before doing any
                 # device work; the caller falls back to the full-prompt route.
                 self._fallback_reasons["resumable_int8_prefill_declined"] += 1
                 return False
+            raise
+        except BaseException:
+            if any(sink is not None for sink in streaming_sinks):
+                self._finish_mtp2_prompt_streaming((row,), streaming_sinks, success=False)
             raise
         row.prefill_ms += _timing_ms_since(started)
         row.prefill_chunk_count += 1
@@ -10303,6 +10320,8 @@ class Qwen35GGUFResidentModelRunner:
             )
         row.resumable_prefill = _RESUMABLE_PREFILL_DONE
         self._route_counts["resumable_int8_prefill_completions"] += 1
+        if any(sink is not None for sink in streaming_sinks):
+            self._finish_mtp2_prompt_streaming((row,), streaming_sinks, success=True)
         self._finish_native_prefill(
             row,
             result_list[0],
