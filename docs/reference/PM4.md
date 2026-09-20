@@ -161,7 +161,7 @@ using public APIs:
 - `hipKernelNameRefByPtr` returned
   `hipengine_smoke_add_f32_kernel`.
 - `dladdr` mapped the host function pointer to the exact JIT DSO:
-  `/home/lhl/.cache/hipengine/build/.../smoke_add.so`.
+  `~/.cache/hipengine/build/.../smoke_add.so`.
 - The DSO's `.hip_fatbin` section began with
   `__CLANG_OFFLOAD_BUNDLE__` and contained the exact AMDGPU code object and
   complete `amdhsa.kernels` metadata.

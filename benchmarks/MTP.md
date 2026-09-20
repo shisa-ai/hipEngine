@@ -53,7 +53,7 @@ fails the fast-path exactness gate on this prompt suite.
 
 ```bash
 python3 scripts/llamacpp_mtp_bench.py \
-  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --server-bin ~/llama.cpp/llama.cpp-hip/build/bin/llama-server \
   --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf \
   --ctx-size 8192 \
   --draft-max 2 \
@@ -83,9 +83,9 @@ llama.cpp build `232f46658` / `9214`, f16 KV cache, flash attention on,
 
 | draft max | base weighted pred t/s | MTP weighted pred t/s | speedup | MTP draft acc | source |
 | ---: | ---: | ---: | ---: | ---: | --- |
-| 2 | 25.21 | 40.17 | 1.593x | 0.745 | `/home/lhl/mtpbench/runs/20260519-023133` |
-| 4 | 25.01 | 36.49 | 1.459x | 0.567 | `/home/lhl/mtpbench/runs/20260519-023738` |
-| 6 | 24.92 | 31.03 | 1.245x | 0.436 | `/home/lhl/mtpbench/runs/20260519-024359` |
+| 2 | 25.21 | 40.17 | 1.593x | 0.745 | `~/mtpbench/runs/20260519-023133` |
+| 4 | 25.01 | 36.49 | 1.459x | 0.567 | `~/mtpbench/runs/20260519-023738` |
+| 6 | 24.92 | 31.03 | 1.245x | 0.436 | `~/mtpbench/runs/20260519-024359` |
 
 Category speedups:
 
@@ -104,9 +104,9 @@ Settings: same natural prompt suite, `DRAFT_MAX=2`.
 
 | cache K/V | base weighted pred t/s | MTP weighted pred t/s | speedup | MTP draft acc | source |
 | --- | ---: | ---: | ---: | ---: | --- |
-| f16/f16 | 25.19 | 40.04 | 1.589x | 0.745 | `/home/lhl/mtpbench/runs/cache-sweep-20260519-043042/cache-f16` |
-| q8_0/q8_0 | 24.16 | 39.55 | 1.637x | 0.751 | `/home/lhl/mtpbench/runs/cache-sweep-20260519-043042/cache-q8_0` |
-| q4_0/q4_0 | 23.95 | 39.54 | 1.651x | 0.754 | `/home/lhl/mtpbench/runs/cache-sweep-20260519-043042/cache-q4_0` |
+| f16/f16 | 25.19 | 40.04 | 1.589x | 0.745 | `~/mtpbench/runs/cache-sweep-20260519-043042/cache-f16` |
+| q8_0/q8_0 | 24.16 | 39.55 | 1.637x | 0.751 | `~/mtpbench/runs/cache-sweep-20260519-043042/cache-q8_0` |
+| q4_0/q4_0 | 23.95 | 39.54 | 1.651x | 0.754 | `~/mtpbench/runs/cache-sweep-20260519-043042/cache-q4_0` |
 
 Conclusion: KV cache quantization did not improve absolute single-stream
 throughput in this setup. It raises relative speedup only because the base run

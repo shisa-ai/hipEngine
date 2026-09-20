@@ -41,8 +41,8 @@ Short version:
 | Local `rocminfo` / `rocm-smi` on `strixhalo` | Actual visible GPU, clocks, CU/cache/LDS, GTT/GART limits | High for this machine |
 | Local PyTorch in `therock` | Runtime-visible device name, `gfx1151`, memory limit, WGP-like multiprocessor count | High for this env |
 | <https://strixhalo.wiki/AI/AI_Capabilities_Overview> | LPDDR5X-8000/256-bit bandwidth, 40 CU compute formula, community LLM guidance | Good practical reference |
-| `/home/lhl/strix-halo-testing/hardware-test/README.md` | Measured GPU memory bandwidth and CPU/GPU transfer notes | Good local/reference benchmark evidence |
-| `/home/lhl/strix-halo-testing/llm-bench/README.md` | llama.cpp pp/tg reference behavior on Strix Halo | Good comparative evidence, not our harness |
+| `~/strix-halo-testing/hardware-test/README.md` | Measured GPU memory bandwidth and CPU/GPU transfer notes | Good local/reference benchmark evidence |
+| `~/strix-halo-testing/llm-bench/README.md` | llama.cpp pp/tg reference behavior on Strix Halo | Good comparative evidence, not our harness |
 | <https://github.com/woct0rdho/rdna35-isa-markdown> | AI-readable RDNA3.5 ISA mirror; wave32/64, WGP/CU, VOPD, WMMA, dot ops | Useful, but converted from PDF; check original AMD PDF for final ISA lawyering |
 | <https://rocm.docs.amd.com/en/latest/how-to/system-optimization/rdna3-5.html> | ROCm RDNA3.5 APU memory model and kernel-version support | High |
 | <https://llvm.org/docs/AMDGPUUsage.html> | `gfx1151` target, target features, generic `gfx11` restrictions | High |
@@ -171,7 +171,7 @@ The platform memory roof from the Strix Halo wiki and local
 LPDDR5X-8000 × 256-bit bus / 8 = 256 GB/s decimal
 ```
 
-Local/reference measurements from `/home/lhl/strix-halo-testing/hardware-test`:
+Local/reference measurements from `~/strix-halo-testing/hardware-test`:
 
 | Test / setting | Write | Read/check | Note |
 | --- | ---: | ---: | --- |
@@ -460,7 +460,7 @@ active tuning surfaces are:
 - PARO/nano-vllm environment flags, summarized in root `docs/OPTIMAL.md`,
 - benchmark wrappers such as `scripts/bench_paro_native_engine.py` and
   `scripts/run_moe2_baselines.py`,
-- local TileLang evidence in `/home/lhl/github/lhl/amd-tilelang-tuning`, and
+- local TileLang evidence in `~/github/lhl/amd-tilelang-tuning`, and
 - retained benchmark rows in `WORKLOG.md`.
 
 Therefore, a future `gfx1151` preset should initially be a thin, explicit
@@ -490,7 +490,7 @@ run through `/usr/bin/env` with an explicit path:
 
 ```bash
 mamba run -n therock --no-capture-output /usr/bin/env \
-  PATH=/home/lhl/mambaforge/envs/therock/bin:/usr/bin:/bin \
+  PATH=~/mambaforge/envs/therock/bin:/usr/bin:/bin \
   CC=/usr/bin/gcc CXX=/usr/bin/c++ \
   PYTHONPATH=nano-vllm-amd:paroquant \
   python3 <bench.py>
@@ -583,10 +583,10 @@ keeping a value.
 
 ### 7.5 TileLang gfx1151 evidence to import into our mental model
 
-The recent `/home/lhl/github/lhl/amd-tilelang-tuning` work is useful because it
+The recent `~/github/lhl/amd-tilelang-tuning` work is useful because it
 isolates raw FP16 WMMA GEMM behavior on the same gfx1151 machine.
 
-Relevant TileLang RDNA override from `/home/lhl/github/lhl/tilelang/tilelang/carver/arch/rdna.py`:
+Relevant TileLang RDNA override from `~/github/lhl/tilelang/tilelang/carver/arch/rdna.py`:
 
 ```python
 "gfx1151": _RDNATuningConfig(
@@ -659,7 +659,7 @@ TileLang tuning lessons that transfer to nano-vllm-amd:
 
 ### 7.7 hipENGINE / raw HIP production-harness notes
 
-`/home/lhl/github/shisa-ai/hipENGINE` is the production harness most likely to
+`~/github/shisa-ai/hipENGINE` is the production harness most likely to
 receive stable gfx1151 work.  It differs from `nano-vllm-amd` in ways that
 change how tuning should be landed:
 
@@ -834,10 +834,10 @@ PYTHONPATH=nano-vllm-amd:paroquant \
 - `docs/ROOFLINE.md` — W7900/gfx1100 roofline model and project profiling rules.
 - `WORKLOG.md` — retained benchmark rows, including the 2026-05-16
   `z-lab/Qwen3.5-0.8B-PARO` gfx1151 run.
-- `/home/lhl/strix-halo-testing/README.md` — local Strix Halo testing overview.
-- `/home/lhl/strix-halo-testing/hardware-test/README.md` — raw memory bandwidth
+- `~/strix-halo-testing/README.md` — local Strix Halo testing overview.
+- `~/strix-halo-testing/hardware-test/README.md` — raw memory bandwidth
   and CPU/GPU transfer notes.
-- `/home/lhl/strix-halo-testing/llm-bench/README.md` — llama.cpp Strix Halo
+- `~/strix-halo-testing/llm-bench/README.md` — llama.cpp Strix Halo
   pp/tg summaries and setup notes.
 - <https://strixhalo.wiki/AI/AI_Capabilities_Overview>
 - <https://rocm.docs.amd.com/en/latest/how-to/system-optimization/rdna3-5.html>

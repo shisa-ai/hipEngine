@@ -323,7 +323,7 @@ Construction used seed `20260823`. Per-category indices `0-7` are train and
 Retained data manifest:
 
 ```text
-/home/lhl/dms-artifacts/qwen38-external-v1/data_manifest.json
+~/dms-artifacts/qwen38-external-v1/data_manifest.json
 SHA-256 e062a7a722bfc4deed0cbc001dc4de12a6263db6c8e6ab314e5708f39f594934
 ```
 
@@ -348,7 +348,7 @@ There are 40 sequences x 16 full-attention layers = 640 shards. Capture wrote
 ```bash
 MODEL=/models/gguf/Qwen3.8-27B-Q4_K_M.gguf
 MODEL_SHA=7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169
-ROOT=/home/lhl/dms-artifacts/qwen38-external-v1
+ROOT=~/dms-artifacts/qwen38-external-v1
 
 python3 scripts/qwen38_dms_capture.py \
   --model "$MODEL" \
@@ -625,7 +625,7 @@ changes. All four categories pass: aggregate max/mean/p95/p99 KL is
 KL 0.000539 and 100% top-1. Capacity remains exactly 1.599688x with max live
 count 20,489, and teardown returns tracked allocation to zero. The immutable
 external package is under
-`/home/lhl/dms-artifacts/qwen38-external-v3-final/qualified-w8192/`; its
+`~/dms-artifacts/qwen38-external-v3-final/qualified-w8192/`; its
 qualification manifest SHA is `1c5a11b9...7aa39`.
 
 No post-final policy changes were made. A new 128K corpus then excluded all 176

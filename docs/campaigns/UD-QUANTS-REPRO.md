@@ -190,7 +190,7 @@ plus the pure `hipengine.loading` policy/admission/planner modules, all
 unchanged since that revision):
 
 ```bash
-cd /home/lhl/hipEngine-ud-quants && git checkout c5b9588b85efd94b9d3206e9e1d8751d0275d83d
+cd ~/hipEngine-ud-quants && git checkout c5b9588b85efd94b9d3206e9e1d8751d0275d83d
 env -u HIPENGINE_GGUF_DECODE_REPACK -u HIPENGINE_GGUF_C8_Q5_RAW_MMQ \
   -u HIPENGINE_C8_Q5_PLANAR_DP4A \
   .venv/bin/python scripts/gguf_quant_route_audit.py \

@@ -751,7 +751,7 @@ contain arbitrary process/model memory. Reviewed evidence is in
 [`2026-07-16-gfx1151-sched-policy2-128k-vm-fault.json`](../../benchmarks/results/2026-07-16-gfx1151-sched-policy2-128k-vm-fault.json)
 and [ROCm/ROCm#6437 comment 4990825784](https://github.com/ROCm/ROCm/issues/6437#issuecomment-4990825784).
 Raw checksummed evidence remains under
-`/home/lhl/gfx1151-debug/2026-07-16-sched-policy2-boot-20260716T102012Z`.
+`~/gfx1151-debug/2026-07-16-sched-policy2-boot-20260716T102012Z`.
 The one-variable backup
 `/etc/default/limine.pre-gfx1151-sched-policy2-20260716T092026Z` has been
 restored and `limine-update` completed. Both current generated CachyOS entries
@@ -1098,12 +1098,12 @@ Raw telemetry, recorder mmaps, process stacks, fence samples, journals, and
 profiler logs normally remain local under the `/tmp/gfx1151-*` directories named
 and hashed by the compact artifacts. The two pre-reboot KFD bundles are also
 compressed and checksum-preserved under
-`/home/lhl/gfx1151-debug/2026-07-16-current-boot`. The MES-debug-boot preflight
+`~/gfx1151-debug/2026-07-16-current-boot`. The MES-debug-boot preflight
 and stalled capture are checksum-preserved under
-`/home/lhl/gfx1151-debug/2026-07-16-mes-log-boot-b254b1d7`. The policy-2 fault,
+`~/gfx1151-debug/2026-07-16-mes-log-boot-b254b1d7`. The policy-2 fault,
 bracketing controls, rollback logs, and local-only compressed core are preserved
 under
-`/home/lhl/gfx1151-debug/2026-07-16-sched-policy2-boot-20260716T102012Z`.
+`~/gfx1151-debug/2026-07-16-sched-policy2-boot-20260716T102012Z`.
 The selected, redacted subset listed above is public in the gist; excluded raw
 files and the core remain local and are not upstream evidence.
 

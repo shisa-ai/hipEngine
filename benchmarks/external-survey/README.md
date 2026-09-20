@@ -21,6 +21,6 @@ Contents:
 - `campaign-plan.json` — the survey campaign plan.
 
 Note: the original absolute paths under
-`/home/lhl/.local/state/hipengine-external-survey/` recorded inside
+`~/.local/state/hipengine-external-survey/` recorded inside
 committed artifacts now resolve to this archive (`results/` here is that
 `results/` verbatim).

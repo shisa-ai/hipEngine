@@ -69,7 +69,7 @@ use the comparable client/full-request aggregate fields from
 `scripts/llamacpp_mtp_bench.py` with `max_tokens=24`, reasoning off, greedy
 sampling, f16 KV, flash-attn on, and B2 `--spec-type draft-mtp
 --spec-draft-n-max 2`. The llama.cpp HIP server binary was
-`/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server` at commit
+`~/llama.cpp/llama.cpp-hip/build/bin/llama-server` at commit
 `1ebf790cda38d827559548f67b0469189690cc8c` with local dirty state recorded in
 the artifacts; use these as diagnostics, not as a replacement for the clean
 instrumented HIP stage target. Llama.cpp decode-only aggregate numbers remain in
@@ -2852,10 +2852,10 @@ route shape, or stage labels change.
 
 | live budget row | llama.cpp HIP source anchor | hipEngine rows that must move |
 | --- | --- | --- |
-| Total MTP wall | `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`: `common_speculative_impl_draft_mtp` (`:841`), stage accounting (`common_speculative_mtp_stage_add`, `:56`), and the B2 process/draft/accept loop (`:1009`-`:1230`). | `cycle_wall_ms_per_output`, retained MTP tok/s, and the standing three-lane snapshot. |
-| Draft drain | `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`: `llama_draft_sample_topk`, `llama_draft_decode_initial`, `llama_draft_decode_next`, plus `common_speculative_impl_draft_mtp::process()` for shifted target-batch mirroring; `/home/lhl/llama.cpp/llama.cpp-hip/tools/server/server-context.cpp`: `server_slot::update_batch()`, `common_speculative_process()`, `common_context_seq_rm()` after accept; `/home/lhl/llama.cpp/llama.cpp-hip/common/sampling.cpp`; `/home/lhl/llama.cpp/llama.cpp-hip/src/llama-sampler.cpp`; `/home/lhl/llama.cpp/llama.cpp-hip/ggml/src/ggml-cuda/mmvq.cu`: `mul_mat_vec_q` and Q6_K dispatch. | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, GPU-event `draft_gpu_run_lm_head` / `draft_gpu_decode_initial` / `draft_gpu_decode_next`, proposal trace stream/chunking, draft all-sync Q6 top-1 stages, and draft-chain rocprof rows. |
-| Target verifier drain | `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`: `llama_process_build_draft_batch` (`:1047`) and `llama_process_decode_ctx_dft` (`:1051`); `/home/lhl/llama.cpp/llama.cpp-hip/ggml/src/ggml-cuda/mmvq.cu`: `mul_mat_vec_q` (`:477`), `mul_mat_vec_q_moe` (`:683`), and dispatch switch (`:976`-`:1216`). | `target_block_verify_total`, `target_block_layer_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample`, and verifier rocprof kernel-family rows. |
-| Verify row economy | `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`: batch scan/build, `verify_h` capture, `pending_h` update, and accept accounting (`llama_process_scan_batch`, `llama_process_build_draft_batch`, `llama_accept_update_pending_h`); `/home/lhl/llama.cpp/llama.cpp-hip/tools/server/server-context.cpp`: accepted-token insertion and post-accept context trim. | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, proposal trace chunking, and the row-economy histograms. |
+| Total MTP wall | `~/llama.cpp/llama.cpp-hip/common/speculative.cpp`: `common_speculative_impl_draft_mtp` (`:841`), stage accounting (`common_speculative_mtp_stage_add`, `:56`), and the B2 process/draft/accept loop (`:1009`-`:1230`). | `cycle_wall_ms_per_output`, retained MTP tok/s, and the standing three-lane snapshot. |
+| Draft drain | `~/llama.cpp/llama.cpp-hip/common/speculative.cpp`: `llama_draft_sample_topk`, `llama_draft_decode_initial`, `llama_draft_decode_next`, plus `common_speculative_impl_draft_mtp::process()` for shifted target-batch mirroring; `~/llama.cpp/llama.cpp-hip/tools/server/server-context.cpp`: `server_slot::update_batch()`, `common_speculative_process()`, `common_context_seq_rm()` after accept; `~/llama.cpp/llama.cpp-hip/common/sampling.cpp`; `~/llama.cpp/llama.cpp-hip/src/llama-sampler.cpp`; `~/llama.cpp/llama.cpp-hip/ggml/src/ggml-cuda/mmvq.cu`: `mul_mat_vec_q` and Q6_K dispatch. | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, GPU-event `draft_gpu_run_lm_head` / `draft_gpu_decode_initial` / `draft_gpu_decode_next`, proposal trace stream/chunking, draft all-sync Q6 top-1 stages, and draft-chain rocprof rows. |
+| Target verifier drain | `~/llama.cpp/llama.cpp-hip/common/speculative.cpp`: `llama_process_build_draft_batch` (`:1047`) and `llama_process_decode_ctx_dft` (`:1051`); `~/llama.cpp/llama.cpp-hip/ggml/src/ggml-cuda/mmvq.cu`: `mul_mat_vec_q` (`:477`), `mul_mat_vec_q_moe` (`:683`), and dispatch switch (`:976`-`:1216`). | `target_block_verify_total`, `target_block_layer_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample`, and verifier rocprof kernel-family rows. |
+| Verify row economy | `~/llama.cpp/llama.cpp-hip/common/speculative.cpp`: batch scan/build, `verify_h` capture, `pending_h` update, and accept accounting (`llama_process_scan_batch`, `llama_process_build_draft_batch`, `llama_accept_update_pending_h`); `~/llama.cpp/llama.cpp-hip/tools/server/server-context.cpp`: accepted-token insertion and post-accept context trim. | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, proposal trace chunking, and the row-economy histograms. |
 
 Latest verifier/draft split attribution after q6top1dp4a plus q6-only X8,
 raw-Q8 dp4a all-sidecar, X8 draft lm-head top-1, and F32 `ssm_out` raw-Q8 dp4a uses
@@ -3169,7 +3169,7 @@ contrast. Command:
 rocprofv3 --kernel-trace --output-format csv \
   --output-directory /tmp/llamacpp-hip-pp4-rocprof-20260701 \
   --output-file pp4 -- \
-  /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench \
+  ~/llama.cpp/llama.cpp-hip/build/bin/llama-bench \
   -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
   -dev ROCm0 -fa 1 -p 4 -n 0 -r 1 -b 4 -ub 4
 ```
@@ -3192,7 +3192,7 @@ kernel-family view, but still not a stage-window kernel attribution. Command:
 
 ```bash
 PYTHONPATH=. HIP_VISIBLE_DEVICES=0 python3 scripts/llamacpp_mtp_rocprof.py \
-  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --server-bin ~/llama.cpp/llama.cpp-hip/build/bin/llama-server \
   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
   --alias qwen36-35b --port 8021 --ctx-size 8192 --gpu-layers 99 \
   --draft-max 2 --token-repeat --prompt-tokens 32 --max-tokens 8 \
@@ -3917,8 +3917,8 @@ The deeper instrumentation is now in place on both sides:
 
 - hipEngine: `--record-cycle-stage-timings` on `scripts/gguf_ar_mtp_suite.py`.
 - llama.cpp HIP: local diagnostic patch in
-  `/home/lhl/llama.cpp/llama.cpp-hip/tools/server/server-context.cpp` plus
-  `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`; set
+  `~/llama.cpp/llama.cpp-hip/tools/server/server-context.cpp` plus
+  `~/llama.cpp/llama.cpp-hip/common/speculative.cpp`; set
   `LLAMA_MTP_STAGE_TIMINGS=/path/file.jsonl` to emit one JSONL record per MTP verify
   cycle. The hipEngine harness summarizes it via `--stage-timings-jsonl`.
 
@@ -4623,7 +4623,7 @@ PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
   --output benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-dp4a-deep.json
 
 PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
-  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --server-bin ~/llama.cpp/llama.cpp-hip/build/bin/llama-server \
   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
   --alias qwen36-35b \
   --port 8013 \
@@ -5792,7 +5792,7 @@ which head/embedding tensors are chosen.
 The current performance-path delta is below the graph shape: llama.cpp/GGML
 quantizes activations to q8_1 and runs quantized weight x q8_1 dot products,
 while hipEngine's raw GGUF kernels dequantize weights to float and then FMA.
-Local source evidence in `/home/lhl/llama.cpp/llama.cpp-hip/ggml/src`:
+Local source evidence in `~/llama.cpp/llama.cpp-hip/ggml/src`:
 
 - `ggml-common.h` defines `block_q8_1` as 32 signed int8 activation quants plus
   `d` and `s` fp16 metadata.
@@ -5925,7 +5925,7 @@ improved same-suite speed/acceptance.
 Command:
 
 ```bash
-/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-cli \
+~/llama.cpp/llama.cpp-hip/build/bin/llama-cli \
   -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
   --spec-type draft-mtp \
   --spec-draft-n-max 3 \
@@ -6005,7 +6005,7 @@ next token: 71093 '```'
 Command/artifact:
 
 ```bash
-/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-cli \
+~/llama.cpp/llama.cpp-hip/build/bin/llama-cli \
   -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
   --spec-type draft-mtp \
   --spec-draft-n-max 3 \

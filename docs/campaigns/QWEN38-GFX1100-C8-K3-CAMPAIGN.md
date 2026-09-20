@@ -1009,7 +1009,7 @@ Use the same profiler SDK/runtime library environment as the captured packet,
 then prebuild outside the profiler:
 
 ```bash
-SDK=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib
+SDK=~/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib
 export LD_LIBRARY_PATH="$SDK:$SDK/rocm_sysdeps/lib:${LD_LIBRARY_PATH:-}"
 
 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
@@ -1059,8 +1059,8 @@ measured request from the unprofiled Python parent:
 
 ```bash
 python3 scripts/llamacpp_c8_k3_rocprof.py \
-  --server /home/lhl/external-qwen38-bench/llama.cpp-upstream/build-hip-gfx1100/bin/llama-server \
-  --source /home/lhl/external-qwen38-bench/llama.cpp-upstream \
+  --server ~/external-qwen38-bench/llama.cpp-upstream/build-hip-gfx1100/bin/llama-server \
+  --source ~/external-qwen38-bench/llama.cpp-upstream \
   --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf \
   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
   --prompt-id general_en_explain --port 18123 \
@@ -1069,8 +1069,8 @@ python3 scripts/llamacpp_c8_k3_rocprof.py \
   --label current-hip-c8-k3
 
 python3 scripts/llamacpp_c8_k3_rocprof.py \
-  --server /home/lhl/external-qwen38-bench/llama.cpp-laurent/build-hip-gfx1100/bin/llama-server \
-  --source /home/lhl/external-qwen38-bench/llama.cpp-laurent \
+  --server ~/external-qwen38-bench/llama.cpp-laurent/build-hip-gfx1100/bin/llama-server \
+  --source ~/external-qwen38-bench/llama.cpp-laurent \
   --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf \
   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
   --prompt-id general_en_explain --port 18124 \

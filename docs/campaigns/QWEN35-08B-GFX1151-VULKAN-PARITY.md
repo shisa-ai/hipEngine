@@ -1149,7 +1149,7 @@ The staged body remains excluded from gfx1151 and its prior gfx1100/W7900
 Laguna hidden-3,072/48-call runtime rejection remains closed. The distinct
 architecture/model/shape audit does not reopen that owner. The lineage command
 was also blocked before reporting because manifest reference
-`/home/lhl/amd-gpu-tuning/reference/atlas` is absent; no external kernel is
+`~/amd-gpu-tuning/reference/atlas` is absent; no external kernel is
 ported.
 
 One new in-tree same-resident family is frozen for the bounded screen because

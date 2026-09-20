@@ -512,7 +512,7 @@ Independent reproduction:
 
 ```bash
 GGML_VK_VISIBLE_DEVICES=0 \
-/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
+~/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
   -fa on \
   -m /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf \
   -p 0 -n 128 -r 3 -o json
@@ -549,7 +549,7 @@ is 101.4. This llama.cpp control matches that call count and mean depth:
 
 ```bash
 GGML_VK_VISIBLE_DEVICES=0 \
-/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
+~/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
   -fa on \
   -m /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf \
   -p 0 -n 31 -d 86 -r 3 -o json

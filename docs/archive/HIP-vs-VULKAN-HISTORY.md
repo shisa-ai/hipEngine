@@ -288,7 +288,7 @@ HIP/ROCm/TheRock:
 
 | Component | Version / value |
 | --- | --- |
-| TheRock conda env | `/home/lhl/miniforge3/envs/therock` |
+| TheRock conda env | `~/miniforge3/envs/therock` |
 | `rocm` | `7.13.0a20260411` |
 | `rocm-sdk-core` | `7.13.0a20260411` |
 | `rocm-sdk-devel` | `7.13.0a20260411` |

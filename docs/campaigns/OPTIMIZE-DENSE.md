@@ -361,7 +361,7 @@ multiloop on these.
 
 The diagnostic baseline is reproducible with the same harness committed in
 `scripts/qwen35_paro_bench.py`. Recipe (run from
-`/home/lhl/amd-gpu-tuning/hipEngine`):
+`~/amd-gpu-tuning/hipEngine`):
 
 ```bash
 # 1. Prebuild kernels outside any profiler (avoids hipcc inside the profiled process).
@@ -380,7 +380,7 @@ mamba run -n therock python3 scripts/qwen35_paro_bench.py \
     --json /tmp/qwen36-27b-paro-gfx1100-4k-128-graph.json
 
 # 3. Lane M.1: rocprofv3 selected-region kernel trace, same workload.
-PYTHONPATH=/home/lhl/amd-gpu-tuning/tools/rocprof_torch_site${PYTHONPATH:+:$PYTHONPATH} \
+PYTHONPATH=~/amd-gpu-tuning/tools/rocprof_torch_site${PYTHONPATH:+:$PYTHONPATH} \
 NANOVLLM_REQUIRE_CACHED_BUILD=1 \
 NANOVLLM_HIPCC_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
 mamba run -n therock rocprofv3 --kernel-trace -f csv \

@@ -514,7 +514,7 @@ No GPU run.
 
 #### AQ1 result — current live contract and harness repairs
 
-The clean campaign worktree is `/home/lhl/hipEngine-agentic-quality2`, branch
+The clean campaign worktree is `~/hipEngine-agentic-quality2`, branch
 `agentic-quality2`, starting at AQ0 commit `58d055872...`. The path audit found
 36 commits touching the broad server/sampling/tokenization/quality path since
 the old A6 source, but most are lifecycle, SPECDEC2, merge, or other-model work.
@@ -672,7 +672,7 @@ runtime repairs and do not relabel model answers.
 It pins the exact six input/schema hashes, source/license revisions, creation
 method, split IDs, heldout policy, and AQ6 checkpoint plan. BFCL (Apache-2.0),
 HumanEval (MIT), MBPP (CC-BY-4.0), and IFEval (Apache-2.0) were audited at exact
-revisions; local HumanEval/MBPP copies exist under read-only `/home/lhl/omlx/`,
+revisions; local HumanEval/MBPP copies exist under read-only `~/omlx/`,
 but no upstream task, solution, assertion, test, or evaluator byte is imported.
 The suite is AGPL project-original and claims no official upstream score.
 
@@ -991,7 +991,7 @@ env -u ROCR_VISIBLE_DEVICES \
   HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-quality2-hipcc-version.txt \
   HIPENGINE_REQUIRE_CACHED_BUILD=1 \
   HIPENGINE_QWEN35_NATIVE_SAMPLER=0 \
-  PYTHONPATH=. /home/lhl/hipEngine/.venv/bin/python -m hipengine.server \
+  PYTHONPATH=. .venv/bin/python -m hipengine.server \
   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
   --served-model-name Qwen3.6-35B-A3B \
   --backend hip_gfx1151 --quant gguf_q4_k_m \

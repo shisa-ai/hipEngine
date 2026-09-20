@@ -464,7 +464,7 @@ provider-specific.
 ## llama.cpp MTP Contract To Match
 
 Reference source basis from the gfx1151 audit: local read-only
-`/home/lhl/llama.cpp/llama.cpp-hip` at
+`~/llama.cpp/llama.cpp-hip` at
 `6e9007ae61f4e994c27484759caac6ef2aa32b30`. All file:line citations below are
 against that checkout.
 
@@ -864,7 +864,7 @@ validated GGUF tensor names, qtypes, scalar kwargs, and runtime inputs for the
 `cpu_reference` NextN oracle without materializing weights:
 
 ```bash
-/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_call_spec.py \
+~/miniforge3/envs/therock/bin/python scripts/gguf_mtp_call_spec.py \
   /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
   --require-mtp --layer 40 --indent 2
 ```
@@ -1150,7 +1150,7 @@ Use the committed sweep helper so acceptance denominators are stable (it maps
 
 ```bash
 python3 scripts/llamacpp_vulkan_mtp_sweep.py \
-  --llama-dir /home/lhl/llama.cpp/llama.cpp-hip \
+  --llama-dir ~/llama.cpp/llama.cpp-hip \
   --server-bin /tmp/llamacpp-hip-server-gfx1151-6e9007ae6/bin/llama-server \
   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
   --gpu 0 \

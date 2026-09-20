@@ -239,7 +239,7 @@ is made.
 ### X — external MTP batching survey (cheap, de-risks M1)
 
 - [x] X1 **Done 2026-08-30.** Read all pinned checkouts under
-  `/home/lhl/.local/state/hipengine-external-survey/repos/` (llama.cpp
+  `~/.local/state/hipengine-external-survey/repos/` (llama.cpp
   mainline `4e97ac86`, mike pin `152d337f`, Vulkan/ROCmFPX fork pins
   `laurent/`, `nathan/`, `q38rocm/`) and the unpinned upstreams from
   commit-pinned URLs (vLLM V1 `8c51b926…`, SGLang EAGLE `e51a3ae6…`). The

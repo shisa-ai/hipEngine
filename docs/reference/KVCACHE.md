@@ -848,8 +848,8 @@ held-out shapes; prompt-specific or 512-only improvements are rejected.
 | MATH/HumanEval/IFEval/BFCL-Memory-style subsets | Reasoning, executable code, instruction, and agentic/tool-call coverage. | Required to characterize real-world impact; score against ground truth rather than BF16 text equality. |
 
 The external research pack was reviewed read-only at
-`/home/lhl/amd-gpu-tuning/reference/kvcache-quantization-research@a0bb333`
-(the user-named `/home/lhl/github/shisa-ai/kvcache-quantization-research` path was
+`~/amd-gpu-tuning/reference/kvcache-quantization-research@a0bb333`
+(the user-named `~/github/shisa-ai/kvcache-quantization-research` path was
 not present on this host). It reinforces K/V-asymmetric treatment, chunked
 KIVI-style keys, Hadamard rotation, cross-layer AQUA residual prediction, and a
 cheap-before-expensive eval ladder. hipEngine screens those ideas in its own
@@ -1073,7 +1073,7 @@ pointer-table/chunk-aware ABI is approved.
 # Final PARO matched-context 128K/16 gate
 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=$PWD \
 python3 scripts/qwen35_paro_int8_kv_quality_sweep.py \
-  --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 \
+  --model ~/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 \
   --prompt-lengths 128K --decode-steps 16 --token-id 9707 \
   --max-layers 40 --comparison-mode matched_context \
   --compiler-version-file /tmp/hipengine-w7900-v030/capacity/hipcc-version.txt \
@@ -1083,7 +1083,7 @@ python3 scripts/qwen35_paro_int8_kv_quality_sweep.py \
 # Final 256K/128 capacity/layout row
 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=$PWD \
 python3 scripts/qwen35_paro_bench.py \
-  --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 \
+  --model ~/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 \
   --backend hip_gfx1100 --shared-expert-format packed_paro_w4 \
   --token-id 9707 --prompt-length 262144 --decode-tokens 128 \
   --warmup-decode-tokens 4 --max-layers 40 \

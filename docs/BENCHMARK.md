@@ -850,7 +850,7 @@ silently presented as the other.
 
 ## Baselines to Beat
 
-These numbers are measured on the shared `/home/lhl/` workspace and recorded in `~/amd-gpu-tuning/WORKLOG.md`. They are the "must beat" bar for hipEngine on the same hardware. When hipEngine claims a win, the claim is per-column vs the row it beats.
+These numbers are measured on the shared `~/` workspace and recorded in `~/amd-gpu-tuning/WORKLOG.md`. They are the "must beat" bar for hipEngine on the same hardware. When hipEngine claims a win, the claim is per-column vs the row it beats.
 
 ### Qwen3.6-35B-A3B Q8_K_XL on llama.cpp ROCm (current W7900 target)
 
@@ -897,7 +897,7 @@ Default config:
 - Config: `benchmarks/configs/llamacpp-mtp-qwen36-27b.json`
 - Prompt suite: `benchmarks/prompts/mtpbench-code-general-ja.jsonl`
 - Model: `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf`
-- Server: `/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server`
+- Server: `~/llama.cpp/llama.cpp-hip/build/bin/llama-server`
 - Hardware: W7900/gfx1100
 - Server flags: `-ngl 99 -fa on -ctk f16 -ctv f16 -c 8192 --no-cache-prompt`
 - MTP flags: `--spec-type draft-mtp --spec-draft-n-max 2`
@@ -906,7 +906,7 @@ Run both natural prompts and token-repeat prompts:
 
 ```bash
 python3 scripts/llamacpp_mtp_bench.py \
-  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --server-bin ~/llama.cpp/llama.cpp-hip/build/bin/llama-server \
   --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf \
   --ctx-size 8192 \
   --draft-max 2 \
@@ -1439,7 +1439,7 @@ claiming legacy-schema acceptance.
     "kind": "hipengine_artifact_provenance",
     "schema_version": 1,
     "collected_at": "2026-07-11T12:00:00+00:00",
-    "repo_root": "/home/lhl/hipEngine-main",
+    "repo_root": "<absolute path to your checkout>",
     "hipengine_commit": "<sha>",
     "git_branch": "main",
     "staged_dirty": false,
@@ -1493,7 +1493,7 @@ claiming legacy-schema acceptance.
   "workload": {
     "shape": "c1-short",
     "model": "Qwen3-0.6B",
-    "model_path": "/home/lhl/gpu-tuning/models/Qwen3-0.6B",
+    "model_path": "~/gpu-tuning/models/Qwen3-0.6B",
     "model_revision": "<hf snapshot or git/ref>",
     "quant": "fp16",
     "prompt_tokens": 4096,

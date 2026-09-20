@@ -287,11 +287,11 @@ Exact command:
 
 ```bash
 PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
-  /home/lhl/hipEngine-main/.venv/bin/python3 -u scripts/laguna_session_pool_bench.py \
-  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --backend hip_gfx1151 \
+  .venv/bin/python3 -u scripts/laguna_session_pool_bench.py \
+  ~/models/gguf/laguna-s-2.1-Q4_K_M.gguf --backend hip_gfx1151 \
   --context-length 4096 --chunk-size 128 --warmups 1 --repetitions 5 \
   --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
-  --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --repacked-cache ~/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
   --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
   --output /tmp/2026-07-23-gfx1151-laguna-session-pool.json
 ```

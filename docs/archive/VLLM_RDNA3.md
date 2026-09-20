@@ -14,7 +14,7 @@ were not the best path here: no-MTP serving worked in the pinned image, while
 Qwen3.6 MTP loading failed inside the container, and the images do not use our
 local TheRock torch/ROCm stack or the local `gfx1100` GPTQ build patch.
 
-For the detailed build log/recipe, also see `/home/lhl/vllm/BUILD-gfx1100.md`.
+For the detailed build log/recipe, also see `~/vllm/BUILD-gfx1100.md`.
 This file keeps the hipEngine-facing summary, model table, and benchmark notes.
 
 Upstream status snapshot (2026-07-19): vLLM v0.25.1 does not contain merged
@@ -37,17 +37,17 @@ comparison and NativeSpecCycle status are consolidated in
 Use the local `vllm` conda env with TheRock torch and the custom vLLM source
 build:
 
-- env: `/home/lhl/mambaforge/envs/vllm`
+- env: `~/mambaforge/envs/vllm`
 - Python: 3.12
 - torch: `2.12.0a0+rocm7.13.0a20260416`
 - Triton: `3.7.0+git4089ddfa.rocm7.13.0a20260416`
 - TheRock ROCm package: `rocm 7.13.0a20260416`
-- vLLM source: `/home/lhl/vllm/vllm-main`
+- vLLM source: `~/vllm/vllm-main`
 - tested source commit: `470229c37efa` from upstream `origin/main`
 - installed wheel:
   `vllm-0.22.1rc1.dev499+g470229c37.d20260613.rocm713`
 - local patch needed for tested HEAD on `gfx1100`:
-  `/home/lhl/vllm/patches/vllm-gfx1100-gptq-half-atomicadd.patch`
+  `~/vllm/patches/vllm-gfx1100-gptq-half-atomicadd.patch`
 
 The source build imported both `vllm._C` and `vllm._rocm_C`, detected
 `PlatformEnum.ROCM`, passed a small `Qwen/Qwen3-0.6B` offline/server smoke test,
@@ -80,7 +80,7 @@ source build as the reference path for hipEngine comparisons on this machine.
 ## Native TheRock source-build recipe
 
 Run these commands in the `vllm` env. Keep this section aligned with
-`/home/lhl/vllm/BUILD-gfx1100.md`.
+`~/vllm/BUILD-gfx1100.md`.
 
 ### 1. Verify env and GPU arch
 
@@ -158,7 +158,7 @@ ln -sfn libamd_smi.so.26 "$PY_PREFIX/lib/libamd_smi.so"
 ### 4. Install vLLM deps without replacing TheRock torch/triton
 
 ```bash
-cd /home/lhl/vllm/vllm-main
+cd ~/vllm/vllm-main
 
 python - <<'PY' >/tmp/keep-therock-torch.txt
 from importlib.metadata import PackageNotFoundError, version
@@ -182,14 +182,14 @@ resolver inputs. The final vLLM wheel should also be installed with `--no-deps`.
 ### 5. Patch, build, and install the vLLM wheel
 
 ```bash
-cd /home/lhl/vllm/vllm-main
+cd ~/vllm/vllm-main
 
 export VLLM_TARGET_DEVICE=rocm
 export PYTORCH_ROCM_ARCH=gfx1100
 export MAX_JOBS="${MAX_JOBS:-$(nproc)}"
 export HSA_NO_SCRATCH_RECLAIM=1
 
-PATCH=/home/lhl/vllm/patches/vllm-gfx1100-gptq-half-atomicadd.patch
+PATCH=~/vllm/patches/vllm-gfx1100-gptq-half-atomicadd.patch
 if grep -q "gfx11 does not expose native atomicAdd overloads" \
     csrc/libtorch_stable/quantization/gptq/q_gemm.cu; then
   echo "gfx1100 GPTQ atomicAdd patch already applied"
@@ -400,11 +400,11 @@ everything below**. RDNA3 and RDNA3.5 are in the same (no-native-FP8) bucket.
 ### Launch command (gfx1151)
 
 ```bash
-source /home/lhl/miniforge3/etc/profile.d/conda.sh; conda activate vllm
+source ~/miniforge3/etc/profile.d/conda.sh; conda activate vllm
 export HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0
 export VLLM_TARGET_DEVICE=rocm
 export TORCHINDUCTOR_AUTOGRAD_CACHE=0 HSA_NO_SCRATCH_RECLAIM=1
-export PYTHONPATH=/home/lhl/vllm/vllm-main
+export PYTHONPATH=~/vllm/vllm-main
 
 python3 -m vllm.entrypoints.openai.api_server \
   --model Qwen/Qwen3.6-35B-A3B-FP8 \
@@ -671,11 +671,11 @@ your user is in the docker group.
 
 Older/stale local and container attempts hit these issues:
 
-- Old `/home/lhl/mambaforge/envs/vllm` state: torch import could SIGILL in
+- Old `~/mambaforge/envs/vllm` state: torch import could SIGILL in
   `libhipsparselt.so.0` with `vmovups %zmm0`, which requires AVX512 on a Ryzen
   5950X that only has AVX2. The current TheRock env no longer follows that
   stale path.
-- `/home/lhl/vllm/vllm` with the sglang torch stack: `_rocm_C` failed with
+- `~/vllm/vllm` with the sglang torch stack: `_rocm_C` failed with
   `libamdhip64.so.7: undefined symbol: hsa_amd_memory_get_preferred_copy_engine`.
 - Stale local vLLM extensions with TheRock torch: `_rocm_C` failed with
   `undefined symbol: c10::hip::getCurrentHIPStream`. Rebuilding vLLM extensions

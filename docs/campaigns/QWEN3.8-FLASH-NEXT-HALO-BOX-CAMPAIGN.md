@@ -12,7 +12,7 @@ are not a post-ordered-v2 combined-default measurement or the current work
 order. Promotions remain retained; family closure and Vulkan parity remain
 unestablished.
 
-**September 7 source update:** `/home/lhl/strix-llama.cpp` at clean
+**September 7 source update:** `~/strix-llama.cpp` at clean
 `7baf0a98c7ed0bd7c9f6fd3b7f8c3d8747c3889a` has a non-KDA H48 tiled
 GDN default and a Q8_0 single-query D64/128/256 support predicate without
 the older blanket GQA6 restriction. Section5.3's PR11 descriptions and
@@ -833,7 +833,7 @@ instantiate the same larger row batches again.
 ### 5.3 Source audit corrections (2026-09-05)
 
 Audit basis: hipEngine `3574a1bd2` and read-only halo-box
-`/home/lhl/halo-box-strix-llama/hb-pr11` at `a7ad7b7f`. These are code findings,
+`~/halo-box-strix-llama/hb-pr11` at `a7ad7b7f`. These are code findings,
 not new timings. They supersede conflicting explanations in earlier PF rows
 and worklogs; stored measurements and immutable entries are preserved.
 

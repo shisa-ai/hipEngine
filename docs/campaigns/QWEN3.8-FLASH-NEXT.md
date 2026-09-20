@@ -207,7 +207,7 @@ committed.
 | Unsloth guide/repository | Memory-size expectation and independent GGUF comparator; no unverified quality claim transfers into hipEngine |
 
 The historical comparator worktree is local and external to hipEngine:
-`/home/lhl/llama.cpp/llama.cpp-qwen4exp` at pre-merge PR #27742 commit
+`~/llama.cpp/llama.cpp-qwen4exp` at pre-merge PR #27742 commit
 `bea3b12da`. It remains the frozen oracle for evidence already recorded against
 that binary. New implementation decisions use the final merged PR identity
 `6c84c7d5d` from the read-only `/tmp/EngramHalo.cpp` clone (or a separately
@@ -468,7 +468,7 @@ hf download Qwen/Qwen3.8-Flash-Next \
   --revision f5d08274bafd880402bd16f5e3e6c514136ec06c \
   --local-dir /models/hf/Qwen3.8-Flash-Next
 
-cd /home/lhl/llama.cpp/llama.cpp-qwen4exp
+cd ~/llama.cpp/llama.cpp-qwen4exp
 python3 convert_hf_to_gguf.py \
   --outtype f16 \
   --outfile /models/gguf/Qwen3.8-Flash-Next-F16.gguf \

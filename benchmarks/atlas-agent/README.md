@@ -137,15 +137,15 @@ applies to it.
 ## Prerequisites
 
 1. **ROCm.** On this host it is a conda ROCm SDK, not `/opt/rocm`:
-   `/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel`
+   `~/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel`
    (HIP 7.15). Override with `ATLAS_ROCM_HOME` / the hipEngine env wrapper.
 2. **hipEngine env wrapper.** `ENVWRAP` (default `/tmp/t17-env.sh`) pins
    `LD_LIBRARY_PATH`, `HIP_PATH`, `HIPENGINE_HIP_ARCH=gfx1151` and the Python
    interpreter. Recreate it from that file if it is missing.
-3. **atlas checkout and a ROCm build.** `ATLAS_ROOT` (default `/home/lhl/atlas`).
+3. **atlas checkout and a ROCm build.** `ATLAS_ROOT` (default `~/atlas`).
    The build is required: a CUDA build links `libcuda.so` and cannot run here.
    ```bash
-   cd /home/lhl/atlas
+   cd ~/atlas
    ATLAS_ROCM_HOME=<rocm root> ATLAS_TARGET_HW=strix-hip ATLAS_TARGET_MODEL='*' ./build-amd.sh
    ```
    This compiles atlas's `.cu` files to HSACO with `hipcc` (122 files across four
@@ -153,7 +153,7 @@ applies to it.
    read-only peer: this repository never edits it, and the build writes only to
    its own `target/`.
 4. **Model weights.**
-   - hipEngine: `/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf`
+   - hipEngine: `~/models/gguf/Qwen3.8-27B-Q4_K_M.gguf`
    - atlas: `models--nvidia--Qwen3.8-27B-NVFP4` snapshot (~21 GB). `serve-atlas.sh`
      passes the local snapshot path, so a run never depends on the network.
 5. **Memory.** 256K context needs about 16 GB of BF16 KV: 16 full-attention layers

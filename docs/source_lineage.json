@@ -2,57 +2,57 @@
   "schema": 1,
   "description": "External source-lineage files hipEngine ports from or audits before a port.",
   "evidence_paths": [
-    "/home/lhl/amd-gpu-tuning/WORKLOG.md",
-    "/home/lhl/amd-gpu-tuning/docs/OPTIMAL.md",
-    "/home/lhl/amd-gpu-tuning/docs/PARO.md",
-    "/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT.md",
-    "/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT2.md",
-    "/home/lhl/amd-gpu-tuning/PLAN-MOE2.md",
-    "/home/lhl/amd-gpu-tuning/PLAN-DFLASH.md",
-    "/home/lhl/amd-gpu-tuning/PLAN-MTP.md",
-    "/home/lhl/amd-gpu-tuning/MTP-DFLASH.md",
-    "/home/lhl/amd-gpu-tuning/docs/DFLASH-FRESH-EYES.md",
-    "/home/lhl/amd-gpu-tuning/docs/SPECULATIVE-DECODE.md",
-    "/home/lhl/amd-gpu-tuning/docs/ROOFLINE-gfx1151.md"
+    "~/amd-gpu-tuning/WORKLOG.md",
+    "~/amd-gpu-tuning/docs/OPTIMAL.md",
+    "~/amd-gpu-tuning/docs/PARO.md",
+    "~/amd-gpu-tuning/PLAN-PAROQUANT.md",
+    "~/amd-gpu-tuning/PLAN-PAROQUANT2.md",
+    "~/amd-gpu-tuning/PLAN-MOE2.md",
+    "~/amd-gpu-tuning/PLAN-DFLASH.md",
+    "~/amd-gpu-tuning/PLAN-MTP.md",
+    "~/amd-gpu-tuning/MTP-DFLASH.md",
+    "~/amd-gpu-tuning/docs/DFLASH-FRESH-EYES.md",
+    "~/amd-gpu-tuning/docs/SPECULATIVE-DECODE.md",
+    "~/amd-gpu-tuning/docs/ROOFLINE-gfx1151.md"
   ],
   "repositories": {
     "nano-vllm-amd": {
-      "path": "/home/lhl/amd-gpu-tuning/nano-vllm-amd",
+      "path": "~/amd-gpu-tuning/nano-vllm-amd",
       "baseline_ref": "22405a9",
       "baseline_note": "Last manual KERNELS.md catalog audit before adding scripts/check_lineage.py."
     },
     "amd-gpu-tuning": {
-      "path": "/home/lhl/amd-gpu-tuning",
+      "path": "~/amd-gpu-tuning",
       "baseline_ref": "82f65a3",
       "baseline_note": "Current parent workspace head when DFlash/gfx1151 benchmark-contract lineage was registered."
     },
     "atlas": {
-      "path": "/home/lhl/amd-gpu-tuning/reference/atlas",
+      "path": "~/amd-gpu-tuning/reference/atlas",
       "baseline_ref": "71d8ffd",
       "baseline_note": "Atlas reference head when scalar register-resident GDN prefill lineage was registered."
     },
     "vllm": {
-      "path": "/home/lhl/amd-gpu-tuning/reference/vllm",
+      "path": "~/amd-gpu-tuning/reference/vllm",
       "baseline_ref": "28ee78a",
       "baseline_note": "vLLM reference head when the FLA chunkwise/WY GDN algebra lineage was registered."
     },
     "poolside-llama-laguna": {
-      "path": "/home/lhl/models/hipengine_sources/poolside-llama.cpp-laguna",
+      "path": "~/models/hipengine_sources/poolside-llama.cpp-laguna",
       "baseline_ref": "04b2b72cb54048ead292884adbe11f284e3ec950",
       "baseline_note": "Pinned Poolside Laguna target and DFlash oracle source used for hipEngine Laguna bring-up."
     },
     "llama.cpp-hip": {
-      "path": "/home/lhl/llama.cpp/llama.cpp-hip",
+      "path": "~/llama.cpp/llama.cpp-hip",
       "baseline_ref": "1ebf790cda38d827559548f67b0469189690cc8c",
       "baseline_note": "Pinned clean HIP tree used for the UD-Q3_K_M raw-Q8 MMQ128 port and numerical-boundary audit."
     },
     "dflash": {
-      "path": "/home/lhl/dflash",
+      "path": "~/dflash",
       "baseline_ref": "07ebd93db9f472af339b644bb70221ad8428328a",
       "baseline_note": "z-lab/dflash reference implementation head (DFlash/DFlash2) when Qwen3.8-27B DFlash2 GGUF bring-up lineage was registered."
     },
     "halo-box": {
-      "path": "/home/lhl/halo-box-strix-llama/hb-pr11",
+      "path": "~/halo-box-strix-llama/hb-pr11",
       "baseline_ref": "a7ad7b7f508746870e03d0da60cca420295a04b9",
       "baseline_note": "Frozen halo-box PR11 tree (base 6c84c7d5) used as the PF dense/MMQ tile-geometry reference for the Qwen3.8-Flash-Next prefill campaign."
     }
@@ -470,7 +470,7 @@
       "name": "poolside/Laguna-S-2.1-GGUF laguna-s-2.1-Q4_K_M.gguf",
       "kind": "gguf_target_model",
       "source_revision": "Poolside GGUF file matched by Hugging Face LFS SHA-256",
-      "local_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "local_path": "~/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
       "bytes": 75173103200,
       "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
       "tokenizer_reference_revision": "179ee67cf0fff5391c67fe1a392ea849fa6d643f",
@@ -480,7 +480,7 @@
       "name": "Poolside Laguna gfx1151 llama-server oracle",
       "kind": "oracle_runtime_binary",
       "source_revision": "04b2b72cb54048ead292884adbe11f284e3ec950",
-      "local_path": "/home/lhl/models/hipengine_sources/poolside-llama.cpp-laguna/build-hip-gfx1151/bin/llama-server",
+      "local_path": "~/models/hipengine_sources/poolside-llama.cpp-laguna/build-hip-gfx1151/bin/llama-server",
       "bytes": 15976,
       "sha256": "1a3b09cfb9a8034d44239224ac362afce4555b85da376a3a7e1f4ecaffee0419",
       "build_config": "Release; GGML_HIP=ON; AMDGPU_TARGETS=gfx1151; GNU 16.1.1; CXXFLAGS=-include cmath",
@@ -490,7 +490,7 @@
       "name": "poolside/Laguna-S-2.1-DFlash",
       "kind": "hf_drafter_model",
       "snapshot_revision": "b0486d1586daa0d56435c508108171fc1c8daff9",
-      "local_snapshot_path": "/home/lhl/.cache/huggingface/hub/models--poolside--Laguna-S-2.1-DFlash/snapshots/b0486d1586daa0d56435c508108171fc1c8daff9",
+      "local_snapshot_path": "~/.cache/huggingface/hub/models--poolside--Laguna-S-2.1-DFlash/snapshots/b0486d1586daa0d56435c508108171fc1c8daff9",
       "code_files": {
         "model.safetensors_lfs_sha256": "f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4"
       },
@@ -522,7 +522,7 @@
       "name": "z-lab/Qwen3.8-27B-DFlash2",
       "kind": "hf_drafter_model",
       "snapshot_revision": "50307d4c4cde6860d4eee73e2547cd786fe8e8a4",
-      "local_snapshot_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.8-27B-DFlash2/snapshots/50307d4c4cde6860d4eee73e2547cd786fe8e8a4",
+      "local_snapshot_path": "~/.cache/huggingface/hub/models--z-lab--Qwen3.8-27B-DFlash2/snapshots/50307d4c4cde6860d4eee73e2547cd786fe8e8a4",
       "code_files": {
         "model.safetensors_lfs_sha256": "67fc76d68dc5a9415511a4f394ef744d67510cd20e93b37cc2cc7d28e4bab65c"
       },

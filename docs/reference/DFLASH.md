@@ -556,8 +556,8 @@ Reproducer command:
 PYTHONPATH=. HIP_VISIBLE_DEVICES=0 \
 python3 scripts/hipfire_dflash_exactness_audit.py \
   --demo /tmp/hipfire-target/release/examples/dflash_spec_demo \
-  --target /home/lhl/.hipfire/models/qwen3.6-27b.mq4 \
-  --draft /home/lhl/.hipfire/models/qwen36-27b-dflash-mq4.hfq \
+  --target ~/.hipfire/models/qwen3.6-27b.mq4 \
+  --draft ~/.hipfire/models/qwen36-27b-dflash-mq4.hfq \
   --prompts fixtures/dflash/stable_prompts.jsonl --max-prompts 10 \
   --max 128 --ctx 8192 --kv-mode q8 --temp 0.0 --no-chatml \
   --json benchmarks/results/2026-06-02-hipfire-dflash-exactness-audit.json
@@ -1673,7 +1673,7 @@ D=16 W7900 diagnostic with `N=128`, all rows are exact, `draft_calls=0`,
 `0.988–1.028x`). This is a controller safety result, not a speculative speedup.
 
 **llama.cpp HIP MTP mining addendum (2026-05-24):** local
-`/home/lhl/llama.cpp/llama.cpp-hip` contributes two relevant MTP ideas.
+`~/llama.cpp/llama.cpp-hip` contributes two relevant MTP ideas.
 Commit `3e12fbdea` splits pre-norm hidden extraction from raw-logit copying
 for MTP prompt decode; hipEngine already has the analogous device-resident
 hidden-tap path and compact accept summaries, so there is no direct DFlash code

@@ -62,7 +62,7 @@ environment around that prefix rather than mixing its libraries with
 has no ROCm packages installed:
 
 ```bash
-ENV_PREFIX=/home/lhl/miniforge3/envs/therock
+ENV_PREFIX=~/miniforge3/envs/therock
 PY=$ENV_PREFIX/bin/python
 ROOT=$("$PY" -m rocm_sdk path --root)
 SITE=$ENV_PREFIX/lib/python3.12/site-packages

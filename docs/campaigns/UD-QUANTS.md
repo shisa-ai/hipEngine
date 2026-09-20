@@ -418,8 +418,8 @@ inspection establishes code, not actual GPU selection, speed or qualification.
 
 | Reference | Reviewed identity |
 | --- | --- |
-| Local llama.cpp HIP/Vulkan | `/home/lhl/llama.cpp/llama.cpp-hip` and `llama.cpp-vulkan`, `4d9176092d00586775af140581bb0b558ddc4389` |
-| Halo local master | `/home/lhl/halo-box-strix-llama`, `b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf` |
+| Local llama.cpp HIP/Vulkan | `~/llama.cpp/llama.cpp-hip` and `llama.cpp-vulkan`, `4d9176092d00586775af140581bb0b558ddc4389` |
+| Halo local master | `~/halo-box-strix-llama`, `b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf` |
 | Halo cached optimization branch | `origin/import/fork-master-optimizations`, `7c877db647c2148b0ec9213dd0d46d80a3de9412` |
 | Halo remote master verified September 6 | `c7af5c6c29902eb1f7b3bd7952607e2349e1c668`; fresh read-only reference clone in `/tmp/ud-review-halo-current` |
 | Pwilkin engine | `d3b5cc43d1fcfce891f2de94d5274ee40eceb21c`, `strix-halo`; fetched into `/tmp` only |
