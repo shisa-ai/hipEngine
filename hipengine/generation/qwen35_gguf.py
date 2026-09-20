@@ -11185,7 +11185,11 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("GGUF resident model row has no token to stream")
         generated_ids = tuple(int(token) for token in slot.generated_ids)
         request = row.sampling_request or row.request
-        sample = row.samples[-1] if row.samples else None
+        sample = (
+            row.samples[-1]
+            if row.samples and len(row.samples) == len(generated_ids)
+            else None
+        )
         timing = dict(slot.timing)
         # Streaming keeps the same per-request MTP counters as the blocking
         # output, so a live/done chunk reports realized speculation rather than
@@ -11282,10 +11286,12 @@ class Qwen35GGUFResidentModelRunner:
                 sampler_plan=row.sampler_plan,
             )
         )
+        # Speculative outputs have token IDs but no per-token SampleResult.
+        # A prefill-only sample list must not truncate the visible completion.
         token_logprobs = tuple(
             _gguf_token_logprob(self.generator.tokenizer, sample)
             for sample in row.samples
-        )
+        ) if len(row.samples) == len(generated_ids) else ()
         execution_path = (
             "gguf_specdec2_mtp2"
             if row.mtp2_cycles > 0

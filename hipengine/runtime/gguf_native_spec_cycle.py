@@ -17,6 +17,7 @@ from dataclasses import dataclass, field as dataclass_field, replace
 import os
 import time
 from typing import Any, Callable, Sequence
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -37,10 +38,9 @@ from hipengine.kernels.hip_gfx1100.speculative import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
     build_dflash_accept,
     build_dflash_commit,
-    build_sampled_accept,
-    sampled_accept_chain_i32,
-    sampled_accept_row_stats_f32,
 )
+from hipengine.kernels.hip_gfx1100.sampling.sampler import build_sampler
+from hipengine.runtime.native_sampler import NativeSamplerChainWorkspace
 from hipengine.kernels.registry import resolve
 from hipengine.kvcache import KVLiveSpans
 from hipengine.runtime.workspace import RuntimeWorkspace
@@ -990,11 +990,7 @@ class Qwen35GGUFNativeB2TargetGraph:
     commit_library: Any | None
     device_accept_commit: bool
     sampled_accept: bool
-    sampled_library: Any | None
-    sampled_row_max: Tensor | None
-    sampled_row_inv_sum: Tensor | None
-    sampled_temperatures: Tensor | None
-    sampled_draws: Tensor | None
+    sampled_workspace: NativeSamplerChainWorkspace | None
     start_position: int
     end_position: int
     context_limit: int
@@ -1135,11 +1131,9 @@ class Qwen35GGUFNativeB2TargetGraph:
     ):
         """Stage live metadata, replay once, and return one bounded result.
 
-        ``sampled_accept_state`` carries ``(temperature, draws)`` for a
-        sampled-accept graph: the row temperature scales the target law and
-        ``draws`` holds the ``rows + 1`` uniforms the request's own sampler
-        stream produced, consumed in walk order, so a replay consumes exactly
-        the draws the autoregressive route would have consumed at that step.
+        ``sampled_accept_state`` carries native sampler parameters and the
+        request's seed/absolute step. Only the emitted prefix advances that
+        counter; speculative lookahead does not consume live request RNG.
         """
 
         if self.closed:
@@ -1215,29 +1209,10 @@ class Qwen35GGUFNativeB2TargetGraph:
             raise ValueError("remaining_decode is only valid for N2 native accept/commit")
         if self.sampled_accept:
             if sampled_accept_state is None:
-                raise ValueError(
-                    "a sampled-accept graph requires (temperature, draws)"
-                )
-            temperature, draws = sampled_accept_state
-            if not float(temperature) > 0.0:
-                raise ValueError("sampled accept requires a positive temperature")
-            if self.sampled_temperatures is None or self.sampled_draws is None:
+                raise ValueError("a sampled-accept graph requires native sampler inputs")
+            if self.sampled_workspace is None:
                 raise RuntimeError("sampled-accept graph buffers are missing")
-            draws = np.ascontiguousarray(np.asarray(seed, dtype=np.float32))
-            if draws.shape != (int(self.rows) + 1,):
-                raise ValueError(
-                    "sampled accept needs rows + 1 uniforms per request"
-                )
-            _copy_array_to_tensor(
-                self.sampled_temperatures,
-                np.full((int(self.rows),), float(temperature), dtype=np.float32),
-                runtime=runtime,
-            )
-            _copy_array_to_tensor(
-                self.sampled_draws,
-                draws,
-                runtime=runtime,
-            )
+            self.sampled_workspace.stage(sampled_accept_state)
         elif sampled_accept_state is not None:
             raise ValueError(
                 "sampled_accept_state is only valid for a sampled-accept graph"
@@ -1548,7 +1523,11 @@ class Qwen35GGUFNativeB2TargetGraph:
                     if self.stream:
                         runtime.stream_destroy(self.stream)
                 finally:
-                    self.workspace.free()
+                    try:
+                        if self.sampled_workspace is not None:
+                            self.sampled_workspace.close()
+                    finally:
+                        self.workspace.free()
         graphs = getattr(self.session, "_decode_graphs", None)
         if isinstance(graphs, list) and self in graphs:
             graphs.remove(self)
@@ -1575,6 +1554,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             "_native_spec_b5_target_graph_n2",
             "_native_spec_b6_target_graph_n2",
             "_native_spec_b7_target_graph_n2",
+            *(f"_native_spec_b{budget}_target_graph_n2_sampled" for budget in range(1, 8)),
         ):
             if getattr(self.session, cache_name, None) is self:
                 setattr(self.session, cache_name, None)
@@ -1658,7 +1638,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
     accept_library = None
     commit_library = None
     accept_kernel = None
-    sampled_library = None
+    sampled_workspace = None
     hidden_commit_kernel = None
     linear_commit_kernel = None
     if device_accept_commit:
@@ -1666,9 +1646,8 @@ def capture_qwen35_gguf_native_b2_target_graph(
             raise NativeSpecTargetGraphUnsupportedError(
                 "N2 device accept/commit requires uniform fused linear-state commit tables"
             )
-        # The argmax accept kernel is resolved for both topologies: the sampled
-        # variant replaces its launch, not its registration, and leaving it
-        # unbound here made the sampled capture fail its own primitive guard.
+        # Prefix matching and state commit are shared by argmax and sampled
+        # target IDs; only the producer of those IDs differs.
         accept_kernel = resolve(
             backend=str(session.backend),
             layer="speculative_accept_commit",
@@ -1676,12 +1655,6 @@ def capture_qwen35_gguf_native_b2_target_graph(
             variant="native_v1_i32",
             missing="none",
         )
-        if sampled_accept:
-            sampled_library = build_sampled_accept(
-                load=True,
-                compiler_version=getattr(session, "compiler_version", None),
-                require_cached=bool(getattr(session, "require_cached_build", False)),
-            )
         hidden_commit_kernel = resolve(
             backend=str(session.backend),
             layer="dflash_commit_chain",
@@ -1843,45 +1816,19 @@ def capture_qwen35_gguf_native_b2_target_graph(
         commit_buffers = None
         pre_output_commit_buffers = None
         candidate_counts = None
-        sampled_row_max = None
-        sampled_row_inv_sum = None
-        sampled_temperatures = None
-        sampled_draws = None
         if sampled_accept:
-            # Per-launch sampled-accept inputs live in graph-owned buffers so a
-            # replay only stages values: the row statistics are produced inside
-            # the graph from the verifier's resident logits, and each row's law
-            # comes from the request's own temperature, seed, and step index.
-            sampled_row_max = workspace.reserve_tensor(
-                "native_spec_sampled_row_max",
-                (rows,),
-                DType.FP32,
+            sampled_workspace = NativeSamplerChainWorkspace(
+                runtime=runtime, rows=rows, vocab_size=int(session.runner.vocab_size),
+                sampler_library=build_sampler(
+                    load=True,
+                    compiler_version=getattr(session, "compiler_version", None),
+                    require_cached=bool(getattr(session, "require_cached_build", False)),
+                ),
             )
-            sampled_row_inv_sum = workspace.reserve_tensor(
-                "native_spec_sampled_row_inv_sum",
-                (rows,),
-                DType.FP32,
-            )
-            sampled_temperatures = workspace.reserve_tensor(
-                "native_spec_sampled_temperatures",
-                (rows,),
-                DType.FP32,
-            )
-            sampled_draws = workspace.reserve_tensor(
-                "native_spec_sampled_draws",
-                (rows + 1,),
-                DType.FP32,
-            )
-            _copy_array_to_tensor(
-                sampled_temperatures,
-                np.full((rows,), 1.0, dtype=np.float32),
-                runtime=runtime,
-            )
-            _copy_array_to_tensor(
-                sampled_draws,
-                np.full((rows + 1,), 0.5, dtype=np.float32),
-                runtime=runtime,
-            )
+            sampled_workspace.stage(SimpleNamespace(
+                params=SimpleNamespace(temperature=1.0, top_p=1.0, min_p=0.0),
+                seed=0, step_index=0,
+            ))
         if device_accept_commit:
             accept_owner = TargetVerifyBufferOwner.allocate(
                 TargetVerifyBufferSpec(
@@ -2098,15 +2045,8 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 assert pre_output_commit_buffers is not None
                 assert pre_output_norm_hidden_rows is not None
                 assert pre_output_norm_hidden_bf16_rows is not None
-                if sampled_accept:
-                    assert sampled_library is not None
-                    assert sampled_row_max is not None
-                    assert sampled_row_inv_sum is not None
-                    assert sampled_temperatures is not None
-                    assert sampled_draws is not None
-                else:
-                    assert accept_kernel is not None
-                    assert accept_library is not None
+                assert accept_kernel is not None
+                assert accept_library is not None
                 assert linear_commit_kernel is not None
                 assert hidden_commit_kernel is not None
                 assert commit_library is not None
@@ -2124,53 +2064,14 @@ def capture_qwen35_gguf_native_b2_target_graph(
                         raise RuntimeError(
                             "sampled accept requires the resident verifier logits buffer"
                         )
-                    sampled_vocab_size = int(session.runner.vocab_size)
-                    sampled_accept_row_stats_f32(
-                        int(sampled_logits_buf.ptr),
-                        sampled_temperatures.ptr,
-                        sampled_row_max.ptr,
-                        sampled_row_inv_sum.ptr,
-                        rows,
-                        sampled_vocab_size,
+                    assert sampled_workspace is not None
+                    sampled_workspace.enqueue(
+                        int(sampled_logits_buf.ptr), accept_buffers.target_top1.ptr,
                         stream=stream,
-                        library=sampled_library,
-                        runtime=runtime,
                     )
-                    sampled_accept_chain_i32(
-                        int(sampled_logits_buf.ptr),
-                        sampled_temperatures.ptr,
-                        sampled_row_max.ptr,
-                        sampled_row_inv_sum.ptr,
-                        sampled_draws.ptr,
-                        token_ids_i32.ptr,
-                        positions_i32.ptr,
-                        accept_buffers.parent_rows.ptr,
-                        accept_buffers.draft_depths.ptr,
-                        accept_buffers.active_mask.ptr,
-                        remaining_decode_tensor.ptr,
-                        accept_buffers.accepted_counts.ptr,
-                        accept_buffers.commit_rows.ptr,
-                        accept_buffers.commit_tokens.ptr,
-                        accept_buffers.commit_positions.ptr,
-                        accept_buffers.next_tokens.ptr,
-                        accept_buffers.full_accept.ptr,
-                        accept_buffers.committed_output_ids.ptr,
-                        accept_buffers.committed_output_lengths.ptr,
-                        result_payload.ptr,
-                        visible_output_ids.ptr,
-                        visible_output_lengths.ptr,
-                        session.scratch.position_buf.ptr,
-                        session.scratch.context_buf.ptr,
-                        1,
-                        rows,
-                        1,
-                        rows,
-                        sampled_vocab_size,
-                        stream=stream,
-                        library=sampled_library,
-                        runtime=runtime,
-                    )
-                else:
+                # Target draws use the same prefix-match/commit primitive as
+                # greedy top1. A deterministic draft needs no p/q reduction.
+                if device_accept_commit:
                     accept_kernel(
                         token_ids_i32.ptr,
                         positions_i32.ptr,
@@ -2296,11 +2197,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
             commit_library=commit_library,
             device_accept_commit=bool(device_accept_commit),
             sampled_accept=bool(sampled_accept),
-            sampled_library=sampled_library,
-            sampled_row_max=sampled_row_max,
-            sampled_row_inv_sum=sampled_row_inv_sum,
-            sampled_temperatures=sampled_temperatures,
-            sampled_draws=sampled_draws,
+            sampled_workspace=sampled_workspace,
             start_position=start,
             end_position=end,
             context_limit=context_limit,
@@ -2345,6 +2242,8 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 runtime.stream_destroy(stream)
             except Exception:
                 pass
+        if sampled_workspace is not None:
+            sampled_workspace.close()
         workspace.free()
         raise
 
@@ -2746,7 +2645,7 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
 
     ``sampled_accept`` selects the sampled accept/commit graph, which decides
     the chain with the coupled acceptance from the resident verifier logits and
-    consumes ``sampled_accept_state`` = ``(temperature, seed, step_index)``.
+    consumes native parameters, seed and absolute step in ``sampled_accept_state``.
     """
 
     session.last_native_spec_target_submitted = False

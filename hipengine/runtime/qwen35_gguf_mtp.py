@@ -608,6 +608,7 @@ class Qwen35GGUFPreparedVerify:
     native_proposal_target_chained: bool = False
     device_proposal_top1_values: tuple[float, ...] = ()
     device_state_commit_buffers: TargetStateCommitBuffers | None = None
+    target_logits_device: DeviceBuffer | None = None
 
 
 @dataclass(frozen=True)
@@ -1246,13 +1247,13 @@ class Qwen35GGUFTransactionalVerifier:
         qualification_oracle: bool = True,
         allow_graph: bool = True,
         sampled_accept: Any | None = None,
+        return_device_logits: bool = False,
     ) -> Qwen35GGUFPreparedVerify:
         """Verify one drafted batch.
 
-        ``sampled_accept`` = ``(temperature, seed, step_index)`` asks the native
-        N2 graph to decide the chain with the coupled sampled acceptance from
-        its own device logits instead of the argmax comparison, so a row whose
-        sampler is not greedy can keep the target graph.
+        ``sampled_accept`` carries native sampler parameters, seed and absolute
+        step. The N2 graph samples each verified prefix using the AR sampler,
+        then commits the matching draft prefix and its correction/bonus token.
         """
         if self.closed:
             raise RuntimeError("GGUF transactional verifier is closed")
@@ -1287,6 +1288,9 @@ class Qwen35GGUFTransactionalVerifier:
             target=self.target,
         )
         self._select_journal(effective_verify_mode)
+        if return_device_logits and effective_verify_mode != "native":
+            # The serial oracle has no resident matrix of verified rows.
+            return_logits = True
         _require_serial_capable_journal(self.journal, effective_verify_mode)
         self.journal.capture_initial(
             stream=stream,
@@ -1601,6 +1605,13 @@ class Qwen35GGUFTransactionalVerifier:
                         f"tokens={batch.tokens!r} top1={tuple(top1)!r}"
                     )
             graph_bucket.replay_count += 1
+            device_logits = None
+            if return_device_logits and effective_verify_mode == "native":
+                resident_logits = getattr(self.target, "_verify_logits_buf", None)
+                expected_bytes = batch.rows * int(self.target.runner.vocab_size) * 4
+                if resident_logits is None or int(resident_logits.nbytes) < expected_bytes:
+                    raise RuntimeError("native verifier omitted resident target logits")
+                device_logits = DeviceBuffer(int(resident_logits.ptr), expected_bytes)
             prepared = Qwen35GGUFPreparedVerify(
                 batch=batch,
                 buffers=buffers,
@@ -1625,6 +1636,7 @@ class Qwen35GGUFTransactionalVerifier:
                 native_proposal_target_chained=native_proposal_target_chained,
                 device_proposal_top1_values=device_proposal_top1_values,
                 device_state_commit_buffers=device_state_commit_buffers,
+                target_logits_device=device_logits,
             )
             self._prepared = prepared
             return prepared

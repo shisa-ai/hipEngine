@@ -347,41 +347,14 @@ class _MTP2RequestState:
     device_chain_prepare_error: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
 class _DeviceSampledAcceptPlan:
-    """Draws staged for one device sampled accept, with stream settlement.
+    """Immutable native RNG inputs; live counters advance only at commit."""
 
-    The device walk consumes one uniform per acceptance test and then one for
-    the residual or bonus sample, all from the row's own host sampler stream.
-    The plan stages ``rows + 1`` draws (an upper bound), and ``settle`` rewinds
-    the stream to the pre-draw snapshot and re-advances it by exactly the draws
-    the device consumed, so the row's stream stays aligned with the
-    autoregressive route.
-    """
-
-    def __init__(self, *, state: Any, temperature: float, rows: int) -> None:
-        import copy as _copy
-
-        self.state = state
-        self.temperature = float(temperature)
-        self.rows = int(rows)
-        self.snapshot = _copy.deepcopy(state._rng.bit_generator.state)
-        self.draws = np.asarray(
-            [float(state.random_unit()) for _ in range(self.rows)],
-            dtype=np.float32,
-        )
-
-    def state_tuple(self) -> tuple[float, np.ndarray]:
-        return (self.temperature, self.draws)
-
-    def settle(self, accepted: int) -> None:
-        """Leave the stream where the host accept would have left it."""
-
-        import copy as _copy
-
-        consumed = max(0, int(accepted)) + 1
-        self.state._rng.bit_generator.state = _copy.deepcopy(self.snapshot)
-        for _ in range(consumed):
-            self.state.random_unit()
+    params: Any
+    seed: int
+    step_index: int
+    rows: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -2257,9 +2230,7 @@ class Qwen35GGUFMTP2Adapter:
         if not _qualified:
             return False
         row = self.owner._row(int(request_id))
-        if row is None or bool(getattr(row, "native_sampler", False)):
-            # The accept rule draws from the row's live host sampler stream, so a
-            # row whose sampling runs on the device sampler cannot use it.
+        if row is None:
             return False
         recorded = self._sampling_mode_by_request.get(int(request_id))
         if recorded is not None:
@@ -2276,19 +2247,26 @@ class Qwen35GGUFMTP2Adapter:
         the row, and the row's raw request still carries the thinking-budget
         fields the server relaxes for the MTP path, so the planner's own
         predicate answers "processed" at that point. The variant is therefore
-        captured for any host-sampled row that samples at all; the plan gate
-        still decides whether a cycle uses it.
+        captured for native full-vocabulary rows without processors; the plan
+        gate still decides whether a cycle uses it.
         """
 
         if not self._sampled_route_qualified():
             return False
         row = self.owner._row(int(request_id))
-        if row is None or bool(getattr(row, "native_sampler", False)):
+        if row is None or not bool(getattr(row, "native_sampler", False)):
             return False
         params = getattr(row, "sampling_request", None) or getattr(row, "request", None)
         if params is None:
             return False
-        return float(getattr(params, "temperature", 0.0)) > 0.0
+        from hipengine.runtime.native_sampler import _needs_processors
+
+        return (
+            float(getattr(params, "temperature", 0.0)) > 0.0
+            and int(getattr(params, "top_k", 0)) == 0
+            and not _needs_processors(params)
+            and getattr(self.generator, "native_sampler_algorithm", "sorted") == "sorted"
+        )
 
     def _device_sampled_accept_plan(
         self,
@@ -2298,10 +2276,9 @@ class Qwen35GGUFMTP2Adapter:
     ) -> "_DeviceSampledAcceptPlan | None":
         """Return a device sampled-accept plan for this row, or None.
 
-        The device accept reads the resident verifier's device logits and
-        applies no logits processors, so it serves only a row whose sampler is
-        the host stream, whose parameters need no processors, and whose prompt
-        constraints are inactive. Everything else keeps the host accept route.
+        The graph uses the same sorted native sampler as AR, with immutable
+        request parameters and absolute-position RNG inputs. Processor-bearing
+        and bounded-top-k requests use the eager acceptance path.
         """
 
         from hipengine.runtime.native_sampler import _needs_processors
@@ -2315,13 +2292,16 @@ class Qwen35GGUFMTP2Adapter:
                 )
 
         row = self.owner._row(int(request_id))
-        if row is None or bool(getattr(row, "native_sampler", False)):
-            _decline("row missing or device sampler")
+        if row is None or not bool(getattr(row, "native_sampler", False)):
+            _decline("row missing or host sampler")
+            return None
+        if getattr(target, "native_sampler_algorithm", "sorted") != "sorted":
+            _decline("strict sampler uses eager native selection")
             return None
         state = getattr(row, "sampling_state", None)
         params = getattr(row, "sampling_request", None) or getattr(row, "request", None)
         if state is None or params is None:
-            _decline("no host sampling state or params")
+            _decline("no sampling state or params")
             return None
         # The planner's resolved mode, not the row's raw request: a temperature
         # request carries EOS, and the raw request then reads as "processed"
@@ -2341,6 +2321,9 @@ class Qwen35GGUFMTP2Adapter:
             return None
         if _needs_processors(params):
             _decline("parameters need logits processors")
+            return None
+        if int(getattr(params, "top_k", 0)) != 0:
+            _decline("bounded top-k uses eager native selection")
             return None
         if getattr(state, "tool_call_constraint_state", None) is not None:
             _decline("active tool-call constraint")
@@ -2364,8 +2347,9 @@ class Qwen35GGUFMTP2Adapter:
             )
             return None
         return _DeviceSampledAcceptPlan(
-            state=state,
-            temperature=temperature,
+            params=params,
+            seed=int(state.seed),
+            step_index=int(state.step_index),
             rows=budget + 1,
         )
 
@@ -3577,7 +3561,7 @@ class Qwen35GGUFMTP2Adapter:
                         budgets[0],
                     )
                     if sampled_device_plan is not None:
-                        sampled_device_state = sampled_device_plan.state_tuple()
+                        sampled_device_state = sampled_device_plan
                 if (
                     (not sampled_route or sampled_device_state is not None)
                     and target_device_ready
@@ -3851,11 +3835,7 @@ class Qwen35GGUFMTP2Adapter:
             )
         sampled_route = self._sampled_route_request(rid)
         sampled_device_plan = state.sampled_accept_plan
-        sampled_device_state = (
-            None
-            if sampled_device_plan is None
-            else sampled_device_plan.state_tuple()
-        )
+        sampled_device_state = sampled_device_plan
         batch = frontier.target_batch
         device_proposal = state.proposal_device
         if batch is None:
@@ -3898,7 +3878,15 @@ class Qwen35GGUFMTP2Adapter:
                 transaction_id=transaction_id,
                 graph_bucket=bucket,
                 remaining_decode=(remaining,),
-                return_logits=sampled_route and sampled_device_plan is None,
+                return_logits=(
+                    sampled_route and sampled_device_plan is None
+                    and not row.native_sampler
+                ),
+                **(
+                    {"return_device_logits": True}
+                    if sampled_route and sampled_device_plan is None and row.native_sampler
+                    else {}
+                ),
                 device_proposal=(
                     device_proposal
                     if sampled_device_plan is not None or not sampled_route
@@ -3919,6 +3907,9 @@ class Qwen35GGUFMTP2Adapter:
             )
             target_finished_ns = time.perf_counter_ns()
             target_seconds = (target_finished_ns - target_started_ns) / 1e9
+            sampled_logit_readback_bytes = (
+                int(prepared.target_logits.nbytes) if sampled_route else 0
+            )
             # The launch consumed the staged draws: drop the plan now so a
             # rollback or a later cycle cannot reuse a stale stream position.
             state.sampled_accept_plan = None
@@ -4043,11 +4034,9 @@ class Qwen35GGUFMTP2Adapter:
                     )
                 for emitted in output_ids:
                     sampling_state.observe(int(emitted))
-                if sampled_device_plan is not None:
-                    # The device consumed the draws the plan staged; rewind and
-                    # re-advance by exactly that many so the row's stream sits
-                    # where the host accept would have left it.
-                    sampled_device_plan.settle(int(accepted))
+                if bool(getattr(row, "native_sampler", False)):
+                    row.full_vocab_logits_d2h = sampled_logit_readback_bytes > 0
+                    row.logits_d2h_bytes = sampled_logit_readback_bytes
             slot.generated_ids.extend(output_ids)
             slot.prev_token = int(output_ids[-1])
             slot.seq_position = int(target.position)
@@ -4144,6 +4133,30 @@ class Qwen35GGUFMTP2Adapter:
             raise RuntimeError(
                 "sampled MTP route requires the row's live sampler request/state"
             )
+        if bool(getattr(row, "native_sampler", False)):
+            # Eager verifier/processor shapes still use the native sampler.
+            # Speculative prefixes are private clones; only committed outputs
+            # are observed into the live state by the transaction owner.
+            from hipengine.generation.mtp_sampled_accept import row_prefix_states
+
+            session = row.lease.session
+            workspace = session._native_sampler()
+            device = getattr(prepared, "target_logits_device", None)
+            if device is None:
+                logits = np.ascontiguousarray(prepared.target_logits, dtype=np.float32)
+                device = workspace._upload("mtp_eager_logits", logits)
+            prefixes = row_prefix_states(batch, {int(batch.request_ids[0]): sampling_state})
+            selected = [
+                workspace.sample(
+                    device.ptr + index * workspace.vocab_size * 4, params, prefix,
+                ).token_id
+                for index, prefix in enumerate(prefixes)
+            ]
+            accepted = batch.accept_from_top1(
+                selected, remaining_decode=(int(remaining_decode),),
+                transaction_id=int(transaction_id),
+            )
+            return TargetAcceptSummary.from_accept_result(batch, accepted)
         tokenizer = getattr(self.generator, "tokenizer", None)
         token_text_for_id = (
             None

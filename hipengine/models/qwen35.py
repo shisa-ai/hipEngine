@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from hipengine.models.kv_capabilities import (
     KVCapabilityEvidence,
@@ -308,7 +308,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         realized_group_rows=1,
         resident_capacity=4,
         candidate_budget=3,
-        sampling_modes=("greedy_fast", "sampled"),
+        sampling_modes=("greedy_fast",),
         reason="diagnostic_production_cap4_c1_or_c2_after_ar_rebase",
         evidence_artifacts=(
             "benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json",
@@ -416,6 +416,25 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         max_realized_group_rows=8,
         strict_fallback_key="gguf_target_ar",
         automatic_eligible=False,
+    ),
+)
+
+
+# Sampled singleton selection is a separate product decision from the older
+# greedy C2 timing policy; do not accidentally promote either wider groups or
+# greedy requests when enabling the shared native sampler.
+_QWEN38_Q4KM_MTP_SERVING_EVIDENCE += (
+    replace(
+        next(row for row in _QWEN38_Q4KM_MTP_SERVING_EVIDENCE
+             if row.evidence_key == "qwen38-q4km-gfx1151-production-bf16-cap4-c1-intent-k3-d24"),
+        evidence_key="qwen38-q4km-gfx1151-native-sampled-c1-k3",
+        sampling_modes=("sampled",),
+        max_realized_group_rows=1,
+        automatic_eligible=True,
+        reason="automatic_native_sampled_c1",
+        evidence_artifacts=(
+            "worklog/entries/20260920T191153.095647Z-sampling-mtp-mtp-native-sampling-8eb801.md",
+        ),
     ),
 )
 

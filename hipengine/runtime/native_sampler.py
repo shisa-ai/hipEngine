@@ -85,6 +85,20 @@ def native_sampler_provenance(full_vocab_algorithm: str = "sorted") -> dict[str,
     return payload
 
 
+def native_chain_seeds(seed: int, step_index: int, rows: int) -> np.ndarray:
+    """Fold singleton AR positions into the existing native row/step RNG ABI."""
+    if rows < 1 or step_index < 0 or step_index + rows > 2**64 or not 0 <= seed < 2**64:
+        raise ValueError("invalid native chain RNG identity")
+    mask = (1 << 64) - 1
+    row_factor = 0xBF58476D1CE4E5B9
+    step_factor = 0x9E3779B97F4A7C15
+    return np.asarray([
+        (seed ^ row_factor ^ (((row + 1) * row_factor) & mask)
+         ^ (((step_index + row + 1) * step_factor) & mask) ^ step_factor)
+        for row in range(rows)
+    ], dtype=np.uint64)
+
+
 class NativeSamplerWorkspace:
     """Own reusable buffers for supported native selection from device logits.
 
@@ -774,6 +788,67 @@ class NativeSamplerWorkspace:
             raise ValueError(
                 f"{field} {token} is outside vocab size {self.vocab_size}"
             )
+
+
+class NativeSamplerChainWorkspace(NativeSamplerWorkspace):
+    """Graph-owned target draws using the same sorted sampler as native AR.
+
+    Drafts are deterministic. Comparing each draft with its independently drawn
+    target token implements acceptance p(draft); a mismatch already has the
+    residual law p(token | token != draft). No second rejection sampler is needed.
+    Only committed tokens advance the caller's counter; this owner never mutates
+    request state, including for rejected lookahead rows or rolled-back cycles.
+    """
+
+    def __init__(self, *, runtime: HipRuntime, vocab_size: int, rows: int, sampler_library: Any):
+        super().__init__(runtime=runtime, vocab_size=vocab_size, sampler_library=sampler_library)
+        if rows < 1:
+            raise ValueError("chain rows must be positive")
+        self.rows = int(rows)
+        try:
+            self._chain_scratch = self._buffer(
+                "chain_scratch", fast_sampler_scratch_bytes(self.rows, self.vocab_size),
+            )
+            self._chain_temperatures = self._buffer("chain_temperatures", self.rows * 4)
+            self._chain_top_ps = self._buffer("chain_top_ps", self.rows * 4)
+            self._chain_min_ps = self._buffer("chain_min_ps", self.rows * 4)
+            self._chain_seeds = self._buffer("chain_seeds", self.rows * 8)
+        except Exception:
+            self.close()
+            raise
+
+    def stage(self, inputs: Any) -> None:
+        if self.closed:
+            raise RuntimeError("native chain workspace is closed")
+        if int(getattr(inputs, "rows", self.rows)) != self.rows:
+            raise ValueError("native chain inputs do not match captured rows")
+        params = inputs.params
+        if (
+            not supports_native_gpu_sampling(params)
+            or _needs_processors(params)
+            or int(getattr(params, "top_k", 0)) != 0
+        ):
+            raise NotImplementedError("captured native chain needs full-vocabulary sampling without processors")
+        seeds = native_chain_seeds(int(inputs.seed), int(inputs.step_index), self.rows)
+        for name, value in (
+            ("chain_temperatures", params.temperature),
+            ("chain_top_ps", getattr(params, "top_p", 1.0)),
+            ("chain_min_ps", getattr(params, "min_p", 0.0)),
+        ):
+            self._upload(name, np.full(self.rows, value, dtype=np.float32))
+        self._upload("chain_seeds", seeds)
+
+    def enqueue(self, logits_ptr: int, output_ptr: int, *, stream: int = 0) -> None:
+        if self.closed:
+            raise RuntimeError("native chain workspace is closed")
+        sample_sorted_f32_rows_i32(
+            logits_ptr, self._chain_temperatures.ptr, self._chain_top_ps.ptr,
+            self._chain_min_ps.ptr, self._chain_seeds.ptr, output_ptr, None, None,
+            self.rows, self.vocab_size,
+            scratch_ptr=self._chain_scratch.ptr,
+            scratch_bytes=self._chain_scratch.nbytes,
+            step_index=0, stream=stream, library=self.sampler_library, runtime=self.runtime,
+        )
 
 
 def _flatten_pairs(
