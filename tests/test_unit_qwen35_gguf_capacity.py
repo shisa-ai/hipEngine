@@ -1056,6 +1056,9 @@ def test_server_explicit_int8_uses_qualified_scale_defaults(monkeypatch) -> None
     key = KVCapabilityKey(
         artifact_sha256="7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
         artifact_size_bytes=17_106_773_984,
+        artifact_execution_fingerprint=(
+            "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+        ),
         backend="hip_gfx1100",
         target_arch="gfx1100",
         weight_quant="gguf_q4_k_m",

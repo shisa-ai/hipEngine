@@ -4,6 +4,7 @@ from hipengine.models.base import ModelPlugin
 from hipengine.models.vibevoice_asr import VIBEVOICE_ASR, VibeVoiceASRModel
 from hipengine.models.vibevoice_tts import VIBEVOICE_TTS, VibeVoiceTTSModel
 from hipengine.models.kv_capabilities import (
+    KVCapabilityDeclaration,
     KVCapabilityEvidence,
     KVCapabilityKey,
     KVCapabilityResolution,
@@ -100,6 +101,7 @@ __all__ = [
     "TIMESFM3_ARCHITECTURE",
     "TIMESFM_ARCHITECTURE",
     "DuplicateModelError",
+    "KVCapabilityDeclaration",
     "KVCapabilityEvidence",
     "KVCapabilityKey",
     "KVCapabilityResolution",

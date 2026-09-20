@@ -610,7 +610,10 @@ class LLM:
         detailed = getattr(generator, "generate_speculative_mtp_detailed", None)
         if not callable(detailed):
             raise NotImplementedError("speculative MTP generation is not supported by this generator")
-        request = _generation_request(prompt_tuple, sampling_params or SamplingParams())
+        params = self._mtp_sampling_params(
+            sampling_params or SamplingParams(), realized_group_rows=len(prompt_tuple),
+        )
+        request = _generation_request(prompt_tuple, params)
         outputs = list(detailed(request))
         if len(outputs) != len(prompt_tuple):
             raise RuntimeError(f"generator returned {len(outputs)} MTP outputs for {len(prompt_tuple)} prompts")
@@ -630,8 +633,37 @@ class LLM:
         stream = getattr(generator, "stream_speculative_mtp_detailed", None)
         if not callable(stream):
             raise NotImplementedError("speculative streaming is not supported by this generator")
-        request = _generation_request(prompt_tuple, sampling_params or SamplingParams())
+        params = self._mtp_sampling_params(
+            sampling_params or SamplingParams(), realized_group_rows=len(prompt_tuple),
+        )
+        request = _generation_request(prompt_tuple, params)
         yield from stream(request)
+
+    def _mtp_sampling_params(
+        self, params: SamplingParams, *, realized_group_rows: int,
+    ) -> SamplingParams:
+        """Resolve request intent for direct callers as the HTTP layer does."""
+
+        if params.speculative_mtp_static_eligibility is not None:
+            return params
+        from hipengine.generation.sampling import speculative_serving_sampling_mode
+
+        decision = self.resolve_speculative_mtp_serving_plan(
+            realized_group_rows=realized_group_rows,
+            sampling_mode=speculative_serving_sampling_mode(params),
+            kv_storage=str(params.kv_storage),
+            memory_fit=True,
+        )
+        if decision is None:
+            return params
+        eligibility = getattr(decision, "static_eligibility", None)
+        if isinstance(decision, Mapping):
+            eligibility = decision.get("static_eligibility")
+        if isinstance(eligibility, Mapping):
+            eligibility = SpeculativeMTPStaticEligibility.from_mapping(eligibility)
+        if eligibility is None:
+            return params
+        return replace(params, speculative_mtp_static_eligibility=eligibility)
 
     @property
     def supports_speculative_mtp(self) -> bool:
@@ -738,6 +770,7 @@ class LLM:
         sampling_mode: str,
         kv_storage: str = "auto",
         memory_fit: bool = True,
+        request_mode: str = "automatic",
     ):
         """Resolve one model-plugin serving plan before request mutation."""
 
@@ -749,8 +782,8 @@ class LLM:
         # against the real physical capacity rather than a pre-load fallback.
         self._publish_candidate_budget(generator)
         if self.speculative_candidate_budget is None:
-            # No evidence qualified a depth for this cell, so there is no typed
-            # plan to resolve; admission stays off rather than guessing one.
+            # No evidence qualified a depth for this cell and the owner declares
+            # no default, so there is no typed plan to resolve.
             return None
         resident_capacity = self._resident_capacity(generator)
         return resolver(
@@ -760,6 +793,7 @@ class LLM:
             sampling_mode=str(sampling_mode),
             kv_storage=str(kv_storage or "auto"),
             memory_fit=bool(memory_fit),
+            request_mode=str(request_mode),
         )
 
     @property

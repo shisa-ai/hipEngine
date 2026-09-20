@@ -70,6 +70,42 @@ Validate the retained INT8/scale attention source, suffix/reclaim/pressure,
 and user-facing requests before claiming that contract repaired.
 Decision: `worklog/entries/20260920T155434.502352Z-lhl-served-lane-boundaries-bc9b95.md`.
 
+## Three qwen36-dense serving rows carry no execution identity (found 2026-09-20)
+
+The three `qwen36-dense-q4km-gfx1100-*` rows in
+`hipengine/models/qwen35.py` describe Qwen3.6-27B-Q4_K_M
+(`/models/gguf/Qwen3.6-27B-Q4_K_M.gguf`, sha256 `a7cbd3ec…`, 17,106,773,120
+bytes) and record its measured gfx1100 scope. That artifact is not on this host,
+so `artifact_execution_fingerprint` is empty on all three and they match no
+resident file: their automatic authorization is inert until someone records the
+identity.
+
+**Clearing command.** `python3 scripts/gguf_execution_identity.py <artifact.gguf>`
+prints the fingerprint to paste into the three rows. `tests/test_unit_speculative_mtp_serving_capability.py::
+test_qwen36_dense_rows_authorize_nothing_until_their_identity_is_recorded` pins
+the current inert state and fails once the rows bind, which is the signal to
+update it.
+
+Explicit requests on that cell are unaffected: they resolve through the dense
+BF16 implementation declaration, which does not read evidence rows. The
+`qwen36-dense` and `qwen38` rows cannot be conflated by a byte-digest match
+because the artifact axis is the execution identity, not the SHA-256.
+
+## MTP admission no longer reads the artifact's byte digest (2026-09-20)
+
+`SpeculativeMTPServingKey.artifact_sha256` and `artifact_size_bytes` are
+provenance fields now; admission compares
+`artifact_execution_fingerprint` (`hipengine/loading/gguf.py`). The two Qwen3.8
+plain builds differ by 1,024 metadata bytes and share one identity, and the
+resident file's SHA-256 is no longer computed on the serving path because no
+row reads it.
+
+Consequence to be aware of: a `KVCapabilityKey`'s `capability_id` covers its key
+payload, so it changed for every int8-KV contract. The two 2026-09-11 W7900
+int8-KV artifacts under `benchmarks/results/` record the pre-change id
+(`4b0e936f…` for the gfx1100 direct-c4 contract); they are frozen measurements
+and are not rewritten.
+
 ## The packed workspace lease still reserves one full session context per slot (found 2026-09-18)
 
 `hipengine/generation/qwen35_gguf.py` sizes the eager packed-execution workspace
@@ -4237,7 +4273,7 @@ shorter-horizon audit establishes a lower break-even.
 | GGUF prefill route-session stack | `Qwen35GGUFResidentSession.prefill` opens the wmma/q8/pack8/unequal-pair/F16 route sessions as one stack, while the packed admission entry `prefill_batch_native` now opens only `q4_t16_unequal_pair_prefill_session` (the route whose row floor was qualified). | Sessions are added per qualified route because each needed its own W7900 bit-parity + A/B evidence; the shipping AR route admits through `prefill_batch_native` (bound in `hipengine/generation/qwen35_gguf.py` 5 times), so a route enabled only in `prefill` is invisible to it - that is how the rows16 QKV dual landed with a flat topline until the packed entry was wired. | Extract one `_prefill_route_sessions(...)` context stack used by both entries (and by `_prefill_batch_native_impl` if a caller ever reaches it directly), then delete the per-entry session lists. Route-eligibility stays in the capability policies, not in call sites. |
 | GGUF bench shipping-route alias | `scripts/qwen35_gguf_bench.py --public-ar-profile` (plus the recorded `public_ar_profile` / `shipping_ar_route_mismatch` protocol fields and the stderr warning) selects `use_wmma_prefill=True` + `use_gemv_decode=True` instead of the low-level env-default-off selectors. | W7900 Qwen3.8-27B-Q4_K_M measured 45-token prefill 0.4577 s unset vs 0.2818 s shipping (+62.4%), 512 tokens +1.7%, identical generated id, final logit 22.1395 -> 21.9644. Without the alias the harness default route silently measures a route the product never runs; see worklog `20260829T215206.066388Z-lhl-w7900-qwen38-submodule-parity-1921c9`. | Collapse once the bench resolves its default through the same session-profile helper the product uses (so no separate alias is needed), or once every retained short-prompt prefill artifact has been re-measured on the shipping route and the low-level selectors are gone from the bench surface. |
 | GGUF duplicate AR loop ownership | `Qwen35GGUFResidentModelRunner` owns public blocking and OpenAI submit/poll execution, but `_generate_ar_serving_slots()` remains as a direct control/oracle and explicit compatibility fallback. | D1–E3/F1 now prove one shared model-owning loop through exact arbitrary-C burst/live admission, cancellation, SSE, shutdown, real KV ownership, observability, and retained server scaling on both gfx11 targets. The direct loop still supplies the independent c1/native-width oracle used by the retained E1/E2/E3 packets. | Both gfx11 triggers are met. During F2, move the oracle into an explicit test/benchmark helper and remove production call sites after one release window; keep registry-resolved unsupported-shape fallbacks. |
-| GGUF RadixCache production admission | `HIPENGINE_PREFIX_CACHE=radix` is a real model-loop opt-in. It prefers an active source's exact-current positive 256-token boundary, then may restore a bounded cache-owned device snapshot after normal source reclaim. Stochastic sampled reuse remains off, while deterministic `processed_argmax` forced-tool rows now restore prefixes with full-vocabulary logits and unchanged host processors. Shared-prefix suffix tokens use exact c1 steps because packed one-row suffix arithmetic passes KL/top-1 but is not byte-identical to c1 state/KV. | Host/runtime RED/GREEN proves same-backing page refcounts/COW, non-contiguous block-table gather/scatter, exact hybrid-state clone, suffix-only execution, source-first reclaim, and final drain. The active-current gfx1151 and gfx1100 gates are byte-exact; the clean gfx1151 paired p256+s1 packet moves already-live continuation TTFT **249.269 -> 21.188 ms (11.765x, -91.50%)**, with live pages **4 -> 3** (5,242,880 bytes) and zero paired HIP-current median savings. The completed-source gate then resets/unbinds the source before admission, restores all 66,846,720 snapshot bytes, keeps output/all Conv/GDN/live-KV/four teacher-forced steps byte-exact (`KL=0`, top-1 `100%`), and proves cache refs/eviction **1->1->2->1->0**. Its clean paired economics move TTFT **249.446 -> 22.013 ms (11.332x, -91.18%)** with 3/3 exact snapshot hits; unique continuation pages stay **2 -> 2**, while exact cache residency is **72,089,600 bytes** and paired HIP current is **+62,914,560 bytes**. The gfx1100 active/completed correctness transfer also passes output, all Conv/GDN/live-KV bytes, four teacher-forced steps (`KL=0`, top-1 100%), refcount/COW, snapshot eviction, and final drain. Deterministic processed-argmax p2048/p8192 active/completed gates additionally preserve a two-token forced sequence plus the five-ID response trajectory, reuse 8/32 pages, and bound completed residency at 108,789,760/234,618,880 bytes before exact eviction/final drain. The final W7900 A2 packet closes lifecycle/pressure but rejects agentic promotion: radix hits only 0/12, 3/24, and 3/18 C1 turns, regresses active-SSE goodput 64.19%/65.63%/26.64%, and worsens tool-ready latency 181.90%/196.09%/38.81%. Default stays `off`; radix is explicit diagnostic-only. | Do not default-enable the measured latest-boundary policy. Reconsider only after a model-general LCP/snapshot redesign passes the full frozen C1/C4/C8 suite, same-seed sampled output/state gates, and lifecycle economics without prompt-conditioned tuning. If no such redesign is scheduled after A3/A4, move production radix admission to a benchmark/diagnostic helper and remove the runtime flag; keep exact c1 suffix and ownership tests as references. |
+| GGUF RadixCache early admission history | Radix is now the HTTP and in-process default, with batched suffix prefill and registered gapped-page gather. The earlier admission used a latest-boundary policy and serial suffix steps; its results below are historical, not the current default policy. Stochastic reuse remains unsupported; deterministic processed-argmax requests preserve their host processors. | Early p256+s1 ownership gates passed exact state, refcounts/COW, source reclaim, snapshot eviction, and final drain on gfx1151 and gfx1100. The historical W7900 A2 packet closed lifecycle/pressure but rejected that agentic configuration: radix hit 0/12, 3/24, and 3/18 C1 turns, regressed active-SSE goodput 64.19%/65.63%/26.64%, and worsened tool-ready latency 181.90%/196.09%/38.81%. The original numerical and timing artifacts remain in the benchmark history. The current BF16 layout-repair packet independently passes all 16 category/lifecycle scopes with exact state and zero KL; it makes no new performance claim. | Keep lifecycle tests and the explicit `off` rollback. Remove obsolete admission cost guards only after their concrete slow-path conditions no longer apply. Any new performance claim needs a fresh same-host workload; the historical A2 result neither measures the repaired path nor overrides the owner-directed radix default. |
 | GGUF LCP-1 convolution prefill | `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE=baseline|tile32x128` selects between the production global-read convolution and the registered exact shared-token route. | gfx1151 selects `tile32x128` automatically. The clean 512/4K 82-part and wall gates pass, the 4K body falls `954.134 -> 49.790 ms`, and all six right-sized prefill rows improve `+1.10%..+24.04%` with unchanged memory. gfx1100 remains on `baseline` pending hardware transfer. The production implementation is the required unfused fallback and explicit rollback. | Remove the explicit mode selector after one release window if the gfx1100 transfer remains stable. Never remove the exact production fallback. |
 | GGUF packed-AR singleton-indexed GDN | Backend capability `GGUF_GDN_INDEXED_SINGLETON_DECODE` selects a one-token-per-row indexed sibling while retaining the arbitrary-length segmented recurrence. | gfx1151 defaults to the singleton sibling after independent-c1 byte equality and exact p512/d64 trajectories; gfx1100 remains on segmented GDN pending hardware transfer. The runtime manifest records `indexed_singleton` versus `segments` explicitly. | Remove the gfx1100 capability split only after an independent W7900 c2/c4/c8 correctness/performance gate. Keep the segmented implementation permanently as the arbitrary-length fallback. |
 | GGUF selected-MoE duplicate-expert reuse | `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE=0`, `HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE=0`, and `HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE=0` roll physical-C8 Q4T16 gate/up plus Q5/Q6T16 down back to per-selected-lane kernels; backend capabilities keep gfx1100 unchanged. | gfx1151 pairs consecutive dynamic expert-ID occurrences inside 128-thread blocks while preserving each row's reduction order. Q4 gate/up and Q5/Q6 down share weights across independent per-row accumulators. Lower widths and unpaired IDs retain exact fallback behavior. | Remove the three env opt-outs after one release window plus defaults-only gfx1151 direct/server refreshes and an independent gfx1100 transfer. Keep per-lane kernels for unsupported widths and as required fallbacks. |
@@ -6927,17 +6963,6 @@ collapse every delta onto one arm, and it produced a now-corrected claim that MT
 reaches the packed route. Preferred fix still stands: have the bench snapshot counters
 before and after each cell and store the delta next to the cumulative value, so
 attribution does not depend on reconstructing execution order.
-
-The **automatic MTP route is gated off** on gfx1100 / Qwen3.8 `Q4_K_M`, measured 2026-08-30:
-with `--mtp-request-mode automatic` no cell engages (0/80, zero accepted draft tokens),
-declining with `artifact_not_qualified` at C1, `resident_capacity_not_qualified` at C2 and
-`physical_group_not_qualified` at C3-C8. Consequence: the published explicit-K3 row is an
-engine ranking, and the product ships AR at all eight widths on this host. Un-sequencing
-this needs each gate qualified separately - they are three different qualification
-predicates, not one switch - and it is the reason the C5-C8 "AR beats our own K3" question
-has no user-facing urgency: there is no automatic K3 to displace yet. Until then do not
-read the K3 row as shipping behaviour. Removing this note = the automatic route engages at
-some width with acceptance counters proving it.
 
 `gguf_mtp_verifier_rocprof.py --mode block-verify` cannot sweep `--block-rows`: the child
 raises `ValueError: token_id 2147483647 outside [0, 248320)` from

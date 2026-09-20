@@ -152,8 +152,8 @@ Direct-INT8 failed 9 of 11 quality prompts and is not a default.
 
 Multi-turn conversations resend the whole transcript, so hipEngine reuses the
 KV pages and hybrid state of any 256-token-aligned prefix a later request
-repeats. Radix is the direct engine default; HTTP serving requires
-`--prefix-cache radix`. Different prefill routes can change generated tokens.
+repeats. Radix is the default for both the direct engine and HTTP serving;
+`--prefix-cache off` rolls it back. Different prefill routes can change generated tokens.
 Qwen3.6-35B-A3B `UD-Q4_K_M` on Strix Halo (`gfx1151`), 14 multi-turn lanes of
 three turns, reusing 42,496 of 87,582 prompt tokens:
 

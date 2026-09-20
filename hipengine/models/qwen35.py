@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import Sequence
 
 from hipengine.models.kv_capabilities import (
+    KVCapabilityDeclaration,
     KVCapabilityEvidence,
     KVCapabilityKey,
     KVCapabilityResolution,
@@ -18,6 +20,7 @@ from hipengine.speculative.serving import (
     SpeculativeMTPServingKey,
     resolve_max_qualified_candidate_budget,
     resolve_speculative_mtp_serving_plan,
+    unsupported_contract,
     SpeculativeMTPServingImplementation,
 )
 
@@ -29,6 +32,9 @@ _QWEN36_MOE_Q4KM_MTP_SERVING_EVIDENCE = (
             "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b"
         ),
         artifact_size_bytes=22_663_387_424,
+        artifact_execution_fingerprint=(
+            "c65907f4b56a10e8f89dee5860fb2eae4a9f36deb2d60ab53c6b85dcc42e3bf6"
+        ),
         backend="hip_gfx1100",
         target_arch="gfx1100",
         weight_quant="gguf_q4_k_m",
@@ -53,6 +59,9 @@ _QWEN36_MOE_Q4KM_MTP_SERVING_EVIDENCE = (
             "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b"
         ),
         artifact_size_bytes=22_663_387_424,
+        artifact_execution_fingerprint=(
+            "c65907f4b56a10e8f89dee5860fb2eae4a9f36deb2d60ab53c6b85dcc42e3bf6"
+        ),
         backend="hip_gfx1100",
         target_arch="gfx1100",
         weight_quant="gguf_q4_k_m",
@@ -79,6 +88,9 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
             "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
         ),
         artifact_size_bytes=17_106_773_120,
+        # Execution identity unresolved: this artifact is not present on
+        # this host, so the row cannot admit until it is recorded with
+        # python3 scripts/gguf_execution_identity.py <artifact.gguf>.
         backend="hip_gfx1100",
         target_arch="gfx1100",
         weight_quant="gguf_q4_k_m",
@@ -104,6 +116,9 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
             "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
         ),
         artifact_size_bytes=17_106_773_120,
+        # Execution identity unresolved: this artifact is not present on
+        # this host, so the row cannot admit until it is recorded with
+        # python3 scripts/gguf_execution_identity.py <artifact.gguf>.
         backend="hip_gfx1100",
         target_arch="gfx1100",
         weight_quant="gguf_q4_k_m",
@@ -127,6 +142,9 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
             "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
         ),
         artifact_size_bytes=17_106_773_120,
+        # Execution identity unresolved: this artifact is not present on
+        # this host, so the row cannot admit until it is recorded with
+        # python3 scripts/gguf_execution_identity.py <artifact.gguf>.
         backend="hip_gfx1100",
         target_arch="gfx1100",
         weight_quant="gguf_q4_k_m",
@@ -166,6 +184,9 @@ _UD_Q4K_MTP_SERVING_EVIDENCE = (
             "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
         ),
         artifact_size_bytes=16_464_440_224,
+        artifact_execution_fingerprint=(
+            "93fe11b8ac0f4696567cc123f2c08ea4bc7fcf615ed985d4fb11742df404f3ca"
+        ),
         backend="hip_gfx1100",
         target_arch="gfx1100",
         weight_quant="gguf_q4_k_m",
@@ -191,6 +212,9 @@ _UD_Q4K_MTP_SERVING_EVIDENCE = (
             "75bc9c8adba2842e72f0ab5201aaa07133c5010b566305c09187fcbdcd364017"
         ),
         artifact_size_bytes=15_358_213_024,
+        artifact_execution_fingerprint=(
+            "018bdb7473fa5a4e4aa70cf3ff07c3d3150939528095379902320d6700f36f09"
+        ),
         backend="hip_gfx1100",
         target_arch="gfx1100",
         weight_quant="gguf_q4_k_s",
@@ -223,6 +247,9 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
             "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
         ),
         artifact_size_bytes=17_106_775_008,
+        artifact_execution_fingerprint=(
+            "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+        ),
         backend="hip_gfx1151",
         target_arch="gfx1151",
         weight_quant="gguf_q4_k_m",
@@ -250,6 +277,9 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
             "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
         ),
         artifact_size_bytes=17_106_775_008,
+        artifact_execution_fingerprint=(
+            "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+        ),
         backend="hip_gfx1151",
         target_arch="gfx1151",
         weight_quant="gguf_q4_k_m",
@@ -275,6 +305,9 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
             "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
         ),
         artifact_size_bytes=17_106_775_008,
+        artifact_execution_fingerprint=(
+            "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+        ),
         backend="hip_gfx1151",
         target_arch="gfx1151",
         weight_quant="gguf_q4_k_m",
@@ -300,6 +333,9 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
             "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
         ),
         artifact_size_bytes=17_106_775_008,
+        artifact_execution_fingerprint=(
+            "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+        ),
         backend="hip_gfx1151",
         target_arch="gfx1151",
         weight_quant="gguf_q4_k_m",
@@ -325,6 +361,9 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
             "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
         ),
         artifact_size_bytes=17_106_775_008,
+        artifact_execution_fingerprint=(
+            "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+        ),
         backend="hip_gfx1151",
         target_arch="gfx1151",
         weight_quant="gguf_q4_k_m",
@@ -349,6 +388,9 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
             "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
         ),
         artifact_size_bytes=17_106_773_984,
+        artifact_execution_fingerprint=(
+            "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+        ),
         backend="hip_gfx1100",
         target_arch="gfx1100",
         weight_quant="gguf_q4_k_m",
@@ -375,6 +417,9 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
             "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
         ),
         artifact_size_bytes=17_106_773_984,
+        artifact_execution_fingerprint=(
+            "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+        ),
         backend="hip_gfx1100",
         target_arch="gfx1100",
         weight_quant="gguf_q4_k_m",
@@ -398,6 +443,9 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
             "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
         ),
         artifact_size_bytes=17_106_773_984,
+        artifact_execution_fingerprint=(
+            "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+        ),
         backend="hip_gfx1100",
         target_arch="gfx1100",
         weight_quant="gguf_q4_k_m",
@@ -439,11 +487,40 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE += tuple(
 )
 
 
+_QWEN38_GGUF_KV_CAPABILITY_DECLARATIONS = tuple(
+    KVCapabilityDeclaration(
+        backend=backend,
+        target_arch=target_arch,
+        kv_storage="int8_per_token_head",
+        storage_layout="uniform",
+        scale_dtype="fp32",
+        scale_granularity="per_token_head",
+        max_direct_rows=4,
+        max_serial_resident_rows=4,
+        persistent_bf16_mirror=False,
+        decode_batch_variant=(
+            "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans"
+        ),
+        reason=(
+            "registered int8 per-token-head paged decode chain; the row-batched "
+            "producer and its strided reducer are implemented to physical c4"
+        ),
+    )
+    for backend, target_arch in (
+        ("hip_gfx1100", "gfx1100"),
+        ("hip_gfx1151", "gfx1151"),
+    )
+)
+
+
 _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE = (
     KVCapabilityEvidence(
         key=KVCapabilityKey(
             artifact_sha256="7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
             artifact_size_bytes=17_106_773_984,
+            artifact_execution_fingerprint=(
+                "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+            ),
             backend="hip_gfx1100",
             target_arch="gfx1100",
             weight_quant="gguf_q4_k_m",
@@ -477,6 +554,9 @@ _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE = (
         key=KVCapabilityKey(
             artifact_sha256="7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
             artifact_size_bytes=17_106_775_008,
+            artifact_execution_fingerprint=(
+                "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+            ),
             backend="hip_gfx1151",
             target_arch="gfx1151",
             weight_quant="gguf_q4_k_m",
@@ -584,6 +664,48 @@ class Qwen35ParoMoeModel:
         )
 
 
+def select_speculative_mtp_serving_implementation(
+    implementations: Sequence[SpeculativeMTPServingImplementation],
+    *,
+    key: SpeculativeMTPServingKey,
+) -> SpeculativeMTPServingImplementation | None:
+    """The declaration covering this key's KV storage, backend, and width.
+
+    Storage is matched first because that is the contract a declaration
+    describes, then the backend that offers the path.  Among the backend's
+    declarations the narrowest one that still covers the realized width wins, so
+    a single-row request may use the C1 chain's full structural depth while a
+    wider group takes the multi-row cell's measured depth.  A storage match on
+    the wrong backend is still returned so the refusal names the real axis
+    (``mtp_backend_unsupported``) instead of a storage mismatch, and a width no
+    declaration covers returns the widest one so the refusal names the group
+    axis.
+    """
+
+    candidates = tuple(
+        implementation
+        for implementation in implementations
+        if implementation.kv_storage == key.kv_storage
+    )
+    if not candidates:
+        return None
+    offered = tuple(
+        implementation
+        for implementation in candidates
+        if (key.backend, key.target_arch) in implementation.backends
+    )
+    if not offered:
+        return candidates[0]
+    covering = tuple(
+        implementation
+        for implementation in offered
+        if implementation.max_group_rows >= key.realized_group_rows
+    )
+    if covering:
+        return min(covering, key=lambda implementation: implementation.max_group_rows)
+    return max(offered, key=lambda implementation: implementation.max_group_rows)
+
+
 @dataclass(frozen=True)
 class Qwen35GGUFModel:
     """Qwen3.5 dense GGUF model plugin metadata."""
@@ -608,6 +730,9 @@ class Qwen35GGUFModel:
         "blk.{layer}.ffn_down.weight",
     )
     kv_capability_evidence: tuple[KVCapabilityEvidence, ...] = _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE
+    kv_capability_declarations: tuple[KVCapabilityDeclaration, ...] = (
+        _QWEN38_GGUF_KV_CAPABILITY_DECLARATIONS
+    )
     speculative_mtp_serving_evidence: tuple[SpeculativeMTPServingEvidence, ...] = (
         _QWEN38_Q4KM_MTP_SERVING_EVIDENCE
         + _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE
@@ -618,6 +743,55 @@ class Qwen35GGUFModel:
     )
     speculative_mtp2_adapter: str = "dense_nextn"
     speculative_mtp_serving_implementations: tuple[SpeculativeMTPServingImplementation, ...] = (
+        # Capability declarations for the dense NextN chain.  They are what lets
+        # an explicitly requested run execute on an artifact no evidence row
+        # describes, and they carry no performance claim.  Depth is the
+        # adapter's structural maximum (MTP2_MAX_CANDIDATE_DEPTH) for a
+        # single-row chain, where each candidate is the same single-row kernel
+        # repeated, and the widest depth the backend package offers once the
+        # verifier covers a multi-row group.  Group width is the widest physical
+        # cell that backend offers, so a plan never forms a group the adapter
+        # would decline; the backend package's own cell table stays the
+        # group-formation gate, and a cell it does not list falls through to
+        # whole-group AR rather than running a cell nothing measured.  The declared sampling mode is greedy-fast only: the
+        # sampled accept route stays closed until it can honour the
+        # autoregressive finish rule (stop tokens and EOS mid-cycle) and a
+        # device-side accept removes the eager host-logit restriction; the
+        # gfx1151 cells that advertise `sampled` are admitted by their own
+        # evidence rows instead.  See docs/REFACTOR.md "Sampled MTP acceptance
+        # route".
+        SpeculativeMTPServingImplementation(
+            name="gguf_dense_bf16_gfx1100_c1_native_chain",
+            kv_storage="bf16",
+            backends=(("hip_gfx1100", "gfx1100"),),
+            max_candidate_count=7,
+            max_group_rows=1,
+            group_rejection_reason="dense_group_above_offered_width",
+        ),
+        SpeculativeMTPServingImplementation(
+            name="gguf_dense_bf16_gfx1100_group_native_chain",
+            kv_storage="bf16",
+            backends=(("hip_gfx1100", "gfx1100"),),
+            max_candidate_count=3,
+            max_group_rows=8,
+            group_rejection_reason="dense_group_above_offered_width",
+        ),
+        SpeculativeMTPServingImplementation(
+            name="gguf_dense_bf16_gfx1151_c1_native_chain",
+            kv_storage="bf16",
+            backends=(("hip_gfx1151", "gfx1151"),),
+            max_candidate_count=7,
+            max_group_rows=1,
+            group_rejection_reason="dense_group_above_offered_width",
+        ),
+        SpeculativeMTPServingImplementation(
+            name="gguf_dense_bf16_gfx1151_group_native_chain",
+            kv_storage="bf16",
+            backends=(("hip_gfx1151", "gfx1151"),),
+            max_candidate_count=3,
+            max_group_rows=4,
+            group_rejection_reason="dense_group_above_offered_width",
+        ),
         SpeculativeMTPServingImplementation(
             name="gguf_dense_int8_native_chain",
             kv_storage="int8_per_token_head",
@@ -625,23 +799,50 @@ class Qwen35GGUFModel:
             max_candidate_count=7,
             max_group_rows=1,
             group_rejection_reason="packed_int8_mtp_not_implemented",
+            # The int8 chain has no evidence rows and no wider automatic policy
+            # to widen, so its own declaration is the automatic scope it has
+            # always been.  BF16 stays evidence-gated for automatic intent.
+            automatic_eligible=True,
         ),
     )
+
+    def _speculative_mtp_serving_implementation(
+        self,
+        key: SpeculativeMTPServingKey,
+    ) -> SpeculativeMTPServingImplementation | None:
+        """The declaration covering this key's storage and backend."""
+
+        return select_speculative_mtp_serving_implementation(
+            self.speculative_mtp_serving_implementations,
+            key=key,
+        )
 
     def resolve_speculative_mtp_serving_plan(
         self,
         *,
         key: SpeculativeMTPServingKey,
+        request_mode: str = "automatic",
     ) -> SpeculativeMTPServingDecision:
-        """Resolve the exact Qwen dense serving scope before mutation."""
+        """Resolve the exact Qwen dense serving scope before mutation.
 
-        for implementation in self.speculative_mtp_serving_implementations:
-            if implementation.kv_storage == key.kv_storage:
-                return implementation.resolve(key)
-        return resolve_speculative_mtp_serving_plan(
+        A retained evidence row is consulted first because it carries the
+        measured scope and the promotion decision.  When no row covers the cell,
+        the implementation declaration admits it in every request mode: a
+        missing measurement never withholds a path the kernels support, and only
+        a capability gap or a recorded bad cell keeps it off.
+        """
+
+        evidence_decision = resolve_speculative_mtp_serving_plan(
             self.speculative_mtp_serving_evidence,
             key=key,
+            request_mode=request_mode,
         )
+        if evidence_decision.admitted:
+            return evidence_decision
+        implementation = self._speculative_mtp_serving_implementation(key)
+        if implementation is not None:
+            return implementation.resolve(key, request_mode=request_mode)
+        return unsupported_contract(evidence_decision)
 
     def max_qualified_candidate_budget(
         self,
@@ -667,6 +868,7 @@ class Qwen35GGUFModel:
             self.kv_capability_evidence,
             key=key,
             artifact=artifact,
+            declarations=self.kv_capability_declarations,
         )
 
 
@@ -681,6 +883,22 @@ class Qwen35MoeGGUFModel:
     speculative_mtp2_adapter: str = "moe_nextn"
     speculative_mtp_serving_evidence: tuple[SpeculativeMTPServingEvidence, ...] = (
         _QWEN36_MOE_Q4KM_MTP_SERVING_EVIDENCE
+    )
+    # The MoE NextN chain is declared for the backend its kernels are built and
+    # exercised on.  gfx1151 has no MoE MTP evidence and no MoE prompt-streaming
+    # policy entry, so an explicit run there stays evidence-gated until the
+    # capability is established rather than assumed.  Depth and width are what
+    # the adapter serves rather than a wider claim: it clamps candidate depth to
+    # two, and its prompt streaming covers capacities 1 and 2 only.
+    speculative_mtp_serving_implementations: tuple[SpeculativeMTPServingImplementation, ...] = (
+        SpeculativeMTPServingImplementation(
+            name="gguf_moe_bf16_gfx1100_native_chain",
+            kv_storage="bf16",
+            backends=(("hip_gfx1100", "gfx1100"),),
+            max_candidate_count=2,
+            max_group_rows=2,
+            group_rejection_reason="moe_group_above_offered_width",
+        ),
     )
     weight_name_templates: tuple[str, ...] = (
         "token_embd.weight",
@@ -708,13 +926,30 @@ class Qwen35MoeGGUFModel:
         self,
         *,
         key: SpeculativeMTPServingKey,
+        request_mode: str = "automatic",
     ) -> SpeculativeMTPServingDecision:
-        """Resolve the exact Qwen MoE serving scope before mutation."""
+        """Resolve the exact Qwen MoE serving scope before mutation.
 
-        return resolve_speculative_mtp_serving_plan(
+        Same rule as the dense plugin: retained evidence is consulted first for
+        the measured scope, and the implementation declaration admits the cell
+        in every request mode so a missing measurement cannot refuse a path the
+        kernels support.
+        """
+
+        evidence_decision = resolve_speculative_mtp_serving_plan(
             self.speculative_mtp_serving_evidence,
             key=key,
+            request_mode=request_mode,
         )
+        if evidence_decision.admitted:
+            return evidence_decision
+        implementation = select_speculative_mtp_serving_implementation(
+            self.speculative_mtp_serving_implementations,
+            key=key,
+        )
+        if implementation is not None:
+            return implementation.resolve(key, request_mode=request_mode)
+        return unsupported_contract(evidence_decision)
 
     def max_qualified_candidate_budget(
         self,

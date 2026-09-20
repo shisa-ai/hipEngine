@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import struct
 from dataclasses import dataclass
 from math import prod
@@ -24,6 +26,22 @@ from hipengine.quant.gguf import (
 GGUF_MAGIC = b"GGUF"
 GGUF_DEFAULT_ALIGNMENT = 32
 GGUF_SUPPORTED_VERSIONS = (2, 3)
+
+# Execution identity describes which layouts a file routes to, not which bytes
+# it stores.  Metadata that cannot change kernel or dispatch routing is excluded
+# so a byte-different revision with an identical tensor table and execution
+# configuration keeps the same identity: tokenizer arrays and chat template,
+# provenance strings, quantization bookkeeping, and shard bookkeeping.  Every
+# other key is included, including unknown architecture keys, so an unrecognized
+# routing-relevant addition changes the identity instead of silently inheriting.
+_GGUF_EXECUTION_METADATA_EXCLUDED_PREFIXES = (
+    "tokenizer.",
+    "general.",
+    "quantize.",
+    "split.",
+)
+_GGUF_EXECUTION_METADATA_INCLUDED_KEYS = frozenset({"general.architecture"})
+_GGUF_EXECUTION_FINGERPRINT_SCHEMA = "gguf-execution-identity-v1"
 
 
 class GGUFFormatError(ValueError):
@@ -252,6 +270,57 @@ def scan_gguf(path: str | Path) -> GGUFModelInfo:
 load_gguf_index = scan_gguf
 
 
+def gguf_execution_metadata_payload(
+    metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the metadata keys that participate in execution identity."""
+
+    payload: dict[str, Any] = {}
+    for key in sorted(metadata):
+        if key in _GGUF_EXECUTION_METADATA_INCLUDED_KEYS:
+            payload[key] = metadata[key]
+            continue
+        if key.startswith(_GGUF_EXECUTION_METADATA_EXCLUDED_PREFIXES):
+            continue
+        payload[key] = metadata[key]
+    return payload
+
+
+def gguf_execution_fingerprint(info: GGUFModelInfo) -> str:
+    """Return the SHA-256 execution identity of one scanned GGUF inventory.
+
+    The identity covers the tensor table (names, ggml types, ggml shapes, and
+    relative offsets) plus routing-relevant metadata.  It deliberately ignores
+    tokenizer content, provenance strings, and tensor bytes: two files that
+    differ only in those route through the same kernels, so a retained
+    qualification applies to both.  A file that introduces a layout the retained
+    evidence never measured produces a different identity.
+    """
+
+    payload = {
+        "schema": _GGUF_EXECUTION_FINGERPRINT_SCHEMA,
+        "version": int(info.version),
+        "alignment": int(info.alignment),
+        "tensors": [
+            [
+                str(tensor.name),
+                int(tensor.ggml_type),
+                [int(dim) for dim in tensor.ggml_shape],
+                int(tensor.offset),
+            ]
+            for tensor in sorted(info.tensors, key=lambda item: item.name)
+        ],
+        "metadata": gguf_execution_metadata_payload(info.metadata),
+    }
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _align_up(value: int, alignment: int) -> int:
     remainder = value % alignment
     return value if remainder == 0 else value + alignment - remainder
@@ -323,6 +392,8 @@ __all__ = [
     "GGUFTensorInfo",
     "MissingGGUFTensorError",
     "discover_gguf_files",
+    "gguf_execution_fingerprint",
+    "gguf_execution_metadata_payload",
     "load_gguf_index",
     "scan_gguf",
 ]

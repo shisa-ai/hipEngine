@@ -20,8 +20,8 @@
   },
   "ledger": {
     "source": "docs/REFACTOR.md",
-    "headings": 396
+    "headings": 399
   },
-  "generated": "2026-09-20T17:25:43+00:00",
-  "commit": "d4ef77fb3"
+  "generated": "2026-09-20T21:26:17+00:00",
+  "commit": "5fbe9032d"
 }

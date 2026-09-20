@@ -1,8 +1,18 @@
-"""Artifact-scoped KV capability evidence and fail-closed resolution.
+"""KV capability admission, and the evidence that selects and records it.
 
-Model names and tensor geometry are not capability identities.  A KV route is
-qualified only when immutable model content, backend/target, weight quantization, KV
-layout, and scale contract all match one retained evidence record.
+Capability decides whether a KV contract runs: a registered declaration states
+what the kernels execute for one backend/target/quant/KV/scale contract, and a
+contract no declaration covers is the only thing this module refuses.
+
+Retained evidence does not admit.  A row adds a measured guarantee to a
+contract capability already admits, or -- when it records a rejection --
+withholds the path as a known-bad configuration, scoped to the artifact
+execution identity that recorded it.  A contract the kernels implement that
+nobody has measured runs, and reports ``unmeasured``.
+
+No identity gates execution.  Model names, file paths, artifact SHA-256, and
+size are provenance: they label which file a measurement came from.  See
+``docs/EXECUTION-PROFILES.md`` section 2.9.
 """
 
 from __future__ import annotations
@@ -15,7 +25,14 @@ from pathlib import Path
 from typing import Literal, Sequence
 
 KVCapabilityDecision = Literal["qualified", "rejected"]
-KVCapabilityStatus = Literal["qualified", "rejected", "unknown", "not_applicable"]
+KVCapabilityStatus = Literal[
+    "qualified",
+    "unmeasured",
+    "rejected",
+    "unsupported",
+    "unknown",
+    "not_applicable",
+]
 KVCapabilityRuntimeAction = Literal[
     "admit",
     "diagnostic_override",
@@ -49,7 +66,13 @@ class ModelArtifactIdentity:
 
 @dataclass(frozen=True)
 class KVCapabilityKey:
-    """Complete immutable key for one model/KV capability decision."""
+    """Complete immutable key for one model/KV capability decision.
+
+    ``artifact_sha256`` and ``artifact_size_bytes`` are provenance: they report
+    which file is resident.  Admission reads
+    ``artifact_execution_fingerprint``, which is the only artifact axis that
+    participates in matching.
+    """
 
     artifact_sha256: str | None
     artifact_size_bytes: int | None
@@ -60,11 +83,13 @@ class KVCapabilityKey:
     storage_layout: str
     scale_dtype: str
     scale_granularity: str
+    artifact_execution_fingerprint: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
             "artifact_sha256": self.artifact_sha256,
             "artifact_size_bytes": self.artifact_size_bytes,
+            "artifact_execution_fingerprint": self.artifact_execution_fingerprint,
             "backend": self.backend,
             "target_arch": self.target_arch,
             "weight_quant": self.weight_quant,
@@ -72,6 +97,61 @@ class KVCapabilityKey:
             "storage_layout": self.storage_layout,
             "scale_dtype": self.scale_dtype,
             "scale_granularity": self.scale_granularity,
+        }
+
+
+@dataclass(frozen=True)
+class KVCapabilityDeclaration:
+    """One KV contract the kernels implement, independent of any artifact.
+
+    This is the admission axis.  Every field is a property of the request and
+    the kernel; none is an identity.  An artifact the project has never seen
+    runs when its contract matches a declaration.
+    """
+
+    backend: str
+    target_arch: str
+    kv_storage: str
+    storage_layout: str
+    scale_dtype: str
+    scale_granularity: str
+    weight_quant: str | None = None
+    """Bind the weight quant only when the kernel key actually includes it.
+
+    ``None`` means any weight quant, which is the honest declaration for a KV
+    kernel keyed on ``(backend, layer, kv_storage, variant)``.  Naming a quant
+    here that the kernel does not key on rebuilds the allowlist this module
+    exists to remove.
+    """
+
+    max_direct_rows: int = 1
+    max_serial_resident_rows: int = 1
+    persistent_bf16_mirror: bool | None = None
+    decode_batch_variant: str | None = None
+    reason: str = ""
+
+    def __post_init__(self) -> None:
+        if int(self.max_direct_rows) < 0:
+            raise ValueError("max_direct_rows must be non-negative")
+        if int(self.max_serial_resident_rows) < int(self.max_direct_rows):
+            raise ValueError(
+                "max_serial_resident_rows must cover every directly admitted row"
+            )
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "backend": self.backend,
+            "target_arch": self.target_arch,
+            "weight_quant": self.weight_quant,
+            "kv_storage": self.kv_storage,
+            "storage_layout": self.storage_layout,
+            "scale_dtype": self.scale_dtype,
+            "scale_granularity": self.scale_granularity,
+            "max_direct_rows": self.max_direct_rows,
+            "max_serial_resident_rows": self.max_serial_resident_rows,
+            "persistent_bf16_mirror": self.persistent_bf16_mirror,
+            "decode_batch_variant": self.decode_batch_variant,
+            "reason": self.reason,
         }
 
 
@@ -124,8 +204,43 @@ class KVCapabilityResolution:
     status: KVCapabilityStatus
     effective_kv_storage: str
     evidence: KVCapabilityEvidence | None = None
+    declaration: KVCapabilityDeclaration | None = None
     reason: str = ""
     runtime_action: KVCapabilityRuntimeAction = "fallback_bf16"
+
+    @property
+    def max_direct_rows(self) -> int:
+        """Operative direct-row bound: measured when retained, else declared."""
+
+        if self.evidence is not None:
+            return int(self.evidence.max_direct_rows)
+        if self.declaration is not None:
+            return int(self.declaration.max_direct_rows)
+        return 0
+
+    @property
+    def max_serial_resident_rows(self) -> int:
+        if self.evidence is not None:
+            return int(self.evidence.max_serial_resident_rows)
+        if self.declaration is not None:
+            return int(self.declaration.max_serial_resident_rows)
+        return 0
+
+    @property
+    def persistent_bf16_mirror(self) -> bool | None:
+        if self.evidence is not None:
+            return self.evidence.persistent_bf16_mirror
+        if self.declaration is not None:
+            return self.declaration.persistent_bf16_mirror
+        return None
+
+    @property
+    def decode_batch_variant(self) -> str | None:
+        if self.evidence is not None:
+            return self.evidence.decode_batch_variant
+        if self.declaration is not None:
+            return self.declaration.decode_batch_variant
+        return None
 
     @property
     def promotion_eligible(self) -> bool:
@@ -177,6 +292,13 @@ class KVCapabilityResolution:
             "status": self.status,
             "runtime_action": self.runtime_action,
             "promotion_eligible": self.promotion_eligible,
+            "max_direct_rows": self.max_direct_rows,
+            "max_serial_resident_rows": self.max_serial_resident_rows,
+            "persistent_bf16_mirror": self.persistent_bf16_mirror,
+            "decode_batch_variant": self.decode_batch_variant,
+            "declaration": (
+                None if self.declaration is None else self.declaration.as_dict()
+            ),
             "diagnostic_override": self.runtime_action == "diagnostic_override",
             "requested": self.key.as_dict(),
             "effective_kv_storage": self.effective_kv_storage,
@@ -256,57 +378,127 @@ def model_artifact_identity(path: str | Path) -> ModelArtifactIdentity:
     )
 
 
+def _artifact_identity_matches(row: KVCapabilityKey, key: KVCapabilityKey) -> bool:
+    """Whether the retained row's execution identity covers this artifact.
+
+    The artifact axis is layout coverage, not byte identity: a revision that
+    routes through the same kernels inherits the retained decision, and an
+    artifact whose execution identity no row declares fails closed.  A row that
+    declares no identity never matches.
+    """
+
+    fingerprint = key.artifact_execution_fingerprint
+    return bool(
+        fingerprint is not None
+        and row.artifact_execution_fingerprint is not None
+        and fingerprint == row.artifact_execution_fingerprint
+    )
+
+
+def _declaration_matches(row: KVCapabilityDeclaration, key: KVCapabilityKey) -> bool:
+    """Whether the kernels declare this backend/target/quant/KV/scale contract."""
+
+    return (
+        row.backend == key.backend
+        and row.target_arch == key.target_arch
+        and (row.weight_quant is None or row.weight_quant == key.weight_quant)
+        and row.kv_storage == key.kv_storage
+        and row.storage_layout == key.storage_layout
+        and row.scale_dtype == key.scale_dtype
+        and row.scale_granularity == key.scale_granularity
+    )
+
+
+def _key_matches(row: KVCapabilityKey, key: KVCapabilityKey) -> bool:
+    """Match every non-artifact axis exactly and the artifact axis by identity."""
+
+    return (
+        _artifact_identity_matches(row, key)
+        and row.backend == key.backend
+        and row.target_arch == key.target_arch
+        and row.weight_quant == key.weight_quant
+        and row.kv_storage == key.kv_storage
+        and row.storage_layout == key.storage_layout
+        and row.scale_dtype == key.scale_dtype
+        and row.scale_granularity == key.scale_granularity
+    )
+
+
 def resolve_kv_capability(
     evidence: Sequence[KVCapabilityEvidence],
     *,
     key: KVCapabilityKey,
     artifact: ModelArtifactIdentity,
+    declarations: Sequence[KVCapabilityDeclaration] = (),
 ) -> KVCapabilityResolution:
-    """Resolve one exact key; names and geometry never participate."""
+    """Admit on kernel capability; let evidence select, record, and reject.
 
-    if not artifact.content_verified or key.artifact_sha256 is None:
+    A contract no declaration covers is refused, and the refusal names the
+    capability miss.  Everything a declaration covers runs.  A retained
+    ``qualified`` row upgrades the result to a measured guarantee; a retained
+    ``rejected`` row withholds the path as a known-bad configuration, scoped to
+    the artifact execution identity that recorded it.  Absence of any row is
+    ``unmeasured``, which runs and is simply not promotable.
+    """
+
+    declaration = next(
+        (row for row in declarations if _declaration_matches(row, key)), None
+    )
+    if declaration is None:
         return KVCapabilityResolution(
             key=key,
             artifact=artifact,
-            status="unknown",
+            status="unsupported",
             effective_kv_storage="bf16",
-            reason="model artifact content identity is unavailable",
+            reason=(
+                "no registered kernel implements this backend/target/quant/KV/"
+                "scale contract"
+            ),
             runtime_action="fallback_bf16",
         )
 
-    match = next((row for row in evidence if row.key == key), None)
-    if match is None:
-        same_artifact = any(
-            row.key.artifact_sha256 == key.artifact_sha256
-            and row.key.artifact_size_bytes == key.artifact_size_bytes
-            for row in evidence
-        )
-        reason = (
-            "artifact is known but this backend/target/quant/KV/scale contract is unqualified"
-            if same_artifact
-            else "artifact/backend/target KV capability has no retained evidence"
-        )
+    match = next((row for row in evidence if _key_matches(row.key, key)), None)
+
+    if match is not None and match.decision == "rejected":
         return KVCapabilityResolution(
             key=key,
             artifact=artifact,
-            status="unknown",
+            status="rejected",
             effective_kv_storage="bf16",
-            reason=reason,
+            evidence=match,
+            declaration=declaration,
+            reason=match.reason,
             runtime_action="fallback_bf16",
+        )
+
+    if match is not None:
+        return KVCapabilityResolution(
+            key=key,
+            artifact=artifact,
+            status="qualified",
+            effective_kv_storage=key.kv_storage,
+            evidence=match,
+            declaration=declaration,
+            reason=match.reason,
+            runtime_action="admit",
         )
 
     return KVCapabilityResolution(
         key=key,
         artifact=artifact,
-        status=match.decision,
-        effective_kv_storage=(key.kv_storage if match.decision == "qualified" else "bf16"),
-        evidence=match,
-        reason=match.reason,
-        runtime_action=("admit" if match.decision == "qualified" else "fallback_bf16"),
+        status="unmeasured",
+        effective_kv_storage=key.kv_storage,
+        declaration=declaration,
+        reason=(
+            declaration.reason
+            or "kernels implement this contract; no retained measurement covers it"
+        ),
+        runtime_action="admit",
     )
 
 
 __all__ = [
+    "KVCapabilityDeclaration",
     "KVCapabilityEvidence",
     "KVCapabilityKey",
     "KVCapabilityResolution",

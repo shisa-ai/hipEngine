@@ -113,7 +113,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _gguf_gapped_slot_local_fast_route_available,
     _gguf_int8_bf16_full_attention_layer_indices,
     _gguf_packed_layer_outer_enabled,
-    _qualified_no_mirror_int8_capability,
+    _admitted_no_mirror_int8_capability,
     _rope_tables as _gguf_rope_tables,
     estimate_qwen35_gguf_kv_capacity,
     packed_verify_workspace_lease_pages,
@@ -1462,6 +1462,7 @@ class Qwen35GGUFBringupGenerator:
         key = KVCapabilityKey(
             artifact_sha256=artifact.sha256,
             artifact_size_bytes=artifact.size_bytes,
+            artifact_execution_fingerprint=self._artifact_execution_fingerprint(),
             backend=str(self.backend),
             target_arch=str(self.target_arch),
             weight_quant=self._kv_weight_quant_key(),
@@ -1473,7 +1474,14 @@ class Qwen35GGUFBringupGenerator:
         plugin_resolver = getattr(self.model_plugin, "resolve_kv_capability", None)
         if callable(plugin_resolver):
             return plugin_resolver(key=key, artifact=artifact)
-        return resolve_kv_capability((), key=key, artifact=artifact)
+        return resolve_kv_capability(
+            (),
+            key=key,
+            artifact=artifact,
+            declarations=getattr(
+                self.model_plugin, "kv_capability_declarations", ()
+            ),
+        )
 
     @property
     def kv_capability_provenance(self) -> dict[str, object]:
@@ -1514,7 +1522,7 @@ class Qwen35GGUFBringupGenerator:
         resolved = requested
         if requested.storage_dtype.value == "int8_per_token_head":
             capability = self._resolve_int8_kv_capability(requested)
-            if capability.status != "qualified":
+            if capability.runtime_action != "admit":
                 if self._int8_kv_diagnostic_override_enabled():
                     capability = capability.with_runtime_outcome(
                         effective_kv_storage=requested.storage_dtype.value,
@@ -1978,7 +1986,7 @@ class Qwen35GGUFBringupGenerator:
             )
         model_max = int(getattr(cfg, "context_length", 0) or 0)
         requested = int(requested_context_tokens or 0) or model_max or _GGUF_AUTO_CONTEXT_BLOCK_SIZE
-        qualified = _qualified_no_mirror_int8_capability(
+        qualified = _admitted_no_mirror_int8_capability(
             getattr(self, "kv_capability_provenance", None)
         )
         full_attention_layers = sum(
@@ -2653,17 +2661,22 @@ class Qwen35GGUFBringupGenerator:
                 self.model_plugin, "speculative_mtp_serving_implementations", (),
             )
         )
+        execution_fingerprint = self._artifact_execution_fingerprint()
+        # The artifact axis is execution identity, so a revision whose bytes
+        # differ but whose layouts match still resolves here.  Only the quant
+        # family is a cheap pre-filter: a row for another quant cannot cover
+        # this artifact on any axis.
         if not implemented_storage and not any(
-            row.artifact_size_bytes == artifact_size
-            and row.weight_quant == weight_quant
-            for row in evidence
+            row.weight_quant == weight_quant for row in evidence
         ):
             return evidence, None
-        artifact = self._kv_model_artifact_identity()
         key = SpeculativeMTPServingKey(
-            artifact_sha256=artifact.sha256,
-            artifact_size_bytes=artifact.size_bytes,
-            content_verified=artifact.content_verified,
+            # Provenance only: the resident file's SHA-256 is not an admission
+            # axis, so it is not computed here.  Computing it would read the
+            # whole artifact to compare a value no row reads.
+            artifact_sha256=None,
+            artifact_size_bytes=artifact_size,
+            content_verified=execution_fingerprint is not None,
             backend=str(self.backend),
             target_arch=str(self.target_arch),
             weight_quant=weight_quant,
@@ -2676,8 +2689,23 @@ class Qwen35GGUFBringupGenerator:
             memory_fit=bool(memory_fit),
             kv_scale_dtype=str(prepared_kv[2]) if prepared_kv is not None else None,
             kv_scale_granularity=str(prepared_kv[3]) if prepared_kv is not None else None,
+            artifact_execution_fingerprint=execution_fingerprint,
         )
         return evidence, key
+
+    def _artifact_execution_fingerprint(self) -> str | None:
+        """Execution identity of the resident artifact, when it is computable.
+
+        ``None`` leaves the key without an artifact identity, and admission then
+        fails closed as ``artifact_identity_unverified``.
+        """
+
+        from hipengine.loading.gguf import gguf_execution_fingerprint
+
+        try:
+            return gguf_execution_fingerprint(self.weight_index)
+        except Exception:
+            return None
 
     def resolve_speculative_mtp_serving_plan(
         self,
@@ -2688,8 +2716,15 @@ class Qwen35GGUFBringupGenerator:
         sampling_mode: str,
         kv_storage: str,
         memory_fit: bool,
+        request_mode: str = "automatic",
     ):
-        """Resolve the model-plugin-owned exact serving plan before mutation."""
+        """Resolve the model-plugin-owned exact serving plan before mutation.
+
+        ``request_mode`` is ``explicit`` for a request that asked for
+        speculation and ``automatic`` otherwise.  Only the explicit mode may
+        admit on implementation capability when no evidence row covers the
+        cell; automatic policy stays with the retained evidence.
+        """
 
         from hipengine.speculative.serving import resolve_speculative_mtp_serving_plan
 
@@ -2711,7 +2746,12 @@ class Qwen35GGUFBringupGenerator:
             None,
         )
         if callable(resolver):
-            return resolver(key=key)
+            try:
+                return resolver(key=key, request_mode=str(request_mode))
+            except TypeError:
+                # Model plugins that predate the request-mode parameter keep
+                # their evidence-only behaviour.
+                return resolver(key=key)
         return resolve_speculative_mtp_serving_plan((), key=key)
 
     def max_qualified_speculative_candidate_budget(
