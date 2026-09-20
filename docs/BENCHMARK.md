@@ -1,6 +1,6 @@
 # hipEngine Benchmark Procedures
 
-Protocols, baselines, and artifact formats for every perf claim hipEngine retains. This doc is the companion to the "Evidence Policy" rule in `AGENTS.md` and `docs/PLAN.md`: when the rule says "record the exact command", it means the commands here.
+Protocols, baselines, and artifact formats for every perf claim hipEngine retains. This doc is the companion to [`OPTIMIZATION.md`](OPTIMIZATION.md) (the scoped kernel/performance/benchmark rules) and the "Evidence Policy" section in `docs/PLAN.md`: when the rule says "record the exact command", it means the commands here.
 
 See `docs/ROOFLINE.md` for the RDNA3 / W7900 hardware model, per-bucket decode analysis, and the "what not to chase" catalog. This doc is the operational layer on top of it. Execution-profile correctness and determinism contracts are normative in [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md).
 
