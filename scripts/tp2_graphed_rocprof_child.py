@@ -14,10 +14,12 @@ steps through the captured per-layer graphs (the production default path).
 The wall print is the child's own timing; the trace's trailing window is the
 per-kernel attribution.
 """
+import pathlib
+
 import sys
 import time
 
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import numpy as np
 
 from hipengine.distributed.tp2_generate import MlpTP2GenerationSession

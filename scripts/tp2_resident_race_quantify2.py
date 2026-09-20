@@ -9,6 +9,7 @@ Usage::
 
     python scripts/tp2_resident_race_quantify2.py [N_PER_ARM]
 """
+import pathlib
 
 import subprocess
 import sys
@@ -20,7 +21,7 @@ ARMS = ("none", "passthrough", "events")
 CHILD = r'''
 import faulthandler, sys, threading, time
 faulthandler.dump_traceback_later(45, repeat=True, file=sys.stderr)
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 arm = sys.argv[1]
 from hipengine.loading import load_gguf_index
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession

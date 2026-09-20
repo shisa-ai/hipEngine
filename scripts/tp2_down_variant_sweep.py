@@ -14,10 +14,11 @@ Usage::
 
     python scripts/tp2_down_variant_sweep.py MODEL.gguf [ITERATIONS]
 """
+import pathlib
 
 import sys
 
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import numpy as np
 
 from hipengine.core.device import scoped_current_device

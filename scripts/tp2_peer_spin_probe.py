@@ -9,6 +9,7 @@ Pins, on hardware:
    device 0 and observe the write (the graphed lockstep dependency).
 4. Host-mapped pinned flags as the fallback completion mechanism.
 """
+import pathlib
 
 import ctypes
 import sys
@@ -16,7 +17,7 @@ import time
 
 import numpy as np
 
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from hipengine.core.device import scoped_current_device
 from hipengine.core.hip import get_hip_runtime

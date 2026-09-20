@@ -1,10 +1,11 @@
 """Diagnostic: graphed TP2 (capture bound variants) vs eager TP2 teacher logits."""
+import pathlib
 
 import sys
 
 import numpy as np
 
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, "/home/lhl/hipEngine-main/scripts")
 
 from hipengine.distributed.tp2_generate import MlpTP2GenerationSession

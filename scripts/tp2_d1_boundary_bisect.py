@@ -9,6 +9,7 @@ Usage::
 
     python scripts/tp2_d1_boundary_bisect.py
 """
+import pathlib
 
 import faulthandler
 import sys
@@ -16,7 +17,7 @@ import threading
 import time
 
 faulthandler.dump_traceback_later(300, repeat=True, file=sys.stderr)
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import numpy as np
 

@@ -13,11 +13,12 @@ Usage (prebuild the caches once without the profiler, then)::
     rocprofv3 --kernel-trace --output-format csv -d OUT_DIR -o NAME -- \
         python scripts/tp1_control_rocprof_child.py MODEL.gguf [STEPS]
 """
+import pathlib
 
 import sys
 import time
 
-sys.path.insert(0, "/home/lhl/hipEngine-main")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import numpy as np
 
 from hipengine.distributed.tp2_generate import MlpTP2GenerationSession
