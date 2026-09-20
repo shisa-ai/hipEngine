@@ -108,8 +108,11 @@ def save_budget(rows: list[Row], decisions: dict[str, Triage],
     if lower_only:
         previous = load_budget().get("open", {})
         for kind, was in previous.items():
-            if counts.get(kind, 0) > was:
-                counts[kind] = was
+            #  Keep every previously recorded kind, including at zero: dropping a
+            #  fully triaged kind from the payload would leave its next untriaged
+            #  row ungated. `min` is the ratchet - a refresh may lower a ceiling,
+            #  never raise one.
+            counts[kind] = min(counts.get(kind, 0), was)
     payload = {
         "recorded": dt.date.today().isoformat(),
         "note": "Untriaged rows per kind. `audit.py check` fails when a count rises. "

@@ -245,3 +245,15 @@ class Budget(unittest.TestCase):
         self.report.save_budget([row("A")], {})
         self.report.save_budget([row("A"), row("B")], {})        # deliberate, not lower_only
         self.assertEqual(self.report.load_budget()["open"]["flag"], 2)
+
+    def test_a_fully_triaged_kind_keeps_its_zero_ceiling(self):
+        rows = [row("A"), row("B")]
+        self.report.save_budget(rows, {})
+        decided = {r.id: decide(r) for r in rows}
+        self.report.save_budget(rows, decided, lower_only=True)
+        self.assertEqual(
+            self.report.load_budget()["open"].get("flag"), 0,
+            "a fully triaged kind must keep a zero ceiling, or its next row is ungated")
+        self.report.save_budget([row("C")], {}, lower_only=True)
+        self.assertEqual(self.report.load_budget()["open"]["flag"], 0,
+                         "a new untriaged row must not slip in under a dropped ceiling")
