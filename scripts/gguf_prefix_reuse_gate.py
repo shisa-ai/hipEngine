@@ -741,7 +741,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # Rebuild the active source privately, then consume the unmatched
         # suffix one token at a time on the matched context.
         oracle_session.reset()
-        semantic_prefix_result = oracle_session.prefill(prefix, return_logits=False)
+        semantic_prefix_result = oracle_session.prefill(
+            prefix,
+            return_logits=False,
+            bulk_attention_mode=args.reference_prefill_mode,
+        )
         semantic_boundary = _capture_state(oracle_session)
         semantic_boundary_mismatches = _compare_states(
             candidate_boundary,
@@ -1204,6 +1208,17 @@ def build_parser() -> argparse.ArgumentParser:
             "JSONL prompt suite (e.g. benchmarks/prompts/mtpbench-code-general-ja.jsonl). "
             "When given, the prefix/suffix are built from real tokenized text instead of "
             "a repeated token id, so the numerical gate sees a representative distribution."
+        ),
+    )
+    parser.add_argument(
+        "--reference-prefill-mode",
+        choices=("bulk", "native"),
+        default=None,
+        help=(
+            "Attention mode for the reference prefix prefill. The default (None) lets the "
+            "generator plugin pick its certified bulk scheduler, which is a different "
+            "kernel family from the native work batch that prefill_batch uses for the "
+            "candidate and that the served engine uses."
         ),
     )
     parser.add_argument(
