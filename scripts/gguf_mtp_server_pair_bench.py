@@ -126,6 +126,32 @@ ROUTE_ROW_KEYS = (
 )
 
 
+def route_mismatches(result: Mapping[str, Any], *, expected: str) -> list[str]:
+    """Name every recorded run whose realized route differs from the arm contract.
+
+    A control arm that asks for AR but silently runs MTP produces a duplicate
+    of the MTP arm, which reads as a clean 1.00x ratio and a confident
+    conclusion that speculation does not help.  Nothing about the numbers says
+    so: only the route each run reported does.  An arm whose intent came from
+    the environment can lose that intent before the request is built (a
+    launcher that clears the environment strips the variable), so the intent
+    is declared on the command line and checked against the response.
+    """
+
+    mismatches: list[str] = []
+    for section in ("shapes", "prompts"):
+        for key, entry in (result.get(section) or {}).items():
+            candidates = list(entry.get("runs") or [])
+            route = entry.get("route") or {}
+            if route:
+                candidates.append(route)
+            for index, run in enumerate(candidates):
+                realized = run.get("effective_route")
+                if realized != expected:
+                    mismatches.append(f"{section}.{key}[{index}]={realized!r}")
+    return mismatches
+
+
 def route_summary(
     extension: Mapping[str, Any], usage: Mapping[str, Any] | None = None
 ) -> dict:
@@ -436,6 +462,16 @@ def main() -> int:
             "can be compared token for token. 0 disables the probe."
         ),
     )
+    ap.add_argument(
+        "--expect-route",
+        choices=("any", "default", "speculative_mtp"),
+        default="any",
+        help=(
+            "Fail unless every recorded run reports this effective_route. Set "
+            "it on every arm so the arm cannot be recorded as something it did "
+            "not measure; 'default' is the autoregressive route."
+        ),
+    )
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -493,6 +529,23 @@ def main() -> int:
                 result=result,
                 key=str(shape),
             )
+    if args.expect_route != "any":
+        mismatches = route_mismatches(result, expected=args.expect_route)
+        if mismatches:
+            print(
+                f"[{args.tag}] arm contract violated: expected "
+                f"effective_route={args.expect_route!r} but "
+                f"{len(mismatches)} run(s) reported otherwise: "
+                + ", ".join(mismatches[:6]),
+                file=sys.stderr,
+            )
+            print(
+                f"[{args.tag}] refusing to write {args.out}: an arm that did not "
+                "run its declared route would be recorded as a measurement it "
+                "never made",
+                file=sys.stderr,
+            )
+            return 3
     with open(args.out, "w") as fh:
         json.dump(result, fh, indent=2)
     print(f"[{args.tag}] wrote {args.out}", flush=True)
