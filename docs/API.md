@@ -837,7 +837,7 @@ change with ordinary traffic and with any kernel or variant selection. When
 several evidence rows describe the same physical cell, the cell takes the
 strongest authorization: an automatic-eligible row wins over an explicit-only
 row. See
-[`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md#29-serving-admission-is-physical-not-shape-scoped).
+[`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md#29-capability-admits-evidence-selects-and-promotes).
 
 ### Finish details
 

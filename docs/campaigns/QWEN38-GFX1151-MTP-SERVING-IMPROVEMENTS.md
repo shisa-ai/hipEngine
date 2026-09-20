@@ -25,7 +25,7 @@ Evidence sources:
   exact commands, host machine ID, model hash, strict profile/manifest,
   category-suite correctness and timing evidence.
 - [Physical-admission decision](../../worklog/entries/20260917T094111.437688Z-lhl-mtp-serving-physical-admission-dd97b6.md)
-  and [execution-profile contract](../EXECUTION-PROFILES.md#29-serving-admission-is-physical-not-shape-scoped).
+  and [execution-profile contract](../EXECUTION-PROFILES.md#29-capability-admits-evidence-selects-and-promotes).
 
 ### The 945-token request appears to switch to AR during decode
 
