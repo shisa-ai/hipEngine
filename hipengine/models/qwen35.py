@@ -760,6 +760,16 @@ class Qwen35GGUFModel:
         # gfx1151 cells that advertise `sampled` are admitted by their own
         # evidence rows instead.  See docs/REFACTOR.md "Sampled MTP acceptance
         # route".
+        #
+        # Every declaration here is automatic-eligible: a contract the kernels
+        # implement is the automatic scope for any artifact that routes through
+        # it, and a missing measurement never withholds it.  The operative gate
+        # is the physical cell table -- which (width, depth) pairs the active
+        # backend package offers, capped by resident capacity -- so automatic
+        # intent still forms no cell the adapter would decline.  A retained
+        # evidence row is consulted first and keeps its own promotion decision;
+        # the declaration is the scope an artifact with no row of its own
+        # inherits.
         SpeculativeMTPServingImplementation(
             name="gguf_dense_bf16_gfx1100_c1_native_chain",
             kv_storage="bf16",
@@ -767,6 +777,7 @@ class Qwen35GGUFModel:
             max_candidate_count=7,
             max_group_rows=1,
             group_rejection_reason="dense_group_above_offered_width",
+            automatic_eligible=True,
         ),
         SpeculativeMTPServingImplementation(
             name="gguf_dense_bf16_gfx1100_group_native_chain",
@@ -775,6 +786,7 @@ class Qwen35GGUFModel:
             max_candidate_count=3,
             max_group_rows=8,
             group_rejection_reason="dense_group_above_offered_width",
+            automatic_eligible=True,
         ),
         SpeculativeMTPServingImplementation(
             name="gguf_dense_bf16_gfx1151_c1_native_chain",
@@ -783,6 +795,7 @@ class Qwen35GGUFModel:
             max_candidate_count=7,
             max_group_rows=1,
             group_rejection_reason="dense_group_above_offered_width",
+            automatic_eligible=True,
         ),
         SpeculativeMTPServingImplementation(
             name="gguf_dense_bf16_gfx1151_group_native_chain",
@@ -791,6 +804,7 @@ class Qwen35GGUFModel:
             max_candidate_count=3,
             max_group_rows=4,
             group_rejection_reason="dense_group_above_offered_width",
+            automatic_eligible=True,
         ),
         SpeculativeMTPServingImplementation(
             name="gguf_dense_int8_native_chain",
@@ -799,9 +813,8 @@ class Qwen35GGUFModel:
             max_candidate_count=7,
             max_group_rows=1,
             group_rejection_reason="packed_int8_mtp_not_implemented",
-            # The int8 chain has no evidence rows and no wider automatic policy
-            # to widen, so its own declaration is the automatic scope it has
-            # always been.  BF16 stays evidence-gated for automatic intent.
+            # The int8 chain has no evidence rows of its own, so its
+            # declaration is the automatic scope it has always been.
             automatic_eligible=True,
         ),
     )
@@ -898,6 +911,7 @@ class Qwen35MoeGGUFModel:
             max_candidate_count=2,
             max_group_rows=2,
             group_rejection_reason="moe_group_above_offered_width",
+            automatic_eligible=True,
         ),
     )
     weight_name_templates: tuple[str, ...] = (
