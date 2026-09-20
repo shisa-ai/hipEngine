@@ -250,6 +250,45 @@ def main(argv: list[str] | None = None) -> int:
         if name not in by_id:
             raise SystemExit(f"prompt {name!r} not in reference suite {ids}")
 
+    def assert_prompt_matches_reference(name: str, prompt: list[int]) -> None:
+        """Refuse to score a student whose context differs from the teacher's.
+
+        This check exists because its absence invalidated a whole gate run. The
+        prompt was padded to reach a row count the source-F16 policy admits, but
+        the teacher still held logits for the *unpadded* prompt, so the reported
+        KL and top-1 compared different contexts rather than implementation
+        drift. Padding is only legitimate when the reference was captured with
+        the same padding, and that is what this asserts.
+        """
+
+        index = by_id[name]
+        teacher_tokens = [int(t) for t in prompts[index]]
+        if len(teacher_tokens) != len(prompt):
+            raise SystemExit(
+                f"prompt {name!r}: the student has {len(prompt)} tokens but the "
+                f"reference teacher has {len(teacher_tokens)}. Scoring these would "
+                "compare different contexts. Re-capture the teacher with a matching "
+                "length (scripts/tp2_teacher_coverage_broad.py --pad-prompt-tokens)."
+            )
+        if teacher_tokens != prompt:
+            first = next(
+                (i for i, (a, b) in enumerate(zip(teacher_tokens, prompt)) if a != b),
+                None,
+            )
+            raise SystemExit(
+                f"prompt {name!r}: student tokens differ from the reference teacher "
+                f"at position {first}. The teacher must cover the identical prompt."
+            )
+
+    def assert_trajectory_matches_reference(name: str, forced: list[int]) -> None:
+        index = by_id[name]
+        teacher_forced = [int(t) for t in forced_inputs[index]]
+        if teacher_forced[: len(forced)] != forced:
+            raise SystemExit(
+                f"prompt {name!r}: the forced trajectory differs from the reference "
+                "teacher's, so the compared decode positions are not the same run."
+            )
+
     targets = [args.prompt, args.heldout]
     result: dict = {
         "kind": "tp2_bulk_prefill_diagnostic",
@@ -308,9 +347,17 @@ def main(argv: list[str] | None = None) -> int:
                 # source-F16 policy actually admits (its smallest is 512). The
                 # suite prompts are 52-64 tokens, so without this the owner
                 # falls back and the gate says nothing about it.
+                #
+                # This is *dispatch coverage*, not qualification: it is only
+                # scoreable when the reference was captured with the same
+                # padding, which assert_prompt_matches_reference enforces below.
                 pad_id = int(prompt[-1])
                 prompt = prompt + [pad_id] * (args.pad_prompt_tokens - len(prompt))
             forced = [int(t) for t in forced_inputs[index]]
+            # Refuse to score a context the teacher never saw. This is the check
+            # whose absence invalidated the first run of this gate.
+            assert_prompt_matches_reference(prompt_id, prompt)
+            assert_trajectory_matches_reference(prompt_id, forced)
             teacher = np.asarray(arrays[index])
             if args.smoke_rows > 0:
                 forced = forced[: args.smoke_rows]
