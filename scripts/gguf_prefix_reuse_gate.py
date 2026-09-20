@@ -414,6 +414,50 @@ def _per_step_softmax(logits: Any) -> Any:
     return exponentials / np.sum(exponentials, axis=-1, keepdims=True)
 
 
+def _per_step_margins(reference: Any, candidate: Any, *, top_k: int = 8) -> dict[str, list]:
+    """Return the `docs/EXECUTION-PROFILES.md` diagnosis for a high-KL row.
+
+    A row above `2e-2` KL requires explicit top-k overlap and strict
+    logit-margin diagnosis.  The margin is the reference's top-1 minus top-2
+    logit: a margin at the same scale as the route's state difference means the
+    row is a near-tie and the argmax is a rounding-level decision, not a
+    distributional defect.
+    """
+
+    reference = np.asarray(reference, dtype=np.float64)
+    candidate = np.asarray(candidate, dtype=np.float64)
+    reference_order = np.argsort(reference, axis=-1)
+    candidate_order = np.argsort(candidate, axis=-1)
+    reference_top = reference_order[:, -1]
+    margins_reference = (
+        np.take_along_axis(reference, reference_order[:, -1:], axis=-1)[:, 0]
+        - np.take_along_axis(reference, reference_order[:, -2:-1], axis=-1)[:, 0]
+    )
+    margins_candidate = (
+        np.take_along_axis(candidate, candidate_order[:, -1:], axis=-1)[:, 0]
+        - np.take_along_axis(candidate, candidate_order[:, -2:-1], axis=-1)[:, 0]
+    )
+    reference_top_set = reference_order[:, -top_k:]
+    candidate_top_set = candidate_order[:, -top_k:]
+    overlaps = [
+        len(set(reference_top_set[row].tolist()) & set(candidate_top_set[row].tolist()))
+        for row in range(reference.shape[0])
+    ]
+    # Where the reference's own argmax sits in the candidate's ordering, as a
+    # descending rank: 0 means the candidate also ranks it first.
+    ranks = [
+        int(candidate.shape[-1] - 1 - np.where(candidate_order[row] == reference_top[row])[0][0])
+        for row in range(reference.shape[0])
+    ]
+    return {
+        "reference_margin": [float(value) for value in margins_reference],
+        "candidate_margin": [float(value) for value in margins_candidate],
+        "top_k_overlap": overlaps,
+        "reference_top1_rank_in_candidate": ranks,
+        "top_k": int(top_k),
+    }
+
+
 def _prefill_work(request_id: int, tokens: tuple[int, ...]) -> Any:
     from hipengine.dispatch import WorkItem, WorkKind
 
@@ -801,6 +845,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
         reference_logits_stack = np.stack(reference_logits, axis=0)
         candidate_logits_stack = np.stack(candidate_logits, axis=0)
+        # Each captured row is (batch=1, vocab), so the stack carries a singleton
+        # batch axis; flatten it so every per-step diagnostic indexes steps.
+        reference_logits_stack = reference_logits_stack.reshape(
+            -1, reference_logits_stack.shape[-1]
+        )
+        candidate_logits_stack = candidate_logits_stack.reshape(
+            -1, candidate_logits_stack.shape[-1]
+        )
         metrics = evaluate_logits(
             reference_logits_stack,
             candidate_logits_stack,
@@ -818,6 +870,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             np.argmax(reference_logits_stack, axis=-1)
             == np.argmax(candidate_logits_stack, axis=-1)
         )
+        margins = _per_step_margins(reference_logits_stack, candidate_logits_stack)
         candidate_final = _capture_state(continuation_session)
         reference_final = _capture_state(oracle_session)
         final_state_mismatches = _compare_states(candidate_final, reference_final)
@@ -1040,6 +1093,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "kl_max": metrics.kl_max,
                 "kl_per_step": [float(value) for value in kl_per_step],
                 "top1_per_step": [bool(value) for value in top1_per_step],
+                "margin_diagnosis": margins,
                 "top1_agreement": metrics.top1_agreement,
                 "gate_passed": metrics.passed,
                 "final_state_exact": final_state_exact,
