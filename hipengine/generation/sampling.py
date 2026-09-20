@@ -1484,8 +1484,31 @@ def _top_k_candidate_ids(values: np.ndarray, top_k: int) -> np.ndarray:
     finite_ids = np.flatnonzero(np.isfinite(values)).astype(np.int64, copy=False)
     if finite_ids.size == 0:
         return finite_ids
-    order = np.lexsort((finite_ids, -values[finite_ids]))
-    sorted_ids = finite_ids[order]
+    scores = values[finite_ids]
+    if np.all(scores[:-1] >= scores[1:]):
+        # IDs already ascend, so descending inputs (including uniform rows)
+        # already satisfy the complete score/lower-ID order.
+        sorted_ids = finite_ids
+    elif values.size > np.iinfo(np.uint32).max:
+        # The packed tie keys below reserve 32 bits each for group and ID.
+        sorted_ids = finite_ids[np.argsort(-scores, kind="stable")]
+    else:
+        order = np.argsort(-scores)
+        sorted_ids = finite_ids[order]
+        ordered_scores = scores[order]
+        ties = ordered_scores[:-1] == ordered_scores[1:]
+        if np.any(ties):
+            # The fast numeric sort need not be stable. Repair only equal-score
+            # groups with unique integer (group, token-ID) keys; this preserves
+            # ties at a top-k boundary without a second full floating-point sort.
+            members = np.empty(sorted_ids.size, dtype=np.bool_)
+            members[0] = False
+            members[1:] = ties
+            members[:-1] |= ties
+            positions = np.flatnonzero(members)
+            groups = np.cumsum(np.r_[True, ~ties], dtype=np.uint64)
+            keys = (groups[positions] << np.uint64(32)) | sorted_ids[positions].astype(np.uint64)
+            sorted_ids[positions] = sorted_ids[positions][np.argsort(keys)]
     if top_k > 0:
         return sorted_ids[: min(top_k, sorted_ids.size)]
     return sorted_ids
@@ -1541,9 +1564,21 @@ def _apply_probability_filters(
     top_p: float,
     min_p: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    order = np.lexsort((token_ids, -probs))
-    sorted_ids = token_ids[order]
-    sorted_probs = probs[order]
+    # Softmax normally preserves the preceding logit sort. Check the complete
+    # probability/lower-ID order: rounding can create new probability ties, so
+    # merely assuming logit order would change the retained support and RNG map.
+    ordered = np.all(
+        (probs[:-1] > probs[1:])
+        | ((probs[:-1] == probs[1:]) & (token_ids[:-1] <= token_ids[1:]))
+    )
+    if ordered:
+        # Preserve the sort's independent output ownership as well as values.
+        sorted_ids = token_ids.copy()
+        sorted_probs = probs.copy()
+    else:
+        order = np.lexsort((token_ids, -probs))
+        sorted_ids = token_ids[order]
+        sorted_probs = probs[order]
     if sorted_ids.size == 0:
         return sorted_ids, sorted_probs
 

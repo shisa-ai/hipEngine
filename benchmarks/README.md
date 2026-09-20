@@ -1,6 +1,46 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-20**
+Last updated: **2026-09-21**
+
+Qwen3.8-27B Q4_K_M sampling on **zbook / Radeon 8060S (gfx1151)**:
+full-vocabulary GPU sampling achieves **11.61 decode tok/s and 9.63 engine
+end-to-end tok/s**, 1.34% and 1.63% below the fresh greedy control.
+Fast CPU ordering achieves 9.99 decode and 8.53 end-to-end tok/s.
+
+The protocol uses BF16 KV, strict model arithmetic with the sampler algorithm
+recorded separately, one active request in a capacity-4 service, MTP/cache off,
+all 10 category prompts plus 8 heldouts at natural lengths, 16 output tokens,
+temperature 0.7, top-p 0.95, no top-k cap, and two repetitions.
+
+| Path | Selection ms/token | Decode ms/token | Decode tok/s | Decode loss vs greedy | End-to-end tok/s | End-to-end loss vs greedy |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Greedy, fresh control | — | 84.95 | 11.77 | — | 9.79 | — |
+| Original CPU | 49.17 | 135.59 | 7.38 | 37.5% | 6.55 | 33.3% |
+| CPU with redundant sort removed | 25.08 | 111.38 | 8.98 | 23.9% | 7.81 | 20.5% |
+| CPU with numeric sorting | 13.17 | 100.11 | 9.99 | 15.1% | 8.53 | 12.8% |
+| Original GPU | 48.39 | 132.40 | 7.55 | 36.0% | 6.71 | 31.7% |
+| GPU full-vocabulary sort/scan | 0.95 | 86.10 | 11.61 | 1.34% | 9.63 | 1.63% |
+
+Decode rates pool steady transitions, excluding the first two transitions per
+request. End-to-end rates divide all output tokens by total `generate_detailed()`
+wall time, including prefill and every decode step but excluding model loading,
+preparation and tokenization. Neither rate is HTTP throughput or a long-context
+measurement. No graph replay occurs at this short horizon.
+
+Original CPU/GPU and redundant-sort-removal rows are earlier same-host runs with
+the same protocol; their loss percentages use the original greedy control
+(11.80 decode / 9.82 end-to-end tok/s). Numeric CPU and sorted GPU share the fresh
+interleaved control. Versus the originals, CPU decode/end-to-end improve
+35.4%/30.2%; GPU improves 53.8%/43.5%.
+
+All 144 requests complete and all 72 repeat pairs match. CPU generated tokens
+match the original in all 36 sampled requests. GPU numerical fixtures and the
+full-vocabulary c1/c4 lifecycle/state/ownership gate pass; GPU versus CPU or old
+GPU sampled-token identity is not required. The short output suite is not a
+separate task-quality certification. Supported, available GGUF native sampling
+is default-on; `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` selects host rollback. This does
+not widen supported request shapes or claim gfx1100 hardware validation.
+[Commands, correctness checks, and per-request evidence](results/2026-09-21-zbook-fast-cpu-gpu-sampling.json).
 
 September 20 W7900 C1 refresh on physical host **epyc**, GPU0
 `0xe282895b62c2b295`: BF16 KV, 512/128 and 4096/128, one warmup and

@@ -8795,3 +8795,30 @@ A test-level artifact of the same confusion is gone: the greedy route's
 predicate test is now named
 `test_greedy_speculative_route_predicate_allows_only_greedy_fast_requests` and
 says in its docstring that it pins one half of the policy.
+
+## Full-vocabulary native sampler fallback and GGUF placement (2026-09-21)
+
+`NativeSamplerWorkspace(full_vocab_algorithm="sorted")` selects the full-vocabulary
+sort/merge/scan implementation; `"strict"` retains the original native algorithms
+for debugging and numerical comparisons. The original registered temperature and
+top-p primitives remain strict fallbacks. Sorted FP64 accumulation of FP32 weights
+is not bit-identical to the old serial FP32 accumulation, and temperature-only
+sampling changes draw ordering while preserving the categorical law.
+
+Keep the constructor choice as an explicit debugging opt-out. GGUF generators
+and sessions accept `native_sampler_algorithm="strict"`; their default is
+`"sorted"`. The model and sampler arithmetic axes are independent: a strict model
+can use the production sampler without claiming strict sampler parity.
+`native_sampler_provenance` reports a stable selection manifest, named fallbacks,
+and the last successful workspace route; packed execution manifests include it.
+A live workspace refuses conflicting selection changes. Preserve the registered
+strict primitives as the debugging oracle.
+The new implementation has hardware evidence on gfx1151 only. gfx1100 transfer
+and the broader model/quant matrix are unverified.
+
+GGUF placement defaults on for supported, available native requests;
+`HIPENGINE_QWEN35_NATIVE_SAMPLER=0` retains rollback/bisection value. Keep that
+opt-out while independent hardware transfer is evaluated; do not use it as an
+admission gate for supported requests. Dynamic constraints and forced queues
+still require the host path. The full-vocabulary kernel improvement is
+not evidence that those request shapes became supported.
