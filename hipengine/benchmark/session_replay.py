@@ -104,6 +104,10 @@ def _walk_active_chain(
         if record_type == "message":
             chain.append(current)
         parent_id = current.get("parentId")
+        if parent_id is not None and parent_id not in by_id:
+            raise SessionReplayError(
+                f"record {record_id!r} references missing parent {parent_id!r}"
+            )
         current = by_id.get(parent_id) if parent_id is not None else None
     chain.reverse()
     if not chain:
@@ -112,7 +116,7 @@ def _walk_active_chain(
 
 
 def _default_tip(records: Sequence[Mapping[str, Any]]) -> str:
-    """Last content-bearing assistant message of the live pre-compaction chain.
+    """Use the compaction parent's live chain, or the last assistant without one.
 
     When the session was compacted, the compaction record's own ``parentId``
     is the definitive live tip at that moment; dead retry branches appended
@@ -121,18 +125,20 @@ def _default_tip(records: Sequence[Mapping[str, Any]]) -> str:
     """
 
     by_id = {str(record.get("id")): record for record in records if record.get("id")}
-    anchor_index = len(records)
-    for index, record in enumerate(records):
+    for record in records:
         if record.get("type") == "compaction":
-            anchor_index = index
             parent_id = record.get("parentId")
-            if isinstance(parent_id, str) and parent_id in by_id:
-                for scan in range(index - 1, -1, -1):
-                    if records[scan].get("id") == parent_id:
-                        anchor_index = scan + 1
-                        break
-            break
-    for record in reversed(records[:anchor_index]):
+            if not isinstance(parent_id, str) or parent_id not in by_id:
+                raise SessionReplayError("compaction references a missing parent")
+            chain = _walk_active_chain(records, by_id, parent_id)
+            for ancestor in reversed(chain):
+                message = ancestor["message"]
+                if _is_content_bearing_assistant(message) or message.get("role") in {
+                    "user", "toolResult"
+                }:
+                    return str(ancestor["id"])
+            raise SessionReplayError("compaction ancestry has no replayable messages")
+    for record in reversed(records):
         if record.get("type") == "message" and _is_content_bearing_assistant(
             record["message"]
         ):
@@ -464,6 +470,7 @@ def _validate_workload(raw: Any, *, label: str) -> tuple[str, Mapping[str, Any]]
         raise SessionReplayError(f"{label}.entries must be an array")
     entries: list[dict[str, Any]] = []
     open_calls: dict[str, str] = {}
+    valid_request_ends: set[int] = set()
     for index, raw_entry in enumerate(raw_entries):
         entry_label = f"{label}.entries[{index}]"
         entry = dict(_mapping(raw_entry, label=entry_label))
@@ -514,6 +521,8 @@ def _validate_workload(raw: Any, *, label: str) -> tuple[str, Mapping[str, Any]]
         else:
             raise SessionReplayError(f"{entry_label} has unsupported role {role!r}")
         entries.append(entry)
+        if role in {"user", "tool"} and not open_calls:
+            valid_request_ends.add(len(entries))
 
     raw_ends = workload.get("request_ends")
     if not isinstance(raw_ends, Sequence) or isinstance(raw_ends, (str, bytes)):
@@ -529,6 +538,10 @@ def _validate_workload(raw: Any, *, label: str) -> tuple[str, Mapping[str, Any]]
             )
         if raw_end > len(entries):
             raise SessionReplayError(f"{end_label} exceeds entries length")
+        if raw_end not in valid_request_ends:
+            raise SessionReplayError(
+                f"{end_label} must end a user message or completed tool round"
+            )
         previous_end = raw_end
     if not raw_ends:
         raise SessionReplayError(f"{label}.request_ends must not be empty")

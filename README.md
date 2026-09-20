@@ -202,10 +202,31 @@ two concurrent requests on the W7900.
 Full commands, software versions, model hashes, memory use, and correctness
 checks are in the [benchmark report](benchmarks/README.md).
 
+### Coding-Agent Session Replay
+
+Replaying a recorded coding session shows the benefit of avoiding repeated
+prompt processing: 32 sequential requests, 128 output tokens per request,
+and a cumulative transcript growing from 740 to 13,762 tokens.
+Qwen3.6-35B-A3B `UD_Q4_K_M` on the HP ZBook / Radeon 8060S (`gfx1151`),
+using the in-process engine and server chat renderer:
+
+| Prefix cache | End-to-end output | Average turn | Cache hits |
+| --- | ---: | ---: | ---: |
+| Off | 7.05 tok/s | 18.2 s | 0/32 |
+| Radix, default retention | 12.61 tok/s | 10.2 s | 19/32 |
+| Radix, 16 retained snapshots | **19.69 tok/s** | **6.5 s** | **30/32** |
+
+**2.79x end-to-end throughput**, with 91% of prompt tokens reused rather
+than recomputed. This is one adapted transcript and one run per setting,
+not a general agent-quality benchmark; outputs were not compared across arms.
+System/tool definitions are substituted and long tool results truncated.
+The 16-snapshot setting uses more memory and is opt-in.
+[Results and retention guidance](benchmarks/README.md#current-default-notes).
+
 ## Status and limits
 
-v0.5.0 adds the dense Qwen models, and hipEngine now picks some performance
-routes on its own, but only where they have been measured as safe:
+v0.6.0 is alpha. Automatic performance routes remain scoped to qualified
+model, hardware, and workload combinations:
 
 - Qwen3.6-27B and Qwen3.8-27B GGUF generation and serving on both AMD backends.
   Both can speculate with the model's own multi-token prediction head, as can
