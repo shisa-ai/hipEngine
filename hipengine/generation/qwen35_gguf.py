@@ -9733,8 +9733,10 @@ class Qwen35GGUFResidentModelRunner:
         native_sample = None
         if row.native_sampler:
             if native_compact_prefill:
+                # Packed prefill leaves logits on its execution owner, while
+                # the selected token still belongs to the request's slot.
                 sample_native = getattr(
-                    lease.session,
+                    packed_owner,
                     "sample_native_from_packed_logits",
                     None,
                 )
