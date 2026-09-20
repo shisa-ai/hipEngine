@@ -21,10 +21,10 @@ session reads. Start there, then come here for the document your task touches.
 | [`API.md`](API.md) | current | OpenAI-compatible server usage, endpoint support, request/response semantics, and current limitations. |
 | [`BENCHMARK.md`](BENCHMARK.md) | **normative** | Benchmark protocols, baselines to beat, required evidence fields, correctness thresholds, and artifact/rollup format. |
 | [`ENVS.md`](ENVS.md) | current | Complete environment-variable reference and the recommended profiles for normal use, ROCm setup, and profiling. |
-| [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) | **normative** | Strict/production/batch-invariant contracts, numerical gates, exact ownership and failure-containment semantics, and registry resolution policy. |
+| [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) | **normative** | Strict/production/batch-invariant contracts, numerical gates, exact ownership and failure-containment semantics, and kernel-variant selection policy. |
 | [`KERNELS.md`](KERNELS.md) | current | Kernel catalog, source-lineage drift workflow, optimal path map, port playbook, JIT cache gotcha, and build profiles. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | current | Local do-not-chase findings and recurring kernel/runtime pitfalls. Largely superseded in kernel scope by RDNA3-TUNING-GUIDE.md. |
-| [`MODELS.md`](MODELS.md) | current | Supported models, quantizations, and the backends each is qualified on. |
+| [`MODELS.md`](MODELS.md) | current | Models, quantizations, and backends hipEngine has implemented and measured. |
 | [`OPTIMIZATION.md`](OPTIMIZATION.md) | **normative** | Rules for kernel work, performance claims, and benchmark rows: evidence fields, anti-gaming, correctness gates, promotion, lineage, profiling. |
 | [`PLAN.md`](PLAN.md) | **normative** | Architecture, plugin boundaries, phase roadmap, LoC budgets, and the invariants that define hipEngine. |
 | [`RDNA3-TUNING-GUIDE.md`](RDNA3-TUNING-GUIDE.md) | current | Externally-referenced RDNA3 tuning guide; the current respin of the kernel-level findings also recorded in LESSONS-LEARNED.md. |

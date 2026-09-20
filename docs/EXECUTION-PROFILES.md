@@ -1,6 +1,6 @@
 ---
 status: normative
-owns: Strict/production/batch-invariant contracts, numerical gates, exact ownership and failure-containment semantics, and registry resolution policy.
+owns: Strict/production/batch-invariant contracts, numerical gates, exact ownership and failure-containment semantics, and kernel-variant selection policy.
 ---
 # Execution Profiles and Numerical Contracts
 
@@ -40,6 +40,13 @@ Failure belongs to the first property: recovery must preserve ownership and
 valid state outside the affected scope. Section 4.3 states the containment
 contract and section 4.4 separates per-request capability from group scheduling.
 
+**Scope.** This document governs arithmetic, determinism, ownership, failure
+containment, and which kernel variant runs. It does not govern product
+admission. Whether a model loads, whether a requested feature runs, and what
+the server accepts are product decisions under `AGENTS.md` "Product Defaults":
+capability is the only gate. Nothing in this document may be read as licence to
+refuse a request the kernels can execute.
+
 ### 1.1 Missing evidence is not a runtime failure
 
 An implemented path that satisfies its declared input, resource, and execution
@@ -71,6 +78,15 @@ unsupported semantics, resource pressure, a schedule transition, or an observed
 failure. A guard that exists only because a case was not tested is an evaluation
 and cleanup task, not a permanent safety boundary. During its removal, provide
 an explicit runnable evaluation path rather than silently returning a fallback.
+
+A restriction must also be expressed as a capability, never as an identity. A
+model name, file path, SHA-256, artifact revision, or enumerated list of
+known-good combinations is not a capability and must never decide whether a
+request runs. Match what the kernel declares it supports — architecture,
+geometry, quantization, KV layout, storage policy, resource bounds — so an
+artifact nobody has seen before runs when it fits and fails with a named miss
+when it does not. An allowlist of measured artifacts is a defect: no user
+action can clear it, and every new file becomes an outage.
 A graph-bucket miss may select eager execution for that cycle; it does not by
 itself invalidate later cycles or other requests.
 
@@ -138,6 +154,11 @@ decision section below and keeps a registered strict fallback, so
 `batch_invariant` still falls back per scope wherever its composition gate has
 not passed.
 
+This list resolves which arithmetic an omitted profile gets. It is **not** an
+admission list. A combination absent from it loads and runs on the migration
+path; adding a combination changes its default arithmetic, not whether it is
+allowed to execute.
+
 The §2.2 ZBook soak failure (87 completed and 33 rejected of 120) is present
 in both the migration arm and the production arm, so under the shared-failure
 rule above it stays tracked as a product/scheduler blocker and does not block
@@ -202,7 +223,7 @@ replacement. The final public C2/C4/C8 D128 packet passes 8,716 rows at
 KL0/top1 100%, and the declared greedy blocking/SSE/cancellation/refill gates
 pass. Production remains AR-only for automatic and explicit MTP requests;
 strict C1/K3 uses its original qualified natural25 scope. (The scope axes in
-this paragraph are historical: since [2.9](#29-serving-admission-is-physical-not-shape-scoped),
+this paragraph are historical: since [2.9](#29-capability-admits-evidence-selects-and-promotes),
 context, horizon, session length, and the manifest hash no longer gate serving.)
 See [serving closure](../benchmarks/results/2026-09-12-gfx1151-qwen38-serving-mtp-closure.json)
 and [headline evidence](../benchmarks/results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json).
@@ -287,9 +308,10 @@ planar-Q6 owner only at physical C8/K3. This is T1 implementation arithmetic:
 activations are quantized to q8_1 per call while the model representation,
 algorithm, target ownership, and acceptance policy remain unchanged. The
 strict profile and explicit zero retain the registered grouped BF16 chain.
-Runtime admission additionally requires gfx1100, model metadata containing
-`Qwen3.8`, file type `MOSTLY_Q4_K_M`, and request count 8; C1-C7 and scope
-misses cannot enter the candidate context.
+Selecting this owner additionally requires gfx1100, the dense H5120 geometry,
+file type `MOSTLY_Q4_K_M`, and request count 8 — the properties its kernel
+table is keyed on (`hipengine/kernels/hip_gfx1100/__init__.py`). C1-C7 and
+scope misses run the registered BF16 owner instead; they are not refused.
 
 The 18-prompt, 432-row strict-teacher gate passes at mean/p95/p99/max KL
 `0.000140/0.000688/0.001606/0.007267`, 99.769% top-1, and three deterministic
@@ -302,12 +324,13 @@ positive in both orders (+0.36%/+1.05%) and no task output changes. The clean
 post-promotion automatic route measures **98.643 vs 88.250 AR tok/s
 (1.1178x)** with 10/10 exact, engaged, and budget-conformed cells.
 
-Automatic serving is narrower than kernel admission: production/BF16
-`Q4_K_M`, resident capacity 8, realized C8, K3, and greedy sampling. Every
-physical miss remains K0. The production/strict manifest hashes recorded with
+Automatic serving selects this owner more narrowly than capability admits it:
+production/BF16 `Q4_K_M`, resident capacity 8, realized C8, K3, and greedy
+sampling. A physical miss selects K0 for that cycle; it does not refuse the
+request. The production/strict manifest hashes recorded with
 this promotion are `2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960`
 and `52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb`; since
-[2.9](#29-serving-admission-is-physical-not-shape-scoped) they identify the
+[2.9](#29-capability-admits-evidence-selects-and-promotes) they identify the
 measured build rather than gate admission.
 Evidence: [`C8 automatic promotion`](../benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json).
 
@@ -344,80 +367,92 @@ implementation association inside production; it does not widen automatic MTP
 admission. Evidence:
 [`B5 retention packet`](../benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json).
 
-### 2.9 Serving admission is physical, not shape-scoped
+### 2.9 Capability admits; evidence selects and promotes
 
-The implemented speculative-MTP resolver selects one exact model-plugin
-evidence row over physical and ownership identity. This describes the current
-selection mechanism, not proof that every unmatched cell is invalid. Under
-section 1.1, implementation capabilities and concrete failures determine
-runnability; evidence records measured guarantees and promotion decisions.
-Evidence-only restrictions must not prevent evaluation of implemented paths.
-The resolver currently checks:
+Admission is a capability question in every mode. A request runs when the
+resolved implementation can execute it: implemented semantics, a compatible
+backend and target architecture, compatible model geometry, weight quant, KV
+storage and layout, supported sampling, allocated bounds, and available memory.
+Those are the only reasons a request is refused, and a refusal names the one it
+hit.
+
+Retained evidence does not decide admission. It selects among paths capability
+has already admitted, and it records what may be claimed or promoted. A cell no
+retained row covers still runs: it takes the capability-resolved path and
+reports that no measured row covered it.
+
+Exactly one further restriction is legal: a **recorded observed failure or
+measured regression** for a configuration. That is a known-bad configuration,
+it names the artifact that recorded it, and a superseding measurement clears
+it. "No row covers this cell" is not a recorded failure.
+
+The speculative-MTP resolver implements this as a declaration lookup. Model
+plugins register what their kernels execute per KV contract in
+`hipengine/models/qwen35.py` (`speculative_mtp_serving_implementations`),
+resolved by `SpeculativeMTPServingImplementation` in
+`hipengine/speculative/serving.py`. The capability axes:
 
 | Axis | Why it binds |
 | --- | --- |
-| artifact SHA-256 and size, `content_verified` | The row certifies one artifact's content. |
+| implemented semantics | The kernel must have a body for these inputs. |
 | backend, target architecture | Kernels are architecture-scoped. |
-| weight quant, KV storage, KV layout | Both change the verified arithmetic. |
+| model geometry, weight quant, KV storage, KV layout | These select the kernel and fix its arithmetic. |
 | realized group rows, resident capacity | Ownership and physical width are exact contracts. |
-| candidate depth (requested <= qualified) | A shallower chain is less speculative work on the same verified path. |
+| candidate depth | The chain must fit the implemented depth bound. |
 | sampling mode | The verifier's acceptance path is greedy-specific. |
 | memory fit | Admission must precede allocation failure. |
 
+Every axis is a property of the request and the kernel. **None is an identity.**
+Model name, file path, artifact SHA-256, artifact revision, and enumerated
+`(model, backend, quant)` known-good lists are not admission axes and must
+never be introduced as ones. An artifact the project has never seen runs when
+its geometry, quant, and layout fit a registered declaration.
+
 Prompt context, output horizon, session length, and the resolved
-execution-profile manifest are **not** admission axes. They describe the
-envelope a benchmark measured, they change with ordinary serving traffic, and
-the manifest changes with any kernel or variant selection. Gating on them
-silently disables an already-qualified path: the 2026-08-29 E0 review had to
-refresh manifest hashes to stop real requests from selecting K0 with
+execution-profile manifest are likewise **not** admission axes. They describe
+the envelope a benchmark measured, they change with ordinary serving traffic,
+and the manifest changes with any kernel or variant selection. Gating on them
+silently disables a working path: the 2026-08-29 E0 review had to refresh
+manifest hashes to stop real requests from selecting K0 with
 `execution_profile_manifest_not_qualified`
 ([`E0 baseline`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json)).
 The removed rejection reasons were `execution_profile_not_qualified`,
 `execution_profile_manifest_not_qualified`, `max_sequence_length_not_qualified`,
 `context_bucket_not_qualified`, and `output_horizon_not_qualified`.
 
-Two rules replace the removed axes:
+Selection among admitted paths:
 
-- When several rows match one physical cell, the cell takes the strongest
-  retained authorization: an automatic-eligible row wins over an explicit-only
-  row, and remaining ties keep declaration order.
-- Profile safety stays with the provider, not the admission table. FP16
-  recurrent-state spec-dec2 still requires a complete non-fallback production
-  manifest before mutation.
+- When several registered paths fit one physical cell, prefer the one carrying
+  the strongest retained measurement; remaining ties keep declaration order.
+- Profile safety stays with the provider, not a table. FP16 recurrent-state
+  spec-dec2 still requires a complete non-fallback production manifest before
+  mutation.
 
 A retained row still records the shape envelope its artifact measured, and that
-envelope remains part of the benchmark evidence. What changed is that the
-envelope no longer decides admission.
+envelope remains part of the benchmark evidence. It does not decide admission.
 
-#### Implemented explicit screening override
+Artifact execution identity
+(`hipengine.loading.gguf.gguf_execution_fingerprint`) stays on evidence rows as
+**provenance**: the tensor table plus routing-relevant metadata, excluding
+tokenizer content, provenance strings, and tensor bytes, so revisions routing
+through the same kernels share one identity.
+`scripts/gguf_execution_identity.py` prints it. It labels which artifact a
+measurement came from. It does not authorize execution, and an absent or
+unrecorded identity never withholds a path.
 
-`HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1` is the existing mechanism for
-measuring a physical cell that no retained row qualifies. It does not require
-that the experiment pass before it can run:
+#### Retired screening override
 
-- It currently applies only to a request that explicitly asks for speculation
-  (`speculative_mtp: true`). Automatic intent, and `auto`/`enabled` without an
-  explicit request, retain the existing evidence-based selection. These are
-  implementation restrictions, not a declaration that unmatched paths are bad.
-- It covers qualification gaps: a missing evidence row or an evidence mismatch
-  on artifact, backend, target architecture, quant, KV storage/layout, physical
-  group, capacity, or candidate depth. The chosen implementation must still
-  support the actual inputs and semantics. Content verification, available
-  memory and supported sampling remain independently checked; a summary of one
-  qualification miss must not conceal a failed structural check.
-- Screening eligibility is non-automatic in this implementation, and the
-  response reports `qualification: explicit_screening_unqualified_cell`,
-  `unqualified: true`, and the original rejection reason in `speculative_mtp`.
-  These labels describe evidence status, not a correctness verdict.
-- Record diagnostic measurements, failures and successful checks. They can
-  contribute to the ordinary numerical, determinism, isolation, task and
-  performance evaluation; an incomplete screen must not be presented as a
-  completed production gate.
+`HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1` existed so an explicit request
+could reach a cell no retained row qualified. Under capability admission there
+is nothing left for it to unlock: the explicit request already resolves through
+the declaration. It survives only as a diagnostic in existing scripts and
+tests, and its removal is tracked in [`REFACTOR.md`](REFACTOR.md). Do not add
+new callers, and do not describe a path as reachable "via screening" — if
+capability admits it, it is reachable normally.
 
-The longer-term contract is capability-based execution with evidence-backed
-claims and promotion, not an ever-growing benchmark allowlist. Replacing these
-selection restrictions requires implementation and tests; this policy revision
-does not assert that the replacement has landed.
+The contract is capability-based execution with evidence-backed claims and
+promotion. Capability decides what runs. Evidence decides which path we prefer
+among working ones, what we may claim, and what we promote.
 
 ## 3. Profile is orthogonal to model representation
 

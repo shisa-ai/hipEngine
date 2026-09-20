@@ -34,6 +34,7 @@ hipEngine's evidence discipline exists because a fast kernel row is worthless if
 
 - **Whether a feature is enabled.** Shipping a working implementation on the default path is a product decision, not a claim.
 - **Whether an implemented path may run.** Absence of a benchmark row is not a finding. Untested is not failed.
+- **Which models, artifacts, or configurations may load.** Support is decided by what the kernels implement, not by what has been measured. A model, file, quantization, or feature request the kernels can execute runs, whether or not a benchmark, evidence row, or model card mentions it.
 - **Product, API, and server behavior.** Defaults, naming, error shapes, endpoint semantics, and UX are design decisions. They must be correct and tested; they do not need a benchmark artifact.
 - **The lead's decisions.** See "Decision Authority" above.
 
@@ -44,6 +45,9 @@ If you are about to block, gate, revert, or default-off something *because evide
 Each of these names a failure that has actually happened in this repo.
 
 - **Ship it on.** A working implementation lands **enabled on the default path**. A flag is a rollback lever for something already on, not a hiding place for something that has never been on. "Default off until qualified" requires a named concrete cause written where the flag is defined — an observed failure, an unmet precondition, a resource conflict, a missing dependency. "Not yet benchmarked" and "not yet qualified" are not causes.
+- **Capability is the only gate.** The question a gate may ask is "can the kernels execute this?" — never "have we measured this?" The complete list of legal reasons to refuse: no implementation for these inputs or semantics; an incompatible backend, architecture, quantization, KV layout, or storage policy; insufficient memory or other resources; or a recorded observed failure for this configuration. Nothing else refuses. Absence of an evidence row, a benchmark, a model card, or a qualification record is not a capability miss.
+- **Never key admission on identity.** Do not gate execution on a model name, a file path, a SHA-256, an artifact revision, or any enumerated list of known-good `(model, backend, quant)` combinations. An allowlist of measured artifacts turns every new file into an outage and can never be cleared by a user. Match the request against what the kernel declares it supports: an unfamiliar artifact that fits the declaration runs, and one that does not fit fails with a named capability miss.
+- **An explicit request runs or fails loudly.** When the user asks for something by name — a model path, `speculative_mtp: true`, a DMS sidecar, a quantization, a backend — it either runs or raises an error naming the capability it lacks. Silently downgrading it, disabling it, labelling it `unqualified`, or routing it through a diagnostic env var is a defect. Automatic selection may be conservative about *which variant* it picks among working paths; it may not decide the feature does not run at all.
 - **A gate nothing can clear is a bug in the gate.** If you restrict a path, you own the route that lifts the restriction: name the command that would clear it. A guard justified only by "nobody has exercised this case" makes the case permanently unexercisable, because the guard is what prevents exercising it. If you cannot name the clearing command, do not add the guard.
 - **Validate the space, not the gate point.** When behavior depends on a threshold — context length, batch width, prompt size, sequence count — exercise values on both sides of it and at least one value unrelated to it. Testing a length-gated path at exactly 512 and 1024 because those are the configured thresholds proves the thresholds, not the feature.
 - **Works in the harness is not works.** A route reachable only from a benchmark script, a test fixture, or an explicit env var is not shipped. Before calling a change done, exercise it the way a user reaches it — `hipengine.LLM.generate()` or `hipengine serve` — and confirm the intended path actually ran (selected variant, sampler mode, fallback reason). A path that silently falls back in production while passing its own targeted test is a defect, not coverage.
@@ -81,7 +85,7 @@ Do not drift these casually. They define what hipEngine is.
 | `docs/README.md` | Generated index of the docs tree, with each document's status and what it owns. Start here when you do not know which document you need. |
 | `docs/PLAN.md` | Architecture, phase roadmap, LoC budgets, extensibility design. |
 | `docs/OPTIMIZATION.md` | **Rules for kernel work, performance claims, and benchmark rows** — evidence fields, anti-gaming, correctness gates, promotion, lineage, profiling. Scoped: it does not govern product behavior. |
-| `docs/EXECUTION-PROFILES.md` | Normative strict/production/batch-invariant contracts, numerical gates, exact ownership and failure-containment semantics, registry resolution policy. §1.1 is the "missing evidence is not a runtime failure" rule. |
+| `docs/EXECUTION-PROFILES.md` | Normative strict/production/batch-invariant contracts, numerical gates, exact ownership and failure-containment semantics, and variant-selection policy. Scoped to arithmetic and kernel-variant selection; it does not decide which models, artifacts, or features may run. §1.1 is the "missing evidence is not a runtime failure" rule. |
 | `docs/TESTING.md` | RED/GREEN workflow, correctness oracles, fixture policy, validation matrix. |
 | `docs/BENCHMARK.md` | Benchmark protocols, baselines to beat, correctness gate, artifact/rollup format. |
 | `docs/KERNELS.md` | Kernel catalog, source-lineage drift workflow, Qwen3.5/PARO optimal path map, port playbook, JIT cache gotcha, build profiles. |
@@ -89,7 +93,7 @@ Do not drift these casually. They define what hipEngine is.
 | `docs/RDNA3-TUNING-GUIDE.md` | RDNA3 tuning technique. Externally referenced; the current respin of the kernel-level findings in `docs/LESSONS-LEARNED.md`. |
 | `docs/API.md` | OpenAI-compatible server usage, endpoint support, current limitations. |
 | `docs/ENVS.md` | Complete env-var reference and recommended profiles. |
-| `docs/MODELS.md` | Supported models, quantizations, and the backends each is qualified on. |
+| `docs/MODELS.md` | Models, quantizations, and backends hipEngine has measured. A coverage record, not an admission list. |
 | `docs/REFACTOR.md` | Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code to remove after optimal paths are proven. |
 | `docs/reference/PRODUCTION-NUMERICS-CAMPAIGN.md` | Approved evaluator, calibration, historical-candidate, c1, and c>N/A4 execution plan. |
 | `docs/source_lineage.json` | External parent-file manifest used by `scripts/check_lineage.py`. |
@@ -222,6 +226,9 @@ Read-only peers under `~/`. Do not edit as part of a hipEngine task. When portin
 | Situation | Action |
 | --- | --- |
 | A path is implemented but has never been exercised | Run it. That is the task. Do not gate it, and do not report it as unqualified. |
+| A model, artifact, or quant is not in a support matrix or model card | Load it. Those pages record what we measured, not what may run. Refuse only on a named kernel capability miss. |
+| Tempted to gate on a hash, model name, or known-good combination list | Do not. Gate on the kernel's declared capability instead. See "Never key admission on identity". |
+| A user explicitly asked for a feature and no evidence row covers it | Run it and report the capability result. `unqualified` is not a refusal reason. |
 | Tempted to default-off something that works | Name the concrete cause and the command that would clear it. If you cannot name both, ship it on. |
 | Math change lacks an oracle/test | Add a CPU-reference/golden fixture first, or record an explicit no-RED rationale in the unit's worklog entry. |
 | Merge conflict in a high-conflict file | Stop and coordinate. Do not force-stage or revert. |

@@ -146,7 +146,7 @@ requests were blocked before MTP with typed reason
 `execution_profile_not_qualified`; T0.4 must exercise/qualify staged MTP2 rather
 than tune the legacy fallback. (As of 2026-09-17 the execution-profile manifest
 no longer gates serving; see
-[`EXECUTION-PROFILES.md` §2.9](../EXECUTION-PROFILES.md#29-serving-admission-is-physical-not-shape-scoped).)
+[`EXECUTION-PROFILES.md` §2.9](../EXECUTION-PROFILES.md#29-capability-admits-evidence-selects-and-promotes).)
 Evidence:
 [`T1.0 attribution`](../../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t10-prefill-attribution.json).
 
@@ -163,7 +163,7 @@ Evidence:
   this campaign, so it had no MTP economics until the staged execution profile
   passed its production correctness/task gate. The manifest hash stopped gating
   admission on 2026-09-17 (see
-  [`EXECUTION-PROFILES.md` §2.9](../EXECUTION-PROFILES.md#29-serving-admission-is-physical-not-shape-scoped)).
+  [`EXECUTION-PROFILES.md` §2.9](../EXECUTION-PROFILES.md#29-capability-admits-evidence-selects-and-promotes)).
 
 ### Correctness observation (diagnostic)
 
