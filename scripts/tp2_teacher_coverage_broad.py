@@ -862,6 +862,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--capture-resident-arm', choices=('tp1-d0', 'tp1-d1', 'tp2'))
     parser.add_argument('--resident-results', type=Path, nargs=3)
     parser.add_argument('--max-sequence-length', type=int, default=71)
+    parser.add_argument(
+        '--pad-prompt-tokens', type=int, default=0,
+        help=(
+            'extend each prompt to this many tokens by repeating its last token, '
+            'so the teacher covers a row count the source-F16 prefill policy '
+            'admits (its smallest is 512). The padded prompts are what lands in '
+            "the artifact's suite.tokens, so the diagnostic scores the student "
+            'against a teacher for the identical prompt and trajectory.'
+        ),
+    )
     parser.add_argument('--execution-profile', choices=('strict', 'production'), default='production')
     parser.add_argument('--sustained-arm', choices=('tp1-d0','tp1-d1','tp2'))
     parser.add_argument('--tp2-bulk-prefill', action='store_true',
@@ -1136,6 +1146,32 @@ def main(argv: list[str] | None = None) -> int:
         flush=True,
     )
     return 0 if all_pass else 1
+
+
+def _pad_prompt_tokens(tokens, pad: int):
+    """Extend each prompt to ``pad`` tokens by repeating its last token.
+
+    This is the *same* rule ``scripts/tp2_bulk_prefill_diagnostic.py`` applies,
+    and it lives in one place on purpose: the diagnostic scores a student against
+    a teacher captured here, so if the two padded differently the comparison
+    would silently be between different contexts - which is exactly the error
+    that invalidated the first attempt at this gate. Padding only extends the
+    prompt; the teacher's own forced trajectory is then recorded for the padded
+    prompt and the diagnostic replays that same trajectory.
+    """
+
+    if not pad:
+        return tokens
+    padded = []
+    for row in tokens:
+        row = tuple(row)
+        if pad < len(row):
+            raise ValueError(
+                f"--pad-prompt-tokens {pad} is shorter than a {len(row)}-token prompt; "
+                "padding only extends, it never truncates"
+            )
+        padded.append(row + (row[-1],) * (pad - len(row)))
+    return padded
 
 
 def _product_suite():
@@ -1427,10 +1463,21 @@ def capture_sustained_arm(args):
     from scripts.tp2_xtx_tp1_eager_stage_probe import StageRecorder
     import uuid
     arm=args.sustained_arm
-    if args.max_sequence_length!=200: raise ValueError('D128 gate requires declared capacity 200')
+    pad=int(getattr(args,'pad_prompt_tokens',0) or 0)
+    # The D128 gate declares 200 because that covers the unpadded suite plus its
+    # 128-step horizon. A padded capture needs the padded prompt *plus* the same
+    # horizon, so the declared capacity must grow with the padding; requiring a
+    # literal 200 would make the padded gate impossible to capture.
+    required=200 if not pad else pad+128+2
+    if args.max_sequence_length<required:
+        raise ValueError(
+            f'declared capacity {args.max_sequence_length} does not cover the padded '
+            f'prompt and its 128-step horizon; need at least {required}'
+        )
     expected={'tp1-d0':'0','tp1-d1':'1'}.get(arm)
     if os.environ.get('HIP_VISIBLE_DEVICES')!=expected: raise ValueError('sustained physical visibility mismatch')
     suite,tokens=_product_suite()
+    tokens=_pad_prompt_tokens(tokens, int(getattr(args,'pad_prompt_tokens',0) or 0))
     identity=product_identity(MODEL)
     reference_data,reference=(load_sustained(args.teacher_source) if args.teacher_source else (None,None))
     if reference_data is None and arm!='tp1-d0': raise ValueError('only tp1-d0 may choose teacher trajectories')
@@ -1456,7 +1503,7 @@ def capture_sustained_arm(args):
     record.artifact['horizon']=int(horizon) if horizon is not None else 128
     record.artifact['horizon_declared_by']=('docs/EXECUTION-PROFILES.md 6.5' if horizon is not None else None)
     def build():
-        a=create_native_adapter(MODEL,arm,capacity=200,bulk_prefill=bulk); state['adapter']=a; a.prepare()
+        a=create_native_adapter(MODEL,arm,capacity=int(args.max_sequence_length),bulk_prefill=bulk); state['adapter']=a; a.prepare()
         record.artifact.update(vocab_size=a.vocab_size,devices=_device_identities(a.owner),
             route=_resolved_route(a.owner),scope_manifest=resolved_scope_manifest(a.owner),
             prefill_schedule=a.prefill_schedule,tp2_bulk_prefill_requested=bulk)
