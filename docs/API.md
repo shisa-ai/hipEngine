@@ -157,8 +157,11 @@ report `automatic_route_promoted`, `default_enabled`, and
 automatic/explicit route decisions and rollback. Wrong backend, quant, KV,
 capacity, group, depth, sampler, or memory fit selects K0 before backend
 mutation with a stable reason. The startup summary states the resolved route and
-depth rather than the configured policy, and marks an admission that no
-measurement on this cell backs.
+depth rather than the configured policy. An admitted plan without automatic
+eligibility is reported as `MTP explicit-only (default AR; <reason>)`, even with
+the `enabled` policy. The summary marks admitted plans as `(unmeasured)` when
+they lack an evidence key, evidence fingerprint, or evidence artifacts. Reason
+names do not determine measurement status; sampled evidence counts too.
 
 Qwen3.8-27B Q4_K_M on gfx1151 additionally enables automatic sampled MTP for
 one through four active requests in a capacity-four server with BF16 KV and
