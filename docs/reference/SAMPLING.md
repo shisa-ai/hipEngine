@@ -93,8 +93,9 @@ without row splitting and native support for dynamic response shapes.
 
 ### Sampled MTP
 
-The Qwen3.8 Q4_K_M gfx1151 singleton sampled-MTP route uses the same native
-sampler as autoregressive decoding. Its capacity-four/BF16/K3 policy is
+The Qwen3.8 Q4_K_M gfx1151 sampled-MTP route uses the same native sampler as
+autoregressive decoding. Its capacity-four/BF16/K3 policy supports one through
+four active requests and is
 automatic for supported requests, independently of the older greedy policy.
 The target graph samples each verified prefix with temperature/top-p/min-p,
 then accepts the deterministic draft while its tokens match those draws.
@@ -112,6 +113,21 @@ standalone coupled-accept kernels remain numerical test oracles, not the
 default native serving implementation. Logprob responses, token-stop
 constraints, and other unsupported sampled-MTP fields fall back to ordinary
 decoding before speculative execution.
+
+Concurrent groups share the packed target forward and selected-state commit,
+but sample each request's verified row span with its own seed and absolute
+token counter. Histories advance only for committed tokens; rejected lookahead
+does not alter live sampler state. Different seeds, progress, prompt lengths,
+and retirement order do not require a CPU sampler. Bounded top-k and history
+processors use the same native per-prefix selection against private histories.
+
+At a short tail, the planner may use AR with `target_graph_output_room_miss`,
+or use eager native selection for an uncaptured candidate depth. These are
+distinct from a failed sampled-graph warmup. `no_provider` can also describe
+the initial prefill-token publication before a provider is ready; inspect
+cycle counts and provider readiness rather than interpreting every event as
+an execution failure. No short-generation speedup is implied: MTP prefill and
+provider priming costs must be included in any end-to-end comparison.
 
 ### Original PARO Promotion
 

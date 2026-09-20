@@ -21726,7 +21726,7 @@ class Qwen35GGUFResidentSession:
         src = self._prefill_hidden_a
         dst = self._prefill_hidden_b
         linear_state_owner = (
-            packed_state if direct_linear_state is None else direct_linear_state[1]
+            linear_state_owner if direct_linear_state is None else direct_linear_state[1]
         )
         linear_decode_scratch = replace(
             self.scratch,
@@ -21863,6 +21863,7 @@ class Qwen35GGUFResidentSession:
                     rows,
                     activation_dtype=GGUF_ACTIVATION_BF16,
                     stream=stream,
+                    require_logits=any(bool(job.get("require_logits", False)) for job in job_list),
                 )
                 token_host = None
             else:

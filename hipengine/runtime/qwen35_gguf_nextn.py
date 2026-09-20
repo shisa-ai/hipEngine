@@ -2617,18 +2617,15 @@ class Qwen35GGUFNextNExecutor:
             for backup in reversed(allocated):
                 free(backup, runtime=self.runtime)
             raise
-        sessions = getattr(self, "_batch_sessions", None)
-        logical_position = int(
-            slot_scratch.position_host[0]
-            if sessions is None
-            else sessions[slot].position
-        )
+        # Scratch records the last consumed position; batch sessions record
+        # the next input. Restore must not increment that cursor a second time.
+        logical_position = int(slot_scratch.position_host[0])
         return Qwen35GGUFNextNRequestCheckpoint(
             request_id=rid,
             slot=int(slot),
             state_pairs=tuple(pairs),
             position=logical_position,
-            context_length=logical_position + 1,
+            context_length=int(slot_scratch.context_host[0]),
         )
 
     def restore_request_checkpoint(

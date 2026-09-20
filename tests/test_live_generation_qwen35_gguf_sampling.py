@@ -5669,6 +5669,10 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "0")
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", "1")
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", "1")
+    monkeypatch.setattr(
+        qwen35_gguf.Qwen35GGUFBringupGenerator, "_load_mtp_serving_assets",
+        lambda self: pytest.fail("target scratch probe must not load legacy draft assets"),
+    )
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
 
     generator = _generator()
@@ -5682,16 +5686,7 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
     assert result["packed_mtp_verify_skipped"] is False
     assert result["packed_mtp_verify_widths"] == [2, 4, 8]
     assert result["packed_mtp_verify_prompt_lengths"] == [4]
-    assert [call for call in calls if call[0] == "draft_init"] == [
-        ("draft_init", 0),
-        ("draft_init", 1),
-        ("draft_init", 2),
-        ("draft_init", 3),
-        ("draft_init", 4),
-        ("draft_init", 5),
-        ("draft_init", 6),
-        ("draft_init", 7),
-    ]
+    assert [call for call in calls if call[0] == "draft_init"] == []
     assert [call for call in calls if call[0] == "prefill_batch"] == [
         (
             "prefill_batch",
