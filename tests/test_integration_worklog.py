@@ -428,6 +428,27 @@ def test_legacy_manifest_rejects_mutation_and_missing_manifest(tmp_path: Path) -
     assert "legacy manifest" in missing.stderr.lower()
 
 
+def test_check_allows_sanctioned_retirement_of_the_frozen_journal(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _new_entry(repo)
+    _commit_entry(repo, entry)
+    legacy = repo / "WORKLOG-LEGACY.md"
+    legacy.write_text("# Legacy\n\n## 2026-08-10 - Frozen\n\n- Evidence.\n", encoding="utf-8")
+    _legacy_manifest(repo)
+    _git(repo, "add", "WORKLOG-LEGACY.md", "worklog/legacy-manifest.json")
+    _git(repo, "commit", "-m", "docs: freeze legacy worklog")
+
+    _git(repo, "rm", "-q", "WORKLOG-LEGACY.md", "worklog/legacy-manifest.json")
+    retired = _tool(repo, "check")
+    assert retired.returncode == 0
+
+    tracked_entry = next((repo / "worklog" / "entries").glob("*.md"))
+    _git(repo, "rm", "-q", str(tracked_entry.relative_to(repo)))
+    still_immutable = _tool(repo, "check", check=False)
+    assert still_immutable.returncode == 1
+    assert "immutable" in still_immutable.stderr.lower()
+
+
 def test_install_hook_preserves_lfs_hooks_and_refuses_unrelated_precommit(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     hooks = repo / ".git" / "hooks"

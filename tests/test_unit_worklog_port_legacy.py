@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 from collections import Counter
 from pathlib import Path
@@ -228,3 +230,55 @@ def test_stamp_of_matches_filename_regex() -> None:
 def test_validate_in_memory_names_offending_file() -> None:
     with pytest.raises(port.PortError, match=r"worklog/entries/20260513T093000"):
         port.validate_in_memory("20260513T093000.000002Z-legacy-topic-abcdef.md", "not an entry")
+
+
+# ---------------------------------------------------------------------------
+# Retired-journal provenance
+# ---------------------------------------------------------------------------
+
+def _retired_provenance(tmp_path: Path, payload: bytes, recorded_sha: str) -> Path:
+    manifest_path = tmp_path / "legacy-port-manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "source_sha256": recorded_sha,
+                "cutoff_commit": "7" * 40,
+                "source_history": {"commit": "a" * 40, "path": "WORKLOG-LEGACY.md"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return manifest_path
+
+
+def test_load_legacy_reads_retired_journal_from_recorded_history(monkeypatch, tmp_path) -> None:
+    payload = b"# Legacy\n\n## 2026-08-10 - Frozen\n\n- Evidence.\n"
+    manifest_path = _retired_provenance(
+        tmp_path, payload, hashlib.sha256(payload).hexdigest()
+    )
+    monkeypatch.setattr(port, "LEGACY_PATH", tmp_path / "missing-legacy.md")
+    monkeypatch.setattr(port, "LEGACY_MANIFEST_PATH", tmp_path / "missing-manifest.json")
+    monkeypatch.setattr(port, "PORT_MANIFEST_PATH", manifest_path)
+    monkeypatch.setattr(port, "run_git_bytes", lambda *args: payload)
+
+    text, meta = port.load_legacy()
+
+    assert text.startswith("# Legacy")
+    assert meta["sha256"] == hashlib.sha256(payload).hexdigest()
+    assert meta["cutoff_commit"] == "7" * 40
+    assert meta["source"]["commit"] == "a" * 40
+
+
+def test_load_legacy_rejects_history_bytes_that_drift(monkeypatch, tmp_path) -> None:
+    payload = b"# Legacy\n"
+    manifest_path = _retired_provenance(
+        tmp_path, payload, hashlib.sha256(b"different bytes\n").hexdigest()
+    )
+    monkeypatch.setattr(port, "LEGACY_PATH", tmp_path / "missing-legacy.md")
+    monkeypatch.setattr(port, "LEGACY_MANIFEST_PATH", tmp_path / "missing-manifest.json")
+    monkeypatch.setattr(port, "PORT_MANIFEST_PATH", manifest_path)
+    monkeypatch.setattr(port, "run_git_bytes", lambda *args: payload)
+
+    with pytest.raises(port.PortError, match="sha256"):
+        port.load_legacy()

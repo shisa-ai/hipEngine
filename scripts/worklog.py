@@ -2,8 +2,10 @@
 """Create, validate, and render contention-free hipEngine worklog entries.
 
 Tracked current history lives in immutable Markdown files under
-``worklog/entries``. The pre-Worklog2 journal is frozen at
-``WORKLOG-LEGACY.md`` after activation. ``WORKLOG.md`` remains a tracked
+``worklog/entries``. The pre-Worklog2 journal was frozen at
+``WORKLOG-LEGACY.md``, ported verbatim into entries, and then retired from
+the tree; its exact bytes stay pinned by the history ref recorded in
+``worklog/legacy-port-manifest.json``. ``WORKLOG.md`` remains a tracked
 navigation page; generated local views go under the ignored ``.worklog``
 directory.
 """
@@ -481,6 +483,15 @@ def immutability_errors(unmerged_paths: set[str]) -> list[str]:
             if status == "A":
                 staged_additions.update(paths)
                 continue
+            if status == "D" and all(
+                path in (LEGACY_REL, LEGACY_MANIFEST_REL) for path in paths
+            ):
+                # Sanctioned retirement of the frozen journal pair: the port
+                # first verified every entry byte-for-byte, and the exact
+                # journal bytes stay pinned by the history ref recorded in
+                # worklog/legacy-port-manifest.json. Entry deletions stay
+                # rejected; working-tree deletions below stay rejected too.
+                continue
             errors.append(
                 f"tracked worklog content is immutable: {status} {' -> '.join(paths)}"
             )
@@ -676,6 +687,19 @@ def check_entries(args: argparse.Namespace) -> int:
     return 0
 
 
+def _retired_legacy_ref() -> str:
+    """The `git show <commit>:<path>` ref for the retired journal, if recorded."""
+    manifest = ROOT / "worklog" / "legacy-port-manifest.json"
+    if not manifest.exists():
+        return ""
+    try:
+        history = json.loads(manifest.read_text(encoding="utf-8")).get("source_history") or {}
+    except (OSError, json.JSONDecodeError):
+        return ""
+    commit, path = history.get("commit"), history.get("path")
+    return f"{commit}:{path}" if commit and path else ""
+
+
 def rendered_worklog(
     parsed: list[tuple[Path, dict[str, str], str]],
     *,
@@ -752,6 +776,12 @@ def render(args: argparse.Namespace) -> int:
         [*validate_entries(enforce_append_only=False), *unstaged_entry_records()],
         key=lambda item: (item[1]["timestamp"], item[0].name),
     )
+    if args.include_legacy and not LEGACY_PATH.exists():
+        note = "note: the legacy journal is retired from the tree"
+        ref = _retired_legacy_ref()
+        if ref:
+            note += f"; original bytes: git show {ref}"
+        print(note, file=sys.stderr)
     output = Path(args.output)
     if not output.is_absolute():
         output = ROOT / output
