@@ -15769,6 +15769,7 @@ class Qwen35GGUFResidentSession:
     backend: str = "auto"
     shared_runner: Qwen35GGUFFullStackRunner | None = None
     execution_routes: tuple[str, ...] = ("eager",)
+    native_sampler_algorithm: str = "sorted"
     max_sequence_length: int | None = None
     max_batch_size: int = 1
     use_expert_sidecar: bool = False
@@ -30578,6 +30579,7 @@ class Qwen35GGUFResidentSession:
         )
         self._last_packed_sampler_decode_path = "native_gpu_sampler_rows"
         if self.last_packed_execution_manifest:
+            self.last_packed_execution_manifest["native_sampler_provenance"] = self.native_sampler_provenance
             self.last_packed_execution_manifest["sampler_decode_path"] = (
                 "native_gpu_sampler_rows"
             )
@@ -30626,6 +30628,7 @@ class Qwen35GGUFResidentSession:
         )
         self._last_packed_sampler_decode_path = "native_gpu_sampler_row"
         if self.last_packed_execution_manifest:
+            self.last_packed_execution_manifest["native_sampler_provenance"] = self.native_sampler_provenance
             self.last_packed_execution_manifest["sampler_decode_path"] = (
                 "native_gpu_sampler_row"
             )
@@ -30637,9 +30640,24 @@ class Qwen35GGUFResidentSession:
             self.last_packed_prefill_plan["native_sampler_rows"] = 1
         return sample
 
+    @property
+    def native_sampler_provenance(self) -> dict[str, object]:
+        from hipengine.runtime.native_sampler import native_sampler_provenance
+
+        workspace = self._native_sampler_workspace
+        if workspace is not None and not workspace.closed:
+            if workspace.full_vocab_algorithm != self.native_sampler_algorithm:
+                raise RuntimeError("live native sampler selection disagrees with declaration")
+            payload = workspace.provenance
+        else:
+            payload = native_sampler_provenance(self.native_sampler_algorithm)
+        return {**payload, "backend": self.backend}
+
     def _native_sampler(self) -> NativeSamplerWorkspace:
         workspace = self._native_sampler_workspace
         if workspace is not None and not workspace.closed:
+            if workspace.full_vocab_algorithm != self.native_sampler_algorithm:
+                raise RuntimeError("live native sampler selection disagrees with declaration")
             return workspace
         if self.runner is None or self._lm_head_library is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -30654,6 +30672,7 @@ class Qwen35GGUFResidentSession:
             runtime=self.runtime or get_hip_runtime(),
             vocab_size=self.runner.vocab_size,
             sampler_library=sampler_library,
+            full_vocab_algorithm=self.native_sampler_algorithm,
         )
         self._native_sampler_workspace = workspace
         return workspace

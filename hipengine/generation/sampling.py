@@ -1484,8 +1484,31 @@ def _top_k_candidate_ids(values: np.ndarray, top_k: int) -> np.ndarray:
     finite_ids = np.flatnonzero(np.isfinite(values)).astype(np.int64, copy=False)
     if finite_ids.size == 0:
         return finite_ids
-    order = np.lexsort((finite_ids, -values[finite_ids]))
-    sorted_ids = finite_ids[order]
+    scores = values[finite_ids]
+    if np.all(scores[:-1] >= scores[1:]):
+        # IDs already ascend, so descending inputs (including uniform rows)
+        # already satisfy the complete score/lower-ID order.
+        sorted_ids = finite_ids
+    elif values.size > np.iinfo(np.uint32).max:
+        # The packed tie keys below reserve 32 bits each for group and ID.
+        sorted_ids = finite_ids[np.argsort(-scores, kind="stable")]
+    else:
+        order = np.argsort(-scores)
+        sorted_ids = finite_ids[order]
+        ordered_scores = scores[order]
+        ties = ordered_scores[:-1] == ordered_scores[1:]
+        if np.any(ties):
+            # The fast numeric sort need not be stable. Repair only equal-score
+            # groups with unique integer (group, token-ID) keys; this preserves
+            # ties at a top-k boundary without a second full floating-point sort.
+            members = np.empty(sorted_ids.size, dtype=np.bool_)
+            members[0] = False
+            members[1:] = ties
+            members[:-1] |= ties
+            positions = np.flatnonzero(members)
+            groups = np.cumsum(np.r_[True, ~ties], dtype=np.uint64)
+            keys = (groups[positions] << np.uint64(32)) | sorted_ids[positions].astype(np.uint64)
+            sorted_ids[positions] = sorted_ids[positions][np.argsort(keys)]
     if top_k > 0:
         return sorted_ids[: min(top_k, sorted_ids.size)]
     return sorted_ids

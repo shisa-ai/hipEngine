@@ -82,6 +82,9 @@ class Trace:
                 return original(*args, **kwargs)
             finally:
                 if active is not None:
+                    if label == "native_selection":
+                        active.setdefault("native_full_vocab_algorithms", set()).add(
+                            args[0].full_vocab_algorithm)
                     active["seconds"][label] += time.perf_counter() - start
                     active["calls"][label] += 1
                     if copy:
@@ -108,9 +111,49 @@ def summarize(transitions):
         "steady_wall_s": sum(step["wall_s"] for step in steady),
         "median_transition_ms": statistics.median(step["wall_s"] for step in steady) * 1000,
         "steady_totals": totals,
+        "native_full_vocab_algorithms": sorted({
+            algorithm for step in transitions
+            for algorithm in step.get("native_full_vocab_algorithms", ())}),
         "all_calls": {key: sum(step["calls"].get(key, 0) for step in transitions)
                       for key in {key for step in transitions for key in step["calls"]}},
     }
+
+
+def comparison_table(rows):
+    """Aggregate measured decode windows; compare rates only to this run's greedy arm."""
+    groups = defaultdict(list)
+    for row in rows:
+        groups[row["arm"]].append(row)
+    summary = {}
+    for arm, group in groups.items():
+        transitions = sum(row["profile"]["steady_transitions"] for row in group)
+        wall = sum(row["profile"]["steady_wall_s"] for row in group)
+        if transitions <= 0 or wall <= 0:
+            raise ValueError("comparison requires positive transition counts and time")
+        request_wall = sum(row["request_wall_s"] for row in group)
+        output_tokens = sum(len(row["generated_token_ids"]) for row in group)
+        if request_wall <= 0:
+            raise ValueError("comparison requires positive request wall time")
+        summary[arm] = {
+            "requests": len(group), "steady_transitions": transitions,
+            "output_tokens": output_tokens,
+            "request_wall_s": request_wall,
+            "e2e_tokens_per_second": output_tokens / request_wall,
+            "e2e_ms_per_output_token": request_wall / output_tokens * 1000,
+            "decode_tokens_per_second": transitions / wall,
+            "mean_transition_ms": wall / transitions * 1000,
+        }
+    greedy = summary.get("greedy_default")
+    for arm, result in summary.items():
+        result["e2e_throughput_loss_vs_greedy_percent"] = (
+            None if greedy is None else
+            (1 - result["e2e_tokens_per_second"] / greedy["e2e_tokens_per_second"]) * 100
+        )
+        result["throughput_loss_vs_greedy_percent"] = (
+            None if greedy is None else
+            (1 - result["decode_tokens_per_second"] / greedy["decode_tokens_per_second"]) * 100
+        )
+    return summary
 
 
 def trajectory_checks(rows):
@@ -154,6 +197,14 @@ def run(args):
         "host": platform.node(), "model": str(args.model.resolve()),
         "backend": args.backend, "quant": args.quant, "kv_storage": "bf16",
         "execution_profile": "strict", "capacity": 4,
+        "sampling_evaluation": {
+            "model_arithmetic_profile": "strict",
+            "native_full_vocab_algorithm": "sorted",
+            "native_variant": "sorted_rows_i32",
+            "strict_fallback_variant": "top_p_temperature_rows_i32",
+            "scope": "Explicit sampler evaluation; model manifest does not certify sampler arithmetic",
+        },
+        "e2e_timing_note": "Output tokens divided by generate_detailed wall time; includes prefill and all decode, excludes model loading, preparation and tokenization; not HTTP throughput",
         "max_sequence_length": args.max_sequence_length,
         "mtp": False, "prefix_cache": "off", "seed": 17,
         "command": shlex.join([sys.executable, *sys.argv]),
@@ -170,6 +221,7 @@ def run(args):
         llm.prepare(max_sequence_length=args.max_sequence_length)
         payload["variant_manifest_sha256"] = llm.execution_profile_manifest_sha256
         payload["variant_manifest"] = llm.execution_profile_manifest
+        payload["native_sampler_provenance"] = llm._get_text_generator().native_sampler_provenance
         payload["hipcc_version"] = subprocess.check_output(["hipcc", "--version"], text=True)
         payload["hardware"] = [line.strip() for line in subprocess.check_output(
             ["rocminfo"], text=True).splitlines() if "Name:" in line]
@@ -225,6 +277,7 @@ def run(args):
                                               "arm": arm, "repeat": repeat,
                                               "profile": row["profile"]}), flush=True)
         payload["checks"] = trajectory_checks(payload["rows"])
+        payload["comparison_table"] = comparison_table(payload["rows"])
         payload["complete"] = True
         args.json.write_text(json.dumps(payload, indent=2) + "\n")
         if not payload["checks"]["fixed_seed_repeats_exact"] or not payload["checks"]["greedy_default_eager_exact"]:

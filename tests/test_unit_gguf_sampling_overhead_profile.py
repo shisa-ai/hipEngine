@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.gguf_sampling_overhead_profile import Trace, summarize, trajectory_checks
+from scripts.gguf_sampling_overhead_profile import Trace, comparison_table, summarize, trajectory_checks
 
 
 def test_profile_excludes_capture_transitions_but_retains_route_counts():
@@ -59,3 +59,23 @@ def test_trajectory_checks_detect_repeat_drift_without_equating_sampler_rngs():
     assert trajectory_checks(rows)["greedy_default_eager_exact"] is True
     rows[1]["generated_token_ids"] = [1, 8]
     assert trajectory_checks(rows)["greedy_default_eager_exact"] is False
+
+
+def test_comparison_table_weights_transitions_and_uses_current_greedy():
+    def row(arm, steps, seconds):
+        return {"arm": arm, "profile": {"steady_transitions": steps, "steady_wall_s": seconds},
+                "request_wall_s": seconds + 1, "generated_token_ids": [1] * (steps + 3)}
+
+    rows = [row("greedy_default", 10, 1), row("host_sampled", 5, 1),
+            row("host_sampled", 15, 3), row("native_sampled", 10, 1.25)]
+    table = comparison_table(rows)
+    assert table["greedy_default"]["e2e_tokens_per_second"] == 6.5
+    assert table["host_sampled"]["e2e_tokens_per_second"] == pytest.approx(26 / 6)
+    assert table["host_sampled"]["e2e_throughput_loss_vs_greedy_percent"] == pytest.approx(100 / 3)
+    assert table["greedy_default"]["decode_tokens_per_second"] == 10
+    assert table["host_sampled"]["decode_tokens_per_second"] == 5
+    assert table["host_sampled"]["throughput_loss_vs_greedy_percent"] == 50
+    assert table["native_sampled"]["throughput_loss_vs_greedy_percent"] == pytest.approx(20)
+    assert comparison_table(rows[1:])["host_sampled"]["throughput_loss_vs_greedy_percent"] is None
+    with pytest.raises(ValueError, match="positive"):
+        comparison_table([row("host_sampled", 1, 0)])
