@@ -12,10 +12,51 @@ from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
 from hipengine.speculative.serving import SpeculativeMTPServingKey, SpeculativeMTPStaticEligibility
 
 
+_PLAIN_FINGERPRINT = "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+
+
+def _weight_index(path):
+    """A scanned-inventory stand-in for the serving key's execution identity.
+
+    The serving key binds the GGUF execution identity (tensor table plus
+    routing-relevant metadata), so a placeholder object is not enough: the
+    generator reads the inventory the loader would have produced.
+    """
+
+    from hipengine.loading.gguf import GGUFModelInfo, GGUFTensorInfo
+
+    tensor = GGUFTensorInfo(
+        name="token_embd.weight",
+        shape=(2048, 248320),
+        ggml_shape=(248320, 2048),
+        ggml_type=12,
+        ggml_type_name="Q4_K",
+        n_elements=2048 * 248320,
+        nbytes=0,
+        offset=0,
+        data_offset=0,
+        byte_shape=(248320, 2048),
+    )
+    return GGUFModelInfo(
+        path=path,
+        version=3,
+        alignment=32,
+        metadata={
+            "general.architecture": "qwen35",
+            "general.file_type": 15,
+            "qwen35.block_count": 48,
+        },
+        tensors=(tensor,),
+        tensor_data_offset=0,
+    )
+
+
 def _key(**changes):
     return replace(SpeculativeMTPServingKey(
         artifact_sha256="7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
-        artifact_size_bytes=17_106_775_008, content_verified=True,
+        artifact_size_bytes=17_106_775_008,
+        artifact_execution_fingerprint=_PLAIN_FINGERPRINT,
+        content_verified=True,
         backend="hip_gfx1151", target_arch="gfx1151", weight_quant="gguf_q4_k_m",
         kv_storage="int8_per_token_head", kv_layout="uniform",
         realized_group_rows=1, resident_capacity=4, candidate_budget=3,
@@ -49,7 +90,6 @@ def test_dense_int8_mtp_uses_implementation_admission(capacity, budget):
     ({"memory_fit": False}, "insufficient_memory"),
     ({"candidate_budget": 8}, "mtp_candidate_depth_unsupported"),
     ({"backend": "cpu_reference"}, "mtp_backend_unsupported"),
-    ({"content_verified": False}, "artifact_identity_unverified"),
     ({"kv_scale_dtype": "int8"}, "mtp_kv_scale_dtype_unsupported"),
     ({"kv_scale_granularity": "block16"}, "mtp_kv_scale_granularity_unsupported"),
 ])
@@ -71,7 +111,7 @@ def test_serving_key_uses_prepared_effective_storage(tmp_path, requested, effect
         handle.truncate(17_106_775_008)
     generator = Qwen35GGUFBringupGenerator.__new__(Qwen35GGUFBringupGenerator)
     generator.model_path = path
-    generator.weight_index = SimpleNamespace(path=path, file_type_name="Q4_K_M")
+    generator.weight_index = _weight_index(path)
     generator.model_plugin = Qwen35GGUFModel()
     generator.backend = "hip_gfx1151"
     generator._kv_artifact_identity = ModelArtifactIdentity(
@@ -79,12 +119,26 @@ def test_serving_key_uses_prepared_effective_storage(tmp_path, requested, effect
         sha256=_key().artifact_sha256, content_verified=True,
     )
     generator._prepared_kv_signature = (effective, "uniform", "fp32", "per_token_head")
-    decision = generator.resolve_speculative_mtp_serving_plan(
+    explicit = generator.resolve_speculative_mtp_serving_plan(
+        realized_group_rows=1, resident_capacity=4, candidate_budget=3,
+        sampling_mode="greedy_fast", kv_storage=requested, memory_fit=True,
+        request_mode="explicit",
+    )
+    assert explicit.key.kv_storage == effective
+    # An explicitly requested run executes on implementation capability even
+    # when no retained row describes the resident artifact.
+    assert explicit.admitted
+
+    automatic = generator.resolve_speculative_mtp_serving_plan(
         realized_group_rows=1, resident_capacity=4, candidate_budget=3,
         sampling_mode="greedy_fast", kv_storage=requested, memory_fit=True,
     )
-    assert decision.key.kv_storage == effective
-    assert decision.admitted
+    assert automatic.key.kv_storage == effective
+    # Automatic intent takes the same capability route as an explicit request.
+    # Neither chain has a retained row for this artifact, and that never
+    # withholds a path the kernels implement.
+    assert automatic.admitted
+    assert automatic.as_dict()["admission_basis"] == "implementation"
 
 
 def test_implementation_c1_depth_does_not_require_a_benchmark_policy_cell(monkeypatch):

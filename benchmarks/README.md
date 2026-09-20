@@ -237,8 +237,8 @@ Direct-INT8 failed 9 of 11 quality prompts and is not a default.
 
 Multi-turn conversations resend the whole transcript, so hipEngine reuses the
 KV pages and hybrid state of any 256-token-aligned prefix a later request
-repeats. Radix is the direct engine default; HTTP serving requires
-`--prefix-cache radix`. Different prefill routes can change generated tokens.
+repeats. Radix is the default for both the direct engine and HTTP serving;
+`--prefix-cache off` rolls it back. Different prefill routes can change generated tokens.
 Qwen3.6-35B-A3B `UD-Q4_K_M` on Strix Halo (`gfx1151`), 14 multi-turn lanes of
 three turns, reusing 42,496 of 87,582 prompt tokens:
 
@@ -419,13 +419,12 @@ On gfx1151 the same-route packed-reference packet passes all eight suites at
 1,024 teacher-forced rows with 2 top-1 flips and 0 state mismatches
 ([artifact](results/2026-09-20-gfx1151-prefix-gate-packed-reference-1024rows.json)).
 
-One caveat travels with it: a cache hit reproduces a cache miss bit-for-bit up
-to 2,048 tokens of total context, verified across all four mtp-bench prompt
-categories, but above that the vendored AOTriton prefill kernel's accumulation
-depends on the query-window shape, so a hit and a miss can differ by one BF16
-unit in the last place and occasionally select a different token. That bound is
-a property of split prefill rather than of the cache, and it is pinned by
-`test_split_prefill_divergence_boundaries_are_unchanged`.
+Cache-hit fidelity is compared with private recomputation using the same
+prefill schedule. Different chunk boundaries can change arithmetic and
+generated tokens. In particular, a no-mirror INT8 continuation reads retained
+quantized pages, while a fresh full prefill uses a transient BF16 oracle;
+token-for-token identity across those routes is not guaranteed. The exact
+same-schedule results above must not be read as cross-schedule identity.
 
 Placement no longer decides which prefill route a cache hit gets. A gapped
 device-KV placement used to fall to the packed paged route at roughly 6.5

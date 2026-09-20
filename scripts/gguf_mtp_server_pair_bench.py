@@ -12,6 +12,9 @@ Protocol:
   * decode tok/s = (completion_tokens - 1) / (t_last_chunk - t_first_chunk)
   * prefill tok/s = prompt_tokens / TTFT
   * greedy: temperature 0
+  * a sampled arm sets ``--temperature`` > 0; exact-id identity is then
+    undefined and the identity probe is skipped rather than reported as a
+    match the run cannot support
   * the prompt is a deterministic filler passage of roughly the requested token
     count, so the shape is a length rather than a content choice
 
@@ -30,6 +33,19 @@ Usage:
   BENCH_EXTRA_JSON='{"speculative_mtp": false}' \
   scripts/gguf_mtp_server_pair_bench.py --url http://127.0.0.1:8081 --model <id> \
       --tag ar-control --shapes 945,3530 --decode 128 --repeats 3 --out ar.json
+
+Sampled arm over the category suite (one server process, arm selected by the
+request field, ``--expect-route`` binding each arm to the route it claims):
+  BENCH_EXTRA_JSON='{"speculative_mtp": true}' \
+  scripts/gguf_mtp_server_pair_bench.py --url http://127.0.0.1:8081 --model <id> \
+      --tag sampled-mtp --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+      --decode 128 --repeats 2 --temperature 0.7 --top-p 0.95 \
+      --expect-route speculative_mtp --out sampled-mtp.json
+  BENCH_EXTRA_JSON='{"speculative_mtp": false}' \
+  scripts/gguf_mtp_server_pair_bench.py --url http://127.0.0.1:8081 --model <id> \
+      --tag sampled-ar --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+      --decode 128 --repeats 2 --temperature 0.7 --top-p 0.95 \
+      --expect-route default --out sampled-ar.json
 """
 import argparse
 import json
@@ -249,6 +265,11 @@ def identity_once(url: str, model: str, prompt: str, decode_tokens: int,
     identity probe is a separate request from the timed streaming repeats. It
     runs the same route the repeats do (the request fields are identical apart
     from ``stream``) and reports the ids, the text and the routing block.
+
+    This probe is greedy by construction and the caller skips it for a sampled
+    arm: under sampling the two arms draw from the same distribution rather
+    than agreeing token for token, so a recorded match would be an accident of
+    the RNG stream and not evidence about the route.
     """
     payload = {
         "model": model,
@@ -280,6 +301,8 @@ def identity_once(url: str, model: str, prompt: str, decode_tokens: int,
 
 
 def stream_once(url: str, model: str, prompt: str, decode_tokens: int,
+                temperature: float = 0.0,
+                top_p: float | None = None,
                 timeout: float = 900.0) -> dict:
     # Identical JSON to both engines, including the thinking pin: Atlas defaults
     # to thinking off, hipEngine defaults to on and streams `reasoning_content`.
@@ -288,7 +311,7 @@ def stream_once(url: str, model: str, prompt: str, decode_tokens: int,
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": decode_tokens,
-        "temperature": 0.0,
+        "temperature": temperature,
         "enable_thinking": False,
         "chat_template_kwargs": {"enable_thinking": False},
         "stream": True,
@@ -296,6 +319,8 @@ def stream_once(url: str, model: str, prompt: str, decode_tokens: int,
         # Optional per-engine extras (e.g. hipEngine's ``speculative_mtp``).
         **request_extras(),
     }
+    if top_p is not None:
+        payload["top_p"] = top_p
     req = urllib.request.Request(
         url.rstrip("/") + "/v1/chat/completions",
         data=json.dumps(payload).encode(),
@@ -428,7 +453,8 @@ def measure(
     """Run the warmup plus measured repeats for one prompt and record them."""
     runs = []
     for i in range(args.repeats + 1):          # +1 discarded warmup
-        r = stream_once(args.url, args.model, prompt, args.decode)
+        r = stream_once(args.url, args.model, prompt, args.decode,
+                        temperature=args.temperature, top_p=args.top_p)
         if i == 0:
             print(f"[{args.tag}] warmup {label}: {r['decode_tok_s']:.2f} tok/s "
                   f"({r['completion_tokens']} tok)", flush=True)
@@ -440,7 +466,13 @@ def measure(
               f"prompt {r['prompt_tokens']} tok, gen {r['completion_tokens']} tok "
               f"({r['finish_reason']}){short}", flush=True)
     identity = None
-    if args.identity_tokens:
+    if args.identity_tokens and args.temperature > 0.0:
+        # A sampled arm cannot have token identity: the two arms draw from the
+        # same law rather than producing the same tokens, so a recorded match
+        # would say nothing about the route. Record the skip instead of a
+        # comparison the run cannot support.
+        identity = {"skipped": "sampled_arm_has_no_token_identity"}
+    elif args.identity_tokens:
         identity = identity_once(
             args.url, args.model, prompt, int(args.identity_tokens)
         )
@@ -450,6 +482,8 @@ def measure(
         "prompt_tokens": runs[0]["prompt_tokens"],
         "completion_tokens": runs[0]["completion_tokens"],
         "identity": identity,
+        "temperature": args.temperature,
+        "top_p": args.top_p,
         "route": {k: runs[0][k] for k in ROUTE_ROW_KEYS},
         "decode_tok_s_median": statistics.median([r["decode_tok_s"] for r in runs]),
         "decode_tok_s_cv": cv([r["decode_tok_s"] for r in runs]),
@@ -496,6 +530,22 @@ def main() -> int:
             "not measure; 'default' is the autoregressive route."
         ),
     )
+    ap.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help=(
+            "Sampling temperature for both the timed repeats and the warmup. "
+            "0.0 is the greedy protocol; > 0 selects a sampled arm and skips "
+            "the identity probe, which is undefined under sampling."
+        ),
+    )
+    ap.add_argument(
+        "--top-p",
+        type=float,
+        default=None,
+        help="Nucleus threshold sent with --temperature; omitted when unset.",
+    )
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -517,6 +567,10 @@ def main() -> int:
         "url": args.url,
         "served_models": served,
         "request_extras": json.loads(os.environ.get("BENCH_EXTRA_JSON", "{}")),
+        "temperature": args.temperature,
+        "top_p": args.top_p,
+        "decode_tokens": args.decode,
+        "repeats": args.repeats,
         "shapes": {},
         "prompts": {},
     }

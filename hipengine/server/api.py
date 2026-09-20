@@ -2526,6 +2526,11 @@ def _realized_model_serving_plan(
         sampling_mode=sampling_mode,
         kv_storage=str(precomputed_key.get("kv_storage") or sampling.kv_storage),
         memory_fit=bool(precomputed_key.get("memory_fit", True)),
+        request_mode=str(
+            precomputed_decision.get("request_mode")
+            or precomputed_key.get("request_mode")
+            or "automatic"
+        ),
     )
     if decision is None:
         return None
@@ -14216,6 +14221,10 @@ def _engine_speculative_mtp_serving_plan(
         sampling_mode=sampling_mode,
         kv_storage=str(effective_sampling.kv_storage),
         memory_fit=True,
+        request_mode=(
+            "explicit" if _request_speculative_mtp_enabled(request) is True
+            else "automatic"
+        ),
     )
     if decision is None:
         return None

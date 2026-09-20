@@ -128,13 +128,16 @@ def _copy_logical_kv_bytes(
 ) -> bytes:
     from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
 
+    capacity = getattr(buffer, "nbytes", None)
+    if capacity is None:
+        capacity = int(buffer.numel) * buffer.dtype.itemsize
     parts: list[bytes] = []
     for byte_offset, size in _logical_page_segments(
         allocation,
         position=position,
         row_nbytes=row_nbytes,
     ):
-        if byte_offset + size > int(buffer.nbytes):
+        if byte_offset + size > int(capacity):
             raise ValueError("logical KV page range exceeds its backing cache")
         raw = np.empty((size,), dtype=np.uint8)
         if size:
@@ -185,19 +188,26 @@ def _capture_state(session: Any) -> dict[str, Any]:
     ):
         if key is None or value is None:
             continue
+        metadata = scratch.full_scale_metadata(layer_id)
+        key_row_nbytes = kv_row_nbytes if metadata is None else kv_row_nbytes // 2
+        value_row_nbytes = (
+            kv_row_nbytes
+            if metadata is None or getattr(session, "int8_kv_value_bf16", False)
+            else key_row_nbytes
+        )
         key_raw = _copy_logical_kv_bytes(
             session,
             key,
             allocation,
             position=live_positions,
-            row_nbytes=kv_row_nbytes,
+            row_nbytes=key_row_nbytes,
         )
         value_raw = _copy_logical_kv_bytes(
             session,
             value,
             allocation,
             position=live_positions,
-            row_nbytes=kv_row_nbytes,
+            row_nbytes=value_row_nbytes,
         )
         kv.append(
             {
@@ -207,6 +217,20 @@ def _capture_state(session: Any) -> dict[str, Any]:
                 "checked_nbytes": len(key_raw),
             }
         )
+        if metadata is not None:
+            scale_row_nbytes = int(cfg.head_count_kv) * metadata.scale_dtype.itemsize
+            for name, buffer in (("key_scale", metadata.k_scale), ("value_scale", metadata.v_scale)):
+                kv[-1][name] = _fingerprint(_copy_logical_kv_bytes(
+                    session, buffer, allocation, position=live_positions,
+                    row_nbytes=scale_row_nbytes,
+                ))
+            mirror = scratch.full_bf16_mirror_cache(layer_id)
+            if mirror is not None:
+                for name, buffer in zip(("key_mirror", "value_mirror"), mirror, strict=True):
+                    kv[-1][name] = _fingerprint(_copy_logical_kv_bytes(
+                        session, buffer, allocation, position=live_positions,
+                        row_nbytes=kv_row_nbytes,
+                    ))
     return {
         "position": live_positions,
         "linear": linear,
@@ -235,7 +259,7 @@ def _compare_states(
         )
     for component, parts in (
         ("linear", ("conv", "recurrent")),
-        ("kv", ("key", "value", "checked_nbytes")),
+        ("kv", ("key", "value", "checked_nbytes", "key_scale", "value_scale", "key_mirror", "value_mirror")),
     ):
         candidate_layers = _layer_map(candidate[component])
         reference_layers = _layer_map(reference[component])
@@ -600,6 +624,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         quant=str(args.quant),
         max_active_requests=3,
         prefix_cache="radix",
+        kv_storage=args.kv_storage,
+        kv_scale_dtype=args.kv_scale_dtype,
     )
     runner = None
     pool = None
@@ -722,11 +748,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if not runner._available:
             raise RuntimeError("GGUF prefix gate has no private oracle session")
         oracle_lease = runner._available[-1]
+        oracle_backing_pages = max(
+            pages, (int(oracle_lease.session.scratch.max_positions) + 255) // 256,
+        )
         oracle_pool = oracle_lease.session.create_device_kv_pool(
-            initial_pages=pages,
-            low_water_pages=pages,
-            high_water_pages=pages,
-            chunk_pages=pages,
+            initial_pages=oracle_backing_pages,
+            low_water_pages=oracle_backing_pages,
+            high_water_pages=oracle_backing_pages,
+            chunk_pages=oracle_backing_pages,
             idle_grace_seconds=30.0,
         )
         oracle_allocation = oracle_pool.allocate(
@@ -1107,7 +1136,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     if sampler_mode == "processed_argmax"
                     else "greedy_top1_then_reference_teacher_forced"
                 ),
-                "kv_dtype": "bf16",
+                "kv_dtype": str(source_session.kv_storage_dtype.value),
+                "kv_scale_dtype": args.kv_scale_dtype,
                 "source_lifecycle": source_lifecycle,
                 "processor_forced_token_ids": (
                     [int(args.forced_token_id), int(args.forced_token_id) + 1]
@@ -1241,7 +1271,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             },
             "observability": observability,
             "notes": [
-                "Every Conv/GDN byte and logical block-table-ordered live BF16 K/V byte is compared.",
+                "Every Conv/GDN byte and logical live K/V, scale, and available mirror byte is compared.",
                 "The gating oracle independently rebuilds the prefix and consumes the suffix through the served batched schedule.",
                 "Private scheduler state and calibrated mean/tail/max KL bind; one-shot and serial-suffix comparisons remain visible diagnostics.",
                 (
@@ -1290,6 +1320,8 @@ def build_parser() -> argparse.ArgumentParser:
         default="hip_gfx1151",
     )
     parser.add_argument("--quant", default="gguf_q4_k_m")
+    parser.add_argument("--kv-storage", choices=("bf16", "int8_per_token_head"), default="bf16")
+    parser.add_argument("--kv-scale-dtype", choices=("fp16", "fp32"), default="fp32")
     parser.add_argument("--prefix-token-id", type=int, default=9707)
     parser.add_argument("--prefix-tokens", type=int, default=256)
     parser.add_argument("--suffix-token-id", type=int, default=9708)

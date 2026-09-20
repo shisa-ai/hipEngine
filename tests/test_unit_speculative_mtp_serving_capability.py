@@ -21,12 +21,16 @@ from hipengine.speculative.serving import (
 
 _MODEL_SHA256 = "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
 _W7900_MODEL_SHA256 = "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+# Execution identity of both Qwen3.8-27B-Q4_K_M builds (see models/qwen35.py).
+_PLAIN_FINGERPRINT = "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+_UD_Q4KM_FINGERPRINT = "93fe11b8ac0f4696567cc123f2c08ea4bc7fcf615ed985d4fb11742df404f3ca"
 
 
 def _key(**changes) -> SpeculativeMTPServingKey:
     key = SpeculativeMTPServingKey(
         artifact_sha256=_MODEL_SHA256,
         artifact_size_bytes=17_106_775_008,
+        artifact_execution_fingerprint=_PLAIN_FINGERPRINT,
         content_verified=True,
         backend="hip_gfx1151",
         target_arch="gfx1151",
@@ -47,6 +51,47 @@ def _evidence() -> SpeculativeMTPServingEvidence:
         row for row in Qwen35GGUFModel().speculative_mtp_serving_evidence
         if row.evidence_key == "qwen38-q4km-gfx1151-strict-bf16-c1-b3-natural25-s0"
     )
+
+
+# The Qwen3.6-27B-Q4_K_M artifact the three qwen36-dense rows measured is not on
+# this host, so those rows record no execution identity and authorize nothing.
+# Tests that exercise their scope bind them to this stand-in, which is the only
+# missing piece; the real value comes from
+# `python3 scripts/gguf_execution_identity.py /models/gguf/Qwen3.6-27B-Q4_K_M.gguf`.
+_QWEN36_DENSE_FINGERPRINT = "b7" * 32
+
+
+def _bound_rows(fingerprint: str = _QWEN36_DENSE_FINGERPRINT):
+    """The dense plugin's rows with an identity supplied for the unbound ones."""
+
+    return tuple(
+        row
+        if row.artifact_execution_fingerprint is not None
+        else replace(row, artifact_execution_fingerprint=fingerprint)
+        for row in Qwen35GGUFModel().speculative_mtp_serving_evidence
+    )
+
+
+def _row_key(row: SpeculativeMTPServingEvidence, **changes):
+    """Build the serving key for one evidence row's own physical cell."""
+
+    key = SpeculativeMTPServingKey(
+        artifact_sha256=row.artifact_sha256,
+        artifact_size_bytes=row.artifact_size_bytes,
+        artifact_execution_fingerprint=row.artifact_execution_fingerprint,
+        content_verified=True,
+        backend=row.backend,
+        target_arch=row.target_arch,
+        weight_quant=row.weight_quant,
+        kv_storage=row.kv_storage,
+        kv_layout=row.kv_layout,
+        realized_group_rows=row.realized_group_rows,
+        resident_capacity=row.resident_capacity,
+        candidate_budget=row.candidate_budget,
+        sampling_mode=row.sampling_modes[0],
+        memory_fit=True,
+    )
+    return replace(key, **changes)
 
 
 @pytest.mark.parametrize("budget", [2, 3, 7])
@@ -143,7 +188,7 @@ def test_qwen38_q4km_production_c2_k3_d24_is_explicit_after_ar_rebase() -> None:
     assert decision.static_eligibility.max_realized_group_rows == 2
     assert decision.strict_fallback_key == "gguf_target_ar"
     assert deeper.admitted is False
-    assert deeper.reason == "candidate_budget_not_qualified"
+    assert deeper.reason == "candidate_budget_unmeasured"
 
 
 def test_qwen38_q4km_gfx1100_production_c2_k2_d24_is_exact_automatic_key() -> None:
@@ -191,13 +236,13 @@ def test_qwen38_q4km_gfx1100_production_c2_k2_d24_is_exact_automatic_key() -> No
     assert shallower.selected_candidate_count == 1
 
     for changes, reason in (
-        ({"resident_capacity": 4}, "resident_capacity_not_qualified"),
-        ({"realized_group_rows": 1}, "physical_group_not_qualified"),
+        ({"resident_capacity": 4}, "resident_capacity_unmeasured"),
+        ({"realized_group_rows": 1}, "physical_group_unmeasured"),
         (
             {"realized_group_rows": 3, "resident_capacity": 3},
-            "physical_group_not_qualified",
+            "physical_group_unmeasured",
         ),
-        ({"sampling_mode": "sampled"}, "sampling_mode_not_qualified"),
+        ({"sampling_mode": "sampled"}, "sampling_mode_unmeasured"),
     ):
         rejected = resolve_speculative_mtp_serving_plan(
             evidence,
@@ -246,7 +291,7 @@ def test_qwen38_q4km_gfx1100_production_c2_k3_d24_is_explicit_packet6_selection(
         key=replace(key, candidate_budget=4),
     )
     assert deeper.admitted is False
-    assert deeper.reason == "candidate_budget_not_qualified"
+    assert deeper.reason == "candidate_budget_unmeasured"
 
 
 def test_qwen38_q4km_gfx1100_production_c8_k3_d24_is_exact_automatic_key() -> None:
@@ -346,7 +391,7 @@ def test_qwen38_q4km_gfx1151_production_c8_k3_d24_is_withdrawn() -> None:
         for row in evidence
     )
     assert c7.admitted is False
-    assert c7.reason == "physical_group_not_qualified"
+    assert c7.reason == "physical_group_unmeasured"
 
 
 def test_qwen38_q4km_strict_c1_b3_plan_is_automatic_product_scope() -> None:
@@ -377,17 +422,16 @@ def test_qwen38_q4km_strict_c1_b3_plan_is_automatic_product_scope() -> None:
 @pytest.mark.parametrize(
     ("changes", "reason"),
     [
-        ({"artifact_sha256": "0" * 64}, "artifact_not_qualified"),
-        ({"artifact_size_bytes": 17_106_775_009}, "artifact_not_qualified"),
-        ({"backend": "hip_gfx1100"}, "backend_not_qualified"),
-        ({"target_arch": "gfx1100"}, "target_arch_not_qualified"),
-        ({"weight_quant": "gguf_q4_k_s"}, "weight_quant_not_qualified"),
-        ({"kv_storage": "int8_per_token_head"}, "kv_storage_not_qualified"),
-        ({"kv_layout": "paged_int8"}, "kv_layout_not_qualified"),
-        ({"realized_group_rows": 2}, "physical_group_not_qualified"),
-        ({"resident_capacity": 4}, "resident_capacity_not_qualified"),
-        ({"candidate_budget": 4}, "candidate_budget_not_qualified"),
-        ({"sampling_mode": "processed_argmax"}, "sampling_mode_not_qualified"),
+        ({"artifact_execution_fingerprint": "0" * 64}, "artifact_unmeasured"),
+        ({"backend": "hip_gfx1100"}, "backend_unmeasured"),
+        ({"target_arch": "gfx1100"}, "target_arch_unmeasured"),
+        ({"weight_quant": "gguf_q4_k_s"}, "weight_quant_unmeasured"),
+        ({"kv_storage": "int8_per_token_head"}, "kv_storage_unmeasured"),
+        ({"kv_layout": "paged_int8"}, "kv_layout_unmeasured"),
+        ({"realized_group_rows": 2}, "physical_group_unmeasured"),
+        ({"resident_capacity": 4}, "resident_capacity_unmeasured"),
+        ({"candidate_budget": 4}, "candidate_budget_unmeasured"),
+        ({"sampling_mode": "processed_argmax"}, "sampling_mode_unmeasured"),
         ({"memory_fit": False}, "insufficient_memory"),
     ],
 )
@@ -416,8 +460,7 @@ def test_structural_rejection_axes_are_the_correctness_boundaries() -> None:
 
     assert STRUCTURAL_REJECTION_AXES == frozenset(
         {
-            "artifact_identity_unverified",
-            "sampling_mode_not_qualified",
+            "sampling_mode_unmeasured",
             "insufficient_memory",
         }
     )
@@ -428,7 +471,7 @@ def test_rejection_reports_every_failed_axis_not_just_the_summary_reason() -> No
 
     Reproduced finding: with real model evidence, ``candidate_budget=4`` (over
     the row's qualified depth) plus ``memory_fit=False`` reported
-    ``candidate_budget_not_qualified`` as its reason, which is a screenable
+    ``candidate_budget_unmeasured`` as its reason, which is a screenable
     axis, so the screening helper granted override eligibility for a cell that
     did not fit in memory at all. Memory fit is a correctness boundary and must
     stay blocked for every request.
@@ -440,15 +483,15 @@ def test_rejection_reports_every_failed_axis_not_just_the_summary_reason() -> No
     )
 
     assert decision.admitted is False
-    assert decision.reason == "candidate_budget_not_qualified"
+    assert decision.reason == "candidate_budget_unmeasured"
     assert decision.failed_axes == (
-        "candidate_budget_not_qualified",
+        "candidate_budget_unmeasured",
         "insufficient_memory",
     )
     assert decision.structural_rejection == "insufficient_memory"
     assert "failed_axes" in decision.as_dict()
     assert decision.as_dict()["failed_axes"] == [
-        "candidate_budget_not_qualified",
+        "candidate_budget_unmeasured",
         "insufficient_memory",
     ]
 
@@ -460,13 +503,13 @@ def test_rejection_reports_every_failed_axis_not_just_the_summary_reason() -> No
             memory_fit=False,
         ),
     )
-    assert masked_sampling.reason == "candidate_budget_not_qualified"
+    assert masked_sampling.reason == "candidate_budget_unmeasured"
     assert masked_sampling.failed_axes == (
-        "candidate_budget_not_qualified",
-        "sampling_mode_not_qualified",
+        "candidate_budget_unmeasured",
+        "sampling_mode_unmeasured",
         "insufficient_memory",
     )
-    assert masked_sampling.structural_rejection == "sampling_mode_not_qualified"
+    assert masked_sampling.structural_rejection == "sampling_mode_unmeasured"
 
     # The structural axes stay structural on their own too, and a plan that
     # fails only screenable axes reports no structural rejection.
@@ -494,10 +537,10 @@ def test_screening_switch_does_not_widen_model_plugin_evidence(monkeypatch) -> N
 
     monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
     for changes, reason in (
-        ({"candidate_budget": 4}, "candidate_budget_not_qualified"),
-        ({"sampling_mode": "processed_argmax"}, "sampling_mode_not_qualified"),
+        ({"candidate_budget": 4}, "candidate_budget_unmeasured"),
+        ({"sampling_mode": "processed_argmax"}, "sampling_mode_unmeasured"),
         ({"memory_fit": False}, "insufficient_memory"),
-        ({"realized_group_rows": 2}, "physical_group_not_qualified"),
+        ({"realized_group_rows": 2}, "physical_group_unmeasured"),
     ):
         decision = resolve_speculative_mtp_serving_plan(
             (_evidence(),), key=_key(**changes)
@@ -564,41 +607,63 @@ def test_serving_resolver_prefers_future_c2_intent_on_equal_score() -> None:
     )
 
     assert decision.admitted is False
-    assert decision.reason == "physical_group_not_qualified"
+    assert decision.reason == "physical_group_unmeasured"
     assert decision.static_eligibility.eligible is True
     assert decision.static_eligibility.max_realized_group_rows == 2
     assert decision.static_eligibility.evidence_key == "future-c2"
 
 
 def test_qwen36_dense_production_row_resolves_after_qwen38_evidence() -> None:
+    """Declaration order does not hide a later row that owns its own cell."""
+
+    plugin = Qwen35GGUFModel(speculative_mtp_serving_evidence=_bound_rows())
     evidence = next(
         row
-        for row in Qwen35GGUFModel().speculative_mtp_serving_evidence
+        for row in plugin.speculative_mtp_serving_evidence
         if row.evidence_key
         == "qwen36-dense-q4km-gfx1100-production-bf16-c1-k3-d24"
     )
-    key = SpeculativeMTPServingKey(
-        artifact_sha256=evidence.artifact_sha256,
-        artifact_size_bytes=evidence.artifact_size_bytes,
-        content_verified=True,
-        backend=evidence.backend,
-        target_arch=evidence.target_arch,
-        weight_quant=evidence.weight_quant,
-        kv_storage=evidence.kv_storage,
-        kv_layout=evidence.kv_layout,
-        realized_group_rows=1,
-        resident_capacity=1,
-        candidate_budget=3,
-        sampling_mode="greedy_fast",
-        memory_fit=True,
-    )
 
-    decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(key=key)
+    decision = plugin.resolve_speculative_mtp_serving_plan(
+        key=_row_key(evidence),
+    )
 
     assert decision.admitted is True
     assert decision.automatic_eligible is True
     assert decision.reason == "qualified_automatic_dense_c1_k3_d24"
     assert decision.selected_candidate_count == 3
+
+
+def test_qwen36_dense_rows_without_identity_still_run_on_capability() -> None:
+    """A row that measures nothing on this host never withholds the cell.
+
+    The three qwen36-dense rows carry no execution identity because their
+    artifact is absent here.  That makes them unable to *certify* the cell; it
+    does not make them able to refuse it.  Both request modes run on the
+    implementation declaration, and recording the identity later upgrades the
+    basis to evidence without changing what executes.
+    """
+
+    plugin = Qwen35GGUFModel()
+    unbound = [
+        row
+        for row in plugin.speculative_mtp_serving_evidence
+        if row.evidence_key.startswith("qwen36-dense-q4km-gfx1100")
+    ]
+    assert unbound, "the qwen36-dense rows are part of the retained evidence"
+    assert all(row.artifact_execution_fingerprint is None for row in unbound)
+
+    for row in unbound:
+        # The key stands for a resident file whose identity is computable; the
+        # row is the side that cannot be matched.
+        key = _row_key(row, artifact_execution_fingerprint=_QWEN36_DENSE_FINGERPRINT)
+        for request_mode in ("automatic", "explicit"):
+            decision = plugin.resolve_speculative_mtp_serving_plan(
+                key=key,
+                request_mode=request_mode,
+            )
+            assert decision.admitted is True, request_mode
+            assert decision.as_dict()["admission_basis"] == "implementation"
 
 
 def test_qwen36_dense_c2_k2_cell_prefers_the_automatic_row() -> None:
@@ -608,29 +673,17 @@ def test_qwen36_dense_c2_k2_cell_prefers_the_automatic_row() -> None:
     authorization instead of taking whichever row happens to be declared first.
     """
 
+    plugin = Qwen35GGUFModel(speculative_mtp_serving_evidence=_bound_rows())
     evidence = next(
         row
-        for row in Qwen35GGUFModel().speculative_mtp_serving_evidence
+        for row in plugin.speculative_mtp_serving_evidence
         if row.evidence_key
         == "qwen36-dense-q4km-gfx1100-strict-bf16-c2-k2-d24"
     )
-    key = SpeculativeMTPServingKey(
-        artifact_sha256=evidence.artifact_sha256,
-        artifact_size_bytes=evidence.artifact_size_bytes,
-        content_verified=True,
-        backend=evidence.backend,
-        target_arch=evidence.target_arch,
-        weight_quant=evidence.weight_quant,
-        kv_storage=evidence.kv_storage,
-        kv_layout=evidence.kv_layout,
-        realized_group_rows=2,
-        resident_capacity=2,
-        candidate_budget=2,
-        sampling_mode="greedy_fast",
-        memory_fit=True,
-    )
 
-    decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(key=key)
+    decision = plugin.resolve_speculative_mtp_serving_plan(
+        key=_row_key(evidence),
+    )
 
     assert decision.admitted is True
     assert decision.evidence_key == (
@@ -639,35 +692,27 @@ def test_qwen36_dense_c2_k2_cell_prefers_the_automatic_row() -> None:
     assert decision.automatic_eligible is True
     assert decision.selected_candidate_count == 2
     assert decision.reason == "qualified_automatic_production_dense_c2_k2_d24"
-    assert Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
-        key=replace(key, realized_group_rows=1)
-    ).reason == "physical_group_not_qualified"
+    # A narrower physical cell is outside what this row measured, so it stops
+    # selecting the row -- and runs on the implementation declaration instead
+    # of being refused.
+    narrower = plugin.resolve_speculative_mtp_serving_plan(
+        key=replace(evidence and _row_key(evidence), realized_group_rows=1)
+    )
+    assert narrower.admitted is True
+    assert narrower.as_dict()["admission_basis"] == "implementation"
 
 
 def test_qwen36_dense_production_c2_k2_plan_is_exact_automatic_scope() -> None:
+    plugin = Qwen35GGUFModel(speculative_mtp_serving_evidence=_bound_rows())
     evidence = next(
         row
-        for row in Qwen35GGUFModel().speculative_mtp_serving_evidence
+        for row in plugin.speculative_mtp_serving_evidence
         if row.evidence_key
         == "qwen36-dense-q4km-gfx1100-production-bf16-c2-k2-d24"
     )
-    key = SpeculativeMTPServingKey(
-        artifact_sha256=evidence.artifact_sha256,
-        artifact_size_bytes=evidence.artifact_size_bytes,
-        content_verified=True,
-        backend=evidence.backend,
-        target_arch=evidence.target_arch,
-        weight_quant=evidence.weight_quant,
-        kv_storage=evidence.kv_storage,
-        kv_layout=evidence.kv_layout,
-        realized_group_rows=2,
-        resident_capacity=2,
-        candidate_budget=2,
-        sampling_mode="greedy_fast",
-        memory_fit=True,
-    )
+    key = _row_key(evidence)
 
-    decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(key=key)
+    decision = plugin.resolve_speculative_mtp_serving_plan(key=key)
 
     assert decision.admitted is True
     assert decision.automatic_eligible is True
@@ -682,33 +727,30 @@ def test_qwen36_dense_production_c2_k2_plan_is_exact_automatic_scope() -> None:
         "2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json"
     )
 
-    frontend_c1 = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
-        key=replace(key, realized_group_rows=1)
-    )
-    assert frontend_c1.admitted is False
-    assert frontend_c1.reason == "physical_group_not_qualified"
-    assert frontend_c1.static_eligibility.eligible is True
-    assert frontend_c1.static_eligibility.automatic_eligible is True
-    assert frontend_c1.static_eligibility.max_candidate_count == 2
-    assert frontend_c1.static_eligibility.max_realized_group_rows == 2
+    # A cell this row did not measure still runs when the kernels implement it.
+    for admitted_overrides in (
+        {"realized_group_rows": 1},
+        {"realized_group_rows": 3},
+        {"resident_capacity": 3},
+        {"candidate_budget": 3},
+    ):
+        widened = plugin.resolve_speculative_mtp_serving_plan(
+            key=replace(key, **admitted_overrides)
+        )
+        assert widened.admitted is True, admitted_overrides
+        assert widened.as_dict()["admission_basis"] == "implementation"
 
+    # Every refusal names a capability or resource fact, never a missing
+    # measurement.
     for overrides, reason in (
-        # candidate_budget=3 ties the dense row (budget axis) with the
-        # earlier-declared qwen38 C2/K3 row (artifact axis) at one failed
-        # check each; the documented declaration-order tie-break attributes
-        # the rejection to the qwen38 row.
-        ({"candidate_budget": 3}, "artifact_not_qualified"),
-        ({"sampling_mode": "processed_argmax"}, "sampling_mode_not_qualified"),
-        ({"kv_storage": "int8"}, "kv_storage_not_qualified"),
-        ({"realized_group_rows": 3}, "physical_group_not_qualified"),
-        ({"resident_capacity": 3}, "resident_capacity_not_qualified"),
+        ({"sampling_mode": "processed_argmax"}, "mtp_sampling_unsupported"),
+        ({"kv_storage": "int8"}, "mtp_contract_unsupported"),
         ({"memory_fit": False}, "insufficient_memory"),
     ):
-        rejected = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        rejected = plugin.resolve_speculative_mtp_serving_plan(
             key=replace(key, **overrides)
         )
-        assert rejected.admitted is False
-        assert rejected.static_eligibility.eligible is False
+        assert rejected.admitted is False, overrides
         assert rejected.reason == reason
 
 
@@ -717,6 +759,7 @@ def test_qwen36_moe_production_c1_k2_plan_is_exact_automatic_scope() -> None:
     key = SpeculativeMTPServingKey(
         artifact_sha256=evidence.artifact_sha256,
         artifact_size_bytes=evidence.artifact_size_bytes,
+        artifact_execution_fingerprint=evidence.artifact_execution_fingerprint,
         content_verified=True,
         backend=evidence.backend,
         target_arch=evidence.target_arch,
@@ -736,9 +779,11 @@ def test_qwen36_moe_production_c1_k2_plan_is_exact_automatic_scope() -> None:
     assert decision.automatic_eligible is True
     assert decision.selected_candidate_count == 2
     assert decision.reason == "qualified_automatic_moe_c1_k2_d24"
+    # Off-scope now reports the implementation's own width bound, which is a
+    # capability fact, rather than the absence of a measurement.
     assert Qwen35MoeGGUFModel().resolve_speculative_mtp_serving_plan(
         key=replace(key, realized_group_rows=3, resident_capacity=3)
-    ).reason == "physical_group_not_qualified"
+    ).reason == "moe_group_above_offered_width"
 
 
 def test_qwen36_moe_production_c2_k2_plan_is_exact_automatic_scope() -> None:
@@ -746,6 +791,7 @@ def test_qwen36_moe_production_c2_k2_plan_is_exact_automatic_scope() -> None:
     key = SpeculativeMTPServingKey(
         artifact_sha256=evidence.artifact_sha256,
         artifact_size_bytes=evidence.artifact_size_bytes,
+        artifact_execution_fingerprint=evidence.artifact_execution_fingerprint,
         content_verified=True,
         backend=evidence.backend,
         target_arch=evidence.target_arch,
@@ -765,15 +811,25 @@ def test_qwen36_moe_production_c2_k2_plan_is_exact_automatic_scope() -> None:
     assert decision.automatic_eligible is True
     assert decision.selected_candidate_count == 2
     assert decision.reason == "qualified_automatic_production_moe_c2_k2_d24"
+    # Every refusal below names a kernel bound the implementation declares.
     for changed, reason in (
-        ({"realized_group_rows": 3}, "physical_group_not_qualified"),
-        ({"realized_group_rows": 1}, "physical_group_not_qualified"),
-        ({"candidate_budget": 3}, "candidate_budget_not_qualified"),
-        ({"sampling_mode": "sampled"}, "sampling_mode_not_qualified"),
+        ({"realized_group_rows": 3}, "moe_group_above_offered_width"),
+        ({"candidate_budget": 3}, "mtp_candidate_depth_unsupported"),
+        ({"sampling_mode": "sampled"}, "mtp_sampling_unsupported"),
     ):
-        assert Qwen35MoeGGUFModel().resolve_speculative_mtp_serving_plan(
+        rejected = Qwen35MoeGGUFModel().resolve_speculative_mtp_serving_plan(
             key=replace(key, **changed)
-        ).reason == reason
+        )
+        assert rejected.admitted is False, changed
+        assert rejected.reason == reason
+
+    # A narrower physical cell is inside what the kernels implement, so it runs
+    # even though this row measured the wider one.
+    narrower = Qwen35MoeGGUFModel().resolve_speculative_mtp_serving_plan(
+        key=replace(key, realized_group_rows=1)
+    )
+    assert narrower.admitted is True
+    assert narrower.as_dict()["admission_basis"] == "implementation"
 
 
 def test_rejected_serving_plan_exposes_permanent_ar_static_eligibility() -> None:
@@ -790,7 +846,14 @@ def test_rejected_serving_plan_exposes_permanent_ar_static_eligibility() -> None
     assert decision.static_eligibility.automatic_eligible is False
 
 
-def test_unverified_artifact_and_generic_dense_inventory_cannot_admit() -> None:
+def test_evidence_only_resolution_reports_unmeasured_never_unverified_identity() -> None:
+    """Evidence resolution scopes measurements; it does not police identity.
+
+    An artifact whose identity is unverified simply matches no retained row, so
+    the reason is that nothing measured it.  Admission is decided by the
+    implementation declaration the plugin layers on top, not here.
+    """
+
     unverified = resolve_speculative_mtp_serving_plan(
         (_evidence(),),
         key=_key(
@@ -802,14 +865,24 @@ def test_unverified_artifact_and_generic_dense_inventory_cannot_admit() -> None:
     generic = resolve_speculative_mtp_serving_plan((), key=_key())
 
     assert unverified.admitted is False
-    assert unverified.reason == "artifact_identity_unverified"
+    assert unverified.reason == "artifact_unmeasured"
+    assert "unverified" not in unverified.reason
     assert generic.admitted is False
     assert generic.reason == "no_model_plugin_evidence"
 
 
-def test_generator_resolves_the_qualified_qwen_depth_from_evidence(tmp_path) -> None:
+def test_generator_resolves_the_qualified_qwen_depth_from_evidence(
+    tmp_path,
+    monkeypatch,
+) -> None:
     """The Qwen3.8 gfx1151 cell resolves to its qualified B3, not a constant."""
 
+    # This test owns the depth ladder, not the inventory: the artifact axis is
+    # the resident file's execution identity, so pin the identity the rows bind.
+    monkeypatch.setattr(
+        "hipengine.loading.gguf.gguf_execution_fingerprint",
+        lambda _info: _PLAIN_FINGERPRINT,
+    )
     model_path = tmp_path / "qwen38-q4km.gguf"
     with model_path.open("wb") as handle:
         handle.truncate(17_106_775_008)
@@ -843,7 +916,21 @@ def test_generator_resolves_the_qualified_qwen_depth_from_evidence(tmp_path) -> 
     )
 
 
-def test_unrelated_q4ks_artifact_keeps_legacy_explicit_compatibility(tmp_path) -> None:
+def test_unrelated_q4ks_artifact_runs_on_implementation_capability(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A Q4_K_S artifact no retained row binds still executes when requested.
+
+    Its execution identity is unknown to the evidence, so automatic intent stays
+    off, but an explicit request resolves through the dense BF16 implementation
+    declaration rather than falling through to an untracked legacy route.
+    """
+
+    monkeypatch.setattr(
+        "hipengine.loading.gguf.gguf_execution_fingerprint",
+        lambda _info: "9" * 64,
+    )
     model_path = tmp_path / "qwen38-q4ks.gguf"
     with model_path.open("wb") as handle:
         handle.truncate(16_121_359_328)
@@ -856,14 +943,32 @@ def test_unrelated_q4ks_artifact_keeps_legacy_explicit_compatibility(tmp_path) -
     generator.model_plugin = Qwen35GGUFModel()
     generator.backend = "hip_gfx1151"
 
-    assert generator.resolve_speculative_mtp_serving_plan(
+    explicit = generator.resolve_speculative_mtp_serving_plan(
         realized_group_rows=1,
         resident_capacity=1,
         candidate_budget=3,
         sampling_mode="greedy_fast",
         kv_storage="bf16",
         memory_fit=True,
-    ) is None
+        request_mode="explicit",
+    )
+    assert explicit is not None
+    assert explicit.admitted is True
+    assert explicit.as_dict()["admission_basis"] == "implementation"
+
+    # Automatic intent takes the same capability route: an unrelated artifact
+    # is unmeasured, and unmeasured never means refused.
+    automatic = generator.resolve_speculative_mtp_serving_plan(
+        realized_group_rows=1,
+        resident_capacity=1,
+        candidate_budget=3,
+        sampling_mode="greedy_fast",
+        kv_storage="bf16",
+        memory_fit=True,
+    )
+    assert automatic is not None
+    assert automatic.admitted is True
+    assert automatic.as_dict()["admission_basis"] == "implementation"
 
 
 def test_llm_delegates_mechanical_serving_identity_to_loaded_generator() -> None:
@@ -905,6 +1010,7 @@ def test_llm_delegates_mechanical_serving_identity_to_loaded_generator() -> None
             "sampling_mode": "greedy_fast",
             "kv_storage": "auto",
             "memory_fit": True,
+            "request_mode": "automatic",
         }
     ]
 

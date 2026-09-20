@@ -4912,7 +4912,10 @@ class Qwen35GGUFFullStackRunner:
             # staging, online softmax in registers); the sequential
             # online-softmax kernel stays selectable for A/B and as the
             # numerics reference.
-            kernel_choice = _gguf_int8_prefill_kernel()
+            kernel_choice = _gguf_int8_prefill_kernel(
+                geometry=(cfg.head_count, cfg.head_count_kv, cfg.key_length),
+                scale_dtype=append_metadata.scale_dtype,
+            )
             if kernel_choice == "sequential":
                 qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans(
                     scratch.full_query.ptr,
@@ -14526,26 +14529,29 @@ def _small_b_rowtile_chunks(rows: int, *, max_chunk: int = 6) -> tuple[int, ...]
     return tuple(chunks)
 
 
-def _qualified_no_mirror_int8_capability(
+def _admitted_no_mirror_int8_capability(
     capability: Mapping[str, object] | None,
 ) -> bool:
-    """Return whether immutable model evidence admits persistent mirror-free INT8."""
+    """Return whether kernel capability admits persistent mirror-free INT8.
+
+    Admission reads ``runtime_action``, which capability decides.  It does not
+    read ``promotion_eligible``: that flag means a retained measurement covers
+    this contract, which governs what may be claimed or promoted, not whether
+    the contract runs.  The operative bounds come from the measurement when one
+    exists and from the kernel declaration otherwise.
+    """
 
     if not isinstance(capability, Mapping):
         return False
-    evidence = capability.get("evidence")
     requested = capability.get("requested")
     return bool(
-        isinstance(evidence, Mapping)
-        and isinstance(requested, Mapping)
-        and capability.get("status") == "qualified"
+        isinstance(requested, Mapping)
         and capability.get("runtime_action") == "admit"
-        and capability.get("promotion_eligible") is True
         and capability.get("effective_kv_storage") == "int8_per_token_head"
         and requested.get("kv_storage") == "int8_per_token_head"
         and requested.get("storage_layout") == "uniform"
-        and evidence.get("persistent_bf16_mirror") is False
-        and int(evidence.get("max_direct_rows", 0)) >= 1
+        and capability.get("persistent_bf16_mirror") is False
+        and int(capability.get("max_direct_rows", 0) or 0) >= 1
     )
 
 
@@ -14553,17 +14559,16 @@ def _qualified_kv_decode_batch_route(
     backend: str,
     capability: Mapping[str, object] | None,
 ) -> tuple[int, object | None]:
-    """Resolve an artifact-qualified exact decode variant and its physical width."""
+    """Resolve the admitted exact decode variant and its physical width."""
 
-    if not _qualified_no_mirror_int8_capability(capability):
+    if not _admitted_no_mirror_int8_capability(capability):
         return 1, None
     assert isinstance(capability, Mapping)
-    evidence = capability.get("evidence")
     requested = capability.get("requested")
-    if not isinstance(evidence, Mapping) or not isinstance(requested, Mapping):
+    if not isinstance(requested, Mapping):
         return 1, None
-    max_rows = max(1, int(evidence.get("max_direct_rows", 1)))
-    variant = evidence.get("decode_batch_variant")
+    max_rows = max(1, int(capability.get("max_direct_rows", 1) or 1))
+    variant = capability.get("decode_batch_variant")
     quant = requested.get("kv_storage")
     if not isinstance(variant, str) or not variant.strip() or not isinstance(quant, str):
         return 1, None
@@ -15209,6 +15214,15 @@ def _gguf_retained_prefill_block_table_host(
     return np.ascontiguousarray(np.tile(table_row, (row_count, 1)))
 
 
+def _check_retained_prefix_format(metadata: object, *, value_bf16: bool) -> None:
+    if value_bf16:
+        raise NotImplementedError("retained prefix prefill requires INT8 K and V")
+    if metadata.granularity not in {"per_token_head", "hadamard_group32"}:
+        raise NotImplementedError(
+            f"retained prefix prefill has no reader for {metadata.granularity}"
+        )
+
+
 def _gguf_slot_local_prefill_cache_views(
     session: object,
     layer_scratch: object,
@@ -15218,6 +15232,9 @@ def _gguf_slot_local_prefill_cache_views(
 ):
     """Bind slot-local oracle caches without double-applying paged INT8 offsets."""
 
+    if layer_scratch.prefill_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+        # Direct retained attention already carries the physical block table.
+        return layer_scratch
     if direct_int8:
         retained_spans = getattr(layer_scratch, "retained_append_spans", None)
         if (
@@ -16450,7 +16467,7 @@ class Qwen35GGUFResidentSession:
             raise ValueError("GGUF grouped INT8 KV scales are not supported with the key-only diagnostic")
         self.int8_kv_no_mirror_qualified = bool(
             self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
-            and _qualified_no_mirror_int8_capability(self.kv_capability)
+            and _admitted_no_mirror_int8_capability(self.kv_capability)
         )
         self.packed_decode_max_rows = 8
         self._retained_decode_kernel = None
@@ -19849,7 +19866,9 @@ class Qwen35GGUFResidentSession:
             scale_metadata=metadata,
         )
 
-    def _full_attention_prefill_scratch_for_layer(self, bulk_scratch, layer_id: int):
+    def _full_attention_prefill_scratch_for_layer(
+        self, bulk_scratch, layer_id: int, *, use_retained_prefix: bool = False,
+    ):
         if self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         if self.dms_prefill_mode == "layer_outer":
@@ -19886,6 +19905,10 @@ class Qwen35GGUFResidentSession:
         if full_bf16_mirror_cache is not None:
             bf16_mirror_cache = full_bf16_mirror_cache(layer_id)
         retained_key_cache, retained_value_cache = self.scratch.full_cache(layer_id)
+        if use_retained_prefix and bf16_mirror_cache is None:
+            _check_retained_prefix_format(
+                metadata, value_bf16=getattr(self, "int8_kv_value_bf16", False),
+            )
         retained_append_spans = self._int8_retained_prefill_spans(
             bulk_scratch.append_spans,
             metadata,
@@ -19893,7 +19916,10 @@ class Qwen35GGUFResidentSession:
         lifetime_plan = getattr(self, "_int8_prefill_lifetime_plan", None)
         if (
             bf16_mirror_cache is None
-            and getattr(lifetime_plan, "mode", None) == "chunk_outer_direct_int8"
+            and (
+                use_retained_prefix
+                or getattr(lifetime_plan, "mode", None) == "chunk_outer_direct_int8"
+            )
         ):
             # Direct (oracle-free) INT8 prefill: the attention K/V source is
             # the retained INT8 store itself, written through with INT8
@@ -19935,6 +19961,7 @@ class Qwen35GGUFResidentSession:
         layer_id: int,
         *,
         allow_direct_int8_prefill: bool = False,
+        use_retained_prefix: bool = False,
     ):
         key_cache, value_cache = packed_state.full_cache(layer_id)
         metadata = packed_state.full_scale_metadata(layer_id)
@@ -19950,6 +19977,25 @@ class Qwen35GGUFResidentSession:
                 int8_kv_value_bf16=False,
             )
         mirror = packed_state.full_bf16_mirror_cache(layer_id)
+        if mirror is None and use_retained_prefix:
+            _check_retained_prefix_format(
+                metadata, value_bf16=bool(packed_state.kv_layout.int8_kv_value_bf16),
+            )
+            return replace(
+                packed_scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                append_spans=replace(
+                    packed_scratch.append_spans,
+                    storage_dtype=DType.INT8_PER_TOKEN_HEAD, scale_metadata=metadata,
+                ),
+                prefill_spans=replace(
+                    packed_scratch.prefill_spans,
+                    storage_dtype=DType.INT8_PER_TOKEN_HEAD, scale_metadata=metadata,
+                ),
+                retained_key_cache=None, retained_value_cache=None,
+                retained_append_spans=None, retained_decode_spans=None,
+            )
         if mirror is None:
             if callable(getattr(packed_scratch, "retained_decode_kernel", None)):
                 mirror = (key_cache, value_cache)
@@ -24291,6 +24337,7 @@ class Qwen35GGUFResidentSession:
         # executor for every unsupported shape.
         if (
             _gguf_packed_layer_outer_enabled()
+            and not any(initial_positions)
             and not return_hidden_seeds
             and not capture_layer_output_hidden
             and all(sink is None for sink in sink_tuple)
@@ -25118,6 +25165,18 @@ class Qwen35GGUFResidentSession:
             for block in slot_blocks
         )
         slot_capacity = max(1024, max_live_count)
+        retained_prefix_slots = tuple(
+            direct_int8_prefill
+            and int(block.start_position) > 0
+            and not bool(getattr(session, "_int8_prefill_oracle_buffers", {}))
+            for session, block in zip(session_tuple, slot_blocks, strict=True)
+        )
+        for session, retained in zip(session_tuple, retained_prefix_slots, strict=True):
+            if retained:
+                _check_retained_prefix_format(
+                    SimpleNamespace(granularity=session.kv_scale_granularity),
+                    value_bf16=session.int8_kv_value_bf16,
+                )
         layout = _build_gguf_packed_verify_layout(slot_blocks, slot_capacity=slot_capacity)
         slot_local_full_prefill = (
             _packed_prefill_requires_slot_local_full_attention(layout)
@@ -25142,7 +25201,13 @@ class Qwen35GGUFResidentSession:
                 contiguous_base_rows=device_kv_contiguous_base_rows,
             )
         )
-        if device_kv_nonidentity_scatter and not gapped_slot_local_gather:
+        if any(retained_prefix_slots):
+            # Restored prefixes own INT8 payload/scales, not an unwritten
+            # transient BF16 oracle. Slot-local retained spans handle both
+            # contiguous and gapped page tables without rebasing.
+            slot_local_full_prefill = True
+            force_aotriton_slots.clear()
+        elif device_kv_nonidentity_scatter and not gapped_slot_local_gather:
             # Slot-local prefill cannot represent a shared prefix plus a
             # non-contiguous COW suffix. Keep those sessions in packed scratch
             # and scatter through their scheduler-owned block table below.
@@ -25184,6 +25249,9 @@ class Qwen35GGUFResidentSession:
             slot_index
             for slot_index, base_row in enumerate(device_kv_contiguous_base_rows)
             if base_row is None and gapped_slot_local_gather
+        ]
+        self.last_packed_prefill_plan["retained_prefix_attention_slots"] = [
+            index for index, retained in enumerate(retained_prefix_slots) if retained
         ]
         if force_aotriton_slots and not slot_local_full_prefill:
             raise ValueError("forced AOTriton slots require slot-local full attention")
@@ -25309,6 +25377,7 @@ class Qwen35GGUFResidentSession:
                             layer_scratch = session._full_attention_prefill_scratch_for_layer(
                                 slot_scratch,
                                 layer_id,
+                                **({"use_retained_prefix": True} if retained_prefix_slots[slot_index] else {}),
                             )
                             transient_direct_oracle = bool(
                                 direct_int8_prefill
@@ -25317,8 +25386,9 @@ class Qwen35GGUFResidentSession:
                                 is None
                             )
                             gapped_gather_slot = bool(
-                                gapped_slot_local_gather
-                                and device_kv_contiguous_base_rows[slot_index] is None
+                                device_kv_contiguous_base_rows[slot_index] is None
+                                and not transient_direct_oracle
+                                and layer_scratch.prefill_spans.storage_dtype == DType.BF16
                             )
                             if gapped_gather_slot:
                                 # No contiguous rebase exists for this slot:
@@ -32421,15 +32491,24 @@ def _gguf_slot_local_prefill_allow_aotriton(*, transient_direct_oracle: bool) ->
     return _gguf_int8_prefill_slot_local_aotriton_enabled()
 
 
-def _gguf_int8_prefill_kernel() -> str:
+def _gguf_int8_prefill_kernel(
+    *, geometry: tuple[int, int, int] | None = None, scale_dtype: DType = DType.FP32,
+) -> str:
     """Select the direct INT8 prefill attention kernel implementation."""
 
-    raw = (_env_value("HIPENGINE_GGUF_INT8_PREFILL_KERNEL") or "flash").strip().lower()
+    configured = _env_value("HIPENGINE_GGUF_INT8_PREFILL_KERNEL")
+    default = (
+        "flash" if geometry in {None, (24, 4, 256)} and scale_dtype == DType.FP32
+        else "sequential"
+    )
+    raw = (configured or default).strip().lower()
     if raw not in ("flash", "wmma", "sequential"):
         raise ValueError(
             "HIPENGINE_GGUF_INT8_PREFILL_KERNEL must be flash, wmma, or sequential; "
             f"got {raw!r}"
         )
+    if raw != "sequential" and scale_dtype != DType.FP32:
+        raise ValueError(f"{raw} INT8 prefill requires fp32 scales; use sequential")
     return raw
 
 

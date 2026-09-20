@@ -62,6 +62,75 @@ def test_compare_states_reports_exact_component_and_layer() -> None:
     ]
 
 
+@pytest.mark.parametrize("part", ["key_scale", "value_scale", "key_mirror", "value_mirror"])
+def test_compare_states_checks_int8_scale_and_mirror_ownership(part):
+    reference = {"position": 512, "linear": [], "kv": [{"layer": 3, part: "original"}]}
+    candidate = {"position": 512, "linear": [], "kv": [{"layer": 3, part: "changed"}]}
+    differences = _compare_states(candidate, reference)
+    assert len(differences) == 1
+    assert differences[0]["part"] == part
+
+
+def test_gate_accepts_explicit_int8_fp32_storage():
+    args = build_parser().parse_args(["--kv-storage", "int8_per_token_head", "--kv-scale-dtype", "fp32"])
+    assert args.kv_storage == "int8_per_token_head"
+    assert args.kv_scale_dtype == "fp32"
+
+
+def test_capture_state_uses_int8_payload_and_fp32_scale_row_sizes(monkeypatch):
+    from hipengine.core.dtype import DType
+    from scripts import gguf_prefix_reuse_gate as gate
+
+    metadata = SimpleNamespace(k_scale="ks", v_scale="vs", scale_dtype=DType.FP32)
+    scratch = SimpleNamespace(
+        layer_conv_states=(), layer_recurrent_states=(),
+        full_key_caches=("k",), full_value_caches=("v",),
+        full_scale_metadata=lambda layer: metadata,
+        full_bf16_mirror_cache=lambda layer: ("km", "vm"),
+    )
+    session = SimpleNamespace(
+        runner=SimpleNamespace(weights=SimpleNamespace(config=SimpleNamespace(head_count_kv=4, key_length=256))),
+        scratch=scratch, position=513, device_kv_allocation=object(),
+        runtime=SimpleNamespace(device_synchronize=lambda: None),
+    )
+    copied = {}
+
+    def copy(session, buffer, allocation, *, position, row_nbytes):
+        copied[buffer] = (position, row_nbytes)
+        return bytes(1)
+
+    monkeypatch.setattr(gate, "_copy_logical_kv_bytes", copy)
+    state = gate._capture_state(session)
+    assert copied == {
+        "k": (513, 1024), "v": (513, 1024),
+        "ks": (513, 16), "vs": (513, 16),
+        "km": (513, 2048), "vm": (513, 2048),
+    }
+    assert state["kv"][0]["key_scale"]["nbytes"] == 1
+
+
+def test_logical_capture_accepts_scale_tensor_backing(monkeypatch):
+    import ctypes
+    import numpy as np
+    from hipengine.core import memory
+    from hipengine.core.dtype import DType
+    from hipengine.core.tensor import Tensor
+    from scripts import gguf_prefix_reuse_gate as gate
+
+    scales = np.arange(512, dtype=np.float32)
+    tensor = Tensor.from_handle(scales.ctypes.data, scales.shape, DType.FP32, "cpu_reference")
+    monkeypatch.setattr(
+        memory, "copy_device_to_host",
+        lambda dst, src, size, **kwargs: ctypes.memmove(dst, src.ptr, size),
+    )
+    result = gate._copy_logical_kv_bytes(
+        SimpleNamespace(runtime=object()), tensor,
+        SimpleNamespace(block_ids=(1, 0), chunk_start_block_id=0),
+        position=257, row_nbytes=4,
+    )
+    assert result == scales[256:].tobytes() + scales[:1].tobytes()
+
+
 def test_workspace_lease_pages_are_not_prefix_lifecycle_leaks() -> None:
     assert _lifecycle_exact(
         "active",

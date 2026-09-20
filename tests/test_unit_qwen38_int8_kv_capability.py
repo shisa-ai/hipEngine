@@ -20,6 +20,8 @@ from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _PASS_SHA256 = "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
 _REJECT_SHA256 = "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+# Execution identity of both Qwen3.8-27B-Q4_K_M builds (see models/qwen35.py).
+_PLAIN_FINGERPRINT = "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
 
 
 def _key(
@@ -29,10 +31,14 @@ def _key(
     backend: str,
     target_arch: str | None = None,
     scale_dtype: str = "fp32",
+    execution_fingerprint: str | None = None,
 ) -> KVCapabilityKey:
     return KVCapabilityKey(
         artifact_sha256=sha256,
         artifact_size_bytes=size_bytes,
+        artifact_execution_fingerprint=(
+            _PLAIN_FINGERPRINT if execution_fingerprint is None else execution_fingerprint
+        ),
         backend=backend,
         target_arch=target_arch or backend.removeprefix("hip_"),
         weight_quant="gguf_q4_k_m",
@@ -109,8 +115,12 @@ def test_qwen38_gfx1100_exact_artifact_int8_capability_is_qualified() -> None:
     )
 
     payload = resolution.as_dict()
+    # The capability id covers the key's execution identity, so it changed when
+    # the artifact axis stopped being a byte digest.  The two 2026-09-11 W7900
+    # int8-KV artifacts under benchmarks/results/ record the id this contract
+    # resolved to before that field existed; they are frozen measurements.
     assert payload["capability_id"] == (
-        "4b0e936f4b65f3a37d4362a9ee5faea9bf9aa1376a703693531ddd20bcf41548"
+        "aea991f631ef5c1661a43b705660793592cfc5b3e70f1df90d503ed0d7b0e234"
     )
     assert payload["status"] == "qualified"
     assert payload["runtime_action"] == "admit"
@@ -168,16 +178,19 @@ def test_qwen38_gfx1151_exact_artifact_int8_capability_remains_rejected() -> Non
     assert "0.7778" in payload["reason"]
 
 
-def test_same_filename_or_geometry_does_not_admit_unknown_artifact_or_scale() -> None:
+def test_identity_never_gates_admission_but_capability_does() -> None:
     plugin = Qwen35GGUFModel()
-    unknown_sha = "f" * 64
+    # No identity gates execution.  An artifact nobody has measured runs on the
+    # declared kernel chain and is simply not promotable.  A contract no kernel
+    # implements is the only thing refused.
     unknown = plugin.resolve_kv_capability(
         key=_key(
-            sha256=unknown_sha,
+            sha256="f" * 64,
             size_bytes=17_106_773_984,
             backend="hip_gfx1100",
+            execution_fingerprint="e" * 64,
         ),
-        artifact=_artifact(sha256=unknown_sha, size_bytes=17_106_773_984),
+        artifact=_artifact(sha256="f" * 64, size_bytes=17_106_773_984),
     )
     wrong_scale = plugin.resolve_kv_capability(
         key=_key(
@@ -198,12 +211,19 @@ def test_same_filename_or_geometry_does_not_admit_unknown_artifact_or_scale() ->
         artifact=_artifact(sha256=_PASS_SHA256, size_bytes=17_106_773_984),
     )
 
-    assert unknown.status == "unknown"
-    assert unknown.effective_kv_storage == "bf16"
+    # Unmeasured artifact: admitted on kernel capability, not promotable.
+    assert unknown.status == "unmeasured"
+    assert unknown.runtime_action == "admit"
+    assert unknown.effective_kv_storage == "int8_per_token_head"
     assert unknown.promotion_eligible is False
-    assert wrong_scale.status == "unknown"
-    assert "contract is unqualified" in wrong_scale.reason
-    assert wrong_target.status == "unknown"
+    assert unknown.max_direct_rows >= 1
+
+    # Real capability misses: no kernel implements these contracts.
+    assert wrong_scale.status == "unsupported"
+    assert wrong_scale.runtime_action == "fallback_bf16"
+    assert "no registered kernel implements" in wrong_scale.reason
+    assert wrong_target.status == "unsupported"
+    assert wrong_target.runtime_action == "fallback_bf16"
 
 
 def test_model_artifact_identity_hashes_content_and_invalidates_on_change(tmp_path: Path) -> None:

@@ -345,6 +345,7 @@ def test_shifted_direct_int8_prefill_keeps_paged_payload_at_backing_base() -> No
         retained_key_cache=retained_key,
         retained_value_cache=retained_value,
         retained_append_spans=retained_spans,
+        prefill_spans=SimpleNamespace(storage_dtype=DType.BF16),
     )
 
     bound = gguf_runner._gguf_slot_local_prefill_cache_views(
