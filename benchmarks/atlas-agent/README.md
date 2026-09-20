@@ -10,6 +10,80 @@ comparing rates that were not taken on the same host, and presenting a
 cross-quantification difference as an engine difference. The harness, the launch
 scripts and the caveat list below are all built to prevent those.
 
+## Status on this host (2026-09-20)
+
+Recorded for posterity, because getting atlas to serve at all took several
+non-obvious steps, and because its MTP path does not currently work here.
+
+### What was needed to get atlas running
+
+1. **A ROCm build.** Both `target/release/spark` and
+   `/tmp/atlas-e2e/target/release/spark` were CUDA builds linking `libcuda.so`
+   and could not start. `ATLAS_TARGET_HW=strix-hip ATLAS_TARGET_MODEL='*'
+   ./build-amd.sh` built the HIP backend in **2m02s** with a warm kernel cache
+   (122 `.cu` files, four `strix-hip` targets).
+2. **A ROCm SDK that is not in `/opt/rocm`.** This host's ROCm is a conda SDK at
+   `_rocm_sdk_devel` (HIP 7.15.26333, clang 23.0.0git). atlas's `build-amd.sh`
+   carries a local hipcc-discovery patch for exactly this case, and
+   `serve-amd.sh` documents the same lookup order. Set `ATLAS_ROCM_HOME`.
+3. **The HIP-to-CUDA shim on the loader path.** The ROCm build still references
+   the CUDA symbol names, supplied by three HIP shims that `build.rs` writes to
+   `target/release/build/atlas-kernels-*/out`. `serve-amd.sh` finds that directory
+   and prepends it to `LD_LIBRARY_PATH`. **Invoking the binary directly cannot
+   work**; the script must be used.
+4. **`--max-batch-size` no larger than the KV pool fits.** atlas accepts
+   `--max-seq-len 262144` and reports `max_model_len: 262144`, but it sizes the KV
+   pool from `--gpu-memory-utilization` (105.6 GB of this host's 120 GB GTT at the
+   default 88%) and then warns how many sequences fit at full length. At 256K that
+   is 3. `serve-atlas.sh` therefore defaults `MAX_BATCH=3`.
+
+### What does not work
+
+**atlas's MTP path fails on this host, at every context length tried.** With
+`NUM_DRAFTS=4` the server starts, logs `Speculative decoding: ENABLED (4
+drafts/step)` and `MTP gate: throughput-arbitrated (K=4)`, answers `/v1/models`
+correctly, and then fails every real request:
+
+```
+ERROR verify_dflash_step: decode_verify_dflash: SSM MTP intermediate buffers not allocated (need K-1 ...)
+ERROR sequence: free_sequence: gpu.synchronize after zero_slot(0): cuStreamSynchronize ...
+ERROR phase_start_prefills: Prefill start error: cuMemsetD32Async failed: status 901
+```
+
+The visible symptom is a request that returns one short burst of content and then
+every subsequent request completing in ~1 ms with **zero content tokens** -- which,
+if it were averaged naively, would report a meaningless ~260 tok/s. It reproduces
+at `MAX_SEQ_LEN` 262144 and 32768 and at `MAX_BATCH` 8 and 3, so it is neither a
+context-length nor a batch-size limit.
+
+**With `NUM_DRAFTS=0` the same build is healthy**: four requests at 32K produced
+29/28/29/28 content deltas, ~700 ms TTFT, ~2.2 s decode, zero errors, and a median
+of 14.53 tok/s. So atlas is usable here as an **autoregressive** yardstick, and it
+is its speculative path specifically that is broken.
+
+A likely cause is the ROCm version: atlas's published Strix Halo numbers were
+taken on **ROCm 7.13** and this host has **7.15**. Chasing that is atlas's work,
+not hipEngine's -- this directory exists to measure hipEngine, and a yardstick
+that needs its own debugging is not worth more of that budget than the note here.
+
+### Consequence for the comparison
+
+A best-vs-best **MTP** comparison cannot be made against atlas on this host,
+because one side's MTP does not run. The honest options, in order of value:
+
+1. **AR vs AR at 256K** (both engines, `NUM_DRAFTS=0`). Clean and fully matched on
+   every axis except quant, and directly relevant to what a long-context agent
+   workload gets today.
+2. **hipEngine MTP vs atlas AR**, clearly labelled as such. Not apples-to-apples
+   and not a speculation comparison.
+3. **A different MTP-capable yardstick** -- `llama.cpp` or a `strix-llama.cpp`
+   build, both of which have speculative decoding. `scripts/mtp-bench.py` is
+   already described as a llama.cpp-compatible MTP prompt-suite benchmark, so the
+   protocol side is largely built.
+
+Do not report the ~260 tok/s figure above. It is an artifact of dividing by the
+near-zero elapsed time of empty responses.
+
 ## What is compared
 
 | axis | hipEngine | atlas | matched |

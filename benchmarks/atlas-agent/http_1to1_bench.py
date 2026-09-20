@@ -153,6 +153,13 @@ def stream_chat(
         result.reached_target = result.usage_completion_tokens >= max_tokens
     else:
         result.reached_target = result.deltas >= max_tokens
+    # A response with no content is a failure, not a fast generation. Without
+    # this guard an engine that errors immediately is measured at a near-zero
+    # decode time and reports an enormous, entirely fictional rate -- which is
+    # exactly what a broken atlas MTP arm produced (~260 tok/s from requests that
+    # returned nothing). Empty output must be visible as an error.
+    if result.error is None and not result.content:
+        result.error = "empty response: no content deltas"
     return result
 
 
