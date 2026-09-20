@@ -74,7 +74,7 @@ upload synchronization is near-flat in the paired run: decode rate +0.18%,
 request latency +0.22%; no end-to-end speedup is claimed for that cleanup.
 [Final per-page results](results/2026-09-14-gfx1151-surya-final-lanes.json),
 [cleanup A/B](results/2026-09-14-gfx1151-surya-upload-cleanup-ab.json),
-[protocol and environment](../docs/MODEL-SURYA.md#final-lane-comparison-2026-09-14).
+[protocol and environment](../docs/model-cards/MODEL-SURYA.md#final-lane-comparison-2026-09-14).
 Separate processes follow the established protocol; combined-process qualification
 is tracked in `docs/REFACTOR.md`.
 
@@ -116,7 +116,7 @@ current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
 
 UD/main integration validation is documented in the
-[integration report](../docs/UD-MAIN-INTEGRATION.md); its working-tree timings
+[integration report](../docs/campaigns/UD-MAIN-INTEGRATION.md); its working-tree timings
 do not replace the published performance rows.
 
 ## Root README performance summary
@@ -348,10 +348,9 @@ whole-process memory percentage, throughput gain or proven context maximum.
 
 ## Current default notes
 
-**Prefix caching defaults differ by entry point.** The in-process resident
-engine loop, which is what the benchmark harnesses and `hipengine.LLM` run,
-defaults to `radix`; `hipengine serve` defaults to `--prefix-cache off` and
-needs `--prefix-cache radix` to enable it. Radix reuses completed prompt
+**Prefix caching is on by default.** Both `hipengine serve` and the in-process
+resident engine loop default to `radix`; `--prefix-cache off` (or
+`HIPENGINE_PREFIX_CACHE=off`) rolls it back. Radix reuses completed prompt
 prefixes at 256-token granularity. Measured on `zbook`/gfx1151 with
 Qwen3.6-35B-A3B `UD-Q4_K_M`, 14
 multi-turn lanes and three turns each through the in-process resident loop:
@@ -369,9 +368,11 @@ and now prefills it batched with the rest of the prompt.
 The gfx1151 result does not transfer to gfx1100. On the W7900 the same
 comparison fails the section 6.1 envelope in `heldout-code` (mean KL 2.264e-3
 against a 1e-3 limit, max KL 0.2753 against a 0.05 ceiling) and six
-active-lifecycle scopes fail the scheduler state-byte comparison, so the
-served default stays off until those pass. `docs/REFACTOR.md`,
-"HTTP default-on is blocked", carries the removal condition; the packets are
+active-lifecycle scopes fail the scheduler state-byte comparison. That gate is
+still open and tracked in `docs/REFACTOR.md`; it does not hold the default off,
+because an unqualified row falls back to a private prefill rather than failing,
+recording the reason as `prefix_fallback_reason` on the request row. The packets
+are
 [the eight-scope gate](results/2026-09-20-w7900-gfx1100-prefix-gate-bf16.json)
 and [the completed-source control](results/2026-09-20-w7900-prefix-completed-code-control.json).
 On gfx1151 the same-route packed-reference packet passes all eight suites at
@@ -1165,7 +1166,7 @@ The direct packed-AR decode route uses the singleton-indexed GDN recurrence
 (2026-09-05): 512/128 graph decode improves **c2 +7.40%, c4 +6.06%, native C8
 +5.91%**, exact ([artifact](results/2026-09-05-gfx1100-gdn-singleton-retained.json)).
 [`C8 automatic promotion`](results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json);
-[`dedicated campaign`](../docs/QWEN38-GFX1100-C8-K3-CAMPAIGN.md).
+[`dedicated campaign`](../docs/campaigns/QWEN38-GFX1100-C8-K3-CAMPAIGN.md).
 
 On Strix Halo, Qwen3.8 `Q4_K_M` speculates at one active request with the
 default candidate budget and bf16 KV, and declines to autoregressive decoding
@@ -1205,7 +1206,7 @@ startup probe served one request at 3,072 context tokens and failed to start at
 outside the prefill and decode peaks and never checked the live context length,
 so those points are not a published ceiling. Rerun condition: a repaired
 [`gguf_context_ceiling_probe.py`](../scripts/gguf_context_ceiling_probe.py)
-([`capacity notes`](../docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md),
+([`capacity notes`](../docs/campaigns/QWEN38-27B-GFX1100-24GB-CAPACITY.md),
 [`probe artifact`](results/2026-09-06-rx7900xtx-qwen38-c1-context-ceiling.json)).
 Evidence: [`direct c1-c8 sweep`](results/2026-09-06-gfx1100-qwen38-q4km-direct-c1c8-sweep.json).
 
@@ -1223,7 +1224,7 @@ Strix Halo Qwen3.8 `Q4_K_M` automatic MTP is restricted to its verified
 strict/BF16/C1/B3/raw-greedy key; other scopes use K0/AR.
 [`Serving closure`](results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json).
 Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback; its exact
-DMS sidecar remains default-off pending serving gates. [`DMS`](../docs/DMS.md).
+DMS sidecar remains default-off pending serving gates. [`DMS`](../docs/reference/DMS.md).
 
 Agentic quality is quality-only: Qwen3.8-27B `Q4_K_M` scores **50/68 (73.53%)**
 with 64/64 valid calls; no runtime mechanism is retained.
@@ -1231,7 +1232,7 @@ with 64/64 valid calls; no runtime mechanism is retained.
 Generation-2 automatic serving remains K0: gfx1151 P9 is exact 540/540 but c2/c4
 are 0.6975x/0.5843x AR; gfx1100 exact speculative cells remain behind direct.
 [`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json) ·
-[`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
+[`Recovery`](../docs/campaigns/MTP-CONCURRENCY2-RECOVERY.md).
 
 ## Where detailed evidence lives
 
@@ -1436,7 +1437,7 @@ Evidence: [`PARO boundary`](results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp3-s
 
 Current Qwen3.5-0.8B gfx1151 remains **Vulkan parity blocked** while the exact
 D08-X package is retained: the final gate is **1794/1800 top-1, max KL
-0.005930**, with **72/72** graph trajectories exact. [`Campaign`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
+0.005930**, with **72/72** graph trajectories exact. [`Campaign`](../docs/campaigns/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
 
 ## Current single-request scoreboards
 
@@ -1508,7 +1509,7 @@ Evidence: [`clean Q4_K_S`](results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publ
 (the earlier task-23 retention measurement, 24.19347 tok/s at 1.82281x on a
 source that predates `fix: make Qwen3.8 Q4_K_S native B3 exact`),
 [`memory package`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-memory-parity-retained.json), and the
-[`campaign plan`](../docs/QWEN38-27B-GFX1151-CAMPAIGN.md).
+[`campaign plan`](../docs/campaigns/QWEN38-27B-GFX1151-CAMPAIGN.md).
 
 The standard (non-UD) `Q4_K_M` file is a separate lane from `Q4_K_S`.
 Current measurements use the public production profile, FP32 recurrent state,
@@ -1706,7 +1707,7 @@ numeric 128K row is carried forward. Evidence:
 
 The W7900 Laguna decode campaign and rejected H7/H8 ladders are implementation
 history, not scoreboard content; follow the production artifact, changelog, and
-[`docs/LAGUNA-PARITY-STATUS.md`](../docs/LAGUNA-PARITY-STATUS.md).
+[`docs/archive/LAGUNA-PARITY-STATUS.md`](../docs/archive/LAGUNA-PARITY-STATUS.md).
 
 Explicit gfx1151 Laguna DFlash remains non-default and uses the tile1 target
 verifier. The attempted tile4 transfer was trajectory-identical to tile1 but
