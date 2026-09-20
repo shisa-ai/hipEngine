@@ -130,3 +130,44 @@ def test_completed_source_lifecycle_and_metadata_fail_closed() -> None:
     assert args.source_lifecycle == "completed"
     assert args.sampler_mode == "processed_argmax"
     assert args.forced_token_id == 811
+
+
+def test_only_the_production_shaped_comparison_gates_the_contract() -> None:
+    """The binding terms reproduce the production prefill shape.
+
+    The one-shot-prefix and serial routes prefill the same tokens through a
+    different shape (a single batched prefix call, or per-token decode steps,
+    instead of a batched suffix prefill).  Their batched arithmetic is not
+    bit-equal to the production shape by construction: on the Japanese suite
+    prompt the two single-call routes disagree with each other (174267 vs
+    96026) while the candidate and the native chunked oracle agree (271).  Those
+    comparisons stay in the payload as diagnostics and must not gate.
+    """
+
+    from scripts.gguf_prefix_reuse_gate import _PRODUCTION_GATE_TERMS, gate_passed
+
+    terms = {name: True for name in _PRODUCTION_GATE_TERMS}
+    assert gate_passed(terms) is True
+
+    for diagnostic in (
+        "semantic_boundary_exact",
+        "initial_state_exact",
+        "final_state_exact",
+        "output_exact",
+        "trajectory_exact",
+    ):
+        assert diagnostic not in _PRODUCTION_GATE_TERMS
+        assert gate_passed({**terms, diagnostic: False}) is True
+
+    for binding in _PRODUCTION_GATE_TERMS:
+        assert gate_passed({**terms, binding: False}) is False
+
+    # The candidate's continuation token can be processor-forced while the
+    # native oracle samples freely (`mixed_ja_en`: candidate 9709 versus oracle
+    # 248046 with bit-identical states), so that comparison is diagnostic.
+    assert "scheduler_output_exact" not in _PRODUCTION_GATE_TERMS
+    assert gate_passed({**terms, "scheduler_output_exact": False}) is True
+
+    incomplete = {k: v for k, v in terms.items() if k != "scheduler_state_exact"}
+    with pytest.raises(KeyError):
+        gate_passed(incomplete)
