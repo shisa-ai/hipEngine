@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_packed_graph_width_floor_decision",
+  "created_at": "2026-09-20T13:05:00Z",
+  "status": "measured_no_change",
+  "performance_claim": false,
+  "decision": "Add no packed-graph floor rows. C4 is the only graph width whose scaled global floor blocks capture at the D24 short-horizon shape, but its eager submission overhead is 4.54 ms of a 92.62 ms wall, so capture can save at most 4.9% and realistically about 0.7 ms (0.75%) -- two orders below the 15.72 ms problem that justified the C2 admission. C1 eager is cheaper still at 2.76 ms. C2 and C8 already capture. The 2026-08-29 verdict 'do not lower thresholds for unlisted keys' is upheld by measurement rather than by deferral.",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26333-0000000",
+    "compiler": "AMD clang version 23.0.0git (8f497e0992fb7513f7f78a6f6b6f1056c375e961)",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "quant": "gguf_q4_k_m"
+  },
+  "backend": "hip_gfx1151",
+  "workload": {
+    "prompt_length": 64,
+    "decode_tokens": 24,
+    "marker_index": 3,
+    "observed_physical_c_transitions": 23,
+    "shape_note": "D24 short-horizon shape used by the 2026-08-29 packed-C2 admission, so the floors are evaluated exactly where they bind"
+  },
+  "command": "/tmp/rocmenv.sh python scripts/gguf_continuous_owner_rocprof.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --concurrency <W> --prompt-length 64 --decode-tokens 24 --marker-index 3 --gpu-max-hw-queues 2 --profile --rebuild --compiler-version-file /tmp/hipengine-hipcc-version.txt --cache-root <per-width> --run-root <per-width> --run-tag t47-w<W>-d24 --out /tmp/t47-prof/w<W>.json",
+  "method": {
+    "capture_signal": "profile-child.json route_counts.native_packed_graph_captures",
+    "overhead_definition": "marked_wall_ms minus kernel time summed over dispatches inside the marker window",
+    "launch_counting": "kernel_trace.csv filtered to the marker window; the marker name is carried in the marker trace Function column",
+    "cache_note": "each width needs its own --rebuild cache root; the build child compiles only the artifacts its own route touches, so a packed-C2 cache lacks the serial-C1 kernels and the cache-only warm child fails"
+  },
+  "floor_resolution": {
+    "global_min_replay_steps": 128,
+    "rule": "floor(width) = policy_row if present else ceil(global_min / width); production captures iff remaining_decode_tokens >= floor(width)",
+    "code": "hipengine/generation/qwen35_gguf.py:10697-10717",
+    "effective": {
+      "1": {"floor": 128, "captures_at_d24": false},
+      "2": {"floor": 23, "source": "policy_row_2026_08_29", "captures_at_d24": true},
+      "4": {"floor": 32, "source": "scaled_global", "captures_at_d24": false},
+      "8": {"floor": 16, "source": "scaled_global", "captures_at_d24": true}
+    }
+  },
+  "rows": [
+    {"physical_width": 1, "captured": 0, "wall_ms": 82.18, "kernel_launches": 592, "kernel_ms": 79.42, "submission_overhead_ms": 2.76},
+    {"physical_width": 2, "captured": 1, "wall_ms": 85.87, "kernel_launches": 840, "kernel_ms": 81.87, "submission_overhead_ms": 4.01},
+    {"physical_width": 4, "captured": 0, "wall_ms": 92.62, "kernel_launches": 852, "kernel_ms": 88.08, "submission_overhead_ms": 4.54},
+    {"physical_width": 8, "captured": 1, "wall_ms": 110.02, "kernel_launches": 872, "kernel_ms": 106.18, "submission_overhead_ms": 3.84}
+  ],
+  "validation_of_method": {
+    "note": "Width 2 was run first and compared against the 2026-08-29 artifact's pre-admission profile to prove the invocation and the extractor before the never-profiled widths were trusted.",
+    "pre_admission_c2": {"wall_ms": 97.28, "kernel_ms": 81.56, "kernel_launches": 880, "submission_overhead_ms": 15.72},
+    "post_admission_c2": {"wall_ms": 85.87, "kernel_ms": 81.87, "kernel_launches": 840, "submission_overhead_ms": 4.01},
+    "conclusion": "Capture leaves kernel time unchanged (81.56 -> 81.87 ms) and removes 11.71 ms of submission overhead, confirming that capture acts only on the submission layer and therefore that C4's 4.54 ms overhead is the true ceiling on any gain from lowering its floor."
+  },
+  "counterfactual": {
+    "attempted": true,
+    "completed": false,
+    "blocked_by": "scripts/gguf_continuous_owner_rocprof.py refuses a dirty source root (RocprofCacheError) and has no opt-out flag, so the temporary C4 floor edit could not be profiled in place",
+    "resolution": "not required for the decision: the eager-side measurement bounds the maximum possible gain at 4.54 ms (4.9% of wall), and the captured reference widths C2 (4.01 ms) and C8 (3.84 ms) show that capture does not drive submission overhead materially below 4 ms, so the realistic gain is about 0.7 ms or 0.75%",
+    "temporary_edit_reverted": true
+  },
+  "correctness": {
+    "exactness_gate_run": false,
+    "reason": "No policy row was added and no performance claim is made, so the ten-cell ar_exact server gate was not required. Nothing in this artifact changes runtime behavior."
+  },
+  "source": {
+    "repo_commit": "05f2c14c2",
+    "repo_dirty_at_profile": false
+  }
+}
