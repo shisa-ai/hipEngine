@@ -165,18 +165,27 @@ def test_schema_v2_rejects_unsupported_schema_before_interpreting_fields(
         load_dms_retrofit_config(model, metadata_path=metadata)
 
 
-def test_schema_v2_rejects_unverified_non_file_model_identity(tmp_path: Path) -> None:
+def test_schema_v2_loads_a_non_file_model_without_a_verified_identity(tmp_path: Path) -> None:
+    """A model we cannot hash is not a model we may refuse.
+
+    Identity is provenance.  A sharded or directory model has no single digest
+    to compare, and that has no bearing on whether the sidecar's geometry fits.
+    """
+
     model, _, metadata, _ = _fixture(tmp_path)
     model.unlink()
     model.mkdir()
 
-    with pytest.raises(ValueError, match="verified model artifact fingerprint"):
-        load_dms_retrofit_config(model, metadata_path=metadata)
+    config = load_dms_retrofit_config(model, metadata_path=metadata)
+    assert config.physical_layer_ids == _PHYSICAL_LAYERS
 
 
-def test_schema_v2_rejects_wrong_model_hash_and_layer_map(tmp_path: Path) -> None:
+def test_layer_map_refuses_but_a_wrong_model_hash_only_warns(tmp_path: Path) -> None:
+    """Geometry is the capability gate; the artifact hash is provenance."""
+
     model, _, metadata, payload = _fixture(tmp_path)
 
+    # A layer map that does not match cannot be executed at all.
     with pytest.raises(ValueError, match="physical layer map"):
         load_dms_retrofit_config(
             model,
@@ -184,14 +193,17 @@ def test_schema_v2_rejects_wrong_model_hash_and_layer_map(tmp_path: Path) -> Non
             expected_physical_layer_ids=(3, 11),
         )
 
+    # A sidecar trained on a different artifact still runs, and says so.
     model.write_bytes(b"different-model-bytes")
-    with pytest.raises(ValueError, match="model artifact hash"):
-        load_dms_retrofit_config(
+    with pytest.warns(RuntimeWarning, match="trained against a different model artifact"):
+        config = load_dms_retrofit_config(
             model,
             metadata_path=metadata,
             expected_artifact_fingerprint=str(payload["artifact_fingerprint"]),
             expected_physical_layer_ids=_PHYSICAL_LAYERS,
         )
+    assert config.artifact_fingerprint_verified is False
+    assert config.physical_layer_ids == _PHYSICAL_LAYERS
 
 
 def test_schema_v2_rejects_invalid_internal_layer_map(tmp_path: Path) -> None:
