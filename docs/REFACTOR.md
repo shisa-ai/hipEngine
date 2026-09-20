@@ -7361,6 +7361,17 @@ Qwen3.6/gfx1151 routes are untouched; admission is recorded in
 when the campaign's final C1-C8/K1-K7 matrix lands and every measured cell
 either has a qualified serving-evidence row or stays explicitly rejected.
 
+**Open interaction (2026-09-21).** The guard now also blocks screening every
+BF16 cell the implementation declarations cover, because those declarations are
+automatic-eligible: `automatic_eligible` no longer implies "this cell is in the
+listed policy", which is the invariant the guard was written against. A cell
+covered by an explicit-only evidence row (`automatic_eligible=false`) is still
+screenable; a cell with no row of its own is not, and reaches the adapter as
+ordinary automatic intent instead. Measuring a BF16 cell outside the listed
+policy therefore needs the guard keyed on the listed cell table rather than on
+`automatic_eligible` -- decide that with the campaign owner before extending the
+matrix, since removing the guard lets screening widen automatic intent.
+
 ## 2026-09-07 Dual C1 target-route dispatch — singleton vs packed frontier
 
 `Qwen35GGUFMTP2Adapter` dispatches one-request C1 cycles to the legacy

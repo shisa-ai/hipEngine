@@ -11845,8 +11845,8 @@ def _warn_unservable_mtp_budget(
     plan = _engine_speculative_mtp_serving_capability(engine)
     if plan is None:
         _LOGGER.warning(
-            "EFFECTIVE_MTP: speculative_mtp_serving=enabled but no retained serving "
-            "evidence describes this artifact/physical cell; requests fall back to "
+            "EFFECTIVE_MTP: speculative_mtp_serving=enabled but no serving plan "
+            "resolves for this artifact/physical cell; requests fall back to "
             "autoregressive decode (candidate_budget requested:%s resolved:%s source:%s)",
             budget.get("requested"),
             budget.get("resolved"),
@@ -11856,8 +11856,8 @@ def _warn_unservable_mtp_budget(
     if bool(plan.get("admitted")):
         return
     _LOGGER.warning(
-        "EFFECTIVE_MTP: speculative_mtp_serving=enabled but the retained evidence "
-        "rejects this cell (%s); requests fall back to autoregressive decode "
+        "EFFECTIVE_MTP: speculative_mtp_serving=enabled but the resolved serving "
+        "plan refuses this cell (%s); requests fall back to autoregressive decode "
         "(candidate_budget requested:%s resolved:%s source:%s)",
         plan.get("reason"),
         budget.get("requested"),
@@ -11881,6 +11881,41 @@ def _log_startup_memory_summary(memory: Mapping[str, Any], checks: Mapping[str, 
         _format_bytes(int(summary["min_free_bytes"])),
         _format_bytes(int(summary["total_bytes"])),
         int(summary["sample_count"]),
+    )
+
+
+def _speculation_startup_text(
+    config: ServerConfig,
+    *,
+    capability: Mapping[str, Any],
+    budget: Mapping[str, Any],
+    engine: Any | None,
+) -> str:
+    """State the route requests will run, not the policy that was configured.
+
+    ``serving_route`` reports that MTP is configured and the engine can serve
+    it, which is not a statement that this cell admits.  Reading the resolved
+    plan here keeps the startup summary from advertising a route the request
+    path refuses -- the operator cannot see that disagreement from the banner.
+    An admission no measurement backs is marked, because the depth is real but
+    its provenance is not a measurement on this cell.
+    """
+
+    if not capability["serving_route"]:
+        return f"MTP unavailable (policy {config.speculative_mtp_serving})"
+    plan = _engine_speculative_mtp_serving_capability(engine)
+    if plan is None or not bool(plan.get("admitted")):
+        reason = "unresolved" if plan is None else str(plan.get("reason"))
+        return f"MTP unavailable ({reason})"
+    selected = plan.get("selected_candidate_count")
+    depth = budget["resolved"] if selected is None else selected
+    if depth is None:
+        return "MTP enabled, candidate budget unresolved"
+    measured = str(plan.get("reason") or "").startswith("qualified_")
+    return (
+        f"MTP enabled, candidate budget {int(depth)}"
+        if measured
+        else f"MTP enabled, candidate budget {int(depth)} (unmeasured)"
     )
 
 
@@ -11937,10 +11972,11 @@ def _log_pretty_startup_summary(
         prefix_text = prefix_mode
     capability = _speculative_mtp_capability(config, engine=engine)
     budget_resolution = _candidate_budget_resolution(config, engine=engine)
-    speculation_text = (
-        f"MTP enabled, candidate budget {budget_resolution['resolved']}"
-        if capability["serving_route"]
-        else f"MTP unavailable (policy {config.speculative_mtp_serving})"
+    speculation_text = _speculation_startup_text(
+        config,
+        capability=capability,
+        budget=budget_resolution,
+        engine=engine,
     )
     _LOGGER.info(
         "\n%s%s%s\n"
