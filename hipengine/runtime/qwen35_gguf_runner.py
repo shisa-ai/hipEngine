@@ -15277,7 +15277,7 @@ def _gguf_gapped_slot_local_fast_route_available(
 ) -> bool:
     """Whether a gapped prefill of this size gathers onto the fast route.
 
-    The gather needs the env flag, the backend's head-major KV capability, and
+    The gather needs the env flag, a registered head-major copy kernel, and
     a head-major buffer within the validated token/byte allocation class
     (buffers are demand-sized per session, so only the request's own context
     has to fit the class). When any check fails, a gapped slot falls back to
@@ -15287,7 +15287,20 @@ def _gguf_gapped_slot_local_fast_route_available(
 
     if not _gguf_gapped_gather_prefill_enabled():
         return False
-    if not _gguf_aotriton_head_major_kv_enabled(str(backend)):
+    # A contiguous cache can opt out of head-major layout as an optimization.
+    # A gapped cache needs the gather to run the same attention route at all.
+    if (
+        _env_value(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV) is not None
+        and not _env_flag(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV, False)
+    ):
+        return False
+    if resolve(
+        backend=str(backend),
+        layer="paged_kv_copy",
+        quant="bf16",
+        variant="head_major_spans",
+        missing="none",
+    ) is None:
         return False
     context_tokens = int(context_tokens)
     kv_width = int(kv_width)
@@ -15336,7 +15349,17 @@ def _gguf_gapped_slot_head_major_scratch(
     ):
         return layer_scratch
     bucket = 4096
-    capacity = ((context_tokens + bucket - 1) // bucket) * bucket
+    capacity = min(
+        ((context_tokens + bucket - 1) // bucket) * bucket,
+        _env_int(
+            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
+            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT,
+        ),
+        _env_int(
+            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV,
+            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT,
+        ) // (2 * kv_width * DType.BF16.itemsize),
+    )
     cached = getattr(session, "_gapped_head_major_cache", None)
     if cached is not None and int(cached[0]) >= capacity:
         key_buffer, value_buffer = cached[1], cached[2]
@@ -20031,6 +20054,10 @@ class Qwen35GGUFResidentSession:
         if self._int8_prefill_retained_block_table is not None:
             free(self._int8_prefill_retained_block_table, runtime=runtime)
             self._int8_prefill_retained_block_table = None
+        self._release_gapped_prefill_buffers(runtime=runtime)
+
+    def _release_gapped_prefill_buffers(self, *, runtime: HipRuntime) -> None:
+        """Release BF16 gather owners independently of INT8 oracle lifetime."""
         if self._gapped_slot_block_table_cache is not None:
             free(self._gapped_slot_block_table_cache[1], runtime=runtime)
             self._gapped_slot_block_table_cache = None
@@ -31227,6 +31254,7 @@ class Qwen35GGUFResidentSession:
 
         if getattr(self, "_resident_batch_owner", None) is None:
             raise RuntimeError("resident slot-view cleanup requires a batch owner")
+        self._release_gapped_prefill_buffers(runtime=runtime)
         for buffer in (
             self._verify_lm_out_values,
             self._verify_lm_out_indices_i32,
@@ -31302,6 +31330,7 @@ class Qwen35GGUFResidentSession:
             runtime.device_synchronize()
             self._release_prefill_aotriton_bridge()
         self._release_int8_prefill_oracle_buffers()
+        self._release_gapped_prefill_buffers(runtime=runtime)
         if self._q6_f16_rocblas is not None:
             runtime.device_synchronize()
             self._q6_f16_rocblas.close()

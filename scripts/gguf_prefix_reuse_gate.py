@@ -388,10 +388,11 @@ _PRODUCTION_GATE_TERMS = (
 #: Comparisons kept in the payload for diagnosis, with the route that differs.
 _DIAGNOSTIC_COMPARISONS = {
     "semantic_boundary_exact": "one_shot_prefix_prefill",
-    "initial_state_exact": "serial_prefix_then_c1_steps",
-    "final_state_exact": "serial_prefix_then_c1_steps",
-    "output_exact": "serial_prefix_then_c1_steps",
-    "trajectory_exact": "serial_prefix_then_c1_steps",
+    "initial_state_exact": "private_prefix_then_batched_suffix",
+    "final_state_exact": "private_prefix_then_batched_suffix",
+    "output_exact": "private_prefix_then_batched_suffix",
+    "trajectory_exact": "private_prefix_then_batched_suffix",
+    "serial_suffix_diagnostic": "private_prefix_then_serial_suffix",
     "scheduler_output_exact": "forced_candidate_token_versus_free_oracle_sample",
     "one_shot_bulk_diagnostic": "one_shot_full_prompt_prefill",
 }
@@ -467,6 +468,57 @@ def _prefill_work(request_id: int, tokens: tuple[int, ...]) -> Any:
         row_to_request=(int(request_id),),
         token_rows=(tokens,),
     )
+
+
+def _prefill_reference_suffix(
+    session: Any,
+    suffix: tuple[int, ...],
+    *,
+    full_prompt_length: int,
+    return_logits: bool,
+    serial: bool = False,
+) -> Any:
+    """Recompute privately with the served chunk schedule, or the serial diagnostic."""
+    from hipengine.generation.qwen35_gguf import _gguf_prefix_suffix_segments
+
+    if not suffix:
+        raise ValueError("reference suffix must be non-empty")
+    result = None
+    if serial or len(suffix) == 1:
+        for index, token in enumerate(suffix):
+            result = session.step(
+                int(token), return_logits=return_logits and index == len(suffix) - 1,
+            )
+        return result
+    segments = _gguf_prefix_suffix_segments(session.position, full_prompt_length, suffix)
+    with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
+        for index, segment in enumerate(segments):
+            results = session.prefill_batch_native(
+                [segment], sessions=[session], full_prompt_lengths=[full_prompt_length],
+                return_logits=return_logits and index == len(segments) - 1,
+                return_hidden_seeds=False,
+            )
+            if len(results) != 1 or results[0] is None:
+                raise RuntimeError("private suffix prefill returned the wrong result count")
+            result = results[0]
+    return result
+
+
+def _profile_metrics(reference, candidate, *, category: str, lifecycle: str, teacher_token_ids=None):
+    from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
+
+    labels = np.argmax(reference, axis=-1) if teacher_token_ids is None else teacher_token_ids
+    if len(labels) != len(reference):
+        raise ValueError("teacher targets must align with logit rows")
+    rows = [
+        RowDescriptor(
+            scenario_id="prefix_reuse", scenario_step=index, request_id="continuation",
+            teacher_step=index, category=category, shape="prefix_suffix",
+            transition=lifecycle, teacher_token_id=int(labels[index]),
+        )
+        for index, row in enumerate(reference)
+    ]
+    return compare_profile_logits(reference, candidate, rows)
 
 
 def _suite_prompt_tokens(
@@ -724,22 +776,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 candidate_boundary,
                 scheduler_boundary,
             )
-            scheduler_results = oracle_session.prefill_batch_native(
-                [suffix],
-                sessions=[oracle_session],
-                full_prompt_lengths=[len(continued_prompt)],
+            scheduler_result = _prefill_reference_suffix(
+                oracle_session, suffix, full_prompt_length=len(continued_prompt),
                 return_logits=False,
-                return_hidden_seeds=False,
             )
-        if len(scheduler_results) != 1:
-            raise RuntimeError("GGUF private chunked oracle returned the wrong result count")
-        scheduler_token = int(scheduler_results[0].token_id)
+        scheduler_token = int(scheduler_result.token_id)
         scheduler_state = _capture_state(oracle_session)
         scheduler_state_mismatches = _compare_states(candidate_initial, scheduler_state)
 
-        # The retained GGUF correctness contract is independent c1 state/KV.
-        # Rebuild the active source privately, then consume the unmatched
-        # suffix one token at a time on the matched context.
+        # Recompute the full prefix privately, then consume the suffix through
+        # the served batched schedule. Token-serial suffix replay is a separate
+        # arithmetic route, measured below without labeling its drift cache error.
         oracle_session.reset()
         if args.reference_prefill_mode == "packed":
             # Build the reference prefix through the same route family the
@@ -769,15 +816,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             candidate_boundary,
             semantic_boundary,
         )
-        semantic_result = semantic_prefix_result
-        for suffix_index, suffix_token in enumerate(suffix):
-            semantic_result = oracle_session.step(
-                int(suffix_token),
-                return_logits=bool(
-                    sampler_mode == "processed_argmax"
-                    and suffix_index == len(suffix) - 1
-                ),
-            )
+        semantic_result = _prefill_reference_suffix(
+            oracle_session, suffix, full_prompt_length=len(continued_prompt),
+            return_logits=sampler_mode == "processed_argmax",
+        )
         if sampler_mode == "processed_argmax":
             from hipengine.generation.qwen35_gguf import (
                 _gguf_row_sampling_state,
@@ -879,6 +921,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             reference_logits_stack,
             candidate_logits_stack,
         )
+        profile_metrics = _profile_metrics(
+            reference_logits_stack, candidate_logits_stack,
+            category=args.prompt_category or "repeated_tokens", lifecycle=source_lifecycle,
+            teacher_token_ids=reference_predicted[1:],
+        )
         # Per-step diagnostics: an aggregate mean cannot say whether a large KL
         # comes from a broad distributional difference or from a single
         # teacher-forced step where the two routes chose different tokens and
@@ -896,6 +943,45 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         candidate_final = _capture_state(continuation_session)
         reference_final = _capture_state(oracle_session)
         final_state_mismatches = _compare_states(candidate_final, reference_final)
+
+        # Keep the old serial-suffix comparison on exactly the same teacher
+        # contexts, including its numerical failure when present. Comparing the
+        # private recomputation too separates route drift from cache reuse.
+        oracle_session.reset()
+        if args.reference_prefill_mode == "packed":
+            oracle_session.prefill_batch_native(
+                [prefix], sessions=[oracle_session],
+                full_prompt_lengths=[len(continued_prompt)],
+                return_logits=False, return_hidden_seeds=False,
+            )
+        else:
+            oracle_session.prefill(
+                prefix, return_logits=False, bulk_attention_mode=args.reference_prefill_mode,
+            )
+        _prefill_reference_suffix(
+            oracle_session, suffix, full_prompt_length=len(continued_prompt),
+            return_logits=False, serial=True,
+        )
+        serial_initial_mismatches = _compare_states(candidate_initial, _capture_state(oracle_session))
+        serial_logits = np.stack([
+            np.asarray(oracle_session.step(token, return_logits=True).logits, dtype=np.float32).copy()
+            for token in forced_tokens
+        ]).reshape(reference_logits_stack.shape)
+        serial_diagnostic = {
+            "gating": False,
+            "route": "private_packed_prefix_then_serial_suffix",
+            "initial_state_mismatches": _summarize_mismatches(serial_initial_mismatches),
+            "candidate_comparison": _profile_metrics(
+                serial_logits, candidate_logits_stack,
+                category=args.prompt_category or "repeated_tokens", lifecycle=source_lifecycle,
+                teacher_token_ids=reference_predicted[1:],
+            ),
+            "private_recomputation_comparison": _profile_metrics(
+                serial_logits, reference_logits_stack,
+                category=args.prompt_category or "repeated_tokens", lifecycle=source_lifecycle,
+                teacher_token_ids=reference_predicted[1:],
+            ),
+        }
 
         observability = runner.observability_snapshot()
         pool_before_final_release = pool.stats.to_json_dict()
@@ -982,7 +1068,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "lifecycle_exact": lifecycle_exact,
                 "production_metadata_exact": production_metadata_exact,
                 "sampler_route_exact": sampler_route_exact,
-                "metrics_passed": metrics.passed,
+                "metrics_passed": profile_metrics["hard_gates_passed"],
             }
         )
         payload = {
@@ -1049,7 +1135,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "metadata_exact": production_metadata_exact,
             },
             "prefill_oracle": {
-                "route": "private_active_source_then_c1_teacher_forced_suffix",
+                "route": "private_prefix_then_batched_suffix",
                 "gating_route": "scheduler_chunk_diagnostic",
                 "gating_terms": list(_PRODUCTION_GATE_TERMS),
                 "diagnostic_comparisons": dict(_DIAGNOSTIC_COMPARISONS),
@@ -1103,6 +1189,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     ),
                     "gating": True,
                 },
+                "serial_suffix_diagnostic": serial_diagnostic,
             },
             "teacher_forced": {
                 "forced_token_ids": forced_tokens,
@@ -1117,7 +1204,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "top1_per_step": [bool(value) for value in top1_per_step],
                 "margin_diagnosis": margins,
                 "top1_agreement": metrics.top1_agreement,
-                "gate_passed": metrics.passed,
+                "gate_passed": profile_metrics["hard_gates_passed"],
+                "production_profile": profile_metrics,
                 "final_state_exact": final_state_exact,
                 "final_state_mismatches": final_state_mismatches,
             },
@@ -1154,8 +1242,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "observability": observability,
             "notes": [
                 "Every Conv/GDN byte and logical block-table-ordered live BF16 K/V byte is compared.",
-                "The gating oracle independently rebuilds the active source and consumes the suffix through exact c1 steps.",
-                "One-shot bulk and private scheduler-chunk output/state remain non-gating row-shape diagnostics.",
+                "The gating oracle independently rebuilds the prefix and consumes the suffix through the served batched schedule.",
+                "Private scheduler state and calibrated mean/tail/max KL bind; one-shot and serial-suffix comparisons remain visible diagnostics.",
                 (
                     "The source session is reset before continuation admission; cache-owned state is mandatory."
                     if source_lifecycle == "completed"

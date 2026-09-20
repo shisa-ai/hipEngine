@@ -1,0 +1,1490 @@
+{
+  "schema": 1,
+  "kind": "prefix_reuse_bf16_layout_repair",
+  "performance_claim": false,
+  "passed": true,
+  "base_revision": "366d2b299df7bdcf414a5f37c5baaf520effc71e",
+  "hardware": {
+    "host_name": "epyc",
+    "machine_id": "13fc037d426b4f70918af4fc4a17e399",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "rocm_hip_version": "HIP version: 7.15.0-0000000",
+    "compiler_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n"
+  },
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "kv_storage": "bf16",
+  "teacher_rows": 2048,
+  "thresholds": {
+    "mean_kl_max": 0.001,
+    "p95_kl_max": 0.005,
+    "p99_kl_max": 0.02,
+    "max_kl_max": 0.05,
+    "top1_min": 0.99,
+    "per_scope_top1_min": 0.97,
+    "review_kl": 0.02
+  },
+  "scope": "Cache-hit fidelity against private same-schedule recomputation, not cross-route arithmetic promotion.",
+  "root_causes": [
+    "Gapped BF16 prefix-hit suffix fell to native attention because demand gather inherited an optional contiguous-layout optimization default.",
+    "The numerical oracle rebuilt its suffix token-serially, comparing different arithmetic even when cache hit and private batched recomputation were exact.",
+    "BF16 demand gather buffers were not released by INT8-only teardown or lightweight slot-view close."
+  ],
+  "protocol": {
+    "driver": "/tmp/prefix-packet.py",
+    "environment_driver": "/tmp/run-prefix-debug.py",
+    "driver_sha256": "f57338a2766a9f25623515b8f17b68a00ab617846d3df1d0bd717a4f1c39e3b5",
+    "environment_driver_sha256": "ca52ec4207b7cca2e99ec20cb213ce26546926fde52779963358fff698d00574",
+    "model_reused_between_scopes": true,
+    "independent_private_kv_each_scope": true,
+    "discard_registered_requests_between_scopes": true,
+    "public_generation": [
+      {
+        "suffix_tokens": 1,
+        "hit_ids": [
+          1379,
+          3110,
+          2528,
+          13,
+          28763,
+          6813,
+          13,
+          3301
+        ],
+        "miss_ids": [
+          1379,
+          3110,
+          2528,
+          13,
+          28763,
+          6813,
+          13,
+          3301
+        ],
+        "hit_diagnostics": {
+          "prefix_cache": {
+            "mode": "radix",
+            "block_size_tokens": 256,
+            "eligible": true,
+            "lookup": true,
+            "hit": true,
+            "source": "completed_snapshot",
+            "matched_tokens": 512,
+            "reused_tokens": 512,
+            "avoided_prefill_tokens": 512,
+            "executed_prefill_tokens": 1,
+            "reused_pages": 2,
+            "reused_page_bytes": 33554432,
+            "state_clone_bytes": 158859264,
+            "snapshot_hit": true,
+            "admission_fallback": false,
+            "fallback_reason": null,
+            "cache_resident_entries": 1,
+            "cache_resident_pages": 2,
+            "cache_resident_bytes": 192413696
+          },
+          "kv_layout": {
+            "pool_contract": "global_generation2",
+            "pool_storage_layout": "global-arbitrary-pages:g3",
+            "storage_dtype": "bf16",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "kv_attention_source": "bf16",
+            "request_pages": 3,
+            "request_capacity_tokens": 768,
+            "request_block_ids": [
+              24,
+              25,
+              26
+            ],
+            "one_backing_chunk": true,
+            "contiguous_in_backing": true,
+            "persistent_int8_payload_bytes": 0,
+            "persistent_bf16_payload_bytes": 50331648,
+            "persistent_scale_bytes": 0,
+            "persistent_bf16_mirror_bytes": 0,
+            "persistent_total_bytes": 50331648
+          }
+        },
+        "miss_diagnostics": {
+          "prefix_cache": {
+            "mode": "radix",
+            "block_size_tokens": 256,
+            "eligible": true,
+            "lookup": true,
+            "hit": false,
+            "source": null,
+            "matched_tokens": 0,
+            "reused_tokens": 0,
+            "avoided_prefill_tokens": 0,
+            "executed_prefill_tokens": 513,
+            "reused_pages": 0,
+            "reused_page_bytes": 0,
+            "state_clone_bytes": 0,
+            "snapshot_hit": false,
+            "admission_fallback": false,
+            "fallback_reason": "miss",
+            "cache_resident_entries": 1,
+            "cache_resident_pages": 0,
+            "cache_resident_bytes": 158859264
+          },
+          "kv_layout": {
+            "pool_contract": "global_generation2",
+            "pool_storage_layout": "global-arbitrary-pages:g3",
+            "storage_dtype": "bf16",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "kv_attention_source": "bf16",
+            "request_pages": 3,
+            "request_capacity_tokens": 768,
+            "request_block_ids": [
+              24,
+              25,
+              26
+            ],
+            "one_backing_chunk": true,
+            "contiguous_in_backing": true,
+            "persistent_int8_payload_bytes": 0,
+            "persistent_bf16_payload_bytes": 50331648,
+            "persistent_scale_bytes": 0,
+            "persistent_bf16_mirror_bytes": 0,
+            "persistent_total_bytes": 50331648
+          }
+        }
+      },
+      {
+        "suffix_tokens": 17,
+        "hit_ids": [
+          248046
+        ],
+        "miss_ids": [
+          248046
+        ],
+        "hit_diagnostics": {
+          "prefix_cache": {
+            "mode": "radix",
+            "block_size_tokens": 256,
+            "eligible": true,
+            "lookup": true,
+            "hit": true,
+            "source": "completed_snapshot",
+            "matched_tokens": 512,
+            "reused_tokens": 512,
+            "avoided_prefill_tokens": 512,
+            "executed_prefill_tokens": 17,
+            "reused_pages": 2,
+            "reused_page_bytes": 33554432,
+            "state_clone_bytes": 158859264,
+            "snapshot_hit": true,
+            "admission_fallback": false,
+            "fallback_reason": null,
+            "cache_resident_entries": 1,
+            "cache_resident_pages": 2,
+            "cache_resident_bytes": 192413696
+          },
+          "kv_layout": {
+            "pool_contract": "global_generation2",
+            "pool_storage_layout": "global-arbitrary-pages:g3",
+            "storage_dtype": "bf16",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "kv_attention_source": "bf16",
+            "request_pages": 3,
+            "request_capacity_tokens": 768,
+            "request_block_ids": [
+              24,
+              25,
+              26
+            ],
+            "one_backing_chunk": true,
+            "contiguous_in_backing": true,
+            "persistent_int8_payload_bytes": 0,
+            "persistent_bf16_payload_bytes": 50331648,
+            "persistent_scale_bytes": 0,
+            "persistent_bf16_mirror_bytes": 0,
+            "persistent_total_bytes": 50331648
+          }
+        },
+        "miss_diagnostics": {
+          "prefix_cache": {
+            "mode": "radix",
+            "block_size_tokens": 256,
+            "eligible": true,
+            "lookup": true,
+            "hit": false,
+            "source": null,
+            "matched_tokens": 0,
+            "reused_tokens": 0,
+            "avoided_prefill_tokens": 0,
+            "executed_prefill_tokens": 529,
+            "reused_pages": 0,
+            "reused_page_bytes": 0,
+            "state_clone_bytes": 0,
+            "snapshot_hit": false,
+            "admission_fallback": false,
+            "fallback_reason": "miss",
+            "cache_resident_entries": 1,
+            "cache_resident_pages": 0,
+            "cache_resident_bytes": 158859264
+          },
+          "kv_layout": {
+            "pool_contract": "global_generation2",
+            "pool_storage_layout": "global-arbitrary-pages:g3",
+            "storage_dtype": "bf16",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "kv_attention_source": "bf16",
+            "request_pages": 3,
+            "request_capacity_tokens": 768,
+            "request_block_ids": [
+              24,
+              25,
+              26
+            ],
+            "one_backing_chunk": true,
+            "contiguous_in_backing": true,
+            "persistent_int8_payload_bytes": 0,
+            "persistent_bf16_payload_bytes": 50331648,
+            "persistent_scale_bytes": 0,
+            "persistent_bf16_mirror_bytes": 0,
+            "persistent_total_bytes": 50331648
+          }
+        }
+      },
+      {
+        "suffix_tokens": 257,
+        "hit_ids": [
+          248046
+        ],
+        "miss_ids": [
+          248046
+        ],
+        "hit_diagnostics": {
+          "prefix_cache": {
+            "mode": "radix",
+            "block_size_tokens": 256,
+            "eligible": true,
+            "lookup": true,
+            "hit": true,
+            "source": "completed_snapshot",
+            "matched_tokens": 512,
+            "reused_tokens": 512,
+            "avoided_prefill_tokens": 512,
+            "executed_prefill_tokens": 257,
+            "reused_pages": 2,
+            "reused_page_bytes": 33554432,
+            "state_clone_bytes": 158859264,
+            "snapshot_hit": true,
+            "admission_fallback": false,
+            "fallback_reason": null,
+            "cache_resident_entries": 2,
+            "cache_resident_pages": 2,
+            "cache_resident_bytes": 351272960
+          },
+          "kv_layout": {
+            "pool_contract": "global_generation2",
+            "pool_storage_layout": "global-arbitrary-pages:g3",
+            "storage_dtype": "bf16",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "kv_attention_source": "bf16",
+            "request_pages": 4,
+            "request_capacity_tokens": 1024,
+            "request_block_ids": [
+              24,
+              25,
+              26,
+              27
+            ],
+            "one_backing_chunk": true,
+            "contiguous_in_backing": true,
+            "persistent_int8_payload_bytes": 0,
+            "persistent_bf16_payload_bytes": 67108864,
+            "persistent_scale_bytes": 0,
+            "persistent_bf16_mirror_bytes": 0,
+            "persistent_total_bytes": 67108864
+          }
+        },
+        "miss_diagnostics": {
+          "prefix_cache": {
+            "mode": "radix",
+            "block_size_tokens": 256,
+            "eligible": true,
+            "lookup": true,
+            "hit": false,
+            "source": null,
+            "matched_tokens": 0,
+            "reused_tokens": 0,
+            "avoided_prefill_tokens": 0,
+            "executed_prefill_tokens": 769,
+            "reused_pages": 0,
+            "reused_page_bytes": 0,
+            "state_clone_bytes": 0,
+            "snapshot_hit": false,
+            "admission_fallback": false,
+            "fallback_reason": "miss",
+            "cache_resident_entries": 1,
+            "cache_resident_pages": 0,
+            "cache_resident_bytes": 158859264
+          },
+          "kv_layout": {
+            "pool_contract": "global_generation2",
+            "pool_storage_layout": "global-arbitrary-pages:g3",
+            "storage_dtype": "bf16",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "kv_attention_source": "bf16",
+            "request_pages": 4,
+            "request_capacity_tokens": 1024,
+            "request_block_ids": [
+              24,
+              25,
+              26,
+              27
+            ],
+            "one_backing_chunk": true,
+            "contiguous_in_backing": true,
+            "persistent_int8_payload_bytes": 0,
+            "persistent_bf16_payload_bytes": 67108864,
+            "persistent_scale_bytes": 0,
+            "persistent_bf16_mirror_bytes": 0,
+            "persistent_total_bytes": 67108864
+          }
+        }
+      }
+    ],
+    "post_packet_repairs": "CPU RED/GREEN covers capped allocation rounding and common teacher labels. These do not change the packet's default allocation, KL, top-1, or state; label-derived diagnostic NLL is excluded here."
+  },
+  "rows": [
+    {
+      "scope": "category-code-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "code",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 248046,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.00022948782099772928,
+          "kl_p95": 0.0011477858384758947,
+          "kl_p99": 0.003173727913172079,
+          "kl_max": 0.004559770574593383,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 4.384756565093994
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.00022948782099772928,
+          "kl_p95": 0.0011477858384758947,
+          "kl_p99": 0.003173727913172079,
+          "kl_max": 0.004559770574593383,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 4.384756565093994
+        }
+      },
+      "raw_sha256": "62a6343da4447987d3c9ff50eac44e055cc9a009abe60e966000dabc9b7704b4",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category code --source-lifecycle active --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/category-code-active.json"
+    },
+    {
+      "scope": "category-code-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "code",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 248046,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.00022948782099772928,
+          "kl_p95": 0.0011477858384758947,
+          "kl_p99": 0.003173727913172079,
+          "kl_max": 0.004559770574593383,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 4.384756565093994
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.00022948782099772928,
+          "kl_p95": 0.0011477858384758947,
+          "kl_p99": 0.003173727913172079,
+          "kl_max": 0.004559770574593383,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 4.384756565093994
+        }
+      },
+      "raw_sha256": "eb6f462b746a2f68fbedc02adb582ba3c5b574f534dfe2d17f456ac3337c0c87",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category code --source-lifecycle completed --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/category-code-completed.json"
+    },
+    {
+      "scope": "category-general_en-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "general_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.00014650891852664944,
+          "kl_p95": 0.0006516095560768078,
+          "kl_p99": 0.0016779951623786993,
+          "kl_max": 0.004726591200687906,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 0.8818669319152832
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.00014650891852664944,
+          "kl_p95": 0.0006516095560768078,
+          "kl_p99": 0.0016779951623786993,
+          "kl_max": 0.004726591200687906,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 0.8818669319152832
+        }
+      },
+      "raw_sha256": "2c6f39daaeaf163fc65b2e09c3cf673a42812007ea94a897ffc16219eedbf3f6",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_en --source-lifecycle active --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/category-general_en-active.json"
+    },
+    {
+      "scope": "category-general_en-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "general_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.00014650891852664944,
+          "kl_p95": 0.0006516095560768078,
+          "kl_p99": 0.0016779951623786993,
+          "kl_max": 0.004726591200687906,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 0.8818669319152832
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.00014650891852664944,
+          "kl_p95": 0.0006516095560768078,
+          "kl_p99": 0.0016779951623786993,
+          "kl_max": 0.004726591200687906,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 0.8818669319152832
+        }
+      },
+      "raw_sha256": "e199235ebfa58852ea7638c2ccb4beec92507ff8f7e39a32f43b19a593d232c0",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_en --source-lifecycle completed --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/category-general_en-completed.json"
+    },
+    {
+      "scope": "category-general_ja-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "general_ja",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.00013717671033717127,
+          "kl_p95": 0.0006902492779446912,
+          "kl_p99": 0.0014725213410049323,
+          "kl_max": 0.0019024922047654567,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 0.6905653476715088
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.00013717671033717127,
+          "kl_p95": 0.0006902492779446912,
+          "kl_p99": 0.0014725213410049323,
+          "kl_max": 0.0019024922047654567,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 0.6905653476715088
+        }
+      },
+      "raw_sha256": "85149a80dd5740968bcebc24cbeb9c70ff319dbea25b396399574d53a4ee0bde",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_ja --source-lifecycle active --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/category-general_ja-active.json"
+    },
+    {
+      "scope": "category-general_ja-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "general_ja",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.00013717671033717127,
+          "kl_p95": 0.0006902492779446912,
+          "kl_p99": 0.0014725213410049323,
+          "kl_max": 0.0019024922047654567,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 0.6905653476715088
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.00013717671033717127,
+          "kl_p95": 0.0006902492779446912,
+          "kl_p99": 0.0014725213410049323,
+          "kl_max": 0.0019024922047654567,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 0.6905653476715088
+        }
+      },
+      "raw_sha256": "4deed605ac2ad7542612e8189774dc0063db542fc10e3efd7bd6a1a1e32f792b",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_ja --source-lifecycle completed --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/category-general_ja-completed.json"
+    },
+    {
+      "scope": "category-mixed_ja_en-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "mixed_ja_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 248046,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.00010512794861524,
+          "kl_p95": 0.0004956127739289632,
+          "kl_p99": 0.0016045025424968147,
+          "kl_max": 0.002269432381421351,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 1.8449177742004395
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.00010512794861524,
+          "kl_p95": 0.0004956127739289632,
+          "kl_p99": 0.0016045025424968147,
+          "kl_max": 0.002269432381421351,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 1.8449177742004395
+        }
+      },
+      "raw_sha256": "52227d5f24f3d7efff92776bfe4de0703faad1a0de3bafda0b9f10767759cfa5",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category mixed_ja_en --source-lifecycle active --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/category-mixed_ja_en-active.json"
+    },
+    {
+      "scope": "category-mixed_ja_en-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_category": "mixed_ja_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 248046,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.00010512794861524,
+          "kl_p95": 0.0004956127739289632,
+          "kl_p99": 0.0016045025424968147,
+          "kl_max": 0.002269432381421351,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 1.8449177742004395
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.00010512794861524,
+          "kl_p95": 0.0004956127739289632,
+          "kl_p99": 0.0016045025424968147,
+          "kl_max": 0.002269432381421351,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 1.8449177742004395
+        }
+      },
+      "raw_sha256": "c64b4f8b646d074838a3f3136e171ea9693d9742983d2d5fa5a9bb9dc45f3f4d",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category mixed_ja_en --source-lifecycle completed --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/category-mixed_ja_en-completed.json"
+    },
+    {
+      "scope": "heldout-code-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "code",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 709,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.00677763530265472,
+          "kl_p95": 0.001007962869600451,
+          "kl_p99": 0.12954855381719507,
+          "kl_max": 0.6765695444219354,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 10.21038568019867
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.00677763530265472,
+          "kl_p95": 0.001007962869600451,
+          "kl_p99": 0.12954855381719507,
+          "kl_max": 0.6765695444219354,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 10.21038568019867
+        }
+      },
+      "raw_sha256": "66f821b0ea343996042f6e02fdfaf6c1a917d0f1c2e3df4d686150f3ccc1e263",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category code --source-lifecycle active --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/heldout-code-active.json"
+    },
+    {
+      "scope": "heldout-code-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "code",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 709,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.00677763530265472,
+          "kl_p95": 0.001007962869600451,
+          "kl_p99": 0.12954855381719507,
+          "kl_max": 0.6765695444219354,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 10.21038568019867
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.00677763530265472,
+          "kl_p95": 0.001007962869600451,
+          "kl_p99": 0.12954855381719507,
+          "kl_max": 0.6765695444219354,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 10.21038568019867
+        }
+      },
+      "raw_sha256": "382bfb626ffafe4ffeaaaf4f26e1a18c181286e0f4c247fb0d489a65f554c653",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category code --source-lifecycle completed --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/heldout-code-completed.json"
+    },
+    {
+      "scope": "heldout-general_en-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "general_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 2998,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.00534152536725111,
+          "kl_p95": 0.00087949591295749,
+          "kl_p99": 0.024772306742676626,
+          "kl_max": 0.6291738623307748,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 5.789575278759003
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.00534152536725111,
+          "kl_p95": 0.00087949591295749,
+          "kl_p99": 0.024772306742676626,
+          "kl_max": 0.6291738623307748,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 5.789575278759003
+        }
+      },
+      "raw_sha256": "9db9714dd1ee3d55a2740d086ce3e194051af76c240cf2f62aef91fd1be9c20d",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category general_en --source-lifecycle active --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/heldout-general_en-active.json"
+    },
+    {
+      "scope": "heldout-general_en-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "general_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 2998,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 0.00534152536725111,
+          "kl_p95": 0.00087949591295749,
+          "kl_p99": 0.024772306742676626,
+          "kl_max": 0.6291738623307748,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 5.789575278759003
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 0.00534152536725111,
+          "kl_p95": 0.00087949591295749,
+          "kl_p99": 0.024772306742676626,
+          "kl_max": 0.6291738623307748,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 5.789575278759003
+        }
+      },
+      "raw_sha256": "bc24952f0aa38569a342f232f0d55dd2e8c361ebe85165173ab46d2fa28300da",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category general_en --source-lifecycle completed --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/heldout-general_en-completed.json"
+    },
+    {
+      "scope": "heldout-general_ja-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "general_ja",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 6.791776995349135e-05,
+          "kl_p95": 0.0003404765642222794,
+          "kl_p99": 0.0009753276349205676,
+          "kl_max": 0.0011147370101670456,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 0.9939332008361816
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 6.791776995349135e-05,
+          "kl_p95": 0.0003404765642222794,
+          "kl_p99": 0.0009753276349205676,
+          "kl_max": 0.0011147370101670456,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 0.9939332008361816
+        }
+      },
+      "raw_sha256": "3a69c21bcbc3dfe24ce9177722fa644a2e714d81d512fb3e9689e03beb585710",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category general_ja --source-lifecycle active --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/heldout-general_ja-active.json"
+    },
+    {
+      "scope": "heldout-general_ja-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "general_ja",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 6.791776995349135e-05,
+          "kl_p95": 0.0003404765642222794,
+          "kl_p99": 0.0009753276349205676,
+          "kl_max": 0.0011147370101670456,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 0.9939332008361816
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 6.791776995349135e-05,
+          "kl_p95": 0.0003404765642222794,
+          "kl_p99": 0.0009753276349205676,
+          "kl_max": 0.0011147370101670456,
+          "top1_agreement": 0.9921875,
+          "max_abs_logit_delta": 0.9939332008361816
+        }
+      },
+      "raw_sha256": "055e2ea9603ed2b02bf173fba230af08a8dd47a3aedffb8f3060b7093e5023c1",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category general_ja --source-lifecycle completed --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/heldout-general_ja-completed.json"
+    },
+    {
+      "scope": "heldout-mixed_ja_en-active",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "mixed_ja_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "active",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 6.417083137850856e-05,
+          "kl_p95": 0.00046272727919477886,
+          "kl_p99": 0.0008830016185375244,
+          "kl_max": 0.0009610160107748103,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 1.4051666259765625
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 6.417083137850856e-05,
+          "kl_p95": 0.00046272727919477886,
+          "kl_p99": 0.0008830016185375244,
+          "kl_max": 0.0009610160107748103,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 1.4051666259765625
+        }
+      },
+      "raw_sha256": "d46b5fe45fe6fd0ae567ce0c8b995814a56bd3a679953d93986c03cd94a297b6",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category mixed_ja_en --source-lifecycle active --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/heldout-mixed_ja_en-active.json"
+    },
+    {
+      "scope": "heldout-mixed_ja_en-completed",
+      "passed": true,
+      "workload": {
+        "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+        "prompt_category": "mixed_ja_en",
+        "prefix_token_id": 9707,
+        "prefix_tokens": 1024,
+        "suffix_token_id": 9708,
+        "suffix_tokens": 200,
+        "teacher_forced_steps": 128,
+        "max_sequence_length": 2048,
+        "sampling": "greedy_top1_then_reference_teacher_forced",
+        "kv_dtype": "bf16",
+        "source_lifecycle": "completed",
+        "processor_forced_token_ids": []
+      },
+      "numerical": {
+        "rows": 128,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "max_abs_logit_delta": 0.0
+      },
+      "scheduler_state": {
+        "predicted_token_id": 271,
+        "output_exact": true,
+        "boundary_exact": true,
+        "final_state_exact": true,
+        "boundary_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "final_state_mismatch_summary": {
+          "count": 0,
+          "component_counts": {},
+          "first": null
+        },
+        "gating": true
+      },
+      "clone_exact": true,
+      "source_immutable": true,
+      "lifecycle_exact": true,
+      "serial_suffix_diagnostic": {
+        "gating": false,
+        "candidate": {
+          "rows": 128,
+          "kl_mean": 6.417083137850856e-05,
+          "kl_p95": 0.00046272727919477886,
+          "kl_p99": 0.0008830016185375244,
+          "kl_max": 0.0009610160107748103,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 1.4051666259765625
+        },
+        "private_recomputation": {
+          "rows": 128,
+          "kl_mean": 6.417083137850856e-05,
+          "kl_p95": 0.00046272727919477886,
+          "kl_p99": 0.0008830016185375244,
+          "kl_max": 0.0009610160107748103,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 1.4051666259765625
+        }
+      },
+      "raw_sha256": "4cb37f1fa639fc5b68ba7a43c034213f0954d4496fc0f1eb15c635fa451af1f9",
+      "command": "scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category mixed_ja_en --source-lifecycle completed --teacher-forced-steps 128 --json /tmp/prefix-fixed-packet/heldout-mixed_ja_en-completed.json"
+    }
+  ]
+}
