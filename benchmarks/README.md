@@ -57,6 +57,13 @@ same-schedule recomputation. The serial-suffix arithmetic comparison is reported
 separately; this packet does not validate INT8 prefix reuse.
 [Correctness and diagnosis](results/2026-09-20-w7900-prefix-bf16-layout-repair.json).
 
+The separate no-mirror INT8/FP32 prefix reader repair passes the same 16
+category/lifecycle scopes on **epyc GPU1, Radeon RX 7900 XTX**, using
+Qwen3.8-27B `Q4_K_M`: 2,048 teacher-forced rows have zero KL and exact
+retained payload, scales, and state against private same-schedule recomputation.
+This is not a W7900 transfer or cross-schedule output-identity claim.
+[INT8 ownership evidence](results/2026-09-20-rx7900xtx-prefix-int8-ownership-repair.json).
+
 
 September 20 C1 refresh on **Framework Desktop / Radeon 8060S**, physical
 host `gfx1151`: Qwen3.6-35B-A3B `UD_Q4_K_M` measures 1,418.1 prefill and
