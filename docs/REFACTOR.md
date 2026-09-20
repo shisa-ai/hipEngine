@@ -1,6 +1,6 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Dense27B prefix oracle disagreement after prefix/MTP integration (2026-09-20)
+## Dense27B prefix oracle disagreement after prefix/MTP integration (2026-09-20) — RESOLVED
 
 The merge qualification at p1024+s200 on Qwen3.8-27B Q4_K_M / gfx1151
 compares active and completed prefix reuse against both private batched
@@ -21,6 +21,30 @@ production envelope and task gate. Preserve the batched HIT/MISS state check
 separately from that investigation. This ledger item does not justify
 prompt-conditioned routing or a blanket strict bit-equality requirement.
 Evidence: `benchmarks/results/2026-09-20-gfx1151-prefix-mtp-merge-qualification.json`.
+
+**Resolution.** The prescribed localization and envelope run are done, and the
+finding above describes the comparison rather than the candidate. The gate's
+reference is itself built by a prefix prefill, and the packed wave and the
+single-session path persist different final-state arithmetic, so a reference
+built through the single-session path made every numerical term a cross-route
+comparison. `--reference-prefill-mode` now defaults to `packed`
+(`prefill_batch_native`), sharing the candidate's and the served engine's route
+family; `native` and the plugin's certified bulk scheduler remain as
+diagnostics. That the identical Japanese probe reproduced exactly on untouched
+upstream is what a comparison artifact looks like, not a merge regression.
+
+On the same-route reference the gate passes all eight suites -- four natural
+categories and four heldout suites, 1,024 teacher-forced rows, 2 top-1 flips,
+0 state mismatches -- with the worst scope (`heldout-general_en`) at least 2.5x
+inside every binding term of the calibrated envelope. `general_ja` moves from
+`kl_mean` 0.6811212740489249 / `kl_max` 1.7583460667891433 / top-1 0.75 over 4
+teacher-forced rows to 0.0001940 / 0.0050300 / 1.00 over 128. The batched
+HIT/MISS state check was preserved separately as instructed.
+Evidence: `benchmarks/results/2026-09-20-gfx1151-prefix-gate-packed-reference-1024rows.json`;
+source: `worklog/entries/20260920T054514.573459Z-lhl-prefix-gate-packed-reference-1024rows-40a28f.md`.
+
+Remaining: this qualification is `gfx1151` only. The `gfx1100` half of the gate
+has not been run.
 
 ## The packed workspace lease still reserves one full session context per slot (found 2026-09-18)
 
