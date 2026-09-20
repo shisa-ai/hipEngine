@@ -443,7 +443,81 @@ def sample_topk_temperature_f32_rows_i32(
         runtime.check(int(err))
 
 
+def fast_sampler_scratch_bytes(rows: int, vocab_size: int) -> int:
+    """Caller-owned bytes: two uint64 key arrays, FP64 prefixes/tile totals."""
+    _check_rows_vocab(rows, vocab_size)
+    if rows > 65535:
+        raise ValueError("rows must fit HIP grid.y (<=65535)")
+    return rows * (24 * vocab_size + 8 * ((vocab_size + 255) // 256))
+
+
+def sample_sorted_f32_rows_i32(
+    logits_f32_ptr: int,
+    temperatures_f32_ptr: int,
+    top_ps_f32_ptr: int,
+    min_ps_f32_ptr: int,
+    row_seeds_u64_ptr: int,
+    out_indices_i32_ptr: int,
+    out_logprobs_f32_ptr: int | None,
+    out_candidate_counts_i32_ptr: int | None,
+    rows: int,
+    vocab_size: int,
+    *,
+    scratch_ptr: int,
+    scratch_bytes: int,
+    out_top_indices_i32_ptr: int | None = None,
+    out_top_logprobs_f32_ptr: int | None = None,
+    top_logprobs: int = 0,
+    out_indices_i64_ptr: int | None = None,
+    out_values_f32_ptr: int | None = None,
+    step_index: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Full-vocabulary parallel sort/scan sampler, without a top-k cap.
+
+    Ordering is descending finite logit, ascending token ID. Nucleus precedes
+    min-p. RNG retains the native seed/step/row ABI. Logits are centered and
+    temperature-scaled in FP64 before FP32 exponentiation; FP64 scans accumulate
+    those weights. This is T2 arithmetic, not strict-parent bit parity. The caller
+    owns scratch through stream completion; concurrent calls need disjoint
+    scratch and outputs. No allocation, synchronization, or host readback here.
+    Invalid rows emit index -1; callers needing all-or-nothing batch publication
+    must stage outputs and validate every row (as NativeSamplerWorkspace does).
+    The original registered top-p sampler remains the strict fallback.
+    """
+    required = fast_sampler_scratch_bytes(rows, vocab_size)
+    _check_top_logprobs(top_logprobs)
+    if not scratch_ptr or scratch_ptr % 8 or scratch_bytes < required:
+        raise ValueError("scratch must be 8-byte aligned and large enough")
+    if (out_top_indices_i32_ptr is None) != (out_top_logprobs_f32_ptr is None):
+        raise ValueError("top-logprob output buffers must be provided together")
+    if not 0 <= step_index < 2**64:
+        raise ValueError("step_index must fit uint64")
+    library = library or build_sampler(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = library.hipengine_sampler_sorted_f32_rows_i32
+    fn.argtypes = [ctypes.c_void_p] * 13 + [ctypes.c_uint64] + [ctypes.c_int64] * 3 + [ctypes.c_uint64, ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    pointers = (
+        logits_f32_ptr, temperatures_f32_ptr, top_ps_f32_ptr, min_ps_f32_ptr,
+        row_seeds_u64_ptr, out_indices_i32_ptr, out_logprobs_f32_ptr,
+        out_candidate_counts_i32_ptr, out_top_indices_i32_ptr,
+        out_top_logprobs_f32_ptr, out_indices_i64_ptr, out_values_f32_ptr, scratch_ptr,
+    )
+    err = fn(*(ctypes.c_void_p(ptr) for ptr in pointers), scratch_bytes,
+             rows, vocab_size, top_logprobs, step_index, ctypes.c_void_p(stream))
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def register_sampler_kernels(*, replace: bool = True) -> None:
+    register(
+        KernelKey("hip_gfx1100", "sampler", "f32", "sorted_rows_i32"),
+        sample_sorted_f32_rows_i32,
+        replace=replace,
+    )
     register(
         KernelKey("hip_gfx1100", "sampler", "f32", "processors_rows"),
         apply_processors_f32_rows,
