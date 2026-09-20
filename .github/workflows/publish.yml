@@ -54,7 +54,7 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: uv pip install -e '.[dev]' build twine
+        run: uv pip install -e '.[dev,surya]' build twine
 
       - name: Run release validation
         run: uv run --no-sync pytest --suite all -q

@@ -488,7 +488,7 @@ def test_qwen38_int8_gqa_splitk_batch_source_owns_rows_and_explicit_strides() ->
     )[1].split("\ntemplate <", 1)[0]
 
     assert "const int64_t row = blockIdx.z;" in producer
-    assert "block_tables + row * block_table_len" in producer
+    assert "block_tables + (shared_table ? 0 : row * block_table_len)" in producer
     assert "context_len_ptr[row]" in producer
     assert "row * query_row_stride" in producer
     assert "row * num_q_heads + q_base + h" in producer

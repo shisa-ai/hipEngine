@@ -50,9 +50,11 @@ Use semver-style bumps while the public API is still alpha:
       retained artifact no longer represents the stated model/hardware/software
       setup. Follow the expensive-validation approval rule before such a rerun.
 - [ ] Run release validation on Python 3.12:
-      `uv run --python 3.12 --extra dev python -m compileall -q hipengine scripts tests`.
+      `uv run --python 3.12 --extra dev --extra surya python -m compileall -q hipengine scripts tests`.
 - [ ] Run the full test suite once on Python 3.12:
-      `uv run --python 3.12 --extra dev python -m pytest -q`.
+      `uv run --python 3.12 --extra dev --extra surya python -m pytest --suite all -q`.
+      The Surya extra supplies Pillow for OCR preprocessing tests; the same
+      extras are installed by the tag-triggered publish workflow.
 - [ ] Run CLI smokes on Python 3.12:
       `uv run --python 3.12 --extra dev hipengine --help` and
       `uv run --python 3.12 --extra dev hipengine serve --help`.
