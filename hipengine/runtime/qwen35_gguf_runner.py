@@ -18300,6 +18300,24 @@ class Qwen35GGUFResidentSession:
             page_pointer=lambda backing, local_page: backing.page_pointer(local_page),
         )
 
+    def _on_device_kv_pool_pressure(self, required_pages: int) -> int | None:
+        """Release reclaimable KV pages before the device pool grows.
+
+        Retained prefix snapshots are owned by the generation runner that created
+        this session, not by the session that owns the device KV pool, so the
+        handler is published on the factory session when that pool is created.
+        Resolving it through ``_resident_batch_owner`` cannot work: on a session
+        that attribute names the *session* holding shared session-level resources
+        (bulk prefill scratch, packed workspace, packed verify state), and a
+        session has no prefix cache.
+        """
+
+        owner = getattr(self, "_kv_pool_pressure_owner", None)
+        evict = getattr(owner, "evict_prefix_cache_for_pressure", None)
+        if not callable(evict):
+            return None
+        return int(evict(int(required_pages)))
+
     def create_global_device_kv_pool(
         self,
         *,
@@ -18544,10 +18562,9 @@ class Qwen35GGUFResidentSession:
             # `_resident_batch_owner` is only ever assigned onto the per-slot
             # views a resident batch owner creates, so a session that owns its
             # own pool never has the attribute at all. Every other reader in
-            # this file already guards with getattr; these two callbacks did
-            # not, and raised AttributeError the first time the pool hit a grow
-            # or pressure event on such a session - which a prefix-cache run
-            # reaches as soon as retained snapshots pin enough pages.
+            # this file already guards with getattr; this callback did not, and
+            # raised AttributeError the first time the pool hit a grow event on
+            # such a session.
             before_grow=lambda: (
                 owner._invalidate_live_packed_decode_graphs()
                 if (owner := getattr(self, "_resident_batch_owner", None)) is not None
@@ -18555,13 +18572,7 @@ class Qwen35GGUFResidentSession:
             ),
             max_pages=max_pages,
             growth_chunk_pages=growth_chunk_pages,
-            on_pressure=(
-                lambda required: (
-                    owner.evict_prefix_cache_for_pressure(required)
-                    if (owner := getattr(self, "_resident_batch_owner", None)) is not None
-                    else None
-                )
-            ),
+            on_pressure=self._on_device_kv_pool_pressure,
         )
 
     def decode_graph_min_replay_steps(self) -> int | None:
