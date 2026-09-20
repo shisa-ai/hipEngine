@@ -22,8 +22,9 @@ of the storage contract. Shared engine ownership is mandatory, including
 single-request MTP in a wider resident server.
 
 Concurrency must never be misreported: a request-local verifier is not a
-physical multi-request verifier. An unsupported packed layout must select an
-implemented, observable fallback before mutation. It must not kill the engine.
+physical multi-request verifier. An explicit unsupported packed request must
+return a named capability error before mutation. Automatic selection may use
+an implemented AR route. Neither case may kill the engine.
 
 Compact DMS is an additional retention topology, not another name for INT8.
 It needs eviction/compaction transactions as well as quantized payload and
@@ -65,10 +66,9 @@ Existing direct-runtime results are not HTTP completion evidence.
 - [x] A C1 request under the default wider resident capacity actually speculates.
 - [x] Admission/retirement/refill and mixed AR/MTP neighbors preserve identity
   and select an honest physical route for each occupancy.
-- [x] Packed multi-request INT8 verification, or its explicit pre-mutation
-  fallback, preserves accepted-prefix state and does not invoke BF16 readers.
-  Current route is the named `packed_int8_mtp_not_implemented` AR fallback,
-  not a packed INT8 MTP implementation.
+- [x] Unsupported packed multi-request INT8 verification is rejected before
+  mutation, with `packed_int8_mtp_not_implemented` in a 501 capability error.
+  Explicit AR multi-choice requests still work. Packed INT8 MTP is not implemented.
 - [ ] Graph reuse after cancellation, pool growth, slot reassignment and scale
   reallocation does not retain stale pointers or another request's state.
 - [ ] Cancellation/deadline/failure/shutdown drain target and provider ownership
@@ -99,7 +99,8 @@ Existing direct-runtime results are not HTTP completion evidence.
   prompt/completion usage against their own true no-MTP INT8 baseline.
 - [x] SSE streams preserve ordering, usage, terminal events, and cancellation.
 - [ ] Stopping inside an accepted draft chain publishes no extra tokens.
-  Text-stop requests currently select AR; that fallback's stop outcome passes.
+  Explicit text-stop MTP currently returns a 501 sampling-capability error;
+  explicit AR text stopping passes.
 - [ ] Multiple choices, tool/structured responses, and unsupported sampling
   either work through existing contracts or select a named supported fallback.
 - [ ] GPU waits leave the HTTP event loop responsive.
