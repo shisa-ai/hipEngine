@@ -1,0 +1,27 @@
+{
+  "candidates": {
+    "campaign_docs_scanned": 61,
+    "candidates": 225
+  },
+  "flags": {
+    "names": 747,
+    "roots": "hipengine, scripts, tests, benchmarks"
+  },
+  "kernels": {
+    "sources": 255,
+    "registry_keys": 300,
+    "backends": [
+      "cpu_reference",
+      "cuda_sm120a",
+      "cuda_sm86",
+      "hip_gfx1100",
+      "hip_gfx1151"
+    ]
+  },
+  "ledger": {
+    "source": "docs/REFACTOR.md",
+    "headings": 396
+  },
+  "generated": "2026-09-20T16:49:53+00:00",
+  "commit": "405021711"
+}

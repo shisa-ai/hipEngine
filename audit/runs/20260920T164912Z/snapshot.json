@@ -1,0 +1,21 @@
+{
+  "stamp": "20260920T164912Z",
+  "rows": 1623,
+  "open": 1621,
+  "triaged": 2,
+  "stale": 0,
+  "by_kind": {
+    "candidate": 225,
+    "flag": 747,
+    "kernel": 255,
+    "ledger": 396
+  },
+  "tags": {
+    "NOT-DEBT": 1,
+    "GATE-CATCH22": 1
+  },
+  "dispositions": {
+    "keep": 1,
+    "qualify": 1
+  }
+}
