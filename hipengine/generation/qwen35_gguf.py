@@ -564,11 +564,10 @@ _GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV = "HIPENGINE_GGUF_MTP_SERVER_DEFER_VER
 _GGUF_MTP_SERVER_VERIFY_MODE_ENV = "HIPENGINE_GGUF_MTP_VERIFY_MODE"
 _GGUF_MTP_SERVER_CANDIDATE_BUDGET_ENV = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
 # Provider prefix checkpoints: one entry per captured prefix, each holding a
-# copy of that prefix's provider KV and recurrent state. Off by default, because
-# the capture costs a KV copy per prompt and buys nothing until the restore path
-# can read it back (task #21 unit 2).
+# copy of that prefix's provider KV and recurrent state. Bounded capture keeps
+# MTP usable after a target radix hit; zero remains the memory/bisection rollback.
 _GGUF_MTP2_PREFIX_CHECKPOINT_ENTRIES_ENV = "HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES"
-_GGUF_MTP2_PREFIX_CHECKPOINT_DEFAULT_ENTRIES = 0
+_GGUF_MTP2_PREFIX_CHECKPOINT_DEFAULT_ENTRIES = 4
 # The prefix cache's block granularity. The trie stores whole blocks and the
 # snapshot path already keys on this same multiple, so the capture boundary is
 # the last full block rather than the prompt's end.
@@ -936,13 +935,7 @@ def _gguf_mtp_server_candidate_budget() -> int:
 
 
 def _gguf_mtp2_prefix_checkpoint_entries() -> int:
-    """Return how many provider prefix checkpoints may be held (default 0).
-
-    Zero keeps the capture off, which is the shipping default until the restore
-    path is measured: a checkpoint is a second copy of the prefix's provider KV,
-    so holding one per completed prompt is a real cost for a benefit nothing can
-    collect yet.
-    """
+    """Bound provider prefix checkpoints; zero disables capture explicitly."""
 
     raw = os.environ.get(_GGUF_MTP2_PREFIX_CHECKPOINT_ENTRIES_ENV, "")
     if raw is None or str(raw).strip() == "":
@@ -7836,12 +7829,14 @@ class Qwen35GGUFResidentModelRunner:
         The provider's checkpoint describes a prefix the target's cache holds,
         so both halves of its key are the runner's: the block size that decides
         which boundary is worth taking, and the block ids a later lookup
-        validates against. Capture stays off at zero entries, because a
-        checkpoint costs a KV copy per prompt and buys nothing until the
-        restore path can read it.
+        validates against. With target prefix caching off there is nothing to
+        restore, so provider checkpoints are disabled as well.
         """
 
-        capacity = _gguf_mtp2_prefix_checkpoint_entries()
+        capacity = (
+            _gguf_mtp2_prefix_checkpoint_entries()
+            if getattr(self, "_prefix_cache_mode", "off") != "off" else 0
+        )
         adapter.prefix_checkpoint_capacity = capacity
         adapter.prefix_checkpoint_block_size = int(_GGUF_PREFIX_CACHE_BLOCK_TOKENS)
         adapter.prefix_checkpoint_key = (

@@ -194,7 +194,7 @@ qwen35moe fast-path safety gate.
 | `HIPENGINE_DEBUG` | `false` | `--debug` | Logs full HTTP request/response payloads and extra server diagnostics. |
 | `HIPENGINE_SERVER_DEFAULT_AR_READY_COHORT` | unset (on) | none | When unset, the AR batcher groups ready rows into its default cohort; `0` disables the default-cohort grouping for tests/diagnostics. |
 | `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` | unset | none | Resolves the MTP2 context window used by the dense speculative route; unset takes the model's retained window. Benchmark harnesses export it through `scripts/bench_env_preflight.py` to catch wrappers that silently drop it. |
-| `HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES` | `0` | none | Opt-in capture of that many prefix-checkpoint entries (provider KV plus recurrent state per prefix) for the prefix-restore path; off by default because capture costs a KV copy per prompt until the restore path consumes it. |
+| `HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES` | `4` | none | Bounded provider KV/state checkpoints for MTP restoration after a target radix-cache hit. Capture is disabled when target prefix caching is off. Set `0` for the memory/bisection rollback; prefix hits without a provider checkpoint cannot restore MTP provider state. |
 | `HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS` | `4` | none | Server cap on concurrently active MTP2 (dense speculative) requests. |
 
 ## Vision (multimodal server input) variables

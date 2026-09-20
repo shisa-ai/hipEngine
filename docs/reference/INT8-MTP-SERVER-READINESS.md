@@ -78,8 +78,10 @@ Existing direct-runtime results are not HTTP completion evidence.
 
 - [ ] Prefix reuse copies/shares every INT8 payload and scale plane; append COW
   preserves the cached source.
-- [ ] Draft-provider priming/restoration follows prefix reuse, or reports a
+- [x] Draft-provider priming/restoration follows prefix reuse, or reports a
   specific supported fallback without corrupting provider position.
+  Radix caching now retains four provider checkpoints by default; the live
+  W7900 gate verifies 512-token hits and actual MTP after restoration.
 - [ ] Prefix hit/miss, eviction under pressure, and reuse after cancellation are
   tested with MTP enabled and disabled.
 - [ ] Admission budgets include target KV/scales, draft KV, verifier scratch,
@@ -158,10 +160,11 @@ as such; no MTP screening override is required. This is successful HTTP
 execution evidence, not reversal of the approximate-KV quality decision.
 The independent W7900 run on its supported exact Q4_K_M artifact also passes
 the full 108-request matrix and lifecycle gate without diagnostic overrides.
-Nine primitive GPU cases pass there. Prefix-on validation and DMS work remain
-open. Longer gfx1151 probes execute MTP at 333/777/1031/1409 prompt tokens, but
-4097 currently loses provider priming in resumable INT8 prefill; its AR fallback
-matches output but does not close the long-prompt requirement.
+Nine primitive GPU cases pass there. Prefix-on restoration passes all four
+categories with actual 512-token cache hits, compact INT8 and AR-matching MTP.
+Pressure/eviction and DMS work remain open. The resumable-prefill repair is
+integrated: public gfx1151 requests at2053/4097/6149 tokens now execute MTP and
+match AR; mid-prefill deadline/reuse also passes.
 
 Commands against an already running INT8 server:
 
@@ -172,6 +175,9 @@ Commands against an already running INT8 server:
 .venv/bin/python scripts/int8_mtp_server_lifecycle_gate.py \
   --base-url http://127.0.0.1:8098 --model int8-mtp \
   --json /tmp/int8-mtp-http-lifecycle.json
+.venv/bin/python scripts/int8_mtp_prefix_gate.py \
+  --base-url http://127.0.0.1:8098 --model int8-mtp \
+  --json /tmp/int8-mtp-prefix.json
 ```
 
 For a server deliberately using an existing approximate-KV diagnostic
