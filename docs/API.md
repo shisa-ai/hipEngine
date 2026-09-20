@@ -148,12 +148,15 @@ context, horizon, or memory fit selects K0 before backend mutation with a stable
 reason. Other scopes are selected from their own model-plugin policies.
 
 Qwen3.8-27B Q4_K_M on gfx1151 additionally enables automatic sampled MTP for
-one active request in a capacity-four server with BF16 KV and draft depth three.
+one through four active requests in a capacity-four server with BF16 KV and
+draft depth three.
 Leave native GPU sampling enabled (the default). Temperature, top-p and min-p
 use the same native sampler as ordinary decoding inside the target graph; only
 committed outputs advance the request's sampler counter. Bounded top-k and
 history-dependent processors use eager native selection. This sampled policy
-does not enable sampled physical c2 groups or change greedy MTP policy.
+uses the packed target verifier for concurrent groups and does not change
+greedy MTP policy. Each request keeps its own seed, token counter, and history
+through admission, retirement, and cancellation.
 Logprob responses, explicit token stops, forced tokens and dynamic constraints
 retain their ordinary-decoding fallback. `"speculative_mtp": false` always
 disables MTP for a request.

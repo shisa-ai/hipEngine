@@ -90,13 +90,20 @@ def test_nextn_checkpoint_restores_linear_state_and_cursors(monkeypatch) -> None
 
 
 def test_nextn_checkpoint_uses_batch_session_logical_cursor(monkeypatch) -> None:
-    executor, _slot, _allocated, _freed = _executor(monkeypatch)
+    executor, slot, _allocated, _freed = _executor(monkeypatch)
     executor._batch_sessions = (SimpleNamespace(position=18, _position=18),)
 
     checkpoint = executor.capture_request_checkpoint(7)
 
-    assert checkpoint.position == 18
-    assert checkpoint.context_length == 19
+    assert checkpoint.position == 17
+    assert checkpoint.context_length == 18
+    slot.position_host[0] = 99
+    slot.context_host[0] = 100
+    executor._batch_sessions[0]._position = 100
+    executor.restore_request_checkpoint(checkpoint)
+    assert executor._batch_sessions[0]._position == 18
+    assert slot.position_host[0] == 17
+    assert slot.context_host[0] == 18
 
 
 def test_nextn_root_snapshot_captures_and_restores_slot_state(monkeypatch) -> None:

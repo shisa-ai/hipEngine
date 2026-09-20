@@ -1743,13 +1743,10 @@ class Qwen35GGUFBringupGenerator:
             mtp_widths = [width for width in (2, 4) if width <= mtp_width_cap]
             if mtp_width_cap > 1 and mtp_width_cap not in mtp_widths:
                 mtp_widths.append(mtp_width_cap)
-            assets = self._load_mtp_serving_assets()
             for width in sorted(set(mtp_widths)):
                 for target_len in warm_prompt_lengths:
                     sessions: list[Qwen35GGUFResidentSession] = []
                     session_keys: list[_GGUFSessionPoolKey | None] = []
-                    drafts: list[Any] = []
-                    draft_keys: list[int | None] = []
                     unsupported = False
                     try:
                         for _slot in range(width):
@@ -1761,13 +1758,6 @@ class Qwen35GGUFBringupGenerator:
                             )
                             sessions.append(session)
                             session_keys.append(session_key)
-                            draft, draft_key, _draft_reused = self._acquire_mtp_draft_runner(
-                                assets,
-                                runtime=session.runtime,
-                                pool_enabled=True,
-                            )
-                            drafts.append(draft)
-                            draft_keys.append(draft_key)
                         with _temporary_env(_LLAMA_COMPAT_MTP_ENV):
                             chunk_start_index = 0
                             while chunk_start_index < width:
@@ -1828,18 +1818,11 @@ class Qwen35GGUFBringupGenerator:
                         result["packed_mtp_prefill_reason"] = f"packed_prefill_unsupported_width_{width}"
                         unsupported = True
                     except Exception:
-                        for draft in drafts:
-                            self._release_mtp_draft_runner(None, draft)
-                        drafts = []
                         for session in sessions:
                             session.close()
                         sessions = []
                         raise
                     finally:
-                        while drafts:
-                            draft = drafts.pop()
-                            draft_key = draft_keys.pop()
-                            self._release_mtp_draft_runner(draft_key, draft)
                         while sessions:
                             session = sessions.pop()
                             session_key = session_keys.pop()
@@ -8198,6 +8181,7 @@ class Qwen35GGUFResidentModelRunner:
         ):
             if (
                 bool(require_token_match)
+                and not bool(getattr(row, "native_sampled", False))
                 and int(result.token_id) != int(row.slot.prev_token)
             ):
                 raise RuntimeError(

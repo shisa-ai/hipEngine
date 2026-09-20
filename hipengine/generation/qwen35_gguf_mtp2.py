@@ -400,6 +400,10 @@ def _commit_eager_cycle_row(
     if not tokens:
         raise RuntimeError("eager MTP2 cycle commit requires visible tokens")
     committed_position = len(row.slot.generated_ids)
+    sampling_state = getattr(row, "sampling_state", None)
+    if sampling_state is not None:
+        for token in tokens:
+            sampling_state.observe(token)
     row.slot.generated_ids.extend(tokens)
     row.slot.prev_token = int(tokens[-1])
     row.slot.seq_position = int(target_position)
@@ -2341,9 +2345,11 @@ class Qwen35GGUFMTP2Adapter:
         budget = int(candidate_budget)
         graph_name = f"_native_spec_b{budget}_target_graph_n2_sampled"
         if getattr(target, graph_name, None) is None:
+            request_state = self._states.get(int(request_id))
+            warmup_error = getattr(request_state, "device_chain_prepare_error", None)
             _decline(
-                f"sampled graph {graph_name} not captured"
-                f" (warmup error: {getattr(state, 'device_chain_prepare_error', None)})"
+                f"eager native sampler for uncaptured depth {budget}"
+                + (f" (warmup error: {warmup_error})" if warmup_error else "")
             )
             return None
         return _DeviceSampledAcceptPlan(
@@ -4894,6 +4900,101 @@ class Qwen35GGUFMTP2Adapter:
         )
         return replace(summary, transaction_id=int(transaction_id)), buffers
 
+    def _packed_native_sampler(self, owner: Any, count: int):
+        from hipengine.runtime.native_sampler import NativeSamplerChainWorkspace
+
+        cache = getattr(self, "_packed_sampler_workspaces", None)
+        if cache is None:
+            cache = self._packed_sampler_workspaces = {}
+        key = (id(owner), int(count))
+        if key not in cache:
+            base = owner._native_sampler()
+            cache[key] = NativeSamplerChainWorkspace(
+                runtime=owner.runtime, vocab_size=int(owner.runner.vocab_size),
+                rows=count, sampler_library=base.sampler_library,
+            )
+        return cache[key]
+
+    def _sample_packed_target_rows(self, owner, results, rows, *, transaction_id):
+        """Replace packed target IDs with request-owned draws before any commit."""
+        from hipengine.runtime.native_sampler import _needs_processors
+        from hipengine.generation.mtp_sampled_accept import row_prefix_states
+        from hipengine.speculative.interfaces import TargetVerifyBatch
+
+        if len(results) != len(rows) or any(
+            result.request_id != row.request_id
+            or result.transaction_id != transaction_id
+            for result, row in zip(results, rows, strict=True)
+        ):
+            raise ValueError("packed sampling request/transaction identities differ")
+        vocab = int(owner.runner.vocab_size)
+        logits = owner._verify_logits_buf
+        for result, row in zip(results, rows, strict=True):
+            if not getattr(row, "native_sampled", getattr(row, "native_sampler", False)):
+                continue
+            if row.sampling_state is None or row.sampling_request is None:
+                raise ValueError("sampled packed row has no state or parameters")
+            if (
+                logits is None or result.row_start < 0 or result.rows <= 0
+                or (result.row_start + result.rows) * vocab * 4 > logits.nbytes
+            ):
+                raise ValueError("packed sampler logits span exceeds its owner")
+        for result, row in zip(results, rows, strict=True):
+            if not getattr(row, "native_sampled", getattr(row, "native_sampler", False)):
+                continue
+            state, params = row.sampling_state, row.sampling_request
+            ptr = logits.ptr + result.row_start * vocab * 4
+            if (
+                row.native_sampler and int(params.top_k) == 0
+                and not _needs_processors(params)
+                and getattr(owner, "native_sampler_algorithm", "sorted") == "sorted"
+            ):
+                sampler = self._packed_native_sampler(owner, result.rows)
+                sampler.stage(_DeviceSampledAcceptPlan(
+                    params=params, seed=int(state.seed), step_index=int(state.step_index),
+                    rows=result.rows,
+                ))
+                sampler.enqueue(ptr, result.target_top1.ptr)
+                row.full_vocab_logits_d2h = False
+                row.logits_d2h_bytes = 0
+                continue
+            # History processors need each hypothetical drafted prefix, not the
+            # neighbor's history. Only bounded candidate IDs leave the device.
+            tokens = np.empty(result.rows, dtype=np.int64)
+            copy_device_to_host(host_array_ptr(tokens), DeviceBuffer(
+                result.input_token_ids.ptr, tokens.nbytes), runtime=owner.runtime)
+            local = TargetVerifyBatch(
+                request_ids=(row.request_id,), tokens=tuple(int(t) for t in tokens),
+                positions=tuple(range(result.start_position, result.start_position + result.rows)),
+                row_to_request=(row.request_id,) * result.rows,
+                parent_rows=(-1, *range(result.rows - 1)), root_rows=(0,),
+                candidate_rows=tuple(range(1, result.rows)),
+                draft_depths=tuple(range(result.rows)), active_mask=(True,) * result.rows,
+            )
+            prefixes = row_prefix_states(local, {row.request_id: state})
+            selected = []
+            if row.native_sampler:
+                workspace = owner._native_sampler()
+                for index, prefix in enumerate(prefixes):
+                    selected.append(workspace.sample(ptr + index * vocab * 4, params, prefix).token_id)
+                row.full_vocab_logits_d2h = False
+                row.logits_d2h_bytes = 0
+            else:
+                from hipengine.generation.sampling import select_token
+
+                host_logits = np.empty((result.rows, vocab), dtype=np.float32)
+                copy_device_to_host(host_array_ptr(host_logits), DeviceBuffer(
+                    ptr, host_logits.nbytes), runtime=owner.runtime)
+                for index, prefix in enumerate(prefixes):
+                    for _ in range(index):
+                        prefix.random_unit()
+                    selected.append(select_token(host_logits[index], params, prefix).token_id)
+                row.full_vocab_logits_d2h = True
+                row.logits_d2h_bytes = host_logits.nbytes
+            selected = np.asarray(selected, dtype=np.int32)
+            copy_host_to_device(DeviceBuffer(result.target_top1.ptr, selected.nbytes),
+                                host_array_ptr(selected), selected.nbytes, runtime=owner.runtime)
+
     def _execute_target_frontier_batch(
         self,
         plan: SpecRequestPlan,
@@ -5042,6 +5143,7 @@ class Qwen35GGUFMTP2Adapter:
                 "capture_linear_state_rows": True,
                 "defer_linear_state_commit": True,
                 "defer_state_scatter": True,
+                "require_logits": self._sampled_route_request(request_id),
             }
             if batch is not None:
                 root_row = root_row_by_id[request_id]
@@ -5126,6 +5228,12 @@ class Qwen35GGUFMTP2Adapter:
             row.mtp2_target_pass_end_ns.append(int(target_finished_ns))
         if len(results) != len(ids):
             raise RuntimeError("physical target verifier returned wrong result count")
+        if any(self._sampled_route_request(rid) for rid in ids):
+            if not device_result:
+                raise RuntimeError("sampled physical verification requires resident device results")
+            self._sample_packed_target_rows(
+                owner, results, rows, transaction_id=transaction_id,
+            )
         candidate_readback_seconds = 0.0
         bounded_readback_seconds = 0.0
         accept_upload_seconds = 0.0
@@ -5428,6 +5536,9 @@ class Qwen35GGUFMTP2Adapter:
                 plan_reason=plan.reasons[plan.request_ids.index(request_id)],
                 target_position=int(target.position),
             )
+            if self._sampled_route_request(request_id) and not row.native_sampler:
+                for _ in visible:
+                    row.sampling_state.random_unit()
             if callable(note_commit):
                 # This row's visible tokens and cursor are committed, so a
                 # later failure in this cycle cannot fall back to
@@ -6167,6 +6278,9 @@ class Qwen35GGUFMTP2Adapter:
         ):
             self._free_prompt_streaming_norm_buffer(request_id, target=None)
         self._close_cycle_workspace()
+        for workspace in getattr(self, "_packed_sampler_workspaces", {}).values():
+            workspace.close()
+        getattr(self, "_packed_sampler_workspaces", {}).clear()
         ngram = getattr(self, "_ngram", None)
         if ngram is not None:
             ngram.close()

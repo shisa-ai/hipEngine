@@ -450,8 +450,8 @@ def test_server_route_keeps_a_sampled_request_only_with_a_sampled_row() -> None:
     )
 
 
-def test_sampled_policy_names_the_singleton_native_route() -> None:
-    """Automatic sampled intent must not inherit the old greedy C2 policy."""
+def test_sampled_policy_names_the_concurrent_native_routes() -> None:
+    """Automatic sampled intent must not change the old greedy C2 policy."""
 
     from hipengine.models import qwen35
 
@@ -470,8 +470,9 @@ def test_sampled_policy_names_the_singleton_native_route() -> None:
     assert advertising == [
         (
             "_QWEN38_Q4KM_MTP_SERVING_EVIDENCE",
-            "qwen38-q4km-gfx1151-native-sampled-c1-k3",
+            f"qwen38-q4km-gfx1151-native-sampled-c{width}-k3",
         )
+        for width in (1, 2, 3, 4)
     ], advertising
 
 

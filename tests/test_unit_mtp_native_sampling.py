@@ -20,7 +20,7 @@ def test_native_sampled_row_is_admitted_to_mtp():
     assert adapter._sampled_route_request(7)
 
 
-def test_sampled_singleton_mtp_is_automatic_without_widening_greedy_policy():
+def test_sampled_mtp_is_automatic_without_widening_greedy_policy():
     evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
     sampled = resolve_speculative_mtp_serving_plan(
         evidence, key=_key(resident_capacity=4, sampling_mode="sampled"),
@@ -29,7 +29,7 @@ def test_sampled_singleton_mtp_is_automatic_without_widening_greedy_policy():
     wider = resolve_speculative_mtp_serving_plan(
         evidence, key=_key(resident_capacity=4, realized_group_rows=2, sampling_mode="sampled"),
     )
-    assert not wider.automatic_eligible
+    assert wider.automatic_eligible
 
 
 @pytest.mark.parametrize("seed", [0, 17, 2**64 - 1])

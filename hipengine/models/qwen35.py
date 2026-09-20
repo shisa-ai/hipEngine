@@ -420,22 +420,22 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
 )
 
 
-# Sampled singleton selection is a separate product decision from the older
-# greedy C2 timing policy; do not accidentally promote either wider groups or
-# greedy requests when enabling the shared native sampler.
-_QWEN38_Q4KM_MTP_SERVING_EVIDENCE += (
+# Sampled selection is independent of the older greedy C2 timing policy.
+_QWEN38_Q4KM_MTP_SERVING_EVIDENCE += tuple(
     replace(
         next(row for row in _QWEN38_Q4KM_MTP_SERVING_EVIDENCE
              if row.evidence_key == "qwen38-q4km-gfx1151-production-bf16-cap4-c1-intent-k3-d24"),
-        evidence_key="qwen38-q4km-gfx1151-native-sampled-c1-k3",
+        evidence_key=f"qwen38-q4km-gfx1151-native-sampled-c{width}-k3",
+        realized_group_rows=width,
         sampling_modes=("sampled",),
-        max_realized_group_rows=1,
+        max_realized_group_rows=4,
         automatic_eligible=True,
-        reason="automatic_native_sampled_c1",
+        reason="automatic_native_sampled_c1_c4",
         evidence_artifacts=(
-            "worklog/entries/20260920T191153.095647Z-sampling-mtp-mtp-native-sampling-8eb801.md",
+            "worklog/entries/20260920T200240.750746Z-sampling-mtp-mtp-sampled-concurrency-6667be.md",
         ),
-    ),
+    )
+    for width in (1, 2, 3, 4)
 )
 
 

@@ -2343,10 +2343,12 @@ def test_model_runner_postcommit_rebuild_stays_fail_closed_for_block_table_sessi
     assert calls == ["reset"]
 
 
-def test_model_runner_production_rebuild_keeps_scheduler_token_on_near_tie() -> None:
+@pytest.mark.parametrize("sampled", [False, True])
+def test_model_runner_production_rebuild_keeps_scheduler_token_on_near_tie(sampled) -> None:
     session = SimpleNamespace(position=5, reset=lambda: None)
     row = SimpleNamespace(
         request_id=7,
+        native_sampled=sampled,
         prompt_ids=(1, 2),
         slot=SimpleNamespace(
             generated_ids=[101, 102],
@@ -2368,7 +2370,7 @@ def test_model_runner_production_rebuild_keeps_scheduler_token_on_near_tie() -> 
 
     assert runner.restore_speculative_target_request_ids(
         (7,),
-        require_token_match=False,
+        require_token_match=sampled,
     ) is True
     assert row.slot.prev_token == 102
     assert session.position == row.slot.seq_position == 3
