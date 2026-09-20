@@ -374,11 +374,12 @@ Pre-merge gather-route evidence:
 [default retention](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-gather-default.json);
 [off baseline](results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-gather-baseline-off.json).
 
-Real agentic sessions compound the win. A session-replay lane re-sends a
-recorded coding-agent transcript exactly as its client did: 32 consecutive
-requests over one tool-using conversation, each re-sending the whole
-cumulative history, prompts growing 740 to 13,762 tokens. On the same host
-and served protocol (one process per arm), radix with 16 retained snapshots
+A replay adapted from one recorded coding-agent session measures 32
+consecutive requests over one tool-using conversation, each re-sending the
+cumulative history, with prompts growing 740 to 13,762 tokens. On zbook /
+Radeon 8060S, Qwen3.6-35B-A3B `UD_Q4_K_M` runs through the in-process
+resident loop with the server chat renderer (one process per arm).
+Radix with 16 retained snapshots
 reuses **222,720 of 231,530 theoretically shareable tokens (96.2%)**, hits 30
 of 32 lookups, and completes the lane in **208.0 s against 581.3 s uncached
 (-64.2% wall, 2.79x; 19.69 vs 7.05 tok/s)**, cutting prefill work by 86%
@@ -387,16 +388,21 @@ hits)**: it keeps only two resident cache entries, so each new completion
 evicts the previous request's snapshot and misses the reuse a cumulative
 client depends on. A coding agent's resend pattern — every tool round-trip
 re-sending the entire transcript — is the prefix cache's best case, and the
-default-vs-retained-16 gap that reads as noise on three-turn synthetic lanes
-is 20 wall points here.
+default-vs-retained-16 gap is 20 wall points here. This is one sequential
+repetition, not a general performance or correctness qualification.
+The replay substitutes system policy and tool schemas, omits thinking,
+caps tool results, and uses recorded rather than newly generated continuations.
+Outputs were not compared across arms. The artifacts record the uncommitted
+benchmark changes used for the measurement.
 Session-replay artifacts:
 [retained-16](results/2026-09-20-gfx1151-qwen36-gguf-prefix-cache-session-replay-retained16.json);
 [default retention](results/2026-09-20-gfx1151-qwen36-gguf-prefix-cache-session-replay-default.json);
 [off baseline](results/2026-09-20-gfx1151-qwen36-gguf-prefix-cache-session-replay-baseline-off.json);
 fixture: [agentic-session-replay-v1](prompts/agentic-session-replay-v1.json).
 
-**Tuning guidance for coding-agent traffic:** on hosts with more than 24 GB
-of graphics memory, set `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`.
+**Tuning candidate for coding-agent traffic:** on hosts with more than 24 GB
+of graphics memory and sufficient free memory, evaluate
+`HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16` against the default on your workload.
 The default retention count is `max(1, resident capacity)` — two resident
 entries at capacity one — which evicts a long transcript's previous-turn
 boundary while the conversation is still growing; the session-replay lane

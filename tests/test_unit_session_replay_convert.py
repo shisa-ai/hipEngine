@@ -261,6 +261,29 @@ def test_default_tip_is_last_content_bearing_assistant_before_compaction(session
     assert "continue?" not in json.dumps(fixture)
 
 
+def test_compaction_anchor_follows_parents_past_dead_assistant(tmp_path: Path) -> None:
+    records = [
+        _msg("u1", None, "user", [_text("go")]),
+        _msg("live", "u1", "assistant", [_call("c1", "bash", {"command": "live"})]),
+        _msg("dead", "u1", "assistant", [_text("dead retry")]),
+        _result_msg("r1", "live", "c1", "bash", "live result"),
+        {"id": "comp", "parentId": "r1", "type": "compaction"},
+    ]
+    fixture = convert_session_jsonl(_write_session(tmp_path / "branch.jsonl", records))
+    assert fixture["source"]["record"]["tip_record"] == "r1"
+    assert "dead retry" not in json.dumps(fixture["workloads"])
+    assert fixture["workloads"][0]["request_ends"] == [1, 3]
+
+
+def test_converter_rejects_missing_parent(tmp_path: Path) -> None:
+    records = [
+        _msg("u1", "missing", "user", [_text("go")]),
+        _msg("a1", "u1", "assistant", [_text("done")]),
+    ]
+    with pytest.raises(SessionReplayError, match="parent"):
+        convert_session_jsonl(_write_session(tmp_path / "broken.jsonl", records))
+
+
 def test_explicit_tip_can_shorten_the_slice(session_path: Path) -> None:
     fixture = convert_session_jsonl(session_path, tip="r3", workload_id="s")
     dumped = json.dumps(fixture)
@@ -346,6 +369,16 @@ def test_loader_rejects_bad_request_ends(session_path: Path) -> None:
     fixture = convert_session_jsonl(session_path, workload_id="s")
     fixture["workloads"][0]["request_ends"] = [3, 1, 6, 7]
     with pytest.raises(SessionReplayError):
+        load_session_replay_fixture(_fixture_file(fixture))
+
+
+@pytest.mark.parametrize("boundary", [2, 4, 5, 8])
+def test_loader_rejects_incomplete_or_assistant_request_boundary(
+    session_path: Path, boundary: int
+) -> None:
+    fixture = convert_session_jsonl(session_path, workload_id="s")
+    fixture["workloads"][0]["request_ends"] = [boundary]
+    with pytest.raises(SessionReplayError, match="request"):
         load_session_replay_fixture(_fixture_file(fixture))
 
 
