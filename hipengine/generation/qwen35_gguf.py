@@ -7945,12 +7945,7 @@ class Qwen35GGUFResidentModelRunner:
         return min(max_budget, max(1, int(request.max_tokens)))
 
     def speculative_eos_supported(self, request_id: int) -> bool:
-        """Whether the runner's own EOS handling covers this row's next cycle.
-
-        Only the device-accept path implements the EOS finish rule, so a
-        statically eligible row whose target graph is not ready for this cycle
-        answers False and decodes autoregressively instead.
-        """
+        """Whether the adapter owns EOS-aware state selection for this row."""
 
         adapter = self._resolved_mtp2_adapter()
         if adapter is None or not adapter.enabled:

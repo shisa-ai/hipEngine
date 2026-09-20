@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Sequence
 
 
@@ -57,6 +57,43 @@ class StochasticAcceptanceAccounting:
     rng_counter_after: int
     acceptance_ratios: tuple[float, ...]
     uniforms_consumed: tuple[float, ...]
+
+
+def limit_chain_accept_eos(
+    batch,
+    summary,
+    *,
+    eos_token_id: int | None,
+    generated_tokens: int = 0,
+    min_tokens: int = 0,
+    ignore_eos: bool = False,
+):
+    """Keep EOS as the final prediction, not part of consumed target state."""
+
+    if eos_token_id is None or ignore_eos:
+        return summary, False
+    if batch.mode != "verify_chain" or len(summary.request_ids) != 1:
+        raise ValueError("EOS summary limiting requires one verified chain")
+    accepted = tuple(summary.accepted_tokens[0])
+    next_token = None if summary.next_tokens is None else summary.next_tokens[0]
+    visible = (*accepted, *(() if next_token is None else (next_token,)))
+    for index, token in enumerate(visible):
+        if int(token) != int(eos_token_id) or generated_tokens + index + 1 < min_tokens:
+            continue
+        if index == len(visible) - 1 and next_token is not None:
+            return summary, True
+        root = int(batch.root_rows[0])
+        return replace(
+            summary,
+            accepted_counts=(index,),
+            accepted_tokens=(accepted[:index],),
+            commit_rows=(root + index,),
+            commit_tokens=((int(batch.tokens[root]) if index == 0 else accepted[index - 1]),),
+            commit_positions=(int(batch.positions[root]) + index,),
+            next_tokens=(int(token),),
+            full_accept=(False,),
+        ), True
+    return summary, False
 
 
 def greedy_chain_eos_limit(

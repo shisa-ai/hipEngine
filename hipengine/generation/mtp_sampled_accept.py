@@ -135,5 +135,10 @@ def sampled_accept_summary(
         draws=draws,
         transaction_id=transaction_id,
         remaining_decode=remaining_decode,
+        eos_token_ids=tuple(
+            None if bool(getattr(params_for(rid), "ignore_eos", False))
+            else getattr(params_for(rid), "eos_token_id", None)
+            for rid in batch.request_ids
+        ),
     )
     return TargetAcceptSummary.from_accept_result(batch, result)

@@ -379,6 +379,14 @@ class _PhysicalTargetCommitError(RuntimeError):
     """Target state may be committed; AR fallback requires canonical rebuild."""
 
 
+def _row_eos_token_id(row: Any, tokenizer: Any = None) -> int | None:
+    for source in (getattr(row, "sampling_request", None), row.request, tokenizer):
+        eos = getattr(source, "eos_token_id", None)
+        if eos is not None:
+            return int(eos)
+    return None
+
+
 def _commit_eager_cycle_row(
     row: Any,
     *,
@@ -387,6 +395,7 @@ def _commit_eager_cycle_row(
     candidate_count: int,
     plan_reason: Any | None,
     target_position: int,
+    eos_token_id: int | None = None,
 ) -> bool:
     """Commit one eager cycle's visible tokens and attribute their execution mode.
 
@@ -408,7 +417,7 @@ def _commit_eager_cycle_row(
     row.slot.prev_token = int(tokens[-1])
     row.slot.seq_position = int(target_position)
     row.slot.native_decode_steps += 1
-    eos = getattr(row.request, "eos_token_id", None)
+    eos = _row_eos_token_id(row) if eos_token_id is None else eos_token_id
     eos_finished = (
         eos is not None
         and not bool(getattr(row.request, "ignore_eos", False))
@@ -1157,20 +1166,10 @@ class Qwen35GGUFMTP2Adapter:
         )
 
     def eos_finish_supported(self, request_id: int) -> bool:
-        """True when this row's next cycle can finish on EOS exactly.
-
-        EOS is handled on the device-accept path, where ``_limit_target_batch_eos``
-        bounds the greedy chain so EOS stays the last visible token. The eager
-        host-proposal path refuses an EOS row outright
-        (``EOS requires native device acceptance before selected commit``), so the
-        static physical-c1 admission is not enough on its own: the row also needs
-        the target graph the device proposal rides on to be ready at this cycle's
-        position. A row that fails this probe decodes autoregressively for that
-        cycle instead of entering a cycle that would raise and be contained.
-        """
+        """EOS is supported by both eager selection and graph terminal recommit."""
 
         rid = int(request_id)
-        if not self._physical_c1_request(rid):
+        if not self.enabled:
             return False
         state = self._states.get(rid)
         verifier = None if state is None else getattr(state, "verifier", None)
@@ -1179,10 +1178,7 @@ class Qwen35GGUFMTP2Adapter:
         target = getattr(verifier, "target", None)
         if target is None or not self._target_graph_supported(target):
             return False
-        device_ready = getattr(verifier, "device_proposal_ready", None)
-        if not callable(device_ready):
-            return False
-        return bool(device_ready(int(self.candidate_budget)))
+        return True
 
     def register_request(
         self,
@@ -3957,6 +3953,18 @@ class Qwen35GGUFMTP2Adapter:
                         "recomputed accept summary"
                     )
                 prepared = adopt(prepared, summary)
+            from hipengine.speculative.streaming import limit_chain_accept_eos
+
+            terminal_summary, eos_finished = limit_chain_accept_eos(
+                prepared.batch, summary,
+                eos_token_id=_row_eos_token_id(row, getattr(self.generator, "tokenizer", None)),
+                generated_tokens=len(slot.generated_ids),
+                min_tokens=int(getattr(row.request, "min_tokens", 0) or 0),
+                ignore_eos=bool(getattr(row.request, "ignore_eos", False)),
+            )
+            if terminal_summary is not summary:
+                prepared = state.verifier.adopt_terminal_summary(prepared, terminal_summary)
+                summary = terminal_summary
             commit_plan = TargetCommitPlan(
                 transaction_id=transaction_id,
                 request_ids=summary.request_ids,
@@ -4047,7 +4055,7 @@ class Qwen35GGUFMTP2Adapter:
             slot.prev_token = int(output_ids[-1])
             slot.seq_position = int(target.position)
             slot.native_decode_steps += 1
-            slot.done = len(slot.generated_ids) >= int(row.request.max_tokens)
+            slot.done = eos_finished or len(slot.generated_ids) >= int(row.request.max_tokens)
             record_speculative_outputs(
                 row,
                 candidate_count=int(plan.candidate_counts[plan_index]),
@@ -4078,7 +4086,7 @@ class Qwen35GGUFMTP2Adapter:
                 ),
                 target_cursor_deltas=(len(output_ids),),
                 provider_cursor_deltas=summary.accepted_counts,
-                finish_reasons=(None,),
+                finish_reasons=("eos" if eos_finished else None,),
             )
             actual_execution_route = (
                 "graph" if native_graph_submitted else "eager"
@@ -4407,7 +4415,7 @@ class Qwen35GGUFMTP2Adapter:
         return True
 
     @staticmethod
-    def _limit_target_batch_eos(proposal, results, rows, remaining, *, runtime):
+    def _limit_target_batch_eos(proposal, results, rows, remaining, *, runtime, tokenizer=None):
         """Read only EOS requests' bounded IDs before selecting committed state."""
         from hipengine.speculative.streaming import greedy_chain_eos_limit
 
@@ -4419,7 +4427,7 @@ class Qwen35GGUFMTP2Adapter:
             if int(result.request_id) != int(rid):
                 raise ValueError("EOS target/proposal request identities differ")
             request = row.request
-            eos = getattr(request, "eos_token_id", None)
+            eos = _row_eos_token_id(row, tokenizer)
             if eos is not None and not bool(getattr(request, "ignore_eos", False)):
                 candidates = np.empty((int(count),), dtype=np.int32)
                 target = np.empty((int(count) + 1,), dtype=np.int32)
@@ -5177,8 +5185,6 @@ class Qwen35GGUFMTP2Adapter:
             raise RuntimeError("physical target owner has no packed verifier")
         target_started_ns = time.perf_counter_ns()
         device_result = batch is None or ngram_proposal is not None
-        if not device_result and any(getattr(row.request, "eos_token_id", None) is not None for row in rows):
-            raise ValueError("EOS requires native device acceptance before selected commit")
         with (
             target_verifier_active_slots_session(len(jobs)),
             q4_t16_physical_extra_rowtiles_session(
@@ -5284,7 +5290,8 @@ class Qwen35GGUFMTP2Adapter:
                     cancelled_request_ids=cancelled,
                 )
             remaining = self._limit_target_batch_eos(
-                device_candidates, results, rows, remaining, runtime=targets[0].runtime
+                device_candidates, results, rows, remaining, runtime=targets[0].runtime,
+                tokenizer=getattr(self.generator, "tokenizer", None),
             )
             accept_started = time.perf_counter()
             accept_enqueue_started = time.perf_counter()
@@ -5415,6 +5422,22 @@ class Qwen35GGUFMTP2Adapter:
                     strict=True,
                 ):
                     target_top1[row_index] = int(token)
+            from hipengine.speculative.streaming import greedy_chain_eos_limit
+
+            remaining = tuple(
+                greedy_chain_eos_limit(
+                    tuple(batch.tokens[index] for index in candidate_rows_by_id[request_id]),
+                    tuple(target_top1[index] for index in (
+                        root_row_by_id[request_id], *candidate_rows_by_id[request_id],
+                    )),
+                    remaining_decode=budget,
+                    eos_token_id=(
+                        None if bool(getattr(row.request, "ignore_eos", False))
+                        else _row_eos_token_id(row, getattr(self.generator, "tokenizer", None))
+                    ),
+                )
+                for request_id, row, budget in zip(ids, rows, remaining, strict=True)
+            )
             accept_started = time.perf_counter()
             gpu_summary, accept_buffers = self._accept_target_batch_on_device(
                 batch,
@@ -5535,6 +5558,7 @@ class Qwen35GGUFMTP2Adapter:
                 ),
                 plan_reason=plan.reasons[plan.request_ids.index(request_id)],
                 target_position=int(target.position),
+                eos_token_id=_row_eos_token_id(row, getattr(self.generator, "tokenizer", None)),
             )
             if self._sampled_route_request(request_id) and not row.native_sampler:
                 for _ in visible:
