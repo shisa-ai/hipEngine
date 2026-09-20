@@ -48,7 +48,8 @@ def run(args):
                 response.raise_for_status()
                 return response.json()
 
-            baseline = blocking_result(generate(speculative_mtp=False))
+            baseline_body = generate(speculative_mtp=False)
+            baseline = blocking_result(baseline_body)
             assert_result(baseline, speculative=False, compact=True)
             automatic = blocking_result(generate())
             assert_result(automatic, speculative=True, compact=True)
@@ -72,13 +73,18 @@ def run(args):
             assert decision["reason"] == "packed_int8_mtp_not_implemented", decision
             report["checks"]["multichoice_structural_fallback"] = True
 
+            text = baseline_body["choices"][0]["text"]
+            assert len(text) >= 12
+            stop_at = len(text) // 2
+            stop_text = text[stop_at:stop_at + 8]
             stopped = [
-                blocking_result(generate(speculative_mtp=value, max_tokens=64, stop=["return"]))
+                blocking_result(generate(speculative_mtp=value, stop=[stop_text]))
                 for value in (False, True)
             ]
             assert stopped[0]["ids"] == stopped[1]["ids"]
-            assert stopped[0]["finish_reason"] == stopped[1]["finish_reason"]
-            report["checks"]["stop_inside_chain"] = True
+            assert stopped[0]["finish_reason"] == stopped[1]["finish_reason"] == "stop"
+            report["checks"]["stop_policy"] = True
+            report["stop_mtp_cycles"] = stopped[1]["cycles"]
 
             before = drain(client)
             token_seen = False
