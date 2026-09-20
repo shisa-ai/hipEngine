@@ -1,0 +1,448 @@
+{
+  "schema_version": 1,
+  "kind": "zbook_qwen38_ud_vs_plain_q4km_decode_kernel_attribution",
+  "created_at": "2026-09-21T08:35:00+09:00",
+  "status": "measured_diagnostic",
+  "performance_claim": false,
+  "claim_limitation": "Pure-kernel attribution with full provenance. It sizes a lever; it does not claim a post-change rate, and no routing policy was changed to produce it.",
+  "question": "Where does UD-Q4_K_M decode time go versus plain Q4_K_M on zbook/gfx1151, and which single change would move it?",
+  "host": {
+    "host_name": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "rocprofv3_version": "1.3.5 (git_revision 6b0e43f341195e203754e08f850e437ff2fc09f9)",
+    "hipcc_installed_dir": "/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "lane_note": "zbook lane, not the desktop gfx1151 lane. Same-GPU-architecture peers are independent lanes (docs/OPTIMIZATION.md section 2)."
+  },
+  "protocol": {
+    "driver": "scripts/gguf_decode_graph_rocprof_driver.py",
+    "driver_note": "The tracked driver referenced a nonexistent checkout (/home/lhl/hipEngine-ud) and a nonexistent version file, and forced require_cached_build=False, so it could not run and violated docs/OPTIMIZATION.md section 7. It now resolves the repo relative to itself, takes --compiler-version-file, and requires the cached build by default.",
+    "summary_tool": "scripts/gguf_decode_census_summary.py",
+    "shape": "512-token prefill, 4 eager warm steps, graph capture, 8 warm replays, 0.5 s GPU idle gap, 32 measured graph-replay steps",
+    "windowing": "the 32 trailing advance_decode_position occurrences",
+    "jit_policy": "warm build outside the profiler with a pinned HIPENGINE_COMPILER_VERSION_FILE, then the profiled run requires the cached artifacts; the profiled process spawns no hipcc/clang (docs/OPTIMIZATION.md section 7)",
+    "rocprofv3": "rocprofv3 --kernel-trace --output-format csv -d OUT -o NAME -- python3 scripts/gguf_decode_graph_rocprof_driver.py MODEL.gguf graph",
+    "harness_agreement": "the unprofiled warm run of the same driver measures 11.669 tok/s (plain) and 8.085 (UD); the task #5 sweep measured 11.635 and 7.877 at the same 512/128 shape, so the profiler protocol reproduces the baseline arms",
+    "runner": "/tmp/ud-decode-profile/run_profile.sh"
+  },
+  "arms": {
+    "plain": {
+      "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "model_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "tensor_histogram": {
+        "F32": 456,
+        "Q4_K": 294,
+        "Q6_K": 67,
+        "Q5_K": 48,
+        "Q8_0": 1
+      },
+      "launches_per_token": 571.59,
+      "pure_us_per_token": 79919.25,
+      "pure_ms_per_token": 79.92,
+      "wall_ms_per_token": 86.461,
+      "wall_tok_s": 11.5659,
+      "trace": "/tmp/ud-decode-profile/trace-plain/plain_kernel_trace.csv",
+      "trace_sha256": "5fb57256d8c2b528637eba22f841a659de9717e68dfc4821e99f0bb6a005d0ad"
+    },
+    "ud": {
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "model_fingerprint": "f343914a95e38d8f9f56886d10de4248738ad94aabb0fa0af8fd1b00c4e82f97",
+      "tensor_histogram": {
+        "F32": 360,
+        "Q5_K": 131,
+        "IQ4_XS": 117,
+        "Q8_0": 106,
+        "Q4_K": 104,
+        "Q6_K": 30,
+        "Q3_K": 7,
+        "IQ4_NL": 7,
+        "IQ3_S": 4
+      },
+      "launches_per_token": 856.41,
+      "pure_us_per_token": 115387.56,
+      "pure_ms_per_token": 115.39,
+      "wall_ms_per_token": 125.195,
+      "wall_tok_s": 7.9875,
+      "trace": "/tmp/ud-decode-profile/trace-ud/ud_kernel_trace.csv",
+      "trace_sha256": "1dcf69c79ff2b2a81a5e71beb142c6b763d2bfd86ecd933fc0df42c6e5792edf"
+    }
+  },
+  "totals_delta": {
+    "launches_per_token": 284.82,
+    "pure_us_per_token": 35468.31,
+    "wall_ms_per_token": 38.735,
+    "wall_ratio": 1.448
+  },
+  "families": [
+    {
+      "family": "IQ dense strict GEMV (template <0>)",
+      "plain_us_per_token": 0.0,
+      "ud_us_per_token": 50105.74,
+      "delta_us_per_token": 50105.74,
+      "plain_launches_per_token": 0.0,
+      "ud_launches_per_token": 113.34,
+      "delta_launches_per_token": 113.34
+    },
+    {
+      "family": "Q4_K fused dual local32 + SiLU GEMV",
+      "plain_us_per_token": 32401.95,
+      "ud_us_per_token": 0.0,
+      "delta_us_per_token": -32401.95,
+      "plain_launches_per_token": 62.0,
+      "ud_launches_per_token": 0.0,
+      "delta_launches_per_token": -62.0
+    },
+    {
+      "family": "Q5_K resident direct GEMV (qk_t16_selected_direct)",
+      "plain_us_per_token": 0.0,
+      "ud_us_per_token": 20215.96,
+      "delta_us_per_token": 20215.96,
+      "plain_launches_per_token": 0.0,
+      "ud_launches_per_token": 84.28,
+      "delta_launches_per_token": 84.28
+    },
+    {
+      "family": "Q4_K single local32 GEMV",
+      "plain_us_per_token": 9279.55,
+      "ud_us_per_token": 16493.95,
+      "delta_us_per_token": 7214.4,
+      "plain_launches_per_token": 77.5,
+      "ud_launches_per_token": 98.81,
+      "delta_launches_per_token": 21.31
+    },
+    {
+      "family": "Q6_K planar GEMV (residual)",
+      "plain_us_per_token": 10408.04,
+      "ud_us_per_token": 0.0,
+      "delta_us_per_token": -10408.04,
+      "plain_launches_per_token": 31.0,
+      "ud_launches_per_token": 0.0,
+      "delta_launches_per_token": -31.0
+    },
+    {
+      "family": "Q4_K single local32 residual GEMV",
+      "plain_us_per_token": 7216.07,
+      "ud_us_per_token": 0.0,
+      "delta_us_per_token": -7216.07,
+      "plain_launches_per_token": 31.0,
+      "ud_launches_per_token": 0.0,
+      "delta_launches_per_token": -31.0
+    },
+    {
+      "family": "Q6/Q4 mixed pair GEMV",
+      "plain_us_per_token": 6724.34,
+      "ud_us_per_token": 0.0,
+      "delta_us_per_token": -6724.34,
+      "plain_launches_per_token": 23.25,
+      "ud_launches_per_token": 0.0,
+      "delta_launches_per_token": -23.25
+    },
+    {
+      "family": "Q6_K planar GEMV",
+      "plain_us_per_token": 4531.79,
+      "ud_us_per_token": 6621.54,
+      "delta_us_per_token": 2089.75,
+      "plain_launches_per_token": 0.97,
+      "ud_launches_per_token": 23.25,
+      "delta_launches_per_token": 22.28
+    },
+    {
+      "family": "IQ dense strict GEMV (template <1>)",
+      "plain_us_per_token": 0.0,
+      "ud_us_per_token": 6383.15,
+      "delta_us_per_token": 6383.15,
+      "plain_launches_per_token": 0.0,
+      "ud_launches_per_token": 6.78,
+      "delta_launches_per_token": 6.78
+    },
+    {
+      "family": "Q5_K dense tile8 GEMV",
+      "plain_us_per_token": 5178.49,
+      "ud_us_per_token": 4696.34,
+      "delta_us_per_token": -482.15,
+      "plain_launches_per_token": 46.5,
+      "ud_launches_per_token": 42.62,
+      "delta_launches_per_token": -3.88
+    },
+    {
+      "family": "IQ dense strict GEMV (template <3>)",
+      "plain_us_per_token": 0.0,
+      "ud_us_per_token": 3355.45,
+      "delta_us_per_token": 3355.45,
+      "plain_launches_per_token": 0.0,
+      "ud_launches_per_token": 6.78,
+      "delta_launches_per_token": 6.78
+    },
+    {
+      "family": "IQ dense strict GEMV (template <2>)",
+      "plain_us_per_token": 0.0,
+      "ud_us_per_token": 1799.75,
+      "delta_us_per_token": 1799.75,
+      "plain_launches_per_token": 0.0,
+      "ud_launches_per_token": 3.88,
+      "delta_launches_per_token": 3.88
+    },
+    {
+      "family": "norms (rmsnorm / add-rmsnorm)",
+      "plain_us_per_token": 381.37,
+      "ud_us_per_token": 1621.32,
+      "delta_us_per_token": 1239.95,
+      "plain_launches_per_token": 124.97,
+      "ud_launches_per_token": 124.97,
+      "delta_launches_per_token": 0.0
+    },
+    {
+      "family": "attention: paged full-attn decode",
+      "plain_us_per_token": 1246.5,
+      "ud_us_per_token": 1215.25,
+      "delta_us_per_token": -31.25,
+      "plain_launches_per_token": 15.5,
+      "ud_launches_per_token": 15.5,
+      "delta_launches_per_token": 0.0
+    },
+    {
+      "family": "GDN: recurrent rmsnorm+gate",
+      "plain_us_per_token": 1187.3,
+      "ud_us_per_token": 1173.19,
+      "delta_us_per_token": -14.11,
+      "plain_launches_per_token": 46.5,
+      "ud_launches_per_token": 46.5,
+      "delta_launches_per_token": 0.0
+    },
+    {
+      "family": "Q8_0 dual split GEMV",
+      "plain_us_per_token": 0.0,
+      "ud_us_per_token": 920.61,
+      "delta_us_per_token": 920.61,
+      "plain_launches_per_token": 0.0,
+      "ud_launches_per_token": 47.47,
+      "delta_launches_per_token": 47.47
+    },
+    {
+      "family": "GDN: alpha/beta chain conv (snapshot)",
+      "plain_us_per_token": 659.31,
+      "ud_us_per_token": 0.0,
+      "delta_us_per_token": -659.31,
+      "plain_launches_per_token": 46.5,
+      "ud_launches_per_token": 0.0,
+      "delta_launches_per_token": -46.5
+    },
+    {
+      "family": "Q4/Q6 narrow col4 planar pair",
+      "plain_us_per_token": 330.34,
+      "ud_us_per_token": 0.0,
+      "delta_us_per_token": -330.34,
+      "plain_launches_per_token": 7.75,
+      "ud_launches_per_token": 0.0,
+      "delta_launches_per_token": -7.75
+    },
+    {
+      "family": "Q4/Q4 narrow col4 pair",
+      "plain_us_per_token": 240.78,
+      "ud_us_per_token": 0.0,
+      "delta_us_per_token": -240.78,
+      "plain_launches_per_token": 7.75,
+      "ud_launches_per_token": 0.0,
+      "delta_launches_per_token": -7.75
+    },
+    {
+      "family": "Q8_0 GEMV",
+      "plain_us_per_token": 0.0,
+      "ud_us_per_token": 231.46,
+      "delta_us_per_token": 231.46,
+      "plain_launches_per_token": 0.0,
+      "ud_launches_per_token": 5.81,
+      "delta_launches_per_token": 5.81
+    },
+    {
+      "family": "GDN: conv decode",
+      "plain_us_per_token": 0.0,
+      "ud_us_per_token": 193.68,
+      "delta_us_per_token": 193.68,
+      "plain_launches_per_token": 0.0,
+      "ud_launches_per_token": 46.5,
+      "delta_launches_per_token": 46.5
+    },
+    {
+      "family": "attention: q/k norm+rope, gate, KV write",
+      "plain_us_per_token": 114.17,
+      "ud_us_per_token": 111.88,
+      "delta_us_per_token": -2.29,
+      "plain_launches_per_token": 46.5,
+      "ud_launches_per_token": 46.5,
+      "delta_launches_per_token": 0.0
+    },
+    {
+      "family": "residual add",
+      "plain_us_per_token": 0.0,
+      "ud_us_per_token": 98.4,
+      "delta_us_per_token": 98.4,
+      "plain_launches_per_token": 0.0,
+      "ud_launches_per_token": 62.0,
+      "delta_launches_per_token": 62.0
+    },
+    {
+      "family": "SiLU-mul (unfused, separate launch)",
+      "plain_us_per_token": 0.0,
+      "ud_us_per_token": 97.26,
+      "delta_us_per_token": 97.26,
+      "plain_launches_per_token": 0.0,
+      "ud_launches_per_token": 62.0,
+      "delta_launches_per_token": 62.0
+    },
+    {
+      "family": "f32->bf16 cast",
+      "plain_us_per_token": 0.0,
+      "ud_us_per_token": 17.46,
+      "delta_us_per_token": 17.46,
+      "plain_launches_per_token": 0.0,
+      "ud_launches_per_token": 14.53,
+      "delta_launches_per_token": 14.53
+    },
+    {
+      "family": "Q4_K rowtile col4 GEMV",
+      "plain_us_per_token": 0.0,
+      "ud_us_per_token": 15.28,
+      "delta_us_per_token": 15.28,
+      "plain_launches_per_token": 0.0,
+      "ud_launches_per_token": 0.97,
+      "delta_launches_per_token": 0.97
+    },
+    {
+      "family": "argmax (lm head reduction)",
+      "plain_us_per_token": 14.11,
+      "ud_us_per_token": 14.17,
+      "delta_us_per_token": 0.06,
+      "plain_launches_per_token": 1.94,
+      "ud_launches_per_token": 1.94,
+      "delta_launches_per_token": 0.0
+    },
+    {
+      "family": "embedding gather",
+      "plain_us_per_token": 3.46,
+      "ud_us_per_token": 3.97,
+      "delta_us_per_token": 0.51,
+      "plain_launches_per_token": 0.97,
+      "ud_launches_per_token": 0.97,
+      "delta_launches_per_token": 0.0
+    },
+    {
+      "family": "graph bookkeeping",
+      "plain_us_per_token": 1.67,
+      "ud_us_per_token": 1.75,
+      "delta_us_per_token": 0.08,
+      "plain_launches_per_token": 1.0,
+      "ud_launches_per_token": 1.0,
+      "delta_launches_per_token": 0.0
+    }
+  ],
+  "iq_strict_detail": {
+    "note": "The four gguf_iq_dense_strict_kernel templates, split by their compile-time quant index. Template indices are mapped to quant types by matching launches_per_token against the file's own tensor counts (117 IQ4_XS, 7 IQ4_NL, 7 Q3_K, 4 IQ3_S).",
+    "plain": {},
+    "ud": {
+      "<0>": {
+        "us_per_token": 50105.74,
+        "launches_per_token": 113.34,
+        "vgpr": "48",
+        "lds": "4608",
+        "workgroup": "128",
+        "us_per_launch": 442.1,
+        "file_tensor_count": 117,
+        "quant": "IQ4_XS"
+      },
+      "<1>": {
+        "us_per_token": 6383.15,
+        "launches_per_token": 6.78,
+        "vgpr": "24",
+        "lds": "512",
+        "workgroup": "128",
+        "us_per_launch": 941.5,
+        "file_tensor_count": 7,
+        "quant": "IQ4_NL"
+      },
+      "<3>": {
+        "us_per_token": 3355.45,
+        "launches_per_token": 6.78,
+        "vgpr": "40",
+        "lds": "2560",
+        "workgroup": "128",
+        "us_per_launch": 494.9,
+        "file_tensor_count": 7,
+        "quant": "Q3_K"
+      },
+      "<2>": {
+        "us_per_token": 1799.75,
+        "launches_per_token": 3.88,
+        "vgpr": "32",
+        "lds": "4608",
+        "workgroup": "128",
+        "us_per_launch": 463.9,
+        "file_tensor_count": 4,
+        "quant": "IQ3_S"
+      }
+    },
+    "ud_total_us_per_token": 61644.09,
+    "ud_total_launches_per_token": 130.78,
+    "ud_share_of_pure_decode_pct": 53.42,
+    "ud_delta_vs_plain_us_per_token": 61644.09
+  },
+  "lever_decision": {
+    "decision": "The single lever is the undeclared dense-IQ decode policy on hip_gfx1151. Do not tune the strict kernel; route it.",
+    "evidence": {
+      "measured": [
+        "UD spends 61.6 ms/token (53.4% of its 115.4 ms pure decode) in gguf_iq_dense_strict_kernel across four templates, at 130.8 launches/token.",
+        "The dominant template <0> is 50,105.74 us/token at 113.34 launches/token = 442.1 us/launch.",
+        "Plain has zero launches in this family, so the family accounts for 174% of the entire 35468.31 us/token pure-decode gap.",
+        "The second-ranked item is the Q5_K resident direct GEMV at +20,216.0 us/token and +84.3 launches/token; third is Q4_K single local32 at +7,214.4 us/token."
+      ],
+      "mechanism": [
+        "hipengine/runtime/gguf_linear.py:8151-8184 (_iq_dense_decode_dispatch) reads backend_package_capability(backend, 'GGUF_IQ_DENSE_DECODE_POLICY', {}) and returns the original dispatch unchanged when the quant has no entry.",
+        "hip_gfx1100 declares GGUF_IQ_DENSE_DECODE_POLICY with all six dense-IQ quants mapped to local32_gemv_bf16_bf16_out (hipengine/kernels/hip_gfx1100/__init__.py:1319).",
+        "hip_gfx1151 declares no such constant, so backend_package_capability returns the {} default and every dense-IQ decode stays on the strict GEMV.",
+        "The local32 owners are ALREADY REGISTERED on hip_gfx1151: KernelKey(hip_gfx1151, linear, gguf_iq4_xs|gguf_iq4_nl|gguf_iq3_s|gguf_iq3_xxs|gguf_iq2_s|gguf_iq2_xs, local32_gemv_bf16_bf16_out) and linear_pair_silu/gguf_iq4_xs/local32_pair_silu_bf16_bf16_out all resolve. This is a missing policy declaration, not a missing kernel or a port.",
+        "The gfx1100 record for this owner is 2.5-2.9x the strict GEMV per launch on every real shape of this artifact, and 22.76 vs 17.57 tok/s end-to-end decode with the route enabled (2026-09-09, W7900)."
+      ],
+      "what_this_does_not_say": [
+        "The gfx1100 2.5-2.9x factor is gfx1100 evidence. It has not been measured on gfx1151 and must not be transferred as a rate.",
+        "No routing policy was changed here, so there is no post-change number."
+      ]
+    },
+    "second_and_third_ranked": [
+      {
+        "item": "Q5_K role spread",
+        "measured": "+20,216.0 us/token, +84.3 launches/token. UD's 131 Q5_K tensors span 9 slot roles and 7 shapes (plain's 48 are all one shape, (5120,6144)); about 44 of them take the fast q5_k_t16_dense_tile8_gemv_kernel at 110 us/launch while about 84 take qk_t16_selected_direct_gemv_kernel<u16,5> at 240 us/launch.",
+        "open": "Whether the slower owner is required by those roles or is a selection gap. The 2026-09-11 campaign left the same 'why is it ~2.3x' study open on gfx1100."
+      },
+      {
+        "item": "No fused dual owners on the UD path",
+        "measured": "Plain runs q4_k_t16_dense_dual_local32_silu_gemv_kernel at 62.0 launches/token for 32,402.0 us/token. UD runs no fused dual at all and pays silu_mul_separate_out_kernel (62.0 launches/token) plus a separate residual add (62.0 launches/token).",
+        "open": "A q5_k_t16_dense_dual_silu_gemv_kernel exists in hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip and is documented bit-exact with the unfused chain; whether the UD gate/up pairs can use it, or the registered local32_pair_silu_bf16_bf16_out for IQ4_XS, was not tested."
+      }
+    ],
+    "quality_question_to_settle_first": {
+      "finding": "hip_gfx1100 declares GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS and GGUF_IQ_DENSE_DECODE_STRICT_SLOTS pinning specific UD-Q4_K_M slots to the strict GEMV, because the fast owners' accumulation-order tail breached the calibrated max-row ceiling on the tokenized category suite (prefill: max-row KL 5.3e-2 on one position; decode: 5.19e-2 unpinned, 1.785e-1 with three of four slots pinned). hip_gfx1151 declares neither table.",
+      "why_it_matters": "Enabling the decode policy on gfx1151 without those pins would admit exactly the route gfx1100 had to pin, on an artifact whose pins are the recorded reason it was admissible. The pin is keyed on (file_type, preset) and would transfer, but nothing on gfx1151 currently applies it.",
+      "also": "hip_gfx1151's GGUF_IQ_DENSE_PREFILL_POLICY puts all seven quants on the one-wave dense_wmma_w4a16_prefill owner, while gfx1100 refines four of them to the coop32/coop64 owners. Since gfx1151 does not run the coop variants, the gfx1100 Q3_K hi+lo-split hazard may not apply there, which is a reason the prefill pin could legitimately be absent - but that is an argument to verify, not an established fact.",
+      "status": "Structural observation from reading both backend packages. No numerical gate was run on gfx1151 in this unit."
+    }
+  },
+  "not_measured": [
+    "Any post-change rate. No policy was changed.",
+    "The prefill path: this is a decode-only trace.",
+    "MTP verifier rows: GGUF_IQ_DENSE_VERIFY_POLICY is likewise undeclared on gfx1151, so rows 2-4 also take the strict path, but no verifier arm was profiled.",
+    "Numerical quality of any local32 owner on gfx1151. The production-referenced accuracy gate that admitting these owners requires was not run."
+  ],
+  "source": {
+    "census_plain": "/tmp/ud-decode-profile/census-plain.json",
+    "census_ud": "/tmp/ud-decode-profile/census-ud.json",
+    "families": "/tmp/ud-decode-profile/families.json",
+    "profiled_plain": "/tmp/ud-decode-profile/profiled-plain.json",
+    "profiled_ud": "/tmp/ud-decode-profile/profiled-ud.json",
+    "warm_plain": "/tmp/ud-decode-profile/warm-plain.json",
+    "warm_ud": "/tmp/ud-decode-profile/warm-ud.json"
+  }
+}
