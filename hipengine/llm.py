@@ -42,6 +42,30 @@ _ENGINE_LOOP_GENERATOR_DEFAULT_ENVS = {
     "fair_prefill_burst_chunks": "HIPENGINE_FAIR_PREFILL_BURST_CHUNKS",
 }
 
+_ENGINE_COMMAND_TIMEOUT_ENV = "HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS"
+
+
+def _engine_command_timeout_seconds(environ: Mapping[str, str] | None = None) -> float:
+    """Resolve the engine-service command budget, environment override first.
+
+    A control command waits behind whatever the single driver thread is already
+    doing, so this budget guards liveness rather than bounding engine work.
+    """
+
+    from hipengine.generation.engine_service import DEFAULT_COMMAND_TIMEOUT_SECONDS
+
+    env = os.environ if environ is None else environ
+    raw = str(env.get(_ENGINE_COMMAND_TIMEOUT_ENV, "")).strip()
+    if not raw:
+        return DEFAULT_COMMAND_TIMEOUT_SECONDS
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{_ENGINE_COMMAND_TIMEOUT_ENV} must be a number") from exc
+    if not value > 0:
+        raise ValueError(f"{_ENGINE_COMMAND_TIMEOUT_ENV} must be positive")
+    return value
+
 
 def _server_plain_ar_capacity(
     generator: Any,
@@ -277,6 +301,7 @@ class LLM:
         kv_scale_dtype: str | None = None,
         kv_scale_granularity: str | None = None,
         vision_model: str | None = None,
+        engine_command_timeout_seconds: float | None = None,
     ) -> None:
         if max_active_requests is not None and int(max_active_requests) <= 0:
             raise ValueError("max_active_requests must be positive when set")
@@ -355,6 +380,13 @@ class LLM:
         )
         if self.vision_model == "":
             raise ValueError("vision_model must be non-empty when set")
+        if engine_command_timeout_seconds is None:
+            self.engine_command_timeout_seconds = _engine_command_timeout_seconds()
+        else:
+            budget = float(engine_command_timeout_seconds)
+            if not budget > 0:
+                raise ValueError("engine_command_timeout_seconds must be positive when set")
+            self.engine_command_timeout_seconds = budget
         if prefix_cache is None:
             self.prefix_cache = None
         else:
@@ -1286,7 +1318,11 @@ class LLM:
             config=loop_config,
         )
         self._text_generator = (
-            EngineService(resident_driver, idle_wait_seconds=0.0)
+            EngineService(
+                resident_driver,
+                idle_wait_seconds=0.0,
+                command_timeout_seconds=self.engine_command_timeout_seconds,
+            )
             if resident_driver.supports_controlled_streaming
             else resident_driver
         )

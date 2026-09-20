@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 from collections import Counter
@@ -31,6 +32,23 @@ from hipengine.generation.registry import (
     GenerationStreamChunk,
 )
 from hipengine.speculative.streaming import trim_speculative_output
+
+# The driver thread owns the engine, so a command waits behind whatever the
+# engine is already doing: preparing a context can grow the KV pool and capture
+# graphs, and one scheduling tick can prefill a large prompt chunk. Both
+# legitimately exceed half a minute. The budget below is a liveness guard for a
+# driver that has stopped making progress, not a bound on real engine work, so it
+# is deliberately generous and settable through
+# ``HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS``.
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 300.0
+
+# Log one diagnostic line when a command waits this long, so an operator can see
+# what the driver was doing instead of only a timeout traceback.
+DEFAULT_SLOW_COMMAND_WARN_SECONDS = 10.0
+
+# The server configures this logger for its own output, so a slow-command or
+# timeout diagnostic lands in the server log with the rest of the request lines.
+_LOGGER = logging.getLogger("uvicorn.error")
 
 
 class EngineServiceClosed(RuntimeError):
@@ -183,7 +201,8 @@ class EngineService:
         command_queue_size: int = 1024,
         stream_queue_max_chunks: int | None = None,
         idle_wait_seconds: float = 0.001,
-        command_timeout_seconds: float = 30.0,
+        command_timeout_seconds: float = DEFAULT_COMMAND_TIMEOUT_SECONDS,
+        slow_command_warn_seconds: float = DEFAULT_SLOW_COMMAND_WARN_SECONDS,
     ) -> None:
         queue_size = int(command_queue_size)
         if queue_size <= 0:
@@ -209,6 +228,16 @@ class EngineService:
         self._stream_queue_max_chunks = configured_stream_bound
         self._idle_wait_seconds = idle_wait
         self._command_timeout_seconds = command_timeout
+        slow_command_warn = float(slow_command_warn_seconds)
+        if slow_command_warn < 0.0:
+            raise ValueError("slow_command_warn_seconds must be non-negative")
+        self._slow_command_warn_seconds = slow_command_warn
+        # Driver-thread activity, reported by diagnostics when a command waits.
+        self._active_command_kind: str | None = None
+        self._active_command_method: str | None = None
+        self._active_command_started_at: float | None = None
+        self._active_command_response: _CommandResponse | None = None
+        self._tick_started_at: float | None = None
         self._states_by_service_id: dict[int, _ChildState] = {}
         self._states_by_backend_id: dict[int, _ChildState] = {}
         self._next_service_request_id = 0
@@ -358,7 +387,7 @@ class EngineService:
         )
         response = _CommandResponse()
         self._enqueue(_ServiceCommand("submit", response, state=state))
-        response.result(timeout=self._command_timeout_seconds)
+        self._wait_response(response, method_name="submit")
         return EngineServiceHandle(self, state)
 
     def submit_children(
@@ -377,7 +406,7 @@ class EngineService:
             return ()
         response = _CommandResponse()
         self._enqueue(_ServiceCommand("submit_many", response, states=states))
-        response.result(timeout=self._command_timeout_seconds)
+        self._wait_response(response, method_name="submit_many")
         return tuple(EngineServiceHandle(self, state) for state in states)
 
     def submit_request_batches(
@@ -420,7 +449,7 @@ class EngineService:
                 states=(state,),
             )
         )
-        response.result(timeout=self._command_timeout_seconds)
+        self._wait_response(response, method_name="submit_speculative_many")
         self._record_speculative_route("engine_service_verify_chain")
         return EngineServiceHandle(self, state)
 
@@ -444,7 +473,7 @@ class EngineService:
         self._enqueue(
             _ServiceCommand("submit_speculative_many", response, states=states)
         )
-        response.result(timeout=self._command_timeout_seconds)
+        self._wait_response(response, method_name="submit_speculative_many")
         self._record_speculative_route("engine_service_verify_chain")
         return tuple(EngineServiceHandle(self, state) for state in states)
 
@@ -458,7 +487,7 @@ class EngineService:
                 reason=str(reason),
             )
         )
-        return bool(response.result(timeout=self._command_timeout_seconds))
+        return bool(self._wait_response(response, method_name="cancel"))
 
     def generate(self, request: GenerationRequest) -> list[str]:
         return [output.text for output in self.generate_detailed(request)]
@@ -759,7 +788,7 @@ class EngineService:
                 kwargs=tuple(kwargs.items()),
             )
         )
-        return response.result(timeout=self._command_timeout_seconds)
+        return self._wait_response(response, method_name=str(method_name))
 
     def _drive(self) -> None:
         self._driver_thread_id = threading.get_ident()
@@ -789,7 +818,11 @@ class EngineService:
                         shutdown_response = self._drain_commands()
                         if shutdown_response is not None:
                             break
-                events = tuple(self._driver.poll(max_ticks=1))
+                self._tick_started_at = time.monotonic()
+                try:
+                    events = tuple(self._driver.poll(max_ticks=1))
+                finally:
+                    self._tick_started_at = None
                 self._route_events(events)
                 self._finish_ready_children()
                 if not events and self._states_by_service_id and self._idle_wait_seconds:
@@ -875,6 +908,86 @@ class EngineService:
         )
 
     def _process_command(self, command: _ServiceCommand) -> _CommandResponse | None:
+        self._active_command_kind = command.kind
+        self._active_command_method = command.method_name
+        self._active_command_started_at = time.monotonic()
+        self._active_command_response = command.response
+        try:
+            return self._process_command_inner(command)
+        finally:
+            self._active_command_kind = None
+            self._active_command_method = None
+            self._active_command_started_at = None
+            self._active_command_response = None
+
+    def _activity_snapshot(self) -> str:
+        """Describe what the driver thread is doing, for wait diagnostics."""
+
+        now = time.monotonic()
+        parts: list[str] = []
+        active = self._active_command_kind
+        if active is not None:
+            method = self._active_command_method
+            if method:
+                active = f"{active}:{method}"
+            parts.append(f"driver_command={active}")
+            started = self._active_command_started_at
+            if started is not None:
+                parts.append(f"driver_command_s={now - started:.1f}")
+        if self._tick_started_at is not None:
+            parts.append(f"driver_tick_s={now - self._tick_started_at:.1f}")
+        parts.append(f"queued_commands={self._commands.qsize()}")
+        parts.append(f"active_requests={len(self._states_by_service_id)}")
+        parts.append(f"driver_alive={'yes' if self._thread.is_alive() else 'no'}")
+        return " ".join(parts)
+
+    def _wait_response(self, response: _CommandResponse, *, method_name: str) -> Any:
+        """Wait for one command, reporting what blocked it.
+
+        The budget guards liveness, not engine work: a command can legitimately
+        queue behind a context prepare or a long prefill chunk. A command that
+        waits past the warning threshold logs one diagnostic line naming the
+        driver's activity, and an exhausted budget raises with the same detail
+        instead of a bare timeout.
+
+        A command that the driver has already started is not reported as blocked
+        by itself; only the timeout names its own long-running work, because that
+        is the case where the caller needs to know the command is still active.
+        """
+
+        started = time.monotonic()
+        warned = False
+        warn_after = self._slow_command_warn_seconds
+        while True:
+            elapsed = time.monotonic() - started
+            remaining = self._command_timeout_seconds - elapsed
+            if remaining <= 0.0:
+                break
+            slice_seconds = remaining if warn_after <= 0.0 else min(remaining, warn_after)
+            if response.ready.wait(timeout=slice_seconds):
+                return response.result()
+            waited = time.monotonic() - started
+            if (
+                not warned
+                and warn_after > 0.0
+                and waited >= warn_after
+                and self._active_command_response is not response
+            ):
+                warned = True
+                _LOGGER.warning(
+                    "ENGINE_COMMAND_SLOW: method=%s waited_ms=%.1f %s",
+                    method_name,
+                    waited * 1000.0,
+                    self._activity_snapshot(),
+                )
+        raise TimeoutError(
+            "engine service command timed out: "
+            f"method={method_name} "
+            f"budget_s={self._command_timeout_seconds:.1f} "
+            f"{self._activity_snapshot()}"
+        )
+
+    def _process_command_inner(self, command: _ServiceCommand) -> _CommandResponse | None:
         if command.kind == "shutdown":
             return command.response
         if command.kind in {"submit", "submit_many", "submit_speculative_many"}:
