@@ -24,6 +24,7 @@ from hipengine.server.log_style import (
     resolve_color_mode,
     strip_styles,
     style_log_message,
+    value_color,
 )
 
 REQUEST_INFO_LINE = (
@@ -145,7 +146,10 @@ def test_colors_enabled_handles_a_stream_without_a_working_isatty() -> None:
         UNHANDLED_ERROR_LINE,
         MODEL_LOAD_LINE,
         MODEL_LOAD_PROGRESS_LINE,
-        "EFFECTIVE_MTP: serving=pending engine_supported=unknown",
+        "EFFECTIVE_MTP: serving=pending engine_supported=unknown candidate_budget=requested:None",
+        "KVCache: storage=bf16 scale=fp16 slots=1 requested_kv=16.00 GiB pages=4224",
+        "Config: served_model=qwen3.8-27b eager_load=False",
+        "RuntimeError: engine closed after 30.0 s",
         "hipEngine ready",
         "INFO: 127.0.0.1:52452 - \"POST /v1/chat/completions HTTP/1.1\" 200 OK",
         "50% of the budget is used",
@@ -164,8 +168,8 @@ def test_styling_marks_the_label_and_dims_field_keys() -> None:
 
     assert "\x1b[" in styled
     assert styled.startswith("\x1b[1m\x1b[96mREQUEST_INFO:\x1b[0m")
-    assert "\x1b[2mendpoint\x1b[0m=/v1/chat/completions" in styled
-    assert "\x1b[2mtokens_in\x1b[0m=49" in styled
+    assert "\x1b[2mendpoint\x1b[0m=\x1b[94m/v1/chat/completions\x1b[0m" in styled
+    assert "\x1b[2mtokens_in\x1b[0m=\x1b[1m\x1b[96m49\x1b[0m" in styled
 
 
 def test_styling_follows_the_level_for_an_unlisted_label() -> None:
@@ -190,6 +194,63 @@ def test_styling_highlights_a_progress_bar_fill_and_dim_remainder() -> None:
 
     assert "[\x1b[92m#####\x1b[0m\x1b[2m-----------------------\x1b[0m]" in styled
     assert strip_styles(styled) == MODEL_LOAD_PROGRESS_LINE
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("49", "bright_cyan"),
+        ("340.7", "bright_cyan"),
+        ("-1", "bright_cyan"),
+        ("true", "bright_green"),
+        ("True", "bright_green"),
+        ("enabled", "bright_green"),
+        ("false", "bright_yellow"),
+        ("False", "bright_yellow"),
+        ("off", "bright_yellow"),
+        ("None", "bright_black"),
+        ("pending", "bright_black"),
+        ("requested:None", "bright_black"),
+        ("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf", "bright_blue"),
+        ("bf16", "bright_white"),
+        ("qwen3.8-27b", "bright_white"),
+    ],
+)
+def test_value_color_reads_the_value_rather_than_the_key(value: str, expected: str) -> None:
+    assert value_color(value) == expected
+
+
+def test_styling_bolds_a_measurement_and_dims_its_unit() -> None:
+    line = "MODEL_LOAD: loading model=/models/gguf/x.gguf size=15.93 GiB"
+    styled = style_log_message(line)
+
+    assert "\x1b[2msize\x1b[0m=\x1b[1m\x1b[96m15.93\x1b[0m\x1b[2m GiB\x1b[0m" in styled
+    assert strip_styles(styled) == line
+
+
+def test_styling_colors_a_bare_measurement_in_a_progress_line() -> None:
+    styled = style_log_message(MODEL_LOAD_PROGRESS_LINE)
+
+    assert "\x1b[1m\x1b[96m19.3\x1b[0m\x1b[2m%\x1b[0m" in styled
+    assert "\x1b[1m\x1b[96m3.08\x1b[0m\x1b[2m GiB\x1b[0m" in styled
+
+
+def test_styling_keeps_a_unit_word_out_of_a_non_numeric_value() -> None:
+    line = "KVCache: storage=bf16 pages=4224 pages_pinned=4096"
+    styled = style_log_message(line)
+
+    assert "\x1b[2mstorage\x1b[0m=\x1b[97mbf16\x1b[0m" in styled
+    assert "\x1b[2mpages\x1b[0m=\x1b[1m\x1b[96m4224\x1b[0m" in styled
+    assert strip_styles(styled) == line
+
+
+def test_styling_colors_a_known_mixed_case_label_and_leaves_prose_alone() -> None:
+    known = style_log_message("KVCache: storage=bf16")
+    prose = style_log_message("RuntimeError: engine closed after 30.0 s")
+
+    assert known.startswith("\x1b[1m\x1b[95mKVCache:\x1b[0m")
+    assert prose.startswith("RuntimeError: ")
+    assert strip_styles(prose) == "RuntimeError: engine closed after 30.0 s"
 
 
 def test_styling_ignores_brackets_that_are_not_progress_bars() -> None:
@@ -225,7 +286,7 @@ def test_formatter_styles_a_parameterized_record_after_substitution() -> None:
         "WARNING:  REQUEST_FAILED: POST /v1/models status=400 code=invalid"
     )
     assert "\x1b[93mREQUEST_FAILED:\x1b[0m" in styled
-    assert "\x1b[2mstatus\x1b[0m=400" in styled
+    assert "\x1b[2mstatus\x1b[0m=\x1b[1m\x1b[96m400\x1b[0m" in styled
 
 
 def test_formatter_colors_a_warning_label_yellow_and_an_error_label_red() -> None:
