@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PUBLISH = ROOT / "docs" / "PUBLISH.md"
+PUBLISH = ROOT / "docs" / "reference" / "PUBLISH.md"
 GATE = ROOT / "scripts" / "check_artifact_provenance.py"
 
 
@@ -18,7 +18,7 @@ def test_gate_script_exists():
 def test_publish_checklist_runs_the_provenance_gate():
     text = PUBLISH.read_text()
     assert "scripts/check_artifact_provenance.py" in text, (
-        "docs/PUBLISH.md must run the artifact provenance gate: reuse of retained artifacts is "
+        "docs/reference/PUBLISH.md must run the artifact provenance gate: reuse of retained artifacts is "
         "mandated by the next bullet, so the artifact-to-row mapping keeps published hardware "
         "provenance honest"
     )
@@ -47,7 +47,7 @@ def test_every_documented_flag_is_accepted_by_the_tool():
     ).stdout
     assert "--show-warnings" in help_text
     for flag in sorted(documented):
-        assert flag in help_text, f"docs/PUBLISH.md documents {flag}, which the gate rejects"
+        assert flag in help_text, f"docs/reference/PUBLISH.md documents {flag}, which the gate rejects"
 
 
 def test_provenance_gate_sits_next_to_the_rollup_check():

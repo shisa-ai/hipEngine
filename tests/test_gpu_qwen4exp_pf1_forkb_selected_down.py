@@ -1,6 +1,6 @@
 """PF-1 fork (b) RED gates: grouped selected Q8_0 down prefill candidate.
 
-Campaign context: docs/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md section 6.3
+Campaign context: docs/campaigns/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md section 6.3
 fork (b) — a bit-exact (T0) faster dense kernel for the coltile/selected-served
 shapes. The declared candidate (worklog entry
 ``20260903T234843.026834Z-lhl-pf-1-forkb-declaration-a7057c``) is a grouped

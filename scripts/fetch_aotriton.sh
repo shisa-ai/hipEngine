@@ -17,7 +17,7 @@ Usage: scripts/fetch_aotriton.sh [options]
 Fetch the pinned standalone AOTriton runtime + GPU-image tarballs into a local
 cache.  hipEngine vendors the pruned baseline AOTriton tree; this helper is for
 refreshing that pin, populating an external override cache, or offline mirrors.
-See docs/PREFILL.md "AOTriton distribution and pinning strategy" for the
+See docs/reference/PREFILL.md "AOTriton distribution and pinning strategy" for the
 rationale.
 
 Output layout under the cache:

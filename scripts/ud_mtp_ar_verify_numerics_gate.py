@@ -363,7 +363,7 @@ def main() -> int:
         "kind": "correctness_gate",
         "performance_claim": False,
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        "plan": "docs/UD-GFX1151-OPTIMIZE.md",
+        "plan": "docs/campaigns/UD-GFX1151-OPTIMIZE.md",
         "phase": "Phase 3: teacher-forced single-row AR versus multi-row verification",
         "model": str(args.model),
         "quant_axis": args.quant,

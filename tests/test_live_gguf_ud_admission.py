@@ -1,4 +1,4 @@
-"""UD-U1 role-safe admission and policy tests (docs/UD-QUANTS.md section 8).
+"""UD-U1 role-safe admission and policy tests (docs/campaigns/UD-QUANTS.md section 8).
 
 CPU-only: metadata maps, the shared pure policy API, and the cold-path
 admission preflight.  No device allocation, no backend launch, no torch.
@@ -77,7 +77,7 @@ QWEN36_27B_Q4_K_M = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
 QWEN36_35B_A3B_Q4_K_M = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 ORNITH_35B_A3B_Q4_K_M = Path("/models/gguf/Ornith-1.5-35B-A3B-Q4_K_M.gguf")
 
-# The 18 unsupported AR tensors of the pinned UD K_M artifact (docs/UD-QUANTS.md
+# The 18 unsupported AR tensors of the pinned UD K_M artifact (docs/campaigns/UD-QUANTS.md
 # section 3 / the K_M campaign's exact unsupported tensor map).
 UD_K_M_REFUSED_SLOTS = frozenset(
     {

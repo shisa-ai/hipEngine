@@ -1,7 +1,7 @@
 {
   "commit": "17252c769a63c1cb650ce98ae309cf4de0da7778",
   "fixture_sha256": "b65b787c23a4b3a3cb0dfa362909585f4bab441fbe5c14ca16c6f93640aa1b4b",
-  "hash_requirement": "Verify complete model SHA256 against docs/UD-QUANTS-U0-IDENTITY.json before generation.",
+  "hash_requirement": "Verify complete model SHA256 against docs/campaigns/UD-QUANTS-U0-IDENTITY.json before generation.",
   "entries": [
     {
       "key": "row_0",

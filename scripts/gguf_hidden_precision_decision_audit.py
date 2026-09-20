@@ -15,7 +15,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 DEFAULT_RUNNER = Path("hipengine/runtime/qwen35_gguf_runner.py")
-DEFAULT_DOC = Path("docs/MTP-gguf.md")
+DEFAULT_DOC = Path("docs/reference/MTP-gguf.md")
 DEFAULT_TOKEN_AUDIT = Path(
     "benchmarks/results/mtp-gguf-iter299-token-embedding-parity-audit.json"
 )

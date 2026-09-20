@@ -37624,7 +37624,7 @@ def _selected_wmma_allocation_name(weight: Qwen35GGUFDeviceWeight) -> str:
     Raw-layout quant keys carry their bytes in the ``"raw"`` allocation
     (single contiguous rank-3 buffer). T16 decode-repack quant keys keep
     the byte-lossless tiles under ``"tiles"`` (see
-    ``docs/GGUF_DECODE_REPACK.md``). The compact WMMA prefill kernels
+    ``docs/reference/GGUF_DECODE_REPACK.md``). The compact WMMA prefill kernels
     accept whichever layout was materialized via the same compact ABI;
     dispatch picks the allocation name here so the runner stays
     quant-agnostic.

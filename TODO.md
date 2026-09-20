@@ -11,14 +11,14 @@ Goal: basic hipEngine support for all of these. Start with models that have **no
 | google/timesfm-2.5-200m | TimesFmModelForPrediction | ❌ (not a token LM) | ✅ `timesfm_2p5_200m` |
 | google/timesfm-3.0-pytorch | TimesFM3Torch | ❌ | ✅ `timesfm_3p0` (GPU decode; 4.17x torch fp32 on gfx1151) |
 | shisa-ai/shisa-realtime-asr-0.92b | MoonshineForConditionalGeneration | ❌ (runtime is sherpa-onnx) | ✅ `moonshine_asr` (native HIP decoder) |
-| datalab-to/surya-ocr-2 | Qwen3_5 (gated DeltaNet) | ✅ official GGUF, documented llama.cpp backend | ✅ `surya_ocr2` — torch-free CPU-reference OCR pipeline end to end, every stage oracle-gated; OCR output == torch greedy reference ([plan](docs/MODEL-SURYA.md); GPU kernels open) |
+| datalab-to/surya-ocr-2 | Qwen3_5 (gated DeltaNet) | ✅ official GGUF, documented llama.cpp backend | ✅ `surya_ocr2` — torch-free CPU-reference OCR pipeline end to end, every stage oracle-gated; OCR output == torch greedy reference ([plan](docs/model-cards/MODEL-SURYA.md); GPU kernels open) |
 | tencent/EVIE-4.5B / 8B | ColQwen3_5 | ❌ (no multi-vector/MaxSim) | ✅ `evie_4p5b` (both sizes; 4.5B: batched fp16 encode 1.13 s, 1.11x torch bf16; 8B: fp32 parity-gated, fp32 recommended) |
-| microsoft/VibeVoice-ASR | VibeVoiceForASRTraining | ❌ (custom audio tokenizers) | ✅ `vibevoice_asr` — `LLM.transcribe` on the HF checkpoint; production qualification incomplete ([plan](docs/MODEL-VIBEVOICE-ASR.md)) |
-| microsoft/VibeVoice-1.5B | VibeVoiceForConditionalGeneration | ❌ (TTS diffusion head) | ❌ (torch oracle frozen; [plan](docs/MODEL-VIBEVOICE-TTS.md)) |
+| microsoft/VibeVoice-ASR | VibeVoiceForASRTraining | ❌ (custom audio tokenizers) | ✅ `vibevoice_asr` — `LLM.transcribe` on the HF checkpoint; production qualification incomplete ([plan](docs/model-cards/MODEL-VIBEVOICE-ASR.md)) |
+| microsoft/VibeVoice-1.5B | VibeVoiceForConditionalGeneration | ❌ (TTS diffusion head) | ❌ (torch oracle frozen; [plan](docs/model-cards/MODEL-VIBEVOICE-TTS.md)) |
 | shisa-ai/shisa-asr-v0.95b (+FP8) | Phi4MMForCausalLM | ❌ (no phi4mm audio) | ❌ |
-| opendatalab/MinerU2.5-2509-1.2B | Qwen2VL | ✅ qwen2vl + mtmd; community GGUF | ❌ ([review/plan](docs/MODEL-MINERU.md)) |
+| opendatalab/MinerU2.5-2509-1.2B | Qwen2VL | ✅ qwen2vl + mtmd; community GGUF | ❌ ([review/plan](docs/model-cards/MODEL-MINERU.md)) |
 | PaddlePaddle/PaddleOCR-VL | PaddleOCRVL | ✅ dedicated `paddleocr` arch + mtmd vision | ❌ |
-| zai-org/GLM-OCR | GlmOcr | ✅ glm4/glm4v explicit GLM-OCR handling, incl. MTP head | ❌ ([review/plan](docs/MODEL-GLM-OCR.md)) |
+| zai-org/GLM-OCR | GlmOcr | ✅ glm4/glm4v explicit GLM-OCR handling, incl. MTP head | ❌ ([review/plan](docs/model-cards/MODEL-GLM-OCR.md)) |
 | google/medgemma-1.5-4b-it | Gemma3 | ✅ gemma3 + mmproj | ❌ |
 | google/translategemma-4b-it | Gemma3 | ✅ gemma3 + mmproj | ❌ |
 | BAAI/bge-m3 | XLM-RoBERTa | ✅ encoder embedding/pooling | ❌ |
@@ -69,7 +69,7 @@ llama.cpp-oracle-available, likely cheapest: Qwen3-Embedding-8B / bge-m3 (encode
 
   The previous rejection is specific to that implementation/model/workload, not proof that caching cannot help Qwen3.8. The documented issue was
   that the retained snapshot boundary rarely matched the next request, while exact miss/tail processing cost more than the hits saved. Analysis
-  (docs/AGENTIC-OPT.md:243)
+  (docs/campaigns/AGENTIC-OPT.md:243)
 
   How I’d Benchmark Real Agent Loads
   I would extend the existing live agentic protocol (docs/BENCHMARK.md:986), with two separate lanes:
@@ -136,12 +136,12 @@ If hipEngine already runs Gemma 3, **MedGemma 1.5** (4B multimodal; 27B text and
 **Work required:**
 
 1. ✅ **TimesFM 2.5 + 3.0** — done. 2.5: GPU decode 0.082 s (13.3x over first path). 3.0: non-autoregressive multivariate port, GPU decode 0.319 s (4.17x torch fp32); records in `docs/MODEL-TIMESFM{,3}.md`.
-2. ✅ **EVIE-4.5B + 8B** — done. Batched fp16 encode 1.13 s for 8p+8q (1.11x torch bf16 with better retrieval fidelity); 8B merger-geometry fix landed with fp32 parity gates. Records in `docs/MODEL-EVIE.md`.
+2. ✅ **EVIE-4.5B + 8B** — done. Batched fp16 encode 1.13 s for 8p+8q (1.11x torch bf16 with better retrieval fidelity); 8B merger-geometry fix landed with fp32 parity gates. Records in `docs/model-cards/MODEL-EVIE.md`.
 3. **MinerU 2.5** — Qwen2-VL: 32-block, 1280-wide vision tower and
    24-layer, 896-wide Qwen2 decoder. Adapt shared vision primitives and add the
    Qwen2-VL model contract, then reproduce layout → native-resolution crops →
    recognition. Current client sampling differs across backends; GGUF alone
-   does not give pipeline parity. See [MODEL-MINERU.md](docs/MODEL-MINERU.md).
+   does not give pipeline parity. See [MODEL-MINERU.md](docs/model-cards/MODEL-MINERU.md).
 
 4. **PaddleOCR-VL** — ERNIE-4.5-0.3B decoder is trivial; NaViT variable-resolution patching and packing is the real work. The LiteRT port is a gift: it documents that the decoder is a standalone Llama-layout model, bit-exact fp32 vs original, and that 1-D positions substitute fine for M-RoPE on OCR with no quality loss. That's most of your bring-up validation done.
 
@@ -151,24 +151,24 @@ If hipEngine already runs Gemma 3, **MedGemma 1.5** (4B multimodal; 27B text and
    work includes weight/tokenizer validation, image preprocessing, image-feature
    injection, mRoPE continuation, and OCR output handling. The current full-page
    path uses the VLM alone; text-line detection and RF-DETR fast layout are
-   separate optional capabilities. See [docs/MODEL-SURYA.md](docs/MODEL-SURYA.md)
+   separate optional capabilities. See [docs/model-cards/MODEL-SURYA.md](docs/model-cards/MODEL-SURYA.md)
    for the 2026-09-11 source review, pitfalls, and implementation gates.
 
 6. **GLM-OCR** — CogViT-derived tower, convolutional downsampling connector,
    and four-norm GLM decoder. Start with supplied-crop recognition; the SDK's
    PP-DocLayoutV3 stage is separate. MTP is an optional later milestone. Resolve
    the reviewed Transformers/llama.cpp rotary discrepancy before using GGUF as
-   a numerical oracle. See [MODEL-GLM-OCR.md](docs/MODEL-GLM-OCR.md).
+   a numerical oracle. See [MODEL-GLM-OCR.md](docs/model-cards/MODEL-GLM-OCR.md).
 7. **VibeVoice-ASR** — two 24 kHz causal audio encoders feeding a Qwen2 decoder;
    no synthesis diffusion loop. The official ASR-HF artifact provides a complete
    processor/tokenizer reference. Acoustic latents are sampled at inference,
    so fixtures need common noise inputs. See
-   [MODEL-VIBEVOICE-ASR.md](docs/MODEL-VIBEVOICE-ASR.md).
+   [MODEL-VIBEVOICE-ASR.md](docs/model-cards/MODEL-VIBEVOICE-ASR.md).
 8. **VibeVoice TTS** — Qwen2-controlled diffusion plus acoustic decoding and
    semantic audio feedback. Microsoft's original TTS inference entry is disabled;
    a pinned community loop is available for oracle qualification. The model card's
    disclosure/watermark statements do not establish that weights alone implement
-   them. See [MODEL-VIBEVOICE-TTS.md](docs/MODEL-VIBEVOICE-TTS.md).
+   them. See [MODEL-VIBEVOICE-TTS.md](docs/model-cards/MODEL-VIBEVOICE-TTS.md).
 
 #### Supporting index stack (use as-is, don't port)
 

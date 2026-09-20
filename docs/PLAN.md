@@ -1,3 +1,7 @@
+---
+status: normative
+owns: Architecture, plugin boundaries, phase roadmap, LoC budgets, and the invariants that define hipEngine.
+---
 # hipEngine — Purpose-Built Inference for AMD RDNA3
 
 > **Status:** Design document — architecture and roadmap for a clean-host inference engine built around proven gfx1100 kernels.
@@ -74,7 +78,7 @@ multi-GPU sharding, communication, and state. Local-shape tuning or fused
 communication consumers may require registered kernel variants.
 
 The concrete dense TP2 implementation plan is
-[`QWEN38-27B-GFX1100-TP2.md`](QWEN38-27B-GFX1100-TP2.md): one W7900 plus one
+[`QWEN38-27B-GFX1100-TP2.md`](campaigns/QWEN38-27B-GFX1100-TP2.md): one W7900 plus one
 RX 7900 XTX on the same PCIe host, prioritizing single-request latency and
 separately qualified MTP gains. This is planned work, not implemented support.
 It requires measured communication break-even, hybrid attention/state sharding,
@@ -379,7 +383,7 @@ The exact control-plane, determinism, numerical calibration, evaluator, and
 migration/default rules are normative in
 [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md). The approved implementation
 and performance sequence is
-[`PRODUCTION-NUMERICS-CAMPAIGN.md`](PRODUCTION-NUMERICS-CAMPAIGN.md). Current
+[`PRODUCTION-NUMERICS-CAMPAIGN.md`](reference/PRODUCTION-NUMERICS-CAMPAIGN.md). Current
 non-exact defaults are not grandfathered, and public behavior does not change
 until the evaluator, manifests, and serving gates are retained. The first
 ZBook Qwen3.6 c1/cN package decision retains small implementation-route wins
@@ -388,7 +392,7 @@ completion (87 completed, 33 overloaded of 120), and named-profile manifest,
 task, and BF16-relative evidence remains open. See the
 [`bundle decision`](../benchmarks/results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json).
 The frozen
-[`ZBook production-numerics PLAN/PUNCHLIST`](QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md)
+[`ZBook production-numerics PLAN/PUNCHLIST`](campaigns/QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md)
 records that campaign's evaluator/control sequence. Under the evaluation policy
 above, completing a qualification packet is not a prerequisite for implementing
 or running the candidate that the packet must evaluate.
@@ -467,30 +471,30 @@ Our host is simpler because **the kernels do the heavy lifting**. The scheduler 
 
 The active Generation-2 request-lifecycle, scheduler, global device-KV pool,
 prefix-cache, c1-c32, and FastDMS integration design is
-[`CONCURRENCY2.md`](CONCURRENCY2.md). The approved continuous speculative
-execution campaign is [`SPECDEC2.md`](SPECDEC2.md); S1-S6 are functionally
+[`CONCURRENCY2.md`](reference/CONCURRENCY2.md). The approved continuous speculative
+execution campaign is [`SPECDEC2.md`](reference/SPECDEC2.md); S1-S6 are functionally
 closed with automatic K0. The stable-gfx1151 activation/hot-cycle follow-up
-[`SPECDEC2-PERF.md`](SPECDEC2-PERF.md) is closed through P10: retained explicit
+[`SPECDEC2-PERF.md`](campaigns/SPECDEC2-PERF.md) is closed through P10: retained explicit
 production-FP16/strict-fallback mechanics and exact fixed cells remain, but no
 automatic product cell promotes because the capacity-1 C1 premise does not
 engage on the normal capacity-4 server owner; automatic remains K0. The
 independent gfx1100 campaign is closed with retained exact C1 device chains and
 automatic K0 under
-[`SPECDEC2-PERF-GFX1100.md`](SPECDEC2-PERF-GFX1100.md). The W7900 dual-model
+[`SPECDEC2-PERF-GFX1100.md`](campaigns/SPECDEC2-PERF-GFX1100.md). The W7900 dual-model
 promotion campaign completed real Generation-2 automatic MTP keys independently
 for Qwen3.6 35B MoE and 27B Dense under the production
 numerical/task/serving gates in
-[`MTP-CONCURRENCY2-DUAL-PROMOTION.md`](MTP-CONCURRENCY2-DUAL-PROMOTION.md);
+[`MTP-CONCURRENCY2-DUAL-PROMOTION.md`](campaigns/MTP-CONCURRENCY2-DUAL-PROMOTION.md);
 the prior measured queue remains historical context in
-[`MTP-CONCURRENCY2-RECOVERY.md`](MTP-CONCURRENCY2-RECOVERY.md). The W7900
+[`MTP-CONCURRENCY2-RECOVERY.md`](campaigns/MTP-CONCURRENCY2-RECOVERY.md). The W7900
 Qwen3.8 explicit C8/K3 cross-engine campaign in
-[`QWEN38-GFX1100-C8-K3-CAMPAIGN.md`](QWEN38-GFX1100-C8-K3-CAMPAIGN.md) is
+[`QWEN38-GFX1100-C8-K3-CAMPAIGN.md`](campaigns/QWEN38-GFX1100-C8-K3-CAMPAIGN.md) is
 complete as historical cross-engine evidence. The
 [2026-09-06 matched AR/MTP sweep](../worklog/entries/20260906T070547.769218Z-lhl-gfx1100-mtp-ck-sweep-k0-291573.md)
 withdraws Qwen3.8 automatic C2/K2 and C8/K3: all 20 measured cells lose to
 current AR. Qwen3.8 gfx1100 automatic selects K0; safety-qualified explicit
 routes remain available, and Qwen3.6 policies are unchanged. The follow-up
-[`QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md`](QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md)
+[`QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md`](campaigns/QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md)
 requires native physical C1 on the Generation-2 provider/frontier/transaction
 path, not a legacy singleton verifier substitution, plus measured complete-cycle
 reductions and width-specific numerical/lifecycle/performance qualification.
@@ -514,8 +518,8 @@ task/context and repeated-economics gates remain. C2/K3 and C8/K3 explicit keys 
 qualified kernel improvements stay enabled; automatic Qwen3.8 remains K0.
 Deeper public execution and automatic depth selection remain separately gated.
 Source audit and rejected alternatives remain in
-[`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md).
-[`CONCURRENCY.md`](CONCURRENCY.md) is the legacy retained c=N kernel/resident-
+[`SPECDEC2-RESEARCH.md`](archive/SPECDEC2-RESEARCH.md).
+[`CONCURRENCY.md`](archive/CONCURRENCY.md) is the legacy retained c=N kernel/resident-
 runner roadmap and evidence history. The batch-shaped, `KVLiveSpans`,
 transactional-KV, and plugin invariants below remain binding while Generation-2
 host ownership replaces the older implementation sequence.
@@ -553,7 +557,7 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 #### Next campaign: artifact-scoped compact INT8 KV continuous batching
 
 The approved next INT8 KV campaign is
-[`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md). It starts by
+[`QWEN38-INT8-KV-CONTINUOUS.md`](campaigns/QWEN38-INT8-KV-CONTINUOUS.md). It starts by
 integrating the divergent gfx1100/gfx1151 Qwen3.8 evidence and locking runtime
 admission to immutable artifact identity, backend, weight quant, KV layout, and
 scale policy. It then adds a temporary no-mirror serial c>N correctness route,
@@ -577,7 +581,7 @@ schedule exact per row at every step. BF16 stays supported/default.
 
 #### Qwen3.8-27B capacity on the 24 GB RX 7900 XTX
 
-[`QWEN38-27B-GFX1100-24GB-CAPACITY.md`](QWEN38-27B-GFX1100-24GB-CAPACITY.md)
+[`QWEN38-27B-GFX1100-24GB-CAPACITY.md`](campaigns/QWEN38-27B-GFX1100-24GB-CAPACITY.md)
 plans actual-XTX measurements for `Q4_K_M`/`Q4_K_S`, BF16/compact INT8 KV,
 FastDMS, AR-only versus optional/active MTP, and separate C1/context and
 concurrent limits. Account once for the existing shared pool backing and its
@@ -616,7 +620,7 @@ and [headline measurements](../benchmarks/results/2026-09-12-gfx1151-qwen38-fina
 | Can current hipEngine run native GGUF c>N AR? | Yes through one true physical c8 group on both gfx1100 and gfx1151. Direct eager/graph, ragged, sparse-retirement, cancellation, all-layer hidden, Conv/GDN/live-KV, profiler-family, and repeated same-session scaling gates are retained; F3/F3B's clean gfx1151 direct c1/c2/c4/c8 is 50.335/78.552/108.050/133.852 aggregate tok/s, with c8 at 2.659x c1 and 748 packed-native / zero row-local/copy dispatches. The exact singleton-indexed GDN default improves c2/c4/c8 by 8.71%/5.25%/4.04% while leaving c1 structurally unchanged; F3B then adds an exact physical-C8-only 128-thread qkv+gate pair rowtile for another +0.452%, with 30 expected pair-rowtile launches and lower widths/gfx1100 unchanged. gfx1100 keeps segmented GDN pending independent transfer. Both targets retain honest arbitrary-C/C>8 lowering as multiple declared groups. The shared owner uses dense ephemeral execution rows so live occupancy selects c1/c2/c4/c8 without moving stable scheduler slots, state, or KV; gfx1151 clean F2 server retention preserves all p512/d128 and live-transition outputs with occupancy-one at 95.625% of same-process direct c1. The current optimized corrected-window server path adds true physical C8, resident packed graphs, bounded fair-prefill bursts, resident telemetry reuse, and terminal-state discard: blocking C1/C2/C4/C8 is 44.321/59.783/75.580/86.185 tok/s, exact SSE is 42.147/59.102/73.971/84.196, delayed C8 is 67.788, and all 117 rows are exact; F3B's separate clean C1/C8 packet remains mixed within server noise and makes no additional server-speed claim. gfx1100 transfer remains separate. Neither target claims native c9/c13. gfx1151 additionally retains explicit uniform `int8_per_token_head` c1/c2/c4/c8 continuous serving through rounded context 8192 with bounded BF16 attention mirrors: corrected-window exact SSE is 42.759/55.128/71.284/81.140 tok/s, blocking is 44.225/60.598/74.631/83.408, delayed C8 is 65.034, and all 117 server rows plus the 11-prompt/99-position KL/top-1 gate pass. gfx1100 now independently qualifies the same short mirrored lifecycle at 512/24 through staggered c1->c4 SSE (4/4 exact, occupancy `0->1->4->3->2->1->0`, admitted/reclaimed `4/4`, zero final ownership). The exact gfx1100 Qwen3.8 artifact additionally qualifies compact no-mirror logical c2/c4 through a physical-c1 serial fallback: p512/d24 is independent-c1 exact, shifted logits/state/KV are byte-exact, persistent BF16 bytes are zero, and staggered cancellation drains cleanly. Neither mirrored route is default or memory-saving; row-batched direct INT8 attention, longer compact c>N INT8, and broader quant/sampling remain open. |
 | What does the merged UD-Q3_K_M branch add? | A separately gated gfx1100 GPU1 direct path: exact fully-bulk Q3 prefill, native C=2/4/8 decode with exact IDs/full logits and no c>N serial fallback, and a transactional blk.40 NextN diagnostic. The direct C8 rows reach 207.780/211.177 aggregate tok/s at 512/4K; the exact NextN route is economically rejected and remains disabled. |
 | Does current hipEngine implement continuous batching? | Partially project-wide; correctness and real server scaling are retained for both gfx11 GGUF OpenAI paths and for gfx1151 PARO W4/BF16-KV greedy c2/c4/c8. Blocking calls and SSE share one model-owning loop that admits during decode, executes bounded prompt chunks, streams row-owned tokens through bounded queues, cancels or retires rows, and drains through runner close. The GGUF owner densifies only execution rows and selects c1/c2/c4/c8 from occupancy while request/session/KV identity stays stable; both gfx11 owners are retained for BF16, and gfx1100 additionally has a measured short mirrored-INT8 staggered c1->c4 lifecycle. PARO uses a fixed-capacity stable-slot session, profile-partitions c3/c5/c6/c7 into certified widths, and defaults native c2/c4/c8 on gfx1151. gfx1100 PARO owner symmetry and broader sampling/KV/context remain open. Explicit short mirrored-INT8 requests preserve policy identity, exact outputs, reclaim, and fail-closed unsupported layouts, but do not broaden the default or prove compact INT8. Direct no-mirror c2/c4 residency now has the `IKV-C1` physical-c1 serial correctness anchor; native row-batched attention is complete and promoted to physical c4 (2026-09-11), leaving the separate `IKV-C3`-`IKV-C7` work. |
-| Is exact Qwen3.8 Q4_K_M public MTP wired into generation? | Yes. [`QWEN38-Q4KM-MTP-SERVING.md`](QWEN38-Q4KM-MTP-SERVING.md) and the completed [`Dynamic Admission campaign`](CONCURRENCY2-GFX1151-MTP-DYNAMIC-ADMISSION.md) remain the serving foundation. Strict/BF16 C1/K3/context1-67 natural25 remains automatic at **18.191 vs 11.062 tok/s (1.6445x)**. The reviewed current-head all-ten explicit K3 matrix is C1-C8 **15.753/28.441/30.541/35.474/27.980/32.807/33.106/35.423 tok/s** versus own AR **11.112/18.090/23.879/30.150/35.778/40.343/43.974/47.194**; all 80 generated-ID/route/budget cells pass. AR leads every external engine C3-C8 and explicit K3 leads MTP C3-C4. NextN draft depth is serial but batch-shaped; C2-C4 and qualified explicit C8 target verification use one flattened packed forward, active C1 uses the request-local transactional verifier, production C5-C7 stays on AR, and qualified C8 uses one physical proposal group with one R32 target group. A reviewed full-width K1 diagnostic finds real row-bucket candidates at C6/R12 (**35.383, +7.85% vs split K3**) and C8/R16 (**39.260, +10.83%**), but both remain below own AR and are not admitted by the profile policy. Exact prompt streaming, proposal-head reuse, and Q4/Q5/Q6 owners remain scoped; width-4 prompt streaming changes acceptance and therefore remains explicit T3 rather than automatic. The retained active-C1 target at `b58a70c82` keeps the wide physical provider but selects the request-local transactional verifier when exactly one request is active: capacity-3 C1 is **19.428 tok/s versus 11.518 AR (1.6868x)** with 10/10 AR equality, while C3 stays packed at **32.919 tok/s** with unchanged acceptance and equality. The profile-owned production policy preserves C1-C4/K1-K3 and admits explicit C8/K3 while C5-C7 stay K0; the current ten-prompt C8 rerun is 52.103 versus 52.025 true-AR tok/s (1.0015x), and its cancellation/refill lifecycle is exact and fully drained. Unqualified context, horizon, and sampling axes remain K0, and strict fallback remains registered. The closed [`scaling campaign`](QWEN38-GFX1151-SCALING-CAMPAIGN.md), [C1 retention](../benchmarks/results/2026-09-03-gfx1151-qwen38-c1-singleton-target-retained.json), and [external survey](QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md) own the current evidence and remaining C=N/prefill work. |
+| Is exact Qwen3.8 Q4_K_M public MTP wired into generation? | Yes. [`QWEN38-Q4KM-MTP-SERVING.md`](campaigns/QWEN38-Q4KM-MTP-SERVING.md) and the completed [`Dynamic Admission campaign`](campaigns/CONCURRENCY2-GFX1151-MTP-DYNAMIC-ADMISSION.md) remain the serving foundation. Strict/BF16 C1/K3/context1-67 natural25 remains automatic at **18.191 vs 11.062 tok/s (1.6445x)**. The reviewed current-head all-ten explicit K3 matrix is C1-C8 **15.753/28.441/30.541/35.474/27.980/32.807/33.106/35.423 tok/s** versus own AR **11.112/18.090/23.879/30.150/35.778/40.343/43.974/47.194**; all 80 generated-ID/route/budget cells pass. AR leads every external engine C3-C8 and explicit K3 leads MTP C3-C4. NextN draft depth is serial but batch-shaped; C2-C4 and qualified explicit C8 target verification use one flattened packed forward, active C1 uses the request-local transactional verifier, production C5-C7 stays on AR, and qualified C8 uses one physical proposal group with one R32 target group. A reviewed full-width K1 diagnostic finds real row-bucket candidates at C6/R12 (**35.383, +7.85% vs split K3**) and C8/R16 (**39.260, +10.83%**), but both remain below own AR and are not admitted by the profile policy. Exact prompt streaming, proposal-head reuse, and Q4/Q5/Q6 owners remain scoped; width-4 prompt streaming changes acceptance and therefore remains explicit T3 rather than automatic. The retained active-C1 target at `b58a70c82` keeps the wide physical provider but selects the request-local transactional verifier when exactly one request is active: capacity-3 C1 is **19.428 tok/s versus 11.518 AR (1.6868x)** with 10/10 AR equality, while C3 stays packed at **32.919 tok/s** with unchanged acceptance and equality. The profile-owned production policy preserves C1-C4/K1-K3 and admits explicit C8/K3 while C5-C7 stay K0; the current ten-prompt C8 rerun is 52.103 versus 52.025 true-AR tok/s (1.0015x), and its cancellation/refill lifecycle is exact and fully drained. Unqualified context, horizon, and sampling axes remain K0, and strict fallback remains registered. The closed [`scaling campaign`](campaigns/QWEN38-GFX1151-SCALING-CAMPAIGN.md), [C1 retention](../benchmarks/results/2026-09-03-gfx1151-qwen38-c1-singleton-target-retained.json), and [external survey](campaigns/QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md) own the current evidence and remaining C=N/prefill work. |
 | Is current SpecDec wired into generation? | Yes. Generation-2 owns proposal, target frontier, transaction, accept/commit, output, cancellation, and K0 policy. On gfx1100, dense C1 K1-K3 remains 1.272x/1.407x/1.439x AR and packed PARO C1 is exact; physical C2 target repair plus the exact R6 projection route reaches 22.393 tok/s (0.7156x AR) at 74.28% acceptance, so physical capability remains false. On gfx1151 Q4_K_S, the fixed capacity-1 production C1/K2 path reaches 1.4087x AR, but normal capacity-4 serving executes zero speculative cycles; best physical C2/C4 remains 0.6975x/0.5843x AR. The generic gfx1100/gfx1151 campaign automatic policies stay K0. The exact Q4_K_M public-serving scope is tracked separately above. The next premises are a materially cheaper physical target dataflow and true singleton staged engagement under a normal wider server owner, not more acceptance tuning. |
 | Is the design cleaner for adding c>1 than `nano-vllm-amd`? | Yes. |
 | Would just setting `tokens=8` work? | No. |
@@ -683,14 +687,14 @@ Current blockers that keep project-wide c>N incomplete:
   artifact/backend quality gates. See the
   [gfx1151 mirrored packet](../benchmarks/results/2026-07-19-gfx1151-gguf-mirrored-int8-continuous-concurrency.json),
   [gfx1100 lifecycle/frontier artifact](../benchmarks/results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json),
-  and [`IKV-C0`-`IKV-C7` campaign](QWEN38-INT8-KV-CONTINUOUS.md).
+  and [`IKV-C0`-`IKV-C7` campaign](campaigns/QWEN38-INT8-KV-CONTINUOUS.md).
 - Selected MoE decode has row-aware/grouped diagnostic coverage for c<=8, but
   retained performance still needs routed-lane profiling and c-aware thresholds
   for grouped GEMV versus compact/WMMA execution.
 - GGUF MTP serving is phase-serial at the slot level: draft, target verify, then
   commit. Target verify is packed up to four slots. The canonical milestone
   glossary, ownership distinctions, and qualified scorecard are in
-  [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md). The provider-neutral
+  [`NATIVE_SPEC_CYCLE.md`](reference/NATIVE_SPEC_CYCLE.md). The provider-neutral
   `NativeSpecCycleLauncher` N0 ABI plus gfx1100 reusable B1/B2 N1 target graphs
   are landed. The exact dense Qwen3.6 native verifier extends N1 VERIFY to an
   independent B3 bucket with dynamic row positions/`KVLiveSpans` and exact
@@ -778,7 +782,7 @@ Current blockers that keep project-wide c>N incomplete:
   ownership, independent gfx1151 N4
   admission, gfx1151 N3P proposal-graph admission, draft-side batching, rows>=16
   verifier tuning, streaming, and exact/default MTP serving remain open.
-- The 2026-08-22 [`MTP-FIX`](MTP-FIX.md) campaign supersedes the dense-gfx1151
+- The 2026-08-22 [`MTP-FIX`](campaigns/MTP-FIX.md) campaign supersedes the dense-gfx1151
   open-status sentence above without rewriting its historical measurements.
   RF0–RF7 now qualify context containment, eager correctness through 64K, exact
   steady long target graphs, lifecycle/fault ownership, OpenAI API semantics,
@@ -855,7 +859,7 @@ eager and transport-unaffected. The implementation removes the Redline
 runtime/interposer dependency and supplies a smaller #6529 isolation surface,
 but production retains one queue and does not exercise risky recreate.
 Architecture admission, exact ABI checks, conservative ordering, no post-submit
-fallback, and promotion gates are specified in [`PM4.md`](PM4.md).
+fallback, and promotion gates are specified in [`PM4.md`](reference/PM4.md).
 
 **Rule:** we do not add levers #2–5 without `rocprofv3` evidence that dispatch is above ~3% of decode wall time.
 
@@ -865,7 +869,7 @@ this is not new architecture admission or a runtime replacement. First census
 Flash-Next graph eligibility/cost, then consider an isolated ordinary-AQL/PM4
 runtime A/B. Profiler activity forces that external PM4 path to AQL, so PM4
 engagement/timing must additionally be verified unprofiled. See
-[pinned review](QWEN4EXP-WILKIN-RUNTIME-REVIEW.md) and campaign WIL-1 through WIL-4
+[pinned review](archive/QWEN4EXP-WILKIN-RUNTIME-REVIEW.md) and campaign WIL-1 through WIL-4
 for graph-update, UMA ownership and semantic-safe TOP_K follow-ups.
 
 Qwen4Exp grouped Q8 expert-down prefill now uses exact four-row reuse for
@@ -1058,7 +1062,7 @@ and KV writes consume uniform block-size-one `KVLiveSpans`; the current cache
 limit is 16000 tokens. An initialized generator serializes audio requests.
 The public path selects strict frontend GEMM and incremental prefill; optimized
 variants have no certified production plan yet. See
-[MODEL-VIBEVOICE-ASR.md](MODEL-VIBEVOICE-ASR.md) for API and qualification status.
+[MODEL-VIBEVOICE-ASR.md](model-cards/MODEL-VIBEVOICE-ASR.md) for API and qualification status.
 
 The standalone Q4 GGUF path embeds hash-checked tokenizer/configuration assets
 and BF16 frontend tensors in the weight file. `VibeVoiceASRQ4Generator` and
@@ -1116,7 +1120,7 @@ binders are unchanged; initial UD execution uses no named profile in a fresh
 process. Shared storage/consumer contracts and artifact identity helpers remain
 useful independently of the certificate and physical-authorization layers,
 which are being reviewed for removal or simplification. See
-[`UD-QUANTS.md`](UD-QUANTS.md).
+[`UD-QUANTS.md`](campaigns/UD-QUANTS.md).
 
 Public APIs and server entry points default to `backend="auto"`. Auto is a selector
 resolved before registry lookup, not a registry key: exact `gfx1100`/`gfx1151`
@@ -1182,9 +1186,9 @@ Phase-0 targets (driven by the current research focus):
 | **Qwen3-0.6B** dense | full_attention + dense_mlp | Phase 0 smoke |
 | **Qwen3.5 0.8B** dense | full_attention + dense_mlp | Phase 0 correctness |
 | **Qwen3.5 27B** dense | full_attention + dense_mlp | Phase 1 perf target |
-| **Qwen3.6 35B-A3B** MoE hybrid | full_attention + linear_attention + gdn + moe_top2 | Phase 2 perf target; the ZBook quant/runtime campaign and quality-only automatic-tool/task [`AGENTIC-QUALITY2`](AGENTIC-QUALITY2.md) follow-up are closed, with no quality runtime mechanism retained |
-| **Qwen3.8-Flash-Next 125B-A6B + 51B PLE** Qwen4 experimental MoE | QSA + GDN + gated residual + top-10 MoE + sparse host n-gram embedding | Bounded gfx1151 `UD-Q4_K_XL` text/QSA/PLE/MTP/multimodal/c2 support is working. Current production manifest `37d59564…` passes the 450-row numerical/task/state/c2/lifecycle gate and deterministic p512/p1024/p4096-tg128 at 83.35/14.18, 82.93/14.16, and 69.20/12.16 pp/tok/s; exact ordered sparse QSA is default. MTP remains explicit/default-off at 0.7407x same-command true AR and is capped at 1K. Rows<=8 verifier storage, pooled D2D state transactions, serial oracle, and rejection-depth controls are retained, but final-head-only public verification regresses every category. Final five-pair comparator freeze and 4K MTP remain blocked. See [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) and the [performance campaign](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md); gfx1100 performance and 128K+/262K inference remain unverified/unsupported. |
-| **Moonshine ASR** encoder-decoder | conv encoder + self/cross attention + gated decoder MLP | HIP FP16 graph decoder and selected encoder hybrids promoted internally; `cuda_sm120a` C0-C8 includes a torch-free encoder, static/continuous batching, and device-owned decode but remains outside public model admission; gfx1151 transfer campaign: [`MOONSHINE.md`](MOONSHINE.md) |
+| **Qwen3.6 35B-A3B** MoE hybrid | full_attention + linear_attention + gdn + moe_top2 | Phase 2 perf target; the ZBook quant/runtime campaign and quality-only automatic-tool/task [`AGENTIC-QUALITY2`](campaigns/AGENTIC-QUALITY2.md) follow-up are closed, with no quality runtime mechanism retained |
+| **Qwen3.8-Flash-Next 125B-A6B + 51B PLE** Qwen4 experimental MoE | QSA + GDN + gated residual + top-10 MoE + sparse host n-gram embedding | Bounded gfx1151 `UD-Q4_K_XL` text/QSA/PLE/MTP/multimodal/c2 support is working. Current production manifest `37d59564…` passes the 450-row numerical/task/state/c2/lifecycle gate and deterministic p512/p1024/p4096-tg128 at 83.35/14.18, 82.93/14.16, and 69.20/12.16 pp/tok/s; exact ordered sparse QSA is default. MTP remains explicit/default-off at 0.7407x same-command true AR and is capped at 1K. Rows<=8 verifier storage, pooled D2D state transactions, serial oracle, and rejection-depth controls are retained, but final-head-only public verification regresses every category. Final five-pair comparator freeze and 4K MTP remain blocked. See [`QWEN3.8-FLASH-NEXT.md`](campaigns/QWEN3.8-FLASH-NEXT.md) and the [performance campaign](campaigns/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md); gfx1100 performance and 128K+/262K inference remain unverified/unsupported. |
+| **Moonshine ASR** encoder-decoder | conv encoder + self/cross attention + gated decoder MLP | HIP FP16 graph decoder and selected encoder hybrids promoted internally; `cuda_sm120a` C0-C8 includes a torch-free encoder, static/continuous batching, and device-owned decode but remains outside public model admission; gfx1151 transfer campaign: [`MOONSHINE.md`](model-cards/MOONSHINE.md) |
 | **Maple-Preview 20B-A1B** ternary MoE | GQA sliding/global attention + top-8/256 MoE + packed ternary/affine4 | gfx11 public c1/c2/c4/c8 path promoted; `cuda_sm120a` c1 generation, native prefill through p512 performance / 770 state, exact wave32 direct decode, and exact split-K global decode through a full p512 suite are retained on GPU0, while CUDA resident batching/serving remain pending |
 | **Gemma 4** | sliding_attention + global_attention + dense_mlp | Phase 3 |
 | **Llama 3** | full_attention + dense_mlp | Phase 3 |
@@ -1200,8 +1204,8 @@ Next target MoE decode, exact linear/three-plane scheduling, measured
 submission/drift costs and secondary QSA/GDN work, reranked after each win.
 Existing promotions stay retained; no sidecar, numerical-policy change,
 whole-family closure or Vulkan parity is admitted by this plan. See the
-[active campaign punchlist](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#active-review-punchlist-september-8-2026),
-and [ranked experiments](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#ranked-targets-and-iu4-experiments-september-8-2026),
+[active campaign punchlist](campaigns/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#active-review-punchlist-september-8-2026),
+and [ranked experiments](campaigns/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#ranked-targets-and-iu4-experiments-september-8-2026),
 which supersede the September 5 halo queue without relaxing profile gates.
 September6 owner detour enables admission-aware native context through the public
 Qwen4Exp factory and `prepare()`. The immutable QSA2051 dense-equivalence constant
@@ -1210,12 +1214,12 @@ and configured c1/c2 residency; explicit limits fail rather than silently clamp.
 Framework c2 native-capacity startup, completions/chat8K retrieval, HTTP over-limit
 rejection and native-capacity2051/2052/4097 boundary repeats pass.
 Full256K-length inference is not newly qualified by this capacity
-change; see [context contract](QWEN4EXP-CONTEXT-CAPACITY.md).
+change; see [context contract](campaigns/QWEN4EXP-CONTEXT-CAPACITY.md).
 Qwen4Exp chat now renders its embedded GGUF template and uses a model-owned
 XML-parameter parser while preserving generic JSON tool support for other models.
 Greedy text grammar requests use request-owned llguidance masks before host
 argmax; selected tokens feed the subsequent decode explicitly. Unconstrained
-device-token execution is unchanged. See [tools/grammar contract](QWEN4EXP-TOOLS-GRAMMAR.md)
+device-token execution is unchanged. See [tools/grammar contract](campaigns/QWEN4EXP-TOOLS-GRAMMAR.md)
 for supported schema forms, text-only scope and development benchmark evidence.
 The 2026-09-05 owner decision retains exact page256 QSA and bundled-Q4
 publication in production despite their measured small hot-decode losses;
@@ -1341,7 +1345,7 @@ No engine, dispatch, or quant changes.
 
 ### KV Cache Plugin (sub-plugin of engine)
 
-Detailed INT8-KV and FastDMS-derived compact-DMS delivery plan: [docs/KVCACHE.md](KVCACHE.md).
+Detailed INT8-KV and FastDMS-derived compact-DMS delivery plan: [docs/reference/KVCACHE.md](reference/KVCACHE.md).
 
 KV cache has **three independently modelled concerns**, plus the standard
 block-manager concerns. Designing for all three from day 0 is the specific
@@ -1349,7 +1353,7 @@ lesson from `~/FastDMS` and `~/kvcache-quantization-research/`: integrating DMS
 into a fixed-page scheduler is major surgery, while treating every low-bit
 layout as one `dtype` toggle fails for multi-plane and cross-layer formats. The
 normative scheduler/backend boundary is
-[`CONCURRENCY2.md`](CONCURRENCY2.md#swappable-kv-cache-backend-contract).
+[`CONCURRENCY2.md`](reference/CONCURRENCY2.md#swappable-kv-cache-backend-contract).
 
 | Concern | What varies | Examples |
 |------|-------------|----------|
@@ -1454,11 +1458,11 @@ SpecDec is planned as a scheduler + plugin feature that reuses the same target-m
 |------------|--------|-------------------|
 | Medusa-style heads | Planned | Model-advertised heads produce shallow candidate rows. |
 | Lookahead decoding | Partial | Dense GGUF MTP2 has an opt-in request-local exact `ngram-mod` first-refusal composer for qualified K<=3 chains. Repetition-heavy strict C2 D80 is +2.425% vs MTP-only but 0.9875x true AR; canonical production D24 has zero hits. Ordinary MTP/AR remain fallbacks and promotion requires a correct K>3/long-horizon product cell. |
-| MTP (multi-token pred) | Research | Qwen3.5 MTP layers provide `DraftBatch` chains attached to the target model; detailed native plan: [`docs/MTP.md`](MTP.md). |
+| MTP (multi-token pred) | Research | Qwen3.5 MTP layers provide `DraftBatch` chains attached to the target model; detailed native plan: [`docs/reference/MTP.md`](reference/MTP.md). |
 | EAGLE3 | Research | Draft-model plugin emits feature-conditioned candidate chains/trees. |
-| DFlash (draft model) | Partial | Generic four-axis public-provider registry plus an explicit-only Poolside Laguna B4 library owner; OpenAI routing and broader DFlash/DDTree serving remain. Detailed native plan: [`docs/DFLASH.md`](DFLASH.md). |
+| DFlash (draft model) | Partial | Generic four-axis public-provider registry plus an explicit-only Poolside Laguna B4 library owner; OpenAI routing and broader DFlash/DDTree serving remain. Detailed native plan: [`docs/reference/DFLASH.md`](reference/DFLASH.md). |
 
-Method-specific details live in `docs/MTP.md` and `docs/DFLASH.md`; the shared
+Method-specific details live in `docs/reference/MTP.md` and `docs/reference/DFLASH.md`; the shared
 contract below remains authoritative for plugin boundaries and scheduler/KV
 integration.
 
@@ -1505,7 +1509,7 @@ hipEngine defaults to **RadixCache** for better prefix sharing in multi-turn cha
 
 ### DMS Support Plan (and why it shapes Phase-0 design)
 
-See [docs/KVCACHE.md](KVCACHE.md) for the staged delivery order: finish the artifact-scoped compact c>N dense-INT8 campaign in [`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md), then add FastDMS-derived compact DMS over the same `KVLiveSpans` ABI.
+See [docs/reference/KVCACHE.md](reference/KVCACHE.md) for the staged delivery order: finish the artifact-scoped compact c>N dense-INT8 campaign in [`QWEN38-INT8-KV-CONTINUOUS.md`](campaigns/QWEN38-INT8-KV-CONTINUOUS.md), then add FastDMS-derived compact DMS over the same `KVLiveSpans` ABI.
 
 Dynamic Memory Sparsification (DMS) trains per-head learned KV token eviction via logit distillation. Compact DMS saves real allocator memory (5–8× vs BF16 KV at 8K context, up to 49× at max context per `~/FastDMS` benchmarks) while maintaining or improving decode speed. The reference open implementation is `~/FastDMS` (shisa-ai). Validated borrowed-channel checkpoints: `shisa-ai/Llama-3.2-1B-DMS-8x`, `nvidia/Qwen3-8B-DMS-8x`. hipEngine's local schema-v2 exact-Qwen3.8 Q4_K_M route now executes no-shadow c1 decode at 128K/256K, but its 768-token-trained CR2 candidate is rejected at integrated 32K quality (max KL 6.0177, 62.5% top-1; no-evict max KL 7.76e-7/100%). The implementation remains default-off while a firewall-safe long-context sidecar is trained and all product gates close.
 
@@ -1709,7 +1713,7 @@ hipengine/
 ## Development Roadmap (LoC Estimates)
 
 The current focused Laguna S 2.1 performance campaign is owned by
-[`LAGUNA-prefill.md`](LAGUNA-prefill.md). It succeeds the exhausted LPF/AR-O
+[`LAGUNA-prefill.md`](campaigns/LAGUNA-prefill.md). It succeeds the exhausted LPF/AR-O
 work in `LAGUNA.md` and keeps the architecture invariants in this file: new
 packed-dot MMQ, repair, layout, and attention routes remain four-axis plugins
 with exact fallbacks and no backend/quant branches in model or engine code.
@@ -4040,7 +4044,7 @@ a rejected model, not a result
 **Table W7900 Laguna parity implementation here; select no H8R target.** Any
 resumption starts from the campaign/current/matched-llama.cpp table and
 high-leverage admission rules in
-[`LAGUNA-PARITY-STATUS.md`](LAGUNA-PARITY-STATUS.md): prioritize Q5, IQ-down,
+[`LAGUNA-PARITY-STATUS.md`](archive/LAGUNA-PARITY-STATUS.md): prioritize Q5, IQ-down,
 and attention algorithm/dataflow transfers, require a plausible ≥50-ms or ≥5%
 end-to-end target before code, and do not restart an adjacent micro-variant
 ladder.

@@ -183,7 +183,7 @@ def test_root_readme_is_compact_model_first_and_synced() -> None:
     project = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
     assert f"**Current release: v{project['project']['version']}.**" in readme
     assert "NVIDIA Blackwell (`sm_120a`)" in readme
-    assert "[GGUF](docs/GGUF.md) for the\nbroader model and quantization ecosystem" in readme
+    assert "[GGUF](docs/reference/GGUF.md) for the\nbroader model and quantization ecosystem" in readme
     for internal_phrase in ("source-pinned", "physical c8", "packet reaches"):
         assert internal_phrase not in readme
     _assert_markdown_tables_are_rectangular(readme)

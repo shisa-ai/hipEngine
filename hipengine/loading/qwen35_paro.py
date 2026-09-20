@@ -1363,7 +1363,7 @@ def repack_paro_awq_to_marlin_k_host(
     hipEngine: ``qweight [K, N/8]``, ``qzeros [K/group_size, N/8]``, and
     ``scales [K/group_size, N]``.  The returned layout matches the parent
     ``nano-vllm-amd`` qweight-neutral Marlin-K path documented in
-    ``docs/MARLIN.md``:
+    ``docs/reference/MARLIN.md``:
 
     - ``qweight_mk [N/8, K/128, 128]``
     - ``qzeros_mk [N/8, K/128]``

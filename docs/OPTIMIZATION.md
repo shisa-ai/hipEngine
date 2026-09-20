@@ -1,3 +1,7 @@
+---
+status: normative
+owns: Rules for kernel work, performance claims, and benchmark rows: evidence fields, anti-gaming, correctness gates, promotion, lineage, profiling.
+---
 # hipEngine Optimization and Evidence Rules
 
 Last updated: 2026-09-21
@@ -12,9 +16,9 @@ into a product decision. A promotion gate here describes what it takes to
 *assert a measured result*; it never describes what it takes to *ship a
 feature*.
 
-**Not a campaign doc.** [`OPTIMIZE.md`](OPTIMIZE.md),
-[`OPTIMIZE-DENSE.md`](OPTIMIZE-DENSE.md),
-[`SOL-OPTIMIZATION.md`](SOL-OPTIMIZATION.md), [`TUNING-gguf.md`](TUNING-gguf.md),
+**Not a campaign doc.** [`OPTIMIZE.md`](campaigns/OPTIMIZE.md),
+[`OPTIMIZE-DENSE.md`](campaigns/OPTIMIZE-DENSE.md),
+[`SOL-OPTIMIZATION.md`](archive/SOL-OPTIMIZATION.md), [`TUNING-gguf.md`](reference/TUNING-gguf.md),
 and the `QWEN*-CAMPAIGN.md` files track candidates and results for specific
 models and hosts. This file is the rules they follow.
 
@@ -172,7 +176,7 @@ benchmark**, not a win.
 
 See [`BENCHMARK.md`](BENCHMARK.md) "Anti-gaming". For less-bounded searches,
 freeze the evaluator and generalization envelope first —
-[`PROCESS-EXPLORATION.md`](PROCESS-EXPLORATION.md).
+[`PROCESS-EXPLORATION.md`](reference/PROCESS-EXPLORATION.md).
 
 ## 6. Benchmark rollup stays current
 
@@ -234,6 +238,6 @@ validation; state the reason and expected duration, then proceed. See
 | [`KERNELS.md`](KERNELS.md) | Kernel catalog, lineage drift workflow, path map, JIT cache gotcha, build profiles. |
 | [`ROOFLINE.md`](ROOFLINE.md) | RDNA3 W7900 performance model, regimes, decision tree, what not to chase. |
 | [`TESTING.md`](TESTING.md) | RED/GREEN workflow, oracles, fixture policy, gate selection. |
-| [`PRODUCTION-NUMERICS-CAMPAIGN.md`](PRODUCTION-NUMERICS-CAMPAIGN.md) | Approved evaluator, calibration, and candidate execution plan. |
-| [`PROCESS-EXPLORATION.md`](PROCESS-EXPLORATION.md) | Hypothesis beams, evaluation firewalls, anti-overfitting for broad searches. |
+| [`PRODUCTION-NUMERICS-CAMPAIGN.md`](reference/PRODUCTION-NUMERICS-CAMPAIGN.md) | Approved evaluator, calibration, and candidate execution plan. |
+| [`PROCESS-EXPLORATION.md`](reference/PROCESS-EXPLORATION.md) | Hypothesis beams, evaluation firewalls, anti-overfitting for broad searches. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | Local do-not-chase findings and recurring pitfalls. |

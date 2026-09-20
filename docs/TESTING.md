@@ -1,3 +1,7 @@
+---
+status: normative
+owns: RED/GREEN workflow, correctness oracles, fixture policy, test naming/discovery, and the validation matrix.
+---
 # hipEngine Testing Discipline
 
 hipEngine is math-heavy software. A change that compiles, launches, and gets faster can still be wrong. The default posture is therefore:
@@ -309,7 +313,7 @@ python3 scripts/check_fixtures.py
 python3 scripts/smoke.py --mode registry
 python3 scripts/smoke.py --mode cpu-fixtures
 python3 scripts/smoke.py --mode smoke-add-plan
-rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEMENTATION.md || true
+rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/reference/IMPLEMENTATION.md || true
 ```
 
 The torch audit may show docstrings/comments, but executable hot-path imports/usages are blockers.
@@ -427,7 +431,7 @@ same-run AR tokens) is a self-consistency check between two *different* kernels
 (the chain/verify kernel vs the AR decode kernel); a numerically close verifier
 can flip it by about one ULP at a near-tie boundary. Such a flip alone is not a
 control-ownership bug, but it also does not waive the full production quality
-or MTP economics gate. See `docs/MEGAKERNEL.md` §5/§8.1/§9.4 for the historical
+or MTP economics gate. See `docs/reference/MEGAKERNEL.md` §5/§8.1/§9.4 for the historical
 rationale. Any MTP speed claim re-baselines true AR tok/s, task quality,
 acceptance, and complete cycle economics on the full suite.
 
@@ -519,7 +523,7 @@ row has only `0.022 GiB` headroom.
 A different gfx1151 file (size `17,106,775,008`, SHA-256 `7e78da...`) rejects
 pure native INT8 at complete 1K/8 with `77.78%` minimum-prompt top-1. Neither
 result transfers by filename or geometry. The active
-[`IKV-C0`-`IKV-C7` campaign](QWEN38-INT8-KV-CONTINUOUS.md) has completed its
+[`IKV-C0`-`IKV-C7` campaign](campaigns/QWEN38-INT8-KV-CONTINUOUS.md) has completed its
 first gate: demand-driven full-file SHA-256 plus backend/target/quant/layout/scale
 identity qualifies the exact gfx1100 file, preserves the gfx1151 rejection, and
 falls unknown or mismatched contracts back to BF16 unless an explicit

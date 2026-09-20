@@ -67,7 +67,7 @@ def synthetic_blocks(name: str, size: int) -> np.ndarray:
 
 def real_rows(lib: ctypes.CDLL, model_dir: Path, out: Path) -> None:
     """Extract first/last rows after externally verifying the published hashes."""
-    pins = json.loads((ROOT / 'docs/UD-QUANTS-U0-IDENTITY.json').read_text())['files']
+    pins = json.loads((ROOT / 'docs/campaigns/UD-QUANTS-U0-IDENTITY.json').read_text())['files']
     arrays, entries = {}, []
     for pin in pins:
         if '-UD-' not in pin['file']:
@@ -96,7 +96,7 @@ def real_rows(lib: ctypes.CDLL, model_dir: Path, out: Path) -> None:
     np.savez_compressed(fixture, **arrays)
     (out / 'real_rows.json').write_text(json.dumps({
         'commit': PIN, 'fixture_sha256': hashlib.sha256(fixture.read_bytes()).hexdigest(),
-        'hash_requirement': 'Verify complete model SHA256 against docs/UD-QUANTS-U0-IDENTITY.json before generation.',
+        'hash_requirement': 'Verify complete model SHA256 against docs/campaigns/UD-QUANTS-U0-IDENTITY.json before generation.',
         'entries': entries}, indent=2) + '\n')
     print(f'Wrote {fixture}: {len(entries)} tensors, {fixture.stat().st_size} bytes')
 

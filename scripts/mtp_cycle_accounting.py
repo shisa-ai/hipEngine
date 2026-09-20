@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extract per-cycle MTP2 accounting from a gguf_mtp_c1c8_server_bench raw run.
 
-Scaling-campaign M0 instrumentation owner (docs/QWEN38-GFX1151-SCALING-CAMPAIGN.md).
+Scaling-campaign M0 instrumentation owner (docs/campaigns/QWEN38-GFX1151-SCALING-CAMPAIGN.md).
 Reads the raw AR/MTP suite JSON (resident_observability per-request
 specdec2_mtp2_* records) and emits the per-width per-cycle accounting table:
 

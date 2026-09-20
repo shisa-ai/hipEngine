@@ -17,7 +17,7 @@ Usage:
 
 Requires ROCm and both weight sets present locally. The GGUF is produced by
 ``scripts/vibevoice_asr_to_gguf.py`` plus llama-quantize; see
-``docs/MODEL-VIBEVOICE-ASR.md``.
+``docs/model-cards/MODEL-VIBEVOICE-ASR.md``.
 """
 
 from __future__ import annotations

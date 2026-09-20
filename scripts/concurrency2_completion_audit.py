@@ -86,7 +86,7 @@ def _requirements() -> tuple[AuditRequirement, ...]:
         AuditRequirement("DoD.drain", "definition_of_done", "graph/pool/state/collector ownership drains", "passed", (short, long_blocked, canonical), "short, long/pressure, and canonical 271-admit/271-reclaim final drain"),
         AuditRequirement("DoD.compact", "definition_of_done", "format-distinct compact backend conformance", "passed", (dms, dms_device), "host and gfx1100 device fixture conformance, no-shadow c1-c32 lifecycle, codec composition, profiler identities"),
         AuditRequirement("DoD.swap", "definition_of_done", "topology/codec/tier swap needs no concurrency fork", "passed", ("hipengine/kvcache/dms.py", "hipengine/kvcache/tiering.py"), "common protocols/adapters"),
-        AuditRequirement("DoD.docs", "definition_of_done", "docs/artifacts/telemetry disclose routes/memory", "passed", ("docs/CONCURRENCY2.md", "docs/KVCACHE.md", "benchmarks/README.md", "benchmarks/CHANGELOG.md"), "Worklog2 and compact artifacts"),
+        AuditRequirement("DoD.docs", "definition_of_done", "docs/artifacts/telemetry disclose routes/memory", "passed", ("docs/reference/CONCURRENCY2.md", "docs/reference/KVCACHE.md", "benchmarks/README.md", "benchmarks/CHANGELOG.md"), "Worklog2 and compact artifacts"),
         AuditRequirement("DMS.product", "definition_of_done", "DMS checkpoint quality, HIP spans, no shadow", "blocked", (dms, dms_device), "host/device no-shadow implementation and fixture codec pass", "no valid trained retrofit checkpoint is available for model-quality, device-savings, and product-soak qualification"),
     )
 

@@ -2,7 +2,7 @@
 """Validation tests for the PF-0 natural-text route-covering fixture.
 
 Covers the PF-0 exit conditions from
-``docs/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md`` section 6:
+``docs/campaigns/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md`` section 6:
 
 - fixture committed with construction provenance and suite hashes,
 - route-engagement coverage >= 50% recorded by

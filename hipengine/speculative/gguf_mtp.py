@@ -2719,7 +2719,7 @@ class Qwen35GGUFMTPContext:
         return rows
 
     def accept(self, n_accepted: int) -> Qwen35GGUFMTPSeedRow:
-        """Apply the GGUF MTP accept/reseed rule from docs/MTP-gguf.md.
+        """Apply the GGUF MTP accept/reseed rule from docs/reference/MTP-gguf.md.
 
         llama.cpp reseeds from ``verify_h[min(n_accepted, n_rows - 1)]``.  This
         method updates ``pending_seed`` to that selected verify row.

@@ -24,7 +24,7 @@ Lookup chain (first hit wins):
 6. Nothing found → :class:`AotritonNotInstalledError` with a clear hint about
    Git LFS or ``scripts/fetch_aotriton.sh``.
 
-The intentionally minimal env-var surface mirrors ``docs/PREFILL.md``
+The intentionally minimal env-var surface mirrors ``docs/reference/PREFILL.md``
 "AOTriton distribution and pinning strategy".  Earlier env vars
 (``HIPENGINE_AOTRITON_SOURCE_ROOT`` / ``HIPENGINE_AOTRITON_RUNTIME_ROOT``)
 have been removed.

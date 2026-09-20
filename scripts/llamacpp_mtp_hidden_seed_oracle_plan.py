@@ -16,7 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 
 DEFAULT_SOURCE_DIR = Path("/home/lhl/llama.cpp/llama.cpp-hip")
 DEFAULT_RUNNER = Path("hipengine/runtime/qwen35_gguf_runner.py")
-DEFAULT_DOC = Path("docs/MTP-gguf.md")
+DEFAULT_DOC = Path("docs/reference/MTP-gguf.md")
 DEFAULT_DECISION = Path(
     "benchmarks/results/mtp-gguf-iter300-hidden-precision-decision-audit.json"
 )

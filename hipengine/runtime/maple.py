@@ -144,7 +144,7 @@ class MapleRunnerLibraries:
     group_scatter: object | None = None
 
 
-# Batched prefill chunk size (rows) per docs/TUNING-gfx1151.md Lesson 0.
+# Batched prefill chunk size (rows) per docs/reference/TUNING-gfx1151.md Lesson 0.
 PREFILL_CHUNK = 256
 
 

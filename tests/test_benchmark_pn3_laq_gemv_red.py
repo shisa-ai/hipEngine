@@ -22,7 +22,7 @@ over-attributes ``decode_linear_attn_qkv_gate`` (7.74 ms/token host wall vs
 ``scripts/pn3_stage_ranking_from_trace.py``). The qkv/gate stage is ~70%
 kernel-bound (leaf pair 1.52 ms/token of the 2.29 ms stage) and is the most
 kernel-bound clean family in the top-10, so a T0 leaf mechanism has a real
-cycle ceiling. See docs/QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md "PN3".
+cycle ceiling. See docs/campaigns/QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md "PN3".
 
 Deterministic synthetic weights (fixed seed); timing is wall-clock burst with
 device sync (HIP event elapsed reports 0 on this gfx1151/ROCm combo).

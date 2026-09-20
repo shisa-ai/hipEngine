@@ -1,3 +1,7 @@
+---
+status: normative
+owns: Strict/production/batch-invariant contracts, numerical gates, exact ownership and failure-containment semantics, and registry resolution policy.
+---
 # Execution Profiles and Numerical Contracts
 
 Status: **approved architecture; evaluator, fail-closed runtime plumbing,
@@ -864,7 +868,7 @@ not an isolation guarantee. Initial UD bring-up uses the unnamed existing path
 (`execution_profile=None`) in a fresh process without production-profile
 overrides. Named production-profile qualification is a later numerical gate,
 not a prerequisite for implementing the missing formats. See
-[UD-QUANTS.md](UD-QUANTS.md) for the bring-up scope.
+[UD-QUANTS.md](campaigns/UD-QUANTS.md) for the bring-up scope.
 
 During migration, omitting the selector bypasses the profile-plan registry and
 preserves the incumbent package behavior. An explicit selector never falls back
@@ -927,12 +931,12 @@ and task evidence.
 
 ## 11. Related documents
 
-- [`PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md`](PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md) — dated evidence review of the frozen cutoffs, calibration limits, practical impact, excluded performance, and recalibration triggers; it does not change this normative policy.
-- [`PRODUCTION-NUMERICS-CAMPAIGN.md`](PRODUCTION-NUMERICS-CAMPAIGN.md) — active
+- [`PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md`](reference/PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md) — dated evidence review of the frozen cutoffs, calibration limits, practical impact, excluded performance, and recalibration triggers; it does not change this normative policy.
+- [`PRODUCTION-NUMERICS-CAMPAIGN.md`](reference/PRODUCTION-NUMERICS-CAMPAIGN.md) — active
   implementation, calibration, historical-recovery, and c1/cN campaign.
-- [`RELAXED.md`](RELAXED.md) — historical relaxed-mode inventory and provenance;
+- [`RELAXED.md`](archive/RELAXED.md) — historical relaxed-mode inventory and provenance;
   no longer the normative public-profile policy.
 - [`TESTING.md`](TESTING.md) — concrete test tiers and fixtures.
 - [`BENCHMARK.md`](BENCHMARK.md) — performance protocols and artifact rules.
-- [`CONCURRENCY.md`](CONCURRENCY.md) — serving scenarios and ownership gates.
+- [`CONCURRENCY.md`](archive/CONCURRENCY.md) — serving scenarios and ownership gates.
 - [`KERNELS.md`](KERNELS.md) — kernel fallback, lineage, and trace requirements.

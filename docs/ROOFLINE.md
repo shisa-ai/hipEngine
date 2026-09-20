@@ -1,3 +1,7 @@
+---
+status: current
+owns: RDNA3 / W7900 performance model: hardware limits, regimes, decision tree, and the what-not-to-chase catalog.
+---
 # ROOFLINE.md — RDNA3 W7900 Performance Model for LLM Inference
 
 _Ported from `~/amd-gpu-tuning/docs/ROOFLINE.md` (upstream last updated 2026-05-10). Kernel R&D evidence referenced below lives in that parent workspace and is not vendored into hipEngine; path-qualified pointers keep the references navigable._
@@ -1884,7 +1888,7 @@ To reach 200+ tok/s would require additionally:
     2–3.5×) but **not** on Qwen3.6-35B-A3B at c=1, where 256 experts /
     top-8 / sequential MoE dispatch plus 30/40 linear-attention layers
     force verification cost to scale ~linearly with B. Measured MTP on
-    this model is 0.68–0.70× AR. See `docs/SPECULATIVE-DECODE.md` for the
+    this model is 0.68–0.70× AR. See `docs/reference/SPECULATIVE-DECODE.md` for the
     η decomposition, break-even math, and decision gate.
 
 The roofline is a diagnostic tool: it identifies *where* performance is being
@@ -1959,7 +1963,7 @@ In `~/amd-gpu-tuning/` (parent workspace, kernel R&D):
 - `docs/PARO.md` — PARO/W4A16 progress log
 - `docs/LLAMACPP-VULKAN.md` — source-level analysis of llama.cpp HIP vs
   Vulkan backends on W7900
-- `docs/SPECULATIVE-DECODE.md` — speculative decoding / MTP analysis;
+- `docs/reference/SPECULATIVE-DECODE.md` — speculative decoding / MTP analysis;
   when `verify(B) ≈ verify(1)` holds (dense 27–32B) vs when it doesn't
   (Qwen3.6-35B-A3B 256-expert MoE at c=1)
 - `7900xtx/` — local mirror of the geohot reverse-engineering notes

@@ -1,7 +1,7 @@
 """Correctness tests for the GGUF Q8_0 batched WMMA prefill kernel.
 
 The kernel is the first batched prefill GEMM from the P8 plan
-(see ``docs/GGUF.md`` "P8: real batched prefill GEMM"). It mirrors the
+(see ``docs/reference/GGUF.md`` "P8: real batched prefill GEMM"). It mirrors the
 PARO ``awq_fusedw4_prefill_fp16_kernel`` template line-by-line and
 replaces the inner K-loop dequant block with Q8_0 byte decoding.
 

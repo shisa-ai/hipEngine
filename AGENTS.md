@@ -58,6 +58,7 @@ Each of these names a failure that has actually happened in this repo.
 - **Flags are a cost, not a feature.** Prefer no flag. When one is genuinely warranted, it defaults to the behavior you want in production, and you add a `docs/REFACTOR.md` entry naming the concrete condition for removing it. The ledger entry is the price of the flag, not a licence to add one. Temporary flags, rejected paths, duplicate dispatch routes, and fallback chains that should disappear all go in `docs/REFACTOR.md` while the context is fresh.
 - **The root `README.md` is a public product page, never a worklog.** Keep it concise, model-first, and useful to prospective users. It may show current result tables and brief user-visible caveats; it must not contain implementation diaries, optimization history, kernel/planner internals, candidate ladders, exact benchmark commands, evidence inventories, or internal blockers. Put those in `worklog/entries/`, `benchmarks/results/`, `benchmarks/CHANGELOG.md`, or `benchmarks/HISTORY.md`. Exported benchmark prose must pass `scripts/sync_benchmark_readme.py --check`.
 - **Public-facing prose is self-contained.** Write for a reader with no session or worklog context. State current behavior and the comparison basis directly. Do not use unexplained campaign labels, commit shorthand, or backward-looking phrases such as “retained,” “remains non-regressive,” or “supersedes.” Include history only when it is the subject and introduce it explicitly. Use emphasis only for clear leaders, recommendations, or headline results.
+- **Docs declare their own status.** Every file under `docs/` carries front-matter: `status: normative | current | closed | superseded` plus an `owns:` line. `normative` binds, `current` describes today's contract, `closed` is evidence from finished work, `superseded` names its replacement. Check the status before treating a document as binding — most of `docs/campaigns/` is closed history, not policy. Top-level `docs/` is the small set every agent should know exists; `reference/` holds live subsystem contracts, `campaigns/` closed campaign evidence, `model-cards/` per-model status, `archive/` superseded material. When you add or move a document, add the front-matter and run `python3 scripts/docs/check_docs.py --write` to refresh the generated indexes. `python3 scripts/docs/check_all.py` runs every documentation gate.
 - **Kernel, performance, and benchmark rules live in [docs/OPTIMIZATION.md](docs/OPTIMIZATION.md).** That file owns the evidence-claim fields, anti-gaming rules, correctness gates, promotion rules, lineage workflow, profiling recipes, and benchmark rollup. It applies to kernel work, measured claims, and benchmark rows — and to nothing else.
 
 ## Architectural Invariants
@@ -75,6 +76,7 @@ Do not drift these casually. They define what hipEngine is.
 
 | Path | Purpose |
 | --- | --- |
+| `docs/README.md` | Generated index of the docs tree, with each document's status and what it owns. Start here when you do not know which document you need. |
 | `docs/PLAN.md` | Architecture, phase roadmap, LoC budgets, extensibility design. |
 | `docs/OPTIMIZATION.md` | **Rules for kernel work, performance claims, and benchmark rows** — evidence fields, anti-gaming, correctness gates, promotion, lineage, profiling. Scoped: it does not govern product behavior. |
 | `docs/EXECUTION-PROFILES.md` | Normative strict/production/batch-invariant contracts, numerical gates, exact ownership and failure-containment semantics, registry resolution policy. §1.1 is the "missing evidence is not a runtime failure" rule. |
@@ -82,11 +84,14 @@ Do not drift these casually. They define what hipEngine is.
 | `docs/BENCHMARK.md` | Benchmark protocols, baselines to beat, correctness gate, artifact/rollup format. |
 | `docs/KERNELS.md` | Kernel catalog, source-lineage drift workflow, Qwen3.5/PARO optimal path map, port playbook, JIT cache gotcha, build profiles. |
 | `docs/ROOFLINE.md` | RDNA3 W7900 performance model: hardware, regimes, decision tree, what-not-to-chase. |
+| `docs/RDNA3-TUNING-GUIDE.md` | RDNA3 tuning technique. Externally referenced; the current respin of the kernel-level findings in `docs/LESSONS-LEARNED.md`. |
 | `docs/API.md` | OpenAI-compatible server usage, endpoint support, current limitations. |
-| `docs/ENVS.md` | User-facing env-var reference and recommended profiles. |
+| `docs/ENVS.md` | Complete env-var reference and recommended profiles. |
+| `docs/MODELS.md` | Supported models, quantizations, and the backends each is qualified on. |
 | `docs/REFACTOR.md` | Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code to remove after optimal paths are proven. |
-| `docs/PRODUCTION-NUMERICS-CAMPAIGN.md` | Approved evaluator, calibration, historical-candidate, c1, and c>N/A4 execution plan. |
+| `docs/reference/PRODUCTION-NUMERICS-CAMPAIGN.md` | Approved evaluator, calibration, historical-candidate, c1, and c>N/A4 execution plan. |
 | `docs/source_lineage.json` | External parent-file manifest used by `scripts/check_lineage.py`. |
+| `scripts/docs/` | Documentation tooling: `check_all.py` runs every doc gate, `check_docs.py` validates front-matter and regenerates the indexes. |
 | `AGENTS.md` / `CLAUDE.md` | Ground rules (this file). |
 | `WORKLOG.md` | Tracked worklog navigation page. |
 | `WORKLOG-LEGACY.md` | Byte-frozen pre-Worklog2 journal; never edit. |
@@ -133,7 +138,7 @@ Run the narrowest tier for your change; escalate at milestone boundaries.
 
 | Scope | What to run |
 | --- | --- |
-| Docs / process | Re-read the changed file end-to-end; no GPU run needed. |
+| Docs / process | Re-read the changed file end-to-end, then `python3 scripts/docs/check_all.py`. No GPU run needed. |
 | Code / registry / dispatch | The narrowest relevant `pytest` + applicable CPU deterministic bundle (see `docs/TESTING.md`). |
 | Server / API / product surface | The narrowest relevant `pytest`, plus one real request through `hipengine serve` or `LLM.generate()` confirming the intended route ran. |
 | Kernel, perf claim, or capacity | See [docs/OPTIMIZATION.md](docs/OPTIMIZATION.md) §8. |
@@ -191,7 +196,7 @@ Do not run `git restore`, `git checkout --`, `git reset --hard`, `git clean -fd`
 
 Working tree is shared state. Other agents or the human may be editing concurrently.
 
-- **High-conflict files:** `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, `docs/OPTIMIZATION.md`, `docs/BENCHMARK.md`, `docs/TESTING.md`, `docs/KERNELS.md`, `docs/IMPLEMENTATION.md`, `pyproject.toml`, `scripts/worklog.py`, `worklog/README.md`, `hipengine/kernels/registry.py`, `hipengine/quant/registry.py`, `hipengine/models/registry.py`, `hipengine/dispatch/fusion.py`, `hipengine/core/*`.
+- **High-conflict files:** `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, `docs/OPTIMIZATION.md`, `docs/BENCHMARK.md`, `docs/TESTING.md`, `docs/KERNELS.md`, `docs/reference/IMPLEMENTATION.md`, `pyproject.toml`, `scripts/worklog.py`, `worklog/README.md`, `hipengine/kernels/registry.py`, `hipengine/quant/registry.py`, `hipengine/models/registry.py`, `hipengine/dispatch/fusion.py`, `hipengine/core/*`.
 - Same-file contention: stop and coordinate. The designated agent stages and commits their scoped hunks first to unblock others.
 - Worklog entry filenames are unique and should not conflict. A committed entry is immutable; correct it with a new `decision` or `checkpoint` entry that links the superseded path.
 - `WORKLOG-LEGACY.md` is byte-frozen and manifest-checked. If an old branch carries an append to pre-cutoff `WORKLOG.md`, the designated merge owner converts its missing material into a new immutable entry instead of changing legacy.

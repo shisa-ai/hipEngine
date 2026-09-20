@@ -1,3 +1,7 @@
+---
+status: current
+owns: OpenAI-compatible server usage, endpoint support, request/response semantics, and current limitations.
+---
 # OpenAI-Compatible Server API
 
 Last updated: 2026-07-23

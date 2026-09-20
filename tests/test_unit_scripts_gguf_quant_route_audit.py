@@ -1,4 +1,4 @@
-"""Guards for the GGUF quant-route audit used by docs/UD-QUANTS.md.
+"""Guards for the GGUF quant-route audit used by docs/campaigns/UD-QUANTS.md.
 
 The script reads backend capability constants out of kernel package source with
 a bounded AST literal reader instead of importing the package, and resolves

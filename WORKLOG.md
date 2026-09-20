@@ -8,7 +8,7 @@ branches and worktrees do not contend on one append target.
 - **Frozen history through commit `7c7c18875`:**
   [`WORKLOG-LEGACY.md`](WORKLOG-LEGACY.md)
 - **Approved migration plan:**
-  [`docs/PLAN-WORKLOG2-revamp.md`](docs/PLAN-WORKLOG2-revamp.md)
+  [`docs/archive/PLAN-WORKLOG2-revamp.md`](docs/archive/PLAN-WORKLOG2-revamp.md)
 
 Create a current entry with:
 

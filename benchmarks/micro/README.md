@@ -82,7 +82,7 @@ the compact artifact.
 
 The final process used TheRock ROCm `7.15.0a20260711` root/core/generic
 multi-arch libraries and excluded the stale installed gfx110X-all 7.13 library
-path. See [`docs/HIP-vs-VULKAN.md`](../../docs/HIP-vs-VULKAN.md) for the
+path. See [`docs/reference/HIP-vs-VULKAN.md`](../../docs/reference/HIP-vs-VULKAN.md) for the
 cross-architecture interpretation and caveats.
 
 ## Retained gfx1151 Matrix
@@ -477,4 +477,4 @@ schema:
 | `diagnostic_unclassified` | Correct gap remains without enough evidence for one cause |
 
 The benchmark plan and interpretation dashboard live in
-`docs/HIP-vs-VULKAN.md`.
+`docs/reference/HIP-vs-VULKAN.md`.

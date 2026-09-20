@@ -1,3 +1,7 @@
+---
+status: current
+owns: Local do-not-chase findings and recurring kernel/runtime pitfalls. Largely superseded in kernel scope by RDNA3-TUNING-GUIDE.md.
+---
 # Lessons Learned
 
 This file records hipEngine-specific debugging lessons that are likely to recur.

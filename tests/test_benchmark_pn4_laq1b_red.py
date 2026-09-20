@@ -24,7 +24,7 @@ kernel is latency/occupancy-bound (one block per 16-col tile, 768 blocks,
 per-block wave reduce + xchg + syncthreads) at ~510-540 GB/s vs a ~650 GB/s
 marginal L2 ceiling; T0 variants cannot close the latency gap, matching the
 Q4_K T16 precedent (P3-LAQ1: vecq -10%, tile16 +5/-7%). See
-docs/QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md "PN4 / P3-LAQ1-B rejected".
+docs/campaigns/QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md "PN4 / P3-LAQ1-B rejected".
 """
 
 from __future__ import annotations

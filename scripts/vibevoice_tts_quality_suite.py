@@ -3,7 +3,7 @@
 Numerical agreement with the oracle is not available as acceptance evidence for
 every request: the two-speaker fixture's first diffusion solve is chaotic, so its
 late trajectory is unreproducible by construction (see
-``docs/MODEL-VIBEVOICE-TTS.md``). This suite covers those requests the way the
+``docs/model-cards/MODEL-VIBEVOICE-TTS.md``). This suite covers those requests the way the
 review that prompted it asked for -- by qualifying the audio that comes out
 rather than by widening a tolerance.
 
