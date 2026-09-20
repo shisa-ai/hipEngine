@@ -2331,7 +2331,7 @@ def test_unprepared_engine_logs_pending_not_off(caplog) -> None:
 
         _text_generator = None
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
         _log_effective_mtp_config(
             ServerConfig(
                 model="fake-path",
@@ -2356,7 +2356,7 @@ def test_resolved_engine_without_mtp_route_still_logs_off(caplog) -> None:
     class ResolvedPlainEngine:
         _text_generator = object()
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
         _log_effective_mtp_config(
             ServerConfig(
                 model="fake-path",

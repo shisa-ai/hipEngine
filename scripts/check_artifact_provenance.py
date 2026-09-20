@@ -269,7 +269,13 @@ def check_repo(repo: Path, exceptions: dict[str, str] | None = None) -> dict[str
     results = repo / "benchmarks" / "results"
     if not readme.is_file():
         raise FileNotFoundError(f"no benchmarks/README.md under {repo}")
-    cited = sorted(set(READ_CITATION.findall(readme.read_text())))
+    # Prompt JSON is benchmark input, not a result artifact under results/.
+    text = re.sub(
+        r"\[[^\]]*\]\((?:\.\./)?(?:benchmarks/)?prompts/[^)]+\)",
+        "",
+        readme.read_text(),
+    )
+    cited = sorted(set(READ_CITATION.findall(text)))
     existing = {p.name for p in results.glob("*.json")} if results.is_dir() else set()
 
     payloads: dict[str, Any] = {}

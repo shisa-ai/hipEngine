@@ -34,6 +34,13 @@ from scripts.gguf_mtp_category_bench import (
 from scripts.gguf_true_ar_category_bench import build_true_ar_artifact
 
 
+@pytest.fixture(autouse=True)
+def _synthetic_provenance_backend(monkeypatch):
+    """Artifact-contract fixtures do not execute GPU work, including dry-run CLI."""
+    monkeypatch.setenv("HIPENGINE_BACKEND", "cpu_reference")
+    monkeypatch.delenv("HIPENGINE_HIP_ARCH", raising=False)
+
+
 TEST_REPO_ROOT = Path(__file__).resolve().parents[1]
 TEST_MODEL = "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
 TEST_PROMPTS = "benchmarks/prompts/mtpbench-code-general-ja.jsonl"

@@ -82,9 +82,9 @@ _POST_MERGE_SOURCE_SHA256 = {
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"
     ),
     "tests/test_live_laguna_moe_gpu.py": (
-        # The migration renamed this module and rewrote three of its imports; the
-        # serial/parallel mode assertions it pins are byte-identical.
-        "8776311fb4f64bbf0c050a18fb85525abb418b7e89a0877b214afcaac69b8396"
+        # db6144a2e appends the scratch-poison regression; release validation
+        # adds its HIP guard. The frozen serial/parallel assertions are unchanged.
+        "b11fd38a907b6ab97cb9338f22ae6089feeb0013de142523c0ee23f3fbbba464"
     ),
 }
 _H7U_CAPABILITY = "LAGUNA_MOE_GROUP_COMPACT_H7U_MODE"

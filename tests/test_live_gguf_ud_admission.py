@@ -453,6 +453,8 @@ def test_pinned_ud_q4_k_m_resolves_through_manifest_not_stamp():
 
 @pytest.mark.skipif(not UD_Q4_K_S.exists(), reason=f"pinned artifact missing: {UD_Q4_K_S}")
 def test_pinned_ud_q4_k_s_has_an_equally_explicit_preset_identity():
+    if not PLAIN_Q4_K_S.exists():
+        pytest.skip(f"plain control missing: {PLAIN_Q4_K_S}")
     stamp = "MOSTLY_Q4_K_S"
     _reader, model_map, nextn_map = _real_map(UD_Q4_K_S)
     preset = resolve_qwen35_gguf_artifact_preset(
@@ -546,22 +548,25 @@ def test_preflight_accepts_ud_q4_k_s_consumer_surface():
         report.raise_for_errors()
 
 
-@pytest.mark.skipif(not PLAIN_Q4_K_M.exists(), reason=f"pinned artifact missing: {PLAIN_Q4_K_M}")
-def test_plain_controls_pass_preflight_with_expected_coverage():
-    for path, stamp in ((PLAIN_Q4_K_M, "MOSTLY_Q4_K_M"), (PLAIN_Q4_K_S, "MOSTLY_Q4_K_S")):
-        for backend in ("hip_gfx1100", "hip_gfx1151"):
-            report = _preflight_real(path, backend)
-            assert report.supported is True, report.render_refusals()
-            assert report.preset is None
-            assert report.covered_slots == 851
-            assert report.unsupported == ()
-            certificate = report.certificate()
-            assert certificate.preset_key is None
-            assert certificate_covers_artifact(
-                certificate,
-                manifest_fingerprint=report.manifest_fingerprint,
-                plan_contract=report.plan_contract,
-            )
+@pytest.mark.parametrize("path,stamp", [
+    (PLAIN_Q4_K_M, "MOSTLY_Q4_K_M"), (PLAIN_Q4_K_S, "MOSTLY_Q4_K_S"),
+])
+def test_plain_controls_pass_preflight_with_expected_coverage(path, stamp):
+    if not path.exists():
+        pytest.skip(f"pinned artifact missing: {path}")
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        report = _preflight_real(path, backend)
+        assert report.supported is True, report.render_refusals()
+        assert report.preset is None
+        assert report.covered_slots == 851
+        assert report.unsupported == ()
+        certificate = report.certificate()
+        assert certificate.preset_key is None
+        assert certificate_covers_artifact(
+            certificate,
+            manifest_fingerprint=report.manifest_fingerprint,
+            plan_contract=report.plan_contract,
+        )
 
 
 @pytest.mark.skipif(not SMALL_Q8_0.exists(), reason=f"pinned artifact missing: {SMALL_Q8_0}")
