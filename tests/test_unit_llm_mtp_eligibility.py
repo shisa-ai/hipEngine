@@ -42,6 +42,7 @@ def test_library_mtp_resolves_static_eligibility_before_submission(monkeypatch, 
     assert seen[0].speculative_mtp_static_eligibility is eligibility
     assert resolved[0]["realized_group_rows"] == 1
     assert resolved[0]["kv_storage"] == "int8_per_token_head"
+    assert resolved[0]["request_mode"] == "explicit"
     assert params.speculative_mtp_static_eligibility is None
 
 
@@ -61,3 +62,22 @@ def test_library_mtp_preserves_server_supplied_eligibility(monkeypatch):
         SamplingParams(), speculative_mtp_static_eligibility=eligibility,
     ))
     assert seen[0].speculative_mtp_static_eligibility is eligibility
+
+
+def test_library_explicit_mtp_reports_unsupported_contract(monkeypatch):
+    llm = LLM("test")
+    generator = SimpleNamespace(
+        generate_speculative_mtp_detailed=lambda request: pytest.fail("must not submit unsupported work"),
+    )
+    monkeypatch.setattr(llm, "_get_text_generator", lambda: generator)
+    eligibility = replace(
+        _eligibility(), state=SpeculativeMTPStaticState.PERMANENT_AR,
+        reason="packed_int8_mtp_not_implemented", max_candidate_count=0,
+        max_realized_group_rows=0, automatic_eligible=False,
+    )
+    monkeypatch.setattr(
+        llm, "resolve_speculative_mtp_serving_plan",
+        lambda **kwargs: SimpleNamespace(static_eligibility=eligibility),
+    )
+    with pytest.raises(NotImplementedError, match="packed_int8_mtp_not_implemented"):
+        llm.generate_speculative_mtp_detailed(["a", "b"])

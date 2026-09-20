@@ -653,6 +653,7 @@ class LLM:
             sampling_mode=speculative_serving_sampling_mode(params),
             kv_storage=str(params.kv_storage),
             memory_fit=True,
+            request_mode="explicit",
         )
         if decision is None:
             return params
@@ -663,6 +664,10 @@ class LLM:
             eligibility = SpeculativeMTPStaticEligibility.from_mapping(eligibility)
         if eligibility is None:
             return params
+        if not eligibility.eligible:
+            raise NotImplementedError(
+                f"requested speculative MTP cannot execute: {eligibility.reason}"
+            )
         return replace(params, speculative_mtp_static_eligibility=eligibility)
 
     @property
