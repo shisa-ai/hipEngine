@@ -7199,6 +7199,16 @@ class Qwen35GGUFResidentModelRunner:
             self._prefix_unusable_hits += 1
             self._note_prefix_fallback(row, "full_prompt_boundary_requires_suffix")
             return None
+        if int(getattr(row, "mtp2_candidate_budget", 0)) > 0:
+            provider_has_prefix = getattr(
+                getattr(self, "_mtp2_adapter", None), "has_prefix_checkpoint", None,
+            )
+            if not callable(provider_has_prefix) or not provider_has_prefix(
+                match.matched_tokens, match.block_ids,
+            ):
+                self._prefix_unusable_hits += 1
+                self._note_prefix_fallback(row, "provider_checkpoint_unavailable")
+                return None
         start = time.perf_counter()
         state = cache.entry_state(match.matched_tokens)
         for request_id in state.owner_request_ids:
@@ -7678,6 +7688,11 @@ class Qwen35GGUFResidentModelRunner:
         entry = self._prefix_state_snapshots.pop(token_tuple, None)
         if entry is None:
             return False
+        discard_provider = getattr(
+            getattr(self, "_mtp2_adapter", None), "discard_prefix_checkpoint", None,
+        )
+        if callable(discard_provider):
+            discard_provider(token_tuple)
         if entry.retained:
             cache = self._prefix_cache
             pool = self._kv_pool
