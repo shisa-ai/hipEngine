@@ -1461,6 +1461,9 @@ def test_agentic_replay_failure_reasons_match_capability_contract() -> None:
 
 def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
+    # The MTP context window is an environment resolution, so pin it: a value
+    # exported in the developer's shell must not change this expectation.
+    monkeypatch.delenv("HIPENGINE_MTP2_MAX_CONTEXT_TOKENS", raising=False)
     fake = FakeLLM()
     app = create_app(
         ServerConfig(
@@ -2079,6 +2082,13 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "resolved": None,
             "source": "unresolved",
         },
+        "context_window": {
+            "env": "HIPENGINE_MTP2_MAX_CONTEXT_TOKENS",
+            "exported": None,
+            "resolved": 1023,
+            "qualified_default": 1023,
+            "error": None,
+        },
     }
     assert body["sampling"]["speculative_mtp"]["incompatible_fields"] == list(
         SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
@@ -2149,7 +2159,10 @@ def test_capabilities_endpoint_reports_scoped_gguf_native_sampler_candidate(
     assert enabled.json()["sampling"]["native_gpu"]["enabled"] is True
 
 
-def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_support() -> None:
+def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_support(monkeypatch) -> None:
+    # The MTP context window is an environment resolution, so pin it: a value
+    # exported in the developer's shell must not change this expectation.
+    monkeypatch.delenv("HIPENGINE_MTP2_MAX_CONTEXT_TOKENS", raising=False)
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -2182,6 +2195,13 @@ def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_su
             "requested": None,
             "resolved": 3,
             "source": "model_plugin_evidence",
+        },
+        "context_window": {
+            "env": "HIPENGINE_MTP2_MAX_CONTEXT_TOKENS",
+            "exported": None,
+            "resolved": 1023,
+            "qualified_default": 1023,
+            "error": None,
         },
         "policy": "opt_in",
         "request_field": "speculative_mtp",
