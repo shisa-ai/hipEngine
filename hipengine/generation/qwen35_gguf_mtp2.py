@@ -6259,7 +6259,22 @@ class Qwen35GGUFMTP2Adapter:
         self._prompt_hidden_rows.pop(rid, None)
         self._disabled_requests.discard(rid)
 
+    def discard_prefix_checkpoint(self, tokens: Sequence[int]) -> None:
+        store = getattr(self, "_prefix_checkpoint_store_instance", None)
+        if store is not None:
+            store.drop(tokens)
+
+    def has_prefix_checkpoint(
+        self, tokens: Sequence[int], block_ids: Sequence[int],
+    ) -> bool:
+        store = getattr(self, "_prefix_checkpoint_store_instance", None)
+        checkpoint = None if store is None else store.get(tokens, block_ids)
+        return checkpoint is not None and getattr(checkpoint, "boundary_hidden", None) is not None
+
     def close(self) -> None:
+        store = getattr(self, "_prefix_checkpoint_store_instance", None)
+        if store is not None:
+            store.clear()
         if self._prompt_streaming_sinks:
             self._abort_prompt_streaming(
                 tuple(self._prompt_streaming_sinks),
