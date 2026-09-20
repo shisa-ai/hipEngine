@@ -119,6 +119,14 @@ Use semver-style bumps while the public API is still alpha:
 - Release validation is a correctness and packaging gate, not an automatic
   benchmark refresh. Existing retained performance evidence remains valid when
   later release-only changes are limited to documentation and package metadata.
+- The CI runner installs Noto CJK/DejaVu fonts for OCR fixture regeneration
+  and registers the historical benchmark checkout path as a same-commit Git
+  worktree for absolute-command provenance checks.
+- If a tag run fails on runner prerequisites before upload, repair the workflow
+  on main and dispatch `publish.yml` with `release_tag=vX.Y.Z`. The workflow
+  checks out that existing tag and verifies its commit/version before testing
+  and building; do not move the tag. Check PyPI first to avoid retrying a
+  partially published version.
 - Do not add long-lived PyPI tokens to the repo. Prefer trusted publishing or a
   local/user-scoped token configured outside the repository.
 - Current wheels are Linux x86-64 only because they bundle an x86-64 AOTriton
