@@ -1523,6 +1523,21 @@ HIPENGINE_DEBUG=1 hipengine serve --model /path/to/model
 Debug payload logs include prompts and generated text; do not enable them for
 shared or sensitive deployments.
 
+Server logs are colorized when the output is a supporting terminal. `--log-color`
+(or `HIPENGINE_LOG_COLOR`) selects `auto` (default), `always`, or `never`:
+
+```bash
+hipengine serve --model /path/to/model --log-color always
+```
+
+`auto` colorizes a TTY only and honors `NO_COLOR` and `FORCE_COLOR`. `always`
+also colorizes redirected output, which is what a `| tee` pane needs, at the cost
+of writing ANSI codes into that file. `never` disables colorization. Styling only
+adds ANSI codes, so the text is unchanged and `grep`, `cut`, and log shippers keep
+working: level prefixes, the leading label of each structured line
+(`REQUEST_INFO`, `MODEL_LOAD`, `REQUEST_FAILED`, `UNHANDLED_ERROR`, ...), the
+`key=` of every field, and model-load progress bars are styled.
+
 To log one summary line per completed generation request, pass `--info` or set
 `HIPENGINE_INFO=1`:
 

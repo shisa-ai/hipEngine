@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from hipengine.execution_profiles import EXECUTION_PROFILE_ENV, ExecutionProfile
 from hipengine.kvcache import PREFIX_CACHE_CHOICES
 from hipengine.server.api import ServerConfig, create_app
+from hipengine.server.log_style import COLOR_MODES, build_log_config
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -402,6 +403,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     parser.add_argument("--port", type=int, default=8000, help="Bind port")
     parser.add_argument("--log-level", default="info", help="uvicorn log level")
+    parser.add_argument(
+        "--log-color",
+        choices=COLOR_MODES,
+        default=os.environ.get("HIPENGINE_LOG_COLOR", "auto"),
+        help=(
+            "ANSI color for server logs: auto styles a TTY only (honoring NO_COLOR "
+            "and FORCE_COLOR), always styles redirected output such as a tee'd "
+            "pane, never disables styling "
+            "(env HIPENGINE_LOG_COLOR; default: auto)"
+        ),
+    )
     return parser
 
 
@@ -452,7 +464,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         import uvicorn
     except Exception as exc:  # pragma: no cover - dependency guard
         raise RuntimeError("uvicorn is required; reinstall hipengine with its default dependencies") from exc
-    uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
+    uvicorn.run(
+        app,
+        host=args.host,
+        port=args.port,
+        log_level=args.log_level,
+        log_config=build_log_config(mode=args.log_color),
+    )
     return 0
 
 
