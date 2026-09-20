@@ -189,13 +189,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--kv-storage",
-        default=os.environ.get("HIPENGINE_KV_STORAGE", "int8_per_token_head"),
+        default=os.environ.get("HIPENGINE_KV_STORAGE", "bf16"),
         help=(
             "Server-wide KV storage policy: auto, bf16, or int8_per_token_head "
-            "(default). int8_per_token_head is used only when the loaded "
-            "artifact is qualified for it; an unqualified artifact fails closed "
-            "to BF16 and records the reason in /ready and the KVCache summary. "
-            "Pass bf16 to force the previous behavior."
+            "(default: bf16). BF16 is the higher-precision baseline and is the "
+            "only KV storage the speculative (MTP) route has retained evidence "
+            "for. int8_per_token_head stores roughly half the per-token KV bytes "
+            "at lower KV precision, and is used only when the loaded artifact is "
+            "qualified for it; an unqualified int8 request falls back to BF16 "
+            "and records the reason in /ready and the KVCache summary. Pass "
+            "int8_per_token_head to opt into the compressed policy."
         ),
     )
     parser.add_argument(
