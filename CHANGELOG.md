@@ -32,8 +32,13 @@ the combinations documented below; this is not a blanket production certificate.
   with compressed IQ/Q3 kernels, compact Q5/Q6 residency, artifact-aware
   admission, and optimized prefill, decode, and speculative verification.
 - **Sampled speculative decoding:** temperature-based MTP acceptance on
-  qualified served configurations, including device-side acceptance and
-  commit. Direct-generator sampled MTP is not yet supported.
+  Qwen3.8-27B Q4_K_M on gfx1151 with BF16 KV and one through four active
+  requests, including native GPU sampling, request-local random state, and
+  selected-state commit. Direct-generator sampled MTP is not yet supported.
+- **INT8 KV speculative decoding:** dense GGUF single-request MTP, including
+  inside a wider resident server, with eager/graph verification and prefix
+  checkpoint restoration. Packed multi-request INT8 MTP and compact-DMS MTP
+  are not implemented; INT8 KV quality admission remains independent.
 - **Serving diagnostics:** per-request speculative/AR token attribution,
   provider readiness, refusal reasons, realized group widths, and
   proposal/verification/provider-update timings.
@@ -42,14 +47,18 @@ the combinations documented below; this is not a blanket production certificate.
 
 - Prefix reuse now includes batched suffix prefill, pooled snapshots,
   placement-aware routing, and draft-provider checkpoint restore for eligible
-  cache hits. The direct engine defaults to radix caching; the HTTP server
-  retains its explicit cache-off default.
-- Qualified gfx1151 dense-Qwen configurations use automatic MTP at one active
-  request. Wider groups and contexts outside the qualified window fall back
-  to autoregressive decoding; requesting MTP does not guarantee engagement.
+  cache hits. Both the direct engine and HTTP server default to radix caching.
+- The server CLI defaults to BF16 KV. Compressed INT8 KV remains an explicit
+  option subject to artifact-specific quality admission.
+- Supported dense and MoE GGUF implementations can use automatic MTP without
+  a matching benchmark row, including supported UD artifacts. Backend,
+  storage, sampling, physical group/depth, and memory limits still apply.
+  Configurations measured slower than AR remain excluded from automatic policy.
+- MTP context is bounded by the target's allocated capacity, not a fixed
+  1,023-token admission window.
 - Packed workspace and private KV memory accounting follow serving capacity.
 - Long-context speculative verification uses staged linear-attention kernels
-  on qualified gfx1151 Q4_K_M artifacts; longer MTP contexts remain opt-in.
+  on supported gfx1151 Q4_K_M routes.
 - Source archives now omit repository-only benchmark data, surveys, worklogs,
   docs, and test fixtures while retaining all wheel build inputs.
 - CI checks every distribution's size before any upload, preventing a partial
@@ -62,6 +71,11 @@ the combinations documented below; this is not a blanket production certificate.
   the engine is closed.
 - Bound streaming queues by output budgets and defer conflicting MTP prompt
   activation instead of failing the service.
+- Keep HTTP request handling responsive while engine work waits on the GPU.
+- Stop MTP at EOS without publishing extra tokens or retaining model state
+  beyond the terminal prefix; preserve neighboring request cursors.
+- Report explicit-only MTP as default AR at startup, and label unmeasured
+  admission using evidence metadata rather than reason-string prefixes.
 - Repair KV-pool growth/binding, host-upload lifetimes, recycled state
   initialization, and NaN-safe state clearing.
 - Fix softmax synchronization races in EVIE, paged attention, and TimesFM.
@@ -69,13 +83,16 @@ the combinations documented below; this is not a blanket production certificate.
 
 ### Known Limitations
 
-- Dense-Qwen prefix reuse has a gfx1151 same-route numerical packet; the
-  corresponding refreshed gfx1100 packet is still pending. This does not
+- Dense-Qwen prefix reuse has same-route numerical checks on gfx1151 and
+  gfx1100, including separate BF16 and INT8 ownership checks. This does not
   establish equality between different prefill arithmetic paths. Disable
   prefix caching with `prefix_cache="off"` or `--prefix-cache off` when needed.
-- MTP admission depends on model, quantization, execution profile, context,
-  and realized batch shape. Dense gfx1151 Q4_K_M's default qualified window
-  ends at 1,023 tokens; longer requests can complete without speculation.
+- MTP availability depends on the implemented backend, storage, sampling, and
+  realized batch shape. Automatic requests can fall back to AR; explicit
+  requests for unimplemented combinations return a named capability error.
+- INT8 MTP does not establish INT8-versus-BF16 quality or a throughput gain.
+  Packed INT8 verification, compact-DMS transactions, and broader memory-pressure
+  qualification remain open.
 - New OCR and speech hardware evidence is primarily gfx1151. VibeVoice ASR
   and TTS remain early implementations, not fully qualified production ports.
 - APIs and supported combinations may change before 1.0.

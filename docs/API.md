@@ -4,7 +4,7 @@ owns: OpenAI-compatible server usage, endpoint support, request/response semanti
 ---
 # OpenAI-Compatible Server API
 
-Last updated: 2026-07-23
+Last updated: 2026-09-20
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
@@ -90,14 +90,15 @@ lower KV precision; on the supported dense GGUF artifact that policy selects
 memory budget. That figure belongs to the int8 policy, so the BF16 default
 holds proportionally less resident context at the same KV memory budget.
 
-INT8 KV is used only when the loaded artifact is qualified for it. Qualification
-is keyed on the exact artifact SHA-256, size, backend, target architecture,
-weight quant, storage layout, **and scale dtype** — the retained evidence for the
-supported dense artifacts is keyed on `fp32` scales, so `--kv-scale-dtype fp16`
-matches no contract and the server falls back to BF16. An unqualified or unknown
-artifact also falls back to BF16; the reason is recorded in `/ready` and the
-KVCache summary rather than raised. Passing `--kv-storage bf16` explicitly is
-accepted and matches the default.
+INT8 KV admission requires an implementation declaration covering the backend,
+target architecture, weight quant, storage layout, scale dtype, and scale
+granularity. Evidence additionally matches the artifact's execution fingerprint:
+a measured quality rejection falls back to BF16, while an implemented contract
+without a matching measurement runs as `unmeasured`, not as a qualified quality
+guarantee. Artifact SHA-256 and size remain provenance. The current dense
+declarations use `fp32` scales, so `--kv-scale-dtype fp16` falls back to BF16.
+The reason and requested/effective storage are recorded in `/ready` and the
+KVCache summary. Passing `--kv-storage bf16` explicitly matches the default.
 
 Set `--max-active-requests` to change the maximum number of requests processed
 in flight. Requests beyond that limit remain queued. The shared KV pool starts
@@ -180,19 +181,23 @@ disables MTP for a request.
 Operators may still select explicit diagnostics with
 `--speculative-mtp-serving opt_in` plus `"speculative_mtp": true`. Explicit
 false always forces AR. `serial_exact` remains the token-exact slow rollback
-control for the legacy direct hook; MoE and unqualified dense scopes are not
-automatic. The capabilities manifest reports
+control for the legacy direct hook. Dense and MoE automatic admission follows
+the implementation and evidence rules above. The capabilities manifest reports
 `sampling.speculative_mtp.serving_route=true` only when this policy is enabled
 and the loaded engine exposes a real MTP hook, and
 `sampling.speculative_mtp.default_enabled=true` when the default policy routes
 compatible requests through MTP. With a positive
 `--generation-batch-window-ms` and a matching `--max-active-requests`, compatible
-non-streaming MTP requests can coalesce into one backend call. The promoted
-scope requires resident capacity C1. Other shapes use strict AR or independent
-explicit diagnostics; no route-coalescing row is
-reported as hidden physical concurrency. Capabilities report the Generation-2
-frontier ceiling separately from the admitted plan's `resident_capacity=1` and
-`realized_group_rows=1`. Capabilities also expose the
+non-streaming MTP requests can coalesce into one backend call within supported
+physical width/depth cells. Queue coalescing is not proof of physical verifier
+concurrency. Capabilities report the Generation-2 frontier ceiling separately
+from the admitted plan's `resident_capacity` and `realized_group_rows`.
+Dense uniform INT8 KV MTP supports a single-request verifier, including inside
+a wider resident server; packed INT8 and compact-DMS MTP are not implemented.
+Explicit requests for missing implementation capabilities return HTTP 501 with
+the reason; automatic requests can use AR. MTP context is bounded by the
+target's allocated capacity, with no fixed 1,023-token admission cap.
+Capabilities also expose the
 restart-scoped circuit breaker. Repeated backend/runtime failures open one
 model/backend/profile/context scope, where the context bucket is the realized
 prompt length rounded up to 256 tokens; request cancellation and deadline
@@ -213,9 +218,8 @@ When MTP is explicitly selected, the default **hint** policy
 (`--speculative-mtp-thinking hint`, env
 `HIPENGINE_SPECULATIVE_MTP_THINKING=hint`) keeps reasoning hints in the rendered
 prompt but relaxes host-sampler enforcement, so the request can remain
-raw-greedy-compatible. The complete typed plan still applies: rendered thinking
-prompts beyond context 67 select K0. S3 validates truthful hint/hard/context
-fallback behavior; thinking controls are not a separate promoted scope.
+raw-greedy-compatible. The complete typed plan and target capacity still apply;
+prompt length alone is not an MTP qualification gate.
 Responses that realize MTP report `thinking_policy` and
 `thinking_controls="prompt_hint_only"`. Set `--speculative-mtp-thinking hard`
 (or
@@ -1750,19 +1754,18 @@ generated text.
   which PARO c=1 native sampling checks after each selected token.
 - The capabilities manifest reports `sampling.speculative_mtp` with
   `compatibility_guard: "supports_speculative_mtp_sampling"`, the complete typed
-  plan, evidence links, strict fallback, and automatic decision. The exact
-  Qwen3.8 Q4_K_M C1/B3/natural25 scope above is automatic; other scopes are K0
-  unless an independent explicit diagnostic exists. Blocking and streaming
+  plan, evidence links, strict fallback, and automatic decision. Automatic
+  eligibility follows the model's evidence rows and implementation declarations.
+  Blocking and streaming
   completion/chat share Generation-2 and report exact IDs/text plus terminal MTP
-  telemetry and usage. Current promoted compatibility is greedy-fast only;
-  `logit_bias`, penalties, token suppressions, min-token/EOS policy, explicit EOS
-  finish policy, token stops, `ignore_eos=true`, pending forced-token queues,
-  post-thinking forced-token queues, token-sequence completion repair, JSON
-  object close forcing, tool-call constraints, temperature sampling, and
-  requested logprobs require autoregressive fallback. The manifest also includes
-  `incompatible_conditions`, for example `temperature > 0`, `eos_token_id set`,
-  and `ignore_eos=true`, so inert greedy `top_p`/`top_k`/`min_p` settings are not
-  mistaken for MTP blockers.
+  telemetry and usage. Sampled MTP is supported in the BF16 gfx1151 scope
+  described above; it is not general sampled support for every artifact or KV
+  format. EOS terminates accepted chains without publishing later candidates.
+  Logprobs, explicit token stops, forced-token queues, tool/structured
+  constraints, and unsupported processor combinations retain AR fallback or a
+  named explicit-capability error. The manifest's `incompatible_conditions`
+  describes request restrictions; inert greedy `top_p`/`top_k`/`min_p`
+  settings are not MTP blockers.
 - `sampling.speculative` describes the generic draft-model provider configured
   by `--speculative-provider`, `--draft-model`, and
   `--speculative-candidate-budget`. It remains explicit-only through the
