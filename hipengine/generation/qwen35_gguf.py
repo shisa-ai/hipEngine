@@ -12239,7 +12239,7 @@ def _gguf_native_sampler_plan_enabled(
 
 def _native_gpu_sampler_requested() -> bool:
     value = os.environ.get("HIPENGINE_QWEN35_NATIVE_SAMPLER")
-    return value is not None and value.strip().lower() not in {"", "0", "false", "no", "off"}
+    return value is None or value.strip().lower() not in {"", "0", "false", "no", "off"}
 
 
 def make_qwen35_gguf_bringup_generator(

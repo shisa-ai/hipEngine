@@ -41,8 +41,8 @@ route, and unsupported native shapes fail closed to host logits sampling:
   prefill. Fully GPU-sampler-eligible rows use serial per-slot native GPU
   sampling by default when the resident session exposes the native row sampler;
   `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` disables that route for rollback or
-  bisection. The GGUF resident model owner now has a separate correctness-ready,
-  explicit `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` candidate: supported c1 rows use
+  bisection. The GGUF resident model owner also defaults to native sampling:
+  supported c1 rows use
   one native row selection, and dense compatible c>N rows use one batched
   selection launch over packed device logits. Heterogeneous/sparse native rows
   split safely, while mixed native/host sampler groups run serially so a host
@@ -117,14 +117,22 @@ Promotion blockers closed in this pass:
 - generator tests cover default c=1, default serial per-slot c>N, explicit
   opt-out host fallback, and unsupported native-shape fallback metadata.
 
-The 2026-07-21 GGUF candidate is not part of the PARO default promotion. It is
-admitted only with `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`, and only when
-`supports_native_gpu_sampling()` accepts the request. A real W7900 c4 gate
+GGUF native sampling is default-on for available resident sessions when
+`supports_native_gpu_sampling()` accepts the request. Set
+`HIPENGINE_QWEN35_NATIVE_SAMPLER=0` for host rollback. The full-vocabulary sorted
+sampler has explicit production provenance independent of model arithmetic;
+`native_sampler_algorithm="strict"` selects the debugging implementation.
+The 2026-09-21 zbook / Radeon 8060S category/heldout comparison and c1/c4 lifecycle
+gate establish the measured Qwen3.8-27B Q4_K_M path; see
+[results and commands](../benchmarks/results/2026-09-21-zbook-fast-cpu-gpu-sampling.json).
+The default-on lifecycle rerun leaves the enable environment variable unset.
+New-kernel gfx1100 performance remains unverified. A historical W7900 c4 gate
 repeated four fixed-seed rows exactly, matched same-shape forced-host Conv/GDN
 and logical live-KV bytes, passed stop/EOS/logprob telemetry, launched six
 batched sampler transitions, and drained all refs; artifact
 `benchmarks/results/2026-07-21-w7900-gguf-native-sampler-correctness.json`.
-It records `performance_claim=false` and does not promote the route.
+That historical artifact records `performance_claim=false`; the default decision
+uses the newer implementation and evidence above.
 
 Remaining native-sampler gaps are not blockers because the planner falls back
 before native execution:

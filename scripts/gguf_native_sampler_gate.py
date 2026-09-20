@@ -314,7 +314,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         row_seeds=row_seeds,
         top_k=int(args.top_k),
     )
-    os.environ["HIPENGINE_QWEN35_NATIVE_SAMPLER"] = "1"
+    # Exercise the runtime default unless the caller explicitly requests rollback.
     llm = LLM(
         str(model),
         backend=str(args.backend),

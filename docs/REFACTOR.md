@@ -8796,8 +8796,9 @@ strict primitives as the debugging oracle.
 The new implementation has hardware evidence on gfx1151 only. gfx1100 transfer
 and the broader model/quant matrix are unverified.
 
-GGUF placement remains controlled by `HIPENGINE_QWEN35_NATIVE_SAMPLER`; its
-existing host fallback must not be removed until supported native placement is
-qualified for the served model/backend scopes. Dynamic constraints and forced
-queues still require the host path. The full-vocabulary kernel improvement is
+GGUF placement defaults on for supported, available native requests;
+`HIPENGINE_QWEN35_NATIVE_SAMPLER=0` retains rollback/bisection value. Keep that
+opt-out while independent hardware transfer is evaluated; do not use it as an
+admission gate for supported requests. Dynamic constraints and forced queues
+still require the host path. The full-vocabulary kernel improvement is
 not evidence that those request shapes became supported.

@@ -1978,6 +1978,7 @@ def test_gguf_mtp_metadata_reports_packed_slot_batch() -> None:
 
 
 def test_gguf_submit_poll_sampled_rows_use_packed_model_ticks(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
     calls: list[tuple] = []
 
     class FakeFullStackRunner:
@@ -2360,7 +2361,7 @@ def test_gguf_submit_poll_stochastic_rows_use_batched_native_sampler_without_log
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
-    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
     generator = _generator()
     generator.backend = "hip_gfx1100"
     generator._shared_runner = None
@@ -2427,6 +2428,7 @@ def test_gguf_submit_poll_stochastic_rows_use_batched_native_sampler_without_log
 
 
 def test_gguf_sampled_packed_unavailable_reports_model_serial_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
     calls: list[tuple] = []
     tokenizer = _FakeTokenizer()
 
@@ -2703,9 +2705,11 @@ def test_gguf_resident_full_prefill_uses_block_table_path_when_required(
     ids=("shifted-allocation", "direct-int8-base-zero"),
 )
 def test_gguf_resident_sampled_prefill_uses_block_table_path_when_required(
+    monkeypatch,
     attention_source: str | None,
     block_ids: tuple[int, ...],
 ) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
     calls: list[tuple] = []
 
     class FakeSession:
@@ -2775,6 +2779,7 @@ def test_gguf_resident_sampled_prefill_uses_block_table_path_when_required(
 
 
 def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
     calls: list[tuple] = []
 
     class FakeFullStackRunner:
@@ -6551,7 +6556,7 @@ def test_gguf_non_greedy_request_uses_host_logits_sampler(
     if native_requested:
         monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
     else:
-        monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
+        monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
 
     generator = _generator()
     out = generator.generate(_request(temperature=0.7, top_k=1, seed=5))
@@ -6610,7 +6615,7 @@ def test_gguf_generate_detailed_records_scheduler_token_chunks_for_serial_rows(m
             )
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
-    monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
 
     generator = _generator()
     outputs = generator.generate_detailed(
@@ -7156,7 +7161,7 @@ def test_gguf_stream_detailed_emits_live_sampled_telemetry(
     if native_requested:
         monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
     else:
-        monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
+        monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
 
     generator = _generator()
     chunks = list(generator.stream_detailed(_request(temperature=0.7, top_k=1, seed=5)))
@@ -7531,6 +7536,7 @@ def test_gguf_host_sampler_stops_on_request_eos_token_id(monkeypatch) -> None:
 
 
 def test_gguf_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
     calls = []
 
     class FakeSession:
