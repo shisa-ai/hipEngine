@@ -13,9 +13,7 @@ The approved design and migration gates are in
 | Path | Role |
 | --- | --- |
 | `worklog/entries/*.md` | Tracked immutable current entries. |
-| `WORKLOG-LEGACY.md` | Tracked byte-frozen journal through cutoff commit `7c7c18875`. |
-| `worklog/legacy-manifest.json` | Hash, byte, line, heading, and cutoff invariant for the frozen journal. |
-| `worklog/legacy-port-manifest.json` | Entry-to-commit mapping and source line ranges for the ported pre-cutoff entries. |
+| `worklog/legacy-port-manifest.json` | Entry-to-commit mapping for the ported pre-cutoff entries; pins the retired journal's sha256 and Git history ref. |
 | `WORKLOG.md` | Tracked GitHub/navigation page; never generated or appended per unit. |
 | `.worklog/WORKLOG.md` | Ignored local generated chronological view. |
 | `scripts/worklog.py` | Standard-library create/check/render/hook CLI. |
@@ -66,9 +64,9 @@ rename, or delete it. Correct an old conclusion with a new `decision` or
 
 Validation fails on malformed schema/frontmatter, filename mismatch, missing or
 reordered sections, placeholders, conflict markers, committed entry changes,
-staged/working-tree divergence, unexpected tracked paths under
-`worklog/entries/`, or any change to the frozen legacy journal or manifest. It
-gates staged and tracked content only; see "Validate" below.
+staged/working-tree divergence, or unexpected tracked paths under
+`worklog/entries/`. It gates staged and tracked content only; see "Validate"
+below.
 
 ## Validate
 
@@ -89,9 +87,12 @@ progress before staging it with:
 python3 scripts/worklog.py check --include-unstaged
 ```
 
-The check also rejects any change to an already-tracked entry or to the frozen
-legacy journal, and it rejects a staged entry whose working-tree copy has moved
-on (re-run `git add` to commit the final text).
+The check also rejects any change to an already-tracked entry, and it rejects a
+staged entry whose working-tree copy has moved on (re-run `git add` to commit
+the final text). Staged deletion of the retired legacy journal pair
+(`WORKLOG-LEGACY.md` and `worklog/legacy-manifest.json`) is the one sanctioned
+removal: it is allowed once, and the exact journal bytes stay pinned by the
+history ref in `worklog/legacy-port-manifest.json`.
 
 The optional local pre-commit checker can be installed in a trusted clone with:
 
@@ -113,31 +114,37 @@ Render current immutable entries to the ignored local view:
 python3 scripts/worklog.py render
 ```
 
-Include the complete frozen journal only when older context is needed:
-
-```bash
-python3 scripts/worklog.py render --include-legacy
-```
+`--include-legacy` is inert now that the legacy journal is retired from the
+tree; rendering prints a note with the `git show` ref for the original bytes.
 
 Rendering is atomic and never overwrites tracked root `WORKLOG.md`. The rendered
 view also includes unstaged entries from the working tree, so local work in
 progress shows up before it is committed; an entry that is not valid yet is
 skipped with a note on stderr. For routine handoff, inspect the latest relevant
-files in `worklog/entries/`. Pre-cutoff history is available both as ported
-entries (front-matter `worker: legacy`) and as the frozen journal itself.
+files in `worklog/entries/`. Pre-cutoff history is readable as ported entries
+(front-matter `worker: legacy`).
 
-## Historical journal
+## Retired legacy journal
 
-`WORKLOG-LEGACY.md` is preserved byte-for-byte from cutoff parent
-`7c7c188750fcca6ff5ebefa969e7f2689a940172`. Its manifest is checked on every
-worklog validation. Do not fix old typos, duplicate headings, dates, or merge
-ordering.
+The pre-Worklog2 append-only journal was preserved byte-for-byte as
+`WORKLOG-LEGACY.md` at cutoff parent `7c7c188750fcca6ff5ebefa969e7f2689a940172`,
+ported verbatim into entries (see below), and then removed from the tree once
+the port was verified byte-for-byte. The exact original bytes remain in Git
+history, pinned by the sha256 and history ref recorded in
+`worklog/legacy-port-manifest.json`:
+
+```bash
+git show <source_history.commit>:WORKLOG-LEGACY.md
+```
 
 Historical Git provenance remains available with:
 
 ```bash
 git log --follow -- WORKLOG-LEGACY.md
 ```
+
+Do not resurrect the file into the tree; ported entries are the in-tree
+representation of pre-cutoff history.
 
 ## Ported pre-cutoff entries
 
@@ -158,23 +165,26 @@ merges, which the manifest records as timestamp inversions.
 
 `worklog/legacy-port-manifest.json` records the full mapping: source line
 ranges, attributed commits and subjects, timestamps, wrapped flags, duplicate
-groups, and the anomaly lists (append-replay re-adds and in-place edit
-commits). Re-run the byte-exact verification with:
+groups, the anomaly lists (append-replay re-adds and in-place edit commits),
+and the retired journal's sha256 and Git history ref. Re-run the byte-exact
+verification with:
 
 ```bash
 python3 scripts/worklog_port_legacy.py verify
 ```
 
-The frozen journal remains the canonical byte-exact original; ported entries
-must always reconstruct it byte-for-byte.
+`verify` re-derives every ported entry from the original journal bytes — read
+from the working tree while the journal exists there, or from the recorded Git
+history ref afterwards — and fails closed if either side drifts, so a history
+rewrite cannot silently degrade the port.
 
 ## Branches older than Worklog2
 
 A branch created before activation may contain an append to the old
 `WORKLOG.md`. When intentionally reviving such a branch, the designated merge
 owner extracts its missing material into one or more new immutable entries and
-identifies the source branch/commit. Never merge that append into
-`WORKLOG-LEGACY.md`; the manifest check fails closed on legacy mutation.
+identifies the source branch/commit. Never merge that append into a resurrected
+legacy file; convert it to entries instead.
 
 Worklog2 removes only worklog-content contention. Shared-worktree workers still
 share one Git index and must serialize staging and commits under `AGENTS.md`.

@@ -51,7 +51,7 @@ Each of these names a failure that has actually happened in this repo.
 ## Ground Rules
 
 - **Source of truth:** [docs/PLAN.md](docs/PLAN.md). Update it when architecture or phase plans move.
-- **Cross-session handoff:** immutable files under `worklog/entries/`; root `WORKLOG.md` is a tracked navigation page and `WORKLOG-LEGACY.md` is frozen pre-cutoff history. Pre-cutoff journal history is also ported into `worklog/entries/` as entries with `worker: legacy` (mapping in `worklog/legacy-port-manifest.json`); the frozen file remains the canonical original. Use `python3 scripts/worklog.py new/check/render`.
+- **Cross-session handoff:** immutable files under `worklog/entries/`; root `WORKLOG.md` is a tracked navigation page. Pre-cutoff journal history lives in `worklog/entries/` as ported entries with `worker: legacy`; `worklog/legacy-port-manifest.json` holds the entry-to-commit mapping and the retired journal's pinned history ref. Use `python3 scripts/worklog.py new/check/render`.
 - **Untested is not failed.** Presume implemented paths runnable within their input, resource, and execution contracts. Run representative workloads and targeted tests to find and fix defects, rather than blocking evaluation behind missing qualification. Do not require successful evaluation as a prerequisite for running that evaluation. `docs/EXECUTION-PROFILES.md` §1.1 is the normative statement and separates runnability, evaluation, and promotion.
 - **Testing discipline:** follow RED/GREEN where practical; `docs/TESTING.md` has fixture/oracle/gate details. Claims and production arithmetic promotion still require the applicable correctness gates in [docs/OPTIMIZATION.md](docs/OPTIMIZATION.md). Control/ownership, deterministic repeatability, arithmetic equality, and batch-composition invariance remain distinct contracts — do not collapse them.
 - **Test naming and scope:** new/migrated modules use `test_<tier>_<subject>.py`; follow `docs/TESTING.md` "Test Naming and Discovery". Default pytest discovers the reviewed unit tier only. Use explicit file/node targets or `--suite <tier>` for other work; a full milestone run requires `--suite all`. Never classify cost by product-name substrings or introduce manual filename exclusion lists.
@@ -97,7 +97,7 @@ Do not drift these casually. They define what hipEngine is.
 | `audit/` | Cleanup audit: mechanical debt inventory, durable triage, and the budget gate. `audit/README.md` has the model. |
 | `AGENTS.md` / `CLAUDE.md` | Ground rules (this file). |
 | `WORKLOG.md` | Tracked worklog navigation page. |
-| `WORKLOG-LEGACY.md` | Byte-frozen pre-Worklog2 journal; never edit. |
+| `worklog/legacy-port-manifest.json` | Ported pre-cutoff entries: entry-to-commit mapping plus the retired journal's sha256 and Git history ref. |
 | `worklog/entries/` | Immutable per-unit current decisions, results, blockers, and handoffs. |
 | `worklog/README.md` / `scripts/worklog.py` | Worklog schema, commands, validator, renderer, and optional pre-commit hook. |
 | `benchmarks/README.md` | Canonical topline scoreboard, platform freshness, protocols, artifacts, and root README exports. |
@@ -112,7 +112,7 @@ Do not drift these casually. They define what hipEngine is.
 ### Before Starting
 
 1. `git status -sb` — note unrelated changes and leave them alone.
-2. Read the relevant section of [docs/PLAN.md](docs/PLAN.md) and the latest relevant files under `worklog/entries/` (or run `python3 scripts/worklog.py render`). Read the `WORKLOG-LEGACY.md` tail only when pre-cutoff context matters.
+2. Read the relevant section of [docs/PLAN.md](docs/PLAN.md) and the latest relevant files under `worklog/entries/` (or run `python3 scripts/worklog.py render`). Pre-cutoff context is in ported entries (`worker: legacy`); the original journal bytes live in Git history at the ref recorded in `worklog/legacy-port-manifest.json`.
 3. For kernel work, a perf claim, or a benchmark row, follow [docs/OPTIMIZATION.md](docs/OPTIMIZATION.md) §3 — ROCm liveness, lineage check, and baseline definition — before changing code.
 
 ### During Work
@@ -203,7 +203,7 @@ Working tree is shared state. Other agents or the human may be editing concurren
 - **High-conflict files:** `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, `docs/OPTIMIZATION.md`, `docs/BENCHMARK.md`, `docs/TESTING.md`, `docs/KERNELS.md`, `docs/reference/IMPLEMENTATION.md`, `pyproject.toml`, `scripts/worklog.py`, `worklog/README.md`, `hipengine/kernels/registry.py`, `hipengine/quant/registry.py`, `hipengine/models/registry.py`, `hipengine/dispatch/fusion.py`, `hipengine/core/*`.
 - Same-file contention: stop and coordinate. The designated agent stages and commits their scoped hunks first to unblock others.
 - Worklog entry filenames are unique and should not conflict. A committed entry is immutable; correct it with a new `decision` or `checkpoint` entry that links the superseded path.
-- `WORKLOG-LEGACY.md` is byte-frozen and manifest-checked. If an old branch carries an append to pre-cutoff `WORKLOG.md`, the designated merge owner converts its missing material into a new immutable entry instead of changing legacy.
+- The pre-cutoff journal was ported verbatim into entries and retired from the tree; its exact bytes are pinned by the history ref in `worklog/legacy-port-manifest.json`. If an old branch carries an append to pre-cutoff `WORKLOG.md`, the designated merge owner converts its missing material into a new immutable entry instead of resurrecting a legacy file.
 - Do not clean up another agent's benchmark outputs, staged files, or local artifacts unless the task explicitly asks for that cleanup.
 
 ## External Reference Repos

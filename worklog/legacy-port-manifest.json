@@ -5,6 +5,10 @@
  "source_bytes": 17667892,
  "source_lines": 217151,
  "cutoff_commit": "7c7c188750fcca6ff5ebefa969e7f2689a940172",
+ "source_history": {
+  "commit": "b52ab2d22b6a48bfdeff6aa9893f2208df77f275",
+  "path": "WORKLOG-LEGACY.md"
+ },
  "generated_by": "scripts/worklog_port_legacy.py",
  "worker": "legacy",
  "branch": "pre-cutoff",
@@ -22,7 +26,7 @@
    "2026-08": 546
   },
   "unattributed": 0,
-  "commit_records": 7477,
+  "commit_records": 7478,
   "readd_skipped": 12712,
   "deletion_commits": [
    {

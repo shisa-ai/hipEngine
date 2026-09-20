@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Port the frozen pre-Worklog2 journal into immutable Worklog2 entries.
 
-The legacy append-only journal (``WORKLOG-LEGACY.md``, frozen at the Worklog2
-cutoff) is split fence-aware into its historical entries.  Each entry becomes
-one immutable file under ``worklog/entries/`` whose timestamp, base commit, and
-filename come from the first Git commit that appended it to the journal,
-recovered from the full patch history of ``WORKLOG.md``/``WORKLOG-LEGACY.md``.
-Entry bodies are preserved verbatim; ``verify`` re-derives every file from the
-frozen journal and proves byte-exact reconstruction plus Worklog2 schema
-validity.
+The legacy append-only journal (frozen at the Worklog2 cutoff, later retired
+from the tree after the verbatim port) is split fence-aware into its historical
+entries.  Each entry becomes one immutable file under ``worklog/entries/``
+whose timestamp, base commit, and filename come from the first Git commit that
+appended it to the journal, recovered from the full patch history of
+``WORKLOG.md``/``WORKLOG-LEGACY.md``.  Entry bodies are preserved verbatim;
+``verify`` re-derives every file from the original journal bytes — read from
+the working tree, or from the Git history ref recorded in the port manifest
+once the journal file is retired — and proves byte-exact reconstruction plus
+Worklog2 schema validity.
 
 Commands:
   report     build the commit map and print statistics and anomalies.
@@ -65,6 +67,22 @@ def run_git(*args: str) -> str:
     )
     if result.returncode != 0:
         raise PortError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+
+def run_git_bytes(*args: str) -> bytes:
+    """Raw git stdout, unstripped: exact bytes matter for the journal blob."""
+    result = subprocess.run(
+        ["git", *args],
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        raise PortError(
+            f"git {' '.join(args)} failed: {result.stderr.decode('utf-8', 'replace').strip()}"
+        )
     return result.stdout
 
 
@@ -382,21 +400,59 @@ def validate_in_memory(filename: str, text: str) -> None:
 # ---------------------------------------------------------------------------
 
 def load_legacy() -> tuple[str, dict[str, Any]]:
-    text = LEGACY_PATH.read_text(encoding="utf-8")
-    legacy_manifest = json.loads(LEGACY_MANIFEST_PATH.read_text(encoding="utf-8"))
-    payload = LEGACY_PATH.read_bytes()
-    actual = {
+    """Journal text plus provenance, from the working tree or recorded history.
+
+    After the journal file is retired from the tree, the exact bytes are read
+    from the Git history ref recorded in the port manifest and checked against
+    the tracked sha256, so history rewrites are caught instead of silently
+    degrading the byte-exact verification.
+    """
+    if LEGACY_PATH.exists():
+        payload = LEGACY_PATH.read_bytes()
+        source = {"commit": None, "path": "WORKLOG-LEGACY.md"}
+    else:
+        if not PORT_MANIFEST_PATH.exists():
+            raise PortError(
+                "WORKLOG-LEGACY.md is absent and no port manifest records its history ref"
+            )
+        history = json.loads(PORT_MANIFEST_PATH.read_text(encoding="utf-8")).get(
+            "source_history"
+        )
+        if not history or not history.get("commit") or not history.get("path"):
+            raise PortError(
+                "port manifest has no source_history ref for the retired legacy journal"
+            )
+        payload = run_git_bytes("show", f"{history['commit']}:{history['path']}")
+        source = history
+    text = payload.decode("utf-8")
+    meta: dict[str, Any] = {
         "sha256": hashlib.sha256(payload).hexdigest(),
         "bytes": len(payload),
         "lines": len(payload.splitlines()),
+        "cutoff_commit": None,
+        "source": source,
     }
-    for field, value in actual.items():
-        if legacy_manifest[field] != value:
+    if LEGACY_MANIFEST_PATH.exists():
+        legacy_manifest = json.loads(LEGACY_MANIFEST_PATH.read_text(encoding="utf-8"))
+        for field in ("sha256", "bytes", "lines"):
+            if legacy_manifest[field] != meta[field]:
+                raise PortError(
+                    f"frozen legacy journal {field} mismatch:"
+                    f" manifest={legacy_manifest[field]!r} actual={meta[field]!r}"
+                )
+        meta["cutoff_commit"] = legacy_manifest["cutoff_commit"]
+    else:
+        if not PORT_MANIFEST_PATH.exists():
             raise PortError(
-                f"frozen legacy journal {field} mismatch:"
-                f" manifest={legacy_manifest[field]!r} actual={value!r}"
+                "legacy manifest is absent; the port manifest must supply provenance"
             )
-    return text, legacy_manifest
+        port_manifest = json.loads(PORT_MANIFEST_PATH.read_text(encoding="utf-8"))
+        if port_manifest["source_sha256"] != meta["sha256"]:
+            raise PortError(
+                "retired legacy journal no longer matches the recorded sha256"
+            )
+        meta["cutoff_commit"] = port_manifest["cutoff_commit"]
+    return text, meta
 
 
 # ---------------------------------------------------------------------------
@@ -404,13 +460,15 @@ def load_legacy() -> tuple[str, dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def build_plan() -> dict[str, Any]:
-    text, legacy_manifest = load_legacy()
+    text, legacy_meta = load_legacy()
     lines, heading_indices, headings, inside = split_legacy(text)
     if not heading_indices or heading_indices[0] == 0:
         raise PortError("legacy journal has no preamble; splitter assumptions broken")
     final_counts = Counter(headings)
     mapping = build_commit_map(final_counts)
-    assignments, duplicates = assign_occurrences(headings, mapping, legacy_manifest["cutoff_commit"])
+    assignments, duplicates = assign_occurrences(
+        headings, mapping, legacy_meta["cutoff_commit"]
+    )
 
     records: list[dict[str, Any]] = []
     wrapped_count = 0
@@ -460,7 +518,7 @@ def build_plan() -> dict[str, Any]:
         "heading_indices": heading_indices,
         "headings": headings,
         "records": records,
-        "legacy_manifest": legacy_manifest,
+        "legacy_meta": legacy_meta,
         "stats": {
             "entries": len(headings),
             "preamble_lines": heading_indices[0],
@@ -510,10 +568,16 @@ def write_manifest(plan: dict[str, Any], path: Path) -> None:
     manifest = {
         "schema": SCHEMA,
         "source_path": "WORKLOG-LEGACY.md",
-        "source_sha256": plan["legacy_manifest"]["sha256"],
-        "source_bytes": plan["legacy_manifest"]["bytes"],
-        "source_lines": plan["legacy_manifest"]["lines"],
-        "cutoff_commit": plan["legacy_manifest"]["cutoff_commit"],
+        "source_sha256": plan["legacy_meta"]["sha256"],
+        "source_bytes": plan["legacy_meta"]["bytes"],
+        "source_lines": plan["legacy_meta"]["lines"],
+        "cutoff_commit": plan["legacy_meta"]["cutoff_commit"],
+        # The last commit that still carried WORKLOG-LEGACY.md in the tree;
+        # after retirement, verify reads the exact journal bytes from here.
+        "source_history": {
+            "commit": run_git("rev-parse", "HEAD"),
+            "path": "WORKLOG-LEGACY.md",
+        },
         "generated_by": "scripts/worklog_port_legacy.py",
         "worker": WORKER,
         "branch": BRANCH,
@@ -587,11 +651,11 @@ def cmd_generate(args: argparse.Namespace) -> int:
 
 
 def cmd_verify(_args: argparse.Namespace) -> int:
-    text, _legacy_manifest = load_legacy()
+    text, legacy_meta = load_legacy()
     lines, heading_indices, headings, inside = split_legacy(text)
     manifest = json.loads(PORT_MANIFEST_PATH.read_text(encoding="utf-8"))
-    if manifest["source_sha256"] != hashlib.sha256(LEGACY_PATH.read_bytes()).hexdigest():
-        raise PortError("port manifest does not match the frozen journal hash")
+    if manifest["source_sha256"] != legacy_meta["sha256"]:
+        raise PortError("port manifest does not match the legacy journal bytes")
     records = manifest["entries"]
     if len(records) != len(headings):
         raise PortError(
