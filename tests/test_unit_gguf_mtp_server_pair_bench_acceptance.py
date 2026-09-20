@@ -106,14 +106,60 @@ def test_a_partly_degraded_arm_is_still_a_mismatch():
     assert all(item.startswith("shapes.1024") for item in mismatches)
 
 
-def test_a_missing_route_is_a_mismatch_rather_than_a_pass():
-    """A run that reports no route cannot confirm the arm's contract."""
+def test_a_missing_route_is_an_autoregressive_run_not_a_mismatch():
+    """AR has two representations, and a server with MTP off reports the second.
 
-    result = {"shapes": {"512": {"runs": [{}]}}}
+    Measured: `--speculative-mtp-serving off` and a request carrying
+    `{"speculative_mtp": false}` both leave `effective_route` as None, because
+    no route decision was taken at all. Only a server that considered MTP and
+    fell back reports `"default"`. Treating None as a mismatch false-failed
+    both AR arms of the task-43 acceptance run even though both had genuinely
+    run autoregressively at ~11-12 tok/s.
+    """
+
+    result = {"shapes": {"512": {"runs": [{"effective_route": None}]}}}
+
+    assert bench.route_mismatches(result, expected="default") == []
+    assert bench.route_mismatches(result, expected="speculative_mtp") == [
+        "shapes.512[0]=None"
+    ]
+
+
+def test_an_explicit_default_route_satisfies_an_ar_arm():
+    """The fallback representation: MTP was considered and declined."""
+
+    result = {
+        "shapes": {
+            "2048": {
+                "route": {
+                    "effective_route": "default",
+                    "decision_reason": "backend_k0_fallback",
+                    "mtp_used": False,
+                }
+            }
+        }
+    }
+
+    assert bench.route_mismatches(result, expected="default") == []
+
+
+def test_a_run_showing_speculation_never_satisfies_an_ar_arm():
+    """Even with no route string, speculation accounting must fail the arm."""
+
+    result = {
+        "shapes": {
+            "512": {
+                "runs": [
+                    {"effective_route": None, "mtp_used": True},
+                    {"effective_route": None, "speculative_cycles": 55},
+                ]
+            }
+        }
+    }
 
     mismatches = bench.route_mismatches(result, expected="default")
 
-    assert mismatches == ["shapes.512[0]=None"]
+    assert len(mismatches) == 2
 
 
 def test_prompt_rows_are_checked_too():

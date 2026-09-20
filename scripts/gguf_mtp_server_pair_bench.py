@@ -126,6 +126,30 @@ ROUTE_ROW_KEYS = (
 )
 
 
+def route_satisfies(realized: Any, run: Mapping[str, Any], expected: str) -> bool:
+    """Whether a recorded run really ran the route an arm declared.
+
+    Autoregressive decoding has two representations and both are legitimate.
+    A server that considered MTP and fell back reports ``effective_route`` of
+    ``"default"`` with a ``backend_k0_fallback`` reason.  A server whose MTP is
+    off for the process, or whose request disabled it, reports no route
+    decision at all, so the field is ``None``.  Both ran autoregressively, so
+    both satisfy an AR arm - but nothing that shows speculation activity may,
+    which is what keeps the recorded duplicate-route failure (an AR arm that
+    actually ran MTP) a failure.
+    """
+
+    if expected == "speculative_mtp":
+        return realized == "speculative_mtp"
+    if expected == "default":
+        if realized == "speculative_mtp":
+            return False
+        if run.get("mtp_used") is True:
+            return False
+        return not run.get("speculative_cycles")
+    return True
+
+
 def route_mismatches(result: Mapping[str, Any], *, expected: str) -> list[str]:
     """Name every recorded run whose realized route differs from the arm contract.
 
@@ -147,7 +171,7 @@ def route_mismatches(result: Mapping[str, Any], *, expected: str) -> list[str]:
                 candidates.append(route)
             for index, run in enumerate(candidates):
                 realized = run.get("effective_route")
-                if realized != expected:
+                if not route_satisfies(realized, run, expected):
                     mismatches.append(f"{section}.{key}[{index}]={realized!r}")
     return mismatches
 
