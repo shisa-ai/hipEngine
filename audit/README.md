@@ -3,7 +3,7 @@
 ## What this is
 
 hipEngine's debt is already written down — exhaustively, by agents, over months.
-396 headings in `docs/REFACTOR.md`, 10,568 worklog entries, 747 environment
+396 headings in `docs/REFACTOR.md`, 10,590 worklog entries, 747 environment
 flags, 255 kernel sources, 62 campaign records, and 151 one-off `*audit*` scripts
 in `scripts/` written per campaign and never consolidated.
 
@@ -18,7 +18,8 @@ gates against it growing.
 They share one decision store, so a `wontfix` recorded once is honoured by both.
 
 **Inventory** — the standing catalogue. A live, idempotent scan of debt somebody
-already wrote down: ledger entries, flags, kernels, campaign candidates. Rows
+already wrote down: ledger entries, flags, kernels, campaign candidates, and the
+worklog entries that declared work unfinished. Rows
 persist across rescans and carry durable decisions. You *triage* inventory rows;
 you rarely fix them directly, because the fix is usually a separate piece of work.
 
@@ -156,6 +157,33 @@ Choosing a disposition:
 | `defer` | Real, accepted, unscheduled. Name what unblocks it, and set `--expires`. |
 | `wontfix` | A real problem we are deliberately not fixing. The note says why. |
 
+### Working the worklog rows
+
+A `worklog` row is an entry whose own text declared work unfinished. Nothing
+re-opens it: entries are immutable, so the row is decided once and stays decided.
+Work the unambiguous half first:
+
+```bash
+python3 audit/audit.py open worklog --signal "recorded as blocked"
+python3 audit/audit.py open worklog --signal "recorded as handoff"
+python3 audit/audit.py open worklog --signal "no later entry"   # nothing continued it
+```
+
+Three outcomes cover almost every row:
+
+- **The work was finished.** Cite the entry, commit, or file that finished it and
+  record `--resolved`. Most rows resolve this way, which is why the ceiling drops.
+- **The work is still real.** Record what it needs — `qualify` with the exact
+  command, `defer` with `--expires`, or `remove` if the entry describes something
+  that should no longer happen.
+- **`NOT-DEBT`.** The status was used loosely, or the row's "not in the tree"
+  observation is a path the entry quotes rather than one it points at.
+
+A pre-cutoff row describes the tree as of its date, so check the referent against
+today's tree rather than trusting the entry. `no later entry by the same worker
+shares this topic prefix` is a hint that nobody continued it — the prefix is not
+an identity, so confirm before treating a row as dropped.
+
 ---
 
 ## Workflow 3 — Fix (clear the queue)
@@ -258,6 +286,7 @@ deliberate act needing a recorded reason — `refresh` never does it.
 | `flag` | `HIPENGINE_*` across the tree | Read sites by root, default state, whether a removal condition is recorded, and conflicting defaults across modules. |
 | `kernel` | `hipengine/kernels/` | Each source against its referrers, registry keys, `__global__` entry points, and tests. |
 | `candidate` | `docs/campaigns/` | Rows recorded as rejected/deferred/parked **while citing a measurement** — where retrievable performance hides. |
+| `worklog` | `worklog/entries/` | Entries that declared unfinished business — an open `status`, a `Next` naming a blocker or approval, or a pre-cutoff `### Next` marker — against the tree they describe. |
 
 An extractor reports observations. It does not resolve dispatch, run a kernel, or
 measure anything.

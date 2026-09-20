@@ -91,4 +91,4 @@ def register(name: str):
     return wrap
 
 
-from . import ledger, flags, kernels, candidates  # noqa: E402,F401  (registers them)
+from . import ledger, flags, kernels, candidates, worklog  # noqa: E402,F401  (registers them)
