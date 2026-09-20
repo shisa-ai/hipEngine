@@ -21,6 +21,11 @@ variable's absence selects a code default described in the row. A
 explicit `0`; a "diagnostic" or "R&D" default is off or unset and exists for
 bisection, screening, and campaign artifacts, not for production.
 
+This file is kept complete by `scripts/check_envs_docs.py`, which scans the
+tree for every environment-variable read and fails while any name is missing
+from this document (or from its "Names that are not environment variables"
+appendix). Run it after adding or renaming an env knob.
+
 ## Recommended profiles
 
 ### Normal local use
@@ -173,7 +178,20 @@ qwen35moe fast-path safety gate.
 | `HIPENGINE_REPLAY_REDACTION` | `hash` | `--replay-redaction` | Replay artifact string redaction mode: `hash` replaces strings with SHA-256/length metadata, while `none` stores raw strings for explicit local debugging only. |
 | `HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS` | `300` | `--engine-command-timeout-seconds` | Liveness budget for one command issued to the resident engine service, in seconds; must be positive. The service runs the engine on a single driver thread, so a command queues behind whatever that thread is already doing: a context prepare that grows the KV pool and captures graphs, or one prefill tick of a large prompt. Both legitimately exceed half a minute, so the default is generous and this value is not a bound on engine work. A command that waits longer than 10 seconds logs one `ENGINE_COMMAND_SLOW` line naming the blocking activity (`driver_command=`, `driver_command_s=`, `driver_tick_s=`, `queued_commands=`, `active_requests=`, `driver_alive=`); an exhausted budget raises an error carrying the same detail, which the server reports as HTTP 503 `engine_unavailable` (retryable), the same shape it uses for a closed engine service. A timed-out command is abandoned by its caller but still runs on the driver thread once that thread is free. |
 | `HIPENGINE_EAGER_LOAD_PROMPT` | `one two three four` | `--eager-load-prompt` | Prompt text used for the server startup warmup. |
+| `HIPENGINE_EAGER_LOAD` | `true` | `--eager-load` | Whether to warm the model/session during server startup. |
 | `HIPENGINE_EAGER_LOAD_MAX_TOKENS` | `1` | `--eager-load-max-tokens` | Generated tokens used for the server startup warmup; must be positive. |
+| `HIPENGINE_STARTUP_CHAT_SMOKE` | `true` | `--startup-chat-smoke` | Runs a bounded production-shaped chat request during eager startup. |
+| `HIPENGINE_STARTUP_SCRATCH_PROBE` | `true` | `--startup-scratch-probe` | Asks the backend to allocate max-context request scratch during eager startup without decoding to the output limit. |
+| `HIPENGINE_STARTUP_MIN_FREE_MIB` | unset | `--startup-min-free-mib` | Optional minimum free GPU memory after startup warmup/probes; below this, startup fails. Default disabled. |
+| `HIPENGINE_MAX_CONTEXT_TOKENS` | unset | `--max-context-tokens` | Resident session/KV context tokens preallocated at startup; unset takes the model/session default. |
+| `HIPENGINE_CHAT_DEFAULT_MAX_TOKENS` | `4096` | `--chat-default-max-tokens` | Default `max_tokens` for chat requests that omit it; `N\|auto` where `auto` uses the remaining context. |
+| `HIPENGINE_MAX_CHAT_SESSIONS` | unset | `--max-chat-sessions` | Optional app-local chat session cap before HTTP 429 `engine_busy`; unset is unlimited. |
+| `HIPENGINE_REQUEST_TIMEOUT_MS` | unset | `--request-timeout-ms` | Default request deadline in milliseconds; omitted disables the default deadline. |
+| `HIPENGINE_DEBUG` | `false` | `--debug` | Logs full HTTP request/response payloads and extra server diagnostics. |
+| `HIPENGINE_SERVER_DEFAULT_AR_READY_COHORT` | unset (on) | none | When unset, the AR batcher groups ready rows into its default cohort; `0` disables the default-cohort grouping for tests/diagnostics. |
+| `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` | unset | none | Resolves the MTP2 context window used by the dense speculative route; unset takes the model's retained window. Benchmark harnesses export it through `scripts/bench_env_preflight.py` to catch wrappers that silently drop it. |
+| `HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES` | `0` | none | Opt-in capture of that many prefix-checkpoint entries (provider KV plus recurrent state per prefix) for the prefix-restore path; off by default because capture costs a KV copy per prompt until the restore path consumes it. |
+| `HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS` | `4` | none | Server cap on concurrently active MTP2 (dense speculative) requests. |
 
 ## Vision (multimodal server input) variables
 
@@ -195,7 +213,10 @@ qwen35moe fast-path safety gate.
 | `HIPENGINE_AOTRITON_LIB` | unset | Explicit `libaotriton_v2.so` override. The matching `include/` and `aotriton.images/` trees must be in the standard release layout. |
 | `HIPENGINE_AOTRITON_HOME` | unset | Explicit cache root containing `<version>/lib/libaotriton_v2.so`. Missing explicit roots fail loudly instead of falling back silently. |
 | `HIPENGINE_CUDA_ARCH` | unset | CUDA-side target arch (e.g. `sm_120a`) for the `cuda_sm120a` backend tests and the Maple CUDA bench harness; the CUDA analogue of `HIPENGINE_HIP_ARCH`. |
-| `HIPENGINE_CUTLASS_DIR` | unset | CUTLASS include root required by the CUDA sm120a CUTLASS attention gate test; unset skips that gate. |
+| `HIPENGINE_CUDA_TARGET_ARCH` | unset | Alternative CUDA shared-library build-plan target spelling; `HIPENGINE_CUDA_ARCH` wins when both are set. |
+| `HIPENGINE_CUTLASS_ATTENTION` | unset | Arms the AOT CUTLASS attention route for the CUDA sm120a Moonshine attention (default off, so the custom kernel stays the deployment path). Requires a source: `HIPENGINE_CUTLASS_ATTENTION_SO` (prebuilt `.so`, deployment) or `HIPENGINE_CUTLASS_DIR` (pinned CUTLASS checkout, development). |
+| `HIPENGINE_CUTLASS_ATTENTION_SO` | unset | Prebuilt `.so` path for the armed CUTLASS attention route. |
+| `HIPENGINE_CUTLASS_DIR` | unset | Pinned CUTLASS source root for the armed CUTLASS attention route (compiled through the hashed build cache); unset skips the CUDA CUTLASS gate test. |
 
 Removed historical AOTriton knobs (`HIPENGINE_AOTRITON_SOURCE_ROOT` and
 `HIPENGINE_AOTRITON_RUNTIME_ROOT`) are no longer read by the runtime.
@@ -223,6 +244,12 @@ when an adapter/parser calls `add_engine_loop_config_args(...)`.
 | `HIPENGINE_KV_POOL_MEMORY_BUDGET_MIB` | automatic | `--kv-pool-memory-budget-mib` | Dense-GGUF KV payload ceiling in MiB, shared by the allocated arena (including pinned workspace pages) and private packed-workspace KV. Initial allocation, private fallback, and pool growth reject requests that exceed it. When unset, derived from live free HIP memory after reserve. Recurrent state, execution scratch, and pointer-table metadata are outside this KV payload ceiling and remain visible in allocator/workspace telemetry. |
 | `HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS` | `30.0` | `--kv-pool-idle-grace-seconds` | Seconds before fully-free, graph-unpinned tail chunks are eligible to shrink; must be >= 0. |
 | `HIPENGINE_MAX_PENDING_REQUESTS` | unset | `--max-pending-requests` | Optional pending request queue cap for the resident scheduler; must be > 0 when set. |
+| `HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET` | `1024` | `--round-prefill-token-budget` | Token-budget prefill work per engine-loop round; must be positive. |
+| `HIPENGINE_ROUND_DECODE_ROW_BUDGET` | `32` | `--round-decode-row-budget` | Token-budget due decode rows per engine-loop round; must be positive. |
+| `HIPENGINE_SUBMISSION_TRANSPORT` | `hipgraph` | none | Kernel-submission transport for graph replay: `hipgraph` (default), `aql`, or `pm4`. |
+| `HIPENGINE_SESSION_MIN_TOKENS` | `4096` | none | PARO resident-session context floor when the caller does not require more. |
+| `HIPENGINE_SESSION_BUCKET_TOKENS` | `1024` | none | PARO resident-session context rounding bucket; capacity rounds up to a multiple of this. |
+| `HIPENGINE_KV_CAPACITY_RESERVE_MIB` | `512` | none | Safety reserve subtracted from free HIP memory when the PARO runner estimates KV capacity. |
 | `HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS` | `0` | none | Default-off experiment that lets the speculative planner split refused speculative groups. Reopened by the serving ladder via explicit opt-in; removal condition tracked in `docs/REFACTOR.md`. |
 
 The table lists generic engine defaults. For each unset scheduler knob, the
@@ -278,13 +305,14 @@ independent workload gates.
 | `HIPENGINE_GGUF_MTP_VERIFY_MODE` | `native` | GGUF dense MTP server | `native` or `serial_exact`. `native`, the default, checks drafted tokens with the fast llama.cpp-style row-attention and GPU-side acceptance path; on the dense Qwen suites that measures about 1.5-1.7x normal decoding, with occasional differences in the token chosen. `serial_exact` replays normal single-request decoding for each candidate, so it agrees with normal decoding token for token, but it cannot be faster. |
 | `HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET` | `3` | GGUF dense MTP server | How many draft tokens the dense speculative path may propose per step, 1-4. Three is the measured default; a budget of four can be slower. This is the generator's own fallback: `hipengine serve` resolves an omitted `--speculative-candidate-budget` from the loaded model's retained serving evidence first, and falls back to this value only when no retained row describes the resident physical cell. |
 | `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` | `off` | GGUF dense MTP server | Operator-only screening override for tuning campaigns. When on, a request that explicitly asks for speculation (`speculative_mtp: true`) may enter the dense MTP route for a physical cell no retained evidence row qualifies; the response then reports `qualification: explicit_screening_unqualified_cell`, `unqualified: true`, and the original rejection reason inside `speculative_mtp`. Automatic intent, and `auto`/`enabled` without an explicit request, stay fail-closed, and sampling-mode, artifact-identity, and memory-fit rejections stay fail-closed for every request. Screening measurements are diagnostics and are never retained evidence. |
-| `HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M` / `_TILE_N` | `32` / `16` | Kernel R&D | Q4_K selected WMMA tile override. Allowed tile pairs are validated by the build helper. |
-| `HIPENGINE_GGUF_Q5_K_SELECTED_WMMA_TILE_M` / `_TILE_N` | `16` / `16` | Kernel R&D | Q5_K selected WMMA tile override. |
-| `HIPENGINE_GGUF_Q6_K_SELECTED_WMMA_TILE_M` / `_TILE_N` | `16` / `16` | Kernel R&D | Q6_K selected WMMA tile override. |
-| `HIPENGINE_GGUF_Q8_0_WMMA_TILE_M` / `_TILE_N` | unset | Kernel R&D | Q8_0 dense WMMA prefill tile override; both must be set together and the pair is validated by the build helper. The production Qwen4Exp profile pins `64`/`32`. |
+| `HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M`, `HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_N` | `32` / `16` | Kernel R&D | Q4_K selected WMMA tile override (both must be set as an allowed pair; default pin is 32x16). Allowed tile pairs are validated by the build helper. |
+| `HIPENGINE_GGUF_Q5_K_SELECTED_WMMA_TILE_M`, `HIPENGINE_GGUF_Q5_K_SELECTED_WMMA_TILE_N` | `16` / `16` | Kernel R&D | Q5_K selected WMMA tile override. |
+| `HIPENGINE_GGUF_Q6_K_SELECTED_WMMA_TILE_M`, `HIPENGINE_GGUF_Q6_K_SELECTED_WMMA_TILE_N` | `16` / `16` | Kernel R&D | Q6_K selected WMMA tile override. |
+| `HIPENGINE_GGUF_Q8_0_WMMA_TILE_M`, `HIPENGINE_GGUF_Q8_0_WMMA_TILE_N` | unset | Kernel R&D | Q8_0 dense WMMA prefill tile override; both must be set together and the pair is validated by the build helper. The production Qwen4Exp profile pins `64`/`32`. |
 | `HIPENGINE_GGUF_DENSE_WMMA_BULK` | `1` | Retained default with rollback opt-out | Uses the dense BF16 WMMA bulk-prefill kernel for dense GGUF linear layers (backend capability `GGUF_DENSE_BF16_WMMA_BULK_PREFILL` permitting); `0` restores the non-WMMA bulk body. |
 | `HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL` | `1` | Retained default with rollback opt-out | Uses the dense BF16 WMMA path for residual-class projections in bulk prefill; `0` restores the plain dispatch. |
 | `HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK` | `1` | Retained default with rollback opt-out | Uses the pack8 Q4 WMMA bulk-prefill owner; `0` restores the non-WMMA pack8 body. |
+| `HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL` | `1` | Retained default with rollback opt-out | Uses the pack8 Q4 dual WMMA SiLU prefill pair; `0` restores the separate owners (set to `0` by the Qwen3.5-0.8B cumulative role environment). |
 | `HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL` | `1` | Retained default with rollback opt-out | Uses the Q8T16 dual WMMA prefill pair helper; `0` restores the separate per-projection owners. |
 | `HIPENGINE_GGUF_Q8_0_RAW_SIDECAR` | unset | Harness-set materialization | Retains raw GGUF bytes alongside T16 tiles for Q8_0 dense weights at materialization time. Required by the dp4a verifier/dense-Q8 diagnostic routes; set by the MTP bench harness before model load. |
 | `HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR` | unset | Harness-set materialization | Retains the X8 Q6_K sidecar for `lm_head` at materialization time; required by the verifier direct top-1 dp4a route. |
@@ -306,6 +334,115 @@ independent workload gates.
 | `HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS` / `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE` | harness defaults | Kernel R&D | Workgroup thread count and launch shape for the Q6 top-1 stage-1 draft kernel; set by the MTP draft bench/rocprof harnesses. |
 | `HIPENGINE_GGUF_FUSED_MOE_FFN` | unset | Teacher-forced gate only | Set only inside `scripts/gguf_fused_moe_ffn_teacher_forced_kl.py` to A/B a fused MoE FFN candidate; not a runtime selector. |
 | `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT` | unset | Harness | Path to a measured D2 cost artifact; when set, `scripts/gguf_arbitrary_c_lifecycle.py` derives the D2 composition from the artifact instead of the ceiling heuristic. |
+| `HIPENGINE_GGUF_AUTO_CONTEXT` | on | Retained default with rollback opt-out | When the caller does not pin a context, the resident GGUF session prices its footprint against free HIP memory after weights load and takes the largest block-aligned context that fits with a safety reserve. `0` keeps the historical fixed default. |
+| `HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB` | measured (>= 2560) | Auto-context safety | Reserve subtracted from free memory while pricing the auto context; the default covers ~2.66 GiB of measured untracked device memory. |
+| `HIPENGINE_GGUF_KV_TRANSIENT_KIB_PER_TOKEN` | measured | Auto-context pricing | Transient prefill workspace KiB per token used by the auto-context fit. |
+| `HIPENGINE_GGUF_KV_TRANSIENT_FIXED_MIB` | measured | Auto-context pricing | Fixed transient workspace MiB used by the auto-context fit. |
+| `HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS` | `4` | Auto-context retry | Maximum shrink-and-retry attempts after a failed context allocation; a failed allocation falls back to a smaller context instead of surfacing. |
+| `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS` | narrow default | Prefix cache | Number of completed-source snapshots the radix prefix cache retains. The wider working set (16) is opt-in because it measured as a regression until the shared-admission contiguity path lands. |
+| `HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES` | `1073741824` (1 GiB) | Prefix cache | Byte cap on retained prefix-snapshot state. |
+| `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX` | `512` | Prefix cache | Maximum gapped-suffix tokens a prefix-cache hit may reuse; measured against the full prefill a hit replaces. |
+| `HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX` | true | Retained default with rollback opt-out | Batched reused-suffix ("extend") prefill; `0` restores the serial `session.step()` suffix loop for rollback/bisection. |
+| `HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS` | `1..8` | Diagnostic | Comma/space-separated override of the shared-slot AR physical width set; the packaged production default is every width 1-8 after direct c3/c5/c6/c7 lifecycle certification. |
+| `HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY` | true | Retained default with rollback opt-out | Next-N accepted-tail KV write-only path; `0` rolls back to the full write. |
+| `HIPENGINE_GGUF_PACKED_LAYER_OUTER` | true | Retained default with rollback opt-out | Session-paired (one pair per session) packed layer-outer executor; `0` restores the per-layer-keyed chunk-outer rollback owner. |
+| `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED` | unset | Unsafe diagnostic | Shorter spelling accepted alongside `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG` in the INT8-KV diagnostic override set. |
+| `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` | unset | Diagnostic | Admits INT8 KV storage into decode graph capture, and only for layouts the capture path accepts; BF16 is always admitted. |
+| `HIPENGINE_GGUF_INT8_PREFILL_DIRECT` | unset | Correctness/perf gate | Selects the oracle-free direct INT8 prefill attention route (`twopass` candidate) instead of the oracle-bridge strict path (write-through BF16 oracle pair via AOTriton). |
+| `HIPENGINE_GGUF_INT8_PREFILL_KERNEL` | `flash` | Route selector | Direct INT8 prefill attention kernel implementation: `flash`, `wmma`, or `sequential`; other values are errors. |
+| `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` | unset | Diagnostic | Slot-local AOTriton variant of the INT8 prefill route (gate provenance key). |
+| `HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS` | unset (adopted single plane) | Rollback seam | Declares the layer-outer hidden-plane alias mode for INT8 evaluation sessions; `0` rolls back to the multi-plane layout. |
+| `HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE` | backend capability | Attention policy | Overrides the backend's AOTriton-prefill threshold policy (the measured 512-token crossover) on either side. |
+| `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV` | unset | Attention R&D | Selects the head-major KV layout route for AOTriton prefill. |
+| `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES` | `536870912` (512 MiB) | Attention R&D | Byte cap for the head-major KV route. |
+| `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS` | unset | Attention R&D | Token cap for the head-major KV route. |
+| `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM` | unset | Attention R&D | Runs AOTriton prefill on an isolated stream for large query rows (>= 512). |
+| `HIPENGINE_GGUF_GAPPED_GATHER` | unset | Prefill R&D | Gapped slot-local prefill gather route (name pinned by unit test). |
+| `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE` | `baseline` | Rollback seam | Linear-attention conv prefill mode: `baseline` or `tile32x128`. |
+| `HIPENGINE_GGUF_DENSE_DOWN_RESIDUAL_DECODE` | true | Retained default with rollback opt-out | Exact model/backend/shape-qualified c1 down+residual owner; `0` restores the generic owner. |
+| `HIPENGINE_GGUF_Q4K_ROWTILE` | true | Retained default with rollback opt-out | Small-B weight-amortized row-tile GEMV for raw K-quants and resident-pack8 Q4_K verifier continuation blocks; `0` disables for bisection. |
+| `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE` | unset | Rollback seam | Rowtile variant policy for the Q4_T16 dual-SiLU prefill family. |
+| `HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS` | unset | Kernel R&D | Row cap for the Q4_T16 single-wave rowtile variant. |
+| `HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS` | unset | Kernel R&D | Row cap for the Q4_T16 shared-B row64 variant. |
+| `HIPENGINE_GGUF_Q8_T16_THREADS` | backend-scoped (`64` or `128`) | Rollback seam | Q8_0 T16 decode workgroup thread override; backend packages select independently retained defaults. |
+| `HIPENGINE_GGUF_Q8_T16_PAIR_COL8` | unset | Diagnostic | Col8 pair-helper variant for Q8T16 decode (batch-route gate provenance key). |
+| `HIPENGINE_GGUF_Q8_T16_ROWTILE_SHAPES` | `(5120,1024)` | Rollback seam | Shape-explicit Q8T16 rowtile admission set for the UD verifier. |
+| `HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE` / `HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE` | unset | Diagnostic | Select the two-/four-wave Q8T16 wide WMMA prefill session variants (shape-scoped). |
+| `HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE` | unset | Kernel R&D | Dense Q4_K WMMA prefill tile override (A/B harness writes `64x16`-style values). |
+| `HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE` | `64x16` | Kernel R&D | Dense Q6_K WMMA prefill tile override. |
+| `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A` | unset | Diagnostic route | llama-compat selected-expert dp4a adapter; set by the llama-compat MTP environment map and read by the selected-caller contract. |
+| `HIPENGINE_GGUF_T16_SELECTED_DP4A` | unset | Diagnostic route | llama-compat T16 selected dp4a adapter; set by the llama-compat MTP environment map and read by the selected-caller contract. |
+| `HIPENGINE_GGUF_T16_DS4_PREFILL` | unset | Diagnostic route | DS4 T16 selected-prefill variant selector (compact-MoE WMMA routing tests). |
+| `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE` | unset | Diagnostic route | T16 selected pair-reuse route selector (batch-route gate). |
+| `HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE` | unset | Diagnostic route | T16 selected-down pair-reuse route selector. |
+| `HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE` | unset | Diagnostic route | T16 selected Q6-down pair-reuse route selector. |
+| `HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN` | unset | Rollback seam | IQ dense row-slab rule: unset picks the smallest slab at or above the row count (measured default); `1` restores the largest slab at or below it. |
+| `HIPENGINE_GGUF_IQ_GROUPED_PREFILL` | backend-scoped | Rollback seam | Grouped compact prefill session for IQ-quant MoE pairs; `0` disables. |
+| `HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS` | true | Retained default with rollback opt-out | Fuses the MoE tail with the next layer's input RMSNorm; `0` restores the separate chain (set to `0` in the MoE-graph parity test). |
+| `HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE` | unset | Diagnostic | Wave-reduce variant of the GDN decode-order segments state-rows kernel. |
+| `HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL` | unset | B1 transfer | Explicit override for the target-side WMMA prefill transfer: `1`/on forces the transfer, `0`/off restores the GEMV owners everywhere. |
+| `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE` | backend-scoped | Rollback seam | Long-context parallel-reduce decode route; `0` is the explicit opt-out kept by dispatch tests. |
+| `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT` | backend default | Decode threshold | Minimum context length admitting the parallel-reduce route. |
+| `HIPENGINE_GGUF_ROW_COMPACT_GEMV` | unset | Diagnostic route | Parity-workbench candidate: compact grouped selected-MoE GEMV routing for the target block verifier. |
+| `HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD` | unset | Diagnostic route | Parity-workbench candidate: row-batched lm-head/argmax sampling in the target block verifier. |
+| `HIPENGINE_GGUF_SELECTED_DOWN_RAW` | unset | Harness-set materialization | Keeps selected-down expert tensors in raw GGUF layout (workbench value `both`), pairing with the raw dp4a route. |
+| `HIPENGINE_GGUF_C8_Q5_RAW_MMQ` | true (capability-gated) | Retained default | Gates the raw-MMQ Q5 sidecar on the `GGUF_C8_Q5_RAW_MMQ_SSM_OUT` backend capability. |
+| `HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ` | unset | Diagnostic | Source-MMQ Q5 verifier-numerics route selector. |
+| `HIPENGINE_C8_Q5_PLANAR_DP4A` | false | Diagnostic route | Gates the optional planar INT8 Q5 sidecar (uploaded at materialization) for the planar-dp4a route. |
+| `HIPENGINE_C8_Q6_DP4A_GROUPED` | false | Opt-in diagnostic | Routes planar-decode rows 8-64 to the grouped integer-dp4a Q6 sibling (x quantized to q8_1); the BF16 grouped owner stays the exact default and strict fallback. |
+| `HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL` | unset | Rollback seam | Selects the Q6 planar exact prefill owner over the default T16 route (resolved per session). |
+| `HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES` | unset | Kernel R&D | Grouped target-rowtile admission override for the Q6_T16 decode wrapper. |
+| `HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6` | unset | Rollback seam | Dense-rowtile grouped-rows6 target selector for the Q5_T16 gemv owner. |
+| `HIPENGINE_UD_REPACK_ELIGIBILITY` | unset | Rollback seam | Overrides model-wide UD repack eligibility (e.g. `model-wide`) so a synthetic geometry keeps its historical pack8/raw residents. |
+| `HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD` | unset | Specdec2 route | N-gram modifier-window size for the specdec2 ngram mode. |
+| `HIPENGINE_GGUF_SPECDEC2_NGRAM_MATCH` | unset | Specdec2 route | Required n-gram match count. |
+| `HIPENGINE_GGUF_SPECDEC2_NGRAM_MIN` | unset | Specdec2 route | Minimum n-gram probe length. |
+| `HIPENGINE_GGUF_SPECDEC2_NGRAM_PROBE_MAX` | unset | Specdec2 route | Maximum n-gram probe tokens. |
+| `HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS` | unset | Specdec2 route | Exact target row-count override for the specdec2 verifier rows. |
+| `HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES` | unset | Specdec2 route | Q6 mixed target rowtile admission override. |
+| `HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE` | `0` | Diagnostic | Marks the adapter as device-chain-qualified by an external oracle instead of retained evidence; screening only. |
+| `HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN` | `0` | Diagnostic | Default-off cooldown that keeps a request out of speculation for one cycle after a rejected speculative attempt. |
+| `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA` | backend-scoped | Rollback seam | Allocates private-c1 small weights from a session-owned arena; `0` restores the shared allocator path. |
+| `HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA` | backend-scoped | Rollback seam | Allocates private-c1 decode scratch from a session-owned arena; `0` restores the shared path. |
+| `HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS` | gfx1151: `1024` | Rollback seam | Overrides the short-prompt c1 batch-attention workgroup; the calibrated 1024-thread variant passed the execution-profile c1 threads gate and the exact 256-thread leaf stays the strict fallback. |
+| `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL` | unset | Diagnostic | Session-acquire-time diagnostic resolver that forces the WMMA-prefill route without touching the production session default. Unrecognised values raise rather than silently reading as route-unchanged. |
+
+### GGUF target-verifier capture and F32-diagnostic family
+
+These gate/probe flags drive the GGUF packed target verifier's offline
+correctness gates and the F32 per-stage diagnostics. The capture flags make a
+named intermediate observable for an offline gate; the F32 flags replay a
+single verifier stage in F32 to localize divergence. All are gate/harness
+inputs, not production knobs, and the production profile binder sets
+`HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN` and
+`HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` itself.
+
+| Variable | Default | Values / notes |
+| --- | --- | --- |
+| `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV` | unset | Captures prefill GDN chain conv state for offline gates. |
+| `HIPENGINE_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN` | unset | Captures regular-chain GDN state. |
+| `HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT` | unset | Captures BF16 GDN output rows. |
+| `HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL` | unset | Captures prefill attention scores. |
+| `HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV` | unset | Captures F32 chain conv state. |
+| `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` | unset | Replays the residual stage in F32 (supports a subset of shapes). |
+| `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT` | unset | Comma/range layer limit for the F32 residual replay; must be within `[0, layer_count]`. |
+| `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` | unset | Replays the post-attention norm in F32. |
+| `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER` | unset | Replays the post-norm router read in F32. |
+| `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8` | unset | Replays the selected-Q8 post-norm read in F32. |
+| `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8` | unset | Replays the shared-Q8 post-norm read in F32. |
+| `HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING` | unset | Replays token-embedding lookup in F32. |
+| `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` | unset | Replays the attention input norm in F32. |
+| `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS` | unset | Replays linear-attention projections in F32. |
+| `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` | unset | Replays the SSM alpha/beta gates in F32. |
+| `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` | unset | Replays the attention output projection in F32. |
+| `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE` | unset | Replays the MoE combine in F32. |
+| `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN` | unset | Replays the selected-expert down projection in F32. |
+| `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE` | unset | Replays the selected-expert intermediate in F32. |
+| `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN` | unset | Replays the shared-expert down projection in F32. |
+| `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` | set by the Qwen3.8 production profile binder | Production Q4 verifier rowtile admission. |
+| `HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4` | default off | Wide (logical width >= 8) Q6 shared4 verifier candidate table. |
+| `HIPENGINE_GGUF_ROUTER_F32W_COOP` | backend-scoped | F32-router cooperative scan route (cold-path policy key shared by runtime and batch gate). |
+| `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER` | backend-scoped | F32-router persistent-counter route. |
 
 ### GGUF backend-package capability seams (gfx1100)
 
@@ -321,6 +458,7 @@ not by backend-branched runtime code.
 | `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28` | false | Default-off screen selecting the dense dual WMMA row32/row48 variants for specdec2 production R28 rows. |
 | `HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8` | true | Q5_T16 grouped rows-8 owner for physical C8 verifier packets. |
 | `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2` | true | Q4_T16 native rowtile16 W2 variant for rows 32. |
+| `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6` | true | Grouped-rows6 variant of the rowtile16 W2 Q4_T16 prefill owner (kernel-side seam of the backend capability policy). |
 | `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE` | true | Q5_T16 single-wave rowtile owner; `0` restores the four-wave owner for rollback and bisection. |
 | `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6` | true | Grouped-grid ownership for the rowtile16 W2 grouped pair at rows 6; `0` restores repeated R6 pair fallback. |
 | `HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6` | true | Grouped-R8 weight traversals for physical C5-C6 verifier R24 packets (C7-C8 stay on R6 because the same sibling regresses their gate). |
@@ -364,6 +502,20 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_MARLIN_K_MULTI_ROW_SITES` | unset | Comma-separated Marlin-K multi-row site names; unset uses the retained default sites. |
 | `HIPENGINE_W8A16_LM_HEAD_MULTI_ROW` | true | Multi-row W8A16 LM-head decode path; `0` restores the per-row owner. |
 | `HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD` | `7` | Row-count threshold below which decode takes the small-batch multi-row route; `1` restores the pre-M7.C behavior exactly. |
+| `HIPENGINE_W4_MULTI_ROW_PACK8` | true | M12.6 umbrella gate for multi-row pack8 W4 GEMV; `0` disables the family. |
+| `HIPENGINE_W4_MULTI_ROW_PACK8_SINGLE` | follows the umbrella | Single-output multi-row pack8 override. |
+| `HIPENGINE_W4_MULTI_ROW_PACK8_DUAL` | follows the umbrella | Dual-output multi-row pack8 override. |
+| `HIPENGINE_W4_MULTI_ROW_SMALL_BATCH` | true | Weight-amortized multi-row W4 GEMV for small batches (win scales with row count); `0` disables. |
+| `HIPENGINE_LINEAR_AB_DUAL_SEPARATE` | true | Uses the separate-output dual A/B GEMV for small-batch decode rows; `0` restores the single GEMV fallback. |
+| `HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED` | true | Fuses `f32_to_fp16` + `paro_rotate1_fp16` for verifier shapes (raw-FP16 bit-exact; removes 30 launches/pass at B=3). |
+| `HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED` | true | Fuses shared-prefill SiLU-mul + rotate into one launch (default on after the 2026-08-16 gfx1151 byte-equality gate); `0` opts out. |
+| `HIPENGINE_FUSED_RMSNORM_ROTATE` | false | Opt-in fused RMSNorm+rotate for linear layers (exact-AR preserved; pending verifier economics). |
+| `HIPENGINE_MOE_FUSED_ROTATE` | false | Opt-in fused in-LDS rotate for the selected MoE chain; only worthwhile at very small `out_pack x top_k` totals. |
+| `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE` | false | Opt-in fused rotate for the shared expert; off until a fresh W7900 exact/rocprof row proves the net launch reduction. |
+| `HIPENGINE_SELECTED_MOE_STAGED_ROTATE` | false | Opt-in staged-keyed selected-MoE rotate; staged-kernel duration and verifier economics regressed. |
+| `HIPENGINE_SELECTED_MOE_DOWN_STAGED` | false | Opt-in staged selected-MoE down projection; kept for bisection. |
+| `HIPENGINE_PARO_FFN_MEGAKERNEL` | false | Opt-in single-kernel selected FFN for the verify path (tokens > 1); AR decode keeps the unfused path so the AR baseline is untouched. |
+| `HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED` | false | Opt-in fused full-QKV split-key launch; two exact A/B pairs regressed aggregate wall/verify, so it stays a diagnostic. |
 | `HIPENGINE_LAGUNA_F16_PREFILL` | `auto` | gfx1151 Laguna F16-weight prefill route: `auto`, `gemv`, `tiled`, or `wmma_comp_swa`; invalid values are errors. |
 | `HIPENGINE_LAGUNA_F16_DECODE` | unset | gfx1151 Laguna F16-weight decode route: `gemv` or `onebarrier`; used by the long-context profiling harness for A/B arms. |
 | `HIPENGINE_MAPLE_PREFILL_GROUPED_MOE` | true | Maple exact expert-major grouped MoE prefill; `0` restores the original row/route-gather chain. |
@@ -375,6 +527,17 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM` | `off` | Fused add+RMSNorm drafter variant; `fused`/`on` selects it, with the unfused `dflash_add_bf16` + `dflash_rmsnorm_bf16` chain as the registered fallback. |
 | `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD` | `off` | Fused LM-head kernel inside the DFlash verifier window; bit-exact vs the unfused path because the cooperative per-vocab-row dot product order is preserved. |
 | `HIPENGINE_MTP_DRAFT_VOCAB_CAP` | internal default | Caps the MTP native drafter's hot vocabulary to at most this many entries (clamped to the model vocab); the packaged default drafter cap applies when unset. |
+| `HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION` | true | Packs token/position updates into one proposer upload (rollback opt-out). |
+| `HIPENGINE_MTP_PROPOSER_ROUTE0_ACCUM_INIT` | true | Initializes route-0 accumulators inside the fused proposer kernel (rollback opt-out). |
+| `HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE` | true | Proposer writes draft KV directly (rollback opt-out). |
+| `HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE` | false | Opt-in indexed (slot-local) proposer KV write path. |
+| `HIPENGINE_MTP_PROPOSER_ROUTER_TOPK_FUSED` | true | Fused router top-k inside the proposer kernel (rollback opt-out). |
+| `HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT` | true | Batched expert route in the proposer (rollback opt-out). |
+| `HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL` | true | Fused shared gate/up dual in the proposer (rollback opt-out). |
+| `HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT` | false | Opt-in selected final target hidden plus target-owned W8 scorer contract. |
+| `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE` | true | Runs the resident MTP draft MoE on device (rollback opt-out). |
+| `HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER` | true | Q6 top-1 gather kernel in the resident MTP drafter (rollback opt-out). |
+| `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN` | false | Opt-in device-side draft chain execution. |
 | `HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS` | true | Skips MTP proposer host reads/results that the persistent chain discards. |
 | `HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY` | true | Keeps verifier-shaped scratch live after MTP verify cycles instead of canonicalizing immediately. |
 | `HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER` | false | Runs the proposer update on a side stream while the verifier commit drains; default-off experiment. |
@@ -419,8 +582,8 @@ an env variable.
 | `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT` | `auto` | Diagnostic fallback | Linear-attention output projection override: `auto`, `batch`, `batch_gemv`, or `selected_c1`. `auto` follows selected-c1 state replay; `batch_gemv` bypasses the row>1 AWQ prefill projection kernel while staying non-retained. Hidden-bisect equivalent: `--batch-decode-linear-output-path ...`. |
 | `HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE` | unset | Diagnostic staging | Row chunk size used when the native c>N linear-attention decode stages rows; set by the hidden-bisect/retained-bench harnesses. |
 | `HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE` | true when experimental decode is enabled | Diagnostic selector | Set `0` to force the existing per-row full-attention fallback in hidden-bisect/native-batch probes. Non-retained fallback metadata records `full_attention_decode_path=per_row_*`. |
-| `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE` / `_LAYERS` | unset | Diagnostic staging | Row chunk size (and optional comma-separated layer list) for staging the native c>N full-attention decode across row chunks; empty layers means every layer. |
-| `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_SIZE` / `_LAYERS` | unset | Diagnostic staging | Same staging pair for the full-attention context readback. |
+| `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE`, `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS` | unset | Diagnostic staging | Row chunk size (and optional comma-separated layer list; empty means every layer) for staging the native c>N full-attention decode across row chunks. |
+| `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_SIZE`, `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_LAYERS` | unset | Diagnostic staging | Same staging pair for the full-attention context readback. |
 | `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT` | false | Diagnostic fallback | Forces only the full-attention input RMSNorm/QKV-prep boundary through token-1 row kernels. Hidden-bisect equivalent: `--batch-decode-attn-input-path per_row`. Non-retained. |
 | `HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR` | false | Diagnostic fallback | Forces packed prefill linear-attention segments through per-segment c=1-style linear prefill in hidden-bisect probes. Non-retained. |
 | `HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN` | false | Diagnostic fallback | Forces packed full-attention prefill through per-segment c=1-style full-attention prefill in hidden-bisect probes. Non-retained. |
@@ -433,6 +596,10 @@ an env variable.
 | `HIPENGINE_SHARED_DOWN_COMBINE_PREFILL_MIN_TOKENS` | `2` | Retained prefill tiling | Minimum tokens for shared down/combine token tiling. |
 | `HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED` | false | Rejected/diagnostic | Leave unset unless reproducing fusion probes. |
 | `HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED` | false | Rejected/diagnostic | Leave unset unless reproducing fusion probes. |
+| `HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION` | `auto` (unset) | Capacity/perf policy | Streams the direct INT8 prefill attention path that reads the retained INT8 store directly instead of a temporary BF16 oracle; `auto` requires a very long prompt under low memory pressure. |
+| `HIPENGINE_QWEN35_INT8_PREFILL_STREAMING_MIN_TOKENS` | `229376` (224K) | Capacity policy | Minimum prompt tokens before `auto` selects the streaming direct INT8 prefill. |
+| `HIPENGINE_QWEN35_INT8_PREFILL_LOW_MEMORY_TOTAL_GIB` | `26.0` | Capacity policy | Total-memory GiB threshold below which `auto` considers the streaming INT8 prefill. |
+| `HIPENGINE_QWEN35_INT8_PREFILL_ORACLE_RESERVE_MIB` | `1024` | Capacity policy | MiB reserved for the write-through BF16 oracle pair when the oracle-bridge prefill path runs. |
 | `HIPENGINE_PARO_ROUTER_TOPK_COOP` | false | Rejected/diagnostic | Leave unset unless reproducing router-coop probes. |
 | `HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED` | false | Rejected/diagnostic | Leave unset unless reproducing fusion probes. |
 | `HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED` | false | Rejected/diagnostic | Leave unset unless reproducing fusion probes. |
@@ -441,6 +608,42 @@ PARO prefill workspace-overlap minimization is now a code default, not an env
 var: workspaces stay resident through 32K tokens and the memory-saving overlap
 minimization path is used only for prompts above 32K when resolved chunk sizes
 actually split the prompt.
+
+### PARO MTP verifier route profiles and bisection arms
+
+The PARO MTP (w4_paro_mtp) profile binder and the verifier-numerics harness
+resolve the verifier route through these flags. All the `ROW_*` / `EXACT_SUFFIX`
+flags are default-off force arms used by `scripts/mtp_paro_verifier_numerics.py`
+and the resident runner to bisect the batched full-attention verifier stage by
+stage; `1` forces that boundary through the per-row (token-1) owner. Leave them
+unset except for bisection.
+
+| Variable | Default | Values / notes |
+| --- | --- | --- |
+| `HIPENGINE_MTP_ROUTE_VARIANT` | unset | Route-variant key resolved by the PARO MTP profile binder. |
+| `HIPENGINE_MTP_CHAIN_ATTN_MODE` | unset | Chain attention mode resolved by the PARO MTP profile binder. |
+| `HIPENGINE_GDN_TLOOP_C1_EXACT` | unset | Selects the exact GDN t-loop c1 route in the verifier-numerics route flags. |
+| `HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS` | false | Replays linear-attention output rows through the token-1 owner while preserving order. |
+| `HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT` | unset | Forces the small-batch shared-expert c1 MoE route (verifier-numerics route flag). |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_INPUT` | false | Forces the verifier full-attention input boundary per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_QKV` | false | Forces the QKV projection per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_QKV_TEMP` | false | Forces the QKV temp-buffer staging per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX` | false | Forces the exact-suffix verifier route (implies the per-row KV append). |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_LAYER` | false | Forces the per-layer staging per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_LAYER_BATCH` | false | Forces per-layer staging into batch buffers. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_CONTEXT` | false | Forces the context read per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_CONTEXT_ONLY` | false | Forces only the context read per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_DENSE_CONTEXT_ONLY` | false | Forces only the dense-context read per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_PAGED_CONTEXT_ONLY` | false | Forces only the paged-context read per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_GATE` | false | Forces the gate boundary per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_KV_APPEND` | false | Forces the KV append per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_APPEND_CONTEXT` | false | Forces the append-context order per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_SUFFIX` | false | Forces the suffix staging per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_OUTPUT` | false | Forces the output projection per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_BATCH_GEMV_OUTPUT` | false | Forces the row-aware GEMV output projection. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_POST` | false | Forces the post-attention boundary per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_ROW_MOE` | false | Forces the MoE transition per-row. |
+| `HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_HELPER` | false | Forces the serial decode helper for the batched verifier stage. |
 
 ### PARO speculative-verify and graph diagnostics
 
@@ -452,6 +655,18 @@ actually split the prompt.
 | `HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS` | `16` | Minimum tokens before the verifier MoE uses the grouped owner; clamps to at least 2. |
 | `HIPENGINE_VERIFY_GRAPH_RECAPTURE` | unset | Debug-only (`#107`): drop the cached verifier graph each cycle so replay always executes a freshly captured graph. |
 | `HIPENGINE_VERIFY_GRAPH_REVALIDATE` | unset | Debug-only (`#107`): re-run the direct pass before each graph replay and compare per-row top1 plus accept payload to localize replay drift. |
+| `HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION` | false | Opt-in: the packed verify-accept path also advances request positions (needs the packed-payload path enabled). |
+| `HIPENGINE_VERIFY_PACK_DYNAMIC_METADATA` | true | Packs dynamic per-row metadata for the verify-chain batch; `0` restores the static path. |
+| `HIPENGINE_VERIFY_SCRATCH_CACHE` | true | Caches verifier scratch buffers across cycles; `0` restores per-cycle allocation. |
+| `HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP` | true | Stamps scratch generations so workspace lookups can skip stale entries; `0` restores the unstamped lookup. |
+| `HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED` | true | Aligns the verifier MLP scratch policy with the verifier grouped-MoE threshold; `0` restores the raw rows rule. |
+| `HIPENGINE_VERIFY_DENSE_GEMV_WMMA` | false | Opt-in WMMA owner for dense verifier GEMV shapes (`1 < tokens <= 16`, features % 16 == 0). |
+| `HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH` | false | Opt-in graph capture for the native-spec target-verify chain (single-request verify_chain only). |
+| `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT` | true | Commits target state from the captured native-spec graph; requires the graph flag. |
+| `HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE` | true | Caches resident tensor views across steps; `0` restores per-step view construction. |
+| `HIPENGINE_WEIGHT_TENSOR_LOOKUP_CACHE` | true | Caches weight-tensor lookups in the PARO runner; `0` restores direct lookup. |
+| `HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE` | true | Uses the direct-gate batched split-K decode kernel when `num_splits == 1`; `0` restores the indirect gate owner. |
+| `HIPENGINE_DFLASH_VERIFY_SYNC_PHASES` | false | Profiling-only: adds device-synchronized verifier sub-buckets for layer-family and LM-head/top1 attribution at the cost of extra stream synchronizations. |
 
 ### PARO native c>N full-attention bisect family
 
@@ -537,6 +752,19 @@ use.
 | Variable | Default | Values / notes |
 | --- | --- | --- |
 | `HIPENGINE_QWEN4_EXP_BATCHED_POSITION` | `1` | One shared 192B H2D position upload instead of 24 per-layer 8B blocking `set_position` copies per decode step (bit-exact, ~1.3% median TG gain). `0` restores per-layer copies. |
+| `HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION` | `1` | Uses the batched QSA selection owner for multi-row decode; `0` restores the per-row selection. |
+| `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` | `0` (production binder sets `1`) | Master gate for the production grouped MoE prefill session (rows >= 16, supported quant shapes). |
+| `HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1` | `0` (production-only binding) | Q5_1 down M1 expert-grid64 variant binding. |
+| `HIPENGINE_QWEN4_EXP_Q5_1_WMMA` | `0` (production binder) | Q5_1 grouped WMMA down-projection admission under the production grouped MoE route. |
+| `HIPENGINE_QWEN4_EXP_Q5_1_OUT8` | `1` | Uses the out8 Q5_1 grouped compact prefill variant. |
+| `HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN` | `0` | Opt-in Q5_1-style grouped WMMA down for Q8_0 experts. |
+| `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP` | `0` | Opt-in warp256 Q5_1 selected weighted-sum decode (free-running divergence routed to its packet per contract). |
+| `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN` | `0` | Opt-in down-leg-only warp256 weighted sum; the incumbent bit-exact weighted-sum stays the production default. |
+| `HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT` | `0` (production-only binding) | Weight-exact iu8-WMMA Q5_1 down with risk+repair; bit-identical to the pair2 row-publish parent in practice at multiplier 16. |
+| `HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID` | `64` | Expert-grid mode for the exact grouped routes: `64` (admitted), plus `q4`/`q5` spellings at their call sites. |
+| `HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL` | `1` | Uses the exact bulk conv prefill owner; `0` restores the generic chain. |
+| `HIPENGINE_QWEN4_EXP_LAYER_GRAPHS` | unset | Override for per-layer graph capture admission (backend capability gates the default). |
+| `HIPENGINE_QWEN4_EXP_RAW_VARIANT` | `coltile8` | Raw-Q rowbatch prefill variant selector. |
 | `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH` | `32` | Row-batch size for raw Q4 prompt-prefill row owners; `0`/`false` disables, `1` selects 32. |
 | `HIPENGINE_QWEN4_EXP_QSA_WAVE32` | `1` | Uses the wave32 QSA paged sparse-attention decode kernel for head_dim 128. |
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE` | `0` | Opt-in ordered sparse-attention decode route for head_dim 256. |
@@ -631,6 +859,8 @@ kernel R&D only, not normal use.
 | `HIPENGINE_LC_PROBE_FORCE_SCALAR` | unset | In the GGUF linear-context staged-chain probe, keeps the per-row views but forces the scalar row-wise attention owner, separating a row-view defect from a staged-chain defect. |
 | `HIPENGINE_LC_PROBE_OUT` | unset | Also writes the probe report to this path; the report is always printed to stdout as one `PATH_PROBE <json>` line. |
 | `HIPENGINE_MTP_BENCH_CACHE_SESSION` | unset | Benchmark-harness only: load the model once and reuse the resident-session cache across every (prompt, budget) arm instead of reloading per subprocess. |
+| `HIPENGINE_MTP2_OUTPUT_SPANS` | unset | Diagnostic: records committed output spans (mode, reason, position, tokens) per speculative cycle; off by default because the span list grows with cycle count and is audit evidence, not production telemetry. |
+| `HIPENGINE_VIBEVOICE_REQUIRE_CACHED` | unset | Set by the VibeVoice rocprof driver to require cached builds during profiling. |
 
 ## Test gates and fixtures
 
@@ -655,6 +885,8 @@ artifacts or explicitly opt into GPU-gated suites. They are not product knobs.
 | `HIPENGINE_MOONSHINE_CHECKPOINT` | local default | Moonshine model checkpoint override for the Moonshine GPU tests. |
 | `HIPENGINE_MOONSHINE_SNAPSHOT` | local default | Moonshine HuggingFace snapshot directory override for the Moonshine GPU tests. |
 | `HIPENGINE_MOONSHINE_FIXTURE_DIR` / `HIPENGINE_MOONSHINE_FIXTURES_SIX` / `HIPENGINE_MOONSHINE_SIX_FIXTURE_DIR` | local defaults | Moonshine audio fixture directory overrides for the single- and six-fixture suites. |
+| `VIBEVOICE_STANDALONE_GGUF` / `VIBEVOICE_STANDALONE_REPORT` | local defaults | VibeVoice standalone-encoder GGUF and report fixture paths for the VibeVoice tests. |
+| `VIBEVOICE_REFERENCE_HF` / `VIBEVOICE_REFERENCE_AUDIO` | local defaults | VibeVoice HuggingFace reference snapshot and reference audio fixture paths for the encoder comparison tests. |
 
 ## Benchmark and development harness variables
 
@@ -703,8 +935,11 @@ in [`benchmarks/HARNESSES.md`](benchmarks/HARNESSES.md) for the protocols.
 | `HIPENGINE_LLAMACPP_HEALTH_TIMEOUT` | `600` | Seconds to wait for a llama.cpp server's health endpoint in the engine-matrix harness. |
 | `HIPENGINE_AR_D2_COST_ARTIFACT` / `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT` | unset | Measured cost artifact feeding D2 composition in the arbitrary-c lifecycle harness. |
 | `HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS` | unset | Declares the hidden-plane alias mode for the INT8 resumable-prefill GPU proof before bulk-prefill workspace construction. |
+| `HIPENGINE_LAGUNA_PREFILL_CHUNK_SIZE` | unset | Prefill chunk size echoed by the Laguna gate/bench harnesses into their provenance environment. |
+| `HIPENGINE_MTP2_MAX_CONTEXT_TOKEN` | unset | Singular spelling that `scripts/bench_env_preflight.py` watches as a common lookalike of `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS`; setting it changes nothing. |
+| `HIPENGINE_QUANT_QUALITY_MIOPEN_DEPTHWISE` | `0` | In the torch-side quant-quality teacher, `1` keeps the MIOpen depthwise route on gfx1151 instead of the fallback. |
 | `CROSSOVER_MODEL` / `CROSSOVER_QUANT` | unset | Model/quant pair for the crossover sweep scripts. |
-| `SWEEP_MODEL` / `HEADROOM_QUANT` / `GGUF_Q4KM_MODEL` / `PARO_MODEL` / `MODEL` / `MODELS_DIR` | per-script defaults | Model-path inputs for the sweep, headroom, and matrix harnesses. |
+| `SWEEP_MODEL` / `HEADROOM_MODEL` / `HEADROOM_QUANT` / `GGUF_Q4KM_MODEL` / `PARO_MODEL` / `MODEL` / `MODELS_DIR` | per-script defaults | Model-path inputs for the sweep, headroom, and matrix harnesses. |
 | `EVIE_MATCHED_DIR` | unset | Matched-output directory for the Evie comparison harness. |
 | `BENCH_EXTRA_JSON` | unset | Extra JSON merged into a bench artifact. |
 | `BENCH_INCLUDE_HIPENGINE` | unset | Includes the hipEngine arm in the shared comparison bench. |
@@ -714,16 +949,19 @@ in [`benchmarks/HARNESSES.md`](benchmarks/HARNESSES.md) for the protocols.
 | `AQ2_SANDBOX_SECRET` | unset | Sandbox secret for the AQ2 sandbox scripts. |
 | `WORKLOG_WORKER` | unset | Worker identity used by `scripts/worklog.py` tooling contexts. |
 | `GGUF_CORRECTNESS_ARTIFACT` / `PARO_CORRECTNESS_ARTIFACT` / `CHAIN_JSON` | unset | Correctness artifact paths for the parity/report harnesses. |
+| `ALLOW_UNTRACKED` | unset | Lets the release-audit scripts tolerate untracked files. |
+| `CONCURRENCY_REQUIRE_CACHED` | unset | Requires cached builds for the concurrency re-baseline harness. |
 | `SKIP_HIPENGINE_PREBUILD` | unset | `1` skips the hipEngine prebuild step in the TheRock wrapper scripts. |
+| `FIXTURE` / `DTYPE` / `ARMS` / `REQS` / `HERE` / `RECREATE` / `SITE` / `PORT` / `HOST` / `PYTHON` / `PYTHON_BIN` / `BASE_PYTHON` / `VENV` | per-script defaults | Per-script parameter locals (fixture path, dtype, arm list, requirement set, output root, recreate flag, site/port/host, and interpreter paths) read by the shell harnesses; each script assigns its own default. |
 
 ### External-engine comparison harnesses (vLLM, llama.cpp, atlas)
 
 These belong to the comparison harnesses, not to hipEngine. `VLLM_*` variables
-configure the vLLM server/docker arm (`VLLM_MODEL`, `VLLM_SERVED_MODEL(_NAME)`,
-`VLLM_PORT`, `VLLM_URL`, `VLLM_PY`, `VLLM_BIN`, `VLLM_DTYPE`,
-`VLLM_GPU_MEMORY_UTILIZATION`, `VLLM_MAX_MODEL_LEN`, `VLLM_MAX_NUM_BATCHED_TOKENS`,
-`VLLM_MAX_NUM_SEQS`, `VLLM_TENSOR_PARALLEL_SIZE`, `VLLM_KV_CACHE_DTYPE`,
-`VLLM_ENABLE_EXPERT_PARALLEL`, `VLLM_ENABLE_TOOL_CALLING`,
+configure the vLLM server/docker arm (`VLLM_MODEL`, `VLLM_SERVED_MODEL`,
+`VLLM_SERVED_MODEL_NAME`, `VLLM_PORT`, `VLLM_URL`, `VLLM_PY`, `VLLM_BIN`,
+`VLLM_GPU`, `VLLM_DTYPE`, `VLLM_GPU_MEMORY_UTILIZATION`, `VLLM_MAX_MODEL_LEN`,
+`VLLM_MAX_NUM_BATCHED_TOKENS`, `VLLM_MAX_NUM_SEQS`, `VLLM_TENSOR_PARALLEL_SIZE`,
+`VLLM_KV_CACHE_DTYPE`, `VLLM_ENABLE_EXPERT_PARALLEL`, `VLLM_ENABLE_TOOL_CALLING`,
 `VLLM_SPECULATIVE_CONFIG`, `VLLM_READY_TIMEOUT`, `VLLM_DOCKER_TTY`,
 `VLLM_ROCM_IMAGE`, `VLLM_ROCM_AMD_IMAGE`, `VLLM_ROCM_PINNED_IMAGE`).
 `LLAMACPP_HIP_BENCH`, `LLAMACPP_VULKAN_BENCH`, `LLAMACPP_VULKAN_REPO`,
@@ -732,14 +970,26 @@ comparison arm; `ATLAS_ROOT`, `ATLAS_MODEL`, `ATLAS_NAME`, `ATLAS_PORT`,
 `ATLAS_ROCM_HOME`, and the run-plan knobs (`CONCURRENCY`, `TURNS`, `REPEATS`,
 `NUM_DRAFTS`, `CANDIDATE_BUDGET`, `MAX_BATCH`, `MAX_CONTEXT`, `MAX_PREFILL_TOKENS`,
 `MAX_SEQ_LEN`, `PROMPT_FILE`, `PROMPT_CATEGORY`, `PROMPT_LIMIT`, `OUTPUT_LEN`,
-`ENGINES`, `SPECULATIVE_CONFIG`, `SERVED_NAME`, `SNAPSHOT`, `LOG_DIR`,
-`ENVWRAP`, `HIP_NAME`, `HIP_PORT`, `MODEL_NAME`, `DOCKER_BIN`, `IMAGE`,
-`PINNED_IMAGE`, `AMD_GFX110X_IMAGE`, `CXX`) configure the atlas-agent matrix and
-its Docker/vLLM baselines. The TheRock wrapper scripts read `THEROCK_PY`,
-`THEROCK_ROOT`, `THEROCK_ENV`, `THEROCK_SITE`, `THEROCK_CORE_LIB`,
-`THEROCK_GFX_LIB`, and `HIPCC_VERSION_FILE`; the parity/economics harnesses
-read `GGUF_Q4KM_MODEL`, `LLAMACPP_Q4KM_MODEL`, `MAX_CONTEXT`, `TIMEOUT_SHORT`,
-`TIMEOUT_LONG`, `RUN_TAG`, `DATE_PREFIX`, `LOGDIR`, and `OUTDIR`.
+`ENGINES`, `SPECULATIVE_CONFIG`, `DEFAULT_SPECULATIVE_CONFIG`, `DEFAULT_LLAMACPP_Q4KM_MODEL`,
+`SERVED_NAME`, `SERVED_MODEL_NAME`, `SNAPSHOT`, `SNAPSHOT_DIR`, `LOG_DIR`,
+`LOGDIR`, `OUTDIR`, `ENVWRAP`, `HIP_NAME`, `HIP_PORT`, `MODEL_NAME`, `DOCKER_BIN`,
+`IMAGE`, `PINNED_IMAGE`, `AMD_GFX110X_IMAGE`, `CXX`) configure the atlas-agent
+matrix and its Docker/vLLM baselines. The TheRock wrapper scripts read
+`THEROCK_PY`, `THEROCK_ROOT`, `THEROCK_ENV`, `THEROCK_SITE`, `THEROCK_CORE_LIB`,
+`THEROCK_GFX_LIB`, and `HIPCC_VERSION_FILE`; the parity/economics harnesses read
+`GGUF_Q4KM_MODEL`, `LLAMACPP_Q4KM_MODEL`, `MAX_CONTEXT`, `MAX_MODEL_LEN`,
+`GPU_MEMORY_UTILIZATION`, `KV_CACHE_DTYPE`, `MAX_NUM_BATCHED_TOKENS`,
+`MAX_NUM_SEQS`, `HF_CACHE`, `PAROQUANT_HIP_ARCH`, `ROCM_HOME`, `RUN_TAG`,
+`DATE_PREFIX`, `TIMEOUT_SHORT`, and `TIMEOUT_LONG`.
+
+Many shell harnesses also assign their own script-internal locals and read
+them back with `${...}` (for example `SCRIPT_DIR`, `REPO_ROOT`, `REPO`,
+`LOGDIR`,
+`OUTDIR`, `TAG`, `L`, and the standard shell variables `PATH`, `HOME`, `USER`,
+`SHELL`, `TERM`, `LOGNAME`, `BASH_SOURCE`, `PIPESTATUS`, `LD_LIBRARY_PATH`). An
+exported value with one of these names is normally overwritten by the script's
+own assignment before use; they are listed here only so every `${...}` read in
+the tree has a documented home.
 
 ## Third-party environment variables
 
@@ -761,34 +1011,61 @@ harnesses read them but do not own them.
 | `CC`, `CXX` | build harnesses | Compiler overrides consumed by benchmark build wrappers. |
 | `PYTHONPATH`, `PYTHONUNBUFFERED`, `PYTORCH_...` (above) | harness wrappers | Standard Python process inputs. |
 | `NO_COLOR`, `FORCE_COLOR` | server log styling | Honored by `HIPENGINE_LOG_COLOR=auto`. |
+| `AMDGPU_CARD_NAME`, `AMDGPU_CARD_NAME_W7900`, `HIP_VISIBLE_DEVICES_W7900` | TheRock/lab wrapper scripts | Card-name and device-pin locals used by the W7900 wrapper scripts. |
 
 ## Names that are not environment variables
 
 These names appear in the tree but must not be confused with env knobs:
 
-- `-D` preprocessor macros inside the micro-benchmark kernel builds
+- `-D` preprocessor macros inside kernel and micro-benchmark builds
   (`HIPENGINE_LOCAL_SIZE_X`, `HIPENGINE_ROW_TILE`,
   `HIPENGINE_FIXED_WORKGROUP_SIZE`, `HIPENGINE_BLOCK_SIZE`,
   `HIPENGINE_VOPD_MODE`, `HIPENGINE_VOPD_ACCUMS`, `HIPENGINE_MEM_MODE`,
   `HIPENGINE_MEM_PARAM`, `HIPENGINE_MEM_FIXED_BLOCK`, `HIPENGINE_DOT_MODE`,
   `HIPENGINE_DOT_GROUPS`, `HIPENGINE_DOT_FIXED_BLOCK`, `HIPENGINE_REDUCTION_VARIANT`,
   `HIPENGINE_ARGMAX_WG`, `HIPENGINE_ARGMAX_TOPK`, `HIPENGINE_ACCUM_COUNT`,
-  `HIPENGINE_MICRO_TIMING_HEADER_HASH`) are compile definitions, not process env vars.
+  `HIPENGINE_MICRO_TIMING_HEADER_HASH`, `HIPENGINE_DMS_ENABLE_WAVE_GROUP6`,
+  `HIPENGINE_GDN_GROUPED_HEADS`, `HIPENGINE_IQ_GEMV_SOURCE_TAG`,
+  `HIPENGINE_IQ_WMMA_TABLE_HASH`, `HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS`,
+  `HIPENGINE_NATIVE_SPEC_CYCLE_ABI_VERSION`) are compile definitions, not
+  process env vars.
+- String-prefix fragments used to construct names dynamically:
+  `HIPENGINE_GGUF_`, `HIPENGINE_GGUF_VERIFY_`, `HIPENGINE_QWEN35_BATCH_`,
+  `HIPENGINE_QWEN35_BATCH_DECODE_`, `HIPENGINE_QWEN35_BATCH_SAMPLE_`,
+  `HIPENGINE_NATIVE_SPEC_CYCLE_ABI_HEADER_SHA256_`.
+- Module-level Python constant *identifiers* whose values are the real variable
+  names, not env names themselves: `HIPENGINE_GGUF_DECODE_REPACK_ENV`,
+  `HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV`, `HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR_ENV`,
+  `HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV`, `HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV`,
+  `HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV`, `HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV`,
+  `HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV`, `HIPENGINE_GGUF_C8_Q5_RAW_MMQ_ENV`,
+  `HIPENGINE_C8_Q5_PLANAR_DP4A_ENV`, `HIPENGINE_UD_REPACK_ELIGIBILITY_ENV`.
+- Backend-package capability *keys* (dict fields consumed by the adapter, not
+  env names): `GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS`,
+  `GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES`.
+- Test/fixture identifiers and printf formats, not env reads:
+  `HIPENGINE_D32_TOKEN_FIXTURE` (a `Path` constant), `HIPENGINE_CONCURRENCY_JSON`
+  (an env-file output format written by a harness), and the `DEFAULT_HIPENGINE_*`
+  identifier fragments `HIPENGINE_ARRAYS`, `HIPENGINE_ARTIFACT`,
+  `HIPENGINE_TOKENS`, `HIPENGINE_RAW_ROOT`.
+- Placeholder names used in doc/test examples and generic metavars
+  (`HIPENGINE_FOO`, `HIPENGINE_ZZZ`, `HIPENGINE_AAA`, `HIPENGINE_EXAMPLE`,
+  `HIPENGINE_SOMETHING_ELSE`, `HIPENGINE_STALE_FLAG`, `HIPENGINE_ONE`,
+  `HIPENGINE_TWO`, `HIPENGINE_PREBUILD`, `HIPENGINE_DUP`, `HIPENGINE_KEY`,
+  `HIPENGINE_ROUTE`).
 - Removed or never-shipped flags that tests assert are absent from the runtime
   source: `HIPENGINE_GGUF_AR_STREAM_PREFILL`,
   `HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS`,
   `HIPENGINE_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH`,
+  `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK`,
   `HIPENGINE_MAPLE_PREFILL_GQA4`, `HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH`,
   `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT`,
   `HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT`,
   `HIPENGINE_PM4_STATEFUL_REGISTERS`,
   `HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES`,
+  `HIPENGINE_GPU_MAX_HW_QUEUES_POLICY` (scrubbed from provenance keys),
   `HIPENGINE_HIP_REQUIRE_CACHED_BUILD` (a lookalike that does nothing; the real
   knob is `HIPENGINE_REQUIRE_CACHED_BUILD`),
   `HIPENGINE_PROCESS_ENV_REPORT_PATH` (scrubbed from child environments), and
   the removed AOTriton knobs `HIPENGINE_AOTRITON_SOURCE_ROOT` /
   `HIPENGINE_AOTRITON_RUNTIME_ROOT`.
-- Placeholder names used in doc/test examples (`HIPENGINE_FOO`,
-  `HIPENGINE_ZZZ`, `HIPENGINE_AAA`, `HIPENGINE_EXAMPLE`,
-  `HIPENGINE_SOMETHING_ELSE`, `HIPENGINE_STALE_FLAG`, `HIPENGINE_ONE`,
-  `HIPENGINE_TWO`, `HIPENGINE_PREBUILD`, `HIPENGINE_DUP`).
