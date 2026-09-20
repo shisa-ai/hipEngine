@@ -96,8 +96,20 @@ def load_budget() -> dict[str, int]:
     return {}
 
 
-def save_budget(rows: list[Row], decisions: dict[str, Triage]) -> dict[str, int]:
+def save_budget(rows: list[Row], decisions: dict[str, Triage],
+                lower_only: bool = False) -> dict[str, int]:
+    """Record the untriaged ceiling.
+
+    `lower_only` is what an automatic refresh uses: cleanup ratchets the budget
+    down, but only a person may raise it, and only with a recorded reason.
+    Otherwise a refresh would quietly absorb every new piece of debt.
+    """
     counts = collections.Counter(r.kind for r in rows if r.id not in decisions)
+    if lower_only:
+        previous = load_budget().get("open", {})
+        for kind, was in previous.items():
+            if counts.get(kind, 0) > was:
+                counts[kind] = was
     payload = {
         "recorded": dt.date.today().isoformat(),
         "note": "Untriaged rows per kind. `audit.py check` fails when a count rises. "

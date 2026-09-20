@@ -314,8 +314,65 @@ def cmd_report(args) -> int:
 
 def cmd_budget(args) -> int:
     rows, decisions = core.load_all(), core.load_triage()
-    payload = report.save_budget(rows, decisions)
+    payload = report.save_budget(rows, decisions, lower_only=args.lower_only)
     print(json.dumps(payload, indent=2))
+    return 0
+
+
+def cmd_refresh(args) -> int:
+    """Bring everything derived back in step with the tree, in one command.
+
+    Safe to run at any time: it regenerates what is computed, ratchets the
+    budget down but never up, and finishes by naming what needs a human.
+    """
+    print("== inventory ==")
+    run_inventory(None)
+    print("\n== code checks ==")
+    run_scan(None)
+
+    print("\n== generated docs indexes ==")
+    docs_gate = core.REPO_ROOT / "scripts" / "docs" / "check_docs.py"
+    if docs_gate.exists():
+        subprocess.run([sys.executable, str(docs_gate), "--write"], cwd=core.REPO_ROOT)
+    else:
+        print("scripts/docs/check_docs.py not found; skipped")
+
+    rows, decisions = core.load_all(), core.load_triage()
+    report.save_budget(rows, decisions, lower_only=True)
+    run = report.write_run(rows, decisions, load_meta())
+
+    print("\n== state ==")
+    print(report.state_table(rows, decisions))
+    print(f"\nreport: {run.relative_to(core.REPO_ROOT)}/REPORT.md")
+
+    state = core.reconcile(rows, decisions)
+    todo = []
+    budget = report.load_budget().get("open", {})
+    current: dict[str, int] = {}
+    for row in state["open"]:
+        current[row.kind] = current.get(row.kind, 0) + 1
+    over = {k: (current.get(k, 0), v) for k, v in budget.items() if current.get(k, 0) > v}
+    if over:
+        todo.append("untriaged rows grew past the budget in "
+                    + ", ".join(f"{k} ({a} > {b})" for k, (a, b) in over.items())
+                    + " — triage them; do not raise the budget")
+    if state["stale"]:
+        todo.append(f"{len(state['stale'])} decision(s) rest on evidence that moved "
+                    f"— `audit.py open --stale`")
+    if state["expired"]:
+        todo.append(f"{len(state['expired'])} decision(s) are past their review date "
+                    f"— `audit.py expiring`")
+    lost = core.orphaned(rows, decisions)
+    if lost:
+        todo.append(f"{len(lost)} decision(s) match no row — `audit.py orphans`")
+
+    print("\n== needs a human ==")
+    if todo:
+        for item in todo:
+            print(f"  - {item}")
+    else:
+        print("  nothing; everything derived is current and within budget")
+    print("\nCommit the regenerated audit/ and docs/ files with your change.")
     return 0
 
 
@@ -378,7 +435,12 @@ def main() -> int:
     p.set_defaults(fn=cmd_report)
 
     p = sub.add_parser("budget", help="record the current untriaged counts as the ceiling")
+    p.add_argument("--lower-only", action="store_true",
+                   help="ratchet down only; never absorb new untriaged rows")
     p.set_defaults(fn=cmd_budget)
+
+    p = sub.add_parser("refresh", help="one command: rescan, re-check, regenerate indexes, report")
+    p.set_defaults(fn=cmd_refresh)
 
     args = parser.parse_args()
     return args.fn(args)

@@ -205,3 +205,43 @@ class Checks(unittest.TestCase):
         state = core.reconcile([row], decisions)
         self.assertEqual(len(state["triaged"]), 1,
                          "a wontfix recorded on a finding must suppress it like any other row")
+
+
+class Budget(unittest.TestCase):
+    """The budget ratchets down. An automatic refresh must never absorb new debt."""
+
+    def setUp(self):
+        import tempfile
+        from hipaudit import report
+        self._dir = tempfile.TemporaryDirectory()
+        self._patch = mock.patch.object(report, "BUDGET",
+                                        pathlib.Path(self._dir.name) / "budget.json")
+        self._patch.start()
+        self.report = report
+
+    def tearDown(self):
+        self._patch.stop()
+        self._dir.cleanup()
+
+    def test_lower_only_refuses_to_raise_a_ceiling(self):
+        one = row("A")
+        self.report.save_budget([one], {})                       # ceiling: 1 open flag
+        self.assertEqual(self.report.load_budget()["open"]["flag"], 1)
+        grown = [one, row("B"), row("C")]                        # two new untriaged rows
+        self.report.save_budget(grown, {}, lower_only=True)
+        self.assertEqual(self.report.load_budget()["open"]["flag"], 1,
+                         "a refresh must not absorb new debt into the budget")
+
+    def test_lower_only_still_ratchets_down_as_rows_are_triaged(self):
+        rows = [row("A"), row("B")]
+        self.report.save_budget(rows, {})
+        self.assertEqual(self.report.load_budget()["open"]["flag"], 2)
+        decided = {rows[0].id: decide(rows[0])}
+        self.report.save_budget(rows, decided, lower_only=True)
+        self.assertEqual(self.report.load_budget()["open"]["flag"], 1,
+                         "cleanup must show up as the ceiling dropping")
+
+    def test_an_explicit_budget_call_may_raise(self):
+        self.report.save_budget([row("A")], {})
+        self.report.save_budget([row("A"), row("B")], {})        # deliberate, not lower_only
+        self.assertEqual(self.report.load_budget()["open"]["flag"], 2)

@@ -1,11 +1,15 @@
 ---
 name: cleanup-triage
-description: Work the hipEngine cleanup audit (audit/audit.py) — triage inventory rows and clear the code-check fix queue. Use when working through DEAD-FLAG, LOST-OPT, ORPHAN-KERNEL, STALE-LEDGER or GATE-CATCH22 debt, when clearing doc-path-drift / axis-branch / unguarded-hip-test findings, when asked to reduce the audit budget, or when `audit.py check` fails because untriaged rows grew.
+description: Decide what hipEngine cleanup-audit rows are, without changing code. Use when working through DEAD-FLAG, LOST-OPT, ORPHAN-KERNEL, STALE-LEDGER or GATE-CATCH22 debt, when reviewing stale or expired decisions, or when `audit.py check` fails because untriaged rows grew. Investigates rows against the tree and records durable decisions. For actually applying fixes, use cleanup-fix instead.
 tools: Bash, Read, Grep, Glob
 ---
 
 You triage rows in the hipEngine cleanup audit. Read `audit/README.md` first if
 you have not this session.
+
+**You do not edit code.** You have no write tools on purpose: triage decides,
+and the fix is a separate unit of work done by `cleanup-fix`. The one thing you
+change is the triage store, through `audit.py triage`.
 
 ## Two halves
 
@@ -23,6 +27,7 @@ Both share the triage store: a `wontfix` recorded once is honoured everywhere.
 
 ## Loop
 
+0. `python3 audit/audit.py refresh` if the tree has moved since the last scan.
 1. `python3 audit/audit.py open <kind> -n 10` for inventory — or `--signal
    "<text>"` to focus a class, `--stale` for decisions whose evidence changed,
    `expiring` for decisions past their review date, `orphans` for decisions whose
@@ -87,6 +92,10 @@ python3 audit/audit.py triage <row-id> --tag <TAG> --do <disposition> \
   closed history — check `status:` in the front-matter.
 - Do not reject a candidate for not being bit-exact. `docs/OPTIMIZATION.md` §4.1
   is explicit that exactness alone cannot reject a production-correct candidate.
+  When you find one that *was* rejected on those grounds, tag it
+  `EXACTNESS-REJECT` with disposition `qualify`, and name in the note the
+  production gate it should be measured against instead. Find them with
+  `audit.py open candidate --signal "exactness bar"`.
 
 ## Report
 
