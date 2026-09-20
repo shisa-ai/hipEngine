@@ -60,6 +60,8 @@ _FOREGROUNDS: dict[str, str] = {
 _LABEL_COLORS: dict[str, str] = {
     "REQUEST_INFO": "bright_cyan",
     "MODEL_LOAD": "bright_blue",
+    "KVCache": "bright_magenta",
+    "Config": "bright_magenta",
     "EFFECTIVE_MTP": "bright_magenta",
     "LOAD_TIMING": "blue",
     "STARTUP_MEMORY": "blue",
@@ -73,9 +75,49 @@ _DEFAULT_LABEL_COLOR = "cyan"
 _WARNING_LABEL_COLOR = "bright_yellow"
 _ERROR_LABEL_COLOR = "bright_red"
 
+# Value styling. A ``key=value`` value is colored by what it says rather than by
+# which key it belongs to, so a new field is already legible without editing a
+# map. Bare measurements follow the same rule, which keeps the numbers in a
+# timing or memory line reading as one column instead of as loose prose.
+_ABSENT_VALUE_WORDS = frozenset({"none", "null", "unset", "pending", "unknown", "n/a"})
+_TRUE_VALUE_WORDS = frozenset({"true", "yes", "on", "enabled"})
+_FALSE_VALUE_WORDS = frozenset({"false", "no", "off", "disabled"})
+_MEASURE_UNITS = (
+    "GiB", "MiB", "KiB", "GB", "MB", "KB", "tok/s", "tokens", "pages",
+    "bytes", "ms", "us", "µs", "ns", "s", "%",
+)
+_MEASURE_UNIT_PATTERN = "|".join(_MEASURE_UNITS)
+_MEASURE_UNIT_WORDS = frozenset(_MEASURE_UNITS)
+
+_ABSENT_COLOR = "bright_black"
+_TRUE_COLOR = "bright_green"
+_FALSE_COLOR = "bright_yellow"
+_NUMBER_COLOR = "bright_cyan"
+_PATH_COLOR = "bright_blue"
+_DEFAULT_VALUE_COLOR = "bright_white"
+# Values that carry a decision or a quantity are worth the extra weight; paths
+# and free-form identifiers are long enough to stand out on color alone.
+_BOLD_VALUE_COLORS = frozenset({_NUMBER_COLOR, _TRUE_COLOR, _FALSE_COLOR})
+
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
-_LABEL_RE = re.compile(r"^([A-Z][A-Z0-9_]{2,}):")
-_FIELD_RE = re.compile(r"(?<![\w=])([a-z][a-z0-9_]*)=(\S*)")
+# A mixed-case prefix is only a label when this module knows it: prose such as
+# ``RuntimeError: ...`` keeps its plain text, while ``KVCache:`` and ``Config:``
+# line up with the SCREAMING_CASE labels beside them.
+_LABEL_RE = re.compile(r"^([A-Z][A-Za-z0-9_]{2,}):")
+_NUMBER_VALUE_RE = re.compile(r"-?\d+(?:\.\d+)?")
+_FIELD_PARTS_RE = re.compile(
+    rf"^(?P<key>[a-z][a-z0-9_]*)=(?:(?P<number>-?\d+(?:\.\d+)?)"
+    rf"(?:\s(?P<unit>{_MEASURE_UNIT_PATTERN}))?|(?P<value>\S*))$"
+)
+_MEASURE_PARTS_RE = re.compile(
+    rf"^(?P<number>-?\d+(?:\.\d+)?)(?P<unit>\s?(?:{_MEASURE_UNIT_PATTERN}))$"
+)
+# One scan for fields and measurements together: styling a value that a second
+# pass would match again would nest escapes inside each other.
+_STYLE_SCAN_RE = re.compile(
+    rf"(?P<field>(?<![\w=])[a-z][a-z0-9_]*=(?:-?\d+(?:\.\d+)?(?:\s(?:{_MEASURE_UNIT_PATTERN})(?!\w))?|\S*))"
+    rf"|(?P<measure>(?<![\w.])\d+(?:\.\d+)?\s?(?:{_MEASURE_UNIT_PATTERN})(?!\w))"
+)
 _PROGRESS_RE = re.compile(r"\[([#=]+)(-*)\]")
 
 _ALWAYS_VALUES = frozenset({"always", "on", "true", "yes", "1", "force"})
@@ -182,6 +224,59 @@ def label_color(label: str, *, level: int | None = None) -> str:
     return _DEFAULT_LABEL_COLOR
 
 
+def value_color(value: str) -> str:
+    """Return the color for one ``key=value`` value, chosen by what it says.
+
+    Absent markers stay quiet, booleans read as on/off, and paths and numbers
+    each get their own hue. Anything else is brightened so values stand out
+    against the dimmed keys. A nested ``requested:None`` is judged by its last
+    segment, which is the part that carries the answer.
+    """
+
+    text = str(value)
+    word = text.rsplit(":", 1)[-1].strip().lower()
+    if word in _ABSENT_VALUE_WORDS:
+        return _ABSENT_COLOR
+    if word in _TRUE_VALUE_WORDS:
+        return _TRUE_COLOR
+    if word in _FALSE_VALUE_WORDS:
+        return _FALSE_COLOR
+    if text.startswith(("/", "./", "~/")):
+        return _PATH_COLOR
+    if _NUMBER_VALUE_RE.fullmatch(text):
+        return _NUMBER_COLOR
+    return _DEFAULT_VALUE_COLOR
+
+
+def _paint_value(value: str) -> str:
+    color = value_color(value)
+    return paint(value, color, bold=color in _BOLD_VALUE_COLORS)
+
+
+def _style_field(field: str) -> str:
+    parts = _FIELD_PARTS_RE.match(field)
+    if parts is None:  # pragma: no cover - the scan only hands over matching text
+        return field
+    key = parts.group("key")
+    value = parts.group("number") if parts.group("number") is not None else parts.group("value")
+    unit = parts.group("unit")
+    rendered = f"{DIM}{key}{RESET}="
+    if value:
+        rendered += _paint_value(value)
+    if unit:
+        rendered += paint(f" {unit}", dim=True)
+    return rendered
+
+
+def _style_measure(measure: str) -> str:
+    parts = _MEASURE_PARTS_RE.match(measure)
+    if parts is None:  # pragma: no cover - the scan only hands over matching text
+        return measure
+    return f"{paint(parts.group('number'), _NUMBER_COLOR, bold=True)}" + paint(
+        parts.group("unit"), dim=True
+    )
+
+
 def style_log_message(message: str, *, level: int | None = None) -> str:
     """Style one already-formatted log message without changing its text."""
 
@@ -189,10 +284,19 @@ def style_log_message(message: str, *, level: int | None = None) -> str:
     label_match = _LABEL_RE.match(text)
     if label_match is not None:
         label = label_match.group(1)
-        colored = paint(f"{label}:", label_color(label, level=level), bold=True)
-        text = colored + text[label_match.end() :]
-    text = _FIELD_RE.sub(
-        lambda match: f"{DIM}{match.group(1)}{RESET}={match.group(2)}", text
+        color = _LABEL_COLORS.get(label)
+        if color is None and label.isupper():
+            color = label_color(label, level=level)
+        if color is not None:
+            colored = paint(f"{label}:", color, bold=True)
+            text = colored + text[label_match.end() :]
+    text = _STYLE_SCAN_RE.sub(
+        lambda match: (
+            _style_field(match.group("field"))
+            if match.lastgroup == "field"
+            else _style_measure(match.group("measure"))
+        ),
+        text,
     )
     return _PROGRESS_RE.sub(
         lambda match: (
@@ -257,4 +361,5 @@ __all__ = [
     "resolve_color_mode",
     "strip_styles",
     "style_log_message",
+    "value_color",
 ]

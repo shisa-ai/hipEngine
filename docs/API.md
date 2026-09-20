@@ -1535,8 +1535,12 @@ also colorizes redirected output, which is what a `| tee` pane needs, at the cos
 of writing ANSI codes into that file. `never` disables colorization. Styling only
 adds ANSI codes, so the text is unchanged and `grep`, `cut`, and log shippers keep
 working: level prefixes, the leading label of each structured line
-(`REQUEST_INFO`, `MODEL_LOAD`, `REQUEST_FAILED`, `UNHANDLED_ERROR`, ...), the
-`key=` of every field, and model-load progress bars are styled.
+(`REQUEST_INFO`, `MODEL_LOAD`, `REQUEST_FAILED`, `UNHANDLED_ERROR`, ...), and
+model-load progress bars are styled. Inside a structured line the `key=` is
+dimmed and its value is colored by what it says, so the numbers in a timing or
+memory line read as one column: quantities in cyan with their unit dimmed,
+`true`/`enabled` in green, `false`/`off` in yellow, absent markers such as `None`
+or `pending` in gray, paths in blue, and other identifiers brightened.
 
 To log one summary line per completed generation request, pass `--info` or set
 `HIPENGINE_INFO=1`:
