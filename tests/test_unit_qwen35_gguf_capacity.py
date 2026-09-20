@@ -12,6 +12,8 @@ from __future__ import annotations
 import inspect
 from types import SimpleNamespace
 
+import pytest
+
 from hipengine.core.memory import DeviceBuffer
 from hipengine.generation import qwen35_gguf
 from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
@@ -1011,21 +1013,22 @@ def test_resident_slot_default_is_one(monkeypatch) -> None:
     assert signature.parameters["capacity"].default == 4
 
 
-def test_server_defaults_to_int8_kv_storage() -> None:
-    """The serve CLI default is INT8, gated by artifact qualification."""
+@pytest.mark.parametrize("storage", ["bf16", "int8_per_token_head", "auto"])
+def test_server_kv_storage_environment_and_cli_precedence(monkeypatch, storage) -> None:
+    """Storage selection works independently of the product's current default."""
 
     from hipengine.server.__main__ import build_parser
 
+    monkeypatch.setenv("HIPENGINE_KV_STORAGE", storage)
     parser = build_parser()
-    assert parser.parse_args(["--model", "/tmp/m.gguf"]).kv_storage == "int8_per_token_head"
+    assert parser.parse_args(["--model", "/tmp/m.gguf"]).kv_storage == storage
+    for explicit in ("bf16", "int8_per_token_head", "auto"):
+        args = parser.parse_args(["--model", "/tmp/m.gguf", "--kv-storage", explicit])
+        assert args.kv_storage == explicit
 
-    # Both rollbacks stay available.
-    assert parser.parse_args(["--model", "/tmp/m.gguf", "--kv-storage", "bf16"]).kv_storage == "bf16"
-    assert parser.parse_args(["--model", "/tmp/m.gguf", "--kv-storage", "auto"]).kv_storage == "auto"
 
-
-def test_server_defaults_match_the_qualified_int8_contract(monkeypatch) -> None:
-    """The CLI defaults have to key the registered qualification contract.
+def test_server_explicit_int8_uses_qualified_scale_defaults(monkeypatch) -> None:
+    """An explicit INT8 selection must use compatible default scale settings.
 
     The retained evidence for the supported dense GGUF artifacts is keyed on
     ``scale_dtype="fp32"``. A server defaulting to fp16 scales builds a key that
@@ -1038,13 +1041,18 @@ def test_server_defaults_match_the_qualified_int8_contract(monkeypatch) -> None:
     from hipengine.models.qwen35 import _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE
     from hipengine.server.__main__ import build_parser
 
-    args = build_parser().parse_args(["--model", "/tmp/m.gguf"])
+    monkeypatch.setenv("HIPENGINE_KV_STORAGE", "bf16")
+    monkeypatch.delenv("HIPENGINE_KV_SCALE_DTYPE", raising=False)
+    monkeypatch.delenv("HIPENGINE_KV_SCALE_GRANULARITY", raising=False)
+    args = build_parser().parse_args(
+        ["--model", "/tmp/m.gguf", "--kv-storage", "int8_per_token_head"]
+    )
     assert args.kv_storage == "int8_per_token_head"
     assert args.kv_scale_dtype == "fp32"
     assert args.kv_scale_granularity == "per_token_head"
 
-    # At least one retained contract must match those defaults for the target
-    # artifact, or the default is a no-op that reports INT8 and allocates BF16.
+    # Explicit INT8 must not silently fall back because its scale defaults
+    # cannot match the supported artifact's contract.
     key = KVCapabilityKey(
         artifact_sha256="7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
         artifact_size_bytes=17_106_773_984,
@@ -1057,5 +1065,5 @@ def test_server_defaults_match_the_qualified_int8_contract(monkeypatch) -> None:
         scale_granularity=args.kv_scale_granularity,
     )
     matches = [row for row in _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE if row.key == key]
-    assert matches, "the default KV policy matches no retained qualification contract"
+    assert matches, "explicit INT8 with default scales matches no qualification contract"
     assert matches[0].decision == "qualified"
