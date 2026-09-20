@@ -5105,6 +5105,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     mtp_circuit_breaker = _MTPCircuitBreaker()
     app.state.hipengine_mtp_circuit_breaker = mtp_circuit_breaker
 
+    mtp_effective_state_logged = False
+
+    def log_effective_mtp_once(engine: Any) -> None:
+        """Emit the resolved MTP state once, the first time an engine resolves.
+
+        Exactly one line states the effective state per process: whichever call
+        first sees a prepared generator emits it, and later calls stay silent so
+        a request never repeats what the model load already reported.
+        """
+
+        nonlocal mtp_effective_state_logged
+        if mtp_effective_state_logged:
+            return
+        if _log_effective_mtp_config(config, engine=engine):
+            mtp_effective_state_logged = True
+
     def get_llm() -> Any:
         if app.state.hipengine_llm is None:
             app.state.hipengine_llm = LLM(
@@ -5124,7 +5140,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 kv_scale_granularity=config.kv_scale_granularity,
                 vision_model=config.vision_model,
             )
-            _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
+            log_effective_mtp_once(app.state.hipengine_llm)
         mtp_circuit_breaker.attach(app.state.hipengine_llm)
         app.state.hipengine_readiness.model_loaded = True
         return app.state.hipengine_llm
@@ -5203,6 +5219,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prepared = _prepared_context_tokens(engine)
         if prepared is not None and (requested_context is None or prepared >= requested_context):
             app.state.hipengine_effective_max_context_tokens = prepared
+            log_effective_mtp_once(engine)
             return effective_max_context_tokens(engine)
         preparer = getattr(engine, "prepare", None)
         if not callable(preparer):
@@ -5295,6 +5312,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         # on the logger the server already configures, so an automatic context
         # selection is visible without extra flags.
         _log_kv_capacity_summary(engine)
+        # The generator is prepared by now, so the MTP route is resolvable: this
+        # is where eager startup and the first lazy request report it.
+        log_effective_mtp_once(engine)
         return effective
 
     def mark_startup_failed(
@@ -5362,7 +5382,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "startup_total_s": round(startup_total_s, 6),
             }
             _LOGGER.info("LOAD_TIMING: eager_load=False startup_total_s=%.3f", startup_total_s)
-            _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
+            _log_pending_mtp_config(config)
             _LOGGER.info("hipEngine is ready (lazy load).")
             return
         sampling = SamplingParams(
@@ -5669,7 +5689,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             engine=engine,
             memory=_startup_memory_summary(startup_memory, startup_checks),
         )
-        _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
+        # Normally silent: the resolved line was already emitted when the model
+        # became resident. Kept so eager startup reports the effective state on
+        # every path that reaches readiness.
+        log_effective_mtp_once(app.state.hipengine_llm)
         _LOGGER.info("hipEngine is ready.")
 
     async def shutdown_model() -> None:
@@ -11724,7 +11747,7 @@ def _engine_speculative_mtp_unresolved(engine: Any | None) -> bool:
     so its answer stands whether it is yes or no. Before that, "no MTP route"
     only means "not known yet", and printing it as ``serving=off`` contradicts
     the line the operator reads once the engine has resolved. Startup calls this
-    with an unprepared engine on the eager path and on the first lazy request.
+    with an unprepared engine while the model load is still running.
     """
 
     if engine is None:
@@ -11736,29 +11759,44 @@ def _engine_speculative_mtp_unresolved(engine: Any | None) -> bool:
     return getattr(engine, "text_generator", None) is None
 
 
-def _log_effective_mtp_config(config: ServerConfig, *, engine: Any | None) -> None:
-    """Log configured or effective MTP serving state.
+def _log_pending_mtp_config(config: ServerConfig) -> None:
+    """Log the requested MTP policy of a server that has no engine yet.
 
-    Lazy startup has no engine to inspect yet, so it reports a pending state;
-    ``get_llm`` emits the effective state immediately after creating the model.
-    An engine that exists but has not prepared its generator is still pending:
-    reporting it as off would contradict the effective line that follows once
-    the model is resident.
+    Only lazy startup reaches this: the model is not created until the first
+    request, so the requested policy, candidate budget, and context window are
+    everything that is knowable at startup, and saying so is more useful than
+    silence. The resolved line follows once that request prepares the model.
+    Eager startup skips the pending form entirely - its engine resolves during
+    the same startup, so a pending echo would be a second line that the
+    resolved line immediately supersedes.
+    """
+
+    _LOGGER.info(
+        "EFFECTIVE_MTP: serving=pending engine_supported=unknown "
+        "default_enabled=unknown policy=%s thinking=%s "
+        "candidate_budget=requested:%s resolved:pending source:pending "
+        "mtp2_context_window=env:%s resolved:%s "
+        "(pre-resolution: the model is not loaded yet; lazy startup resolves "
+        "this when the first request prepares the engine)",
+        config.speculative_mtp_serving,
+        config.speculative_mtp_thinking,
+        config.speculative_candidate_budget,
+        *_mtp2_context_window_log_fields(),
+    )
+
+
+def _log_effective_mtp_config(config: ServerConfig, *, engine: Any | None) -> bool:
+    """Log the resolved MTP serving state; report whether there was one.
+
+    An engine that exists but has not prepared its generator has no answer yet.
+    A pending line for it would carry nothing the operator cannot read from the
+    requested values already logged, and the resolved line follows as soon as
+    ``prepare`` runs, so this logs nothing and returns ``False`` until then. A
+    resolved engine always logs, whether or not it has an MTP route.
     """
 
     if engine is None or _engine_speculative_mtp_unresolved(engine):
-        _LOGGER.info(
-            "EFFECTIVE_MTP: serving=pending engine_supported=unknown "
-            "default_enabled=unknown policy=%s thinking=%s "
-            "candidate_budget=requested:%s resolved:pending source:pending "
-            "mtp2_context_window=env:%s resolved:%s "
-            "(pre-resolution: the engine has not prepared its generator yet)",
-            config.speculative_mtp_serving,
-            config.speculative_mtp_thinking,
-            config.speculative_candidate_budget,
-            *_mtp2_context_window_log_fields(),
-        )
-        return
+        return False
     capability = _speculative_mtp_capability(config, engine=engine)
     budget = _candidate_budget_resolution(config, engine=engine)
     _LOGGER.info(
@@ -11776,6 +11814,7 @@ def _log_effective_mtp_config(config: ServerConfig, *, engine: Any | None) -> No
         *_mtp2_context_window_log_fields(),
     )
     _warn_unservable_mtp_budget(config, engine=engine, budget=budget)
+    return True
 
 
 def _warn_unservable_mtp_budget(
