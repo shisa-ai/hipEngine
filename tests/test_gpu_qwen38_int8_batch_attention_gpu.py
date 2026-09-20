@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 import numpy as np
@@ -55,27 +56,40 @@ def _softmax(logits: np.ndarray) -> np.ndarray:
 
 
 def _compiler_version() -> str:
-    path = Path("/tmp/hipengine-hipcc-version.txt")
+    path = Path(os.environ.get("HIPENGINE_COMPILER_VERSION_FILE", "/tmp/hipengine-hipcc-version.txt"))
     if not path.is_file():
         pytest.skip("cached HIP compiler-version file is unavailable")
     return path.read_text()
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+@pytest.mark.parametrize("scale_dtype", [DType.FP32, DType.FP16])
 @pytest.mark.parametrize(
-    ("rows", "live_counts"),
+    ("rows", "live_counts", "shared_table"),
     (
-        (1, (8193,)),
-        (2, (255, 257)),
-        (4, (1, 256, 257, 1025)),
-        (8, (1, 2, 255, 256, 257, 513, 1023, 0)),
+        (1, (8193,), False),
+        (2, (255, 257), False),
+        (4, (1, 256, 257, 1025), False),
+        (8, (1, 2, 255, 256, 257, 513, 1023, 0), False),
+        (4, (255, 256, 257, 258), True),
+        (8, (1023, 1024, 1025, 1026, 1027, 1028, 1029, 1030), True),
     ),
-    ids=("c1-8k-page-tail", "c2-page-boundary", "c4-ragged", "c8-sparse"),
+    ids=("c1-8k-page-tail", "c2-page-boundary", "c4-ragged", "c8-sparse",
+         "verify4-page-boundary", "verify8-split-boundary"),
 )
 def test_qwen38_int8_batch_attention_matches_cpu_and_independent_c1(
     rows: int,
     live_counts: tuple[int, ...],
+    shared_table: bool,
+    scale_dtype: DType,
 ) -> None:
+    from hipengine.kernels.hip_gfx1100.attention import paged_attn_decode
+
+    kernel = (
+        getattr(paged_attn_decode, "qwen35_paged_attn_verify_int8_gqa_splitk_gate_bf16_spans")
+        if shared_table
+        else qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans
+    )
     runtime = get_hip_runtime()
     library = build_qwen35_paged_attn_decode(
         load=True,
@@ -89,6 +103,7 @@ def test_qwen38_int8_batch_attention_matches_cpu_and_independent_c1(
     num_splits = max(1, (max_context + block_size - 1) // block_size)
     blocks_per_row = num_splits
     scale = head_dim**-0.5
+    scale_numpy = np.float32 if scale_dtype == DType.FP32 else np.float16
     rng = np.random.default_rng(0x38C200 + rows)
 
     block_table = np.full((rows, blocks_per_row), -1, dtype=np.int32)
@@ -121,16 +136,18 @@ def test_qwen38_int8_batch_attention_matches_cpu_and_independent_c1(
             quantize_kv_int8_per_token_head(
                 logical_key,
                 logical_value,
-                scale_dtype=np.float32,
+                scale_dtype=scale_numpy,
             )
         )
 
     physical_blocks = max(rows * blocks_per_row, next_block)
     cache_shape = (physical_blocks, block_size, num_kv_heads, head_dim)
+    if shared_table:
+        block_table[:] = np.arange(3, 3 + blocks_per_row, dtype=np.int32)[::-1]
     scale_shape = cache_shape[:-1]
     key_cache = np.zeros(cache_shape, dtype=np.int8)
     value_cache = np.zeros_like(key_cache)
-    k_scale = np.zeros(scale_shape, dtype=np.float32)
+    k_scale = np.zeros(scale_shape, dtype=scale_numpy)
     v_scale = np.zeros_like(k_scale)
     for row, item in enumerate(logical_rows):
         if item is None:
@@ -188,22 +205,24 @@ def test_qwen38_int8_batch_attention_matches_cpu_and_independent_c1(
         partial_out_b = to_device(partial_out)
         partial_m_b = to_device(partial_m)
         partial_l_b = to_device(partial_l)
-        table_b = to_device(block_table)
+        device_table = block_table[0] if shared_table else block_table
+        table_b = to_device(device_table)
         counts_b = to_device(counts)
         metadata = KVScaleMetadata(
-            k_scale=Tensor.from_handle(k_scale_b.ptr, k_scale.shape, DType.FP32, device),
-            v_scale=Tensor.from_handle(v_scale_b.ptr, v_scale.shape, DType.FP32, device),
-            scale_dtype=DType.FP32,
+            k_scale=Tensor.from_handle(k_scale_b.ptr, k_scale.shape, scale_dtype, device),
+            v_scale=Tensor.from_handle(v_scale_b.ptr, v_scale.shape, scale_dtype, device),
+            scale_dtype=scale_dtype,
             granularity="per_token_head",
         )
         spans = KVLiveSpans.paged_uniform(
-            block_table=Tensor.from_handle(table_b.ptr, block_table.shape, DType.INT32, device),
+            block_table=Tensor.from_handle(table_b.ptr, device_table.shape, DType.INT32, device),
             live_counts=Tensor.from_handle(counts_b.ptr, counts.shape, DType.INT64, device),
             max_live_count=max_context,
             storage_dtype=DType.INT8_PER_TOKEN_HEAD,
             scale_metadata=metadata,
+            span_role="verify_chain" if shared_table else "decode",
         )
-        qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans(
+        kernel(
             query_b.ptr,
             key_b.ptr,
             value_b.ptr,
@@ -257,7 +276,7 @@ def test_qwen38_int8_batch_attention_matches_cpu_and_independent_c1(
         for row in range(rows):
             row_spans = KVLiveSpans.paged_uniform(
                 block_table=Tensor.from_handle(
-                    table_b.ptr + row * blocks_per_row * np.dtype(np.int32).itemsize,
+                    table_b.ptr + (0 if shared_table else row * blocks_per_row * np.dtype(np.int32).itemsize),
                     (blocks_per_row,),
                     DType.INT32,
                     device,

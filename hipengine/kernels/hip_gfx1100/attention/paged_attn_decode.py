@@ -3251,6 +3251,7 @@ def qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    _shared_table: bool = False,
 ) -> None:
     """Run row-batched INT8 GQA split-K with explicitly strided BF16 gate/output."""
 
@@ -3265,6 +3266,7 @@ def qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans(
         head_dim,
         k_scale_ptr=k_scale_ptr,
         v_scale_ptr=v_scale_ptr,
+        shared_table=_shared_table,
     )
     _check_minimum_stride(
         query_row_stride,
@@ -3305,6 +3307,7 @@ def qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans(
         stream=stream,
         library=library,
         runtime=runtime,
+        shared_table=_shared_table,
     )
     _launch_gate_reduce_batch_strided(
         _SYMBOL_SPLIT_REDUCE_GATE_BF16_BATCH_STRIDED,
@@ -4010,6 +4013,18 @@ def _launch_int8_gqa_split_context(
     _check_launch(runtime, err)
 
 
+def qwen35_paged_attn_verify_int8_gqa_splitk_gate_bf16_spans(*args, **kwargs) -> None:
+    """INT8 verifier rows over one shared page table and per-row causal counts.
+
+    The call signature and strided output match the batch decode primitive.
+    The registered c1 span leaf remains the independent row fallback.
+    """
+
+    qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans(
+        *args, **kwargs, _shared_table=True,
+    )
+
+
 def _launch_int8_gqa_split_context_batch(
     query_ptr: int,
     key_cache_ptr: int,
@@ -4034,8 +4049,12 @@ def _launch_int8_gqa_split_context_batch(
     stream: int,
     library: ctypes.CDLL,
     runtime: HipRuntime,
+    shared_table: bool = False,
 ) -> None:
-    split = getattr(library, _int8_gqa_context_batch_symbol(spans))
+    symbol = _int8_gqa_context_batch_symbol(spans)
+    if shared_table:
+        symbol = symbol.replace("_batch_spans", "_verify_chain_spans")
+    split = getattr(library, symbol)
     split.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -4349,6 +4368,7 @@ def _check_int8_qwen35_gqa_batch_shape(
     *,
     k_scale_ptr: int,
     v_scale_ptr: int,
+    shared_table: bool = False,
 ) -> int:
     if spans.spans_mode != "uniform":
         raise ValueError("INT8 paged attention batch decode currently requires uniform spans")
@@ -4365,9 +4385,14 @@ def _check_int8_qwen35_gqa_batch_shape(
     _check_positive(head_dim, "head_dim")
     if spans.live_counts.numel < rows:
         raise ValueError("live_counts must have at least rows entries")
-    if spans.base_offsets.numel % rows != 0:
-        raise ValueError("INT8 batch block table must be row-major [rows, blocks]")
-    block_table_len = spans.base_offsets.numel // rows
+    if shared_table:
+        if spans.span_role != "verify_chain" or len(spans.base_offsets.shape) != 1:
+            raise ValueError("INT8 verifier requires a single shared verify_chain page table")
+        block_table_len = spans.base_offsets.numel
+    else:
+        if spans.base_offsets.numel % rows != 0:
+            raise ValueError("INT8 batch block table must be row-major [rows, blocks]")
+        block_table_len = spans.base_offsets.numel // rows
     if block_table_len <= 0:
         raise ValueError("block_table_len must be positive")
     if num_q_heads % num_kv_heads != 0:
@@ -4901,6 +4926,16 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
             "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
         ),
         qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "paged_attn_decode",
+            "int8_per_token_head",
+            "per_token_head_gqa_splitk_gate_bf16_verify_chain_spans",
+        ),
+        qwen35_paged_attn_verify_int8_gqa_splitk_gate_bf16_spans,
         replace=replace,
     )
     register(

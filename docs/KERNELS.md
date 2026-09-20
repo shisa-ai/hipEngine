@@ -174,6 +174,15 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | Runtime state | `runtime/state.{hip,py}` | token embedding, positions/metadata, graph record/commit, scalar state, profiling wall-clock marker | Device-side graph/verify bookkeeping, indexed row state, token publication, and profiling-only steady-clock boundaries. |
 | Sampling | `sampling/sampler.{hip,py}` | `sampler`, `mtp_draft_topk` | Greedy/temperature/top-k helpers and bounded draft top-k. |
 
+The INT8 `paged_attn_decode` variant
+`per_token_head_gqa_splitk_gate_bf16_verify_chain_spans` in
+`attention/paged_attn_decode.{hip,py}` consumes one shared page table with
+per-row causal live counts. It supports FP16/FP32 per-token/head scales and
+strided BF16 gate/output for 16Q/2KV or 24Q/4KV, D256, page256. It preserves
+the independent c1 INT8 producer/reducer arithmetic; the registered
+`gqa_splitk_gate_bf16_spans` leaf remains the row-wise fallback. It accepts
+uniform `verify_chain` spans only, not DMS or tree masks.
+
 **Compact DMS attention** — `attention/dms_compact.{hip,py}` registers `dms_extract_decision`, `dms_decision_source`, `dms_streaming_pack`, `dms_append_decode`, and `dms_compact_attn_decode` (grouped GQA fallback plus bounded-LDS split-K) for the compact-KV path. The split-K family includes the `dms_compact_attn_splitk_group6_wave_producer_kernel` for the Qwen3.8 24Q/4KV/D256 geometry (one compact token scored per wave, Q shared across the GQA group), compiled for gfx1151 and gfx1100; the grouped and scalar split-K producers remain registered fallbacks. The CPU-reference oracles in `cpu_reference/dms.py` are the registered strict fallbacks for every key; the kernels are wired into `DMSCompactBackend` behind explicit device-payload selection, and no model package defaults to DMS.
 
 The explicit gfx1100 `attention/dms_compact_int8.{hip,py}` family adds compact
