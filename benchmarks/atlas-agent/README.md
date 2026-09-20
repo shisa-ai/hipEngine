@@ -115,19 +115,24 @@ deepest candidate budget hipEngine's serving evidence qualifies
 
 ## Long context and what hipEngine actually does there
 
-hipEngine's dense MTP adapter admits only inside a **1,023-token window**
-(`hipengine/generation/qwen35_gguf_mtp2.py`; the fixed window was removed on
-2026-09-20 and the adapter is now bounded by the target's capacity).
-Above it a row is set to `candidate_budget = 0` with
-`target_context_k0` and decodes autoregressively.
+The dense MTP adapter is bounded only by the target's own `max_sequence_length`,
+which is allocated capacity rather than an evidence window. A row whose prompt
+leaves no room for even one generated token is set to `candidate_budget = 0`
+with `target_context_k0` and decodes autoregressively; prompt length is
+otherwise not an admission axis.
 
-At agentic context lengths this means the hipEngine arm of this comparison is
-**autoregressive**, and that is the qualified behaviour, not a failure. Raising
-the long-context route is explicitly *not* a
-promotion: raising it alone measures **0.57×**, because the target and draft
-graphs decline into their eager paths per cycle (`docs/REFACTOR.md`,
-"Long-context MTP window override"). `FORCE_LONG_MTP=1` runs that unqualified
-diagnostic arm and labels it in the output.
+Measured on this host (`gfx1151`, Qwen3.8-27B `Q4_K_M`, BF16 KV, candidate
+budget 3), greedy requests are served through `speculative_mtp` at 128, 512,
+600, 1,024, 1,025, 2,048, 4,096 and 8,192 prompt tokens via `/v1/completions`,
+and at 917, 1,738, 5,674 and 11,291 prompt tokens via `/v1/chat/completions`.
+At agentic context lengths the hipEngine arm of this comparison is therefore
+speculative.
+
+The axis that does still fall back to autoregressive decoding is sampling, not
+context: a `temperature > 0` request is refused with
+`automatic_mtp_scope_not_promoted`, and an `ignore_eos` request with
+`sampling_mode_not_qualified`. This comparison sends greedy requests, so neither
+applies to it.
 
 ## Prerequisites
 
@@ -166,9 +171,6 @@ benchmarks/atlas-agent/run.sh
 # One engine only, one arm, explicit knobs.
 ENGINES=hipengine ARMS=single OUTPUT_LEN=128 PROMPT_CATEGORY=code \
   benchmarks/atlas-agent/run.sh
-
-# The unqualified long-context-MTP diagnostic arm.
-FORCE_LONG_MTP=1 ENGINES=hipengine ARMS=single benchmarks/atlas-agent/run.sh
 ```
 
 `run.sh` writes a timestamped run directory (default
@@ -188,7 +190,6 @@ capability probe, one JSON per arm, and the assembled `artifact.json`; plus
 | `PROMPT_FILE` / `PROMPT_CATEGORY` / `PROMPT_LIMIT` | `mtpbench-code-general-ja.jsonl` / `code` / 4 | prompt selection |
 | `MAX_CONTEXT` | 262144 | context length, both engines |
 | `ENGINES` / `ARMS` | `hipengine atlas` / `single multi conc` | what to run |
-| `FORCE_LONG_MTP` | 0 | raise hipEngine's MTP window (unqualified) |
 
 ## Arms and metrics
 

@@ -348,9 +348,12 @@ whole-process memory percentage, throughput gain or proven context maximum.
 
 ## Current default notes
 
-**Prefix caching is on by default.** `hipengine serve --prefix-cache off`
-disables it. Radix reuses completed prompt prefixes at 256-token
-granularity. Measured on `zbook`/gfx1151 with Qwen3.6-35B-A3B `UD-Q4_K_M`, 14
+**Prefix caching defaults differ by entry point.** The in-process resident
+engine loop, which is what the benchmark harnesses and `hipengine.LLM` run,
+defaults to `radix`; `hipengine serve` defaults to `--prefix-cache off` and
+needs `--prefix-cache radix` to enable it. Radix reuses completed prompt
+prefixes at 256-token granularity. Measured on `zbook`/gfx1151 with
+Qwen3.6-35B-A3B `UD-Q4_K_M`, 14
 multi-turn lanes and three turns each through the in-process resident loop:
 radix resolves 16 of 27 lookups and reuses 42,496 of 87,582 prompt tokens, and
 now runs **18.6% faster in wall time (351.5 s to 286.0 s, output rate 16.93 to
@@ -362,6 +365,18 @@ lookup. The same command and lanes previously measured **+6.4% wall**, so the
 sign of the result changed rather than its magnitude drifting: a reused request
 used to prefill its unmatched suffix one token at a time at **34.0 ms/token**,
 and now prefills it batched with the rest of the prompt.
+
+The gfx1151 result does not transfer to gfx1100. On the W7900 the same
+comparison fails the section 6.1 envelope in `heldout-code` (mean KL 2.264e-3
+against a 1e-3 limit, max KL 0.2753 against a 0.05 ceiling) and six
+active-lifecycle scopes fail the scheduler state-byte comparison, so the
+served default stays off until those pass. `docs/REFACTOR.md`,
+"HTTP default-on is blocked", carries the removal condition; the packets are
+[the eight-scope gate](results/2026-09-20-w7900-gfx1100-prefix-gate-bf16.json)
+and [the completed-source control](results/2026-09-20-w7900-prefix-completed-code-control.json).
+On gfx1151 the same-route packed-reference packet passes all eight suites at
+1,024 teacher-forced rows with 2 top-1 flips and 0 state mismatches
+([artifact](results/2026-09-20-gfx1151-prefix-gate-packed-reference-1024rows.json)).
 
 One caveat travels with it: a cache hit reproduces a cache miss bit-for-bit up
 to 2,048 tokens of total context, verified across all four mtp-bench prompt

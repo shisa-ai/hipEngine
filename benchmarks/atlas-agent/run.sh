@@ -12,7 +12,7 @@
 #   ARMS=single OUTPUT_LEN=128 benchmarks/atlas-agent/run.sh
 #
 # Environment: OUTPUT_LEN, CONCURRENCY, TURNS, REPEATS, PROMPT_FILE,
-# PROMPT_CATEGORY, PROMPT_LIMIT, MAX_CONTEXT, ENGINES, ARMS, OUT, FORCE_LONG_MTP.
+# PROMPT_CATEGORY, PROMPT_LIMIT, MAX_CONTEXT, ENGINES, ARMS, OUT.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 REPO="$PWD"
@@ -123,7 +123,7 @@ start_and_measure() {  # name, port, model, serve-script
   echo "repo_head=$(git rev-parse HEAD)"; echo "repo_dirty=$(git status --porcelain | wc -l)"
   echo "output_len=$OUTPUT_LEN concurrency=$CONCURRENCY turns=$TURNS repeats=$REPEATS"
   echo "max_context=$MAX_CONTEXT prompt_file=$PROMPT_FILE category=$PROMPT_CATEGORY"
-  echo "force_long_mtp=${FORCE_LONG_MTP:-0} engines='$ENGINES' arms='$ARMS'"
+  echo "engines='$ENGINES' arms='$ARMS'"
   echo "atlas_head=$(cd /home/lhl/atlas && git rev-parse HEAD)"
   echo "--- gpu ---"; rocminfo 2>/dev/null | grep -E "^\s+Name:|gfx" | head -4
 } > "$OUT/environment.txt" 2>&1
