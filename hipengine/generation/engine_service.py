@@ -925,17 +925,21 @@ class EngineService:
 
         now = time.monotonic()
         parts: list[str] = []
+        # The driver thread mutates this activity between a check and a read, so
+        # each field is sampled once: a cleared timestamp must not turn a
+        # diagnostic into a ``TypeError``.
         active = self._active_command_kind
+        method = self._active_command_method
+        command_started_at = self._active_command_started_at
+        tick_started_at = self._tick_started_at
         if active is not None:
-            method = self._active_command_method
             if method:
                 active = f"{active}:{method}"
             parts.append(f"driver_command={active}")
-            started = self._active_command_started_at
-            if started is not None:
-                parts.append(f"driver_command_s={now - started:.1f}")
-        if self._tick_started_at is not None:
-            parts.append(f"driver_tick_s={now - self._tick_started_at:.1f}")
+            if command_started_at is not None:
+                parts.append(f"driver_command_s={now - command_started_at:.1f}")
+        if tick_started_at is not None:
+            parts.append(f"driver_tick_s={now - tick_started_at:.1f}")
         parts.append(f"queued_commands={self._commands.qsize()}")
         parts.append(f"active_requests={len(self._states_by_service_id)}")
         parts.append(f"driver_alive={'yes' if self._thread.is_alive() else 'no'}")

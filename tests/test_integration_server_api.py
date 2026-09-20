@@ -880,6 +880,100 @@ class DelayedFakeLLM(FakeLLM):
             yield chunk
 
 
+class BlockingPrepareFakeLLM(PromptPreparingFakeLLM):
+    """A fake whose ``tokenize`` blocks and whose stream runs until stopped.
+
+    ``EngineService`` runs the engine on one driver thread, so a control command
+    (the server's prompt tokenization) waits behind whatever that thread is doing:
+    a context prepare that grows the KV pool, or one prefill tick of a large
+    prompt. The wait is real; what matters is which thread absorbs it.
+    """
+
+    supports_controlled_streaming = True
+    supports_stream_many = True
+
+    def __init__(self, *, stream_delay_s: float = 0.05) -> None:
+        super().__init__(stream=True)
+        self.stream_delay_s = float(stream_delay_s)
+        self.tokenize_entered = threading.Event()
+        self.tokenize_release = threading.Event()
+        self.stream_stop = threading.Event()
+        self.tokenize_threads: list[int] = []
+
+    def tokenize(self, text: str) -> tuple[int, ...]:
+        self.tokenize_threads.append(threading.get_ident())
+        if "SLOW-PREP" in str(text):
+            self.tokenize_entered.set()
+            assert self.tokenize_release.wait(timeout=10.0)
+        return super().tokenize(text)
+
+    def stream(self, prompt: str, sampling_params: SamplingParams):
+        """Keep yielding until the test stops it, so the stream outlives a wait."""
+
+        index = 0
+        while not self.stream_stop.is_set():
+            yield f"chunk-{index}"
+            index += 1
+            time.sleep(self.stream_delay_s)
+
+    def stream_many_detailed(self, prompts, sampling_params):
+        """One row: the incremental chat path gates on this being callable."""
+
+        yield from self.stream(prompts[0], sampling_params)
+
+
+async def _asgi_chat_post(
+    app: Any,
+    payload: Mapping[str, Any],
+    *,
+    on_body: Any = None,
+) -> int:
+    """POST one chat request straight into the ASGI app, returning its status.
+
+    ``TestClient`` collects the response body before handing it back, so it cannot
+    show whether a stream kept moving while other work was in flight. Calling the
+    app directly reports every body message as the app produces it.
+    """
+
+    body = json.dumps(payload).encode()
+    sent = {"request": False}
+
+    async def receive() -> dict[str, Any]:
+        if not sent["request"]:
+            sent["request"] = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        await asyncio.sleep(0.01)
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    status = {"code": 0}
+
+    async def send(message: Mapping[str, Any]) -> None:
+        if message["type"] == "http.response.start":
+            status["code"] = int(message["status"])
+        elif on_body is not None:
+            on_body(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/v1/chat/completions",
+        "raw_path": b"/v1/chat/completions",
+        "query_string": b"",
+        "headers": [
+            (b"host", b"testserver"),
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(body)).encode()),
+        ],
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 80),
+    }
+    await app(scope, receive, send)
+    return status["code"]
+
+
 class BackendDeadlineFakeLLM(FakeLLM):
     def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
         prompts = tuple(prompts)
@@ -13611,6 +13705,96 @@ def test_backend_deadline_finish_detail_maps_to_chat_408() -> None:
     error = response.json()["error"]
     assert error["code"] == "deadline_exceeded"
     assert error["finish_details"] == {"reason": "deadline_exceeded", "deadline_exceeded": True}
+
+
+def test_blocked_engine_command_does_not_stall_an_in_flight_stream() -> None:
+    """An engine command wait belongs to its request, not to the event loop.
+
+    The server tokenizes prompts through the resident engine service, whose
+    commands wait on a single driver thread. Running that wait on the event loop
+    thread stops the server from flushing anything else: an in-flight SSE stream
+    pauses and then delivers its remaining tokens in one burst after the wait, and
+    health checks, metrics, and cancellation queue behind it too. The wait must run
+    on a worker thread, so the stream keeps moving and the engine call never runs
+    on the loop thread.
+    """
+
+    fake = BlockingPrepareFakeLLM(stream_delay_s=0.05)
+    app = create_app(
+        ServerConfig(model="/models/fake", served_model_name="fake-model"),
+        llm=fake,
+    )
+
+    async def run() -> list[int]:
+        loop_thread = threading.get_ident()
+        started = time.monotonic()
+        body_times: list[float] = []
+
+        def record(message: Mapping[str, Any]) -> None:
+            if message["type"] == "http.response.body" and message.get("body"):
+                body_times.append(time.monotonic() - started)
+
+        stream_task = asyncio.create_task(
+            _asgi_chat_post(
+                app,
+                {
+                    "model": "fake-model",
+                    "messages": [{"role": "user", "content": "stream please"}],
+                    "max_tokens": 100000,
+                    "stream": True,
+                },
+                on_body=record,
+            )
+        )
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and not body_times:
+            await asyncio.sleep(0.01)
+        assert body_times, "the streaming request never delivered a body message"
+
+        # A blocked event loop cannot report on itself, so the block is observed
+        # from a thread. The watchdog always releases the fake, which keeps a
+        # stalled loop a failed assertion instead of a hung test.
+        progress_during_block: list[int] = []
+
+        def watchdog() -> None:
+            baseline = len(body_times)
+            deadline = time.monotonic() + 3.0
+            while time.monotonic() < deadline:
+                if len(body_times) > baseline:
+                    progress_during_block.append(len(body_times) - baseline)
+                    break
+                time.sleep(0.01)
+            fake.tokenize_release.set()
+            fake.stream_stop.set()
+
+        slow_task = asyncio.create_task(
+            _asgi_chat_post(
+                app,
+                {
+                    "model": "fake-model",
+                    "messages": [{"role": "user", "content": "SLOW-PREP prompt"}],
+                    "max_tokens": 4,
+                },
+            )
+        )
+        watcher = threading.Thread(target=watchdog, daemon=True)
+        watcher.start()
+        assert await asyncio.to_thread(fake.tokenize_entered.wait, 20.0)
+        # Joining from the loop would block the very stream this test measures.
+        await asyncio.to_thread(watcher.join, 15.0)
+
+        assert progress_during_block, (
+            "the in-flight stream stalled while another request's engine command was "
+            "blocked on the event loop thread"
+        )
+        assert await slow_task == 200
+        await asyncio.wait_for(stream_task, timeout=10.0)
+        # The engine wait itself must never have run on the event loop thread.
+        assert fake.tokenize_threads
+        assert loop_thread not in fake.tokenize_threads
+        return progress_during_block
+
+    assert asyncio.run(run())
 
 
 def test_streaming_completion_timeout_emits_error_and_done() -> None:
