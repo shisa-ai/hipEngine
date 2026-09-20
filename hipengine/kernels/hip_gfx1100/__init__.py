@@ -177,7 +177,14 @@ GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 24
 # The 35B-A3B c1 floor includes >10% margin over its clean p4096 break-even at
 # 143 transitions; packed-width floors retain their independent margins. The
 # dense 27B private-c1 row is separately qualified at the measured 128-token
-# campaign horizon; wider speculative rows remain HIP graph until measured.
+# campaign horizon; wider speculative rows are absent on purpose, not for lack
+# of measurement. Packed c2/c4/c8 was measured on a W7900 at
+# benchmarks/results/2026-08-08-gfx1100-pm4-packed-c2-c4-c8-blocked.json: PM4
+# lost the replay wall at every width (+12.55%/+9.20%/+5.69%) with 0/5 paired
+# wins, while c1 won 5/5 at -7.10%, which is why only the c1 row exists here.
+# The cause is a near-constant 1.77-1.86 ms packed-tape submission/dependency
+# penalty rather than model arithmetic scaling, so it does not vary with
+# geometry and a dense-only re-measurement is not expected to reverse it.
 GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
     (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M"): {
         "transport": "pm4",
