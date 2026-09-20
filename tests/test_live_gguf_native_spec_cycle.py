@@ -80,7 +80,7 @@ def test_capacity_policy_preserves_unrelated_quant_state_and_model_routes():
     assert resolve() == 95
     session.runner.fp16_recurrent_state = False
     session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
-    assert resolve() == 95
+    assert resolve() == 65536
     session.kv_storage_dtype = DType.BF16
     session.runner.weights.file_type_name = "MOSTLY_Q4_K_S"
     assert resolve() == 95

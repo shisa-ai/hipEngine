@@ -6599,8 +6599,12 @@ class Qwen35GGUFFullStackRunner:
         if rows <= 1 or len(decode_row_scratches) != rows:
             return None
         first = decode_row_scratches[0]
-        first_decode = getattr(first, "decode_spans", None)
-        first_append = getattr(first, "append_spans", None)
+        def layer_spans(owner, name):
+            getter = getattr(owner, f"{name}_for_layer", None)
+            return getter(layer_id) if callable(getter) else getattr(owner, name, None)
+
+        first_decode = layer_spans(first, "decode_spans")
+        first_append = layer_spans(first, "append_spans")
         if not isinstance(first_decode, KVLiveSpans) or not isinstance(
             first_append,
             KVLiveSpans,
@@ -6611,8 +6615,11 @@ class Qwen35GGUFFullStackRunner:
         first_position = first_decode.row_positions
         if (
             first_decode.spans_mode != "uniform"
-            or first_decode.storage_dtype != DType.BF16
-            or first_decode.scale_metadata is not None
+            or first_decode.storage_dtype not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}
+            or (
+                first_decode.scale_metadata is not None
+                and first_decode.scale_metadata.granularity != "per_token_head"
+            )
             or first_decode.span_role != "verify_chain"
             or first_append.span_role != "verify_chain"
             or first_position is None
@@ -6630,8 +6637,8 @@ class Qwen35GGUFFullStackRunner:
         except (AttributeError, ValueError):
             return None
         for row, row_scratch in enumerate(decode_row_scratches):
-            decode_spans = getattr(row_scratch, "decode_spans", None)
-            append_spans = getattr(row_scratch, "append_spans", None)
+            decode_spans = layer_spans(row_scratch, "decode_spans")
+            append_spans = layer_spans(row_scratch, "append_spans")
             if not isinstance(decode_spans, KVLiveSpans) or not isinstance(
                 append_spans,
                 KVLiveSpans,
@@ -6643,12 +6650,12 @@ class Qwen35GGUFFullStackRunner:
             except (AttributeError, ValueError):
                 return None
             if (
-                getattr(row_scratch, "kv_storage_dtype", None) != DType.BF16
-                or int(row_scratch.block_size) != int(first.block_size)
+                int(row_scratch.block_size) != int(first.block_size)
                 or decode_spans.spans_mode != "uniform"
-                or decode_spans.storage_dtype != DType.BF16
-                or decode_spans.scale_metadata is not None
-                or append_spans.scale_metadata is not None
+                or decode_spans.storage_dtype != first_decode.storage_dtype
+                or append_spans.storage_dtype != first_decode.storage_dtype
+                or decode_spans.scale_metadata != first_decode.scale_metadata
+                or append_spans.scale_metadata != first_decode.scale_metadata
                 or decode_spans.span_role != "verify_chain"
                 or append_spans.span_role != "verify_chain"
                 or decode_spans.base_offsets.ptr != table.ptr
@@ -6686,12 +6693,48 @@ class Qwen35GGUFFullStackRunner:
                 block_table=table,
                 live_counts=live_counts,
                 max_live_count=int(attention_context_limit),
-                storage_dtype=DType.BF16,
+                storage_dtype=first_decode.storage_dtype,
+                scale_metadata=first_decode.scale_metadata,
                 row_positions=row_positions,
                 span_role="verify_chain",
             ),
             key_cache,
             value_cache,
+        )
+
+    def _full_attn_int8_verify_fn(
+        self, layer_id, decode_row_scratches, *, rows, attention_context_limit,
+    ):
+        if (
+            not decode_row_scratches
+            or self.weights is None
+            or getattr(decode_row_scratches[0], "kv_storage_dtype", None) != DType.INT8_PER_TOKEN_HEAD
+        ):
+            return None
+        cfg = self.weights.config
+        if (
+            (cfg.head_count, cfg.head_count_kv) not in {(16, 2), (24, 4)}
+            or cfg.key_length != 256
+            or any(
+                getattr(row, "kv_storage_dtype", None) != DType.INT8_PER_TOKEN_HEAD
+                or int(row.block_size) != 256
+                or bool(getattr(row, "int8_kv_value_bf16", False))
+                or row.full_bf16_mirror_cache(layer_id) is not None
+                for row in decode_row_scratches
+            )
+        ):
+            return None
+        shared = self._full_attn_shared_batch_spans(
+            layer_id, decode_row_scratches, rows=rows,
+            attention_context_limit=attention_context_limit,
+        )
+        if shared is None or shared[0].storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+            return None
+        return resolve(
+            backend=self.backend, layer="paged_attn_decode",
+            quant=DType.INT8_PER_TOKEN_HEAD.value,
+            variant="per_token_head_gqa_splitk_gate_bf16_verify_chain_spans",
+            missing="none",
         )
 
     def _run_full_attention_attn_chain_rows_exact(
@@ -6732,14 +6775,18 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("start_position must be non-negative")
         if attention_context_limit < start_position + rows:
             raise ValueError("full-attention context limit must cover every verifier row")
+        int8_fn = self._full_attn_int8_verify_fn(
+            layer_id, decode_row_scratches, rows=rows,
+            attention_context_limit=attention_context_limit,
+        )
         for row, row_scratch in enumerate(decode_row_scratches):
-            if getattr(row_scratch, "kv_storage_dtype", None) != DType.BF16:
+            if int8_fn is None and getattr(row_scratch, "kv_storage_dtype", None) != DType.BF16:
                 raise ValueError("staged full-attention chain requires BF16 KV")
             if int(row_scratch.position_host[0]) != start_position + row:
                 raise ValueError("staged full-attention row view has unexpected position")
             if attention_context_limit > int(row_scratch.max_positions):
                 raise ValueError("full-attention context limit exceeds resident capacity")
-            if row_scratch.append_spans.scale_metadata is not None:
+            if int8_fn is None and row_scratch.append_spans.scale_metadata is not None:
                 raise ValueError("staged full-attention chain does not support scaled KV")
 
         layer = self.weights.layer(layer_id)
@@ -6751,7 +6798,7 @@ class Qwen35GGUFFullStackRunner:
         row_split_leaves = []
         for row_scratch in decode_row_scratches:
             row_split_leaves.append(
-                _staged_full_attention_row_leaf(
+                None if int8_fn is not None else _staged_full_attention_row_leaf(
                     cfg,
                     backend=self.backend,
                     scratch=scratch,
@@ -6760,13 +6807,15 @@ class Qwen35GGUFFullStackRunner:
                 )
             )
         split_rows = tuple(leaf is not None for leaf in row_split_leaves)
-        if any(split_rows):
+        if int8_fn is not None:
+            _ensure_full_attn_split_rows(scratch, rows, runtime=runtime)
+        elif any(split_rows):
             _ensure_full_attn_split_rows(scratch, rows, runtime=runtime)
         for row_scratch, row_split_leaf in zip(
             decode_row_scratches, row_split_leaves, strict=True
         ):
             position = int(row_scratch.position_host[0])
-            if row_split_leaf is not None:
+            if int8_fn is not None or row_split_leaf is not None:
                 continue
             if not _use_gguf_full_attention_split_decode(position + 1):
                 continue
@@ -6929,10 +6978,46 @@ class Qwen35GGUFFullStackRunner:
                 rows=rows,
                 attention_context_limit=attention_context_limit,
             )
-            if batch_attn_fn is not None
+            if batch_attn_fn is not None or int8_fn is not None
             else None
         )
-        if shared_batch is not None and not any(split_rows):
+        if int8_fn is not None:
+            assert shared_batch is not None
+            batch_spans, key_cache, value_cache = shared_batch
+            metadata = batch_spans.scale_metadata
+            assert metadata is not None
+            bf16_to_f32(
+                scratch.full_v.ptr, scratch.full_key_raw.ptr, rows * self.kv_width,
+                stream=stream, library=cast_library, runtime=runtime,
+            )
+            # Quantize each appended row before attention; causal live counts
+            # hide the suffix from all earlier verifier rows.
+            write_fn = _gguf_int8_kv_append_write_fn(metadata)
+            for row, row_scratch in enumerate(decode_row_scratches):
+                write_fn(
+                    scratch.full_key.ptr + row * key_row_nbytes,
+                    scratch.full_key_raw.ptr + row * key_row_nbytes,
+                    key_cache.ptr, value_cache.ptr,
+                    metadata.k_scale.ptr, metadata.v_scale.ptr,
+                    row_scratch.append_spans_for_layer(layer_id),
+                    row_scratch.block_size, cfg.head_count_kv, cfg.key_length,
+                    stream=stream, library=kv_write_library, runtime=runtime,
+                )
+            block_size = int(decode_row_scratches[0].block_size)
+            num_splits = (attention_context_limit + block_size - 1) // block_size
+            int8_fn(
+                scratch.full_query.ptr, key_cache.ptr, value_cache.ptr,
+                metadata.k_scale.ptr, metadata.v_scale.ptr,
+                scratch.full_gate.ptr, scratch.full_gated.ptr,
+                scratch.full_attn_split_partial.ptr, scratch.full_attn_split_m.ptr,
+                scratch.full_attn_split_l.ptr, batch_spans,
+                rows, block_size, num_splits, block_size,
+                cfg.head_count, cfg.head_count_kv, cfg.key_length,
+                self.q_width, self.q_width, cfg.key_length, 1,
+                self.q_width, cfg.key_length, 1, cfg.key_length ** -0.5,
+                stream=stream, library=paged_attn_library, runtime=runtime,
+            )
+        elif shared_batch is not None and not any(split_rows):
             for (
                 row_scratch,
                 _query_ptr,
@@ -7892,15 +7977,23 @@ class Qwen35GGUFFullStackRunner:
             and decode_row_scratches is not None
             and attention_context_limit is not None
             and 0 < int(attention_context_limit)
-            and all(
-                getattr(row_scratch, "kv_storage_dtype", DType.BF16) == DType.BF16
-                for row_scratch in decode_row_scratches
-            )
-            and _staged_full_attention_rows_ready(
-                self.weights.config,
-                backend=self.backend,
-                scratch=scratch,
-                decode_row_scratches=decode_row_scratches,
+            and (
+                self._full_attn_int8_verify_fn(
+                    layer_id, decode_row_scratches, rows=rows,
+                    attention_context_limit=attention_context_limit,
+                ) is not None
+                or (
+                    all(
+                        getattr(row_scratch, "kv_storage_dtype", DType.BF16) == DType.BF16
+                        for row_scratch in decode_row_scratches
+                    )
+                    and _staged_full_attention_rows_ready(
+                        self.weights.config,
+                        backend=self.backend,
+                        scratch=scratch,
+                        decode_row_scratches=decode_row_scratches,
+                    )
+                )
             )
         )
         if staged_dense_linear:
@@ -21849,7 +21942,10 @@ class Qwen35GGUFResidentSession:
         context_limit = int(span_end)
         if context_limit <= int(start_position):
             return None, None
-        if not _use_gguf_full_attention_split_decode(context_limit):
+        if (
+            self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD
+            and not _use_gguf_full_attention_split_decode(context_limit)
+        ):
             # Short context already batches rows through the shared-cache owner,
             # which needs no per-row views.
             return None, None
