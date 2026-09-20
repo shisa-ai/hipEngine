@@ -1,3 +1,7 @@
+---
+status: current
+owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code to remove after optimal paths are proven.
+---
 # hipEngine Refactor / Dead-Path Ledger
 
 ## Dense27B prefix oracle disagreement after prefix/MTP integration (2026-09-20) — RESOLVED
@@ -51,14 +55,22 @@ top-1, but mean/p99/max KL of 0.00678/0.12955/0.67657 exceed the calibrated
 limits. State-byte differences alone do not establish an ownership defect;
 localize candidate/reference route differences before classifying the cause.
 
-HTTP default-on is blocked by these numerical results and missing INT8/fp32
-prefix-reuse qualification. Keep HTTP `--prefix-cache off` as the default,
-with explicit radix opt-in. Remove this exception only after the full
-category/heldout production gate, active/completed ownership checks, and
-HTTP-default INT8 scale-plane/suffix/reclaim/pressure checks pass. Do not
-weaken the envelope or add prompt-conditioned routing.
+The HTTP surface defaults to radix as of 2026-09-20 (owner decision; the
+numerical work below is assigned and in progress). `hipengine serve
+--prefix-cache off` or `HIPENGINE_PREFIX_CACHE=off` remains the rollback, and
+the per-request path fails closed rather than erroring, so an unqualified row
+prefills privately instead of failing: the reason is recorded on the request
+row as `prefix_fallback_reason` (`sampling_unsupported`, `prompt_too_short`,
+`miss`, `state_source_unavailable`) and aggregated into the agentic
+benchmark's `fallback_turns`. The server itself exposes only bounded
+snapshot/page/byte ownership through `/ready`, so a reuse or a fallback is not
+visible per request there. Close out this entry once the full category/heldout
+production gate, active/completed ownership checks, and HTTP-default INT8
+scale-plane/suffix/reclaim/pressure checks pass. Do not weaken the envelope or
+add prompt-conditioned routing.
 Evidence: `benchmarks/results/2026-09-20-w7900-gfx1100-prefix-gate-bf16.json`
 and `benchmarks/results/2026-09-20-w7900-prefix-completed-code-control.json`.
+Decision: `worklog/entries/20260920T155434.502352Z-lhl-served-lane-boundaries-bc9b95.md`.
 
 ## The packed workspace lease still reserves one full session context per slot (found 2026-09-18)
 
@@ -715,10 +727,10 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   a registered row already covers, it must say which row wins rather than rely
   on declaration order.
 - Campaign documents written before 2026-09-17 (`docs/CONCURRENCY2-*.md`,
-  `docs/QWEN36-27B-GGUF-CAMPAIGN.md`, `docs/MTP-*.md`) describe the admission
+  `docs/campaigns/QWEN36-27B-GGUF-CAMPAIGN.md`, `docs/MTP-*.md`) describe the admission
   scope in shape/horizon/manifest terms. They are historical records and were
   left intact; only `docs/API.md`, `docs/EXECUTION-PROFILES.md`, and
-  `docs/COMPARISON-vs-atlas.md` state the current contract.
+  `docs/archive/COMPARISON-vs-atlas.md` state the current contract.
 
 ## VibeVoice ASR prefill and legacy dense attention
 
@@ -768,7 +780,7 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   whenever it is done; it must not change any `RuntimeProfileKey`, any
   `VariantSelection`, or any binder env name, and it must not split the key per
   model name.
-- See `docs/20260909-GFX1151-GFX1100-TRANSFER-AUDIT.md` section K for the
+- See `docs/archive/20260909-GFX1151-GFX1100-TRANSFER-AUDIT.md` section K for the
   identity ruling and for the gfx1100-versus-gfx1151 plan A/B that decides which
   composition each backend keeps.
 
@@ -1844,7 +1856,7 @@ these quants than the shared DS4 plane, which would likely recover the mean.
   llm-free operation must keep using only pure modules
   (`hipengine.loading.qwen35_gguf_policy`, `hipengine.execution_profiles`).
 - Analysis and the wider campaign this sits inside:
-  [`UD-QUANTS.md`](UD-QUANTS.md), sections 2, 7.3 and U0/U1.
+  [`UD-QUANTS.md`](campaigns/UD-QUANTS.md), sections 2, 7.3 and U0/U1.
 
 ## 2026-09-07 W7900 packed C1 target qualification — open
 
@@ -2249,7 +2261,7 @@ fallback count is not a success metric.
 
 ## SPECDEC2 whole-request compatibility seam
 
-- Added 2026-08-24 for the approved [`SPECDEC2.md`](SPECDEC2.md) campaign.
+- Added 2026-08-24 for the approved [`SPECDEC2.md`](reference/SPECDEC2.md) campaign.
   During S1-S4 the new Generation-2 one-cycle provider/target path coexists with
   the synchronous `SubmitPollTextGenerator.submit_speculative_many_detailed()`
   route, which currently finishes complete model-owned generation under the
@@ -2723,7 +2735,7 @@ fallback count is not a success metric.
   ownership drains cleanly. The route deliberately reports physical width 1
   and makes no throughput claim.
 - Removal trigger remains the approved
-  [`IKV-C2`-`IKV-C7` campaign](QWEN38-INT8-KV-CONTINUOUS.md): replace the serial
+  [`IKV-C2`-`IKV-C7` campaign](campaigns/QWEN38-INT8-KV-CONTINUOUS.md): replace the serial
   route with row-batched direct INT8 attention, complete prefill and admission
   ownership, and rerun the artifact-scoped c1/c2/c4/c8 matrices. Remove the
   mirrored short route when the replacement is exact, memory-positive,
@@ -4299,7 +4311,7 @@ shorter-horizon audit establishes a lower break-even.
 | MTP verifier rejected gate | `HIPENGINE_SELECTED_MOE_STAGED_ROTATE` opt-in for M13.B.3 staged selected gate/up rotate+GEMV. | Default-off; staged/keyed gate-up path is exact but later W7900 verifier-window measurement regressed kernel time (`15.344 -> 15.611 ms/pass`) despite launch-count reduction. | Remove or demote to kernel test-only unless a no-spin/no-barrier-reset design beats the unfused chain on the current D32 prompt suite. |
 | MTP verifier rejected gate | `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE` opt-in for M13.B.2 shared-expert rotate+dual GEMV. | Default-off; exact, but the saved rotate launch was replaced by a barrier reset in the original path and the keyed-barrier follow-up was neutral (`15.350 -> 15.365 ms/pass`). | Remove or demote to kernel test-only unless a future full-layer C-dispatch path can reuse it without adding per-launch synchronization overhead. |
 | MTP verifier rejected gate | `HIPENGINE_FUSED_RMSNORM_ROTATE` opt-in for M15.4 fused input RMSNorm + PARO rotate2. | Default-off; current-stack retest on 2026-06-11 stayed exact but regressed verifier kernel `13.41 -> 14.09 ms/pass` and host window `18.45 -> 19.05 ms/pass`. | After the MTP break-even path is stable, remove the runtime gate or demote it to a kernel test-only path unless a new implementation avoids the one-block RMSNorm occupancy trap. |
-| MTP verifier docs | Older "default-off diagnostic" notes for P1 gates can become stale as promoted defaults land. | `docs/MTP.md`, `benchmarks/README.md`, and `WORKLOG.md` carry historical rows plus current status. | During each MTP sprint commit, update current-status language and leave old measurements only as dated history. |
+| MTP verifier docs | Older "default-off diagnostic" notes for P1 gates can become stale as promoted defaults land. | `docs/reference/MTP.md`, `benchmarks/README.md`, and `WORKLOG.md` carry historical rows plus current status. | During each MTP sprint commit, update current-status language and leave old measurements only as dated history. |
 | GGUF decode graph replay | Session-bound graphs retain a full key and cumulative transition budget; callers can still explicitly capture diagnostic windows outside the production selector. | SOL-G5 resolves the old uncapped debt: the context cap is inferred from `position + max_replay_steps` or validated when explicit; the key covers backend/model/weights/buffers/KV/layers/route/sampler/recording/state generation; replay rejects cursor drift or budget overflow. Current gfx1151 HIP passes 128/128 byte-exact checkpoints. | Keep the strict cap/key checks permanently. Remove only redundant legacy graph arguments after the MTP diagnostic modes are retired and all callers use the state-bound API. |
 | GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --no-target-graph-verify` eager target-verification opt-out. | Default path now uses capped resident decode-graph target verification with fp32 hidden-seed capture; the eager opt-out is useful for bisection and correctness/perf comparison but is >2x slower on the B1 full suite. | Remove or move to a dedicated debug harness once the capped target graph has survived the next MTP break-even sprint and a multi-token GGUF graph correctness gate is part of the regular validation bundle. |
 | GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --no-mtp-draft-warmup` cold-start diagnostic opt-out. | Default path now runs one stateless untimed draft warmup so MTP timing matches the true-AR warmup protocol; the cold-start opt-out is useful only for measuring wrapper/library/weight-cache first-use cost. | Remove or move to a dedicated cold-start harness once the MTP draft runtime has persistent device buffers and per-process cold-start cost is documented separately from steady-state tok/s. |
@@ -4383,7 +4395,7 @@ should be boring.
   0.90). Does NOT match llama HIP MTP (67.3) — dp4a is necessary but not sufficient.
 - Remove when: either a Vulkan backend supersedes the perf goal, or the project
   decides to drop dp4a experimentation entirely. Until then it is the documented
-  opt-in for the dp4a/accuracy tradeoff. See docs/MTP-LLAMACPP-PARITY.md "COFFIN NAIL".
+  opt-in for the dp4a/accuracy tradeoff. See docs/campaigns/MTP-LLAMACPP-PARITY.md "COFFIN NAIL".
 
 ## `--llama-compat` / `llama-compat*` routes (default OFF, semantic diagnostic)
 - Added 2026-06-30. Bench flag `--llama-compat` forces the closest hipEngine
@@ -4779,7 +4791,7 @@ should be boring.
   route mirrors `resident-b1-probe-block-direct-cap32k-minrows2-pmin05` plus this
   flag. **Default off** until a full-suite row proves it improves wall time.
 - Purpose: test the first queued llama.cpp-parity fix from
-  `docs/MTP-LLAMACPP-PARITY.md`: remove or shrink `target_serial_verify_step`
+  `docs/campaigns/MTP-LLAMACPP-PARITY.md`: remove or shrink `target_serial_verify_step`
   without merely shifting the same cost into `target_block_verify_total`.
 - Remove / promote when: promote into the retained route only if exact full-suite
   B5 beats the current default and stage buckets show serial verifier cost falls
@@ -7631,7 +7643,7 @@ runtime level instead (2.5: fp32 unfused path; 3.0: fp32 routes through the
 separate var-q/k normalization chain). Register both families under the
 four-axis registry with their strict fallback chains when a second consumer
 of the kernels appears; until then the runtime-level fallback is the
-contract of record (see docs/MODEL-TIMESFM3.md).
+contract of record (see docs/model-cards/MODEL-TIMESFM3.md).
 
 ## 2026-09-12 PARO paged-attention backend pin - removal rejected
 
@@ -7826,7 +7838,7 @@ runtime call site to registry resolution, and drop the
   the category heldouts are not.
 - Population trigger: flip the affected `Qwen35GGUFUDMTPCertificationItem`
   entries to `qualified=True` with their passing evidence **and** clear the
-  remaining `docs/UD-QUANTS.md` U6 checklist items. A record's `blocker` field
+  remaining `docs/campaigns/UD-QUANTS.md` U6 checklist items. A record's `blocker` field
   names exactly what is missing; `is_complete()` is what grants the pin.
 - Do not populate the pin from a single-prompt or single-width result, and do
   not widen `_UD_PRESET_FINGERPRINTS` (the AR table) to grant MTP scope: the
@@ -8019,7 +8031,7 @@ constants, `GGUFIQ4XSTile16`, `repack_gguf_iq4_xs_tile16` and
 `hipengine/quant/gguf_repack.py` and `tests/test_live_gguf_iq4_xs_t16_layout.py`.
 
 **Why it is unused.** It was built as the first half of the "IQ4_XS repack
-into a tile layout" item in `docs/UD-GFX1151-OPTIMIZE.md`, on the assumption
+into a tile layout" item in `docs/campaigns/UD-GFX1151-OPTIMIZE.md`, on the assumption
 that IQ4_XS's lack of a tile layout explained the 1.53x gap to the t16 rowtile
 owners. The T16-layout owner was then built and measured, and it is
 bit-identical to the shipped local32 owner but only 0.79-1.12x on six real
