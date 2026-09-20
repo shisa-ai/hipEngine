@@ -1201,9 +1201,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:36003:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:36050:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
       "title": "runtime branch on HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:36003",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:36050",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -1220,7 +1220,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:36003:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
+          "hipengine/runtime/qwen35_gguf_runner.py:36050:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
         ],
         "tokens": [
           "branch",
@@ -1233,14 +1233,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:36003:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
-      "evidence_hash": "43a08598d31b"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:36050:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "evidence_hash": "8a2128939741"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:3771:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:3772:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
       "title": "runtime branch on HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:3771",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:3772",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -1257,7 +1257,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:3771:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
+          "hipengine/runtime/qwen35_gguf_runner.py:3772:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
         ],
         "tokens": [
           "branch",
@@ -1270,8 +1270,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:3771:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
-      "evidence_hash": "d68ff63b79e2"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:3772:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "evidence_hash": "53dc4c6d675c"
     },
     {
       "kind": "ungoverned-flag-branch",
