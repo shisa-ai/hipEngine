@@ -1,0 +1,287 @@
+{
+ "schema": 1,
+ "kind": "gguf_prefix_pressure_gate",
+ "performance_claim": false,
+ "passed": true,
+ "base_revision": "8466acd66",
+ "base_revision_subject": "fix: keep the reachable prompt boundary in the prefix cache",
+ "hardware": {
+  "host_name": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "cpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+  "gpu": "AMD Radeon 8060S Graphics (STRXLGEN)",
+  "target_arch": "gfx1151",
+  "rocm_hip_version": "7.15.26333-0000000",
+  "unified_memory_bytes": 128849018880
+ },
+ "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+ "quant": "gguf_q4_k_m",
+ "kv_storage": "bf16",
+ "scope": "Served-surface prefix reuse under retained-budget eviction pressure, with speculative MTP on and off, against the same conversations re-prefilled from scratch. Correctness gate, not a throughput claim: the TTFT columns are context for the reuse depths.",
+ "protocol": {
+  "driver": "scripts/prefix_pressure_gate.py",
+  "server_command": "hipengine serve --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --host 127.0.0.1 --port 8000",
+  "route": "POST /v1/chat/completions, stream=true, temperature=0.0",
+  "conversations": 6,
+  "reply_tokens": 16,
+  "prompt_tokens_observed": [
+   921
+  ],
+  "retained_snapshot_limit": 4,
+  "pressure": "6 conversations against a 4-entry retained budget: the two oldest boundaries are evicted before the re-request pass",
+  "parity_basis": "each conversation's re-request must reproduce its cold run's text token for token; the evicted conversations re-prefill the whole prompt, so the same workload runs with and without reuse"
+ },
+ "routes": {
+  "on": {
+   "speculative_mtp": true,
+   "ready_before": {
+    "mode": "radix",
+    "stats": {
+     "live_requests": 0
+    },
+    "usable_hits": 16,
+    "misses": 24,
+    "unusable_hits": 0,
+    "fallback_reasons": {
+     "prompt_too_short": 4,
+     "miss": 24
+    },
+    "reused_tokens": 28160,
+    "retained_snapshot_entries": 4,
+    "retained_snapshot_limit": 4,
+    "retained_snapshot_evictions_by_reason": {
+     "trim_retained": 24
+    },
+    "snapshot_captures": 28
+   },
+   "ready_after_cold": {
+    "mode": "radix",
+    "stats": {
+     "live_requests": 0
+    },
+    "usable_hits": 16,
+    "misses": 30,
+    "unusable_hits": 0,
+    "fallback_reasons": {
+     "prompt_too_short": 4,
+     "miss": 30
+    },
+    "reused_tokens": 28160,
+    "retained_snapshot_entries": 4,
+    "retained_snapshot_limit": 4,
+    "retained_snapshot_evictions_by_reason": {
+     "trim_retained": 30
+    },
+    "snapshot_captures": 34
+   },
+   "ready_after_warm": {
+    "mode": "radix",
+    "stats": {
+     "live_requests": 0
+    },
+    "usable_hits": 20,
+    "misses": 32,
+    "unusable_hits": 0,
+    "fallback_reasons": {
+     "prompt_too_short": 4,
+     "miss": 32
+    },
+    "reused_tokens": 31232,
+    "retained_snapshot_entries": 4,
+    "retained_snapshot_limit": 4,
+    "retained_snapshot_evictions_by_reason": {
+     "trim_retained": 32
+    },
+    "snapshot_captures": 36
+   },
+   "rows": [
+    {
+     "conversation": 0,
+     "treatment": "evicted",
+     "prompt_tokens": 921,
+     "expected_reuse_tokens": 768,
+     "cached_tokens": 0,
+     "cold_ttft_s": 4.495816248003393,
+     "warm_ttft_s": 4.7587932287715375,
+     "text_parity": true
+    },
+    {
+     "conversation": 1,
+     "treatment": "evicted",
+     "prompt_tokens": 921,
+     "expected_reuse_tokens": 768,
+     "cached_tokens": 0,
+     "cold_ttft_s": 4.745770932175219,
+     "warm_ttft_s": 4.78906722785905,
+     "text_parity": true
+    },
+    {
+     "conversation": 2,
+     "treatment": "warm",
+     "prompt_tokens": 921,
+     "expected_reuse_tokens": 768,
+     "cached_tokens": 768,
+     "cold_ttft_s": 4.757753486279398,
+     "warm_ttft_s": 1.5082640410400927,
+     "text_parity": true
+    },
+    {
+     "conversation": 3,
+     "treatment": "warm",
+     "prompt_tokens": 921,
+     "expected_reuse_tokens": 768,
+     "cached_tokens": 768,
+     "cold_ttft_s": 4.762968056369573,
+     "warm_ttft_s": 1.5031492300331593,
+     "text_parity": true
+    },
+    {
+     "conversation": 4,
+     "treatment": "warm",
+     "prompt_tokens": 921,
+     "expected_reuse_tokens": 768,
+     "cached_tokens": 768,
+     "cold_ttft_s": 4.778560075908899,
+     "warm_ttft_s": 1.5402125110849738,
+     "text_parity": true
+    },
+    {
+     "conversation": 5,
+     "treatment": "warm",
+     "prompt_tokens": 921,
+     "expected_reuse_tokens": 768,
+     "cached_tokens": 768,
+     "cold_ttft_s": 4.7699493248946965,
+     "warm_ttft_s": 1.610067234840244,
+     "text_parity": true
+    }
+   ]
+  },
+  "off": {
+   "speculative_mtp": false,
+   "ready_before": {
+    "mode": "radix",
+    "stats": {
+     "live_requests": 0
+    },
+    "usable_hits": 20,
+    "misses": 32,
+    "unusable_hits": 0,
+    "fallback_reasons": {
+     "prompt_too_short": 4,
+     "miss": 32
+    },
+    "reused_tokens": 31232,
+    "retained_snapshot_entries": 4,
+    "retained_snapshot_limit": 4,
+    "retained_snapshot_evictions_by_reason": {
+     "trim_retained": 32
+    },
+    "snapshot_captures": 36
+   },
+   "ready_after_cold": {
+    "mode": "radix",
+    "stats": {
+     "live_requests": 0
+    },
+    "usable_hits": 20,
+    "misses": 38,
+    "unusable_hits": 0,
+    "fallback_reasons": {
+     "prompt_too_short": 4,
+     "miss": 38
+    },
+    "reused_tokens": 31232,
+    "retained_snapshot_entries": 4,
+    "retained_snapshot_limit": 4,
+    "retained_snapshot_evictions_by_reason": {
+     "trim_retained": 38
+    },
+    "snapshot_captures": 42
+   },
+   "ready_after_warm": {
+    "mode": "radix",
+    "stats": {
+     "live_requests": 0
+    },
+    "usable_hits": 24,
+    "misses": 40,
+    "unusable_hits": 0,
+    "fallback_reasons": {
+     "prompt_too_short": 4,
+     "miss": 40
+    },
+    "reused_tokens": 34304,
+    "retained_snapshot_entries": 4,
+    "retained_snapshot_limit": 4,
+    "retained_snapshot_evictions_by_reason": {
+     "trim_retained": 40
+    },
+    "snapshot_captures": 44
+   },
+   "rows": [
+    {
+     "conversation": 0,
+     "treatment": "evicted",
+     "prompt_tokens": 921,
+     "expected_reuse_tokens": 768,
+     "cached_tokens": 0,
+     "cold_ttft_s": 4.211250597145408,
+     "warm_ttft_s": 4.189928527921438,
+     "text_parity": true
+    },
+    {
+     "conversation": 1,
+     "treatment": "evicted",
+     "prompt_tokens": 921,
+     "expected_reuse_tokens": 768,
+     "cached_tokens": 0,
+     "cold_ttft_s": 4.4215891868807375,
+     "warm_ttft_s": 4.201078918762505,
+     "text_parity": true
+    },
+    {
+     "conversation": 2,
+     "treatment": "warm",
+     "prompt_tokens": 921,
+     "expected_reuse_tokens": 768,
+     "cached_tokens": 768,
+     "cold_ttft_s": 4.199786372017115,
+     "warm_ttft_s": 1.2065847730264068,
+     "text_parity": true
+    },
+    {
+     "conversation": 3,
+     "treatment": "warm",
+     "prompt_tokens": 921,
+     "expected_reuse_tokens": 768,
+     "cached_tokens": 768,
+     "cold_ttft_s": 4.199566199909896,
+     "warm_ttft_s": 1.2221694169566035,
+     "text_parity": true
+    },
+    {
+     "conversation": 4,
+     "treatment": "warm",
+     "prompt_tokens": 921,
+     "expected_reuse_tokens": 768,
+     "cached_tokens": 768,
+     "cold_ttft_s": 4.215606191195548,
+     "warm_ttft_s": 1.223392611835152,
+     "text_parity": true
+    },
+    {
+     "conversation": 5,
+     "treatment": "warm",
+     "prompt_tokens": 921,
+     "expected_reuse_tokens": 768,
+     "cached_tokens": 768,
+     "cold_ttft_s": 4.382000834215432,
+     "warm_ttft_s": 1.2310883570462465,
+     "text_parity": true
+    }
+   ]
+  }
+ },
+ "failures": []
+}
