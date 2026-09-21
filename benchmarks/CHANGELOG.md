@@ -1,13 +1,16 @@
 # hipEngine Benchmark Changelog
 
-- **2026-09-22 UTC**: A 32-row M tile for the routed-MoE main kernels cuts
-  expert-weight reads by 1.67-1.82x (857 -> 512 tiles at 20 rows/expert) and is
-  **4.8-8.1x slower**: gate/up **14.80 -> 71.94 ms** and down **8.93 -> 51.71
-  ms** at 10240 rows. The per-lane fp32 risk state doubles from 48 to 96
-  registers, so the kernel hits the 256-VGPR ceiling and spills 492 B per thread
-  inside the K loop (VGPR 192 -> 256, scratch 0 -> 492 B). The 16-row tile stays
-  the production geometry; the bit-identical 32-row variants are registered but
-  unused, with an 8-warp redesign recorded as the only viable follow-up.
+- **2026-09-22 UTC**: A 32-row M tile for the routed-MoE main kernels is
+  **rejected**: it cuts the modeled expert-weight reads 1.67-1.82x (857 -> 512
+  tiles at 20 rows/expert) but real DRAM read traffic falls only **6.3%**
+  (measured `GCEA_RDRAM_SIZE_REQ_sum` 0.937x against a modeled 0.548x), and the
+  kernels run **1.3-2.2x slower** (gate/up **14.84 -> 20.25 ms**, down **9.04 ->
+  12.58 ms** at 10240 rows). The two row groups of a tile re-read the same
+  weights from DRAM rather than cache. A first implementation that doubled the
+  per-lane row state spilled 492 B/thread and was 4.8-8.1x slower; the shipped
+  8-warp layout keeps 16 rows per lane and is spill-free (VGPR 208, scratch 0)
+  and bit-identical, but still a net loss. 16-row tile stays production; the
+  variants stay registered for the LDS weight-staging redesign.
   [Artifact](results/2026-09-22-moe-j32-tile/README.md).
 
 - **2026-09-21 UTC**: Prefill chunk size is the largest queued lever. A

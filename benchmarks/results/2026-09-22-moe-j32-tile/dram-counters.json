@@ -1,0 +1,32 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_moe_j32_dram_counters",
+ "date": "2026-09-22",
+ "host": "Framework Radeon 8060S (gfx1151), ROCm therock10-staging-20260828",
+ "command": "/tmp/run-gpu-prof.sh -u scripts/qwen4exp_moe_main_kernel_cost.py --rows 40960 --distribution balanced --tile-rows 16,32 --repetitions 5 --output /tmp/dram-probe.json",
+ "profiler": "rocprofv3 --pmc GCEA_RDRAM_SIZE_REQ_sum -f csv",
+ "question": "Does a 32-row M tile actually halve DRAM weight-read traffic, or do the two row groups' reads miss cache and both go to DRAM?",
+ "per_dispatch_units": {
+  "down_j16_128_threads": 29007000.0,
+  "down_j32_8_warps": 27179000.0
+ },
+ "vgpr": {
+  "down_j16": 192,
+  "down_j32_8_warps": 208
+ },
+ "scratch_bytes": {
+  "down_j16": 0,
+  "down_j32_8_warps": 0
+ },
+ "modeled_weight_bytes_per_dispatch": {
+  "down_j16": 3442000000.0,
+  "down_j32_8_warps": 1887000000.0
+ },
+ "unit_calibration_bytes": 118.7,
+ "unit_note": "The counter unit size cancels in the ratio. Calibrating against the 16-row model (3.442 GB modeled, which that variant realizes) gives 118.7 B/unit, i.e. a 128-byte sector within 8%.",
+ "result": {
+  "real_traffic_ratio_j32_over_j16": 0.937,
+  "modeled_traffic_ratio_j32_over_j16": 0.548,
+  "conclusion": "Real DRAM read traffic falls 6.3%, not 45%: the 32-row tile's second row group re-reads the same weights from DRAM instead of cache, so the tile-height lever does not reduce traffic."
+ }
+}

@@ -776,14 +776,17 @@ Raising the M-tile to 32 rows would cut each launch to one tile per expert, a
 projected 1.7-2.3 s of a 16.67 s prefill. [Packet](results/2026-09-22-moe-main-kernel-cost/README.md)
 · [engine capture](results/2026-09-17-iu8-repair-unroll/role-analysis.json).
 
-That 32-row tile is now measured and **rejected**: it cuts expert-weight reads
-by 1.67-1.82x exactly as projected (857 -> 512 tiles at 20 rows per expert) and
-runs **4.8-8.1x slower** (gate/up 14.80 -> 71.94 ms, down 8.93 -> 51.71 ms at
-10240 rows). Per-lane fp32 risk state doubles from 48 to 96 registers, the
-kernel hits the 256-VGPR ceiling, and it spills 492 B per thread inside the K
-loop. The 16-row tile stays the production geometry; the bit-identical 32-row
-variants are registered but unused, pending an 8-warp block that keeps 16 rows
-per lane. [Packet](results/2026-09-22-moe-j32-tile/README.md).
+That 32-row tile is now measured and **rejected**, and the reason sharpens the
+traffic model: the tile count falls exactly as projected (857 -> 512 at 20 rows
+per expert) but *real* DRAM read traffic falls only **6.3%** (0.937x measured
+against a modeled 0.548x), because a taller tile makes the weight read *shared*
+between its two row groups rather than distinct, and the sharing misses cache.
+The kernels run **1.3-2.2x slower** (gate/up 14.84 -> 20.25 ms, down 9.04 ->
+12.58 ms at 10240 rows). The tile count therefore bounds traffic only for
+distinct reads. Doubling the per-lane fp32 risk state also blew the register
+file (VGPR 192 -> 256, 492 B/thread spilled, 8x slower); the shipped 8-warp
+layout keeps 16 rows per lane, is spill-free and bit-identical, and is still a
+net loss. The 16-row tile stays production. [Packet](results/2026-09-22-moe-j32-tile/README.md).
 
 A `code-p4096` prefill runs four 1024-token chunks, and both dominant families
 pay for that chunking without having to. The dense wide Q8_0 route measures
