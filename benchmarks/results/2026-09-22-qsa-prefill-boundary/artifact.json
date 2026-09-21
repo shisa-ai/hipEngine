@@ -136,5 +136,46 @@
   ],
   "measurement_blocker": "The engine-level A/B that would retain a prefill-level number cannot run: an idle hipengine serve process (pid 4175913) holds 98.6 GB of GTT in /home/lhl/hipEngine-main against a 95.7 GB requirement. Kernel microbenchmarks are unaffected and are the correct instrument here, since a bit-exact restructuring can be qualified by cycle wall plus bit-identity."
  },
- "limits": "All engine milliseconds are kernel time from a profiled capture of one code-p4096 prefill (benchmarks/results/2026-09-17-qwen4exp-shipped-default-attribution/), not wall time, and neither side is a throughput claim. The comparator's 155.7 ms is the same case on the same host but not the same arithmetic (BF16 against F16). The FLOP and traffic figures are computed from the selection rule and the geometry, not measured with hardware counters. No performance claim and no default change results from this packet."
+ "limits": "All engine milliseconds are kernel time from a profiled capture of one code-p4096 prefill (benchmarks/results/2026-09-17-qwen4exp-shipped-default-attribution/), not wall time, and neither side is a throughput claim. The comparator's 155.7 ms is the same case on the same host but not the same arithmetic (BF16 against F16). The FLOP and traffic figures are computed from the selection rule and the geometry, not measured with hardware counters. No performance claim and no default change results from this packet.",
+ "head_tile_measurement": {
+  "script": "scripts/qwen4exp_qsa_head_tile_microbench.py",
+  "why": "The three registered wave-row variants differ only in how many query heads share one selected K/V load, and they are bit-identical (verified: the harness compares all three outputs as uint32 and they match). Timing them on the real geometry therefore prices the K/V amortization axis - the same question a row-tiling or LDS-staging rewrite would answer - without writing one.",
+  "harness_validation": {
+   "measured_per_launch_ms_at_rows_1021": 19.315792713314295,
+   "traced_per_launch_ms": 18.98,
+   "delta_pct": 1.8,
+   "conclusion": "The harness reproduces the shipped kernel's real per-launch cost to within 2%, so its relative comparisons are trustworthy."
+  },
+  "results": {
+   "heads_1_page256": {
+    "heads": 1,
+    "head_group_blocks_per_row": 24,
+    "median_ms_rows_1021": 55.05223385989666,
+    "speedup_vs_heads_4": 0.3508630142506365,
+    "effective_kv_gb_per_s": 934.3634797982484
+   },
+   "heads_2_head_pair": {
+    "heads": 2,
+    "head_group_blocks_per_row": 12,
+    "median_ms_rows_1021": 20.7920060493052,
+    "speedup_vs_heads_4": 0.9290009183101293,
+    "effective_kv_gb_per_s": 1236.9849421460444
+   },
+   "heads_4_head_quad": {
+    "heads": 4,
+    "head_group_blocks_per_row": 6,
+    "median_ms_rows_1021": 19.315792713314295,
+    "speedup_vs_heads_4": 1.0,
+    "effective_kv_gb_per_s": 665.7608823445213
+   }
+  },
+  "small_grid_control": {
+   "rows": 64,
+   "note": "At 64 rows the grid is too small to be representative and the ranking inverts: HEADS=2 is 1.32x faster than HEADS=4 there. This is recorded because it is the trap - the head-tile axis looks profitable only when the launch has too little parallelism.",
+   "heads_2_speedup_vs_heads_4": 1.325,
+   "heads_4_median_ms": 2.079
+  },
+  "conclusion": "The head-tile axis is exhausted. At the real prefill geometry the shipped HEADS=4 setting is the fastest of the three registered variants: HEADS=2 is 7% slower (0.929x) and HEADS=1 is 2.85x slower (0.351x). The kernel is also not simply K/V-traffic-bound at HEADS=4: HEADS=1 carries 4x the K/V traffic and is 2.85x slower, while HEADS=2 carries 2x the traffic and is only 7% slower, and the effective K/V rate at HEADS=4 (666 GB/s) is far above DRAM, so the re-reads are MALL/L2 traffic and the residual cost is the scalar FMA issue rate and occupancy. That leaves the two structural levers already ranked: LDS staging with row tiling, and tensor cores.",
+  "acceptance_note": "This is a measured negative for the cheap parameter lever, not a retained speedup: no existing variant beats the shipped one at the real geometry. The task's retained-speedup branch therefore still requires the structural work."
+ }
 }
