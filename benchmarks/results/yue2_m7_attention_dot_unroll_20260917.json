@@ -1,0 +1,70 @@
+{
+  "date": "2026-09-17",
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD Radeon 8060S (gfx1151, Ryzen AI MAX+ 395, 40 CU, unified LPDDR5X)",
+    "note": "Every figure is gfx1151. No gfx1100 hardware was available."
+  },
+  "kernel": "yue2_nar_attention_kernel (kernels/hip_gfx1100/yue2/nar.hip)",
+  "changes": [
+    "The row loop inside the query/key dot product was rolled, because its bound (`r_valid`, how many of the block's eight rows still have query data) is only known at run time. A rolled loop over an array of per-row accumulators and an array of per-row query pointers forces dynamically indexed registers -- v_movreld/v_movrels pairs -- and the body cost 46 instructions per (row, eight dimensions) against eight multiply-adds and two 16-byte loads. Blocks that own a full row set now take a specialized unrolled path; every block but the last one does.",
+    "Both key walks in the accumulation loop now carry running pointers and a 32-bit trip count instead of indexing the weights by the key and counting in int64. The rolled form spent a shift, an add, a 64-bit carry chain and a scalar-to-vector move per key on addressing, and could not be unrolled enough to hide shared-memory latency behind the arithmetic. Each walk is unrolled four keys deep."
+  ],
+  "instruction_counts_per_lane_tile": {
+    "command": "rocprofv3 --pmc SQ_INSTS_VALU SQ_INSTS_SALU SQ_INSTS_LDS SQ_INSTS_FLAT SQ_INSTS_BRANCH (dispatch 1, 229504 lane-tiles per call)",
+    "baseline": {"VALU": 8035, "SALU": 3079, "LDS": 525, "FLAT": 385, "BRANCH": 558, "total": 12581},
+    "after_row_specialization_and_walks": {"VALU": 5147, "SALU": 1692, "LDS": 525, "FLAT": 139, "BRANCH": 314, "total": 7816},
+    "delta": {"VALU": -0.360, "SALU": -0.450, "FLAT": -0.639, "total": -0.379},
+    "note": "Counters are deterministic, so they are the primary evidence. The global-load count falling by 64% is a second-order effect: with the row loop unrolled the compiler schedules the query reads far better than it could around dynamic register indexing."
+  },
+  "paired_kernel_ab": {
+    "command": "python3 scripts/yue2_attention_bench.py --repeat 20, alternating the two sources in one session",
+    "pairs": [
+      {"before_ms": 25.90, "after_ms": 19.33},
+      {"before_ms": 26.27, "after_ms": 18.91},
+      {"before_ms": 26.49, "after_ms": 20.91}
+    ],
+    "median_ratio": 1.359,
+    "minima_ratio": 1.53,
+    "note": "Absolute times drift up to 15% between batches on this host, so only the paired ratio is claimed."
+  },
+  "end_to_end": {
+    "command": "python3 scripts/yue2_e2e_gate.py --only mandarin-off-s1234 --steps 2 --skip-live",
+    "solve_seconds": 6.69,
+    "decode_seconds": 20.01,
+    "replay_seconds": 26.70,
+    "solve_seconds_before_this_change": 7.61,
+    "product_32_step": {
+      "command": "python3 scripts/yue2_e2e_gate.py --only mandarin-off-s1234 --steps 32 --skip-live",
+      "solve_seconds": 54.76,
+      "decode_seconds": 20.08,
+      "replay_seconds": 74.84,
+      "solve_seconds_before_this_change": 81.13,
+      "replay_seconds_before_this_change": 101.23,
+      "solve_ratio_to_the_reference": 2.00,
+      "reference_solve_seconds": 27.32
+    }
+  },
+  "rows_per_block_recheck": {
+    "rows_4_ms": 22.53,
+    "rows_8_ms": 19.96,
+    "rows_16_ms": 25.39,
+    "conclusion": "Eight rows is still the optimum, but sixteen is now only 27% behind instead of 45%, because the row loop no longer costs 46 instructions per row."
+  },
+  "bit_parity": {
+    "fixture": "tests/fixtures/yue2/operators/nar_attention_parent.npz",
+    "result": "bit-identical to the parent kernel (max abs diff 0.0)"
+  },
+  "unit_tests": {
+    "command": "python3 -m pytest tests/test_unit_yue2_nar_kernels.py",
+    "result": "15 passed",
+    "coverage_note": "The parametrization covers blocks with a full row set (nar_rows 40), a partial one (7, 1, 34), and a head_dim that is not a multiple of eight (100), so all three paths in the kernel are exercised."
+  },
+  "remaining_gap": {
+    "reference_attention_seconds_for_the_32_step_solve": 4.14,
+    "reference_measurement": "rocprofv3 --kernel-trace on the pinned upstream running the same case: attn_fwd at grid (2688, 16, 1) with a 128-thread workgroup, 1792 calls at 2.310 ms each, 4.140 s total. That is 12.4 TFLOP/s of attention arithmetic.",
+    "hipengine_attention_seconds_after_this_change": 39,
+    "ratio": 9.4,
+    "note": "This kernel is scalar FP32 FMA; the reference is a tensor-core flash attention. The scalar path's arithmetic ceiling is 25.6 TFLOP/s of which this kernel keeps roughly a quarter as useful math, so the remaining distance is a kernel-design change (matrix cores) rather than more loop surgery."
+  }
+}

@@ -11,7 +11,8 @@ PRIMITIVES = (
     'vv_kv_write_spans','vv_attention_spans','bf16_to_f32','bf16_to_fp16','f32_to_bf16','f32_to_fp16',
     'silu_mul_dual_out_bf16','silu_mul_separate_out_bf16','dense_dual_gemv_out_bf16',
     'dense_dual_gemv_separate_out_bf16',
-    'dense_gemv_bf16_f32_out','dense_gemv_f32_bf16w_f32_out','dense_gemv_out_bf16',
+    'dense_gemv_bf16_f32_out','dense_gemv_bf16_f32_out_rowtile2','dense_gemv_f32_bf16w_f32_out',
+    'dense_gemv_out_bf16',
     'qwen35_partial_rotary_f32',
     'vv_diff_silu_bf16','vv_diff_add_bf16','vv_diff_mul_bf16','vv_diff_modulate_bf16',
     'vv_diff_gated_residual_bf16','vv_diff_cfg_combine_bf16','vv_diff_rmsnorm_bf16',
@@ -59,6 +60,6 @@ def resolve_vibevoice_prefill_route(backend,variant,*,quant='bf16'):
         package.register_vibevoice_q4_kernels()
     return resolve_vibevoice_kernel(backend,'vibevoice_prefill',variant,quant=quant)
 
-DECODER_PRIMITIVES = ('bf16_to_fp16', 'build_vibevoice_encoder', 'dense_dual_gemv_out_bf16', 'dense_gemv_bf16_f32_out', 'dense_gemv_f32_bf16w_f32_out', 'dense_gemv_out_bf16', 'f32_to_bf16', 'f32_to_fp16', 'qwen35_partial_rotary_f32', 'silu_mul_dual_out_bf16', 'silu_mul_separate_out_bf16', 'vv_add_bias_f32', 'vv_attention_spans', 'vv_kv_write_spans', 'vv_rmsnorm_bf16', 'vv_rope_positions_f32', 'vv_scale_residual_bf16')
+DECODER_PRIMITIVES = ('bf16_to_fp16', 'build_vibevoice_encoder', 'dense_dual_gemv_out_bf16', 'dense_gemv_bf16_f32_out', 'dense_gemv_bf16_f32_out_rowtile2', 'dense_gemv_f32_bf16w_f32_out', 'dense_gemv_out_bf16', 'f32_to_bf16', 'f32_to_fp16', 'qwen35_partial_rotary_f32', 'silu_mul_dual_out_bf16', 'silu_mul_separate_out_bf16', 'vv_add_bias_f32', 'vv_attention_spans', 'vv_kv_write_spans', 'vv_rmsnorm_bf16', 'vv_rope_positions_f32', 'vv_scale_residual_bf16')
 
 FRONTEND_PRIMITIVES = ('build_vibevoice_encoder', 'vv_add_bias_bf16', 'vv_add_scaled_noise_bf16', 'vv_conv_gemm_bf16', 'vv_depthwise_conv_bf16', 'vv_gelu_bf16', 'vv_im2col_bf16', 'vv_rmsnorm_bf16', 'vv_scale_residual_bf16')
