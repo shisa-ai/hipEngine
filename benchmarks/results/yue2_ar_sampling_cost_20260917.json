@@ -1,0 +1,35 @@
+{
+ "protocol": "yue2-ar-sampling-cost-v2",
+ "host": {
+  "hostname": "zbook",
+  "load_average": [
+   "0.26",
+   "1.36",
+   "1.74"
+  ]
+ },
+ "vocab": 184704,
+ "history_tokens": 1296,
+ "repeats": 30,
+ "window": [
+  151852,
+  184621
+ ],
+ "ms_per_token_full_row": {
+  "bf16_bits_to_f32 (per branch)": 0.028673966880887747,
+  "combine_cfg": 2.5997509947046638,
+  "distribution (penalty + top-k + top-p)": 3.8865545066073537,
+  "softmax_f32": 0.21512398961931467,
+  "sample_categorical": 0.9424724848940969,
+  "total": 7.672575942706317
+ },
+ "ms_per_token_windowed": {
+  "bf16_bits_to_f32 (per branch, window slice)": 0.0035164994187653065,
+  "combine_cfg (window slice)": 0.20937249064445496,
+  "distribution_windowed (penalty + top-k + top-p)": 0.3181460197083652,
+  "softmax_f32 (window slice)": 0.04911702126264572,
+  "sample_categorical (window slice)": 0.1345975324511528,
+  "total": 0.714749563485384
+ },
+ "note": "CPU only, single-threaded; medians of per-call wall clock. These are host numbers, so the load average above matters: a concurrent job inflates them. The windowed arm is what the product loop runs: it converts, combines and samples the head row's window slice."
+}

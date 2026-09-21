@@ -149,6 +149,78 @@ tensor-layout helpers live in `loading/vibevoice_layout.py`. Physical gfx1100
 qualification is separate from gfx1151 evidence. Variant manifests identify
 selected arithmetic and fallbacks; a manifest alone is not production approval.
 
+### YuE2 music generation
+
+| Family | Source / registry | Contract |
+| --- | --- | --- |
+| AR layer chain | primitives via `hipengine/runtime/yue2_ar.py` | BF16 storage, FP32 accumulation. Per layer: input RMSNorm, Q/K/V projection, per-head Q/K norm, split-half RoPE (`vv_rope_positions_f32`), span KV write (`vv_kv_write_spans`), span attention (`vv_attention_spans`), O projection, residual, post-norm, gate/up, SiLU, down, residual. Residual adds go through `vv_scale_residual_bf16` with a ones scale. |
+| Batched prefill route | `hipengine/core/hipblaslt.py` problems owned by the runtime | BF16 activations are converted to FP16 (`bf16_to_fp16`) and feed per-layer hipBLASLt GEMMs; the registered `strict` row-by-row route (decode-shaped GEMVs) is the fallback and any fallback records a reason. The two routes agree to one BF16 ulp on the layer chain. |
+| Decode route | shared Qwen3.5/PARO kernels | `qwen35_partial_rotary_kernel`, `dense_gemv_out_*`, `dense_dual_gemv_out_*` and `silu_mul_dual_out_bf16`, reused unchanged. |
+| Paired-branch projections | `linear/dense_gemv.hip` (`dense_gemv_bf16_f32_out_rowtile2`) | The AR's two CFG branches share one weight stream: two rows per block for the q/k/v/o and lm-head GEMVs, each row keeping the single-row kernel's K traversal and local-256 reduction order, so a row is bit-identical to `dense_gemv_bf16_f32_out` (`tests/test_unit_yue2_ar_gemv_rowtile2.py`, including the 184704-column head). `Yue2ArRuntime.logits` runs the head once for every branch and caches the rows until a branch's hidden row moves; the branches keep separate KV spans and positions. At the production shapes the head goes from 6.72 ms to 3.80 ms per step (1.77x, 112 GB/s to 199 GB/s) and q/k/v/o from 0.183 ms to 0.114 ms per layer; `scripts/yue2_ar_rowtile_bench.py` produces both. |
+| Phase-windowed head | `phase_window` in `hipengine/generation/yue2.py`, same kernel | `distribution` masks every row outside a phase's domain and end token to `-inf` before any arithmetic, so the head projects only that window and returns a full-vocabulary row that is `-inf` outside: 32 769 rows for `semantic` (codec range plus `MUSIC_END`) and 151 849 for `abc`. Inside the window the values are bit-identical to the full projection and `distribution` over either row gives identical scores, masks, probabilities and top-1 (`scripts/yue2_ar_head_window_validation.py`). The semantic head is 3.830 ms to 0.795 ms and the production loop 60.14 ms to 56.23 ms per token. Non-finite rows stay non-finite through `combine_cfg` and are folded to `-inf` by `distribution`, because a NaN score silently disables its top-k stage. The unwindowed route stays for the replay matrix (`docs/REFACTOR.md`). |
+| NAR layer chain | `hipengine/kernels/hip_gfx1100/yue2/nar.py` via `hipengine/runtime/yue2_nar.py` | BF16 storage, FP32 accumulation. Per layer: input RMSNorm (shared `vv_rmsnorm_kernel`), separate NAR Q/K/V projections, per-head Q/K norm, split-half RoPE over `nar_rope_f32`, cached-AR plus live-NAR attention over `nar_attention_kernel`, O projection, residual, post-norm, gate/up, SiLU, down, residual. `nar_gather_add_kernel` copies the `nar_cond_end`-truncated cached-AR K/V into the NAR cache and `nar_add_broadcast_kernel` adds the per-layer step embedding. |
+| NAR solver | `nar_state_update_kernel` | BF16 midpoint update `state - bf16(v * scale)` with exactly the reference's two roundings; the caller passes the positive `h/2` and `h` step sizes. Registered alongside the per-step velocity path, so a solver defect cannot hide behind a correct velocity. |
+| VAE decoder | `hipengine/kernels/hip_gfx1100/yue2/vae.py` via `hipengine/runtime/yue2_vae.py` | FP32 throughout, matching the released Oobleck decoder. `vae_conv1d_f32` and `vae_conv_transpose1d_f32` accumulate in the reference's loop order (kernel tap outside, input channel inside); `vae_snake_beta_f32` uses log-scale alpha/beta and the released `1e-9` denominator epsilon; `vae_add_f32` applies a residual unit's skip. Weight normalization is folded once at load time (`hipengine.loading.yue2.fold_weight_norm`), never per call. |
+
+Both routes read the same `KVLiveSpans` ABI (identity slot map, uniform positions and eviction mask). Kernel names and durations for one replay are recorded in the M2 worklog entry, and for one NAR velocity plus 2-step solve in the M4 closure entry (`yue2_nar_attention_kernel` 140 dispatches / 144.0 ms total, `yue2_nar_rope_kernel` 280 / 0.94 ms, `yue2_nar_state_update_kernel` 4 / 0.006 ms, plus `nar_gather_add` and `nar_add_broadcast`); for the VAE, three decodes in the M5 entry (`yue2_vae_conv1d_f32_kernel` 114 dispatches / 57.5 ms, `yue2_vae_conv_transpose1d_f32_kernel` 18 / 57.0 ms, `yue2_vae_snake_beta_f32_kernel` 129 / 0.95 ms, `yue2_vae_add_f32_kernel` 54 / 0.25 ms). `yue2_nar_attention_kernel` owns eight query rows per block
+(`YUE2_NAR_ROWS_PER_BLOCK`), so one loaded K or V element serves eight rows, and it
+reads K eight elements and Q four elements per instruction. Those three changes take
+the kernel's own per-call time at the production shape (1 299 rows / 2 695 keys) from
+177.22 ms to 28.34 ms, bit-identical to the parent kernel
+(`tests/fixtures/yue2/operators/nar_attention_parent.npz`). It is not bandwidth-bound
+at that point: `rocprofv3 --pmc` on the pre-packing kernel measures 3.5e8 cycles
+carrying 3.7e9 VALU instructions at 19% occupancy, and the same run afterwards
+reaches 93%, so it is instruction- and latency-limited rather than traffic-limited.
+The projection path had its own defect: both YuE2 runtimes took the first hipBLASLt
+algorithm hipBLASLt returned, which is 2.9-4.2x slower on these shapes than the
+measured best, so `_prepare_lt` and `_prepare_gemm` select through
+`HipblasLtProblem.fast_algorithm()` (`scripts/hipblaslt_algo_scan.py` establishes the
+index; see [ROCM-AI.md](ROCM-AI.md)). Together those two changes take the replay of
+`mandarin-off-s1234` from 27.76 s of solve to **7.95 s** at 2 ODE steps and from
+443.4 s to **81.13 s** at the product's 32 steps. At 32 steps the solve is
+attention-dominated again, because the AR conditioning prefill is paid once per
+solve. Three further units took the kernel to **19.33 ms** — the tile maximum reads
+four scores per instruction, the softmax weights are stored key-major so a key's
+eight rows cost two shared-memory requests instead of eight runtime-strided ones, and
+the dot product's row loop is specialized for a full row set so `dots` and `q_rows`
+stay in registers (that last one alone removes 38% of the kernel's instructions:
+12 581 -> 7 816 per lane-tile). All three are bit-identical to the parent fixture,
+and the 32-step solve reaches **54.76 s**. M7 numbers are in
+`benchmarks/results/yue2_m7_attention_packed_20260917.json`,
+`benchmarks/results/yue2_m7_gemm_algorithm_20260917.json`,
+`benchmarks/results/yue2_m7_attention_tile_max_20260917.json`,
+`benchmarks/results/yue2_m7_attention_weight_layout_20260917.json`,
+`benchmarks/results/yue2_m7_attention_dot_unroll_20260917.json`,
+`benchmarks/results/yue2_m7_attention_wmma_20260917.json` and
+`benchmarks/results/yue2_m7_attention_wmma_geometry_20260917.json`.
+
+That is where the scalar design ends: profiling the pinned upstream on the same case
+puts **its** attention kernel at 4.14 s for the whole 32-step solve (1 792 calls at
+2.31 ms, 12.4 TFLOP/s) against the scalar kernel's ~39 s, because it uses tensor
+cores. Scalar FP32 peak on 40 CUs is 25.6 TFLOP/s and the scalar kernel keeps about a
+quarter of its instructions as useful arithmetic after the softmax reductions, the
+weight exchange and the loads, so even a perfect scalar kernel lands near 6 TFLOP/s.
+`nar_wmma.hip` is therefore a second, tensor-core attention for the production head
+geometry (16 query heads over 8 key/value heads, head_dim 128), following the
+fragment contracts of `laguna_flash_attention_prefill.hip` / llama.cpp's
+fattn-mma-f16: f16 WMMA operands with f32 score accumulation, a 16-key tile per
+lane-half reduction, K and V sharing one 64-key staged buffer, and an f16 output
+accumulator rescaled by the online softmax. It is **2.13 ms** per call against the
+scalar kernel's 19.0 ms and is faster than the reference's own kernel (2.31 ms). The
+geometry matters more than the instruction mix here: at a 128-thread block the kernel
+was latency-bound at two waves per SIMD (2 902 ISA instructions per key batch, 64 of
+them WMMA, ~11 cycles per instruction issued), and widening the block to 12 waves /
+384 threads with a 32-key batch is what took it from 3.85 ms to 2.13 ms. Vectorizing
+the K-fragment load produced a byte-identical ISA, and `__launch_bounds__` block hints
+do nothing because shared memory already limits the block count to one per CU. It
+changes arithmetic by design, so it is a production-profile variant held to the M4
+solver gates rather than to the parent fixture — all three pass (chunk0 latents rel L2
+0.01099, multi-chunk 0.01090, restricted visibility 0.00894, against a 0.05 ceiling
+with cosine > 0.99994) — and `nar_attention_f32` remains the registered strict
+fallback behind `HIPENGINE_YUE2_NAR_ATTENTION=scalar`. The 32-step solve of
+`mandarin-off-s1234` is **26.07 s** against the pinned upstream's 27.32 s.
+Model-level contracts live in [MODEL-YUE2.md](MODEL-YUE2.md). gfx1100 qualification is separate from gfx1151 evidence.
+
 ### Shared Qwen / PARO path
 
 These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attention, linear-attention, MoE, and common runtime glue. Some are also reused by GGUF paths.

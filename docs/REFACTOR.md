@@ -834,6 +834,52 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   dispatch branch together, and keep the chunk-outer tests only as the decline
   coverage the layer-outer path needs.
 
+## `HIPENGINE_YUE2_NAR_ATTENTION` (scalar fallback for the tensor-core attention)
+
+- `nar_wmma.hip` became the default attention for the production head geometry
+  (16 query heads over 8 key/value heads at head_dim 128) on 2026-09-17, after
+  all three M4 solver gates passed and the 32-step product solve of
+  `mandarin-off-s1234` fell 54.76 s -> 32.22 s. The kernel is 5.1x the scalar
+  kernel's rate (20.1 ms -> 3.85 ms per call at 1 299 rows / 2 695 keys) and
+  lands inside 1.7x of the pinned upstream's own attention kernel.
+- `HIPENGINE_YUE2_NAR_ATTENTION=scalar` selects `nar_attention_f32`, which stays
+  registered as the strict fallback: it is bit-exact against
+  `tests/fixtures/yue2/operators/nar_attention_parent.npz` and against the
+  recorded parent kernel, so it is the debugging oracle and the bisection point
+  for any solver regression. The tensor-core kernel changes arithmetic by design
+  (f16 WMMA operands, f16 output accumulator) and is held to the production
+  profile gates instead.
+- Removal condition: once the tensor-core path has held through a release cycle
+  with no solver regression traced to it, drop the environment flag and the
+  `_wmma_attention` branch, keep the scalar kernel registered but unreachable by
+  default, and keep `test_attention_matches_the_parent_kernel_bit_for_bit` as
+  the oracle's coverage.
+
+## YuE2 AR full-vocabulary head route (gate-only, keep)
+
+- `Yue2ArRuntime.logits(branch, domain=...)` projects only a phase's window
+  (`hipengine.generation.yue2.phase_window`: 32 769 rows for `semantic`, 151 849
+  for `abc`) and returns a full-vocabulary row that is `-inf` outside it, which is
+  exactly what `distribution` masks. The session loop always passes a window and
+  then samples through `distribution_windowed`, so the unwindowed call is now
+  reached only by the replay matrix (`scripts/yue2_ar_replay.py`), the
+  matched-timing harnesses and the paired-head check, all of which score
+  full-vocabulary rows against the pinned upstream oracle.
+- That is why this route stays: the reference rows are full-vocabulary, so a
+  windowed row cannot be compared against them and the AR replay gate would lose
+  its oracle. Do not remove `domain=None` as dead code; it is the diagnostic path
+  the numerical gate depends on. Both routes share one kernel
+  (`dense_gemv_bf16_f32_out_rowtile2`) and differ only in the weight offset and
+  `out_features`, so there is no second implementation to keep in sync.
+- The same split exists one level up in the sampler: `distribution` (full row) and
+  `distribution_windowed` (window slice plus its token offset) are one arithmetic
+  body, `_distribution_slice`, called with `(0, n)` or with a phase window. The
+  full-row call is not a fallback that can be retired -- it is the shape the
+  equivalence tests compare against -- but it is also no longer a second
+  implementation, so there is nothing to keep in step.
+- Removal condition: none. Revisit only if the oracle fixtures gain windowed rows
+  or a future profile retires the full-vocabulary replay gate.
+
 ## `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` (INT8 KV C1 decode graph)
 
 - Admitted 2026-09-11 so the INT8 KV C1 decode graph could be measured instead

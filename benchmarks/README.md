@@ -1919,6 +1919,576 @@ within the evaluator's own reach on this lane's audio.
 
 Evidence: [quality suite](results/2026-09-15-gfx1151-vibevoice-tts-quality-suite.json).
 
+### Radeon 8060S: YuE2 3B AR replay
+
+The autoregressive stage of the pinned `m-a-p/YuE2-3B` checkpoint over the frozen
+18-case replay matrix: 128/512/2048-token prefixes, CFG on and off, unequal-prefix
+branches, scored against the pinned upstream oracle on the same host. Pooled over
+112 recorded full-vocabulary rows and 576 decode-step rows. `Prefill total` is the
+wall time to prefill all 18 prefixes, so it includes every case's 4-10 rows.
+
+| Prefill route | Mean KL | Max KL | Top-1 | Top-8 recall | Prefill total | Evidence |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `strict` (row-by-row) | 1.43e-3 | 3.27e-2 | **95.83%** | 95.88% | 522.5 s | [`strict replay`](results/yue2_ar_replay_strict_20260916.json) |
+| `hipblaslt` (batched, default) | **1.16e-3** | **7.10e-3** | 95.49% | **95.88%** | **77.6 s** | [`batched replay`](results/yue2_m7_gemm_algorithm_20260917.json) |
+
+Re-running the batched route after the paired-branch lm head landed
+(`dense_gemv_bf16_f32_out_rowtile2` plus the runtime's paired `logits`) reproduces
+these numbers: pooled mean KL 1.1579e-3 over the same 576 rows and 18 cases, top-8
+recall 0.9588, status pass, and a `--repeat 1` run whose aggregate is byte-identical
+([`paired head`](results/yue2_ar_replay_paired_head_20260917.json),
+[`repeat`](results/yue2_ar_replay_paired_head_repeat_20260917.json)). That change is
+bit-identical per row to the single-row head, so the replay matrix is expected to be
+unchanged and is; the session-level validation is in the greedy session gate below.
+
+Both routes replay the first case bit-for-bit after all 18 cases have run on the
+same runtime, and both stay inside the broad floor (mean KL ≤ 0.05, top-1 ≥ 90%).
+The batched route selects its hipBLASLt algorithm by measured index rather than by
+hipBLASLt's own first entry (`scripts/hipblaslt_algo_scan.py`); that choice took
+its pooled mean KL from 2.11e-3 to 1.16e-3, its worst case's max KL from 9.10e-2
+(`abc-nocfg-L128-s5678`, 5 rows) to 7.10e-3, and its prefill total from 91.3 s to
+77.6 s, at a top-1 of 95.49% against the strict route's 95.83%. The strict arm was
+not re-run in the session that measured the 77.6 s, so only the batched route's
+own 91.3 s → 77.6 s is a same-protocol pair; the earlier 522.5 s → 91.3 s pair came
+from one session and is why the strict route's absolute wall time should be read as
+a band rather than a fixed figure.
+
+### Radeon 8060S: YuE2 3B greedy session gate
+
+The torch-free staged session (`Yue2ArSession`) generating freely at temperature
+zero from the pinned `m-a-p/YuE2-3B` checkpoint, against the pinned upstream
+oracle's own greedy trajectories on the same host. `Prefix` is the assembled
+positive-branch prefix checked against the reference's own ABC IDs, so a
+trajectory divergence cannot be read as a prompt-assembly bug. `Forced` is the
+per-step greedy agreement when the runtime is driven along the reference's
+tokens, so both sides score the same context at every step; `Free` is the
+unassisted trajectory's first divergence from the reference, and the semantic
+phase is budget-truncated in every case.
+
+| Case | Prefix | ABC forced | Semantic forced | Free first divergence | Truncation (ABC / semantic) | Evidence |
+| --- | --- | ---: | ---: | ---: | --- | --- |
+| `english-melody-s1234` | identical | 99.7% | 97.1% | 27 | natural / budget | [`session gate`](results/yue2_session_gate_paired_head_20260917.json) |
+| `english-full-s1234` | identical | 99.1% | 98.2% | 2 | natural / budget | [`session gate`](results/yue2_session_gate_paired_head_20260917.json) |
+| `mandarin-off-s1234` | identical | no ABC stage | 96.7% | 23 | no ABC stage / budget | [`session gate`](results/yue2_session_gate_paired_head_20260917.json) |
+
+Teacher-forced agreement is at least 96.7% on every phase of every case; the symbolic ABC phases agree on 99.7% and 99.1% of steps. Every recorded mismatch sits on a near-tie: the first semantic mismatch is 1.2e-01 / 1.2e-01 / 6.2e-02 below my own top-1 score for melody / full / off, inside the BF16 logit noise the replay matrix above already quantifies (mean KL 1.2e-3, top-1 95.5%). The unassisted trajectories track the reference until their first flip and are chaotic afterwards, so the forced columns, not the free agreement rates, carry the fidelity claim. Free comparison is context-aligned only where the ABC stage itself matched (`english-melody-s1234`) or is absent (`mandarin-off-s1234`); `english-full-s1234` diverged during ABC planning, so its free semantic row compares continuations of different prefixes and is diagnostic only. Unassisted wall clock: `melody` 34.8 s, `full` 36.7 s, `off` 29.0 s.
+
+These numbers are the post-M7 state. The `english-melody-s1234` ABC phase was 100.0% and `mandarin-off-s1234` semantic was 96.1% before the hipBLASLt algorithm-selection and attention changes landed; every case then moved to the values above, which is recorded as the `session_gate_after_change` block of [`the M7 artifact`](results/yue2_m7_gemm_algorithm_20260917.json). Re-running the gate after the paired-branch lm head landed reproduced those post-M7 values exactly (99.7% / 99.1% ABC, 98.2% / 97.1% / 96.7% semantic), so that change is invisible at the session level.
+
+The paired-branch head itself is validated on the session loop rather than on the gate alone: [`pairing validation`](results/yue2_ar_pairing_validation_20260917.json) drives `generate_tokens` at temperature 1.0 on two cases with a serial-head subclass as the control and compares the emitted tokens, the RNG state, the CFG score rows, the sampler's masked score row and the softmax distribution. All agree exactly (logit max abs 0.0, distribution KL 0.0, identical top-1, identical RNG state), and a lifecycle pass that runs case A, then case B, then case A again in one process with a `runtime.reset()` between reproduces each case's tokens exactly.
+
+### Radeon 8060S: YuE2 3B acoustic flow-matching solver
+
+The torch-free NAR runtime's midpoint ODE solve against the pinned upstream
+reference on the same host, on a recorded 34-row / 545-token-AR chunk with a
+4-step schedule. `Forced` evaluates the native velocity at each *recorded*
+state, which isolates a velocity defect from a trajectory defect; the end-to-end
+row runs the native solver from the recorded noise and compares its own latents.
+Every row is relative L2 against the reference, whose final latent norm is
+72.743.
+
+| Quantity | rel_l2 | cosine | max abs | Evidence |
+| --- | ---: | ---: | ---: | --- |
+| Forced velocity, step 0 (`t=1.0`) | 0.01327 | 0.999912 | 0.0859 | [`NAR gate`](results/yue2_nar_gate_20260916.json) |
+| Forced velocity, step 1 (`t=0.75`) | 0.01495 | 0.999888 | 0.0625 | [`NAR gate`](results/yue2_nar_gate_20260916.json) |
+| Forced velocity, step 2 (`t=0.5`) | 0.01892 | 0.999821 | 0.1218 | [`NAR gate`](results/yue2_nar_gate_20260916.json) |
+| Forced velocity, step 3 (`t=0.25`) | 0.01221 | 0.999926 | 0.0781 | [`NAR gate`](results/yue2_nar_gate_20260916.json) |
+| 4-step solve, final latents | **0.01225** | **0.999926** | 0.0781 | [`NAR gate`](results/yue2_nar_gate_20260916.json) |
+
+The solver is the reference's own scheme: `mid = state - v(state, t) * h/2`, then
+`state = state - v(mid, t - h/2) * h`, with each update rounded through BF16
+exactly as the reference does. The 1.2% residual is BF16 rounding noise, not
+structural drift - 16.2% of the produced latent entries are BF16-identical to
+the reference and the produced norm is 72.855 against 72.743. Condition 1.00 s
+and forced-velocity plus solve 0.80 s on this chunk.
+
+Two further recorded cases cover the rest of the solver's contract. A song that
+crosses a real chunk boundary (96 frames at a reduced chunking context, so the
+chunks are 26 / 26 / 26 / 18 frames) and a restricted-visibility case
+(`nar_cond_end = 128`, where the NAR sees only the first 128 AR keys):
+
+| Case | Solved latents rel_l2 | cosine | Worst forced velocity | Evidence |
+| --- | ---: | ---: | ---: | --- |
+| `nar_cond_end = 128` | 0.00885 | 0.999962 | 0.01443 | [`cond_end gate`](results/yue2_nar_gate_condend_20260916.json) |
+| Multi-chunk, chunk 0 (26 frames) | 0.00878 | 0.999964 | 0.02141 | [`multi-chunk gate`](results/yue2_nar_gate_multichunk_20260916.json) |
+| Multi-chunk, chunk 1 (26 frames) | 0.01026 | 0.999948 | 0.02141 | [`multi-chunk gate`](results/yue2_nar_gate_multichunk_20260916.json) |
+| Multi-chunk, chunk 2 (26 frames) | 0.00876 | 0.999963 | 0.02141 | [`multi-chunk gate`](results/yue2_nar_gate_multichunk_20260916.json) |
+| Multi-chunk, chunk 3 (18 frames) | 0.01071 | 0.999944 | 0.02141 | [`multi-chunk gate`](results/yue2_nar_gate_multichunk_20260916.json) |
+
+These cases are why the gate exists: they exposed two defects that the single
+release chunk could not. The solver's midpoint buffer was only partially
+re-initialized, so a chunk shorter than the one before it evaluated its midpoint
+against stale boundary rows (0.16667 before the fix, 0.01071 after), and the
+hipBLASLt problem cache was built only for the largest chunk's tile, so a shorter
+later chunk launched an unprepared row count. Both are fixed and both cases pass
+every chunk.
+
+### Radeon 8060S: YuE2 3B VAE decoder
+
+The torch-free FP32 Oobleck decoder against the pinned upstream reference on the
+same host. Weight normalization is folded once at load time; the conv,
+transposed-conv and SnakeBeta kernels accumulate in FP32 with the reference's own
+loop order. Error is measured against the reference waveform, whose own tiled and
+full decodes already differ by 1.33e-06 - so these figures sit at the reference's
+own FP32 noise floor rather than at a modelling difference.
+
+| Case | Samples | max abs | rel L2 | Peak | Full decode | Evidence |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| 3-frame latent | 5 696 | 1.27e-06 | 1.99e-06 | 0.483541 | 0.04 s | [`VAE gate`](results/yue2_vae_gate_20260916.json) |
+| 64-frame latent | 122 816 | 2.99e-06 | 1.88e-06 | 0.991600 | 0.68 s | [`VAE gate`](results/yue2_vae_gate_20260916.json) |
+| 64-frame latent, tiled 16/16 | 122 816 | 2.79e-06 | - | - | 1.51 s | [`VAE gate`](results/yue2_vae_gate_20260916.json) |
+
+Tiling is exact rather than approximate: with a 16-frame core and 16 frames of
+halo the tiled waveform is **bit-identical** to the same runtime's full decode,
+and it matches the reference's own tiled output to 2.79e-06. There is no
+crossfade, no boundary smoothing, and no zero padding of the final audio; the
+last tile's crop is shorter than its own output because the natural length is
+`1920 * frames - 64`. The decoder's own dependency interval gives a required halo
+of 12 frames for a 16-frame core, which the gate asserts against the recorded
+value. Tiled decoding is slower than the full decode here (1.51 s vs 0.68 s at
+64 frames) because every tile re-decodes its halo context; its purpose is
+bounding device residency, not wall clock.
+
+### Radeon 8060S: YuE2 3B end-to-end product path
+
+The complete staged pipeline - AR plan and semantic decode, the acoustic
+flow-matching solve, and the FP32 Oobleck decode - driven through the registered
+`yue2` model plugin with no torch in the process. Each committed case fixture
+stores the reference pipeline's own assembled prefix and semantic codes, so the
+gate replays the reference's exact conditioning and checks the product path
+against the audio the reference produced for it: every case reproduces the
+recorded latent frame count and the recorded sample count exactly.
+
+| Case | Latent frames | Samples | Peak | Replay |
+| --- | ---: | ---: | ---: | ---: |
+| `english-full-s1234` | 1,871 | 3,592,256 | 0.9246 | 301.8 s |
+| `english-full-s5678` | 1,704 | 3,271,616 | 1.0354 | 252.8 s |
+| `english-melody-s1234` | 2,061 | 3,957,056 | 1.0009 | 356.8 s |
+| `english-melody-s5678` | 1,499 | 2,878,016 | 0.8217 | 202.9 s |
+| `english-off-s1234` | 1,517 | 2,912,576 | 0.9596 | 188.9 s |
+| `english-off-s5678` | 2,192 | 4,208,576 | 1.0196 | 370.4 s |
+| `mandarin-full-s1234` | 1,920 | 3,686,336 | 0.9781 | 356.0 s |
+| `mandarin-full-s5678` | 1,692 | 3,248,576 | 0.8506 | 287.7 s |
+| `mandarin-melody-s1234` | 1,807 | 3,469,376 | 0.8589 | 307.3 s |
+| `mandarin-melody-s5678` | 1,943 | 3,730,496 | 0.8815 | 354.0 s |
+| `mandarin-off-s1234` | 1,297 | 2,490,176 | 0.9463 | 148.4 s |
+| `mandarin-off-s5678` | 1,497 | 2,874,176 | 0.7696 | 193.2 s |
+
+Across all twelve cases that is **21,000 latent frames** and **40,319,232
+samples** of audio, all finite and all non-silent, at 4 ODE steps rather than the
+product's 32 (the replay takes 55 min, from
+148 s for the shortest case to 370 s for
+the longest; the reference's own recorded runs take 150-370 s per case). Solver
+arithmetic parity is the M4 gate's claim, so step count does not affect what this
+one measures. Replaying `english-full-s1234` twice gives **bit-identical**
+latents. The per-case replay times in the table are the figures this gate produced
+at the revision that established the frame and sample counts; the same twelve cases
+at 2 ODE steps replay in **527.4 s** in total with the attention and projection work
+that followed.
+
+Measured against the reference's own recorded runs on the same host, per stage,
+across all twelve cases at 2 ODE steps:
+
+| Stage | hipEngine | Reference | Ratio |
+| --- | ---: | ---: | ---: |
+| FP32 Oobleck decode | 331.76 s | 2 049.23 s | **6.18x faster** |
+| Acoustic solver, raw | 126.92 s | 537.52 s | 2.81x faster (fewer steps) |
+| Acoustic solver, per ODE step | 63.46 s | 16.80 s | **3.78x slower** |
+
+Both rows above compare against the reference's *recorded product* runs, and the
+decode row is not a decode comparison: on this host the reference's first decode in a
+process costs 8x its steady state (163.1 s against 19.6 s for the same 1 297 frames),
+and its recorded product decode carries that first-use cost plus a per-request decoder
+transfer. The matched comparison is in "YuE2 3B stage-by-stage matched timing" below.
+The solver row is not like for like either, because the reference always solves at its
+own 32 steps; only the per-step row is matched, and that row was **26.29x** before the
+attention and projection work described in the next section, **5.79x** after the scalar
+attention work, and **3.78x** now. `scripts/yue2_reference_comparison.py` produces both
+tables. Evidence:
+[`comparison`](results/yue2_reference_comparison_geometry_20260917.json),
+[`previous geometry`](results/yue2_reference_comparison_wmma_20260917.json),
+[`scalar attention`](results/yue2_reference_comparison_20260917.json),
+[`pre-fix comparison`](results/yue2_reference_comparison_pre_attention_fix_20260917.json).
+
+A separate live run exercises the whole session rather than recorded
+conditioning: a greedy request plans and decodes 96 semantic
+tokens, solves them to 96 latent frames and decodes
+3.84 s of audio in 16.4 s. Running it
+twice returns identical latent and audio identities. `torch` is not imported by
+either run; the gate fails if it ever is. `scripts/yue2_e2e_gate.py` is the
+reproducing command. Evidence:
+[`e2e replay`](results/yue2_e2e_gate_20260916.json),
+[`e2e live`](results/yue2_e2e_live_gate_20260916.json).
+
+The stage comparison above replays recorded conditioning, so it never times the AR
+stage. `scripts/yue2_case_timing.py` drives one recorded case through the complete
+product path at the product's 32 ODE steps - plan, semantic decode, solve, decode -
+and prints each stage against the reference's own recorded timing for that request
+(`mandarin-off-s1234`). Per unit of work, which is the like-for-like reading:
+
+| Stage | hipEngine | Reference | Ratio |
+| --- | ---: | ---: | ---: |
+| AR semantic decode | 57.3 ms per token | 31.3 ms per token | **1.83x slower** |
+| Acoustic solver, 32 steps | 22.3 ms per frame | 21.1 ms per frame | 1.06x slower |
+| FP32 Oobleck decode | 16.3 ms per frame | 53.3 ms per frame | **3.27x faster** |
+
+Those are medians of three runs at current HEAD. The harness caps the semantic phase at
+the reference recording's own token count, so both sides now do the same work: 1 298
+frames against the reference's 1 297, and 51.92 s of audio against 51.88 s. The wall
+clocks are therefore comparable for the first time, and they say the product path is
+**ahead**:
+
+| Whole path, identical request and work | Elapsed | Audio | RTF |
+| --- | ---: | ---: | ---: |
+| hipEngine at current HEAD (median of 3) | 124.54 s | 51.92 s | **2.40** |
+| hipEngine with the pre-change AR paths (median of 3) | 155.22 s | 51.92 s | 2.99 |
+| torch reference, pinned product run | 137.80 s | 51.88 s | 2.66 |
+| torch reference, fresh product runs on this host | 235.60-260.19 s | 51.88 s | 4.54-5.02 |
+
+The two hipEngine arms differ only in the AR paths, and every run of both arms produced
+the same 1 298 tokens, the same 2 492 096 samples and the same PCG64 state digest. The
+paired elapsed ratio is 1.236 (range 1.213-1.246 over the three pairs), so the AR change
+is worth **19% of whole-path time**; the AR stage itself went from 79.2 to 57.3 ms per
+token, a paired ratio of 1.380. The NAR and VAE rows move together across the three
+repetitions in both arms (about +20% and +10% over the session), which is machine drift,
+not an arm effect - the arms track each other, so the paired ratios are the stable
+quantity and the absolute seconds are not.
+
+The reference's own product path is not reproducible here. Two fresh runs today take
+235.60 s and 260.19 s against its pinned 137.80 s, and the entire difference is its VAE
+stage: 170.09 s and 186.35 s against the pinned 69.09 s, while its AR (41.96 and 43.55 s
+against 40.60 s) and NAR (20.16 and 26.76 s against 27.32 s) agree within noise. Its warm
+tiled decode of these same latents is 20.15 s, measured in the same session as everything
+else above, so even its pinned product run pays 3.5x its own warm decoder and today's runs
+pay 8.5x. That is its per-request decoder handling rather than the machine. All three
+reference rows are reported as measured, and the pinned one is what the per-stage table
+compares against, because its stages are the ones its recorded timings describe.
+
+So the product path is ahead of the reference in both states - 124.54 s against 137.80 s
+pinned, and against 235.60-260.19 s today - for a reason that is worth stating precisely:
+this runtime's decoder stays warm and pays 16.3 ms per frame, while the reference's
+re-does per-request decoder setup. Its steady-state stages are still the faster ones, which
+is why the matched table above is the implementation comparison and this table is the
+product one.
+
+The AR row is the entire remaining gap, and the stage is 60% of our elapsed time. A
+fixed-token comparison of the two AR decode paths pins it down, with both sides driving
+the same recorded trajectory for the same 1 297 steps over the same 98-token positive and
+12-token negative prefixes and the same two CFG branches, timed alternately in one
+session (`scripts/yue2_ar_matched_timing.py`, `scripts/yue2_reference_ar_timing.py`):
+**54.94 ms per decode step against 30.88**, so the reference is **1.78x faster** on
+matched work. Sampling is excluded there by design, because the token is recorded.
+
+The cause is traffic, and it is now measured on both sides. A branch reads ~3.575 GB per
+step, of which 2.819 GB is the 28 layers of q/k/v/o/gate/up/down and 756 MB the output
+head, from the checkpoint's own tensor sizes. This path forwards the two CFG branches
+separately, so it reads the layers twice, and it now reads only the semantic phase's
+window of the head (134 MB rather than 756 MB): **5.77 GB per token at 57.3 ms, about
+101 GB/s**. The reference batches both branches into one forward per step
+(`GraphAR(model, [prefix, negative], ...)` in its `yue2/sampling.py`), so it reads the
+layers once: **3.58 GB per token at 30.9 ms, about 116 GB/s**. The two rates are within
+15% of each other, so the stage is not at a bandwidth ceiling - this host's LPDDR5X peak
+is ~256 GB/s - and what separates them is that we move 1.6x the bytes. Removing the
+duplicated branch traffic would put the same rate at ~2.95 GB per token, or about 29 ms
+- the reference's own step - but that is a projection from measured traffic, not a
+measurement. Two-row kernels are the route: the head already has one
+(`dense_gemv_bf16_f32_out_rowtile2`, 112 GB/s to 199 GB/s at the production shape), and
+the layer GEMVs are the same family, documented at 20-28% of peak on this host
+(`scripts/gguf_q8_0_dense_bw_microbench.py`).
+
+Host sampling is the smaller lever and it is now small: **7.67 ms per token over the
+full row against 0.71 ms windowed** (`scripts/yue2_ar_sampling_cost.py`, CPU-only,
+single-threaded, 30 medians per call; the window is `semantic`'s 32 769 rows of 184 704,
+and the windowed arm is what the loop runs). The full-row figure is 2.60 ms of CFG
+combine, 3.89 ms of repetition penalty plus top-k/top-p, 0.22 ms of softmax and 0.94 ms
+of the categorical draw. So the product's 57.3 ms per token is model work plus about a
+millisecond of sampling, and the step itself is the lever - not the sampler.
+Evidence: [`matched AR timing`](results/yue2_ar_matched_timing_20260917.json),
+[`AR sampling cost`](results/yue2_ar_sampling_cost_20260917.json),
+[`product case timing`](results/yue2_product_case_timing_20260917.json).
+
+### Radeon 8060S: YuE2 3B stage-by-stage matched timing
+
+Every earlier stage comparison in this file put one side's warm measurement against the
+other side's recorded product run, which mixes in per-request overheads and, for the
+decoder, an 8x first-use cost. These three harnesses give both sides identical inputs
+and compare steady-state passes, timed alternately in one session on
+`mandarin-off-s1234` at the product's 32 ODE steps:
+
+| Stage | Inputs shared | hipEngine | torch reference | Reading |
+| --- | --- | ---: | ---: | --- |
+| AR decode, 1 297 steps | recorded token trajectory, both prefixes, 2 CFG branches | 54.94 ms/step | 30.88 ms/step | **reference 1.78x faster** |
+| Acoustic solver, 32 steps | prefix, codes, seed and the reference's own noise | 27.35 s | 21.81 s | **reference 1.25x faster** |
+| FP32 Oobleck decode, 1 297 frames | the case's recorded latents, tiled 1024/16 on both sides | 20.08 s | 20.15 s | reference 1.00x faster (level) |
+
+Every row above is a same-session re-measurement of both sides at current HEAD, on
+`mandarin-off-s1234` at the product's 32 ODE steps. The AR row is the fixed-token replay:
+both sides drive the same recorded trajectory, so sampling is excluded by design (the
+token is recorded) and the number is model work only. The replay uses the full-vocabulary
+head, which is what the reference's own rows are, so the windowed head and the
+window-relative sampler do not appear in it; the product loop below is where they show up.
+
+The AR step was 58.30 ms/step before the paired-branch head (see the next section): the lm
+head runs once for both branches through a two-row F32-output GEMV, which is bit-identical
+per row, leaves the run's trajectory digest unchanged, and took the step to 54.88, against
+54.94 on the re-measurement above.
+
+Each harness refuses to report when the two sides did not run the same work: the AR
+harness compares prefix, negative-prefix and trajectory digests, and the solver harness
+compares the initial-noise digest after being handed the reference's own whole-song
+draw (the two implementations' seeded draws differ by design, and the first version of
+this comparison silently compared two different trajectories). The solver's latent norm
+is 287.400 against 287.113 on that shared noise, which is the arithmetic-parity
+cross-check the M4 gate makes on recorded fixtures. Our tiled decode is bit-identical to
+our own full decode (max abs 0.0) while the reference's differ by 1.4e-06, its own FP32
+noise floor.
+
+So on matched, steady-state work this runtime is behind on two stages and level on the
+third. What the product path does differently is overhead: the reference moves its
+decoder off the device after every request and back on for the next one, and its
+recorded product decode of these same latents is 69.09 s against its own warm 19.60 s,
+while this runtime pays about 8 ms per token of host sampling that the reference does
+with device ops. Evidence:
+[`matched AR timing`](results/yue2_ar_matched_timing_20260917.json),
+[`matched solver timing`](results/yue2_nar_matched_timing_20260917.json),
+[`matched decoder timing`](results/yue2_vae_matched_timing_20260917.json).
+
+### Radeon 8060S: YuE2 3B paired-branch projections
+
+The AR decode runs two CFG branches over one set of weights, and the profile of a step is
+79% projection GEMVs. The lm head alone streams 756 MB of BF16 weight per call, once per
+branch. `dense_gemv_bf16_f32_out_rowtile2` puts two rows in one block so the weight is
+issued once for both branches, keeping each row's K traversal and reduction order, which
+makes a row bit-identical to the single-row kernel.
+
+| Shape (in x out) | Serial, 2 calls | Two-row, 1 call | Speedup | Serial GB/s | Two-row GB/s |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| LM head 2048 x 184704 | 6.723 ms | **3.798 ms** | 1.77x | 112.5 | 199.2 |
+| q 2048 x 2048 | 0.060 ms | 0.033 ms | 1.78x | 140.7 | 250.6 |
+| o 2048 x 2048 | 0.054 ms | 0.031 ms | 1.77x | 154.3 | 272.7 |
+| v 2048 x 1024 | 0.041 ms | 0.028 ms | 1.46x | 102.7 | 150.3 |
+| k 2048 x 1024 | 0.028 ms | 0.022 ms | 1.30x | 149.0 | 193.1 |
+
+Per-call latency with a synchronize per call, best of 30, after 5 warmups. In the runtime
+only the head is paired so far, which is where the traffic is: the step goes from
+**58.30 ms to 54.88 ms** (1.06x) on `mandarin-off-s1234` with the trajectory digest
+unchanged at `6a308700b3b949ac`, so the paired head reproduces the serial head exactly.
+Each branch keeps its own KV spans and its own positions (this case's positive prefix is
+98 tokens against the negative branch's 12); only the weight read is shared. Evidence:
+[`kernel A/B`](results/yue2_ar_rowtile_bench_20260917.json),
+[`step timing`](results/yue2_ar_matched_timing_20260917.json),
+gate `tests/test_unit_yue2_ar_gemv_rowtile2.py`.
+
+### Radeon 8060S: YuE2 3B phase-windowed output head and sampler
+
+`distribution` masks every row outside a phase's domain and the phase's end token to
+`-inf` before any other arithmetic, so a phase can only ever select inside its own
+window: 32 769 rows for `semantic` (the 32 768 codec tokens plus `MUSIC_END`, 17.7% of the
+vocabulary) and 151 849 for `abc`. The head projects just that slice, and the sampler runs
+in window coordinates, so mask, repetition penalty, top-k, top-p, softmax and the
+draw all work over the window instead of the full vocabulary.
+
+| Phase | Head, full 184 704 rows | Head, windowed | Speedup | Rows | Weight read |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `semantic` | 3.84 ms | **0.82 ms** | **4.68x** | 32 769 | 722 MiB → 128 MiB |
+| `abc` | 4.13 ms | 3.44 ms | 1.20x | 151 849 | 722 MiB → 593 MiB |
+
+Both head rows are medians of 15 interleaved pairs, with the two arms measured inside one
+repetition and the order flipped each repetition; the paired ratio spans 4.41-5.01 for
+`semantic` and 1.18-1.39 for `abc`. A separate interleaved run gave 4.53x and 1.20x.
+
+| Sampler stage, `semantic` | Full row | Window | Speedup |
+| --- | ---: | ---: | ---: |
+| mask, penalty, top-k, top-p, softmax, draw | 5.86 ms | **0.43 ms** | **13.5x** |
+| the same for `abc` (82.2% of the vocabulary) | 3.37 ms | 2.56 ms | 1.32x |
+
+The production session loop with two-branch CFG, temperature 1.0, top-p 0.95, top-k 100,
+repetition penalty 1.2 over a 50-token window on `mandarin-off-s1234`, three arms measured
+inside one repetition with the order rotated, 5 repetitions per arm:
+
+| Arm | ms/token | Saved vs baseline |
+| --- | ---: | ---: |
+| full head, full-row sampler | 61.11 | — |
+| windowed head, full-row sampler | 55.14 | 5.97 ms (1.11x) |
+| windowed head, windowed sampler | **43.80** | **17.32 ms (1.40x)** |
+
+A second interleaved run measured the same comparison as 60.84 → 43.75 ms/token, 17.10 ms
+saved, within 1.3% of the first. The saving exceeds the two head calls' own 6.0 ms because
+the device-to-host row and the host-side conversion shrink from 739 KB to 131 KB per
+branch as well. All 15 runs produced **identical tokens and an identical PCG64 state
+digest**.
+
+The windowed row is bit-identical to the full projection inside the window and `-inf`
+outside it for both phases, and the windowed sampler returns bit-identical scores and
+softmax probabilities to the full-row sampler, with the same top-1 and the same drawn
+token, over 432 cases (both phases x 3 sampling settings x both arithmetic modes) on rows
+recorded from the pinned reference. Windowed execution is covered by those checks and by
+the session gate below; the replay matrix keeps using the unwindowed call, so it validates
+that fallback and the paired head rather than the window itself. Evidence:
+[`head window validation`](results/yue2_ar_head_window_20260917.json),
+[`sampler window validation`](results/yue2_sampler_window_20260917.json),
+[`session gate`](results/yue2_session_gate_windowed_sampler_20260917.json).
+
+### Radeon 8060S: YuE2 3B NAR attention packing and projection selection
+
+The NAR attention kernel walked the key/value cache once per (query row, query
+head) pair, so a 1 299-frame song re-read 27.9 GB of K/V per call. Blocks now own
+eight query rows (`YUE2_NAR_ROWS_PER_BLOCK`) and reuse every K and V element they
+load across those rows; the K row and the query row are read eight and four
+elements per instruction instead of one, which is what a lane owning one key had
+been asking the L1 for 32 sectors at a time; and the V walk steps by pointer
+instead of multiplying and branching per key. `rocprofv3 --pmc` on the previous
+kernel measures why the packing mattered more than the traffic: 3.5e8 cycles
+carried 3.7e9 VALU instructions at **19% occupancy**, so it was stalled rather
+than bandwidth-bound, and the same run after the change reaches **93%**. The
+projection path had a second, larger defect: both YuE2 runtimes took the first
+hipBLASLt algorithm hipBLASLt returned, and that entry is 2.9-4.2× slower on these
+shapes than the measured best, which the same wrapper already documented as its
+fast heuristic. Both now select by measured index.
+
+| Measurement | Before | After | Ratio |
+| --- | ---: | ---: | ---: |
+| `yue2_nar_attention_kernel`, 1 299 rows / 2 695 keys, per call | 177.22 ms | **19.33 ms** | **9.17x** |
+| The same kernel, tile maximum vectorized (paired, same session) | 32.82 ms | **31.34 ms** | **1.05x** |
+| The same kernel, softmax weights stored key-major (paired, same session) | 27.40 ms | **26.38 ms** | **1.04x** |
+| The same kernel, dot-product row loop specialized and walks unrolled (paired) | 26.27 ms | **19.33 ms** | **1.36x** |
+| `yue2_nar_attention_wmma_kernel`, same shape, per call | 20.1 ms | **3.85 ms** | **5.1x** |
+| The same kernel, block widened to 384 threads and the key batch to 32 (paired) | 3.85 ms | **2.13 ms** | **1.84x** |
+| NAR projections, one 2-step solve, 800 GEMMs | 3.89 s | **0.94 s** | **4.14x** |
+| NAR solve of `mandarin-off-s1234`, 2 ODE steps | 27.76 s | **5.14 s** | **5.40x** |
+| NAR solve of the same case, product 32 ODE steps | 443.4 s | **26.07 s** | **17.01x** |
+| Full replay of the same case, 32 steps (solve + decode) | 465.9 s | **46.16 s** | **10.09x** |
+
+All rows are gfx1151 (zbook) measurements. The kernel row is a median of six
+batches of five calls; every replay row was run on the same host with the gate's
+own JSON as the source, and the 32-step pair uses the protocol the reference's own
+27.32 s figure was measured under, which puts the solver 16.2× behind the pinned
+upstream before this work and **1.05× ahead** of it now. Eight rows per block is a
+measured optimum: four rows lands at 22.53 ms, sixteen at 25.39 ms and thirty-two
+at 88.50 ms, where shared-memory and register pressure take over.
+
+Per-call times on this host drift about 10% between batches — the same kernel
+source measures 27.4-28.5 ms in one batch and 32.0-33.4 ms in another — so the last
+three rows are quoted as paired same-session ratios, alternating the two sources
+within one batch. What they change: the per-tile maximum walked the tile's
+shared-memory scores one float at a time, 128 requests per row in a single
+dependent `fmax` chain, and it now reads four entries per instruction into four
+independent accumulators; the softmax weights were stored row-major, so one key's
+weights for eight rows cost eight index computations against the runtime block size
+and eight shared-memory requests, and they are now stored key-major, eight
+consecutive floats per key; and the row loop inside the dot product was rolled at 46
+instructions per (row, eight dimensions) against eight multiply-adds, because its
+bound is only known at run time — a full row set now takes an unrolled path, and
+both accumulation walks carry running pointers and a 32-bit trip count. All three
+changes are bit-exact — a maximum over a set is exact and order-independent for
+finite scores, the sums still walk each row key-ascending, and the dot products keep
+their order — and all three are confirmed against the recorded parent-bits fixture.
+The third is the largest: it removes **38% of the kernel's instructions**
+(12 581 to 7 816 per lane-tile, with vector ALU down 36%, scalar ALU 45% and global
+loads 64%), measured with `rocprofv3 --pmc`, which is deterministic where the wall
+clock is not.
+
+What is left is a kernel-design change rather than more loop surgery. Profiling the
+pinned upstream on the same case puts its own attention kernel at **4.14 s** for the
+whole 32-step solve (1 792 calls at 2.31 ms, 12.4 TFLOP/s); this kernel's share is
+about 39 s, so it is **9.4×** off a tensor-core flash attention. The scalar FP32
+ceiling on 40 CUs is 25.6 TFLOP/s and this kernel keeps roughly a quarter of its
+instructions as useful arithmetic after the softmax reductions, the weight exchange
+and the loads, so even a perfect scalar kernel lands near 6 TFLOP/s — about 8.5 s
+here. Closing the rest needs matrix cores, which is what the reference uses.
+
+`yue2_nar_attention_wmma_kernel` is that tensor-core path: a second attention for the
+production head geometry (16 query heads over 8 key/value heads at head_dim 128) with
+f16 WMMA operands, f32 score accumulation, a 16-key tile per lane-half reduction, K
+and V sharing one staged buffer, and an f16 output accumulator rescaled by the
+online softmax — the same arithmetic class as the reference. Its fragment contracts
+follow the in-tree Laguna flash attention, which preserves llama.cpp's
+`fattn-mma-f16` design. It runs the production shape in **2.13 ms per call against
+the scalar kernel's 19.0 ms (9.3×)**, faster than the reference's own 2.31 ms
+dispatch, and takes the product's 32-step solve to **26.07 s against the reference's
+27.32 s (1.05× faster)**. It changes arithmetic by design, so the scalar kernel stays
+registered as the strict fallback behind `HIPENGINE_YUE2_NAR_ATTENTION=scalar` and
+this variant is held to the production gates instead of the parent-bits fixture: all
+three M4 solver gates pass (chunk0 latents rel L2 0.01099 / cosine 0.999941,
+restricted visibility 0.00894 / 0.999961, multi-chunk 0.01090 / 0.999943 against
+0.05 / 0.999), the full twelve-case replay passes with every case reproducing its
+exact frame and sample counts in 458.7 s against 527.4 s, and its own unit test
+checks seven shapes against an independent FP64 reference. Evidence:
+[`M7 tensor-core attention`](results/yue2_m7_attention_wmma_20260917.json),
+[`M7 block geometry`](results/yue2_m7_attention_wmma_geometry_20260917.json).
+
+The geometry is where most of that came from, and the measurement that found it was
+an instruction count rather than a timing. At the original 128-thread block the
+kernel was at 7.5 TFLOP/s, 15% of the device's fp16 peak, while the reference's
+kernel reached 12.4. A static ISA count of the built object showed 2 902
+instructions per key batch of which only 64 are WMMA, and 1 312 waves over 40 CUs ×
+4 SIMD against 11.2M cycles puts it at roughly **11 cycles per instruction** —
+latency-bound at two waves per SIMD, not issue-bound or WMMA-bound. Three
+instruction-level attempts came back as measured no-ops: vectorizing the K-fragment
+load produced a **byte-identical ISA** (the compiler had already done it) and
+tightening `__launch_bounds__` to 3 and 4 blocks per CU changed nothing, because the
+shared-memory footprint already limits the block count to one per CU. Widening the
+block from 4 waves to 12 (384 threads, 96 rows) with a 32-key batch took the kernel
+to **2.13 ms** while leaving the lane-to-column mapping untouched. The lane mapping
+is what made that a small change: 16 columns per wave means 8 query rows × 2 query
+heads, so the fragment code is independent of how many waves the block has.
+
+At 32 steps the solver is now ~5.3 s of attention, ~14.7 s of projections and ~6 s of
+conditioning prefill and other work, so the projections are the largest single item
+and run at hipBLASLt's rate.
+
+`scripts/yue2_solver_stage_profile.py` measures that split directly rather than by
+differencing two solve lengths. It times one velocity evaluation with HIP events and
+splits it by suppressing one launch at a time, so the differences stay pipeline-clean;
+inserting a synchronize around each kernel does not work, because with 200 projection
+launches per evaluation the sync cost alone exceeds the kernel time being measured. The
+result for the production case at 28 layers, 1 299 rows and 2 695 keys:
+
+| Stage | Per evaluation (old geometry) | Per evaluation (now) | At 32 steps | Share |
+| --- | ---: | ---: | ---: | ---: |
+| Projections (200 launches, 3 662 GFLOP) | 229 ms | 229 ms | **14.7 s** | 56% |
+| NAR attention (28 launches) | 136 ms | 83 ms | **5.3 s** | 20% |
+| Conditioning prefill (paid once) | — | — | **3.44 s** | 13% |
+| Everything else (norms, RoPE, casts, state) | 53 ms | 53 ms | **3.4 s** | 13% |
+
+The projection and attention columns are the same measurement at the two attention
+geometries; the solve total is 26.07 s.
+
+The projections are the remaining lever, and they are close to a ceiling. They run at
+16.0 TFLOP/s where the same shapes launched back to back by hipBLASLt measure
+19.4 TFLOP/s, so three quarters of the library's own in-place rate is already reached;
+the runtime already selects the fastest zero-workspace algorithm, and a 4 096³ square
+GEMM also measures 21 TFLOP/s, so ~20 TFLOP/s is the library's practical ceiling on
+this device against a ~51 TFLOP/s fp16 peak for 40 CUs. The solver is device-bound
+rather than host-bound — host enqueue for one evaluation is 28 ms against 419 ms of
+device time. Evidence:
+[`solver stage profile`](results/yue2_solver_stage_profile_20260917.json).
+
+An earlier version of this section quoted a synchronize-wrapped split of the 7.95 s
+two-step solve (3.31 s of attention, 0.94 s of projections, 3.73 s of conditioning
+prefill, RoPE and norms). Those numbers are superseded: the syncs drained the pipeline,
+which understated the GEMMs and overstated the elementwise remainder.
+
+The attention rewrite is bit-exact rather than merely close: the parity fixture
+`tests/fixtures/yue2/operators/nar_attention_parent.npz` holds the parent kernel's
+own output bits and the kernel test compares against them exactly. The projection
+change cannot be bit-exact (a different GEMM accumulation order is the point), so it
+is held to the production gates instead: all three M4 solver gates pass (chunk0
+latents rel L2 0.01248 / cosine 0.999923 against 0.01225 / 0.999926, multi-chunk
+0.01071 / 0.999944 unchanged, restricted visibility 0.00905 / 0.999960 against
+0.00885 / 0.999962), the 18-case AR replay stays inside its floor while improving,
+and the three-case greedy session gate passes with every case slightly better
+(semantic teacher-forced 98.2% / 97.1% / 96.7%). The kernel keeps a scalar K walk
+for head dimensions that are not a multiple of eight, where the rows are not
+16-byte aligned; that fallback has its own test, and perturbing it fails the new
+`head_dim=100` case while `head_dim=128` still passes. Evidence:
+[`M7 attention packing`](results/yue2_m7_attention_packed_20260917.json),
+[`M7 projection selection`](results/yue2_m7_gemm_algorithm_20260917.json),
+[`M7 row blocking`](results/yue2_m7_attention_20260917.json).
+
+The decoder is faster than the reference's (22.47 s against 69.09 s) and the AR
+stage runs at 19.35 tokens/s against 31.97.
+
 ## Current concurrency scoreboards
 
 All values are aggregate generated tokens per second. Direct rows time the

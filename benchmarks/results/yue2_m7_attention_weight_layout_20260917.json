@@ -1,0 +1,52 @@
+{
+  "date": "2026-09-17",
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD Radeon 8060S (gfx1151, Ryzen AI MAX+ 395, 40 CU, unified LPDDR5X)",
+    "note": "Every figure is gfx1151. No gfx1100 hardware was available."
+  },
+  "kernel": "yue2_nar_attention_kernel (kernels/hip_gfx1100/yue2/nar.hip)",
+  "change": "The softmax weights were stored row-major -- [row][key] with the row stride taken from the runtime block size -- so one key's weights for eight rows cost eight index computations (r * blockDim.x against a runtime blockDim.x) and eight shared-memory requests, and every lane paid that per key. They are now stored key-major ([key][row], eight consecutive floats per key), so the row index is a compile-time offset inside an unrolled loop, one base address serves the whole row block, and the block arrives in two 16-byte requests.",
+  "why": "The kernel's address arithmetic had grown as large as its math: rocprofv3 --pmc on the previous kernel counts 3829 scalar-ALU instructions per lane-tile against 9060 vector-ALU, so a runtime-strided index into shared memory was costing as much as the arithmetic it fed.",
+  "instruction_counts_per_lane_tile": {
+    "command": "rocprofv3 --pmc SQ_INSTS_VALU SQ_INSTS_SALU SQ_INSTS_LDS SQ_INSTS_FLAT (dispatch 1, 228624 lane-tiles per call)",
+    "before": {"VALU": 9060, "SALU": 3829, "LDS": 1265, "FLAT": 386, "total": 14539},
+    "after": {"VALU": 8066, "SALU": 3091, "LDS": 527, "FLAT": 386, "total": 12070},
+    "delta": {"VALU": -0.110, "SALU": -0.193, "LDS": -0.583, "total": -0.170},
+    "note": "Counters are deterministic and unaffected by the host's clock drift, so this is the primary evidence for the change; the wall-clock pair below is the secondary check."
+  },
+  "paired_kernel_ab": {
+    "command": "python3 scripts/yue2_attention_bench.py --repeat 40, alternating the two sources in one session",
+    "pairs": [
+      {"row_major_ms": 27.05, "key_major_ms": 26.25},
+      {"row_major_ms": 27.40, "key_major_ms": 26.38},
+      {"row_major_ms": 27.57, "key_major_ms": 26.55}
+    ],
+    "median_ratio": 1.039,
+    "note": "Seventeen percent fewer instructions buys 3.9% of wall clock, which is what a kernel at ~75% of its issue limit with the rest in stalls can show. Absolute times drift up to 15% between batches on this host, so only the paired ratio is claimed."
+  },
+  "paired_replay_ab": {
+    "command": "python3 scripts/yue2_e2e_gate.py --only mandarin-off-s1234 --steps 2 --skip-live, alternating the two sources",
+    "row_major_nar_seconds": [7.77, 7.72],
+    "key_major_nar_seconds": [7.61, 7.63],
+    "row_major_replay_seconds": [27.8, 27.7],
+    "key_major_replay_seconds": [27.7, 27.6]
+  },
+  "rows_per_block_recheck": {
+    "rows_8_ms": [26.46, 26.58],
+    "rows_16_ms": [37.80, 38.08],
+    "conclusion": "Eight rows stays the optimum. The cheaper per-row shared-memory traffic does not make sixteen rows viable, because the register and shared-memory footprint of the accumulators is what fails at that width."
+  },
+  "bit_parity": {
+    "fixture": "tests/fixtures/yue2/operators/nar_attention_parent.npz",
+    "result": "bit-identical to the parent kernel (max abs diff 0.0)"
+  },
+  "unit_tests": {
+    "command": "python3 -m pytest tests/test_unit_yue2_nar_kernels.py",
+    "result": "15 passed"
+  },
+  "next_candidates": [
+    "Scalar-ALU is still 3091 per lane-tile against 8066 vector-ALU. The accumulation loop now spends one base address per key, so the remaining bulk is the two key walks' pointer stepping and the tile-loop bookkeeping; that is a smaller prize than this change was.",
+    "Closing the rest of the gap to the reference needs the register-blocked layout, where a lane holds several keys' dot products and the softmax reductions move to shuffles. That changes arithmetic and therefore needs the profile gates rather than bit parity."
+  ]
+}

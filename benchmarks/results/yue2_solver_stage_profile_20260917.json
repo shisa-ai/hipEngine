@@ -1,0 +1,54 @@
+{
+  "date": "2026-09-17",
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD Radeon 8060S (gfx1151, Ryzen AI MAX+ 395, 40 CU, unified LPDDR5X)",
+    "note": "Every figure is gfx1151. No gfx1100 hardware was available."
+  },
+  "question": "The 32-step solve of mandarin-off-s1234 is 32.22 s against the pinned upstream's 27.32 s. Where does the remaining 4.9 s sit?",
+  "method": {
+    "tool": "scripts/yue2_solver_stage_profile.py --case mandarin-off-s1234 --evals 3 --skip {none,attention,gemm}",
+    "why_not_a_kernel_trace": "rocprofv3 --kernel-trace on a 4-step solve reports 40.22 s of kernel time for a 27.3 s replay. Its per-dispatch overhead is comparable to the elementwise kernels it measures, so it cannot split a stage mix that is 55% GEMM, 32% attention and 13% small kernels. It is still the right tool for naming kernels and their geometry.",
+    "why_not_per_call_syncs": "Inserting a device synchronize around each kernel destroys the pipeline: with 800 projection launches per evaluation, the sync cost alone (0.3 ms each) exceeds the kernel time being measured. The three runs here differ only by which launch is suppressed, so the differences are pipeline-clean.",
+    "host_or_device": "HIP events give the device time and the host enqueue time separately. Host enqueue for one evaluation is 28 ms against 419 ms of device time, so the solver is device-bound; an earlier reading of 433 ms for the same enqueue was the command queue throttling the host once the device fell behind, not host cost."
+  },
+  "per_velocity_evaluation": {
+    "shape": "28 layers, 1299 rows, 1396 AR keys (2695 total), 16 query heads over 8 key/value heads, head_dim 128",
+    "device_seconds": {"full": 0.4189, "without_attention": 0.2829, "without_projections": 0.1895, "neither": 0.0535},
+    "shares": {"projections": 0.55, "nar_attention": 0.32, "everything_else": 0.13},
+    "host_enqueue_seconds": 0.028,
+    "projection_launches_per_eval": 200,
+    "projection_gflop_per_eval": 3662.0,
+    "attention_launches_per_eval": 28,
+    "projection_rate_tflops": 16.0
+  },
+  "thirty_two_step_solve": {
+    "measured_seconds": 32.22,
+    "projections": {"seconds": 14.7, "share": 0.46},
+    "nar_attention": {"seconds": 8.7, "share": 0.27},
+    "conditioning_prefill": {"seconds": 3.44, "share": 0.11, "ar_prefill_attention_seconds": 2.94},
+    "everything_else": {"seconds": 3.4, "share": 0.11},
+    "note": "64 evaluations (32 midpoint steps, two per step) at 418.9 ms plus 3.44 s of step-independent conditioning."
+  },
+  "what_the_library_itself_reaches": {
+    "tool": "scripts/yue2_gemm_rate.py --repeat 12 (rows 1299, fp16 in / fp32 out)",
+    "per_shape_tflops": {"k/v 2048->1024": 30.2, "q 2048->2048": 28.9, "o 2048->2048": 28.7, "gate/up 2048->6144": 20.0, "down 6144->2048": 20.1, "square 4096->4096": 21.0},
+    "best_algorithm_total_per_layer_ms": 6.05,
+    "implied_per_eval_ms": 169,
+    "measured_per_eval_ms": 229,
+    "conclusion": "The projections run at 16.0 TFLOP/s against 19.4 TFLOP/s for the same shapes launched back to back by hipBLASLt itself, so 74% of what the library reaches in isolation is what the solve reaches in place. The runtime already uses the fastest zero-workspace algorithm (index 4); no candidate in the library's list is faster. There is no cheap win here -- 3.9 s at most from closing the in-place gap, and anything beyond that needs a hand-written GEMM, because hipBLASLt tops out near 20 TFLOP/s on these shapes against a ~51 TFLOP/s fp16 peak for 40 CUs.",
+    "square_gemm_note": "A 4096x4096x4096 fp16 GEMM also measures 21.0 TFLOP/s, so this is the library's practical ceiling on the device rather than a small-shape effect."
+  },
+  "attention_kernel": {
+    "production_shape_ms": 3.85,
+    "flops_per_call_gflop": 28.7,
+    "tflops": 7.5,
+    "reference_ms": 2.31,
+    "reference_tflops": 12.4,
+    "vregs": 248,
+    "occupancy": "2 blocks of 128 threads per CU (12.5% of the 2048-thread limit), limited by 248 VGPRs against a 65536-VGPR file",
+    "shared_bytes": 34816,
+    "conclusion": "At 7.5 TFLOP/s the tensor-core kernel is at 15% of the device's fp16 peak, so it is not WMMA-throughput-bound: the per-key softmax, the gather-based K/V staging (which branches between the AR and NAR buffers for every 16-byte pack) and the 12.5% occupancy are the cost. Matching the reference's 2.31 ms would take 8.7 s to 5.2 s."
+  },
+  "conclusion": "The solver is device-bound and split almost evenly between the projections (14.7 s, at the library's own practical rate) and the attention (8.7 s, at 15% of the device's fp16 peak). The two remaining levers are worth about 3.5 s and 3.9 s respectively, and the attention one is the better understood: the kernel's register pressure caps occupancy at 12.5%, and its K/V staging does a bounds-checked gather per 16-byte pack."
+}

@@ -1,0 +1,101 @@
+{
+  "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "device": "AMD Radeon 8060S Graphics",
+  "gcn_arch": "gfx1151",
+  "host": "zbook",
+  "model": {
+    "files": {
+      "config.json": {
+        "bytes": 959,
+        "sha256": "ad3477bbef890bf98ae196c1e4b44779494a6231c4ab66f32708eabadf265329"
+      },
+      "qwen.tiktoken": {
+        "bytes": 2561218,
+        "sha256": "b2b1b8dfb5cc5f024bafc373121c6aba3f66f9a5a0269e243470a1de16a33186"
+      },
+      "weights_manifest.json": {
+        "bytes": 179,
+        "sha256": "2296f82c29dcb11aeefde07e216403a32fc86c8f6da2ec15a70102abfd936a93"
+      }
+    },
+    "path": "/home/lhl/.cache/huggingface/hub/models--m-a-p--YuE2-3B/snapshots/14fc6c6f146441b1dd6363fcb2e01e82a6914cb7",
+    "revision": "14fc6c6f146441b1dd6363fcb2e01e82a6914cb7",
+    "shards": [
+      {
+        "bytes": 7261441640,
+        "name": "1d55c42c1a9875c34f5d736e15078449992b044e807ce2a138e6cf289a1e59e9"
+      }
+    ],
+    "tensor_count": 628
+  },
+  "numpy": "2.4.4",
+  "python": "3.13.13",
+  "recorded": "2026-09-16T14:19:23Z",
+  "rocm": "10.0.0 (torch wheel local version)",
+  "shootout_wheel": {
+    "name": "yue2_infer-0.1.5-py3-none-any.whl",
+    "sha256": "8801e2c0d969db02df78d2994150b4ccd86077d87c24fdb8509b1f6f31462641"
+  },
+  "source": {
+    "files": {
+      "modeling_vae.py": {
+        "bytes": 25265,
+        "sha256": "b6578ff461e6be9fd079ca5ddf12893940f3b3338ff3435fceae89c466486f5a"
+      },
+      "modeling_yue2.py": {
+        "bytes": 32983,
+        "sha256": "62d2bd758c8fff1a0d64584a699343076fca9a7880db5d8e19263bc30ae79d7c"
+      },
+      "nar.py": {
+        "bytes": 13269,
+        "sha256": "1a13a8e54b40229e008a270804a1fb830dfdf806735be484e8ce10171eb4b8d8"
+      },
+      "pipeline.py": {
+        "bytes": 21945,
+        "sha256": "48eda878c0af5b101a2f48f62c0d12ffb40db91c902b831bab1082be13c4af44"
+      },
+      "protocol.py": {
+        "bytes": 6059,
+        "sha256": "e00d32bf22baac46c7d4dafaeecd4f3d5a4753d651b3dc8f4164b9f3774980ad"
+      },
+      "sampling.py": {
+        "bytes": 7636,
+        "sha256": "b680afd5d6b6694b0e8d430b4c1b6d3b5108107672b06500ecc6645c471bf6c4"
+      },
+      "storage.py": {
+        "bytes": 7067,
+        "sha256": "a5bcc181b16412b45bc560e5264ba0b303667b5fd81957991ac0266c87fe2a5d"
+      },
+      "tokenization_yue2.py": {
+        "bytes": 1863,
+        "sha256": "fc88387f96e5db2020a0c3f5374b82726206026d83159b68b83e4136bb741acc"
+      }
+    },
+    "shootout_export": "/home/lhl/yue2-shootout",
+    "upstream": "/home/lhl/yue2-shootout/shared/upstream"
+  },
+  "tiktoken": "0.14.0",
+  "torch": "2.13.0+rocm10.0.0",
+  "torch_hip": "7.15.26333",
+  "vae": {
+    "files": {
+      "config.json": {
+        "bytes": 1378,
+        "sha256": "f0191bb9694009956de44e0c361a6f1334760be4c8f848e599bde242a54a0970"
+      },
+      "weights_manifest.json": {
+        "bytes": 178,
+        "sha256": "017d64a4d288217a43fcac3866a0e1d55f796fa891d4dfb6de0bd170ab750026"
+      }
+    },
+    "path": "/home/lhl/.cache/huggingface/hub/models--m-a-p--YuE2-Vae/snapshots/9a94e1d0ea9f8087e98f77fa88df4a4068104d2a",
+    "revision": "9a94e1d0ea9f8087e98f77fa88df4a4068104d2a",
+    "shards": [
+      {
+        "bytes": 530512720,
+        "name": "807ce9d5149fa27c5ad3e6582058469852e908f6c5acc8c8aa338e7ab7751346"
+      }
+    ],
+    "tensor_count": 435
+  }
+}

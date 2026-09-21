@@ -1081,6 +1081,17 @@ profile. The exporter supports `--repackage` to preserve existing quantized
 tensor bytes while embedding all six source assets.
 
 
+### YuE2 music generation (planned, 2026-09-16)
+
+[MODEL-YUE2.md](MODEL-YUE2.md) specifies a torch-free HIP model/generator
+plugin for YuE2-3B and its separate FP32 stereo VAE. The planned session owns
+symbolic planning, semantic AR generation, cached-conditioning NAR flow matching,
+and tiled waveform decoding. The DeepSeek shootout implementation is a source
+reference, not a runtime dependency or transferable AMD performance result.
+Implementation begins with pinned oracle fixtures and a complete tensor inventory;
+production numerical/audio gates and separate gfx1151/gfx1100 qualification precede
+completion claims. No YuE2 runtime is implemented by this planning entry.
+
 ## Extensibility Design
 
 hipEngine has **four orthogonal plugin axes**. Each axis is a registry of implementations; the engine composes concrete instances at load time from the user's choice.
