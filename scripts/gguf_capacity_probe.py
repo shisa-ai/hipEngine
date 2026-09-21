@@ -58,7 +58,19 @@ def main() -> int:
         ),
     )
     parser.add_argument("--json", type=Path, default=None)
+    parser.add_argument(
+        "--prefill-chunk-size",
+        type=int,
+        default=0,
+        help=(
+            "Prefill chunk rows to certify. 0 keeps PrefillConfig's own "
+            "defaults (1024/1024). Set this to probe a larger chunk's "
+            "activation scratch, e.g. 4096 for the MoE weight-traffic lever."
+        ),
+    )
     args = parser.parse_args()
+
+    from dataclasses import replace
 
     import numpy as np
     from hipengine.core.hip import get_hip_runtime
@@ -77,6 +89,20 @@ def main() -> int:
         "decode_tokens": int(args.decode_tokens),
         "max_batch_size": int(args.max_batch_size),
     }
+    prefill_config = PrefillConfig()
+    if int(args.prefill_chunk_size) > 0:
+        # The chunk lever's whole cost is activation scratch, so the probe has
+        # to be able to certify a non-default chunk: every chunk-sized knob is
+        # raised together, because the runner takes the smallest positive one.
+        chunk = int(args.prefill_chunk_size)
+        prefill_config = replace(
+            prefill_config,
+            linear_chunk_size=chunk,
+            moe_chunk_size=chunk,
+            full_attn_post_chunk_size=chunk,
+            full_attn_rope_chunk_size=chunk,
+        )
+    result["prefill_chunk_size"] = int(args.prefill_chunk_size)
     prompt_ids = [9707] * int(args.prompt_length)
     runtime = get_hip_runtime()
     policy = resolve_kv_policy(
@@ -88,7 +114,7 @@ def main() -> int:
             args.model,
             runtime=runtime,
             max_sequence_length=int(args.max_sequence_length),
-            prefill_config=PrefillConfig(),
+            prefill_config=prefill_config,
             kv_policy=policy.create_policy(),
             kv_scale_dtype=str(args.kv_scale_dtype),
             kv_scale_granularity=str(policy.scale_granularity),
