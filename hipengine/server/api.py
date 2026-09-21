@@ -16638,6 +16638,11 @@ def _usage(
         completion_details["rejected_prediction_tokens"] = rejected
     if completion_details:
         usage["completion_tokens_details"] = completion_details
+    cached_tokens = _prefix_cached_token_total(details)
+    if cached_tokens is not None:
+        # Reuse can only shrink prompt work, never grow it, so the reported
+        # count is clamped to the prompt it was served from.
+        usage["prompt_tokens_details"] = {"cached_tokens": min(cached_tokens, prompt_tokens)}
     return usage
 
 
@@ -16712,6 +16717,45 @@ def _mtp_accepted_rejected_counts(
     if not found:
         return None
     return accepted, max(0, generated - accepted)
+
+
+def _prefix_cache_diagnostics(detail: GenerationOutput) -> Mapping[str, Any] | None:
+    """Return one output's per-request prefix-cache block, when the backend published it."""
+
+    telemetry = getattr(detail, "telemetry", None)
+    if isinstance(telemetry, Mapping):
+        diagnostics = telemetry.get("diagnostics")
+    else:
+        diagnostics = None if telemetry is None else getattr(telemetry, "diagnostics", None)
+    if not isinstance(diagnostics, Mapping):
+        return None
+    block = diagnostics.get("prefix_cache")
+    return block if isinstance(block, Mapping) else None
+
+
+def _prefix_cached_token_total(
+    details: Sequence[GenerationOutput] | None,
+) -> int | None:
+    """Sum prompt tokens served from the prefix cache across generation outputs.
+
+    Mirrors vLLM's ``usage.prompt_tokens_details.cached_tokens``: the count is a
+    subset of ``prompt_tokens``, and a request that reused nothing reports zero.
+    Returns ``None`` when no output carried prefix-cache telemetry, which is
+    different from a cache that was consulted and missed -- callers must not
+    report a zero they did not measure.
+    """
+
+    cached = 0
+    found = False
+    for detail in (details or ()):
+        block = _prefix_cache_diagnostics(detail)
+        if block is None:
+            continue
+        found = True
+        reused = block.get("reused_tokens")
+        if isinstance(reused, int) and not isinstance(reused, bool) and reused > 0:
+            cached += reused
+    return cached if found else None
 
 
 def _mtp_output_reconciliation(

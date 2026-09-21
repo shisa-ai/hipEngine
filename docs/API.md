@@ -4,7 +4,7 @@ owns: OpenAI-compatible server usage, endpoint support, request/response semanti
 ---
 # OpenAI-Compatible Server API
 
-Last updated: 2026-09-20
+Last updated: 2026-09-21
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
@@ -586,9 +586,11 @@ the optional
 backend-authored field vocabulary under
 `features.choice_telemetry.decode_state_fields`.
 
-Cache hit/miss, budget pressure, per-request KV-byte deltas, and
+Cache budget pressure, per-request KV-byte deltas, and
 backend-authored per-phase token metadata are omitted until the runtime exposes
-those signals.
+those signals. Prefix-cache hit/miss is reported under
+`usage.prompt_tokens_details.cached_tokens` and
+`choices[].hipengine.diagnostics.prefix_cache`.
 
 ### Exact generated-token accounting
 
@@ -625,6 +627,43 @@ including tokens later hidden by a server-side stop-string or structured-output
 validation. A legacy generator that does not provide exact IDs retains the old
 retokenized usage fallback and omits `hipengine.token_accounting`, so benchmark
 harnesses can fail closed instead of treating that fallback as exact evidence.
+
+### Prefix-cache usage
+
+When the backend reports per-request prefix-cache reuse, the OpenAI-compatible
+`usage` carries the vLLM-compatible cached prompt-token count:
+
+```json
+{
+  "usage": {
+    "prompt_tokens": 1035,
+    "completion_tokens": 24,
+    "total_tokens": 1059,
+    "prompt_tokens_details": {
+      "cached_tokens": 1024
+    }
+  }
+}
+```
+
+`prompt_tokens` stays the full prompt length; `cached_tokens` is the subset of
+it that the prefix cache served, summed from backend `prefix_cache`
+diagnostics (`reused_tokens`) and clamped to the prompt it came from. A request
+whose cache was consulted and missed reports `cached_tokens: 0`. A request whose
+outputs carried no prefix-cache telemetry omits `prompt_tokens_details`
+entirely, because a zero there would describe a cache nobody consulted. The
+field appears wherever a response carries backend generation telemetry: both
+blocking endpoints and single-choice streams. Multi-choice streams that do not
+carry per-row backend telemetry omit it.
+
+The per-request prefix-cache block itself is available under
+`choices[].hipengine.diagnostics.prefix_cache` when
+`stream_options.include_hipengine=true`. It reports `mode`, `block_size_tokens`,
+`eligible`, `lookup`, `hit`, `matched_tokens`, `reused_tokens`,
+`avoided_prefill_tokens`, `executed_prefill_tokens`, `reused_pages`, the source
+that served the match, `fallback_reason` when the cache was not used, and
+resident cache size in entries, pages, and bytes. `hipengine chat` reads it to
+show per-reply prefill, decode, and cached-token stats and to run `/bench`.
 
 ### Speculative MTP usage and effective-state reporting
 
