@@ -4118,6 +4118,126 @@ def test_startup_scratch_probe_keeps_admission_width_for_enabled_mtp_route() -> 
     assert fake.scratch_prepares[0]["max_batch_size"] == 8
 
 
+def test_startup_scratch_probe_warms_gguf_route_width_without_a_server_cap() -> None:
+    """Unset --max-active-requests means no server-wide cap, not one request at a time.
+
+    The GGUF routes still admit their own width, so a probe sized from the raw config
+    would report batch_width_le_1_or_disabled and skip every packed warmup.
+    """
+
+    fake = FakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        quant="gguf_q4_k_m",
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert fake.scratch_prepares
+    assert fake.scratch_prepares[0]["max_batch_size"] == 4
+    probe = response.json()["startup"]["checks"]["scratch_probe"]
+    assert probe["result"]["max_batch_size"] == 4
+
+
+def test_startup_scratch_probe_keeps_a_smaller_server_cap() -> None:
+    fake = FakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        quant="gguf_q4_k_m",
+        max_active_requests=2,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert fake.scratch_prepares[0]["max_batch_size"] == 2
+
+
+def test_startup_warms_the_speculative_mtp_route_before_ready() -> None:
+    """The chat smoke runs the default route; an explicit MTP request runs another."""
+
+    fake = SpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="opt_in",
+        max_active_requests=4,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        body = client.get("/ready").json()
+
+    check = body["startup"]["checks"]["mtp_smoke"]
+    assert check["status"] == "passed"
+    assert check["route"] == "speculative_mtp"
+    assert check["realized_route"] == "speculative_mtp"
+    assert check["max_tokens"] == 8
+    assert check["prompt_tokens"] >= 128
+    assert body["startup"]["last_timings_s"]["mtp_smoke_s"] is not None
+    assert len(fake.mtp_calls) == 1
+    prompts, sampling = fake.mtp_calls[0]
+    assert sampling.max_tokens == 8
+    assert prompts[0].count("one two three four") == 32
+
+
+def test_startup_skips_the_mtp_warmup_when_the_route_is_off() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="off",
+        max_active_requests=4,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        body = client.get("/ready").json()
+
+    assert body["startup"]["checks"]["mtp_smoke"] == {
+        "enabled": False,
+        "status": "disabled",
+        "reason": "mtp_route_disabled",
+    }
+    assert body["startup"]["last_timings_s"]["mtp_smoke_s"] is None
+    assert fake.mtp_calls == []
+
+
+def test_startup_mtp_warmup_failure_keeps_the_server_ready() -> None:
+    """A speculative warmup failure is not a serving failure: the route falls back."""
+
+    class FailingMTPFakeLLM(SpeculativeMTPFakeLLM):
+        def generate_speculative_mtp_detailed(self, prompts, sampling_params):
+            raise RuntimeError("speculative warmup failed")
+
+    fake = FailingMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="opt_in",
+        max_active_requests=4,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ready"] is True
+    check = body["startup"]["checks"]["mtp_smoke"]
+    assert check["enabled"] is True
+    assert check["status"] == "failed"
+    assert isinstance(check["exception_type"], str) and check["exception_type"]
+
+
 def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
     fake = FakeLLM(outputs=["ok"])

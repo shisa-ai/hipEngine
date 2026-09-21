@@ -4482,6 +4482,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "warmup_s": None,
             "scratch_probe_s": None,
             "chat_smoke_s": None,
+            "mtp_smoke_s": None,
             "startup_total_s": None,
         },
     )
@@ -5527,16 +5528,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         scratch_probe_s: float | None = None
         scratch_probe_started = time.perf_counter()
         max_prompt_tokens = _startup_max_prompt_tokens(max_context)
+        mtp_startup_warmup_requested = str(config.speculative_mtp_serving) != "off"
+        mtp_route_enabled = mtp_startup_warmup_requested and _engine_supports_speculative_mtp(engine)
         if config.startup_scratch_probe:
             scratch_preparer = getattr(engine, "prepare_request_scratch", None)
             scratch_probe_context_unknown = max_prompt_tokens is None
             scratch_probe_prompt_tokens = 64 if max_prompt_tokens is None else int(max_prompt_tokens)
-            scratch_probe_batch_size = max(1, int(config.max_active_requests or 1))
-            mtp_startup_warmup_requested = str(config.speculative_mtp_serving) != "off"
-            mtp_route_enabled = (
-                mtp_startup_warmup_requested
-                and _engine_supports_speculative_mtp(engine)
-            )
+            scratch_probe_batch_size = _startup_scratch_probe_batch_size(config, engine)
             if not mtp_route_enabled:
                 plain_ar_limit = getattr(
                     engine,
@@ -5661,6 +5659,86 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         else:
             startup_checks["chat_smoke"] = {"enabled": False, "status": "disabled"}
 
+        # The chat smoke above runs the route a request without `speculative_mtp`
+        # resolves to, which is not the route an explicit MTP request runs. Warm the
+        # speculative path too, so the first user request that asks for MTP by name
+        # does not pay for kernels, scratch, and draft state nothing has touched yet.
+        mtp_smoke_s: float | None = None
+        if config.startup_chat_smoke and mtp_route_enabled:
+            mtp_smoke_started = time.perf_counter()
+            mtp_smoke_request = ChatCompletionRequest(
+                model=config.model_id,
+                messages=[
+                    ChatMessage(role="user", content=_startup_mtp_smoke_prompt(config.eager_load_prompt))
+                ],
+                temperature=0.0,
+                top_p=1.0,
+                max_tokens=_STARTUP_MTP_SMOKE_MAX_TOKENS,
+                speculative_mtp=True,
+            )
+            try:
+                async with session_lock:
+                    mtp_smoke_prompt = chat_prompt_for_request(mtp_smoke_request, engine)
+                    mtp_smoke_sampling = sampling_params(mtp_smoke_request, (mtp_smoke_prompt,), engine)
+                    mtp_smoke_prompt_tokens = _count_tokens_for_admission(engine, mtp_smoke_prompt)
+                    _validate_context_budget(
+                        effective_max_context_tokens(engine), engine, (mtp_smoke_prompt,), mtp_smoke_sampling
+                    )
+                    # Resolve the route exactly as a served request does, so the warmup
+                    # runs the route an explicit MTP request would take here -- and so a
+                    # route this server would refuse fails the warmup the same way.
+                    mtp_smoke_route, mtp_smoke_route_decision = _generation_route_for_request(
+                        config,
+                        mtp_smoke_request,
+                        engine=engine,
+                        sampling=mtp_smoke_sampling,
+                        prompts=(mtp_smoke_prompt,),
+                    )
+                _LOGGER.info(
+                    "WARMUP_SPECULATIVE_MTP: route=%s prompt_tokens=%d max_tokens=%d",
+                    mtp_smoke_route,
+                    mtp_smoke_prompt_tokens,
+                    int(mtp_smoke_sampling.max_tokens),
+                )
+                warmup_result = await generation_batcher.submit(
+                    (mtp_smoke_prompt,),
+                    mtp_smoke_sampling,
+                    detailed=True,
+                    include_batch_metadata=True,
+                    route=mtp_smoke_route,
+                    route_decision=mtp_smoke_route_decision,
+                )
+            except Exception as exc:
+                # A speculative warmup failure is not a serving failure: the route
+                # has its own decline-and-fall-back path, and the request that would
+                # have paid this cost still runs. Report it and stay ready.
+                mtp_smoke_s = time.perf_counter() - mtp_smoke_started
+                startup_checks["mtp_smoke"] = {
+                    "enabled": True,
+                    "status": "failed",
+                    "exception_type": type(exc).__name__,
+                }
+                _LOGGER.warning("WARMUP_SPECULATIVE_MTP: failed; serving continues", exc_info=True)
+            else:
+                mtp_smoke_s = time.perf_counter() - mtp_smoke_started
+                startup_checks["mtp_smoke"] = {
+                    "enabled": True,
+                    "status": "passed",
+                    "route": str(mtp_smoke_route),
+                    "realized_route": _warmup_realized_route(warmup_result),
+                    "prompt_tokens": int(mtp_smoke_prompt_tokens),
+                    "max_tokens": int(mtp_smoke_sampling.max_tokens),
+                }
+                _record_startup_memory_snapshot(startup_memory, "after_mtp_smoke")
+        elif config.startup_chat_smoke:
+            startup_checks["mtp_smoke"] = {
+                "enabled": False,
+                "status": "disabled",
+                "reason": "mtp_route_disabled",
+            }
+        else:
+            startup_checks["mtp_smoke"] = {"enabled": False, "status": "disabled"}
+
         guard_memory = _device_memory_snapshot()
         if guard_memory is not None:
             startup_memory["guard"] = guard_memory
@@ -5677,16 +5755,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "warmup_s": round(warmup_s, 6),
             "scratch_probe_s": None if scratch_probe_s is None else round(scratch_probe_s, 6),
             "chat_smoke_s": None if chat_smoke_s is None else round(chat_smoke_s, 6),
+            "mtp_smoke_s": None if mtp_smoke_s is None else round(mtp_smoke_s, 6),
             "startup_total_s": round(startup_total_s, 6),
         }
         _LOGGER.info(
-            "LOAD_TIMING: model=%s engine_create_s=%.3f resident_prepare_s=%.3f warmup_s=%.3f scratch_probe_s=%s chat_smoke_s=%s startup_total_s=%.3f",
+            "LOAD_TIMING: model=%s engine_create_s=%.3f resident_prepare_s=%.3f warmup_s=%.3f scratch_probe_s=%s chat_smoke_s=%s mtp_smoke_s=%s startup_total_s=%.3f",
             config.model_id,
             engine_create_s,
             resident_prepare_s,
             warmup_s,
             "skipped" if scratch_probe_s is None else f"{scratch_probe_s:.3f}",
             "skipped" if chat_smoke_s is None else f"{chat_smoke_s:.3f}",
+            "skipped" if mtp_smoke_s is None else f"{mtp_smoke_s:.3f}",
             startup_total_s,
         )
         _log_pretty_startup_summary(
@@ -11684,6 +11764,58 @@ def _startup_max_prompt_tokens(max_context_tokens: int | None) -> int | None:
     if max_context_tokens is None:
         return None
     return max(1, int(max_context_tokens) - 1)
+
+
+# Tokens the startup speculative warmup generates. Enough for several draft/verify
+# cycles, small enough that the warmup stays a startup cost and not a benchmark.
+_STARTUP_MTP_SMOKE_MAX_TOKENS = 8
+# Words in the warmup prompt, built by repeating ``--eager-load-prompt``. A prompt
+# this size exercises the prefill path a real request takes, unlike the 9-token chat
+# smoke, without paying a full 512-token prefill at every server start.
+_STARTUP_MTP_SMOKE_PROMPT_WORDS = 128
+
+
+def _startup_mtp_smoke_prompt(eager_load_prompt: str) -> str:
+    """A warmup prompt long enough for the speculative route to draft and verify."""
+
+    words = str(eager_load_prompt).split() or ["warmup"]
+    repeats = max(1, -(-_STARTUP_MTP_SMOKE_PROMPT_WORDS // len(words)))
+    return " ".join(words * repeats)
+
+
+def _warmup_realized_route(result: Any) -> str | None:
+    """The route a completed warmup batch ran, when the batcher reports one.
+
+    The batcher resolves an unavailable speculative route to AR before dispatch, so
+    the requested route alone cannot tell an operator whether the speculative path
+    was actually warmed.
+    """
+
+    shape = getattr(result, "generation_shape", None)
+    if not isinstance(shape, Mapping):
+        return None
+    route = shape.get("route")
+    return None if route is None else str(route)
+
+
+def _startup_scratch_probe_batch_size(config: ServerConfig, engine: Any) -> int:
+    """How wide the startup scratch probe should warm.
+
+    ``--max-active-requests`` is unset by default, and unset means "no server-wide
+    cap", not "one request at a time": the GGUF routes still admit
+    ``_GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS`` concurrent requests. A probe sized from
+    the raw config therefore reports ``batch_width_le_1_or_disabled`` and skips every
+    packed prefill and verifier warmup it exists to run, leaving the first concurrent
+    request to pay for them.
+    """
+
+    batch_size = max(1, int(config.max_active_requests or 1))
+    if _server_model_uses_gguf(config, engine):
+        # The GGUF routes carry their own width cap, and the batcher takes the smaller
+        # of it and the server-wide cap, so the probe warms what the server can admit.
+        gguf_width = _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS
+        batch_size = gguf_width if config.max_active_requests is None else min(batch_size, gguf_width)
+    return batch_size
 
 
 def _record_startup_memory_snapshot(target: dict[str, Any], stage: str) -> dict[str, Any] | None:
