@@ -742,6 +742,12 @@ hidden-bisect harnesses. Leave everything except the documented defaults unset.
 | `HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_FENCE` | false | Inserts a sync fence at the sampler suffix boundary. |
 | `HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_KERNEL_FENCE` | false | Inserts a kernel-scope fence at the sampler suffix boundary. |
 
+## YuE2 variables
+
+| Variable | Default | Values / notes |
+| --- | --- | --- |
+| `HIPENGINE_YUE2_NAR_ATTENTION` | `wmma` | Attention kernel for the YuE2 acoustic solver at its production head geometry (16 query heads over 8 key/value heads at head_dim 128). `wmma` is the tensor-core `nar_wmma.hip` kernel; `scalar` selects the strict FP32 `nar_attention_f32`, which is bit-exact against the recorded parent kernel and is the solver's debugging oracle and bisection point. The tensor-core path changes arithmetic by design and is held to the production profile gates instead. Removal condition in [`REFACTOR.md`](REFACTOR.md). |
+
 ## Qwen4 experimental variables
 
 These select kernel routes inside the Qwen4Exp GGUF runner. The registered
@@ -958,6 +964,14 @@ in [`benchmarks/HARNESSES.md`](../benchmarks/HARNESSES.md) for the protocols.
 | `SKIP_HIPENGINE_PREBUILD` | unset | `1` skips the hipEngine prebuild step in the TheRock wrapper scripts. |
 | `FIXTURE` / `DTYPE` / `ARMS` / `REQS` / `HERE` / `RECREATE` / `SITE` / `PORT` / `HOST` / `PYTHON` / `PYTHON_BIN` / `BASE_PYTHON` / `VENV` | per-script defaults | Per-script parameter locals (fixture path, dtype, arm list, requirement set, output root, recreate flag, site/port/host, and interpreter paths) read by the shell harnesses; each script assigns its own default. |
 
+### YuE2 model, gate, and timing harnesses
+
+| Variable | Default | Values / notes |
+| --- | --- | --- |
+| `YUE2_MODEL_DIR` | HF cache snapshot of `m-a-p/YuE2-3B` | Checkpoint directory for the YuE2 AR replay, session, product and timing harnesses. When unset each script resolves the pinned revision from the Hugging Face cache and fails with an explicit message if it is absent. |
+| `YUE2_VAE_DIR` | HF cache snapshot of `m-a-p/YuE2-Vae` | Decoder checkpoint directory for the VAE gate, case-timing, and end-to-end harnesses. |
+| `YUE2_SHOOTOUT` | `~/yue2-shootout` | Reference checkout and recorded-run root the oracle harness reads and writes. |
+
 ### External-engine comparison harnesses (vLLM, llama.cpp, atlas)
 
 These belong to the comparison harnesses, not to hipEngine. `VLLM_*` variables
@@ -1052,6 +1066,9 @@ These names appear in the tree but must not be confused with env knobs:
   (an env-file output format written by a harness), and the `DEFAULT_HIPENGINE_*`
   identifier fragments `HIPENGINE_ARRAYS`, `HIPENGINE_ARTIFACT`,
   `HIPENGINE_TOKENS`, `HIPENGINE_RAW_ROOT`.
+- Argument *metavars* that name an artifact slot rather than a variable:
+  `HIPENGINE_JSON` (`scripts/yue2_ar_matched_timing.py`,
+  `scripts/yue2_stage_matched_timing.py`).
 - Placeholder names used in doc/test examples and generic metavars
   (`HIPENGINE_FOO`, `HIPENGINE_ZZZ`, `HIPENGINE_AAA`, `HIPENGINE_EXAMPLE`,
   `HIPENGINE_SOMETHING_ELSE`, `HIPENGINE_STALE_FLAG`, `HIPENGINE_ONE`,

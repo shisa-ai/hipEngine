@@ -4,7 +4,7 @@
 Reads only the safetensors headers (O(header) I/O, no payload), so it is cheap
 enough to run before every residency decision. ``--verify-hash`` additionally
 checks the payload against the checkpoint's ``weights_manifest.json`` sha256,
-which is the identity recorded in ``docs/MODEL-YUE2.md``.
+which is the identity recorded in ``docs/model-cards/MODEL-YUE2.md``.
 
 Usage:
     python3 scripts/yue2_inventory.py --model <dir> --vae <dir> --out artifacts.json
@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from hipengine.loading.safetensors import load_weight_index, read_tensor_storage_bytes  # noqa: E402
 
-# Expected checkpoint identity from docs/MODEL-YUE2.md.
+# Expected checkpoint identity from docs/model-cards/MODEL-YUE2.md.
 #: Pinned identity of the two checkpoints. ``file_bytes`` is the on-disk size the
 #: checkpoint's own ``weights_manifest.json`` declares, which is the tensor
 #: payload **plus** the safetensors JSON header; ``tensor_bytes`` is the payload

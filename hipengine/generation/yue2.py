@@ -2,7 +2,7 @@
 
 Torch-free by construction: this module is importable and testable without a GPU
 and without ``torch``. It is the normative description of the checkpoint-native
-interface in ``docs/MODEL-YUE2.md``:
+interface in ``docs/model-cards/MODEL-YUE2.md``:
 
 * token domains and instruction strings,
 * the assembled prefix / negative-prefix IDs for ``off`` / ``melody`` / ``full``,

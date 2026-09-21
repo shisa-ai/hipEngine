@@ -219,7 +219,7 @@ solver gates rather than to the parent fixture — all three pass (chunk0 latent
 with cosine > 0.99994) — and `nar_attention_f32` remains the registered strict
 fallback behind `HIPENGINE_YUE2_NAR_ATTENTION=scalar`. The 32-step solve of
 `mandarin-off-s1234` is **26.07 s** against the pinned upstream's 27.32 s.
-Model-level contracts live in [MODEL-YUE2.md](MODEL-YUE2.md). gfx1100 qualification is separate from gfx1151 evidence.
+Model-level contracts live in [MODEL-YUE2.md](model-cards/MODEL-YUE2.md). gfx1100 qualification is separate from gfx1151 evidence.
 
 ### Shared Qwen / PARO path
 

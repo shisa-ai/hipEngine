@@ -1,9 +1,20 @@
+---
+status: current
+owns: YuE2 music-generation support: the torch-free AR/NAR/VAE pipeline, its protocol and sampling contracts, and the measured product path.
+---
 # MODEL-YUE2.md — YuE2 music generation on hipEngine
 
-Status: **M0-M3 complete (oracle fixtures and closure, protocol/loader contracts,
-HIP AR runtime, native generation session); no NAR, VAE, or product-path claim
-yet.**
-Reviewed 2026-09-16 on branch `yue2`.
+Status: **M0-M6 complete; M7 in progress (measured, not closed).** M0-M6 cover
+the pinned oracle and inventory, the protocol/loader/CPU contracts, the HIP AR
+runtime, native generation, the HIP NAR solver, the FP32 VAE decoder, and the
+registered product session. M7 has measured the whole product path against the
+pinned upstream on identical work: **124.54 s / RTF 2.40** (median of three)
+against the reference's pinned 137.80 s, with the AR stage still **1.78x** and
+the solver **1.25x** behind on matched stages and the decoder at parity. M8
+(hardware qualification) is **gfx1151 only**: no gfx1100 gate has been run, and
+the kernels registering under `kernels/hip_gfx1100/` is a code path, not
+evidence. No realtime claim.
+Last reviewed 2026-09-17 on branch `yue2`.
 
 Implement `m-a-p/YuE2-3B` plus `m-a-p/YuE2-Vae` as a torch-free HIP pipeline:
 lyrics/style → optional symbolic composition → semantic tokens → acoustic flow

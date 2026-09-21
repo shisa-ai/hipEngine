@@ -24,7 +24,7 @@ from hipengine.loading.safetensors import (
     read_tensor_storage_bytes,
 )
 
-#: Pinned checkpoint identities from docs/MODEL-YUE2.md.
+#: Pinned checkpoint identities from docs/model-cards/MODEL-YUE2.md.
 PINNED_MODEL_REVISION = "29b3558dd46954a0cd9021dc76d5c91864a0f1c7"
 PINNED_MODEL_SHA256 = "1d55c42c1a9875c34f5d736e15078449992b044e807ce2a138e6cf289a1e59e9"
 PINNED_VAE_REVISION = "9a94e1d0ea9f8087e98f77fa88df4a4068104d2a"
