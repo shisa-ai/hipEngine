@@ -197,6 +197,42 @@ def test_every_declaration_refuses_sampled_so_the_scope_is_route_level(rows):
             assert decision.as_dict()["evidence_key"]
 
 
+@pytest.mark.parametrize("rows", [1, 2])
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "INT8 is refused the sampled route by scope, not by capability, so this "
+        "pins the end state and names the real clearing condition. The refusal "
+        "fires at hipengine/speculative/serving.py:592 with "
+        "mtp_sampling_unsupported because the INT8 declaration inherits "
+        "sampling_modes=('greedy_fast',) from "
+        "hipengine/speculative/serving.py:566. DO NOT CLEAR IT BY WIDENING THAT "
+        "TUPLE: all seven declarations are greedy-only, including every BF16 "
+        "one, and gfx1151 BF16 is served only through its four evidence rows "
+        "(automatic_native_sampled_c1_c4). Widening INT8 alone would make it "
+        "more permissive than the storage the route was measured on. The "
+        "clearing condition is the route's own open gap, named at "
+        "hipengine/models/qwen35.py where the declarations are built and in "
+        "docs/REFACTOR.md 'Sampled-route finish-rule blockers (open)': the route "
+        "cannot honour the autoregressive finish rule, because the cycle commit "
+        "ends a row only when its last visible token is the row's EOS and a "
+        "stochastic accept has no greedy_chain_eos_limit bound, so a stop token "
+        "or EOS can land mid-cycle. That is task 6. The device-side accept has "
+        "already landed (Qwen35GGUFMTP2Adapter._device_sampled_accept_plan, "
+        "2026-09-19) for native-sampler rows with no processors, top_k, or "
+        "constraints, so it is not the remaining blocker. strict=True fails the "
+        "suite when the scope opens, which forces this marker and the "
+        "greedy-only assertion above to be updated together."
+    ),
+)
+def test_dense_int8_mtp_serves_the_sampled_route_once_the_route_honours_finish(rows):
+    decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=_key(sampling_mode="sampled", realized_group_rows=rows),
+    )
+    assert decision.admitted, decision.reason
+    assert decision.reason != "mtp_sampling_unsupported"
+
+
 def test_sampled_scope_names_its_preconditions_and_not_the_kernel():
     """Pin the clearing conditions so the route is not opened by widening a tuple.
 
@@ -215,6 +251,11 @@ def test_sampled_scope_names_its_preconditions_and_not_the_kernel():
     import hipengine.models.qwen35 as qwen35
 
     assert "sampled accept route stays closed" in inspect.getsource(qwen35)
+
+    # The device-side accept is not the remaining blocker: it landed 2026-09-19.
+    assert callable(
+        getattr(mtp2.Qwen35GGUFMTP2Adapter, "_device_sampled_accept_plan", None)
+    )
 
     prepare_source = inspect.getsource(mtp2.Qwen35GGUFMTP2Adapter.execute_target_frontier)
     assert "sampled_route and sampled_device_plan is None" in prepare_source
