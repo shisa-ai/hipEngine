@@ -80,6 +80,15 @@
   Do not repeat these unchanged variants or silently grandfather their
   operand results as model admission. Parent-order tiling and other
   structurally different optimizations remain separate candidates.
+- Boundary localization (2026-09-22, `benchmarks/results/2026-09-22-gr-drift-localization/`)
+  explains the failure and re-targets any future correction: the gate is a
+  cliff at a prefill-boundary logits KL of ~5e-9 (passing dense wide 4.41e-9,
+  failing compensated 8.48e-9), so above it the amplified decode KL is nearly
+  independent of the perturbation. FP64 MSE is an unreliable proxy - the
+  compensated correction improved the prefill KL 5.1x with no gate movement,
+  and the fourth plane improved FP64 MSE 1.76-4.60x while its prefill KL got
+  1.15x *worse*. Screen any new correction with one prefill per arm
+  (`scripts/qwen4exp_gr_iu8_logits_probe.py`) before spending a 780-row run.
 
 ## Isolated GR-Up IU8
 
@@ -90,6 +99,13 @@
   sigmoid/mean boundary localization and a new correction, not an unchanged
   flag retry. Related exact fusions and GR-down are separate decisions.
   Evidence: `benchmarks/results/2026-09-15-journey-gr-up/`.
+- Localization done 2026-09-22 (`benchmarks/results/2026-09-22-gr-drift-localization/`):
+  the drift enters only at the Q8_0 projection boundary (1-3 fp32 ulp, 1.12e-7
+  to 3.69e-7 relative L2); the strict projection plus standalone sigmoid and
+  gated-mean kernels reproduces the fused parent bit-exactly on actual inputs,
+  so the epilogue is not a source. This route's prefill-boundary KL is 1.48e-8
+  against a ~5e-9 cliff, and all 8 of its top-1 flips are decode rows. Revisit
+  with a correction whose prefill-boundary KL is below ~5e-9.
 
 ## Isolated GR-Down IU8
 
@@ -99,6 +115,12 @@
   projection-boundary correction and full requalification.
 - This is an independent arithmetic failure, not a general prohibition on
   GR optimization. Evidence: `benchmarks/results/2026-09-15-journey-gr-down/`.
+- Localization done 2026-09-22 (`benchmarks/results/2026-09-22-gr-drift-localization/`):
+  prefill-boundary KL 4.32e-8 against a ~5e-9 cliff. Its compensated correction
+  reached 8.48e-9 - the closest any measured GR candidate has come, 1.9x above
+  the passing bracket - while leaving the gate metric unchanged, which is the
+  measurement that identifies the cliff. Revisit with a further ~2x prefill-KL
+  reduction, screened with one prefill per arm.
 
 ## MoE Backend Refresh Cache
 

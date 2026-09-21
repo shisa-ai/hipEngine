@@ -1,0 +1,501 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_gr_drift_localization",
+ "date": "2026-09-22",
+ "status": "localized",
+ "performance_claim": false,
+ "promotion_claim": false,
+ "question": "Where does the hyper-connection (GR) family's model-visible drift enter, at what magnitude, and can a numerically corrected projection pass the production envelope?",
+ "method": "Derived from three existing captures on the declared Framework host, Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL/BF16, with no new engine run: (1) the actual-input projection replay (2026-09-15-journey-gr-operands), (2) the two 780-row production numerical gates for the isolated GR-up and GR-down iu8 routes (2026-09-15-journey-gr-up, -gr-down), (3) the passing dense wide route gate as the amplification control (2026-09-17-q8-dense-wide-16-47-gate). Each gate capture's per-row transition scope separates the logits produced immediately after the prefill from the 64 teacher-forced decode rows.",
+ "stage_localization": {
+  "conclusion": "The projection boundary is the only stage that differs. The sigmoid/mean/publication stages are bit-exact against the fused production parent on actual model inputs, and the GR flags change nothing but the projection kernel.",
+  "epilogue_evidence": "In all six GR-up captures, strict-order projection followed by the standalone sigmoid and gated-mean kernels equals the fused output exactly (2026-09-15-journey-gr-operands README).",
+  "route_scope": "GR_IU8 replaces launch_gguf_linear with gguf_q8_0_iu8_wmma_prefill_f32_f32 and then runs the same qwen4_exp_sigmoid_f32 + qwen4_exp_gated_mean_f32 as the strict chain; GR_IU8_DOWN swaps only the down projection. Both flags were measured independently.",
+  "projection_boundary_drift": [
+   {
+    "weight": "layers.0.hc_attn_down",
+    "leg": "down",
+    "shape": [
+     512,
+     10240,
+     320
+    ],
+    "parent_vs_candidate_relative_l2": 2.684197447276032e-07,
+    "parent_vs_candidate_max_abs": 0.00018310546875,
+    "fp64_vs_parent_relative_l2": 6.723612006250314e-08,
+    "fp64_vs_candidate_relative_l2": 2.2459213168653416e-07
+   },
+   {
+    "weight": "layers.0.hc_attn_up",
+    "leg": "up",
+    "shape": [
+     512,
+     320,
+     10240
+    ],
+    "parent_vs_candidate_relative_l2": 1.2093704983699832e-07,
+    "parent_vs_candidate_max_abs": 1.52587890625e-05,
+    "fp64_vs_parent_relative_l2": 8.095271132427032e-08,
+    "fp64_vs_candidate_relative_l2": 9.881640727022635e-08
+   },
+   {
+    "weight": "layers.0.hc_ffn_down",
+    "leg": "down",
+    "shape": [
+     512,
+     10240,
+     320
+    ],
+    "parent_vs_candidate_relative_l2": 2.757232159497601e-07,
+    "parent_vs_candidate_max_abs": 0.0001220703125,
+    "fp64_vs_parent_relative_l2": 7.255830756315582e-08,
+    "fp64_vs_candidate_relative_l2": 2.191235100683916e-07
+   },
+   {
+    "weight": "layers.0.hc_ffn_up",
+    "leg": "up",
+    "shape": [
+     512,
+     320,
+     10240
+    ],
+    "parent_vs_candidate_relative_l2": 1.424408227659498e-07,
+    "parent_vs_candidate_max_abs": 2.47955322265625e-05,
+    "fp64_vs_parent_relative_l2": 6.698560784164662e-08,
+    "fp64_vs_candidate_relative_l2": 1.1863468090429209e-07
+   },
+   {
+    "weight": "layers.23.hc_attn_down",
+    "leg": "down",
+    "shape": [
+     512,
+     10240,
+     320
+    ],
+    "parent_vs_candidate_relative_l2": 3.0250445052866445e-07,
+    "parent_vs_candidate_max_abs": 7.62939453125e-05,
+    "fp64_vs_parent_relative_l2": 9.399839292580983e-08,
+    "fp64_vs_candidate_relative_l2": 2.631446045260912e-07
+   },
+   {
+    "weight": "layers.23.hc_attn_up",
+    "leg": "up",
+    "shape": [
+     512,
+     320,
+     10240
+    ],
+    "parent_vs_candidate_relative_l2": 1.204715750210802e-07,
+    "parent_vs_candidate_max_abs": 7.62939453125e-06,
+    "fp64_vs_parent_relative_l2": 5.760150576290804e-08,
+    "fp64_vs_candidate_relative_l2": 9.337999192171112e-08
+   },
+   {
+    "weight": "layers.23.hc_ffn_down",
+    "leg": "down",
+    "shape": [
+     512,
+     10240,
+     320
+    ],
+    "parent_vs_candidate_relative_l2": 3.524574111366289e-07,
+    "parent_vs_candidate_max_abs": 0.0001220703125,
+    "fp64_vs_parent_relative_l2": 8.027874015420261e-08,
+    "fp64_vs_candidate_relative_l2": 4.546188158864863e-07
+   },
+   {
+    "weight": "layers.23.hc_ffn_up",
+    "leg": "up",
+    "shape": [
+     512,
+     320,
+     10240
+    ],
+    "parent_vs_candidate_relative_l2": 1.8982345663965576e-07,
+    "parent_vs_candidate_max_abs": 7.3909759521484375e-06,
+    "fp64_vs_parent_relative_l2": 9.839968245646212e-08,
+    "fp64_vs_candidate_relative_l2": 1.765828944734948e-07
+   },
+   {
+    "weight": "layers.47.hc_attn_down",
+    "leg": "down",
+    "shape": [
+     512,
+     10240,
+     320
+    ],
+    "parent_vs_candidate_relative_l2": 3.6851569109981913e-07,
+    "parent_vs_candidate_max_abs": 7.62939453125e-05,
+    "fp64_vs_parent_relative_l2": 1.0438392995945343e-07,
+    "fp64_vs_candidate_relative_l2": 3.234894850097126e-07
+   },
+   {
+    "weight": "layers.47.hc_attn_up",
+    "leg": "up",
+    "shape": [
+     512,
+     320,
+     10240
+    ],
+    "parent_vs_candidate_relative_l2": 1.1175957185734368e-07,
+    "parent_vs_candidate_max_abs": 5.7220458984375e-06,
+    "fp64_vs_parent_relative_l2": 6.302439267224253e-08,
+    "fp64_vs_candidate_relative_l2": 8.68128159598872e-08
+   },
+   {
+    "weight": "layers.47.hc_ffn_down",
+    "leg": "down",
+    "shape": [
+     512,
+     10240,
+     320
+    ],
+    "parent_vs_candidate_relative_l2": 2.9717507286134853e-07,
+    "parent_vs_candidate_max_abs": 6.866455078125e-05,
+    "fp64_vs_parent_relative_l2": 7.300530422041004e-08,
+    "fp64_vs_candidate_relative_l2": 2.7951562787362806e-07
+   },
+   {
+    "weight": "layers.47.hc_ffn_up",
+    "leg": "up",
+    "shape": [
+     512,
+     320,
+     10240
+    ],
+    "parent_vs_candidate_relative_l2": 1.4146097698854755e-07,
+    "parent_vs_candidate_max_abs": 6.198883056640625e-06,
+    "fp64_vs_parent_relative_l2": 6.121271740019873e-08,
+    "fp64_vs_candidate_relative_l2": 1.5670074410142292e-07
+   }
+  ],
+  "projection_drift_summary": {
+   "relative_l2_range": [
+    1.1175957185734368e-07,
+    3.6851569109981913e-07
+   ],
+   "relative_l2_fp32_ulps": "1-3 fp32 ulps (fp32 eps = 1.19e-7)",
+   "max_abs_all_captures_below": 0.0005,
+   "note": "parent_vs_candidate compares the strict projection with the iu8 projection on identical model-produced inputs; the full output arrays are compared, not only the sampled rows."
+  }
+ },
+ "propagation_localization": {
+  "conclusion": "The gate outcome is a cliff at a prefill-boundary logits KL of about 5e-9, not a gradient. Across five routes the prefill KL spans 9.8x while the gate mean KL spans only 4.25x, because everything above the cliff saturates at 1.31e-3 - 1.61e-3. The decode horizon amplifies the perturbation by 3.0e4 - 1.6e5, so above the cliff the amplified result is roughly independent of how far above it the candidate sits.",
+  "cliff_evidence": {
+   "pass_bracket": 4.41e-09,
+   "fail_bracket": 8.48e-09,
+   "boundary": "~5e-9 prefill-boundary logits KL",
+   "insensitivity_proof": "GR-down + compensated accumulation improved the prefill KL 5.1x (4.32e-8 -> 8.48e-9) and the gate metric did not move: mean KL 1.310e-3 -> 1.316e-3, top-1 identical at 769/780. Above the cliff, arithmetic accuracy buys nothing measurable."
+  },
+  "routes": {
+   "gr_up_iu8": {
+    "rows": 780,
+    "prefill_to_c1_kl_mean": 1.4811104754068326e-08,
+    "prefill_to_c1_rows": 12,
+    "steady_kl_mean": 0.0014243461884615217,
+    "gate_kl_mean": 0.0014024333980406484,
+    "gate_kl_p95": 0.0074015145642395965,
+    "top1_matches": 772,
+    "top1_agreement": 0.9897435897435898,
+    "top1_flips": 8,
+    "flip_transitions": [
+     "steady"
+    ],
+    "flip_shapes": [
+     "p1024_c1",
+     "p4096_c1",
+     "p512_c1"
+    ],
+    "flip_steps": [
+     5,
+     7,
+     10,
+     13,
+     14,
+     17,
+     23,
+     35
+    ],
+    "flip_margins": [
+     0.002068,
+     0.008343,
+     0.029182,
+     0.063255,
+     0.083063,
+     0.148872,
+     0.165186,
+     0.238607
+    ],
+    "flip_ranks": [
+     2
+    ],
+    "flip_topk_overlap": [
+     0.8,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0
+    ],
+    "flip_max_abs_logit_delta": [
+     0.401,
+     0.433,
+     0.467,
+     0.553,
+     0.676,
+     0.74,
+     0.755,
+     0.83
+    ],
+    "amplification_prefill_to_steady": 96167.45084935552
+   },
+   "gr_down_iu8": {
+    "rows": 780,
+    "prefill_to_c1_kl_mean": 4.3209819400774783e-08,
+    "prefill_to_c1_rows": 12,
+    "steady_kl_mean": 0.0013333271022167555,
+    "gate_kl_mean": 0.0013128150423337194,
+    "gate_kl_p95": 0.006835219542828971,
+    "top1_matches": 769,
+    "top1_agreement": 0.985897435897436,
+    "top1_flips": 11,
+    "flip_transitions": [
+     "steady"
+    ],
+    "flip_shapes": [
+     "p1024_c1",
+     "p4096_c1",
+     "p512_c1"
+    ],
+    "flip_steps": [
+     4,
+     5,
+     10,
+     11,
+     14,
+     17,
+     20,
+     22,
+     28,
+     44,
+     54
+    ],
+    "flip_margins": [
+     0.008343,
+     0.03076,
+     0.037224,
+     0.043886,
+     0.052435,
+     0.063255,
+     0.079065,
+     0.083063,
+     0.125164,
+     0.148872,
+     0.150326
+    ],
+    "flip_ranks": [
+     2,
+     3
+    ],
+    "flip_topk_overlap": [
+     0.8,
+     0.8,
+     0.8,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0
+    ],
+    "flip_max_abs_logit_delta": [
+     0.383,
+     0.419,
+     0.429,
+     0.429,
+     0.576,
+     0.579,
+     0.613,
+     0.619,
+     0.655,
+     0.663,
+     0.691
+    ],
+    "amplification_prefill_to_steady": 30857.039457861007
+   },
+   "dense_wide_passing_control": {
+    "rows": 1548,
+    "prefill_to_c1_kl_mean": 4.414516898822696e-09,
+    "steady_kl_mean": 0.0003825176246710947,
+    "gate_kl_mean": 0.0003795524059877289,
+    "top1_matches": 1538,
+    "top1_agreement": 0.9935400516795866,
+    "amplification_prefill_to_steady": 86649.94005869771
+   },
+   "gr_down_iu8_compensated": {
+    "rows": 780,
+    "prefill_to_c1_kl_mean": 8.478956404662012e-09,
+    "prefill_to_c1_rows": 12,
+    "steady_kl_mean": 0.0013365786495869367,
+    "gate_kl_mean": 0.0013160160315772364,
+    "gate_kl_p95": 0.00666773933275844,
+    "top1_matches": 769,
+    "top1_agreement": 0.985897435897436,
+    "top1_flips": 11,
+    "flip_transitions": [
+     "steady"
+    ],
+    "flip_shapes": [
+     "p1024_c1",
+     "p4096_c1",
+     "p512_c1"
+    ],
+    "amplification_prefill_to_steady": 157634.80619525787
+   },
+   "gr_up_iu8_fourth_plane": {
+    "rows": 780,
+    "prefill_to_c1_kl_mean": 1.6983594853640573e-08,
+    "prefill_to_c1_rows": 12,
+    "steady_kl_mean": 0.0016389611528988127,
+    "gate_kl_mean": 0.0016137466272172132,
+    "gate_kl_p95": 0.007592867421613701,
+    "top1_matches": 770,
+    "top1_agreement": 0.9871794871794872,
+    "top1_flips": 10,
+    "flip_transitions": [
+     "steady"
+    ],
+    "flip_shapes": [
+     "p1024_c1",
+     "p4096_c1",
+     "p512_c1"
+    ],
+    "amplification_prefill_to_steady": 96502.60542734791
+   }
+  },
+  "amplification_factor_range": [
+   30000.0,
+   160000.0
+  ],
+  "implied_prefill_kl_budget": 5e-09,
+  "implied_budget_basis": "Bracketed empirically: the passing dense wide route is at 4.41e-9 and every failing route is at 8.48e-9 or above.",
+  "decode_arithmetic_note": "During decode rows=1, so _qwen4_exp_gr_up_sigmoid_mean_enabled() is False and BOTH arms run the strict linear + sigmoid + gated-mean chain. The decode rows therefore differ only through the state inherited from the prefill: every one of the 19 top-1 flips is a decode row and none is a prefill row."
+ },
+ "model_visible_effect": {
+  "gr_up": {
+   "top1_flips": 8,
+   "of_rows": 780,
+   "flip_steps": [
+    5,
+    7,
+    10,
+    13,
+    14,
+    17,
+    23,
+    35
+   ],
+   "flip_margins": [
+    0.002068,
+    0.008343,
+    0.029182,
+    0.063255,
+    0.083063,
+    0.148872,
+    0.165186,
+    0.238607
+   ],
+   "strict_top1_candidate_rank": [
+    2
+   ],
+   "topk_overlap": [
+    0.8,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ]
+  },
+  "gr_down": {
+   "top1_flips": 11,
+   "of_rows": 780,
+   "flip_steps": [
+    4,
+    5,
+    10,
+    11,
+    14,
+    17,
+    20,
+    22,
+    28,
+    44,
+    54
+   ],
+   "flip_margins": [
+    0.008343,
+    0.03076,
+    0.037224,
+    0.043886,
+    0.052435,
+    0.063255,
+    0.079065,
+    0.083063,
+    0.125164,
+    0.148872,
+    0.150326
+   ],
+   "strict_top1_candidate_rank": [
+    2,
+    3
+   ],
+   "topk_overlap": [
+    0.8,
+    0.8,
+    0.8,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ]
+  },
+  "reading": "Every flip is a reordering inside an unchanged top-5 set: the teacher's top-1 is the candidate's rank-2 token and the top-k overlap is 0.80-1.00. Teacher margins at those rows are 0.002-0.24 while the per-row vocabulary-max logit delta is 0.38-0.83, so the swaps are margin-limited near-ties rather than a change in the model's preference set."
+ },
+ "decision": {
+  "arithmetic_correction": {
+   "status": "not closed; re-targeted to a cliff-crossing screen",
+   "screen": "Prefill-boundary logits KL against the strict parent, measured with one prefill per arm and no decode. The pass bracket is 4.41e-9 (dense wide, passes) and the fail bracket 8.48e-9 (GR-down + compensated), so the screen target is < ~5e-9.",
+   "distance_to_target": "The best GR candidate measured (GR-down + compensated) sits at 8.48e-9, 1.9x above the passing route's value. A further ~2x reduction in the prefill-boundary KL is the concrete, falsifiable next step, and it costs one prefill per arm to test.",
+   "unreliable_proxy": "Sampled FP64 MSE. The fourth-plane correction improved FP64 MSE 1.76-4.60x while making the prefill-boundary KL worse (1.48e-8 -> 1.70e-8) and the gate worse (1.40e-3 -> 1.614e-3), and the compensated correction improved FP64 MSE 16.9-67.4x and the prefill KL 5.1x without moving the gate at all. MSE against FP64 is not the quantity the gate amplifies.",
+   "stop_rule": "Do not spend another 780-row production gate run on a GR candidate until its prefill-boundary KL is below ~5e-9."
+  },
+  "fusion_and_tiling": {
+   "status": "retained as the path with no arithmetic change",
+   "why": "The production default is already bit-exact against the strict chain (measured in all six actual-input captures), so a restructuring that preserves the projection's summation order and the epilogue's arithmetic is below the cliff by construction and needs no numerical gate. The family's cost is structural: 2523.8 ms of reads against 1098 ms of matmuls consuming them, with the 10240-wide branch tensors traversed repeatedly.",
+   "concrete_levers": [
+    "The GR gate buffer (rows x 10240 f32, 168 MB per layer per chunk) is written by the fused kernel and never read by the model path: attention_read.gate and ffn_read.gate have no consumer; only .mixed and .inject_logits are used.",
+    "Fuse the grouped-rmsnorm producer of normalized so the 10240-wide tensor is never materialized, replicating the norm's reduction order to stay bit-exact.",
+    "Recover ILP in the Q8_0 projection without changing any output's summation order."
+   ]
+  },
+  "rejected_alternative": "Another unchanged run of the GR_IU8/GR_IU8_DOWN flags, or a correction validated only by FP64 MSE rather than by the prefill-boundary KL screen."
+ },
+ "blocked_confirmation": {
+  "experiment": "Count the router selections that differ between the strict and iu8 arms per decode step (mixed -> router_logits -> qwen35_router_select is a discrete top-k on the GR output, so it is the only 1e5-class amplifier in the dataflow).",
+  "instrument": "scripts/qwen4exp_gr_router_localize.py",
+  "blocked_by": "Host memory: an idle hipengine serve process (pid 4175913, started 2026-09-21 17:48, 2m08s CPU time) holds 98.6 GB of GTT in /home/lhl/hipEngine-main. The production generator needs 95.7 GB including reserve and 25.5 GB is free, at context 584 as well as 4168, so the requirement is weights/scratch rather than KV.",
+  "status": "Not required for the localization above; it would confirm the discrete-selection step rather than the amplification factor, which is already measured on two routes."
+ },
+ "limits": "Stage and projection magnitudes are measured on actual model inputs; the amplification factor is measured per route (3.1e4 to 9.6e4) and is not a universal constant. The implied prefill budget uses the tightest measured factor. No performance claim and no default change results from this packet."
+}
