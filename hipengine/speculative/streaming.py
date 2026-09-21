@@ -59,6 +59,125 @@ class StochasticAcceptanceAccounting:
     uniforms_consumed: tuple[float, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class ChainFinish:
+    """How a verified chain reaches the autoregressive finish rule.
+
+    ``reason`` is the value the autoregressive route publishes: ``"eos"`` when
+    the terminal token is the row's EOS, ``"stop"`` when it is a stop token id
+    or the last token of a stop sequence.  The other two fields carry the detail
+    the route publishes with it, so a caller reports the same thing the
+    autoregressive route would rather than a bare reason string.
+    """
+
+    reason: str
+    stop_token_id: int | None = None
+    stop_sequence: tuple[int, ...] = ()
+
+
+def chain_finish_index(
+    visible: Sequence[int],
+    *,
+    eos_token_id: int | None,
+    published_tokens: Sequence[int] = (),
+    generated_tokens: int = 0,
+    stop_token_ids: Sequence[int] = (),
+    stop_token_sequences: Sequence[Sequence[int]] = (),
+    min_tokens: int = 0,
+    ignore_eos: bool = False,
+) -> tuple[int, ChainFinish] | None:
+    """Return the first index of ``visible`` that finishes the request, and why.
+
+    This is the autoregressive finish rule applied to a whole verified chain, so
+    the cycle commit can select a terminal prefix instead of publishing past a
+    stop.  ``visible`` is the chain's accepted tokens followed by its bonus
+    token, in publication order.  ``published_tokens`` is what the request has
+    already emitted, which is what makes a stop sequence spanning the boundary
+    between published output and the chain detectable exactly as the
+    autoregressive route detects it.
+
+    ``min_tokens`` is the EOS-suppression floor and suppresses only the EOS rule,
+    matching the autoregressive processor: it does not delay a stop token id or a
+    stop sequence.  Returns ``None`` when the chain runs to its end without
+    finishing, which is the case that publishes the whole chain.
+    """
+
+    eos = None if ignore_eos or eos_token_id is None else int(eos_token_id)
+    stops = tuple(int(stop) for stop in stop_token_ids)
+    sequences = tuple(tuple(int(token) for token in row) for row in stop_token_sequences)
+    prefix = tuple(int(token) for token in published_tokens)
+    # Imported here because `hipengine.generation.constraints` reaches this module
+    # through the generation package, so a module-scope import is circular.
+    from hipengine.generation.constraints import token_sequence_state_for_tokens
+    for index, token in enumerate(visible):
+        token = int(token)
+        if eos is not None and token == eos and generated_tokens + index + 1 >= min_tokens:
+            return index, ChainFinish(reason="eos", stop_token_id=eos)
+        if token in stops:
+            return index, ChainFinish(reason="stop", stop_token_id=token)
+        if sequences:
+            matched = token_sequence_state_for_tokens(
+                (*prefix, *(int(item) for item in visible[: index + 1])), sequences
+            ).matched_sequence
+            if matched:
+                return index, ChainFinish(reason="stop", stop_sequence=tuple(matched))
+    return None
+
+
+def limit_chain_accept_finish(
+    batch,
+    summary,
+    *,
+    eos_token_id: int | None,
+    published_tokens: Sequence[int] = (),
+    generated_tokens: int = 0,
+    stop_token_ids: Sequence[int] = (),
+    stop_token_sequences: Sequence[Sequence[int]] = (),
+    min_tokens: int = 0,
+    ignore_eos: bool = False,
+):
+    """Keep the first finishing token as the final prediction, not consumed state.
+
+    Returns ``(summary, finish)``.  ``finish`` is a :class:`ChainFinish` when the
+    chain stops and ``None`` when it runs to its end, so a caller tests it for
+    truth and reads ``finish.reason`` to publish the right finish.  The returned
+    summary commits the prefix before the terminal token, keeps the terminal
+    token as the next token, and leaves no model state beyond that prefix.
+    """
+
+    if batch.mode != "verify_chain" or len(summary.request_ids) != 1:
+        raise ValueError("finish summary limiting requires one verified chain")
+    accepted = tuple(summary.accepted_tokens[0])
+    next_token = None if summary.next_tokens is None else summary.next_tokens[0]
+    visible = (*accepted, *(() if next_token is None else (next_token,)))
+    found = chain_finish_index(
+        visible,
+        eos_token_id=eos_token_id,
+        published_tokens=published_tokens,
+        generated_tokens=generated_tokens,
+        stop_token_ids=stop_token_ids,
+        stop_token_sequences=stop_token_sequences,
+        min_tokens=min_tokens,
+        ignore_eos=ignore_eos,
+    )
+    if found is None:
+        return summary, None
+    index, finish = found
+    if index == len(visible) - 1 and next_token is not None:
+        return summary, finish
+    root = int(batch.root_rows[0])
+    return replace(
+        summary,
+        accepted_counts=(index,),
+        accepted_tokens=(accepted[:index],),
+        commit_rows=(root + index,),
+        commit_tokens=((int(batch.tokens[root]) if index == 0 else accepted[index - 1]),),
+        commit_positions=(int(batch.positions[root]) + index,),
+        next_tokens=(int(visible[index]),),
+        full_accept=(False,),
+    ), finish
+
+
 def limit_chain_accept_eos(
     batch,
     summary,
@@ -68,32 +187,23 @@ def limit_chain_accept_eos(
     min_tokens: int = 0,
     ignore_eos: bool = False,
 ):
-    """Keep EOS as the final prediction, not part of consumed target state."""
+    """EOS-only entry point, kept for callers that cannot stop on anything else.
+
+    Delegates to :func:`limit_chain_accept_finish` and reports the EOS case as a
+    boolean, which is what a caller with no stop metadata needs.
+    """
 
     if eos_token_id is None or ignore_eos:
         return summary, False
-    if batch.mode != "verify_chain" or len(summary.request_ids) != 1:
-        raise ValueError("EOS summary limiting requires one verified chain")
-    accepted = tuple(summary.accepted_tokens[0])
-    next_token = None if summary.next_tokens is None else summary.next_tokens[0]
-    visible = (*accepted, *(() if next_token is None else (next_token,)))
-    for index, token in enumerate(visible):
-        if int(token) != int(eos_token_id) or generated_tokens + index + 1 < min_tokens:
-            continue
-        if index == len(visible) - 1 and next_token is not None:
-            return summary, True
-        root = int(batch.root_rows[0])
-        return replace(
-            summary,
-            accepted_counts=(index,),
-            accepted_tokens=(accepted[:index],),
-            commit_rows=(root + index,),
-            commit_tokens=((int(batch.tokens[root]) if index == 0 else accepted[index - 1]),),
-            commit_positions=(int(batch.positions[root]) + index,),
-            next_tokens=(int(token),),
-            full_accept=(False,),
-        ), True
-    return summary, False
+    limited, finish = limit_chain_accept_finish(
+        batch,
+        summary,
+        eos_token_id=eos_token_id,
+        generated_tokens=generated_tokens,
+        min_tokens=min_tokens,
+        ignore_eos=ignore_eos,
+    )
+    return limited, finish is not None
 
 
 def greedy_chain_eos_limit(

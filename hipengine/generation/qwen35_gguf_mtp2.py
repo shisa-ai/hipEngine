@@ -3953,15 +3953,22 @@ class Qwen35GGUFMTP2Adapter:
                         "recomputed accept summary"
                     )
                 prepared = adopt(prepared, summary)
-            from hipengine.speculative.streaming import limit_chain_accept_eos
+            from hipengine.speculative.streaming import limit_chain_accept_finish
 
-            terminal_summary, eos_finished = limit_chain_accept_eos(
+            terminal_summary, chain_finish = limit_chain_accept_finish(
                 prepared.batch, summary,
                 eos_token_id=_row_eos_token_id(row, getattr(self.generator, "tokenizer", None)),
+                published_tokens=tuple(slot.generated_ids),
                 generated_tokens=len(slot.generated_ids),
+                stop_token_ids=tuple(getattr(row.request, "stop_token_ids", ()) or ()),
+                stop_token_sequences=tuple(
+                    getattr(row.request, "stop_token_sequences", ()) or ()
+                ),
                 min_tokens=int(getattr(row.request, "min_tokens", 0) or 0),
                 ignore_eos=bool(getattr(row.request, "ignore_eos", False)),
             )
+            eos_finished = chain_finish is not None
+            finish_reason = None if chain_finish is None else chain_finish.reason
             if terminal_summary is not summary:
                 prepared = state.verifier.adopt_terminal_summary(prepared, terminal_summary)
                 summary = terminal_summary
@@ -4086,7 +4093,7 @@ class Qwen35GGUFMTP2Adapter:
                 ),
                 target_cursor_deltas=(len(output_ids),),
                 provider_cursor_deltas=summary.accepted_counts,
-                finish_reasons=("eos" if eos_finished else None,),
+                finish_reasons=(finish_reason,),
             )
             actual_execution_route = (
                 "graph" if native_graph_submitted else "eager"
