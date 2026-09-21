@@ -5987,6 +5987,12 @@ class _GGUFPrefixSnapshotEntry:
     snapshot: Any
     owner_request_id: int | None
     retained: bool = False
+    # True for the deepest 256-aligned boundary at or before the request's own
+    # prompt end. Every following turn reaches it -- a resend matches it and a
+    # cumulative turn passes through it first -- so it outranks a decode-time
+    # boundary, which only a client resending this request's generated text
+    # verbatim can reach.
+    prompt_boundary: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -7598,12 +7604,23 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("GGUF prefix snapshot returned the wrong block ids")
         for prior_tokens, entry in tuple(self._prefix_state_snapshots.items()):
             if not entry.retained and entry.owner_request_id == row.request_id:
+                if entry.prompt_boundary:
+                    # The prompt-aligned boundary is the one every following turn
+                    # reaches. A decode-time capture -- the decode path refreshes
+                    # the cache after every token, so any reply long enough to
+                    # cross the next 256-token boundary makes one -- is reachable
+                    # only by a client that resends this request's generated text
+                    # verbatim, so it may not evict the boundary entry: doing that
+                    # left the next turn with no live prefix at all and made it
+                    # re-prefill the whole prompt.
+                    continue
                 self._evict_prefix_snapshot(prior_tokens, reason="superseded_by_row")
         self._prefix_state_snapshots[tokens] = _GGUFPrefixSnapshotEntry(
             tokens=tokens,
             block_ids=block_ids,
             snapshot=snapshot,
             owner_request_id=int(row.request_id),
+            prompt_boundary=len(tokens) == self._prefix_prompt_boundary(row),
         )
         self._prefix_snapshot_captures += 1
         self._prefix_snapshot_capture_bytes += int(
@@ -7627,7 +7644,7 @@ class Qwen35GGUFResidentModelRunner:
         transient = [
             tokens
             for tokens, entry in self._prefix_state_snapshots.items()
-            if not entry.retained
+            if not entry.retained and not entry.prompt_boundary
         ]
         while len(transient) > self._prefix_snapshot_limit:
             self._evict_prefix_snapshot(transient.pop(0), reason="trim_transient")
@@ -7677,6 +7694,14 @@ class Qwen35GGUFResidentModelRunner:
             entry.owner_request_id = None
             entry.retained = True
             self._prefix_snapshot_promotions += 1
+        # Retained entries are trimmed oldest-first, and a decode-time boundary
+        # is inserted after the prompt-aligned one it must never outlive: move
+        # the boundary entry last so a budget squeeze drops the boundary only a
+        # verbatim continuation could reach first.
+        for tokens, entry in tuple(self._prefix_state_snapshots.items()):
+            if entry.retained and entry.prompt_boundary:
+                self._prefix_state_snapshots.pop(tokens)
+                self._prefix_state_snapshots[tokens] = entry
         self._trim_prefix_snapshots()
 
     def _drop_prefix_snapshots_for_row(self, request_id: int) -> None:
