@@ -50,6 +50,7 @@ from hipengine.server.api import (
     ChatCompletionRequest,
     CompletionRequest,
     OpenAIHTTPError,
+    StartupFailure,
     _AGENTIC_REPLAY_FAILURE_REASONS,
     _STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS,
     _TOOL_RESULT_VALIDATION_FAILURE_REASONS,
@@ -850,6 +851,64 @@ class ScratchProbeFailureFakeLLM(FakeLLM):
             release_after_probe=release_after_probe,
         )
         raise RuntimeError("scratch failed near private startup prompt")
+
+
+class WideScratchProbeFakeLLM(FakeLLM):
+    """Fails the scratch probe above width one, the way a HIP allocation does."""
+
+    def prepare_request_scratch(
+        self,
+        *,
+        max_prompt_tokens: int,
+        max_new_tokens: int = 0,
+        sampling_params: SamplingParams | None = None,
+        max_batch_size: int = 1,
+        release_after_probe: bool = True,
+    ) -> dict[str, Any]:
+        if int(max_batch_size) > 1:
+            self.scratch_prepares.append({"max_batch_size": int(max_batch_size), "failed": True})
+            raise MemoryError("resident session allocation failed (HIP error 2: out of memory)")
+        return super().prepare_request_scratch(
+            max_prompt_tokens=max_prompt_tokens,
+            max_new_tokens=max_new_tokens,
+            sampling_params=sampling_params,
+            max_batch_size=max_batch_size,
+            release_after_probe=release_after_probe,
+        )
+
+
+class _FakeCapacityEstimate:
+    """The fields the startup probe preflight reads off a capacity estimate."""
+
+    def __init__(
+        self,
+        *,
+        allocatable_context_tokens: int,
+        requested_total_bytes: int,
+        usable_bytes: int,
+    ) -> None:
+        self.allocatable_context_tokens = int(allocatable_context_tokens)
+        self.requested_total_bytes = int(requested_total_bytes)
+        self.usable_bytes = int(usable_bytes)
+        self.available_bytes = int(usable_bytes)
+        self.reserve_bytes = 0
+
+
+class NarrowCapacityFakeLLM(FakeLLM):
+    """Prices one probe session at 20 GiB against 8 GiB usable."""
+
+    def resident_capacity_estimate(
+        self,
+        *,
+        max_batch_size: int = 1,
+        requested_context_tokens: int | None = None,
+    ) -> _FakeCapacityEstimate:
+        del max_batch_size, requested_context_tokens
+        return _FakeCapacityEstimate(
+            allocatable_context_tokens=4096,
+            requested_total_bytes=20 * 1024**3,
+            usable_bytes=8 * 1024**3,
+        )
 
 
 class SequentialFakeLLM(FakeLLM):
@@ -4118,11 +4177,12 @@ def test_startup_scratch_probe_keeps_admission_width_for_enabled_mtp_route() -> 
     assert fake.scratch_prepares[0]["max_batch_size"] == 8
 
 
-def test_startup_scratch_probe_warms_gguf_route_width_without_a_server_cap() -> None:
-    """Unset --max-active-requests means no server-wide cap, not one request at a time.
+def test_startup_scratch_probe_leaves_the_width_to_the_configured_cap() -> None:
+    """An unset --max-active-requests keeps the probe at one request.
 
-    The GGUF routes still admit their own width, so a probe sized from the raw config
-    would report batch_width_le_1_or_disabled and skip every packed warmup.
+    Widening it to the route cap makes the probe re-size the resident context for a
+    wider batch, which OOMs on a box whose KV budget is already committed; the probe
+    is a startup gate as well as a warmup, so its width stays the configured one.
     """
 
     fake = FakeLLM(outputs=["warm"])
@@ -4138,9 +4198,9 @@ def test_startup_scratch_probe_warms_gguf_route_width_without_a_server_cap() -> 
 
     assert response.status_code == 200
     assert fake.scratch_prepares
-    assert fake.scratch_prepares[0]["max_batch_size"] == 4
+    assert fake.scratch_prepares[0]["max_batch_size"] == 1
     probe = response.json()["startup"]["checks"]["scratch_probe"]
-    assert probe["result"]["max_batch_size"] == 4
+    assert probe["result"]["max_batch_size"] == 1
 
 
 def test_startup_scratch_probe_keeps_a_smaller_server_cap() -> None:
@@ -4158,6 +4218,108 @@ def test_startup_scratch_probe_keeps_a_smaller_server_cap() -> None:
 
     assert response.status_code == 200
     assert fake.scratch_prepares[0]["max_batch_size"] == 2
+
+
+def test_startup_scratch_probe_prices_the_width_before_allocating_it() -> None:
+    """A probe slot is a resident session, so width multiplies the session price.
+
+    The estimator prices one session. Asking for four of them without pricing four is
+    what turned a warmup into four HIP out-of-memory attempts at startup, so the probe
+    is reduced before it allocates and the reduction is reported instead of silent.
+    """
+
+    fake = NarrowCapacityFakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=4,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert fake.scratch_prepares[0]["max_batch_size"] == 1
+    probe = body["startup"]["checks"]["scratch_probe"]
+    assert probe["status"] == "reduced"
+    assert probe["requested_max_batch_size"] == 4
+    assert probe["max_batch_size"] == 1
+    assert probe["result"]["max_batch_size"] == 1
+    reduction = probe["width_reduction"]
+    assert reduction["reason"] == "insufficient_free_memory_for_width"
+    assert reduction["session_context_tokens"] == 4096
+    assert reduction["per_session_bytes"] == 20 * 1024**3
+    assert reduction["required_bytes"] == 4 * 20 * 1024**3
+    assert reduction["usable_bytes"] == 8 * 1024**3
+    assert reduction["detail"] == (
+        "4 concurrent sessions need 80.00 GiB against 8.00 GiB usable"
+    )
+    assert body["diagnostics"] == [
+        "startup scratch probe ran at width 1 instead of 4: "
+        "4 concurrent sessions need 80.00 GiB against 8.00 GiB usable"
+    ]
+
+
+def test_startup_scratch_probe_keeps_the_configured_width_when_it_fits() -> None:
+    """The preflight only reduces a width the machine cannot hold."""
+
+    class RoomyCapacityFakeLLM(FakeLLM):
+        def resident_capacity_estimate(
+            self,
+            *,
+            max_batch_size: int = 1,
+            requested_context_tokens: int | None = None,
+        ) -> _FakeCapacityEstimate:
+            del max_batch_size, requested_context_tokens
+            return _FakeCapacityEstimate(
+                allocatable_context_tokens=4096,
+                requested_total_bytes=1 * 1024**3,
+                usable_bytes=8 * 1024**3,
+            )
+
+    fake = RoomyCapacityFakeLLM(outputs=["warm"])
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", max_active_requests=4),
+        llm=fake,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert fake.scratch_prepares[0]["max_batch_size"] == 4
+    probe = response.json()["startup"]["checks"]["scratch_probe"]
+    assert probe["status"] == "passed"
+    assert "width_reduction" not in probe
+
+
+def test_startup_scratch_probe_retries_at_width_one_before_failing_startup() -> None:
+    """A wider probe that cannot allocate retries narrow instead of ending startup."""
+
+    fake = WideScratchProbeFakeLLM(outputs=["warm"])
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", max_active_requests=4),
+        llm=fake,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert [payload["max_batch_size"] for payload in fake.scratch_prepares] == [4, 1]
+    body = response.json()
+    probe = body["startup"]["checks"]["scratch_probe"]
+    assert probe["status"] == "reduced"
+    assert probe["requested_max_batch_size"] == 4
+    assert probe["max_batch_size"] == 1
+    assert probe["result"]["max_batch_size"] == 1
+    assert probe["failed_attempts"] == [{"max_batch_size": 4, "exception_type": "MemoryError"}]
+    assert body["diagnostics"] == [
+        "startup scratch probe ran at width 1 instead of 4: "
+        "width 4 failed to allocate (MemoryError)"
+    ]
 
 
 def test_startup_warms_the_speculative_mtp_route_before_ready() -> None:
@@ -4597,7 +4759,14 @@ def test_ready_reports_selected_visible_gpu_from_rocm_env(monkeypatch) -> None:
     }
 
 
-def test_ready_reports_startup_failure_diagnostics_without_payload_text() -> None:
+def test_failed_eager_startup_ends_the_process_and_keeps_the_diagnosis() -> None:
+    """A server that cannot start exits instead of listening unready.
+
+    The failure is recorded before the process ends, so the same diagnosis is still
+    readable from the readiness payload, and the log carries it for a supervisor that
+    only sees a non-zero exit.
+    """
+
     fake = ScratchProbeFailureFakeLLM(outputs=["private warmup output"])
     app = create_app(
         ServerConfig(
@@ -4609,8 +4778,18 @@ def test_ready_reports_startup_failure_diagnostics_without_payload_text() -> Non
         llm=fake,
     )
 
-    with TestClient(app) as client:
-        ready = client.get("/ready")
+    with pytest.raises(StartupFailure) as raised:
+        with TestClient(app):
+            pass
+
+    assert raised.value.stage == "scratch_probe"
+    assert raised.value.guidance == (
+        "Try a lower --max-context-tokens or a higher scratch/headroom reserve."
+    )
+    assert isinstance(raised.value.cause, RuntimeError)
+
+    # The lifespan never completed, so this reads the state it recorded on the way out.
+    ready = TestClient(app).get("/ready")
 
     assert ready.status_code == 503
     body = ready.json()
@@ -4629,13 +4808,17 @@ def test_ready_reports_startup_failure_diagnostics_without_payload_text() -> Non
         "guidance": "Try a lower --max-context-tokens or a higher scratch/headroom reserve.",
     }
     assert body["startup"]["checks"]["raw_warmup"] == {"status": "passed", "max_tokens": 2}
-    assert body["startup"]["checks"]["scratch_probe"] == {
+    probe = body["startup"]["checks"]["scratch_probe"]
+    assert probe == {
         "enabled": True,
         "status": "failed",
         "max_prompt_tokens": 131071,
         "probe_prompt_tokens": 131071,
         "context_unknown": False,
+        "requested_max_batch_size": 1,
+        "max_batch_size": 1,
         "exception_type": "RuntimeError",
+        "failed_attempts": [{"max_batch_size": 1, "exception_type": "RuntimeError"}],
     }
     assert body["startup"]["last_timings_s"]["warmup_s"] >= 0.0
     assert body["startup"]["last_timings_s"]["scratch_probe_s"] >= 0.0

@@ -1932,6 +1932,34 @@ class Qwen35GGUFBringupGenerator:
         )
         return policy != "off"
 
+    def resident_capacity_estimate(
+        self,
+        *,
+        max_batch_size: int = 1,
+        requested_context_tokens: int | None = None,
+    ) -> Any | None:
+        """Price one resident session against current free HIP memory.
+
+        This is the per-session price a caller multiplies by the number of sessions it
+        holds at once. The startup scratch probe is that caller: it acquires one session
+        per probe slot, and each of those sessions preallocates its own KV pages and
+        packed workspace lease.
+
+        Returns ``None`` when the route cannot be priced (no HIP runtime, fake runner).
+        """
+
+        try:
+            shared_runner = self._get_shared_runner()
+        except Exception as exc:  # noqa: BLE001 - best-effort sizing read
+            _LOGGER.debug("GGUF resident capacity estimate unavailable: %s", exc)
+            return None
+        return self._resident_capacity_estimate(
+            shared_runner,
+            max_batch_size=max(1, int(max_batch_size)),
+            defer_kv_allocation=False,
+            requested_context_tokens=requested_context_tokens,
+        )
+
     def _resident_capacity_estimate(
         self,
         shared_runner: Qwen35GGUFFullStackRunner,

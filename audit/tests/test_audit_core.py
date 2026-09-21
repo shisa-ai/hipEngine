@@ -124,6 +124,63 @@ class Rebinding(unittest.TestCase):
         after = ledger_row("a-2222", "Some entry", ["p.py"])
         self.assertEqual(core.rebind([after], decisions), [])
 
+    def test_a_finding_that_moved_down_the_file_keeps_its_decision(self):
+        """A ref is ``path:line``, and inserting a line above moves it.
+
+        The referent is the same code, so a line shift must not un-triage every
+        finding beneath the insertion and fail the budget gate.
+        """
+
+        def finding(line, message):
+            return core.Row(
+                kind="stub",
+                key=f"api.py:{line}",
+                title=message,
+                location=f"hipengine/server/api.py:{line}",
+                evidence={"path": "hipengine/server/api.py", "line": line},
+                signals=["NotImplementedError in runtime code"],
+                hints={
+                    "anchor": "hipengine/server/api.py",
+                    "refs": [f"hipengine/server/api.py:{line}"],
+                    "tokens": sorted(message.lower().split()),
+                },
+            )
+
+        before = finding(100, "unimplemented: raise NotImplementedError(")
+        decisions = {before.id: decide(before)}
+        decisions[before.id].hints = before.hints
+        after = finding(128, "unimplemented: raise NotImplementedError(")
+
+        moved = core.rebind([after], decisions)
+
+        self.assertEqual([(m[0], m[1]) for m in moved], [(before.id, after.id)])
+        self.assertEqual(decisions[after.id].rebound_from, before.id)
+
+    def test_a_different_finding_in_the_same_file_is_not_claimed(self):
+        def finding(line, message):
+            return core.Row(
+                kind="stub",
+                key=f"api.py:{line}",
+                title=message,
+                location=f"hipengine/server/api.py:{line}",
+                evidence={},
+                signals=[],
+                hints={
+                    "anchor": "hipengine/server/api.py",
+                    "refs": [f"hipengine/server/api.py:{line}"],
+                    "tokens": sorted(message.lower().split()),
+                },
+            )
+
+        before = finding(
+            100, 'unimplemented: raise NotImplementedError("speculative MTP serving")'
+        )
+        decisions = {before.id: decide(before)}
+        decisions[before.id].hints = before.hints
+        other = finding(128, "unimplemented: raise NotImplementedError(\"vision tower missing\")")
+
+        self.assertEqual(core.rebind([other], decisions), [])
+
 
 class Expiry(unittest.TestCase):
     def test_a_decision_past_its_date_is_reported(self):

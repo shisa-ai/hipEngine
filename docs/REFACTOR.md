@@ -8842,3 +8842,19 @@ retaining the bounded cache policy. Validate the composed user path with
 `scripts/int8_mtp_prefix_gate.py` against a radix-enabled server: it requires
 real prefix hits, compact INT8, speculative cycles and parity with the same
 prefix-reusing AR route. A cache miss or an AR-only response is not a pass.
+
+## Startup scratch probe warms the packed route only when N sessions fit (open 2026-09-21)
+
+The startup scratch probe acquires one resident session per probe slot, and each of
+those sessions is constructed at the auto-sized resident context with its own
+preallocated KV pages and packed workspace lease. A width-N probe therefore costs
+about N full-context sessions. On a box whose free memory holds fewer than N of them
+the probe is reduced to one slot, so the packed prefill and verifier warmups the
+wider probe exists to run are skipped and the first concurrent request pays for them.
+
+Remove the reduction once the probe can warm the packed route without holding N
+full-context sessions -- for example by constructing probe sessions at a short
+context, since the warm prompts are at most 128 tokens. That needs a session-pool
+key or construction path carrying a context distinct from the request context. Until
+it exists, `_startup_probe_width_reduction` in `hipengine/server/api.py` is what
+keeps a wide probe from turning a warmup into HIP out-of-memory attempts.

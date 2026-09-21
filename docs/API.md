@@ -1587,11 +1587,13 @@ continuation-handle counts. It intentionally omits prompts, generated text,
 tool results, and raw
 request/response payloads.
 
-If eager startup fails, the process stays live but unready. `/ready` returns
-HTTP 503 with `status: "error"`, a redacted `startup.error` containing the
-failed stage, exception type, generic message, and operator guidance, plus a
-matching diagnostics entry. Raw exception text is kept in server logs, not the
-readiness payload.
+If eager startup fails, the server does not stay up unready. The failed stage,
+exception type, generic message, and operator guidance are recorded in
+`startup.error` with a matching diagnostics entry and logged, and then startup
+ends with a non-zero exit so a supervisor can act on the failure. A process left
+listening with nothing behind it answers every request with 503 and puts the
+reason somewhere only `/ready` can find it. Raw exception text is kept in server
+logs, not the readiness payload.
 
 ## Diagnostics
 

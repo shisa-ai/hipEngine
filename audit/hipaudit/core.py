@@ -213,13 +213,33 @@ def save_findings(kind: str, rows: list[Row], meta: dict[str, Any]) -> pathlib.P
     return save_rows(FINDINGS_DIR, kind, rows, meta)
 
 
+def _ref_identity(refs: set[str]) -> set[str]:
+    """Refs with their line number dropped.
+
+    A finding's ref is ``path:line``, and inserting a line above it moves every ref
+    below. The referent is the same code, so identity must not depend on the line
+    number: without this, adding a method to a scanned file un-triaged every finding
+    beneath it and the budget gate failed on a shift nobody decided anything about.
+    """
+
+    return {_LINE_REF.sub("", ref) for ref in refs}
+
+
+_LINE_REF = re.compile(r":\d+$")
+
+
 def similarity(a: dict[str, Any], b: dict[str, Any]) -> float:
     """How likely two rows are the same audit item, from their match hints.
 
     Identity must survive ordinary editing. A REFACTOR heading gets reworded, a
-    campaign row gains a column, a path is corrected — none of that makes it a
-    different item, so matching leans on a stable anchor plus overlap of what
-    the row names, not on the text being byte-identical.
+    campaign row gains a column, a path is corrected, code moves down a file —
+    none of that makes it a different item, so matching leans on a stable anchor
+    plus overlap of what the row names, not on the text being byte-identical.
+
+    Sharing only a file is weak evidence: two findings in one file differ exactly
+    by the code each points at, which is what their tokens carry. So a ref match
+    that needs the line number dropped counts half, and the token overlap has to
+    carry the rest. Ref matches that keep their line numbers are unchanged.
     """
     if not a or not b:
         return 0.0
@@ -231,7 +251,17 @@ def similarity(a: dict[str, Any], b: dict[str, Any]) -> float:
         if not x and not y:
             return None
         return len(x & y) / len(x | y)
-    parts = [p for p in (jaccard(refs_a, refs_b), jaccard(tokens_a, tokens_b)) if p is not None]
+    parts: list[float] = []
+    exact_refs = jaccard(refs_a, refs_b)
+    if exact_refs is not None:
+        if exact_refs > 0.0:
+            parts.append(exact_refs)
+        else:
+            moved = jaccard(_ref_identity(refs_a), _ref_identity(refs_b)) or 0.0
+            parts.append(0.5 * moved)
+    tokens = jaccard(tokens_a, tokens_b)
+    if tokens is not None:
+        parts.append(tokens)
     return sum(parts) / len(parts) if parts else 0.0
 
 
