@@ -89,12 +89,46 @@ cost, and the two levers are ranked in the artifact:
    from, and it changes arithmetic, so it needs the production numerical gate
    plus a registered strict fallback.
 3. **An occupancy and tiling sweep** on the existing wave-row path, measured as a
-   kernel microbenchmark.
+   kernel microbenchmark. **Done, and the axis is exhausted** - see below.
 
 The engine-level A/B that would retain a prefill-level number is blocked: an idle
 `hipengine serve` (pid 4175913) holds 98.6 GB of GTT against a 95.7 GB
 requirement. Kernel microbenchmarks are unaffected, and for a bit-exact
 restructuring cycle wall plus bit-identity is the applicable evidence.
+
+**Acceptance status:** the boundary question is settled (recoverable cost), and
+the cheap parameter lever is measured to be exhausted. The task's
+retained-speedup branch is *not* met - it needs the structural work: LDS staging
+with row tiling (bit-exact per row, no numerical gate) or tensor cores (changes
+arithmetic, needs the production gate).
+
+## The head-tile axis is exhausted (measured)
+
+The three registered wave-row variants differ *only* in how many query heads
+share one selected K/V load, and they are bit-identical (verified: all three
+outputs compare equal as uint32). Timing them on the real geometry prices the
+K/V amortization axis directly:
+
+| variant | heads | blocks/row | ms at 1021 rows | vs shipped | effective K/V GB/s |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `heads_1_page256` | 1 | 24 | 55.052 | 0.351x | 934 |
+| `heads_2_head_pair` | 2 | 12 | 20.792 | 0.929x | 1237 |
+| `heads_4_head_quad` | 4 | 6 | **19.316** | **1.000x** | 666 |
+
+The harness reproduces the shipped kernel's traced per-launch cost (19.32 ms
+against 18.98 ms, 1.8% off), so the comparison is trustworthy. **The shipped
+`quad` setting is already the fastest of the three**, so the head-tile parameter
+axis offers nothing.
+
+The kernel is also not simply K/V-traffic-bound at `HEADS=4`: `HEADS=1` carries
+4x the K/V traffic and is 2.85x slower, but `HEADS=2` carries 2x the traffic and
+is only 7% slower, and the effective K/V rate at `HEADS=4` (666 GB/s) is far
+above DRAM - the re-reads are MALL/L2 traffic. The residual cost is the scalar
+FMA issue rate and occupancy.
+
+One trap is worth recording: at a 64-row launch the ranking *inverts* and
+`HEADS=2` looks 1.32x faster than `HEADS=4`. It is not; that grid is simply too
+small to be representative.
 
 ## Open observation
 
