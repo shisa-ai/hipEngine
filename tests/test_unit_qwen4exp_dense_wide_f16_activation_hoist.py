@@ -275,3 +275,66 @@ def test_variant_scoped_library_is_used_for_both_calls(monkeypatch):
     assert converter[0][3]["library"] is wide_library
     _, sibling_kwargs = sibling[0]
     assert sibling_kwargs["library"] is wide_library
+
+
+def test_route_variant_has_a_registered_f16_sibling(monkeypatch):
+    """Coverage guard: the variant the route selects must be hoistable.
+
+    The route rewrites an eligible parent to one fixed variant. If that variant
+    is renamed, or its ``*_f16in_*`` export is dropped, the hoist declines on
+    every launch and the route silently returns to the f32-input owner - the
+    same silent-decline shape that already hid this route once. Only
+    ``dense_wide256`` is selected by the dispatch; ``dense_wide64x256`` and
+    ``dense_wide64x128`` are registered tilings with no f16-input export and are
+    unreachable from here, so they must keep declining rather than be assumed
+    covered.
+    """
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import (
+        register_gguf_q8_0_dense_wide_kernels,
+    )
+    from hipengine.kernels.registry import KernelKey as _KernelKey
+    from hipengine.kernels.registry import is_registered as _is_registered
+    from hipengine.runtime import gguf_linear
+    from hipengine.runtime.gguf_linear import GGUFLinearDispatch, _q8_dense_wide_dispatch
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", raising=False)
+    register_gguf_q8_0_dense_wide_kernels()
+
+    def _registered_on_the_kernel_backend(key):
+        """Resolve the package backend the way the dispatch's population step does."""
+
+        if _is_registered(key):
+            return True
+        return _is_registered(
+            _KernelKey("hip_gfx1100", key.layer, key.quant, key.variant)
+        )
+
+    monkeypatch.setattr(gguf_linear, "is_registered", _registered_on_the_kernel_backend)
+    monkeypatch.setattr(
+        gguf_linear,
+        "_ensure_linear_kernel_registered",
+        lambda key: register_gguf_q8_0_dense_wide_kernels(),
+    )
+
+    parent = GGUFLinearDispatch(
+        KernelKey(BACKEND, LAYER, QUANT, "coltile8_rowbatch4_f32_f32_out"),
+        "raw",
+    )
+    routed = _q8_dense_wide_dispatch(
+        parent,
+        rows=1024,
+        in_features=K,
+        out_features=N,
+    )
+
+    assert routed.key.variant == SOURCE, routed.key.variant
+    target = _wide_f16_activation_target_variant(routed.key.variant)
+    assert target == TARGET
+    assert _is_registered(_KernelKey("hip_gfx1100", LAYER, QUANT, target))
+    # The unexported tilings stay uncovered on purpose.
+    for variant in ("dense_wide64x256_f32_f32_out", "dense_wide64x128_f32_f32_out"):
+        uncovered = _wide_f16_activation_target_variant(variant)
+        assert uncovered is not None
+        assert not _is_registered(_KernelKey("hip_gfx1100", LAYER, QUANT, uncovered))
