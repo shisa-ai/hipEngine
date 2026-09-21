@@ -97,13 +97,26 @@ structural - 2523.8 ms of reads against 1098 ms of matmuls consuming them, with
 the 10240-wide branch tensors traversed repeatedly. Concrete levers, in order of
 how little arithmetic risk they carry:
 
-1. The GR gate buffer (rows x 10240 f32, 168 MB per layer per chunk) is written
-   by the fused kernel and **never read** by the model path -
-   `attention_read.gate` and `ffn_read.gate` have no consumer.
-2. Fuse the grouped-rmsnorm producer of `normalized` so the 10240-wide tensor is
-   never materialized, replicating the norm's reduction order to stay bit-exact.
+1. **Drop the unconsumed gate publication.** `Qwen4ExpGRReadDeviceResult` has
+   four fields and only `normalized`, `mixed` and `inject_logits` are consumed -
+   no reader of `.gate` exists in the runner, the scripts, or the tests. The
+   store is one site (`gate[index] = sigmoid_gate` in
+   `q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel`) writing
+   `rows x branches x hidden` f32 = 167.8 MB per read at 4096 rows, against
+   roughly 219 MB of remaining per-read traffic - about **43% of that kernel's
+   traffic**, and bit-exact by construction because it is a pure publication.
+   *Constraint:* HIP rejects a null kernel pointer argument (measured:
+   `hipErrorInvalidValue`), so this needs a template instantiation
+   (`template <bool WAVE_SCALE, bool WRITE_GATE>` plus a new entry symbol and
+   wrapper/registry plumbing for both wave-scale variants), not a null check.
+   *Unmeasured:* the kernel achieves only ~15 GB/s effective on this shape, so it
+   is not bandwidth-bound and 43% less traffic may buy much less than 43% less
+   time - size it with a microbenchmark first.
+2. Fuse the grouped-rmsnorm producer of `normalized` (the 86 ms `gr_write` plus
+   the 167.8 MB read the fused kernel makes), replicating the norm's reduction
+   order to stay bit-exact.
 3. Recover ILP in the Q8_0 projection without changing any output's summation
-   order.
+   order - smallest traffic effect, largest engineering cost.
 
 ## Blocked confirmation
 
