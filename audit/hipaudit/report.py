@@ -90,35 +90,88 @@ def signal_table(rows: list[Row], decisions: dict[str, Triage], limit: int = 15)
                  [[s, n] for s, n in counts.most_common(limit)])
 
 
-def load_budget() -> dict[str, int]:
+def load_budget() -> dict[str, Any]:
     if BUDGET.exists():
         return json.loads(BUDGET.read_text(encoding="utf-8"))
     return {}
 
 
+def gate_spec(budget: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Per-kind gate selectors, as recorded in the budget's `select` block.
+
+    A spec is `{field: value-or-list}` with AND semantics; a list of specs is
+    ORed. `evidence.<name>` reads the row's evidence, anything else a row field.
+    """
+    payload = load_budget() if budget is None else budget
+    select = payload.get("select", {})
+    return select if isinstance(select, dict) else {}
+
+
+def in_gate(row: Row, spec: Any) -> bool:
+    """Whether the row counts toward its kind's ceiling. No spec = everything counts."""
+    if spec is None:
+        return True
+    if isinstance(spec, list):
+        return any(in_gate(row, item) for item in spec)
+    for key, wanted in spec.items():
+        if key.startswith("evidence."):
+            value = row.evidence.get(key.split(".", 1)[1])
+        else:
+            value = getattr(row, key, None)
+        if isinstance(wanted, list):
+            if value not in wanted:
+                return False
+        elif value != wanted:
+            return False
+    return True
+
+
+def open_counts(rows: list[Row], decisions: dict[str, Triage],
+                budget: dict[str, Any] | None = None) -> tuple[collections.Counter, collections.Counter]:
+    """`(gated, ungated)` untriaged rows per kind.
+
+    A kind whose population grows with normal work selects the rows that need
+    action; the rest stay untriaged and visible without setting the ceiling.
+    """
+    select = gate_spec(budget)
+    gated: collections.Counter = collections.Counter()
+    ungated: collections.Counter = collections.Counter()
+    for row in rows:
+        if row.id in decisions:
+            continue
+        (gated if in_gate(row, select.get(row.kind)) else ungated)[row.kind] += 1
+    return gated, ungated
+
+
 def save_budget(rows: list[Row], decisions: dict[str, Triage],
-                lower_only: bool = False) -> dict[str, int]:
+                lower_only: bool = False) -> dict[str, Any]:
     """Record the untriaged ceiling.
 
     `lower_only` is what an automatic refresh uses: cleanup ratchets the budget
     down, but only a person may raise it, and only with a recorded reason.
     Otherwise a refresh would quietly absorb every new piece of debt.
+
+    Only rows inside their kind's gate set the ceiling; a row outside it is
+    still untriaged, and still shows up in the state table.
     """
-    counts = collections.Counter(r.kind for r in rows if r.id not in decisions)
+    counts, _ = open_counts(rows, decisions)
+    payload = load_budget()          #  keep `select`: a policy is not a count
     if lower_only:
-        previous = load_budget().get("open", {})
+        previous = payload.get("open", {})
         for kind, was in previous.items():
             #  Keep every previously recorded kind, including at zero: dropping a
             #  fully triaged kind from the payload would leave its next untriaged
             #  row ungated. `min` is the ratchet - a refresh may lower a ceiling,
             #  never raise one.
             counts[kind] = min(counts.get(kind, 0), was)
-    payload = {
+    payload.update({
         "recorded": dt.date.today().isoformat(),
         "note": "Untriaged rows per kind. `audit.py check` fails when a count rises. "
-                "Lower it by triaging rows; raise it only with a recorded reason.",
+                "Lower it by triaging rows; raise it only with a recorded reason. "
+                "`select` narrows a kind's gate to matching rows; rows outside the gate "
+                "stay visible in the state table.",
         "open": dict(sorted(counts.items())),
-    }
+    })
     BUDGET.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return payload
 

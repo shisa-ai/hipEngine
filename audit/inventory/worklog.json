@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10602,
-    "current": 3370,
+    "entries": 10607,
+    "current": 3375,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1077,
+    "rows": 1078,
     "by_rule": {
       "dependency": 36,
       "legacy-next": 109,
-      "status": 932
+      "status": 933
     }
   },
   "rows": [
@@ -38153,14 +38153,14 @@
         "written": "2026-09-18",
         "age_days": 3,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 3,
         "open_text": "- Close gate 4 from the single instrumented pass (`/tmp/mtp-sampled/gate4.log`,\n  `HIPENGINE_MTP2_TRACE_DECLINE=1` + `HIPENGINE_DEBUG_SAMPLED_ROUTE=1`), then\n  rerun the matched serving load and compare the sampled arm against its in-load\n  AR control, with the argmax-rule control on the same load if the provider\n  engages.\n- Then apply the per-edit decision rule above, remove the debug prints or name\n  them in `docs/REFACTOR.md`, and write the evidence row (or the rejection) in\n  the same unit.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "3 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260918T162728.762387Z-lhl-sampled-mtp-serving-arm-inventory-849836.md",
@@ -38182,7 +38182,7 @@
         ]
       },
       "id": "worklog/20260918T162728.762387Z-lhl-sampled-mtp-serving-arm-inventory-849836",
-      "evidence_hash": "d9a2338591f7"
+      "evidence_hash": "793c8d268cff"
     },
     {
       "kind": "worklog",
@@ -40539,6 +40539,43 @@
       },
       "id": "worklog/20260920T221926.100328Z-lhl-mtp-prefix-checkpoint-reclamation-12e3b8",
       "evidence_hash": "c42854bee52c"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260921T053229.477543Z-lhl-sampled-mtp-suite-reproduction-7a1f3c",
+      "title": "Sampled MTP against true AR, re-measured on a quiet machine after v0.6.0",
+      "location": "worklog/entries/20260921T053229.477543Z-lhl-sampled-mtp-suite-reproduction-7a1f3c.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "sampled-mtp-suite-reproduction",
+        "written": "2026-09-21",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- None. The open task list is unaffected by this run; see the task review\n  recorded in the same session for the eleven items still outstanding.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260921T053229.477543Z-lhl-sampled-mtp-suite-reproduction-7a1f3c.md",
+        "refs": [],
+        "tokens": [
+          "against",
+          "machine",
+          "measured",
+          "mtp",
+          "quiet",
+          "sampled",
+          "true"
+        ]
+      },
+      "id": "worklog/20260921T053229.477543Z-lhl-sampled-mtp-suite-reproduction-7a1f3c",
+      "evidence_hash": "ae3c0dad2378"
     }
   ]
 }

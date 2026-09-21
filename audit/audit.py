@@ -136,14 +136,15 @@ def cmd_status(args) -> int:
     print(f"inventory generated {meta.get('generated', '?')} at {meta.get('commit', '?')}\n")
     print(report.state_table(rows, decisions))
     budget = report.load_budget().get("open", {})
-    if budget:
-        state = core.reconcile(rows, decisions)
-        current: dict[str, int] = {}
-        for row in state["open"]:
-            current[row.kind] = current.get(row.kind, 0) + 1
-        over = {k: (current.get(k, 0), v) for k, v in budget.items() if current.get(k, 0) > v}
-        print("\nbudget: " + ("over in " + ", ".join(f"{k} {a}>{b}" for k, (a, b) in over.items())
-                              if over else "within budget"))
+    gated, ungated = report.open_counts(rows, decisions)
+    if budget or ungated:
+        over = {k: (gated.get(k, 0), v) for k, v in budget.items() if gated.get(k, 0) > v}
+        line = "budget: " + ("over in " + ", ".join(f"{k} {a}>{b}" for k, (a, b) in over.items())
+                              if over else "within budget")
+        if ungated:
+            line += ("; outside the gate: "
+                     + ", ".join(f"{k} {n} open" for k, n in sorted(ungated.items())))
+        print("\n" + line)
     state = core.reconcile(rows, decisions)
     if state["stale"]:
         print(f"\n{len(state['stale'])} triaged row(s) changed since the decision — "
@@ -283,16 +284,18 @@ def cmd_check(args) -> int:
     rows, decisions = core.load_all(), core.load_triage()
     state = core.reconcile(rows, decisions)
     budget = report.load_budget().get("open", {})
-    current: dict[str, int] = {}
-    for row in state["open"]:
-        current[row.kind] = current.get(row.kind, 0) + 1
+    gated, ungated = report.open_counts(rows, decisions)
     for kind, allowed in budget.items():
-        if current.get(kind, 0) > allowed:
+        if gated.get(kind, 0) > allowed:
             errors.append(
-                f"{kind}: {current[kind]} untriaged rows exceeds the budget of {allowed}. "
+                f"{kind}: {gated[kind]} gated untriaged rows exceeds the budget of {allowed}. "
                 f"Triage the new rows, or raise the budget with a recorded reason.")
 
     print(report.state_table(rows, decisions))
+    if ungated:
+        print("\noutside the gate (untriaged, not counted): "
+              + ", ".join(f"{k} {n}" for k, n in sorted(ungated.items()))
+              + " — `audit.py open <kind>` lists them")
     if state["stale"]:
         print(f"\nwarning: {len(state['stale'])} triaged row(s) changed since the decision — "
               f"`audit.py open --stale`")
@@ -350,10 +353,8 @@ def cmd_refresh(args) -> int:
     state = core.reconcile(rows, decisions)
     todo = []
     budget = report.load_budget().get("open", {})
-    current: dict[str, int] = {}
-    for row in state["open"]:
-        current[row.kind] = current.get(row.kind, 0) + 1
-    over = {k: (current.get(k, 0), v) for k, v in budget.items() if current.get(k, 0) > v}
+    gated, _ = report.open_counts(rows, decisions)
+    over = {k: (gated.get(k, 0), v) for k, v in budget.items() if gated.get(k, 0) > v}
     if over:
         todo.append("untriaged rows grew past the budget in "
                     + ", ".join(f"{k} ({a} > {b})" for k, (a, b) in over.items())
