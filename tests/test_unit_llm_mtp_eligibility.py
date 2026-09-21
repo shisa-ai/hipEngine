@@ -72,12 +72,12 @@ def test_library_explicit_mtp_reports_unsupported_contract(monkeypatch):
     monkeypatch.setattr(llm, "_get_text_generator", lambda: generator)
     eligibility = replace(
         _eligibility(), state=SpeculativeMTPStaticState.PERMANENT_AR,
-        reason="packed_int8_mtp_not_implemented", max_candidate_count=0,
+        reason="dense_group_above_offered_width", max_candidate_count=0,
         max_realized_group_rows=0, automatic_eligible=False,
     )
     monkeypatch.setattr(
         llm, "resolve_speculative_mtp_serving_plan",
         lambda **kwargs: SimpleNamespace(static_eligibility=eligibility),
     )
-    with pytest.raises(NotImplementedError, match="packed_int8_mtp_not_implemented"):
+    with pytest.raises(NotImplementedError, match="dense_group_above_offered_width"):
         llm.generate_speculative_mtp_detailed(["a", "b"])

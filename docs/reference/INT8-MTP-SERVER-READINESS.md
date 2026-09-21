@@ -22,9 +22,9 @@ of the storage contract. Shared engine ownership is mandatory, including
 single-request MTP in a wider resident server.
 
 Concurrency must never be misreported: a request-local verifier is not a
-physical multi-request verifier. An explicit unsupported packed request must
-return a named capability error before mutation. Automatic selection may use
-an implemented AR route. Neither case may kill the engine.
+physical multi-request verifier. A packed request the kernels cannot execute
+must return a named capability error before mutation. Automatic selection may
+use an implemented AR route. Neither case may kill the engine.
 
 Compact DMS is an additional retention topology, not another name for INT8.
 It needs eviction/compaction transactions as well as quantized payload and
@@ -66,9 +66,16 @@ Existing direct-runtime results are not HTTP completion evidence.
 - [x] A C1 request under the default wider resident capacity actually speculates.
 - [x] Admission/retirement/refill and mixed AR/MTP neighbors preserve identity
   and select an honest physical route for each occupancy.
-- [x] Unsupported packed multi-request INT8 verification is rejected before
-  mutation, with `packed_int8_mtp_not_implemented` in a 501 capability error.
-  Explicit AR multi-choice requests still work. Packed INT8 MTP is not implemented.
+- [x] Packed multi-request INT8 verification runs the same row-bulk verifier
+  pass as BF16, binding the retained INT8 payload planes and their
+  per-token-head scale metadata so its full-attention layers attend through the
+  retained-decode leaf. Multi-choice (`n>1`) in one request and concurrent
+  requests coalesced into one decode step both speculate and match the
+  autoregressive ids. The packed direct INT8 prefill admits the same group width
+  as decode, because both write the same packed physical cell. Admission is
+  bounded by the artifact's admitted no-mirror capability (physical c4), so an
+  artifact whose compact INT8 capability is rejected reports a named capability
+  miss and keeps its autoregressive route instead of running the packed path.
 - [ ] Graph reuse after cancellation, pool growth, slot reassignment and scale
   reallocation does not retain stale pointers or another request's state.
 - [x] Cancellation/deadline/failure/shutdown drain target and provider ownership
@@ -182,10 +189,10 @@ HIP allocations after close. Dynamic verifier scratch growth belongs to the
 persistent session root, and retained target snapshot arenas are closed.
 
 The C1 serving implementation is available; this checklist is not fully closed.
-Physical packed INT8 MTP, INT8 text-stop MTP, compact-DMS transactions, unified
-provider/target byte budgeting, and the broader pressure/long-context matrix
-remain separate open items. Explicit unsupported implementation requests return
-named errors rather than being advertised as working MTP.
+INT8 text-stop MTP, compact-DMS transactions, unified provider/target byte
+budgeting, and the broader pressure/long-context matrix remain separate open
+items. Explicit unsupported implementation requests return named errors rather
+than being advertised as working MTP.
 
 Commands against an already running INT8 server:
 

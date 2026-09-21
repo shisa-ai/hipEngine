@@ -64,15 +64,29 @@ def run(args):
             drain(client)
             report["checks"]["concurrent_mixed_ar_mtp"] = True
 
-            response = client.post("/v1/completions", json={
-                **base, "speculative_mtp": True, "n": 2,
-            })
-            assert response.status_code == 501, response.text
-            assert "packed_int8_mtp_not_implemented" in response.text
+            # Multi-choice in one request is a realized group of `n` rows. It is
+            # admitted at the artifact's qualified direct-INT8 width, so both
+            # choices must speculate and still match the autoregressive ids.
+            multi = generate(speculative_mtp=True, n=2)
+            assert len(multi["choices"]) == 2, multi
+            multi_cycles = [
+                int(choice["hipengine"]["timing"]["mtp_cycles_count"])
+                for choice in multi["choices"]
+            ]
+            assert all(cycles > 0 for cycles in multi_cycles), multi_cycles
+            multi_ids = [
+                choice["hipengine"]["generated_token_ids"]
+                for choice in multi["choices"]
+            ]
+            assert all(ids == baseline["ids"] for ids in multi_ids), {
+                "baseline_ids": baseline["ids"],
+                "multi_ids": multi_ids,
+                "multi_cycles": multi_cycles,
+            }
             many = generate(speculative_mtp=False, n=2)
             assert len(many["choices"]) == 2
             assert all(choice["hipengine"]["generated_token_ids"] == baseline["ids"] for choice in many["choices"])
-            report["checks"]["multichoice_structural_error_and_ar"] = True
+            report["checks"]["multichoice_speculates_and_matches_ar"] = True
 
             text = baseline_body["choices"][0]["text"]
             assert len(text) >= 12
