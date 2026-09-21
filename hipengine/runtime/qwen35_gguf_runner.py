@@ -21582,9 +21582,12 @@ class Qwen35GGUFResidentSession:
         split back into each slot session for the later accept-row commit.
 
         The first production slice is intentionally bounded to the server MTP
-        shape: shared runner, BF16 KV, bulk verifier, no-copy prefill-GDN state
-        capture, and context < 1024 where the existing c1-equivalent
-        full-attention batch decoder is valid. Unsupported shapes raise
+        shape: shared runner, bulk verifier, no-copy prefill-GDN state capture,
+        and context < 1024 where the existing c1-equivalent full-attention batch
+        decoder is valid. KV may be BF16 or direct per-token-head INT8: BF16
+        attends through the context-batch decoder, and INT8 binds the retained
+        payload planes and their scale metadata so the same row-bulk pass runs
+        the retained-decode split-K leaf. Unsupported shapes raise
         ``NotImplementedError`` so the scheduler can fall back to per-slot
         verification.
         """
@@ -21608,8 +21611,10 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident packed verifier buffers are closed")
         if self._bulk_prefill_scratch is None:
             self._ensure_bulk_prefill_workspace()
-        if self.kv_storage_dtype != DType.BF16:
-            raise NotImplementedError("packed target verifier currently supports BF16 KV only")
+        if self.kv_storage_dtype not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
+            raise NotImplementedError(
+                "packed target verifier supports BF16 or per-token-head INT8 KV only"
+            )
         if self.use_expert_sidecar:
             raise NotImplementedError("packed target verifier does not support expert sidecars yet")
         if _gguf_verify_f32_residual_enabled():
@@ -21638,8 +21643,10 @@ class Qwen35GGUFResidentSession:
                 raise NotImplementedError("packed target verifier requires shared runner sessions")
             if session.scratch is None:
                 raise RuntimeError("packed verifier job session is closed")
-            if session.kv_storage_dtype != DType.BF16:
-                raise NotImplementedError("packed target verifier currently supports BF16 KV only")
+            if session.kv_storage_dtype not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
+                raise NotImplementedError(
+                    "packed target verifier supports BF16 or per-token-head INT8 KV only"
+                )
             if str(job.get("bulk_attention_mode", "bulk")) != "bulk":
                 raise NotImplementedError("packed target verifier supports bulk attention mode only")
             if bool(job.get("capture_linear_state_rows", False)) != capture_linear_state_rows:
@@ -21682,6 +21689,28 @@ class Qwen35GGUFResidentSession:
             int(block.start_position) + len(block.input_token_ids)
             for block in slot_blocks
         )
+        # Direct per-token-head INT8 KV runs the same row-bulk attention through
+        # the retained-decode leaf instead of the BF16 context-batch decoder.
+        # That leaf needs every session to expose the same registered kernel and
+        # to declare the group width, so resolve it once for the whole group and
+        # fail closed with a named capability miss when it is unavailable.
+        verifier_session_tuple = tuple(job["session"] for job in job_list)
+        verifier_retained_decode_kernel = (
+            self._packed_ar_direct_decode_kernel_for_sessions(
+                verifier_session_tuple,
+                physical_rows=len(verifier_session_tuple),
+            )
+            if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+            else None
+        )
+        if (
+            self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+            and verifier_retained_decode_kernel is None
+        ):
+            raise NotImplementedError(
+                "packed target verifier requires a shared direct INT8 decode leaf "
+                "at this group width"
+            )
         slot_capacity = max(1024, max_live_count)
         layout = _build_gguf_packed_verify_layout(slot_blocks, slot_capacity=slot_capacity)
         direct_linear_state = self._direct_resident_verify_linear_state(job_list)
@@ -21734,7 +21763,25 @@ class Qwen35GGUFResidentSession:
         )
         add_stage("packed_verify_sync_initial_state", sync_state_start)
         token_upload_start = time.perf_counter()
-        packed_scratch = packed_scratch_base.for_packed_verify_layout(layout, runtime=runtime, stream=stream)
+        packed_scratch = replace(
+            packed_scratch_base.for_packed_verify_layout(
+                layout,
+                runtime=runtime,
+                stream=stream,
+            ),
+            retained_decode_kernel=verifier_retained_decode_kernel,
+        )
+        # The retained INT8 leaf splits the key span across a row-sized workspace;
+        # BF16 keeps the context-batch decoder and needs none.
+        packed_split_workspace = (
+            self._ensure_packed_ar_attention_workspace(
+                rows=rows,
+                max_context_len=int(layout.max_live_count),
+                runtime=runtime,
+            )
+            if verifier_retained_decode_kernel is not None
+            else None
+        )
         _stage_gguf_packed_verify_token_ids(
             layout,
             job_list,
@@ -21843,11 +21890,15 @@ class Qwen35GGUFResidentSession:
                         )
                     add_stage("packed_verify_linear_attn_layers", layer_start)
                 elif layer_type == FULL_ATTENTION:
-                    key_cache, value_cache = packed_state.full_cache(layer_id)
+                    # Bind the retained INT8 planes and their scale metadata when
+                    # this layer stores INT8 directly; a BF16 layer returns the
+                    # same cache-backed scratch this verifier used before.
                     layer_scratch = replace(
-                        packed_scratch,
-                        key_cache=key_cache,
-                        value_cache=value_cache,
+                        self._packed_full_attention_scratch_for_layer(
+                            packed_scratch,
+                            packed_state,
+                            layer_id,
+                        ),
                         cos_table=self.scratch.cos_table,
                         sin_table=self.scratch.sin_table,
                     )
@@ -21861,6 +21912,7 @@ class Qwen35GGUFResidentSession:
                         stage_timings=None,
                         sync_stage_timings=False,
                         stage_prefix="target_block_packed_full_attn",
+                        split_workspace=packed_split_workspace,
                     )
                     if gpu_stage_recorder is not None:
                         gpu_stage_recorder.mark("packed_verify_gpu_full_attn_layers")
@@ -23845,21 +23897,26 @@ class Qwen35GGUFResidentSession:
         )
         if allow_direct_int8_prefill and allow_direct_int8_decode:
             raise ValueError("direct INT8 prefill and decode admission are distinct work classes")
-        if has_direct_int8 and allow_direct_int8_prefill and len(sessions) != 1:
-            raise NotImplementedError(
-                "packed AR direct INT8 is admitted only for single-row prefill until shared prefill ownership is qualified"
-            )
-        if has_direct_int8 and allow_direct_int8_decode:
+        if has_direct_int8 and (allow_direct_int8_prefill or allow_direct_int8_decode):
+            # Prefill and decode are distinct work classes, but they write the
+            # same packed physical cell, so both are bounded by the width the
+            # artifact and backend qualify for direct INT8. A single-row
+            # prefill was the only admitted shape while that ownership was
+            # unqualified; the rows>1 route is now measured at group width, so
+            # the prefill class carries the same limit as decode instead of
+            # collapsing to one row.
             width = len(sessions) if physical_rows is None else int(physical_rows)
             direct_limit = min(
                 max(1, int(getattr(session, "packed_decode_max_rows", 1)))
                 for session in sessions
             )
             if width <= 0 or width > direct_limit:
+                work_class = "prefill" if allow_direct_int8_prefill else "decode"
                 raise NotImplementedError(
-                    f"packed AR direct INT8 physical width {width} exceeds artifact-qualified limit {direct_limit}"
+                    f"packed AR direct INT8 {work_class} physical width {width} "
+                    f"exceeds artifact-qualified limit {direct_limit}"
                 )
-        elif has_direct_int8 and not allow_direct_int8_prefill:
+        elif has_direct_int8:
             raise NotImplementedError(
                 "packed AR direct INT8 attention is not admitted without a bounded BF16 mirror"
             )

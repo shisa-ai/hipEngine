@@ -2881,10 +2881,10 @@ def test_explicit_unimplemented_mtp_does_not_silently_downgrade(explicit, status
     fake.resolve_speculative_mtp_serving_plan = lambda **kwargs: {
         "admitted": False,
         "automatic_eligible": False,
-        "reason": "packed_int8_mtp_not_implemented",
-        "implementation_key": "gguf_dense_int8_native_chain",
+        "reason": "dense_group_above_offered_width",
+        "implementation_key": "gguf_dense_int8_gfx1151_group_native_chain",
         "selected_candidate_count": 0,
-        "key": {"kv_storage": "int8_per_token_head", "realized_group_rows": 2},
+        "key": {"kv_storage": "int8_per_token_head", "realized_group_rows": 8},
     }
     app = create_app(
         ServerConfig(model="fake", served_model_name="fake-model", eager_load=False),
@@ -2898,7 +2898,7 @@ def test_explicit_unimplemented_mtp_does_not_silently_downgrade(explicit, status
     assert response.status_code == status, response.text
     if explicit is True:
         assert response.json()["error"]["code"] == "unsupported_feature"
-        assert "packed_int8_mtp_not_implemented" in response.json()["error"]["message"]
+        assert "dense_group_above_offered_width" in response.json()["error"]["message"]
         assert fake.mtp_calls == []
         assert fake.calls == []
 

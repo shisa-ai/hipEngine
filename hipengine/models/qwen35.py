@@ -812,9 +812,36 @@ class Qwen35GGUFModel:
             backends=(("hip_gfx1100", "gfx1100"), ("hip_gfx1151", "gfx1151")),
             max_candidate_count=7,
             max_group_rows=1,
-            group_rejection_reason="packed_int8_mtp_not_implemented",
+            group_rejection_reason="dense_group_above_offered_width",
             # The int8 chain has no evidence rows of its own, so its
             # declaration is the automatic scope it has always been.
+            automatic_eligible=True,
+        ),
+        # A packed INT8 verify group runs the same row-bulk pass as BF16, but its
+        # full-attention layers bind the retained INT8 payload planes and their
+        # per-token-head scale metadata and attend through the retained-decode
+        # split-K leaf instead of the BF16 context-batch decoder. Group width is
+        # therefore bounded by the KV capability's qualified direct width, which
+        # is physical c4 on both backends, and not by the backend cell table the
+        # BF16 split follows (gfx1100 offers 8 cells but qualifies direct INT8 to
+        # c4). The prefill and decode classes carry the same limit because they
+        # write the same packed physical cell.
+        SpeculativeMTPServingImplementation(
+            name="gguf_dense_int8_gfx1151_group_native_chain",
+            kv_storage="int8_per_token_head",
+            backends=(("hip_gfx1151", "gfx1151"),),
+            max_candidate_count=3,
+            max_group_rows=4,
+            group_rejection_reason="dense_group_above_offered_width",
+            automatic_eligible=True,
+        ),
+        SpeculativeMTPServingImplementation(
+            name="gguf_dense_int8_gfx1100_group_native_chain",
+            kv_storage="int8_per_token_head",
+            backends=(("hip_gfx1100", "gfx1100"),),
+            max_candidate_count=3,
+            max_group_rows=4,
+            group_rejection_reason="dense_group_above_offered_width",
             automatic_eligible=True,
         ),
     )
