@@ -132,6 +132,29 @@
   output lengths. Evidence:
   `benchmarks/results/2026-09-14-journey-backend-cache/`.
 
+## Unconsumed GR Gate Publication
+
+- `Qwen4ExpGRReadDeviceResult` has four fields and only `normalized`, `mixed`
+  and `inject_logits` are consumed: no reader of `.gate` exists in the runner,
+  the scripts, or the tests. The fused GR up kernel nevertheless stores the full
+  `rows x branches x hidden` f32 gate plane - 167.8 MB per read at 4096 rows,
+  roughly 43% of that kernel's per-read traffic - as a pure publication.
+- The store is `gate[index] = sigmoid_gate` in
+  `q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel`
+  (`hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip`). The strict unfused
+  path still needs the plane: its sigmoid and gated-mean epilogue consumes it.
+- A runtime null check is not viable - HIP rejects a null kernel pointer
+  argument with `hipErrorInvalidValue` (measured), and the launcher already
+  validates `gate != nullptr`. The removal path is a template instantiation
+  (`template <bool WAVE_SCALE, bool WRITE_GATE>`) with a new `Q8_GR_SCALE_ENTRY`
+  symbol plus wrapper and registry plumbing for both the plain and the
+  wave-scale variant.
+- Remove the publication once such an instantiation lands and no diagnostic
+  still reads the plane; size the win with a kernel microbenchmark first, since
+  the kernel achieves only ~15 GB/s effective on this shape and is therefore not
+  bandwidth-bound. Context:
+  `benchmarks/results/2026-09-22-gr-drift-localization/`.
+
 ## Q8 Block-Scale Restoration
 
 - UD-Q4_K_XL now selects guarded block-scale WMMA through the profile-owned
