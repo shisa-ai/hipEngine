@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from collections import deque
 
 import inspect
+import pathlib
 
 import pytest
 
@@ -160,49 +161,87 @@ def test_sampled_accept_takes_verified_rows_and_no_storage_input() -> None:
 
 
 @pytest.mark.parametrize("rows", [1, 2])
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "INT8 MTP refuses the sampled route at the declaration, not at the kernel. "
-        "The sampled accept (hipengine/generation/mtp_sampled_accept.py:96 "
-        "sampled_accept_summary -> hipengine/speculative/sampling.py:202 "
-        "sampled_accept_from_distributions) consumes only the verifier's row-major "
-        "logits and the request's sampler, and reads no KV storage. Every INT8 "
-        "declaration omits sampling_modes, so it inherits ('greedy_fast',) from "
-        "hipengine/speculative/serving.py:566 and a sampled key fails the check at "
-        "hipengine/speculative/serving.py:592 with mtp_sampling_unsupported. "
-        "Measured on the gfx1151 artifact: int8_per_token_head + sampled is refused "
-        "at rows=1 and rows=2, while bf16 + sampled is admitted through the retained "
-        "evidence row 'automatic_native_sampled_c1_c4'. Clear by adding 'sampled' to "
-        "the sampling_modes of gguf_dense_int8_native_chain "
-        "(hipengine/models/qwen35.py:810) and the gfx1151/gfx1100 group chains "
-        "(:830, :839). strict=True fails the suite the moment that lands, so the "
-        "marker cannot be left behind."
-    ),
-)
-def test_dense_int8_mtp_serves_the_sampled_route_its_accept_path_implements(rows):
-    decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
-        key=_key(sampling_mode="sampled", realized_group_rows=rows),
-    )
-    assert decision.admitted, decision.reason
-    payload = decision.as_dict()
-    assert payload["admission_basis"] == "implementation"
-    assert payload["implementation_key"].startswith("gguf_dense_int8")
+def test_every_declaration_refuses_sampled_so_the_scope_is_route_level(rows):
+    """The sampled refusal is a route decision, not an INT8 or storage property.
+
+    All seven declarations -- BF16 and INT8 alike -- carry the default
+    ``("greedy_fast",)``. The sampled route is opened for gfx1151 BF16 by its own
+    evidence rows and by nothing else, so INT8 is refused for exactly the reason
+    every BF16 declaration is refused. Widening only the INT8 declarations would
+    make INT8 more permissive than the storage the route was measured on, and
+    would open it while the named preconditions below are unmet. This test is
+    what fails if someone tries.
+    """
+
+    declarations = Qwen35GGUFModel().speculative_mtp_serving_implementations
+    assert declarations
+    assert {declaration.sampling_modes for declaration in declarations} == {
+        ("greedy_fast",)
+    }
+
+    # Every declaration reports the same refusal for the same key. BF16 escapes
+    # it only through an evidence row, which is the axis that differs.
+    for declaration in declarations:
+        decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+            key=_key(
+                kv_storage=declaration.kv_storage,
+                sampling_mode="sampled",
+                realized_group_rows=rows,
+            ),
+        )
+        if declaration.kv_storage == "int8_per_token_head":
+            assert not decision.admitted
+            assert decision.reason == "mtp_sampling_unsupported"
+        else:
+            assert decision.admitted, decision.reason
+            assert decision.as_dict()["evidence_key"]
 
 
-def test_bf16_sampled_mtp_is_admitted_so_the_int8_refusal_is_storage_keyed() -> None:
-    """The same sampling key is admitted on BF16, isolating storage as the axis.
+def test_sampled_scope_names_its_preconditions_and_not_the_kernel():
+    """Pin the clearing conditions so the route is not opened by widening a tuple.
 
-    Without this contrast, ``mtp_sampling_unsupported`` would be indistinguishable
-    from a blanket refusal of the sampled mode.
+    ``hipengine/models/qwen35.py`` states them where the declarations are built:
+    the route stays closed until it can honour the autoregressive finish rule
+    (stop tokens and EOS mid-cycle) and until a device-side accept removes the
+    eager host-logit restriction. The second is visible in the engine: a sampled
+    row that is not on a device accept plan asks the verifier for
+    ``return_logits=True``, which reads the whole row-major matrix back to host.
+    Neither is a KV-storage or kernel-execution gap, which is why no INT8 kernel
+    change can clear this, and why the sampled accept being storage-agnostic does
+    not by itself admit the route.
+    """
+
+    import hipengine.generation.qwen35_gguf_mtp2 as mtp2
+    import hipengine.models.qwen35 as qwen35
+
+    assert "sampled accept route stays closed" in inspect.getsource(qwen35)
+
+    prepare_source = inspect.getsource(mtp2.Qwen35GGUFMTP2Adapter.execute_target_frontier)
+    assert "sampled_route and sampled_device_plan is None" in prepare_source
+    assert "return_logits=" in prepare_source
+
+    refactor = (
+        pathlib.Path(__file__).resolve().parents[1] / "docs" / "REFACTOR.md"
+    ).read_text()
+    assert "Sampled-route finish-rule blockers (open)" in refactor
+
+
+@pytest.mark.parametrize("rows", [1, 2, 3, 4])
+def test_bf16_sampled_mtp_is_admitted_by_evidence_not_by_its_declaration(rows):
+    """BF16 is admitted through an evidence row, which is the axis that differs.
+
+    Without this contrast, ``mtp_sampling_unsupported`` would be
+    indistinguishable from a blanket refusal of the sampled mode, and the INT8
+    gap would look like a kernel or storage gap rather than a coverage gap on a
+    route with two open preconditions.
     """
 
     decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
-        key=_key(kv_storage="bf16", sampling_mode="sampled", realized_group_rows=1),
+        key=_key(kv_storage="bf16", sampling_mode="sampled", realized_group_rows=rows),
     )
     assert decision.admitted, decision.reason
     assert decision.reason == "automatic_native_sampled_c1_c4"
-
+    assert decision.as_dict()["evidence_key"]
 
 @pytest.mark.parametrize("changes,reason", [
     ({"realized_group_rows": 5}, "dense_group_above_offered_width"),
