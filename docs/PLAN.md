@@ -1083,7 +1083,7 @@ tensor bytes while embedding all six source assets.
 
 ### YuE2 music generation (planned, 2026-09-16)
 
-[MODEL-YUE2.md](MODEL-YUE2.md) specifies a torch-free HIP model/generator
+[MODEL-YUE2.md](model-cards/MODEL-YUE2.md) specifies a torch-free HIP model/generator
 plugin for YuE2-3B and its separate FP32 stereo VAE. The planned session owns
 symbolic planning, semantic AR generation, cached-conditioning NAR flow matching,
 and tiled waveform decoding. The DeepSeek shootout implementation is a source

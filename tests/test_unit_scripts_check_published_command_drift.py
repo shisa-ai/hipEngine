@@ -315,6 +315,34 @@ def test_pytest_invocations_are_not_checked_against_a_script_parser(
     assert tool.check_repo(repo)["violations"] == []
 
 
+def test_a_glob_test_target_expands_to_the_files_it_matches(
+    tool, tmp_path: pathlib.Path
+) -> None:
+    """A recorded `pytest tests/test_unit_yue2_*.py` is reproducible; it is just not one path."""
+    repo = _make_repo(
+        tmp_path, command=".venv/bin/python -m pytest -q tests/test_unit_yue2_*.py"
+    )
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_unit_yue2_ar_runtime.py").write_text("")
+    (repo / "tests" / "test_unit_yue2_vae.py").write_text("")
+    report = tool.check_repo(repo)
+    assert report["violations"] == [], report
+    assert report["glob_targets"] == ["a.json::tests/test_unit_yue2_*.py->2"]
+
+
+def test_a_glob_that_matches_nothing_is_a_violation(tool, tmp_path: pathlib.Path) -> None:
+    """Expansion must fail closed, or a glob would stand in for targets that no longer exist."""
+    repo = _make_repo(
+        tmp_path, command=".venv/bin/python -m pytest -q tests/test_unit_yue2_*.py"
+    )
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_unit_other.py").write_text("")
+    report = tool.check_repo(repo)
+    assert [v["problem"] for v in report["violations"]] == ["SCRIPT-MISSING"], report
+    assert report["violations"][0]["detail"] == "tests/test_unit_yue2_*.py"
+    assert report["glob_targets"] == []
+
+
 def test_the_real_repository_passes_the_gate_with_recorded_exceptions(tool) -> None:
     """The gate must be green on HEAD, with pre-existing drift named rather than hidden."""
     report = tool.check_repo(REPO)
