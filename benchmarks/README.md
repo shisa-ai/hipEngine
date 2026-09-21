@@ -776,6 +776,14 @@ Raising the M-tile to 32 rows would cut each launch to one tile per expert, a
 projected 1.7-2.3 s of a 16.67 s prefill. [Packet](results/2026-09-22-moe-main-kernel-cost/README.md)
 · [engine capture](results/2026-09-17-iu8-repair-unroll/role-analysis.json).
 
+A `code-p4096` prefill runs four 1024-token chunks, and both dominant families
+pay for that chunking without having to. The dense wide Q8_0 route measures
+**1382.2 -> 1057.2 ms (-23.5%)** at 4096-row chunks, and the routed-MoE main
+kernels drop from 4480 to 2801 weight tiles per layer, which is **57.7 -> 36.1 ms
+gate/up and 34.5 -> 21.6 ms down**. Together that is **1.7-1.9 s of a 16.673 s
+prefill (10-11%) with no kernel change**. [Dense packet](results/2026-09-22-dense-chunk-rows/README.md)
+· [MoE packet](results/2026-09-22-moe-main-kernel-cost/README.md).
+
 September 14 numerical refresh of the previous production profile on
 UD-Q4_K_XL/BF16 KV at chunk1024 fails the full18/594-row strict-teacher
 gate (max KL0.054642; prefill-last mean/p95 also fail), while deterministic
