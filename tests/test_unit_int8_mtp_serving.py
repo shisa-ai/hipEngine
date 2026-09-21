@@ -161,105 +161,90 @@ def test_sampled_accept_takes_verified_rows_and_no_storage_input() -> None:
 
 
 @pytest.mark.parametrize("rows", [1, 2])
-def test_every_declaration_refuses_sampled_so_the_scope_is_route_level(rows):
-    """The sampled refusal is a route decision, not an INT8 or storage property.
+def test_int8_declares_the_sampled_route_the_accept_path_implements(rows):
+    """INT8 storage declares `sampled`, and the runtime gate bounds it.
 
-    All seven declarations -- BF16 and INT8 alike -- carry the default
-    ``("greedy_fast",)``. The sampled route is opened for gfx1151 BF16 by its own
-    evidence rows and by nothing else, so INT8 is refused for exactly the reason
-    every BF16 declaration is refused. Widening only the INT8 declarations would
-    make INT8 more permissive than the storage the route was measured on, and
-    would open it while the named preconditions below are unmet. This test is
-    what fails if someone tries.
+    The sampled accept is storage-agnostic, so the declaration is the truthful
+    statement about what the kernels execute. Declaring it does not widen the
+    effective scope: `_sampled_route_qualified` in
+    `hipengine/generation/qwen35_gguf_mtp2.py` still requires an evidence row
+    matching backend, target architecture, weight quant, and artifact size, and
+    that check is storage-blind, so it already treated both storages alike.
     """
 
-    declarations = Qwen35GGUFModel().speculative_mtp_serving_implementations
-    assert declarations
-    assert {declaration.sampling_modes for declaration in declarations} == {
-        ("greedy_fast",)
-    }
-
-    # Every declaration reports the same refusal for the same key. BF16 escapes
-    # it only through an evidence row, which is the axis that differs.
-    for declaration in declarations:
-        decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
-            key=_key(
-                kv_storage=declaration.kv_storage,
-                sampling_mode="sampled",
-                realized_group_rows=rows,
-            ),
-        )
-        if declaration.kv_storage == "int8_per_token_head":
-            assert not decision.admitted
-            assert decision.reason == "mtp_sampling_unsupported"
-        else:
-            assert decision.admitted, decision.reason
-            assert decision.as_dict()["evidence_key"]
-
-
-@pytest.mark.parametrize("rows", [1, 2])
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "INT8 is refused the sampled route by scope, not by capability, so this "
-        "pins the end state and names the real clearing condition. The refusal "
-        "fires at hipengine/speculative/serving.py:592 with "
-        "mtp_sampling_unsupported because the INT8 declaration inherits "
-        "sampling_modes=('greedy_fast',) from "
-        "hipengine/speculative/serving.py:566. DO NOT CLEAR IT BY WIDENING THAT "
-        "TUPLE: all seven declarations are greedy-only, including every BF16 "
-        "one, and gfx1151 BF16 is served only through its four evidence rows "
-        "(automatic_native_sampled_c1_c4). Widening INT8 alone would make it "
-        "more permissive than the storage the route was measured on. The "
-        "clearing condition is the route's own open gap, named at "
-        "hipengine/models/qwen35.py where the declarations are built and in "
-        "docs/REFACTOR.md 'Sampled-route finish-rule blockers (open)': the route "
-        "cannot honour the autoregressive finish rule, because the cycle commit "
-        "ends a row only when its last visible token is the row's EOS and a "
-        "stochastic accept has no greedy_chain_eos_limit bound, so a stop token "
-        "or EOS can land mid-cycle. That is task 6. The device-side accept has "
-        "already landed (Qwen35GGUFMTP2Adapter._device_sampled_accept_plan, "
-        "2026-09-19) for native-sampler rows with no processors, top_k, or "
-        "constraints, so it is not the remaining blocker. strict=True fails the "
-        "suite when the scope opens, which forces this marker and the "
-        "greedy-only assertion above to be updated together."
-    ),
-)
-def test_dense_int8_mtp_serves_the_sampled_route_once_the_route_honours_finish(rows):
     decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
         key=_key(sampling_mode="sampled", realized_group_rows=rows),
     )
     assert decision.admitted, decision.reason
-    assert decision.reason != "mtp_sampling_unsupported"
+    assert decision.as_dict()["admission_basis"] == "implementation"
+    assert decision.as_dict()["implementation_key"].startswith("gguf_dense_int8")
 
 
-def test_sampled_scope_names_its_preconditions_and_not_the_kernel():
-    """Pin the clearing conditions so the route is not opened by widening a tuple.
+def test_only_int8_declarations_list_sampled_and_the_runtime_gate_is_storage_blind():
+    """The two layers that decide the sampled scope, asserted at their sources.
 
-    ``hipengine/models/qwen35.py`` states them where the declarations are built:
-    the route stays closed until it can honour the autoregressive finish rule
-    (stop tokens and EOS mid-cycle) and until a device-side accept removes the
-    eager host-logit restriction. The second is visible in the engine: a sampled
-    row that is not on a device accept plan asks the verifier for
-    ``return_logits=True``, which reads the whole row-major matrix back to host.
-    Neither is a KV-storage or kernel-execution gap, which is why no INT8 kernel
-    change can clear this, and why the sampled accept being storage-agnostic does
-    not by itself admit the route.
+    Admission reads the declaration's `sampling_modes`; the runtime gate reads
+    evidence rows. The second is storage-blind, which is what keeps INT8's wider
+    declaration from being a wider effective scope than BF16's.
+    """
+
+    declarations = Qwen35GGUFModel().speculative_mtp_serving_implementations
+    by_storage: dict[str, set[tuple[str, ...]]] = {}
+    for declaration in declarations:
+        by_storage.setdefault(declaration.kv_storage, set()).add(
+            declaration.sampling_modes
+        )
+    assert by_storage["int8_per_token_head"] == {("greedy_fast", "sampled")}
+    assert by_storage["bf16"] == {("greedy_fast",)}
+
+    import hipengine.generation.qwen35_gguf_mtp2 as mtp2
+
+    gate = inspect.getsource(mtp2.Qwen35GGUFMTP2Adapter._sampled_route_qualified)
+    for attribute in ("kv_storage", "storage_dtype", "effective_kv_storage"):
+        assert attribute not in gate, attribute
+    assert "weight_quant" in gate
+    assert "artifact_size_bytes" in gate
+
+
+def test_processed_argmax_stays_refused_on_every_storage():
+    """The finish-rule and metadata set is refused wherever it is asked for.
+
+    `min_tokens`, `eos_token_id`, stop ids, stop sequences, and logprobs do not
+    reach the sampled route at all; they are `processed_argmax` requests, and
+    opening them is task 6's finish rule, not a storage question.
+    """
+
+    for storage in ("int8_per_token_head", "bf16"):
+        decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+            key=_key(
+                kv_storage=storage,
+                sampling_mode="processed_argmax",
+                realized_group_rows=1,
+            ),
+        )
+        assert not decision.admitted
+        assert decision.reason == "mtp_sampling_unsupported"
+
+
+def test_sampled_route_names_its_remaining_gap_and_not_the_kernel():
+    """Pin the route's remaining gap so it is not mistaken for a storage gap.
+
+    `hipengine/models/qwen35.py` states it where the declarations are built: the
+    autoregressive finish rule (stop tokens and EOS mid-cycle) is contained per
+    request by the servable-blocker set rather than fixed, and the device-side
+    accept that used to be the second precondition landed 2026-09-19.
     """
 
     import hipengine.generation.qwen35_gguf_mtp2 as mtp2
     import hipengine.models.qwen35 as qwen35
 
-    assert "sampled accept route stays closed" in inspect.getsource(qwen35)
+    source = inspect.getsource(qwen35)
+    assert "autoregressive finish rule" in source
+    assert "storage-agnostic" in source
 
-    # The device-side accept is not the remaining blocker: it landed 2026-09-19.
     assert callable(
         getattr(mtp2.Qwen35GGUFMTP2Adapter, "_device_sampled_accept_plan", None)
     )
-
-    prepare_source = inspect.getsource(mtp2.Qwen35GGUFMTP2Adapter.execute_target_frontier)
-    assert "sampled_route and sampled_device_plan is None" in prepare_source
-    assert "return_logits=" in prepare_source
 
     refactor = (
         pathlib.Path(__file__).resolve().parents[1] / "docs" / "REFACTOR.md"
