@@ -1036,8 +1036,20 @@ __device__ inline float q51_bf16_rounding_boundary_distance(float value) {
   return fmaxf(0.0f, fminf(value - lower_boundary, upper_boundary - value));
 }
 
+// Rows each warp owns. A lane carries three fp32 accumulators per (row,
+// column) pair, so a warp can span at most 16 rows before the register file
+// runs out: a 32-row M tile therefore uses twice the warps (two row groups of
+// four column groups) instead of twice the per-lane row state. The two row
+// groups read the same weight slice, so the second read is served by L1/L2.
+constexpr int Q51_IU8_WARP_ROWS = 16;
 template <int TILE_ROWS = 16>
-__global__ __launch_bounds__(128, 2)
+constexpr int q51_iu8_warps() {
+  return (TILE_ROWS / Q51_IU8_WARP_ROWS) * 4;
+}
+
+template <int TILE_ROWS = 16>
+__global__ __launch_bounds__(q51_iu8_warps<TILE_ROWS>() * 32,
+                            TILE_ROWS == Q51_IU8_WARP_ROWS ? 2 : 1)
 void q5_1_selected_wmma_iu8_risk_prefill_kernel(
     const uint16_t* __restrict__ x,
     const int64_t* __restrict__ expert_start_compact,
@@ -1063,6 +1075,10 @@ void q5_1_selected_wmma_iu8_risk_prefill_kernel(
   const int tid = static_cast<int>(threadIdx.x);
   const int warp = tid >> 5;
   const int lane = tid & 31;
+  // Four column groups per row group: warps 0-3 cover the block's 128 columns
+  // for the tile's first Q51_IU8_WARP_ROWS rows, warps 4-7 the next ones.
+  const int warp_col = warp & 3;
+  const int row_group = warp >> 2;
   const int64_t col_base = static_cast<int64_t>(blockIdx.x) * 128;
   const int64_t row_tile = blockIdx.y;
 
@@ -1084,7 +1100,7 @@ void q5_1_selected_wmma_iu8_risk_prefill_kernel(
   const int64_t expert_count = meta[2];
   const int64_t tile_row_in_expert = meta[3];
 
-  const int64_t global_col = col_base + warp * 32 + lane;
+  const int64_t global_col = col_base + warp_col * 32 + lane;
   const bool col_valid = global_col < out_features;
   const int64_t blocks_per_row = in_features / 32;
   const int64_t row_bytes = blocks_per_row * 24;
@@ -1094,11 +1110,11 @@ void q5_1_selected_wmma_iu8_risk_prefill_kernel(
          global_col * row_bytes)
       : nullptr;
 
-  float sum[TILE_ROWS];
-  float kahan_err[TILE_ROWS];
-  float abs_terms[TILE_ROWS];
+  float sum[Q51_IU8_WARP_ROWS];
+  float kahan_err[Q51_IU8_WARP_ROWS];
+  float abs_terms[Q51_IU8_WARP_ROWS];
 #pragma unroll
-  for (int r = 0; r < TILE_ROWS; ++r) {
+  for (int r = 0; r < Q51_IU8_WARP_ROWS; ++r) {
     sum[r] = 0.0f;
     kahan_err[r] = 0.0f;
     abs_terms[r] = 0.0f;
@@ -1115,12 +1131,12 @@ void q5_1_selected_wmma_iu8_risk_prefill_kernel(
   const int64_t chunks = (in_features + 255) / 256;
   for (int64_t chunk = 0; chunk < chunks; ++chunk) {
     // Cooperative activation staging: thread -> (actrow = tid/8, sub = tid%8),
-    // one 32-element Q5_1 block per (actrow, sub).
-    // 128 threads cover 16 rows per pass, so a wider M tile stages in passes;
-    // every pass writes before the single sync below.
+    // one 32-element Q5_1 block per (actrow, sub). A block of N threads stages
+    // N/8 rows per pass, so a taller tile stages in passes; every pass writes
+    // before the single sync below.
 #pragma unroll
-    for (int rp = 0; rp < TILE_ROWS / 16; ++rp) {
-      const int actrow = rp * 16 + (tid >> 3);
+    for (int rp = 0; rp < TILE_ROWS / (q51_iu8_warps<TILE_ROWS>() * 4); ++rp) {
+      const int actrow = rp * (q51_iu8_warps<TILE_ROWS>() * 4) + (tid >> 3);
       const int sub = tid & 7;
       const int64_t col0 = chunk * 256 + static_cast<int64_t>(sub) * 32;
       const int64_t local_row = tile_row_in_expert + actrow;
@@ -1209,7 +1225,7 @@ void q5_1_selected_wmma_iu8_risk_prefill_kernel(
           ? load_fp16(block_ptr + 2) : 0.0f;
 
 #pragma unroll
-      for (int g = 0; g < TILE_ROWS / 8; ++g) {
+      for (int g = 0; g < Q51_IU8_WARP_ROWS / 8; ++g) {
         q51_iu8_int32x8 acc[Q51_IU8_ACT_PLANES];
 #pragma unroll
         for (int plane = 0; plane < Q51_IU8_ACT_PLANES; ++plane) {
@@ -1232,7 +1248,8 @@ void q5_1_selected_wmma_iu8_risk_prefill_kernel(
             if (a_row >= 0) {
               const int8_t* src = lds_q8a +
                   plane * TILE_ROWS * Q51_IU8_LDS_ROW_STRIDE +
-                  (g * 8 + a_row) * Q51_IU8_LDS_ROW_STRIDE +
+                  (row_group * Q51_IU8_WARP_ROWS + g * 8 + a_row) *
+                      Q51_IU8_LDS_ROW_STRIDE +
                   sub * 32 + khalf * 16;
 #pragma unroll
               for (int j = 0; j < 16; ++j) abytes[j] = src[j];
@@ -1252,13 +1269,18 @@ void q5_1_selected_wmma_iu8_risk_prefill_kernel(
         }
 #pragma unroll
         for (int i = 0; i < 8; ++i) {
+          // The lane's fp32 state is indexed by its own row group only; the LDS
+          // row index carries the group offset.
           const int r = g * 8 + i;
+          const int lds_row = row_group * Q51_IU8_WARP_ROWS + r;
           float main_sum = 0.0f;
           float act_sum = 0.0f;
 #pragma unroll
           for (int plane = 0; plane < Q51_IU8_ACT_PLANES; ++plane) {
-            const float da = lds_da[plane * TILE_ROWS * 8 + r * 8 + sub];
-            const int asumb = lds_sumq8a[plane * TILE_ROWS * 8 + r * 8 + sub];
+            const float da =
+                lds_da[plane * TILE_ROWS * 8 + lds_row * 8 + sub];
+            const int asumb =
+                lds_sumq8a[plane * TILE_ROWS * 8 + lds_row * 8 + sub];
             const int* cr = reinterpret_cast<const int*>(&acc[plane]);
             main_sum += da * static_cast<float>(cr[i]);
             act_sum += da * static_cast<float>(asumb);
@@ -1276,8 +1298,14 @@ void q5_1_selected_wmma_iu8_risk_prefill_kernel(
 
   if (!col_valid) return;
 #pragma unroll
-  for (int r = 0; r < TILE_ROWS; ++r) {
-    const int64_t local_row = tile_row_in_expert + r;
+  for (int g = 0; g < Q51_IU8_WARP_ROWS / 8; ++g) {
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    // The lane's state index is lane-local; the tile row and the at-risk flag
+    // both carry the row group's offset.
+    const int r = g * 8 + i;
+    const int tile_row = row_group * Q51_IU8_WARP_ROWS + r;
+    const int64_t local_row = tile_row_in_expert + tile_row;
     if (local_row < expert_count) {
       const int64_t compact_row = compact_base + local_row;
       if (compact_row < compact_rows) {
@@ -1286,7 +1314,7 @@ void q5_1_selected_wmma_iu8_risk_prefill_kernel(
             float_to_bf16_bits(value);
         const float bound = risk_multiplier *
             (fabsf(kahan_err[r]) + FLT_EPSILON * abs_terms[r]);
-        const bool at_risk = lds_row_atrisk[r] != 0 ||
+        const bool at_risk = lds_row_atrisk[tile_row] != 0 ||
             !isfinite(value) ||
             q51_bf16_rounding_boundary_distance(value) < bound;
         if (at_risk) {
@@ -1298,6 +1326,7 @@ void q5_1_selected_wmma_iu8_risk_prefill_kernel(
         }
       }
     }
+  }
   }
 }
 
@@ -1423,7 +1452,7 @@ static int launch_q5_1_wmma_iu8_risk(
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int64_t row_tiles = wmma_total_rows / TILE_ROWS;
-  const dim3 block(128);
+  const dim3 block(q51_iu8_warps<TILE_ROWS>() * 32);
   const dim3 grid(
       static_cast<unsigned int>((out_features + 127) / 128),
       static_cast<unsigned int>(row_tiles));
