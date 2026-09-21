@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10612,
-    "current": 3380,
+    "entries": 10614,
+    "current": 3382,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1079,
+    "rows": 1080,
     "by_rule": {
       "dependency": 36,
       "legacy-next": 109,
-      "status": 934
+      "status": 935
     }
   },
   "rows": [
@@ -40612,6 +40612,44 @@
       },
       "id": "worklog/20260921T081051.495647Z-lhl-rich-help-markup-brackets-8ce8f8",
       "evidence_hash": "2e91348075ca"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260921T085132.835613Z-lhl-agentic-session-cross-engine-harness-4b8e21",
+      "title": "An engine-neutral agentic session replay harness",
+      "location": "worklog/entries/20260921T085132.835613Z-lhl-agentic-session-cross-engine-harness-4b8e21.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "agentic-session-cross-engine-harness",
+        "written": "2026-09-21",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- No comparison row has been produced yet, so this entry claims no rate. Running\n  the harness needs the GPU, and at the time of writing another session's\n  hipEngine server holds it: pid 4175913 on port 8000, `GPU memory 95.96 GiB /\n  120.00 GiB used`, leaving 24.6 GiB free. A second server on that device would\n  make neither engine's rate attributable, so the run waits for the device.\n- The intended run is hipEngine against llama.cpp on the **same\n  `Qwen3.8-27B-Q4_K_M.gguf`**, which is the reason to prefer llama.cpp over\n  atlas here: atlas carries no k-quant kernels and runs NVFP4, so an a",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260921T085132.835613Z-lhl-agentic-session-cross-engine-harness-4b8e21.md",
+        "refs": [
+          "benchmarks/llama.cpp/README.md"
+        ],
+        "tokens": [
+          "agentic",
+          "engine",
+          "harness",
+          "neutral",
+          "replay",
+          "session"
+        ]
+      },
+      "id": "worklog/20260921T085132.835613Z-lhl-agentic-session-cross-engine-harness-4b8e21",
+      "evidence_hash": "82611d037cfb"
     }
   ]
 }

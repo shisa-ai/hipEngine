@@ -1827,9 +1827,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/llm.py:1199",
+      "key": "hipengine/llm.py:1221",
       "title": "unimplemented: raise NotImplementedError(\"token counting is not supported by this generator\")",
-      "location": "hipengine/llm.py:1199",
+      "location": "hipengine/llm.py:1221",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -1840,7 +1840,7 @@
       "hints": {
         "anchor": "hipengine/llm.py",
         "refs": [
-          "hipengine/llm.py:1199"
+          "hipengine/llm.py:1221"
         ],
         "tokens": [
           "counting",
@@ -1852,14 +1852,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/llm.py:1199",
-      "evidence_hash": "b600977de3b6"
+      "id": "stub/hipengine/llm.py:1221",
+      "evidence_hash": "d0fd904229a5"
     },
     {
       "kind": "stub",
-      "key": "hipengine/llm.py:1208",
+      "key": "hipengine/llm.py:1230",
       "title": "unimplemented: raise NotImplementedError(\"tokenization is not supported by this generator\")",
-      "location": "hipengine/llm.py:1208",
+      "location": "hipengine/llm.py:1230",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -1870,7 +1870,7 @@
       "hints": {
         "anchor": "hipengine/llm.py",
         "refs": [
-          "hipengine/llm.py:1208"
+          "hipengine/llm.py:1230"
         ],
         "tokens": [
           "generator",
@@ -1881,14 +1881,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/llm.py:1208",
-      "evidence_hash": "8e7ef7e4bce4"
+      "id": "stub/hipengine/llm.py:1230",
+      "evidence_hash": "d08873f2ae64"
     },
     {
       "kind": "stub",
-      "key": "hipengine/llm.py:1229",
+      "key": "hipengine/llm.py:1251",
       "title": "unimplemented: raise NotImplementedError(\"detokenization is not supported by this generator\")",
-      "location": "hipengine/llm.py:1229",
+      "location": "hipengine/llm.py:1251",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -1899,7 +1899,7 @@
       "hints": {
         "anchor": "hipengine/llm.py",
         "refs": [
-          "hipengine/llm.py:1229"
+          "hipengine/llm.py:1251"
         ],
         "tokens": [
           "detokenization",
@@ -1910,8 +1910,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/llm.py:1229",
-      "evidence_hash": "b08538964e5d"
+      "id": "stub/hipengine/llm.py:1251",
+      "evidence_hash": "c3f9507f7740"
     },
     {
       "kind": "stub",

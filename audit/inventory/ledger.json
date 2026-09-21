@@ -2,7 +2,7 @@
   "kind": "ledger",
   "meta": {
     "source": "docs/REFACTOR.md",
-    "headings": 401
+    "headings": 402
   },
   "rows": [
     {
@@ -3454,6 +3454,47 @@
       },
       "id": "ledger/2026-09-13-surya-vision-admission-is-gpu-only-and-ae3c5257c4ef",
       "evidence_hash": "ac4a6f68c4cf"
+    },
+    {
+      "kind": "ledger",
+      "key": "a-failed-wide-startup-probe-leaves-the-process-una-48dd869443e1",
+      "title": "A failed wide startup probe leaves the process unable to allocate the next stage (open 2026-09-21)",
+      "location": "docs/REFACTOR.md:8862",
+      "evidence": {
+        "paths_named": [
+          "hipengine/generation/qwen35_gguf.py",
+          "hipengine/server/api.py"
+        ],
+        "paths_missing": [],
+        "flags_named": [],
+        "flags_unread": [],
+        "age_days": 0,
+        "body_chars": 1149
+      },
+      "signals": [],
+      "hints": {
+        "anchor": "docs/REFACTOR.md",
+        "refs": [
+          "hipengine/generation/qwen35_gguf.py",
+          "hipengine/server/api.py"
+        ],
+        "tokens": [
+          "2026",
+          "allocate",
+          "failed",
+          "leaves",
+          "next",
+          "open",
+          "probe",
+          "process",
+          "stage",
+          "startup",
+          "unable",
+          "wide"
+        ]
+      },
+      "id": "ledger/a-failed-wide-startup-probe-leaves-the-process-una-48dd869443e1",
+      "evidence_hash": "3aae1d15d283"
     },
     {
       "kind": "ledger",

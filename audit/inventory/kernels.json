@@ -4235,7 +4235,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 39,
-        "referrers": 1176,
+        "referrers": 1177,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
@@ -4266,7 +4266,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/moe/prefill.py",
-      "evidence_hash": "fe6eef49c8f7"
+      "evidence_hash": "00875f5448f1"
     },
     {
       "kind": "kernel",
@@ -9728,7 +9728,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 433,
-        "referrers": 625,
+        "referrers": 626,
         "runtime_referrers": [
           "hipengine/core/specdec2_scope.py",
           "hipengine/generation/laguna_dflash.py",
@@ -9758,7 +9758,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/vibevoice/q4.py",
-      "evidence_hash": "35a7fb7abeeb"
+      "evidence_hash": "3679c0d5da37"
     },
     {
       "kind": "kernel",
@@ -9769,7 +9769,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 62,
-        "referrers": 442,
+        "referrers": 443,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
@@ -9800,7 +9800,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/vibevoice/registered.py",
-      "evidence_hash": "a666ff13d38e"
+      "evidence_hash": "1986b23e3b3b"
     },
     {
       "kind": "kernel",
