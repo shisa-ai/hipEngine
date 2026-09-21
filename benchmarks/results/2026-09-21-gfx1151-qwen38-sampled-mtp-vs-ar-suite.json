@@ -1,0 +1,316 @@
+{
+  "schema": "hipengine.gguf_mtp_sampled_suite_pair.v1",
+  "performance_claim": true,
+  "kind": "sampled_mtp_vs_autoregressive_paired_suite",
+  "purpose": "Same-host, same-server paired A/B of the automatically admitted sampled MTP route against its own autoregressive control, over the 10-prompt four-category suite. Answers whether the sampled route's throughput advantage holds on current HEAD after the concurrent native sampled MTP work landed.",
+  "date": "2026-09-21",
+  "lane": {
+    "host_name": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "lane_note": "Desktop gfx1151 lane. This is NOT the zbook lane (machine_id 87c566d30a5645cf8d12ed7ef6b6e1e8); both run gfx1151, and docs/OPTIMIZATION.md section 2 makes same-architecture hosts independent lanes, so neither host's absolute rates may be compared against the other's.",
+    "system": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.26333-0000000"
+  },
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "kv_storage": "bf16",
+  "execution_profile": "production",
+  "git_head": "61a1dae304bff96e3231c02336d17f9c495ace6b",
+  "concurrency": 1,
+  "sampling": {
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "seed": null
+  },
+  "workload": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "decode_tokens_requested": 128,
+    "repeats": 2,
+    "warmup_per_prompt": 1,
+    "timed_requests_per_arm": 20,
+    "prompt_token_range": [
+      62,
+      94
+    ],
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ]
+  },
+  "server_command": "bash /tmp/t17-env.sh python -m hipengine.server --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km --host 127.0.0.1 --port 8097 --log-level info --info",
+  "defaults_observed_on_the_server": {
+    "prefix_cache": "radix",
+    "execution_profile": "production",
+    "mtp_admission": "automatic on implementation capability; no explicit request and no retained evidence row needed"
+  },
+  "harness_command": "scripts/gguf_mtp_server_pair_bench.py --url http://127.0.0.1:8097 --model qwen3.8-27b-q4km --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --decode 128 --repeats 2 --temperature 0.7 --top-p 0.95 --tag sampled-mtp|sampled-ar, with BENCH_EXTRA_JSON='{\"speculative_mtp\": true|false}' selecting the arm",
+  "arm_selection": "The control is the same server process and the same model; the request's own speculative_mtp field selects the arm, so both arms share KV layout, sampler, and warm caches.",
+  "result": {
+    "mtp_decode_tok_s_median_across_prompts": 20.309,
+    "ar_decode_tok_s_median_across_prompts": 10.718,
+    "paired_ratio_median": 1.895,
+    "paired_ratio_min": 1.591,
+    "paired_ratio_max": 2.617,
+    "paired_ratio_range": [
+      1.59,
+      2.62
+    ],
+    "per_category_ratio_median": {
+      "code": 2.39,
+      "general_en": 1.669,
+      "general_ja": 1.665,
+      "mixed_ja_en": 1.874
+    }
+  },
+  "checks": {
+    "mtp_route_confirmed_on_every_mtp_row": true,
+    "mtp_admitted_automatically": true,
+    "control_arm_is_true_autoregressive": true,
+    "mtp_coverage_min": 0.9841,
+    "no_gpu_work_other_than_the_measured_server": "checked immediately before the run: the only other hipengine process was a server whose resident_prepare had already failed and which served no requests",
+    "note": "Route engagement, arm identity and repeatability only. This is a throughput A/B between two serving routes of one model on one host; it is not a quality, KL, or default-promotion gate, and it makes no cross-lane comparison."
+  },
+  "caveats": [
+    "Two of the ten prompts (mixed_ja_en_translate at 62-63 tokens, mixed_ja_en_review at 43 tokens) stop early on both arms; they are paired and the ratio is still computed, but their decode rates cover fewer tokens than the other eight.",
+    "This run was made because an earlier attempt may have overlapped another session's concurrent native sampled MTP work. It was taken on a quiet machine, so it is the reportable number."
+  ],
+  "rows": [
+    {
+      "prompt_id": "code_merge_intervals",
+      "category": "code",
+      "prompt_tokens": 63,
+      "completion_tokens": 128,
+      "stopped_early": false,
+      "mtp_decode_tok_s_median": 28.098,
+      "mtp_decode_tok_s_cv": 0.0717,
+      "mtp_ttft_ms_median": 523.4,
+      "ar_decode_tok_s_median": 10.737,
+      "ar_decode_tok_s_cv": 0.0031,
+      "ar_ttft_ms_median": 448.2,
+      "ratio_mtp_over_ar": 2.617,
+      "mtp_route": "speculative_mtp",
+      "mtp_decision_reason": "automatic_native_sampled_c1_c4",
+      "mtp_coverage": 0.9922,
+      "mtp_speculative_cycles": 37,
+      "mtp_fallback_event_counts": {
+        "no_provider": 1
+      },
+      "ar_route": null,
+      "ar_mtp_used": false
+    },
+    {
+      "prompt_id": "code_topological_sort",
+      "category": "code",
+      "prompt_tokens": 73,
+      "completion_tokens": 128,
+      "stopped_early": false,
+      "mtp_decode_tok_s_median": 25.342,
+      "mtp_decode_tok_s_cv": 0.0068,
+      "mtp_ttft_ms_median": 644.0,
+      "ar_decode_tok_s_median": 10.699,
+      "ar_decode_tok_s_cv": 0.0031,
+      "ar_ttft_ms_median": 482.4,
+      "ratio_mtp_over_ar": 2.369,
+      "mtp_route": "speculative_mtp",
+      "mtp_decision_reason": "automatic_native_sampled_c1_c4",
+      "mtp_coverage": 0.9922,
+      "mtp_speculative_cycles": 38,
+      "mtp_fallback_event_counts": {
+        "no_provider": 1
+      },
+      "ar_route": null,
+      "ar_mtp_used": false
+    },
+    {
+      "prompt_id": "code_lru_cache",
+      "category": "code",
+      "prompt_tokens": 70,
+      "completion_tokens": 128,
+      "stopped_early": false,
+      "mtp_decode_tok_s_median": 24.254,
+      "mtp_decode_tok_s_cv": 0.0049,
+      "mtp_ttft_ms_median": 643.9,
+      "ar_decode_tok_s_median": 10.665,
+      "ar_decode_tok_s_cv": 0.0028,
+      "ar_ttft_ms_median": 447.4,
+      "ratio_mtp_over_ar": 2.274,
+      "mtp_route": "speculative_mtp",
+      "mtp_decision_reason": "automatic_native_sampled_c1_c4",
+      "mtp_coverage": 0.9844,
+      "mtp_speculative_cycles": 39,
+      "mtp_fallback_event_counts": {
+        "no_provider": 1
+      },
+      "ar_route": null,
+      "ar_mtp_used": false
+    },
+    {
+      "prompt_id": "code_markdown_table",
+      "category": "code",
+      "prompt_tokens": 75,
+      "completion_tokens": 128,
+      "stopped_early": false,
+      "mtp_decode_tok_s_median": 25.899,
+      "mtp_decode_tok_s_cv": 0.0035,
+      "mtp_ttft_ms_median": 646.9,
+      "ar_decode_tok_s_median": 10.742,
+      "ar_decode_tok_s_cv": 0.002,
+      "ar_ttft_ms_median": 487.9,
+      "ratio_mtp_over_ar": 2.411,
+      "mtp_route": "speculative_mtp",
+      "mtp_decision_reason": "automatic_native_sampled_c1_c4",
+      "mtp_coverage": 0.9922,
+      "mtp_speculative_cycles": 37,
+      "mtp_fallback_event_counts": {
+        "no_provider": 1
+      },
+      "ar_route": null,
+      "ar_mtp_used": false
+    },
+    {
+      "prompt_id": "general_en_plan",
+      "category": "general_en",
+      "prompt_tokens": 62,
+      "completion_tokens": 128,
+      "stopped_early": false,
+      "mtp_decode_tok_s_median": 18.77,
+      "mtp_decode_tok_s_cv": 0.0034,
+      "mtp_ttft_ms_median": 578.4,
+      "ar_decode_tok_s_median": 10.736,
+      "ar_decode_tok_s_cv": 0.0049,
+      "ar_ttft_ms_median": 421.3,
+      "ratio_mtp_over_ar": 1.748,
+      "mtp_route": "speculative_mtp",
+      "mtp_decision_reason": "automatic_native_sampled_c1_c4",
+      "mtp_coverage": 0.9922,
+      "mtp_speculative_cycles": 51,
+      "mtp_fallback_event_counts": {
+        "no_provider": 1
+      },
+      "ar_route": null,
+      "ar_mtp_used": false
+    },
+    {
+      "prompt_id": "general_en_explain",
+      "category": "general_en",
+      "prompt_tokens": 63,
+      "completion_tokens": 128,
+      "stopped_early": false,
+      "mtp_decode_tok_s_median": 17.088,
+      "mtp_decode_tok_s_cv": 0.0003,
+      "mtp_ttft_ms_median": 606.7,
+      "ar_decode_tok_s_median": 10.743,
+      "ar_decode_tok_s_cv": 0.0052,
+      "ar_ttft_ms_median": 453.2,
+      "ratio_mtp_over_ar": 1.591,
+      "mtp_route": "speculative_mtp",
+      "mtp_decision_reason": "automatic_native_sampled_c1_c4",
+      "mtp_coverage": 0.9844,
+      "mtp_speculative_cycles": 56,
+      "mtp_fallback_event_counts": {
+        "no_provider": 1
+      },
+      "ar_route": null,
+      "ar_mtp_used": false
+    },
+    {
+      "prompt_id": "general_ja_plan",
+      "category": "general_ja",
+      "prompt_tokens": 66,
+      "completion_tokens": 128,
+      "stopped_early": false,
+      "mtp_decode_tok_s_median": 18.007,
+      "mtp_decode_tok_s_cv": 0.0099,
+      "mtp_ttft_ms_median": 615.3,
+      "ar_decode_tok_s_median": 10.747,
+      "ar_decode_tok_s_cv": 0.0018,
+      "ar_ttft_ms_median": 442.7,
+      "ratio_mtp_over_ar": 1.676,
+      "mtp_route": "speculative_mtp",
+      "mtp_decision_reason": "automatic_native_sampled_c1_c4",
+      "mtp_coverage": 0.9844,
+      "mtp_speculative_cycles": 52,
+      "mtp_fallback_event_counts": {
+        "no_provider": 1
+      },
+      "ar_route": null,
+      "ar_mtp_used": false
+    },
+    {
+      "prompt_id": "general_ja_explain",
+      "category": "general_ja",
+      "prompt_tokens": 66,
+      "completion_tokens": 128,
+      "stopped_early": false,
+      "mtp_decode_tok_s_median": 17.681,
+      "mtp_decode_tok_s_cv": 0.001,
+      "mtp_ttft_ms_median": 601.6,
+      "ar_decode_tok_s_median": 10.687,
+      "ar_decode_tok_s_cv": 0.0018,
+      "ar_ttft_ms_median": 445.6,
+      "ratio_mtp_over_ar": 1.654,
+      "mtp_route": "speculative_mtp",
+      "mtp_decision_reason": "automatic_native_sampled_c1_c4",
+      "mtp_coverage": 0.9922,
+      "mtp_speculative_cycles": 54,
+      "mtp_fallback_event_counts": {
+        "no_provider": 1
+      },
+      "ar_route": null,
+      "ar_mtp_used": false
+    },
+    {
+      "prompt_id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 87,
+      "completion_tokens": 63,
+      "stopped_early": true,
+      "mtp_decode_tok_s_median": 21.849,
+      "mtp_decode_tok_s_cv": 0.0008,
+      "mtp_ttft_ms_median": 667.5,
+      "ar_decode_tok_s_median": 10.699,
+      "ar_decode_tok_s_cv": 0.002,
+      "ar_ttft_ms_median": 468.7,
+      "ratio_mtp_over_ar": 2.042,
+      "mtp_route": "speculative_mtp",
+      "mtp_decision_reason": "automatic_native_sampled_c1_c4",
+      "mtp_coverage": 0.9841,
+      "mtp_speculative_cycles": 22,
+      "mtp_fallback_event_counts": {
+        "no_provider": 1
+      },
+      "ar_route": null,
+      "ar_mtp_used": false
+    },
+    {
+      "prompt_id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 94,
+      "completion_tokens": 128,
+      "stopped_early": false,
+      "mtp_decode_tok_s_median": 17.988,
+      "mtp_decode_tok_s_cv": 0.0015,
+      "mtp_ttft_ms_median": 683.0,
+      "ar_decode_tok_s_median": 10.537,
+      "ar_decode_tok_s_cv": 0.0141,
+      "ar_ttft_ms_median": 481.7,
+      "ratio_mtp_over_ar": 1.707,
+      "mtp_route": "speculative_mtp",
+      "mtp_decision_reason": "automatic_native_sampled_c1_c4",
+      "mtp_coverage": 0.9922,
+      "mtp_speculative_cycles": 53,
+      "mtp_fallback_event_counts": {
+        "no_provider": 1
+      },
+      "ar_route": null,
+      "ar_mtp_used": false
+    }
+  ]
+}
