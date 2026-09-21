@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-17 JST (2026-09-17 UTC)**
+Last updated: **2026-09-22 JST (2026-09-21 UTC)**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -763,6 +763,17 @@ parallelism, not by bytes or grid size. Unrolling their runtime-bound inner loop
 takes them **1420.9 -> 1239.8 ms (-12.7%)** in the same protocol, with the main
 MoE kernels unchanged to 0.1%; a bit-identical row-bucketed redesign that moves
 3.3x fewer bytes is 22% slower. [Packet](results/2026-09-17-qwen4exp-iu8-repair-cost-structure/README.md)
+· [engine capture](results/2026-09-17-iu8-repair-unroll/role-analysis.json).
+
+The routed-MoE main kernels are bound by expert-weight traffic at a constant
+104-126 GB/s, and that traffic is set by how many 16-row WMMA tiles the experts'
+rows are cut into: `sum over experts of ceil(rows/16) x 1.843 MB`. Eight times the
+rows cost 5.2x the time (1280 rows 8.65 ms vs 40960 rows 45.39 ms), and an
+exactly-even 20-rows-per-expert routing is the *slowest* 10240-row case (1024
+tiles, 17.26 ms) because each expert's 20 rows cut into two tiles. The engine's
+own `grid_y = 1120` launches agree with the model to 2-3% (2.064 GB in 14.5 ms).
+Raising the M-tile to 32 rows would cut each launch to one tile per expert, a
+projected 1.7-2.3 s of a 16.67 s prefill. [Packet](results/2026-09-22-moe-main-kernel-cost/README.md)
 · [engine capture](results/2026-09-17-iu8-repair-unroll/role-analysis.json).
 
 September 14 numerical refresh of the previous production profile on
