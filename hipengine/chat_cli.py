@@ -48,16 +48,24 @@ _THEME = {
     "hip.dim": "#6c6c6c",
     "hip.thinking": "italic #6c6c6c",
     "hip.ok": "#87d787",
+    "hip.hit": "bold #7fe0b0",
+    "hip.miss": "bold #ff8a75",
     "hip.warn": "#ffaf5f",
     "hip.err": "bold #ff5f5f",
     "hip.border": "#4e4e4e",
+    # /bench metric columns: prompt-side, cache-served, output-side, latency.
+    "hip.metric.prefill": "bold #5fd7ff",
+    "hip.metric.prompt": "bold #7fe0b0",
+    "hip.metric.decode": "bold #d787ff",
+    "hip.metric.ttft": "bold #ffaf5f",
+    "hip.metric.tpot": "bold #ffd7af",
 }
 
 # /usage row -> value style
 _USAGE_STYLES = {
     "messages": "bold",
     "in": "hip.user",
-    "cached": "hip.ok",
+    "cached": "hip.hit",
     "out": "hip.accent",
     "total": "bold",
 }
@@ -723,8 +731,8 @@ def _plain_bench(rest: str, settings: _Settings, server: str, model: str, output
         print(f"bench failed: {_http_error_text(exc)}", file=sys.stderr)
         return
     print(bench.header(), file=output_stream)
-    for route, cache, prefill, decode, ttft in bench.rows:
-        print(f"  {route:<8} {cache:<16} {prefill:<24} {decode:<24} ttft {ttft}", file=output_stream)
+    for line in _bench_plain_lines(bench):
+        print(line, file=output_stream)
     for note in bench.notes:
         print(f"  ! {note}", file=output_stream)
 
@@ -860,7 +868,20 @@ class _Turn:
         return tokens if isinstance(tokens, int) else self.deltas
 
     def prompt_tokens(self) -> int | None:
+        """Prompt tokens the server billed for this request."""
+
         return _as_int((self.usage or {}).get("prompt_tokens"))
+
+    def prompt_token_count(self) -> int | None:
+        """Prompt length the request was served, from usage or from backend diagnostics."""
+
+        tokens = self.prompt_tokens()
+        if tokens is not None:
+            return tokens
+        executed = self.prefill_tokens()
+        if executed is None:
+            return None
+        return executed + (self.cached_tokens() or 0)
 
     def timing(self) -> dict:
         timing = self.meta.get("timing")
@@ -915,6 +936,21 @@ class _Turn:
             return None
         return tokens / seconds
 
+    def prompt_rate(self) -> float | None:
+        """Prompt tokens per second end to end, counting tokens the cache served.
+
+        The engine prefills only the uncached remainder, so a cache hit raises this
+        rate far above the engine's own prefill rate for the tokens it still ran.
+        Both are reported: this one says what the request cost, the other says how
+        fast the engine prefills.
+        """
+
+        seconds = self.prefill_seconds()
+        tokens = self.prompt_token_count()
+        if seconds is None or seconds <= 0 or not tokens:
+            return None
+        return tokens / seconds
+
     def decode_seconds(self) -> float | None:
         """Seconds between the first streamed token and the end of the reply."""
 
@@ -934,6 +970,14 @@ class _Turn:
         if seconds is None or seconds <= 0 or tokens <= 1:
             return None
         return (tokens - 1) / seconds
+
+    def decode_ms_per_token(self) -> float | None:
+        """Milliseconds per output token: the inverse of the decode rate."""
+
+        rate = self.decode_rate()
+        if rate is None or rate <= 0:
+            return None
+        return 1000.0 / rate
 
     def thinking_seconds(self) -> float:
         if self.first_token is None or not self.reasoning:
@@ -1055,17 +1099,26 @@ def _mtp_decline_reason(turn: _Turn) -> str | None:
 
 
 def _bench_prefill_cell(turn: _Turn) -> str:
-    tokens = turn.prefill_tokens()
-    if tokens is None:
-        return "—"
+    """Engine prefill throughput, over the tokens it actually ran."""
+
     rate = turn.prefill_rate()
-    return f"{tokens:,} tok" if rate is None else f"{tokens:,} tok · {rate:.0f} tok/s"
+    return "—" if rate is None else f"{rate:.0f}"
+
+
+def _bench_prompt_cell(turn: _Turn) -> str:
+    """Whole-prompt throughput, counting the tokens the cache served for free.
+
+    On a hit this is the number the cache bought, against the engine's own prefill
+    rate beside it; on a miss the two agree, because nothing was reused.
+    """
+
+    rate = turn.prompt_rate()
+    return "—" if rate is None else f"{rate:,.0f}"
 
 
 def _bench_decode_cell(turn: _Turn) -> str:
-    tokens = f"{turn.completion_tokens():,} tok"
     rate = turn.decode_rate()
-    return tokens if rate is None else f"{tokens} · {rate:.1f} tok/s"
+    return "—" if rate is None else f"{rate:.1f}"
 
 
 def _bench_cache_cell(turn: _Turn) -> str:
@@ -1079,17 +1132,69 @@ def _bench_cache_cell(turn: _Turn) -> str:
     return "miss"
 
 
+def _bench_cache_style(cell: str) -> str:
+    """Colour a /bench cache outcome: mint for reuse, coral for none."""
+
+    if cell.startswith("hit"):
+        return "hip.hit"
+    return "hip.miss" if cell.startswith("miss") else ""
+
+
+# /bench metric columns, in row order: prefill work, whole prompt, decode, ttft, tpot.
+_BENCH_COLUMN_STYLES = (
+    "hip.metric.prefill",
+    "hip.metric.prompt",
+    "hip.metric.decode",
+    "hip.metric.ttft",
+    "hip.metric.tpot",
+)
+
+# The table header carries the units, so every row stays a set of bare numbers: the
+# MTP switch, the cache outcome, then one column each for throughput and latency.
+_BENCH_HEADERS = (
+    "mtp",
+    "cache",
+    "prefill tok/s",
+    "prompt tok/s",
+    "decode tok/s",
+    "ttft s",
+    "tpot ms",
+)
+
+
 def _bench_ttft_cell(turn: _Turn) -> str:
     if turn.first_token is None:
         return "—"
-    return f"{turn.first_token - turn.started:.2f}s"
+    return f"{turn.first_token - turn.started:.2f}"
+
+
+def _bench_tpot_cell(turn: _Turn) -> str:
+    per_token = turn.decode_ms_per_token()
+    return "—" if per_token is None else f"{per_token:.1f}"
+
+
+def _bench_plain_lines(bench: _Bench) -> list[str]:
+    """The /bench table for the line-oriented client: same cells, padded columns."""
+
+    rows = [_BENCH_HEADERS, *bench.rows]
+    widths = [max(len(row[index]) for row in rows) for index in range(len(_BENCH_HEADERS))]
+    lines = []
+    for row in rows:
+        cells = [
+            cell.ljust(width) if index < 2 else cell.rjust(width)
+            for index, (cell, width) in enumerate(zip(row, widths))
+        ]
+        lines.append("  " + "  ".join(cells).rstrip())
+    return lines
 
 
 class _Bench:
     """Measurements from one /bench: a cold request and its cached repeat, per route.
 
-    ``rows`` returns ``(route, cache, prefill, decode, ttft)`` cells so the rich
-    and plain clients show the same numbers. These are single interactive
+    ``rows`` returns ``(mtp, cache, prefill, prompt, decode, ttft, tpot)`` cells so
+    the rich and plain clients show the same numbers. ``prefill`` covers the tokens
+    the engine actually prefilled; ``prompt`` covers the whole prompt, so on a cache
+    hit it is the one that shows what the cache bought. These are single interactive
     requests, not benchmark-harness artifacts: they include queueing and client
     transport, so read them as a sanity check rather than as a result.
     """
@@ -1097,7 +1202,7 @@ class _Bench:
     def __init__(self, max_tokens: int) -> None:
         self.max_tokens = max_tokens
         self.prompt_tokens: int | None = None
-        self.rows: list[tuple[str, str, str, str, str]] = []
+        self.rows: list[tuple[str, str, str, str, str, str, str]] = []
         self.notes: list[str] = []
 
     def header(self) -> str:
@@ -1106,15 +1211,20 @@ class _Bench:
 
     def add_run(self, route: str, cold: _Turn, cached: _Turn, *, speculative: bool) -> None:
         if self.prompt_tokens is None:
-            self.prompt_tokens = cold.prompt_tokens()
+            self.prompt_tokens = cold.prompt_token_count()
+        # The routes differ only in the MTP switch, so the column is just on/off and
+        # the full route name is left to the notes, where it reads as a sentence.
+        switch = "on" if speculative else "off"
         for turn in (cold, cached):
             self.rows.append(
                 (
-                    route,
+                    switch,
                     _bench_cache_cell(turn),
                     _bench_prefill_cell(turn),
+                    _bench_prompt_cell(turn),
                     _bench_decode_cell(turn),
                     _bench_ttft_cell(turn),
+                    _bench_tpot_cell(turn),
                 )
             )
         if speculative:
@@ -1407,13 +1517,17 @@ class _RichChat:
         from rich.table import Table
         from rich.text import Text
 
-        table = Table.grid(padding=(0, 3))
+        table = Table.grid(padding=(0, 2))
         table.add_column(style="hip.label", no_wrap=True)
-        for _ in range(4):
-            table.add_column(no_wrap=True)
-        table.add_row(*[Text(name, style="hip.dim") for name in ("route", "cache", "prefill", "decode", "ttft")])
-        for route, cache, prefill, decode, ttft in bench.rows:
-            table.add_row(route, cache, prefill, decode, ttft)
+        table.add_column(no_wrap=True)
+        for _ in range(5):
+            # Numbers right-align under their units, so a column reads down.
+            table.add_column(no_wrap=True, justify="right")
+        table.add_row(*[Text(name, style="hip.dim") for name in _BENCH_HEADERS])
+        for row in bench.rows:
+            cells = [Text(row[0], style="hip.label"), Text(row[1], style=_bench_cache_style(row[1]))]
+            cells.extend(Text(cell, style=style) for cell, style in zip(row[2:], _BENCH_COLUMN_STYLES))
+            table.add_row(*cells)
         return Padding(table, (0, 0, 0, 2))
 
     def run_bench(self, rest: str) -> None:
@@ -1499,21 +1613,24 @@ class _RichChat:
     def _stats(turn: _Turn) -> tuple[str, str]:
         """Return (full stats line, decode-rate summary).
 
-        Prefill is reported over the tokens the server actually prefilled, so a
-        cache hit shows up as a smaller token count at a comparable rate rather
-        than as a faster prefill of the whole prompt.
+        Prefill covers the tokens the server actually prefilled. When a cache hit
+        made that smaller than the prompt, the line also reports the whole-prompt
+        rate, which is the number the cache is buying.
         """
 
         end = turn.finished or time.perf_counter()
         parts = [f"{turn.completion_tokens()} tokens"]
+        cached = turn.cached_tokens()
         prefill = turn.prefill_rate()
         if prefill is not None:
             parts.append(f"prefill {prefill:.0f} tok/s")
+        prompt = turn.prompt_rate() if cached else None
+        if prompt is not None:
+            parts.append(f"prompt {prompt:,.0f} tok/s")
         decode = turn.decode_rate()
         rate = "" if decode is None else f"{decode:.1f} tok/s"
         if rate:
             parts.append(f"decode {rate}")
-        cached = turn.cached_tokens()
         if cached:
             parts.append(f"cached {cached:,}")
         if turn.first_token is not None:
