@@ -1,5 +1,16 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-21 UTC**: Prefill chunk size is the largest queued lever. A
+  `code-p4096` prefill runs four 1024-token chunks, and both dominant families
+  pay for it without having to: the dense wide Q8_0 route measures
+  **1382.2 -> 1057.2 ms (-23.5%)** at 4096-row chunks, and the routed-MoE main
+  kernels fall from 4480 to 2801 weight tiles per layer, **57.7 -> 36.1 ms
+  gate/up and 34.5 -> 21.6 ms down**. Together **1.7-1.9 s of a 16.673 s
+  prefill (10-11%) with no kernel change**. The MoE side is arithmetic on the
+  measured traffic model; the dense side is measured.
+  [Dense packet](results/2026-09-22-dense-chunk-rows/README.md) ·
+  [MoE packet](results/2026-09-22-moe-main-kernel-cost/README.md).
+
 - **2026-09-21 UTC**: The routed-MoE main kernels are bound by expert-weight
   traffic at a constant 104-126 GB/s, set by the number of 16-row WMMA tiles the
   experts' rows are cut into. A 1280-row launch costs 8.65 ms and a 5120-row
