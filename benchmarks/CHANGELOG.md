@@ -1,5 +1,16 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-21 UTC**: The routed-MoE main kernels are bound by expert-weight
+  traffic at a constant 104-126 GB/s, set by the number of 16-row WMMA tiles the
+  experts' rows are cut into. A 1280-row launch costs 8.65 ms and a 5120-row
+  launch 9.11 ms because both need exactly 512 tiles; 8x the rows is 5.2x the
+  time (40960 rows, 2801 tiles, 45.39 ms). The engine's own `grid_y = 1120`
+  gate/up launches match the traffic model to 2-3% (2.064 GB in 14.5 ms at
+  142 GB/s). A 32-row M-tile would need one tile per expert instead of two,
+  projecting **1.7-2.3 s of a 16.67 s `code-p4096` prefill**.
+  [Packet](results/2026-09-22-moe-main-kernel-cost/README.md) ·
+  [engine capture](results/2026-09-17-iu8-repair-unroll/role-analysis.json).
+
 - **2026-09-17 UTC**: The iu8 exact-repair passes were bound by memory-level
   parallelism, not by bytes or grid size. Unrolling the three repair kernels'
   runtime-bound inner loops takes them **1420.9 -> 1239.8 ms (-12.7%)** in a
