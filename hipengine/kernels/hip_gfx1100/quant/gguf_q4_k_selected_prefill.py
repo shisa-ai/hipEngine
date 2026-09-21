@@ -468,6 +468,65 @@ def gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out(
     )
 
 
+def gguf_q4_k_selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    max_risks: int,
+    risk_multiplier: float,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the risk-collecting iu8-WMMA dual prefill at a 32-row M tile.
+
+    Same arithmetic as the 16-row owner - each output row's K-loop order, iu8
+    planes, Kahan accumulation and risk bound are unchanged - but one weight
+    read now covers 32 rows, which halves the expert-weight traffic whenever an
+    expert holds 16 or fewer rows per tile. ``expert_start_wmma``,
+    ``tile_expert`` and ``wmma_total_rows`` must come from a 32-row tile map
+    (``qwen35_moe_mmq32_tile_map``), not the 16-row ``wmma_tile_map``.
+    """
+
+    _launch_wmma_iu8_risk(
+        3,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        risk_count_ptr,
+        risk_indices_ptr,
+        max_risks,
+        risk_multiplier,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        tile_rows=32,
+    )
+
+
 def gguf_q4_k_selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out(
     x_ptr: int,
     expert_start_compact_ptr: int,
@@ -1007,6 +1066,7 @@ def _launch_wmma_iu8_risk(
     stream: int,
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
+    tile_rows: int = 16,
 ) -> None:
     _check_common(
         compact_rows,
@@ -1024,11 +1084,19 @@ def _launch_wmma_iu8_risk(
         raise ValueError("max_risks must be a non-negative int32 count")
     if not (risk_multiplier >= 0.0):
         raise ValueError("risk_multiplier must be non-negative")
+    if int(tile_rows) not in (16, 32):
+        raise ValueError("iu8 risk prefill tile_rows must be 16 or 32")
+    if wmma_total_rows % int(tile_rows) != 0:
+        # The kernel derives row_tiles by integer division, so a row count that
+        # is only 16-aligned would drop every row past the last whole tile.
+        raise ValueError("wmma_total_rows must be a multiple of tile_rows")
     library = library or build_gguf_q4_k_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     symbol = _SYMBOL_IU8_RISK_BF16
     if planes == 2:
         symbol = "hipengine_gguf_q4_k_selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out"
+    elif int(tile_rows) == 32:
+        symbol = "hipengine_gguf_q4_k_selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out"
     fn = getattr(library, symbol)
     fn.argtypes = [
         ctypes.c_void_p,
@@ -1558,6 +1626,16 @@ def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None
             "hip_gfx1100",
             "moe_linear",
             "gguf_q4_k",
+            "selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
             "selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out",
         ),
         gguf_q4_k_selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out,
@@ -1674,6 +1752,7 @@ register_gguf_q4_k_selected_prefill_kernels()
 __all__ = [
     "gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out",
     "gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out",
     "gguf_q4_k_selected_dual_sparse_exact_repair_bf16",
     "gguf_q4_k_selected_dual_risk_bitmap",
     "gguf_q4_k_selected_dual_row_bitmap_repair_bf16",

@@ -725,6 +725,78 @@ _ARGS_SPARSE_REPAIR = (
 )
 
 
+def _q5_1_iu8_risk_prefill(
+    *,
+    symbol: str,
+    tile_rows: int,
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_ptr: int,
+    output_ptr: int,
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    max_risks: int,
+    risk_multiplier: float,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Shared body for the Q5_1 iu8 risk prefill at either M-tile height.
+
+    The 32-row tile is bit-identical to the 16-row owner: only the number of
+    rows sharing one weight read changes.
+    """
+
+    if int(tile_rows) not in (16, 32):
+        raise ValueError("iu8 risk prefill tile_rows must be 16 or 32")
+    if wmma_total_rows % int(tile_rows):
+        # The kernel derives row_tiles by integer division, so a row count that
+        # is only 16-aligned would drop every row past the last whole tile.
+        raise ValueError("wmma_total_rows must be divisible by tile_rows")
+    if in_features <= 0 or in_features % 32 or out_features <= 0:
+        raise ValueError("Q5_1 iu8 risk projection has invalid feature geometry")
+    if max_risks < 0:
+        raise ValueError("max_risks must be non-negative")
+    if not (risk_multiplier > 0.0) or risk_multiplier != risk_multiplier:
+        raise ValueError("risk_multiplier must be a positive float")
+    if int(risk_count_ptr) <= 0 or int(risk_indices_ptr) <= 0:
+        raise ValueError("iu8 risk prefill requires risk counter and queue")
+    if int(x_ptr) <= 0 or int(expert_start_compact_ptr) <= 0 or \
+            int(expert_start_wmma_ptr) <= 0 or int(tile_expert_ptr) <= 0 or \
+            int(qweight_ptr) <= 0 or int(output_ptr) <= 0:
+        raise ValueError("iu8 risk prefill requires non-null operands")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, symbol, _ARGS_IU8_RISK, ctypes.c_int)
+    error = fn(
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        qweight_ptr,
+        output_ptr,
+        risk_count_ptr,
+        risk_indices_ptr,
+        max_risks,
+        risk_multiplier,
+        compact_rows,
+        in_features,
+        out_features,
+        num_experts,
+        wmma_total_rows,
+        stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        raise RuntimeError(f"{symbol} failed with HIP error {int(error)}")
+
+
 def qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out(
     x_ptr: int,
     expert_start_compact_ptr: int,
@@ -746,59 +818,83 @@ def qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch the risk-collecting weight-exact iu8-WMMA Q5_1 down prefill.
+    """Risk-collecting weight-exact iu8-WMMA Q5_1 down prefill, 16-row M tile."""
 
-    Identical published arithmetic to a three-plane residual iu8 chain; the
-    outputs whose BF16 rounding boundary distance falls below the Kahan
-    bound (times the multiplier) are queued for the sparse exact repair,
-    together with rows flagged at risk (nonfinite activations or a raw
-    32-element subblock amax below 2^-80).
+    return _q5_1_iu8_risk_prefill(
+        symbol="hipengine_qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out",
+        tile_rows=16,
+        x_ptr=x_ptr,
+        expert_start_compact_ptr=expert_start_compact_ptr,
+        expert_start_wmma_ptr=expert_start_wmma_ptr,
+        tile_expert_ptr=tile_expert_ptr,
+        qweight_ptr=qweight_ptr,
+        output_ptr=output_ptr,
+        risk_count_ptr=risk_count_ptr,
+        risk_indices_ptr=risk_indices_ptr,
+        max_risks=max_risks,
+        risk_multiplier=risk_multiplier,
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+        wmma_total_rows=wmma_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen4_exp_q5_1_selected_wmma_iu8_risk_j32_prefill_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_ptr: int,
+    output_ptr: int,
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    max_risks: int,
+    risk_multiplier: float,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Q5_1 down prefill at a 32-row M tile, bit-identical to the 16-row owner.
+
+    One weight read covers 32 rows instead of 16, halving expert-weight
+    traffic whenever an expert holds 16 or fewer rows per tile.
+    ``expert_start_wmma``, ``tile_expert`` and ``wmma_total_rows`` must come
+    from a 32-row tile map (``qwen35_moe_mmq32_tile_map``).
     """
 
-    if compact_rows <= 0 or num_experts <= 0 or wmma_total_rows <= 0:
-        raise ValueError("compact_rows, num_experts, and wmma_total_rows must be positive")
-    if wmma_total_rows % 16:
-        raise ValueError("wmma_total_rows must be divisible by 16")
-    if in_features <= 0 or in_features % 32 or out_features <= 0:
-        raise ValueError("Q5_1 iu8 risk projection has invalid feature geometry")
-    if max_risks < 0:
-        raise ValueError("max_risks must be non-negative")
-    if not (risk_multiplier > 0.0) or risk_multiplier != risk_multiplier:
-        raise ValueError("risk_multiplier must be a positive float")
-    if int(risk_count_ptr) <= 0 or int(risk_indices_ptr) <= 0:
-        raise ValueError("iu8 risk prefill requires risk counter and queue")
-    if int(x_ptr) <= 0 or int(expert_start_compact_ptr) <= 0 or \
-            int(expert_start_wmma_ptr) <= 0 or int(tile_expert_ptr) <= 0 or \
-            int(qweight_ptr) <= 0 or int(output_ptr) <= 0:
-        raise ValueError("iu8 risk prefill requires non-null operands")
-    library = library or build_qwen4_exp_q5_1(load=True)
-    runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(
-        library,
-        "hipengine_qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out",
-        _ARGS_IU8_RISK,
-        ctypes.c_int,
+    return _q5_1_iu8_risk_prefill(
+        symbol="hipengine_qwen4_exp_q5_1_selected_wmma_iu8_risk_j32_prefill_bf16_bf16_out",
+        tile_rows=32,
+        x_ptr=x_ptr,
+        expert_start_compact_ptr=expert_start_compact_ptr,
+        expert_start_wmma_ptr=expert_start_wmma_ptr,
+        tile_expert_ptr=tile_expert_ptr,
+        qweight_ptr=qweight_ptr,
+        output_ptr=output_ptr,
+        risk_count_ptr=risk_count_ptr,
+        risk_indices_ptr=risk_indices_ptr,
+        max_risks=max_risks,
+        risk_multiplier=risk_multiplier,
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+        wmma_total_rows=wmma_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
     )
-    error = fn(
-        x_ptr,
-        expert_start_compact_ptr,
-        expert_start_wmma_ptr,
-        tile_expert_ptr,
-        qweight_ptr,
-        output_ptr,
-        risk_count_ptr,
-        risk_indices_ptr,
-        max_risks,
-        risk_multiplier,
-        compact_rows,
-        in_features,
-        out_features,
-        num_experts,
-        wmma_total_rows,
-        stream,
-    )
-    if int(error) != HIP_SUCCESS:
-        runtime.check(int(error))
 
 
 def qwen4_exp_q5_1_selected_sparse_exact_repair_row_publish_bf16(
@@ -864,6 +960,12 @@ def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:
         KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1",
                   "selected_wmma_iu8_risk_prefill_bf16_bf16_out"),
         qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1",
+                  "selected_wmma_iu8_risk_j32_prefill_bf16_bf16_out"),
+        qwen4_exp_q5_1_selected_wmma_iu8_risk_j32_prefill_bf16_bf16_out,
         replace=replace,
     )
     register(

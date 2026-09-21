@@ -105,8 +105,10 @@ def _counts_for(rows: int, experts: int, distribution: str, *, seed: int) -> lis
     raise ValueError(f"unknown distribution {distribution!r}")
 
 
-def _maps(counts: list[int]) -> tuple[list[int], list[int], list[int], int]:
-    """Compact starts, 16-row-padded starts, and the per-tile expert map."""
+def _maps(
+    counts: list[int], tile_rows: int = WMMA_TILE_ROWS
+) -> tuple[list[int], list[int], list[int], int]:
+    """Compact starts, tile-padded starts, and the per-tile expert map."""
 
     compact = [0]
     padded = [0]
@@ -114,9 +116,9 @@ def _maps(counts: list[int]) -> tuple[list[int], list[int], list[int], int]:
     for expert, count in enumerate(counts):
         compact.append(compact[-1] + count)
         if count > 0:
-            tiles = (count + WMMA_TILE_ROWS - 1) // WMMA_TILE_ROWS
+            tiles = (count + tile_rows - 1) // tile_rows
             tile_expert.extend([expert] * tiles)
-            padded.append(padded[-1] + tiles * WMMA_TILE_ROWS)
+            padded.append(padded[-1] + tiles * tile_rows)
         else:
             padded.append(padded[-1])
     return compact, padded, tile_expert, padded[-1]
@@ -154,6 +156,11 @@ def main() -> int:
         default="balanced",
         help="Comma-separated: balanced, uniform, single, sparse.",
     )
+    parser.add_argument(
+        "--tile-rows",
+        default=str(WMMA_TILE_ROWS),
+        help="Comma-separated M-tile heights to time (16 and/or 32).",
+    )
     parser.add_argument("--seed", type=int, default=20260922)
     parser.add_argument(
         "--grids",
@@ -179,6 +186,9 @@ def main() -> int:
     gate_out_total = 2 * FFN
 
     rows_list = [int(value) for value in args.rows.split(",") if value.strip()]
+    tile_rows_list = [
+        int(value) for value in args.tile_rows.split(",") if value.strip()
+    ]
     distributions = [value for value in args.distribution.split(",") if value.strip()]
     grid_override = [int(value) for value in args.grids.split(",") if value.strip()]
 
@@ -195,6 +205,7 @@ def main() -> int:
             "hidden": HIDDEN,
             "ffn": FFN,
             "wmma_tile_rows": WMMA_TILE_ROWS,
+            "tile_rows_timed": tile_rows_list,
             "repetitions": args.repetitions,
             "risk_multiplier": RISK_MULTIPLIER,
             "max_risks": 0,
@@ -242,10 +253,11 @@ def main() -> int:
         runtime.memset(buffer.ptr, pattern, min(int(buffer.nbytes), 64 << 20))
 
     def measure(
-        rows: int, distribution: str, grid: int | None
+        rows: int, distribution: str, grid: int | None,
+        tile_rows: int = WMMA_TILE_ROWS,
     ) -> dict[str, Any]:
         counts = _counts_for(rows, EXPERTS, distribution, seed=args.seed)
-        compact, padded, tile_expert, padded_rows = _maps(counts)
+        compact, padded, tile_expert, padded_rows = _maps(counts, tile_rows)
         if sum(counts) != rows:
             raise SystemExit("count synthesis failed")
 
@@ -263,8 +275,14 @@ def main() -> int:
         risk_indices = malloc(4)
         runtime.memset(risk_count.ptr, 0, 4)
 
+        gate_launcher = (
+            gu.gguf_q4_k_selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out
+            if tile_rows == 32
+            else gu.gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out
+        )
+
         def gate_launch() -> None:
-            gu.gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out(
+            gate_launcher(
                 gate_x.ptr,
                 compact_dev.ptr,
                 padded_dev.ptr,
@@ -284,8 +302,14 @@ def main() -> int:
                 padded_rows,
             )
 
+        down_launcher = (
+            dn.qwen4_exp_q5_1_selected_wmma_iu8_risk_j32_prefill_bf16_bf16_out
+            if tile_rows == 32
+            else dn.qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out
+        )
+
         def down_launch() -> None:
-            dn.qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out(
+            down_launcher(
                 down_x.ptr,
                 compact_dev.ptr,
                 padded_dev.ptr,
@@ -309,10 +333,12 @@ def main() -> int:
             free(device)
 
         # Weight bytes actually read: each expert's weights are read once per
-        # 16-row tile it owns, so padding inflates the read volume above the
-        # tensor size whenever an expert holds rows that do not fill a tile.
+        # tile it owns, so padding inflates the read volume above the tensor
+        # size whenever an expert holds rows that do not fill a tile. The tile
+        # height is the whole lever: 20 rows per expert cost two 16-row tiles
+        # and one 32-row tile.
         active_experts = sum(1 for count in counts if count > 0)
-        gate_tiles = sum((count + WMMA_TILE_ROWS - 1) // WMMA_TILE_ROWS for count in counts)
+        gate_tiles = sum((count + tile_rows - 1) // tile_rows for count in counts)
         gate_read_bytes = gate_tiles * gate_out_total * gate_row_bytes
         down_read_bytes = gate_tiles * HIDDEN * down_row_bytes
         gate_macs = rows * gate_out_total * HIDDEN
@@ -321,6 +347,7 @@ def main() -> int:
             "rows": rows,
             "distribution": distribution,
             "grid_override": grid,
+            "tile_rows": tile_rows,
             "active_experts": active_experts,
             "rows_per_active_expert": round(rows / max(1, active_experts), 2),
             "compact_rows": rows,
@@ -340,20 +367,23 @@ def main() -> int:
         }
 
     print(
-        f"{'rows':>6} {'dist':>9} {'act':>5} {'rows/e':>7} {'pad':>6} "
-        f"{'gate ms':>9} {'GB/s':>7} {'TFLOP/s':>8} {'down ms':>9} {'GB/s':>7}"
+        f"{'rows':>6} {'dist':>9} {'tile':>5} {'act':>5} {'rows/e':>7} {'pad':>6} "
+        f"{'tiles':>6} {'gate ms':>9} {'GB/s':>7} {'TFLOP/s':>8} {'down ms':>9} {'GB/s':>7}"
     )
     for distribution in distributions:
         for rows in rows_list:
-            entry = measure(rows, distribution, None)
-            results["rows"].setdefault(f"{rows}:{distribution}", entry)
-            print(
-                f"{entry['rows']:>6} {distribution:>9} {entry['active_experts']:>5} "
-                f"{entry['rows_per_active_expert']:>7} {entry['padding_ratio']:>6} "
-                f"{entry['gate_up_ms']:>9.4f} {entry['gate_up_gb_per_s']:>7.1f} "
-                f"{entry['gate_up_tflops']:>8.2f} {entry['down_ms']:>9.4f} "
-                f"{entry['down_gb_per_s']:>7.1f}"
-            )
+            for tile_rows in tile_rows_list:
+                entry = measure(rows, distribution, None, tile_rows)
+                results["rows"].setdefault(f"{rows}:{distribution}:j{tile_rows}", entry)
+                print(
+                    f"{entry['rows']:>6} {distribution:>9} {tile_rows:>5} "
+                    f"{entry['active_experts']:>5} "
+                    f"{entry['rows_per_active_expert']:>7} {entry['padding_ratio']:>6} "
+                    f"{entry['tiles']:>6} "
+                    f"{entry['gate_up_ms']:>9.4f} {entry['gate_up_gb_per_s']:>7.1f} "
+                    f"{entry['gate_up_tflops']:>8.2f} {entry['down_ms']:>9.4f} "
+                    f"{entry['down_gb_per_s']:>7.1f}"
+                )
 
     for grid in grid_override:
         entry = measure(rows_list[0], distributions[0], grid)

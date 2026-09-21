@@ -7241,3 +7241,24 @@ put the same f16 bytes in LDS, pinned bit-identical on GPU in
 for bisection and for a route-level rollback, not for correctness. Removal
 trigger: the hoisted path has passed a full qualification run and no bisection
 has needed it since.
+
+### The 32-row MoE M-tile variants are registered but unused
+
+`selected_wmma_iu8_risk_j32_prefill_bf16_bf16_out` for both `gguf_q4_k`
+(gate/up) and `gguf_q5_1` (down) instantiate the routed-MoE main kernels at a
+32-row M tile. They are bit-identical to the 16-row owners and cut expert-weight
+reads by 1.67-1.82x, but they are **4.8-8.1x slower** at the current 128-thread
+geometry: per-lane row state doubles from 48 to 96 fp32 registers, the kernel
+hits the 256-VGPR ceiling, and the compiler spills 492 bytes per thread inside
+the K loop (`benchmarks/results/2026-09-22-moe-j32-tile/`). Nothing dispatches to
+them; only the cost packet and the RED test call them.
+
+They stay because they are the substrate for the only viable 32-row design: an
+8-warp (256-thread) block covering 32 rows x 128 columns as two row groups x
+four column groups, which keeps each warp's register footprint at the current 16
+rows per lane while the two row groups share one weight read through L2. The
+block would go from 4 warps x 2 blocks/CU to 8 warps x 1 block/CU, so the wave
+count per CU is unchanged.
+
+Removal trigger: the 8-warp variant lands and passes the same bit-identity gate,
+or no packet or test refers to the 32-row entry points.
