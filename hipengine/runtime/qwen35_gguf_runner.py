@@ -14530,6 +14530,59 @@ def _small_b_rowtile_chunks(rows: int, *, max_chunk: int = 6) -> tuple[int, ...]
     return tuple(chunks)
 
 
+def _direct_int8_execution_source(
+    capability: Mapping[str, object] | None,
+) -> Mapping[str, object] | None:
+    """Return the mapping that supplies a runnable direct-INT8 session's bounds.
+
+    ``admit`` runs the resolution itself, so its bounds come from the retained
+    measurement when one exists and from the declaration otherwise.  An explicit
+    ``diagnostic_override`` instead runs the *declared* contract, because the
+    rejected evidence row records that no width passed the quality gate -- not
+    that the kernels cannot execute one -- and it carries no decode variant at
+    all.  Under an override the declaration is therefore the only statement
+    about what the kernels implement.
+
+    Returns ``None`` when this resolution is not a deliberate direct-INT8
+    selection at all, including the engine's own ``fallback_bf16``.
+    """
+
+    if not isinstance(capability, Mapping):
+        return None
+    action = capability.get("runtime_action")
+    if action == "admit":
+        return capability
+    if action != "diagnostic_override":
+        return None
+    declaration = capability.get("declaration")
+    return declaration if isinstance(declaration, Mapping) else None
+
+
+def _mirror_free_direct_int8_capability(
+    capability: Mapping[str, object] | None,
+) -> bool:
+    """Return whether this resolution names a runnable mirror-free direct INT8 mode.
+
+    The storage, layout, and request fields come from the resolution; the bounds
+    come from whatever :func:`_direct_int8_execution_source` selects.
+    """
+
+    if not isinstance(capability, Mapping):
+        return False
+    source = _direct_int8_execution_source(capability)
+    if source is None:
+        return False
+    requested = capability.get("requested")
+    return bool(
+        isinstance(requested, Mapping)
+        and capability.get("effective_kv_storage") == "int8_per_token_head"
+        and requested.get("kv_storage") == "int8_per_token_head"
+        and requested.get("storage_layout") == "uniform"
+        and source.get("persistent_bf16_mirror") is False
+        and int(source.get("max_direct_rows", 0) or 0) >= 1
+    )
+
+
 def _admitted_no_mirror_int8_capability(
     capability: Mapping[str, object] | None,
 ) -> bool:
@@ -14540,36 +14593,56 @@ def _admitted_no_mirror_int8_capability(
     this contract, which governs what may be claimed or promoted, not whether
     the contract runs.  The operative bounds come from the measurement when one
     exists and from the kernel declaration otherwise.
+
+    This is the strict predicate, and it governs allocation.  Route resolution
+    uses :func:`_runnable_no_mirror_int8_capability` instead.
     """
 
     if not isinstance(capability, Mapping):
         return False
-    requested = capability.get("requested")
-    return bool(
-        isinstance(requested, Mapping)
-        and capability.get("runtime_action") == "admit"
-        and capability.get("effective_kv_storage") == "int8_per_token_head"
-        and requested.get("kv_storage") == "int8_per_token_head"
-        and requested.get("storage_layout") == "uniform"
-        and capability.get("persistent_bf16_mirror") is False
-        and int(capability.get("max_direct_rows", 0) or 0) >= 1
-    )
+    if capability.get("runtime_action") != "admit":
+        return False
+    return _mirror_free_direct_int8_capability(capability)
+
+
+def _runnable_no_mirror_int8_capability(
+    capability: Mapping[str, object] | None,
+) -> bool:
+    """Return whether this session may execute persistent mirror-free INT8.
+
+    Identical to :func:`_admitted_no_mirror_int8_capability` except that an
+    explicit ``diagnostic_override`` also counts.  A rejected artifact is a legal
+    reason for the engine to decline INT8 *selection*, and it does: the request
+    falls closed to BF16 unless the operator sets the documented override.  Once
+    the operator has forced INT8, the selection question is answered, and the
+    only remaining gate is whether the kernels execute the contract -- which the
+    declaration states and the registry lookup in
+    :func:`_qualified_kv_decode_batch_route` verifies.  Excluding the override
+    would leave a configuration no command could open.
+    """
+
+    return _mirror_free_direct_int8_capability(capability)
 
 
 def _qualified_kv_decode_batch_route(
     backend: str,
     capability: Mapping[str, object] | None,
 ) -> tuple[int, object | None]:
-    """Resolve the admitted exact decode variant and its physical width."""
+    """Resolve the runnable exact decode variant and its physical width.
 
-    if not _admitted_no_mirror_int8_capability(capability):
+    Reads the runnable predicate, not the admitted one: a session running under
+    an explicit diagnostic override is on direct INT8 and needs the same leaf.
+    """
+
+    if not _runnable_no_mirror_int8_capability(capability):
         return 1, None
     assert isinstance(capability, Mapping)
+    source = _direct_int8_execution_source(capability)
     requested = capability.get("requested")
-    if not isinstance(requested, Mapping):
+    if source is None or not isinstance(requested, Mapping):
         return 1, None
-    max_rows = max(1, int(capability.get("max_direct_rows", 1) or 1))
-    variant = capability.get("decode_batch_variant")
+    max_rows = max(1, int(source.get("max_direct_rows", 1) or 1))
+    variant = source.get("decode_batch_variant")
     quant = requested.get("kv_storage")
     if not isinstance(variant, str) or not variant.strip() or not isinstance(quant, str):
         return 1, None
@@ -16472,7 +16545,12 @@ class Qwen35GGUFResidentSession:
         )
         self.packed_decode_max_rows = 8
         self._retained_decode_kernel = None
-        if self.int8_kv_no_mirror_qualified:
+        # Allocation follows the admitted predicate; route resolution follows the
+        # runnable one, so an operator-forced INT8 session still binds the
+        # declared direct leaf and the width the declaration qualifies.
+        if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD and _runnable_no_mirror_int8_capability(
+            self.kv_capability
+        ):
             direct_rows, direct_kernel = _qualified_kv_decode_batch_route(
                 self.runner.backend,
                 self.kv_capability,
