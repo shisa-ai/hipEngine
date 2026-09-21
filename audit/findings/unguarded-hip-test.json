@@ -298,7 +298,7 @@
       "kind": "unguarded-hip-test",
       "key": "tests/test_integration_server_api.py",
       "title": "test_integration_server_api.py touches the ROCm runtime with no availability guard",
-      "location": "tests/test_integration_server_api.py:4459",
+      "location": "tests/test_integration_server_api.py:4741",
       "evidence": {
         "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
         "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
@@ -321,7 +321,7 @@
         ]
       },
       "id": "unguarded-hip-test/tests/test_integration_server_api.py",
-      "evidence_hash": "06e6bdda8efb"
+      "evidence_hash": "3bb09d0d7061"
     },
     {
       "kind": "unguarded-hip-test",

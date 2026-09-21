@@ -4235,14 +4235,14 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 39,
-        "referrers": 1172,
+        "referrers": 1176,
         "runtime_referrers": [
+          "hipengine/chat_cli.py",
           "hipengine/llm.py",
           "hipengine/benchmark/agentic.py",
           "hipengine/benchmark/agentic_live.py",
           "hipengine/benchmark/control_capture.py",
-          "hipengine/benchmark/execution_profiles.py",
-          "hipengine/core/build.py"
+          "hipengine/benchmark/execution_profiles.py"
         ],
         "test_referrers": [
           "tests/_laguna_policy_pin.py",
@@ -4266,7 +4266,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/moe/prefill.py",
-      "evidence_hash": "174c1c9d6801"
+      "evidence_hash": "fe6eef49c8f7"
     },
     {
       "kind": "kernel",
@@ -8962,14 +8962,14 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 664,
-        "referrers": 849,
+        "referrers": 852,
         "runtime_referrers": [
+          "hipengine/chat_cli.py",
           "hipengine/llm.py",
           "hipengine/benchmark/speculative.py",
           "hipengine/generation/batch_scheduler.py",
           "hipengine/generation/laguna_dflash.py",
-          "hipengine/generation/laguna_gguf.py",
-          "hipengine/generation/maple.py"
+          "hipengine/generation/laguna_gguf.py"
         ],
         "test_referrers": [
           "tests/conftest.py",
@@ -8996,7 +8996,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/speculative/mtp.hip",
-      "evidence_hash": "6d2f25c281aa"
+      "evidence_hash": "e12852501068"
     },
     {
       "kind": "kernel",
@@ -9007,14 +9007,14 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 453,
-        "referrers": 849,
+        "referrers": 852,
         "runtime_referrers": [
+          "hipengine/chat_cli.py",
           "hipengine/llm.py",
           "hipengine/benchmark/speculative.py",
           "hipengine/generation/batch_scheduler.py",
           "hipengine/generation/laguna_dflash.py",
-          "hipengine/generation/laguna_gguf.py",
-          "hipengine/generation/maple.py"
+          "hipengine/generation/laguna_gguf.py"
         ],
         "test_referrers": [
           "tests/conftest.py",
@@ -9038,7 +9038,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/speculative/mtp.py",
-      "evidence_hash": "a6857e55b147"
+      "evidence_hash": "552ba07fa8fe"
     },
     {
       "kind": "kernel",
@@ -10007,7 +10007,7 @@
         "backend": "unknown",
         "suffix": ".py",
         "lines": 204,
-        "referrers": 657,
+        "referrers": 659,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
@@ -10036,7 +10036,7 @@
         ]
       },
       "id": "kernel/registry.py",
-      "evidence_hash": "6b86cac9a064"
+      "evidence_hash": "655536153bfc"
     },
     {
       "kind": "kernel",

@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10607,
-    "current": 3375,
+    "entries": 10612,
+    "current": 3380,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1078,
+    "rows": 1079,
     "by_rule": {
       "dependency": 36,
       "legacy-next": 109,
-      "status": 933
+      "status": 934
     }
   },
   "rows": [
@@ -40576,6 +40576,42 @@
       },
       "id": "worklog/20260921T053229.477543Z-lhl-sampled-mtp-suite-reproduction-7a1f3c",
       "evidence_hash": "ae3c0dad2378"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260921T081051.495647Z-lhl-rich-help-markup-brackets-8ce8f8",
+      "title": "rich help dropped the /bench arguments as markup",
+      "location": "worklog/entries/20260921T081051.495647Z-lhl-rich-help-markup-brackets-8ce8f8.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "rich-help-markup-brackets",
+        "written": "2026-09-21",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- No other rich-rendered string in the client interpolates bracketed text:\n  `_RichChat.note` already wraps its text in `Text(...)`, and the `[{model}]`\n  prefix is plain-mode output only.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260921T081051.495647Z-lhl-rich-help-markup-brackets-8ce8f8.md",
+        "refs": [],
+        "tokens": [
+          "arguments",
+          "bench",
+          "dropped",
+          "help",
+          "markup",
+          "rich"
+        ]
+      },
+      "id": "worklog/20260921T081051.495647Z-lhl-rich-help-markup-brackets-8ce8f8",
+      "evidence_hash": "2e91348075ca"
     }
   ]
 }
