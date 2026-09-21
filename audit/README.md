@@ -251,6 +251,21 @@ count per kind. `check` fails when a count rises, so new debt cannot land withou
 being triaged. **Never raise the budget to get past the gate.** Lowering it is
 the point.
 
+A kind whose population grows with ordinary work narrows its gate to the rows
+that need a decision, in the budget's `select` block:
+
+```json
+"select": {"worklog": {"evidence.status": ["blocked", "handoff"]}}
+```
+
+A spec matches row fields (`evidence.<name>` reads the row's evidence); a list of
+values means any of them, and a list of specs is ORed. Rows outside the gate are
+still untriaged, still listed by `open`, and still counted in the state table —
+they just do not set the ceiling. `worklog` needs this because its population
+grows with every session: gating all of it would tie the ceiling to the rate of
+work instead of to the backlog awaiting a decision, and a permanently red gate is
+a gate nobody reads.
+
 ## Reference
 
 ### Commands
@@ -286,7 +301,7 @@ deliberate act needing a recorded reason — `refresh` never does it.
 | `flag` | `HIPENGINE_*` across the tree | Read sites by root, default state, whether a removal condition is recorded, and conflicting defaults across modules. |
 | `kernel` | `hipengine/kernels/` | Each source against its referrers, registry keys, `__global__` entry points, and tests. |
 | `candidate` | `docs/campaigns/` | Rows recorded as rejected/deferred/parked **while citing a measurement** — where retrievable performance hides. |
-| `worklog` | `worklog/entries/` | Entries that declared unfinished business — an open `status`, a `Next` naming a blocker or approval, or a pre-cutoff `### Next` marker — against the tree they describe. |
+| `worklog` | `worklog/entries/` | Entries that declared unfinished business — an open `status`, a `Next` naming a blocker or approval, or a pre-cutoff `### Next` marker — against the tree they describe. Only `blocked` and `handoff` markers set the gate; in-flight `checkpoint` rows stay visible and untriaged. |
 
 An extractor reports observations. It does not resolve dispatch, run a kernel, or
 measure anything.

@@ -7,6 +7,7 @@ has since changed must come back for review rather than silently standing.
 
 from __future__ import annotations
 
+import json
 import pathlib
 import sys
 import unittest
@@ -257,3 +258,82 @@ class Budget(unittest.TestCase):
         self.report.save_budget([row("C")], {}, lower_only=True)
         self.assertEqual(self.report.load_budget()["open"]["flag"], 0,
                          "a new untriaged row must not slip in under a dropped ceiling")
+
+
+class GateSelect(unittest.TestCase):
+    """A kind whose population grows with normal work is gated on the rows that
+    need action. The rest stay untriaged and visible, but do not set the ceiling."""
+
+    def setUp(self):
+        import tempfile
+        from hipaudit import report
+        self._dir = tempfile.TemporaryDirectory()
+        self._patch = mock.patch.object(report, "BUDGET",
+                                        pathlib.Path(self._dir.name) / "budget.json")
+        self._patch.start()
+        self.report = report
+
+    def tearDown(self):
+        self._patch.stop()
+        self._dir.cleanup()
+
+    def entry(self, status, key=None):
+        key = key or f"w-{status}"
+        return core.Row(kind="worklog", key=key, title=key,
+                        location=f"worklog/entries/{key}.md:3",
+                        evidence={"status": status, "open_by": "status"}, signals=[])
+
+    def policy(self, select):
+        self.report.BUDGET.write_text(json.dumps({"open": {}, "select": select}),
+                                      encoding="utf-8")
+
+    def test_a_kind_gate_counts_only_the_rows_that_need_action(self):
+        rows = [self.entry("blocked"), self.entry("checkpoint"), self.entry("handoff")]
+        self.policy({"worklog": {"evidence.status": ["blocked", "handoff"]}})
+        gated, ungated = self.report.open_counts(rows, {})
+        self.assertEqual(gated["worklog"], 2)
+        self.assertEqual(ungated["worklog"], 1)
+
+    def test_an_ungated_kind_counts_every_open_row(self):
+        rows = [row("A"), row("B")]
+        self.policy({"worklog": {"evidence.status": ["blocked"]}})
+        gated, ungated = self.report.open_counts(rows, {})
+        self.assertEqual(gated["flag"], 2, "a kind with no selector keeps the whole-population gate")
+        self.assertEqual(sum(ungated.values()), 0)
+
+    def test_rows_outside_the_gate_stay_open_and_visible(self):
+        rows = [self.entry("blocked"), self.entry("checkpoint")]
+        self.policy({"worklog": {"evidence.status": ["blocked", "handoff"]}})
+        gated, _ = self.report.open_counts(rows, {})
+        self.assertEqual(gated["worklog"], 1)
+        self.assertIn("| 2 |", self.report.state_table(rows, {}),
+                      "an ungated row is still untriaged, and the state table must say so")
+
+    def test_a_list_of_specs_is_ored(self):
+        rows = [self.entry("blocked", "a"), self.entry("checkpoint", "b"),
+                core.Row(kind="worklog", key="c", title="c", location="w.md:1",
+                         evidence={"status": "completed", "open_by": "dependency"}, signals=[])]
+        self.policy({"worklog": [{"evidence.status": ["blocked", "handoff"]},
+                                  {"evidence.open_by": "dependency"}]})
+        gated, ungated = self.report.open_counts(rows, {})
+        self.assertEqual(gated["worklog"], 2)
+        self.assertEqual(ungated["worklog"], 1)
+
+    def test_lower_only_records_the_gated_count(self):
+        rows = [self.entry("blocked"), self.entry("checkpoint"), self.entry("handoff")]
+        self.policy({"worklog": {"evidence.status": ["blocked", "handoff"]}})
+        self.report.BUDGET.write_text(
+            json.dumps({"open": {"worklog": 40},
+                        "select": {"worklog": {"evidence.status": ["blocked", "handoff"]}}}),
+            encoding="utf-8")
+        self.report.save_budget(rows, {}, lower_only=True)
+        self.assertEqual(self.report.load_budget()["open"]["worklog"], 2,
+                         "the ceiling is the gated population, ratcheted down")
+
+    def test_save_budget_keeps_the_select_policy(self):
+        rows = [self.entry("blocked"), self.entry("checkpoint")]
+        self.policy({"worklog": {"evidence.status": ["blocked", "handoff"]}})
+        self.report.save_budget(rows, {})
+        self.assertEqual(self.report.load_budget()["select"],
+                         {"worklog": {"evidence.status": ["blocked", "handoff"]}},
+                         "a policy is configuration: recording a ceiling must not erase it")
