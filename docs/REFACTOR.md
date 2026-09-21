@@ -8858,3 +8858,24 @@ context, since the warm prompts are at most 128 tokens. That needs a session-poo
 key or construction path carrying a context distinct from the request context. Until
 it exists, `_startup_probe_width_reduction` in `hipengine/server/api.py` is what
 keeps a wide probe from turning a warmup into HIP out-of-memory attempts.
+
+## A failed wide startup probe leaves the process unable to allocate the next stage (open 2026-09-21)
+
+On the 120 GiB box, a startup at `--max-active-requests 4` sent the scratch probe's
+resident-session ladder down four HIP out-of-memory attempts. The probe then retried at
+width 1 and passed, and the very next stage -- the 9-token chat smoke -- failed with
+`HipError: HIP error 2: out of memory` during prefill. The ladder documents that a
+failed attempt is rolled back by the session constructor, and the width-1 probe right
+after it did allocate a full-context session, so what held the memory afterwards is
+unestablished.
+
+`_startup_probe_width_reduction` in `hipengine/server/api.py` now prices the width
+before allocating it, so the attempt that failed here does not happen. A genuine
+failure still reaches the ladder, and the retry then runs on a machine that may be
+tighter than it looks.
+
+Remove this once a failed `_construct_shared_session` in
+`hipengine/generation/qwen35_gguf.py` is shown to roll back completely: force the
+ladder with a width the box cannot hold, then assert a full-context session plus the
+chat smoke still allocate. If the failed attempt does not roll back completely, fix
+the rollback instead of weakening the probe.

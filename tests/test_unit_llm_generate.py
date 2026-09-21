@@ -213,6 +213,70 @@ def test_llm_caps_resident_capacity_to_registered_plain_ar_width(monkeypatch) ->
     assert llm._text_generator._runner.capacity == 4
 
 
+def test_llm_delegates_the_resident_capacity_estimate(monkeypatch) -> None:
+    """Startup prices its probe through the same object it probes with.
+
+    The scratch probe is reduced by multiplying a per-session price by the width it
+    is about to allocate, and it asks the ``LLM`` it holds for that price. A wrapper
+    that does not delegate leaves the width unreduced and turns the warmup back into
+    the allocation failures the preflight exists to avoid.
+    """
+
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    calls: list[tuple[int, int | None]] = []
+
+    class EstimatingFakeGenerator:
+        def resident_capacity_estimate(
+            self, *, max_batch_size: int = 1, requested_context_tokens: int | None = None
+        ) -> dict[str, int]:
+            calls.append((int(max_batch_size), requested_context_tokens))
+            return {"allocatable_context_tokens": 4096, "max_batch_size": int(max_batch_size)}
+
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return [f"{prompt}!" for prompt in request.prompts]
+
+    class PlainFakeGenerator:
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return [f"{prompt}!" for prompt in request.prompts]
+
+    fake_index = SimpleNamespace(
+        config={"architectures": ["EstimatingFakeForCausalLM"]},
+        model_path="/tmp/fake-model",
+    )
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(
+        models, "resolve_model", lambda architecture: SimpleNamespace(name="estimating_fake_model")
+    )
+    register_text_generator(
+        model="estimating_fake_model",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: EstimatingFakeGenerator(),
+        replace=True,
+    )
+
+    llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+    estimate = llm.resident_capacity_estimate(max_batch_size=4, requested_context_tokens=None)
+
+    assert estimate == {"allocatable_context_tokens": 4096, "max_batch_size": 4}
+    assert calls == [(4, None)]
+
+    register_text_generator(
+        model="estimating_fake_model",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: PlainFakeGenerator(),
+        replace=True,
+    )
+    plain = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+
+    assert plain.resident_capacity_estimate() is None
+
+
 def test_llm_selects_registered_short_context_plain_ar_width(monkeypatch) -> None:
     import hipengine.generation as generation
     import hipengine.loading as loading
