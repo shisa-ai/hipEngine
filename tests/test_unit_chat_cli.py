@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 from urllib.error import HTTPError
 
 import pytest
@@ -749,6 +750,34 @@ def _rich_bench_text(server: _BenchStreamServer, monkeypatch: pytest.MonkeyPatch
     return console.export_text()
 
 
+def _plain_bench_text(server: _BenchStreamServer, monkeypatch: pytest.MonkeyPatch, command: str = "/bench") -> str:
+    """Drive one /bench through the line-oriented client and return its output."""
+
+    monkeypatch.setattr("hipengine.chat_cli.urlopen", server)
+    output = io.StringIO()
+
+    result = run(
+        build_parser().parse_args(["--model", "m", "--plain"]),
+        input_stream=io.StringIO(f"{command}\n/quit\n"),
+        output_stream=output,
+    )
+
+    assert result == 0
+    return output.getvalue()
+
+
+def _bench_lines(text: str) -> list[str]:
+    """The rendered /bench table: the header row first, then one row per request."""
+
+    return [line for line in text.splitlines() if line.strip().startswith(("mtp", "on ", "off "))]
+
+
+def _cell_ends(line: str) -> list[int]:
+    """Where each cell of a padded table line ends, for alignment checks."""
+
+    return [match.end() for match in re.finditer(r"\S+(?: \S+)*", line)]
+
+
 def test_bench_measures_cold_and_cached_runs_for_both_routes(monkeypatch: pytest.MonkeyPatch) -> None:
     server = _BenchStreamServer()
 
@@ -763,8 +792,8 @@ def test_bench_measures_cold_and_cached_runs_for_both_routes(monkeypatch: pytest
     assert server.bodies[2]["messages"] != server.bodies[0]["messages"]
     assert text.count("hit 512") == 2
     assert text.count("miss") == 2
-    assert "32.7 tok/s" in text and "11.8 tok/s" in text
     assert "cold then cached per route" in text
+    assert [row.split()[0] for row in _bench_lines(text)[1:]] == ["on", "on", "off", "off"]
 
 
 def test_bench_reads_cached_tokens_from_usage_when_the_server_reports_them(
@@ -777,6 +806,45 @@ def test_bench_reads_cached_tokens_from_usage_when_the_server_reports_them(
     assert text.count("hit 512") == 2
 
 
+def test_bench_table_puts_units_in_the_header_over_right_aligned_numbers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One column per metric: units live in the header, so cells stay bare numbers."""
+
+    server = _BenchStreamServer()
+
+    lines = _bench_lines(_rich_bench_text(server, monkeypatch))
+
+    assert " ".join(lines[0].split()) == "mtp cache prefill tok/s prompt tok/s decode tok/s ttft s tpot ms"
+    # ttft and tpot are their own columns: the two sides of the MTP tradeoff.
+    ends = _cell_ends(lines[0])
+    assert [line.split()[0] for line in lines[1:]] == ["on", "on", "off", "off"]
+    for line in lines[1:]:
+        assert _cell_ends(line)[2:] == ends[2:]
+    rows = [line.split() for line in lines[1:]]
+    assert [row[-5] for row in rows] == ["259", "—", "259", "—"]  # prefill tok/s
+    assert [row[-4] for row in rows] == ["259", "1,656", "259", "1,656"]  # whole prompt
+    assert [row[-3] for row in rows] == ["32.7", "32.7", "11.8", "11.8"]  # decode tok/s
+    assert [row[-1] for row in rows] == ["30.6", "30.6", "84.7", "84.7"]  # tpot ms
+    assert all(float(row[-2]) >= 0 for row in rows)  # ttft s, inverse of the decode rate
+
+
+def test_turn_tpot_falls_back_to_client_timings_and_reports_none_without_a_reply() -> None:
+    from hipengine.chat_cli import _Turn, _bench_tpot_cell, _Settings
+
+    turn = _Turn(_Settings(build_parser().parse_args([])))
+    assert _bench_tpot_cell(turn) == "—"
+
+    turn.add("content", "hello")
+    turn.add("usage", {"prompt_tokens": 500, "completion_tokens": 24})
+    turn.first_token = turn.started + 1.0
+    turn.finished = turn.started + 2.0
+
+    # 24 tokens over one decode second: 23 inter-token gaps, so 43.5 ms each.
+    assert turn.decode_ms_per_token() == pytest.approx(43.478, abs=0.001)
+    assert _bench_tpot_cell(turn) == "43.5"
+
+
 def test_bench_reports_a_route_the_server_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
     server = _BenchStreamServer(refuse_mtp=True)
 
@@ -785,7 +853,7 @@ def test_bench_reports_a_route_the_server_refuses(monkeypatch: pytest.MonkeyPatc
     # The refused request was sent, but that route never reached its cached repeat.
     assert [body["speculative_mtp"] for body in server.bodies] == [True, False, False]
     assert "mtp on: HTTP 400: speculative_mtp is not available" in text
-    assert "mtp off" in text
+    assert [row.split()[0] for row in _bench_lines(text)[1:]] == ["off", "off"]
 
 
 def test_bench_notes_an_mtp_route_that_committed_no_speculative_cycle(
@@ -796,7 +864,7 @@ def test_bench_notes_an_mtp_route_that_committed_no_speculative_cycle(
     text = _rich_bench_text(server, monkeypatch)
 
     assert "! mtp on: no speculative cycle ran (provider_decline_reason=provider_not_ready)" in text
-    assert "mtp off" in text
+    assert [row.split()[0] for row in _bench_lines(text)[1:]] == ["on", "on", "off", "off"]
 
 
 def test_bench_rejects_a_non_numeric_token_count(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -810,38 +878,30 @@ def test_bench_rejects_a_non_numeric_token_count(monkeypatch: pytest.MonkeyPatch
 
 def test_plain_chat_bench_reports_the_same_measurements(monkeypatch: pytest.MonkeyPatch) -> None:
     server = _BenchStreamServer()
-    monkeypatch.setattr("hipengine.chat_cli.urlopen", server)
-    output = io.StringIO()
 
-    result = run(
-        build_parser().parse_args(["--model", "m", "--plain"]),
-        input_stream=io.StringIO("/bench\n/quit\n"),
-        output_stream=output,
-    )
+    text = _plain_bench_text(server, monkeypatch)
 
-    assert result == 0
-    text = output.getvalue()
     assert "cold then cached per route" in text
     assert text.count("hit 512") == 2
-    assert "mtp on" in text and "mtp off" in text
     assert len(server.bodies) == 4
     assert [body["speculative_mtp"] for body in server.bodies] == [True, True, False, False]
+    # The line-oriented client prints the same table, aligned the same way.
+    lines = _bench_lines(text)
+    assert " ".join(lines[0].split()) == "mtp cache prefill tok/s prompt tok/s decode tok/s ttft s tpot ms"
+    ends = _cell_ends(lines[0])
+    rows = [line.split() for line in lines[1:]]
+    assert len(rows) == 4
+    for line in lines[1:]:
+        assert _cell_ends(line)[2:] == ends[2:]
+    assert [row[-1] for row in rows] == ["30.6", "30.6", "84.7", "84.7"]
 
 
 def test_plain_chat_bench_reports_a_route_the_server_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
     server = _BenchStreamServer(refuse_mtp=True)
-    monkeypatch.setattr("hipengine.chat_cli.urlopen", server)
-    output = io.StringIO()
 
-    result = run(
-        build_parser().parse_args(["--model", "m", "--plain"]),
-        input_stream=io.StringIO("/bench 256 8\n/quit\n"),
-        output_stream=output,
-    )
+    text = _plain_bench_text(server, monkeypatch, command="/bench 256 8")
 
-    assert result == 0
-    text = output.getvalue()
     assert "! mtp on: HTTP 400: speculative_mtp is not available" in text
-    assert "mtp off" in text
+    assert [row.split()[0] for row in _bench_lines(text)[1:]] == ["off", "off"]
     assert [body["speculative_mtp"] for body in server.bodies] == [True, False, False]
     assert server.bodies[0]["max_tokens"] == 8
