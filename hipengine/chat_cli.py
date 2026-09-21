@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import math
 import os
 import re
 import sys
@@ -28,6 +29,7 @@ _COMMANDS = (
     ("/help", "show commands"),
     ("/status", "show model, context, and KV pool"),
     ("/usage", "show messages, turns, and token counts"),
+    ("/bench [in] [out]", "measure prefill, decode, and prefix-cache reuse"),
     ("/params", "show sampling and reasoning settings"),
     ("/think <mode>", "reasoning: default, off, on, " + ", ".join(_THINK_EFFORTS) + ", or a token budget"),
     ("/show", "toggle showing reasoning text"),
@@ -55,6 +57,7 @@ _THEME = {
 _USAGE_STYLES = {
     "messages": "bold",
     "in": "hip.user",
+    "cached": "hip.ok",
     "out": "hip.accent",
     "total": "bold",
 }
@@ -284,7 +287,13 @@ def _stream_events(
     messages: list[dict[str, str]],
     fields: dict,
 ) -> Iterator[tuple[str, object]]:
-    """Yield ``("content"|"reasoning", text)`` deltas and ``("usage", dict)``."""
+    """Yield deltas, ``("usage", dict)``, and ``("meta", dict)`` server metadata.
+
+    Metadata is requested with ``include_hipengine``, which is what carries the
+    backend's own timing (prefill, decode, ttft) and per-request prefix-cache
+    diagnostics. Servers predating that field ignore the option and simply send
+    no metadata, so the caller degrades to client-measured numbers.
+    """
 
     body = json.dumps(
         {
@@ -292,7 +301,7 @@ def _stream_events(
             "messages": messages,
             **fields,
             "stream": True,
-            "stream_options": {"include_usage": True},
+            "stream_options": {"include_usage": True, "include_hipengine": True},
         }
     ).encode()
     request = Request(
@@ -313,9 +322,15 @@ def _stream_events(
             usage = payload.get("usage")
             if isinstance(usage, dict):
                 yield "usage", usage
+            meta = payload.get("hipengine")
+            if isinstance(meta, dict):
+                yield "meta", meta
             choices = payload.get("choices", [])
             if not choices or not isinstance(choices[0], dict):
                 continue
+            choice_meta = choices[0].get("hipengine")
+            if isinstance(choice_meta, dict):
+                yield "meta", choice_meta
             delta = choices[0].get("delta", {})
             if not isinstance(delta, dict):
                 continue
@@ -339,8 +354,25 @@ def _http_error_text(exc: Exception) -> str:
     return str(exc)
 
 
+def _meta_cached_tokens(meta: dict) -> int | None:
+    """Prefix-cache reuse from one metadata event, when the backend reported it."""
+
+    diagnostics = meta.get("diagnostics")
+    block = diagnostics.get("prefix_cache") if isinstance(diagnostics, dict) else None
+    return _as_int(block.get("reused_tokens")) if isinstance(block, dict) else None
+
+
 def _as_int(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _as_float(value: object) -> float | None:
+    """Return a finite float, so a missing or non-numeric metric stays absent."""
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
 
 
 class _Usage:
@@ -353,12 +385,17 @@ class _Usage:
         self.requests = 0
         self.unreported = 0
         self.prompt_tokens = 0
+        self.cached_tokens = 0
         self.completion_tokens = 0
         self.reasoning_tokens = 0
         self.last_prompt_tokens = 0
 
-    def add(self, usage: object) -> None:
-        """Count one finished request; ``usage`` is the server payload when it arrived."""
+    def add(self, usage: object, *, cached_tokens: int | None = None) -> None:
+        """Count one finished request; ``usage`` is the server payload when it arrived.
+
+        ``cached_tokens`` is a fallback for servers that report prefix-cache reuse
+        only in per-request backend diagnostics rather than in usage.
+        """
 
         self.requests += 1
         if not isinstance(usage, dict):
@@ -374,6 +411,12 @@ class _Usage:
             self.last_prompt_tokens = prompt
         if completion is not None:
             self.completion_tokens += completion
+        prompt_details = usage.get("prompt_tokens_details")
+        cached = _as_int(prompt_details.get("cached_tokens")) if isinstance(prompt_details, dict) else None
+        if cached is None:
+            cached = cached_tokens
+        if cached:
+            self.cached_tokens += cached
         details = usage.get("completion_tokens_details")
         reasoning = _as_int(usage.get("reasoning_tokens"))
         if reasoning is None and isinstance(details, dict):
@@ -428,8 +471,11 @@ def _usage_rows(convo: _Conversation, max_context: int | None = None) -> list[tu
     rows = [
         ("messages", f"{_plural(len(convo.messages()), 'message')}  ·  {_plural(turns, 'turn')}"),
         ("in", f"{usage.prompt_tokens:,} tokens"),
-        ("out", f"{usage.completion_tokens:,} tokens"),
     ]
+    if usage.cached_tokens:
+        share = 100.0 * usage.cached_tokens / usage.prompt_tokens if usage.prompt_tokens else 0.0
+        rows.append(("cached", f"{usage.cached_tokens:,} tokens  ·  {share:.1f}% of in"))
+    rows.append(("out", f"{usage.completion_tokens:,} tokens"))
     if usage.reasoning_tokens:
         rows[-1] = (
             "out",
@@ -593,6 +639,7 @@ def _run_plain(settings: _Settings, server: str, model: str, input_stream, outpu
         print("assistant> ", end="", file=output_stream, flush=True)
         answer_parts: list[str] = []
         usage: dict | None = None
+        cached_tokens: int | None = None
         failure: Exception | None = None
         try:
             for kind, text in _stream_events(
@@ -602,13 +649,17 @@ def _run_plain(settings: _Settings, server: str, model: str, input_stream, outpu
                     answer_parts.append(str(text))
                 elif kind == "usage":
                     usage = text if isinstance(text, dict) else None
+                elif kind == "meta" and isinstance(text, dict):
+                    cached = _meta_cached_tokens(text)
+                    if cached is not None:
+                        cached_tokens = cached
                 elif kind == "reasoning" and settings.show_thinking:
                     print(text, end="", file=output_stream, flush=True)
         except KeyboardInterrupt:
             print("\n[stopped]", file=output_stream)
         except (HTTPError, URLError, OSError, ValueError) as exc:
             failure = exc
-        convo.usage.add(usage)
+        convo.usage.add(usage, cached_tokens=cached_tokens)
         if failure is not None:
             print(f"\nrequest failed: {_http_error_text(failure)}", file=sys.stderr)
             convo.abandon()
@@ -640,12 +691,42 @@ def _plain_command(name, rest, settings, convo, server, model, output_stream) ->
             print(f"status unavailable: {exc}", file=sys.stderr)
     elif name == "/usage":
         _print_usage(convo, server, output_stream=output_stream)
+    elif name == "/bench":
+        _plain_bench(rest, settings, server, model, output_stream)
     else:
         try:
             message = settings.command(name, rest)
         except ValueError as exc:
             message = str(exc)
         print(message or f"Unknown command {name}; try /help.", file=output_stream)
+
+
+def _plain_bench(rest: str, settings: _Settings, server: str, model: str, output_stream) -> None:
+    """Run /bench in the line-oriented client; same measurements, plain rows."""
+
+    try:
+        prompt_tokens, max_tokens = _bench_args(rest)
+    except ValueError as exc:
+        print(str(exc), file=output_stream)
+        return
+    print(
+        f"bench: measuring cold and cached requests (~{prompt_tokens:,} prompt tokens)…",
+        file=output_stream,
+        flush=True,
+    )
+    try:
+        bench = _run_bench(server, settings, model=model, prompt_tokens=prompt_tokens, max_tokens=max_tokens)
+    except KeyboardInterrupt:
+        print("bench cancelled", file=output_stream)
+        return
+    except _REQUEST_ERRORS as exc:
+        print(f"bench failed: {_http_error_text(exc)}", file=sys.stderr)
+        return
+    print(bench.header(), file=output_stream)
+    for route, cache, prefill, decode, ttft in bench.rows:
+        print(f"  {route:<8} {cache:<16} {prefill:<24} {decode:<24} ttft {ttft}", file=output_stream)
+    for note in bench.notes:
+        print(f"  ! {note}", file=output_stream)
 
 
 # -- rich mode -----------------------------------------------------------------
@@ -732,13 +813,21 @@ class _Tail:
 
 
 class _Turn:
-    """Mutable state of one streaming reply; also the Live renderable."""
+    """Mutable state of one streaming reply; also the Live renderable.
+
+    Besides the streamed text it keeps the server's own metadata: engine timing
+    (``backend_prefill_ms``, ``decode_tokens_per_second``, ...) and per-request
+    backend diagnostics, which is where prefix-cache reuse is reported. Those
+    numbers are measurements of the engine; the client-side clocks remain the
+    fallback for a server that reports neither.
+    """
 
     def __init__(self, settings: _Settings) -> None:
         self.settings = settings
         self.content: list[str] = []
         self.reasoning: list[str] = []
         self.usage: dict | None = None
+        self.meta: dict = {}
         self.started = time.perf_counter()
         self.first_token: float | None = None
         self.first_content: float | None = None
@@ -748,6 +837,12 @@ class _Turn:
     def add(self, kind: str, value: object) -> None:
         if kind == "usage":
             self.usage = value if isinstance(value, dict) else None
+            return
+        if kind == "meta":
+            # Server metadata is cumulative, so the last event carrying a key owns
+            # its final value; the done chunk carries the completed diagnostics.
+            if isinstance(value, dict):
+                self.meta.update(value)
             return
         now = time.perf_counter()
         if self.first_token is None:
@@ -763,6 +858,82 @@ class _Turn:
     def completion_tokens(self) -> int:
         tokens = (self.usage or {}).get("completion_tokens")
         return tokens if isinstance(tokens, int) else self.deltas
+
+    def prompt_tokens(self) -> int | None:
+        return _as_int((self.usage or {}).get("prompt_tokens"))
+
+    def timing(self) -> dict:
+        timing = self.meta.get("timing")
+        return timing if isinstance(timing, dict) else {}
+
+    def prefix_cache(self) -> dict | None:
+        """Per-request prefix-cache telemetry, when the backend published it."""
+
+        diagnostics = self.meta.get("diagnostics")
+        block = diagnostics.get("prefix_cache") if isinstance(diagnostics, dict) else None
+        return block if isinstance(block, dict) else None
+
+    def cached_tokens(self) -> int | None:
+        """Prompt tokens the server served from its prefix cache.
+
+        Prefers the OpenAI/vLLM usage field and falls back to the backend's own
+        prefix-cache diagnostics, which older servers report without it.
+        """
+
+        details = (self.usage or {}).get("prompt_tokens_details")
+        cached = _as_int(details.get("cached_tokens")) if isinstance(details, dict) else None
+        return cached if cached is not None else _meta_cached_tokens(self.meta)
+
+    def prefill_tokens(self) -> int | None:
+        """Prompt tokens the server actually prefilled, excluding cache reuse."""
+
+        block = self.prefix_cache()
+        executed = _as_int(block.get("executed_prefill_tokens")) if block else None
+        if executed is not None:
+            return executed
+        prompt = self.prompt_tokens()
+        if prompt is None:
+            return None
+        return max(0, prompt - (self.cached_tokens() or 0))
+
+    def prefill_seconds(self) -> float | None:
+        """Seconds spent prefilling: the engine's own timer, else the client's ttft."""
+
+        reported = _as_float(self.timing().get("backend_prefill_ms"))
+        if reported is not None and reported > 0:
+            return reported / 1000.0
+        if self.first_token is None:
+            return None
+        return max(0.0, self.first_token - self.started)
+
+    def prefill_rate(self) -> float | None:
+        """Uncached prompt tokens per second over the prefill window."""
+
+        seconds = self.prefill_seconds()
+        tokens = self.prefill_tokens()
+        if seconds is None or seconds <= 0 or not tokens:
+            return None
+        return tokens / seconds
+
+    def decode_seconds(self) -> float | None:
+        """Seconds between the first streamed token and the end of the reply."""
+
+        if self.first_token is None:
+            return None
+        end = self.finished or time.perf_counter()
+        return max(0.0, end - self.first_token)
+
+    def decode_rate(self) -> float | None:
+        """Output tokens per second, preferring the engine's own measurement."""
+
+        reported = _as_float(self.timing().get("decode_tokens_per_second"))
+        if reported is not None and reported > 0:
+            return reported
+        seconds = self.decode_seconds()
+        tokens = self.completion_tokens()
+        if seconds is None or seconds <= 0 or tokens <= 1:
+            return None
+        return (tokens - 1) / seconds
 
     def thinking_seconds(self) -> float:
         if self.first_token is None or not self.reasoning:
@@ -789,6 +960,202 @@ class _Turn:
             return
         markdown = Markdown("".join(self.content) + " ▍", code_theme="monokai")
         yield _Tail(Padding(markdown, (0, 0, 0, 2)))
+
+
+# -- /bench --------------------------------------------------------------------
+
+_BENCH_SENTENCE = (
+    "The prefix cache keeps block-aligned prompt state so a later request can skip "
+    "prefilling tokens it has already processed. "
+)
+# Rough tokens per sentence; the server reports the exact prompt length in usage.
+_BENCH_SENTENCE_TOKENS = 24
+_BENCH_DEFAULT_PROMPT_TOKENS = 512
+_BENCH_DEFAULT_MAX_TOKENS = 32
+# Route label -> the request's speculative_mtp value.
+_BENCH_ROUTES = (("mtp on", True), ("mtp off", False))
+
+
+def _bench_prompt(tokens: int, route: str) -> str:
+    """Build filler text of roughly ``tokens`` tokens for one bench route.
+
+    The nonce makes each route's prompt unique, so its cold measurement cannot
+    hit an entry an earlier run left behind. Both requests of a route share the
+    same text, which is what the cached measurement matches against.
+    """
+
+    repeats = max(1, round(tokens / _BENCH_SENTENCE_TOKENS))
+    nonce = f"{os.getpid():x}-{time.time_ns():x}"
+    return f"[bench {route} {nonce}] " + _BENCH_SENTENCE * repeats + "\nReply with one short sentence."
+
+
+def _bench_args(rest: str) -> tuple[int, int]:
+    """Parse ``/bench [prompt_tokens] [max_tokens]``."""
+
+    parts = rest.split()
+    if len(parts) > 2:
+        raise ValueError("usage: /bench [prompt_tokens] [max_tokens]")
+    values: list[int] = []
+    for part in parts:
+        try:
+            value = int(part)
+        except ValueError:
+            raise ValueError(
+                f"{part!r} is not a token count; usage: /bench [prompt_tokens] [max_tokens]"
+            ) from None
+        if value <= 0:
+            raise ValueError("bench token counts must be positive")
+        values.append(value)
+    prompt_tokens = values[0] if values else _BENCH_DEFAULT_PROMPT_TOKENS
+    max_tokens = values[1] if len(values) > 1 else _BENCH_DEFAULT_MAX_TOKENS
+    return prompt_tokens, max_tokens
+
+
+def _measure(
+    server: str,
+    settings: _Settings,
+    *,
+    model: str,
+    messages: list[dict[str, str]],
+    fields: dict,
+) -> _Turn:
+    """Run one request to completion and return its measured turn state."""
+
+    turn = _Turn(settings)
+    for kind, value in _stream_events(server, model=model, messages=messages, fields=fields):
+        turn.add(kind, value)
+    turn.finished = time.perf_counter()
+    return turn
+
+
+def _mtp_block(turn: _Turn) -> dict | None:
+    diagnostics = turn.meta.get("diagnostics")
+    block = diagnostics.get("specdec2_mtp2") if isinstance(diagnostics, dict) else None
+    return block if isinstance(block, dict) else None
+
+
+def _mtp_cycles(turn: _Turn) -> int | None:
+    """Speculative cycles the backend committed, when it reported MTP intent."""
+
+    block = _mtp_block(turn)
+    return None if block is None else _as_int(block.get("cycles"))
+
+
+def _mtp_decline_reason(turn: _Turn) -> str | None:
+    """Why a request that asked for MTP ran without a speculative cycle."""
+
+    block = _mtp_block(turn)
+    if block is None:
+        return None
+    for key in ("provider_decline_reason", "prompt_fallback_reason", "activation_reason", "plan_reason"):
+        value = block.get(key)
+        if isinstance(value, str) and value:
+            return f"{key}={value}"
+    return None
+
+
+def _bench_prefill_cell(turn: _Turn) -> str:
+    tokens = turn.prefill_tokens()
+    if tokens is None:
+        return "—"
+    rate = turn.prefill_rate()
+    return f"{tokens:,} tok" if rate is None else f"{tokens:,} tok · {rate:.0f} tok/s"
+
+
+def _bench_decode_cell(turn: _Turn) -> str:
+    tokens = f"{turn.completion_tokens():,} tok"
+    rate = turn.decode_rate()
+    return tokens if rate is None else f"{tokens} · {rate:.1f} tok/s"
+
+
+def _bench_cache_cell(turn: _Turn) -> str:
+    cached = turn.cached_tokens()
+    if cached:
+        return f"hit {cached:,}"
+    block = turn.prefix_cache()
+    reason = block.get("fallback_reason") if block else None
+    if isinstance(reason, str) and reason and reason != "miss":
+        return f"miss ({reason})"
+    return "miss"
+
+
+def _bench_ttft_cell(turn: _Turn) -> str:
+    if turn.first_token is None:
+        return "—"
+    return f"{turn.first_token - turn.started:.2f}s"
+
+
+class _Bench:
+    """Measurements from one /bench: a cold request and its cached repeat, per route.
+
+    ``rows`` returns ``(route, cache, prefill, decode, ttft)`` cells so the rich
+    and plain clients show the same numbers. These are single interactive
+    requests, not benchmark-harness artifacts: they include queueing and client
+    transport, so read them as a sanity check rather than as a result.
+    """
+
+    def __init__(self, max_tokens: int) -> None:
+        self.max_tokens = max_tokens
+        self.prompt_tokens: int | None = None
+        self.rows: list[tuple[str, str, str, str, str]] = []
+        self.notes: list[str] = []
+
+    def header(self) -> str:
+        prompt = "prompt length unknown" if self.prompt_tokens is None else f"{self.prompt_tokens:,} prompt tokens"
+        return f"bench · {prompt} · {self.max_tokens} max output · cold then cached per route"
+
+    def add_run(self, route: str, cold: _Turn, cached: _Turn, *, speculative: bool) -> None:
+        if self.prompt_tokens is None:
+            self.prompt_tokens = cold.prompt_tokens()
+        for turn in (cold, cached):
+            self.rows.append(
+                (
+                    route,
+                    _bench_cache_cell(turn),
+                    _bench_prefill_cell(turn),
+                    _bench_decode_cell(turn),
+                    _bench_ttft_cell(turn),
+                )
+            )
+        if speculative:
+            cycles = _mtp_cycles(cold)
+            # A backend that reports no MTP accounting at all is not evidence of a
+            # declined request, so only a reported-but-empty cycle count is noted.
+            if cycles == 0:
+                reason = _mtp_decline_reason(cold)
+                self.notes.append(f"{route}: no speculative cycle ran" + (f" ({reason})" if reason else ""))
+
+
+def _run_bench(
+    server: str,
+    settings: _Settings,
+    *,
+    model: str,
+    prompt_tokens: int,
+    max_tokens: int,
+) -> _Bench:
+    """Measure a cold prefill/decode request and its cached repeat, per route.
+
+    Each route sends the same prompt twice, so the second request should reuse
+    what the first one cached. Routes get different prompts, which keeps one
+    route's cold measurement from hitting the other route's entry. A route the
+    server refuses is reported in ``notes`` instead of failing the whole bench.
+    """
+
+    fields = dict(settings.request_fields())
+    fields["max_tokens"] = max_tokens
+    bench = _Bench(max_tokens)
+    for route, speculative in _BENCH_ROUTES:
+        route_fields = {**fields, "speculative_mtp": speculative}
+        messages = [{"role": "user", "content": _bench_prompt(prompt_tokens, route)}]
+        try:
+            cold = _measure(server, settings, model=model, messages=messages, fields=route_fields)
+            cached = _measure(server, settings, model=model, messages=messages, fields=route_fields)
+        except _REQUEST_ERRORS as exc:
+            bench.notes.append(f"{route}: {_http_error_text(exc)}")
+            continue
+        bench.add_run(route, cold, cached, speculative=speculative)
+    return bench
 
 
 class _RichChat:
@@ -1021,6 +1388,8 @@ class _RichChat:
                 self.respond()
             else:
                 self.note("nothing to retry", "hip.warn")
+        elif name == "/bench":
+            self.run_bench(rest)
         else:
             try:
                 message = self.settings.command(name, rest)
@@ -1032,6 +1401,48 @@ class _RichChat:
             else:
                 self.note(message)
         return False
+
+    def bench_table(self, bench: _Bench):
+        from rich.padding import Padding
+        from rich.table import Table
+        from rich.text import Text
+
+        table = Table.grid(padding=(0, 3))
+        table.add_column(style="hip.label", no_wrap=True)
+        for _ in range(4):
+            table.add_column(no_wrap=True)
+        table.add_row(*[Text(name, style="hip.dim") for name in ("route", "cache", "prefill", "decode", "ttft")])
+        for route, cache, prefill, decode, ttft in bench.rows:
+            table.add_row(route, cache, prefill, decode, ttft)
+        return Padding(table, (0, 0, 0, 2))
+
+    def run_bench(self, rest: str) -> None:
+        """Run /bench: prefill, decode, and prefix-cache reuse for each route."""
+
+        try:
+            prompt_tokens, max_tokens = _bench_args(rest)
+        except ValueError as exc:
+            self.note(str(exc), "hip.warn")
+            return
+        self.note(f"bench · measuring cold and cached requests (~{prompt_tokens:,} prompt tokens)…")
+        try:
+            bench = _run_bench(
+                self.server,
+                self.settings,
+                model=self.model,
+                prompt_tokens=prompt_tokens,
+                max_tokens=max_tokens,
+            )
+        except KeyboardInterrupt:
+            self.note("bench cancelled", "hip.warn")
+            return
+        except _REQUEST_ERRORS as exc:
+            self.note(f"✗ bench failed: {_http_error_text(exc)}", "hip.err")
+            return
+        self.note(bench.header())
+        self.console.print(self.bench_table(bench))
+        for note in bench.notes:
+            self.note(f"! {note}", "hip.warn")
 
     def respond(self) -> None:
         from rich.live import Live
@@ -1058,7 +1469,7 @@ class _RichChat:
             except (HTTPError, URLError, OSError, ValueError) as exc:
                 error = exc
         turn.finished = time.perf_counter()
-        self.convo.usage.add(turn.usage)
+        self.convo.usage.add(turn.usage, cached_tokens=turn.cached_tokens())
 
         if turn.reasoning:
             summary = f"∴ thought for {turn.thinking_seconds():.1f}s"
@@ -1086,17 +1497,26 @@ class _RichChat:
 
     @staticmethod
     def _stats(turn: _Turn) -> tuple[str, str]:
-        """Return (full stats line, decode-rate summary)."""
+        """Return (full stats line, decode-rate summary).
+
+        Prefill is reported over the tokens the server actually prefilled, so a
+        cache hit shows up as a smaller token count at a comparable rate rather
+        than as a faster prefill of the whole prompt.
+        """
 
         end = turn.finished or time.perf_counter()
-        tokens = turn.completion_tokens()
-        parts = [f"{tokens} tokens"]
-        rate = ""
+        parts = [f"{turn.completion_tokens()} tokens"]
+        prefill = turn.prefill_rate()
+        if prefill is not None:
+            parts.append(f"prefill {prefill:.0f} tok/s")
+        decode = turn.decode_rate()
+        rate = "" if decode is None else f"{decode:.1f} tok/s"
+        if rate:
+            parts.append(f"decode {rate}")
+        cached = turn.cached_tokens()
+        if cached:
+            parts.append(f"cached {cached:,}")
         if turn.first_token is not None:
-            decode = end - turn.first_token
-            if tokens > 1 and decode > 0:
-                rate = f"{(tokens - 1) / decode:.1f} tok/s"
-                parts.append(rate)
             parts.append(f"ttft {turn.first_token - turn.started:.2f}s")
         parts.append(f"{end - turn.started:.2f}s")
         return "  ·  ".join(parts), rate

@@ -345,10 +345,13 @@ The client connects to `http://127.0.0.1:8000` and discovers the served model.
 No model path is needed, and it does not start another server. For a different
 address, use `hipengine chat --server http://127.0.0.1:8001`.
 
-Replies stream as Markdown, with optional reasoning display and per-turn stats.
+Replies stream as Markdown, with optional reasoning display and per-turn stats
+(prompt prefill rate, decode rate, and tokens served from the prefix cache).
 Use `/status` for server limits, `/usage` for conversation token counts,
-`/think off` to disable reasoning, `/retry` to regenerate, and `/clear` to start
-over. `/help` lists all commands; `/quit`, Ctrl-C, or Ctrl-D exits.
+`/bench` for a quick prefill, decode, and prefix-cache measurement of the
+running server (with and without speculative MTP), `/think off` to disable
+reasoning, `/retry` to regenerate, and `/clear` to start over. `/help` lists all
+commands; `/quit`, Ctrl-C, or Ctrl-D exits.
 Use `hipengine chat --plain` for plain-text output.
 
 ## Use the Python API
