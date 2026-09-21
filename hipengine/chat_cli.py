@@ -1412,12 +1412,15 @@ class _RichChat:
     def help_table(self):
         from rich.padding import Padding
         from rich.table import Table
+        from rich.text import Text
 
         table = Table.grid(padding=(0, 3))
         table.add_column(style="hip.user", no_wrap=True)
         table.add_column(style="hip.dim")
         for name, text in _COMMANDS:
-            table.add_row(name, text)
+            # Text, not markup: a command's own brackets (/bench [in] [out]) would
+            # otherwise be read as style tags and dropped from the rendered help.
+            table.add_row(Text(name), Text(text))
         table.add_row("alt-enter", "insert a newline")
         table.add_row("ctrl-c", "stop generation, clear input, or exit (at an empty prompt)")
         table.add_row("ctrl-d", "exit")

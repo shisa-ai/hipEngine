@@ -140,6 +140,27 @@ def test_rich_chat_renders_status_reasoning_markdown_and_stats(monkeypatch: pyte
     assert [turn["role"] for turn in chat.convo.turns] == ["user", "assistant"]
 
 
+def test_rich_help_keeps_command_arguments_that_look_like_markup() -> None:
+    """rich reads square brackets as style tags, which silently ate /bench's arguments."""
+
+    pytest.importorskip("rich")
+    from rich.console import Console
+    from rich.theme import Theme
+
+    from hipengine.chat_cli import _THEME, _RichChat, _Settings
+
+    console = Console(file=io.StringIO(), theme=Theme(_THEME), width=100, record=True)
+    chat = _RichChat(
+        console, "http://x", "m", _Settings(build_parser().parse_args([])), read_line=lambda: "/quit"
+    )
+    console.print(chat.help_table())
+
+    text = console.export_text()
+    assert "/bench [in] [out]" in text
+    assert "default 512 in, 32 out" in text
+    assert "/think <mode>" in text
+
+
 @pytest.mark.parametrize("interrupt", [KeyboardInterrupt, EOFError])
 def test_rich_chat_loop_exits_on_ctrl_c_or_ctrl_d(
     monkeypatch: pytest.MonkeyPatch, interrupt: type[BaseException]
