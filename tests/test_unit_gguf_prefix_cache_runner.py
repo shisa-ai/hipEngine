@@ -1043,6 +1043,208 @@ def test_retained_prefixes_from_two_conversations_coexist(
     runner.close()
 
 
+def test_retained_working_set_under_pressure_evicts_oldest_and_keeps_survivors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """More conversations than the budget: evict oldest-first, reuse what survives.
+
+    Served lanes interleave, so the retained working set is wider than its
+    budget and the trim runs while requests are live. Under that pressure the
+    trim must drop the oldest entry with its reason recorded, keep every
+    survivor reusable at its captured depth, and make an evicted conversation
+    miss cleanly -- never hand back a stale or partial boundary. The pool
+    pressure path must release the same entries and account the same pages.
+    """
+
+    monkeypatch.setenv(
+        _GGUF_PREFIX_RETAINED_SNAPSHOTS_ENV, str(_PREFIX_RETAINED_SNAPSHOTS_WIDE)
+    )
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=1,
+            kv_pool_initial_pages=64,
+            kv_pool_low_water_pages=64,
+            kv_pool_high_water_pages=64,
+            kv_pool_chunk_pages=64,
+            prefix_cache="radix",
+        )
+    )
+    conversations = {
+        index: tuple(range(1 + index * 1000, 1 + index * 1000 + 900))
+        for index in range(_PREFIX_RETAINED_SNAPSHOTS_WIDE + 1)
+    }
+    for index, prompt in conversations.items():
+        _retain_boundary(runner, 100 + index, prompt, 768)
+
+    cache = runner.observability_snapshot()["prefix_cache"]
+    assert cache["retained_snapshot_limit"] == _PREFIX_RETAINED_SNAPSHOTS_WIDE
+    assert cache["retained_snapshot_entries"] == _PREFIX_RETAINED_SNAPSHOTS_WIDE
+    assert cache["retained_snapshot_evictions_by_reason"] == {"trim_retained": 1}
+    assert cache["retained_kv_pages"] == 3 * _PREFIX_RETAINED_SNAPSHOTS_WIDE
+    assert runner._prefix_cache is not None
+
+    # The oldest conversation was dropped; the rest still resolve.
+    assert runner._prefix_cache.match(conversations[0]).hit is False
+    for index in range(1, _PREFIX_RETAINED_SNAPSHOTS_WIDE + 1):
+        assert (
+            runner._prefix_cache.match(conversations[index]).matched_token_count == 768
+        ), f"conversation {index} lost its retained boundary under pressure"
+
+    # An evicted conversation reports a clean miss and re-prefills everything.
+    evicted = _request(conversations[0], max_tokens=2)
+    runner.register_batch((200,), evicted, prompt_rows=(conversations[0],))
+    runner.reserve_admission(SimpleNamespace(request_id=200))
+    evicted_row = runner._rows[200]
+    assert evicted_row.prefix_fallback_reason == "miss"
+    assert evicted_row.prefix_reused_tokens == 0
+    assert evicted_row.lease is not None
+    evicted_session = evicted_row.lease.session
+    before = len(evicted_session.prefill_calls)
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(200,),
+            row_to_request=(200,),
+            token_rows=(conversations[0],),
+        ),
+        commit=True,
+    )
+    executed = evicted_session.prefill_calls[before:]
+    assert [start for _, start, _ in executed] == [0]
+    assert sum(end - start for _, start, end in executed) == len(conversations[0])
+    runner.rollback_admission(SimpleNamespace(request_id=200))
+    runner._rows.pop(200)
+
+    # A survivor still reuses, and only the suffix is prefilled.  The fake
+    # session asserts the reused block ids equal the snapshot's, so a corrupted
+    # boundary cannot pass this.
+    survivor = _PREFIX_RETAINED_SNAPSHOTS_WIDE
+    resumed = _request(conversations[survivor], max_tokens=2)
+    runner.register_batch((201,), resumed, prompt_rows=(conversations[survivor],))
+    runner.reserve_admission(SimpleNamespace(request_id=201))
+    resumed_row = runner._rows[201]
+    assert resumed_row.prefix_reused_tokens == 768
+    assert resumed_row.lease is not None
+    resumed_session = resumed_row.lease.session
+    before = len(resumed_session.prefill_calls)
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(201,),
+            row_to_request=(201,),
+            token_rows=(conversations[survivor],),
+        ),
+        commit=True,
+    )
+    executed = resumed_session.prefill_calls[before:]
+    assert [start for _, start, _ in executed] == [768]
+    assert sum(end - start for _, start, end in executed) == (
+        len(conversations[survivor]) - 768
+    )
+    runner.rollback_admission(SimpleNamespace(request_id=201))
+    runner._rows.pop(201)
+
+    # Pool pressure releases the oldest retained entries first, accounting the
+    # pages it actually freed, and leaves the newest ones reusable.
+    released = runner.evict_prefix_cache_for_pressure(9)
+    assert released == 9
+    cache = runner.observability_snapshot()["prefix_cache"]
+    assert cache["retained_snapshot_entries"] == _PREFIX_RETAINED_SNAPSHOTS_WIDE - 3
+    assert cache["retained_snapshot_evictions_by_reason"] == {
+        "trim_retained": 1,
+        "pool_pressure": 3,
+    }
+    for index in range(1, 4):
+        assert runner._prefix_cache.match(conversations[index]).hit is False
+    assert (
+        runner._prefix_cache.match(conversations[survivor]).matched_token_count == 768
+    )
+
+    for tokens in tuple(runner._prefix_state_snapshots):
+        assert runner._evict_prefix_snapshot(tokens) is True
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    assert runner.observability_snapshot()["prefix_cache"]["retained_snapshot_entries"] == 0
+    runner.close()
+
+
+def test_cancelled_request_drops_its_prefix_state_and_nothing_else() -> None:
+    """Cancellation releases the cancelled row's boundary, not the cache.
+
+    A cancelled request releases its lease without promoting its capture, so its
+    transient boundary, trie entry, and pinned pages must go with it. A later
+    identical request then misses cleanly instead of resuming from a boundary
+    whose blocks were released underneath it, and other conversations keep
+    theirs.
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=2)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=2,
+            kv_pool_initial_pages=32,
+            kv_pool_low_water_pages=32,
+            kv_pool_high_water_pages=32,
+            kv_pool_chunk_pages=32,
+            prefix_cache="radix",
+        )
+    )
+    kept = tuple(range(1, 901))
+    _retain_boundary(runner, 300, kept, 768)
+
+    cancelled = tuple(range(5001, 5901))
+    request = _request(cancelled, max_tokens=4)
+    runner.register_batch((301,), request, prompt_rows=(cancelled,))
+    runner.reserve_admission(SimpleNamespace(request_id=301))
+    row = runner._rows[301]
+    assert row.lease is not None
+    row.prefill_tokens_seen = len(cancelled)
+    row.lease.session.position = 768
+    assert runner._refresh_prefix_cache(row) is True
+    cancelled_snapshot = row.lease.session.snapshots[-1]
+    assert tuple(runner._prefix_state_snapshots) == (kept[:768], cancelled[:768])
+
+    runner.rollback_admission(SimpleNamespace(request_id=301))
+    runner._rows.pop(301)
+
+    assert cancelled_snapshot.closed is True
+    assert tuple(runner._prefix_state_snapshots) == (kept[:768],)
+    assert runner._prefix_cache is not None
+    assert runner._prefix_cache.match(cancelled).hit is False
+    assert runner._prefix_cache.match(kept).matched_token_count == 768
+
+    # A later identical request misses cleanly and prefills from the start.
+    retry = _request(cancelled, max_tokens=2)
+    runner.register_batch((302,), retry, prompt_rows=(cancelled,))
+    runner.reserve_admission(SimpleNamespace(request_id=302))
+    retry_row = runner._rows[302]
+    assert retry_row.prefix_fallback_reason == "miss"
+    assert retry_row.prefix_reused_tokens == 0
+    assert retry_row.lease is not None
+    retry_session = retry_row.lease.session
+    before = len(retry_session.prefill_calls)
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(302,),
+            row_to_request=(302,),
+            token_rows=(cancelled,),
+        ),
+        commit=True,
+    )
+    executed = retry_session.prefill_calls[before:]
+    assert [start for _, start, _ in executed] == [0]
+    assert sum(end - start for _, start, end in executed) == len(cancelled)
+    runner.rollback_admission(SimpleNamespace(request_id=302))
+    runner._rows.pop(302)
+
+    assert runner._evict_prefix_snapshot(kept[:768]) is True
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
 def test_retained_budget_defaults_to_the_pre_fix_effective_value() -> None:
     """The wider retained working set is opt-in, not the shipped default.
 
