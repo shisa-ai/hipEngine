@@ -1,5 +1,15 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-22 UTC**: A 32-row M tile for the routed-MoE main kernels cuts
+  expert-weight reads by 1.67-1.82x (857 -> 512 tiles at 20 rows/expert) and is
+  **4.8-8.1x slower**: gate/up **14.80 -> 71.94 ms** and down **8.93 -> 51.71
+  ms** at 10240 rows. The per-lane fp32 risk state doubles from 48 to 96
+  registers, so the kernel hits the 256-VGPR ceiling and spills 492 B per thread
+  inside the K loop (VGPR 192 -> 256, scratch 0 -> 492 B). The 16-row tile stays
+  the production geometry; the bit-identical 32-row variants are registered but
+  unused, with an 8-warp redesign recorded as the only viable follow-up.
+  [Artifact](results/2026-09-22-moe-j32-tile/README.md).
+
 - **2026-09-21 UTC**: Prefill chunk size is the largest queued lever. A
   `code-p4096` prefill runs four 1024-token chunks, and both dominant families
   pay for it without having to: the dense wide Q8_0 route measures
