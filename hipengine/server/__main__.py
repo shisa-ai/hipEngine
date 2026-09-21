@@ -159,7 +159,8 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=_env_bool("HIPENGINE_STARTUP_CHAT_SMOKE", True),
         help=(
-            "Run a bounded production-shaped chat request during eager startup "
+            "Run bounded production-shaped chat requests during eager startup, "
+            "including one on the speculative MTP route when it is enabled "
             "(env HIPENGINE_STARTUP_CHAT_SMOKE; default: true)"
         ),
     )

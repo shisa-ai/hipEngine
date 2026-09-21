@@ -29,7 +29,7 @@ _COMMANDS = (
     ("/help", "show commands"),
     ("/status", "show model, context, and KV pool"),
     ("/usage", "show messages, turns, and token counts"),
-    ("/bench [in] [out]", "measure prefill, decode, and prefix-cache reuse"),
+    ("/bench [in] [out]", "measure prefill, decode, and cache reuse; default 512 in, 32 out"),
     ("/params", "show sampling and reasoning settings"),
     ("/think <mode>", "reasoning: default, off, on, " + ", ".join(_THINK_EFFORTS) + ", or a token budget"),
     ("/show", "toggle showing reasoning text"),

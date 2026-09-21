@@ -184,8 +184,8 @@ qwen35moe fast-path safety gate.
 | `HIPENGINE_EAGER_LOAD_PROMPT` | `one two three four` | `--eager-load-prompt` | Prompt text used for the server startup warmup. |
 | `HIPENGINE_EAGER_LOAD` | `true` | `--eager-load` | Whether to warm the model/session during server startup. |
 | `HIPENGINE_EAGER_LOAD_MAX_TOKENS` | `1` | `--eager-load-max-tokens` | Generated tokens used for the server startup warmup; must be positive. |
-| `HIPENGINE_STARTUP_CHAT_SMOKE` | `true` | `--startup-chat-smoke` | Runs a bounded production-shaped chat request during eager startup. |
-| `HIPENGINE_STARTUP_SCRATCH_PROBE` | `true` | `--startup-scratch-probe` | Asks the backend to allocate max-context request scratch during eager startup without decoding to the output limit. |
+| `HIPENGINE_STARTUP_CHAT_SMOKE` | `true` | `--startup-chat-smoke` | Runs bounded production-shaped chat requests during eager startup, including one on the speculative MTP route when that route is enabled. |
+| `HIPENGINE_STARTUP_SCRATCH_PROBE` | `true` | `--startup-scratch-probe` | Asks the backend to allocate max-context request scratch during eager startup without decoding to the output limit. The probe warms at the width the server can actually admit: the model's route width cap when no server-wide cap is set. |
 | `HIPENGINE_STARTUP_MIN_FREE_MIB` | unset | `--startup-min-free-mib` | Optional minimum free GPU memory after startup warmup/probes; below this, startup fails. Default disabled. |
 | `HIPENGINE_MAX_CONTEXT_TOKENS` | unset | `--max-context-tokens` | Resident session/KV context tokens preallocated at startup; unset takes the model/session default. |
 | `HIPENGINE_CHAT_DEFAULT_MAX_TOKENS` | `4096` | `--chat-default-max-tokens` | Default `max_tokens` for chat requests that omit it; `N\|auto` where `auto` uses the remaining context. |
