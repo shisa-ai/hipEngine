@@ -7231,3 +7231,13 @@ because the packet that records the dead end uses them, and because the bitmap
 pass is the natural input to a pipelined repair. Removal trigger: no packet or
 test refers to them, or a pipelined/async-copy repair lands that supersedes the
 whole family.
+
+### The wide route's F16 activation hoist keeps an env opt-out
+
+`HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT=0` restores the f32-input owner for the
+wide-row Q8_0 dense prefill route. The hoist is arithmetic-preserving (both ABIs
+put the same f16 bytes in LDS, pinned bit-identical on GPU in
+`tests/test_gpu_qwen4exp_dense_wide_f16_activation_hoist.py`), so the flag exists
+for bisection and for a route-level rollback, not for correctness. Removal
+trigger: the hoisted path has passed a full qualification run and no bisection
+has needed it since.
