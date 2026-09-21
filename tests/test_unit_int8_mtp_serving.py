@@ -83,6 +83,50 @@ def test_dense_int8_mtp_uses_implementation_admission(capacity, budget):
     assert eligibility.implementation_key == "gguf_dense_int8_native_chain"
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="A c>1 INT8 MTP group does not speculate. Measured on gfx1151 "
+           "(zbook, Qwen3.8-27B-Q4_K_M, compact INT8 KV, batch window 50 ms): "
+           "two concurrent speculative requests coalesce (plan_group_rows=2) but "
+           "the cycle raises NotImplementedError('packed target verifier "
+           "currently supports BF16 KV only') from verify_target_blocks_batch "
+           "(qwen35_gguf_runner.py:21612), then recovers pre-commit, falls back "
+           "to autoregressive, and permanently disables the provider for that "
+           "request. This test pins the intended contract. Clearing command: "
+           "route the grouped MTP verify through the INT8-capable rows>1 chain "
+           "(_run_full_attention_attn_chain_rows_exact, reached today only from "
+           "AR decode) or teach the packed target verifier INT8 KV, then widen "
+           "gguf_dense_int8_native_chain.max_group_rows and remove this marker.",
+)
+@pytest.mark.parametrize("rows", [2, 4])
+def test_dense_int8_mtp_admits_the_packed_group_its_verifier_implements(rows):
+    """A packed INT8 group must be admitted once its verifier route runs rows>1.
+
+    The kernels exist: ``_full_attn_shared_batch_spans`` binds
+    ``INT8_PER_TOKEN_HEAD`` with per-token-head scales in the ``verify_chain``
+    role, ``_run_full_attention_attn_chain_rows_exact`` quantizes each appended
+    row and attends all of them through the registered
+    ``per_token_head_gqa_splitk_gate_bf16_verify_chain_spans`` leaf, and
+    gfx1151 registers that gfx1100 leaf under its own backend key.
+
+    What is missing is route selection, not a kernel: the grouped MTP cycle
+    calls the BF16-only packed target verifier instead. Admission alone is
+    therefore not the fix, which is why this contract stays RED until the
+    verify route lands. Widening the declaration on its own would replace a
+    clean admission refusal with a failed cycle and a disabled provider while
+    leaving the request autoregressive.
+    """
+
+    decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=_key(realized_group_rows=rows),
+    )
+    assert decision.admitted, decision.reason
+    eligibility = SpeculativeMTPStaticEligibility.from_mapping(
+        decision.as_dict()["static_eligibility"]
+    )
+    assert eligibility.max_realized_group_rows >= rows
+
+
 @pytest.mark.parametrize("changes,reason", [
     ({"realized_group_rows": 2}, "packed_int8_mtp_not_implemented"),
     ({"kv_layout": "tail4_hadamard_group32"}, "mtp_kv_layout_unsupported"),
