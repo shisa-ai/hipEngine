@@ -1,0 +1,140 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_qsa_prefill_boundary",
+ "date": "2026-09-22",
+ "status": "recoverable_cost_not_a_bucket_artifact",
+ "performance_claim": false,
+ "promotion_claim": false,
+ "question": "Is the qsa_attention family's 9.01x ratio against the llama.cpp-family comparator (1402.5 ms vs 155.7 ms at code-p4096) recoverable cost, or an artifact of how the two engines bucket the work?",
+ "answer": "Recoverable cost. The selection budget is identical in both engines - llama.cpp computes indexer_top_k + compress_ratio - 1 and hipEngine's qsa_dense_equivalent_max_tokens is the same expression, both 2051 - so the selected-position work is the same. Re-bucketing the engine's indexer scoring (qsa_score, 212.0 ms) into the comparator's indexer family, which is the most generous reading available, moves the ratio from 9.01x to 6.58x, not to parity. The residual gap is kernel technology and reuse structure: the comparator's QSA attention kernel runs at an effective 11.93 TFLOP/s, which is above this host's fp32 peak, so it is using BF16 tensor cores, while the engine's kernel is a 32-lane scalar-FMA wave kernel at 2.04 TFLOP/s with LDS_Block_Size 0.",
+ "evidence": {
+  "selection_work_is_identical": {
+   "engine": "qwen4exp.attention.indexer.top_k = 2048 and qwen4exp.attention.compress_ratios = 4 at the 12 QSA layers (GGUF metadata), so qsa_compression_ratio = 4 and qsa_dense_equivalent_max_tokens = 2048 + 4 - 1 = 2051 (hipengine/loading/qwen4exp_gguf.py:107-109).",
+   "comparator": "llama.cpp-hip/src/models/qwen4exp.cpp:664-665, in build_qsa_top_k: 'the reference returns indexer_top_k + compress_ratio - 1: whole blocks plus the tail', width = min(n_kv, indexer_top_k + r - 1) = 2051.",
+   "conclusion": "The same formula, the same budget, the same selected positions. No work difference to explain the ratio."
+  },
+  "operation_boundary": {
+   "engine_family_ms": 1402.5,
+   "comparator_family_ms": 155.7,
+   "engine_family_measured_kernels_ms": 1237.21,
+   "comparator_bucket_contents": "flash_attn_ext_f16 (its attention), rope_multi and flash_attn_mask_to_KV_max, from the composition of its own trace in benchmarks/results/2026-09-15-flashnext-engine-comparison.",
+   "rebucket": {
+    "move": "qsa_score_f32 (212.01 ms) from qsa_attention to indexer",
+    "engine_indexer_after": 229.60999999999999,
+    "comparator_indexer": 15.0,
+    "engine_attention_proper_ms": 1025.2,
+    "ratio_after_rebucket": 6.58
+   },
+   "conclusion": "Even after the most generous re-bucketing the ratio is 6.58x, so the family comparison is not a boundary artifact. The engine's own indexer work (17.6 ms vs the comparator's 15.0 ms, 1.17x) is already comparable, which independently shows the gap is in the attention kernel itself."
+  },
+  "engine_qsa_kernel_breakdown": [
+   {
+    "kernel": "qsa_sparse_attention_h256_wave_rows_f32_kernel<true, 4>",
+    "ms": 910.89,
+    "launches": 48,
+    "grid": "(192, 1021, 1)",
+    "block_x": 32,
+    "vgpr": 112,
+    "lds_bytes": 0
+   },
+   {
+    "kernel": "qsa_score_f32_kernel",
+    "ms": 212.01,
+    "launches": 48,
+    "grid": "(25092096, 1, 1)",
+    "block_x": 32,
+    "vgpr": null,
+    "lds_bytes": null
+   },
+   {
+    "kernel": "qsa_split_norm_rope_rows_f32_kernel<false>",
+    "ms": 46.43,
+    "launches": 96,
+    "grid": "(6656, 1024, 1)",
+    "block_x": 256,
+    "vgpr": null,
+    "lds_bytes": null
+   },
+   {
+    "kernel": "qsa_topk_expand_f32_i64_kernel",
+    "ms": 34.47,
+    "launches": 48,
+    "grid": "(1045504, 1, 1)",
+    "block_x": 1024,
+    "vgpr": null,
+    "lds_bytes": null
+   },
+   {
+    "kernel": "qsa_gate_context_f32_kernel",
+    "ms": 28.4,
+    "launches": 96,
+    "grid": "(6291456, 1, 1)",
+    "block_x": 256,
+    "vgpr": null,
+    "lds_bytes": null
+   },
+   {
+    "kernel": "qsa_norm_rope_rows_f32_kernel<false>",
+    "ms": 3.74,
+    "launches": 96,
+    "grid": "(1024, 1024, 1)",
+    "block_x": 256,
+    "vgpr": null,
+    "lds_bytes": null
+   },
+   {
+    "kernel": "qsa_scatter_index_keys_f32_kernel",
+    "ms": 0.64,
+    "launches": 96,
+    "grid": "(131072, 1, 1)",
+    "block_x": 256,
+    "vgpr": null,
+    "lds_bytes": null
+   },
+   {
+    "kernel": "qsa_pool_norm_rope_f32_kernel",
+    "ms": 0.63,
+    "launches": 48,
+    "grid": "(65536, 1, 1)",
+    "block_x": 256,
+    "vgpr": null,
+    "lds_bytes": null
+   }
+  ],
+  "engine_qsa_kernel_total_ms": 1237.21,
+  "launch_count_basis": "48 = 12 QSA layers x 4 prefill chunks of 1024 tokens; the capture ran --prefill-chunk-size 1024, so the engine's QSA work is spread over 4 launches per layer where the comparator runs the whole 4096 in one pass. Launch count differs; total selected work does not.",
+  "rate_analysis": {
+   "selected_row_key_pairs_per_layer": 6298621,
+   "attention_gflop_all_12_layers": 1858,
+   "engine_attention_kernel_tflops": 2.04,
+   "engine_whole_family_tflops": 1.5,
+   "comparator_tflops": 11.93,
+   "host_fp32_peak_tflops_approx": 9.5,
+   "comparator_above_fp32_peak": true,
+   "inference": "A rate above the fp32 peak is only reachable with tensor cores. This is inferred from the measured rate plus the comparator's kernel identity (flash_attn_ext_f16<256, 256, 16, 4, ...>, llama.cpp's WMMA flash-attention path), not read from its source; it assumes both engines select the same positions, which the identical cap establishes."
+  },
+  "reuse_structure": {
+   "amortization_now": "The engine's kernel holds HEADS=4 query heads per block (the QSA_HEAD_PAIR=quad setting), so each selected K/V pair is loaded once per 4 query heads, while 24 query heads share each of the 2 KV heads. Up to 6x more reuse is available.",
+   "lds_staging": "LDS_Block_Size is 0: there is no shared-memory staging at all today.",
+   "kv_traffic_estimate_gb_per_prefill": {
+    "6_head_group_blocks_per_layer": 77.2,
+    "24_head_group_blocks_per_layer": 308.8,
+    "192_head_group_blocks_per_layer": 2470.3
+   },
+   "chunk_kv_footprint_mb": 8.4,
+   "mall_mb": 32,
+   "inference": "One chunk's K/V (8.4 MB) fits the 32 MB MALL, so the re-reads are cache traffic rather than DRAM. That is consistent with the measured 2.04 TFLOP/s being far below the fp32 peak without the kernel being DRAM-bound: it is limited by the scalar FMA issue rate plus MALL/L2 traffic, not by DRAM bandwidth."
+  },
+  "open_observation": "The traced launch of qsa_sparse_attention_h256_wave_rows_f32_kernel<true, 4> has grid (192, 1021, 1) with block 32, but the kernel indexes head = blockIdx.x * HEADS and out_base = (row * query_heads + head) * 256, which implies a launch-time query_heads of 768 while the model metadata carries attention.head_count = 24 (and the QSA layer's attn_q emits 12288 = 6144 query + 6144 gate). This does not affect the work comparison - which rests on the selection cap, not the grid - but the launch geometry must be understood before any grid or tiling change is attempted."
+ },
+ "decision": {
+  "boundary_artifact": "rejected with the source-level evidence above",
+  "next_levers_ranked": [
+   "1. K/V reuse and LDS staging: raise the amortization from 4 query heads toward 24 by staging the selected K/V tile in shared memory and tiling rows, which is bit-exact per row and therefore needs no numerical gate. Raising HEADS alone is the trap: VGPR 112 at HEADS=4 grows to roughly 184 at HEADS=8, and the routed-MoE 32-row tile precedent shows a spilled variant going 4.8-8.1x slower.",
+   "2. Tensor cores for QK^T and P*V. This is where the comparator's advantage comes from and it changes arithmetic, so it needs the production numerical gate plus a registered strict fallback.",
+   "3. Occupancy and tiling sweep on the existing wave-row path, measured as a kernel microbenchmark, since the engine-level A/B is blocked on host memory."
+  ],
+  "measurement_blocker": "The engine-level A/B that would retain a prefill-level number cannot run: an idle hipengine serve process (pid 4175913) holds 98.6 GB of GTT in /home/lhl/hipEngine-main against a 95.7 GB requirement. Kernel microbenchmarks are unaffected and are the correct instrument here, since a bit-exact restructuring can be qualified by cycle wall plus bit-identity."
+ },
+ "limits": "All engine milliseconds are kernel time from a profiled capture of one code-p4096 prefill (benchmarks/results/2026-09-17-qwen4exp-shipped-default-attribution/), not wall time, and neither side is a throughput claim. The comparator's 155.7 ms is the same case on the same host but not the same arithmetic (BF16 against F16). The FLOP and traffic figures are computed from the selection rule and the geometry, not measured with hardware counters. No performance claim and no default change results from this packet."
+}
