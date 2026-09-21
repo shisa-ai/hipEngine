@@ -514,6 +514,7 @@ from hipengine.runtime.gguf_linear import (
     mtp_serving_target_use_wmma_prefill as _mtp_serving_target_use_wmma_prefill,
     prefill_f16_staging_for as _prefill_f16_staging_for_profile,
     q6_integer_mmq_for as _q6_integer_mmq_for_profile,
+    wide_f16_activation_for as _wide_f16_activation_for_profile,
 )
 
 
@@ -521,6 +522,17 @@ def _prefill_f16_staging_for(generator: object) -> bool:
     """Profile-scoped B2 prefill activation staging for one generator."""
 
     return _prefill_f16_staging_for_profile(
+        getattr(generator, "execution_profile", None),
+        profile_fell_back_to_strict=bool(
+            getattr(generator, "execution_profile_fell_back_to_strict", True)
+        ),
+    )
+
+
+def _wide_f16_activation_for(generator: object) -> bool:
+    """Profile-scoped wide-row Q8_0 dense prefill activation hoist."""
+
+    return _wide_f16_activation_for_profile(
         getattr(generator, "execution_profile", None),
         profile_fell_back_to_strict=bool(
             getattr(generator, "execution_profile_fell_back_to_strict", True)
@@ -2378,6 +2390,7 @@ class Qwen35GGUFBringupGenerator:
             "bulk",
         )
         session.use_prefill_f16_staging = _prefill_f16_staging_for(self)
+        session.use_wide_f16_activation = _wide_f16_activation_for(self)
         session.use_q6_integer_mmq = _q6_integer_mmq_for(self)
         prefill_quant = getattr(self, "prefill_quant", None)
         if prefill_quant is not None:

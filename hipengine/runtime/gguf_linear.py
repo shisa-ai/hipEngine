@@ -388,6 +388,208 @@ def _launch_prefill_f16_staged(
     return True
 
 
+# Wide-row Q8_0 dense prefill activation hoist.
+#
+# The wide route converts its activation from f32 to f16 during LDS staging,
+# once per column block, and re-reads the f32 activation the same number of
+# times. Hoisting that conversion into one bounded pass per launch and
+# dispatching the ``*_f16in_*`` sibling was measured at 1384.7 -> 794.1 ms over
+# the route's 1056 launches in a 4096-token prefill (590.6 ms, 42.6%) with
+# bit-identical output: both ABIs put the same f16 bytes in LDS, so this is the
+# same arithmetic, not a close approximation
+# (benchmarks/results/2026-09-17-q8-dense-f16-activation/).
+#
+# The workspace is a caller-owned bounded device buffer, the same shape as the
+# B2 prefill F16-staging workspace: a launch whose activation does not fit runs
+# the f32-input owner instead, which costs the saving and never correctness.
+# Set ``HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT=0`` for bisection.
+WIDE_F16_ACTIVATION_ENV = "HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT"
+_WIDE_F16_ACTIVATION_SOURCE_SUFFIX = "_f32_f32_out"
+_WIDE_F16_ACTIVATION_TARGET_SUFFIX = "_f16in_f32_f32_out"
+
+
+def _wide_f16_activation_target_variant(variant: str) -> str | None:
+    """Return the fp16-in sibling of a wide-route variant, or None."""
+
+    if (
+        not variant.startswith("dense_wide")
+        or "_f16in_" in variant
+        or not variant.endswith(_WIDE_F16_ACTIVATION_SOURCE_SUFFIX)
+    ):
+        return None
+    return variant[: -len(_WIDE_F16_ACTIVATION_SOURCE_SUFFIX)] + (
+        _WIDE_F16_ACTIVATION_TARGET_SUFFIX
+    )
+
+
+@dataclass(frozen=True)
+class WideF16ActivationWorkspace:
+    """Bounded device workspace owned by the active resident session."""
+
+    ptr: int
+    nbytes: int
+
+    def __post_init__(self) -> None:
+        if int(self.ptr) <= 0 or int(self.nbytes) <= 0:
+            raise ValueError("wide F16 activation workspace must be non-empty")
+
+
+_wide_f16_activation_workspace: ContextVar[
+    WideF16ActivationWorkspace | None
+] = ContextVar("gguf_wide_f16_activation_workspace", default=None)
+
+
+@contextlib.contextmanager
+def wide_f16_activation_session(
+    enabled: bool = True,
+    *,
+    workspace_ptr: int = 0,
+    workspace_nbytes: int = 0,
+) -> Iterator[None]:
+    """Bind a bounded device workspace for the wide route's activation hoist."""
+
+    workspace = None
+    if enabled and (int(workspace_ptr) or int(workspace_nbytes)):
+        workspace = WideF16ActivationWorkspace(
+            ptr=int(workspace_ptr),
+            nbytes=int(workspace_nbytes),
+        )
+    token = _wide_f16_activation_workspace.set(workspace)
+    try:
+        yield
+    finally:
+        _wide_f16_activation_workspace.reset(token)
+
+
+def wide_f16_activation_workspace() -> WideF16ActivationWorkspace | None:
+    """Return the active caller-owned workspace, if one was supplied."""
+
+    return _wide_f16_activation_workspace.get()
+
+
+def wide_f16_activation_for(
+    profile: object = None,
+    *,
+    profile_fell_back_to_strict: bool = False,
+) -> bool:
+    """Resolve the profile default while preserving explicit env overrides.
+
+    The hoist is arithmetic-preserving (bit-identical output), so the profile
+    scope here is the shipped lane's, not a numerical contract: the production
+    profile without strict fallback gets it, and everything else keeps the
+    f32-input owner unless the env names it explicitly.
+    """
+
+    override = os.environ.get(WIDE_F16_ACTIVATION_ENV, "").strip().lower()
+    if override:
+        return override in {"1", "true", "yes", "on"}
+    profile_value = getattr(profile, "value", profile)
+    if profile_value is None or str(profile_value) == "":
+        return False
+    return str(profile_value) == "production" and not bool(
+        profile_fell_back_to_strict
+    )
+
+
+def wide_f16_activation_enabled(default: bool = True) -> bool:
+    """Whether the wide route's activation hoist may run for this launch.
+
+    Resolution order: explicit env override, then the caller's default. A
+    workspace is still required, so an enabled route without one keeps the
+    f32-input owner.
+    """
+
+    override = os.environ.get(WIDE_F16_ACTIVATION_ENV, "").strip().lower()
+    if override:
+        return override in {"1", "true", "yes", "on"}
+    return bool(default)
+
+
+def _wide_f16_activation_stage_ptr(count: int) -> int:
+    """Return the bounded owner pointer, or zero to keep the f32-input owner."""
+
+    workspace = wide_f16_activation_workspace()
+    required_nbytes = int(count) * 2
+    if workspace is None or int(workspace.nbytes) < required_nbytes:
+        return 0
+    return int(workspace.ptr)
+
+
+def _launch_dense_wide_f16_staged(
+    fn,
+    weight: GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    kwargs: dict,
+    *,
+    backend: str,
+    quant: str,
+    layer: str,
+    variant: str,
+    runtime,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+) -> bool:
+    """Stage x as IEEE half and dispatch the fp16-in sibling; False = skip."""
+
+    if not wide_f16_activation_enabled():
+        return False
+    target = _wide_f16_activation_target_variant(variant)
+    if target is None:
+        return False
+    key = KernelKey(backend, layer, quant, target)
+    if not is_registered(key):
+        # The dispatch path populates the backend package before deciding, and
+        # the launch-time sibling lookup needs the same population: without it
+        # the swap silently declines on the first launch of a process, which is
+        # exactly the failure this route already had once when nothing could
+        # select it.
+        _ensure_linear_kernel_registered(key)
+    if not is_registered(key):
+        return False
+    count = int(rows) * int(in_features)
+    stage_ptr = _wide_f16_activation_stage_ptr(count)
+    if stage_ptr <= 0:
+        return False
+    sibling = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    stage_kwargs = dict(kwargs)
+    library = stage_kwargs.get("library")
+    if libraries is not None:
+        library = _variant_scoped_library(libraries, key)
+        if library is not None:
+            stage_kwargs["library"] = library
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import (
+        f32_to_f16,
+    )
+
+    f32_to_f16(
+        x_ptr,
+        stage_ptr,
+        count,
+        stream=stage_kwargs.get("stream", 0),
+        library=library,
+        runtime=runtime,
+    )
+    _LAUNCH_ABI["raw"](
+        sibling,
+        weight,
+        stage_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stage_kwargs,
+    )
+    return True
+
+
 def mtp_serving_target_use_wmma_prefill(
     profile: object = None,
     *,
@@ -3873,6 +4075,23 @@ def launch_gguf_linear(
             runtime=runtime,
         ):
             return
+    if abi == "raw" and _launch_dense_wide_f16_staged(
+        fn,
+        weight,
+        x_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        kwargs,
+        backend=resolved_backend,
+        quant=quant,
+        layer=layer,
+        variant=variant,
+        runtime=runtime,
+        libraries=libraries,
+    ):
+        return
     _LAUNCH_ABI[abi](fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs)
 
 

@@ -142,3 +142,18 @@ every-fourth-layer full-attention roles).
   BK 64) in both arms; no other tile was measured against the f16 ABI.
 - **One host.** AMD Radeon 8060S (`gfx1151`), Framework Desktop, 125 GB unified
   memory, ROCm 7.15.0 / hipcc 7.15.26333.
+
+## Estimate provenance
+
+The 590.6 ms headline is the census-weighted aggregate of separately timed
+medians with the conversion pass *shared* across the consumers of one
+activation. The measured composite arm (conversion then tile, no sharing)
+gives 553.9 ms, and the assumed sharing is worth only 7.5 ms of the difference.
+Read the honest range as **553.9-590.6 ms**, and read the per-launch figure as
+the one that matters for an implementation that converts per call: the
+implementation consequence is that per-call conversion into reusable
+runner-owned scratch captures essentially the whole opportunity, and a general
+activation cache with invalidation machinery is not a prerequisite for it. This
+is a kernel-and-launch-count aggregate, not a prefill wall time; the engine
+measurement is the route A/B in
+[`../2026-09-17-q8-dense-f16-activation-hoist/`](../2026-09-17-q8-dense-f16-activation-hoist/).

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import os
 import pytest
 
 # Import built-ins so the registry has real kernels to restore after overrides.
@@ -7562,3 +7563,123 @@ def test_qwen4exp_mmq_prefill_session_swaps_f32_f32_prefill(monkeypatch) -> None
     finally:
         for k, fn in originals.items():
             register(k, fn, replace=True)
+
+
+def test_launch_gguf_linear_swaps_the_wide_route_to_its_f16_sibling() -> None:
+    """The swap has to happen at the call site, not only in its helper.
+
+    ``_launch_dense_wide_f16_staged`` was correct and unit-tested while the
+    shipped engine still launched the f32-input symbol 792 times: the helper was
+    never reached, and a helper-level test cannot see that. This drives the real
+    ``launch_gguf_linear`` with the wide route selected, once with a bound
+    workspace and once without.
+    """
+
+    from hipengine.runtime.gguf_linear import wide_f16_activation_session
+
+    weight = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0")
+    f32in_key = KernelKey(
+        "hip_gfx1100", "linear", "gguf_q8_0", "dense_wide256_f32_f32_out"
+    )
+    f16in_key = KernelKey(
+        "hip_gfx1100", "linear", "gguf_q8_0", "dense_wide256_f16in_f32_f32_out"
+    )
+    calls: list[str] = []
+    original_f32in = resolve(
+        backend=f32in_key.backend,
+        layer=f32in_key.layer,
+        quant=f32in_key.quant,
+        variant=f32in_key.variant,
+    )
+    original_f16in = resolve(
+        backend=f16in_key.backend,
+        layer=f16in_key.layer,
+        quant=f16in_key.quant,
+        variant=f16in_key.variant,
+    )
+    register(f32in_key, lambda *a, **k: calls.append("f32in"), replace=True)
+    register(f16in_key, lambda *a, **k: calls.append("f16in"), replace=True)
+    # Hermetic: the dispatch chain probes sibling families, and the real
+    # population path imports the backend package, which builds. The two keys
+    # this test needs are registered above.
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        gguf_linear_module, "_ensure_linear_kernel_registered", lambda key: None
+    )
+    conversions: list[tuple[int, int, int]] = []
+    original_cast = gguf_linear_module.__dict__.get("_wide_f16_activation_cast")
+
+    def _cast(x_ptr, out_ptr, n, **kwargs):
+        conversions.append((int(x_ptr), int(out_ptr), int(n)))
+
+    import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide as dw_module
+
+    original_dw_cast = dw_module.f32_to_f16
+    dw_module.f32_to_f16 = _cast
+    rows, in_features, out_features = 512, 2560, 10240
+    required = rows * in_features * 2
+    # The wide route is a post-binder selector: it is inert unless the env names
+    # it, which is also why this test drives the real dispatch chain rather than
+    # calling the helper directly.
+    os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] = "1"
+    os.environ.pop("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", None)
+    try:
+        # No workspace: the shipped f32-input owner runs, as it did before.
+        launch_gguf_linear(
+            weight,
+            x_ptr=0x10000000,
+            out_ptr=0x20000000,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            runtime="runtime-sentinel",
+        )
+        assert calls == ["f32in"]
+        assert conversions == []
+
+        # Bound workspace: the conversion runs once and the sibling consumes it.
+        with wide_f16_activation_session(
+            True, workspace_ptr=0x50000000, workspace_nbytes=required
+        ):
+            launch_gguf_linear(
+                weight,
+                x_ptr=0x10000000,
+                out_ptr=0x20000000,
+                rows=rows,
+                in_features=in_features,
+                out_features=out_features,
+                activation_dtype=GGUF_ACTIVATION_F32,
+                output_dtype=GGUF_OUTPUT_F32,
+                runtime="runtime-sentinel",
+            )
+        assert calls == ["f32in", "f16in"]
+        assert conversions == [(0x10000000, 0x50000000, rows * in_features)]
+
+        # The env opt-out restores the owner even with a workspace bound.
+        os.environ["HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT"] = "0"
+        with wide_f16_activation_session(
+            True, workspace_ptr=0x50000000, workspace_nbytes=required
+        ):
+            launch_gguf_linear(
+                weight,
+                x_ptr=0x10000000,
+                out_ptr=0x20000000,
+                rows=rows,
+                in_features=in_features,
+                out_features=out_features,
+                activation_dtype=GGUF_ACTIVATION_F32,
+                output_dtype=GGUF_OUTPUT_F32,
+                runtime="runtime-sentinel",
+            )
+        assert calls == ["f32in", "f16in", "f32in"]
+        assert len(conversions) == 1
+    finally:
+        monkeypatch.undo()
+        os.environ.pop("HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT", None)
+        os.environ.pop("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", None)
+        dw_module.f32_to_f16 = original_dw_cast
+        register(f32in_key, original_f32in, replace=True)
+        register(f16in_key, original_f16in, replace=True)
+        assert original_cast is None

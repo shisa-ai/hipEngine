@@ -370,6 +370,8 @@ from hipengine.runtime.gguf_linear import (
     q8_t16_dual_wmma_prefill_session,
     q8_t16_pair_rowtile_min_rows_session,
     q8_t16_rowtile_all_session,
+    wide_f16_activation_enabled,
+    wide_f16_activation_session,
     resolve_gguf_linear_dispatch,
     resolve_q8_mmq_prefill_policy,
     target_verifier_production_q4_rowtile_session,
@@ -15107,6 +15109,7 @@ class Qwen35GGUFResidentSession:
     use_gemv_decode: bool | None = None
     use_q6_f16_rocblas_prefill: bool | None = None
     use_prefill_f16_staging: bool = False
+    use_wide_f16_activation: bool = False
     use_q6_integer_mmq: bool = False
     prefill_chunk_size: int = 0
     prefill_config: PrefillConfig | None = None
@@ -19323,6 +19326,23 @@ class Qwen35GGUFResidentSession:
             workspace_nbytes=int(buffer.nbytes),
         )
 
+    def _wide_f16_activation_context(self):
+        """Bind the wide-route activation workspace to this resident session.
+
+        Shares the bounded staging allocation with the B2 route: both are
+        single-launch-scoped users on one stream, so neither can observe the
+        other's bytes.
+        """
+
+        if not wide_f16_activation_enabled(self.use_wide_f16_activation):
+            return wide_f16_activation_session(False)
+        buffer = self._ensure_prefill_f16_staging_buffer()
+        return wide_f16_activation_session(
+            True,
+            workspace_ptr=int(buffer.ptr),
+            workspace_nbytes=int(buffer.nbytes),
+        )
+
     def _q6_integer_mmq_context(self, *, target_verifier: bool = False):
         """Bind the B5 workspace only in its qualified target-verifier phase."""
 
@@ -19581,6 +19601,7 @@ class Qwen35GGUFResidentSession:
                     _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
                 ),
                 self._prefill_f16_staging_context(),
+                self._wide_f16_activation_context(),
                 self._q6_integer_mmq_context(),
                 self._q8_mmq_prefill_context(),
                 self._q6_f16_rocblas_prefill_context(request_rows=len(token_ids)),
@@ -22603,6 +22624,7 @@ class Qwen35GGUFResidentSession:
                     _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
                 ),
                 self._prefill_f16_staging_context(),
+                self._wide_f16_activation_context(),
                 self._q6_integer_mmq_context(),
             ):
                 return self._prefill_batch_native_impl(

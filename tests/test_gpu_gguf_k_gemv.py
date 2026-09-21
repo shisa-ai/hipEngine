@@ -93,7 +93,7 @@ def make_q6_k_weight(out_features: int, in_features: int) -> np.ndarray:
 
 def _make_q8_0_block(out_idx: int, block_idx: int) -> np.ndarray:
     d = np.float16(0.03125 * (1 + (out_idx % 5)))
-    q = ((np.arange(32, dtype=np.int16) + out_idx * 7 + block_idx * 3) % 31 - 15).astype(
+    q = ((np.arange(32, dtype=np.int32) + out_idx * 7 + block_idx * 3) % 31 - 15).astype(
         np.int8
     )
     return np.concatenate([np.asarray([d], dtype=np.float16).view(np.uint8), q.view(np.uint8)])
@@ -102,10 +102,10 @@ def _make_q8_0_block(out_idx: int, block_idx: int) -> np.ndarray:
 def _make_q5_k_block(out_idx: int, block_idx: int) -> np.ndarray:
     d = np.float16(0.015625 * (1 + (out_idx % 5)))
     dmin = np.float16(0.0078125 * (1 + (block_idx % 3)))
-    scales = ((np.arange(8, dtype=np.uint8) * 3 + out_idx + block_idx) % 63 + 1).astype(
+    scales = ((np.arange(8, dtype=np.int32) * 3 + out_idx + block_idx) % 63 + 1).astype(
         np.uint8
     )
-    mins = ((np.arange(8, dtype=np.uint8) * 5 + 2 * out_idx + block_idx) % 17).astype(
+    mins = ((np.arange(8, dtype=np.int32) * 5 + 2 * out_idx + block_idx) % 17).astype(
         np.uint8
     )
     q = ((np.arange(QK_K, dtype=np.uint16) + out_idx * 7 + block_idx * 11) % 32).astype(
@@ -132,10 +132,10 @@ def _make_q5_k_block(out_idx: int, block_idx: int) -> np.ndarray:
 
 def _make_q6_k_block(out_idx: int, block_idx: int) -> np.ndarray:
     d = np.float16(0.0107421875 * (1 + (out_idx % 3)))
-    scales = ((np.arange(16, dtype=np.int16) * 3 + out_idx - block_idx) % 31 - 15).astype(
+    scales = ((np.arange(16, dtype=np.int32) * 3 + out_idx - block_idx) % 31 - 15).astype(
         np.int8
     )
-    q_signed = ((np.arange(QK_K, dtype=np.int16) + out_idx * 5 + block_idx * 9) % 64 - 32)
+    q_signed = ((np.arange(QK_K, dtype=np.int32) + out_idx * 5 + block_idx * 9) % 64 - 32)
     q = (q_signed + 32).astype(np.uint8)
     ql = np.zeros(128, dtype=np.uint8)
     qh = np.zeros(64, dtype=np.uint8)
