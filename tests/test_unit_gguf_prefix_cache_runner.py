@@ -647,6 +647,148 @@ def test_incremental_prefill_captures_only_the_prompt_aligned_boundary() -> None
     runner.close()
 
 
+def test_decode_time_capture_keeps_the_reachable_prompt_boundary() -> None:
+    """A decode-time capture must not supersede the prompt-aligned boundary.
+
+    The decode path refreshes the prefix cache after every token, so a reply
+    long enough to cross the next 256-token boundary captures a boundary *past*
+    this request's own prompt. Capturing it used to evict the prompt-aligned
+    snapshot (``superseded_by_row``), so the one entry a following turn can
+    reach died with the row: that turn then matched no live prefix at all and
+    re-prefilled the whole prompt instead of reusing it.
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=9,
+            kv_pool_low_water_pages=9,
+            kv_pool_high_water_pages=9,
+            kv_pool_chunk_pages=9,
+            prefix_cache="radix",
+        )
+    )
+    prompt = tuple(range(1, 701))
+    request = _request(prompt, max_tokens=80)
+    runner.register_batch((21,), request, prompt_rows=(prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=21))
+    row = runner._rows[21]
+
+    for chunk in (prompt[:256], prompt[256:512], prompt[512:]):
+        runner.prefill_batch(
+            WorkItem(
+                kind=WorkKind.PREFILL,
+                request_ids=(21,),
+                row_to_request=(21,),
+                token_rows=(chunk,),
+            ),
+            commit=True,
+        )
+
+    assert row.lease is not None
+    session = row.lease.session
+    assert session.snapshot_capture_calls == [512]
+    assert tuple(runner._prefix_state_snapshots) == (prompt[:512],)
+
+    # Decode across the next 256-token boundary.  This is the per-step
+    # ``_refresh_prefix_cache`` call the native decode path makes after each
+    # token; the row's own prompt ended at 700, so 768 is a boundary only a
+    # client resending this request's generated text verbatim could reach.
+    for _ in range(768 - len(prompt)):
+        session.step(901, return_logits=False)
+        assert row.slot is not None
+        row.slot.generated_ids.append(901)
+    assert int(session.position) == 768
+    runner._refresh_prefix_cache(row)
+
+    # Both boundaries are captured; neither replaces the other.
+    assert row.slot is not None
+    deeper = tuple(row.prompt_ids) + tuple(
+        row.slot.generated_ids[: 768 - len(prompt)]
+    )
+    assert len(deeper) == 768
+    assert session.snapshot_capture_calls == [512, 768]
+    assert tuple(runner._prefix_state_snapshots) == (prompt[:512], deeper)
+
+    runner._release_row_resources(row, retain_prefix_snapshots=True)
+    runner._rows.pop(21)
+    assert runner._prefix_cache is not None
+    match = runner._prefix_cache.match(prompt)
+    assert match.hit is True, "the following turn matched no live prefix"
+    assert match.matched_token_count == 512
+    # A cumulative turn that resends the generated text still reaches deeper.
+    assert runner._prefix_cache.match(deeper).matched_token_count == 768
+    assert runner.observability_snapshot()["prefix_cache"]["retained_snapshot_entries"] == 2
+
+    for tokens in (prompt[:512], deeper):
+        assert runner._evict_prefix_snapshot(tokens) is True
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def test_retained_budget_drops_the_decode_time_boundary_before_the_prompt_one() -> None:
+    """Under a squeezed budget the reachable boundary is the one that survives.
+
+    Retained entries are trimmed oldest-first and a decode-time capture is
+    inserted after the prompt-aligned one, so without an explicit priority the
+    squeeze dropped the boundary every following turn reaches and kept the one
+    only a verbatim continuation reaches.
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=1,
+            kv_pool_initial_pages=9,
+            kv_pool_low_water_pages=9,
+            kv_pool_high_water_pages=9,
+            kv_pool_chunk_pages=9,
+            prefix_cache="radix",
+        )
+    )
+    prompt = tuple(range(1, 701))
+    request = _request(prompt, max_tokens=80)
+    runner.register_batch((22,), request, prompt_rows=(prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=22))
+    row = runner._rows[22]
+    assert row.lease is not None
+    session = row.lease.session
+
+    for chunk in (prompt[:256], prompt[256:512], prompt[512:]):
+        runner.prefill_batch(
+            WorkItem(
+                kind=WorkKind.PREFILL,
+                request_ids=(22,),
+                row_to_request=(22,),
+                token_rows=(chunk,),
+            ),
+            commit=True,
+        )
+    for _ in range(768 - len(prompt)):
+        session.step(901, return_logits=False)
+        assert row.slot is not None
+        row.slot.generated_ids.append(901)
+    runner._refresh_prefix_cache(row)
+
+    runner._release_row_resources(row, retain_prefix_snapshots=True)
+    runner._rows.pop(22)
+
+    observability = runner.observability_snapshot()["prefix_cache"]
+    assert observability["retained_snapshot_entries"] == 1
+    assert tuple(runner._prefix_state_snapshots) == (prompt[:512],)
+    assert runner._prefix_cache is not None
+    match = runner._prefix_cache.match(prompt)
+    assert match.hit is True
+    assert match.matched_token_count == 512
+
+    assert runner._evict_prefix_snapshot(prompt[:512]) is True
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
 def test_resident_runner_reuses_completed_prefix_snapshot_and_evicts_cleanly() -> None:
     owner = _FakePrefixOwner()
     runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
@@ -943,14 +1085,20 @@ def test_reuse_chain_deepens_across_three_turns() -> None:
 
     A cumulative conversation resends its whole history, so the boundary a turn
     reaches during decode is a prefix of the next turn's prompt. If the chain
-    works, the third turn matches deeper than the first hand-off.
+    works, the third turn matches deeper than the first hand-off. A turn retains
+    two boundaries -- the prompt-aligned one and the deepest decode-time one --
+    and the budget holds one per turn plus the decode-time entry, so the chain
+    deepens whenever the budget has slack for it. Under pressure the
+    prompt-aligned boundary is what survives, because a resend reaches only that
+    one (see
+    ``test_retained_budget_drops_the_decode_time_boundary_before_the_prompt_one``).
     """
 
     owner = _FakePrefixOwner()
-    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
     runner.configure_engine_loop(
         EngineLoopConfig(
-            max_active_requests=1,
+            max_active_requests=3,
             kv_pool_initial_pages=8,
             kv_pool_low_water_pages=8,
             kv_pool_high_water_pages=8,
