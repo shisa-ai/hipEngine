@@ -71,6 +71,13 @@ _ARGTYPES_BRANCH_ADD = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+_ARGTYPES_SCALE = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
 
 _SOURCE = Path(__file__).with_name("gemma4_norm.hip")
 _OUTPUT_NAME = "gemma4_norm.so"
@@ -83,6 +90,7 @@ _SYMBOL_ROUTER_PRESCALE_BF16 = "hipengine_gemma4_router_prescale_bf16"
 _SYMBOL_ADD_RMSNORM_SCALE_BF16 = "hipengine_gemma4_add_rmsnorm_scale_bf16"
 _SYMBOL_EXPERT_WEIGHT_SCALE_F32 = "hipengine_gemma4_expert_weight_scale_f32"
 _SYMBOL_BRANCH_ADD_BF16 = "hipengine_gemma4_branch_add_bf16"
+_SYMBOL_SCALE_BF16 = "hipengine_gemma4_scale_bf16"
 
 
 def plan_gemma4_norm_build(
@@ -334,6 +342,34 @@ def gemma4_branch_add_bf16(
     _check_launch(runtime, err)
 
 
+def gemma4_scale_bf16(
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch ``out = x * scale`` elementwise over ``rows * hidden_size`` BF16 values.
+
+    Gemma 4 multiplies its embedding by ``sqrt(hidden_size)``. That cannot be
+    folded into the RMSNorm that follows it: the norm would not see the factor,
+    but the residual stream the layer adds back into would be wrong by exactly
+    that much. In-place is allowed (``out_ptr == x_ptr``); every thread reads its
+    own element before writing it.
+    """
+
+    _check_positive_shape(rows, hidden_size)
+    library = library or build_gemma4_norm(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, _SYMBOL_SCALE_BF16, _ARGTYPES_SCALE, ctypes.c_int)
+    err = fn(x_ptr, out_ptr, rows * hidden_size, float(scale), stream)
+    _check_launch(runtime, err)
+
+
 def register_gemma4_norm_kernels(*, replace: bool = False) -> None:
     """Register the Gemma 4 norm family against the four-axis registry."""
 
@@ -366,6 +402,11 @@ def register_gemma4_norm_kernels(*, replace: bool = False) -> None:
         register(
             KernelKey("hip_gfx1100", "branch_add", quant, "gemma4_plain"),
             gemma4_branch_add_bf16,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "scale", quant, "gemma4_plain"),
+            gemma4_scale_bf16,
             replace=replace,
         )
 

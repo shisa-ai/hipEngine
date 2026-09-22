@@ -246,6 +246,26 @@ __global__ void gemma4_branch_add_kernel(
   }
 }
 
+// Elementwise `out = x * scale` over a whole buffer.
+//
+// Gemma 4 scales its embedding by sqrt(hidden_size). That scale cannot be folded
+// into the following RMSNorm even though a norm would not see it, because the
+// scaled embedding *is* the residual stream: the attention and MLP outputs are
+// added back to it, so dropping the scale leaves the residual wrong by exactly
+// that factor.
+template <typename scalar_t>
+__global__ void gemma4_scale_kernel(
+    const scalar_t* x,
+    scalar_t* out,
+    int64_t total,
+    float scale) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    out[idx] = gemma4_to_scalar<scalar_t>(gemma4_to_float(x[idx]) * scale);
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_gemma4_rmsnorm_f32w_bf16(
@@ -451,5 +471,30 @@ extern "C" int hipengine_gemma4_branch_add_bf16(
       b,
       out,
       total);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gemma4_scale_bf16(
+    const uint16_t* x,
+    uint16_t* out,
+    int64_t total,
+    float scale,
+    hipStream_t stream) {
+  if (total <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int64_t blocks = (total + threads - 1) / threads;
+  const int64_t capped = blocks > 65535 ? 65535 : blocks;
+  hipLaunchKernelGGL(
+      gemma4_scale_kernel<uint16_t>,
+      dim3(static_cast<unsigned int>(capped)),
+      dim3(threads),
+      0,
+      stream,
+      x,
+      out,
+      total,
+      scale);
   return static_cast<int>(hipGetLastError());
 }
