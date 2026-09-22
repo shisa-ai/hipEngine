@@ -426,9 +426,9 @@ Measure one shard before committing to the full label pass.
 
 | ID | Label horizon | Importance | Required comparison/result |
 | --- | --- | --- | --- |
-| H0 | Within-prompt future queries after grace window | Mass | Matched recapture control; pending |
-| H1 | Next 128 teacher continuation queries after prefix cut | Mass | H1 vs H0 isolates horizon; pending |
-| H2 | Same continuation queries as H1 | Single-key value perturbation norm | H2 vs H1 isolates value criterion; pending |
+| H0 | Within-prompt future queries after grace window | Mass | CPU reference exists in `future_attention_mass_cpu`; matched recapture/integrated replay blocked by missing training point and G0 repair |
+| H1 | Next 128 teacher continuation queries after prefix cut | Mass | CPU reference `continuation_mass_cpu` implemented/tested; real continuation capture and replay not run |
+| H2 | Same continuation queries as H1 | Single-key value perturbation norm | CPU reference `value_perturbation_norm_cpu` implemented/tested; V capture and replay not run |
 
 - [ ] Implement versioned capture/label extensions and independent CPU fixtures.
 - [ ] Reuse/reconstruct V only if its numerical stage is verified against direct
