@@ -78,6 +78,11 @@ class Case:
     extras: dict[str, Any] = field(default_factory=dict)
 
 
+JSON_PROMPT = (
+    "Reply with a single flat JSON object that has exactly two keys, "
+    "\"city\" and \"unit\", for the weather in Kyoto. JSON only."
+)
+
 CASES: tuple[Case, ...] = (
     Case(
         name="forced_two_tokens",
@@ -105,6 +110,18 @@ CASES: tuple[Case, ...] = (
         forced_text=" zeta omega",
         temperature=0.7,
         seed=11,
+    ),
+    Case(
+        name="json_object_close",
+        purpose=(
+            "A json_object request masks each row from the decoded text of the "
+            "tokens before it and forces the closing suffix when the remaining "
+            "budget is exactly enough to close the object. The greedy case is "
+            "deterministic, so the two arms must publish identical ids."
+        ),
+        prompt=JSON_PROMPT,
+        max_tokens=12,
+        extras={"json_object_close_forcing": True},
     ),
     Case(
         name="force_sequence_completion",
@@ -285,7 +302,11 @@ def _run_arm(
                 if not probe["ids"]:
                     raise RuntimeError(f"probe for {case.name} published no token")
                 probe_token_id = int(probe["ids"][0])
-            fields = _forced_ids(llm, case, probe_token_id)
+            # The case's own extras must be merged in: a case that carries a
+            # sampler field and never sends it would test nothing.
+            fields = _case_payload(
+                case, tokens=_forced_ids(llm, case, probe_token_id)
+            )
             observations["cases"][case.name] = {
                 # Token ids are tuples and stay lists; a reason is a string and
                 # must not be split into characters.
@@ -433,6 +454,14 @@ def _compare(arms: dict[str, Any]) -> dict[str, Any]:
         if forced:
             assert mtp_case["ids"][: len(forced)] == forced, {
                 "forced_prefix_not_published": {"case": case.name}
+            }
+        if case.name == "json_object_close":
+            # The constraint must have closed the object: the model's own
+            # continuation is unbounded, so a closed object is the observable
+            # effect of the forced closing suffix.
+            text = mtp_case["text"]
+            assert text.count("{") == text.count("}") == 1, {
+                "json_object_was_not_closed": {"case": case.name, "text": text}
             }
         if mtp_case["probe_ids"] is not None:
             assert mtp_case["probe_ids"] == ar_case["probe_ids"], {

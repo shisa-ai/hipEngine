@@ -1,12 +1,12 @@
 {
  "schema": 1,
  "kind": "engine_correctness",
- "title": "Qwen3.8-27B Q4_K_M on gfx1151: the sampled MTP route publishes a forced-token queue exactly where the autoregressive route does",
- "purpose": "Task 8 acceptance. A forced token is a caller-level override: the autoregressive route emits the queue head instead of drawing from the row. This records that the speculative route does the same -- the queue reaches the accept walk as a point mass on the row that predicts that position, and the live queue is consumed only for the tokens a cycle published. Both arms run the same requests through hipengine.LLM, so the route is the only difference. No speed claim is made or implied.",
+ "title": "Qwen3.8-27B Q4_K_M on gfx1151: the sampled MTP route publishes the same tokens as the autoregressive route for forced-token queues and output constraints",
+ "purpose": "Task 8 acceptance. Forced tokens, force-sequence completion, json_object_close_forcing, and tool_call_constraint are caller-level overrides: the autoregressive route emits the queued head instead of drawing, masks a row from the decoded text of the tokens before it, and queues a closing suffix when the remaining budget is exactly enough to close the structure. This records that the speculative route does the same. Both arms run the same requests through hipengine.LLM, so the route is the only difference. No speed claim is made or implied.",
  "status": "measured_accepted",
  "performance_claim": false,
  "date": "2026-09-23",
- "git_head": "2f93e444b",
+ "git_head": "39c26b235",
  "backend": "hip_gfx1151",
  "host": "gfx1151",
  "kv_storage": "bf16",
@@ -22,15 +22,15 @@
  "environment": {},
  "gate_command": "scripts/mtp_forced_token_gate.py --model ~/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --kv-storage bf16 --json /tmp/mtp-forced-bf16.json",
  "coverage": {
-  "covered": "Four requests on both arms: a three-token queue, a four-token queue longer than one verified chain, the same queue on the sampled branch (temperature 0.7), and a force-sequence completion whose first token is the case prompt's own first token (taken from an unforced probe of that prompt). An unforced request runs before and after the forced ones on both arms.",
-  "not_covered": "The tokenizer-keyed hooks (json_object_close_forcing and tool_call_constraint), which are still refused on this route and stay on the autoregressive path; their classification and clearing condition are recorded in SAMPLED_MTP_UNSERVABLE_BLOCKERS. Multi-choice (n>1) requests are task 17."
+  "covered": "Five requests on both arms: a three-token queue, a four-token queue longer than one verified chain, the same queue on the sampled branch (temperature 0.7), a json_object request whose object closes at its budget, and a force-sequence completion whose first token is the case prompt's own first token (taken from an unforced probe of that prompt). An unforced request runs before and after the forced ones on both arms.",
+  "not_covered": "tool_call_constraint: the field is servable and travels the same per-row text walk as json_object_close_forcing, but no live case exercises the tool branch, so the claim here is the json_object one. thinking_budget stays refused with its cause and clearing command in SAMPLED_MTP_UNSERVABLE_BLOCKERS. Multi-choice (n>1) requests are task 17."
  },
  "acceptance": {
-  "forced_prefix_published": "Every forced case published its queued ids at the head of the output, in order, on both arms: [1110, 1850, 32777] for the two-token queue, [1110, 1850, 32777, 81099] for the three-token queue, [16570, 81099, 12102] for the force-sequence case.",
-  "continuation_parity": "Every greedy case published the autoregressive arm's exact ids (3 cases), so the queue was consumed exactly once and the continuation was not disturbed. The 1 sampled case(s) published the forced prefix on both arms; their continuations are different draws from the same law because the accept walk consumes the request's uniform stream per verified row.",
   "queue_isolated": "The unforced request run after every forced case published the same ids as the unforced seed request on the speculative arm, and the same ids as the autoregressive arm.",
-  "route_ran": "Every speculative case reported gguf_specdec2_mtp2 while every autoregressive case reported a plain decode path.",
-  "force_sequence_completion": "The model's own seed token plus the two queued tokens were published as [16570, 81099, 12102] on both arms, so the remainder was queued and emitted from inside the cycle."
+  "force_sequence_completion": "The model's own seed token plus the two queued tokens were published as [16570, 81099, 12102] on both arms, so the remainder was queued and emitted from inside the cycle.",
+  "forced_prefix_published": "Every forced case published its queued tokens at the head of the output, in order, on both arms.",
+  "continuation_parity": "Every greedy case published the autoregressive arm's exact ids (4 cases), so the queue was consumed exactly once and the continuation was not disturbed. The 1 sampled case(s) published the forced prefix on both arms; their continuations are different draws from the same law because the accept walk consumes the request's uniform stream per verified row.",
+  "route_ran": "Every speculative case reported gguf_specdec2_mtp2 while every autoregressive case reported a plain decode path."
  },
  "observation": {
   "queue_consumed_across_cycles": "The two-token case ran 10 cycles for 23 speculative output tokens, and the three-token case ran 18 cycles for 31: the queue outlives a single cycle and is consumed one published position at a time.",
@@ -38,23 +38,26 @@
   "force_sequence_trigger": "The force-sequence case queued [16570, 81099, 12102] where the first element is the case prompt's own first token from an unforced probe, so the partial match is guaranteed to trigger on the token the model emits anyway; both arms published exactly that sequence.",
   "route_confirmed": "Every speculative case reported execution_path=gguf_specdec2_mtp2 and every autoregressive case reported a plain decode path, so no comparison is between two autoregressive runs.",
   "defect_found_and_fixed": "The first live run of this gate caught an UnboundLocalError in the host sampled-accept path (a function-local import of the row walk shadowing the module import), which the engine contained by falling back to autoregressive decoding for that request. Fixed, and pinned by tests/test_unit_mtp_native_sampling.py test_host_sampled_accept_resolves_forced_overrides_without_consuming_them.",
-  "declared_context_honored": "Both arms constructed their engine with max_sequence_length=4096 and no prepare() call, and both resident sessions were sized to 4096 rather than to the automatic selection (262144 for this artifact). That is the default configuration: no HIPENGINE_GGUF_AUTO_CONTEXT override is set."
+  "declared_context_honored": "Both arms constructed their engine with max_sequence_length=4096 and no prepare() call, and both resident sessions were sized to 4096 rather than to automatic selection. That is the default configuration: no HIPENGINE_GGUF_AUTO_CONTEXT override is set.",
+  "json_object_close": "The json_object case published a closed object at exactly its 12-token budget and published the autoregressive arm's ids token for token (5 cycles, 10 speculative tokens). The constraint's closing suffix is what closes the object at the budget, and the autoregressive arm runs the same rule."
  },
  "summary": {
-  "cases": 4,
+  "cases": 5,
   "forced_cases": 3,
   "force_sequence_cases": 1,
-  "greedy_cases_identical_between_arms": 3,
+  "greedy_cases_identical_between_arms": 4,
   "cycles": {
    "forced_two_tokens": 10,
    "forced_three_tokens_greedy": 18,
    "forced_tokens_sampled": 15,
+   "json_object_close": 5,
    "force_sequence_completion": 13
   },
   "mtp_output_tokens": {
    "forced_two_tokens": 23,
    "forced_three_tokens_greedy": 31,
    "forced_tokens_sampled": 23,
+   "json_object_close": 10,
    "force_sequence_completion": 23
   },
   "declared_context_tokens": 4096,
@@ -152,6 +155,17 @@
     "ar_execution_path": "gguf_packed_ar_host_sampler_decode"
    },
    {
+    "case": "json_object_close",
+    "temperature": 0.0,
+    "forced_tokens": 0,
+    "force_sequence_tokens": 0,
+    "shared_prefix": 12,
+    "identical_output": true,
+    "published": 12,
+    "mtp_execution_path": "gguf_specdec2_mtp2",
+    "ar_execution_path": "gguf_packed_ar_host_sampler_decode"
+   },
+   {
     "case": "force_sequence_completion",
     "temperature": 0.0,
     "forced_tokens": 0,
@@ -239,6 +253,7 @@
        50897,
        198
       ],
+      "text": " zeta omega\n\nCounting slowly, one number per word:\n\none\ntwo\nthree\nfour\nfive\n",
       "telemetry": {
        "execution_path": "gguf_specdec2_mtp2",
        "sampler_mode": "processed_argmax",
@@ -302,6 +317,7 @@
        26952,
        198
       ],
+      "text": " zeta omega kappa theta sigma phi psi chi xi eta delta gamma beta alpha\n\nCounting slowly, one number per word:\n\none\ntwo\nthree\n",
       "telemetry": {
        "execution_path": "gguf_specdec2_mtp2",
        "sampler_mode": "processed_argmax",
@@ -356,6 +372,7 @@
        13,
        353
       ],
+      "text": " zeta omega three seven oh\n\nI have completed the count as requested, following your specific word-by-word sequence. I",
       "telemetry": {
        "execution_path": "gguf_specdec2_mtp2",
        "sampler_mode": "host_logits_sample",
@@ -370,6 +387,44 @@
         "ar_output_tokens_in_cycles": 1,
         "plan_group_rows": 1,
         "plan_reason": "speculative_qualified",
+        "provider_decline_reason": null,
+        "failure_reason_counts": {}
+       }
+      }
+     },
+     "json_object_close": {
+      "fields": {
+       "json_object_close_forcing": true
+      },
+      "ids": [
+       271,
+       4754,
+       8656,
+       3147,
+       74482,
+       2004,
+       2129,
+       3715,
+       3147,
+       34,
+       38915,
+       8934
+      ],
+      "text": "\n\n{\"city\":\"Kyoto\",\"unit\":\"Celsius\"}",
+      "telemetry": {
+       "execution_path": "gguf_specdec2_mtp2",
+       "sampler_mode": "processed_argmax",
+       "forced_tokens_pending": [],
+       "forced_token_id": 8934,
+       "forced_tokens_remaining": 0,
+       "specdec2_mtp2": {
+        "cycles": 5,
+        "generated_draft_tokens": 13,
+        "accepted_draft_tokens": 5,
+        "mtp_output_tokens": 10,
+        "ar_output_tokens_in_cycles": 1,
+        "plan_group_rows": 1,
+        "plan_reason": "target_graph_output_room_miss",
         "provider_decline_reason": null,
         "failure_reason_counts": {}
        }
@@ -412,6 +467,7 @@
        286,
        13569
       ],
+      "text": " twenty kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega.\n\nCounting slowly",
       "telemetry": {
        "execution_path": "gguf_specdec2_mtp2",
        "sampler_mode": "processed_argmax",
@@ -537,6 +593,7 @@
        50897,
        198
       ],
+      "text": " zeta omega\n\nCounting slowly, one number per word:\n\none\ntwo\nthree\nfour\nfive\n",
       "telemetry": {
        "execution_path": "gguf_packed_ar_host_sampler_decode",
        "sampler_mode": "processed_argmax",
@@ -589,6 +646,7 @@
        26952,
        198
       ],
+      "text": " zeta omega kappa theta sigma phi psi chi xi eta delta gamma beta alpha\n\nCounting slowly, one number per word:\n\none\ntwo\nthree\n",
       "telemetry": {
        "execution_path": "gguf_packed_ar_host_sampler_decode",
        "sampler_mode": "processed_argmax",
@@ -632,12 +690,40 @@
        321,
        10229
       ],
+      "text": " zeta omega.\n\nBased on the list you provided, let's break down the sequence to verify the count and identify",
       "telemetry": {
        "execution_path": "gguf_packed_ar_host_sampler_decode",
        "sampler_mode": "host_logits_sample",
        "forced_tokens_pending": [],
        "forced_token_id": null,
        "forced_tokens_remaining": null
+      }
+     },
+     "json_object_close": {
+      "fields": {
+       "json_object_close_forcing": true
+      },
+      "ids": [
+       271,
+       4754,
+       8656,
+       3147,
+       74482,
+       2004,
+       2129,
+       3715,
+       3147,
+       34,
+       38915,
+       8934
+      ],
+      "text": "\n\n{\"city\":\"Kyoto\",\"unit\":\"Celsius\"}",
+      "telemetry": {
+       "execution_path": "gguf_packed_ar_host_sampler_decode",
+       "sampler_mode": "processed_argmax",
+       "forced_tokens_pending": [],
+       "forced_token_id": 8934,
+       "forced_tokens_remaining": 0
       }
      },
      "force_sequence_completion": {
@@ -677,6 +763,7 @@
        286,
        13569
       ],
+      "text": " twenty kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega.\n\nCounting slowly",
       "telemetry": {
        "execution_path": "gguf_packed_ar_host_sampler_decode",
        "sampler_mode": "processed_argmax",
