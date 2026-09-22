@@ -6237,7 +6237,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     prompts,
                     (time.perf_counter() - admission_started) * 1_000.0,
                 )
-            if _request_logprobs_enabled(request):
+            logprobs_requested = _request_logprobs_enabled(request)
+            if logprobs_requested:
                 generation_route, generation_route_decision = (
                     _resolve_realized_generation_route(
                         generation_route,
@@ -6246,6 +6247,20 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         precomputed_decision=generation_route_decision,
                     )
                 )
+            # A logprob belongs to the token the route committed, and a
+            # speculative cycle commits several at once from verified rows the
+            # direct call below never sees. A logprobs request the plan admits
+            # to the speculative route therefore goes through the batcher like
+            # any other request, which is also the only path that can produce
+            # the metadata. A request the plan does not admit keeps the direct
+            # autoregressive call it has always used.
+            speculative_logprobs = logprobs_requested and str(
+                _execution_route_for_static_intent(
+                    generation_route,
+                    generation_route_decision,
+                )
+            ) == _SPECULATIVE_MTP_BATCH_ROUTE
+            if logprobs_requested and not speculative_logprobs:
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
                 scheduler_token_chunks = _backend_scheduler_token_chunks(engine)
                 direct_backend_groups = (

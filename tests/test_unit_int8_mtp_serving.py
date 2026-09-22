@@ -232,7 +232,9 @@ def test_sampled_route_names_its_remaining_gap_and_not_the_kernel():
     `hipengine/models/qwen35.py` states it where the declarations are built: the
     autoregressive finish rule (stop tokens and EOS mid-cycle) is contained per
     request by the servable-blocker set rather than fixed, and the device-side
-    accept that used to be the second precondition landed 2026-09-19.
+    accept that used to be the second precondition landed 2026-09-19. The finish
+    rule itself now runs on the whole verified chain, so the ledger entry is the
+    resolved one and the remaining refusal family is the hook family.
     """
 
     import hipengine.generation.qwen35_gguf_mtp2 as mtp2
@@ -249,7 +251,7 @@ def test_sampled_route_names_its_remaining_gap_and_not_the_kernel():
     refactor = (
         pathlib.Path(__file__).resolve().parents[1] / "docs" / "REFACTOR.md"
     ).read_text()
-    assert "Sampled-route finish-rule blockers (open)" in refactor
+    assert "Sampled-route finish-rule blockers — resolved" in refactor
 
 
 @pytest.mark.parametrize("rows", [1, 2, 3, 4])

@@ -20,10 +20,10 @@
   },
   "ledger": {
     "source": "docs/REFACTOR.md",
-    "headings": 402
+    "headings": 403
   },
-  "generated": "2026-09-22T14:25:40+00:00",
-  "commit": "6674d42f5",
+  "generated": "2026-09-22T15:56:09+00:00",
+  "commit": "8cdd41b4d",
   "worklog": {
     "source": "worklog/entries",
     "entries": 10652,

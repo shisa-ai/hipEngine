@@ -76,13 +76,14 @@ _SERVABLE = {
     "eos_gate": _params(temperature=0.7, eos_token_id=9),
     "stop_token_ids": _params(temperature=0.7, stop_token_ids=(9,)),
     "stop_token_sequences": _params(temperature=0.7, stop_token_sequences=((1, 2),)),
+    "logprobs": _params(temperature=0.7, logprobs=True),
+    "top_logprobs": _params(temperature=0.7, top_logprobs=5),
+    "greedy_logprobs": _params(logprobs=True),
     "greedy": _params(),
     "eos_only": _params(eos_token_id=9),
 }
 
 _UNSERVABLE = {
-    "logprobs": _params(temperature=0.7, logprobs=True),
-    "top_logprobs": _params(temperature=0.7, top_logprobs=5),
     "forced_tokens": _params(temperature=0.7, forced_tokens_pending=(1,)),
     "post_thinking_forced": _params(
         temperature=0.7,
@@ -133,10 +134,14 @@ def test_eos_supported_greedy_request_keeps_the_greedy_mode() -> None:
 
 def test_servable_and_unservable_blocker_sets_are_disjoint_and_cover_the_vocabulary() -> None:
     assert not set(SAMPLED_MTP_SERVABLE_BLOCKERS) & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
-    # Every blocker the sampled route refuses must be one of the processors the
-    # sampler itself applies, so a new processor cannot be served by accident.
+    # The servable set is the sampling law, the finish-rule relaxations, and the
+    # two metadata fields; the refused set is the hook family. Every blocker in
+    # the union must be one the sampler or the cycle commit can name, so a new
+    # field cannot be served or refused by accident.
     assert "temperature" in SAMPLED_MTP_SERVABLE_BLOCKERS
-    assert "logprobs" in SAMPLED_MTP_UNSERVABLE_BLOCKERS
+    assert "logprobs" in SAMPLED_MTP_SERVABLE_BLOCKERS
+    assert "top_logprobs" in SAMPLED_MTP_SERVABLE_BLOCKERS
+    assert "thinking_budget" in SAMPLED_MTP_UNSERVABLE_BLOCKERS
 
 
 def _adapter(*, plugin_evidence=(), artifact_size=None, row=None):
@@ -281,7 +286,10 @@ def test_engine_loop_selects_the_sampled_mode_for_a_temperature_request() -> Non
         )
         == "greedy"
     )
-    assert _speculative_sampling_mode(runner, 1, _params(logprobs=True)) == "processed"
+    # A metadata-only request is served by the sampled route: its law is the
+    # processed distribution the accept already builds per row, and the reported
+    # value comes from the same row the autoregressive route would read.
+    assert _speculative_sampling_mode(runner, 1, _params(logprobs=True)) == "sampled"
     # Both are finish-rule fields and both are served now: the cycle commit
     # applies EOS, stop ids, stop sequences, and the min-token EOS floor to the
     # whole verified chain and selects its terminal prefix, so a stochastic
@@ -410,7 +418,9 @@ def test_server_route_keeps_a_sampled_request_only_with_a_sampled_row() -> None:
     )
 
     sampled = _params(temperature=0.7)
-    unservable = _params(temperature=0.7, logprobs=True)
+    # A hook-family request is the one the sampled route still refuses, so it is
+    # the case that must stay at K0 even when the row lists the sampled mode.
+    unservable = _params(temperature=0.7, forced_tokens_pending=(1,))
     greedy = _params()
 
     def route(engine, sampling, *, explicit=True, mode="auto"):
@@ -514,7 +524,10 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
     ``limit_chain_accept_finish`` in ``hipengine/speculative/streaming.py``,
     which applies EOS, stop token ids, multi-token stop sequences, and the
     min-token EOS floor to the whole verified chain and selects its terminal
-    prefix, so they no longer have to be advertised blockers.
+    prefix, so they no longer have to be advertised blockers. The two metadata
+    fields are served by ``reported_logprob``, which reads the logits row that
+    predicted each published token with the same per-branch rule
+    ``select_token`` reports with.
     """
 
     finish_rule_fields = {
@@ -523,6 +536,7 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
         "stop_token_ids",
         "stop_token_sequences",
     }
+    metadata_fields = {"logprobs", "top_logprobs"}
     assert set(SAMPLED_MTP_SERVABLE_BLOCKERS) == {
         "temperature",
         "logit_bias",
@@ -532,11 +546,14 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
         "suppress_token_ids",
         "ignore_eos",
         *finish_rule_fields,
+        *metadata_fields,
     }
     # The two sets stay disjoint and still partition every incompatible field, so
     # a field can never be silently in neither.
     assert finish_rule_fields <= set(SAMPLED_MTP_SERVABLE_BLOCKERS)
     assert not finish_rule_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
+    assert metadata_fields <= set(SAMPLED_MTP_SERVABLE_BLOCKERS)
+    assert not metadata_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
     assert set(SAMPLED_MTP_SERVABLE_BLOCKERS) | set(SAMPLED_MTP_UNSERVABLE_BLOCKERS) == set(
         SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
     )

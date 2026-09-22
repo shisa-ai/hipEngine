@@ -3076,9 +3076,12 @@ edge-case hardening:
    selection-preserving with the reason they cannot change the greedy decision.
    The sampled route's servable set is the sampling law it reproduces exactly
    (bias, penalties, suppression, temperature, top-k/top-p/min-p) plus
-   `ignore_eos`; min-token/EOS policy and stop controls stay blockers there too,
-   because the cycle commit implements the greedy-chain EOS finish rule and not
-   the autoregressive one. The one EOS relaxation is runner-owned and conditional
+   `ignore_eos`, the finish-rule relaxations the cycle commit now applies to the
+   whole verified chain (`min_tokens`, `eos_token_id`, `stop_token_ids`,
+   `stop_token_sequences`), and the two metadata fields (`logprobs`,
+   `top_logprobs`), whose reported value is the one the autoregressive route
+   reports for the same token. The greedy raw-argmax route still refuses the
+   metadata fields, so a greedy logprobs request is served autoregressively. The one EOS relaxation is runner-owned and conditional
    on the route that will run: the engine loop asks
    `runner.speculative_eos_supported(request_id)` only for an EOS-only blocker,
    and the GGUF runner answers yes only for an enabled physical c1 row whose

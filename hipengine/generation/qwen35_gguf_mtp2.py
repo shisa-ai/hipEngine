@@ -35,8 +35,12 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
-from hipengine.generation.mtp_sampled_accept import sampled_accept_summary
-from hipengine.generation.sampling import speculative_sampling_mode
+from hipengine.generation.mtp_sampled_accept import (
+    chain_edge_rows,
+    chain_token_logprobs,
+    sampled_accept_summary,
+)
+from hipengine.generation.sampling import logprobs_requested, speculative_sampling_mode
 from hipengine.speculative.accounting import (
     PRIMING_SOURCE_ABSENT,
     PRIMING_SOURCE_BUFFERED,
@@ -355,6 +359,42 @@ class _DeviceSampledAcceptPlan:
     seed: int
     step_index: int
     rows: int
+
+
+@dataclass(frozen=True, slots=True)
+class _GGUFMTPTokenSample:
+    """Per-published-token metadata for a committed speculative cycle.
+
+    The resident runner reads ``row.samples`` to build
+    ``GenerationOutput.token_logprobs`` and the streaming chunk's metadata, so a
+    cycle that publishes several tokens appends one of these per token. Only
+    ``token_id``, ``logprob``, and ``top_logprobs`` are read; the token text is
+    derived from the tokenizer.
+    """
+
+    token_id: int
+    logprob: float | None
+    top_logprobs: tuple[tuple[int, float], ...] = ()
+
+
+def publish_cycle_token_samples(
+    owner: Any,
+    request_id: int,
+    samples: Sequence[Any],
+) -> None:
+    """Record a committed cycle's per-token metadata for its stream events.
+
+    The stream events of a cycle are decorated after the commit, and a cycle
+    that finishes the request has already reclaimed the row by then, so the
+    metadata is recorded on the runner under the request id rather than only on
+    the row. A runner without that store is left alone: its events then keep
+    whatever metadata the scheduler produced.
+    """
+
+    cycle_samples = getattr(owner, "_cycle_token_samples", None)
+    if cycle_samples is None:
+        return
+    cycle_samples[int(request_id)] = list(samples)
 
 
 @dataclass(frozen=True, slots=True)
@@ -2334,6 +2374,13 @@ class Qwen35GGUFMTP2Adapter:
         if bool(getattr(state, "has_forced_tokens", False)):
             _decline("pending forced tokens")
             return None
+        if logprobs_requested(params):
+            # The captured graph accepts on the device and returns no logits row
+            # to the host, so there is nothing to report a published token's
+            # logprob from. The eager native path reports the sampler's own
+            # per-row value, which is what the autoregressive route reports.
+            _decline("logprobs requested; the graph accept has no host logits rows")
+            return None
         temperature = float(getattr(params, "temperature", 0.0))
         if not temperature > 0.0:
             _decline("temperature is zero")
@@ -3935,8 +3982,11 @@ class Qwen35GGUFMTP2Adapter:
             device_sampled_commit = bool(
                 getattr(prepared, "native_device_accept_commit", False)
             )
+            row_logprob_metadata: (
+                tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...] | None
+            ) = None
             if sampled_route and not device_sampled_commit:
-                summary = self._sampled_accept_summary(
+                summary, row_logprob_metadata = self._sampled_accept_summary(
                     row,
                     prepared,
                     batch,
@@ -3986,6 +4036,13 @@ class Qwen35GGUFMTP2Adapter:
                 mode=summary.mode,
             )
             accepted = int(summary.accepted_counts[0])
+            # Logprob metadata is read from the verified rows the accept just
+            # used, so it must be collected while the prepared transaction still
+            # owns them. The tokens scored are the ones this cycle publishes,
+            # which is the finish rule's terminal prefix when it limited one.
+            logprob_metadata = self._cycle_token_logprobs(
+                row, prepared, summary, row_metadata=row_logprob_metadata
+            )
             provider_update_started = time.perf_counter()
             if state.proposal_source == "ngram_mod":
                 hidden_source = (
@@ -4047,6 +4104,38 @@ class Qwen35GGUFMTP2Adapter:
             if not output_ids:
                 raise RuntimeError("GGUF MTP2 committed cycle produced no visible token")
             committed_position = len(slot.generated_ids)
+            if logprob_metadata is not None:
+                if len(logprob_metadata) != len(output_ids):
+                    raise RuntimeError(
+                        "sampled MTP route produced logprob metadata for "
+                        f"{len(logprob_metadata)} of {len(output_ids)} published tokens"
+                    )
+                # The row's per-token sample list is what the resident runner
+                # turns into ``GenerationOutput.token_logprobs`` for the
+                # blocking output. The stream events for these tokens are
+                # published after the commit, and a cycle that finishes the
+                # request reclaims its row before that happens, so the same
+                # records are also handed to the runner under the request id
+                # where the event decorator can still reach them.
+                published_samples = [
+                    _GGUFMTPTokenSample(
+                        token_id=int(token),
+                        logprob=logprob,
+                        top_logprobs=tuple(
+                            (int(top_token), float(top_logprob))
+                            for top_token, top_logprob in top_logprobs
+                        ),
+                    )
+                    for token, (logprob, top_logprobs) in zip(
+                        output_ids, logprob_metadata, strict=True
+                    )
+                ]
+                row.samples.extend(published_samples)
+                publish_cycle_token_samples(
+                    self.owner,
+                    int(row.request_id),
+                    published_samples,
+                )
             if sampled_route:
                 sampling_state = getattr(row, "sampling_state", None)
                 if sampling_state is None:
@@ -4137,13 +4226,23 @@ class Qwen35GGUFMTP2Adapter:
         *,
         transaction_id: int,
         remaining_decode: int,
-    ) -> TargetAcceptSummary:
+    ) -> tuple[
+        TargetAcceptSummary,
+        tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...] | None,
+    ]:
         """Accept the verified chain by sampling from the request's own law.
 
         The verifier produced one logits row per verified prefix; each row is
         processed against its own drafted history and coupled against the
         drafted chain with ``min(1, p/q)`` plus residual resampling, drawing from
         the row's live sampler stream.
+
+        The second element is per-row logprob metadata for the rows the native
+        sampler selected from, or ``None`` when the request asked for no logprobs
+        or the host sampler path produced it from the logits rows instead. It is
+        returned rather than recomputed because the native sampler's reported
+        value is the one the autoregressive route reports for the same request,
+        and a host rebuild could differ in the last digits.
         """
 
         sampling_state = getattr(row, "sampling_state", None)
@@ -4167,24 +4266,33 @@ class Qwen35GGUFMTP2Adapter:
                 logits = np.ascontiguousarray(prepared.target_logits, dtype=np.float32)
                 device = workspace._upload("mtp_eager_logits", logits)
             prefixes = row_prefix_states(batch, {int(batch.request_ids[0]): sampling_state})
-            selected = [
+            results = [
                 workspace.sample(
                     device.ptr + index * workspace.vocab_size * 4, params, prefix,
-                ).token_id
+                )
                 for index, prefix in enumerate(prefixes)
             ]
             accepted = batch.accept_from_top1(
-                selected, remaining_decode=(int(remaining_decode),),
+                [result.token_id for result in results],
+                remaining_decode=(int(remaining_decode),),
                 transaction_id=int(transaction_id),
             )
-            return TargetAcceptSummary.from_accept_result(batch, accepted)
+            row_metadata = (
+                tuple(
+                    (result.logprob, tuple(result.top_logprobs))
+                    for result in results
+                )
+                if logprobs_requested(params)
+                else None
+            )
+            return TargetAcceptSummary.from_accept_result(batch, accepted), row_metadata
         tokenizer = getattr(self.generator, "tokenizer", None)
         token_text_for_id = (
             None
             if tokenizer is None
             else (lambda token_id: tokenizer.decode([int(token_id)]))
         )
-        return sampled_accept_summary(
+        summary = sampled_accept_summary(
             batch,
             prepared.target_logits,
             {int(batch.request_ids[0]): sampling_state},
@@ -4194,6 +4302,77 @@ class Qwen35GGUFMTP2Adapter:
             transaction_id=int(transaction_id),
             remaining_decode=(int(remaining_decode),),
         )
+        return summary, None
+
+    def _cycle_token_logprobs(
+        self,
+        row: Any,
+        prepared: Any,
+        summary: Any,
+        *,
+        row_metadata: (
+            tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...] | None
+        ) = None,
+    ) -> tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...] | None:
+        """Return this cycle's published-token logprob metadata, or ``None``.
+
+        ``None`` means the request did not ask for logprobs, so no logits row is
+        touched. When it did, every published token is scored against the row
+        that predicted it -- the same verified rows the accept just used -- and
+        the value is the one the autoregressive route reports for that token:
+        ``row_metadata`` is the native sampler's own report when that sampler
+        selected the rows, and otherwise ``reported_logprob`` applies the branch
+        rule ``select_token`` reports with. The tokens scored are the ones the
+        cycle publishes after the finish rule selected its terminal prefix, so a
+        cycle that stopped early reports metadata for the tokens it published and
+        none for the rest.
+        """
+
+        params = getattr(row, "sampling_request", None) or getattr(row, "request", None)
+        if params is None or not logprobs_requested(params):
+            return None
+        sampling_state = getattr(row, "sampling_state", None)
+        if sampling_state is None:
+            raise RuntimeError(
+                "logprob metadata requires the row's live sampler state; the "
+                "sampled route owns it and an autoregressive row cannot reach "
+                "this commit"
+            )
+        batch = prepared.batch
+        if len(batch.request_ids) != 1:
+            raise RuntimeError(
+                "logprob metadata is collected for the row that owns the commit"
+            )
+        next_tokens = summary.next_tokens
+        next_token = None if next_tokens is None else next_tokens[0]
+        published = (
+            *tuple(int(token) for token in summary.accepted_tokens[0]),
+            *(() if next_token is None else (int(next_token),)),
+        )
+        accepted = int(summary.accepted_counts[0])
+        if row_metadata is not None:
+            rows = chain_edge_rows(batch, [accepted])[0]
+            if len(row_metadata) < len(rows):
+                raise RuntimeError(
+                    "native sampler reported "
+                    f"{len(row_metadata)} of {len(rows)} verified rows"
+                )
+            return tuple(row_metadata[row] for row in rows[: len(published)])
+        tokenizer = getattr(self.generator, "tokenizer", None)
+        metadata = chain_token_logprobs(
+            batch,
+            prepared.target_logits,
+            {int(batch.request_ids[0]): sampling_state},
+            [published],
+            [accepted],
+            params_for=lambda request_id: params,
+            token_text_for_id=(
+                None
+                if tokenizer is None
+                else (lambda token_id: tokenizer.decode([int(token_id)]))
+            ),
+        )
+        return metadata[0]
 
     def _target_group_pad_rows(self, *, request_count: int, candidate_rows: int) -> int:
         """Return inactive pad rows lifting a physical group to admitted multiples."""

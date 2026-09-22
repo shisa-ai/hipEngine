@@ -754,6 +754,23 @@ def supports_native_gpu_sampling(params: Any) -> bool:
     return True
 
 
+def logprobs_requested(params: Any) -> bool:
+    """Return whether the request asked for logprob metadata on its tokens.
+
+    ``logprobs=false`` with a positive ``top_logprobs`` still asks for metadata:
+    the OpenAI schema reports the alternatives even when the selected token's own
+    logprob is withheld, and both fields are declared sampler fast-path blockers,
+    so the two are read together everywhere the route decides whether it must
+    produce a report.
+    """
+
+    if params is None:
+        return False
+    return bool(getattr(params, "logprobs", False)) or int(
+        getattr(params, "top_logprobs", 0) or 0
+    ) > 0
+
+
 def plan_sampler(
     params: Any,
     *,
@@ -767,7 +784,7 @@ def plan_sampler(
     processors = active_processor_names(params)
     fast_path_blockers = sampler_fast_path_blockers(params)
     temperature = float(getattr(params, "temperature", 0.0))
-    needs_logits = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
+    needs_logits = logprobs_requested(params)
     if temperature <= 0.0:
         if processors or needs_logits:
             return SamplerPlan(
@@ -831,6 +848,8 @@ SAMPLED_MTP_SERVABLE_BLOCKERS: tuple[str, ...] = (
     "eos_token_id",
     "stop_token_ids",
     "stop_token_sequences",
+    "logprobs",
+    "top_logprobs",
 )
 """MTP blockers the sampled route serves exactly: the sampling law.
 
@@ -843,16 +862,19 @@ reproduces the selection. ``ignore_eos`` is a finish-rule relaxation the cycle
 commit already honors: a row that ignores EOS cannot finish on EOS on either
 route.
 
-This set is the sampling law and nothing else. Every field that changes
-*post-accept finish behavior* is served by the cycle commit's finish rule
-(``limit_chain_accept_finish`` in ``hipengine/speculative/streaming.py``), which
-applies EOS, stop token ids, multi-token stop sequences, and the min-token EOS
-floor to the whole verified chain and selects its terminal prefix.
+This set is the sampling law plus the two metadata families the route now
+produces. Every field that changes *post-accept finish behavior* is served by the
+cycle commit's finish rule (``limit_chain_accept_finish`` in
+``hipengine/speculative/streaming.py``), which applies EOS, stop token ids,
+multi-token stop sequences, and the min-token EOS floor to the whole verified
+chain and selects its terminal prefix. ``logprobs`` and ``top_logprobs`` are
+served by ``reported_logprob``, which applies the same per-branch rule
+``select_token`` uses to the logits row that predicted each published token, so
+the reported value is the autoregressive route's value rather than a
+reconstruction of it.
 """
 
 SAMPLED_MTP_UNSERVABLE_BLOCKERS: tuple[str, ...] = (
-    "logprobs",
-    "top_logprobs",
     "forced_tokens_pending",
     "post_thinking_forced_tokens_pending",
     "force_sequence_completion_token_sequences",
@@ -863,12 +885,11 @@ SAMPLED_MTP_UNSERVABLE_BLOCKERS: tuple[str, ...] = (
 """MTP blockers the sampled route deliberately refuses.
 
 One family: fields that need something the coupled accept cannot supply. They
-need response metadata (``logprobs``), a caller-level override outside the
-sampling law (forced tokens, forced sequence completion), or per-token hooks
-that consume sampler queues or tokenizer text (JSON-object close forcing,
-tool-call constraints, the host thinking budget). A request carrying one of them
-stays on the autoregressive route rather than being served by a route that would
-report the wrong metadata.
+need a caller-level override outside the sampling law (forced tokens, forced
+sequence completion) or per-token hooks that consume sampler queues or tokenizer
+text (JSON-object close forcing, tool-call constraints, the host thinking
+budget). A request carrying one of them stays on the autoregressive route rather
+than being served by a route that would report the wrong metadata.
 
 The finish-rule fields (``min_tokens``, ``eos_token_id``, ``stop_token_ids``,
 ``stop_token_sequences``) used to be refused here as well, because the cycle
@@ -877,6 +898,13 @@ commit now applies the autoregressive finish rule to the whole verified chain
 through ``hipengine/speculative/streaming.py`` ``limit_chain_accept_finish``,
 which selects the terminal prefix and reports ``eos`` or ``stop``, so they are
 servable and no longer appear above.
+
+``logprobs`` and ``top_logprobs`` used to be refused here too. They are now
+produced from the verified rows: for each published token the route reads the
+logits row that predicted it and calls ``reported_logprob``, which is the same
+branch rule ``select_token`` uses, so the reported value is the one the
+autoregressive route would report for the same token rather than a
+reconstruction of it.
 """
 
 
@@ -1078,7 +1106,7 @@ def _process_row(
     if json_eos_suppressed:
         active_processors = _append_unique(active_processors, "json_object_close_forcing")
         fast_path_blockers = _append_unique(fast_path_blockers, "json_object_close_forcing")
-    requested_logprobs = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
+    requested_logprobs = logprobs_requested(params)
     requested_top_logprobs = int(getattr(params, "top_logprobs", 0))
     temperature = float(getattr(params, "temperature", 0.0))
     tool_constraint_active = row_state.tool_call_constraint_state is not None
@@ -1202,6 +1230,57 @@ def processed_distribution(
         token_allowed=row.token_allowed if row.constraint_active else None,
     )
     return tuple(int(token_id) for token_id in retained_ids), retained_probs
+
+
+def reported_logprob(
+    logits: np.ndarray | Sequence[float],
+    params: Any,
+    state: RowSamplingState | None,
+    token_id: int,
+    *,
+    token_text_for_id: Callable[[int], str] | None = None,
+) -> tuple[float | None, tuple[tuple[int, float], ...]]:
+    """Return the metadata ``select_token`` would report for ``token_id``.
+
+    ``select_token`` reports logprobs differently by branch, and a speculative
+    route that reports a single shape is wrong in one of them. A greedy row
+    (``temperature <= 0``) reports the full-support softmax of the processed
+    logits, so the value is the model's own probability. A sampling row reports
+    the retained support's probability for the token it drew, because that is the
+    distribution the draw came from. Reproducing the branch is what makes a
+    speculative route's metadata equal to the autoregressive route's rather than
+    merely close to it.
+
+    The caller's ``state`` is never observed into and never drawn from.
+    """
+
+    validate_sampling_params(params)
+    row_state = state if state is not None else _default_row_state(params)
+    row = _process_row(logits, params, row_state, token_text_for_id)
+    if row.temperature <= 0.0:
+        processed = (
+            _constraint_logits_view(row.processed, row.token_allowed)
+            if row.constraint_active
+            else row.processed
+        )
+        if not np.isfinite(processed[int(token_id)]):
+            return None, ()
+        return _logprob_summary(processed, int(token_id), row.requested_top_logprobs)
+    retained_ids, retained_probs = processed_support(
+        row.processed,
+        params,
+        temperature=row.temperature,
+        token_allowed=row.token_allowed if row.constraint_active else None,
+    )
+    positions = np.flatnonzero(retained_ids == int(token_id))
+    logprob = (
+        None
+        if positions.size == 0
+        else float(math.log(float(retained_probs[int(positions[0])])))
+    )
+    return logprob, _top_logprob_pairs(
+        retained_ids, retained_probs, row.requested_top_logprobs
+    )
 
 
 def select_token(
