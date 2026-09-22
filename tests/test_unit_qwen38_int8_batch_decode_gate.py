@@ -78,7 +78,19 @@ def test_gate_logit_and_state_checks_fail_closed() -> None:
     ]
 
 
-def test_gate_parser_requires_explicit_pre_promotion_width_override() -> None:
+def test_gate_parser_supports_rejected_artifact_mirror_free_diagnostics() -> None:
+    args = gate.build_parser().parse_args(
+        [
+            "--allow-rejected-artifact",
+            "--max-sequence-length",
+            "9216",
+        ]
+    )
+
+    assert args.allow_rejected_artifact is True
+    assert args.max_sequence_length == 9216
+
+
     args = gate.build_parser().parse_args(
         [
             "--model",

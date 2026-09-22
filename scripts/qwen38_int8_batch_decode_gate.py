@@ -358,14 +358,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         scale_granularity="per_token_head",
     )
     resolution = Qwen35GGUFModel().resolve_kv_capability(key=key, artifact=identity)
-    if not resolution.promotion_eligible:
+    if not resolution.promotion_eligible and not args.allow_rejected_artifact:
         raise ValueError(f"artifact is not qualified for INT8 KV: {resolution.reason}")
     capability = copy.deepcopy(resolution.as_dict())
     evidence = capability.get("evidence")
     if not isinstance(evidence, dict):
-        raise ValueError("qualified capability has no evidence payload")
+        raise ValueError("capability has no evidence payload")
     admitted_rows = int(evidence.get("max_direct_rows", 0))
-    diagnostic_override = admitted_rows < rows
+    diagnostic_override = not resolution.promotion_eligible or admitted_rows < rows
     if diagnostic_override:
         if int(args.diagnostic_direct_rows) < rows:
             raise ValueError(
@@ -377,7 +377,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             int(evidence.get("max_serial_resident_rows", 0)),
         )
 
-    max_sequence_length = max(lengths) + int(args.decode_steps) + 4
+    max_sequence_length = int(args.max_sequence_length or (max(lengths) + int(args.decode_steps) + 4))
+    if max_sequence_length < max(lengths) + int(args.decode_steps) + 4:
+        raise ValueError("--max-sequence-length does not cover the requested trajectory")
     session_kwargs = {
         "backend": str(args.backend),
         "max_sequence_length": max_sequence_length,
@@ -621,6 +623,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--decode-steps", type=int, default=4)
     parser.add_argument("--diagnostic-direct-rows", type=int, default=0)
+    parser.add_argument(
+        "--allow-rejected-artifact",
+        action="store_true",
+        help="Run a rejected INT8 artifact as explicit diagnostic evidence; never promotion evidence",
+    )
+    parser.add_argument(
+        "--max-sequence-length",
+        type=int,
+        default=0,
+        help="Resident capacity for mirror-free diagnostics; must cover the longest requested trajectory",
+    )
     parser.add_argument(
         "--expected-device",
         default=None,
