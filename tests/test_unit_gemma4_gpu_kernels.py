@@ -1107,3 +1107,202 @@ def test_expert_scratch_rejects_nonpositive_shapes() -> None:
 
     with pytest.raises(ValueError, match="top_k must be positive"):
         Gemma4ExpertScratch(tokens=2, top_k=0, hidden_size=8, intermediate=8, num_experts=4)
+
+
+# --------------------------------------------------------------------------
+# Router: prescale -> logits -> top-k -> softmax -> per-expert scale
+# --------------------------------------------------------------------------
+
+
+def test_router_topk_matches_the_reference():
+    """The assembled router reproduces gemma4_router_topk end to end."""
+
+    from hipengine.kernels.cpu_reference.gemma4 import gemma4_rmsnorm, gemma4_router_topk
+    from hipengine.kernels.cpu_reference.ops import linear
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_router import (
+        Gemma4RouterScratch,
+        gemma4_router_topk_bf16,
+    )
+
+    device = _Device()
+    tokens, hidden_size, num_experts, top_k = 5, 64, 12, 4
+    rng = np.random.default_rng(1701)
+    hidden = (rng.standard_normal((tokens, hidden_size)) * 0.5).astype(np.float32)
+    scale = (rng.random(hidden_size).astype(np.float32) + 0.5) * 0.1
+    proj = (rng.standard_normal((num_experts, hidden_size)) * 0.2).astype(np.float32)
+    per_expert = (rng.random(num_experts).astype(np.float32) + 0.5) * 0.3
+
+    hidden_ptr = device.put(_to_bf16_bits(hidden))
+    scale_ptr = device.put(scale)
+    proj_ptr = device.put(proj)
+    per_expert_ptr = device.put(per_expert)
+    selected_ptr = device.out((tokens, top_k), np.int64)
+    weights_ptr = device.out((tokens, top_k), np.float32)
+
+    scratch = Gemma4RouterScratch(
+        tokens=tokens, hidden_size=hidden_size, num_experts=num_experts, top_k=top_k
+    )
+    try:
+        gemma4_router_topk_bf16(
+            hidden_ptr,
+            scale_ptr,
+            proj_ptr,
+            per_expert_ptr,
+            selected_ptr,
+            weights_ptr,
+            tokens=tokens,
+            hidden_size=hidden_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            scratch=scratch,
+        )
+        got_selected = device.get(selected_ptr, (tokens, top_k), np.int64)
+        got_weights = device.get(weights_ptr, (tokens, top_k), np.float32)
+    finally:
+        scratch.free()
+
+    _probs, want_weights, want_selected = gemma4_router_topk(
+        hidden,
+        norm_weight=None,
+        scale=scale,
+        proj_weight=proj,
+        per_expert_scale=per_expert,
+        top_k=top_k,
+        scalar_root_size=hidden_size**-0.5,
+        eps=1e-6,
+    )
+
+    # The prescale stage rounds the activation to bf16 before the projection, so
+    # the kernel is not computing the f32 reference exactly. Measure that
+    # perturbation in logit space, which is where the selection decision lives.
+    ref_hidden = _from_bf16_bits(_to_bf16_bits(hidden))
+    pre_f32 = (
+        gemma4_rmsnorm(ref_hidden, None, 1e-6) * scale * np.float32(hidden_size**-0.5)
+    ).astype(np.float32)
+    pre_bf16 = _from_bf16_bits(_to_bf16_bits(pre_f32))
+    prescale_rel = np.abs(pre_bf16 - pre_f32).max() / np.abs(pre_f32).max()
+    assert prescale_rel < 0.01, f"bf16 prescale cost {prescale_rel:.4f} is unexpectedly large"
+    logits_f32 = linear(pre_f32, proj)
+    perturbation = np.abs(logits_f32 - linear(pre_bf16, proj)).max()
+
+    # Exact selection agreement with an f32 reference is not the right contract
+    # for a bf16-prescale path: the rounding can legitimately flip a decision
+    # whose logit margin is smaller than the rounding. The contract is therefore
+    # "agrees wherever the decision is not inside the perturbation, and every
+    # disagreement is inside it".
+    ordered_logits = np.sort(logits_f32, axis=-1)
+    gap = ordered_logits[:, -top_k] - ordered_logits[:, -(top_k + 1)]
+    decisive = gap > perturbation
+    assert decisive.any(), "no decisive token; the assertion below would prove nothing"
+
+    got = np.asarray(got_selected)
+    want = np.asarray(want_selected).astype(np.int64)
+    agrees = (got == want).all(axis=-1)
+    np.testing.assert_array_equal(
+        agrees[decisive],
+        np.ones(int(decisive.sum()), dtype=bool),
+        err_msg=(
+            "selection differs on a token whose k-th/(k+1)-th logit gap exceeds "
+            f"the bf16 prescale perturbation ({perturbation:.5f})"
+        ),
+    )
+    for token in np.flatnonzero(~agrees):
+        assert gap[token] <= perturbation, (
+            f"token {token} selection differs with logit gap {gap[token]:.5f} "
+            f"above the perturbation {perturbation:.5f}"
+        )
+
+    # Weights are compared against the f32 reference with a tolerance derived
+    # from the measured perturbation rather than a hand-picked constant.
+    np.testing.assert_allclose(got_weights, want_weights, atol=4 * perturbation, rtol=0)
+
+
+def test_router_topk_selection_is_ordered_by_descending_logit():
+    """Selected experts must be ordered best-first, not by expert index."""
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_router import (
+        Gemma4RouterScratch,
+        gemma4_router_topk_bf16,
+    )
+
+    device = _Device()
+    tokens, hidden_size, num_experts, top_k = 3, 32, 8, 3
+    rng = np.random.default_rng(99)
+    hidden = (rng.standard_normal((tokens, hidden_size)) * 0.5).astype(np.float32)
+    scale = np.full(hidden_size, 0.1, dtype=np.float32)
+    proj = (rng.standard_normal((num_experts, hidden_size)) * 0.4).astype(np.float32)
+    per_expert = np.ones(num_experts, dtype=np.float32)
+
+    hidden_ptr = device.put(_to_bf16_bits(hidden))
+    scale_ptr = device.put(scale)
+    proj_ptr = device.put(proj)
+    per_expert_ptr = device.put(per_expert)
+    selected_ptr = device.out((tokens, top_k), np.int64)
+    weights_ptr = device.out((tokens, top_k), np.float32)
+
+    scratch = Gemma4RouterScratch(
+        tokens=tokens, hidden_size=hidden_size, num_experts=num_experts, top_k=top_k
+    )
+    try:
+        gemma4_router_topk_bf16(
+            hidden_ptr,
+            scale_ptr,
+            proj_ptr,
+            per_expert_ptr,
+            selected_ptr,
+            weights_ptr,
+            tokens=tokens,
+            hidden_size=hidden_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            scratch=scratch,
+        )
+        got_weights = device.get(weights_ptr, (tokens, top_k), np.float32)
+    finally:
+        scratch.free()
+
+    # Renormalised over the selected set with unit per-expert scale, so the
+    # weights are descending and sum to one for every token. A by-index sort
+    # or an unnormalised softmax breaks both.
+    assert np.all(np.diff(got_weights, axis=-1) <= 1e-6), got_weights
+    np.testing.assert_allclose(got_weights.sum(axis=-1), np.ones(tokens), atol=1e-5)
+
+
+def test_router_scratch_rejects_a_mismatched_shape():
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_router import (
+        Gemma4RouterScratch,
+        gemma4_router_topk_bf16,
+    )
+
+    scratch = Gemma4RouterScratch(tokens=2, hidden_size=32, num_experts=8, top_k=2)
+    try:
+        with pytest.raises(ValueError, match="scratch was built for"):
+            gemma4_router_topk_bf16(
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                tokens=3,
+                hidden_size=32,
+                num_experts=8,
+                top_k=2,
+                scratch=scratch,
+            )
+        with pytest.raises(ValueError, match="cannot exceed"):
+            gemma4_router_topk_bf16(
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                tokens=2,
+                hidden_size=32,
+                num_experts=8,
+                top_k=9,
+                scratch=scratch,
+            )
+    finally:
+        scratch.free()
