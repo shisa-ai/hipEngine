@@ -36,7 +36,6 @@ plugs in at the attention step without touching the rest of the layer.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from hipengine.core.memory import DeviceBuffer, free as hip_free, malloc
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
@@ -59,6 +58,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rotary import (
     gemma4_partial_rotary_bf16,
 )
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_types import Gemma4Projection
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_router import (
     Gemma4RouterScratch,
     gemma4_router_topk_bf16,
@@ -68,17 +68,6 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16
 _BF16_BYTES = 2
 _I64_BYTES = 8
 _F32_BYTES = 4
-
-
-# A projection weight is a bf16 device pointer (``int``) or a GGUF device weight
-# carrying quantized blocks. Both are resident layouts a Gemma 4 artifact can
-# legitimately use, so the dispatch is on the value, not on a flag.
-if TYPE_CHECKING:
-    from hipengine.loading.gemma4_gguf_device import Gemma4GGUFDeviceWeight
-
-    Gemma4Projection = int | Gemma4GGUFDeviceWeight
-else:
-    Gemma4Projection = object
 
 
 @dataclass
@@ -116,8 +105,8 @@ class Gemma4LayerPointers:
     router_proj: int
     router_per_expert_scale: int
     pre_feedforward_layernorm_2: int
-    experts_gate_up_proj: int
-    experts_down_proj: int
+    experts_gate_up_proj: Gemma4Projection
+    experts_down_proj: Gemma4Projection
     post_feedforward_layernorm_2: int
     post_feedforward_layernorm: int
     v_proj: Gemma4Projection = 0

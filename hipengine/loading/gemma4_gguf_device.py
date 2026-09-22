@@ -89,6 +89,32 @@ class Gemma4GGUFDeviceWeight:
     def nbytes(self) -> int:
         return sum(int(allocation.buffer.nbytes) for allocation in self.allocations.values())
 
+    @property
+    def expert_stride_bytes(self) -> int:
+        """Byte stride between consecutive experts in a stacked expert tensor.
+
+        A rank-3 ``(num_experts, out, in)`` expert tensor is one contiguous
+        allocation, and the caller selects an expert by offsetting into it. Each
+        expert's rows are contiguous, so the stride is the tensor's byte count
+        divided by the expert count -- which is the right expression for a
+        quantized tensor, where a row is a whole number of 256-element blocks
+        rather than ``in_features * itemsize``.
+        """
+
+        shape = self.spec.source.shape
+        if len(shape) != 3:
+            raise ValueError(
+                f"{self.spec.slot_path} is rank {len(shape)}, not a stacked expert tensor"
+            )
+        experts = int(shape[0])
+        nbytes = int(self.spec.source.nbytes)
+        if experts <= 0 or nbytes % experts:
+            raise ValueError(
+                f"{self.spec.slot_path}: {nbytes} bytes does not divide evenly across "
+                f"{experts} experts"
+            )
+        return nbytes // experts
+
     def free(self, *, runtime=None) -> None:
         for allocation in reversed(tuple(self.allocations.values())):
             allocation.free(runtime=runtime)

@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10656,
-    "current": 3424,
+    "entries": 10657,
+    "current": 3425,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1091,
+    "rows": 1092,
     "by_rule": {
       "dependency": 36,
       "legacy-next": 109,
-      "status": 946
+      "status": 947
     }
   },
   "rows": [
@@ -41062,6 +41062,46 @@
       },
       "id": "worklog/20260922T073522.528502Z-lhl-v070-publication-verification-c5f6b3",
       "evidence_hash": "34535eb76893"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260922T210504.433272Z-lhl-gemma4-gfx1100-q5-1-gap-661149",
+      "title": "Q5_1 has no raw GPU linear path; a resolved dispatch key is not a GPU kernel",
+      "location": "worklog/entries/20260922T210504.433272Z-lhl-gemma4-gfx1100-q5-1-gap-661149.md:8",
+      "evidence": {
+        "status": "blocked",
+        "worker": "lhl",
+        "topic": "gemma4-gfx1100-q5-1-gap",
+        "written": "2026-09-22",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "1. Pick a route and close the Q5_1 gap.\n2. Validate the Q5_K and Q8_0 expert projections on the real artifact.\n3. Then the runner.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as blocked \u2014 the entry says the unit is blocked",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260922T210504.433272Z-lhl-gemma4-gfx1100-q5-1-gap-661149.md",
+        "refs": [],
+        "tokens": [
+          "dispatch",
+          "gpu",
+          "has",
+          "kernel",
+          "key",
+          "linear",
+          "path",
+          "q5_1",
+          "raw",
+          "resolved"
+        ]
+      },
+      "id": "worklog/20260922T210504.433272Z-lhl-gemma4-gfx1100-q5-1-gap-661149",
+      "evidence_hash": "a78156c855ff"
     }
   ]
 }

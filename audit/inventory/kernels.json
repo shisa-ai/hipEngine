@@ -1,7 +1,7 @@
 {
   "kind": "kernels",
   "meta": {
-    "sources": 269,
+    "sources": 270,
     "registry_keys": 309,
     "backends": [
       "cpu_reference",
@@ -259,7 +259,7 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 807,
-        "referrers": 35,
+        "referrers": 36,
         "runtime_referrers": [
           "hipengine/loading/gemma4_gguf.py",
           "hipengine/loading/gemma4_gguf_materialize.py",
@@ -289,7 +289,7 @@
         ]
       },
       "id": "kernel/cpu_reference/gemma4.py",
-      "evidence_hash": "b021fbb280e1"
+      "evidence_hash": "f8d0f4194ec8"
     },
     {
       "kind": "kernel",
@@ -3486,7 +3486,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 299,
+        "lines": 359,
         "referrers": 4,
         "runtime_referrers": [],
         "test_referrers": [
@@ -3510,7 +3510,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_experts.py",
-      "evidence_hash": "ecf2e3a0aa7c"
+      "evidence_hash": "28ef585ad136"
     },
     {
       "kind": "kernel",
@@ -3520,8 +3520,8 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 591,
-        "referrers": 5,
+        "lines": 580,
+        "referrers": 6,
         "runtime_referrers": [
           "hipengine/loading/gemma4_gguf_materialize.py",
           "hipengine/loading/gemma4_gguf_device.py",
@@ -3549,7 +3549,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_layer.py",
-      "evidence_hash": "e5eb8c076472"
+      "evidence_hash": "60a6534d94b3"
     },
     {
       "kind": "kernel",
@@ -3831,6 +3831,40 @@
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_router.py",
       "evidence_hash": "8df1bd8aa53e"
+    },
+    {
+      "kind": "kernel",
+      "key": "hip_gfx1100/gemma4/gemma4_types.py",
+      "title": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_types.py",
+      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_types.py",
+      "evidence": {
+        "backend": "hip_gfx1100",
+        "suffix": ".py",
+        "lines": 25,
+        "referrers": 2,
+        "runtime_referrers": [],
+        "test_referrers": []
+      },
+      "signals": [
+        "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found",
+        "no test file names it",
+        "neither it nor its referrers mention KernelKey"
+      ],
+      "hints": {
+        "anchor": "hip_gfx1100",
+        "refs": [
+          "gemma4_types"
+        ],
+        "tokens": [
+          "gemma4",
+          "gemma4_types",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels"
+        ]
+      },
+      "id": "kernel/hip_gfx1100/gemma4/gemma4_types.py",
+      "evidence_hash": "1135973a1cfd"
     },
     {
       "kind": "kernel",

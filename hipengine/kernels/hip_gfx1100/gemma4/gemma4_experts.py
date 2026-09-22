@@ -33,6 +33,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import (
     gemma4_moe_lane_to_row_i32,
     gemma4_moe_weighted_accumulate_bf16,
 )
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_types import Gemma4Projection
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16
 from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_gather_packed_hidden_lowp,
@@ -127,8 +128,8 @@ def gemma4_experts_forward_bf16(
     hidden_ptr: int,
     selected_experts_ptr: int,
     routing_weights_ptr: int,
-    gate_up_proj_ptr: int,
-    down_proj_ptr: int,
+    gate_up_proj: Gemma4Projection,
+    down_proj: Gemma4Projection,
     out_ptr: int,
     *,
     scratch: Gemma4ExpertScratch,
@@ -230,9 +231,10 @@ def gemma4_experts_forward_bf16(
         rows = int(starts[expert + 1]) - start
         if rows <= 0:
             continue
-        dense_gemv_out_bf16(
+        gemma4_project_expert(
+            gate_up_proj,
+            expert,
             packed_hidden.ptr + start * hidden_size * _BF16_BYTES,
-            gate_up_proj_ptr + expert * fused * hidden_size * _BF16_BYTES,
             gate_up_out.ptr + start * fused * _BF16_BYTES,
             rows,
             hidden_size,
@@ -247,9 +249,10 @@ def gemma4_experts_forward_bf16(
         rows = int(starts[expert + 1]) - start
         if rows <= 0:
             continue
-        dense_gemv_out_bf16(
+        gemma4_project_expert(
+            down_proj,
+            expert,
             activated.ptr + start * intermediate * _BF16_BYTES,
-            down_proj_ptr + expert * hidden_size * intermediate * _BF16_BYTES,
             expert_out.ptr + start * hidden_size * _BF16_BYTES,
             rows,
             intermediate,
@@ -268,6 +271,63 @@ def gemma4_experts_forward_bf16(
         hidden_size,
         top_k,
         **kwargs,
+    )
+
+
+def gemma4_project_expert(
+    weight: Gemma4Projection,
+    expert: int,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+) -> None:
+    """Run one expert's projection out of a stacked expert tensor.
+
+    The stacked ``(num_experts, out, in)`` tensor is one allocation, and an
+    expert is selected by offsetting into it. For a bf16 weight the stride is
+    ``out * in * 2``; for a quantized weight a row is a whole number of blocks,
+    so the stride comes from the tensor's byte count instead of being recomputed
+    here.
+    """
+
+    expert = int(expert)
+    if expert < 0:
+        raise ValueError(f"expert index must be non-negative, got {expert}")
+    if isinstance(weight, int):
+        stride = out_features * in_features * _BF16_BYTES
+        dense_gemv_out_bf16(
+            x_ptr,
+            weight + expert * stride,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+        )
+        return
+    # Imported here rather than at module scope: the quantized dispatch lives in
+    # the runtime layer and the kernel package does not depend on it otherwise.
+    from hipengine.runtime.gguf_linear import launch_gguf_linear_raw_ptr
+
+    allocation = weight.allocation("raw")
+    if expert >= int(weight.spec.source.shape[0]):
+        raise ValueError(
+            f"expert {expert} is out of range for {weight.spec.slot_path} "
+            f"with {int(weight.spec.source.shape[0])} experts"
+        )
+    launch_gguf_linear_raw_ptr(
+        weight,
+        allocation.buffer.ptr + expert * weight.expert_stride_bytes,
+        x_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
     )
 
 
