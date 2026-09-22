@@ -2582,6 +2582,32 @@ def _static_eligibility_from_route_decision(
     return eligibility if eligibility.eligible else None
 
 
+def _mtp_dispatch_sampling(
+    sampling: SamplingParams,
+    *,
+    thinking_policy: str | None = None,
+) -> SamplingParams:
+    """Return the params the MTP batch route dispatches with.
+
+    The hint policy asks for the raw-argmax-exact form of the request: its
+    thinking hints stay in the rendered prompt while the sampler-level budget
+    fields are cleared, which is what lets the exact raw-argmax route serve it.
+
+    The hard policy asks for the budget itself, and the sampled route applies a
+    request's own per-row law, so a hard request keeps whatever the request path
+    decided. Relaxing it here served the request with its enforcement silently
+    dropped -- invisible while hard refused the route, and live once the sampled
+    route began serving a budget.
+
+    An unset policy keeps the previous behavior, which is a no-op for every
+    request that carries no thinking enforcement.
+    """
+
+    if str(thinking_policy or "") == "hard":
+        return sampling
+    return relax_thinking_budget_for_mtp(sampling)
+
+
 def _sampling_for_realized_generation_route(
     sampling: SamplingParams,
     route_decision: Mapping[str, Any] | None,
@@ -3224,6 +3250,7 @@ class _QueuedGeneration:
     include_batch_metadata: bool = False
     route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE
     route_decision: dict[str, Any] | None = None
+    thinking_policy: str | None = None
     cancelled: bool = False
     finished: bool = False
     producer_task: asyncio.Task[None] | None = None
@@ -3447,6 +3474,7 @@ class _GenerationBatcher:
         include_batch_metadata: bool = False,
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
         route_decision: Mapping[str, Any] | None = None,
+        thinking_policy: str | None = None,
         error_extra: Mapping[str, Any] | None = None,
     ) -> list[Any] | _QueuedBatchResult:
         prompt_tuple = tuple(normalize_prompt_input(prompt) for prompt in prompts)
@@ -3464,6 +3492,7 @@ class _GenerationBatcher:
                 route_decision=(
                     None if route_decision is None else deepcopy(dict(route_decision))
                 ),
+                thinking_policy=None if thinking_policy is None else str(thinking_policy),
             )
         )
         if self._worker is None or self._worker.done():
@@ -3484,6 +3513,7 @@ class _GenerationBatcher:
         *,
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
         route_decision: Mapping[str, Any] | None = None,
+        thinking_policy: str | None = None,
         error_extra: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[GenerationStreamChunk]:
         """Yield generated stream chunks through a per-request queue owned by the batcher."""
@@ -3500,6 +3530,7 @@ class _GenerationBatcher:
             route_decision=(
                 None if route_decision is None else deepcopy(dict(route_decision))
             ),
+            thinking_policy=None if thinking_policy is None else str(thinking_policy),
         )
         self._queue.append(item)
         if self._worker is None or self._worker.done():
@@ -3971,6 +4002,7 @@ class _GenerationBatcher:
                     tuple(prompts),
                     group_sampling,
                     route=execution_route,
+                    thinking_policy=group[0].thinking_policy,
                 )
             except Exception as exc:
                 for item in group:
@@ -4021,6 +4053,7 @@ class _GenerationBatcher:
         sampling: SamplingParams,
         *,
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
+        thinking_policy: str | None = None,
     ) -> _QueuedBatchResult:
         engine = self._engine_factory()
         # ``_run_group`` resolves an unavailable MTP route (operator rollback or
@@ -4041,11 +4074,10 @@ class _GenerationBatcher:
         if str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
             breaker = self._mtp_circuit_breaker
             scope = None if breaker is None else breaker.scope(engine, prompts)
-            # The raw-argmax MTP verifier is exact only for the greedy fast
-            # path.  Under the hint thinking policy, host-sampler thinking
-            # enforcement is relaxed (prompt hints stay) so thinking requests
-            # can still use the MTP route.
-            mtp_sampling = relax_thinking_budget_for_mtp(sampling)
+            mtp_sampling = _mtp_dispatch_sampling(
+                sampling,
+                thinking_policy=thinking_policy,
+            )
             try:
                 raw_outputs = await _generate_speculative_mtp_detailed(
                     engine,
@@ -6287,6 +6319,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     include_batch_metadata=True,
                     route=generation_route,
                     route_decision=generation_route_decision,
+                    thinking_policy=_request_speculative_mtp_thinking(config, request),
                     error_extra=route_rejection_extra(
                         requested_model=request.model,
                         reason="engine_busy",
@@ -6571,6 +6604,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     sampling,
                     route=generation_route,
                     route_decision=generation_route_decision,
+                    thinking_policy=_request_speculative_mtp_thinking(config, request),
                     error_extra=route_rejection_extra(
                         requested_model=request.model,
                         reason="engine_busy",
@@ -9262,6 +9296,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     sampling,
                     route=generation_route,
                     route_decision=generation_route_decision,
+                    thinking_policy=_request_speculative_mtp_thinking(config, request),
                     error_extra=route_rejection_extra(
                         requested_model=request.model,
                         reason="engine_busy",
@@ -14282,8 +14317,9 @@ def _request_speculative_mtp_thinking(
     ``hint`` keeps the thinking hints in the rendered prompt but relaxes the
     host-sampler thinking-budget enforcement (soft-close bias, EOS
     suppression, hard-close forcing) so the request can use the exact
-    raw-argmax MTP route.  ``hard`` keeps full host-sampler enforcement and
-    treats the thinking budget as a hard MTP blocker.
+    raw-argmax MTP route.  ``hard`` keeps full host-sampler enforcement; a
+    budget-carrying request is served by the sampled route, which applies the
+    request's own per-row law, and the raw-argmax route keeps refusing it.
     """
 
     raw = getattr(request, "speculative_mtp", None)

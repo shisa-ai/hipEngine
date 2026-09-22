@@ -22,8 +22,8 @@
  "environment": {},
  "gate_command": "scripts/mtp_forced_token_gate.py --model ~/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --kv-storage bf16 --json /tmp/mtp-forced-bf16.json",
  "coverage": {
-  "covered": "Six requests on both arms: a three-token queue, a four-token queue longer than one verified chain, the same queue on the sampled branch (temperature 0.7), a json_object request whose object closes at its budget, a required tool_call_constraint whose envelope closes at its budget, and a force-sequence completion whose first token is the case prompt's own first token (taken from an unforced probe of that prompt). An unforced request runs before and after the forced ones on both arms.",
-  "not_covered": "thinking_budget stays refused with its cause and clearing command in SAMPLED_MTP_UNSERVABLE_BLOCKERS. Multi-choice (n>1) requests are task 17. The tool case uses mode=required so the tool branch is forced; an auto-mode request that takes its plain-text branch is not exercised here."
+  "covered": "Seven requests on both arms: a three-token queue, a four-token queue longer than one verified chain, the same queue on the sampled branch (temperature 0.7), a json_object request whose object closes at its budget, a required tool_call_constraint whose envelope closes at its budget, a thinking budget whose hard cap queues its close sequence mid-cycle, and a force-sequence completion whose first token is the case prompt's own first token (taken from an unforced probe of that prompt). An unforced request runs before and after the forced ones on both arms.",
+  "not_covered": "The thinking case exercises the hard cap; the soft-close window (its positive logit bias on the first close token) is not exercised. Multi-choice (n>1) requests are task 17. The tool case uses mode=required so the tool branch is forced; an auto-mode request that takes its plain-text branch is not exercised here. A greedy thinking request reaches this route with its budget intact, since the sampled route serves a budget and applies the request's own per-row law, but the gate's thinking case samples (temperature 0.7) rather than running greedy."
  },
  "acceptance": {
   "queue_isolated": "The unforced request run after every forced case published the same ids as the unforced seed request on the speculative arm, and the same ids as the autoregressive arm.",
@@ -31,7 +31,8 @@
   "forced_prefix_published": "Every forced case published its queued tokens at the head of the output, in order, on both arms.",
   "continuation_parity": "Every greedy case published the autoregressive arm's exact ids (4 cases), so the queue was consumed exactly once and the continuation was not disturbed. The 1 sampled case(s) published the forced prefix on both arms; their continuations are different draws from the same law because the accept walk consumes the request's uniform stream per verified row.",
   "route_ran": "Every speculative case reported gguf_specdec2_mtp2 while every autoregressive case reported a plain decode path.",
-  "tool_call_envelope": "The required tool case published one complete canonical envelope on both arms, byte-identical: <tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"/tmp/notes.txt\"}}</tool_call>. The constraint admits only that envelope in this mode, so the branch, the per-row mask, and the forced closing suffix are all load-bearing."
+  "tool_call_envelope": "The required tool case published one complete canonical envelope on both arms, byte-identical: <tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"/tmp/notes.txt\"}}</tool_call>. The constraint admits only that envelope in this mode, so the branch, the per-row mask, and the forced closing suffix are all load-bearing.",
+  "thinking_close_at_the_cap": "The thinking case queued a 4-token close sequence at a cap of 8 reasoning tokens. Both arms published that sequence starting at index 8 -- the MTP arm through 12 speculative cycles, the autoregressive arm step by step -- so the cap's position is the same on both routes. The close sequence itself is the budget's own token ids, and the answer phase follows it."
  },
  "observation": {
   "queue_consumed_across_cycles": "The two-token case ran 10 cycles for 23 speculative output tokens, and the three-token case ran 18 cycles for 31: the queue outlives a single cycle and is consumed one published position at a time.",
@@ -41,10 +42,11 @@
   "defect_found_and_fixed": "The first live run of this gate caught an UnboundLocalError in the host sampled-accept path (a function-local import of the row walk shadowing the module import), which the engine contained by falling back to autoregressive decoding for that request. Fixed, and pinned by tests/test_unit_mtp_native_sampling.py test_host_sampled_accept_resolves_forced_overrides_without_consuming_them.",
   "declared_context_honored": "Both arms constructed their engine with max_sequence_length=4096 and no prepare() call, and both resident sessions were sized to 4096 rather than to automatic selection. That is the default configuration: no HIPENGINE_GGUF_AUTO_CONTEXT override is set.",
   "json_object_close": "The json_object case published a closed object at exactly its 12-token budget and published the autoregressive arm's ids token for token (5 cycles, 10 speculative tokens). The constraint's closing suffix is what closes the object at the budget, and the autoregressive arm runs the same rule.",
-  "tool_branch_live": "The tool case ran 6 speculative cycles at depth 3 for 18 MTP-published tokens plus one AR step, and both arms published the same 20 ids. It failed the first time it ran, and both defects it exposed were in the route rather than in the constraint: sampled_accept_summary dropped the text observer the adapter handed it, so a cycle's later rows were masked against a DFA that had not seen the earlier tokens, and the route published a newline inside the envelope. A row advanced by such a violating draft token has no admissible law; it is unreachable, because the row before it is masked against the same DFA and excludes that token, so the walk records it as invalid rather than raising and the accept walk refuses to step onto it."
+  "tool_branch_live": "The tool case ran 6 speculative cycles at depth 3 for 18 MTP-published tokens plus one AR step, and both arms published the same 20 ids. It failed the first time it ran, and both defects it exposed were in the route rather than in the constraint: sampled_accept_summary dropped the text observer the adapter handed it, so a cycle's later rows were masked against a DFA that had not seen the earlier tokens, and the route published a newline inside the envelope. A row advanced by such a violating draft token has no admissible law; it is unreachable, because the row before it is masked against the same DFA and excludes that token, so the walk records it as invalid rather than raising and the accept walk refuses to step onto it.",
+  "thinking_budget_live": "The thinking budget needed one wiring fix and one real defect fixed. The walk now prepares each row's selection exactly where the autoregressive route does, which is what turns a reached hard cap into a queued close sequence; before that, the walk reported no override for the row the cap governs. The defect was in the commit: it consumed overrides as a leading prefix of the published chain, which holds for a request's own forced queue (emitted first) but not for a cap reached mid-cycle. A cycle that published the close at position 2 of 3 popped a position that had no override and raised. The commit now consumes exactly the positions the walk reported, so a non-leading override is handled the same way."
  },
  "summary": {
-  "cases": 6,
+  "cases": 7,
   "forced_cases": 3,
   "force_sequence_cases": 1,
   "greedy_cases_identical_between_arms": 5,
@@ -54,15 +56,17 @@
    "forced_tokens_sampled": 15,
    "json_object_close": 5,
    "force_sequence_completion": 13,
-   "tool_call_required": 6
+   "tool_call_required": 6,
+   "thinking_hard_close": 12
   },
   "mtp_output_tokens": {
    "forced_two_tokens": 23,
    "forced_three_tokens_greedy": 31,
    "forced_tokens_sampled": 23,
    "json_object_close": 10,
-   "force_sequence_completion": 23,
-   "tool_call_required": 18
+   "tool_call_required": 18,
+   "thinking_hard_close": 23,
+   "force_sequence_completion": 23
   },
   "declared_context_tokens": 4096,
   "resident_context_tokens": 4096,
@@ -72,6 +76,7 @@
    "forced_tokens_sampled": 24,
    "json_object_close": 12,
    "tool_call_required": 20,
+   "thinking_hard_close": 24,
    "force_sequence_completion": 24
   }
  },
