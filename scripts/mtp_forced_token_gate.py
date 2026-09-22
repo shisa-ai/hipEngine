@@ -71,6 +71,7 @@ class Case:
     purpose: str
     forced_text: str = ""
     force_sequence_text: tuple[str, ...] = ()
+    thinking_close_text: str = ""
     prompt: str = PROMPT
     max_tokens: int = 24
     temperature: float = 0.0
@@ -82,6 +83,16 @@ JSON_PROMPT = (
     "Reply with a single flat JSON object that has exactly two keys, "
     "\"city\" and \"unit\", for the weather in Kyoto. JSON only."
 )
+
+THINK_PROMPT = (
+    "Reason briefly about how many days are in two weeks, then answer. "
+    "Keep the reasoning short."
+)
+
+# The budget's close sequence is token ids and the marker only has to be
+# identifiable in the output, so it is deliberately not the model's own.
+THINKING_CLOSE_TEXT = "[[/think]]"
+THINKING_CAP = 8
 
 TOOL_PROMPT = (
     "Call the read tool to read the file /tmp/notes.txt. Use the tool call "
@@ -144,6 +155,22 @@ CASES: tuple[Case, ...] = (
         },
     ),
     Case(
+        name="thinking_hard_close",
+        purpose=(
+            "A thinking budget is per-row sampler state, so the hard cap queues "
+            "its close sequence from inside the cycle that reaches it and the "
+            "commit consumes that override for the position it governs. Sampled, "
+            "so the two arms' text differs by draw and the acceptance is the "
+            "index the close starts at, which the cap fixes on both routes."
+        ),
+        prompt=THINK_PROMPT,
+        max_tokens=24,
+        temperature=0.7,
+        seed=13,
+        thinking_close_text=THINKING_CLOSE_TEXT,
+        extras={"thinking_hard_token_cap": THINKING_CAP},
+    ),
+    Case(
         name="force_sequence_completion",
         purpose=(
             "A partially matched force-sequence queues its remainder from inside "
@@ -157,16 +184,40 @@ CASES: tuple[Case, ...] = (
 )
 
 
+def _index_of(haystack: list[int], needle: list[int]) -> int:
+    """Return the first index of ``needle`` in ``haystack``, or -1."""
+
+    if not needle or len(needle) > len(haystack):
+        return -1
+    return next(
+        (
+            index
+            for index in range(len(haystack) - len(needle) + 1)
+            if haystack[index : index + len(needle)] == needle
+        ),
+        -1,
+    )
+
+
 def _case_payload(case: Case, *, tokens: dict[str, Any]) -> dict[str, Any]:
     return {**case.extras, **tokens}
 
 
-def _forced_ids(
+def _encoded_fields(
     llm: Any, case: Case, probe_token_id: int | None
 ) -> dict[str, Any]:
     """Return the case's sampler fields with text encoded for this arm's tokenizer."""
 
     fields: dict[str, Any] = {}
+    if case.thinking_close_text:
+        # The close sequence is token ids, so each arm lowers the marker with its
+        # own tokenizer. A budget needs both a close sequence and a cap.
+        close_ids = tuple(int(token) for token in llm.tokenize(case.thinking_close_text))
+        if not close_ids:
+            raise RuntimeError(
+                f"case {case.name} thinking close text encoded to no tokens"
+            )
+        fields["thinking_close_token_ids"] = close_ids
     if case.forced_text:
         ids = tuple(int(token) for token in llm.tokenize(case.forced_text))
         if not ids:
@@ -325,7 +376,7 @@ def _run_arm(
             # The case's own extras must be merged in: a case that carries a
             # sampler field and never sends it would test nothing.
             fields = _case_payload(
-                case, tokens=_forced_ids(llm, case, probe_token_id)
+                case, tokens=_encoded_fields(llm, case, probe_token_id)
             )
             observations["cases"][case.name] = {
                 # Token ids are tuples and stay lists; a reason is a string and
@@ -408,6 +459,22 @@ def _check(observations: dict[str, Any], *, arm: str) -> dict[str, Any]:
             }
             assert '"read"' in text, {
                 "tool_envelope_named_the_wrong_tool": {"case": case.name, "text": text}
+            }
+        if case.name == "thinking_hard_close":
+            # The cap queues the close once the row's own prefix has reached it,
+            # so the close starts at the cap index on either route: the budget is
+            # the same per-row state machine.
+            close = [int(token) for token in entry["fields"]["thinking_close_token_ids"]]
+            position = _index_of(published, close)
+            assert position == THINKING_CAP, {
+                "thinking_close_not_at_the_cap": {
+                    "case": case.name,
+                    "cap": THINKING_CAP,
+                    "position": position,
+                    "close": close,
+                    "published": published,
+                    "text": request["text"],
+                }
             }
         if forced:
             assert published[: len(forced)] == forced, {

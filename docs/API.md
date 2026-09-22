@@ -236,8 +236,13 @@ Responses that realize MTP report `thinking_policy` and
 `thinking_controls="prompt_hint_only"`. Set `--speculative-mtp-thinking hard`
 (or
 `HIPENGINE_SPECULATIVE_MTP_THINKING=hard`) to keep full host-sampler
-enforcement; then the thinking budget is a hard MTP blocker and thinking
-requests fall back to plain AR. A request can override the server policy with
+enforcement. The budget then stays a hard blocker for the raw-argmax MTP route,
+which cannot enforce it, so a greedy thinking request falls back to plain AR. A
+request that actually samples is served by the sampled MTP route, which applies
+the budget per verified row: the phase machine, EOS suppression, and soft-close
+bias run on each row's own state, and a reached hard cap queues its close
+sequence from inside the cycle that reaches it. A request can override the server
+policy with
 `"speculative_mtp": {"enabled": true, "thinking": "hint" | "hard"}`; the
 capabilities manifest reports the active policy as
 `sampling.speculative_mtp.thinking_policy`.

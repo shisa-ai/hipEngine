@@ -56,12 +56,18 @@ def _fields(name: str) -> dict:
             "forced_tokens_pending": list(FORCED[name]),
             "forced_token_reason": "gate",
         }
+    if name == "thinking_hard_close":
+        return {
+            "thinking_close_token_ids": list(CLOSE_IDS),
+            "thinking_hard_token_cap": gate.THINKING_CAP,
+        }
     return {
         "force_sequence_completion_token_sequences": [list(SEQUENCE)],
         "force_sequence_completion_reason": "gate",
     }
 
 
+CLOSE_IDS = (650, 651)
 CLOSED_OBJECT = '{"city": "Kyoto", "unit": "c"}'
 CLOSED_ENVELOPE = '<tool_call>{"name":"read","arguments":{"path":"/tmp/notes.txt"}}</tool_call>'
 
@@ -97,7 +103,11 @@ def _arm(
     for case in gate.CASES:
         fields = _fields(case.name)
         default = (
-            tuple(fields.get("forced_tokens_pending") or SEQUENCE) + CONTINUATION
+            tuple(700 + index for index in range(gate.THINKING_CAP))
+            + CLOSE_IDS
+            + CONTINUATION
+            if case.name == "thinking_hard_close"
+            else tuple(fields.get("forced_tokens_pending") or SEQUENCE) + CONTINUATION
         )
         cases[case.name] = {
             "fields": fields,
@@ -265,6 +275,7 @@ class _FakeLLM:
         # One id per word, so a forced phrase is a multi-token queue.
         return tuple(600 + index for index, _word in enumerate(str(text).split()))
 
+
     def detokenize(self, token_ids) -> str:
         return " ".join(f"t{int(token)}" for token in token_ids)
 
@@ -298,6 +309,16 @@ class _FakeLLM:
             # fake emits one so the gate's check has something real to read.
             ids = (900, 901, 902)
             text = '{"city": "Kyoto", "unit": "c"}'
+        close = tuple(
+            int(token)
+            for token in (getattr(sampling_params, "thinking_close_token_ids", ()) or ())
+        )
+        if close:
+            # The cap queues the close once the row's own prefix reached it, so
+            # the fake publishes exactly that many reasoning tokens first.
+            cap = int(sampling_params.thinking_hard_token_cap)
+            ids = tuple(700 + index for index in range(cap)) + close + (705, 706)
+            text = self.detokenize(ids)
         if getattr(sampling_params, "tool_call_constraint", None) is not None:
             ids = (910, 911, 912)
             text = (
@@ -465,3 +486,25 @@ def test_the_tool_case_carries_a_required_constraint_and_is_gated(
     broken["cases"]["tool_call_required"]["request"]["text"] = "<tool_call>"
     with pytest.raises(AssertionError, match="tool_envelope_was_not_completed"):
         gate._check(broken, arm="mtp")
+
+
+def test_the_thinking_case_carries_a_budget_and_is_gated() -> None:
+    """The thinking case must send a close sequence and a cap, and be checked."""
+
+    case = next(item for item in gate.CASES if item.name == "thinking_hard_close")
+    assert case.thinking_close_text
+    assert case.extras["thinking_hard_token_cap"] == gate.THINKING_CAP
+    assert case.temperature > 0.0, "a sampled case is the route the budget is unserved on"
+
+    # A close that never starts at the cap is caught on either arm.
+    broken = _arm(arm="mtp")
+    broken["cases"]["thinking_hard_close"]["request"]["ids"] = [700, 701]
+    with pytest.raises(AssertionError, match="thinking_close_not_at_the_cap"):
+        gate._check(broken, arm="mtp")
+
+    # And a route that publishes the close but did not speculate is caught by the
+    # existing per-case route check, which is what the field's blocker produces.
+    checked = gate._check(_arm(arm="mtp"), arm="mtp")
+    checked["cases"]["thinking_hard_close"]["telemetry"]["execution_path"] = AR_PATH
+    with pytest.raises(AssertionError, match="speculative_case_did_not_speculate"):
+        gate._compare({"mtp": checked, "ar": gate._check(_arm(arm="ar"), arm="ar")})

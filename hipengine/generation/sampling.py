@@ -884,6 +884,7 @@ SAMPLED_MTP_SERVABLE_BLOCKERS: tuple[str, ...] = (
     "force_sequence_completion_token_sequences",
     "json_object_close_forcing",
     "tool_call_constraint",
+    "thinking_budget",
 )
 """MTP blockers the sampled route serves exactly: the sampling law and the
 forced-token queue.
@@ -932,18 +933,23 @@ per-row remaining-token budget the hook compares against comes from the same
 decode budget the accept walk uses.
 """
 
-SAMPLED_MTP_UNSERVABLE_BLOCKERS: tuple[str, ...] = ("thinking_budget",)
-"""MTP blockers the sampled route deliberately refuses.
+SAMPLED_MTP_UNSERVABLE_BLOCKERS: tuple[str, ...] = ()
+"""MTP blockers the sampled route refuses. Empty: every field is served.
 
-One field remains: ``thinking_budget``, a policy refusal rather than a
-structural one. The host
-thinking state is per-row sampler state, and this route already walks it: the
-phase machine, EOS suppression, soft-close bias, and the close-sequence queue all
-run inside ``_process_row`` on each row's clone. It is unreachable in practice
-because the server relaxes the budget under its default ``hint`` policy before
-the blocker check, and under ``hard`` it refuses the request and serves plain AR
-(``docs/API.md`` "MTP + thinking"). Clearing command: measure a thinking request
-through this route on both policies, then move the field here to servable.
+The last field, ``thinking_budget``, moved here when the walk began preparing each
+row's selection. ``prepare_for_selection`` is what turns a reached hard cap into
+the queued close sequence, and the walk now calls it exactly where the
+autoregressive route does, so a cycle's rows see the same close override and the
+commit consumes it for the position it governs. The phase machine, EOS
+suppression, and soft-close bias already ran per row inside
+``processed_distribution``.
+
+This tuple is the set that keeps a request off the *sampled* route; the
+raw-argmax route's own refusal of these fields is unchanged in
+``speculative_mtp_sampling_blockers``, which the greedy fast path checks. A
+greedy thinking request therefore still falls back to the autoregressive route,
+and the server's ``hard`` thinking policy now serves a sampled thinking request
+on this route instead of refusing it (``docs/API.md`` "MTP + thinking").
 
 Every other field that used to be refused here has moved above. The finish-rule
 fields (``min_tokens``, ``eos_token_id``, ``stop_token_ids``,

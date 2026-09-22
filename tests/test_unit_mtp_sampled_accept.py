@@ -16,7 +16,7 @@ import pytest
 
 from hipengine.generation.mtp_sampled_accept import (
     observe_published_tokens,
-    published_forced_count,
+    published_forced_positions,
     row_forced_token_ids,
     row_prefix_states,
     sampled_accept_summary,
@@ -402,7 +402,7 @@ def test_observe_published_tokens_consumes_the_published_forced_prefix() -> None
         prompt_tokens=(1,),
         forced_tokens_pending=(5, 6),
     )
-    observe_published_tokens(state, (5, 6), forced_count=2)
+    observe_published_tokens(state, (5, 6), forced_positions=(True, True))
     assert tuple(state.generated_tokens) == (5, 6)
     assert state.forced_tokens == ()
 
@@ -415,7 +415,7 @@ def test_observe_published_tokens_leaves_the_unpublished_queue_pending() -> None
         prompt_tokens=(1,),
         forced_tokens_pending=(5, 6),
     )
-    observe_published_tokens(state, (5,), forced_count=1)
+    observe_published_tokens(state, (5,), forced_positions=(True,))
     assert state.forced_tokens == (6,)
 
 
@@ -424,18 +424,42 @@ def test_observe_published_tokens_refuses_a_forced_mismatch() -> None:
 
     state = RowSamplingState(seed=1, prompt_tokens=(1,), forced_tokens_pending=(5,))
     with pytest.raises(RuntimeError, match="pending forced token is 5"):
-        observe_published_tokens(state, (9,), forced_count=1)
+        observe_published_tokens(state, (9,), forced_positions=(True,))
 
 
-def test_published_forced_count_counts_only_the_published_prefix() -> None:
+def test_published_forced_positions_mark_only_the_published_prefix() -> None:
     """A stop inside the chain must not consume the overrides behind it."""
 
     batch = _chain_batch((5, 6))
     forced_ids = (5, 6, None)
-    # The full chain published both forced tokens and the bonus row.
-    assert published_forced_count(batch, (2,), (5, 6, 3), forced_ids) == 2
+    # The full chain published both forced tokens and then the bonus row, which
+    # no override governs.
+    assert published_forced_positions(batch, (2,), (5, 6, 3), forced_ids) == (
+        True,
+        True,
+        False,
+    )
     # The finish rule stopped after the first token: only that one was published.
-    assert published_forced_count(batch, (2,), (5,), forced_ids) == 1
+    assert published_forced_positions(batch, (2,), (5,), forced_ids) == (True,)
+
+
+def test_published_forced_positions_mark_a_non_leading_override() -> None:
+    """An override is not necessarily leading: a thinking cap queues a later one.
+
+    The request's own forced queue is emitted at the head of the output, but a
+    thinking budget's hard cap queues its close sequence at the position the cap
+    is reached. Counting the overrides on the path instead of reading their rows
+    made the commit consume a leading position that had none.
+    """
+
+    batch = _chain_batch((5, 6))
+    # Only the second row's edge carries an override.
+    forced_ids = (None, 7, None)
+    assert published_forced_positions(batch, (2,), (5, 6, 3), forced_ids) == (
+        False,
+        True,
+        False,
+    )
 
 
 def test_published_forced_count_ignores_rows_the_accept_walk_never_reached() -> None:
@@ -444,7 +468,7 @@ def test_published_forced_count_ignores_rows_the_accept_walk_never_reached() -> 
     batch = _chain_batch((5, 6))
     forced_ids = (5, 6, None)
     # The accept walk stopped at the root: the published token is the root row's.
-    assert published_forced_count(batch, (0,), (5,), forced_ids) == 1
+    assert published_forced_positions(batch, (0,), (5,), forced_ids) == (True,)
 
 
 def test_cycle_commit_round_trip_consumes_exactly_what_it_published() -> None:
@@ -461,7 +485,7 @@ def test_cycle_commit_round_trip_consumes_exactly_what_it_published() -> None:
     observe_published_tokens(
         state,
         published,
-        forced_count=published_forced_count(batch, (2,), published, forced_ids),
+        forced_positions=published_forced_positions(batch, (2,), published, forced_ids),
     )
     assert tuple(state.generated_tokens) == published
     assert state.forced_tokens == ()
@@ -617,6 +641,52 @@ def test_the_summary_wires_the_text_observer_into_both_walks():
     assert 4 not in summary.next_tokens
 
 
+def test_the_walk_queues_the_thinking_budgets_hard_close_override():
+    """A thinking budget is per-row state, so the walk must prepare each row.
+
+    ``prepare_for_selection`` is what turns a reached hard cap into the queued
+    close sequence, and the autoregressive route calls it before every selection.
+    A walk that peeks the queue without preparing it reports no override for the
+    row the cap governs, so the cycle publishes the close without the commit
+    consuming it: the live budget keeps the sequence queued and the next cycle
+    forces it a second time.
+    """
+
+    from hipengine.generation.sampling import thinking_budget_state_from_params
+
+    params = _params(thinking_close_token_ids=(9,), thinking_hard_token_cap=2)
+    batch = _chain_batch((2, 3, 4))
+    state = RowSamplingState(
+        seed=7,
+        generated_tokens=(1,),
+        thinking_budget=thinking_budget_state_from_params(params),
+    )
+
+    forced = row_forced_token_ids(batch, {5: state})
+    # Row 2 is the first row whose own prefix reached the cap, so its edge is
+    # the one the close sequence governs. Row 3 is its child: the override is
+    # spent by the position it governs.
+    assert forced[2] == 9, forced
+    assert forced[3] is None, forced
+
+    # The commit consumes exactly the overrides the walk reported, so the live
+    # budget has nothing left to force.
+    published = (9,)
+    observe_published_tokens(
+        state,
+        published,
+        forced_positions=published_forced_positions(
+            batch,
+            (2,),
+            published,
+            forced,
+        ),
+        observe_text=None,
+    )
+    assert not state.thinking_budget.forced_tokens
+    assert state.thinking_budget.phase == "answer"
+
+
 def test_the_walk_observes_the_parent_token_at_the_childs_own_depth():
     """Depth is the count of tokens published before the row's own token."""
 
@@ -644,7 +714,7 @@ def test_the_commit_observes_only_the_published_tokens_text():
     observe_published_tokens(
         state,
         (2, 3),
-        forced_count=0,
+        forced_positions=(False, False),
         observe_text=_text_observer(params, texts),
     )
     # Both published tokens advanced the live DFA, and the unused row's text
