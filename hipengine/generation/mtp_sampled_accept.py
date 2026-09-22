@@ -97,6 +97,7 @@ def chain_token_logprobs(
     *,
     params_for: Callable[[int], Any],
     token_text_for_id: Callable[[int], str] | None = None,
+    observe_text: Callable[[RowSamplingState, int, int], None] | None = None,
 ) -> tuple[tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...], ...]:
     """Return each request's published-token logprob metadata from verified rows.
 
@@ -106,6 +107,11 @@ def chain_token_logprobs(
     final token, and the chain prefix it selects is the prefix whose metadata is
     reported: a cycle that stopped early reports metadata for the tokens it
     published and none for the ones it did not.
+
+    ``observe_text`` is the same per-row text observer the accept walk used. A
+    constrained row's support is masked from the text of the tokens before it, so
+    scoring that row against an unobserved state could report ``-inf`` for a
+    token the cycle published.
     """
 
     logits = np.asarray(target_logits)
@@ -117,7 +123,7 @@ def chain_token_logprobs(
         raise ValueError("published_tokens must align with request_ids")
     if len(accepted_counts) != len(batch.request_ids):
         raise ValueError("accepted_counts must align with request_ids")
-    prefix_states = row_prefix_states(batch, states)
+    prefix_states = row_prefix_states(batch, states, observe_text=observe_text)
     rows = chain_edge_rows(batch, accepted_counts)
     metadata: list[tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...]] = []
     for index, tokens in enumerate(published_tokens):
@@ -141,6 +147,8 @@ def chain_token_logprobs(
 def row_prefix_states(
     batch: TargetVerifyBatch,
     states: Mapping[int, RowSamplingState],
+    *,
+    observe_text: Callable[[RowSamplingState, int, int], None] | None = None,
 ) -> tuple[RowSamplingState, ...]:
     """Return each row's sampler state with that row's drafted prefix observed.
 
@@ -150,7 +158,12 @@ def row_prefix_states(
     verified batch, so one forward pass resolves every row.
     """
 
-    return tuple(state for state, _forced in _row_prefix_walk(batch, states))
+    return tuple(
+        state
+        for state, _forced in _row_prefix_walk(
+            batch, states, observe_text=observe_text
+        )
+    )
 
 
 def row_forced_token_ids(
@@ -177,6 +190,8 @@ def row_forced_token_ids(
 def _row_prefix_walk(
     batch: TargetVerifyBatch,
     states: Mapping[int, RowSamplingState],
+    *,
+    observe_text: Callable[[RowSamplingState, int, int], None] | None = None,
 ) -> tuple[tuple[RowSamplingState, int | None], ...]:
     """Resolve every row's state and the forced override governing its edge.
 
@@ -194,6 +209,7 @@ def _row_prefix_walk(
         raise ValueError(f"missing sampler state for requests {sorted(missing)}")
     resolved: list[RowSamplingState | None] = [None] * batch.rows
     forced_ids: list[int | None] = [None] * batch.rows
+    depths: list[int] = [0] * batch.rows
     roots = set(int(row) for row in batch.root_rows)
     for row in range(batch.rows):
         request_id = int(batch.row_to_request[row])
@@ -204,7 +220,17 @@ def _row_prefix_walk(
             if parent < 0 or parent >= row or resolved[parent] is None:
                 raise ValueError("candidate row parent must be an earlier resolved row")
             state = resolved[parent].clone()
-            state.observe(int(batch.tokens[row]))
+            token = int(batch.tokens[row])
+            state.observe(token)
+            depths[row] = depths[parent] + 1
+            if observe_text is not None:
+                # A text-keyed constraint (json_object close forcing, tool-call
+                # constraints) masks a row from the text of the tokens before it.
+                # Observing the parent's token here is what makes a cycle's later
+                # rows see the DFA state ``_process_row`` would see at that point
+                # of an autoregressive decode. ``depths[row]`` is the number of
+                # tokens this cycle published before this row's own token.
+                observe_text(state, token, depths[row])
             if forced_ids[parent] is not None:
                 # The parent's override was the token emitted at this row's
                 # position, so this row's queue has already consumed it. When the
@@ -245,6 +271,7 @@ def observe_published_tokens(
     published: Sequence[int],
     *,
     forced_count: int,
+    observe_text: Callable[[RowSamplingState, int, int], None] | None = None,
 ) -> None:
     """Observe a cycle's published tokens into the request's live sampler state.
 
@@ -272,6 +299,12 @@ def observe_published_tokens(
                     f"pending forced token is {forced}"
                 )
         state.observe(emitted)
+        if observe_text is not None:
+            # One autoregressive step per published token, in order: the live
+            # request's DFA and its queued closing suffix advance exactly as they
+            # would have on the autoregressive route. Rows the accept walk never
+            # reached published nothing and advance nothing.
+            observe_text(state, emitted, index)
 
 
 def _draft_distributions(batch: TargetVerifyBatch) -> tuple[SparseDistribution, ...]:
@@ -310,6 +343,7 @@ def sampled_accept_summary(
     token_text_for_id: Callable[[int], str] | None = None,
     transaction_id: int | None = None,
     remaining_decode: Sequence[int] | None = None,
+    observe_text: Callable[[RowSamplingState, int, int], None] | None = None,
 ) -> TargetAcceptSummary:
     """Accept a verified draft chain by sampling from the target's own law.
 

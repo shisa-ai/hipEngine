@@ -853,6 +853,8 @@ SAMPLED_MTP_SERVABLE_BLOCKERS: tuple[str, ...] = (
     "forced_tokens_pending",
     "post_thinking_forced_tokens_pending",
     "force_sequence_completion_token_sequences",
+    "json_object_close_forcing",
+    "tool_call_constraint",
 )
 """MTP blockers the sampled route serves exactly: the sampling law and the
 forced-token queue.
@@ -891,28 +893,21 @@ actually published (``observe_published_tokens``).
 becomes pending when a row's observed token ends the thinking phase, and the
 second queues the remainder of a partially matched sequence inside ``observe``,
 which the row walk already runs per row.
+
+``json_object_close_forcing`` and ``tool_call_constraint`` are the text-keyed
+pair. Their hook reads the decoded text of the token the request emitted, so a
+cycle has to decode each row's token and observe it into that row's cloned state
+before the next row is processed; the closing suffix a constrained row queues is
+then the same suffix the autoregressive route would queue at that position. The
+per-row remaining-token budget the hook compares against comes from the same
+decode budget the accept walk uses.
 """
 
-SAMPLED_MTP_UNSERVABLE_BLOCKERS: tuple[str, ...] = (
-    "json_object_close_forcing",
-    "tool_call_constraint",
-    "thinking_budget",
-)
+SAMPLED_MTP_UNSERVABLE_BLOCKERS: tuple[str, ...] = ("thinking_budget",)
 """MTP blockers the sampled route deliberately refuses.
 
-One family: fields whose per-token hook reads the *text* of the tokens the
-request has emitted. ``json_object_close_forcing`` and ``tool_call_constraint``
-advance a text DFA in ``observe_selected_token_text`` and, from it, mask the
-row's support and queue a closing suffix. The row walk observes token ids, not
-text, so inside one cycle the later rows would be processed against a DFA state
-that has not seen the earlier rows' tokens. The mask is therefore wrong for
-exactly the rows a cycle publishes together, which would let the route publish a
-token the request's own constraint rejects. Clearing command: observe each row's
-decoded text in the row walk (the tokenizer and the per-row remaining-token
-budget are both already available at the call site), then gate the result
-against the autoregressive route for a tool-call and a json_object request.
-
-``thinking_budget`` is a policy refusal rather than a structural one. The host
+One field remains: ``thinking_budget``, a policy refusal rather than a
+structural one. The host
 thinking state is per-row sampler state, and this route already walks it: the
 phase machine, EOS suppression, soft-close bias, and the close-sequence queue all
 run inside ``_process_row`` on each row's clone. It is unreachable in practice
@@ -929,7 +924,13 @@ autoregressive finish rule to the whole verified chain through
 selects the terminal prefix and reports ``eos`` or ``stop``. ``logprobs`` and
 ``top_logprobs`` moved when the route began reporting them from the verified
 rows. The forced-token fields moved when the queue became a per-row point mass
-with a publish-time pop.
+with a publish-time pop. ``json_object_close_forcing`` and
+``tool_call_constraint`` moved when the row walk began observing each row's
+decoded token text, so a cycle's later rows are masked by a DFA state that has
+seen the earlier rows' tokens -- the state ``_process_row`` would see at that
+point of an autoregressive decode. The live request's DFA and its queued closing
+suffix are advanced at commit time by the published tokens only, the same rule
+the forced queue follows.
 """
 
 
@@ -1441,6 +1442,25 @@ def select_token(
         top_logprobs=top_logprobs,
         active_processors=active_processors,
         fast_path_blockers=fast_path_blockers,
+    )
+
+
+def constraint_skips_token_text(params: Any, state: Any, token_id: int) -> bool:
+    """Whether the text observation skips this token for a constrained request.
+
+    An EOS token is not part of the constrained document, so the autoregressive
+    route observes no text for it. The speculative route has to apply the same
+    rule at commit time, where the selection that set the skip flag happened on a
+    private clone; both read this one predicate so they cannot drift.
+    """
+
+    return _constraint_active_for(state) and _is_eos_token(params, token_id)
+
+
+def _constraint_active_for(state: Any) -> bool:
+    return (
+        getattr(state, "_json_object_constraint", None) is not None
+        or getattr(state, "tool_call_constraint_state", None) is not None
     )
 
 

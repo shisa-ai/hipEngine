@@ -341,10 +341,12 @@ forced-token queues, token-sequence completion repair, JSON/tool constraints,
 `temperature > 0`, and requested logprobs. A request that carries one of those
 fields does not necessarily fall back to AR: the sampled route
 (`supports_sampled_speculative_mtp()`) serves the sampling law, the finish rule,
-the logprob metadata, and the forced-token queues, and only
-`json_object_close_forcing`, `tool_call_constraint`, and `thinking_budget` still
-keep a request on the autoregressive path
-(`SAMPLED_MTP_UNSERVABLE_BLOCKERS` in `hipengine/generation/sampling.py`). The
+the logprob metadata, the forced-token queues, and the text-keyed constraints
+(`json_object_close_forcing`, `tool_call_constraint`), which mask each row from
+the decoded text of the tokens the cycle published before it. Only
+`thinking_budget` still keeps a request on the autoregressive path
+(`SAMPLED_MTP_UNSERVABLE_BLOCKERS` in `hipengine/generation/sampling.py`), and
+the server's default `hint` policy relaxes it before that check. The
 resident scheduler applies this
 guard before emitting
 speculative target-verification work, so rows that need processed logits cannot

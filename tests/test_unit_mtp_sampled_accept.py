@@ -465,3 +465,92 @@ def test_cycle_commit_round_trip_consumes_exactly_what_it_published() -> None:
     )
     assert tuple(state.generated_tokens) == published
     assert state.forced_tokens == ()
+
+
+def _text_observer(params, texts, *, remaining_decode=8):
+    """The adapter's own observer shape, so the wiring is what is under test."""
+
+    from hipengine.generation.qwen35_gguf_mtp2 import _constraint_text_observer
+
+    return _constraint_text_observer(
+        params,
+        token_text_for_id=lambda token_id: texts[int(token_id)],
+        encode_text=lambda text: (7,),
+        remaining_decode=remaining_decode,
+    )
+
+
+def test_a_row_text_is_observed_so_the_next_row_is_masked_by_it():
+    """A cycle's later rows must see the DFA state the earlier tokens produced.
+
+    ``json_object_close_forcing`` masks a row from the text of the tokens before
+    it. Before the walk observed text, the second row of a cycle was masked
+    against a DFA that had not seen the first row's token -- so the route could
+    publish a token the request's own constraint rejects. The first half of this
+    test is that defect; the second half is the fix.
+    """
+
+    from hipengine.generation.sampling import processed_distribution
+
+    batch = _chain_batch((2,))
+    params = _params(json_object_close_forcing=True)
+    state = RowSamplingState(
+        seed=7, generated_tokens=(1,), json_object_close_forcing=True
+    )
+    # The parent row's decoded text is an object opened but not yet closed, so
+    # the child row's outgoing token is the one that closes it.
+    texts = {2: '{"a": 1', 3: "}", 5: "{", 6: " "}
+    logits = np.full((8,), -6.0, dtype=np.float32)
+    kwargs = {"token_text_for_id": lambda token_id: texts[int(token_id)]}
+
+    unobserved = row_prefix_states(batch, {5: state})[1]
+    ids_without, _probs = processed_distribution(logits, params, unobserved, **kwargs)
+    # The defect, in both directions: the child cannot close the object it is
+    # inside, and it may open a second one.
+    assert 3 not in ids_without, "the fixture must show the unobserved-row defect"
+    assert 5 in ids_without
+
+    observed = row_prefix_states(batch, {5: state}, observe_text=_text_observer(params, texts))[1]
+    ids_with, _probs = processed_distribution(logits, params, observed, **kwargs)
+    assert 3 in ids_with
+    assert 5 not in ids_with
+    assert 6 in ids_with
+
+    # The live request's own state is untouched: only the commit advances it.
+    assert state.generated_tokens == [1]
+
+
+def test_the_walk_observes_the_parent_token_at_the_childs_own_depth():
+    """Depth is the count of tokens published before the row's own token."""
+
+    batch = _chain_batch((2, 3))
+    state = RowSamplingState(seed=7, generated_tokens=(1,))
+    seen: list[tuple[int, int, tuple[int, ...]]] = []
+
+    def observe_text(row_state, token_id, depth):
+        seen.append((int(token_id), int(depth), tuple(row_state.generated_tokens)))
+
+    row_prefix_states(batch, {5: state}, observe_text=observe_text)
+    # Row 1 is the first candidate (the root's own token is the live state's),
+    # and row 2 extends row 1, so it sees both drafted tokens.
+    assert seen == [(2, 1, (1, 2)), (3, 2, (1, 2, 3))]
+
+
+def test_the_commit_observes_only_the_published_tokens_text():
+    """A row the accept walk never reached published nothing, so it advances nothing."""
+
+    params = _params(json_object_close_forcing=True)
+    state = RowSamplingState(
+        seed=7, generated_tokens=(1,), json_object_close_forcing=True
+    )
+    texts = {2: "{", 3: "}", 4: "x"}
+    observe_published_tokens(
+        state,
+        (2, 3),
+        forced_count=0,
+        observe_text=_text_observer(params, texts),
+    )
+    # Both published tokens advanced the live DFA, and the unused row's text
+    # never did.
+    assert state.generated_tokens == [1, 2, 3]
+    assert "x" not in state._json_object_constraint.observed_text
