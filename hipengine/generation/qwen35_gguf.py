@@ -1617,6 +1617,49 @@ class Qwen35GGUFBringupGenerator:
             "kv_capability": copy.deepcopy(self.kv_capability_provenance),
         }
 
+    @property
+    def resident_context_tokens(self) -> int | None:
+        """The context resident sizing will use, or ``None`` if nothing decided yet.
+
+        A caller's declaration wins over automatic selection, so this reports the
+        declaration when there is one and the auto-selected context otherwise.
+        ``None`` means no session has been sized yet and no context was declared.
+        """
+
+        pinned = getattr(self, "_prepared_max_sequence_length", None)
+        if pinned is not None:
+            return int(pinned)
+        resolved = getattr(self, "_auto_resolved_max_sequence_length", None)
+        return None if resolved is None else int(resolved)
+
+    @_target_arch_scoped
+    def declare_max_sequence_length(self, max_sequence_length: int) -> int:
+        """Record a serving context the caller declared, before any allocation.
+
+        Resident sizing reads ``_prepared_max_sequence_length`` and only
+        ``prepare`` used to set it, so a caller that declared its context at
+        construction time (``LLM(model, max_sequence_length=N)``) and never
+        called ``prepare`` had that declaration ignored: the session was sized by
+        automatic selection instead, which picks the largest context that fits
+        and can be far larger than the caller asked for. On this APU the KV pool
+        is host memory, so that substitution is a machine-level allocation, not a
+        local one.
+
+        Unlike ``prepare`` this allocates nothing: it records the pin that the
+        next session acquisition reads. The pin never shrinks, matching
+        ``prepare``.
+        """
+
+        requested = int(max_sequence_length)
+        if requested <= 0:
+            raise ValueError("max_sequence_length must be positive")
+        current = getattr(self, "_prepared_max_sequence_length", None)
+        self._prepared_max_sequence_length = max(
+            requested,
+            0 if current is None else int(current),
+        )
+        return self._prepared_max_sequence_length
+
     @_target_arch_scoped
     def prepare(
         self,
@@ -1629,12 +1672,7 @@ class Qwen35GGUFBringupGenerator:
         if max_sequence_length is not None and int(max_sequence_length) <= 0:
             raise ValueError("max_sequence_length must be positive")
         if max_sequence_length is not None:
-            requested = int(max_sequence_length)
-            current = getattr(self, "_prepared_max_sequence_length", None)
-            self._prepared_max_sequence_length = max(
-                requested,
-                0 if current is None else int(current),
-            )
+            self.declare_max_sequence_length(max_sequence_length)
         self._prepare_kv_policy(sampling_params)
         self._get_shared_runner()
         return None if max_sequence_length is None else int(max_sequence_length)

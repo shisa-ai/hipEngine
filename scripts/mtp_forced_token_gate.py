@@ -244,11 +244,6 @@ def _run_arm(
     print(f"[gate] {serving}: {available_gib:.1f} GiB of RAM available", flush=True)
     llm = LLM(model, speculative_mtp_serving=serving, **kwargs)
     try:
-        # Pin the resident context before the first generate. Without this the
-        # GGUF auto-sizing picks the model's own maximum context, which at BF16
-        # is tens of GiB of KV and can exhaust host memory (GTT is RAM-backed).
-        prepared = llm.prepare(max_sequence_length=kwargs["max_sequence_length"])
-        print(f"[gate] {serving}: resident context pinned to {prepared}", flush=True)
         # The unforced seed run supplies the force-sequence trigger token and the
         # reference an unforced request must still match after a forced one.
         seed = _run(
@@ -259,7 +254,16 @@ def _run_arm(
             mtp=mtp,
         )
         seed_token_id = int(seed["ids"][0]) if seed["ids"] else None
-        observations: dict[str, Any] = {"seed": seed, "cases": {}}
+        # The constructor's max_sequence_length is a declaration about the
+        # resident session. Assert the session was sized to it: auto-selection
+        # takes the largest context that fits, which at BF16 is tens of GiB of
+        # host memory and can exhaust the machine.
+        observations: dict[str, Any] = {
+            "seed": seed,
+            "cases": {},
+            "declared_context_tokens": int(kwargs["max_sequence_length"]),
+            "resident_context_tokens": _resident_context_tokens(llm),
+        }
         for case in CASES:
             probe = None
             probe_token_id = None
@@ -316,6 +320,14 @@ def _check(observations: dict[str, Any], *, arm: str) -> dict[str, Any]:
     """Assert the per-arm invariants and return the arm's report."""
 
     seed = observations["seed"]
+    assert (
+        observations["resident_context_tokens"] == observations["declared_context_tokens"]
+    ), {
+        "the_resident_session_was_not_sized_to_the_declared_context": {
+            "declared": observations["declared_context_tokens"],
+            "resident": observations["resident_context_tokens"],
+        }
+    }
     if arm == "mtp":
         assert seed["telemetry"]["execution_path"] == MTP_EXECUTION_PATH, {
             "unforced_seed_did_not_speculate": seed["telemetry"]
@@ -324,7 +336,14 @@ def _check(observations: dict[str, Any], *, arm: str) -> dict[str, Any]:
         assert seed["telemetry"]["execution_path"] != MTP_EXECUTION_PATH, {
             "autoregressive_arm_speculated": seed["telemetry"]
         }
-    report: dict[str, Any] = {"seed": seed, "cases": {}}
+    report: dict[str, Any] = {
+        "seed": seed,
+        "cases": {},
+        # Recorded so the artifact shows the session was sized to the declaration
+        # rather than to whatever automatic selection would have chosen.
+        "declared_context_tokens": observations["declared_context_tokens"],
+        "resident_context_tokens": observations["resident_context_tokens"],
+    }
     for case in CASES:
         entry = observations["cases"][case.name]
         request = entry["request"]
@@ -484,6 +503,23 @@ def _compare(arms: dict[str, Any]) -> dict[str, Any]:
     return {"acceptance": acceptance, "rows": parity_rows}
 
 
+def _resident_context_tokens(llm: Any) -> int | None:
+    """The context resident sizing chose for this engine.
+
+    ``resident_capacity_estimate`` prices a session at a context the caller
+    passes, so it reports the model's maximum when asked for the headroom. The
+    sizing decision itself is the generator's: a caller's declaration when there
+    is one, the automatic selection otherwise.
+    """
+
+    generator = getattr(llm, "_text_generator", None)
+    if generator is None:
+        getter = getattr(llm, "_get_text_generator", None)
+        generator = getter() if callable(getter) else None
+    resolved = getattr(generator, "resident_context_tokens", None)
+    return None if resolved is None else int(resolved)
+
+
 def _write_json(path_text: str | None, report: dict[str, Any]) -> None:
     if not path_text:
         return
@@ -530,8 +566,6 @@ def _single_arm_report(args: Any, arm_report: dict[str, Any], *, arm: str) -> di
 
 
 def main(argv: list[str] | None = None) -> int:
-    import os
-
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True)
     parser.add_argument("--backend", default="hip_gfx1151")
@@ -546,14 +580,6 @@ def main(argv: list[str] | None = None) -> int:
         help="resident KV context, pinned explicitly (default 4096)",
     )
     parser.add_argument(
-        "--allow-auto-context",
-        action="store_true",
-        help=(
-            "let GGUF auto-sizing choose the context; off by default because the "
-            "model's own maximum context is tens of GiB of BF16 KV"
-        ),
-    )
-    parser.add_argument(
         "--arm",
         choices=("both", "mtp", "ar"),
         default="both",
@@ -561,10 +587,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if not args.allow_auto_context:
-        # The automatic sizing selects the model maximum when the caller pins
-        # nothing, and its backoff retry only steps down from there.
-        os.environ["HIPENGINE_GGUF_AUTO_CONTEXT"] = "0"
 
     kwargs: dict[str, Any] = {
         "backend": args.backend,

@@ -6,7 +6,7 @@
  "status": "measured_accepted",
  "performance_claim": false,
  "date": "2026-09-23",
- "git_head": "bd43a5065",
+ "git_head": "2f93e444b",
  "backend": "hip_gfx1151",
  "host": "gfx1151",
  "kv_storage": "bf16",
@@ -19,10 +19,7 @@
   "size_bytes": 17106775008,
   "quant": "gguf_q4_k_m"
  },
- "environment": {
-  "HIPENGINE_MTP2_OUTPUT_SPANS": "1",
-  "HIPENGINE_GGUF_AUTO_CONTEXT": "0"
- },
+ "environment": {},
  "gate_command": "scripts/mtp_forced_token_gate.py --model ~/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --kv-storage bf16 --json /tmp/mtp-forced-bf16.json",
  "coverage": {
   "covered": "Four requests on both arms: a three-token queue, a four-token queue longer than one verified chain, the same queue on the sampled branch (temperature 0.7), and a force-sequence completion whose first token is the case prompt's own first token (taken from an unforced probe of that prompt). An unforced request runs before and after the forced ones on both arms.",
@@ -40,7 +37,8 @@
   "sampled_branch": "The sampled case ran 15 cycles and published the forced prefix identically on both arms. Its continuation is a different draw from the same law, which is the documented behavior of the sampled route: the accept walk draws one uniform per verified row where the autoregressive route draws one per step.",
   "force_sequence_trigger": "The force-sequence case queued [16570, 81099, 12102] where the first element is the case prompt's own first token from an unforced probe, so the partial match is guaranteed to trigger on the token the model emits anyway; both arms published exactly that sequence.",
   "route_confirmed": "Every speculative case reported execution_path=gguf_specdec2_mtp2 and every autoregressive case reported a plain decode path, so no comparison is between two autoregressive runs.",
-  "defect_found_and_fixed": "The first live run of this gate caught an UnboundLocalError in the host sampled-accept path (a function-local import of the row walk shadowing the module import), which the engine contained by falling back to autoregressive decoding for that request. Fixed, and pinned by tests/test_unit_mtp_native_sampling.py test_host_sampled_accept_resolves_forced_overrides_without_consuming_them."
+  "defect_found_and_fixed": "The first live run of this gate caught an UnboundLocalError in the host sampled-accept path (a function-local import of the row walk shadowing the module import), which the engine contained by falling back to autoregressive decoding for that request. Fixed, and pinned by tests/test_unit_mtp_native_sampling.py test_host_sampled_accept_resolves_forced_overrides_without_consuming_them.",
+  "declared_context_honored": "Both arms constructed their engine with max_sequence_length=4096 and no prepare() call, and both resident sessions were sized to 4096 rather than to the automatic selection (262144 for this artifact). That is the default configuration: no HIPENGINE_GGUF_AUTO_CONTEXT override is set."
  },
  "summary": {
   "cases": 4,
@@ -58,7 +56,9 @@
    "forced_three_tokens_greedy": 31,
    "forced_tokens_sampled": 23,
    "force_sequence_completion": 23
-  }
+  },
+  "declared_context_tokens": 4096,
+  "resident_context_tokens": 4096
  },
  "gate_report": {
   "scope": "forced tokens and force-sequence completion on the sampled MTP route",
@@ -166,7 +166,6 @@
   "arms": {
    "mtp": {
     "seed": {
-     "text": "\n\nRivers carve their paths through the earth, shaping landscapes and sustaining life along",
      "ids": [
       271,
       49,
@@ -240,7 +239,6 @@
        50897,
        198
       ],
-      "text": " zeta omega\n\nCounting slowly, one number per word:\n\none\ntwo\nthree\nfour\nfive\n",
       "telemetry": {
        "execution_path": "gguf_specdec2_mtp2",
        "sampler_mode": "processed_argmax",
@@ -304,7 +302,6 @@
        26952,
        198
       ],
-      "text": " zeta omega kappa theta sigma phi psi chi xi eta delta gamma beta alpha\n\nCounting slowly, one number per word:\n\none\ntwo\nthree\n",
       "telemetry": {
        "execution_path": "gguf_specdec2_mtp2",
        "sampler_mode": "processed_argmax",
@@ -359,7 +356,6 @@
        13,
        353
       ],
-      "text": " zeta omega three seven oh\n\nI have completed the count as requested, following your specific word-by-word sequence. I",
       "telemetry": {
        "execution_path": "gguf_specdec2_mtp2",
        "sampler_mode": "host_logits_sample",
@@ -416,7 +412,6 @@
        286,
        13569
       ],
-      "text": " twenty kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega.\n\nCounting slowly",
       "telemetry": {
        "execution_path": "gguf_specdec2_mtp2",
        "sampler_mode": "processed_argmax",
@@ -438,7 +433,6 @@
      }
     },
     "after": {
-     "text": "\n\nRivers carve their paths through the earth, shaping landscapes and sustaining life along",
      "ids": [
       271,
       49,
@@ -475,11 +469,12 @@
        "failure_reason_counts": {}
       }
      }
-    }
+    },
+    "declared_context_tokens": 4096,
+    "resident_context_tokens": 4096
    },
    "ar": {
     "seed": {
-     "text": "\n\nRivers carve their paths through the earth, shaping landscapes and sustaining life along",
      "ids": [
       271,
       49,
@@ -542,7 +537,6 @@
        50897,
        198
       ],
-      "text": " zeta omega\n\nCounting slowly, one number per word:\n\none\ntwo\nthree\nfour\nfive\n",
       "telemetry": {
        "execution_path": "gguf_packed_ar_host_sampler_decode",
        "sampler_mode": "processed_argmax",
@@ -595,7 +589,6 @@
        26952,
        198
       ],
-      "text": " zeta omega kappa theta sigma phi psi chi xi eta delta gamma beta alpha\n\nCounting slowly, one number per word:\n\none\ntwo\nthree\n",
       "telemetry": {
        "execution_path": "gguf_packed_ar_host_sampler_decode",
        "sampler_mode": "processed_argmax",
@@ -639,7 +632,6 @@
        321,
        10229
       ],
-      "text": " zeta omega.\n\nBased on the list you provided, let's break down the sequence to verify the count and identify",
       "telemetry": {
        "execution_path": "gguf_packed_ar_host_sampler_decode",
        "sampler_mode": "host_logits_sample",
@@ -685,7 +677,6 @@
        286,
        13569
       ],
-      "text": " twenty kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega.\n\nCounting slowly",
       "telemetry": {
        "execution_path": "gguf_packed_ar_host_sampler_decode",
        "sampler_mode": "processed_argmax",
@@ -696,7 +687,6 @@
      }
     },
     "after": {
-     "text": "\n\nRivers carve their paths through the earth, shaping landscapes and sustaining life along",
      "ids": [
       271,
       49,
@@ -722,7 +712,9 @@
       "forced_token_id": null,
       "forced_tokens_remaining": null
      }
-    }
+    },
+    "declared_context_tokens": 4096,
+    "resident_context_tokens": 4096
    }
   }
  }

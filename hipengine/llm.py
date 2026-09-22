@@ -20,6 +20,24 @@ from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 AUTO_QUANT = "auto"
 
 
+def _declare_serving_context(generator: Any, max_sequence_length: int | None) -> None:
+    """Publish the serving context this LLM was constructed with.
+
+    ``max_sequence_length`` is a declaration about the resident session, and
+    resident sizing reads the generator's own pin. Without this the declaration
+    was dropped on the floor: the session was sized by automatic selection, which
+    takes the largest context that fits, and the caller's stated bound was
+    silently replaced by something larger. Generators without the hook are
+    unaffected.
+    """
+
+    if max_sequence_length is None:
+        return
+    declare = getattr(generator, "declare_max_sequence_length", None)
+    if callable(declare):
+        declare(int(max_sequence_length))
+
+
 def _factory_capacity_kwargs(factory, *, max_sequence_length, resident_capacity, vision_max_scratch_bytes=None, prefill_max_scratch_bytes=None, vision_max_seconds=None):
     """Forward configured limits only to factories that explicitly declare them."""
     try:
@@ -1297,6 +1315,7 @@ class LLM:
             if profile_resolution is None
             else profile_resolution.construct_generator(factory, **factory_kwargs)
         )
+        _declare_serving_context(generator, self.max_sequence_length)
         # The loaded resident model owns staged MTP candidate depth. Publish the
         # public LLM setting on that owner before its cold adapter is resolved;
         # model-plugin evidence still decides whether the resulting key admits.
