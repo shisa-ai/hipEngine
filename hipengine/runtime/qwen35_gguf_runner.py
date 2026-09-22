@@ -21883,8 +21883,9 @@ class Qwen35GGUFResidentSession:
                 layout,
                 state_indices=np.asarray(direct_state_indices, dtype=np.int64),
             )
-        if int(layout.max_live_count) >= 1024:
-            raise NotImplementedError("packed target verifier currently requires context < 1024")
+        # The packed verifier allocates its split-K workspace below this point,
+        # so a live span past the split threshold is the workspace's own case,
+        # not a reason to refuse the group.
         rows = int(layout.rows)
         if rows > int(self._bulk_prefill_scratch.rows):
             raise NotImplementedError(
@@ -26366,6 +26367,20 @@ class Qwen35GGUFResidentSession:
             stream=stream,
         )
         layout = _rebind_packed_verify_layout_pages(layout, packed_state)
+        # The row-bulk decode splits its K/V walk once a slot's live span crosses
+        # the split threshold and refuses to guess at the workspace. This path
+        # passed none, so a draft step past that threshold failed before commit
+        # and the whole group was recovered by autoregressive decoding, which
+        # looked like speculation simply stopping.
+        split_workspace = (
+            self._ensure_packed_ar_attention_workspace(
+                rows=rows,
+                max_context_len=int(layout.max_live_count),
+                runtime=runtime,
+            )
+            if int(layout.max_live_count) >= 1024
+            else None
+        )
         self._sync_packed_decode_initial_state(
             session_tuple,
             layout,
@@ -26404,7 +26419,7 @@ class Qwen35GGUFResidentSession:
             stage_timings=None,
             sync_stage_timings=False,
             stage_prefix="nextn_batch_full_attn",
-            split_workspace=None,
+            split_workspace=split_workspace,
             kv_write_only=bool(kv_write_only),
         )
         if score_output:

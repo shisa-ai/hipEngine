@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10649,
-    "current": 3417,
+    "entries": 10650,
+    "current": 3418,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1099,
+    "rows": 1100,
     "by_rule": {
       "dependency": 36,
       "legacy-next": 109,
-      "status": 954
+      "status": 955
     }
   },
   "rows": [
@@ -40286,14 +40286,14 @@
         "written": "2026-09-20",
         "age_days": 2,
         "open_by": "status",
-        "continuation_entries": 15,
+        "continuation_entries": 16,
         "open_text": "- Wire public serving admission without representing a BF16 evidence row as\n  INT8 evidence. Existing approximate-KV qualification remains independent:\n  the local gfx1151 artifact has a historical BF16-relative INT8 quality\n  rejection, which same-INT8 AR parity does not overturn.\n- Packed multi-request target verification is still BF16-only. Do not advertise\n  dense C1 target support as physical INT8 c>N support.\n- Compact DMS requires integration of its own transactional snapshots,\n  eviction/compaction state, and per-head spans with target journal commit and\n  rollback; cursor reset alone ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "15 later entries by the same worker share this topic prefix"
+        "16 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260920T153527.801947Z-lhl-int8-mtp-native-verifier-b8c7e7.md",
@@ -40309,7 +40309,7 @@
         ]
       },
       "id": "worklog/20260920T153527.801947Z-lhl-int8-mtp-native-verifier-b8c7e7",
-      "evidence_hash": "42c3edeabf81"
+      "evidence_hash": "fc3830460440"
     },
     {
       "kind": "worklog",
@@ -40398,14 +40398,14 @@
         "written": "2026-09-20",
         "age_days": 2,
         "open_by": "status",
-        "continuation_entries": 14,
+        "continuation_entries": 15,
         "open_text": "- Finish prefix-on INT8 validation in coordination with the prefix worker's\n  newly discovered cached-prefix/oracle repair; do not mutate the same runner\n  concurrently.\n- Packed INT8 MTP and compact-DMS transactions are still separate\n  implementations. Current multi-choice behavior is a supported AR fallback,\n  not a claim of physical packed INT8 verification.\n- Run no-override public validation on a storage-supported artifact/host and\n  assess current approximate-KV quality separately from MTP correctness.\n- Continue the checklist's long natural prompts, resource pressure, provider\n  restor",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "14 later entries by the same worker share this topic prefix"
+        "15 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260920T175640.564502Z-lhl-int8-mtp-public-serving-df9489.md",
@@ -40423,7 +40423,7 @@
         ]
       },
       "id": "worklog/20260920T175640.564502Z-lhl-int8-mtp-public-serving-df9489",
-      "evidence_hash": "fde206a2dbab"
+      "evidence_hash": "479bce5b9849"
     },
     {
       "kind": "worklog",
@@ -40437,14 +40437,14 @@
         "written": "2026-09-20",
         "age_days": 2,
         "open_by": "status",
-        "continuation_entries": 13,
+        "continuation_entries": 14,
         "open_text": "- Repair resumable INT8 provider priming. Development is isolated in\n  `/tmp/hipengine-int8-priming` while the prefix worker owns the shared runner.\n- Complete prefix-on and resource-pressure validation after that worker's\n  INT8 prefix repair is committed.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "13 later entries by the same worker share this topic prefix"
+        "14 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260920T182156.489469Z-lhl-int8-mtp-w7900-public-gate-f8951d.md",
@@ -40462,7 +40462,7 @@
         ]
       },
       "id": "worklog/20260920T182156.489469Z-lhl-int8-mtp-w7900-public-gate-f8951d",
-      "evidence_hash": "8288804eebe0"
+      "evidence_hash": "9e52b4991669"
     },
     {
       "kind": "worklog",
@@ -40663,14 +40663,14 @@
         "written": "2026-09-21",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 4,
         "open_text": "- Run the purpose-built gfx1151 mirror-free c1-versus-batch parity probe before\n  changing the route or capping the declaration.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "3 later entries by the same worker share this topic prefix"
+        "4 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260921T120000.000000Z-lhl-int8-mtp-code-lru-token-exactness-1a2b3c.md",
@@ -40688,7 +40688,7 @@
         ]
       },
       "id": "worklog/20260921T120000.000000Z-lhl-int8-mtp-code-lru-token-exactness-1a2b3c",
-      "evidence_hash": "ce7496ed35ae"
+      "evidence_hash": "fc9c94ecf1e4"
     },
     {
       "kind": "worklog",
@@ -41264,14 +41264,14 @@
         "written": "2026-09-22",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 3,
         "open_text": "- Task #6 remains open: reconcile the original server configuration and code\n  revision with these passing mirror-free results before claiming a root cause.\n- Exercise `code_lru_cache` itself beside a neighbour if grouped reproduction\n  is needed; the general category isolation check does not cover that pair.\n- Do not infer a kernel fix, quality promotion, or speed improvement from this\n  passing diagnostic.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "3 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260922T114556.239480Z-lhl-int8-mtp-public-parity-b4a471.md",
@@ -41288,7 +41288,7 @@
         ]
       },
       "id": "worklog/20260922T114556.239480Z-lhl-int8-mtp-public-parity-b4a471",
-      "evidence_hash": "0e01f06c87d3"
+      "evidence_hash": "d7ea05e5511f"
     },
     {
       "kind": "worklog",
@@ -41302,14 +41302,14 @@
         "written": "2026-09-22",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "- Long-prompt coverage is still absent. The category rows are short prompts and\nthe prefix gate's 512-token prefixes are the longest input any gate sends, so\nnone of this establishes parity near the 9,216-token capacity.\n- The lifecycle and prefix gates carry no repeatability or isolation check of\ntheir own; the acceptance's determinism evidence is the category gate's. If each\ngate should carry its own, that is a small follow-up on the same pattern.\n- Reconciling the original short-context failing configuration and code revision\nwith these passing mirror-free results is still open\n(`20260922T1",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260922T115453.827870Z-lhl-int8-mtp-uniform-http-gates-f4fa4c.md",
@@ -41328,7 +41328,7 @@
         ]
       },
       "id": "worklog/20260922T115453.827870Z-lhl-int8-mtp-uniform-http-gates-f4fa4c",
-      "evidence_hash": "465d89ff798e"
+      "evidence_hash": "a810b77d2f65"
     },
     {
       "kind": "worklog",
@@ -41342,14 +41342,14 @@
         "written": "2026-09-22",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "- Task #22 owns the packed multi-choice admission gap, including the acceptance\n  that this gate's long-prompt multi-choice row report `speculates: true` with\n  autoregressive-identical ids at 2,048 and 4,096 tokens.\n- The long rows run with the prefix cache off; their interaction with radix\n  prefix reuse is not covered.\n- The lifecycle and prefix gates still carry no repeatability or isolation check\n  of their own.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260922T124752.176261Z-lhl-int8-mtp-long-prompt-matrix-e7f2ad.md",
@@ -41366,7 +41366,47 @@
         ]
       },
       "id": "worklog/20260922T124752.176261Z-lhl-int8-mtp-long-prompt-matrix-e7f2ad",
-      "evidence_hash": "ffb608c76b3d"
+      "evidence_hash": "5cd5373e1798"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260922T130744.448056Z-lhl-int8-mtp-packed-admission-past-1024-627d19",
+      "title": "Admit packed multi-choice MTP past a 1024-token live context",
+      "location": "worklog/entries/20260922T130744.448056Z-lhl-int8-mtp-packed-admission-past-1024-627d19.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "int8-mtp-packed-admission-past-1024",
+        "written": "2026-09-22",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- The oracle samples four lengths; the admitted range between 1024 and the\n  configured capacity is covered by those samples and by the gate's 2,048 and\n  4,096 rows, not exhaustively.\n- `plan_reason` was `target_graph_output_room_miss` for two of the eight oracle\n  cases (both at 3,072 and 4,096 on one endpoint each); both still speculated\n  with identical ids, so it is a planner note rather than a blocker.\n- The audit triage row that justified the removed guard as a clean refusal is\n  closed out with this change.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260922T130744.448056Z-lhl-int8-mtp-packed-admission-past-1024-627d19.md",
+        "refs": [],
+        "tokens": [
+          "1024",
+          "admit",
+          "choice",
+          "context",
+          "live",
+          "mtp",
+          "multi",
+          "packed",
+          "past",
+          "token"
+        ]
+      },
+      "id": "worklog/20260922T130744.448056Z-lhl-int8-mtp-packed-admission-past-1024-627d19",
+      "evidence_hash": "d6a1d17f3ece"
     }
   ]
 }
