@@ -82,6 +82,11 @@ _SERVABLE = {
     "force_sequence_completion": _params(
         temperature=0.7, force_sequence_completion_token_sequences=((1, 2),)
     ),
+    "json_object_close": _params(temperature=0.7, json_object_close_forcing=True),
+    "tool_call_constraint": _params(
+        temperature=0.7, tool_call_constraint={"tool_names": ("read",)}
+    ),
+    "json_object_close_greedy": _params(json_object_close_forcing=True),
     "greedy_logprobs": _params(logprobs=True),
     "greedy": _params(),
     "eos_only": _params(eos_token_id=9),
@@ -96,10 +101,6 @@ _UNSERVABLE = {
         thinking_close_token_ids=(1,),
         thinking_hard_token_cap=4,
         post_thinking_forced_tokens_pending=(2,),
-    ),
-    "json_object_close": _params(temperature=0.7, json_object_close_forcing=True),
-    "tool_call_constraint": _params(
-        temperature=0.7, tool_call_constraint={"tool_names": ("read",)}
     ),
     "thinking_budget": _params(
         temperature=0.7, thinking_close_token_ids=(1,), thinking_hard_token_cap=4
@@ -140,14 +141,17 @@ def test_eos_supported_greedy_request_keeps_the_greedy_mode() -> None:
 
 def test_servable_and_unservable_blocker_sets_are_disjoint_and_cover_the_vocabulary() -> None:
     assert not set(SAMPLED_MTP_SERVABLE_BLOCKERS) & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
-    # The servable set is the sampling law, the finish-rule relaxations, and the
-    # two metadata fields; the refused set is the hook family. Every blocker in
-    # the union must be one the sampler or the cycle commit can name, so a new
-    # field cannot be served or refused by accident.
+    # The servable set is the sampling law, the finish-rule relaxations, the
+    # metadata fields, the forced-token queue, and the text-keyed constraints;
+    # the refused set is the thinking budget alone. Every blocker in the union
+    # must be one the sampler or the cycle commit can name, so a new field cannot
+    # be served or refused by accident.
     assert "temperature" in SAMPLED_MTP_SERVABLE_BLOCKERS
     assert "logprobs" in SAMPLED_MTP_SERVABLE_BLOCKERS
     assert "top_logprobs" in SAMPLED_MTP_SERVABLE_BLOCKERS
-    assert "thinking_budget" in SAMPLED_MTP_UNSERVABLE_BLOCKERS
+    assert "json_object_close_forcing" in SAMPLED_MTP_SERVABLE_BLOCKERS
+    assert "tool_call_constraint" in SAMPLED_MTP_SERVABLE_BLOCKERS
+    assert SAMPLED_MTP_UNSERVABLE_BLOCKERS == ("thinking_budget",)
 
 
 def _adapter(*, plugin_evidence=(), artifact_size=None, row=None):
@@ -424,11 +428,15 @@ def test_server_route_keeps_a_sampled_request_only_with_a_sampled_row() -> None:
     )
 
     sampled = _params(temperature=0.7)
-    # A hook-family request is what the sampled route still refuses, so it is the
-    # case that must stay at K0 even when the row lists the sampled mode.
-    unservable = _params(
-        temperature=0.7, tool_call_constraint={"tool_names": ("read",)}
-    )
+    # The text-keyed hooks are now served by the sampled route, so they keep
+    # typed intent like any other servable field.
+    text_hook = _params(temperature=0.7, tool_call_constraint={"tool_names": ("read",)})
+    # An EOS-only request keeps the unqualified serving mode: it neither samples
+    # nor is raw-argmax exact, so it is not newly admitted to the greedy route.
+    # The route still admits it through the sampled row, which serves the
+    # finish-rule fields exactly -- the mode and the route answer different
+    # questions, and this pins both.
+    eos_only = _params(eos_token_id=9)
     greedy = _params()
 
     def route(engine, sampling, *, explicit=True, mode="auto"):
@@ -447,11 +455,21 @@ def test_server_route_keeps_a_sampled_request_only_with_a_sampled_row() -> None:
     # An artifact whose row does not list the sampled mode still ends at K0
     # before provider mutation.
     assert route(_serving_engine("greedy_fast"), sampled) == _SPECULATIVE_MTP_K0_ROUTE
-    # A blocker the sampled route refuses stays K0 even with the row.
+    # A servable field keeps the route the row lists for it.
     assert (
-        route(_serving_engine("greedy_fast", "sampled"), unservable)
-        == _SPECULATIVE_MTP_K0_ROUTE
+        route(_serving_engine("greedy_fast", "sampled"), text_hook)
+        == _SPECULATIVE_MTP_BATCH_ROUTE
     )
+    assert speculative_serving_sampling_mode(eos_only) == "processed_argmax"
+    assert (
+        route(_serving_engine("greedy_fast", "sampled"), eos_only)
+        == _SPECULATIVE_MTP_BATCH_ROUTE
+    )
+    # The one field the sampled route still refuses, ``thinking_budget``, is
+    # relaxed by the server's default policy before this check, so it is not a
+    # route-level refusal here either. That relaxation is exercised against real
+    # ``SamplingParams`` in the sampling unit tests; these stubs are plain
+    # namespaces and cannot carry the dataclass fields it rewrites.
     # Automatic mode selects the automatic route rather than the explicit one.
     assert (
         route(_serving_engine("greedy_fast", "sampled"), sampled, explicit=None)
@@ -553,6 +571,7 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
         "post_thinking_forced_tokens_pending",
         "force_sequence_completion_token_sequences",
     }
+    text_hook_fields = {"json_object_close_forcing", "tool_call_constraint"}
     assert set(SAMPLED_MTP_SERVABLE_BLOCKERS) == {
         "temperature",
         "logit_bias",
@@ -564,6 +583,7 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
         *finish_rule_fields,
         *metadata_fields,
         *forced_queue_fields,
+        *text_hook_fields,
     }
     # The two sets stay disjoint and still partition every incompatible field, so
     # a field can never be silently in neither.
@@ -573,6 +593,8 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
     assert not metadata_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
     assert forced_queue_fields <= set(SAMPLED_MTP_SERVABLE_BLOCKERS)
     assert not forced_queue_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
+    assert text_hook_fields <= set(SAMPLED_MTP_SERVABLE_BLOCKERS)
+    assert not text_hook_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
     assert set(SAMPLED_MTP_SERVABLE_BLOCKERS) | set(SAMPLED_MTP_UNSERVABLE_BLOCKERS) == set(
         SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
     )

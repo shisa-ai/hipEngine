@@ -44,7 +44,11 @@ from hipengine.generation.mtp_sampled_accept import (
     row_prefix_states,
     sampled_accept_summary,
 )
-from hipengine.generation.sampling import logprobs_requested, speculative_sampling_mode
+from hipengine.generation.sampling import (
+    constraint_skips_token_text,
+    logprobs_requested,
+    speculative_sampling_mode,
+)
 from hipengine.speculative.accounting import (
     PRIMING_SOURCE_ABSENT,
     PRIMING_SOURCE_BUFFERED,
@@ -805,6 +809,45 @@ def _physical_width_depths(generator: Any) -> tuple[tuple[int, int], ...]:
     if not cells:
         raise RuntimeError("backend MTP2 physical width/depth policy must not be empty")
     return tuple(sorted(cells))
+
+
+def _constraint_text_observer(
+    params: Any,
+    *,
+    token_text_for_id: Callable[[int], str] | None,
+    encode_text: Callable[[str], Any] | None,
+    remaining_decode: int,
+):
+    """Build the per-row text observer the text-keyed constraints need.
+
+    ``json_object_close_forcing`` and ``tool_call_constraint`` read the decoded
+    text of the tokens a request has emitted: they advance a text DFA, mask the
+    row's support from it, and queue a closing suffix when the remaining budget
+    is exactly enough to close the structure. A cycle publishes several tokens at
+    once, so each row has to see the text of the tokens before it, exactly as one
+    autoregressive step per token would.
+
+    ``depth`` is the number of tokens published before the row's own token, so
+    ``remaining_decode - depth - 1`` is the same budget the autoregressive route
+    compares the closing suffix against. Returns ``None`` when no tokenizer is
+    available, which leaves the walk a pure token walk.
+    """
+
+    if token_text_for_id is None or encode_text is None:
+        return None
+
+    def observe_text(state: Any, token_id: int, depth: int) -> None:
+        if constraint_skips_token_text(params, state, int(token_id)):
+            # The autoregressive route observes no text for an EOS token under a
+            # constraint. The rule is shared so the two routes cannot drift.
+            return
+        state.observe_selected_token_text(
+            token_text_for_id(int(token_id)),
+            remaining_tokens=max(0, int(remaining_decode) - int(depth) - 1),
+            encode_text=encode_text,
+        )
+
+    return observe_text
 
 
 class Qwen35GGUFMTP2Adapter:
@@ -4050,7 +4093,11 @@ class Qwen35GGUFMTP2Adapter:
             # owns them. The tokens scored are the ones this cycle publishes,
             # which is the finish rule's terminal prefix when it limited one.
             logprob_metadata = self._cycle_token_logprobs(
-                row, prepared, summary, row_metadata=row_logprob_metadata
+                row,
+                prepared,
+                summary,
+                row_metadata=row_logprob_metadata,
+                remaining_decode=remaining,
             )
             provider_update_started = time.perf_counter()
             if state.proposal_source == "ngram_mod":
@@ -4164,10 +4211,28 @@ class Qwen35GGUFMTP2Adapter:
                         output_ids,
                         forced_ids,
                     )
+                commit_params = getattr(row, "sampling_request", None) or getattr(
+                    row, "request", None
+                )
+                commit_tokenizer = getattr(self.generator, "tokenizer", None)
                 observe_published_tokens(
                     sampling_state,
                     output_ids,
                     forced_count=forced_published,
+                    observe_text=(
+                        None
+                        if commit_params is None or commit_tokenizer is None
+                        else _constraint_text_observer(
+                            commit_params,
+                            token_text_for_id=lambda token_id: commit_tokenizer.decode(
+                                [int(token_id)]
+                            ),
+                            encode_text=lambda text: tuple(
+                                int(t) for t in commit_tokenizer.encode(str(text))
+                            ),
+                            remaining_decode=int(remaining),
+                        )
+                    ),
                 )
                 if bool(getattr(row, "native_sampler", False)):
                     row.full_vocab_logits_d2h = sampled_logit_readback_bytes > 0
@@ -4339,6 +4404,16 @@ class Qwen35GGUFMTP2Adapter:
             if tokenizer is None
             else (lambda token_id: tokenizer.decode([int(token_id)]))
         )
+        observe_text = _constraint_text_observer(
+            params,
+            token_text_for_id=token_text_for_id,
+            encode_text=(
+                None
+                if tokenizer is None
+                else (lambda text: tuple(int(t) for t in tokenizer.encode(str(text))))
+            ),
+            remaining_decode=int(remaining_decode),
+        )
         summary = sampled_accept_summary(
             batch,
             prepared.target_logits,
@@ -4348,6 +4423,7 @@ class Qwen35GGUFMTP2Adapter:
             token_text_for_id=token_text_for_id,
             transaction_id=int(transaction_id),
             remaining_decode=(int(remaining_decode),),
+            observe_text=observe_text,
         )
         forced_ids = row_forced_token_ids(
             batch, {int(batch.request_ids[0]): sampling_state}
@@ -4363,6 +4439,7 @@ class Qwen35GGUFMTP2Adapter:
         row_metadata: (
             tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...] | None
         ) = None,
+        remaining_decode: int = 0,
     ) -> tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...] | None:
         """Return this cycle's published-token logprob metadata, or ``None``.
 
@@ -4420,6 +4497,18 @@ class Qwen35GGUFMTP2Adapter:
                 None
                 if tokenizer is None
                 else (lambda token_id: tokenizer.decode([int(token_id)]))
+            ),
+            observe_text=(
+                None
+                if tokenizer is None
+                else _constraint_text_observer(
+                    params,
+                    token_text_for_id=lambda token_id: tokenizer.decode([int(token_id)]),
+                    encode_text=lambda text: tuple(
+                        int(t) for t in tokenizer.encode(str(text))
+                    ),
+                    remaining_decode=int(remaining_decode),
+                )
             ),
         )
         return metadata[0]

@@ -137,6 +137,10 @@ def test_sampled_accept_takes_verified_rows_and_no_storage_input() -> None:
         "token_text_for_id",
         "transaction_id",
         "remaining_decode",
+        # The per-row text observer the text-keyed constraints need. It carries a
+        # tokenizer callback, not storage: a KV layout still cannot reach the
+        # accept path.
+        "observe_text",
     }
     assert not any(
         token in name
