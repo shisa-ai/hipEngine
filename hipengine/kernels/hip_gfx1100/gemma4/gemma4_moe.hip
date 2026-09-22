@@ -71,8 +71,12 @@ __global__ void gemma4_gelu_tanh_mul_kernel(
 // Invert the compact permutation: `lane_to_row[sorted_lanes[row]] = row`.
 // Every lane appears exactly once because every selected expert has at least
 // one lane, so the compact list is a full permutation of `total_lanes`.
+//
+// `sorted_lanes` is int64 because that is the width the group-compact kernel
+// emits; `lane_to_row` is int32 because it holds row indices, which the
+// accumulate kernel consumes.
 __global__ void gemma4_moe_lane_to_row_kernel(
-    const int32_t* __restrict__ sorted_lanes,
+    const int64_t* __restrict__ sorted_lanes,
     int32_t* __restrict__ lane_to_row,
     int64_t total_lanes) {
   for (int64_t row = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -181,7 +185,7 @@ extern "C" int hipengine_gemma4_moe_zero_bf16(
 }
 
 extern "C" int hipengine_gemma4_moe_lane_to_row_i32(
-    const int32_t* sorted_lanes,
+    const int64_t* sorted_lanes,
     int32_t* lane_to_row,
     int64_t total_lanes,
     hipStream_t stream) {

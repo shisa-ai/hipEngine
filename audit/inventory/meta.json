@@ -8,7 +8,7 @@
     "roots": "hipengine, scripts, tests, benchmarks"
   },
   "kernels": {
-    "sources": 264,
+    "sources": 265,
     "registry_keys": 308,
     "backends": [
       "cpu_reference",
@@ -22,12 +22,12 @@
     "source": "docs/REFACTOR.md",
     "headings": 402
   },
-  "generated": "2026-09-22T12:12:12+00:00",
-  "commit": "4feb02e1e",
+  "generated": "2026-09-22T12:26:41+00:00",
+  "commit": "ef81bede4",
   "worklog": {
     "source": "worklog/entries",
-    "entries": 10648,
-    "current": 3416,
+    "entries": 10649,
+    "current": 3417,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1091,
