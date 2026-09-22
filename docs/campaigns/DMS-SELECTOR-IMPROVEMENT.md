@@ -311,9 +311,15 @@ Control results:
 These experiments distinguish approximation of a proxy from the proxy itself.
 They are not deployable oracle policies and not mathematical quality ceilings.
 
-- [ ] At P1, P2, P4, P6 inject exact within-sequence mass ranks, using captures
-      from each development prompt, matched budgets, and the common frozen-mask
-      decode schedule from Phase B. Compare learned ranks on that same schedule.
+- [x] Run the sealed-label continuation-mass diagnostic at W256/CR2 with
+      matched recency and seeded-random budgets. The 64 layer shards produced
+      mean discarded mass `0.100237` for the continuation oracle,
+      `0.676643` for recency, and `0.514188` for random seed 0. This is CPU-only
+      label evidence, not integrated quality evidence.
+- [ ] Inject the continuation oracle at P1/P2/P4/P6 or run the causal last-query
+      control. The existing sealed labels contain no last-query Q/K attention
+      capture; the diagnostic records this as blocked rather than substituting
+      continuation mass for causal query information.
 - [ ] Build a causal query-aware control at `training_point`: rank prefix keys
       by attention mass from the last 64 available prompt query rows, honoring
       causal masks and GQA grouping. No continuation queries in this control.
@@ -332,7 +338,7 @@ and recomputation; full online reselection/recovery is outside this campaign.
 
 | Point | Learned / within-prompt oracle / causal last-64 Q / continuation oracle | Gate and KL tails | Mask overlap, critical-token diagnosis | Finding/artifact |
 | --- | --- | --- | --- | --- |
-| Expand one row per prescribed comparison | pending | pending | pending | pending |
+| Continuation oracle vs recency/random (W256/CR2, 64 sealed label shards) | CPU label diagnostic only; continuation oracle discarded-mass mean `0.100237`, recency `0.676643`, random seed 0 `0.514188`; causal last-query not available | Integrated G0/G1/KL not run because compact no-evict G0 is blocked; no mask-overlap conclusion | Continuation mass is a stronger retained-mass ranking on these labels than simple controls, but this does not establish causal learnability or runtime quality. Artifact: `~/dms-artifacts/selector-improvement-run-20260922-062438/diagnostics/oracle-controls-w256-cr2.json` |
 
 Decision tree:
 

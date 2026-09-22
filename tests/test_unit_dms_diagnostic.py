@@ -11,6 +11,8 @@ from hipengine.kvcache.dms_diagnostic import (
     adapter,
     build_injection,
     concentration,
+    continuation_scores,
+    causal_last_query_scores,
     discarded_mass,
     frozen_decode_mask,
     load_injection,
@@ -131,6 +133,14 @@ def test_builder_supports_scores_and_strict_masks() -> None:
         build_injection(**common, eviction_mask=bad_mask)
     with pytest.raises(ValueError, match="SHA-256"):
         build_injection(**{**common, "source_sha256": "bad"}, scores=scores)
+
+
+def test_query_and_continuation_score_reductions_are_explicit() -> None:
+    values = np.arange(2 * 5 * 1 * 1, dtype=np.float32).reshape(2, 5, 1, 1)
+    assert causal_last_query_scores(values).shape == (5, 1, 1)
+    assert continuation_scores(values)[0, 0, 0] == pytest.approx(values[:, 0, 0, 0].sum())
+    with pytest.raises(ValueError, match="finite"):
+        causal_last_query_scores(np.full((2, 5, 1), np.nan, dtype=np.float32))
 
 
 def test_loader_requires_explicit_sealed_mask(tmp_path: Path) -> None:

@@ -338,3 +338,23 @@ def concentration(values: Any, *, axis: tuple[int, ...] = (0,)) -> np.ndarray:
     if not np.isfinite(a).all():
         raise ValueError("concentration input must be finite")
     return a.sum(axis=axis)
+
+
+def causal_last_query_scores(attention_mass: Any) -> np.ndarray:
+    """Collapse causal query-row mass to the last available query row.
+
+    Input is ``[query_rows, tokens, layers, heads]`` or ``[query_rows, tokens, heads]``;
+    only the final query row is legal for a causal diagnostic.
+    """
+    values = np.asarray(attention_mass, dtype=np.float32)
+    if values.ndim not in (3, 4) or values.shape[0] <= 0 or not np.isfinite(values).all():
+        raise ValueError("causal last-query mass must be finite [queries,tokens,...]")
+    return np.ascontiguousarray(values[-1])
+
+
+def continuation_scores(attention_mass: Any) -> np.ndarray:
+    """Collapse continuation-query mass into one noncausal oracle score."""
+    values = np.asarray(attention_mass, dtype=np.float32)
+    if values.ndim not in (3, 4) or values.shape[0] <= 0 or not np.isfinite(values).all():
+        raise ValueError("continuation mass must be finite [queries,tokens,...]")
+    return np.ascontiguousarray(values.sum(axis=0))
