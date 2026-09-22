@@ -47,7 +47,10 @@ def test_exact_streams_are_deterministic_disjoint_and_mixed(tmp_path: Path) -> N
     assert all(row["token_ids"][0] != row["token_ids"][2] for row in mixed)
     assert all("text" not in component for row in first for component in row["source_records"])
     output = tmp_path / "records.json"
-    write_atomic(first, output, {"tokenizer": "fixture"})
+    binding = {"identity": "fixture", "sha256": "a" * 64}
+    write_atomic(first, output, {"tokenizer": binding})
+    sealed = json.loads(output.read_text(encoding="utf-8"))
+    assert sealed["tokenizer"] == binding
     assert '"text"' not in output.read_text(encoding="utf-8")
     with pytest.raises(FileExistsError): write_atomic(first, output, {})
 

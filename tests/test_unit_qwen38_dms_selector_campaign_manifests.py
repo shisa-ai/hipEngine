@@ -8,6 +8,7 @@ import pytest
 from scripts.qwen38_dms_build_selector_campaign_manifests import (
     CAMPAIGN_MATRIX,
     CATEGORIES,
+    _load_records,
     build_campaign_manifests,
 )
 
@@ -90,6 +91,30 @@ def test_duplicate_source_id_path_and_normalized_text_are_rejected(tmp_path: Pat
         _build(tmp_path, tmp_path / "path", records + [dict(records[0], source_id="other-id")])
     with pytest.raises(ValueError, match="duplicate normalized text"):
         _build(tmp_path, tmp_path / "text", records + [dict(records[0], source_id="other-id", path="other/path")])
+
+
+def test_acquisition_binding_is_loaded_and_candidate_bindings_fail_closed(
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "acquired.json"
+    binding = {"identity": "qwen35:tokenizer.model:default", "sha256": "a" * 64}
+    input_path.write_text(
+        json.dumps({"metadata": {"tokenizer": binding}, "records": _records()}),
+        encoding="utf-8",
+    )
+    records, loaded = _load_records(input_path)
+    assert loaded == binding
+    assert len(records) == len(_records())
+
+    wrong_tokenizer = _records()
+    wrong_tokenizer[0]["tokenizer"] = {"identity": "wrong", "sha256": "a" * 64}
+    with pytest.raises(ValueError, match="candidate tokenizer binding"):
+        _build(tmp_path, tmp_path / "wrong-tokenizer", wrong_tokenizer)
+
+    wrong_model = _records()
+    wrong_model[0]["model_sha256"] = "c" * 64
+    with pytest.raises(ValueError, match="candidate model hash"):
+        _build(tmp_path, tmp_path / "wrong-model", wrong_model)
 
 
 def test_tokenizer_provenance_and_old_source_exclusions_are_sealed(tmp_path: Path) -> None:

@@ -165,6 +165,9 @@ def write_atomic(records: list[dict[str, Any]], output: Path, metadata: dict[str
     if output.exists(): raise FileExistsError(f"output already exists: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
     payload = {"schema_version": 1, "kind": "hipengine_dms_selector_campaign_acquired_sources", "metadata": metadata, "records": records}
+    tokenizer_binding = metadata.get("tokenizer")
+    if isinstance(tokenizer_binding, dict):
+        payload["tokenizer"] = dict(tokenizer_binding)
     fd, temp = tempfile.mkstemp(prefix=f".{output.name}.", dir=output.parent, text=True)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
