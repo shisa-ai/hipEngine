@@ -270,9 +270,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/generation/qwen35_gguf_mtp2.py:2215:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
+      "key": "hipengine/generation/qwen35_gguf_mtp2.py:2219:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
       "title": "runtime branch on HIPENGINE_DEBUG_SAMPLED_QUALIFY: default-off with no removal condition recorded",
-      "location": "hipengine/generation/qwen35_gguf_mtp2.py:2215",
+      "location": "hipengine/generation/qwen35_gguf_mtp2.py:2219",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_DEBUG_SAMPLED_QUALIFY to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_DEBUG_SAMPLED_QUALIFY`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -289,7 +289,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf_mtp2.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf_mtp2.py:2215:HIPENGINE_DEBUG_SAMPLED_QUALIFY"
+          "hipengine/generation/qwen35_gguf_mtp2.py:2219:HIPENGINE_DEBUG_SAMPLED_QUALIFY"
         ],
         "tokens": [
           "branch",
@@ -302,8 +302,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/generation/qwen35_gguf_mtp2.py:2215:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
-      "evidence_hash": "d733449cde48"
+      "id": "ungoverned-flag-branch/hipengine/generation/qwen35_gguf_mtp2.py:2219:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
+      "evidence_hash": "e2c7a7367773"
     },
     {
       "kind": "ungoverned-flag-branch",

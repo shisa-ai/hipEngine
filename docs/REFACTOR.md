@@ -8948,3 +8948,23 @@ from -- the top-1 candidate and its processed logprob, plus the
 retained top-k the request asked for -- for the rows it accepted. The evidence
 that would justify it is the same gate at zero delta with the decline removed
 and the execution path reporting the captured-graph accept.
+
+## Forced-token requests skip the captured-graph sampled accept (open 2026-09-23)
+
+A request with a pending forced token cannot use the captured-graph sampled
+accept, for the same reason logprobs requests cannot: the graph samples on the
+device and the route needs the row's law on the host to substitute the forced
+token for it. `supports_native_gpu_sampling` in
+`hipengine/generation/sampling.py` refuses those requests, so they take the
+eager host accept, where the override is a point mass on the forced token and
+the accept walk corrects to it. `_sampled_accept_summary` in
+`hipengine/generation/qwen35_gguf_mtp2.py` raises rather than silently sampling
+if a forced token ever reaches the native shape. The fallback is exact -- the
+gate compares both arms token for token, including the queue's position in the
+output -- so the decline costs those requests the graph's speed, not their
+correctness.
+
+Remove this once the graph accept can consume a per-row override, which needs
+the device sampler to take a row's forced token as an input the way the host
+path does. The evidence that would justify it is the same gate with the refusal
+removed and the execution path reporting the captured-graph accept.

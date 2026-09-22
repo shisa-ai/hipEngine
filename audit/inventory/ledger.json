@@ -2,7 +2,7 @@
   "kind": "ledger",
   "meta": {
     "source": "docs/REFACTOR.md",
-    "headings": 403
+    "headings": 404
   },
   "rows": [
     {
@@ -4378,6 +4378,45 @@
       },
       "id": "ledger/external-dms-serving-control-readbacks-ad50e3d4df5a",
       "evidence_hash": "34edbcfd2a96"
+    },
+    {
+      "kind": "ledger",
+      "key": "forced-token-requests-skip-the-captured-graph-samp-cc96515f4d0f",
+      "title": "Forced-token requests skip the captured-graph sampled accept (open 2026-09-23)",
+      "location": "docs/REFACTOR.md:8906",
+      "evidence": {
+        "paths_named": [
+          "hipengine/generation/qwen35_gguf_mtp2.py",
+          "hipengine/generation/sampling.py"
+        ],
+        "paths_missing": [],
+        "flags_named": [],
+        "flags_unread": [],
+        "age_days": 0,
+        "body_chars": 1124
+      },
+      "signals": [],
+      "hints": {
+        "anchor": "docs/REFACTOR.md",
+        "refs": [
+          "hipengine/generation/qwen35_gguf_mtp2.py",
+          "hipengine/generation/sampling.py"
+        ],
+        "tokens": [
+          "2026",
+          "accept",
+          "captured",
+          "forced",
+          "graph",
+          "open",
+          "requests",
+          "sampled",
+          "skip",
+          "token"
+        ]
+      },
+      "id": "ledger/forced-token-requests-skip-the-captured-graph-samp-cc96515f4d0f",
+      "evidence_hash": "36b7932f2c12"
     },
     {
       "kind": "ledger",

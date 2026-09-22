@@ -419,7 +419,7 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 3006,
-        "referrers": 250,
+        "referrers": 254,
         "runtime_referrers": [
           "hipengine/benchmark/speculative.py",
           "hipengine/benchmark/session_replay.py",
@@ -449,7 +449,7 @@
         ]
       },
       "id": "kernel/cpu_reference/ops.py",
-      "evidence_hash": "883fdc41a6b0"
+      "evidence_hash": "61986f931ad4"
     },
     {
       "kind": "kernel",
@@ -8375,7 +8375,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 1005,
-        "referrers": 938,
+        "referrers": 940,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
@@ -8407,7 +8407,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/runtime/state.hip",
-      "evidence_hash": "972252511e87"
+      "evidence_hash": "1ca07d3f2c0d"
     },
     {
       "kind": "kernel",
@@ -8418,7 +8418,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 1247,
-        "referrers": 938,
+        "referrers": 940,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
@@ -8449,7 +8449,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/runtime/state.py",
-      "evidence_hash": "61612baa0c52"
+      "evidence_hash": "45aaf79296c0"
     },
     {
       "kind": "kernel",
@@ -8460,7 +8460,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 1398,
-        "referrers": 143,
+        "referrers": 145,
         "runtime_referrers": [
           "hipengine/benchmark/agentic.py",
           "hipengine/benchmark/agentic_live.py",
@@ -8494,7 +8494,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/sampling/sampler.hip",
-      "evidence_hash": "c6f10c64946d"
+      "evidence_hash": "5e2a10f6153b"
     },
     {
       "kind": "kernel",
@@ -8505,7 +8505,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 579,
-        "referrers": 143,
+        "referrers": 145,
         "runtime_referrers": [
           "hipengine/benchmark/agentic.py",
           "hipengine/benchmark/agentic_live.py",
@@ -8536,7 +8536,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/sampling/sampler.py",
-      "evidence_hash": "43f491bf0c53"
+      "evidence_hash": "15a3c77ae37f"
     },
     {
       "kind": "kernel",
@@ -8962,7 +8962,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 664,
-        "referrers": 864,
+        "referrers": 866,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
@@ -8996,7 +8996,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/speculative/mtp.hip",
-      "evidence_hash": "7b97847839b2"
+      "evidence_hash": "262a4828445c"
     },
     {
       "kind": "kernel",
@@ -9007,7 +9007,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 453,
-        "referrers": 864,
+        "referrers": 866,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
@@ -9038,7 +9038,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/speculative/mtp.py",
-      "evidence_hash": "18a8146ca676"
+      "evidence_hash": "eed6f166defc"
     },
     {
       "kind": "kernel",
@@ -10007,7 +10007,7 @@
         "backend": "unknown",
         "suffix": ".py",
         "lines": 204,
-        "referrers": 661,
+        "referrers": 662,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
@@ -10036,7 +10036,7 @@
         ]
       },
       "id": "kernel/registry.py",
-      "evidence_hash": "8d413318e95b"
+      "evidence_hash": "403483c4ccc9"
     },
     {
       "kind": "kernel",

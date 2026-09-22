@@ -35,6 +35,9 @@ from hipengine.speculative.sampling import (
 __all__ = [
     "chain_edge_rows",
     "chain_token_logprobs",
+    "observe_published_tokens",
+    "published_forced_count",
+    "row_forced_token_ids",
     "row_prefix_states",
     "sampled_accept_summary",
 ]
@@ -147,24 +150,128 @@ def row_prefix_states(
     verified batch, so one forward pass resolves every row.
     """
 
+    return tuple(state for state, _forced in _row_prefix_walk(batch, states))
+
+
+def row_forced_token_ids(
+    batch: TargetVerifyBatch,
+    states: Mapping[int, RowSamplingState],
+) -> tuple[int | None, ...]:
+    """Return each row's pending forced-token override, or ``None``.
+
+    Row ``r`` predicts the token after the prefix ending at ``r``, so the
+    override governing its outgoing position is the head of the forced queue
+    once that row's own token has been observed. The queue drains as the walk
+    descends: the token a row emits is consumed for its children, so a chain that
+    publishes forced tokens in order sees the queue's second entry at the second
+    row rather than the same head at every row.
+
+    The live request's queue is never touched. A cycle consumes the overrides it
+    published only at commit time (``observe_published_tokens``), because a row
+    that the accept walk never reaches published nothing and earned no pop.
+    """
+
+    return tuple(forced for _state, forced in _row_prefix_walk(batch, states))
+
+
+def _row_prefix_walk(
+    batch: TargetVerifyBatch,
+    states: Mapping[int, RowSamplingState],
+) -> tuple[tuple[RowSamplingState, int | None], ...]:
+    """Resolve every row's state and the forced override governing its edge.
+
+    This is the single traversal behind ``row_prefix_states`` and
+    ``row_forced_token_ids``: the row-to-row mapping is the part that is easy to
+    get wrong by one, so both readers share one implementation. A row's state is
+    the state ``_process_row`` would see at that point of the autoregressive
+    decode -- the forced override it is about to emit is still at the head of the
+    queue -- while a child's state has its parent's override already consumed.
+    """
+
     known = set(batch.request_ids)
     missing = known - set(int(request_id) for request_id in states)
     if missing:
         raise ValueError(f"missing sampler state for requests {sorted(missing)}")
     resolved: list[RowSamplingState | None] = [None] * batch.rows
+    forced_ids: list[int | None] = [None] * batch.rows
     roots = set(int(row) for row in batch.root_rows)
     for row in range(batch.rows):
         request_id = int(batch.row_to_request[row])
         if row in roots:
-            resolved[row] = states[request_id].clone()
-            continue
-        parent = int(batch.parent_rows[row])
-        if parent < 0 or parent >= row or resolved[parent] is None:
-            raise ValueError("candidate row parent must be an earlier resolved row")
-        child = resolved[parent].clone()
-        child.observe(int(batch.tokens[row]))
-        resolved[row] = child
-    return tuple(state for state in resolved if state is not None)
+            state = states[request_id].clone()
+        else:
+            parent = int(batch.parent_rows[row])
+            if parent < 0 or parent >= row or resolved[parent] is None:
+                raise ValueError("candidate row parent must be an earlier resolved row")
+            state = resolved[parent].clone()
+            state.observe(int(batch.tokens[row]))
+            if forced_ids[parent] is not None:
+                # The parent's override was the token emitted at this row's
+                # position, so this row's queue has already consumed it. When the
+                # draft disagrees with that override the accept walk stops at the
+                # parent and this row is never published, so consuming it here
+                # cannot lose a token the request still owes.
+                state.pop_forced_token()
+        resolved[row] = state
+        forced_ids[row] = state.peek_forced_token()
+    return tuple(
+        (state, forced)
+        for state, forced in zip(resolved, forced_ids, strict=True)
+        if state is not None
+    )
+
+
+def published_forced_count(
+    batch: TargetVerifyBatch,
+    accepted_counts: Sequence[int],
+    published: Sequence[int],
+    forced_ids: Sequence[int | None],
+) -> int:
+    """Return how many of a cycle's published tokens carried a forced override.
+
+    ``forced_ids`` comes from ``row_forced_token_ids`` and is aligned with the
+    verified batch, while ``published`` is what the cycle actually emitted -- the
+    accept walk's chain, shortened by the finish rule when it limited one. Only
+    the positions the cycle published earned a pop from the live queue, so a stop
+    inside the chain must not consume the overrides behind it.
+    """
+
+    path = chain_edge_rows(batch, accepted_counts)[0]
+    return sum(1 for row in path[: len(published)] if forced_ids[row] is not None)
+
+
+def observe_published_tokens(
+    state: RowSamplingState,
+    published: Sequence[int],
+    *,
+    forced_count: int,
+) -> None:
+    """Observe a cycle's published tokens into the request's live sampler state.
+
+    This mirrors one autoregressive decode step per published token: prepare the
+    selection, consume the forced override when this token is one of the ones the
+    cycle published because of it, then observe the token. ``forced_count`` is
+    the number of leading published tokens that carried an override; a forced
+    token can only be published at the position its row predicted, so the
+    consumed override must be the token itself.
+    """
+
+    remaining = int(forced_count)
+    if remaining < 0 or remaining > len(published):
+        raise ValueError(
+            f"forced_count {forced_count} is outside the {len(published)} published tokens"
+        )
+    for index, token in enumerate(published):
+        emitted = int(token)
+        if index < remaining:
+            state.prepare_for_selection()
+            forced = state.pop_forced_token()
+            if forced != emitted:
+                raise RuntimeError(
+                    f"cycle published token {emitted} at position {index} but the "
+                    f"pending forced token is {forced}"
+                )
+        state.observe(emitted)
 
 
 def _draft_distributions(batch: TargetVerifyBatch) -> tuple[SparseDistribution, ...]:
@@ -218,6 +325,7 @@ def sampled_accept_summary(
     if logits.shape[0] != batch.rows:
         raise ValueError("target_logits rows must align with the verified batch")
     prefix_states = row_prefix_states(batch, states)
+    forced_ids = row_forced_token_ids(batch, states)
     targets: list[SparseDistribution] = []
     for row in range(batch.rows):
         request_id = int(batch.row_to_request[row])
@@ -226,6 +334,7 @@ def sampled_accept_summary(
             params_for(request_id),
             prefix_states[row],
             token_text_for_id=token_text_for_id,
+            forced_token_id=forced_ids[row],
         )
         targets.append(SparseDistribution.from_pairs(token_ids, probabilities))
     result = sampled_accept_from_distributions(
