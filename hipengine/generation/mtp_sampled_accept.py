@@ -169,6 +169,8 @@ def row_prefix_states(
 def row_forced_token_ids(
     batch: TargetVerifyBatch,
     states: Mapping[int, RowSamplingState],
+    *,
+    observe_text: Callable[[RowSamplingState, int, int], None] | None = None,
 ) -> tuple[int | None, ...]:
     """Return each row's pending forced-token override, or ``None``.
 
@@ -182,9 +184,18 @@ def row_forced_token_ids(
     The live request's queue is never touched. A cycle consumes the overrides it
     published only at commit time (``observe_published_tokens``), because a row
     that the accept walk never reaches published nothing and earned no pop.
+
+    ``observe_text`` is the same walk-time text observer ``row_prefix_states``
+    takes, and it must be the same one: a text-keyed constraint *queues* a
+    closing suffix once its own DFA reaches the point where the remaining budget
+    is exactly enough to close, so a row that skips the text also skips the
+    override that governs its edge.
     """
 
-    return tuple(forced for _state, forced in _row_prefix_walk(batch, states))
+    return tuple(
+        forced
+        for _state, forced in _row_prefix_walk(batch, states, observe_text=observe_text)
+    )
 
 
 def _row_prefix_walk(
@@ -358,15 +369,25 @@ def sampled_accept_summary(
         raise ValueError("target_logits must be a two-dimensional row matrix")
     if logits.shape[0] != batch.rows:
         raise ValueError("target_logits rows must align with the verified batch")
-    prefix_states = row_prefix_states(batch, states)
-    forced_ids = row_forced_token_ids(batch, states)
-    targets: list[SparseDistribution] = []
+    prefix_states = row_prefix_states(batch, states, observe_text=observe_text)
+    forced_ids = row_forced_token_ids(batch, states, observe_text=observe_text)
+    targets: list[SparseDistribution | None] = []
     for row in range(batch.rows):
         request_id = int(batch.row_to_request[row])
+        row_state = prefix_states[row]
+        if row_state.token_text_constraint_invalid:
+            # The draft token this row was advanced by violates a text-keyed
+            # constraint, so no token can follow it and the row has no law. It is
+            # also unreachable: the row before it is masked against the same DFA
+            # and excludes that token, so the accept walk rejects there and
+            # corrects. ``None`` records exactly that, and the accept walk raises
+            # if it ever steps onto the row.
+            targets.append(None)
+            continue
         token_ids, probabilities = processed_distribution(
             logits[row],
             params_for(request_id),
-            prefix_states[row],
+            row_state,
             token_text_for_id=token_text_for_id,
             forced_token_id=forced_ids[row],
         )
