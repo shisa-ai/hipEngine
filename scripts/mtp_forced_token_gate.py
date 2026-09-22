@@ -83,6 +83,12 @@ JSON_PROMPT = (
     "\"city\" and \"unit\", for the weather in Kyoto. JSON only."
 )
 
+TOOL_PROMPT = (
+    "Call the read tool to read the file /tmp/notes.txt. Use the tool call "
+    "format exactly: <tool_call>{\"name\": \"read\", \"arguments\": {\"path\": "
+    "\"/tmp/notes.txt\"}}</tool_call>"
+)
+
 CASES: tuple[Case, ...] = (
     Case(
         name="forced_two_tokens",
@@ -122,6 +128,20 @@ CASES: tuple[Case, ...] = (
         prompt=JSON_PROMPT,
         max_tokens=12,
         extras={"json_object_close_forcing": True},
+    ),
+    Case(
+        name="tool_call_required",
+        purpose=(
+            "A required tool_call_constraint admits only the canonical envelope, "
+            "so the model is forced into the tool branch and the constraint's "
+            "closing suffix is what completes it at the budget. Greedy, so the "
+            "two arms must publish identical ids."
+        ),
+        prompt=TOOL_PROMPT,
+        max_tokens=20,
+        extras={
+            "tool_call_constraint": {"tool_names": ("read",), "mode": "required"}
+        },
     ),
     Case(
         name="force_sequence_completion",
@@ -370,6 +390,25 @@ def _check(observations: dict[str, Any], *, arm: str) -> dict[str, Any]:
         request = entry["request"]
         forced = list(entry["fields"].get("forced_tokens_pending") or [])
         published = [int(token) for token in request["ids"]]
+        if case.name == "json_object_close":
+            # The constraint must have closed the object: the model's own
+            # continuation is unbounded, so a closed object is the observable
+            # effect of the forced closing suffix.
+            text = request["text"]
+            assert text.count("{") == text.count("}") == 1, {
+                "json_object_was_not_closed": {"case": case.name, "text": text}
+            }
+        if case.name == "tool_call_required":
+            # A required constraint admits only the canonical envelope, so a
+            # complete envelope is the observable effect of the branch plus its
+            # closing suffix.
+            text = request["text"]
+            assert text.count("<tool_call>") == text.count("</tool_call>") == 1, {
+                "tool_envelope_was_not_completed": {"case": case.name, "text": text}
+            }
+            assert '"read"' in text, {
+                "tool_envelope_named_the_wrong_tool": {"case": case.name, "text": text}
+            }
         if forced:
             assert published[: len(forced)] == forced, {
                 "forced_prefix_not_published": {
@@ -454,14 +493,6 @@ def _compare(arms: dict[str, Any]) -> dict[str, Any]:
         if forced:
             assert mtp_case["ids"][: len(forced)] == forced, {
                 "forced_prefix_not_published": {"case": case.name}
-            }
-        if case.name == "json_object_close":
-            # The constraint must have closed the object: the model's own
-            # continuation is unbounded, so a closed object is the observable
-            # effect of the forced closing suffix.
-            text = mtp_case["text"]
-            assert text.count("{") == text.count("}") == 1, {
-                "json_object_was_not_closed": {"case": case.name, "text": text}
             }
         if mtp_case["probe_ids"] is not None:
             assert mtp_case["probe_ids"] == ar_case["probe_ids"], {
