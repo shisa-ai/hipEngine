@@ -30,7 +30,6 @@ from tests._gemma4_gguf_fixture import (
 )
 
 
-
 @pytest.fixture
 def reader(tmp_path: Path) -> GGUFReader:
     path = write_fixture_gguf(
@@ -158,3 +157,116 @@ def test_device_bytes_match_the_artifact_bytes(reader: GGUFReader) -> None:
             np.testing.assert_array_equal(host, expected, err_msg=spec.slot_path)
         finally:
             weight.free()
+
+
+# --------------------------------------------------------------------------
+# The quantized projection must reproduce the bf16 projection
+# --------------------------------------------------------------------------
+
+
+def _read_bf16_rows(buffer, rows: int, columns: int) -> np.ndarray:
+    """Read a BF16 device buffer back as float32 rows.
+
+    The high 16 bits of a float32 *are* its bf16 encoding, so the conversion is
+    a left shift and a reinterpret -- not a numeric cast. `bits.astype(float32)`
+    would return the integer value of the bit pattern (bf16 4.375 is 0x408C, so
+    it would read back as 16524), which looks like a plausible activation and is
+    how a broken readback survives review.
+    """
+
+    from hipengine.core.memory import DeviceBuffer, copy_device_to_host
+    from hipengine.loading.materialize import host_array_ptr
+
+    raw = np.empty(rows * columns, dtype=np.uint16)
+    copy_device_to_host(
+        host_array_ptr(raw),
+        DeviceBuffer(ptr=buffer.ptr, nbytes=raw.nbytes),
+        raw.nbytes,
+    )
+    return (raw.astype(np.uint32) << np.uint32(16)).view(np.float32).reshape(rows, columns)
+
+
+def _dequantized(reader: GGUFReader, name: str) -> np.ndarray:
+    tensor = reader.tensor_info(name)
+    from hipengine.quant.gguf import dequantize_gguf_data
+
+    return np.asarray(
+        dequantize_gguf_data(reader.tensor_data(name), tensor.ggml_type), dtype=np.float32
+    )
+
+
+@pytest.mark.skipif(
+    not hip_runtime_available(), reason="HIP runtime unavailable; skipping projection test"
+)
+def test_quantized_projection_reproduces_the_bf16_projection(reader: GGUFReader) -> None:
+    """The quantized dispatch and the bf16 GEMV agree on the same weight.
+
+    The two paths must produce the same projection from the same source values.
+    The bf16 side uses the artifact's tensor dequantized to bf16; the quantized
+    side uses the artifact's own blocks. If the dispatch picked the wrong kernel,
+    read the wrong layout, or passed the operands in the wrong order, the two
+    would differ -- and this is the check that catches it before the difference
+    is buried inside a 30-layer forward pass.
+    """
+
+    from hipengine.core.memory import malloc, free
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import gemma4_project
+    from hipengine.loading.materialize import (
+        float_array_to_bf16_bits,
+        load_host_array_to_device_as_dtype,
+    )
+
+    spec = next(
+        s for s in plan_gemma4_gguf_resident_specs(reader) if s.slot_path.endswith(".attn_q")
+    )
+    out_features, in_features = (int(d) for d in spec.source.shape)
+    rows = 4
+
+    rng = np.random.default_rng(20260922)
+    x = rng.standard_normal((rows, in_features)).astype(np.float32)
+
+    # bf16 path: the artifact's tensor, dequantized and rounded to bf16.
+    weight_bf16 = _dequantized(reader, spec.source.name)
+    x_ptr = load_host_array_to_device_as_dtype(
+        "x", float_array_to_bf16_bits(x), "bf16", source_dtype="BF16"
+    )
+    w_ptr = load_host_array_to_device_as_dtype(
+        "w", float_array_to_bf16_bits(weight_bf16), "bf16", source_dtype="BF16"
+    )
+    out_bf16 = malloc(rows * out_features * 2)
+    out_quant = malloc(rows * out_features * 2)
+    quantized = materialize_gemma4_gguf_device_weight(reader, spec)
+    try:
+        gemma4_project(
+            x_ptr.buffer.ptr, w_ptr.buffer.ptr, out_bf16.ptr, rows, in_features, out_features
+        )
+        gemma4_project(x_ptr.buffer.ptr, quantized, out_quant.ptr, rows, in_features, out_features)
+
+        got_bf16 = _read_bf16_rows(out_bf16, rows, out_features)
+        got_quant = _read_bf16_rows(out_quant, rows, out_features)
+
+        # The fixture's Q8_0 values are `d * q` with `d = k * 2**-5` for k <= 5
+        # and `|q| <= 15`, so every weight has at most 7 significant bits and is
+        # *exactly* representable in bf16. The two paths therefore compute the
+        # same real-valued product and differ only by bf16 rounding of the
+        # output, which is under half an ulp (about 0.4%).
+        #
+        # That is why the tolerance is tight: on this fixture a dispatch that
+        # read the wrong layout or swapped the operands could not hide inside it.
+        # A 2% tolerance would have been loose enough to pass a wrong kernel.
+        scale = float(np.abs(got_bf16).max())
+        assert scale > 0, "the bf16 projection produced nothing to compare against"
+        assert np.allclose(got_quant, got_bf16, rtol=5e-3, atol=5e-3 * scale), (
+            f"quantized projection diverged from bf16: "
+            f"max abs diff {np.abs(got_quant - got_bf16).max():.4g} against scale {scale:.4g}"
+        )
+        # Independent of the tolerance: the quantized output must not be a
+        # constant, which is what a kernel reading a single block for every row
+        # would produce.
+        assert got_quant.std(axis=1).min() > 0, "quantized output has a constant row"
+    finally:
+        free(out_bf16)
+        free(out_quant)
+        x_ptr.free()
+        w_ptr.free()
+        quantized.free()

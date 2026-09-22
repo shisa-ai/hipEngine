@@ -36,6 +36,7 @@ plugs in at the attention step without touching the rest of the layer.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from hipengine.core.memory import DeviceBuffer, free as hip_free, malloc
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
@@ -69,27 +70,47 @@ _I64_BYTES = 8
 _F32_BYTES = 4
 
 
+# A projection weight is a bf16 device pointer (``int``) or a GGUF device weight
+# carrying quantized blocks. Both are resident layouts a Gemma 4 artifact can
+# legitimately use, so the dispatch is on the value, not on a flag.
+if TYPE_CHECKING:
+    from hipengine.loading.gemma4_gguf_device import Gemma4GGUFDeviceWeight
+
+    Gemma4Projection = int | Gemma4GGUFDeviceWeight
+else:
+    Gemma4Projection = object
+
+
 @dataclass
 class Gemma4LayerPointers:
-    """Device pointers for one layer's weights.
+    """Weights for one layer.
+
+    A projection field is either a **bf16 device pointer** (``int``) or a
+    **GGUF device weight** carrying quantized blocks. Both are real resident
+    layouts -- the bf16 form is what a bf16 artifact and the layer's own
+    synthetic fixtures use, the GGUF form is what a quantized artifact uses --
+    so :func:`gemma4_project` dispatches on the value's storage form rather than
+    on a flag. The layer's arithmetic is identical either way; only how the
+    ``(rows, in) x (in, out)`` product is computed differs.
 
     ``v_proj`` is ``0`` on ``attention_k_eq_v`` layers, where the reference takes
     the raw K projection as V and there is no ``v_proj`` tensor in the artifact.
     ``layer_scalar`` is ``0`` to mean 1.0, which is what the kernel does with a
-    null pointer.
+    null pointer. The norm and router fields stay raw pointers: they are f32
+    weight vectors in every artifact, never quantized blocks.
     """
 
     input_layernorm: int
-    q_proj: int
-    k_proj: int
-    o_proj: int
+    q_proj: Gemma4Projection
+    k_proj: Gemma4Projection
+    o_proj: Gemma4Projection
     q_norm: int
     k_norm: int
     post_attention_layernorm: int
     pre_feedforward_layernorm: int
-    mlp_gate_proj: int
-    mlp_up_proj: int
-    mlp_down_proj: int
+    mlp_gate_proj: Gemma4Projection
+    mlp_up_proj: Gemma4Projection
+    mlp_down_proj: Gemma4Projection
     post_feedforward_layernorm_1: int
     router_scale: int
     router_proj: int
@@ -99,8 +120,43 @@ class Gemma4LayerPointers:
     experts_down_proj: int
     post_feedforward_layernorm_2: int
     post_feedforward_layernorm: int
-    v_proj: int = 0
+    v_proj: Gemma4Projection = 0
     layer_scalar: int = 0
+
+
+def gemma4_project(
+    x_ptr: int,
+    weight: Gemma4Projection,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+) -> None:
+    """Run one ``(rows, in_features) x (in_features, out_features)`` projection.
+
+    ``int`` is a bf16 device pointer; anything else is a GGUF device weight and
+    goes through the quantized linear dispatch, which picks its own kernel from
+    the weight's quant key and the row count.
+    """
+
+    if isinstance(weight, int):
+        dense_gemv_out_bf16(x_ptr, weight, out_ptr, rows, in_features, out_features, stream=stream)
+        return
+    # Imported here rather than at module scope: the quantized dispatch lives in
+    # the runtime layer and the kernel package does not depend on it otherwise.
+    from hipengine.runtime.gguf_linear import launch_gguf_linear
+
+    launch_gguf_linear(
+        weight,
+        x_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+    )
 
 
 @dataclass
@@ -315,12 +371,8 @@ def gemma4_layer_forward_bf16(
         hidden_ptr, layer.input_layernorm, buf("normalized"), rows, hidden_size, eps, **kwargs
     )
 
-    dense_gemv_out_bf16(
-        buf("normalized"), layer.q_proj, buf("q"), rows, hidden_size, q_width, **kwargs
-    )
-    dense_gemv_out_bf16(
-        buf("normalized"), layer.k_proj, buf("k"), rows, hidden_size, kv_width, **kwargs
-    )
+    gemma4_project(buf("normalized"), layer.q_proj, buf("q"), rows, hidden_size, q_width, **kwargs)
+    gemma4_project(buf("normalized"), layer.k_proj, buf("k"), rows, hidden_size, kv_width, **kwargs)
 
     # `attention_k_eq_v` layers have no v_proj: the reference binds V to the *raw*
     # K projection and normalises a separate `key` array. So K is never normed in
@@ -332,7 +384,7 @@ def gemma4_layer_forward_bf16(
             buf("k"), buf("v"), rows * num_kv_heads, head_dim, eps, **kwargs
         )
     else:
-        dense_gemv_out_bf16(
+        gemma4_project(
             buf("normalized"), layer.v_proj, buf("v"), rows, hidden_size, kv_width, **kwargs
         )
         # V is normalised weightlessly and never rotated.
@@ -401,7 +453,7 @@ def gemma4_layer_forward_bf16(
         scale=geometry.scale,
         **kwargs,
     )
-    dense_gemv_out_bf16(
+    gemma4_project(
         buf("context"), layer.o_proj, buf("attn_out"), rows, q_width, hidden_size, **kwargs
     )
 
@@ -428,7 +480,7 @@ def gemma4_layer_forward_bf16(
         eps,
         **kwargs,
     )
-    dense_gemv_out_bf16(
+    gemma4_project(
         buf("normalized"),
         layer.mlp_gate_proj,
         buf("dense_gate"),
@@ -437,7 +489,7 @@ def gemma4_layer_forward_bf16(
         scratch.dense_intermediate,
         **kwargs,
     )
-    dense_gemv_out_bf16(
+    gemma4_project(
         buf("normalized"),
         layer.mlp_up_proj,
         buf("dense_up"),
@@ -455,7 +507,7 @@ def gemma4_layer_forward_bf16(
         rows * scratch.dense_intermediate,
         **kwargs,
     )
-    dense_gemv_out_bf16(
+    gemma4_project(
         buf("dense_act"),
         layer.mlp_down_proj,
         buf("dense"),
