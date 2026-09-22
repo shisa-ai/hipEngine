@@ -12942,6 +12942,34 @@ def _gguf_int8_bf16_full_attention_layer_indices(
     return tuple(range(min(max(0, int(prefix)), int(full_attention_layers))))
 
 
+def _gguf_packed_decode_max_rows(
+    *,
+    direct_rows: int,
+    retained_decode_kernel: object | None,
+    bf16_full_attention_layer_indices: tuple[int, ...],
+) -> int:
+    """Resolve the packed decode width a resident INT8 session may use.
+
+    The direct INT8 batch leaf reads retained INT8 planes on every
+    full-attention layer it covers. A hybrid layout keeps part of that stack in
+    BF16, and a BF16 layer has no retained planes, so it takes the standard
+    batch leaf instead. One packed batch cannot run both leaves, and the packed
+    execution manifest names a single full-attention route, so a hybrid layout
+    is capped at one row. The session then refuses the packed step, which
+    ``step_batch_native`` already reports as "no packed result" so the caller
+    serializes the rows.
+
+    Without the cap the batch mixes the two leaves and the consistency check in
+    the packed decode raises instead of falling back.
+    """
+
+    if not callable(retained_decode_kernel):
+        return 1
+    if bf16_full_attention_layer_indices:
+        return 1
+    return max(1, int(direct_rows))
+
+
 def _gguf_int8_effective_scale_dtype(
     *,
     kv_storage_dtype: DType,
@@ -16545,6 +16573,7 @@ class Qwen35GGUFResidentSession:
         )
         self.packed_decode_max_rows = 8
         self._retained_decode_kernel = None
+        direct_rows = 1
         # Allocation follows the admitted predicate; route resolution follows the
         # runnable one, so an operator-forced INT8 session still binds the
         # declared direct leaf and the width the declaration qualifies.
@@ -16557,11 +16586,6 @@ class Qwen35GGUFResidentSession:
             )
             self._retained_decode_kernel = (
                 direct_kernel if callable(direct_kernel) and not self.int8_kv_value_bf16 else None
-            )
-            self.packed_decode_max_rows = (
-                max(1, int(direct_rows))
-                if self._retained_decode_kernel is not None
-                else 1
             )
         requested_positions = 256 if self.max_sequence_length is None else int(self.max_sequence_length)
         rounded_positions = min(
@@ -16606,6 +16630,20 @@ class Qwen35GGUFResidentSession:
                 ),
                 full_attention_layer_count,
             )
+        # The direct INT8 batch leaf reads retained INT8 planes on every
+        # full-attention layer it covers. A hybrid layout keeps part of that
+        # stack in BF16, and those layers have no retained planes, so they take
+        # the standard batch leaf instead. One packed batch cannot run both
+        # leaves and the execution manifest names a single full-attention route,
+        # so a hybrid layout is capped at one row. ``step_batch_native`` already
+        # treats its refusal as "no packed result" and the caller serializes.
+        # ``HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none`` clears the cap by
+        # making the layout uniform.
+        self.packed_decode_max_rows = _gguf_packed_decode_max_rows(
+            direct_rows=direct_rows,
+            retained_decode_kernel=self._retained_decode_kernel,
+            bf16_full_attention_layer_indices=self.int8_bf16_full_attention_layer_indices,
+        )
         custom_bf16_layers = (
             self.kv_storage_layout == "uniform"
             and _env_value(_GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV) is not None

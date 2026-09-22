@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10635,
-    "current": 3403,
+    "entries": 10640,
+    "current": 3408,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1088,
+    "rows": 1091,
     "by_rule": {
       "dependency": 36,
       "legacy-next": 109,
-      "status": 943
+      "status": 946
     }
   },
   "rows": [
@@ -40951,6 +40951,117 @@
       },
       "id": "worklog/20260921T173405.525066Z-lhl-server-gate-determinism-isolation-b40723",
       "evidence_hash": "e57285ad3bdb"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260922T065307.435598Z-lhl-release-v070-publish-028b54",
+      "title": "Prepare and validate the v0.7.0 release",
+      "location": "worklog/entries/20260922T065307.435598Z-lhl-release-v070-publish-028b54.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "release-v070-publish",
+        "written": "2026-09-22",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- **Push `main`, tag `v0.7.0`, and publish are not done.** Publishing is\n  irreversible, and the documented INT8 MTP category gate does not pass on this\n  host for a pre-existing reason that the v0.6.0 worklog records as passing. That\n  decision belongs to the lead.\n- The INT8-override token divergence deserves its own unit: it is a real\n  AR-versus-MTP mismatch on a reachable route, it is not covered by the recorded\n  evidence, and the artifact is only one instance \u2014 no qualified INT8 artifact\n  was tested.\n- `audit/runs/20260922T065210Z/` and the regenerated inventory are the refresh\n  this ",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260922T065307.435598Z-lhl-release-v070-publish-028b54.md",
+        "refs": [],
+        "tokens": [
+          "prepare",
+          "release",
+          "validate"
+        ]
+      },
+      "id": "worklog/20260922T065307.435598Z-lhl-release-v070-publish-028b54",
+      "evidence_hash": "c5bcc308a329"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260922T073246.722993Z-lhl-int8-hybrid-multirequest-defect-19e6e2",
+      "title": "INT8 hybrid layout breaks multi-request decode",
+      "location": "worklog/entries/20260922T073246.722993Z-lhl-int8-hybrid-multirequest-defect-19e6e2.md:8",
+      "evidence": {
+        "status": "blocked",
+        "worker": "lhl",
+        "topic": "int8-hybrid-multirequest-defect",
+        "written": "2026-09-22",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "Blocked on a release decision. Both runner commits between the v0.6.0 tag and\n`main` are INT8-route changes: `c3c246372` (direct INT8 route on the declared\ncontract under override) and `e1808ac64` (packed INT8 MTP verify at c=N).\n`e1808ac64` added the failing check and is one of the seven features the v0.7.0\nminor bump cites. Whether the underlying state corruption predates v0.6.0 was not\ntested.\n\nThe v0.7.0 tag is prepared but not pushed; see\n`worklog/entries/20260922T065307.435598Z-lhl-release-v070-publish-028b54.md`.\n\nIf the release is held, the next unit is to identify which piece of the c",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as blocked \u2014 the entry says the unit is blocked",
+        "Next also names a dependency: 'Blocked on'",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260922T073246.722993Z-lhl-int8-hybrid-multirequest-defect-19e6e2.md",
+        "refs": [
+          "worklog/entries/20260922T065307.435598Z-lhl-release-v070-publish-028b54.md"
+        ],
+        "tokens": [
+          "breaks",
+          "decode",
+          "hybrid",
+          "int8",
+          "layout",
+          "multi",
+          "request"
+        ]
+      },
+      "id": "worklog/20260922T073246.722993Z-lhl-int8-hybrid-multirequest-defect-19e6e2",
+      "evidence_hash": "23eeac558754"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260922T073522.528502Z-lhl-v070-publication-verification-c5f6b3",
+      "title": "v0.7.0 publication verification found nothing published",
+      "location": "worklog/entries/20260922T073522.528502Z-lhl-v070-publication-verification-c5f6b3.md:8",
+      "evidence": {
+        "status": "blocked",
+        "worker": "lhl",
+        "topic": "v070-publication-verification",
+        "written": "2026-09-22",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "Blocked on the same release decision as\n`worklog/entries/20260922T065307.435598Z-lhl-release-v070-publish-028b54.md`.\nWhen publication does happen, the checks to run are: the PyPI JSON version and\nfile list, a `uvx` install of the published wheel, GitHub release note rendering,\nand a clean tree.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as blocked \u2014 the entry says the unit is blocked",
+        "Next also names a dependency: 'Blocked on'",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260922T073522.528502Z-lhl-v070-publication-verification-c5f6b3.md",
+        "refs": [
+          "worklog/entries/20260922T065307.435598Z-lhl-release-v070-publish-028b54.md"
+        ],
+        "tokens": [
+          "found",
+          "nothing",
+          "publication",
+          "published",
+          "verification"
+        ]
+      },
+      "id": "worklog/20260922T073522.528502Z-lhl-v070-publication-verification-c5f6b3",
+      "evidence_hash": "05a608570697"
     }
   ]
 }

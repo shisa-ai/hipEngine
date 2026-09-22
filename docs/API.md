@@ -100,6 +100,15 @@ declarations use `fp32` scales, so `--kv-scale-dtype fp16` falls back to BF16.
 The reason and requested/effective storage are recorded in `/ready` and the
 KVCache summary. Passing `--kv-storage bf16` explicitly matches the default.
 
+`/ready` also reports `model.kv_capability.max_packed_rows`, the effective
+row width a packed decode batch may use. It can be below the declared
+`max_direct_rows`: the direct INT8 batch leaf reads retained INT8 planes on
+every full-attention layer it covers, and a long-context INT8 session keeps a
+BF16 prefix of those layers for quality, so those layers have no retained
+planes. One packed batch cannot run both leaves, so such a session caps the
+width at one row and serializes the rows instead. The packed leaf then runs at
+full declared width only when the full-attention stack is uniformly INT8.
+
 Set `--max-active-requests` to change the maximum number of requests processed
 in flight. Requests beyond that limit remain queued. The shared KV pool starts
 at its configured floor, grows in page chunks up to the memory budget, and
