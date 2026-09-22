@@ -143,7 +143,13 @@ def _load_records(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         return payload, {}
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
         raise ValueError("input must be a record list or an object containing records")
-    return payload["records"], dict(payload.get("tokenizer", {}))
+    binding = payload.get("tokenizer")
+    if not isinstance(binding, dict):
+        metadata = payload.get("metadata", {})
+        binding = metadata.get("tokenizer", {}) if isinstance(metadata, dict) else {}
+    if not isinstance(binding, dict):
+        raise TypeError("input tokenizer binding must be an object")
+    return payload["records"], dict(binding)
 
 
 def build_campaign_manifests(
@@ -172,6 +178,17 @@ def build_campaign_manifests(
     seen_component_text: set[str] = set()
     for raw in records:
         record = dict(raw)
+        record_binding = record.get("tokenizer")
+        expected_binding = {"identity": tokenizer_identity, "sha256": tokenizer_sha256}
+        if record_binding is not None and record_binding != expected_binding:
+            raise ValueError("candidate tokenizer binding does not match sealed binding")
+        record_model_hash = record.get("model_sha256")
+        if (
+            record_model_hash is not None
+            and model_sha256 is not None
+            and str(record_model_hash) != str(model_sha256)
+        ):
+            raise ValueError("candidate model hash does not match sealed binding")
         source_id, source_path = _record_source(record)
         if source_id in excluded_ids or source_path in excluded_paths:
             continue
