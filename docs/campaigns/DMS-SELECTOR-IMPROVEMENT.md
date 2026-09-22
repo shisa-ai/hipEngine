@@ -264,9 +264,9 @@ Baseline results:
 
 | Arm | Manifest/command/artifact | Rows | KL mean/p95/p99/max; top-1/category | Live CR; bytes; final allocations | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| Dense teacher | pending | pending | pending | pending | pending |
-| Compact no-evict | pending | pending | pending | pending | pending |
-| Frozen W8192/CR2 | pending | pending | pending | pending | pending |
+| Dense teacher | `pilots/g0-no-evict-1k-d2.json` (teacher trajectory within the G0 pilot; artifact SHA-256 `f3a4a631bbd7aa39c87849dfe6f611fb9b7e71bb9b7e71bad98be27024f661ce87dfb70b`) | 12 scored rows across four categories; 4 prefill rows | Candidate comparison recorded separately; dense teacher is the reference | Teardown baseline restored; 108.47 s total pilot wall | Control pilot reference; not a baseline sweep result |
+| Compact no-evict | Same G0 pilot; repeat artifact SHA-256 `e047f1ef4b69b5e8c48a65571dff0e382fd674f38fddd36b3c244cdc1285a58f` | 12 scored rows across four categories; 4 prefill rows | max KL `0.004982890284225346`; top-1 `11/12`; mixed Japanese/English decode step 1 mismatch reproduced | Device payloads present; dense prefill pool released; tracked allocations returned to baseline | **G0 rejected**; numerical-control repair required before P0–P7 |
+| Frozen W8192/CR2 | not run | pending | pending | pending | Blocked by compact no-evict G0 control failure |
 
 ## 6. Phase B — policy and non-learned controls
 
@@ -304,7 +304,7 @@ Control results:
 
 | Point | Selector/seed | Kept-set overlap with learned | KL tails/category; G1 | CR/count equality | Interpretation/artifact |
 | --- | --- | --- | --- | --- | --- |
-| P0/P2/P4 (expand per arm) | pending | pending | pending | pending | pending |
+| P0/P2/P4 (expand per arm) | not run; compact no-evict G0 control failed first | pending | pending | P0–P7 are blocked until the no-evict numerical-control discrepancy is repaired | pending |
 
 ## 7. Phase C — exact-score and query-information diagnostics
 
