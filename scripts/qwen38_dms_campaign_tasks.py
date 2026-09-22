@@ -324,7 +324,7 @@ def _validate_task_manifest(
     *,
     model_sha256: str,
 ) -> None:
-    from hipengine.benchmark.dms_tasks import validate_case
+    from hipengine.benchmark.dms_tasks import case_coordinates, validate_case
 
     if manifest.get("kind") != TASK_MANIFEST_KIND:
         raise ValueError("input is not a frozen G3 task manifest")
@@ -338,14 +338,24 @@ def _validate_task_manifest(
     if not expected_model or expected_model != str(model_sha256):
         raise ValueError("G3 task manifest model hash does not match --model")
     case_ids: set[str] = set()
+    coordinates: set[tuple[str, str, str]] = set()
+    manifest_suite = str(manifest.get("suite", ""))
+    manifest_target = int(manifest["target_tokens"])
     for case in manifest["cases"]:
         case_id = str(case.get("case_id", ""))
         if not case_id or case_id in case_ids:
             raise ValueError("G3 task manifest case IDs must be non-empty and unique")
         case_ids.add(case_id)
+        if str(case.get("suite")) != manifest_suite or int(case.get("target_tokens", -1)) != manifest_target:
+            raise ValueError(f"G3 case {case_id} suite/target does not match its manifest")
+        coordinates.add(
+            (str(case.get("family")), str(case.get("category")), str(case.get("placement")))
+        )
         problems = validate_case(case)
         if problems:
             raise ValueError(f"invalid G3 case {case_id}: {'; '.join(problems)}")
+    if coordinates != set(case_coordinates()):
+        raise ValueError("G3 task manifest does not contain the exact frozen case matrix")
 
 
 def _validate_dense_reference(

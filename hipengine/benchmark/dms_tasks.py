@@ -717,6 +717,21 @@ def compare_g3(
     for label, cases in (("baseline", baseline_cases), ("candidate", candidate_cases)):
         if set(cases) != set(dense_cases):
             errors.append(f"{label} result case set differs from the dense result")
+            continue
+        for case_id, dense_case in dense_cases.items():
+            case = cases[case_id]
+            for field in (
+                "family",
+                "category",
+                "placement",
+                "target_tokens",
+                "answer_token_ids_sha256",
+                "prompt_token_ids_sha256",
+            ):
+                if case.get(field) != dense_case.get(field):
+                    errors.append(
+                        f"{label} result case {case_id} field {field} differs from dense"
+                    )
 
     if errors:
         return {

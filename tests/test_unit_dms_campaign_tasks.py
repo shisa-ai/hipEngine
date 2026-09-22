@@ -116,6 +116,8 @@ def make_result(
                 "category": case["category"],
                 "placement": case["placement"],
                 "target_tokens": case["target_tokens"],
+                "answer_token_ids_sha256": case["answer_token_ids_sha256"],
+                "prompt_token_ids_sha256": case["token_ids_sha256"],
                 "correct": case["case_id"] not in incorrect_cases,
                 "parser": {"verdict": "correct" if case["case_id"] not in incorrect_cases else "incorrect"},
                 "generated_text": "x" if case["case_id"] not in incorrect_cases else "",
@@ -455,7 +457,6 @@ def test_g3_fails_per_tested_length_scope() -> None:
     dense = make_result(manifest, arm=DENSE_ARM, metadata_sha=None)
     baseline = make_result(manifest, arm="sidecar", metadata_sha="b" * 64)
     candidate = make_result(manifest, incorrect_cases={case["case_id"]})
-    candidate["cases"][0]["target_tokens"] = 99999
     verdict = compare_g3(dense, baseline, candidate)
     assert verdict["passed"] is False
     assert any(
@@ -541,6 +542,11 @@ def test_g3_rejects_wrong_arms_duplicate_cases_and_script_hashes() -> None:
     duplicate["cases"][1]["case_id"] = duplicate["cases"][0]["case_id"]
     verdict = compare_g3(dense, baseline, duplicate)
     assert any("duplicate case IDs" in error for error in verdict["errors"])
+
+    wrong_case_identity = make_result(manifest)
+    wrong_case_identity["cases"][0]["category"] = "general_ja"
+    verdict = compare_g3(dense, baseline, wrong_case_identity)
+    assert any("field category differs" in error for error in verdict["errors"])
 
     candidate["evaluator"]["script_sha256"] = "z" * 64
     verdict = compare_g3(dense, baseline, candidate)
