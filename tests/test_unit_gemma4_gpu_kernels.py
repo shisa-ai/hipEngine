@@ -1306,3 +1306,492 @@ def test_router_scratch_rejects_a_mismatched_shape():
             )
     finally:
         scratch.free()
+
+
+# --------------------------------------------------------------------------
+# Prefill attention: ungated, caller-supplied keep mask, scale 1.0
+# --------------------------------------------------------------------------
+
+
+def _reference_attention(query, key, value, keep_mask, *, num_heads, num_kv_heads):
+    """GQA attention in f32, mirroring the reference's _grouped_attention."""
+
+    tokens, _, head_dim = query.shape
+    groups = num_heads // num_kv_heads
+    context = np.zeros_like(query, dtype=np.float32)
+    for token in range(tokens):
+        for head in range(num_heads):
+            kv_head = head // groups
+            logits = query[token, head] @ key[:, kv_head, :].T
+            keep = keep_mask[token].astype(bool)
+            logits = np.where(keep, logits, -np.inf)
+            top = logits.max()
+            weights = np.exp(logits - top)
+            weights = weights / weights.sum()
+            context[token, head] = weights @ value[:, kv_head, :]
+    return context
+
+
+def test_attention_prefill_f32_matches_the_reference():
+    """The f32 entry point reproduces masked GQA attention exactly."""
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        gemma4_attention_prefill_f32,
+    )
+
+    device = _Device()
+    tokens, num_heads, num_kv_heads, head_dim = 6, 4, 2, 16
+    rng = np.random.default_rng(2024)
+    query = (rng.standard_normal((tokens, num_heads, head_dim)) * 0.5).astype(np.float32)
+    key = (rng.standard_normal((tokens, num_kv_heads, head_dim)) * 0.5).astype(np.float32)
+    value = (rng.standard_normal((tokens, num_kv_heads, head_dim)) * 0.5).astype(np.float32)
+    keep = np.tril(np.ones((tokens, tokens), dtype=np.uint8))
+
+    q_ptr = device.put(query)
+    k_ptr = device.put(key)
+    v_ptr = device.put(value)
+    m_ptr = device.put(keep)
+    out_ptr = device.out((tokens, num_heads, head_dim), np.float32)
+
+    gemma4_attention_prefill_f32(
+        q_ptr,
+        k_ptr,
+        v_ptr,
+        m_ptr,
+        out_ptr,
+        tokens=tokens,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        scale=1.0,
+    )
+    got = device.get(out_ptr, (tokens, num_heads, head_dim), np.float32)
+    want = _reference_attention(
+        query, key, value, keep, num_heads=num_heads, num_kv_heads=num_kv_heads
+    )
+    np.testing.assert_allclose(got, want, atol=1e-5, rtol=1e-5)
+
+
+def test_attention_prefill_applies_the_mask_it_is_given():
+    """A masked-out key must contribute nothing, including when it is recent.
+
+    The kernel must apply the caller's keep mask rather than re-deriving
+    causality: a sliding-window layer keeps only the last `window` keys, which
+    the kernel cannot know on its own.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        gemma4_attention_prefill_f32,
+    )
+
+    device = _Device()
+    tokens, num_heads, num_kv_heads, head_dim = 5, 2, 2, 8
+    rng = np.random.default_rng(77)
+    query = (rng.standard_normal((tokens, num_heads, head_dim)) * 0.5).astype(np.float32)
+    key = (rng.standard_normal((tokens, num_kv_heads, head_dim)) * 0.5).astype(np.float32)
+    value = (rng.standard_normal((tokens, num_kv_heads, head_dim)) * 0.5).astype(np.float32)
+
+    # Causal AND sliding window of 2: keeps only the previous key, not the whole
+    # prefix. A causal-only kernel would attend over keys 0..token.
+    window = 2
+    positions = np.arange(tokens)
+    keep = (
+        (positions[None, :] <= positions[:, None])
+        & (positions[None, :] > positions[:, None] - window)
+    ).astype(np.uint8)
+    assert keep.sum() == tokens + (tokens - 1), keep
+
+    q_ptr = device.put(query)
+    k_ptr = device.put(key)
+    v_ptr = device.put(value)
+    m_ptr = device.put(keep)
+    out_ptr = device.out((tokens, num_heads, head_dim), np.float32)
+
+    gemma4_attention_prefill_f32(
+        q_ptr,
+        k_ptr,
+        v_ptr,
+        m_ptr,
+        out_ptr,
+        tokens=tokens,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        scale=1.0,
+    )
+    got = device.get(out_ptr, (tokens, num_heads, head_dim), np.float32)
+    want = _reference_attention(
+        query, key, value, keep, num_heads=num_heads, num_kv_heads=num_kv_heads
+    )
+    np.testing.assert_allclose(got, want, atol=1e-5, rtol=1e-5)
+
+    # Token 0 attends only to itself, so its context must be exactly V[0].
+    for head in range(num_heads):
+        kv_head = head // (num_heads // num_kv_heads)
+        np.testing.assert_allclose(got[0, head], value[0, kv_head], atol=1e-5)
+
+
+def test_attention_prefill_scale_is_not_assumed():
+    """The kernel multiplies by the scale it is given, not head_dim**-0.5.
+
+    Gemma 4 folds the softmax scaling into the query norm weight and passes 1.0.
+    A kernel that hard-coded the reciprocal square root would pass every test
+    that also used 1.0 only by coincidence of geometry, so exercise a scale that
+    is deliberately not head_dim**-0.5 and not 1.0.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        gemma4_attention_prefill_f32,
+    )
+
+    device = _Device()
+    tokens, num_heads, num_kv_heads, head_dim = 4, 2, 2, 32
+    rng = np.random.default_rng(5)
+    query = (rng.standard_normal((tokens, num_heads, head_dim)) * 0.5).astype(np.float32)
+    key = (rng.standard_normal((tokens, num_kv_heads, head_dim)) * 0.5).astype(np.float32)
+    value = (rng.standard_normal((tokens, num_kv_heads, head_dim)) * 0.5).astype(np.float32)
+    keep = np.tril(np.ones((tokens, tokens), dtype=np.uint8))
+
+    # head_dim**-0.5 would be 0.17677669; use something unrelated to it.
+    scale = 0.37
+    assert abs(scale - head_dim**-0.5) > 0.1
+
+    q_ptr = device.put(query)
+    k_ptr = device.put(key)
+    v_ptr = device.put(value)
+    m_ptr = device.put(keep)
+    out_ptr = device.out((tokens, num_heads, head_dim), np.float32)
+
+    gemma4_attention_prefill_f32(
+        q_ptr,
+        k_ptr,
+        v_ptr,
+        m_ptr,
+        out_ptr,
+        tokens=tokens,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        scale=scale,
+    )
+    got = device.get(out_ptr, (tokens, num_heads, head_dim), np.float32)
+
+    scaled_query = query * scale
+    want = _reference_attention(
+        scaled_query, key, value, keep, num_heads=num_heads, num_kv_heads=num_kv_heads
+    )
+    np.testing.assert_allclose(got, want, atol=1e-5, rtol=1e-5)
+
+
+def test_attention_prefill_bf16_tracks_the_f32_path():
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        gemma4_attention_prefill_bf16,
+        gemma4_attention_prefill_f32,
+    )
+
+    device = _Device()
+    tokens, num_heads, num_kv_heads, head_dim = 8, 4, 1, 16
+    rng = np.random.default_rng(31337)
+    query = (rng.standard_normal((tokens, num_heads, head_dim)) * 0.5).astype(np.float32)
+    key = (rng.standard_normal((tokens, num_kv_heads, head_dim)) * 0.5).astype(np.float32)
+    value = (rng.standard_normal((tokens, num_kv_heads, head_dim)) * 0.5).astype(np.float32)
+    keep = np.tril(np.ones((tokens, tokens), dtype=np.uint8))
+
+    # bf16 round the inputs so both paths see identical values, then the only
+    # difference is the accumulation and output precision.
+    qb = _from_bf16_bits(_to_bf16_bits(query))
+    kb = _from_bf16_bits(_to_bf16_bits(key))
+    vb = _from_bf16_bits(_to_bf16_bits(value))
+    m_ptr = device.put(keep)
+    f32_out = device.out((tokens, num_heads, head_dim), np.float32)
+    gemma4_attention_prefill_f32(
+        device.put(qb),
+        device.put(kb),
+        device.put(vb),
+        m_ptr,
+        f32_out,
+        tokens=tokens,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        scale=1.0,
+    )
+    want = device.get(f32_out, (tokens, num_heads, head_dim), np.float32)
+
+    bf16_out = device.out((tokens, num_heads, head_dim), np.uint16)
+    gemma4_attention_prefill_bf16(
+        device.put(_to_bf16_bits(query)),
+        device.put(_to_bf16_bits(key)),
+        device.put(_to_bf16_bits(value)),
+        m_ptr,
+        bf16_out,
+        tokens=tokens,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        scale=1.0,
+    )
+    got = _from_bf16_bits(device.get(bf16_out, (tokens, num_heads, head_dim), np.uint16))
+
+    diff = np.abs(got - want)
+    scale_ref = np.abs(want).max()
+    assert diff.max() / scale_ref < 0.02, (
+        f"bf16 attention differs from f32 by {diff.max():.5g} against scale {scale_ref:.4g}"
+    )
+
+
+# --------------------------------------------------------------------------
+# Decoder layer forward against gemma4_decoder_layer_forward
+# --------------------------------------------------------------------------
+
+
+def _layer_fixture(
+    seed,
+    tokens,
+    hidden_size,
+    geometry,
+    dense_intermediate,
+    num_experts,
+    top_k,
+    expert_intermediate,
+    k_eq_v,
+):
+    from hipengine.kernels.cpu_reference.gemma4 import (
+        Gemma4AttentionGeometry,
+        Gemma4LayerWeights,
+        Gemma4RopeConfig,
+        Gemma4TextConfig,
+    )
+
+    rng = np.random.default_rng(seed)
+    rope = Gemma4RopeConfig(
+        rope_theta=10000.0,
+        head_dim=geometry[2],
+        rope_angles=geometry[2] // 2,
+        rope_type="default",
+    )
+    attn_geometry = Gemma4AttentionGeometry(
+        layer_type="sliding_attention" if k_eq_v else "full_attention",
+        num_heads=geometry[0],
+        num_kv_heads=geometry[1],
+        head_dim=geometry[2],
+        rope=rope,
+        sliding_window=None,
+        k_eq_v=k_eq_v,
+    )
+    config = Gemma4TextConfig(
+        hidden_size=hidden_size,
+        intermediate_size=dense_intermediate,
+        moe_intermediate_size=expert_intermediate,
+        num_experts=num_experts,
+        top_k_experts=top_k,
+        rms_norm_eps=1e-6,
+        attention=(attn_geometry,),
+    )
+
+    def norm():
+        return (rng.random(hidden_size).astype(np.float32) + 0.5).astype(np.float32)
+
+    weights = Gemma4LayerWeights(
+        input_layernorm=norm(),
+        post_attention_layernorm=norm(),
+        pre_feedforward_layernorm=norm(),
+        post_feedforward_layernorm=norm(),
+        post_feedforward_layernorm_1=norm(),
+        post_feedforward_layernorm_2=norm(),
+        pre_feedforward_layernorm_2=norm(),
+        q_proj=(rng.standard_normal((geometry[0] * geometry[2], hidden_size)) * 0.2).astype(
+            np.float32
+        ),
+        k_proj=(rng.standard_normal((geometry[1] * geometry[2], hidden_size)) * 0.2).astype(
+            np.float32
+        ),
+        o_proj=(rng.standard_normal((hidden_size, geometry[0] * geometry[2])) * 0.2).astype(
+            np.float32
+        ),
+        q_norm=(rng.random(geometry[2]).astype(np.float32) + 0.5).astype(np.float32),
+        k_norm=(rng.random(geometry[2]).astype(np.float32) + 0.5).astype(np.float32),
+        mlp_gate_proj=(rng.standard_normal((dense_intermediate, hidden_size)) * 0.2).astype(
+            np.float32
+        ),
+        mlp_up_proj=(rng.standard_normal((dense_intermediate, hidden_size)) * 0.2).astype(
+            np.float32
+        ),
+        mlp_down_proj=(rng.standard_normal((hidden_size, dense_intermediate)) * 0.2).astype(
+            np.float32
+        ),
+        router_scale=(rng.random(hidden_size).astype(np.float32) + 0.5) * 0.1,
+        router_proj=(rng.standard_normal((num_experts, hidden_size)) * 0.2).astype(np.float32),
+        router_per_expert_scale=(rng.random(num_experts).astype(np.float32) + 0.5) * 0.3,
+        experts_gate_up_proj=(
+            rng.standard_normal((num_experts, 2 * expert_intermediate, hidden_size)) * 0.2
+        ).astype(np.float32),
+        experts_down_proj=(
+            rng.standard_normal((num_experts, hidden_size, expert_intermediate)) * 0.2
+        ).astype(np.float32),
+        layer_scalar=np.float32(0.0703125),
+        v_proj=None
+        if k_eq_v
+        else (rng.standard_normal((geometry[1] * geometry[2], hidden_size)) * 0.2).astype(
+            np.float32
+        ),
+    )
+    return weights, config, attn_geometry
+
+
+def _run_layer_on_gpu(weights, config, attn_geometry, hidden, tokens, *, k_eq_v, seed):
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
+        Gemma4LayerGeometry,
+        Gemma4LayerPointers,
+        Gemma4LayerScratch,
+        gemma4_layer_forward_bf16,
+    )
+
+    device = _Device()
+    geometry = Gemma4LayerGeometry(
+        num_heads=attn_geometry.num_heads,
+        num_kv_heads=attn_geometry.num_kv_heads,
+        head_dim=attn_geometry.head_dim,
+        scale=attn_geometry.scale,
+        k_eq_v=k_eq_v,
+    )
+    positions = np.arange(tokens, dtype=np.int64)
+    # The kernel indexes a DOUBLED (tokens, head_dim) table; the reference
+    # builds its own half-width tables internally.
+    cos, sin = gemma4_rope_cos_sin_tables(attn_geometry.rope, positions)
+    keep = np.tril(np.ones((tokens, tokens), dtype=np.uint8))
+
+    def put_bf16(arr):
+        return device.put(_to_bf16_bits(np.asarray(arr, dtype=np.float32)))
+
+    hidden_ptr = put_bf16(hidden)
+    cos_ptr = device.put(cos.astype(np.float32))
+    sin_ptr = device.put(sin.astype(np.float32))
+    mask_ptr = device.put(keep)
+
+    pointers = Gemma4LayerPointers(
+        input_layernorm=device.put(weights.input_layernorm),
+        q_proj=put_bf16(weights.q_proj),
+        k_proj=put_bf16(weights.k_proj),
+        o_proj=put_bf16(weights.o_proj),
+        q_norm=device.put(weights.q_norm),
+        k_norm=device.put(weights.k_norm),
+        post_attention_layernorm=device.put(weights.post_attention_layernorm),
+        pre_feedforward_layernorm=device.put(weights.pre_feedforward_layernorm),
+        mlp_gate_proj=put_bf16(weights.mlp_gate_proj),
+        mlp_up_proj=put_bf16(weights.mlp_up_proj),
+        mlp_down_proj=put_bf16(weights.mlp_down_proj),
+        post_feedforward_layernorm_1=device.put(weights.post_feedforward_layernorm_1),
+        router_scale=device.put(weights.router_scale),
+        router_proj=device.put(weights.router_proj),
+        router_per_expert_scale=device.put(weights.router_per_expert_scale),
+        pre_feedforward_layernorm_2=device.put(weights.pre_feedforward_layernorm_2),
+        experts_gate_up_proj=put_bf16(weights.experts_gate_up_proj),
+        experts_down_proj=put_bf16(weights.experts_down_proj),
+        post_feedforward_layernorm_2=device.put(weights.post_feedforward_layernorm_2),
+        post_feedforward_layernorm=device.put(weights.post_feedforward_layernorm),
+        v_proj=0 if k_eq_v else put_bf16(weights.v_proj),
+        layer_scalar=device.put(np.array([weights.layer_scalar], dtype=np.float32)),
+    )
+    scratch = Gemma4LayerScratch(
+        tokens=tokens,
+        hidden_size=config.hidden_size,
+        dense_intermediate=config.intermediate_size,
+        geometry=geometry,
+        num_experts=config.num_experts,
+        top_k=config.top_k_experts,
+        expert_intermediate=config.moe_intermediate_size,
+    )
+    try:
+        gemma4_layer_forward_bf16(
+            hidden_ptr,
+            cos_ptr,
+            sin_ptr,
+            mask_ptr,
+            pointers,
+            scratch=scratch,
+            eps=config.rms_norm_eps,
+        )
+        got = _from_bf16_bits(device.get(hidden_ptr, (tokens, config.hidden_size), np.uint16))
+    finally:
+        scratch.free()
+    return got
+
+
+def _run_layer_reference(weights, config, attn_geometry, hidden, tokens):
+    from hipengine.kernels.cpu_reference.gemma4 import gemma4_decoder_layer_forward
+
+    return gemma4_decoder_layer_forward(
+        hidden, weights, attn_geometry, config, positions=np.arange(tokens, dtype=np.int64)
+    )
+
+
+@pytest.mark.parametrize("k_eq_v", [False, True])
+def test_layer_forward_matches_the_reference(k_eq_v):
+    """The whole decoder layer reproduces gemma4_decoder_layer_forward."""
+
+    tokens, hidden_size = 5, 64
+    geometry = (4, 2, 16)
+    dense_intermediate, num_experts, top_k, expert_intermediate = 48, 8, 3, 32
+    weights, config, attn_geometry = _layer_fixture(
+        4242,
+        tokens,
+        hidden_size,
+        geometry,
+        dense_intermediate,
+        num_experts,
+        top_k,
+        expert_intermediate,
+        k_eq_v,
+    )
+    rng = np.random.default_rng(11)
+    hidden = (rng.standard_normal((tokens, hidden_size)) * 0.5).astype(np.float32)
+
+    got = _run_layer_on_gpu(weights, config, attn_geometry, hidden, tokens, k_eq_v=k_eq_v, seed=11)
+    want = _run_layer_reference(weights, config, attn_geometry, hidden, tokens)
+
+    # Measured: 1.2% (k_eq_v=False) and 1.4% (k_eq_v=True) max relative, ~0.2%
+    # mean. That is bf16 rounding through roughly ten chained stages that each
+    # round to bf16 in between. A structural error - a dropped layer scalar, the
+    # two FFN branches stacked instead of parallel, V taken after the k_norm -
+    # lands 10-100x larger, so 3% is a real regression guard with ~2x headroom
+    # rather than a tolerance that absorbs those mistakes.
+    diff = np.abs(got - want)
+    scale_ref = np.abs(want).max()
+    assert diff.max() / scale_ref < 0.03, (
+        f"layer output differs by {diff.max():.5g} against scale {scale_ref:.4g} "
+        f"(relative {diff.max() / scale_ref:.4f}); k_eq_v={k_eq_v}"
+    )
+
+
+def test_layer_forward_applies_the_layer_scalar():
+    """The trained per-layer output scale must actually be applied.
+
+    Gemma 4 multiplies each layer's output by a real scalar (0.0703125 on layer
+    0). Dropping it is a ~14x error that a loose tolerance could absorb, so this
+    checks the output tracks the scalar rather than only matching at one value.
+    """
+
+    tokens, hidden_size = 4, 64
+    geometry = (4, 2, 16)
+    weights, config, attn_geometry = _layer_fixture(
+        909, tokens, hidden_size, geometry, 48, 8, 3, 32, False
+    )
+    rng = np.random.default_rng(3)
+    hidden = (rng.standard_normal((tokens, hidden_size)) * 0.5).astype(np.float32)
+
+    scaled = _run_layer_on_gpu(weights, config, attn_geometry, hidden, tokens, k_eq_v=False, seed=3)
+
+    import dataclasses
+
+    unit_weights = dataclasses.replace(weights, layer_scalar=np.float32(1.0))
+    unscaled = _run_layer_on_gpu(
+        unit_weights, config, attn_geometry, hidden, tokens, k_eq_v=False, seed=3
+    )
+
+    ratio = scaled / np.where(np.abs(unscaled) < 1e-6, 1.0, unscaled)
+    finite = np.abs(unscaled) > 1e-6
+    assert finite.sum() > 0.5 * unscaled.size, "too few usable elements to judge the scalar"
+    np.testing.assert_allclose(
+        ratio[finite], np.full(int(finite.sum()), 0.0703125, dtype=np.float32), rtol=1e-2
+    )
