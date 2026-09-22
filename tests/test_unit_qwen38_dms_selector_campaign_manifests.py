@@ -105,6 +105,12 @@ def test_acquisition_binding_is_loaded_and_candidate_bindings_fail_closed(
     records, loaded = _load_records(input_path)
     assert loaded == binding
     assert len(records) == len(_records())
+    input_path.write_text(
+        json.dumps({"tokenizer": "malformed", "metadata": {"tokenizer": binding}, "records": []}),
+        encoding="utf-8",
+    )
+    with pytest.raises(TypeError, match="tokenizer binding"):
+        _load_records(input_path)
 
     wrong_tokenizer = _records()
     wrong_tokenizer[0]["tokenizer"] = {"identity": "wrong", "sha256": "a" * 64}
