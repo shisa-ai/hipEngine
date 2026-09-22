@@ -259,6 +259,24 @@ class RowSamplingState:
     def has_token_text_constraint(self) -> bool:
         return self._json_object_constraint is not None or self._tool_call_constraint is not None
 
+    @property
+    def token_text_constraint_invalid(self) -> bool:
+        """Whether a text-keyed constraint can no longer accept any text.
+
+        A speculative cycle advances a row by the *draft's* token, and a draft may
+        violate a constraint that the autoregressive route would never have let it
+        emit. Such a row is unreachable rather than broken: the row before it is
+        masked against the same DFA and excludes that token, so the accept walk
+        corrects there and never publishes a later row. It has no admissible
+        support, which is what a caller building that row's law needs to know.
+        """
+
+        json_constraint = self._json_object_constraint
+        if json_constraint is not None and json_constraint.invalid:
+            return True
+        tool_constraint = self._tool_call_constraint
+        return tool_constraint is not None and tool_constraint.invalid
+
     def token_text_constraints_allow_eos(self) -> bool:
         if self.thinking_budget is not None and self.thinking_budget.phase != "answer":
             return False
@@ -338,8 +356,19 @@ class RowSamplingState:
         *,
         remaining_tokens: int,
         encode_text: Callable[[str], Iterable[int]],
+        drafted: bool = False,
     ) -> None:
-        """Advance tokenizer-aware constraints and queue a safe budget close."""
+        """Advance tokenizer-aware constraints and queue a safe budget close.
+
+        ``drafted=True`` marks a speculative cycle's walk, which advances a row's
+        state by the token the *draft* proposed for the row before it. A draft
+        that violates a constraint is expected there rather than a defect: the
+        masked law of that row excludes it, so the accept walk corrects at the
+        row and never publishes a later row. The constraint is marked invalid
+        instead of raising, which masks the unreachable rows. The commit path
+        keeps the strict check, because a *published* token that violates the
+        constraint is a defect.
+        """
 
         if self._skip_next_selected_token_text:
             self._skip_next_selected_token_text = False
@@ -348,11 +377,11 @@ class RowSamplingState:
             return
         token_text = str(text)
         if self._json_object_constraint is not None:
-            if not self._json_object_constraint.accepts_text(token_text):
+            if not drafted and not self._json_object_constraint.accepts_text(token_text):
                 raise ValueError("selected token violates json_object constraint")
             self._json_object_constraint.observe_text(token_text)
         if self._tool_call_constraint is not None:
-            if not self._tool_call_constraint.accepts_text(token_text):
+            if not drafted and not self._tool_call_constraint.accepts_text(token_text):
                 raise ValueError("selected token violates tool_call_constraint")
             self._tool_call_constraint.observe_text(token_text)
         if self.forced_tokens_pending:

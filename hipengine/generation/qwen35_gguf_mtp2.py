@@ -817,6 +817,7 @@ def _constraint_text_observer(
     token_text_for_id: Callable[[int], str] | None,
     encode_text: Callable[[str], Any] | None,
     remaining_decode: int,
+    drafted: bool = False,
 ):
     """Build the per-row text observer the text-keyed constraints need.
 
@@ -845,6 +846,7 @@ def _constraint_text_observer(
             token_text_for_id(int(token_id)),
             remaining_tokens=max(0, int(remaining_decode) - int(depth) - 1),
             encode_text=encode_text,
+            drafted=bool(drafted),
         )
 
     return observe_text
@@ -4349,6 +4351,25 @@ class Qwen35GGUFMTP2Adapter:
             raise RuntimeError(
                 "sampled MTP route requires the row's live sampler request/state"
             )
+        tokenizer = getattr(self.generator, "tokenizer", None)
+        token_text_for_id = (
+            None
+            if tokenizer is None
+            else (lambda token_id: tokenizer.decode([int(token_id)]))
+        )
+        observe_text = _constraint_text_observer(
+            params,
+            token_text_for_id=token_text_for_id,
+            encode_text=(
+                None
+                if tokenizer is None
+                else (lambda text: tuple(int(t) for t in tokenizer.encode(str(text))))
+            ),
+            remaining_decode=int(remaining_decode),
+            # This is the verification walk: it advances each row by the draft's
+            # token, which the constraint may reject.
+            drafted=True,
+        )
         if bool(getattr(row, "native_sampler", False)):
             # Eager verifier/processor shapes still use the native sampler.
             # Speculative prefixes are private clones; only committed outputs
@@ -4363,11 +4384,17 @@ class Qwen35GGUFMTP2Adapter:
             if device is None:
                 logits = np.ascontiguousarray(prepared.target_logits, dtype=np.float32)
                 device = workspace._upload("mtp_eager_logits", logits)
-            prefixes = row_prefix_states(batch, {int(batch.request_ids[0]): sampling_state})
+            prefixes = row_prefix_states(
+                batch,
+                {int(batch.request_ids[0]): sampling_state},
+                observe_text=observe_text,
+            )
             if any(
                 forced is not None
                 for forced in row_forced_token_ids(
-                    batch, {int(batch.request_ids[0]): sampling_state}
+                    batch,
+                    {int(batch.request_ids[0]): sampling_state},
+                    observe_text=observe_text,
                 )
             ):
                 # The device sampler draws each row's token on its own stream and
@@ -4398,22 +4425,6 @@ class Qwen35GGUFMTP2Adapter:
                 else None
             )
             return TargetAcceptSummary.from_accept_result(batch, accepted), row_metadata, None
-        tokenizer = getattr(self.generator, "tokenizer", None)
-        token_text_for_id = (
-            None
-            if tokenizer is None
-            else (lambda token_id: tokenizer.decode([int(token_id)]))
-        )
-        observe_text = _constraint_text_observer(
-            params,
-            token_text_for_id=token_text_for_id,
-            encode_text=(
-                None
-                if tokenizer is None
-                else (lambda text: tuple(int(t) for t in tokenizer.encode(str(text))))
-            ),
-            remaining_decode=int(remaining_decode),
-        )
         summary = sampled_accept_summary(
             batch,
             prepared.target_logits,
@@ -4426,7 +4437,11 @@ class Qwen35GGUFMTP2Adapter:
             observe_text=observe_text,
         )
         forced_ids = row_forced_token_ids(
-            batch, {int(batch.request_ids[0]): sampling_state}
+            batch,
+            {int(batch.request_ids[0]): sampling_state},
+            # The same walk the summary's own laws came from: a row's override is
+            # what the text walk queued for it.
+            observe_text=observe_text,
         )
         return summary, None, forced_ids
 

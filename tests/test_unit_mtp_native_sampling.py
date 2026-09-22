@@ -191,6 +191,9 @@ def test_eager_native_accept_reads_device_logits_without_uploading_or_advancing_
         target_logits_device=DeviceBuffer(4096, batch.rows * 8 * 4),
     )
     adapter = Qwen35GGUFMTP2Adapter.__new__(Qwen35GGUFMTP2Adapter)
+    # The double carries the shape the method reads: no tokenizer,
+    # so the walk builds no text observer and the native report stands.
+    adapter.generator = SimpleNamespace(tokenizer=None)
     summary, row_metadata, forced_ids = adapter._sampled_accept_summary(
         row, prepared, batch, transaction_id=5, remaining_decode=3,
     )
@@ -247,6 +250,9 @@ def test_native_row_keeps_the_samplers_own_logprob_report():
         target_logits_device=DeviceBuffer(4096, batch.rows * 8 * 4),
     )
     adapter = Qwen35GGUFMTP2Adapter.__new__(Qwen35GGUFMTP2Adapter)
+    # The double carries the shape the method reads: no tokenizer,
+    # so the walk builds no text observer and the native report stands.
+    adapter.generator = SimpleNamespace(tokenizer=None)
     _, row_metadata, forced_ids = adapter._sampled_accept_summary(
         row, prepared, batch, transaction_id=5, remaining_decode=3,
     )

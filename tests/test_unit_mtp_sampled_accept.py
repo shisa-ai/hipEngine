@@ -467,7 +467,7 @@ def test_cycle_commit_round_trip_consumes_exactly_what_it_published() -> None:
     assert state.forced_tokens == ()
 
 
-def _text_observer(params, texts, *, remaining_decode=8):
+def _text_observer(params, texts, *, remaining_decode=8, drafted=False):
     """The adapter's own observer shape, so the wiring is what is under test."""
 
     from hipengine.generation.qwen35_gguf_mtp2 import _constraint_text_observer
@@ -477,6 +477,7 @@ def _text_observer(params, texts, *, remaining_decode=8):
         token_text_for_id=lambda token_id: texts[int(token_id)],
         encode_text=lambda text: (7,),
         remaining_decode=remaining_decode,
+        drafted=drafted,
     )
 
 
@@ -518,6 +519,102 @@ def test_a_row_text_is_observed_so_the_next_row_is_masked_by_it():
 
     # The live request's own state is untouched: only the commit advances it.
     assert state.generated_tokens == [1]
+
+
+def test_a_draft_that_violates_the_constraint_is_marked_invalid_not_fatal():
+    """The walk advances rows by drafted tokens, and a draft may be invalid.
+
+    A speculative cycle verifies a draft chain: the row's own token is the one
+    the draft proposed, and the constraint may reject it. That is not a defect --
+    the row's masked law excludes the token, so the accept walk corrects there
+    and never publishes a later row. Raising instead aborted the whole cycle,
+    which is what a live required-tool-constraint request did.
+    """
+
+    from hipengine.generation.constraints import ToolCallConstraintSpec
+
+    params = _params(
+        tool_call_constraint=ToolCallConstraintSpec(tool_names=("read",), mode="required")
+    )
+    # The root's drafted token is plain text, which a required constraint rejects.
+    batch = _chain_batch((4, 5))
+    state = RowSamplingState(
+        seed=7,
+        generated_tokens=(1,),
+        tool_call_constraint=ToolCallConstraintSpec(tool_names=("read",), mode="required"),
+    )
+    texts = {4: "Sure, ", 5: "<", 6: "{"}
+
+    walked = row_prefix_states(
+        batch, {5: state}, observe_text=_text_observer(params, texts, drafted=True)
+    )
+    # The walk completes, and the row past the violating draft is masked empty:
+    # it is unreachable, so its law may not admit anything.
+    violating = walked[1]
+    assert violating._tool_call_constraint.invalid
+    assert violating._tool_call_constraint.error_reason == "invalid_tool_call_prefix"
+    assert not violating._tool_call_constraint.accepts_text("<tool_call>")
+
+    # The same token on the commit path is a defect: a published token that
+    # violates the constraint means the mask and the DFA disagreed.
+    with pytest.raises(ValueError, match="violates tool_call_constraint"):
+        _text_observer(params, texts)(state, 4, 1)
+
+
+def test_the_summary_wires_the_text_observer_into_both_walks():
+    """The observer must reach the walk, not merely be accepted by the summary.
+
+    ``sampled_accept_summary`` took ``observe_text`` and dropped it, so the
+    adapter's walk-time observer never ran: a cycle's later rows were masked
+    against a DFA that had not seen the earlier tokens, and the live route
+    published a token a required tool constraint rejects. Driving the real
+    function -- not ``row_prefix_states`` directly -- is what pins the wiring.
+    """
+
+    from hipengine.generation import mtp_sampled_accept as module
+    from hipengine.generation.constraints import ToolCallConstraintSpec
+
+    params = _params(
+        tool_call_constraint=ToolCallConstraintSpec(tool_names=("read",), mode="required")
+    )
+    batch = _chain_batch((4,))
+    logits = np.stack((_logits_row({4: 4.0, 5: 3.0, 6: 2.0}),) * batch.rows)
+    state = RowSamplingState(
+        seed=7,
+        generated_tokens=(1,),
+        tool_call_constraint=ToolCallConstraintSpec(tool_names=("read",), mode="required"),
+    )
+    # The drafted token is plain text, which a required constraint rejects.
+    texts = {4: "Sure, ", 5: "<", 6: "{"}
+
+    seen: dict[str, object] = {}
+    real_walk = module._row_prefix_walk
+
+    def spy(batch, states, *, observe_text=None):
+        seen["observe_text"] = observe_text
+        return real_walk(batch, states, observe_text=observe_text)
+
+    original = module._row_prefix_walk
+    module._row_prefix_walk = spy
+    try:
+        summary = sampled_accept_summary(
+            batch,
+            logits,
+            {5: state},
+            params_for=lambda request_id: params,
+            draws=lambda: 0.0,
+            token_text_for_id=lambda token_id: texts[int(token_id)],
+            remaining_decode=(4,),
+            observe_text=_text_observer(params, texts, drafted=True),
+        )
+    finally:
+        module._row_prefix_walk = original
+
+    # Both walks went through the observer, and the violating draft was not
+    # published: the target law of the row that predicts it excludes it.
+    assert seen["observe_text"] is not None
+    assert 4 not in summary.accepted_tokens[0]
+    assert 4 not in summary.next_tokens
 
 
 def test_the_walk_observes_the_parent_token_at_the_childs_own_depth():
