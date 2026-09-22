@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import ClassVar
@@ -18,6 +19,14 @@ _QWEN35_SPLIT = (
     r"\s*[\r\n]+|\s+(?!\S)|\s+"
 )
 _LAGUNA_NEWLINE_SPLIT = r"(?:\r?\n)+(?!\r?\n)"
+# Gemma 4 GGUF tokens are SPM-style: the normalizer turns spaces into U+2581 and
+# the merges run on raw UTF-8 with no GPT-2 byte encoding. llama.cpp only splits
+# on newlines, because its BPE merge lookup asserts that no token spans one.
+_GEMMA4_NEWLINE_SPLIT = r"[^\n]+|[\n]+"
+_GEMMA4_SPM_SPACE = "\u2581"
+# llama.cpp treats these gemma4 tokens as end-of-generation even when the GGUF
+# token type disagrees, and warns that a non-control ``<eos>`` is a model bug.
+_GEMMA4_EOG_TOKENS = ("<eos>", "<turn|>", "<|tool_response>")
 _LAGUNA_QWEN2_SPLIT = (
     r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|"
     r"[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}|"
@@ -26,6 +35,8 @@ _LAGUNA_QWEN2_SPLIT = (
 )
 _ADDED_TOKEN_TYPES = frozenset({3, 4})
 _BASE_TOKEN_TYPES = frozenset({1, 2, 6})
+_BYTE_TOKEN = re.compile(r"<0x[0-9A-Fa-f]{2}>")
+_GEMMA4_BYTE_TOKEN_TYPE = 6
 
 
 def bytes_to_unicode() -> dict[int, str]:
@@ -73,7 +84,13 @@ class Qwen35GGUFTokenizer:
             self.merges,
             self.token_types,
             recipe=self._encoder_recipe,
+            extra_special_ids=self._extra_special_ids(),
         )
+
+    def _extra_special_ids(self) -> tuple[int, ...]:
+        """Return ids to register as special added tokens beyond the GGUF types."""
+
+        return ()
 
     @classmethod
     def from_gguf_info(cls, info: GGUFModelInfo) -> "Qwen35GGUFTokenizer":
@@ -227,12 +244,154 @@ class LagunaGGUFTokenizer(Qwen35GGUFTokenizer):
         return ids
 
 
+@dataclass
+class Gemma4GGUFTokenizer(Qwen35GGUFTokenizer):
+    """Gemma 4 SPM-style BPE reconstructed from GGUF metadata.
+
+    Gemma 4 is a different tokenizer family from the byte-BPE models hipEngine
+    already reconstructs. Three differences matter:
+
+    * The normalizer replaces every space with U+2581 and the merges run on raw
+      UTF-8, so there is no GPT-2 byte<->unicode map anywhere in the pipeline.
+    * The vocabulary carries ``<0xXX>`` byte tokens (GGUF type ``UNUSED``) and
+      the model runs with byte fallback enabled.
+    * Control and user-defined tokens are matched literally, exactly as
+      llama.cpp overlays its own attribute table. ``USER_DEFINED`` tokens are
+      deliberately *not* special so they render in decoded text for the chat
+      parser; ``CONTROL`` tokens are.
+
+    ``tokenizer.ggml.model`` is ``gemma4``, which carries its own pre-tokenizer
+    and no ``tokenizer.ggml.pre`` key.
+    """
+
+    _encoder_recipe: ClassVar[str] = "gemma4"
+
+    bos_token_id: int | None = None
+    unknown_token_id: int | None = None
+    mask_token_id: int | None = None
+    add_bos_token: bool = False
+    chat_template: str = ""
+
+    @classmethod
+    def from_gguf_info(cls, info: GGUFModelInfo) -> "Gemma4GGUFTokenizer":
+        metadata = info.metadata
+        model = metadata.get("tokenizer.ggml.model")
+        if model != "gemma4":
+            raise ValueError(
+                f"Gemma 4 GGUF tokenizer expected model 'gemma4', got {model!r}"
+            )
+        return cls(
+            tokens=tuple(str(token) for token in metadata["tokenizer.ggml.tokens"]),
+            merges=tuple(str(merge) for merge in metadata["tokenizer.ggml.merges"]),
+            token_types=tuple(int(kind) for kind in metadata["tokenizer.ggml.token_type"]),
+            bos_token_id=_optional_int(metadata.get("tokenizer.ggml.bos_token_id")),
+            eos_token_id=_optional_int(metadata.get("tokenizer.ggml.eos_token_id")),
+            padding_token_id=_optional_int(metadata.get("tokenizer.ggml.padding_token_id")),
+            unknown_token_id=_optional_int(metadata.get("tokenizer.ggml.unknown_token_id")),
+            mask_token_id=_optional_int(metadata.get("tokenizer.ggml.mask_token_id")),
+            add_bos_token=bool(metadata.get("tokenizer.ggml.add_bos_token", False)),
+            chat_template=str(metadata.get("tokenizer.chat_template", "")),
+        )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+
+    def _extra_special_ids(self) -> tuple[int, ...]:
+        # llama.cpp overrides a non-control ``<eos>`` to control for gemma4 and
+        # warns that the model file is wrong, and it adds ``<turn|>`` and
+        # ``<|tool_response>`` to the end-of-generation set. Match that override
+        # so a literal ``<eos>`` in text is never byte-split into ordinary
+        # tokens. The end-of-generation tokens the converter already marked
+        # control or user-defined are filtered out by the encoder builder, so
+        # ``<|tool_response>`` keeps rendering in decoded text.
+        candidates = [
+            self.bos_token_id,
+            self.eos_token_id,
+            self.padding_token_id,
+            self.unknown_token_id,
+            self.mask_token_id,
+        ]
+        candidates.extend(self.token_to_id.get(token) for token in _GEMMA4_EOG_TOKENS)
+        return tuple(
+            int(value)
+            for value in candidates
+            if value is not None and 0 <= int(value) < len(self.tokens)
+        )
+
+    @property
+    def eog_token_ids(self) -> tuple[int, ...]:
+        """Return the end-of-generation ids llama.cpp recognizes for gemma4."""
+
+        ids: list[int] = []
+        if self.eos_token_id is not None:
+            ids.append(int(self.eos_token_id))
+        for token in _GEMMA4_EOG_TOKENS:
+            token_id = self.token_to_id.get(token)
+            if token_id is not None:
+                ids.append(int(token_id))
+        return tuple(dict.fromkeys(ids))
+
+    @property
+    def stop_token_ids(self) -> tuple[int, ...]:
+        return self.eog_token_ids
+
+    def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
+        ids = super().encode(text)
+        if add_special_tokens and self.add_bos_token:
+            if self.bos_token_id is None:
+                raise ValueError(
+                    "Gemma 4 tokenizer requests BOS insertion but has no BOS token ID"
+                )
+            ids.insert(0, self.bos_token_id)
+        return ids
+
+    def decode(self, token_ids: Sequence[int], *, skip_special: bool = False) -> str:
+        """Decode with U+2581 replacement, byte fallback, and fusion.
+
+        This mirrors the source decoder chain rather than the byte-BPE helper on
+        the parent class, because Gemma 4 tokens are raw UTF-8 and the ``<0xXX>``
+        tokens are real byte escapes.
+        """
+
+        pieces: list[str] = []
+        pending = bytearray()
+
+        def flush() -> None:
+            if not pending:
+                return
+            try:
+                pieces.append(pending.decode("utf-8"))
+            except UnicodeDecodeError:
+                # The byte fallback decoder leaves undecodable sequences as
+                # their literal ``<0xXX>`` text.
+                pieces.extend(f"<0x{byte:02X}>" for byte in pending)
+            pending.clear()
+
+        for token_id in token_ids:
+            index = int(token_id)
+            if index < 0 or index >= len(self.tokens):
+                raise ValueError(
+                    f"token id {index} is outside vocabulary size {len(self.tokens)}"
+                )
+            token = self.tokens[index]
+            if self.token_types[index] == _GEMMA4_BYTE_TOKEN_TYPE and _BYTE_TOKEN.fullmatch(token):
+                pending.append(int(token[3:5], 16))
+                continue
+            flush()
+            if skip_special and self.token_types[index] == 3:
+                continue
+            pieces.append(token.replace(_GEMMA4_SPM_SPACE, " "))
+        flush()
+        return "".join(pieces)
+
+
 def _build_hf_encoder(
     tokens: Sequence[str],
     merges: Sequence[str],
     token_types: Sequence[int],
     *,
     recipe: str,
+    extra_special_ids: Sequence[int] = (),
 ) -> Tokenizer:
     token_values = tuple(str(token) for token in tokens)
     type_values = tuple(int(kind) for kind in token_types)
@@ -253,6 +412,12 @@ def _build_hf_encoder(
         # Laguna's source tokenizer keeps its low-ID added tokens in the BPE
         # vocabulary and overlays AddedToken matching semantics on those IDs.
         vocabulary = {token: token_id for token_id, token in enumerate(token_values)}
+    elif recipe == "gemma4":
+        # Gemma 4 keeps every token, including the control ones, in the BPE
+        # vocabulary by ID. AddedToken matching is overlaid below from the GGUF
+        # token types, exactly as llama.cpp overlays it from its own attribute
+        # table.
+        vocabulary = {token: token_id for token_id, token in enumerate(token_values)}
     else:  # pragma: no cover - guarded by the concrete tokenizer classes
         raise ValueError(f"unsupported HF GGUF tokenizer recipe: {recipe!r}")
 
@@ -261,7 +426,7 @@ def _build_hf_encoder(
             vocab=vocabulary,
             merges=_parse_merges(merges),
             fuse_unk=False,
-            byte_fallback=False,
+            byte_fallback=recipe == "gemma4",
         )
     )
     if recipe == "qwen35":
@@ -284,6 +449,20 @@ def _build_hf_encoder(
             add_prefix_space=False,
             trim_offsets=False,
             use_regex=False,
+        )
+    elif recipe == "gemma4":
+        encoder.normalizer = normalizers.Replace(" ", _GEMMA4_SPM_SPACE)
+        encoder.pre_tokenizer = hf_pre_tokenizers.Split(
+            Regex(_GEMMA4_NEWLINE_SPLIT),
+            behavior="isolated",
+            invert=False,
+        )
+        encoder.decoder = decoders.Sequence(
+            [
+                decoders.Replace(_GEMMA4_SPM_SPACE, " "),
+                decoders.ByteFallback(),
+                decoders.Fuse(),
+            ]
         )
     else:
         encoder.pre_tokenizer = hf_pre_tokenizers.Sequence(
@@ -311,6 +490,7 @@ def _build_hf_encoder(
             use_regex=True,
         )
 
+    registered: set[int] = set()
     for token_id, (token, kind) in enumerate(
         zip(token_values, type_values, strict=True)
     ):
@@ -333,6 +513,31 @@ def _build_hf_encoder(
             raise ValueError(
                 "HF reconstruction changed GGUF token ID "
                 f"for {token!r}: expected {token_id}, got {actual_id}"
+            )
+        registered.add(token_id)
+
+    for token_id in extra_special_ids:
+        index = int(token_id)
+        if index in registered or not 0 <= index < len(token_values):
+            continue
+        token = token_values[index]
+        encoder.add_special_tokens(
+            [
+                AddedToken(
+                    token,
+                    single_word=False,
+                    lstrip=False,
+                    rstrip=False,
+                    normalized=False,
+                    special=True,
+                )
+            ]
+        )
+        actual_id = encoder.token_to_id(token)
+        if actual_id != index:
+            raise ValueError(
+                "HF reconstruction changed the configured special token ID "
+                f"for {token!r}: expected {index}, got {actual_id}"
             )
     return encoder
 
@@ -364,6 +569,7 @@ def _optional_int(value) -> int | None:
 
 __all__ = [
     "LagunaGGUFTokenizer",
+    "Gemma4GGUFTokenizer",
     "Qwen35GGUFTokenizer",
     "Qwen4ExpGGUFTokenizer",
     "bytes_to_unicode",
