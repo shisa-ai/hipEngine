@@ -496,9 +496,9 @@ blocker leaves that arm diagnostic and must be reported before campaign closure.
 
 | Arm | Parameters/bytes; seeds | Offline ranking | Integrated replay KL/category | Device route status/cost | Gate/artifact |
 | --- | --- | --- | --- | --- | --- |
-| Best linear parent | pending | pending | pending | pending | pending |
-| Fresh-initialized linear control | pending | pending | pending | pending | pending |
-| MLP bottleneck 32 | pending | pending | pending | pending | pending |
+| Best linear parent | no valid parent: Phase D training point unavailable | not run | not run | not run | blocked by G0/training-point prerequisites |
+| Fresh-initialized linear control | implemented by existing linear trainer; not run | not run | not run | not run | blocked by G0/training-point prerequisites |
+| MLP bottleneck 32 | `scripts/qwen38_dms_nonlinear.py`; hidden→32→SiLU→4, tested on CPU fixture | CPU export/rank helpers tested; no training result | not run | not run | integration gate not evaluated; keep diagnostic-only |
 
 ## 11. Phase G — qualification and untouched confirmation
 
