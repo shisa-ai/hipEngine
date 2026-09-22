@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -69,6 +70,9 @@ def _request(ids: tuple[int, ...], *, path: str) -> dict:
     }
 
 
+DECLARED_CONTEXT = 4096
+
+
 def _arm(
     *,
     arm: str,
@@ -79,6 +83,7 @@ def _arm(
     seed_path: str | None = None,
     case_path: str | None = None,
     probe_by_arm: tuple[int, ...] | None = None,
+    resident_context: int | None = None,
 ) -> dict:
     """Build the observations one arm returns, with per-case id overrides."""
 
@@ -104,6 +109,8 @@ def _arm(
         "cases": cases,
         "after": _request(after_ids, path=path),
         "tokenizer": {"seed_token_text": " river"},
+        "declared_context_tokens": DECLARED_CONTEXT,
+        "resident_context_tokens": resident_context or DECLARED_CONTEXT,
     }
 
 
@@ -282,6 +289,11 @@ class _FakeLLM:
             )
         ]
 
+    _text_generator = SimpleNamespace(
+        # The sizing decision this engine would make: the declared context.
+        resident_context_tokens=4096,
+    )
+
     def close(self) -> None:
         self.closed = True
 
@@ -355,3 +367,12 @@ def test_a_greedy_case_that_diverges_after_its_forced_prefix_is_caught() -> None
         AssertionError, match="published_ids_differ_from_the_autoregressive_arm"
     ):
         _run_pair({"case_ids": {"forced_two_tokens": forced + (901, 902)}})
+
+
+def test_a_session_sized_to_something_else_than_declared_is_caught() -> None:
+    """The incident: declared 4096, resident sized to the model's 262144."""
+
+    with pytest.raises(
+        AssertionError, match="the_resident_session_was_not_sized_to_the_declared_context"
+    ):
+        gate._check(_arm(arm="mtp", resident_context=262144), arm="mtp")
