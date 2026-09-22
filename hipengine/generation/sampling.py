@@ -827,6 +827,10 @@ SAMPLED_MTP_SERVABLE_BLOCKERS: tuple[str, ...] = (
     "frequency_penalty",
     "suppress_token_ids",
     "ignore_eos",
+    "min_tokens",
+    "eos_token_id",
+    "stop_token_ids",
+    "stop_token_sequences",
 )
 """MTP blockers the sampled route serves exactly: the sampling law.
 
@@ -840,17 +844,13 @@ commit already honors: a row that ignores EOS cannot finish on EOS on either
 route.
 
 This set is the sampling law and nothing else. Every field that changes
-*post-accept finish behavior* stays a blocker below, because the cycle commit
-implements one finish rule -- EOS on the last visible token of a greedy chain --
-and not the autoregressive finish rule (EOS, token stops, multi-token stops,
-and the min-token EOS floor that couples them).
+*post-accept finish behavior* is served by the cycle commit's finish rule
+(``limit_chain_accept_finish`` in ``hipengine/speculative/streaming.py``), which
+applies EOS, stop token ids, multi-token stop sequences, and the min-token EOS
+floor to the whole verified chain and selects its terminal prefix.
 """
 
 SAMPLED_MTP_UNSERVABLE_BLOCKERS: tuple[str, ...] = (
-    "min_tokens",
-    "eos_token_id",
-    "stop_token_ids",
-    "stop_token_sequences",
     "logprobs",
     "top_logprobs",
     "forced_tokens_pending",
@@ -862,19 +862,21 @@ SAMPLED_MTP_UNSERVABLE_BLOCKERS: tuple[str, ...] = (
 )
 """MTP blockers the sampled route deliberately refuses.
 
-Two families. The finish-rule fields (``min_tokens``, ``eos_token_id``,
-``stop_token_ids``, ``stop_token_sequences``) are refused because the route
-reproduces the sampler's *selection* but not its *finish* rule: a stochastic
-accept has no greedy-chain bound, so a stop token or EOS can land mid-cycle and
-the commit path would publish the tokens after it. ``min_tokens`` is refused
-with them because the floor is an EOS-suppression processor, so it is only
-observable through the EOS finish rule it depends on. The rest need response
-metadata (logprobs), a caller-level override outside the sampling law (forced
-tokens, forced sequence completion), or per-token hooks that consume sampler
-queues or tokenizer text (JSON-object close forcing, tool-call constraints, the
-host thinking budget). A request carrying one of them stays on the
-autoregressive route rather than being served by a route that would report the
-wrong finish or the wrong metadata.
+One family: fields that need something the coupled accept cannot supply. They
+need response metadata (``logprobs``), a caller-level override outside the
+sampling law (forced tokens, forced sequence completion), or per-token hooks
+that consume sampler queues or tokenizer text (JSON-object close forcing,
+tool-call constraints, the host thinking budget). A request carrying one of them
+stays on the autoregressive route rather than being served by a route that would
+report the wrong metadata.
+
+The finish-rule fields (``min_tokens``, ``eos_token_id``, ``stop_token_ids``,
+``stop_token_sequences``) used to be refused here as well, because the cycle
+commit implemented only EOS on the last visible token of a greedy chain. The
+commit now applies the autoregressive finish rule to the whole verified chain
+through ``hipengine/speculative/streaming.py`` ``limit_chain_accept_finish``,
+which selects the terminal prefix and reports ``eos`` or ``stop``, so they are
+servable and no longer appear above.
 """
 
 
@@ -928,35 +930,13 @@ def speculative_sampling_mode(params: Any, *, eos_supported: bool = False) -> st
         return "greedy"
     if blockers == ("eos_token_id",) and eos_supported:
         return "greedy"
-    if supports_sampled_speculative_mtp(params):
+    if sampler_fast_path_blockers(params) and supports_sampled_speculative_mtp(params):
+        # A request that actually samples is the sampled route's case. A request
+        # whose only open fields are finish-rule fields still cannot use the
+        # greedy route, so it stays unqualified rather than being labelled
+        # sampled for a temperature it does not have.
         return "sampled"
     return "processed"
-
-
-MTP_THINKING_RELAXABLE_BLOCKERS: tuple[str, ...] = ("thinking_budget",)
-"""MTP fast-path blockers the server can relax under the hint thinking policy.
-
-The host-sampler thinking budget (soft-close bias, EOS suppression, and
-hard-close forcing) modifies the greedy path in ways the raw-argmax MTP
-verifier cannot reproduce.  When a request routes through MTP we keep the
-thinking hints in the rendered prompt but drop the host-sampler enforcement
-fields, which makes the request raw-greedy-exact again.  This is how
-speculative decoding is served on reasoning models by other engines.
-"""
-
-
-def mtp_thinking_blockers_only(params: Any) -> bool:
-    """Return whether thinking-budget control is the only MTP fast-path blocker.
-
-    Every blocker other than ``thinking_budget`` (temperature, penalties,
-    logprobs, forced/stop tokens, ...) cannot be relaxed away, so a request
-    with those still cannot use the raw-argmax MTP route.
-    """
-
-    blockers = speculative_mtp_sampling_blockers(params)
-    return bool(blockers) and all(
-        blocker in MTP_THINKING_RELAXABLE_BLOCKERS for blocker in blockers
-    )
 
 
 def relax_thinking_budget_for_mtp(params: Any) -> Any:
@@ -966,6 +946,10 @@ def relax_thinking_budget_for_mtp(params: Any) -> Any:
     rendered prompt keeps its thinking hints; only the sampler-level budget
     fields (close-token ids, hard cap, soft-close window) are dropped so the
     request becomes raw-greedy-exact for the MTP verifier.
+
+    The server applies this when its speculative thinking policy is ``hint``;
+    under ``hard`` the thinking budget stays a hard MTP blocker.  See
+    ``docs/API.md`` "MTP + thinking".
     """
 
     if not thinking_budget_active(params):

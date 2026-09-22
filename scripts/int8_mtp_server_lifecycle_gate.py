@@ -64,15 +64,43 @@ def run(args):
             drain(client)
             report["checks"]["concurrent_mixed_ar_mtp"] = True
 
-            response = client.post("/v1/completions", json={
-                **base, "speculative_mtp": True, "n": 2,
-            })
-            assert response.status_code == 501, response.text
-            assert "packed_int8_mtp_not_implemented" in response.text
+            # Multi-choice in one request is a realized group of `n` rows. It is
+            # admitted at the artifact's qualified direct-INT8 width, so both
+            # choices must speculate and still match the autoregressive ids.
+            multi = generate(speculative_mtp=True, n=2)
+            assert len(multi["choices"]) == 2, multi
+            multi_cycles = [
+                int(choice["hipengine"]["timing"].get("mtp_cycles_count", 0) or 0)
+                for choice in multi["choices"]
+            ]
+            multi_ids = [
+                choice["hipengine"]["generated_token_ids"]
+                for choice in multi["choices"]
+            ]
+            # The ids must always match the autoregressive baseline. Whether the
+            # group speculates depends on the session's effective packed width:
+            # the packed direct-INT8 leaf runs a two-row group only when the
+            # width covers it, and a hybrid INT8/BF16 layer layout caps that
+            # width at one row so the group serializes instead. Assert the shape
+            # this configuration contracts for rather than assuming one.
+            assert all(ids == baseline["ids"] for ids in multi_ids), {
+                "baseline_ids": baseline["ids"],
+                "multi_ids": multi_ids,
+                "multi_cycles": multi_cycles,
+            }
+            packed_rows = capability.get("max_packed_rows")
+            if packed_rows is None or int(packed_rows) >= 2:
+                assert all(cycles > 0 for cycles in multi_cycles), multi_cycles
+                report["checks"]["multichoice_speculates_and_matches_ar"] = True
+            else:
+                assert all(cycles == 0 for cycles in multi_cycles), multi_cycles
+                report["checks"]["multichoice_serializes_and_matches_ar"] = True
             many = generate(speculative_mtp=False, n=2)
             assert len(many["choices"]) == 2
-            assert all(choice["hipengine"]["generated_token_ids"] == baseline["ids"] for choice in many["choices"])
-            report["checks"]["multichoice_structural_error_and_ar"] = True
+            assert all(
+                choice["hipengine"]["generated_token_ids"] == baseline["ids"]
+                for choice in many["choices"]
+            )
 
             text = baseline_body["choices"][0]["text"]
             assert len(text) >= 12

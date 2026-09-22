@@ -1190,9 +1190,31 @@ class LLM:
             release_after_probe=release_after_probe,
         )
 
+    def resident_capacity_estimate(
+        self,
+        *,
+        max_batch_size: int = 1,
+        requested_context_tokens: int | None = None,
+    ) -> Any | None:
+        """Price one resident session against current free HIP memory.
+
+        Server startup multiplies this per-session price by the width it is about to
+        allocate, so a probe that needs several resident sessions can be reduced
+        before it allocates them. Backends without a resident capacity model return
+        ``None``, which leaves the caller's width unchanged.
+        """
+
+        generator = self._get_text_generator()
+        estimator = getattr(generator, "resident_capacity_estimate", None)
+        if not callable(estimator):
+            return None
+        return estimator(
+            max_batch_size=max_batch_size,
+            requested_context_tokens=requested_context_tokens,
+        )
+
     def count_tokens(self, text: str) -> int:
         """Return tokenizer token count when the resolved generator exposes one."""
-
         generator = self._get_text_generator()
         counter = getattr(generator, "count_tokens", None)
         if not callable(counter):

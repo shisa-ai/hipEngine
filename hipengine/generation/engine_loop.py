@@ -45,6 +45,7 @@ from hipengine.generation.registry import (
     TextGenerator,
 )
 from hipengine.generation.sampling import (
+    sampler_fast_path_blockers,
     speculative_mtp_sampling_blockers,
     supports_sampled_speculative_mtp,
 )
@@ -104,11 +105,13 @@ def _speculative_sampling_mode(runner, request_id, params):
         supports_eos = getattr(runner, "speculative_eos_supported", None)
         if callable(supports_eos) and supports_eos(int(request_id)):
             return "greedy"
-    if blockers and supports_sampled_speculative_mtp(params):
+    if blockers and sampler_fast_path_blockers(params) and supports_sampled_speculative_mtp(params):
         # Temperature and the other servable processors: the adapter's sampled
         # route accepts the verified chain by min(1, p/q) instead of raw argmax.
         # It is admitted only when the capability advertises the mode, which is
-        # itself gated on a qualified evidence row.
+        # itself gated on a qualified evidence row. The fast-path check keeps a
+        # request whose only open fields are finish-rule fields unqualified
+        # rather than labelling it sampled for a temperature it does not have.
         return "sampled"
     return "processed" if blockers else "greedy"
 

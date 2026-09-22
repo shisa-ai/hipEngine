@@ -86,6 +86,11 @@ that made it a row, and `show` prints the whole evidence.
 Entries are immutable, so a row never changes and never comes back as `stale`.
 Decide it once, with the work that finished it named in the note:
 
+Only the `blocked` and `handoff` markers set the budget ceiling; in-flight
+`checkpoint` rows and bare `Next` markers stay in the visible queue. A red gate
+therefore means the actionable backlog grew — work those first, and let
+`budget --lower-only` record the drop.
+
 ```bash
 python3 audit/audit.py open worklog --signal "recorded as blocked"
 python3 audit/audit.py open worklog --signal "no later entry"
@@ -107,7 +112,9 @@ before calling the work dropped.
 ## What not to do
 
 - Do not raise `audit/budget.json`. It is the ceiling that stops debt growing;
-  lowering it is the point.
+  lowering it is the point. If a kind's gate counts rows that need no decision,
+  change that kind's `select` policy and say why — a policy change, not a way
+  past a red gate.
 - Do not edit `audit/inventory/*.json` or `audit/findings/*.json` by hand. Both
   are generated; re-run `inventory` and `scan`.
 - Do not re-triage a row a rescan re-matched (`rebound_from` is set) without

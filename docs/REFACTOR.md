@@ -8702,38 +8702,7 @@ every one of its 162 cycles. Remove the flag and
 second protocol or host, or once a wider-group route actually beats the batch AR
 decode; until then the flag is the only way to reproduce the rejected arm.
 
-**Sampled MTP acceptance route (default closed, added 2026-09-18; serving
-measurement rejected 2026-09-18).**
-`hipengine/speculative/sampling.py` and `hipengine/generation/mtp_sampled_accept.py`
-implement the temperature-capable accept rule (`min(1, p/q)` plus the residual
-resample), the adapter reaches it only when `_sampled_route_qualified()` finds a
-model-plugin evidence row advertising the `sampled` sampling mode for
-`(backend, target_arch, quant, artifact size)`, and the engine loop's `sampled`
-planner mode is turned into `UNSUPPORTED_SAMPLING` by the policy whenever the
-capability does not advertise it. No evidence row advertises it, so every
-temperature request still runs autoregressive. The route forces the eager host
-proposal (`allow_graph=False`) and `return_logits=True` verification because the
-accept summary is computed on host logits.
-
-The switch was held open for one serving arm and the arm lost: with the row in
-place the route engages (253 of 256 output tokens from speculative cycles) and
-measures 0.47x of its in-load true-AR control at c=1 temperature 0.7, because a
-sampled cycle costs 5.3x the same draft chain's greedy cycle (528.5 against 98.9
-ms) while the same load at temperature 0 still measures +66%. The row is
-reverted; see
-`benchmarks/results/2026-09-18-gfx1151-qwen38-mtp-sampled-acceptance-serving-rejected.json`.
-Removal gate: re-measure only after a **device-side sampled accept** exists that
-computes the coupled acceptance from device logits and commits on device like the
-argmax path, which is what removes the `allow_graph=False` restriction; the
-arithmetic gate (824/824 induced-law comparisons) already fixes the target law
-and does not need redoing. The three enabling repairs kept by that arm
-(`_observe_mtp2_prefill` on the sampled prefill path, the streamed target-hidden
-sink for a due sampled row, and
-`Qwen35GGUFTransactionalVerifier.adopt_accept_summary`) are correct on their own,
-inert without the row, and pinned by RED/GREEN tests; do not delete them while
-the device-side accept is still the intended follow-up.
-
-The route's servable blocker set is the sampling law and nothing else
+**Sampled-route finish-rule blockers (open).** The route's servable blocker set is the sampling law and nothing else
 (`temperature`, `logit_bias`, penalties, `suppress_token_ids`) plus
 `ignore_eos`. `min_tokens`, `eos_token_id`, `stop_token_ids`, and
 `stop_token_sequences` are unservable until the route implements the
@@ -8873,3 +8842,40 @@ retaining the bounded cache policy. Validate the composed user path with
 `scripts/int8_mtp_prefix_gate.py` against a radix-enabled server: it requires
 real prefix hits, compact INT8, speculative cycles and parity with the same
 prefix-reusing AR route. A cache miss or an AR-only response is not a pass.
+
+## Startup scratch probe warms the packed route only when N sessions fit (open 2026-09-21)
+
+The startup scratch probe acquires one resident session per probe slot, and each of
+those sessions is constructed at the auto-sized resident context with its own
+preallocated KV pages and packed workspace lease. A width-N probe therefore costs
+about N full-context sessions. On a box whose free memory holds fewer than N of them
+the probe is reduced to one slot, so the packed prefill and verifier warmups the
+wider probe exists to run are skipped and the first concurrent request pays for them.
+
+Remove the reduction once the probe can warm the packed route without holding N
+full-context sessions -- for example by constructing probe sessions at a short
+context, since the warm prompts are at most 128 tokens. That needs a session-pool
+key or construction path carrying a context distinct from the request context. Until
+it exists, `_startup_probe_width_reduction` in `hipengine/server/api.py` is what
+keeps a wide probe from turning a warmup into HIP out-of-memory attempts.
+
+## A failed wide startup probe leaves the process unable to allocate the next stage (open 2026-09-21)
+
+On the 120 GiB box, a startup at `--max-active-requests 4` sent the scratch probe's
+resident-session ladder down four HIP out-of-memory attempts. The probe then retried at
+width 1 and passed, and the very next stage -- the 9-token chat smoke -- failed with
+`HipError: HIP error 2: out of memory` during prefill. The ladder documents that a
+failed attempt is rolled back by the session constructor, and the width-1 probe right
+after it did allocate a full-context session, so what held the memory afterwards is
+unestablished.
+
+`_startup_probe_width_reduction` in `hipengine/server/api.py` now prices the width
+before allocating it, so the attempt that failed here does not happen. A genuine
+failure still reaches the ladder, and the retry then runs on a machine that may be
+tighter than it looks.
+
+Remove this once a failed `_construct_shared_session` in
+`hipengine/generation/qwen35_gguf.py` is shown to roll back completely: force the
+ladder with a width the box cannot hold, then assert a full-context session plus the
+chat smoke still allocate. If the failed attempt does not roll back completely, fix
+the rollback instead of weakening the probe.

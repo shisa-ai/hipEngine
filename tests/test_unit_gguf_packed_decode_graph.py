@@ -211,6 +211,57 @@ def test_packed_graph_kernel_resolution_tracks_native_width(monkeypatch) -> None
     assert resolved == [*c4, *c8]
 
 
+def test_packed_decode_graph_key_covers_pool_growth_and_scale_reallocation() -> None:
+    """Churn cases (b) and (d) must re-key the binding signature.
+
+    The signature already carries the scale and packed-buffer axes; this pins
+    them, so a scale reallocation or a pool growth cannot silently reuse a
+    graph captured against the previous payload or scale planes. The scale
+    axes were previously present in the fixture but never asserted.
+    """
+
+    def key_for(
+        *,
+        scale_dtype: str = "fp16",
+        granularity: str = "per_token_head",
+        layout: str = "uniform",
+        packed_ptr: int = 100,
+    ):
+        owner, sessions, pointers = _owner(packed_ptr=packed_ptr)
+        owner.kv_scale_dtype = SimpleNamespace(value=scale_dtype)
+        owner.kv_scale_granularity = granularity
+        owner.kv_storage_layout = layout
+        return build_qwen35_gguf_packed_decode_graph_key(
+            owner,
+            sessions=sessions,
+            active_mask=(True, True),
+            block_size=256,
+            max_positions=1024,
+            steps_per_replay=1,
+            max_replay_steps=128,
+            record_steps=128,
+            record_layer_ids=(0, 1),
+            packed_buffer_ptrs=pointers,
+        )
+
+    base = key_for()
+    assert key_for().key_sha256 == base.key_sha256
+    assert base.as_dict()["kv_scale_dtype"] == "fp16"
+    assert base.as_dict()["kv_scale_granularity"] == "per_token_head"
+
+    # (d) scale reallocation: the scale plane identity changes.
+    assert key_for(scale_dtype="fp32").key_sha256 != base.key_sha256
+    assert key_for(granularity="per_tensor").key_sha256 != base.key_sha256
+    # A layout change rides the same signature.
+    assert key_for(layout="compact_dms").key_sha256 != base.key_sha256
+
+    # (b) pool growth: the packed buffer identity changes with the pointers.
+    grown = key_for(packed_ptr=4096)
+    assert grown.key_sha256 != base.key_sha256
+    assert grown.buffer_identity_sha256 != base.buffer_identity_sha256
+    assert grown.buffer_count == base.buffer_count
+
+
 def test_packed_decode_graph_key_serializes_complete_route_axes() -> None:
     payload = _key().as_dict()
 

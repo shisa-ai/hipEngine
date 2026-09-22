@@ -4,9 +4,10 @@ hipEngine is a ROCm-native local inference engine built primarily for AMD
 Radeon GPUs. It pairs a small Python host with custom HIP kernels for torch-free
 model loading, generation, and OpenAI-compatible serving on supported hardware.
 
-**Current release: v0.6.0.** This alpha adds OCR and speech runtimes, dynamic
-GGUF quantization support, and serving improvements.
-See the [release notes](CHANGELOG.md#v060---2026-09-20) for scope and limitations.
+**Current release: v0.6.1.** This alpha fixes long-prompt prefix reuse, widens
+speculative decoding on INT8 KV, and adds `/bench` and prefix-cache accounting
+to the terminal chat client.
+See the [release notes](CHANGELOG.md#v061---2026-09-22) for scope and limitations.
 
 [Supported models](#supported-models) lists the current model families and
 hardware; the [model support reference](docs/MODELS.md) gives exact formats,
@@ -208,7 +209,7 @@ The 16-snapshot setting uses more memory and is opt-in.
 
 ## Status and limits
 
-v0.6.0 is alpha. Automatic performance routes remain scoped to qualified
+v0.6.1 is alpha. Automatic performance routes remain scoped to qualified
 model, hardware, and workload combinations:
 
 - Qwen3.6-27B and Qwen3.8-27B GGUF generation and serving on both AMD backends.
@@ -345,10 +346,13 @@ The client connects to `http://127.0.0.1:8000` and discovers the served model.
 No model path is needed, and it does not start another server. For a different
 address, use `hipengine chat --server http://127.0.0.1:8001`.
 
-Replies stream as Markdown, with optional reasoning display and per-turn stats.
+Replies stream as Markdown, with optional reasoning display and per-turn stats
+(prompt prefill rate, decode rate, and tokens served from the prefix cache).
 Use `/status` for server limits, `/usage` for conversation token counts,
-`/think off` to disable reasoning, `/retry` to regenerate, and `/clear` to start
-over. `/help` lists all commands; `/quit`, Ctrl-C, or Ctrl-D exits.
+`/bench` for a quick prefill, decode, and prefix-cache measurement of the
+running server (with and without speculative MTP), `/think off` to disable
+reasoning, `/retry` to regenerate, and `/clear` to start over. `/help` lists all
+commands; `/quit`, Ctrl-C, or Ctrl-D exits.
 Use `hipengine chat --plain` for plain-text output.
 
 ## Use the Python API

@@ -72,15 +72,15 @@ _SERVABLE = {
     "logit_bias": _params(temperature=0.7, logit_bias={3: 2.0}),
     "suppress_token_ids": _params(temperature=0.7, suppress_token_ids=(4,)),
     "ignore_eos": _params(temperature=0.7, ignore_eos=True),
+    "min_tokens": _params(temperature=0.7, min_tokens=2, eos_token_id=9),
+    "eos_gate": _params(temperature=0.7, eos_token_id=9),
+    "stop_token_ids": _params(temperature=0.7, stop_token_ids=(9,)),
+    "stop_token_sequences": _params(temperature=0.7, stop_token_sequences=((1, 2),)),
     "greedy": _params(),
     "eos_only": _params(eos_token_id=9),
 }
 
 _UNSERVABLE = {
-    "min_tokens": _params(temperature=0.7, min_tokens=2, eos_token_id=9),
-    "eos_gate": _params(temperature=0.7, eos_token_id=9),
-    "stop_token_ids": _params(temperature=0.7, stop_token_ids=(9,)),
-    "stop_token_sequences": _params(temperature=0.7, stop_token_sequences=((1, 2),)),
     "logprobs": _params(temperature=0.7, logprobs=True),
     "top_logprobs": _params(temperature=0.7, top_logprobs=5),
     "forced_tokens": _params(temperature=0.7, forced_tokens_pending=(1,)),
@@ -232,14 +232,14 @@ def test_sampled_route_request_follows_the_row_sampling_mode() -> None:
     )
     adapter = _adapter(plugin_evidence=(_evidence_row(),), row=row)
     assert adapter._sampled_route_request(1) is True
-    # An EOS finish policy is a finish-rule field, not a sampling-law field, so
-    # it keeps the row off the sampled route even when the row is qualified.
+    # An EOS finish policy is served by the cycle commit's finish rule, so a
+    # qualified row carrying one stays on the sampled route.
     eos_row = SimpleNamespace(
         sampling_request=_params(temperature=0.7, eos_token_id=9),
         request=_params(temperature=0.7, eos_token_id=9),
         sampling_state=None,
     )
-    assert _adapter(plugin_evidence=(_evidence_row(),), row=eos_row)._sampled_route_request(1) is False
+    assert _adapter(plugin_evidence=(_evidence_row(),), row=eos_row)._sampled_route_request(1) is True
     greedy_row = SimpleNamespace(
         sampling_request=_params(),
         request=_params(),
@@ -282,23 +282,23 @@ def test_engine_loop_selects_the_sampled_mode_for_a_temperature_request() -> Non
         == "greedy"
     )
     assert _speculative_sampling_mode(runner, 1, _params(logprobs=True)) == "processed"
-    # Ignoring EOS is a finish-rule relaxation both routes already honor, so it
-    # stays on the sampled route; naming an EOS token is not, because a
-    # stochastic accept can commit EOS mid-cycle and the cycle commit would
-    # publish the tokens after it.
+    # Both are finish-rule fields and both are served now: the cycle commit
+    # applies EOS, stop ids, stop sequences, and the min-token EOS floor to the
+    # whole verified chain and selects its terminal prefix, so a stochastic
+    # accept that lands EOS or a stop mid-cycle publishes nothing after it.
     assert (
         _speculative_sampling_mode(runner, 1, _params(temperature=0.7, ignore_eos=True))
         == "sampled"
     )
     assert (
         _speculative_sampling_mode(runner, 1, _params(temperature=0.7, eos_token_id=9))
-        == "processed"
+        == "sampled"
     )
     assert (
         _speculative_sampling_mode(
             runner, 1, _params(temperature=0.7, eos_token_id=9, ignore_eos=True)
         )
-        == "processed"
+        == "sampled"
     )
     eos_runner = SimpleNamespace(speculative_eos_supported=lambda request_id: True)
     assert (
@@ -503,18 +503,26 @@ _SELECTION_PRESERVING_FIELDS = {
 }
 
 
-def test_sampled_servable_set_is_the_sampling_law_plus_ignore_eos() -> None:
-    """The sampled route reproduces the sampler law, not the finish rule.
+def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
+    """The sampled route reproduces the sampler law and the finish rule.
 
     ``hipengine/speculative/sampling.py`` requires the caller to apply the
     request's pipeline (bias, penalties, suppression, temperature, top-k,
     top-p, min-p) before the coupled accept, and the induced-law gate measures
     exactly that set.  ``ignore_eos`` is a finish-rule relaxation the cycle
-    commit already honors.  Every other admitted field changes *post-accept
-    finish* behavior, which the cycle commit implements only for EOS on the
-    greedy chain, so it must stay an advertised blocker.
+    commit honors.  The four finish-rule fields are served by
+    ``limit_chain_accept_finish`` in ``hipengine/speculative/streaming.py``,
+    which applies EOS, stop token ids, multi-token stop sequences, and the
+    min-token EOS floor to the whole verified chain and selects its terminal
+    prefix, so they no longer have to be advertised blockers.
     """
 
+    finish_rule_fields = {
+        "min_tokens",
+        "eos_token_id",
+        "stop_token_ids",
+        "stop_token_sequences",
+    }
     assert set(SAMPLED_MTP_SERVABLE_BLOCKERS) == {
         "temperature",
         "logit_bias",
@@ -523,15 +531,12 @@ def test_sampled_servable_set_is_the_sampling_law_plus_ignore_eos() -> None:
         "frequency_penalty",
         "suppress_token_ids",
         "ignore_eos",
+        *finish_rule_fields,
     }
-    finish_rule_fields = {
-        "min_tokens",
-        "eos_token_id",
-        "stop_token_ids",
-        "stop_token_sequences",
-    }
-    assert finish_rule_fields <= set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
-    assert not finish_rule_fields & set(SAMPLED_MTP_SERVABLE_BLOCKERS)
+    # The two sets stay disjoint and still partition every incompatible field, so
+    # a field can never be silently in neither.
+    assert finish_rule_fields <= set(SAMPLED_MTP_SERVABLE_BLOCKERS)
+    assert not finish_rule_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
     assert set(SAMPLED_MTP_SERVABLE_BLOCKERS) | set(SAMPLED_MTP_UNSERVABLE_BLOCKERS) == set(
         SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
     )
@@ -541,8 +546,13 @@ def test_sampled_servable_set_is_the_sampling_law_plus_ignore_eos() -> None:
     "name",
     ["min_tokens", "eos_gate", "stop_token_ids", "stop_token_sequences"],
 )
-def test_finish_rule_fields_keep_the_autoregressive_route(name: str) -> None:
-    """A temperature request that stops on anything but length stays AR."""
+def test_finish_rule_fields_serve_on_the_sampled_route(name: str) -> None:
+    """A temperature request that stops on anything now speculates.
+
+    The cycle commit applies the autoregressive finish rule to the whole verified
+    chain (``limit_chain_accept_finish``), so these four no longer have to fall
+    back to AR to get the right finish.
+    """
 
     params = {
         "min_tokens": _params(temperature=0.7, min_tokens=2, eos_token_id=9),
@@ -550,9 +560,9 @@ def test_finish_rule_fields_keep_the_autoregressive_route(name: str) -> None:
         "stop_token_ids": _params(temperature=0.7, stop_token_ids=(9,)),
         "stop_token_sequences": _params(temperature=0.7, stop_token_sequences=((1, 2),)),
     }[name]
-    assert supports_sampled_speculative_mtp(params) is False
-    assert sampled_speculative_mtp_blockers(params)
-    assert speculative_serving_sampling_mode(params) == "processed_argmax"
+    assert supports_sampled_speculative_mtp(params) is True
+    assert sampled_speculative_mtp_blockers(params) == ()
+    assert speculative_serving_sampling_mode(params) == "sampled"
 
 
 def test_request_vocabulary_is_fully_classified() -> None:

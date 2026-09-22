@@ -753,13 +753,21 @@ class Qwen35GGUFModel:
         # cell that backend offers, so a plan never forms a group the adapter
         # would decline; the backend package's own cell table stays the
         # group-formation gate, and a cell it does not list falls through to
-        # whole-group AR rather than running a cell nothing measured.  The declared sampling mode is greedy-fast only: the
-        # sampled accept route stays closed until it can honour the
-        # autoregressive finish rule (stop tokens and EOS mid-cycle) and a
-        # device-side accept removes the eager host-logit restriction; the
-        # gfx1151 cells that advertise `sampled` are admitted by their own
-        # evidence rows instead.  See docs/REFACTOR.md "Sampled MTP acceptance
-        # route".
+        # whole-group AR rather than running a cell nothing measured.  The declared sampling mode lists `sampled` for
+        # int8 storage because the accept path is storage-agnostic: it samples from
+        # the target's own law over the verifier's row logits and never reads KV.
+        # Declaring it does not widen the effective scope, because the runtime
+        # qualification gate (`_sampled_route_qualified`) still requires an
+        # evidence row matching this backend, target architecture, weight quant,
+        # and artifact size -- and that check is storage-blind, so it already
+        # treats both storages alike.  What remains open on the route itself is
+        # the autoregressive finish rule: the cycle commit ends a row only when
+        # its last visible token is the row's EOS, and a stochastic accept has no
+        # `greedy_chain_eos_limit` bound, so a stop token or EOS can land
+        # mid-cycle.  That is contained per request by the servable-blocker set
+        # rather than fixed, and tracked in docs/REFACTOR.md "Sampled MTP
+        # acceptance route".  The device-side accept that used to be the second
+        # precondition landed 2026-09-19 (`_device_sampled_accept_plan`).
         #
         # Every declaration here is automatic-eligible: a contract the kernels
         # implement is the automatic scope for any artifact that routes through
@@ -812,9 +820,39 @@ class Qwen35GGUFModel:
             backends=(("hip_gfx1100", "gfx1100"), ("hip_gfx1151", "gfx1151")),
             max_candidate_count=7,
             max_group_rows=1,
-            group_rejection_reason="packed_int8_mtp_not_implemented",
+            group_rejection_reason="dense_group_above_offered_width",
+            sampling_modes=("greedy_fast", "sampled"),
             # The int8 chain has no evidence rows of its own, so its
             # declaration is the automatic scope it has always been.
+            automatic_eligible=True,
+        ),
+        # A packed INT8 verify group runs the same row-bulk pass as BF16, but its
+        # full-attention layers bind the retained INT8 payload planes and their
+        # per-token-head scale metadata and attend through the retained-decode
+        # split-K leaf instead of the BF16 context-batch decoder. Group width is
+        # therefore bounded by the KV capability's qualified direct width, which
+        # is physical c4 on both backends, and not by the backend cell table the
+        # BF16 split follows (gfx1100 offers 8 cells but qualifies direct INT8 to
+        # c4). The prefill and decode classes carry the same limit because they
+        # write the same packed physical cell.
+        SpeculativeMTPServingImplementation(
+            name="gguf_dense_int8_gfx1151_group_native_chain",
+            kv_storage="int8_per_token_head",
+            backends=(("hip_gfx1151", "gfx1151"),),
+            max_candidate_count=3,
+            max_group_rows=4,
+            group_rejection_reason="dense_group_above_offered_width",
+            sampling_modes=("greedy_fast", "sampled"),
+            automatic_eligible=True,
+        ),
+        SpeculativeMTPServingImplementation(
+            name="gguf_dense_int8_gfx1100_group_native_chain",
+            kv_storage="int8_per_token_head",
+            backends=(("hip_gfx1100", "gfx1100"),),
+            max_candidate_count=3,
+            max_group_rows=4,
+            group_rejection_reason="dense_group_above_offered_width",
+            sampling_modes=("greedy_fast", "sampled"),
             automatic_eligible=True,
         ),
     )
