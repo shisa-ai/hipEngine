@@ -2098,6 +2098,58 @@ GGUF_IQ_DENSE_PREFILL_POLICY = {
 # 162-row production-referenced gate on this backend's prompts is owed as
 # the confirming measurement.
 
+# Dense raw-IQ decode and verifier owners (2026-09-21). register_gfx1151_kernels
+# aliases the whole gfx1100 key space into this backend, so local32_gemv and its
+# rows sibling below are the *same kernel objects* gfx1100 routes - the
+# arithmetic is identical by construction, not merely similar. The routing
+# tables are not aliased, and this package declared only the prefill policy, so
+# every dense raw-IQ projection on gfx1151 kept the strict per-row GEMV: a zbook
+# kernel census measured 61.64 ms/token, 53.42% of UD-Q4_K_M's 115.39 ms pure
+# decode, in gguf_iq_dense_strict_kernel at 130.78 launches/token and
+# 442.1 us/launch on the dominant template, against zero launches for plain
+# Q4_K_M (benchmarks/results/
+# 2026-09-21-zbook-ud-vs-plain-q4km-decode-attribution.json).
+#
+# These two tables mirror gfx1100's exactly, and
+# tests/test_unit_gfx1151_iq_dense_policy_parity.py holds them there. The pins
+# below are not an optimization knob: they are the per-artifact admission
+# gfx1100's tokenized category suite required, and because the owner kernels are
+# shared the requirement transfers by construction. Do not drop a pin to gain a
+# route.
+GGUF_IQ_DENSE_DECODE_POLICY = {
+    quant: {"variant": "local32_gemv_bf16_bf16_out"}
+    for quant in ("gguf_iq4_xs", "gguf_iq4_nl", "gguf_iq3_s", "gguf_iq3_xxs",
+                  "gguf_iq2_s", "gguf_iq2_xs")
+}
+# Verifier sibling at rows 2-4. Each row's output is bit-identical to the
+# rows==1 owner's output for that row, so it adds no arithmetic of its own; it
+# keeps the same per-slot strict pin as the decode policy below.
+GGUF_IQ_DENSE_VERIFY_POLICY = {
+    quant: {
+        "min_rows": 2,
+        "max_rows": 4,
+        "variant": "local32_rows_gemv_bf16_bf16_out",
+    }
+    for quant in ("gguf_iq4_xs", "gguf_iq4_nl", "gguf_iq3_s", "gguf_iq3_xxs",
+                  "gguf_iq2_s", "gguf_iq2_xs")
+}
+# Per-artifact strict pins, keyed by (file_type, artifact preset). UD-Q4_K_M's
+# layers.0.ffn_up is its only Q3_K ffn_up, and it is the slot whose W4A16 hi+lo
+# split reached a 5.3e-2 max-row KL against the incumbent on natural tokenized
+# prompts (one position of the 18-prompt category suite) - above the 5e-2
+# pooled ceiling - so it keeps the strict per-row GEMV in prefill. The decode
+# pins keep the same artifact's IQ3_S population (0.82 ms/token, 4 launches) on
+# the strict owner: unpinned the family's accumulation-order tail measured
+# 5.19e-2 max, and with three of the four slots pinned, 1.785e-1.
+GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS = {
+    ("MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): ("layers.0.ffn_up",),
+}
+GGUF_IQ_DENSE_DECODE_STRICT_SLOTS = {
+    ("MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): (
+        "layers.11.ffn_gate", "layers.14.ffn_down", "layers.15.ffn_down",
+        "layers.17.ffn_down"),
+}
+
 GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY = {
     "gguf_q6_k_t16_qmicro_planar_v1": {
         "min_rows": 17,
@@ -3608,6 +3660,10 @@ __all__ = [
     "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS",
     "GGUF_IQ_DENSE_PREFILL_POLICY",
+    "GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS",
+    "GGUF_IQ_DENSE_DECODE_POLICY",
+    "GGUF_IQ_DENSE_DECODE_STRICT_SLOTS",
+    "GGUF_IQ_DENSE_VERIFY_POLICY",
     "GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY",
     "GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",
