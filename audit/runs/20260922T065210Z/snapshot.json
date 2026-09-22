@@ -1,0 +1,34 @@
+{
+  "stamp": "20260922T065210Z",
+  "rows": 3192,
+  "open": 1088,
+  "triaged": 1604,
+  "stale": 500,
+  "by_kind": {
+    "candidate": 225,
+    "flag": 747,
+    "kernel": 255,
+    "ledger": 402,
+    "worklog": 1088,
+    "axis-branch": 15,
+    "doc-path-drift": 111,
+    "stub": 195,
+    "ungoverned-flag-branch": 95,
+    "unguarded-hip-test": 59
+  },
+  "tags": {
+    "NOT-DEBT": 1907,
+    "DUP-DISPATCH": 5,
+    "EXACTNESS-REJECT": 2,
+    "DOC-DRIFT": 198,
+    "GATE-CATCH22": 1,
+    "STALE-LEDGER": 1,
+    "SKELETON": 5
+  },
+  "dispositions": {
+    "keep": 1907,
+    "defer": 208,
+    "qualify": 3,
+    "remove": 1
+  }
+}

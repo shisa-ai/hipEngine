@@ -39,8 +39,9 @@ Use semver-style bumps while the public API is still alpha:
       hardware or host string is used by exactly one artifact, when a machine identity is cited by
       fewer than three artifacts, when one hostname carries two CPU families (the signature
       of a copied host block), and when a recorded invocation contains placeholder tokens. On the
-      current corpus: 52 cited artifacts, 0 violations, 3 warnings - one gfx1151 hardware string,
-      two recorded commands that are templates rather than invocations. Pair it with
+      current corpus: 148 cited artifacts, 0 violations, 17 warnings - 6 hardware strings and 4 host
+      strings used by exactly one artifact, and 7 recorded commands that are templates rather than
+      invocations. Pair it with
       `scripts/check_published_command_drift.py`, which refuses published commands whose tool no
       longer accepts the flags recorded.
 - [ ] Reuse current retained benchmark artifacts for release claims. Do **not** rerun
