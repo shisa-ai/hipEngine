@@ -146,6 +146,10 @@ Evidence:
 | H2 | Declaring `GGUF_IQ_DENSE_DECODE_POLICY` on `hip_gfx1151` (with the two strict-slot pin tables) removes most of the 61.64 ms/token strict-IQ share and narrows the decode gap materially | decode, ~53% of pure decode at stake | gfx1100 record for these owners: 2.5-2.9x per launch, 22.76 vs 17.57 tok/s end-to-end — **gfx1100 evidence, not a gfx1151 rate** |
 | H3 | Making per-tensor repack eligibility reach the production admission path restores Q4/Q5/Q6/Q8 tensors to tuned layouts and is the largest single prefill lever (plain keeps 288 Q4_K + 48 Q5_K + 65 Q6_K on tuned layouts; UD keeps 103) | prefill + decode layouts | route campaign: 0.00 GB → 44.2% optimized bytes and prefill 22.1 → 29.9 tok/s when forced; production path still reports `repack=OFF` |
 | H4 | After H2, the Q5_K resident direct GEMV (+20.22 ms/token, +84.3 launches/token) and Q4_K single local32 (+7.21 ms/token) are the next decode pots and yield to owner/route changes, not inner-loop tuning | decode remainder | 2026-09-21 decode attribution ranking |
+| H5 | The production route audit and live resident plan can diverge: the per-tensor policy may exist in the planner but be dropped, overridden, or bypassed at the loader/admission boundary. A runtime route manifest and selected-kernel trace must identify the first divergence before E3 is judged | prefill and decode layouts | C2's `repack=OFF` audit versus the existing per-tensor policy implementation |
+| H6 | Once C1 removes the strict-IQ bottleneck, launch count and host submission may become material. Pair-family fusion, row batching, or graph-capture reuse for the remaining Q4/Q5/Q6/Q8 projections can win even when each leaf is near its practical read roof | decode launch overhead | C1 census: 130.78 strict-IQ launches/token; the paired baseline does not yet separate leaf time from submission/graph overhead |
+| H7 | UD's raw Q5/Q6/Q8 tensors have layout candidates beyond the current Q4/Q5 focus: Q8 T16 decode, Q6 qmicro-planar/T16, and dense sidecar routes that E1/E3 show are still bypassed. Rank them by bytes and launch share, not by similarity to the plain arm | prefill and decode remainder | route-audit counts; registered gfx1151 Q8/Q6 families in `docs/KERNELS.md` |
+| H8 | Owner thresholds and crossover bands were measured on other shapes or lanes and may leave a gfx1151 gap at 512/1024/4096. A sweep around each selected boundary, including values below, above, and unrelated to it, can recover wins without changing arithmetic | prefill and decode owner selection | gfx1151 package's measured row-band ladders and the anti-threshold rule in `OPTIMIZATION.md` §5 |
 
 ## 4. Experiment plan
 
@@ -191,12 +195,59 @@ measured negative.
   - [ ] E3c — Execution-profile gate for every variant that changes
     arithmetic or layout, then paired A/B (prefill and decode) plus the route
     audit diff (optimized bytes before/after).
-- [ ] **E4 — Ranked decode remainder (H4).** Q5_K direct GEMV and Q4_K single
-  local32 owners/routes, in census order, each behind its own gate and paired
-  A/B. Adopt the strict-kernel-tuning prohibition from §6.
+  - [ ] E3d — Verify the shipping path, not just the CPU audit: capture the
+    materialization manifest, resident-byte totals, selected variant, and
+    fallback reason from `hipengine.LLM.generate()` for both files. Reconcile
+    those fields with the route-audit output and fail the experiment if the
+    audit and launched owner disagree.
+  - [ ] E3e — After per-tensor routing is reachable, rank the raw remainder by
+    bytes and launch share. Explicitly check Q8_0 T16, Q6_K qmicro-planar/T16,
+    Q5/Q6 sidecars, Q3_K W4A16 eligibility, and the lm-head route. Each
+    candidate gets its own route-table test and paired A/B; do not widen a role
+    predicate from static similarity alone.
+- [ ] **E4 — Ranked decode remainder (H4 / H6 / H7).** Q5_K direct GEMV and
+  Q4_K single local32 owners/routes, in census order, each behind its own gate
+  and paired A/B. Before writing a new leaf, split the trace into kernel time,
+  launch count, graph replay, host submission, and synchronization. If launch
+  overhead becomes material after H2, test row batching, pair/dual owners, or
+  graph-capture reuse as separate routing units. Re-rank after every retained
+  route; adopt the strict-kernel-tuning prohibition from §6.
+  - [ ] E4a — For every new owner, test rows 1, 2, 3, 4, 8, 16, and the
+    production boundary shapes, plus one non-boundary shape. Preserve the
+    strict fallback and verify the selected symbol in a real user request.
 - [ ] **E5 — Closeout.** Final paired run, artifact, one
   `benchmarks/CHANGELOG.md` line per retained lever, worklog entries, and this
   document's status flipped to `closed` with the end-state table filled in.
+
+### 4.1 Review additions: optimization surfaces not to lose
+
+The confirmed root causes define the first two levers, but they do not exhaust
+this lane's candidate space. Keep these checks in the active queue, ordered by
+what E1-E3 actually attribute:
+
+1. **Verify live route realization.** Treat the CPU route audit, materialization
+   manifest, resident allocation, and launched kernel as separate facts. A
+   planner fix is not a performance result until a normal
+   `hipengine.LLM.generate()` request selects the intended owner and reports no
+   fallback.
+2. **Re-rank after H2.** The current Q5/Q4 decode ranking is pre-fix evidence.
+   Dense-IQ routing can expose Q8/Q6, the lm-head, launch submission, or
+   synchronization as the next bottleneck.
+3. **Audit layout coverage.** For every raw UD tensor family, compare the
+   planned layout with the registered gfx1151 consumers: Q8_0 T16, Q6_K
+   qmicro-planar/T16, Q5/Q6 sidecars, Q3_K W4A16, and the lm-head-specific
+   path. Report optimized bytes, resident bytes, launches, and time by family.
+4. **Sweep owner crossovers.** Re-measure gfx1151 row and prompt-length bands
+   below, above, and away from each threshold. Keep boundary changes separate
+   from arithmetic changes so a route win is attributable.
+5. **Measure launch and fusion economics.** If leaf time no longer explains the
+   gap, test row batching, pair/dual projection owners, launch reuse, and graph
+   capture as independent levers. Compare total decode wall and launch count,
+   not kernel time alone; preserve strict ownership and synchronization.
+6. **Track memory and thermal effects.** Record resident bytes, peak allocation,
+   and temperature/clock state with every retained route result. A repack win
+   that increases pressure enough to lower absolute UD throughput is not a ratio
+   win.
 
 ## 5. Measurement protocol
 
@@ -233,6 +284,15 @@ for E1. Warm build outside the profiler against a pinned compiler-version
 file so the profiled process spawns no `hipcc`. The unprofiled warm run of the
 same driver must reproduce the paired-baseline rates before the census is
 trusted (2026-09-21 reproduced to 0.3% plain / 2.6% UD).
+
+For E1, retain launch counts, grid/block geometry, selected symbol, resident
+layout, allocation bytes, and memory-throughput/occupancy counters when the
+profiler exposes them. Run the unprofiled prefill driver at 256, 768, 2048,
+and 4096 tokens in addition to the matched 512-token census; this avoids
+turning a threshold-point result into a general claim. Record whether each arm
+reaches the planned owner through the normal `hipengine.LLM.generate()` path.
+After H2, separate kernel time from launch, graph-replay, host-submission, and
+synchronization time before choosing an E4 owner or fusion.
 
 ### 5.3 Route audit (layout adjudication)
 
@@ -278,10 +338,10 @@ refusal.
 | Lever | Hypothesis | Paired decode Δ | Paired prefill Δ | Quality gate | State |
 | --- | --- | ---: | ---: | --- | --- |
 | E0 baseline (2026-09-23) | — | −32.5 / −31.9 / −32.5% | −36.7 / −40.7 / −40.5% | n/a (diagnostic) | recorded |
-| E1 prefill census | H1 | — | — | n/a | open |
+| E1 prefill census | H1/H5/H7/H8 | — | — | n/a | open |
 | E2 decode policy declaration | H2 | — | — | required | open (draft in stash) |
-| E3 production per-tensor repack | H3 | — | — | required | open |
-| E4 Q5/Q4 decode owners | H4 | — | — | required | open |
+| E3 production per-tensor repack | H3/H5/H7 | — | — | required | open |
+| E4 Q5/Q4 decode owners | H4/H6 | — | — | required | open |
 
 ## 8. Out of scope / carried
 
