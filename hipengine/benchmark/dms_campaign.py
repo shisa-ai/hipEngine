@@ -12,8 +12,8 @@ Frozen thresholds (do not retune to rescue a failed candidate):
 - **G0** integrity/control — compact no-evict versus dense on the same
   evaluated rows: max KL <= 0.001 and 100% top-1, prefill and decode, plus
   finiteness.
-- **G1** diagnostic screen — decode max KL <= 0.05 and top-1 >= 0.90 in every
-  category, finite prefill and decode.
+- **G1** diagnostic screen — prefill and decode max KL <= 0.05 and top-1
+  >= 0.90 in every category, finite prefill and decode.
 - **G2** finalist distribution — decode mean <= 0.001, p95 <= 0.005,
   p99 <= 0.02, max <= 0.05 globally and per category; top-1 >= 0.99 globally
   and >= 0.97 per category; prefill max KL <= 0.05 and finite globally and per
@@ -42,6 +42,7 @@ GATE_THRESHOLDS: dict[str, dict[str, Any]] = {
     "g1": {
         "name": "diagnostic screen",
         "decode": {"max_kl": 0.05, "min_top1_per_category": 0.9},
+        "prefill": {"max_kl": 0.05, "min_top1_per_category": 0.9},
     },
     "g2": {
         "name": "finalist distribution",
@@ -432,18 +433,21 @@ def evaluate_gate(
             _check(checks, failures, scope=scope, phase="combined", check="min_top1",
                    value=summary["top1_agreement"], limit=thresholds["min_top1"], direction=">=")
     elif gate == "g1":
-        thresholds = GATE_THRESHOLDS["g1"]["decode"]
-        for scope, _scope_prefill, scope_decode in scopes:
-            summary = summarize_rows(scope_decode)
-            _check(checks, failures, scope=scope, phase="decode", check="finite_logits",
-                   value=summary["finite_logits"], limit=1.0, direction=">=")
-            _check(checks, failures, scope=scope, phase="decode", check="max_kl",
-                   value=summary["max_kl"], limit=thresholds["max_kl"], direction="<=")
-            _check(checks, failures, scope=scope, phase="decode", check="min_top1",
-                   value=summary["top1_agreement"], limit=thresholds["min_top1_per_category"], direction=">=")
-        prefill_summary = summarize_rows(prefill)
-        _check(checks, failures, scope="global", phase="prefill", check="finite_logits",
-               value=prefill_summary["finite_logits"], limit=1.0, direction=">=")
+        decode_thresholds = GATE_THRESHOLDS["g1"]["decode"]
+        prefill_thresholds = GATE_THRESHOLDS["g1"]["prefill"]
+        for scope, scope_prefill, scope_decode in scopes:
+            for phase, rows, thresholds in (
+                ("decode", scope_decode, decode_thresholds),
+                ("prefill", scope_prefill, prefill_thresholds),
+            ):
+                summary = summarize_rows(rows)
+                _check(checks, failures, scope=scope, phase=phase, check="finite_logits",
+                       value=summary["finite_logits"], limit=1.0, direction=">=")
+                _check(checks, failures, scope=scope, phase=phase, check="max_kl",
+                       value=summary["max_kl"], limit=thresholds["max_kl"], direction="<=")
+                _check(checks, failures, scope=scope, phase=phase, check="min_top1",
+                       value=summary["top1_agreement"],
+                       limit=thresholds["min_top1_per_category"], direction=">=")
     elif gate == "g2":
         decode_thresholds = GATE_THRESHOLDS["g2"]["decode"]
         prefill_thresholds = GATE_THRESHOLDS["g2"]["prefill"]

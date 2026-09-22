@@ -214,6 +214,24 @@ def test_g1_passes_and_fails_per_category() -> None:
     assert any(f["check"] == "min_top1" and f["scope"] == "category:code" for f in verdict["failures"])
 
 
+def test_g1_prefill_quality_is_binding_per_category() -> None:
+    prefill = _balanced_prefill_rows(kl=0.01)
+    prefill[0] = {
+        **prefill[0],
+        "kl": 0.0501,
+        "top1_agrees": False,
+        "candidate_top1": 2,
+    }
+    verdict = _verdict("g1", prefill=prefill, decode=_balanced_decode_rows())
+    assert verdict["passed"] is False
+    assert any(
+        failure["phase"] == "prefill"
+        and failure["scope"] == "category:code"
+        and failure["check"] in {"max_kl", "min_top1"}
+        for failure in verdict["failures"]
+    )
+
+
 def test_g1_nonfinite_prefill_or_decode_fails() -> None:
     decode = _balanced_decode_rows()
     for finite_prefill in (True, False):
@@ -444,6 +462,7 @@ def test_gate_thresholds_are_frozen_constants() -> None:
     g1 = GATE_THRESHOLDS["g1"]
     assert g1["decode"]["max_kl"] == 0.05
     assert g1["decode"]["min_top1_per_category"] == 0.9
+    assert g1["prefill"] == {"max_kl": 0.05, "min_top1_per_category": 0.9}
     g0 = GATE_THRESHOLDS["g0"]
     assert g0["combined"]["max_kl"] == 0.001
     assert g0["combined"]["min_top1"] == 1.0
