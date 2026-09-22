@@ -78,23 +78,29 @@ _SERVABLE = {
     "stop_token_sequences": _params(temperature=0.7, stop_token_sequences=((1, 2),)),
     "logprobs": _params(temperature=0.7, logprobs=True),
     "top_logprobs": _params(temperature=0.7, top_logprobs=5),
+    "forced_tokens": _params(temperature=0.7, forced_tokens_pending=(1,)),
+    "force_sequence_completion": _params(
+        temperature=0.7, force_sequence_completion_token_sequences=((1, 2),)
+    ),
     "greedy_logprobs": _params(logprobs=True),
     "greedy": _params(),
     "eos_only": _params(eos_token_id=9),
 }
 
 _UNSERVABLE = {
-    "forced_tokens": _params(temperature=0.7, forced_tokens_pending=(1,)),
+    # The post-thinking queue is served by the same per-row walk as
+    # ``forced_tokens_pending``, but it can only be non-empty alongside a
+    # thinking budget, and the budget is still refused below.
     "post_thinking_forced": _params(
         temperature=0.7,
         thinking_close_token_ids=(1,),
         thinking_hard_token_cap=4,
         post_thinking_forced_tokens_pending=(2,),
     ),
-    "force_sequence_completion": _params(
-        temperature=0.7, force_sequence_completion_token_sequences=((1, 2),)
-    ),
     "json_object_close": _params(temperature=0.7, json_object_close_forcing=True),
+    "tool_call_constraint": _params(
+        temperature=0.7, tool_call_constraint={"tool_names": ("read",)}
+    ),
     "thinking_budget": _params(
         temperature=0.7, thinking_close_token_ids=(1,), thinking_hard_token_cap=4
     ),
@@ -418,9 +424,11 @@ def test_server_route_keeps_a_sampled_request_only_with_a_sampled_row() -> None:
     )
 
     sampled = _params(temperature=0.7)
-    # A hook-family request is the one the sampled route still refuses, so it is
-    # the case that must stay at K0 even when the row lists the sampled mode.
-    unservable = _params(temperature=0.7, forced_tokens_pending=(1,))
+    # A hook-family request is what the sampled route still refuses, so it is the
+    # case that must stay at K0 even when the row lists the sampled mode.
+    unservable = _params(
+        temperature=0.7, tool_call_constraint={"tool_names": ("read",)}
+    )
     greedy = _params()
 
     def route(engine, sampling, *, explicit=True, mode="auto"):
@@ -436,8 +444,8 @@ def test_server_route_keeps_a_sampled_request_only_with_a_sampled_row() -> None:
         route(_serving_engine("greedy_fast", "sampled"), sampled)
         == _SPECULATIVE_MTP_BATCH_ROUTE
     )
-    # Shipped behavior: no row lists the sampled mode, so a temperature request
-    # still ends at K0 before provider mutation.
+    # An artifact whose row does not list the sampled mode still ends at K0
+    # before provider mutation.
     assert route(_serving_engine("greedy_fast"), sampled) == _SPECULATIVE_MTP_K0_ROUTE
     # A blocker the sampled route refuses stays K0 even with the row.
     assert (
@@ -502,9 +510,9 @@ _SELECTION_PRESERVING_FIELDS = {
     "seed": "selects the sampler stream, not the greedy decision",
     # Reasons label a queue that is itself a blocker, so an empty queue carries
     # no behavior of its own.
-    "forced_token_reason": "labels forced_tokens_pending, which is a blocker",
-    "post_thinking_forced_token_reason": "labels a blocked queue",
-    "force_sequence_completion_reason": "labels a blocked queue",
+    "forced_token_reason": "labels the served forced queue",
+    "post_thinking_forced_token_reason": "labels a queue a thinking budget gates",
+    "force_sequence_completion_reason": "labels the served forced queue",
     # The thinking budget is active only as a pair; a partial configuration
     # builds no budget state and enforces nothing.
     "thinking_close_token_ids": "inert without thinking_hard_token_cap",
@@ -514,7 +522,7 @@ _SELECTION_PRESERVING_FIELDS = {
 
 
 def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
-    """The sampled route reproduces the sampler law and the finish rule.
+    """The sampled route reproduces the sampler law, the finish rule, and the queue.
 
     ``hipengine/speculative/sampling.py`` requires the caller to apply the
     request's pipeline (bias, penalties, suppression, temperature, top-k,
@@ -527,7 +535,10 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
     prefix, so they no longer have to be advertised blockers. The two metadata
     fields are served by ``reported_logprob``, which reads the logits row that
     predicted each published token with the same per-branch rule
-    ``select_token`` reports with.
+    ``select_token`` reports with. The three forced-token fields are one queue:
+    the row that predicts a position with a pending forced token gets a point
+    mass on it instead of the sampled law, and the live queue is popped only for
+    the tokens a cycle published.
     """
 
     finish_rule_fields = {
@@ -537,6 +548,11 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
         "stop_token_sequences",
     }
     metadata_fields = {"logprobs", "top_logprobs"}
+    forced_queue_fields = {
+        "forced_tokens_pending",
+        "post_thinking_forced_tokens_pending",
+        "force_sequence_completion_token_sequences",
+    }
     assert set(SAMPLED_MTP_SERVABLE_BLOCKERS) == {
         "temperature",
         "logit_bias",
@@ -547,6 +563,7 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
         "ignore_eos",
         *finish_rule_fields,
         *metadata_fields,
+        *forced_queue_fields,
     }
     # The two sets stay disjoint and still partition every incompatible field, so
     # a field can never be silently in neither.
@@ -554,6 +571,8 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
     assert not finish_rule_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
     assert metadata_fields <= set(SAMPLED_MTP_SERVABLE_BLOCKERS)
     assert not metadata_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
+    assert forced_queue_fields <= set(SAMPLED_MTP_SERVABLE_BLOCKERS)
+    assert not forced_queue_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
     assert set(SAMPLED_MTP_SERVABLE_BLOCKERS) | set(SAMPLED_MTP_UNSERVABLE_BLOCKERS) == set(
         SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
     )

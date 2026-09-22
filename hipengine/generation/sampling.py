@@ -850,8 +850,12 @@ SAMPLED_MTP_SERVABLE_BLOCKERS: tuple[str, ...] = (
     "stop_token_sequences",
     "logprobs",
     "top_logprobs",
+    "forced_tokens_pending",
+    "post_thinking_forced_tokens_pending",
+    "force_sequence_completion_token_sequences",
 )
-"""MTP blockers the sampled route serves exactly: the sampling law.
+"""MTP blockers the sampled route serves exactly: the sampling law and the
+forced-token queue.
 
 ``hipengine/speculative/sampling.py`` requires the caller to apply the request's
 sampler pipeline (bias, penalties, suppression, temperature, top-k, top-p,
@@ -872,39 +876,60 @@ served by ``reported_logprob``, which applies the same per-branch rule
 ``select_token`` uses to the logits row that predicted each published token, so
 the reported value is the autoregressive route's value rather than a
 reconstruction of it.
+
+The three forced-token fields are one mechanism, because the queue is the same
+queue. The autoregressive route emits a pending forced token instead of drawing,
+so the law of the row that predicts that position is a point mass on it:
+``processed_distribution`` is given the override and the accept walk then accepts
+a draft that agrees and corrects to the forced token when it does not, which is
+what the autoregressive route publishes for the same history. The overrides are
+resolved per row from that row's own cloned state, so a chain consumes the queue
+in order, and the live request's queue is popped only for the tokens a cycle
+actually published (``observe_published_tokens``).
+``post_thinking_forced_tokens_pending`` and
+``force_sequence_completion_token_sequences`` feed that same queue: the first
+becomes pending when a row's observed token ends the thinking phase, and the
+second queues the remainder of a partially matched sequence inside ``observe``,
+which the row walk already runs per row.
 """
 
 SAMPLED_MTP_UNSERVABLE_BLOCKERS: tuple[str, ...] = (
-    "forced_tokens_pending",
-    "post_thinking_forced_tokens_pending",
-    "force_sequence_completion_token_sequences",
     "json_object_close_forcing",
     "tool_call_constraint",
     "thinking_budget",
 )
 """MTP blockers the sampled route deliberately refuses.
 
-One family: fields that need something the coupled accept cannot supply. They
-need a caller-level override outside the sampling law (forced tokens, forced
-sequence completion) or per-token hooks that consume sampler queues or tokenizer
-text (JSON-object close forcing, tool-call constraints, the host thinking
-budget). A request carrying one of them stays on the autoregressive route rather
-than being served by a route that would report the wrong metadata.
+One family: fields whose per-token hook reads the *text* of the tokens the
+request has emitted. ``json_object_close_forcing`` and ``tool_call_constraint``
+advance a text DFA in ``observe_selected_token_text`` and, from it, mask the
+row's support and queue a closing suffix. The row walk observes token ids, not
+text, so inside one cycle the later rows would be processed against a DFA state
+that has not seen the earlier rows' tokens. The mask is therefore wrong for
+exactly the rows a cycle publishes together, which would let the route publish a
+token the request's own constraint rejects. Clearing command: observe each row's
+decoded text in the row walk (the tokenizer and the per-row remaining-token
+budget are both already available at the call site), then gate the result
+against the autoregressive route for a tool-call and a json_object request.
 
-The finish-rule fields (``min_tokens``, ``eos_token_id``, ``stop_token_ids``,
-``stop_token_sequences``) used to be refused here as well, because the cycle
-commit implemented only EOS on the last visible token of a greedy chain. The
-commit now applies the autoregressive finish rule to the whole verified chain
-through ``hipengine/speculative/streaming.py`` ``limit_chain_accept_finish``,
-which selects the terminal prefix and reports ``eos`` or ``stop``, so they are
-servable and no longer appear above.
+``thinking_budget`` is a policy refusal rather than a structural one. The host
+thinking state is per-row sampler state, and this route already walks it: the
+phase machine, EOS suppression, soft-close bias, and the close-sequence queue all
+run inside ``_process_row`` on each row's clone. It is unreachable in practice
+because the server relaxes the budget under its default ``hint`` policy before
+the blocker check, and under ``hard`` it refuses the request and serves plain AR
+(``docs/API.md`` "MTP + thinking"). Clearing command: measure a thinking request
+through this route on both policies, then move the field here to servable.
 
-``logprobs`` and ``top_logprobs`` used to be refused here too. They are now
-produced from the verified rows: for each published token the route reads the
-logits row that predicted it and calls ``reported_logprob``, which is the same
-branch rule ``select_token`` uses, so the reported value is the one the
-autoregressive route would report for the same token rather than a
-reconstruction of it.
+Every other field that used to be refused here has moved above. The finish-rule
+fields (``min_tokens``, ``eos_token_id``, ``stop_token_ids``,
+``stop_token_sequences``) moved when the cycle commit began applying the
+autoregressive finish rule to the whole verified chain through
+``hipengine/speculative/streaming.py`` ``limit_chain_accept_finish``, which
+selects the terminal prefix and reports ``eos`` or ``stop``. ``logprobs`` and
+``top_logprobs`` moved when the route began reporting them from the verified
+rows. The forced-token fields moved when the queue became a per-row point mass
+with a publish-time pop.
 """
 
 
@@ -1200,6 +1225,7 @@ def processed_distribution(
     state: RowSamplingState | None = None,
     *,
     token_text_for_id: Callable[[int], str] | None = None,
+    forced_token_id: int | None = None,
 ) -> tuple[tuple[int, ...], np.ndarray]:
     """Return the support and weights the autoregressive sampler would draw from.
 
@@ -1209,11 +1235,35 @@ def processed_distribution(
     A greedy row (``temperature <= 0``) returns a one-point support holding the
     argmax, which is the decision the autoregressive route makes. The caller's
     ``state`` is never observed into and never drawn from.
+
+    ``forced_token_id`` is the pending forced-token override the caller resolved
+    for this row. The autoregressive route emits that token without drawing, so
+    the law for the row is a point mass on it: a speculative draft that agrees is
+    accepted, and one that does not is corrected to it. The override is opt-in
+    because only the speculative caller resolves it per row; the queue itself is
+    left untouched here, so the caller decides which pops a published token
+    earned. The override keeps ``select_token``'s checks -- a token outside the
+    vocabulary, or one the request's own tokenizer constraint rejects, is an
+    error rather than a silently published token.
     """
 
     validate_sampling_params(params)
     row_state = state if state is not None else _default_row_state(params)
     row = _process_row(logits, params, row_state, token_text_for_id)
+    if forced_token_id is not None:
+        token_id = int(forced_token_id)
+        if token_id < 0 or token_id >= row.processed.size:
+            raise ValueError(
+                f"forced token id {token_id} is outside vocab size {row.processed.size}"
+            )
+        if not row.token_allowed(token_id):
+            constraint_name = (
+                "tool_call_constraint"
+                if row_state.tool_call_constraint_state is not None
+                else "json_object constraint"
+            )
+            raise ValueError(f"forced token id {token_id} violates {constraint_name}")
+        return (token_id,), np.asarray([1.0], dtype=np.float64)
     if row.temperature <= 0.0:
         if row.constraint_active:
             constrained_ids = _constraint_candidate_ids(row.processed, row.token_allowed, limit=1)

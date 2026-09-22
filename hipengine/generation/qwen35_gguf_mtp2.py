@@ -38,6 +38,10 @@ from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.mtp_sampled_accept import (
     chain_edge_rows,
     chain_token_logprobs,
+    observe_published_tokens,
+    published_forced_count,
+    row_forced_token_ids,
+    row_prefix_states,
     sampled_accept_summary,
 )
 from hipengine.generation.sampling import logprobs_requested, speculative_sampling_mode
@@ -3985,8 +3989,13 @@ class Qwen35GGUFMTP2Adapter:
             row_logprob_metadata: (
                 tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...] | None
             ) = None
+            forced_ids: tuple[int | None, ...] | None = None
             if sampled_route and not device_sampled_commit:
-                summary, row_logprob_metadata = self._sampled_accept_summary(
+                (
+                    summary,
+                    row_logprob_metadata,
+                    forced_ids,
+                ) = self._sampled_accept_summary(
                     row,
                     prepared,
                     batch,
@@ -4142,8 +4151,24 @@ class Qwen35GGUFMTP2Adapter:
                     raise RuntimeError(
                         "sampled MTP route lost the row's live sampler state"
                     )
-                for emitted in output_ids:
-                    sampling_state.observe(int(emitted))
+                # A forced token is emitted by the autoregressive route without a
+                # draw, so a cycle that published one consumed that queue entry.
+                # The pops are applied here rather than in the accept so a row the
+                # walk never reached -- which published nothing -- keeps its
+                # pending tokens.
+                forced_published = 0
+                if forced_ids is not None:
+                    forced_published = published_forced_count(
+                        batch,
+                        summary.accepted_counts,
+                        output_ids,
+                        forced_ids,
+                    )
+                observe_published_tokens(
+                    sampling_state,
+                    output_ids,
+                    forced_count=forced_published,
+                )
                 if bool(getattr(row, "native_sampler", False)):
                     row.full_vocab_logits_d2h = sampled_logit_readback_bytes > 0
                     row.logits_d2h_bytes = sampled_logit_readback_bytes
@@ -4229,6 +4254,7 @@ class Qwen35GGUFMTP2Adapter:
     ) -> tuple[
         TargetAcceptSummary,
         tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...] | None,
+        tuple[int | None, ...] | None,
     ]:
         """Accept the verified chain by sampling from the request's own law.
 
@@ -4243,6 +4269,11 @@ class Qwen35GGUFMTP2Adapter:
         returned rather than recomputed because the native sampler's reported
         value is the one the autoregressive route reports for the same request,
         and a host rebuild could differ in the last digits.
+
+        The third element is each row's pending forced-token override, or ``None``
+        when the route that produced the summary resolved no overrides. It is the
+        walk the accept coupled against, returned so the caller can consume
+        exactly the overrides its published tokens used.
         """
 
         sampling_state = getattr(row, "sampling_state", None)
@@ -4257,8 +4288,10 @@ class Qwen35GGUFMTP2Adapter:
             # Eager verifier/processor shapes still use the native sampler.
             # Speculative prefixes are private clones; only committed outputs
             # are observed into the live state by the transaction owner.
-            from hipengine.generation.mtp_sampled_accept import row_prefix_states
-
+            # ``row_prefix_states`` and ``row_forced_token_ids`` come from the
+            # module import: a function-local import would bind the name for the
+            # whole function and leave the host path below reading an unbound
+            # local.
             session = row.lease.session
             workspace = session._native_sampler()
             device = getattr(prepared, "target_logits_device", None)
@@ -4266,6 +4299,20 @@ class Qwen35GGUFMTP2Adapter:
                 logits = np.ascontiguousarray(prepared.target_logits, dtype=np.float32)
                 device = workspace._upload("mtp_eager_logits", logits)
             prefixes = row_prefix_states(batch, {int(batch.request_ids[0]): sampling_state})
+            if any(
+                forced is not None
+                for forced in row_forced_token_ids(
+                    batch, {int(batch.request_ids[0]): sampling_state}
+                )
+            ):
+                # The device sampler draws each row's token on its own stream and
+                # returns no host row, so it cannot be given the point mass a
+                # forced token needs. ``supports_native_gpu_sampling`` already
+                # refuses those requests; this keeps a future native shape from
+                # publishing a token the request forced to something else.
+                raise RuntimeError(
+                    "native GGUF sampler cannot honor a pending forced token"
+                )
             results = [
                 workspace.sample(
                     device.ptr + index * workspace.vocab_size * 4, params, prefix,
@@ -4285,7 +4332,7 @@ class Qwen35GGUFMTP2Adapter:
                 if logprobs_requested(params)
                 else None
             )
-            return TargetAcceptSummary.from_accept_result(batch, accepted), row_metadata
+            return TargetAcceptSummary.from_accept_result(batch, accepted), row_metadata, None
         tokenizer = getattr(self.generator, "tokenizer", None)
         token_text_for_id = (
             None
@@ -4302,7 +4349,10 @@ class Qwen35GGUFMTP2Adapter:
             transaction_id=int(transaction_id),
             remaining_decode=(int(remaining_decode),),
         )
-        return summary, None
+        forced_ids = row_forced_token_ids(
+            batch, {int(batch.request_ids[0]): sampling_state}
+        )
+        return summary, None, forced_ids
 
     def _cycle_token_logprobs(
         self,

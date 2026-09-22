@@ -334,11 +334,18 @@ fast path rather than failing merely because a client sent `top_p=0.95` with
 Speculative/MTP compatibility is stricter until target verification can run the
 same processed-logit policy as autoregressive generation.
 `supports_speculative_mtp_sampling()` returns true only for `GREEDY_FAST`
-requests; `speculative_mtp_sampling_blockers()` reports the fields that require
-AR fallback today, including `logit_bias`, penalties, suppress-token ids,
+requests; `speculative_mtp_sampling_blockers()` reports the fields the raw-argmax
+route refuses, including `logit_bias`, penalties, suppress-token ids,
 min-token/EOS policy, token stops, pending forced-token queues, post-thinking
 forced-token queues, token-sequence completion repair, JSON/tool constraints,
-`temperature > 0`, and requested logprobs. The resident scheduler applies this
+`temperature > 0`, and requested logprobs. A request that carries one of those
+fields does not necessarily fall back to AR: the sampled route
+(`supports_sampled_speculative_mtp()`) serves the sampling law, the finish rule,
+the logprob metadata, and the forced-token queues, and only
+`json_object_close_forcing`, `tool_call_constraint`, and `thinking_budget` still
+keep a request on the autoregressive path
+(`SAMPLED_MTP_UNSERVABLE_BLOCKERS` in `hipengine/generation/sampling.py`). The
+resident scheduler applies this
 guard before emitting
 speculative target-verification work, so rows that need processed logits cannot
 silently enter the raw-argmax MTP path. Successful scheduler verify work and

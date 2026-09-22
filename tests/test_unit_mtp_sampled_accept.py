@@ -15,6 +15,9 @@ import numpy as np
 import pytest
 
 from hipengine.generation.mtp_sampled_accept import (
+    observe_published_tokens,
+    published_forced_count,
+    row_forced_token_ids,
     row_prefix_states,
     sampled_accept_summary,
 )
@@ -324,3 +327,141 @@ def test_sampled_accept_summary_emits_the_target_law_under_monte_carlo() -> None
     # The walk must not have advanced the live state; the scheduler observes the
     # committed tokens itself.
     assert tuple(state.generated_tokens) == ()
+
+
+def test_row_forced_token_ids_drain_in_row_order() -> None:
+    """Each row's override is the queue head after its ancestors consumed theirs."""
+
+    batch = _chain_batch((3, 4))
+    state = RowSamplingState(
+        seed=1,
+        prompt_tokens=(10,),
+        forced_tokens_pending=(7, 6),
+    )
+    assert row_forced_token_ids(batch, {5: state}) == (7, 6, None)
+    # Resolving the walk must not consume the live request's queue: only the
+    # tokens a cycle actually publishes may be popped.
+    assert state.forced_tokens == (7, 6)
+
+
+def test_sampled_accept_summary_accepts_a_forced_chain() -> None:
+    """The override replaces the row's law, so a matching draft is accepted."""
+
+    batch = _chain_batch((5, 6))
+    # The target's own law wants 2 then 3; the request forces 5 then 6, so the
+    # distribution the accept couples against is not the row's argmax.
+    logits = np.stack((_point_row(2), _point_row(3), _point_row(3)))
+    state = RowSamplingState(
+        seed=1,
+        prompt_tokens=(1,),
+        forced_tokens_pending=(5, 6),
+    )
+    summary = sampled_accept_summary(
+        batch,
+        logits,
+        {5: state},
+        params_for=lambda request_id: _params(),
+        draws=lambda: 0.0,
+        remaining_decode=(4,),
+    )
+    assert summary.accepted_counts == (2,)
+    assert summary.accepted_tokens == ((5, 6),)
+    # The queue held two tokens, so the third row is an ordinary row: its bonus
+    # token is the target's own argmax (3), not a forced token.
+    assert summary.next_tokens == (3,)
+    assert state.forced_tokens == (5, 6)
+
+
+def test_sampled_accept_summary_corrects_to_a_forced_token() -> None:
+    """A draft the forced token disagrees with is corrected to the forced token."""
+
+    batch = _chain_batch((2,))
+    logits = np.stack((_point_row(2), _point_row(2)))
+    state = RowSamplingState(
+        seed=1,
+        prompt_tokens=(1,),
+        forced_tokens_pending=(5,),
+    )
+    summary = sampled_accept_summary(
+        batch,
+        logits,
+        {5: state},
+        params_for=lambda request_id: _params(),
+        draws=lambda: 0.0,
+        remaining_decode=(4,),
+    )
+    assert summary.accepted_counts == (0,)
+    assert summary.accepted_tokens == ((),)
+    assert summary.next_tokens == (5,)
+    assert summary.commit_rows == (0,)
+
+
+def test_observe_published_tokens_consumes_the_published_forced_prefix() -> None:
+    state = RowSamplingState(
+        seed=1,
+        prompt_tokens=(1,),
+        forced_tokens_pending=(5, 6),
+    )
+    observe_published_tokens(state, (5, 6), forced_count=2)
+    assert tuple(state.generated_tokens) == (5, 6)
+    assert state.forced_tokens == ()
+
+
+def test_observe_published_tokens_leaves_the_unpublished_queue_pending() -> None:
+    """A cycle that published one forced token must not consume the next."""
+
+    state = RowSamplingState(
+        seed=1,
+        prompt_tokens=(1,),
+        forced_tokens_pending=(5, 6),
+    )
+    observe_published_tokens(state, (5,), forced_count=1)
+    assert state.forced_tokens == (6,)
+
+
+def test_observe_published_tokens_refuses_a_forced_mismatch() -> None:
+    """The published token and the consumed override must be the same token."""
+
+    state = RowSamplingState(seed=1, prompt_tokens=(1,), forced_tokens_pending=(5,))
+    with pytest.raises(RuntimeError, match="pending forced token is 5"):
+        observe_published_tokens(state, (9,), forced_count=1)
+
+
+def test_published_forced_count_counts_only_the_published_prefix() -> None:
+    """A stop inside the chain must not consume the overrides behind it."""
+
+    batch = _chain_batch((5, 6))
+    forced_ids = (5, 6, None)
+    # The full chain published both forced tokens and the bonus row.
+    assert published_forced_count(batch, (2,), (5, 6, 3), forced_ids) == 2
+    # The finish rule stopped after the first token: only that one was published.
+    assert published_forced_count(batch, (2,), (5,), forced_ids) == 1
+
+
+def test_published_forced_count_ignores_rows_the_accept_walk_never_reached() -> None:
+    """A rejected chain publishes the correction row only."""
+
+    batch = _chain_batch((5, 6))
+    forced_ids = (5, 6, None)
+    # The accept walk stopped at the root: the published token is the root row's.
+    assert published_forced_count(batch, (0,), (5,), forced_ids) == 1
+
+
+def test_cycle_commit_round_trip_consumes_exactly_what_it_published() -> None:
+    """The count the commit computes is the count the live state pops."""
+
+    batch = _chain_batch((5, 6))
+    state = RowSamplingState(
+        seed=1,
+        prompt_tokens=(1,),
+        forced_tokens_pending=(5, 6),
+    )
+    forced_ids = row_forced_token_ids(batch, {5: state})
+    published = (5, 6, 3)
+    observe_published_tokens(
+        state,
+        published,
+        forced_count=published_forced_count(batch, (2,), published, forced_ids),
+    )
+    assert tuple(state.generated_tokens) == published
+    assert state.forced_tokens == ()
