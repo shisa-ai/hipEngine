@@ -13,6 +13,8 @@ import pytest
 
 from hipengine.kernels.cpu_reference.gemma4 import (
     Gemma4RopeConfig,
+    _apply_rope,
+    gemma4_rope_tables,
     gemma4_rmsnorm,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rope import (
@@ -525,3 +527,218 @@ def test_a_bare_variant_does_not_reach_the_gemma4_norm() -> None:
         missing="none",
     )
     assert wrong is not gemma4_rmsnorm_f32w_bf16
+
+
+# ---------------------------------------------------------------------------
+# Partial rotary and the K-to-V copy
+# ---------------------------------------------------------------------------
+
+
+def _rotary_rope(rope_type: str, head_dim: int, factor: float, theta: float):
+    return Gemma4RopeConfig(
+        rope_theta=theta,
+        head_dim=head_dim,
+        rope_angles=gemma4_rope_angles(
+            head_dim=head_dim, partial_rotary_factor=factor, rope_type=rope_type
+        ),
+        rope_type=rope_type,
+    )
+
+
+@_needs_hip
+@pytest.mark.parametrize(
+    ("rope_type", "head_dim", "factor", "theta"),
+    [
+        (GEMMA4_ROPE_DEFAULT_TYPE, 256, 1.0, 10_000.0),
+        (GEMMA4_ROPE_PROPORTIONAL_TYPE, 512, 0.25, 1_000_000.0),
+    ],
+)
+def test_gpu_rotary_f32_matches_the_reference_rotation(
+    device, rope_type: str, head_dim: int, factor: float, theta: float
+) -> None:
+    """The kernel reproduces the reference rotation on both layer geometries."""
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rotary import (
+        gemma4_partial_rotary_f32,
+    )
+
+    tokens, num_q_heads, num_kv_heads = 3, 4, 2
+    positions = np.array([0, 5, 11], dtype=np.int64)
+    rope = _rotary_rope(rope_type, head_dim, factor, theta)
+    half_cos, half_sin = gemma4_rope_tables(rope, positions)
+    full_cos, full_sin = gemma4_rope_cos_sin_tables(rope, positions)
+
+    rng = np.random.default_rng(21)
+    query = rng.standard_normal((tokens, num_q_heads, head_dim)).astype(np.float32)
+    key = rng.standard_normal((tokens, num_kv_heads, head_dim)).astype(np.float32)
+
+    qp = device.put(query)
+    kp = device.put(key)
+    cp = device.put(full_cos)
+    sp = device.put(full_sin)
+    qo = device.out(query.shape, np.float32)
+    ko = device.out(key.shape, np.float32)
+    gemma4_partial_rotary_f32(qp, kp, cp, sp, qo, ko, tokens, num_q_heads, num_kv_heads, head_dim)
+
+    expected_q = _apply_rope(query, half_cos[:, None, :], half_sin[:, None, :], head_dim)
+    expected_k = _apply_rope(key, half_cos[:, None, :], half_sin[:, None, :], head_dim)
+    assert np.allclose(device.get(qo, query.shape, np.float32), expected_q, atol=1e-5)
+    assert np.allclose(device.get(ko, key.shape, np.float32), expected_k, atol=1e-5)
+
+
+@_needs_hip
+def test_gpu_rotary_bf16_matches_the_reference_rotation(device) -> None:
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rotary import (
+        gemma4_partial_rotary_bf16,
+    )
+
+    tokens, num_q_heads, num_kv_heads, head_dim = 4, 4, 2, 512
+    positions = np.arange(tokens, dtype=np.int64)
+    rope = _rotary_rope(GEMMA4_ROPE_PROPORTIONAL_TYPE, head_dim, 0.25, 1_000_000.0)
+    half_cos, half_sin = gemma4_rope_tables(rope, positions)
+    full_cos, full_sin = gemma4_rope_cos_sin_tables(rope, positions)
+
+    rng = np.random.default_rng(22)
+    query = rng.standard_normal((tokens, num_q_heads, head_dim)).astype(np.float32)
+    key = rng.standard_normal((tokens, num_kv_heads, head_dim)).astype(np.float32)
+
+    qp = device.put(_to_bf16_bits(query))
+    kp = device.put(_to_bf16_bits(key))
+    cp = device.put(full_cos)
+    sp = device.put(full_sin)
+    qo = device.out(query.shape, np.uint16)
+    ko = device.out(key.shape, np.uint16)
+    gemma4_partial_rotary_bf16(qp, kp, cp, sp, qo, ko, tokens, num_q_heads, num_kv_heads, head_dim)
+
+    expected_q = _apply_rope(query, half_cos[:, None, :], half_sin[:, None, :], head_dim)
+    expected_k = _apply_rope(key, half_cos[:, None, :], half_sin[:, None, :], head_dim)
+    got_q = _from_bf16_bits(device.get(qo, query.shape, np.uint16))
+    got_k = _from_bf16_bits(device.get(ko, key.shape, np.uint16))
+    assert np.allclose(got_q, expected_q, atol=_BF16_ATOL, rtol=_BF16_RTOL)
+    assert np.allclose(got_k, expected_k, atol=_BF16_ATOL, rtol=_BF16_RTOL)
+
+
+@_needs_hip
+def test_gpu_rotary_leaves_the_unrotated_span_bit_identical(device) -> None:
+    """The proportional tail must pass through, not merely land nearby.
+
+    A contiguous-prefix rotary would rotate elements 64..255 of each half, which
+    is the failure this asserts against.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rotary import (
+        gemma4_partial_rotary_f32,
+    )
+
+    head_dim = 512
+    rope_angles = 64
+    tokens, num_q_heads, num_kv_heads = 2, 2, 1
+    positions = np.array([3, 9], dtype=np.int64)
+    rope = _rotary_rope(GEMMA4_ROPE_PROPORTIONAL_TYPE, head_dim, 0.25, 1_000_000.0)
+    full_cos, full_sin = gemma4_rope_cos_sin_tables(rope, positions)
+
+    rng = np.random.default_rng(23)
+    query = rng.standard_normal((tokens, num_q_heads, head_dim)).astype(np.float32)
+    key = np.zeros((tokens, num_kv_heads, head_dim), dtype=np.float32)
+
+    qp = device.put(query)
+    kp = device.put(key)
+    cp = device.put(full_cos)
+    sp = device.put(full_sin)
+    qo = device.out(query.shape, np.float32)
+    ko = device.out(key.shape, np.float32)
+    gemma4_partial_rotary_f32(qp, kp, cp, sp, qo, ko, tokens, num_q_heads, num_kv_heads, head_dim)
+    got = device.get(qo, query.shape, np.float32)
+
+    half = head_dim // 2
+    tail = np.s_[..., rope_angles:half]
+    tail_upper = np.s_[..., half + rope_angles :]
+    assert np.array_equal(got[tail], query[tail]), "lower unrotated span moved"
+    assert np.array_equal(got[tail_upper], query[tail_upper]), "upper unrotated span moved"
+
+    # And the rotated spans must actually have moved.
+    assert not np.allclose(got[..., :rope_angles], query[..., :rope_angles])
+    assert not np.allclose(
+        got[..., half : half + rope_angles], query[..., half : half + rope_angles]
+    )
+
+
+@_needs_hip
+def test_gpu_rotary_refuses_a_contiguous_prefix_width(device) -> None:
+    """A rotary_dim below head_dim would rotate the wrong pairs."""
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rotary import (
+        gemma4_partial_rotary_f32,
+    )
+
+    src = device.put(np.zeros((1, 1, 512), dtype=np.float32))
+    dst = device.out((1, 1, 512), np.float32)
+    with pytest.raises(ValueError, match="rotary_dim must be head_dim"):
+        gemma4_partial_rotary_f32(src, 0, src, src, dst, dst, 1, 1, 0, 512, rotary_dim=128)
+
+
+@_needs_hip
+def test_gpu_rotary_accepts_a_null_key(device) -> None:
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rotary import (
+        gemma4_partial_rotary_f32,
+    )
+
+    tokens, num_q_heads, head_dim = 2, 2, 256
+    positions = np.arange(tokens, dtype=np.int64)
+    rope = _rotary_rope(GEMMA4_ROPE_DEFAULT_TYPE, head_dim, 1.0, 10_000.0)
+    half_cos, half_sin = gemma4_rope_tables(rope, positions)
+    full_cos, full_sin = gemma4_rope_cos_sin_tables(rope, positions)
+
+    rng = np.random.default_rng(24)
+    query = rng.standard_normal((tokens, num_q_heads, head_dim)).astype(np.float32)
+    qp = device.put(query)
+    cp = device.put(full_cos)
+    sp = device.put(full_sin)
+    qo = device.out(query.shape, np.float32)
+    gemma4_partial_rotary_f32(qp, 0, cp, sp, qo, 0, tokens, num_q_heads, 0, head_dim)
+    expected = _apply_rope(query, half_cos[:, None, :], half_sin[:, None, :], head_dim)
+    assert np.allclose(device.get(qo, query.shape, np.float32), expected, atol=1e-5)
+
+
+@_needs_hip
+def test_k_to_v_copies_the_raw_projection(device) -> None:
+    """attention_k_eq_v makes V the raw K projection, before k_norm and rope."""
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rotary import gemma4_k_to_v_bf16
+
+    rng = np.random.default_rng(25)
+    key = rng.standard_normal((3, 2, 512)).astype(np.float32)
+    kp = device.put(_to_bf16_bits(key))
+    vp = device.out(key.shape, np.uint16)
+    gemma4_k_to_v_bf16(kp, vp, int(np.prod(key.shape)))
+    got = _from_bf16_bits(device.get(vp, key.shape, np.uint16))
+    assert np.array_equal(got, _from_bf16_bits(_to_bf16_bits(key)))
+
+
+def test_rotary_family_registers_under_gemma4_plain() -> None:
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rotary import (
+        gemma4_k_to_v_bf16,
+        gemma4_partial_rotary_bf16,
+        register_gemma4_rotary_kernels,
+    )
+    from hipengine.kernels.registry import resolve
+
+    register_gemma4_rotary_kernels(replace=True)
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="partial_rotary",
+            quant="gguf_q4_k_m",
+            variant="gemma4_plain",
+        )
+        is gemma4_partial_rotary_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="k_to_v",
+            quant="gguf_q4_k_m",
+            variant="gemma4_plain",
+        )
+        is gemma4_k_to_v_bf16
+    )
