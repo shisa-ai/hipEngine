@@ -3486,11 +3486,12 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 359,
-        "referrers": 4,
+        "lines": 474,
+        "referrers": 5,
         "runtime_referrers": [],
         "test_referrers": [
-          "tests/test_unit_gemma4_gpu_kernels.py"
+          "tests/test_unit_gemma4_gpu_kernels.py",
+          "tests/test_unit_gemma4_gguf_device.py"
         ]
       },
       "signals": [
@@ -3510,7 +3511,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_experts.py",
-      "evidence_hash": "28ef585ad136"
+      "evidence_hash": "0ab096e011f2"
     },
     {
       "kind": "kernel",
@@ -3847,8 +3848,7 @@
       },
       "signals": [
         "nothing outside hipengine/kernels/ names it \u2014 no runtime caller found",
-        "no test file names it",
-        "neither it nor its referrers mention KernelKey"
+        "no test file names it"
       ],
       "hints": {
         "anchor": "hip_gfx1100",
@@ -3864,7 +3864,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_types.py",
-      "evidence_hash": "1135973a1cfd"
+      "evidence_hash": "495ac32a7f25"
     },
     {
       "kind": "kernel",
@@ -10302,7 +10302,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 62,
-        "referrers": 444,
+        "referrers": 445,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
@@ -10333,7 +10333,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/vibevoice/registered.py",
-      "evidence_hash": "fd355a28c15f"
+      "evidence_hash": "d3d80739dd8a"
     },
     {
       "kind": "kernel",
@@ -10540,7 +10540,7 @@
         "backend": "unknown",
         "suffix": ".py",
         "lines": 204,
-        "referrers": 668,
+        "referrers": 669,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
@@ -10569,7 +10569,7 @@
         ]
       },
       "id": "kernel/registry.py",
-      "evidence_hash": "5b6aae3b33cd"
+      "evidence_hash": "c196616d4f63"
     },
     {
       "kind": "kernel",
