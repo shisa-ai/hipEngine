@@ -372,10 +372,10 @@ Use AdamW as in the current trainer, betas (0.9, 0.95), epsilon 1e-8.
 
 | ID | Objective | Definition frozen before training | Result at P0 / training_point, both seeds |
 | --- | --- | --- | --- |
-| L0 | Existing BCE + budget | Binary labels, budget coefficient 0.1 | pending |
-| L1 | Log-mass regression | MSE of log1p(mass), train-only per-layer/head mean/std; export score direction so high importance is retained | pending |
-| L2 | Pairwise ranking | Mean softplus(score_discard - score_keep) on importance scores; within each minibatch/head deterministically pair each retained example with one uniformly sampled discard example from the same sequence/layer; omit equal-mass pairs and batches with no pair | pending |
-| L3 | Importance-weighted BCE | Existing BCE + budget; retained-label examples weighted by 1 + min(mass / train-only per-head p95 positive mass, 4); other weights 1; zero denominator guarded | pending |
+| L0 | Existing BCE + budget | Binary labels, budget coefficient 0.1 | blocked before training: no valid `training_point`; compact no-evict G0 failed with max KL `0.004982890284225346` and top-1 `11/12` |
+| L1 | Log-mass regression | MSE of log1p(mass), train-only per-layer/head mean/std; export score direction so high importance is retained | objective implemented/tested; training and integrated evaluation blocked by missing valid control/training point |
+| L2 | Pairwise ranking | Mean softplus(score_discard - score_keep) on importance scores; deterministic same-head pairs; omit empty pair sets | objective implemented/tested; training and integrated evaluation blocked by missing valid control/training point |
+| L3 | Importance-weighted BCE | Existing BCE + budget; retained-label examples weighted by train-only p95 mass, capped at 4 | objective implemented/tested; training and integrated evaluation blocked by missing valid control/training point |
 
 - [ ] Implement and test each loss, pair sampling, zero-mass cases, score
       direction, train-only normalization, and exported inference equivalence.
