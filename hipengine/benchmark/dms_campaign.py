@@ -78,8 +78,18 @@ def compare_row(
     """Compare one dense-teacher row against one candidate row over the full vocabulary."""
     teacher = np.asarray(teacher_logits, dtype=np.float64)
     candidate = np.asarray(candidate_logits, dtype=np.float64)
+    # Resident-session prefill returns one batch row as ``(1, vocab)`` while
+    # decode returns ``(vocab,)``.  Both represent one full-vocabulary row.
+    if teacher.ndim == 2 and teacher.shape[0] == 1:
+        teacher = teacher[0]
+    if candidate.ndim == 2 and candidate.shape[0] == 1:
+        candidate = candidate[0]
     if teacher.shape != candidate.shape or teacher.ndim != 1 or teacher.size == 0:
-        raise ValueError("teacher/candidate logits must be non-empty matching 1-D arrays")
+        raise ValueError(
+            "teacher/candidate logits must be non-empty matching 1-D arrays "
+            "or singleton-batch rows; "
+            f"got teacher={teacher.shape}, candidate={candidate.shape}"
+        )
     finite = bool(np.isfinite(candidate).all() and np.isfinite(teacher).all())
     teacher_top1 = int(np.argmax(teacher))
     candidate_top1 = int(np.argmax(candidate))
