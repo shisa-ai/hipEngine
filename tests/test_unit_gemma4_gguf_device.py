@@ -270,3 +270,155 @@ def test_quantized_projection_reproduces_the_bf16_projection(reader: GGUFReader)
         x_ptr.free()
         w_ptr.free()
         quantized.free()
+
+
+# --------------------------------------------------------------------------
+# Selected-expert dispatch: one projection per compact row
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(
+    not hip_runtime_available(), reason="HIP runtime unavailable; skipping selected test"
+)
+def test_selected_expert_dispatch_matches_the_bf16_offset_path(reader: GGUFReader) -> None:
+    """The selected path and the per-expert offset path agree.
+
+    The offset path is already validated against the CPU reference, so agreeing
+    with it is the check that the selected path's per-row expert indexing is
+    right. A kernel that ignored `selected` and used one expert for every row
+    would disagree here, because the fixture's experts hold different weights.
+    """
+
+    from hipengine.core.memory import DeviceBuffer, copy_device_to_host, free, malloc
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        gemma4_project_experts_by_offset,
+        gemma4_project_experts_selected,
+    )
+    from hipengine.loading.materialize import (
+        float_array_to_bf16_bits,
+        host_array_ptr,
+        load_host_array_to_device_as_dtype,
+    )
+
+    spec = next(s for s in plan_gemma4_gguf_resident_specs(reader) if len(s.source.shape) == 3)
+    num_experts, out_features, in_features = (int(d) for d in spec.source.shape)
+    experts = [0, 1, num_experts - 1, 0]
+    rows = len(experts)
+
+    rng = np.random.default_rng(20260922)
+    x = rng.standard_normal((rows, in_features)).astype(np.float32)
+
+    # A bf16 baseline from the same source values, so both paths read the same
+    # weights and the only difference is how the expert is selected.
+    from hipengine.quant.gguf import dequantize_gguf_data
+
+    weight_bf16 = np.asarray(
+        dequantize_gguf_data(
+            reader.tensor_data(spec.source.name), reader.tensor_info(spec.source.name).ggml_type
+        ),
+        dtype=np.float32,
+    )
+    x_ptr = load_host_array_to_device_as_dtype(
+        "x", float_array_to_bf16_bits(x), "bf16", source_dtype="BF16"
+    )
+    w_ptr = load_host_array_to_device_as_dtype(
+        "w", float_array_to_bf16_bits(weight_bf16), "bf16", source_dtype="BF16"
+    )
+    sel_ptr = load_host_array_to_device_as_dtype(
+        "selected", np.asarray(experts, dtype=np.int64), "int64", source_dtype="I64"
+    )
+    out_bf16 = malloc(rows * out_features * 2)
+    out_sel = malloc(rows * out_features * 2)
+    quantized = materialize_gemma4_gguf_device_weight(reader, spec)
+    try:
+        # The bf16 path has no selected kernel, so it must report not-served.
+        assert (
+            gemma4_project_experts_selected(
+                w_ptr.buffer.ptr,
+                x_ptr.buffer.ptr,
+                sel_ptr.buffer.ptr,
+                out_bf16.ptr,
+                rows,
+                rows,
+                num_experts,
+                in_features,
+                out_features,
+            )
+            is False
+        )
+        assert (
+            gemma4_project_experts_selected(
+                quantized,
+                x_ptr.buffer.ptr,
+                sel_ptr.buffer.ptr,
+                out_sel.ptr,
+                rows,
+                rows,
+                num_experts,
+                in_features,
+                out_features,
+            )
+            is True
+        )
+
+        # The bf16 reference, one launch per distinct expert.
+        counts = np.zeros(num_experts, dtype=np.int64)
+        for expert in experts:
+            counts[expert] += 1
+        starts = np.zeros(num_experts + 1, dtype=np.int64)
+        starts[1:] = np.cumsum(counts)
+        # Order the rows the way the offset path expects: grouped by expert.
+        order = sorted(range(rows), key=lambda i: experts[i])
+        starts_ptr = load_host_array_to_device_as_dtype(
+            "starts", starts, "int64", source_dtype="I64"
+        )
+        packed = np.ascontiguousarray(x[order])
+        packed_ptr = load_host_array_to_device_as_dtype(
+            "packed", float_array_to_bf16_bits(packed), "bf16", source_dtype="BF16"
+        )
+        gemma4_project_experts_by_offset(
+            w_ptr.buffer.ptr,
+            packed_ptr.buffer.ptr,
+            out_bf16.ptr,
+            starts_ptr.buffer,
+            num_experts,
+            in_features,
+            out_features,
+        )
+
+        def read_back(buffer) -> np.ndarray:
+            raw = np.empty(rows * out_features, dtype=np.uint16)
+            copy_device_to_host(
+                host_array_ptr(raw),
+                DeviceBuffer(ptr=buffer.ptr, nbytes=raw.nbytes),
+                raw.nbytes,
+            )
+            return (
+                (raw.astype(np.uint32) << np.uint32(16))
+                .view(np.float32)
+                .reshape(rows, out_features)
+            )
+
+        # Undo the grouping so both results are in the original row order.
+        grouped = read_back(out_bf16)
+        ungrouped = np.empty_like(grouped)
+        for position, source_row in enumerate(order):
+            ungrouped[source_row] = grouped[position]
+        selected = read_back(out_sel)
+
+        # Distinct experts must actually be selected: a kernel that used expert
+        # 0 for every row would produce identical rows 0 and 3 here.
+        assert not np.allclose(selected[0], selected[2]), "selected index had no effect"
+        scale = float(np.abs(ungrouped).max())
+        assert scale > 0
+        assert np.allclose(selected, ungrouped, rtol=5e-3, atol=5e-3 * scale), (
+            f"selected path diverged from the offset path: "
+            f"max abs diff {np.abs(selected - ungrouped).max():.4g} against scale {scale:.4g}"
+        )
+    finally:
+        for buffer in (out_bf16, out_sel):
+            free(buffer)
+        x_ptr.free()
+        w_ptr.free()
+        sel_ptr.free()
+        quantized.free()

@@ -222,39 +222,52 @@ def gemma4_experts_forward_bf16(
         **kwargs,
     )
 
-    # 3. One fused gate_up GEMV per non-empty expert, then GeGLU over the whole
+    # 3. One gate_up projection for every compact row, then GeGLU over the whole
     #    compact buffer in a single launch.
-    starts = _read_int64(expert_start, num_experts + 1)
     fused = 2 * intermediate
-    for expert in range(num_experts):
-        start = int(starts[expert])
-        rows = int(starts[expert + 1]) - start
-        if rows <= 0:
-            continue
-        gemma4_project_expert(
+    if not gemma4_project_experts_selected(
+        gate_up_proj,
+        packed_hidden.ptr,
+        sorted_experts.ptr,
+        gate_up_out.ptr,
+        lanes,
+        lanes,
+        num_experts,
+        hidden_size,
+        fused,
+        **kwargs,
+    ):
+        gemma4_project_experts_by_offset(
             gate_up_proj,
-            expert,
-            packed_hidden.ptr + start * hidden_size * _BF16_BYTES,
-            gate_up_out.ptr + start * fused * _BF16_BYTES,
-            rows,
+            packed_hidden.ptr,
+            gate_up_out.ptr,
+            expert_start,
+            num_experts,
             hidden_size,
             fused,
             **kwargs,
         )
     gemma4_gelu_tanh_mul_bf16(gate_up_out.ptr, activated.ptr, lanes, intermediate, **kwargs)
 
-    # 4. One down GEMV per non-empty expert.
-    for expert in range(num_experts):
-        start = int(starts[expert])
-        rows = int(starts[expert + 1]) - start
-        if rows <= 0:
-            continue
-        gemma4_project_expert(
+    # 4. The down projection, over the same compact rows.
+    if not gemma4_project_experts_selected(
+        down_proj,
+        activated.ptr,
+        sorted_experts.ptr,
+        expert_out.ptr,
+        lanes,
+        lanes,
+        num_experts,
+        intermediate,
+        hidden_size,
+        **kwargs,
+    ):
+        gemma4_project_experts_by_offset(
             down_proj,
-            expert,
-            activated.ptr + start * intermediate * _BF16_BYTES,
-            expert_out.ptr + start * hidden_size * _BF16_BYTES,
-            rows,
+            activated.ptr,
+            expert_out.ptr,
+            expert_start,
+            num_experts,
             intermediate,
             hidden_size,
             **kwargs,
@@ -329,6 +342,108 @@ def gemma4_project_expert(
         out_features,
         stream=stream,
     )
+
+
+# Every GGUF quant type this artifact uses registers a selected-expert GEMV under
+# this one variant name, so the expert forward resolves it from the registry by
+# quant key rather than branching on the type.
+_SELECTED_VARIANT = "selected_gemv_bf16_bf16_out"
+
+
+def gemma4_project_experts_selected(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    selected_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+) -> bool:
+    """Run one projection per compact row, each row using its own expert.
+
+    ``selected_ptr`` is ``int64`` with one expert index per compact row -- the
+    expert scratch already builds exactly this as ``sorted_experts``.
+
+    Returns ``False`` when no selected kernel serves this weight, which is the
+    bf16 case: the selected family is a GGUF quantized-block concept and a bf16
+    weight is not a GGUF quant, so the caller uses the per-expert offset path.
+    That is a check on the weight's storage form, not on a quant name.
+    """
+
+    if isinstance(weight, int):
+        return False
+    # Registration is not guaranteed to have survived: registry plan tests clear
+    # global registrations and pytest restores a collection-time baseline, so a
+    # lazy import can be a no-op and a lookup for a kernel that exists can still
+    # report it missing. `_ensure_linear_kernel_registered` is the repo's answer
+    # to exactly that, and is what the GGUF runtime dispatch uses.
+    from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
+    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+    key = KernelKey(weight.backend, "linear", weight.spec.quant_key, _SELECTED_VARIANT)
+    _ensure_linear_kernel_registered(key)
+    try:
+        fn = resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+    except MissingKernelError:
+        return False
+    fn(
+        x_ptr,
+        selected_ptr,
+        weight.allocation("raw").buffer.ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+    )
+    return True
+
+
+def gemma4_project_experts_by_offset(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    out_ptr: int,
+    expert_start,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+) -> None:
+    """Project each non-empty expert's contiguous row slice in its own launch.
+
+    The fallback for weights with no selected kernel. It reads ``expert_start``
+    back to the host, which is a device-to-host synchronisation, so the selected
+    path is preferred wherever one exists.
+    """
+
+    starts = _read_int64(expert_start, num_experts + 1)
+    for expert in range(num_experts):
+        start = int(starts[expert])
+        rows = int(starts[expert + 1]) - start
+        if rows <= 0:
+            continue
+        gemma4_project_expert(
+            weight,
+            expert,
+            x_ptr + start * in_features * _BF16_BYTES,
+            out_ptr + start * out_features * _BF16_BYTES,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+        )
 
 
 def _zero(buffer: DeviceBuffer, **kwargs: object) -> None:
