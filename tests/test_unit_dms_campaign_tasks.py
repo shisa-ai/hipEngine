@@ -13,6 +13,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -32,7 +34,13 @@ from hipengine.benchmark.dms_tasks import (
     validate_case,
 )
 from hipengine.benchmark.dms_tasks import build_task_manifest as _build_manifest
-from scripts.qwen38_dms_campaign_tasks import build_parser
+from scripts.qwen38_dms_campaign_tasks import (
+    _greedy_generate,
+    _validate_dense_reference,
+    _validate_task_manifest,
+    _write_output,
+    build_parser,
+)
 
 
 TARGET = 4096
@@ -97,7 +105,10 @@ def make_result(
         "metadata": {"sha256": metadata_sha} if metadata_sha else None,
         "model": {"sha256": model_sha},
         "task_manifest": {"sha256": task_manifest_sha},
-        "evaluator": {"library_sha256": evaluator_sha},
+        "evaluator": {
+            "library_sha256": evaluator_sha,
+            "script_sha256": "s" * 64,
+        },
         "cases": [
             {
                 "case_id": case["case_id"],
@@ -310,10 +321,13 @@ def test_filler_correlations_reports_shared_prefix_groups() -> None:
 
 
 def test_parse_answer_positives_and_negatives() -> None:
-    verdict = parse_answer("The key is K7QF-2M9X exactly.", "K7QF-2M9X")
+    verdict = parse_answer("  K7QF-2M9X\n", "K7QF-2M9X")
     assert verdict["correct"] is True
     assert verdict["verdict"] == "correct"
-    assert verdict["answer_index"] == 11
+    assert verdict["answer_index"] == 2
+    prose = parse_answer("The key is K7QF-2M9X exactly.", "K7QF-2M9X")
+    assert prose["answer_found"] is True
+    assert prose["correct"] is False
     wrong = parse_answer("The key is 0000-0000.", "K7QF-2M9X")
     assert wrong["correct"] is False
     assert wrong["verdict"] == "incorrect"
@@ -329,9 +343,66 @@ def test_parse_answer_positives_and_negatives() -> None:
 def _g3_verdict(dense_bad: set[str], candidate_bad: set[str], baseline_bad: set[str] = frozenset()):
     manifest = build_manifest()
     dense = make_result(manifest, arm=DENSE_ARM, metadata_sha=None, incorrect_cases=dense_bad)
-    baseline = make_result(manifest, arm="no_evict", metadata_sha="b" * 64, incorrect_cases=baseline_bad)
+    baseline = make_result(manifest, arm="sidecar", metadata_sha="b" * 64, incorrect_cases=baseline_bad)
     candidate = make_result(manifest, incorrect_cases=candidate_bad)
     return compare_g3(dense, baseline, candidate)
+
+
+def test_runner_helpers_bind_identity_schedule_and_immutable_outputs(tmp_path: Path) -> None:
+    class Session:
+        def __init__(self) -> None:
+            self.steps: list[int] = []
+
+        def prefill(self, prompt, **kwargs):
+            assert prompt == [9]
+            return SimpleNamespace(token_id=10)
+
+        def step(self, token):
+            self.steps.append(token)
+            return SimpleNamespace(token_id=token + 1)
+
+    session = Session()
+    assert _greedy_generate(session, [9], max_new_tokens=3, eos_token_id=None) == [10, 11, 12]
+    assert session.steps == [10, 11]
+    eos_session = Session()
+    assert _greedy_generate(eos_session, [9], max_new_tokens=5, eos_token_id=11) == [10, 11]
+    assert eos_session.steps == [10]
+
+    manifest = build_manifest(target_tokens=32768)
+    _validate_task_manifest(manifest, model_sha256="m" * 64)
+    with pytest.raises(ValueError, match="model hash"):
+        _validate_task_manifest(manifest, model_sha256="x" * 64)
+    duplicate = json.loads(json.dumps(manifest))
+    duplicate["cases"][1]["case_id"] = duplicate["cases"][0]["case_id"]
+    with pytest.raises(ValueError, match="case IDs"):
+        _validate_task_manifest(duplicate, model_sha256="m" * 64)
+
+    reference = {
+        "kind": "hipengine_qwen38_dms_campaign_free_running_run",
+        "arm": "dense",
+        "model": {"sha256": "m" * 64},
+        "data_manifest": {"sha256": "d" * 64},
+        "schedule": {"free_running_tokens": 256},
+    }
+    _validate_dense_reference(
+        reference,
+        model_sha256="m" * 64,
+        data_manifest_sha256="d" * 64,
+        free_running_tokens=256,
+    )
+    with pytest.raises(ValueError, match="schedule"):
+        _validate_dense_reference(
+            reference,
+            model_sha256="m" * 64,
+            data_manifest_sha256="d" * 64,
+            free_running_tokens=128,
+        )
+
+    output = tmp_path / "result.json"
+    _write_output(output, {"ok": True})
+    assert json.loads(output.read_text()) == {"ok": True}
+    with pytest.raises(FileExistsError):
+        _write_output(output, {"ok": False})
 
 
 def test_g3_passes_when_candidate_meets_dense_everywhere() -> None:
@@ -382,7 +453,7 @@ def test_g3_fails_per_tested_length_scope() -> None:
     manifest = build_manifest()
     case = manifest["cases"][0]
     dense = make_result(manifest, arm=DENSE_ARM, metadata_sha=None)
-    baseline = make_result(manifest, arm="no_evict", metadata_sha="b" * 64)
+    baseline = make_result(manifest, arm="sidecar", metadata_sha="b" * 64)
     candidate = make_result(manifest, incorrect_cases={case["case_id"]})
     candidate["cases"][0]["target_tokens"] = 99999
     verdict = compare_g3(dense, baseline, candidate)
@@ -423,7 +494,7 @@ def test_g3_reports_baseline_separately_without_gating() -> None:
 def test_g3_rejects_identity_and_hash_mismatches() -> None:
     manifest = build_manifest()
     dense = make_result(manifest, arm=DENSE_ARM, metadata_sha=None)
-    baseline = make_result(manifest, arm="no_evict", metadata_sha="b" * 64)
+    baseline = make_result(manifest, arm="sidecar", metadata_sha="b" * 64)
     # task-manifest hash mismatch
     candidate = make_result(manifest, task_manifest_sha="z" * 64)
     verdict = compare_g3(dense, baseline, candidate)
@@ -437,7 +508,7 @@ def test_g3_rejects_identity_and_hash_mismatches() -> None:
     # evaluator hash mismatch
     candidate = make_result(manifest, evaluator_sha="z" * 64)
     verdict = compare_g3(dense, baseline, candidate)
-    assert any("evaluator hash differs" in error for error in verdict["errors"])
+    assert any("library_sha256" in error for error in verdict["errors"])
     # wrong arm and missing metadata
     candidate = make_result(manifest, arm=DENSE_ARM, metadata_sha=None)
     verdict = compare_g3(dense, baseline, candidate)
@@ -455,10 +526,31 @@ def test_g3_rejects_identity_and_hash_mismatches() -> None:
     assert any("kind" in error for error in verdict["errors"])
 
 
+def test_g3_rejects_wrong_arms_duplicate_cases_and_script_hashes() -> None:
+    manifest = build_manifest()
+    dense = make_result(manifest, arm=DENSE_ARM, metadata_sha=None)
+    baseline = make_result(manifest)
+    candidate = make_result(manifest)
+
+    wrong_arm = make_result(manifest, arm="no_evict")
+    verdict = compare_g3(dense, wrong_arm, candidate)
+    assert verdict["status"] == "rejected_identity"
+    assert any("required 'sidecar'" in error for error in verdict["errors"])
+
+    duplicate = make_result(manifest)
+    duplicate["cases"][1]["case_id"] = duplicate["cases"][0]["case_id"]
+    verdict = compare_g3(dense, baseline, duplicate)
+    assert any("duplicate case IDs" in error for error in verdict["errors"])
+
+    candidate["evaluator"]["script_sha256"] = "z" * 64
+    verdict = compare_g3(dense, baseline, candidate)
+    assert any("script_sha256" in error for error in verdict["errors"])
+
+
 def test_g3_rejects_case_set_mismatch() -> None:
     manifest = build_manifest()
     dense = make_result(manifest, arm=DENSE_ARM, metadata_sha=None)
-    baseline = make_result(manifest, arm="no_evict", metadata_sha="b" * 64)
+    baseline = make_result(manifest, arm="sidecar", metadata_sha="b" * 64)
     candidate = make_result(manifest)
     candidate["cases"] = candidate["cases"][:12]
     verdict = compare_g3(dense, baseline, candidate)
@@ -517,6 +609,7 @@ def test_cli_parsers_accept_required_arguments() -> None:
     )
     assert args.command == "build"
     assert args.target_tokens == 32768
+    assert not hasattr(args, "metadata")
 
     args = parser.parse_args(
         [
