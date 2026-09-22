@@ -40,7 +40,15 @@ def test_gate_builds_exact_requested_lengths_and_stable_prompt_manifest() -> Non
     assert all(len(row["token_ids_sha256"]) == 64 for row in manifest)
 
 
-def test_gate_counts_tensor_bytes_from_numel_and_dtype() -> None:
+def test_gate_expands_prompts_beyond_the_legacy_repeat_limit() -> None:
+    rows = [{"id": "long", "category": "code", "content": "abc"}]
+
+    prompts, manifest = gate._build_prompts(_Tokenizer(), rows, (1000,))
+
+    assert len(prompts[0]) == 1000
+    assert manifest[0]["tokens"] == 1000
+
+
     assert gate._tensor_nbytes(SimpleNamespace(numel=7, dtype=DType.FP32)) == 28
 
 

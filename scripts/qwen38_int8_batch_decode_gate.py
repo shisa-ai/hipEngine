@@ -278,8 +278,13 @@ def _build_prompts(
         target = int(length)
         if target <= 0:
             raise ValueError("prompt lengths must be positive")
-        expanded = "\n".join([str(row["content"])] * 128)
-        tokens = tuple(int(token) for token in build_chat_prompt(tokenizer, expanded))
+        repeats = 128
+        while True:
+            expanded = "\n".join([str(row["content"])] * repeats)
+            tokens = tuple(int(token) for token in build_chat_prompt(tokenizer, expanded))
+            if len(tokens) >= target or repeats >= 16384:
+                break
+            repeats *= 2
         if len(tokens) < target:
             raise ValueError(f"expanded prompt {row['id']!r} has only {len(tokens)} tokens")
         selected = tokens[:target]
