@@ -1,0 +1,27 @@
+{
+  "frames": 64,
+  "full_shape": [
+    1,
+    2,
+    122816
+  ],
+  "max_abs_full_vs_tiled": 1.3336539268493652e-06,
+  "natural_length": 122816,
+  "peak": 0.9915993809700012,
+  "required_halo_core16": 12,
+  "rms": 0.16576790809631348,
+  "rms_full_vs_tiled": 1.2850317432366865e-07,
+  "small_natural_length": 5696,
+  "small_peak": 0.48354101181030273,
+  "small_rms": 0.12944913999318283,
+  "small_shape": [
+    1,
+    2,
+    5696
+  ],
+  "tiled_shape": [
+    1,
+    2,
+    122816
+  ]
+}

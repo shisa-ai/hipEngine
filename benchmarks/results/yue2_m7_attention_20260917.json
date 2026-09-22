@@ -1,0 +1,167 @@
+{
+  "bit_parity": {
+    "fixture": "tests/fixtures/yue2/operators/nar_attention_parent.npz",
+    "result": "bit-identical to the parent kernel",
+    "shape": {
+      "ar_rows": 192,
+      "head_dim": 128,
+      "keys": 198,
+      "nar_rows": 6,
+      "num_kv_heads": 2,
+      "num_q_heads": 4,
+      "tiles": 2
+    }
+  },
+  "date": "2026-09-17",
+  "kernel_trace_smoke": {
+    "final_rows_per_block": {
+      "avg_us": 724.99,
+      "dispatches": 140,
+      "grid_xy": [
+        [
+          2048,
+          9
+        ]
+      ],
+      "total_ms": 101.499,
+      "vgpr": [
+        32
+      ]
+    },
+    "historical_parent_from_m4_entry_us": 1028.59,
+    "parent": {
+      "avg_us": 1208.26,
+      "dispatches": 140,
+      "grid_xy": [
+        [
+          2048,
+          34
+        ]
+      ],
+      "total_ms": 169.156,
+      "vgpr": [
+        24
+      ]
+    },
+    "rows_per_block_wrong_loop_order": {
+      "avg_us": 639.82,
+      "dispatches": 140,
+      "grid_xy": [
+        [
+          2048,
+          9
+        ]
+      ],
+      "total_ms": 89.574,
+      "vgpr": [
+        32
+      ]
+    },
+    "shape": {
+      "ar_rows": 545,
+      "dispatches": 140,
+      "keys": 579,
+      "rows": 34,
+      "workgroup": 128
+    },
+    "shared_weights": {
+      "avg_us": 917.06,
+      "dispatches": 140,
+      "grid_xy": [
+        [
+          2048,
+          34
+        ]
+      ],
+      "total_ms": 128.389,
+      "vgpr": [
+        24
+      ]
+    }
+  },
+  "matched_same_host_32_steps": {
+    "hipengine": {
+      "nar_seconds": 443.4,
+      "note": "replay covers NAR+VAE only; the AR stage is replayed from the recorded fixture. nar_seconds = 465.9 - 22.47.",
+      "replay_total_seconds": 465.9,
+      "semantic_tok_per_s_live_gate": 19.35,
+      "vae_seconds": 22.47
+    },
+    "reference_pinned_upstream": {
+      "e2e_seconds": 137.79846624704078,
+      "nar_seconds": 27.317111173062585,
+      "semantic_attention": "flash",
+      "semantic_execution": "cuda_graph",
+      "semantic_output_tokens": 1298,
+      "semantic_seconds": 40.597172370995395,
+      "semantic_tok_per_s": 31.972670119442967,
+      "vae_seconds": 69.09195590298623
+    }
+  },
+  "next_candidates": [
+    "VAE yue2_vae_conv1d_f32_kernel: 76 dispatches / 16.25 s of the profiled replay (213.9 ms each), the second largest consumer after the NAR attention.",
+    "NAR attention rows-per-block 8: halves K/V traffic again at 8x the reduction work.",
+    "NAR attention tile maximum via a tree reduction (fmax is exact, so it stays bit-exact): each lane still walks 128 shared-memory entries per tile serially."
+  ],
+  "parity_gates_after_change": {
+    "identical_to_pre_change_baseline": true,
+    "nar_chunk0": {
+      "cosine": 0.999926,
+      "exact_fraction": 0.162,
+      "latents_rel_l2": 0.01225,
+      "passed": true
+    },
+    "nar_condend": {
+      "cosine": 0.999962,
+      "exact_fraction": 0.215,
+      "latents_rel_l2": 0.00885,
+      "passed": true
+    },
+    "nar_multichunk": {
+      "cosine": 0.999944,
+      "exact_fraction": 0.169,
+      "latents_rel_l2": 0.01071,
+      "passed": true
+    }
+  },
+  "protocol": "yue2-m7-nar-attention-v1",
+  "provenance": {
+    "case": "mandarin-off-s1234",
+    "commands": {
+      "kernel_trace": "rocprofv3 --kernel-trace --output-format csv -d <dir> -- python3 scripts/yue2_nar_rocprof_smoke.py --compiler-version-file <file>",
+      "parity_gate": "python3 scripts/yue2_nar_gate.py [--fixture tests/fixtures/yue2/<family>]",
+      "replay_2_steps": "python3 scripts/yue2_e2e_gate.py --only mandarin-off-s1234 --steps 2 --skip-live --json <out>",
+      "replay_32_steps": "python3 scripts/yue2_e2e_gate.py --only mandarin-off-s1234 --steps 32 --skip-live"
+    },
+    "host": {
+      "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+      "gpu": "gfx1151",
+      "hostname": "zbook"
+    },
+    "note": "rocprofv3 serializes dispatches, so profiled durations are inflated and are only comparable within the same profiling session.",
+    "revision": "c994bdec299cc5295b6a3a662652c746f57ed282",
+    "workload": {
+      "frames": 1297,
+      "samples": 2490176,
+      "semantic_tokens": 1297
+    }
+  },
+  "replay_2_steps_seconds": {
+    "final_repeat": 54.5,
+    "final_rows_per_block": 51.6,
+    "final_split": {
+      "nar_seconds": 31.98,
+      "vae_seconds": 22.47
+    },
+    "parent": 78.0,
+    "rows_per_block_wrong_loop_order": 93.1,
+    "shared_weights": 76.5
+  },
+  "replay_32_steps_seconds": {
+    "expected_frames": 1297,
+    "expected_samples": 2490176,
+    "final_rows_per_block": 465.9,
+    "frames": 1297,
+    "samples": 2490176
+  }
+}

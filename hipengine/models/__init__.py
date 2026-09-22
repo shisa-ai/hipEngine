@@ -67,6 +67,7 @@ from hipengine.models.timesfm import (
     parse_timesfm_model_spec,
     validate_timesfm_weight_index,
 )
+from hipengine.models.yue2 import YUE2, YuE2Model
 from hipengine.models.timesfm3 import (
     PINNED_TIMESFM3_MODEL_ID,
     TIMESFM3,
@@ -119,6 +120,8 @@ __all__ = [
     "Qwen35ParoMoeModel",
     "Qwen4ExpGGUFModel",
     "ToyOneLayerModel",
+    "YUE2",
+    "YuE2Model",
     "PINNED_TIMESFM3_MODEL_ID",
     "TimesFM25Model",
     "TimesFM3Model",

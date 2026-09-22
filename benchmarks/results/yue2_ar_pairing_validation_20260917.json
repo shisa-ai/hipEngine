@@ -1,0 +1,96 @@
+{
+ "protocol": "yue2-ar-pairing-validation-v1",
+ "date": "2026-09-17",
+ "host": "zbook",
+ "model_dir": "/home/lhl/.cache/huggingface/hub/models--m-a-p--YuE2-3B/snapshots/14fc6c6f146441b1dd6363fcb2e01e82a6914cb7",
+ "tokens_per_run": 64,
+ "cases": {
+  "mandarin-off-s1234": {
+   "prefix_tokens": 98,
+   "negative_tokens": 12,
+   "cfg_scale": 1.01,
+   "seed": 1234,
+   "tokens_identical": true,
+   "token_count": [
+    64,
+    64
+   ],
+   "rng_state_identical": true,
+   "truncated_identical": true,
+   "first_token": [
+    [
+     163899
+    ],
+    [
+     163899
+    ]
+   ],
+   "step": {
+    "steps_recorded": [
+     128,
+     128
+    ],
+    "logits_max_abs": 0.0,
+    "logits_exact": true,
+    "cfg_scores_max_abs": 0.0,
+    "cfg_scores_exact": true,
+    "mask_identical": true,
+    "probs_max_abs": 0.0,
+    "probs_exact": true,
+    "probs_kl": 0.0,
+    "top1_agreement": true,
+    "top1_paired": 163899,
+    "top1_serial": 163899
+   },
+   "all_steps_max_abs": 0.0,
+   "all_steps_exact": true
+  },
+  "english-melody-s1234": {
+   "prefix_tokens": 693,
+   "negative_tokens": 0,
+   "cfg_scale": 1.0,
+   "seed": 1234,
+   "tokens_identical": true,
+   "token_count": [
+    64,
+    64
+   ],
+   "rng_state_identical": true,
+   "truncated_identical": true,
+   "first_token": [
+    [
+     163899
+    ],
+    [
+     163899
+    ]
+   ],
+   "step": {
+    "steps_recorded": [
+     64,
+     64
+    ],
+    "logits_max_abs": 0.0,
+    "logits_exact": true,
+    "cfg_scores_max_abs": 0.0,
+    "cfg_scores_exact": true,
+    "mask_identical": true,
+    "probs_max_abs": 0.0,
+    "probs_exact": true,
+    "probs_kl": 0.0,
+    "top1_agreement": true,
+    "top1_paired": 163899,
+    "top1_serial": 163899
+   },
+   "all_steps_max_abs": 0.0,
+   "all_steps_exact": true
+  }
+ },
+ "notes": [
+  "Both sides run the production session loop (generate_tokens) with temperature 1.0, so the sampler and the RNG stream are exercised.",
+  "Bit identity is a diagnostic here; the acceptance bar is that tokens, the RNG state and the distributions agree."
+ ],
+ "lifecycle_repeat_identical": true,
+ "lifecycle_note": "order ['mandarin-off-s1234', 'english-melody-s1234', 'mandarin-off-s1234']; each case's tokens repeated exactly",
+ "status": "pass"
+}
