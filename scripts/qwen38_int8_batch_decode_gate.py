@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import shlex
+import socket
 import subprocess
 import sys
 import time
@@ -32,7 +33,7 @@ from hipengine.core.dtype import DType  # noqa: E402
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr  # noqa: E402
 from hipengine.kernels.backends import hip_target_arch_for_backend  # noqa: E402
 from hipengine.kvcache import FixedPagedKVPolicy  # noqa: E402
-from hipengine.loading.gguf import scan_gguf  # noqa: E402
+from hipengine.loading.gguf import gguf_execution_fingerprint, scan_gguf  # noqa: E402
 from hipengine.models.kv_capabilities import KVCapabilityKey, model_artifact_identity  # noqa: E402
 from hipengine.models.qwen35 import Qwen35GGUFModel  # noqa: E402
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession  # noqa: E402
@@ -175,12 +176,14 @@ def _capture_state(
             row["key_scale"] = _device_hash(
                 session,
                 metadata.k_scale.ptr,
-                _tensor_nbytes(metadata.k_scale),
+                min(_tensor_nbytes(metadata.k_scale), int(session.position) * int(session.runner.weights.config.head_count_kv) * metadata.k_scale.dtype.itemsize)
+                if kv_live_nbytes is not None else _tensor_nbytes(metadata.k_scale),
             )
             row["value_scale"] = _device_hash(
                 session,
                 metadata.v_scale.ptr,
-                _tensor_nbytes(metadata.v_scale),
+                min(_tensor_nbytes(metadata.v_scale), int(session.position) * int(session.runner.weights.config.head_count_kv) * metadata.v_scale.dtype.itemsize)
+                if kv_live_nbytes is not None else _tensor_nbytes(metadata.v_scale),
             )
         kv.append(row)
     return {
@@ -326,6 +329,76 @@ def _quant_key(info: Any) -> str:
     return f"gguf_{name}"
 
 
+def _prepare_capability(
+    payload: Mapping[str, Any], *, rows: int, allow_rejected: bool, diagnostic_rows: int,
+) -> tuple[dict[str, Any], int, bool]:
+    """Use the runtime's operative bounds without rewriting historical evidence."""
+    capability = copy.deepcopy(dict(payload))
+    declaration = capability.get("declaration")
+    if capability.get("status") == "unsupported" or not isinstance(declaration, dict):
+        raise ValueError("no kernel implementation for requested INT8 contract")
+    admitted = int(capability.get("max_direct_rows", 0))
+    rejected = capability.get("status") == "rejected"
+    if rejected and not allow_rejected:
+        raise ValueError("rejected INT8 artifact requires --allow-rejected-artifact")
+    diagnostic = rejected or admitted < rows
+    if diagnostic:
+        if diagnostic_rows < rows:
+            raise ValueError(f"pass --diagnostic-direct-rows {rows} for diagnostic execution")
+        if int(declaration.get("max_direct_rows", 0)) < rows:
+            raise ValueError("kernel implementation does not cover requested direct width")
+        capability.update(
+            runtime_action="diagnostic_override",
+            effective_kv_storage="int8_per_token_head",
+            diagnostic_override=True,
+            promotion_eligible=False,
+        )
+    elif capability.get("runtime_action") != "admit":
+        raise ValueError("capability does not admit INT8 execution")
+    return capability, admitted, diagnostic
+
+
+def _resident_layout_audit(session: Any) -> dict[str, Any]:
+    """Audit the scratch buffers actually consumed, including legacy sessions."""
+    scratch = session.scratch
+    if scratch is None:
+        raise RuntimeError("resident scratch is unavailable")
+    int8_bytes = bf16_bytes = 0
+    for layer, (key, value) in enumerate(zip(
+        scratch.full_key_caches, scratch.full_value_caches, strict=True
+    )):
+        if key is None or value is None:
+            continue
+        if scratch.full_scale_metadata(layer) is None:
+            bf16_bytes += key.nbytes + value.nbytes
+        else:
+            int8_bytes += key.nbytes
+            if scratch.int8_kv_value_bf16:
+                bf16_bytes += value.nbytes
+            else:
+                int8_bytes += value.nbytes
+    return {
+        "source": "resident_scratch",
+        "persistent_int8_payload_bytes": int8_bytes,
+        "persistent_bf16_payload_bytes": bf16_bytes,
+        "persistent_bf16_mirror_bytes": sum(
+            buffer.nbytes for buffer in (
+                *scratch.full_bf16_mirror_key_caches,
+                *scratch.full_bf16_mirror_value_caches,
+            ) if buffer is not None
+        ),
+    }
+
+
+def _assert_mirror_free(audit: Mapping[str, Any]) -> None:
+    if (
+        int(audit.get("persistent_int8_payload_bytes", 0)) <= 0
+        or int(audit.get("persistent_bf16_payload_bytes", -1)) != 0
+        or int(audit.get("persistent_bf16_mirror_bytes", -1)) != 0
+    ):
+        raise RuntimeError(f"requested mirror-free INT8 layout was not allocated: {audit}")
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     started = time.perf_counter()
     model = args.model.expanduser().resolve()
@@ -354,6 +427,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     key = KVCapabilityKey(
         artifact_sha256=identity.sha256,
         artifact_size_bytes=identity.size_bytes,
+        artifact_execution_fingerprint=gguf_execution_fingerprint(info),
         backend=str(args.backend),
         target_arch=hip_target_arch_for_backend(str(args.backend)),
         weight_quant=_quant_key(info),
@@ -363,24 +437,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         scale_granularity="per_token_head",
     )
     resolution = Qwen35GGUFModel().resolve_kv_capability(key=key, artifact=identity)
-    if not resolution.promotion_eligible and not args.allow_rejected_artifact:
-        raise ValueError(f"artifact is not qualified for INT8 KV: {resolution.reason}")
-    capability = copy.deepcopy(resolution.as_dict())
-    evidence = capability.get("evidence")
-    if not isinstance(evidence, dict):
-        raise ValueError("capability has no evidence payload")
-    admitted_rows = int(evidence.get("max_direct_rows", 0))
-    diagnostic_override = not resolution.promotion_eligible or admitted_rows < rows
-    if diagnostic_override:
-        if int(args.diagnostic_direct_rows) < rows:
-            raise ValueError(
-                f"artifact admits c{admitted_rows}; pass --diagnostic-direct-rows {rows} for a pre-promotion gate"
-            )
-        evidence["max_direct_rows"] = rows
-        evidence["max_serial_resident_rows"] = max(
-            rows,
-            int(evidence.get("max_serial_resident_rows", 0)),
-        )
+    capability, admitted_rows, diagnostic_override = _prepare_capability(
+        resolution.as_dict(), rows=rows,
+        allow_rejected=args.allow_rejected_artifact,
+        diagnostic_rows=int(args.diagnostic_direct_rows),
+    )
+    source = capability["declaration"] if diagnostic_override else capability
 
     max_sequence_length = int(args.max_sequence_length or (max(lengths) + int(args.decode_steps) + 4))
     if max_sequence_length < max(lengths) + int(args.decode_steps) + 4:
@@ -433,6 +495,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if min(limits) < rows or not all(kernels):
             raise RuntimeError(f"direct batch route did not resolve: limits={limits}, kernels={kernels}")
 
+        layouts: list[dict[str, Any]] = []
         reference_tokens: list[list[int]] = []
         reference_logits: list[list[np.ndarray]] = []
         reference_hidden: list[list[dict[int, str]]] = []
@@ -444,6 +507,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ):
             for session, prompt in zip(sessions, prompts, strict=True):
                 first = session.prefill(prompt, return_logits=True)
+                layout = _resident_layout_audit(session)
+                if args.require_mirror_free:
+                    _assert_mirror_free(layout)
+                layouts.append(layout)
                 current = int(first.token_id)
                 tokens = [current]
                 logits = [np.asarray(first.logits, dtype=np.float32).copy()]
@@ -466,7 +533,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 reference_tokens.append(tokens)
                 reference_logits.append(logits)
                 reference_hidden.append(hidden_steps)
-            reference_state = [_capture_state(session) for session in sessions]
+            reference_state = [_capture_state(session, kv_live_nbytes=_live_kv_payload_nbytes(session)) for session in sessions]
 
             initial_tokens = []
             initial_logits = []
@@ -482,6 +549,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             manifests = []
             current = list(initial_tokens)
             for step in range(int(args.decode_steps)):
+                # Teacher-force the scalar history so later state comparisons
+                # cannot be contaminated by a previous candidate token flip.
+                current = [tokens[step] for tokens in reference_tokens]
                 results = owner.step_batch_native(
                     current,
                     sessions=sessions,
@@ -524,7 +594,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             }
                         )
                 manifests.append(copy.deepcopy(owner.last_packed_execution_manifest))
-            batch_state = [_capture_state(session) for session in sessions]
+            batch_state = [_capture_state(session, kv_live_nbytes=_live_kv_payload_nbytes(session)) for session in sessions]
 
     logit_metrics = []
     for row in range(rows):
@@ -560,11 +630,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     visible_devices = os.environ.get("HIP_VISIBLE_DEVICES")
     observed_device = _device_product_name(visible_devices)
     return {
-        "schema": 1,
+        "schema": 2,
         "kind": "qwen38_int8_row_batched_decode_correctness",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "status": "passed" if passed else "failed",
         "performance_claim": False,
+        "host": socket.gethostname(),
+        "environment": {
+            name: value for name, value in sorted(os.environ.items())
+            if name.startswith("HIPENGINE_") or name == "HIP_VISIBLE_DEVICES"
+        },
         "model": identity.as_dict(),
         "backend": {
             "backend": str(args.backend),
@@ -578,12 +653,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "admitted_max_direct_rows": admitted_rows,
             "executed_direct_rows": rows,
             "diagnostic_width_override": diagnostic_override,
-            "decode_batch_variant": evidence.get("decode_batch_variant"),
+            "decode_batch_variant": source.get("decode_batch_variant"),
         },
         "workload": {
             "rows": rows,
             "prompt_lengths": list(lengths),
             "decode_steps": int(args.decode_steps),
+            "max_sequence_length": max_sequence_length,
+            "comparison": "scalar_history_teacher_forced",
             "prompts": prompt_manifest,
         },
         "correctness": {
@@ -599,6 +676,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "state_kv_scale_mismatches": state_mismatches,
         },
         "execution": {
+            "kv_layouts": layouts,
             "route_ok": route_ok,
             "full_attention_decode_paths": sorted(
                 {str(manifest.get("full_attention_decode_path")) for manifest in manifests}
@@ -649,6 +727,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("/tmp/hipengine-hipcc-version.txt"),
     )
+    parser.add_argument("--require-mirror-free", action="store_true")
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--json", type=Path)
     return parser
