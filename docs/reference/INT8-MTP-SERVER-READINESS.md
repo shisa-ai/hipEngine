@@ -162,12 +162,18 @@ Existing direct-runtime results are not HTTP completion evidence.
 
 ## Existing Evidence
 
-The public C1/wider-owner run uses production-profile Qwen3.8-27B Q4_K_M on
-gfx1151 with capacity four, FP32 scales, uniform INT8 and prefix caching off.
-All 18 prompts pass on both endpoints against explicit AR: 108 requests across
-blocking AR, blocking MTP and SSE MTP. Current lifecycle checks cover automatic
-intent, mixed neighbors, named errors for explicit unsupported packed/text-stop
-requests, disconnect, deadline and reuse.
+The earlier public C1/wider-owner record claimed that all 18 prompts passed on both
+endpoints against explicit AR: 108 requests across blocking AR, blocking MTP and
+SSE MTP. That claim is not valid for the local gfx1151 artifact: the
+`code_lru_cache` row differs by one token (decoded as `LRU Cache` versus
+`LRUCache`) under the diagnostic INT8 route. The category gate now reports the
+first differing token and fails the row instead of allowing a misleading
+108-request summary. Treat the historical run as superseded diagnostic evidence;
+it does not qualify INT8 MTP or establish a production correctness claim. The
+independent W7900 run on its supported exact Q4_K_M artifact remains separate
+evidence and is not affected by this local artifact failure. Current lifecycle
+checks still cover automatic intent, mixed neighbors, named errors for explicit
+unsupported packed/text-stop requests, disconnect, deadline and reuse.
 
 This host's exact artifact has an existing compact-INT8 quality rejection.
 The run explicitly uses the existing KV diagnostic override and reports it
