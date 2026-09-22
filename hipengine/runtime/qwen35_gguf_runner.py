@@ -15720,9 +15720,9 @@ def _normalize_external_dms_prefill_mode(value: str) -> str:
 
 def _normalize_external_dms_decision_mode(value: str) -> str:
     mode = str(value).strip().lower().replace("-", "_")
-    if mode not in {"sidecar", "no_evict"}:
+    if mode not in {"sidecar", "no_evict", "diagnostic"}:
         raise ValueError(
-            "dms_decision_mode must be one of sidecar, no_evict; "
+            "dms_decision_mode must be one of sidecar, no_evict, diagnostic; "
             f"got {value!r}"
         )
     return mode
@@ -15741,6 +15741,7 @@ class _ExternalDMSDevicePrefillCollector:
         backend: str,
         runtime,
         decision_mode: str = "sidecar",
+        diagnostic_injection=None,
     ) -> None:
         from hipengine.kvcache.dms_device import DMSExternalLinearDeviceProjector
 
@@ -15753,6 +15754,7 @@ class _ExternalDMSDevicePrefillCollector:
         self.input_stage = str(source.config.input_stage)
         self.token_count = int(token_count)
         self.decision_mode = _normalize_external_dms_decision_mode(decision_mode)
+        self._diagnostic_injection = diagnostic_injection
         self._runtime = runtime
         self._projector = (
             DMSExternalLinearDeviceProjector(source, backend=backend)
@@ -15776,6 +15778,13 @@ class _ExternalDMSDevicePrefillCollector:
         )
         if self.decision_mode == "no_evict":
             runtime.memset(self._decisions.ptr, 0, decision_bytes)
+        elif self.decision_mode == "diagnostic":
+            if self._diagnostic_injection is None:
+                raise ValueError("diagnostic DMS mode requires a sealed injection")
+            layer_major = np.ascontiguousarray(
+                self._diagnostic_injection.eviction_mask.transpose(1, 0, 2), dtype=np.uint8
+            )
+            copy_host_to_device(self._decisions, host_array_ptr(layer_major), layer_major.nbytes, runtime=runtime)
         self._next = np.zeros(source.config.num_layers, dtype=np.int32)
         self._closed = False
 
@@ -15828,6 +15837,8 @@ class _ExternalDMSDevicePrefillCollector:
             self.token_count,
             self.num_kv_heads,
         )
+        if self.decision_mode == "diagnostic":
+            return np.asarray(self._diagnostic_injection.eviction_mask, dtype=bool)
         if (
             self.decision_mode == "sidecar"
             and self.source.config.prefill_selection_mode == "exact_budget"
@@ -15931,6 +15942,7 @@ class Qwen35GGUFResidentSession:
     dms_metadata_path: str | Path | None = None
     dms_max_new_tokens: int = 256
     dms_decision_mode: str = "sidecar"
+    dms_diagnostic_injection_path: str | Path | None = None
     # "dense_pool" (default): the pre-existing route — a full dense BF16 KV
     # pool backs prefill and a finalize-time layerwise pack moves it to the
     # compact store. "layer_outer": the 2026-09-07 review target-4 route —
@@ -16253,6 +16265,14 @@ class Qwen35GGUFResidentSession:
         self.dms_prefill_mode = _normalize_external_dms_prefill_mode(
             getattr(self, "dms_prefill_mode", "dense_pool")
         )
+        if self.dms_diagnostic_injection_path is not None and self.dms_decision_mode != "diagnostic":
+            raise ValueError(
+                "dms_diagnostic_injection_path requires dms_decision_mode=diagnostic"
+            )
+        if self.dms_decision_mode == "diagnostic" and self.dms_diagnostic_injection_path is None:
+            raise ValueError(
+                "dms_decision_mode=diagnostic requires dms_diagnostic_injection_path"
+            )
         if self.dms_prefill_mode == "layer_outer" and self.dms_metadata_path is None:
             raise ValueError(
                 "dms_prefill_mode=layer_outer requires external DMS metadata"
@@ -20728,12 +20748,39 @@ class Qwen35GGUFResidentSession:
         if self._dms_source is not None:
             if dms_capture is not None:
                 raise ValueError("external DMS serving owns the prefill capture stage")
+            diagnostic = None
+            if self.dms_decision_mode == "diagnostic":
+                from hipengine.kvcache.dms_diagnostic import load_injection
+                if self.dms_diagnostic_injection_path is None:
+                    raise ValueError("diagnostic DMS mode requires dms_diagnostic_injection_path")
+                diagnostic = load_injection(self.dms_diagnostic_injection_path)
+                diagnostic.validate(
+                    prompt=token_ids,
+                    physical_layer_ids=self._dms_source.config.physical_layer_ids,
+                    num_kv_heads=self._dms_source.config.num_kv_heads,
+                    window_size=self._dms_source.config.window_size,
+                    target_compression_ratio=self._dms_source.config.target_compression_ratio,
+                    decode_steps=int(self.dms_max_new_tokens),
+                )
+                self._dms_diagnostic_observability = {
+                    "route": "diagnostic_injected_prefill_frozen_decode",
+                    "digest": diagnostic.digest,
+                    "prompt_tokens": diagnostic.prompt_tokens,
+                    "selector_kind": diagnostic.selector_kind,
+                    "seed": diagnostic.seed,
+                    "source_sha256": diagnostic.source_sha256,
+                    "injection_path": str(Path(self.dms_diagnostic_injection_path).resolve()),
+                    "evicted_rows": int(np.count_nonzero(diagnostic.eviction_mask)),
+                    "retained_rows": int(diagnostic.eviction_mask.size - np.count_nonzero(diagnostic.eviction_mask)),
+                    "decode_retention_steps": diagnostic.decode_retention_steps,
+                }
             dms_capture = _ExternalDMSDevicePrefillCollector(
                 self._dms_source,
                 token_count=len(token_ids),
                 backend=self.backend,
                 runtime=self.runtime or get_hip_runtime(),
                 decision_mode=self.dms_decision_mode,
+                diagnostic_injection=diagnostic,
             )
             internal_dms_capture = True
         if dms_capture is not None:

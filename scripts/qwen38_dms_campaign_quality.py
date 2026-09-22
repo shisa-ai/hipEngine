@@ -95,6 +95,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="optional per-sequence prompt truncation; default uses full manifest tokens")
     parser.add_argument("--decode-steps", type=int, default=32)
     parser.add_argument("--modes", default="no_evict,sidecar")
+    parser.add_argument("--diagnostic-injection-dir", type=Path,
+                        help="sealed evaluator-only injection directory; files are <sequence_id>.json")
     parser.add_argument("--codec", choices=("bf16", "int8_evaluation"), default="bf16",
                         help="Offline candidate codec; INT8 evaluation does not qualify serving.")
     parser.add_argument("--backend", default="hip_gfx1151")
@@ -128,8 +130,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if any(category not in CATEGORIES for category in categories):
         raise ValueError("categories contains an unsupported DMS category")
     modes = _parse_csv(args.modes)
-    if not modes or any(mode not in {"no_evict", "sidecar"} for mode in modes):
-        raise ValueError("modes must be a comma-separated subset of no_evict,sidecar")
+    if not modes or any(mode not in {"no_evict", "sidecar", "diagnostic"} for mode in modes):
+        raise ValueError("modes must be a comma-separated subset of no_evict,sidecar,diagnostic")
+    if "diagnostic" in modes and args.diagnostic_injection_dir is None:
+        raise ValueError("diagnostic mode requires --diagnostic-injection-dir")
+    if "diagnostic" not in modes and args.diagnostic_injection_dir is not None:
+        raise ValueError("--diagnostic-injection-dir requires diagnostic mode")
     codec = str(args.codec)
     backend_factory = {
         "bf16": create_dms_bf16_backend,
@@ -197,6 +203,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             candidates: dict[str, dict[str, Any]] = {}
             for mode in modes:
                 mode_started = time.perf_counter()
+                diagnostic_injection_path = (
+                    Path(args.diagnostic_injection_dir) / f"{record['sequence_id']}.json"
+                    if mode == "diagnostic" else None
+                )
                 with Qwen35GGUFResidentSession(
                     args.model,
                     backend=str(args.backend),
@@ -205,6 +215,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     dms_metadata_path=args.metadata,
                     dms_max_new_tokens=decode_steps,
                     dms_decision_mode=mode,
+                    dms_diagnostic_injection_path=diagnostic_injection_path,
                     dms_backend_factory=backend_factory,
                     use_wmma_prefill=True,
                     use_gemv_decode=True,
@@ -256,6 +267,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "prefill_row": prefill_row,
                     "decode_rows": rows,
                     "dms_digest": dms_digest(snapshot),
+                    "diagnostic_observability": getattr(candidate, "_dms_diagnostic_observability", None),
+                    "diagnostic_injection": (
+                        {
+                            "path": str(diagnostic_injection_path.resolve()),
+                            "sha256": _sha256(diagnostic_injection_path),
+                        }
+                        if diagnostic_injection_path is not None else None
+                    ),
                     "timing_seconds": time.perf_counter() - mode_started,
                 }
             sequence_results[record["sequence_id"]] = {
@@ -331,6 +350,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "candidate_owner": "integrated compact device route; dense prefill pool released before decode",
             "serving_qualification": False,
             "modes": list(modes),
+            "diagnostic_injection_dir": (
+                str(Path(args.diagnostic_injection_dir).resolve())
+                if args.diagnostic_injection_dir is not None else None
+            ),
             "decode_steps": decode_steps,
             "categories": list(categories),
             "expected_sequences_per_category": int(args.expected_sequences_per_category),
