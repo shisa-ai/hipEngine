@@ -4,7 +4,9 @@ owns: Bounded DMS selector improvement campaign, experiment gates, execution pun
 ---
 # DMS selector improvement campaign
 
-Campaign state: **planned; experiments not started**. Opened 2026-09-21.
+Campaign state: **running — Phase A preflight in progress**. Opened 2026-09-21;
+execution started 2026-09-22 under run
+`selector-improvement-run-20260922-062438`.
 
 Terminology: Dynamic Memory Sparsification (DMS) selects key/value (KV) cache
 entries to retain. Q, K and V are attention queries, keys and values. W is the
@@ -143,15 +145,15 @@ not total KV, recurrent-state, allocator, or model-residency compression.
 
 | Field | Recorded value |
 | --- | --- |
-| Run ID, coder, start/end dates, state | pending |
-| Commit, scoped dirty diff, host/GPU/VRAM/backend | pending |
-| Driver, ROCm, compiler, Python, Torch, environment | pending |
-| Model/tokenizer/capture/label/baseline hashes | pending |
-| Profile, resolved variant manifest, strict fallback, codec | pending |
-| Evaluator/scorer/test hashes and approved edit boundary | pending |
-| Data manifests, source exclusions, seeds, split identities | pending |
-| Output root, free disk, pilot wall, projected GPU-hours | pending |
-| Actual cumulative GPU-hours/disk, faults/retries | pending |
+| Run ID, coder, start/end dates, state | `selector-improvement-run-20260922-062438`; `dms-selector-campaign`; started 2026-09-22; running |
+| Commit, scoped dirty diff, host/GPU/VRAM/backend | `f9451f6856772a5d624961f4dba15ca06c90eddf`; campaign paths initially clean, unrelated IQ-routing edits preserved; `zbook`; AMD Radeon 8060S unified-memory APU / 125 GiB host memory; `hip_gfx1151` |
+| Driver, ROCm, compiler, Python, Torch, environment | Linux `6.18.52-1-cachyos-lts`; HIP `7.15.26333`; AMD clang `23.0.0git` (`8f497e0`); Python `3.13.13`; Torch `2.13.0+rocm10.0.0`, HIP `7.15.26333`; `uv 0.12.3` |
+| Model/tokenizer/capture/label/baseline hashes | model `7e78da5d...e169`; sidecar `e52fc60a...d764`; capture manifest `57faa3a8...db88`; labels `2a47af11...cdfc`; every referenced capture/label shard verified; tokenizer hash pending split seal |
+| Profile, resolved variant manifest, strict fallback, codec | T3 policy experiment; c1 autoregressive BF16 KV; resolved variants/fallback pending evaluator freeze |
+| Evaluator/scorer/test hashes and approved edit boundary | pending Phase A tooling; candidate edits restricted to named DMS scripts/modules/tests/docs; evaluator freezes before P0-P7 |
+| Data manifests, source exclusions, seeds, split identities | historical v1-v4 sources located; new split manifests and normalized-text exclusions pending; training seeds 0/1 |
+| Output root, free disk, pilot wall, projected GPU-hours | `~/dms-artifacts/selector-improvement-run-20260922-062438/`; 119 GiB free at start versus 500 GiB campaign ceiling; use bounded streaming capture and verified transient cleanup or return for storage revision; pilot/projection pending |
+| Actual cumulative GPU-hours/disk, faults/retries | 0 GPU-hours; 4 KiB preflight record; no faults/retries |
 
 ## 4. Evaluation firewall and gates
 
@@ -226,12 +228,16 @@ Do not amend the evaluator to rescue a failed candidate.
 
 ## 5. Phase A — inventory, prerequisites, and baseline
 
-- [ ] Record `git status -sb`; preserve unrelated work and coordinate shared-file edits.
-- [ ] Read the authorities in Section 1 and relevant current worklog entries.
-- [ ] Verify model, sidecar, capture/label manifest and every shard checksum;
+- [x] Record `git status -sb`; preserve unrelated work and coordinate shared-file edits.
+- [x] Read the authorities in Section 1 and relevant current worklog entries.
+- [x] Verify model, sidecar, capture/label manifest and every shard checksum;
       validate source/model/tokenizer/geometry consistency and contiguous positions.
-- [ ] Check ROCm liveness and available resources; run Tier-1 allocation probing
-      before long prefills if fit is unknown, following [HARNESSES](../../benchmarks/HARNESSES.md).
+      Evidence: external `preflight/integrity.json`, SHA-256
+      `72f2cf6222d3946e67316dd301e08717644c4e0ef32f79bb95589f231938bb9f`.
+- [x] Check ROCm liveness and available resources. Same-host historical 128K
+      execution already establishes fit; no new Tier-1 probe was needed for
+      preflight. Fresh captures are storage-constrained and follow the run-card
+      streaming/cleanup condition.
 - [ ] Fill the run card; build and seal split manifests; estimate full costs.
 - [ ] Implement missing evaluation support below in separate validated units.
 - [ ] Run same-host dense and compact-no-evict controls, then frozen W8192/CR2
