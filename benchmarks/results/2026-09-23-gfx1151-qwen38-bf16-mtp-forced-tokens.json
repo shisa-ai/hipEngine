@@ -6,7 +6,7 @@
  "status": "measured_accepted",
  "performance_claim": false,
  "date": "2026-09-23",
- "git_head": "39c26b235",
+ "git_head": "861a2001009844d730d061ec1237c25845ee2772",
  "backend": "hip_gfx1151",
  "host": "gfx1151",
  "kv_storage": "bf16",
@@ -22,15 +22,16 @@
  "environment": {},
  "gate_command": "scripts/mtp_forced_token_gate.py --model ~/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --kv-storage bf16 --json /tmp/mtp-forced-bf16.json",
  "coverage": {
-  "covered": "Five requests on both arms: a three-token queue, a four-token queue longer than one verified chain, the same queue on the sampled branch (temperature 0.7), a json_object request whose object closes at its budget, and a force-sequence completion whose first token is the case prompt's own first token (taken from an unforced probe of that prompt). An unforced request runs before and after the forced ones on both arms.",
-  "not_covered": "tool_call_constraint: the field is servable and travels the same per-row text walk as json_object_close_forcing, but no live case exercises the tool branch, so the claim here is the json_object one. thinking_budget stays refused with its cause and clearing command in SAMPLED_MTP_UNSERVABLE_BLOCKERS. Multi-choice (n>1) requests are task 17."
+  "covered": "Six requests on both arms: a three-token queue, a four-token queue longer than one verified chain, the same queue on the sampled branch (temperature 0.7), a json_object request whose object closes at its budget, a required tool_call_constraint whose envelope closes at its budget, and a force-sequence completion whose first token is the case prompt's own first token (taken from an unforced probe of that prompt). An unforced request runs before and after the forced ones on both arms.",
+  "not_covered": "thinking_budget stays refused with its cause and clearing command in SAMPLED_MTP_UNSERVABLE_BLOCKERS. Multi-choice (n>1) requests are task 17. The tool case uses mode=required so the tool branch is forced; an auto-mode request that takes its plain-text branch is not exercised here."
  },
  "acceptance": {
   "queue_isolated": "The unforced request run after every forced case published the same ids as the unforced seed request on the speculative arm, and the same ids as the autoregressive arm.",
   "force_sequence_completion": "The model's own seed token plus the two queued tokens were published as [16570, 81099, 12102] on both arms, so the remainder was queued and emitted from inside the cycle.",
   "forced_prefix_published": "Every forced case published its queued tokens at the head of the output, in order, on both arms.",
   "continuation_parity": "Every greedy case published the autoregressive arm's exact ids (4 cases), so the queue was consumed exactly once and the continuation was not disturbed. The 1 sampled case(s) published the forced prefix on both arms; their continuations are different draws from the same law because the accept walk consumes the request's uniform stream per verified row.",
-  "route_ran": "Every speculative case reported gguf_specdec2_mtp2 while every autoregressive case reported a plain decode path."
+  "route_ran": "Every speculative case reported gguf_specdec2_mtp2 while every autoregressive case reported a plain decode path.",
+  "tool_call_envelope": "The required tool case published one complete canonical envelope on both arms, byte-identical: <tool_call>{\"name\":\"read\",\"arguments\":{\"path\":\"/tmp/notes.txt\"}}</tool_call>. The constraint admits only that envelope in this mode, so the branch, the per-row mask, and the forced closing suffix are all load-bearing."
  },
  "observation": {
   "queue_consumed_across_cycles": "The two-token case ran 10 cycles for 23 speculative output tokens, and the three-token case ran 18 cycles for 31: the queue outlives a single cycle and is consumed one published position at a time.",
@@ -39,29 +40,40 @@
   "route_confirmed": "Every speculative case reported execution_path=gguf_specdec2_mtp2 and every autoregressive case reported a plain decode path, so no comparison is between two autoregressive runs.",
   "defect_found_and_fixed": "The first live run of this gate caught an UnboundLocalError in the host sampled-accept path (a function-local import of the row walk shadowing the module import), which the engine contained by falling back to autoregressive decoding for that request. Fixed, and pinned by tests/test_unit_mtp_native_sampling.py test_host_sampled_accept_resolves_forced_overrides_without_consuming_them.",
   "declared_context_honored": "Both arms constructed their engine with max_sequence_length=4096 and no prepare() call, and both resident sessions were sized to 4096 rather than to automatic selection. That is the default configuration: no HIPENGINE_GGUF_AUTO_CONTEXT override is set.",
-  "json_object_close": "The json_object case published a closed object at exactly its 12-token budget and published the autoregressive arm's ids token for token (5 cycles, 10 speculative tokens). The constraint's closing suffix is what closes the object at the budget, and the autoregressive arm runs the same rule."
+  "json_object_close": "The json_object case published a closed object at exactly its 12-token budget and published the autoregressive arm's ids token for token (5 cycles, 10 speculative tokens). The constraint's closing suffix is what closes the object at the budget, and the autoregressive arm runs the same rule.",
+  "tool_branch_live": "The tool case ran 6 speculative cycles at depth 3 for 18 MTP-published tokens plus one AR step, and both arms published the same 20 ids. It failed the first time it ran, and both defects it exposed were in the route rather than in the constraint: sampled_accept_summary dropped the text observer the adapter handed it, so a cycle's later rows were masked against a DFA that had not seen the earlier tokens, and the route published a newline inside the envelope. A row advanced by such a violating draft token has no admissible law; it is unreachable, because the row before it is masked against the same DFA and excludes that token, so the walk records it as invalid rather than raising and the accept walk refuses to step onto it."
  },
  "summary": {
-  "cases": 5,
+  "cases": 6,
   "forced_cases": 3,
   "force_sequence_cases": 1,
-  "greedy_cases_identical_between_arms": 4,
+  "greedy_cases_identical_between_arms": 5,
   "cycles": {
    "forced_two_tokens": 10,
    "forced_three_tokens_greedy": 18,
    "forced_tokens_sampled": 15,
    "json_object_close": 5,
-   "force_sequence_completion": 13
+   "force_sequence_completion": 13,
+   "tool_call_required": 6
   },
   "mtp_output_tokens": {
    "forced_two_tokens": 23,
    "forced_three_tokens_greedy": 31,
    "forced_tokens_sampled": 23,
    "json_object_close": 10,
-   "force_sequence_completion": 23
+   "force_sequence_completion": 23,
+   "tool_call_required": 18
   },
   "declared_context_tokens": 4096,
-  "resident_context_tokens": 4096
+  "resident_context_tokens": 4096,
+  "ar_output_tokens": {
+   "forced_two_tokens": 24,
+   "forced_three_tokens_greedy": 32,
+   "forced_tokens_sampled": 24,
+   "json_object_close": 12,
+   "tool_call_required": 20,
+   "force_sequence_completion": 24
+  }
  },
  "gate_report": {
   "scope": "forced tokens and force-sequence completion on the sampled MTP route",

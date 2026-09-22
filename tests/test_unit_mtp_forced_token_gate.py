@@ -63,6 +63,7 @@ def _fields(name: str) -> dict:
 
 
 CLOSED_OBJECT = '{"city": "Kyoto", "unit": "c"}'
+CLOSED_ENVELOPE = '<tool_call>{"name":"read","arguments":{"path":"/tmp/notes.txt"}}</tool_call>'
 
 
 def _request(ids: tuple[int, ...], *, path: str, text: str | None = None) -> dict:
@@ -111,7 +112,13 @@ def _arm(
                 # The constraint case publishes a closed object; the gate asserts
                 # that closure, which is the observable effect of the forced
                 # closing suffix.
-                text=CLOSED_OBJECT if case.name == "json_object_close" else None,
+                text=(
+                    CLOSED_OBJECT
+                    if case.name == "json_object_close"
+                    else CLOSED_ENVELOPE
+                    if case.name == "tool_call_required"
+                    else None
+                ),
             ),
         }
     return {
@@ -291,6 +298,12 @@ class _FakeLLM:
             # fake emits one so the gate's check has something real to read.
             ids = (900, 901, 902)
             text = '{"city": "Kyoto", "unit": "c"}'
+        if getattr(sampling_params, "tool_call_constraint", None) is not None:
+            ids = (910, 911, 912)
+            text = (
+                '<tool_call>{"name":"read","arguments":{"path":"/tmp/notes.txt"}}'
+                "</tool_call>"
+            )
         return [
             GenerationOutput(
                 text=text,
@@ -419,3 +432,36 @@ def test_a_case_that_carries_a_sampler_field_sends_it(
         },
     )
     assert raw["cases"]["json_object_close"]["request"]["text"] == CLOSED_OBJECT
+
+
+def test_the_tool_case_carries_a_required_constraint_and_is_gated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The tool branch needs a constraint that admits only the envelope."""
+
+    case = next(item for item in gate.CASES if item.name == "tool_call_required")
+    assert case.extras["tool_call_constraint"]["mode"] == "required"
+    assert case.extras["tool_call_constraint"]["tool_names"] == ("read",)
+    assert case.temperature == 0.0
+
+    import hipengine.llm
+
+    monkeypatch.setattr(hipengine.llm, "LLM", _FakeLLM)
+    monkeypatch.setattr(gate, "_preflight_memory", lambda: 100.0)
+    raw = gate._run_arm(
+        "fake-model",
+        serving="auto",
+        mtp=True,
+        kwargs={
+            "backend": "hip_gfx1151",
+            "kv_storage": "bf16",
+            "prefix_cache": "off",
+            "max_sequence_length": DECLARED_CONTEXT,
+        },
+    )
+    assert raw["cases"]["tool_call_required"]["request"]["text"] == CLOSED_ENVELOPE
+    # And the gate's own check rejects an envelope that never closed.
+    broken = _arm(arm="mtp")
+    broken["cases"]["tool_call_required"]["request"]["text"] = "<tool_call>"
+    with pytest.raises(AssertionError, match="tool_envelope_was_not_completed"):
+        gate._check(broken, arm="mtp")
