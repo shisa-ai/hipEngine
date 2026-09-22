@@ -1,0 +1,54 @@
+{
+  "date": "2026-09-17",
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD Radeon 8060S (gfx1151, Ryzen AI MAX+ 395, 40 CU, unified LPDDR5X)",
+    "note": "Every figure is gfx1151. No gfx1100 hardware was available."
+  },
+  "kernel": "yue2_nar_attention_wmma_kernel (kernels/hip_gfx1100/yue2/nar_wmma.hip)",
+  "change": "A second, tensor-core NAR attention for the production head geometry (16 query heads over 8 key/value heads at head_dim 128). f16 WMMA operands with f32 score accumulation, a 16-key tile per lane-half reduction, K and V sharing one 64-key staged buffer, and an f16 output accumulator rescaled by the online softmax -- the arithmetic class of the pinned upstream's own attention kernel. Fragment contracts follow the in-tree laguna_flash_attention_prefill.hip, which preserves llama.cpp's HIP fattn-mma-f16 design. nar_attention_f32 stays registered as the strict fallback (HIPENGINE_YUE2_NAR_ATTENTION=scalar) because this changes arithmetic by design.",
+  "why": "Profiling the pinned upstream on this case shows its attention kernel (`attn_fwd`, grid (2688, 16, 1), 1792 calls at 2.310 ms) does the whole 32-step solve's attention in 4.14 s, i.e. 12.4 TFLOP/s on tensor cores, against the scalar kernel's ~39 s. That distance is arithmetic class, not loop structure: scalar FP32 peak on 40 CUs is 25.6 TFLOP/s and the scalar kernel keeps roughly a quarter of its instructions as useful arithmetic after the softmax reductions, the weight exchange and the loads, so even a perfect scalar kernel lands near 6 TFLOP/s (~8.5 s).",
+  "kernel_time_at_production_shape": {
+    "shape": "1299 rows, 1396 AR keys (2695 total), 16 query heads, 8 key/value heads, head_dim 128",
+    "command": "python3 scripts/yue2_attention_bench.py --kernel {scalar,wmma} --repeat 15, alternating in one session",
+    "scalar_ms": [20.08, 20.72],
+    "wmma_ms": [4.20, 3.85],
+    "ratio": 5.1,
+    "minima_ms": {"scalar": [16.18, 16.33], "wmma": [3.78, 3.74]},
+    "reference_ms": 2.310,
+    "note": "The reference figure is its own attn_fwd dispatch from the rocprofv3 kernel trace of the same case, so the tensor-core kernel is within 1.7-1.8x of it."
+  },
+  "numerical_agreement_with_the_scalar_kernel": {
+    "note": "The scalar kernel is bit-exact to the recorded parent, so it is the oracle for what this variant costs numerically.",
+    "worst_across_shapes": {"relative_l2": 0.00540, "cosine": 0.99998564, "max_abs": 0.00151},
+    "production_shape": {"relative_l2": 0.00540, "cosine": 0.99998564},
+    "unit_test": "tests/test_unit_yue2_nar_kernels.py::test_wmma_attention_matches_the_numpy_reference asserts rel L2 < 0.02 and cosine > 0.9995 against an independent FP64 NumPy reference over seven shapes"
+  },
+  "production_profile_gates": {
+    "thresholds": {"max_relative_l2": 0.05, "min_cosine": 0.999},
+    "chunk0": {"latents_relative_l2": 0.01042, "cosine": 0.999947, "worst_velocity_relative_l2": 0.01807, "previous_scalar": {"latents_relative_l2": 0.01225, "cosine": 0.999926}},
+    "multi_chunk": {"latents_relative_l2": 0.01054, "cosine": 0.999946, "worst_velocity_relative_l2": 0.02018, "previous_scalar": {"latents_relative_l2": 0.01071, "cosine": 0.999944}},
+    "restricted_visibility": {"latents_relative_l2": 0.00938, "cosine": 0.999957, "worst_velocity_relative_l2": 0.01557, "previous_scalar": {"latents_relative_l2": 0.00885, "cosine": 0.999962}},
+    "conclusion": "All three M4 solver gates pass. Two improve; the restricted-visibility case is 0.00938 against the scalar path's 0.00885 and still more than five times inside the 0.05 ceiling. The tensor-core path tracks the reference's arithmetic class more closely, which is why chunk0 improves."
+  },
+  "end_to_end": {
+    "case": "mandarin-off-s1234",
+    "two_step_solve_seconds": {"scalar": 6.69, "wmma": 5.14},
+    "product_32_step_solve_seconds": {"scalar": 54.76, "wmma": 32.22},
+    "product_32_step_replay_seconds": {"scalar": 74.84, "wmma": 60.28},
+    "reference_32_step_solve_seconds": 27.32,
+    "solve_ratio_to_reference": 1.18,
+    "note": "The decode stage is unaffected by this change and its own time moved between runs (20.08 s in the scalar run, 28.06 s in this one), so the solve is the like-for-like figure and the replay total carries that variance."
+  },
+  "solver_composition_at_32_steps": {
+    "attention_seconds": 9.6,
+    "projections_seconds": 15,
+    "conditioning_prefill_and_other_seconds": 7.6,
+    "method": "Two solve lengths at the same configuration: 32.22 = 32a + x and 5.14 = 2a + x give a = 0.903 s per step and x = 3.33 s of step-independent conditioning prefill.",
+    "note": "The projections are now the largest single item, at ~15 s against the reference's own ~23 s of GEMMs and other work for the same case."
+  },
+  "next_candidates": [
+    "The tensor-core kernel is 1.7x the reference's attention. The remaining levers are its own tuning: 64 keys per online-softmax batch against the reference's grid, two blocks per CU, and whether the f16 output accumulator can give way to an f32 one for the value product without losing occupancy.",
+    "The projections at ~15 s are now the larger half of the solver and run at hipBLASLt's rate; that is a different problem from this one."
+  ]
+}

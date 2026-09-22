@@ -1,0 +1,91 @@
+{
+ "protocol": "yue2-ar-fixed-token-v1",
+ "case": "mandarin-off-s1234",
+ "decode_steps": 1296,
+ "prefix_tokens": 98,
+ "negative_tokens": 12,
+ "prefix_digest": "195afbd67b12e282",
+ "negative_digest": "b6a630dd500c30e4",
+ "trajectory_digest": "6a308700b3b949ac",
+ "guidance": 1.01,
+ "host": {
+  "hostname": "zbook",
+  "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "gpu": "gfx1151"
+ },
+ "torch_imported_on_hipengine_side": false,
+ "hipengine": {
+  "protocol": "yue2-ar-fixed-token-v1",
+  "side": "hipengine",
+  "case": "mandarin-off-s1234",
+  "steps": 1297,
+  "prefix_tokens": 98,
+  "negative_tokens": 12,
+  "prefix_digest": "195afbd67b12e282",
+  "negative_digest": "b6a630dd500c30e4",
+  "trajectory_digest": "6a308700b3b949ac",
+  "guidance": 1.01,
+  "host": {
+   "hostname": "zbook",
+   "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+   "gpu": "gfx1151"
+  },
+  "torch_imported": false,
+  "revision": "99a115f75dd0ce0930f0001ae4eeb4bfa9a91933",
+  "prefill_seconds": 0.16107618995010853,
+  "decode_seconds": 71.20209441194311,
+  "repeat_prefill_seconds": [
+   0.15549165604170412
+  ],
+  "repeat_decode_seconds": [
+   71.29394738399424
+  ],
+  "decode_seconds_per_pass": [
+   71.20209441194311,
+   71.29394738399424
+  ],
+  "ms_per_decode_step_per_pass": [
+   54.939887663536354,
+   55.010761870365926
+  ]
+ },
+ "reference": {
+  "protocol": "yue2-ar-fixed-token-v1",
+  "side": "reference",
+  "case": "mandarin-off-s1234",
+  "steps": 1297,
+  "prefix_tokens": 98,
+  "negative_tokens": 12,
+  "prefix_digest": "195afbd67b12e282",
+  "negative_digest": "b6a630dd500c30e4",
+  "trajectory_digest": "6a308700b3b949ac",
+  "guidance": 1.01,
+  "prefill_seconds": 0.2260810190346092,
+  "decode_seconds": 40.18461981497239,
+  "repeat_prefill_seconds": [
+   0.22775316901970655
+  ],
+  "repeat_decode_seconds": [
+   40.02488172997255
+  ],
+  "execution": "cuda_graph",
+  "torch_version": "2.13.0+rocm10.0.0",
+  "device": "AMD Radeon 8060S Graphics",
+  "decode_seconds_per_pass": [
+   40.18461981497239,
+   40.02488172997255
+  ],
+  "ms_per_decode_step_per_pass": [
+   31.006651091799686,
+   30.883396396583755
+  ]
+ },
+ "comparison": {
+  "ms_per_decode_step": {
+   "hipengine": 54.939887663536354,
+   "reference": 30.883396396583755
+  },
+  "reference_advantage": 1.7789457790858025,
+  "note": "Both sides drove the same recorded token trajectory for the same number of steps with the same 98-token positive and 12-token negative prefixes and the same two CFG branches, so each step is the same work. Sampling is excluded by design (the token is recorded), so this is model work only; the product loop adds the host sampling path measured by scripts/yue2_ar_sampling_cost.py."
+ }
+}

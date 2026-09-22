@@ -1,0 +1,158 @@
+{
+  "english-full-s1234": {
+    "abc_tokens": 685,
+    "audio_seconds": 74.83866666666667,
+    "identity": "4e5266a117a15b0e1547155f19eea520cc8a31fa5c0fd20ee3a62824a083d7f6",
+    "latent_frames": 1871,
+    "prefix_tokens": 796,
+    "seconds": 295.070700729033,
+    "semantic_tokens": 1871,
+    "truncated": {
+      "abc": false,
+      "semantic": false
+    }
+  },
+  "english-full-s5678": {
+    "abc_tokens": 562,
+    "audio_seconds": 68.15866666666666,
+    "identity": "702d548a033519f570741395a14934fe05c111967443806447fb78722940a01c",
+    "latent_frames": 1704,
+    "prefix_tokens": 673,
+    "seconds": 339.68926925805863,
+    "semantic_tokens": 1704,
+    "truncated": {
+      "abc": false,
+      "semantic": false
+    }
+  },
+  "english-melody-s1234": {
+    "abc_tokens": 682,
+    "audio_seconds": 82.43866666666666,
+    "identity": "11c4a949bbbf8da1d7d88feca9a9d401305edfceb5be6469c6cd233239f3fb6b",
+    "latent_frames": 2061,
+    "prefix_tokens": 794,
+    "seconds": 291.32098565704655,
+    "semantic_tokens": 2061,
+    "truncated": {
+      "abc": false,
+      "semantic": false
+    }
+  },
+  "english-melody-s5678": {
+    "abc_tokens": 382,
+    "audio_seconds": 59.958666666666666,
+    "identity": "edd285ee461b803cc95213bb396baaa2e267b93fe133d99d42b0ba6ae43c0f1d",
+    "latent_frames": 1499,
+    "prefix_tokens": 494,
+    "seconds": 176.41865787899587,
+    "semantic_tokens": 1499,
+    "truncated": {
+      "abc": false,
+      "semantic": false
+    }
+  },
+  "english-off-s1234": {
+    "abc_tokens": 0,
+    "audio_seconds": 60.678666666666665,
+    "identity": "423cb6e7cab830969390923b62930498a111d93ea3be82d2836b4c46814b0091",
+    "latent_frames": 1517,
+    "prefix_tokens": 101,
+    "seconds": 280.97724907903466,
+    "semantic_tokens": 1517,
+    "truncated": {
+      "abc": false,
+      "semantic": false
+    }
+  },
+  "english-off-s5678": {
+    "abc_tokens": 0,
+    "audio_seconds": 87.67866666666667,
+    "identity": "2498cdf3772f7ec50d07fa75d1d8de99e557965c86e94d59265df573bc9c71d0",
+    "latent_frames": 2192,
+    "prefix_tokens": 101,
+    "seconds": 286.11273474106565,
+    "semantic_tokens": 2192,
+    "truncated": {
+      "abc": false,
+      "semantic": false
+    }
+  },
+  "mandarin-full-s1234": {
+    "abc_tokens": 611,
+    "audio_seconds": 76.79866666666666,
+    "identity": "79cb89f75eacda9f3c2690ffc7dfad2328741bb4570300ade6019116dbf16b1c",
+    "latent_frames": 1920,
+    "prefix_tokens": 719,
+    "seconds": 644.727503378992,
+    "semantic_tokens": 1920,
+    "truncated": {
+      "abc": false,
+      "semantic": false
+    }
+  },
+  "mandarin-full-s5678": {
+    "abc_tokens": 631,
+    "audio_seconds": 67.67866666666667,
+    "identity": "22d317130c76a16a4f36e3d5f80397022aba82b1a9e8617ce9a7d3f6320d4d21",
+    "latent_frames": 1692,
+    "prefix_tokens": 739,
+    "seconds": 307.78536778199486,
+    "semantic_tokens": 1692,
+    "truncated": {
+      "abc": false,
+      "semantic": false
+    }
+  },
+  "mandarin-melody-s1234": {
+    "abc_tokens": 408,
+    "audio_seconds": 72.27866666666667,
+    "identity": "a07c5435b9c08e2a8aca4396a4c1f900808101dd35a106af46035cd8c3a36419",
+    "latent_frames": 1807,
+    "prefix_tokens": 517,
+    "seconds": 316.1820181730436,
+    "semantic_tokens": 1807,
+    "truncated": {
+      "abc": false,
+      "semantic": false
+    }
+  },
+  "mandarin-melody-s5678": {
+    "abc_tokens": 516,
+    "audio_seconds": 77.71866666666666,
+    "identity": "30534f3c6dd1f3fd0ee3a3fb21472dd3b80bd962f34f1f772d81d9c490e92913",
+    "latent_frames": 1943,
+    "prefix_tokens": 625,
+    "seconds": 399.56038047606125,
+    "semantic_tokens": 1943,
+    "truncated": {
+      "abc": false,
+      "semantic": false
+    }
+  },
+  "mandarin-off-s1234": {
+    "abc_tokens": 0,
+    "audio_seconds": 51.87866666666667,
+    "identity": "46ace6feb292750408f2463b579edf194a69bd7226f48326cb44543e119c1d81",
+    "latent_frames": 1297,
+    "prefix_tokens": 98,
+    "seconds": 138.05976303794887,
+    "semantic_tokens": 1297,
+    "truncated": {
+      "abc": false,
+      "semantic": false
+    }
+  },
+  "mandarin-off-s5678": {
+    "abc_tokens": 0,
+    "audio_seconds": 59.87866666666667,
+    "identity": "ad24abf8bfbc89961960c6eb74265eb8672593c6c51fe45325c411fd9dd8487c",
+    "latent_frames": 1497,
+    "prefix_tokens": 98,
+    "seconds": 275.351291998988,
+    "semantic_tokens": 1497,
+    "truncated": {
+      "abc": false,
+      "semantic": false
+    }
+  }
+}
