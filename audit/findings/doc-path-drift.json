@@ -1,7 +1,7 @@
 {
   "kind": "doc-path-drift",
   "meta": {
-    "paths_checked": 1556,
+    "paths_checked": 1563,
     "skipped_as_illustrative": 1350,
     "exempt": [
       "docs/campaigns/",
@@ -3821,43 +3821,6 @@
       },
       "id": "doc-path-drift/docs/reference/ROCM-AI.md:679:kernels/cpu_reference",
       "evidence_hash": "0b573531c4b8"
-    },
-    {
-      "kind": "doc-path-drift",
-      "key": "docs/reference/SAMPLING.md:646:kernels/hip_gfx1100/linear/lm_head.hip",
-      "title": "names `kernels/hip_gfx1100/linear/lm_head.hip`, which is actually at `hipengine/kernels/hip_gfx1100/linear/lm_head.hip`",
-      "location": "docs/reference/SAMPLING.md:646",
-      "evidence": {
-        "fix": "Change `kernels/hip_gfx1100/linear/lm_head.hip` to `hipengine/kernels/hip_gfx1100/linear/lm_head.hip`.",
-        "why": "documented path does not exist, but the file is present elsewhere",
-        "target": "kernels/hip_gfx1100/linear/lm_head.hip",
-        "doc": "docs/reference/SAMPLING.md",
-        "actual": [
-          "hipengine/kernels/hip_gfx1100/linear/lm_head.hip"
-        ]
-      },
-      "signals": [
-        "documented path does not exist, but the file is present elsewhere"
-      ],
-      "hints": {
-        "anchor": "docs/reference/SAMPLING.md",
-        "refs": [
-          "docs/reference/SAMPLING.md:646:kernels/hip_gfx1100/linear/lm_head.hip"
-        ],
-        "tokens": [
-          "actually",
-          "hip",
-          "hip_gfx1100",
-          "hipengine",
-          "kernels",
-          "linear",
-          "lm_head",
-          "names",
-          "which"
-        ]
-      },
-      "id": "doc-path-drift/docs/reference/SAMPLING.md:646:kernels/hip_gfx1100/linear/lm_head.hip",
-      "evidence_hash": "49b121d6c44c"
     },
     {
       "kind": "doc-path-drift",

@@ -8748,15 +8748,20 @@ every one of its 162 cycles. Remove the flag and
 second protocol or host, or once a wider-group route actually beats the batch AR
 decode; until then the flag is the only way to reproduce the rejected arm.
 
-**Sampled-route finish-rule blockers (open).** The route's servable blocker set is the sampling law and nothing else
-(`temperature`, `logit_bias`, penalties, `suppress_token_ids`) plus
-`ignore_eos`. `min_tokens`, `eos_token_id`, `stop_token_ids`, and
-`stop_token_sequences` are unservable until the route implements the
-autoregressive finish rule: the cycle commit ends a row only when its last
-visible token is the row's EOS, and a stochastic accept has no
-`greedy_chain_eos_limit` bound, so a stop token or EOS can land mid-cycle.
-Moving them back to servable requires a finish-rule gate, not just the
-induced-law gate.
+**Sampled-route finish-rule blockers — resolved (2026-09-22).** The route's
+servable blocker set is the sampling law and nothing else
+(`temperature`, `logit_bias`, penalties, `suppress_token_ids`), plus the
+finish-rule relaxations the cycle commit honors: `ignore_eos`, `min_tokens`,
+`eos_token_id`, `stop_token_ids`, and `stop_token_sequences`. The commit applies
+the autoregressive finish rule to the whole verified chain through
+`hipengine/speculative/streaming.py` `limit_chain_accept_finish`, selecting the
+terminal prefix and reporting `eos` or `stop`, so a stop token or EOS that lands
+mid-cycle publishes nothing after it.
+Evidence: `benchmarks/results/2026-09-22-gfx1151-qwen38-int8-mtp-finish-rule.json`
+and `benchmarks/results/2026-09-22-gfx1151-qwen38-bf16-mtp-finish-rule.json`
+(`scripts/mtp_finish_rule_gate.py`, with `tests/test_unit_mtp_finish_rule_gate.py`
+driving each check to fail against a server that violates it).
+Source: `worklog/entries/20260922T140534.086274Z-lhl-mtp-finish-rule-c10d7c.md`.
 
 **Sampled-route debug traces (env-gated, added 2026-09-18; retained 2026-09-19).**
 `HIPENGINE_DEBUG_SAMPLED_ROUTE` gates stderr traces that name every gate on this

@@ -3459,7 +3459,7 @@
       "kind": "ledger",
       "key": "a-failed-wide-startup-probe-leaves-the-process-una-48dd869443e1",
       "title": "A failed wide startup probe leaves the process unable to allocate the next stage (open 2026-09-21)",
-      "location": "docs/REFACTOR.md:8862",
+      "location": "docs/REFACTOR.md:8867",
       "evidence": {
         "paths_named": [
           "hipengine/generation/qwen35_gguf.py",
@@ -3494,7 +3494,7 @@
         ]
       },
       "id": "ledger/a-failed-wide-startup-probe-leaves-the-process-una-48dd869443e1",
-      "evidence_hash": "6fa2c5cd3c78"
+      "evidence_hash": "907270768e7a"
     },
     {
       "kind": "ledger",
@@ -4438,7 +4438,7 @@
       "kind": "ledger",
       "key": "full-vocabulary-native-sampler-fallback-and-gguf-p-3d651e7da2c1",
       "title": "Full-vocabulary native sampler fallback and GGUF placement (2026-09-21)",
-      "location": "docs/REFACTOR.md:8804",
+      "location": "docs/REFACTOR.md:8809",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -4469,7 +4469,7 @@
         ]
       },
       "id": "ledger/full-vocabulary-native-sampler-fallback-and-gguf-p-3d651e7da2c1",
-      "evidence_hash": "adf93ef0acdf"
+      "evidence_hash": "f7a343c05eea"
     },
     {
       "kind": "ledger",
@@ -5801,7 +5801,7 @@
       "kind": "ledger",
       "key": "hipengine-gguf-gapped-gather-kill-switch-for-the-g-f70bcb5f7712",
       "title": "`HIPENGINE_GGUF_GAPPED_GATHER` kill-switch for the gapped slot-local gather route (added 2026-09-19)",
-      "location": "docs/REFACTOR.md:8733",
+      "location": "docs/REFACTOR.md:8738",
       "evidence": {
         "paths_named": [],
         "paths_missing": [],
@@ -5836,7 +5836,7 @@
         ]
       },
       "id": "ledger/hipengine-gguf-gapped-gather-kill-switch-for-the-g-f70bcb5f7712",
-      "evidence_hash": "9d38667119f0"
+      "evidence_hash": "7c6bdd698b21"
     },
     {
       "kind": "ledger",
@@ -10683,10 +10683,16 @@
       "location": "docs/REFACTOR.md:8668",
       "evidence": {
         "paths_named": [
+          "benchmarks/results/2026-09-22-gfx1151-qwen38-bf16-mtp-finish-rule.json",
+          "benchmarks/results/2026-09-22-gfx1151-qwen38-int8-mtp-finish-rule.json",
           "hipengine/generation/engine_loop.py",
           "hipengine/generation/qwen35_gguf.py",
           "hipengine/generation/qwen35_gguf_mtp2.py",
-          "qwen35_gguf_mtp2.py"
+          "hipengine/speculative/streaming.py",
+          "qwen35_gguf_mtp2.py",
+          "scripts/mtp_finish_rule_gate.py",
+          "tests/test_unit_mtp_finish_rule_gate.py",
+          "worklog/entries/20260922T140534.086274Z-lhl-mtp-finish-rule-c10d7c.md"
         ],
         "paths_missing": [
           "qwen35_gguf_mtp2.py"
@@ -10697,20 +10703,26 @@
         ],
         "flags_unread": [],
         "age_days": 3,
-        "body_chars": 4319
+        "body_chars": 4715
       },
       "signals": [
-        "names 4 path(s), 1 no longer exist: qwen35_gguf_mtp2.py"
+        "names 10 path(s), 1 no longer exist: qwen35_gguf_mtp2.py"
       ],
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
           "HIPENGINE_DEBUG_SAMPLED_ROUTE",
           "HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS",
+          "benchmarks/results/2026-09-22-gfx1151-qwen38-bf16-mtp-finish-rule.json",
+          "benchmarks/results/2026-09-22-gfx1151-qwen38-int8-mtp-finish-rule.json",
           "hipengine/generation/engine_loop.py",
           "hipengine/generation/qwen35_gguf.py",
           "hipengine/generation/qwen35_gguf_mtp2.py",
-          "qwen35_gguf_mtp2.py"
+          "hipengine/speculative/streaming.py",
+          "qwen35_gguf_mtp2.py",
+          "scripts/mtp_finish_rule_gate.py",
+          "tests/test_unit_mtp_finish_rule_gate.py",
+          "worklog/entries/20260922T140534.086274Z-lhl-mtp-finish-rule-c10d7c.md"
         ],
         "tokens": [
           "2026",
@@ -10723,7 +10735,7 @@
         ]
       },
       "id": "ledger/priming-source-refusals-that-still-zero-the-budget-1ee82413bff2",
-      "evidence_hash": "bfca414cb250"
+      "evidence_hash": "914ca43282ee"
     },
     {
       "kind": "ledger",
@@ -10759,7 +10771,7 @@
       "kind": "ledger",
       "key": "provider-prefix-checkpoint-rollback-c64d0b1836f6",
       "title": "Provider Prefix Checkpoint Rollback",
-      "location": "docs/REFACTOR.md:8831",
+      "location": "docs/REFACTOR.md:8836",
       "evidence": {
         "paths_named": [
           "scripts/int8_mtp_prefix_gate.py"
@@ -10789,7 +10801,7 @@
         ]
       },
       "id": "ledger/provider-prefix-checkpoint-rollback-c64d0b1836f6",
-      "evidence_hash": "0cdf66dc7c40"
+      "evidence_hash": "8bbec35e35c5"
     },
     {
       "kind": "ledger",
@@ -13949,7 +13961,7 @@
       "kind": "ledger",
       "key": "startup-scratch-probe-warms-the-packed-route-only-b123a424fa2c",
       "title": "Startup scratch probe warms the packed route only when N sessions fit (open 2026-09-21)",
-      "location": "docs/REFACTOR.md:8846",
+      "location": "docs/REFACTOR.md:8851",
       "evidence": {
         "paths_named": [
           "hipengine/server/api.py"
@@ -13980,7 +13992,7 @@
         ]
       },
       "id": "ledger/startup-scratch-probe-warms-the-packed-route-only-b123a424fa2c",
-      "evidence_hash": "5e819205247c"
+      "evidence_hash": "51700ec419bb"
     },
     {
       "kind": "ledger",
@@ -14270,7 +14282,7 @@
       "kind": "ledger",
       "key": "two-mtp-entry-points-disagree-on-the-sampling-cont-dbe10f87f2e1",
       "title": "Two MTP entry points disagree on the sampling contract (open 2026-09-19)",
-      "location": "docs/REFACTOR.md:8770",
+      "location": "docs/REFACTOR.md:8775",
       "evidence": {
         "paths_named": [
           "qwen35_gguf_mtp2.py"
@@ -14304,7 +14316,7 @@
         ]
       },
       "id": "ledger/two-mtp-entry-points-disagree-on-the-sampling-cont-dbe10f87f2e1",
-      "evidence_hash": "bafc2d1a047d"
+      "evidence_hash": "28703f127e17"
     },
     {
       "kind": "ledger",

@@ -110,9 +110,12 @@ sampling keeps its CPU acceptance oracle. Eager native verification also
 consumes resident GPU logits; only the serial debugging oracle needs a
 full-logit readback, which is reported in telemetry. The
 standalone coupled-accept kernels remain numerical test oracles, not the
-default native serving implementation. Logprob responses, token-stop
-constraints, and other unsupported sampled-MTP fields fall back to ordinary
-decoding before speculative execution.
+default native serving implementation. Token-stop constraints are served: the
+cycle commit applies the autoregressive finish rule -- stop token ids,
+multi-token stop sequences, and the `min_tokens` EOS floor -- to the whole
+verified chain and selects its terminal prefix. Logprob responses and other
+unsupported sampled-MTP fields fall back to ordinary decoding before
+speculative execution.
 
 Concurrent groups share the packed target forward and selected-state commit,
 but sample each request's verified row span with its own seed and absolute
@@ -643,7 +646,7 @@ fully vectorized at first:
 | GGUF guards | `hipengine/generation/qwen35_gguf.py` | Follow shared sampler extraction after PARO path is green. |
 | PARO projection | `hipengine/runtime/qwen35_paro_runner.py` | Split logits projection from argmax selection. |
 | Batch scheduler | `hipengine/generation/batch_scheduler.py` | Extend per-row sampler params/history and finish reasons. |
-| Native kernels | `kernels/hip_gfx1100/linear/lm_head.hip` and new sampler kernels if needed | Add GPU processors/top-k/softmax/RNG/sample selection under registry keys. |
+| Native kernels | `hipengine/kernels/hip_gfx1100/linear/lm_head.hip` and new sampler kernels if needed | Add GPU processors/top-k/softmax/RNG/sample selection under registry keys. |
 | Tests | `tests/test_sampling*.py`, server tests, Qwen smoke tests | Add pure CPU sampler tests, request plumbing tests, and GPU1 smoke gates. |
 
 ## Implementation tracks
