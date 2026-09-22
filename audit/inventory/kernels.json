@@ -2,7 +2,7 @@
   "kind": "kernels",
   "meta": {
     "sources": 270,
-    "registry_keys": 309,
+    "registry_keys": 310,
     "backends": [
       "cpu_reference",
       "cuda_sm120a",
@@ -3630,7 +3630,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".hip",
-        "lines": 456,
+        "lines": 501,
         "referrers": 5,
         "runtime_referrers": [],
         "test_referrers": [
@@ -3655,7 +3655,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_norm.hip",
-      "evidence_hash": "070f857a101e"
+      "evidence_hash": "1be02266d24f"
     },
     {
       "kind": "kernel",
@@ -3665,7 +3665,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 386,
+        "lines": 427,
         "referrers": 4,
         "runtime_referrers": [],
         "test_referrers": [
@@ -3689,7 +3689,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_norm.py",
-      "evidence_hash": "6fa672c5dc8f"
+      "evidence_hash": "64f887747da7"
     },
     {
       "kind": "kernel",

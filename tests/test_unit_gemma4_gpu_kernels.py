@@ -162,6 +162,7 @@ if _HIP_AVAILABLE:
         gemma4_rmsnorm_f32w_f32,
         gemma4_rmsnorm_weightless_bf16,
         gemma4_router_prescale_bf16,
+        gemma4_scale_bf16,
     )
 
 
@@ -241,6 +242,7 @@ def test_library_builds_and_exports_the_family(device) -> None:
         "hipengine_gemma4_add_rmsnorm_scale_bf16",
         "hipengine_gemma4_expert_weight_scale_f32",
         "hipengine_gemma4_branch_add_bf16",
+        "hipengine_gemma4_scale_bf16",
     ):
         assert hasattr(library, symbol), symbol
 
@@ -451,6 +453,50 @@ def test_branch_add_sums_the_dense_and_expert_branches(device) -> None:
 
 
 @_needs_hip
+@pytest.mark.parametrize("scale", [1.0, 53.066, 0.5, -2.0, 0.0])
+def test_scale_multiplies_a_row_by_a_scalar(device, scale: float) -> None:
+    """The embedding scale, against a NumPy multiply.
+
+    ``sqrt(hidden_size)`` for the real model is 53.066, so that is the case that
+    matters; the others check that the multiply is a multiply rather than
+    something that happens to be right at one factor. ``0.0`` is included
+    because the reference can produce it and a kernel that special-cased zero
+    would be wrong in a way a non-zero test would not see.
+    """
+
+    rng = np.random.default_rng(23)
+    rows, hidden_size = 7, 96
+    x = rng.standard_normal((rows, hidden_size)).astype(np.float32)
+
+    xp = device.put(_to_bf16_bits(x))
+    out = device.out((rows, hidden_size), np.uint16)
+    gemma4_scale_bf16(xp, out, rows, hidden_size, scale)
+    got = _from_bf16_bits(device.get(out, (rows, hidden_size), np.uint16))
+
+    # The oracle multiplies the bf16-rounded input, not the original f32, so the
+    # only error the test attributes to the kernel is the output rounding.
+    expected = _from_bf16_bits(_to_bf16_bits(x)) * np.float32(scale)
+    assert np.allclose(got, expected, atol=_BF16_ATOL, rtol=_BF16_RTOL)
+
+
+@_needs_hip
+def test_scale_is_correct_in_place(device) -> None:
+    """``out == x`` is allowed, so the runner can scale the embedding buffer."""
+
+    rng = np.random.default_rng(29)
+    rows, hidden_size = 4, 64
+    x = rng.standard_normal((rows, hidden_size)).astype(np.float32)
+    scale = float(np.sqrt(hidden_size))
+
+    buf = device.put(_to_bf16_bits(x))
+    gemma4_scale_bf16(buf, buf, rows, hidden_size, scale)
+    got = _from_bf16_bits(device.get(buf, (rows, hidden_size), np.uint16))
+
+    expected = _from_bf16_bits(_to_bf16_bits(x)) * np.float32(scale)
+    assert np.allclose(got, expected, atol=_BF16_ATOL, rtol=_BF16_RTOL)
+
+
+@_needs_hip
 def test_kernels_reject_degenerate_shapes(device) -> None:
     src = device.put(np.zeros(8, dtype=np.float32))
     dst = device.out((8,), np.float32)
@@ -458,6 +504,10 @@ def test_kernels_reject_degenerate_shapes(device) -> None:
         gemma4_rmsnorm_f32w_f32(src, src, dst, 0, 8, 1e-6)
     with pytest.raises(ValueError):
         gemma4_branch_add_bf16(src, src, dst, 0)
+    with pytest.raises(ValueError):
+        gemma4_scale_bf16(src, dst, 0, 8, 2.0)
+    with pytest.raises(ValueError):
+        gemma4_scale_bf16(src, dst, 8, 0, 2.0)
 
 
 def test_the_family_registers_against_the_four_axis_registry() -> None:
@@ -1910,7 +1960,6 @@ def test_layer_incremental_decode_matches_a_dense_prefill():
 
     device = _Device()
     num_heads, num_kv_heads, head_dim = geometry
-    kv_width = num_kv_heads * head_dim
     layer_geometry = Gemma4LayerGeometry(
         num_heads=num_heads,
         num_kv_heads=num_kv_heads,
@@ -1960,8 +2009,6 @@ def test_layer_incremental_decode_matches_a_dense_prefill():
     )
     all_positions = np.arange(total, dtype=np.int64)
     cos, sin = gemma4_rope_cos_sin_tables(attn_geometry.rope, all_positions)
-    cos_ptr = device.put(cos.astype(np.float32))
-    sin_ptr = device.put(sin.astype(np.float32))
 
     def run(rows, *, positions, keep, kv=None, hidden_slice=None):
         mask_ptr = device.put(keep)
