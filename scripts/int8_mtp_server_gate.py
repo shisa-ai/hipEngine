@@ -49,6 +49,8 @@ def assert_token_exact(reference: list[int], candidate: list[int], *, prompt: st
         "reason": "token_exactness_mismatch",
         **detail,
     }
+
+
 def blocking_result(body: dict[str, Any]) -> dict[str, Any]:
     choice = body["choices"][0]
     metadata = choice["hipengine"]
@@ -144,6 +146,7 @@ def run_triple(client, args, row, endpoint):
         results.append(result)
     assert_token_exact(results[0]["ids"], results[1]["ids"], prompt=row["id"], endpoint=endpoint)
     assert_token_exact(results[0]["ids"], results[2]["ids"], prompt=row["id"], endpoint=endpoint)
+    assert len({result["usage"]["prompt_tokens"] for result in results}) == 1
     return results
 
 
