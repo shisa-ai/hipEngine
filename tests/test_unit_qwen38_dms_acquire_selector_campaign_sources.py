@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
 from pathlib import Path
 
 import pytest
 
-from scripts.qwen38_dms_acquire_selector_campaign_sources import acquire_records, write_atomic
+from scripts.qwen38_dms_acquire_selector_campaign_sources import (
+    WIKI_REVISION,
+    _cli_documents,
+    acquire_records,
+    build_parser,
+    write_atomic,
+)
 
 
 class Tok:
@@ -42,6 +50,30 @@ def test_exact_streams_are_deterministic_disjoint_and_mixed(tmp_path: Path) -> N
     write_atomic(first, output, {"tokenizer": "fixture"})
     assert '"text"' not in output.read_text(encoding="utf-8")
     with pytest.raises(FileExistsError): write_atomic(first, output, {})
+
+
+def test_cli_pins_wikipedia_revision_and_uses_campaign_sized_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    calls: list[dict] = []
+
+    def fake_load_dataset(*args, **kwargs):
+        calls.append({"args": args, **kwargs})
+        return iter([{"id": "1", "title": "title", "text": "x" * 1200}])
+
+    monkeypatch.setitem(sys.modules, "datasets", types.SimpleNamespace(load_dataset=fake_load_dataset))
+    monkeypatch.setattr(
+        "scripts.qwen38_dms_acquire_selector_campaign_sources.subprocess.run",
+        lambda *args, **kwargs: types.SimpleNamespace(stdout="", returncode=0),
+    )
+    monkeypatch.setattr(
+        "scripts.qwen38_dms_acquire_selector_campaign_sources.sysconfig.get_path",
+        lambda name: str(tmp_path),
+    )
+    rows = _cli_documents(tmp_path, (set(), set(), set()), record_limit=1)
+    assert len(rows) == 2
+    assert all(call["revision"] == WIKI_REVISION for call in calls)
+    assert build_parser().get_default("record_limit") == 4096
 
 
 def test_exclusions_and_duplicate_rejection(tmp_path: Path) -> None:
