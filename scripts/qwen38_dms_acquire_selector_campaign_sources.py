@@ -214,7 +214,13 @@ def _cli_documents(root: Path, excluded: tuple[set[str], set[str], set[str]], re
     except ImportError as exc:
         raise RuntimeError("the real acquisition CLI requires the optional datasets package") from exc
     for config, category in (("20231101.en", "general_en"), ("20231101.ja", "general_ja")):
-        stream = load_dataset("wikimedia/wikipedia", config, split="train", streaming=True)
+        stream = load_dataset(
+            "wikimedia/wikipedia",
+            config,
+            split="train",
+            streaming=True,
+            revision=WIKI_REVISION,
+        )
         found = 0
         for item in stream:
             source_id = str(item["id"]); text = str(item["text"])
@@ -234,7 +240,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--old-source-manifest", type=Path, action="append", required=True)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--tokens", type=int, default=131072)
-    p.add_argument("--record-limit", type=int, default=512)
+    p.add_argument("--record-limit", type=int, default=4096,
+                   help="maximum eligible Wikipedia records per language to stream")
     return p
 
 
