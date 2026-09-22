@@ -70,6 +70,7 @@ def test_server_gate_reports_first_token_exactness_mismatch():
     assert excinfo.value.args[0]["candidate_token"] == 13
 
 
+def test_server_gate_rejects_inconsistent_usage():
     result = stream_result(_events())
     result["usage"]["completion_tokens"] = 3
     with pytest.raises(AssertionError):

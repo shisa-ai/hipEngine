@@ -49,6 +49,7 @@ def test_gate_expands_prompts_beyond_the_legacy_repeat_limit() -> None:
     assert manifest[0]["tokens"] == 1000
 
 
+def test_gate_counts_tensor_bytes_from_numel_and_dtype() -> None:
     assert gate._tensor_nbytes(SimpleNamespace(numel=7, dtype=DType.FP32)) == 28
 
 
@@ -99,6 +100,7 @@ def test_gate_parser_supports_rejected_artifact_mirror_free_diagnostics() -> Non
     assert args.max_sequence_length == 9216
 
 
+def test_gate_parser_requires_explicit_pre_promotion_width_override() -> None:
     args = gate.build_parser().parse_args(
         [
             "--model",
