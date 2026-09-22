@@ -550,9 +550,9 @@ blocker leaves that arm diagnostic and must be reported before campaign closure.
 
 | Candidate/hash | W/CR; actual CR at 32K/128K | G2 by length/category | G3 task scores vs dense/baseline | G4 public route/expiry/repeats | Memory/latency artifact | Final verdict |
 | --- | --- | --- | --- | --- | --- | --- |
-| Baseline | pending | pending | pending | pending | pending | pending |
-| Finalist 1 | pending | pending | pending | pending | pending | pending |
-| Finalist 2 or justified absence | pending | pending | pending | pending | pending | pending |
+| Baseline | not run: no valid G2 candidate set and compact no-evict G0 control failed | blocked | blocked | blocked | blocked | **blocked before qualification**; no final artifact |
+| Finalist 1 | none selected: Phase B–F prerequisites blocked | not run | not run | not run | not run | **justified absence** |
+| Finalist 2 or justified absence | no finalist exists | not run | not run | not run | not run | **justified absence** |
 
 ## 12. Commands and implementation checks
 
