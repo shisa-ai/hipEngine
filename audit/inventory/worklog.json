@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10661,
-    "current": 3429,
+    "entries": 10662,
+    "current": 3430,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1092,
+    "rows": 1093,
     "by_rule": {
       "dependency": 36,
       "legacy-next": 109,
-      "status": 947
+      "status": 948
     }
   },
   "rows": [
@@ -41102,6 +41102,43 @@
       },
       "id": "worklog/20260922T210504.433272Z-lhl-gemma4-gfx1100-q5-1-gap-661149",
       "evidence_hash": "7e697313c2ee"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260922T212126.927272Z-lhl-gemma4-runner-plan-b8e915",
+      "title": "Gemma 4 runner plan: what resolves, and the one missing op",
+      "location": "worklog/entries/20260922T212126.927272Z-lhl-gemma4-runner-plan-b8e915.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-runner-plan",
+        "written": "2026-09-22",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260922T212126.927272Z-lhl-gemma4-runner-plan-b8e915.md",
+        "refs": [],
+        "tokens": [
+          "gemma",
+          "missing",
+          "one",
+          "plan",
+          "resolves",
+          "runner",
+          "what"
+        ]
+      },
+      "id": "worklog/20260922T212126.927272Z-lhl-gemma4-runner-plan-b8e915",
+      "evidence_hash": "5ac18ae28b3c"
     }
   ]
 }
