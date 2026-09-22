@@ -111,9 +111,12 @@ Existing direct-runtime results are not HTTP completion evidence.
 - [x] Blocking completions and chat return correct IDs/text, finish reason and
   prompt/completion usage against their own true no-MTP INT8 baseline.
 - [x] SSE streams preserve ordering, usage, terminal events, and cancellation.
-- [ ] Stopping inside an accepted draft chain publishes no extra tokens.
-  Explicit text-stop MTP currently returns a 501 sampling-capability error;
-  explicit AR text stopping passes.
+- [x] Stopping inside an accepted draft chain publishes no extra tokens.
+  Explicit text-stop MTP is served rather than refused, and the cycle commit
+  applies the autoregressive finish rule to the whole verified chain -- stop
+  token ids, multi-token stop sequences, and the `min_tokens` EOS floor -- by
+  selecting its terminal prefix. `scripts/mtp_finish_rule_gate.py` measures it
+  on INT8 and BF16 KV.
 - [ ] Multiple choices, tool/structured responses, and unsupported sampling
   either work through existing contracts or select a named supported fallback.
 - [ ] GPU waits leave the HTTP event loop responsive.
@@ -195,7 +198,7 @@ HIP allocations after close. Dynamic verifier scratch growth belongs to the
 persistent session root, and retained target snapshot arenas are closed.
 
 The C1 serving implementation is available; this checklist is not fully closed.
-INT8 text-stop MTP, compact-DMS transactions, unified provider/target byte
+Compact-DMS transactions, unified provider/target byte
 budgeting, and the broader pressure/long-context matrix remain separate open
 items. Explicit unsupported implementation requests return named errors rather
 than being advertised as working MTP.
@@ -215,6 +218,10 @@ Commands against an already running INT8 server:
 .venv/bin/python scripts/int8_mtp_sampled_gate.py \
   --base-url http://127.0.0.1:8098 --model int8-mtp \
   --json /tmp/int8-mtp-sampled.json
+.venv/bin/python scripts/mtp_finish_rule_gate.py \
+  --base-url http://127.0.0.1:8098 --model int8-mtp \
+  --expect-storage int8_per_token_head \
+  --json /tmp/int8-mtp-finish-rule.json
 ```
 
 The sampled gate is the live half of the sampled-route declaration: for each of
@@ -225,8 +232,22 @@ reproduce the first. The induced-law half is
 `scripts/mtp_sampled_accept_distribution_gate.py`, which measures the sampler law
 and the accept coupling on real model rows and needs no server.
 
+The finish-rule gate is the live half of the route's stop semantics. It takes a
+seeded free trajectory from the server, then places a stop at each distinct
+token of that trajectory and requires both arms to publish exactly that prefix,
+to report `stop`, and to publish nothing after the stop; it repeats that for a
+multi-token stop sequence, checks that `eos_token_id` fires `eos` at or above
+`min_tokens` and withholds the token below it, and checks that a request which
+stops early leaves a concurrent neighbour's published ids unchanged. It reads
+tokens rather than storage, so it runs against any KV cell: pass
+`--expect-storage` to pin the one under test (it refuses a server reporting a
+different cell), and run it once per cell. On a server deliberately using an
+existing approximate-KV diagnostic override it requires
+`--allow-kv-diagnostic-override` as well.
+
 For a server deliberately using an existing approximate-KV diagnostic
-override, all four commands require `--allow-kv-diagnostic-override`. The category
+override, the category, lifecycle, prefix and sampled commands require
+`--allow-kv-diagnostic-override`. The category
 gate rejects BF16 mirrors unless `--allow-mirror` is explicitly requested.
 Neither switch enables MTP or changes server policy.
 
