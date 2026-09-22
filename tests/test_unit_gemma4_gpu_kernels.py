@@ -14,6 +14,7 @@ import pytest
 from hipengine.kernels.cpu_reference.gemma4 import (
     Gemma4RopeConfig,
     _apply_rope,
+    gemma4_experts_forward,
     gemma4_gelu_tanh,
     gemma4_rope_tables,
     gemma4_rmsnorm,
@@ -820,7 +821,7 @@ def test_weighted_accumulate_matches_the_reference_with_shared_tokens(device) ->
 
     # A compact order that deliberately splits each token's lanes across experts:
     # interleave so consecutive lanes of a token are far apart in row order.
-    sorted_lanes = np.empty(total_lanes, dtype=np.int32)
+    sorted_lanes = np.empty(total_lanes, dtype=np.int64)
     for token in range(tokens):
         for slot in range(top_k):
             sorted_lanes[slot * tokens + token] = token * top_k + slot
@@ -853,7 +854,7 @@ def test_lane_to_row_is_the_inverse_permutation(device) -> None:
 
     rng = np.random.default_rng(33)
     total = 37
-    sorted_lanes = rng.permutation(total).astype(np.int32)
+    sorted_lanes = rng.permutation(total).astype(np.int64)
     lanes_ptr = device.put(sorted_lanes)
     l2r_ptr = device.out((total,), np.int32)
     gemma4_moe_lane_to_row_i32(lanes_ptr, l2r_ptr, total)
@@ -909,3 +910,200 @@ def test_moe_family_registers_under_gemma4_plain() -> None:
         )
         is gemma4_moe_weighted_accumulate_bf16
     )
+
+
+@_needs_hip
+def test_experts_forward_matches_the_reference(device) -> None:
+    """The orchestrated expert block reproduces gemma4_experts_forward.
+
+    Exercises the whole chain: group/compact, hidden gather, per-expert gate_up
+    GEMV, GeGLU, per-expert down GEMV, and the weighted accumulate. Weights and
+    activations are bf16 so the comparison carries bf16 rounding, but a
+    structural error (wrong expert, missing lane, gate/up swapped, unweighted
+    accumulate) is orders of magnitude larger than that.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        Gemma4ExpertScratch,
+        gemma4_experts_forward_bf16,
+    )
+
+    tokens, top_k, hidden_size, intermediate, num_experts = 6, 4, 64, 48, 8
+    rng = np.random.default_rng(41)
+
+    hidden = (rng.standard_normal((tokens, hidden_size)) * 0.5).astype(np.float32)
+    # Distinct experts per lane, so every lane's contribution is identifiable.
+    selected = np.stack([rng.permutation(num_experts)[:top_k] for _ in range(tokens)]).astype(
+        np.int64
+    )
+    weights = rng.random((tokens, top_k)).astype(np.float32)
+    gate_up = (rng.standard_normal((num_experts, 2 * intermediate, hidden_size)) * 0.3).astype(
+        np.float32
+    )
+    down = (rng.standard_normal((num_experts, hidden_size, intermediate)) * 0.3).astype(np.float32)
+
+    hidden_ptr = device.put(_to_bf16_bits(hidden))
+    selected_ptr = device.put(selected)
+    weights_ptr = device.put(weights)
+    gate_up_ptr = device.put(_to_bf16_bits(gate_up))
+    down_ptr = device.put(_to_bf16_bits(down))
+    out_ptr = device.out((tokens, hidden_size), np.uint16)
+
+    scratch = Gemma4ExpertScratch(
+        tokens=tokens,
+        top_k=top_k,
+        hidden_size=hidden_size,
+        intermediate=intermediate,
+        num_experts=num_experts,
+    )
+    try:
+        gemma4_experts_forward_bf16(
+            hidden_ptr,
+            selected_ptr,
+            weights_ptr,
+            gate_up_ptr,
+            down_ptr,
+            out_ptr,
+            scratch=scratch,
+        )
+        got = _from_bf16_bits(device.get(out_ptr, (tokens, hidden_size), np.uint16))
+    finally:
+        scratch.free()
+
+    expected = gemma4_experts_forward(
+        hidden,
+        selected,
+        weights,
+        gate_up_proj=gate_up,
+        down_proj=down,
+    )
+    assert np.allclose(got, expected, atol=5e-2, rtol=5e-2), (
+        f"max abs diff {np.abs(got - expected).max():.4g}"
+    )
+
+
+@_needs_hip
+def test_experts_forward_weights_each_lane_by_its_route(device) -> None:
+    """Zeroing one lane's route weight must remove exactly that lane's expert.
+
+    This is what distinguishes a weighted accumulate from a plain sum, and what
+    catches a compact-order/lane mix-up: the wrong expert would be removed.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        Gemma4ExpertScratch,
+        gemma4_experts_forward_bf16,
+    )
+
+    tokens, top_k, hidden_size, intermediate, num_experts = 3, 2, 32, 24, 6
+    rng = np.random.default_rng(42)
+    hidden = (rng.standard_normal((tokens, hidden_size)) * 0.5).astype(np.float32)
+    selected = np.array([[1, 4], [0, 3], [2, 5]], dtype=np.int64)
+    gate_up = (rng.standard_normal((num_experts, 2 * intermediate, hidden_size)) * 0.3).astype(
+        np.float32
+    )
+    down = (rng.standard_normal((num_experts, hidden_size, intermediate)) * 0.3).astype(np.float32)
+    full = np.ones((tokens, top_k), dtype=np.float32)
+    masked = full.copy()
+    masked[1, 0] = 0.0
+
+    hidden_ptr = device.put(_to_bf16_bits(hidden))
+    selected_ptr = device.put(selected)
+    gate_up_ptr = device.put(_to_bf16_bits(gate_up))
+    down_ptr = device.put(_to_bf16_bits(down))
+
+    def run(weights: np.ndarray) -> np.ndarray:
+        weights_ptr = device.put(weights)
+        out_ptr = device.out((tokens, hidden_size), np.uint16)
+        scratch = Gemma4ExpertScratch(
+            tokens=tokens,
+            top_k=top_k,
+            hidden_size=hidden_size,
+            intermediate=intermediate,
+            num_experts=num_experts,
+        )
+        try:
+            gemma4_experts_forward_bf16(
+                hidden_ptr,
+                selected_ptr,
+                weights_ptr,
+                gate_up_ptr,
+                down_ptr,
+                out_ptr,
+                scratch=scratch,
+            )
+            return _from_bf16_bits(device.get(out_ptr, (tokens, hidden_size), np.uint16))
+        finally:
+            scratch.free()
+
+    got_full = run(full)
+    got_masked = run(masked)
+    expected_masked = gemma4_experts_forward(
+        hidden, selected, masked, gate_up_proj=gate_up, down_proj=down
+    )
+    assert np.allclose(got_masked, expected_masked, atol=5e-2, rtol=5e-2)
+    # Token 1 lost expert 0 and must have changed; the other tokens must not.
+    assert not np.allclose(got_full[1], got_masked[1], atol=1e-3)
+    assert np.array_equal(got_full[0], got_masked[0])
+    assert np.array_equal(got_full[2], got_masked[2])
+
+
+@_needs_hip
+def test_experts_forward_handles_an_unused_expert(device) -> None:
+    """An expert with no lanes must be skipped, not launched with rows=0."""
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        Gemma4ExpertScratch,
+        gemma4_experts_forward_bf16,
+    )
+
+    tokens, top_k, hidden_size, intermediate, num_experts = 4, 2, 32, 16, 16
+    rng = np.random.default_rng(43)
+    hidden = (rng.standard_normal((tokens, hidden_size)) * 0.5).astype(np.float32)
+    # Only experts 0 and 1 are ever selected; 2..15 are empty.
+    selected = np.array([[0, 1], [0, 1], [1, 0], [0, 0]], dtype=np.int64)
+    weights = rng.random((tokens, top_k)).astype(np.float32)
+    gate_up = (rng.standard_normal((num_experts, 2 * intermediate, hidden_size)) * 0.3).astype(
+        np.float32
+    )
+    down = (rng.standard_normal((num_experts, hidden_size, intermediate)) * 0.3).astype(np.float32)
+
+    hidden_ptr = device.put(_to_bf16_bits(hidden))
+    selected_ptr = device.put(selected)
+    weights_ptr = device.put(weights)
+    gate_up_ptr = device.put(_to_bf16_bits(gate_up))
+    down_ptr = device.put(_to_bf16_bits(down))
+    out_ptr = device.out((tokens, hidden_size), np.uint16)
+
+    scratch = Gemma4ExpertScratch(
+        tokens=tokens,
+        top_k=top_k,
+        hidden_size=hidden_size,
+        intermediate=intermediate,
+        num_experts=num_experts,
+    )
+    try:
+        gemma4_experts_forward_bf16(
+            hidden_ptr,
+            selected_ptr,
+            weights_ptr,
+            gate_up_ptr,
+            down_ptr,
+            out_ptr,
+            scratch=scratch,
+        )
+        got = _from_bf16_bits(device.get(out_ptr, (tokens, hidden_size), np.uint16))
+    finally:
+        scratch.free()
+
+    expected = gemma4_experts_forward(
+        hidden, selected, weights, gate_up_proj=gate_up, down_proj=down
+    )
+    assert np.allclose(got, expected, atol=5e-2, rtol=5e-2)
+
+
+def test_expert_scratch_rejects_nonpositive_shapes() -> None:
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import Gemma4ExpertScratch
+
+    with pytest.raises(ValueError, match="top_k must be positive"):
+        Gemma4ExpertScratch(tokens=2, top_k=0, hidden_size=8, intermediate=8, num_experts=4)
