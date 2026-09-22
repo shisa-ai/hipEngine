@@ -32,6 +32,7 @@ def _records() -> list[dict]:
 
 
 def _old_manifests(tmp_path: Path) -> list[Path]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     paths = []
     for version in range(1, 5):
         path = tmp_path / f"v{version}.json"
@@ -101,6 +102,75 @@ def test_tokenizer_provenance_and_old_source_exclusions_are_sealed(tmp_path: Pat
     assert all(row["provenance"]["model_sha256"] == "b" * 64 for row in payload["sequences"])
     assert all(row["provenance"]["source_id"] != "historical-id" for row in payload["sequences"])
     assert result["sealed_index"]["sha256"]
+
+
+def test_component_sources_are_sealed_and_cannot_overlap_or_reuse_history(
+    tmp_path: Path,
+) -> None:
+    records = [
+        dict(
+            record,
+            source_records=[
+                {
+                    "source_id": f"component-{index}",
+                    "path": f"wiki/component-{index}",
+                    "sha256": f"{index:064x}",
+                    "text": "must not be sealed",
+                }
+            ],
+        )
+        for index, record in enumerate(_records(), start=1)
+    ]
+    result = _build(tmp_path, tmp_path / "sealed", records)
+    assert result["sealed_index"]["sha256"]
+    data = json.loads((tmp_path / "sealed" / "training-expansion-data.json").read_text())
+    sources = json.loads((tmp_path / "sealed" / "training-expansion-sources.json").read_text())
+    sealed_components = [
+        item
+        for row in data["sequences"]
+        for item in row["provenance"]["source_records"]
+    ]
+    sealed_components += [
+        item for row in sources["sequences"] for item in row["source_records"]
+    ]
+    assert sealed_components
+    assert all(item["source_id"].startswith("component-") for item in sealed_components)
+    assert all("text" not in item for item in sealed_components)
+
+    overlapping = _records()
+    component = {
+        "source_id": "shared-component",
+        "path": "wiki/shared-component",
+        "sha256": "2" * 64,
+    }
+    overlapping[0] = dict(overlapping[0], source_records=[component])
+    overlapping[1] = dict(overlapping[1], source_records=[component])
+    with pytest.raises(ValueError, match="duplicate component"):
+        _build(tmp_path / "overlap", tmp_path / "overlap" / "sealed", overlapping)
+
+    historical = _records()
+    historical[0] = dict(
+        historical[0],
+        source_records=[
+            {
+                "source_id": "historical-id",
+                "path": "new/component-path",
+                "sha256": "3" * 64,
+            }
+        ],
+    )
+    filtered = _build(tmp_path / "historical", tmp_path / "historical" / "sealed", historical)
+    assert filtered["sealed_index"]["sha256"]
+    all_sources = [
+        json.loads(Path(row["sources"]["path"]).read_text())
+        for row in filtered["manifests"].values()
+    ]
+    assert all(
+        component["source_id"] != "historical-id"
+        for payload in all_sources
+        for sequence in payload["sequences"]
+        for component in sequence["source_records"]
+    )
 
 
 def test_final_manifests_are_separate_and_index_has_no_candidate_result(tmp_path: Path) -> None:

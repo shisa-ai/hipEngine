@@ -94,6 +94,33 @@ def _record_source(record: dict[str, Any]) -> tuple[str, str]:
     return source_id, source_path
 
 
+def _component_sources(record: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = record.get("source_records", [])
+    if not isinstance(raw, list):
+        raise TypeError("source_records must be a list")
+    components: list[dict[str, Any]] = []
+    for row in raw:
+        if not isinstance(row, dict):
+            raise TypeError("every source_records entry must be an object")
+        source_id, source_path = _record_source(row)
+        text_hash = str(row.get("normalized_text_sha256", row.get("sha256", ""))).strip()
+        if len(text_hash) != 64:
+            raise ValueError("every component source requires a SHA-256 text digest")
+        components.append(
+            {
+                key: value
+                for key, value in row.items()
+                if key != "text"
+            }
+            | {
+                "source_id": source_id,
+                "path": source_path,
+                "normalized_text_sha256": text_hash,
+            }
+        )
+    return components
+
+
 def _tokens(record: dict[str, Any], tokenizer: Callable[[str], Iterable[int]] | None) -> list[int]:
     if "token_ids" in record:
         values = record["token_ids"]
@@ -140,6 +167,9 @@ def build_campaign_manifests(
     seen_ids: set[str] = set()
     seen_paths: set[str] = set()
     seen_text: set[str] = set()
+    seen_component_ids: set[str] = set()
+    seen_component_paths: set[str] = set()
+    seen_component_text: set[str] = set()
     for raw in records:
         record = dict(raw)
         source_id, source_path = _record_source(record)
@@ -147,8 +177,27 @@ def build_campaign_manifests(
             continue
         if source_id in seen_ids or source_path in seen_paths:
             raise ValueError("duplicate source ID/path in candidate pool")
+        components = _component_sources(record)
+        component_ids = {str(row["source_id"]) for row in components}
+        component_paths = {str(row["path"]) for row in components}
+        component_text = {str(row["normalized_text_sha256"]) for row in components}
+        if len(component_ids) != len(components) or len(component_paths) != len(components):
+            raise ValueError("duplicate component source ID/path within candidate record")
+        if len(component_text) != len(components):
+            raise ValueError("duplicate component normalized text within candidate record")
+        if component_ids & excluded_ids or component_paths & excluded_paths:
+            continue
+        if (
+            component_ids & seen_component_ids
+            or component_paths & seen_component_paths
+            or component_text & seen_component_text
+        ):
+            raise ValueError("duplicate component source ID/path/text across candidate pool")
         seen_ids.add(source_id)
         seen_paths.add(source_path)
+        seen_component_ids.update(component_ids)
+        seen_component_paths.update(component_paths)
+        seen_component_text.update(component_text)
         tokens = _tokens(record, tokenizer)
         if any(token < 0 for token in tokens):
             raise ValueError(f"negative token ID for source {source_id}")
@@ -162,6 +211,7 @@ def build_campaign_manifests(
         candidates.append({
             "record": record, "source_id": source_id, "path": source_path,
             "tokens": tokens, "text_sha256": text_hash,
+            "source_records": components,
         })
 
     selected_text: set[str] = set()
@@ -205,12 +255,14 @@ def build_campaign_manifests(
                     "normalized_text_sha256": row["text_sha256"],
                     "tokenizer": {"identity": tokenizer_identity, "sha256": tokenizer_sha256},
                     "model_path": str(model_path), "model_sha256": model_sha256,
+                    "source_records": row["source_records"],
                 },
             })
             source_sequences.append({
                 "sequence_id": sequence_id, "category": row["record"]["category"],
                 "source_id": row["source_id"], "path": row["path"],
                 "normalized_text_sha256": row["text_sha256"],
+                "source_records": row["source_records"],
             })
 
         common = {
