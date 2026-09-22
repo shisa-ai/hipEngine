@@ -62,9 +62,12 @@ def _fields(name: str) -> dict:
     }
 
 
-def _request(ids: tuple[int, ...], *, path: str) -> dict:
+CLOSED_OBJECT = '{"city": "Kyoto", "unit": "c"}'
+
+
+def _request(ids: tuple[int, ...], *, path: str, text: str | None = None) -> dict:
     return {
-        "text": "".join(f" t{token}" for token in ids),
+        "text": "".join(f" t{token}" for token in ids) if text is None else text,
         "ids": list(ids),
         "telemetry": {"execution_path": path},
     }
@@ -102,7 +105,14 @@ def _arm(
                 if case.name != "force_sequence_completion"
                 else _request(probe_by_arm or probe_ids, path=path)
             ),
-            "request": _request(overrides.get(case.name, default), path=case_path or path),
+            "request": _request(
+                overrides.get(case.name, default),
+                path=case_path or path,
+                # The constraint case publishes a closed object; the gate asserts
+                # that closure, which is the observable effect of the forced
+                # closing suffix.
+                text=CLOSED_OBJECT if case.name == "json_object_close" else None,
+            ),
         }
     return {
         "seed": _request(seed_ids, path=seed_path or path),
@@ -275,9 +285,15 @@ class _FakeLLM:
             # after a forced request must publish the same ids.
             ids = (701, 702)
         self.requests.append((prompt, {"forced": forced}))
+        text = self.detokenize(ids)
+        if getattr(sampling_params, "json_object_close_forcing", False):
+            # A closed object is what the forced closing suffix produces; the
+            # fake emits one so the gate's check has something real to read.
+            ids = (900, 901, 902)
+            text = '{"city": "Kyoto", "unit": "c"}'
         return [
             GenerationOutput(
-                text=self.detokenize(ids),
+                text=text,
                 generated_token_ids=ids,
                 telemetry={
                     "decode_state": {
@@ -376,3 +392,30 @@ def test_a_session_sized_to_something_else_than_declared_is_caught() -> None:
         AssertionError, match="the_resident_session_was_not_sized_to_the_declared_context"
     ):
         gate._check(_arm(arm="mtp", resident_context=262144), arm="mtp")
+
+
+def test_a_case_that_carries_a_sampler_field_sends_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A case whose extras never reach the request would test nothing.
+
+    The fake reports a closed object only when ``json_object_close_forcing``
+    arrived, which is the same field the live gate's closure check depends on.
+    """
+
+    import hipengine.llm
+
+    monkeypatch.setattr(hipengine.llm, "LLM", _FakeLLM)
+    monkeypatch.setattr(gate, "_preflight_memory", lambda: 100.0)
+    raw = gate._run_arm(
+        "fake-model",
+        serving="auto",
+        mtp=True,
+        kwargs={
+            "backend": "hip_gfx1151",
+            "kv_storage": "bf16",
+            "prefix_cache": "off",
+            "max_sequence_length": DECLARED_CONTEXT,
+        },
+    )
+    assert raw["cases"]["json_object_close"]["request"]["text"] == CLOSED_OBJECT
