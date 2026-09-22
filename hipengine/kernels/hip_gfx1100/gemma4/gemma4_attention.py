@@ -45,6 +45,7 @@ _ARGTYPES_PREFILL = (
     ctypes.c_int64,
     ctypes.c_float,
     ctypes.c_void_p,
+    ctypes.c_int64,
 )
 
 
@@ -119,11 +120,15 @@ def _launch_prefill(
     num_kv_heads: int,
     head_dim: int,
     scale: float,
+    keys: int | None,
     stream: int,
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
 ) -> None:
     _check_prefill_shape(tokens, num_heads, num_kv_heads, head_dim)
+    key_count = tokens if keys is None else int(keys)
+    if key_count <= 0:
+        raise ValueError("keys must be positive")
     library = library or build_gemma4_attention(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, symbol, _ARGTYPES_PREFILL, ctypes.c_int)
@@ -139,6 +144,7 @@ def _launch_prefill(
         head_dim,
         ctypes.c_float(scale),
         stream,
+        key_count,
     )
     _check_launch(runtime, err)
 
@@ -155,16 +161,22 @@ def gemma4_attention_prefill_bf16(
     num_kv_heads: int,
     head_dim: int,
     scale: float,
+    keys: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Masked, ungated prefill attention over a block of ``tokens``.
+    """Masked, ungated prefill attention over ``tokens`` queries.
 
     ``query`` is ``(tokens, num_heads, head_dim)`` BF16, ``key`` and ``value`` are
-    ``(tokens, num_kv_heads, head_dim)`` BF16, ``keep_mask`` is a
-    ``(tokens, tokens)`` uint8 keep-mask, and ``out`` is
+    ``(keys, num_kv_heads, head_dim)`` BF16, ``keep_mask`` is a
+    ``(tokens, keys)`` uint8 keep-mask, and ``out`` is
     ``(tokens, num_heads, head_dim)`` BF16. Pass ``scale=1.0`` for Gemma 4.
+
+    ``keys`` defaults to ``tokens``, which is the dense prefill case where the
+    block being attended is the block of queries. Passing a larger ``keys`` with
+    ``key``/``value`` pointing at a KV cache gives the decode step: one query row
+    attending over the live context.
     """
 
     _launch_prefill(
@@ -179,6 +191,7 @@ def gemma4_attention_prefill_bf16(
         num_kv_heads=num_kv_heads,
         head_dim=head_dim,
         scale=scale,
+        keys=keys,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -197,6 +210,7 @@ def gemma4_attention_prefill_f32(
     num_kv_heads: int,
     head_dim: int,
     scale: float,
+    keys: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -219,6 +233,7 @@ def gemma4_attention_prefill_f32(
         num_kv_heads=num_kv_heads,
         head_dim=head_dim,
         scale=scale,
+        keys=keys,
         stream=stream,
         library=library,
         runtime=runtime,

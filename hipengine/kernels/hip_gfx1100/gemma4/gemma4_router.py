@@ -160,13 +160,22 @@ def gemma4_router_topk_bf16(
             raise ValueError(f"{name} must be positive")
     if top_k > num_experts:
         raise ValueError(f"top_k ({top_k}) cannot exceed num_experts ({num_experts})")
-    expected = (tokens, hidden_size, num_experts, top_k)
-    actual = (scratch.tokens, scratch.hidden_size, scratch.num_experts, scratch.top_k)
-    if actual != expected:
+    # ``scratch`` is a capacity, not an identity: a caller sizes it for the
+    # widest block it will ever route and then routes narrower blocks through it
+    # (a prefill of N tokens, then N one-token decode steps). The shape
+    # parameters must still match exactly, since they describe the weights.
+    if (hidden_size, num_experts, top_k) != (
+        scratch.hidden_size,
+        scratch.num_experts,
+        scratch.top_k,
+    ):
         raise ValueError(
-            f"scratch was built for (tokens, hidden_size, num_experts, top_k)={actual} "
-            f"but this call needs {expected}"
+            f"scratch was built for (hidden_size, num_experts, top_k)="
+            f"{(scratch.hidden_size, scratch.num_experts, scratch.top_k)} but this "
+            f"call needs {(hidden_size, num_experts, top_k)}"
         )
+    if tokens > scratch.tokens:
+        raise ValueError(f"tokens={tokens} exceeds scratch capacity {scratch.tokens}")
 
     prescaled = scratch.buffer("prescaled")
     logits = scratch.buffer("logits")

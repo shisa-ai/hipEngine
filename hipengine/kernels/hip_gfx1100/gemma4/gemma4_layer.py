@@ -223,6 +223,46 @@ class Gemma4LayerScratch:
             raise ValueError(f"unknown scratch buffer {name!r}") from None
 
 
+@dataclass(frozen=True)
+class Gemma4LayerKV:
+    """Where this layer reads and appends key/value state.
+
+    ``key_cache`` and ``value_cache`` are each ``(capacity, num_kv_heads,
+    head_dim)`` BF16, allocated by the runner and shared across steps. This block
+    of ``rows`` tokens appends at ``write_offset`` and then attends over
+    ``write_offset + rows`` cached positions.
+    """
+
+    key_cache: int
+    value_cache: int
+    capacity: int
+    write_offset: int
+
+
+def _append_kv(
+    cache_ptr: int, src_ptr: int, element_offset: int, elements: int, stream: int
+) -> None:
+    """Copy ``elements`` BF16 values from ``src_ptr`` into the cache.
+
+    A plain device-to-device move: both sides are contiguous over
+    ``(position, num_kv_heads, head_dim)``, so appending is an offset, not a
+    scatter.
+    """
+
+    from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
+
+    if elements <= 0:
+        return
+    runtime = get_hip_runtime()
+    runtime.memcpy_async(
+        cache_ptr + element_offset * _BF16_BYTES,
+        src_ptr,
+        elements * _BF16_BYTES,
+        HipMemcpyKind.DEVICE_TO_DEVICE,
+        stream,
+    )
+
+
 def gemma4_layer_forward_bf16(
     hidden_ptr: int,
     cos_ptr: int,
@@ -231,6 +271,8 @@ def gemma4_layer_forward_bf16(
     layer: Gemma4LayerPointers,
     *,
     scratch: Gemma4LayerScratch,
+    kv: Gemma4LayerKV | None = None,
+    rows: int | None = None,
     eps: float = 1e-6,
     rotary_dim: int | None = None,
     stream: int = 0,
@@ -239,14 +281,23 @@ def gemma4_layer_forward_bf16(
 
     ``hidden_ptr`` is ``(tokens, hidden_size)`` BF16 and is overwritten with the
     layer output. ``cos_ptr``/``sin_ptr`` are the rope tables for this block's
-    positions and ``keep_mask_ptr`` is a ``(tokens, tokens)`` uint8 keep-mask
+    positions and ``keep_mask_ptr`` is a ``(rows, keys)`` uint8 keep-mask
     covering exactly those positions — including the sliding-window bound on
     sliding layers, which this function does not re-derive.
 
     Returns ``hidden_ptr`` so the call reads as a pipeline stage.
     """
 
-    rows = scratch.tokens
+    # The block size is an argument, not a property of the scratch. A scratch is
+    # sized for the widest block its owner will run, so inferring the row count
+    # from the allocation would make a narrow block (a one-token decode step)
+    # run as though it were wide, reading past its inputs and writing past its
+    # cache slot. ``scratch.tokens`` remains the default for the dense case.
+    rows = scratch.tokens if rows is None else int(rows)
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if rows > scratch.tokens:
+        raise ValueError(f"rows={rows} exceeds scratch capacity {scratch.tokens}")
     hidden_size = scratch.hidden_size
     geometry = scratch.geometry
     num_heads = geometry.num_heads
@@ -313,13 +364,37 @@ def gemma4_layer_forward_bf16(
         **kwargs,
     )
 
+    # With a cache, this block's rotated K and normalized V are appended at
+    # ``write_offset`` and attention reads the cache instead of the block. Both
+    # appends are a contiguous move: the cache is laid out (capacity, kv_heads,
+    # head_dim) and the block (rows, kv_heads, head_dim), so position p of the
+    # block lands at position write_offset + p of the cache with no stride
+    # change. The mask is already (rows, write_offset + rows), so the stale slots
+    # past the live context are masked out rather than read.
+    if kv is not None:
+        _append_kv(
+            kv.key_cache,
+            buf("k_rot"),
+            kv.write_offset * kv_width,
+            rows * kv_width,
+            stream,
+        )
+        _append_kv(
+            kv.value_cache,
+            buf("v"),
+            kv.write_offset * kv_width,
+            rows * kv_width,
+            stream,
+        )
+
     gemma4_attention_prefill_bf16(
         buf("q_rot"),
-        buf("k_rot"),
-        buf("v"),
+        kv.key_cache if kv is not None else buf("k_rot"),
+        kv.value_cache if kv is not None else buf("v"),
         keep_mask_ptr,
         buf("context"),
         tokens=rows,
+        keys=None if kv is None else kv.write_offset + rows,
         num_heads=num_heads,
         num_kv_heads=num_kv_heads,
         head_dim=head_dim,
@@ -432,6 +507,7 @@ def gemma4_layer_forward_bf16(
         layer.experts_down_proj,
         buf("experts"),
         scratch=scratch.experts,
+        rows=rows,
         stream=stream,
     )
     gemma4_rmsnorm_f32w_bf16(

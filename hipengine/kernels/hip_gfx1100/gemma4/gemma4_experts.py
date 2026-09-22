@@ -132,6 +132,7 @@ def gemma4_experts_forward_bf16(
     out_ptr: int,
     *,
     scratch: Gemma4ExpertScratch,
+    rows: int | None = None,
     stream: int = 0,
     library: object | None = None,
     runtime: object | None = None,
@@ -150,7 +151,14 @@ def gemma4_experts_forward_bf16(
     attention paths without a host-side tensor round trip.
     """
 
-    tokens = scratch.tokens
+    # ``scratch`` is a capacity, not an identity: the caller sizes it for the
+    # widest block it will run and then runs narrower blocks through it. The
+    # remaining shape parameters must match exactly, since they describe weights.
+    tokens = scratch.tokens if rows is None else int(rows)
+    if tokens <= 0:
+        raise ValueError("rows must be positive")
+    if tokens > scratch.tokens:
+        raise ValueError(f"rows={tokens} exceeds scratch capacity {scratch.tokens}")
     top_k = scratch.top_k
     hidden_size = scratch.hidden_size
     intermediate = scratch.intermediate
