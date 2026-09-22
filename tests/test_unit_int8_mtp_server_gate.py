@@ -3,7 +3,11 @@ from copy import deepcopy
 
 import pytest
 
-from scripts.int8_mtp_server_gate import assert_result, stream_result
+from scripts.int8_mtp_server_gate import (
+    assert_result,
+    assert_token_exact,
+    stream_result,
+)
 from scripts.int8_mtp_prefix_gate import assert_restored_pair
 
 
@@ -58,7 +62,14 @@ def test_server_gate_cannot_mistake_mirror_or_ar_for_compact_mtp():
         assert_result(stream_result(_events(cycles=1)), speculative=False, compact=True)
 
 
-def test_server_gate_rejects_inconsistent_usage():
+def test_server_gate_reports_first_token_exactness_mismatch():
+    with pytest.raises(AssertionError, match="token_exactness_mismatch") as excinfo:
+        assert_token_exact([10, 11, 12], [10, 13, 12], prompt="code_lru_cache", endpoint="/v1/completions")
+    assert excinfo.value.args[0]["index"] == 1
+    assert excinfo.value.args[0]["reference_token"] == 11
+    assert excinfo.value.args[0]["candidate_token"] == 13
+
+
     result = stream_result(_events())
     result["usage"]["completion_tokens"] = 3
     with pytest.raises(AssertionError):

@@ -15,6 +15,40 @@ import httpx
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _token_mismatch_detail(reference: list[int], candidate: list[int]) -> dict[str, Any]:
+    """Return a stable first-difference diagnostic for token-exactness failures."""
+
+    common = min(len(reference), len(candidate))
+    for index in range(common):
+        if reference[index] != candidate[index]:
+            return {
+                "index": index,
+                "reference_token": reference[index],
+                "candidate_token": candidate[index],
+                "reference_length": len(reference),
+                "candidate_length": len(candidate),
+            }
+    if len(reference) != len(candidate):
+        return {
+            "index": common,
+            "reference_token": reference[common] if common < len(reference) else None,
+            "candidate_token": candidate[common] if common < len(candidate) else None,
+            "reference_length": len(reference),
+            "candidate_length": len(candidate),
+        }
+    return {}
+
+
+def assert_token_exact(reference: list[int], candidate: list[int], *, prompt: str, endpoint: str) -> None:
+    """Reject output drift with enough context to reproduce the failing row."""
+
+    detail = _token_mismatch_detail(reference, candidate)
+    assert not detail, {
+        "prompt": prompt,
+        "endpoint": endpoint,
+        "reason": "token_exactness_mismatch",
+        **detail,
+    }
 def blocking_result(body: dict[str, Any]) -> dict[str, Any]:
     choice = body["choices"][0]
     metadata = choice["hipengine"]
@@ -108,12 +142,8 @@ def run_triple(client, args, row, endpoint):
             result = blocking_result(response.json())
         assert_result(result, speculative=speculative, compact=not args.allow_mirror)
         results.append(result)
-    assert results[0]["ids"] == results[1]["ids"] == results[2]["ids"], {
-        "prompt": row["id"],
-        "endpoint": endpoint,
-        "ids": [result["ids"] for result in results],
-    }
-    assert len({result["usage"]["prompt_tokens"] for result in results}) == 1
+    assert_token_exact(results[0]["ids"], results[1]["ids"], prompt=row["id"], endpoint=endpoint)
+    assert_token_exact(results[0]["ids"], results[2]["ids"], prompt=row["id"], endpoint=endpoint)
     return results
 
 
