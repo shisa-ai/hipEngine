@@ -1480,7 +1480,9 @@ class Qwen35GGUFBringupGenerator:
     def kv_capability_provenance(self) -> dict[str, object]:
         resolution = getattr(self, "_kv_capability_resolution", None)
         if resolution is not None:
-            return resolution.as_dict()
+            payload = resolution.as_dict()
+            payload["max_packed_rows"] = self._effective_packed_decode_rows()
+            return payload
         return {
             "schema_version": 1,
             "status": "not_applicable",
@@ -1489,6 +1491,7 @@ class Qwen35GGUFBringupGenerator:
             "diagnostic_override": False,
             "requested": None,
             "effective_kv_storage": "bf16",
+            "max_packed_rows": self._effective_packed_decode_rows(),
             "artifact": {
                 "path": str(getattr(self.weight_index, "path", self.model_path)),
                 "size_bytes": None,
@@ -1500,6 +1503,34 @@ class Qwen35GGUFBringupGenerator:
             "reason": "BF16/default KV does not require approximate-KV capability evidence",
         }
 
+    def _effective_packed_decode_rows(self) -> int | None:
+        """Return the resident session's effective packed decode width.
+
+        The declared ``max_direct_rows`` states what the direct INT8 batch leaf
+        implements. The effective width can be lower, and on a long-context INT8
+        session it usually is: the layout keeps a BF16 prefix of full-attention
+        layers, a BF16 layer has no retained INT8 planes, and one packed batch
+        cannot run the retained leaf and the standard leaf together. The session
+        therefore caps the width at one row and serializes.
+
+        Reporting this keeps the effective width distinguishable from the
+        declared one; they differ silently otherwise. Returns ``None`` when no
+        resident session is available to report.
+        """
+
+        widths: list[int] = []
+        for holder in (self, getattr(self, "_resident_model_runner", None)):
+            accessor = getattr(holder, "_resident_sessions", None)
+            if not callable(accessor):
+                continue
+            widths.extend(
+                int(getattr(session, "packed_decode_max_rows", 0) or 0)
+                for session in accessor()
+                if getattr(session, "packed_decode_max_rows", None) is not None
+            )
+        if not widths:
+            return None
+        return min(widths)
     def _resolve_request_kv_policy(
         self,
         params: Any | None,

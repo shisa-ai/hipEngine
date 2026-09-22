@@ -6,6 +6,24 @@ This changelog is for package/API releases. Performance rollup history remains i
 [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md), with detailed benchmark
 evidence under [`benchmarks/results/`](benchmarks/results/).
 
+## Unreleased
+
+### Fixed
+
+- A long-context INT8 KV server no longer returns HTTP 500 on a request that
+  follows a concurrent autoregressive/speculative pair, and multi-choice no
+  longer fails on such a server. The direct INT8 batch leaf reads retained INT8
+  planes on every full-attention layer it covers, but a long-context INT8
+  session keeps a BF16 prefix of those layers for quality, so those layers have
+  no retained planes and take the standard batch leaf instead. One packed batch
+  cannot run both leaves, and the session was still advertising the declared
+  width, so it built a batch that the packed decode then rejected. Such a
+  session now caps the packed width at one row and serializes; results are
+  unchanged and stay exact against the autoregressive baseline.
+- `/ready` reports the effective width as
+  `model.kv_capability.max_packed_rows`, which previously differed silently from
+  the declared `max_direct_rows`.
+
 ## v0.6.1 - 2026-09-22
 
 Fixes long-prompt prefix reuse, widens speculative decoding on INT8 KV, and adds
