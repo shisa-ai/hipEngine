@@ -1,0 +1,63 @@
+{
+  "prompt": [
+    3,
+    17,
+    42,
+    7,
+    91,
+    12,
+    64,
+    5,
+    23,
+    88
+  ],
+  "seed": 20260401,
+  "tiny_config": {
+    "attention_bias": false,
+    "attention_dropout": 0.0,
+    "attention_k_eq_v": true,
+    "enable_moe_block": true,
+    "final_logit_softcapping": 30.0,
+    "global_head_dim": 64,
+    "head_dim": 32,
+    "hidden_activation": "gelu_pytorch_tanh",
+    "hidden_size": 64,
+    "hidden_size_per_layer_input": 0,
+    "intermediate_size": 48,
+    "layer_types": [
+      "sliding_attention",
+      "sliding_attention",
+      "sliding_attention",
+      "full_attention"
+    ],
+    "max_position_embeddings": 512,
+    "moe_intermediate_size": 16,
+    "num_attention_heads": 4,
+    "num_experts": 6,
+    "num_global_key_value_heads": 1,
+    "num_hidden_layers": 4,
+    "num_key_value_heads": 2,
+    "num_kv_shared_layers": 0,
+    "rms_norm_eps": 1e-06,
+    "rope_parameters": {
+      "full_attention": {
+        "partial_rotary_factor": 0.25,
+        "rope_theta": 1000000.0,
+        "rope_type": "proportional"
+      },
+      "sliding_attention": {
+        "rope_theta": 10000.0,
+        "rope_type": "default"
+      }
+    },
+    "sliding_window": 4,
+    "tie_word_embeddings": true,
+    "top_k_experts": 2,
+    "use_bidirectional_attention": "vision",
+    "use_double_wide_mlp": false,
+    "vocab_size": 128
+  },
+  "torch_version": "2.10.0+rocm7.15.0a20260711",
+  "transformers_version": "5.13.0",
+  "weight_digest": "f25adf975fbb318f5cc1c585c684a5d6e19432f0bceffec30f22c02e2f5e510c"
+}
