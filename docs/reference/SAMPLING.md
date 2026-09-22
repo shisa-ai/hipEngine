@@ -343,10 +343,14 @@ fields does not necessarily fall back to AR: the sampled route
 (`supports_sampled_speculative_mtp()`) serves the sampling law, the finish rule,
 the logprob metadata, the forced-token queues, and the text-keyed constraints
 (`json_object_close_forcing`, `tool_call_constraint`), which mask each row from
-the decoded text of the tokens the cycle published before it. Only
-`thinking_budget` still keeps a request on the autoregressive path
-(`SAMPLED_MTP_UNSERVABLE_BLOCKERS` in `hipengine/generation/sampling.py`), and
-the server's default `hint` policy relaxes it before that check. The
+the decoded text of the tokens the cycle published before it. The thinking budget
+is served too: the walk prepares each row's selection exactly where the
+autoregressive route does, so a reached hard cap queues its close sequence and the
+commit consumes that override for the position it governs. Nothing is left on
+`SAMPLED_MTP_UNSERVABLE_BLOCKERS` in `hipengine/generation/sampling.py`; the
+raw-argmax route keeps its own refusal of these fields, so a greedy thinking
+request still falls back to the autoregressive path, and the server's default
+`hint` policy relaxes the budget before that check. The
 resident scheduler applies this
 guard before emitting
 speculative target-verification work, so rows that need processed logits cannot

@@ -39,7 +39,7 @@ from hipengine.generation.mtp_sampled_accept import (
     chain_edge_rows,
     chain_token_logprobs,
     observe_published_tokens,
-    published_forced_count,
+    published_forced_positions,
     row_forced_token_ids,
     row_prefix_states,
     sampled_accept_summary,
@@ -4205,9 +4205,9 @@ class Qwen35GGUFMTP2Adapter:
                 # The pops are applied here rather than in the accept so a row the
                 # walk never reached -- which published nothing -- keeps its
                 # pending tokens.
-                forced_published = 0
+                forced_positions = None
                 if forced_ids is not None:
-                    forced_published = published_forced_count(
+                    forced_positions = published_forced_positions(
                         batch,
                         summary.accepted_counts,
                         output_ids,
@@ -4220,7 +4220,11 @@ class Qwen35GGUFMTP2Adapter:
                 observe_published_tokens(
                     sampling_state,
                     output_ids,
-                    forced_count=forced_published,
+                    forced_positions=(
+                        forced_positions
+                        if forced_positions is not None
+                        else (False,) * len(output_ids)
+                    ),
                     observe_text=(
                         None
                         if commit_params is None or commit_tokenizer is None

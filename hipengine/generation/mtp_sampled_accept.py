@@ -36,7 +36,7 @@ __all__ = [
     "chain_edge_rows",
     "chain_token_logprobs",
     "observe_published_tokens",
-    "published_forced_count",
+    "published_forced_positions",
     "row_forced_token_ids",
     "row_prefix_states",
     "sampled_accept_summary",
@@ -249,6 +249,12 @@ def _row_prefix_walk(
                 # parent and this row is never published, so consuming it here
                 # cannot lose a token the request still owes.
                 state.pop_forced_token()
+        # The autoregressive route prepares the selection before it reads the
+        # queue, and that is what turns a reached thinking cap into the queued
+        # close sequence. A walk that only peeks sees no override for the row the
+        # cap governs, so the cycle would publish the close without the commit
+        # consuming it.
+        state.prepare_for_selection()
         resolved[row] = state
         forced_ids[row] = state.peek_forced_token()
     return tuple(
@@ -258,51 +264,64 @@ def _row_prefix_walk(
     )
 
 
-def published_forced_count(
+def published_forced_positions(
     batch: TargetVerifyBatch,
     accepted_counts: Sequence[int],
     published: Sequence[int],
     forced_ids: Sequence[int | None],
-) -> int:
-    """Return how many of a cycle's published tokens carried a forced override.
+) -> tuple[bool, ...]:
+    """Return, per published token, whether that position carried an override.
 
     ``forced_ids`` comes from ``row_forced_token_ids`` and is aligned with the
     verified batch, while ``published`` is what the cycle actually emitted -- the
     accept walk's chain, shortened by the finish rule when it limited one. Only
     the positions the cycle published earned a pop from the live queue, so a stop
     inside the chain must not consume the overrides behind it.
+
+    The positions come from ``chain_edge_rows`` rather than from a count of the
+    overrides on the path, because an override is not necessarily leading. A
+    request's own forced queue is emitted at the head of the output, but a
+    thinking budget's hard cap queues its close sequence at the position the cap
+    is reached, which is a later position of the same cycle.
     """
 
     path = chain_edge_rows(batch, accepted_counts)[0]
-    return sum(1 for row in path[: len(published)] if forced_ids[row] is not None)
+    return tuple(forced_ids[row] is not None for row in path[: len(published)])
 
 
 def observe_published_tokens(
     state: RowSamplingState,
     published: Sequence[int],
     *,
-    forced_count: int,
+    forced_positions: Sequence[bool],
     observe_text: Callable[[RowSamplingState, int, int], None] | None = None,
 ) -> None:
     """Observe a cycle's published tokens into the request's live sampler state.
 
     This mirrors one autoregressive decode step per published token: prepare the
     selection, consume the forced override when this token is one of the ones the
-    cycle published because of it, then observe the token. ``forced_count`` is
-    the number of leading published tokens that carried an override; a forced
-    token can only be published at the position its row predicted, so the
-    consumed override must be the token itself.
+    cycle published because of it, then observe the token. ``forced_positions``
+    comes from ``published_forced_positions`` and marks exactly the positions that
+    carried an override; a forced token can only be published at the position its
+    row predicted, so the consumed override must be the token itself.
+
+    Preparing every position is what the autoregressive route does before each
+    selection, and it is what turns a reached thinking cap into a queued close
+    sequence. A position without an override leaves the queue alone: an override
+    can be queued for a later position of the same cycle, and the walk has already
+    drained the ones the earlier positions spent.
     """
 
-    remaining = int(forced_count)
-    if remaining < 0 or remaining > len(published):
+    flags = tuple(bool(flag) for flag in forced_positions)
+    if len(flags) != len(published):
         raise ValueError(
-            f"forced_count {forced_count} is outside the {len(published)} published tokens"
+            f"forced_positions {len(flags)} must align with the "
+            f"{len(published)} published tokens"
         )
     for index, token in enumerate(published):
         emitted = int(token)
-        if index < remaining:
-            state.prepare_for_selection()
+        state.prepare_for_selection()
+        if flags[index]:
             forced = state.pop_forced_token()
             if forced != emitted:
                 raise RuntimeError(

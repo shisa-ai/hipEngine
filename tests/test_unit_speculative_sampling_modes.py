@@ -87,15 +87,8 @@ _SERVABLE = {
         temperature=0.7, tool_call_constraint={"tool_names": ("read",)}
     ),
     "json_object_close_greedy": _params(json_object_close_forcing=True),
-    "greedy_logprobs": _params(logprobs=True),
-    "greedy": _params(),
-    "eos_only": _params(eos_token_id=9),
-}
-
-_UNSERVABLE = {
-    # The post-thinking queue is served by the same per-row walk as
-    # ``forced_tokens_pending``, but it can only be non-empty alongside a
-    # thinking budget, and the budget is still refused below.
+    # The post-thinking queue can only be non-empty alongside a thinking budget,
+    # so the two are one case: the budget's phase machine is what releases it.
     "post_thinking_forced": _params(
         temperature=0.7,
         thinking_close_token_ids=(1,),
@@ -105,7 +98,22 @@ _UNSERVABLE = {
     "thinking_budget": _params(
         temperature=0.7, thinking_close_token_ids=(1,), thinking_hard_token_cap=4
     ),
+    "greedy_logprobs": _params(logprobs=True),
+    "greedy": _params(),
+    "eos_only": _params(eos_token_id=9),
 }
+
+_UNSERVABLE: dict[str, object] = {}
+"""Requests the sampled route refuses. Empty: every blocker is served.
+
+Both fields that used to live here moved when the walk began preparing each row's
+selection: ``prepare_for_selection`` is what turns a reached hard thinking cap
+into the queued close sequence, and ``_queue_post_thinking_forced_tokens_if_ready``
+inside it is what moves the post-thinking queue into the same queue once the phase
+is answer. A request that carries a budget but cannot use the sampled route is
+still refused by the raw-argmax route's own blocker list, which the greedy fast
+path checks.
+"""
 
 
 @pytest.mark.parametrize("name", sorted(_SERVABLE))
@@ -142,16 +150,18 @@ def test_eos_supported_greedy_request_keeps_the_greedy_mode() -> None:
 def test_servable_and_unservable_blocker_sets_are_disjoint_and_cover_the_vocabulary() -> None:
     assert not set(SAMPLED_MTP_SERVABLE_BLOCKERS) & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
     # The servable set is the sampling law, the finish-rule relaxations, the
-    # metadata fields, the forced-token queue, and the text-keyed constraints;
-    # the refused set is the thinking budget alone. Every blocker in the union
-    # must be one the sampler or the cycle commit can name, so a new field cannot
-    # be served or refused by accident.
+    # metadata fields, the forced-token queue, the text-keyed constraints, and the
+    # thinking budget; the refused set is empty. Every blocker in the union must be
+    # one the sampler or the cycle commit can name, so a new field cannot be served
+    # or refused by accident.
     assert "temperature" in SAMPLED_MTP_SERVABLE_BLOCKERS
     assert "logprobs" in SAMPLED_MTP_SERVABLE_BLOCKERS
     assert "top_logprobs" in SAMPLED_MTP_SERVABLE_BLOCKERS
     assert "json_object_close_forcing" in SAMPLED_MTP_SERVABLE_BLOCKERS
     assert "tool_call_constraint" in SAMPLED_MTP_SERVABLE_BLOCKERS
-    assert SAMPLED_MTP_UNSERVABLE_BLOCKERS == ("thinking_budget",)
+    assert "thinking_budget" in SAMPLED_MTP_SERVABLE_BLOCKERS
+    assert SAMPLED_MTP_UNSERVABLE_BLOCKERS == ()
+    assert "thinking_budget" in SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
 
 
 def _adapter(*, plugin_evidence=(), artifact_size=None, row=None):
@@ -572,6 +582,10 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
         "force_sequence_completion_token_sequences",
     }
     text_hook_fields = {"json_object_close_forcing", "tool_call_constraint"}
+    # The thinking budget is per-row sampler state the walk prepares before it
+    # reads the queue, so a reached cap's close sequence is queued and consumed
+    # exactly as it is on the autoregressive route.
+    thinking_fields = {"thinking_budget"}
     assert set(SAMPLED_MTP_SERVABLE_BLOCKERS) == {
         "temperature",
         "logit_bias",
@@ -584,6 +598,7 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
         *metadata_fields,
         *forced_queue_fields,
         *text_hook_fields,
+        *thinking_fields,
     }
     # The two sets stay disjoint and still partition every incompatible field, so
     # a field can never be silently in neither.
@@ -595,6 +610,8 @@ def test_sampled_servable_set_is_the_sampling_law_and_the_finish_rule() -> None:
     assert not forced_queue_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
     assert text_hook_fields <= set(SAMPLED_MTP_SERVABLE_BLOCKERS)
     assert not text_hook_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
+    assert thinking_fields <= set(SAMPLED_MTP_SERVABLE_BLOCKERS)
+    assert not thinking_fields & set(SAMPLED_MTP_UNSERVABLE_BLOCKERS)
     assert set(SAMPLED_MTP_SERVABLE_BLOCKERS) | set(SAMPLED_MTP_UNSERVABLE_BLOCKERS) == set(
         SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
     )

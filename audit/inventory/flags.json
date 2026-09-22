@@ -912,7 +912,7 @@
           "hipengine/generation/qwen35_gguf_mtp2.py:2376",
           "hipengine/generation/qwen35_gguf_mtp2.py:2743",
           "hipengine/generation/qwen35_gguf_mtp2.py:2812",
-          "hipengine/generation/qwen35_gguf_mtp2.py:6508"
+          "hipengine/generation/qwen35_gguf_mtp2.py:6512"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -932,7 +932,7 @@
         ]
       },
       "id": "flag/HIPENGINE_DEBUG",
-      "evidence_hash": "492ea5fb4183"
+      "evidence_hash": "8297dd56ed52"
     },
     {
       "kind": "flag",
@@ -986,7 +986,7 @@
           "hipengine/generation/qwen35_gguf_mtp2.py:2376",
           "hipengine/generation/qwen35_gguf_mtp2.py:2743",
           "hipengine/generation/qwen35_gguf_mtp2.py:2812",
-          "hipengine/generation/qwen35_gguf_mtp2.py:6508"
+          "hipengine/generation/qwen35_gguf_mtp2.py:6512"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -1008,7 +1008,7 @@
         ]
       },
       "id": "flag/HIPENGINE_DEBUG_SAMPLED_ROUTE",
-      "evidence_hash": "a795c7b58719"
+      "evidence_hash": "428ed5fc5e4c"
     },
     {
       "kind": "flag",
