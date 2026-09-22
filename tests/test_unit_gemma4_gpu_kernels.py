@@ -14,6 +14,7 @@ import pytest
 from hipengine.kernels.cpu_reference.gemma4 import (
     Gemma4RopeConfig,
     _apply_rope,
+    gemma4_gelu_tanh,
     gemma4_rope_tables,
     gemma4_rmsnorm,
 )
@@ -741,4 +742,170 @@ def test_rotary_family_registers_under_gemma4_plain() -> None:
             variant="gemma4_plain",
         )
         is gemma4_k_to_v_bf16
+    )
+
+
+# ---------------------------------------------------------------------------
+# Routed-expert FFN primitives
+# ---------------------------------------------------------------------------
+
+
+@_needs_hip
+def test_gelu_tanh_mul_matches_the_reference_activation(device) -> None:
+    """GeGLU is gelu_tanh(gate) * up, not silu(gate) * up."""
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import (
+        gemma4_gelu_tanh_mul_bf16,
+    )
+
+    rows, intermediate = 5, 64
+    rng = np.random.default_rng(31)
+    gate = rng.standard_normal((rows, intermediate)).astype(np.float32) * 3.0
+    up = rng.standard_normal((rows, intermediate)).astype(np.float32)
+    fused = np.concatenate([gate, up], axis=1)
+
+    fused_ptr = device.put(_to_bf16_bits(fused))
+    out = device.out((rows, intermediate), np.uint16)
+    gemma4_gelu_tanh_mul_bf16(fused_ptr, out, rows, intermediate)
+    got = _from_bf16_bits(device.get(out, (rows, intermediate), np.uint16))
+
+    expected = gemma4_gelu_tanh(gate) * up
+    assert np.allclose(got, expected, atol=_BF16_ATOL, rtol=_BF16_RTOL)
+
+    # And it must not be SwiGLU, which is the plausible wrong reuse.
+    silu = gate / (1.0 + np.exp(-gate))
+    assert not np.allclose(got, silu * up, atol=_BF16_ATOL, rtol=_BF16_RTOL)
+
+
+@_needs_hip
+def test_gelu_tanh_mul_keeps_gate_and_up_halves_distinct(device) -> None:
+    """The second half of the fused buffer must be read as `up`, not as gate."""
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import (
+        gemma4_gelu_tanh_mul_bf16,
+    )
+
+    rows, intermediate = 2, 32
+    gate = np.full((rows, intermediate), 0.75, dtype=np.float32)
+    up = np.full((rows, intermediate), -2.5, dtype=np.float32)
+    fused = np.concatenate([gate, up], axis=1)
+    fused_ptr = device.put(_to_bf16_bits(fused))
+    out = device.out((rows, intermediate), np.uint16)
+    gemma4_gelu_tanh_mul_bf16(fused_ptr, out, rows, intermediate)
+    got = _from_bf16_bits(device.get(out, (rows, intermediate), np.uint16))
+    expected = gemma4_gelu_tanh(gate) * up
+    assert np.allclose(got, expected, atol=_BF16_ATOL, rtol=_BF16_RTOL)
+    # Reading gate twice would give gelu(0.75) * 0.75, a positive number.
+    assert np.all(got < 0)
+
+
+@_needs_hip
+def test_weighted_accumulate_matches_the_reference_with_shared_tokens(device) -> None:
+    """Two lanes of one token must both land, with no lost update.
+
+    This is the regression test for the block-per-row version of the kernel,
+    which had different blocks read-modify-writing the same token row. With
+    `top_k` lanes per token landing in different experts, that version dropped
+    or double-counted contributions depending on block scheduling.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import (
+        gemma4_moe_lane_to_row_i32,
+        gemma4_moe_weighted_accumulate_bf16,
+    )
+
+    tokens, top_k, hidden = 4, 4, 128
+    total_lanes = tokens * top_k
+    rng = np.random.default_rng(32)
+
+    # A compact order that deliberately splits each token's lanes across experts:
+    # interleave so consecutive lanes of a token are far apart in row order.
+    sorted_lanes = np.empty(total_lanes, dtype=np.int32)
+    for token in range(tokens):
+        for slot in range(top_k):
+            sorted_lanes[slot * tokens + token] = token * top_k + slot
+    weights = rng.random(total_lanes).astype(np.float32)
+    expert_out = rng.standard_normal((total_lanes, hidden)).astype(np.float32)
+
+    lanes_ptr = device.put(sorted_lanes)
+    l2r_ptr = device.out((total_lanes,), np.int32)
+    gemma4_moe_lane_to_row_i32(lanes_ptr, l2r_ptr, total_lanes)
+
+    expert_ptr = device.put(_to_bf16_bits(expert_out))
+    weights_ptr = device.put(weights)
+    out_ptr = device.out((tokens, hidden), np.uint16)
+    gemma4_moe_weighted_accumulate_bf16(
+        expert_ptr, l2r_ptr, weights_ptr, out_ptr, tokens, hidden, top_k
+    )
+    got = _from_bf16_bits(device.get(out_ptr, (tokens, hidden), np.uint16))
+
+    expected = np.zeros((tokens, hidden), dtype=np.float32)
+    for row, lane in enumerate(sorted_lanes):
+        expected[lane // top_k] += _from_bf16_bits(_to_bf16_bits(expert_out[row])) * weights[row]
+    assert np.allclose(got, expected, atol=_BF16_ATOL, rtol=_BF16_RTOL)
+
+
+@_needs_hip
+def test_lane_to_row_is_the_inverse_permutation(device) -> None:
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import (
+        gemma4_moe_lane_to_row_i32,
+    )
+
+    rng = np.random.default_rng(33)
+    total = 37
+    sorted_lanes = rng.permutation(total).astype(np.int32)
+    lanes_ptr = device.put(sorted_lanes)
+    l2r_ptr = device.out((total,), np.int32)
+    gemma4_moe_lane_to_row_i32(lanes_ptr, l2r_ptr, total)
+    got = device.get(l2r_ptr, (total,), np.int32)
+    for row, lane in enumerate(sorted_lanes):
+        assert got[lane] == row
+
+
+@_needs_hip
+def test_moe_zero_clears_the_buffer(device) -> None:
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import gemma4_moe_zero_bf16
+
+    buf = device.put(np.full((4, 32), 7, dtype=np.uint16))
+    gemma4_moe_zero_bf16(buf, 4 * 32)
+    assert np.all(device.get(buf, (4, 32), np.uint16) == 0)
+
+
+@_needs_hip
+def test_gelu_tanh_mul_rejects_empty_shapes(device) -> None:
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import (
+        gemma4_gelu_tanh_mul_bf16,
+    )
+
+    ptr = device.put(np.zeros((1, 2), dtype=np.uint16))
+    with pytest.raises(ValueError, match="must be positive"):
+        gemma4_gelu_tanh_mul_bf16(ptr, ptr, 0, 4)
+
+
+def test_moe_family_registers_under_gemma4_plain() -> None:
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import (
+        gemma4_gelu_tanh_mul_bf16,
+        gemma4_moe_weighted_accumulate_bf16,
+        register_gemma4_moe_kernels,
+    )
+    from hipengine.kernels.registry import resolve
+
+    register_gemma4_moe_kernels(replace=True)
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="expert_geglu",
+            quant="gguf_q4_k_m",
+            variant="gemma4_plain",
+        )
+        is gemma4_gelu_tanh_mul_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_weighted_accumulate",
+            quant="gguf_q4_k_m",
+            variant="gemma4_plain",
+        )
+        is gemma4_moe_weighted_accumulate_bf16
     )
