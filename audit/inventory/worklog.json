@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10657,
-    "current": 3425,
+    "entries": 10658,
+    "current": 3426,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1092,
@@ -41075,14 +41075,14 @@
         "written": "2026-09-22",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "1. Pick a route and close the Q5_1 gap.\n2. Validate the Q5_K and Q8_0 expert projections on the real artifact.\n3. Then the runner.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as blocked \u2014 the entry says the unit is blocked",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260922T210504.433272Z-lhl-gemma4-gfx1100-q5-1-gap-661149.md",
@@ -41101,7 +41101,7 @@
         ]
       },
       "id": "worklog/20260922T210504.433272Z-lhl-gemma4-gfx1100-q5-1-gap-661149",
-      "evidence_hash": "a78156c855ff"
+      "evidence_hash": "4d88366d7549"
     }
   ]
 }
