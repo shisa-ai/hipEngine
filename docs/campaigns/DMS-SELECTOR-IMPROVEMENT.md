@@ -1,10 +1,10 @@
 ---
 status: current
-owns: Bounded DMS selector improvement campaign, experiment gates, execution punchlist, and inline results pending human review.
+owns: Bounded DMS selector improvement campaign, experiment gates, execution punchlist, and inline results through closure.
 ---
 # DMS selector improvement campaign
 
-Campaign state: **running — Phase A preflight in progress**. Opened 2026-09-21;
+Campaign state: **closed — blocked/partial; no selector promotion**. Opened 2026-09-21;
 execution started 2026-09-22 under run
 `selector-improvement-run-20260922-062438`.
 
@@ -150,10 +150,10 @@ not total KV, recurrent-state, allocator, or model-residency compression.
 | Driver, ROCm, compiler, Python, Torch, environment | Linux `6.18.52-1-cachyos-lts`; HIP `7.15.26333`; AMD clang `23.0.0git` (`8f497e0`); Python `3.13.13`; Torch `2.13.0+rocm10.0.0`, HIP `7.15.26333`; `uv 0.12.3` |
 | Model/tokenizer/capture/label/baseline hashes | model `7e78da5d...e169`; sidecar `e52fc60a...d764`; capture manifest `57faa3a8...db88`; labels `2a47af11...cdfc`; every referenced capture/label shard verified; tokenizer hash pending split seal |
 | Profile, resolved variant manifest, strict fallback, codec | T3 policy experiment; c1 autoregressive BF16 KV; resolved variants/fallback pending evaluator freeze |
-| Evaluator/scorer/test hashes and approved edit boundary | pending Phase A tooling; candidate edits restricted to named DMS scripts/modules/tests/docs; evaluator freezes before P0-P7 |
-| Data manifests, source exclusions, seeds, split identities | historical v1-v4 sources located; new split manifests and normalized-text exclusions pending; training seeds 0/1 |
-| Output root, free disk, pilot wall, projected GPU-hours | `~/dms-artifacts/selector-improvement-run-20260922-062438/`; 119 GiB free at start versus 500 GiB campaign ceiling; use bounded streaming capture and verified transient cleanup or return for storage revision; pilot/projection pending |
-| Actual cumulative GPU-hours/disk, faults/retries | 0 GPU-hours; 4 KiB preflight record; no faults/retries |
+| Evaluator/scorer/test hashes and approved edit boundary | Phase A tooling frozen in commits `c7b49e7cf`, `0ddfa2b79`, `2fb4a3db9`; candidate edits restricted to named DMS scripts/modules/tests/docs; no production default change |
+| Data manifests, source exclusions, seeds, split identities | Historical v1-v4 inputs verified; deterministic acquisition/sealing tooling implemented and tested; qualification/final split generation blocked before source acquisition because G0/training-point prerequisites failed |
+| Output root, free disk, pilot wall, projected GPU-hours | `~/dms-artifacts/selector-improvement-run-20260922-062438/`; 119 GiB free at start; pilot wall 108.47 s; no full-matrix projection because G0 stopped execution |
+| Actual cumulative GPU-hours/disk, faults/retries | One short G0 pilot plus deterministic repeat; no Phase B–G matrix; no campaign-wide GPU-hour claim; no model/capture artifacts written to Git |
 
 ## 4. Evaluation firewall and gates
 
@@ -658,34 +658,36 @@ under `benchmarks/results/`. Record rejected attempts as well as successes.
       does extra data help at equal updates; does nonlinear capacity help?
 - [ ] State whether improvement survives fresh sources, Japanese/mixed categories,
       window expiry, unrelated lengths, 128K, and public-route execution.
-- [ ] Identify any hindsight-only win, unavailable runtime input, unimplemented
+- [x] Identify any hindsight-only win, unavailable runtime input, unimplemented
       device route, or unmeasured cost. Do not promote a diagnostic replay result.
-- [ ] Clean rejected implementation debris; preserve reusable tested tooling and
+      Hindsight-only continuation mass is recorded as noncausal; causal Q/K input,
+      integrated candidates, and campaign-wide costs remain unavailable.
+- [x] Clean rejected implementation debris; preserve reusable tested tooling and
       external evidence. Inventory surviving temporary paths in REFACTOR.md.
-- [ ] Update this document inline and add immutable worklog entries for substantial
+- [x] Update this document inline and add immutable worklog entries for substantial
       units. Update PLAN.md only if architectural/phase plans change.
-- [ ] Run docs/index/worklog gates and applicable implementation tests; explicitly
+- [x] Run docs/index/worklog gates and applicable implementation tests; explicitly
       stage scoped files and commit each validated logical unit immediately.
-- [ ] For retained public performance claims, update benchmark artifacts/scoreboard/
+- [x] For retained public performance claims, update benchmark artifacts/scoreboard/
       changelog under OPTIMIZATION.md. Do not export provisional campaign claims
       into the root README or silently change product defaults.
-- [ ] Set final campaign state, record unresolved questions and return to the lead.
+- [x] Set final campaign state, record unresolved questions and return to the lead.
 
 ### Final synthesis — fill after execution
 
 | Question | Answer and evidence |
 | --- | --- |
-| Best passing operating point versus frozen baseline | pending |
-| Best quality at equal live budget | pending |
-| Policy-only versus training contribution | pending |
-| Label horizon versus value information contribution | pending |
-| Query information versus model capacity contribution | pending |
-| Data diversity versus optimization-step contribution | pending |
-| Generalization and longest tested decode/expiry coverage | pending |
-| Real memory/latency trade-off and implementation cost | pending |
-| Negative results, blockers, and precise reopen conditions | pending |
-| Total cost and reproducibility packet | pending |
-| Recommended next product/research decision, not enacted | pending |
+| Best passing operating point versus frozen baseline | **Not established.** The compact no-evict control failed G0 before frozen W8192/CR2 could run. |
+| Best quality at equal live budget | **Not established.** No valid policy point or training point exists. |
+| Policy-only versus training contribution | **Not separable.** P0–P7 were stopped before attribution. |
+| Label horizon versus value information contribution | CPU H0/H1/H2 references exist; real V/continuation capture and replay were not run. |
+| Query information versus model capacity contribution | Continuation oracle beat recency/random on discarded-mass labels, but causal last-query capture was unavailable and MLP/runtime gates were not run. |
+| Data diversity versus optimization-step contribution | Not measured; source acquisition/sealing tooling is ready, but training-point prerequisites failed. |
+| Generalization and longest tested decode/expiry coverage | Not measured; no qualification/final, boundary, expiry, or 128K runs. |
+| Real memory/latency trade-off and implementation cost | Only the short control pilot was measured: teardown returned to baseline; no campaign latency comparison is valid. |
+| Negative results, blockers, and precise reopen conditions | Deterministic G0 failure: max KL `0.004982890284225346`, top-1 `11/12`, mixed Japanese/English decode-step-1 mismatch. Reopen after same-host compact no-evict reaches max KL ≤ `0.001` and 100% top-1, then rerun baseline/P0–P7. |
+| Total cost and reproducibility packet | Tooling, tests, docs, worklogs, pilot artifacts, and hashes are recorded under run `selector-improvement-run-20260922-062438`; no full campaign cost claim. |
+| Recommended next product/research decision, not enacted | Keep the existing selector/default unchanged. Repair the numerical control first; then rerun the declared baseline and choose `training_point` before any training, label, capacity, or finalist claims. |
 
 The useful outcomes include “existing ranks plus a policy change are sufficient,”
 “the target is wrong,” “the target is useful but hard to predict causally,” and
