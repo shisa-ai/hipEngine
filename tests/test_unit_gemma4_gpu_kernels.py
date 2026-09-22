@@ -1268,14 +1268,39 @@ def test_router_topk_selection_is_ordered_by_descending_logit():
     np.testing.assert_allclose(got_weights.sum(axis=-1), np.ones(tokens), atol=1e-5)
 
 
-def test_router_scratch_rejects_a_mismatched_shape():
+def test_router_scratch_is_a_capacity_not_an_identity():
+    """A scratch sized for the widest block serves narrower blocks too.
+
+    Generation sizes one scratch for the prefill width and then routes
+    single-token decode steps through it. Rejecting a narrower block would make
+    that impossible, so `tokens` is a capacity bound rather than an identity.
+    The shape parameters still describe the weights and must match exactly, and
+    a block wider than the capacity is still an error rather than an overflow.
+    """
+
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_router import (
         Gemma4RouterScratch,
         gemma4_router_topk_bf16,
     )
 
-    scratch = Gemma4RouterScratch(tokens=2, hidden_size=32, num_experts=8, top_k=2)
+    scratch = Gemma4RouterScratch(tokens=8, hidden_size=32, num_experts=8, top_k=2)
     try:
+        with pytest.raises(ValueError, match="exceeds scratch capacity"):
+            gemma4_router_topk_bf16(
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                tokens=9,
+                hidden_size=32,
+                num_experts=8,
+                top_k=2,
+                scratch=scratch,
+            )
+        # A shape disagreement is still rejected: these parameters describe the
+        # weights, not the block, so they cannot be satisfied by spare capacity.
         with pytest.raises(ValueError, match="scratch was built for"):
             gemma4_router_topk_bf16(
                 0,
@@ -1284,24 +1309,10 @@ def test_router_scratch_rejects_a_mismatched_shape():
                 0,
                 0,
                 0,
-                tokens=3,
-                hidden_size=32,
+                tokens=2,
+                hidden_size=64,
                 num_experts=8,
                 top_k=2,
-                scratch=scratch,
-            )
-        with pytest.raises(ValueError, match="cannot exceed"):
-            gemma4_router_topk_bf16(
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                tokens=2,
-                hidden_size=32,
-                num_experts=8,
-                top_k=9,
                 scratch=scratch,
             )
     finally:
@@ -1795,3 +1806,233 @@ def test_layer_forward_applies_the_layer_scalar():
     np.testing.assert_allclose(
         ratio[finite], np.full(int(finite.sum()), 0.0703125, dtype=np.float32), rtol=1e-2
     )
+
+
+def test_attention_prefill_serves_a_decode_step_over_a_kv_cache():
+    """`keys` may exceed `tokens`: one query row attending over a KV cache.
+
+    This is the shape generation actually uses. The kernel was written for a
+    square prefill block, where query count and key count are the same number, so
+    a decode step (one query, N cached keys) is exactly the case a kernel that
+    conflated the two would get wrong. The cache here is longer than the live
+    context, so a kernel reading past the live keys would attend over stale
+    cache slots and produce a different answer.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        gemma4_attention_prefill_f32,
+    )
+
+    device = _Device()
+    num_heads, num_kv_heads, head_dim = 4, 2, 16
+    live, capacity = 6, 11
+    rng = np.random.default_rng(2024)
+
+    # A cache with stale slots past the live context. Those slots must not be read.
+    key_cache = (rng.standard_normal((capacity, num_kv_heads, head_dim)) * 0.5).astype(np.float32)
+    value_cache = (rng.standard_normal((capacity, num_kv_heads, head_dim)) * 0.5).astype(np.float32)
+    query = (rng.standard_normal((1, num_heads, head_dim)) * 0.5).astype(np.float32)
+
+    # A decode step keeps every live key and masks the rest of the cache.
+    keep = np.zeros((1, capacity), dtype=np.uint8)
+    keep[0, :live] = 1
+
+    out_ptr = device.out((1, num_heads, head_dim), np.float32)
+    gemma4_attention_prefill_f32(
+        device.put(query),
+        device.put(key_cache),
+        device.put(value_cache),
+        device.put(keep),
+        out_ptr,
+        tokens=1,
+        keys=capacity,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        scale=1.0,
+    )
+    got = device.get(out_ptr, (1, num_heads, head_dim), np.float32)
+
+    want = _reference_attention(
+        query,
+        key_cache[:live],
+        value_cache[:live],
+        np.ones((1, live), dtype=np.uint8),
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+    )
+
+    diff = np.abs(got - want)
+    assert diff.max() < 1e-4, (
+        f"decode-shaped attention differs by {diff.max():.3g}; a kernel using the "
+        f"query count as the key count would attend over {capacity - live} stale slots"
+    )
+
+
+def test_layer_incremental_decode_matches_a_dense_prefill():
+    """Decoding one token at a time through a KV cache matches a dense prefill.
+
+    This is the contract generation depends on. The same layer runs twice over
+    the same sequence: once densely over all nine positions with a causal mask,
+    and once as a six-token prefill that fills the cache followed by three
+    one-token decode steps. The decode outputs must reproduce the dense rows.
+
+    It fails if the cache append lands at the wrong offset, if attention reads
+    the query count as the key count (which would silently attend over a single
+    cached position), or if the mask for a decode step does not cover exactly the
+    live context.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
+        Gemma4LayerGeometry,
+        Gemma4LayerKV,
+        Gemma4LayerPointers,
+        Gemma4LayerScratch,
+        gemma4_layer_forward_bf16,
+    )
+
+    prompt, total = 6, 9
+    hidden_size, geometry = 64, (4, 2, 16)
+    dense_intermediate, num_experts, top_k, expert_intermediate = 48, 8, 3, 32
+    weights, config, attn_geometry = _layer_fixture(
+        777,
+        total,
+        hidden_size,
+        geometry,
+        dense_intermediate,
+        num_experts,
+        top_k,
+        expert_intermediate,
+        False,
+    )
+    rng = np.random.default_rng(31)
+    hidden = (rng.standard_normal((total, hidden_size)) * 0.5).astype(np.float32)
+
+    device = _Device()
+    num_heads, num_kv_heads, head_dim = geometry
+    kv_width = num_kv_heads * head_dim
+    layer_geometry = Gemma4LayerGeometry(
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        scale=attn_geometry.scale,
+        k_eq_v=False,
+    )
+
+    def put_bf16(arr):
+        return device.put(_to_bf16_bits(np.asarray(arr, dtype=np.float32)))
+
+    pointers = Gemma4LayerPointers(
+        input_layernorm=device.put(weights.input_layernorm),
+        q_proj=put_bf16(weights.q_proj),
+        k_proj=put_bf16(weights.k_proj),
+        o_proj=put_bf16(weights.o_proj),
+        q_norm=device.put(weights.q_norm),
+        k_norm=device.put(weights.k_norm),
+        post_attention_layernorm=device.put(weights.post_attention_layernorm),
+        pre_feedforward_layernorm=device.put(weights.pre_feedforward_layernorm),
+        mlp_gate_proj=put_bf16(weights.mlp_gate_proj),
+        mlp_up_proj=put_bf16(weights.mlp_up_proj),
+        mlp_down_proj=put_bf16(weights.mlp_down_proj),
+        post_feedforward_layernorm_1=device.put(weights.post_feedforward_layernorm_1),
+        router_scale=device.put(weights.router_scale),
+        router_proj=device.put(weights.router_proj),
+        router_per_expert_scale=device.put(weights.router_per_expert_scale),
+        pre_feedforward_layernorm_2=device.put(weights.pre_feedforward_layernorm_2),
+        experts_gate_up_proj=put_bf16(weights.experts_gate_up_proj),
+        experts_down_proj=put_bf16(weights.experts_down_proj),
+        post_feedforward_layernorm_2=device.put(weights.post_feedforward_layernorm_2),
+        post_feedforward_layernorm=device.put(weights.post_feedforward_layernorm),
+        v_proj=put_bf16(weights.v_proj),
+        layer_scalar=device.put(np.array([weights.layer_scalar], dtype=np.float32)),
+    )
+    # Sized for the widest block this test runs: the dense pass and the prefill
+    # both use more than one row, and a scratch sized for a single decode step
+    # would be overflowed by them.
+    scratch = Gemma4LayerScratch(
+        tokens=total,
+        hidden_size=hidden_size,
+        dense_intermediate=dense_intermediate,
+        geometry=layer_geometry,
+        num_experts=num_experts,
+        top_k=top_k,
+        expert_intermediate=expert_intermediate,
+    )
+    all_positions = np.arange(total, dtype=np.int64)
+    cos, sin = gemma4_rope_cos_sin_tables(attn_geometry.rope, all_positions)
+    cos_ptr = device.put(cos.astype(np.float32))
+    sin_ptr = device.put(sin.astype(np.float32))
+
+    def run(rows, *, positions, keep, kv=None, hidden_slice=None):
+        mask_ptr = device.put(keep)
+        target = put_bf16(
+            hidden if hidden_slice is None else hidden[hidden_slice[0] : hidden_slice[1]]
+        )
+        table = positions
+        gemma4_layer_forward_bf16(
+            target,
+            device.put(cos[table].astype(np.float32)),
+            device.put(sin[table].astype(np.float32)),
+            mask_ptr,
+            pointers,
+            scratch=scratch,
+            kv=kv,
+            rows=rows,
+            eps=config.rms_norm_eps,
+        )
+        return device.get(target, (rows, hidden_size), np.uint16)
+
+    try:
+        # Dense reference over the whole sequence.
+        dense = _from_bf16_bits(
+            run(
+                total,
+                positions=all_positions,
+                keep=np.tril(np.ones((total, total), dtype=np.uint8)),
+            )
+        )
+
+        # The same sequence, prefilled then decoded one token at a time.
+        key_cache = device.out((total, num_kv_heads, head_dim), np.uint16)
+        value_cache = device.out((total, num_kv_heads, head_dim), np.uint16)
+        prompt_positions = np.arange(prompt, dtype=np.int64)
+        run(
+            prompt,
+            positions=prompt_positions,
+            keep=np.tril(np.ones((prompt, prompt), dtype=np.uint8)),
+            kv=Gemma4LayerKV(
+                key_cache=key_cache,
+                value_cache=value_cache,
+                capacity=total,
+                write_offset=0,
+            ),
+            hidden_slice=(0, prompt),
+        )
+
+        for position in range(prompt, total):
+            live = position + 1
+            step = _from_bf16_bits(
+                run(
+                    1,
+                    positions=np.array([position], dtype=np.int64),
+                    keep=np.ones((1, live), dtype=np.uint8),
+                    kv=Gemma4LayerKV(
+                        key_cache=key_cache,
+                        value_cache=value_cache,
+                        capacity=total,
+                        write_offset=position,
+                    ),
+                    hidden_slice=(position, position + 1),
+                )
+            )
+            diff = np.abs(step[0] - dense[position]).max()
+            assert diff < 0.02 * np.abs(dense[position]).max() + 1e-4, (
+                f"decode step at position {position} differs from the dense prefill by {diff:.4g}"
+            )
+
+        # The cache must hold the whole context, not just the last write.
+        cached = device.get(key_cache, (total, num_kv_heads, head_dim), np.uint16)
+        assert np.abs(_from_bf16_bits(cached[:prompt])).sum() > 0, "prefill wrote no keys"
+        assert np.abs(_from_bf16_bits(cached[prompt:])).sum() > 0, "decode wrote no keys"
+    finally:
+        scratch.free()

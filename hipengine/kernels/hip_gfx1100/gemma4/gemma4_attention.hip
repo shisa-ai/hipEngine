@@ -108,11 +108,12 @@ __global__ void gemma4_attention_prefill_kernel(
     int64_t num_kv_heads,
     int64_t head_dim,
     float scale,
-    int64_t tokens) {
+    int64_t tokens,
+    int64_t keys) {
   extern __shared__ float shared[];
   float* q_s = shared;
   float* logits_s = q_s + head_dim;
-  float* partial = logits_s + tokens;
+  float* partial = logits_s + keys;
 
   const int64_t token = static_cast<int64_t>(blockIdx.x) / num_heads;
   const int64_t head = static_cast<int64_t>(blockIdx.x) - token * num_heads;
@@ -125,12 +126,15 @@ __global__ void gemma4_attention_prefill_kernel(
   }
   __syncthreads();
 
-  const uint8_t* mask_row = keep_mask + token * tokens;
+  // The key count is separate from the query count so this same kernel serves
+  // both a dense prefill block (keys == tokens) and a decode step reading a
+  // KV cache (tokens == 1, keys == live context).
+  const uint8_t* mask_row = keep_mask + token * keys;
 
   // Pass 1: logits and their running maximum. A masked-out key is -inf so it
   // contributes nothing to either the denominator or the numerator.
   float running_max = -INFINITY;
-  for (int64_t j = 0; j < tokens; ++j) {
+  for (int64_t j = 0; j < keys; ++j) {
     float logit = -INFINITY;
     if (mask_row[j] != 0) {
       const scalar_t* k_row = key + (j * num_kv_heads + kv_head) * head_dim;
@@ -152,7 +156,7 @@ __global__ void gemma4_attention_prefill_kernel(
 
   // Pass 2: denominator.
   float local_sum = 0.0f;
-  for (int64_t j = threadIdx.x; j < tokens; j += blockDim.x) {
+  for (int64_t j = threadIdx.x; j < keys; j += blockDim.x) {
     local_sum += expf(logits_s[j] - row_max);
   }
   const float denominator = gemma4_attn_block_sum(partial, local_sum);
@@ -161,7 +165,7 @@ __global__ void gemma4_attention_prefill_kernel(
   // Pass 3: weighted sum of V, then the normalise.
   for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
     float acc = 0.0f;
-    for (int64_t j = 0; j < tokens; ++j) {
+    for (int64_t j = 0; j < keys; ++j) {
       const float weight = expf(logits_s[j] - row_max);
       if (weight == 0.0f) {
         continue;
@@ -186,8 +190,9 @@ int launch_gemma4_attention_prefill(
     int64_t num_kv_heads,
     int64_t head_dim,
     float scale,
-    hipStream_t stream) {
-  if (tokens <= 0 || num_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0) {
+    hipStream_t stream,
+    int64_t keys) {
+  if (tokens <= 0 || keys <= 0 || num_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   if (num_heads % num_kv_heads != 0) {
@@ -196,7 +201,7 @@ int launch_gemma4_attention_prefill(
   const int threads = static_cast<int>(
       head_dim < kGemma4AttentionMaxThreads ? head_dim : kGemma4AttentionMaxThreads);
   const size_t shared_bytes =
-      static_cast<size_t>(head_dim + tokens + threads) * sizeof(float);
+      static_cast<size_t>(head_dim + keys + threads) * sizeof(float);
   hipLaunchKernelGGL(
       gemma4_attention_prefill_kernel<scalar_t>,
       dim3(static_cast<unsigned int>(tokens * num_heads)),
@@ -212,7 +217,8 @@ int launch_gemma4_attention_prefill(
       num_kv_heads,
       head_dim,
       scale,
-      tokens);
+      tokens,
+      keys);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -229,10 +235,11 @@ extern "C" int hipengine_gemma4_attention_prefill_bf16(
     int64_t num_kv_heads,
     int64_t head_dim,
     float scale,
-    hipStream_t stream) {
+    hipStream_t stream,
+    int64_t keys) {
   return launch_gemma4_attention_prefill<uint16_t>(
       query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
-      stream);
+      stream, keys);
 }
 
 // F32 entry point for validation against the CPU reference: the reference works
@@ -249,8 +256,9 @@ extern "C" int hipengine_gemma4_attention_prefill_f32(
     int64_t num_kv_heads,
     int64_t head_dim,
     float scale,
-    hipStream_t stream) {
+    hipStream_t stream,
+    int64_t keys) {
   return launch_gemma4_attention_prefill<float>(
       query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
-      stream);
+      stream, keys);
 }
