@@ -23,6 +23,13 @@ _ARGTYPES_GELU = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+_ARGTYPES_GELU_SPLIT = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _ARGTYPES_ZERO = (ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p)
 _ARGTYPES_LANE_TO_ROW = (
     ctypes.c_void_p,
@@ -45,6 +52,7 @@ _SOURCE = Path(__file__).with_name("gemma4_moe.hip")
 _OUTPUT_NAME = "gemma4_moe.so"
 
 _SYMBOL_GELU = "hipengine_gemma4_gelu_tanh_mul_bf16"
+_SYMBOL_GELU_SPLIT = "hipengine_gemma4_gelu_tanh_mul_split_bf16"
 _SYMBOL_ZERO = "hipengine_gemma4_moe_zero_bf16"
 _SYMBOL_LANE_TO_ROW = "hipengine_gemma4_moe_lane_to_row_i32"
 _SYMBOL_ACCUMULATE = "hipengine_gemma4_moe_weighted_accumulate_bf16"
@@ -106,6 +114,31 @@ def gemma4_gelu_tanh_mul_bf16(
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_GELU, _ARGTYPES_GELU, ctypes.c_int)
     _check_launch(runtime, fn(gate_up_ptr, out_ptr, rows, intermediate, stream))
+
+
+def gemma4_gelu_tanh_mul_split_bf16(
+    gate_ptr: int,
+    up_ptr: int,
+    out_ptr: int,
+    total: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """``gelu_tanh(gate) * up`` over *separate* gate and up buffers.
+
+    The dense MLP needs this form because the GGUF stores ``ffn_gate`` and
+    ``ffn_up`` as distinct tensors; only the expert path is stacked into a fused
+    ``(rows, 2 * intermediate)`` buffer.
+    """
+
+    if total <= 0:
+        raise ValueError("total must be positive")
+    library = library or build_gemma4_moe(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, _SYMBOL_GELU_SPLIT, _ARGTYPES_GELU_SPLIT, ctypes.c_int)
+    _check_launch(runtime, fn(gate_ptr, up_ptr, out_ptr, total, stream))
 
 
 def gemma4_moe_zero_bf16(

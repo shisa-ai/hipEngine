@@ -106,9 +106,7 @@ def gemma4_partial_rotary_bf16(
     ``(tokens, head_dim)``. Pass ``key_ptr = 0`` to rotate queries only.
     """
 
-    rotary = _check_rotary_shape(
-        tokens, num_q_heads, num_kv_heads, head_dim, rotary_dim
-    )
+    rotary = _check_rotary_shape(tokens, num_q_heads, num_kv_heads, head_dim, rotary_dim)
     library = library or build_gemma4_rotary(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_ROTARY_BF16, _ARGTYPES_ROTARY, ctypes.c_int)
@@ -148,9 +146,7 @@ def gemma4_partial_rotary_f32(
 ) -> None:
     """F32 twin of :func:`gemma4_partial_rotary_bf16`."""
 
-    rotary = _check_rotary_shape(
-        tokens, num_q_heads, num_kv_heads, head_dim, rotary_dim
-    )
+    rotary = _check_rotary_shape(tokens, num_q_heads, num_kv_heads, head_dim, rotary_dim)
     library = library or build_gemma4_rotary(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_ROTARY_F32, _ARGTYPES_ROTARY, ctypes.c_int)
@@ -186,9 +182,7 @@ def gemma4_k_to_v_bf16(
         raise ValueError("total must be positive")
     library = library or build_gemma4_rotary(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(
-        library, _SYMBOL_K_TO_V_BF16, _ARGTYPES_K_TO_V, ctypes.c_int
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_K_TO_V_BF16, _ARGTYPES_K_TO_V, ctypes.c_int)
     err = fn(key_ptr, value_ptr, total, stream)
     _check_launch(runtime, err)
 

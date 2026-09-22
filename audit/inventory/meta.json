@@ -8,8 +8,8 @@
     "roots": "hipengine, scripts, tests, benchmarks"
   },
   "kernels": {
-    "sources": 266,
-    "registry_keys": 308,
+    "sources": 269,
+    "registry_keys": 309,
     "backends": [
       "cpu_reference",
       "cuda_sm120a",
@@ -22,12 +22,12 @@
     "source": "docs/REFACTOR.md",
     "headings": 402
   },
-  "generated": "2026-09-22T12:31:51+00:00",
-  "commit": "e02e08aa0",
+  "generated": "2026-09-22T12:37:07+00:00",
+  "commit": "40c62d6ef",
   "worklog": {
     "source": "worklog/entries",
-    "entries": 10650,
-    "current": 3418,
+    "entries": 10651,
+    "current": 3419,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1091,

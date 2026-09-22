@@ -68,6 +68,25 @@ __global__ void gemma4_gelu_tanh_mul_kernel(
   }
 }
 
+// GeGLU over *separate* gate and up buffers.
+//
+// The GGUF stores `ffn_gate` and `ffn_up` as distinct tensors for the dense MLP,
+// so the fused `(rows, 2 * intermediate)` kernel above cannot serve it. The
+// expert path keeps the fused form because `ffn_gate_up_exps` really is stacked.
+__global__ void gemma4_gelu_tanh_mul_split_kernel(
+    const uint16_t* __restrict__ gate,
+    const uint16_t* __restrict__ up,
+    uint16_t* __restrict__ out,
+    int64_t total) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const float g = gemma4_moe_bf16_bits_to_float(gate[idx]);
+    const float u = gemma4_moe_bf16_bits_to_float(up[idx]);
+    out[idx] = gemma4_moe_float_to_bf16_bits(gemma4_moe_gelu_tanh(g) * u);
+  }
+}
+
 // Invert the compact permutation: `lane_to_row[sorted_lanes[row]] = row`.
 // Every lane appears exactly once because every selected expert has at least
 // one lane, so the compact list is a full permutation of `total_lanes`.
@@ -234,5 +253,29 @@ extern "C" int hipengine_gemma4_moe_weighted_accumulate_bf16(
       tokens,
       hidden,
       top_k);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gemma4_gelu_tanh_mul_split_bf16(
+    const uint16_t* gate,
+    const uint16_t* up,
+    uint16_t* out,
+    int64_t total,
+    hipStream_t stream) {
+  if (gate == nullptr || up == nullptr || out == nullptr || total <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks = (total + 255) / 256;
+  const int64_t capped = blocks > 65535 ? 65535 : blocks;
+  hipLaunchKernelGGL(
+      gemma4_gelu_tanh_mul_split_kernel,
+      dim3(static_cast<unsigned int>(capped)),
+      dim3(256),
+      0,
+      stream,
+      gate,
+      up,
+      out,
+      total);
   return static_cast<int>(hipGetLastError());
 }
