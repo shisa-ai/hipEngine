@@ -212,10 +212,21 @@ Commands against an already running INT8 server:
 .venv/bin/python scripts/int8_mtp_prefix_gate.py \
   --base-url http://127.0.0.1:8098 --model int8-mtp \
   --json /tmp/int8-mtp-prefix.json
+.venv/bin/python scripts/int8_mtp_sampled_gate.py \
+  --base-url http://127.0.0.1:8098 --model int8-mtp \
+  --json /tmp/int8-mtp-sampled.json
 ```
 
+The sampled gate is the live half of the sampled-route declaration: for each of
+temperature/top_p, penalty, `logit_bias` and `suppress_token_ids` it requires the
+speculative arm to have run real cycles, requires finish reason and usage to
+match the request's own true no-MTP baseline, and requires a second seeded run to
+reproduce the first. The induced-law half is
+`scripts/mtp_sampled_accept_distribution_gate.py`, which measures the sampler law
+and the accept coupling on real model rows and needs no server.
+
 For a server deliberately using an existing approximate-KV diagnostic
-override, all three commands require `--allow-kv-diagnostic-override`. The category
+override, all four commands require `--allow-kv-diagnostic-override`. The category
 gate rejects BF16 mirrors unless `--allow-mirror` is explicitly requested.
 Neither switch enables MTP or changes server policy.
 
