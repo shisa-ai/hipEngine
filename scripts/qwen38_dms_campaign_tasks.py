@@ -29,8 +29,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import socket
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -95,9 +97,24 @@ def _parse_csv(value: str) -> tuple[str, ...]:
 
 
 def _write_output(path: Path, payload: dict[str, Any]) -> None:
-    path = Path(path)
+    path = Path(path).expanduser().resolve()
+    if path.exists():
+        raise FileExistsError(f"output already exists: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -172,8 +189,6 @@ def cmd_build(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError(
             f"target-tokens {target_tokens} not in the frozen set {list(SUPPORTED_TARGET_TOKENS)}"
         )
-    if args.metadata is not None:
-        raise ValueError("build takes no sidecar metadata; it is tokenizer-only")
     tokenizer = _load_tokenizer(args.model)
     sequences = load_manifest(
         args.data_manifest,
@@ -226,7 +241,10 @@ def _greedy_generate(session: Any, prompt: list[int], *, max_new_tokens: int, eo
     token = int(seed.token_id)
     while len(generated) < int(max_new_tokens):
         generated.append(token)
-        if eos_token_id is not None and token == int(eos_token_id):
+        if (
+            len(generated) >= int(max_new_tokens)
+            or (eos_token_id is not None and token == int(eos_token_id))
+        ):
             break
         result = session.step(token)
         token = int(result.token_id)
@@ -301,6 +319,54 @@ def _validate_run_arm(args: argparse.Namespace) -> None:
         raise ValueError("max-answer-tokens must be positive")
 
 
+def _validate_task_manifest(
+    manifest: dict[str, Any],
+    *,
+    model_sha256: str,
+) -> None:
+    from hipengine.benchmark.dms_tasks import validate_case
+
+    if manifest.get("kind") != TASK_MANIFEST_KIND:
+        raise ValueError("input is not a frozen G3 task manifest")
+    if not bool(manifest.get("immutable")):
+        raise ValueError("G3 task manifest is not marked immutable")
+    if int(manifest.get("case_count", -1)) != 24 or len(manifest.get("cases") or []) != 24:
+        raise ValueError("G3 task manifest must contain exactly 24 cases")
+    if int(manifest.get("target_tokens", -1)) not in SUPPORTED_TARGET_TOKENS:
+        raise ValueError("G3 task manifest target length is not frozen")
+    expected_model = str((manifest.get("model") or {}).get("sha256", ""))
+    if not expected_model or expected_model != str(model_sha256):
+        raise ValueError("G3 task manifest model hash does not match --model")
+    case_ids: set[str] = set()
+    for case in manifest["cases"]:
+        case_id = str(case.get("case_id", ""))
+        if not case_id or case_id in case_ids:
+            raise ValueError("G3 task manifest case IDs must be non-empty and unique")
+        case_ids.add(case_id)
+        problems = validate_case(case)
+        if problems:
+            raise ValueError(f"invalid G3 case {case_id}: {'; '.join(problems)}")
+
+
+def _validate_dense_reference(
+    reference: dict[str, Any],
+    *,
+    model_sha256: str,
+    data_manifest_sha256: str,
+    free_running_tokens: int,
+) -> None:
+    if reference.get("kind") != FREE_RUNNING_RUN_KIND:
+        raise ValueError("dense reference is not a free-running run result")
+    if str(reference.get("arm")) != DENSE_ARM:
+        raise ValueError("dense reference arm must be dense")
+    if str((reference.get("model") or {}).get("sha256", "")) != str(model_sha256):
+        raise ValueError("dense reference model hash does not match --model")
+    if str((reference.get("data_manifest") or {}).get("sha256", "")) != str(data_manifest_sha256):
+        raise ValueError("dense reference data-manifest hash does not match")
+    if int((reference.get("schedule") or {}).get("free_running_tokens", -1)) != int(free_running_tokens):
+        raise ValueError("dense reference free-running schedule does not match")
+
+
 def cmd_run_tasks(args: argparse.Namespace) -> dict[str, Any]:
     from hipengine.benchmark.dms_tasks import parse_answer
     from hipengine.runtime.qwen35_gguf_runner import (
@@ -312,8 +378,8 @@ def cmd_run_tasks(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("--task-manifest is required for --diagnostic tasks")
     task_manifest_path = Path(args.task_manifest)
     manifest = json.loads(task_manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("kind") != TASK_MANIFEST_KIND:
-        raise ValueError(f"{task_manifest_path} is not a frozen G3 task manifest")
+    model_sha256 = _sha256(args.model)
+    _validate_task_manifest(manifest, model_sha256=model_sha256)
     max_answer_tokens = int(args.max_answer_tokens)
     tokenizer = _load_tokenizer(args.model)
     eos_token_id = tokenizer.eos_token_id
@@ -390,7 +456,7 @@ def cmd_run_tasks(args: argparse.Namespace) -> dict[str, Any]:
             if args.metadata is not None
             else None
         ),
-        "model": {"path": str(Path(args.model).resolve()), "sha256": _sha256(args.model)},
+        "model": {"path": str(Path(args.model).resolve()), "sha256": model_sha256},
         "task_manifest": {
             "path": str(task_manifest_path.resolve()),
             "sha256": _sha256(task_manifest_path),
@@ -405,7 +471,9 @@ def cmd_run_tasks(args: argparse.Namespace) -> dict[str, Any]:
         },
         "cases": case_results,
         "resource_checks": {
-            "dense_prefill_pool_released": True,
+            "dense_prefill_pool_released": (
+                None if args.arm == DENSE_ARM else True
+            ),
             "teardown_to_baseline": teardown_ok,
             "memory_baseline": memory_baseline,
             "memory_after_close": memory_after_close,
@@ -447,13 +515,17 @@ def cmd_run_free_running(args: argparse.Namespace) -> dict[str, Any]:
     tokenizer = _load_tokenizer(args.model)
     eos_token_id = tokenizer.eos_token_id
 
+    model_sha256 = _sha256(args.model)
+    data_manifest_sha256 = _sha256(args.data_manifest)
     dense_reference = None
     if args.dense_reference is not None:
         dense_reference = json.loads(Path(args.dense_reference).read_text(encoding="utf-8"))
-        if dense_reference.get("kind") != FREE_RUNNING_RUN_KIND:
-            raise ValueError("dense reference is not a free-running run result")
-        if str(dense_reference.get("arm")) != DENSE_ARM:
-            raise ValueError("dense reference arm must be dense")
+        _validate_dense_reference(
+            dense_reference,
+            model_sha256=model_sha256,
+            data_manifest_sha256=data_manifest_sha256,
+            free_running_tokens=free_running_tokens,
+        )
 
     started = time.perf_counter()
     memory_baseline = _memory_stats()
@@ -494,9 +566,10 @@ def cmd_run_free_running(args: argparse.Namespace) -> dict[str, Any]:
                     for entry in dense_reference.get("prompts", [])
                     if entry.get("prompt_token_ids_sha256") == prompt_sha
                 ]
-                if not match:
+                if len(match) != 1:
                     raise ValueError(
-                        f"dense reference has no prompt matching sequence {record['sequence_id']}"
+                        f"dense reference must have exactly one prompt matching sequence "
+                        f"{record['sequence_id']}; got {len(match)}"
                     )
                 metrics = free_running_metrics(
                     match[0]["generated_token_ids"],
@@ -538,7 +611,12 @@ def cmd_run_free_running(args: argparse.Namespace) -> dict[str, Any]:
             if args.metadata is not None
             else None
         ),
-        "model": {"path": str(Path(args.model).resolve()), "sha256": _sha256(args.model)},
+        "model": {"path": str(Path(args.model).resolve()), "sha256": model_sha256},
+        "data_manifest": {
+            "path": str(Path(args.data_manifest).resolve()),
+            "sha256": data_manifest_sha256,
+            "split": str(args.split),
+        },
         "evaluator": _evaluator_hashes(),
         "schedule": {
             "sampling": "greedy (dense-compatible argmax schedule; identical across arms)",
@@ -551,7 +629,9 @@ def cmd_run_free_running(args: argparse.Namespace) -> dict[str, Any]:
             "match are diagnostics; they never substitute for G3 task scoring"
         ),
         "resource_checks": {
-            "dense_prefill_pool_released": True,
+            "dense_prefill_pool_released": (
+                None if args.arm == DENSE_ARM else True
+            ),
             "teardown_to_baseline": teardown_ok,
             "memory_baseline": memory_baseline,
             "memory_after_close": memory_after_close,

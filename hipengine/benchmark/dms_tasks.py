@@ -227,14 +227,16 @@ def parse_answer(generated_text: str, answer_text: str) -> dict[str, Any]:
     this verdict.
     """
     text = str(generated_text)
+    normalized = text.strip()
     answer = str(answer_text)
-    index = text.find(answer)
-    found = index >= 0
+    contains_index = text.find(answer)
+    correct = normalized == answer
     return {
-        "answer_found": found,
-        "answer_index": index if found else None,
-        "verdict": "correct" if found else "incorrect",
-        "correct": found,
+        "answer_found": contains_index >= 0,
+        "answer_index": contains_index if contains_index >= 0 else None,
+        "normalized_answer": normalized,
+        "verdict": "correct" if correct else "incorrect",
+        "correct": correct,
     }
 
 
@@ -525,9 +527,9 @@ def build_task_manifest(
         "cases": cases,
         "filler_correlations": filler_correlations(cases),
         "answer_policy": {
-            "parser": "exact answer-nonce substring in the greedy generation",
+            "parser": "generated text stripped of surrounding whitespace must equal the answer nonce",
             "answers_held_by": "evaluator task manifest only",
-            "never_in_selector_inputs": True,
+            "no_separate_selector_answer_signal": True,
             "top1_is_not_task_scoring": True,
         },
         "frozen_gate": "g3",
@@ -667,18 +669,18 @@ def compare_g3(
     comparison outright.
     """
     errors: list[str] = []
-    for label, result, arm, allow_missing in (
-        ("dense", dense_result, DENSE_ARM, True),
-        ("baseline", baseline_result, None, False),
-        ("candidate", candidate_result, None, False),
+    for label, result, arm, require_metadata in (
+        ("dense", dense_result, DENSE_ARM, False),
+        ("baseline", baseline_result, "sidecar", True),
+        ("candidate", candidate_result, "sidecar", True),
     ):
         if str(result.get("kind")) != TASK_RUN_KIND:
             errors.append(f"{label} result kind {result.get('kind')!r} is not a task run")
-        if arm is not None and str(result.get("arm")) != arm:
+        if str(result.get("arm")) != arm:
             errors.append(f"{label} result arm {result.get('arm')!r} != required {arm!r}")
-        if not allow_missing and not bool((result.get("metadata") or {}).get("sha256")):
+        if require_metadata and not bool((result.get("metadata") or {}).get("sha256")):
             errors.append(f"{label} result is a DMS arm but carries no metadata hash")
-        if allow_missing and bool((result.get("metadata") or {}).get("sha256")):
+        if not require_metadata and bool((result.get("metadata") or {}).get("sha256")):
             errors.append(f"{label} arm must not carry metadata")
     dense_manifest = (dense_result.get("task_manifest") or {}).get("sha256")
     for label, result in (("baseline", baseline_result), ("candidate", candidate_result)):
@@ -688,16 +690,30 @@ def compare_g3(
     for label, result in (("baseline", baseline_result), ("candidate", candidate_result)):
         if (result.get("model") or {}).get("sha256") != dense_model:
             errors.append(f"{label} result model hash differs from the dense result")
-    dense_evaluator = (dense_result.get("evaluator") or {}).get("library_sha256")
+    dense_evaluator = dense_result.get("evaluator") or {}
     for label, result in (("baseline", baseline_result), ("candidate", candidate_result)):
-        if (result.get("evaluator") or {}).get("library_sha256") != dense_evaluator:
-            errors.append(f"{label} result evaluator hash differs from the dense result")
+        evaluator = result.get("evaluator") or {}
+        for field in ("library_sha256", "script_sha256"):
+            if not dense_evaluator.get(field) or evaluator.get(field) != dense_evaluator.get(field):
+                errors.append(f"{label} result evaluator {field} differs from the dense result")
 
-    dense_cases = {str(c["case_id"]): c for c in dense_result.get("cases") or []}
-    baseline_cases = {str(c["case_id"]): c for c in baseline_result.get("cases") or []}
-    candidate_cases = {str(c["case_id"]): c for c in candidate_result.get("cases") or []}
-    if not dense_cases:
-        errors.append("dense result carries no cases")
+    dense_rows = list(dense_result.get("cases") or [])
+    baseline_rows = list(baseline_result.get("cases") or [])
+    candidate_rows = list(candidate_result.get("cases") or [])
+    for label, rows in (
+        ("dense", dense_rows),
+        ("baseline", baseline_rows),
+        ("candidate", candidate_rows),
+    ):
+        ids = [str(case.get("case_id", "")) for case in rows]
+        if not ids or any(not case_id for case_id in ids):
+            errors.append(f"{label} result carries no cases or an empty case ID")
+        if len(ids) != len(set(ids)):
+            errors.append(f"{label} result contains duplicate case IDs")
+
+    dense_cases = {str(c["case_id"]): c for c in dense_rows}
+    baseline_cases = {str(c["case_id"]): c for c in baseline_rows}
+    candidate_cases = {str(c["case_id"]): c for c in candidate_rows}
     for label, cases in (("baseline", baseline_cases), ("candidate", candidate_cases)):
         if set(cases) != set(dense_cases):
             errors.append(f"{label} result case set differs from the dense result")
