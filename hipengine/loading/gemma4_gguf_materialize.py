@@ -170,6 +170,17 @@ def _slot_names(config: Gemma4GGUFConfig, layer_id: int) -> Mapping[str, str]:
     return names
 
 
+def gemma4_layer_slot_names(config: Gemma4GGUFConfig, layer_id: int) -> Mapping[str, str]:
+    """Public name for the per-layer slot mapping.
+
+    The reference materializer and the raw device materializer must agree on
+    which slots a layer has, or one of them silently loads a different tensor
+    set than the other. They share this mapping rather than each keeping a copy.
+    """
+
+    return _slot_names(config, layer_id)
+
+
 def _read_tensor(
     reader: GGUFReader,
     name: str,
