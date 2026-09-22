@@ -282,6 +282,15 @@ def test_compare_row_emits_full_mismatch_diagnostics() -> None:
     assert row["kl"] > 0.0
 
 
+def test_compare_row_accepts_singleton_batch_prefill_rows() -> None:
+    teacher = np.zeros((1, 8), dtype=np.float32)
+    candidate = np.zeros((1, 8), dtype=np.float32)
+    teacher[0, 3] = candidate[0, 3] = 2.0
+    row = compare_row(teacher, candidate)
+    assert row["top1_agrees"] is True
+    assert row["kl"] == pytest.approx(0.0)
+
+
 def test_compare_row_flags_nonfinite_candidates() -> None:
     teacher = np.zeros(8, dtype=np.float32)
     candidate = np.zeros(8, dtype=np.float32)
