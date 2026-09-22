@@ -166,6 +166,16 @@ in [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md).
   differs by a single space. It reproduces identically at v0.6.0, so this release
   does not introduce it. The BF16 default is exact: all 18 gate prompts match
   between autoregressive and speculative decoding on BF16 KV.
+- A long-context INT8 KV server can return HTTP 500 on a request that follows a
+  concurrent autoregressive/speculative pair. The default INT8 layout keeps a
+  BF16 prefix of eight full-attention layers, and a packed decode with more than
+  one row routes those layers and the INT8 layers through different attention
+  paths, which the packed-decode consistency check rejects. The lifecycle gate
+  fails at its multi-choice check on that layout and passes all seven checks when
+  the layers are uniformly INT8, which is the diagnostic layout. The concurrent
+  requests themselves succeed; the failure appears on the next request. Avoid
+  this combination by keeping `--max-context-tokens` at or below 8192, which uses
+  a uniform layout.
 - APIs and supported combinations may change before 1.0.
 
 ## v0.6.0 - 2026-09-20
