@@ -13,6 +13,15 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
     plan_gemma4_norm_build,
     register_gemma4_norm_kernels,
 )
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import (
+    build_gemma4_moe,
+    gemma4_gelu_tanh_mul_bf16,
+    gemma4_moe_lane_to_row_i32,
+    gemma4_moe_weighted_accumulate_bf16,
+    gemma4_moe_zero_bf16,
+    plan_gemma4_moe_build,
+    register_gemma4_moe_kernels,
+)
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rope import (
     GEMMA4_ROPE_DEFAULT_TYPE,
     GEMMA4_ROPE_PROPORTIONAL_TYPE,
@@ -33,13 +42,18 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rotary import (
 __all__ = [
     "GEMMA4_ROPE_DEFAULT_TYPE",
     "GEMMA4_ROPE_PROPORTIONAL_TYPE",
+    "build_gemma4_moe",
     "build_gemma4_norm",
     "build_gemma4_rotary",
     "gemma4_add_rmsnorm_scale_bf16",
     "gemma4_branch_add_bf16",
     "gemma4_expert_weight_scale_f32",
+    "gemma4_gelu_tanh_mul_bf16",
     "gemma4_head_rmsnorm_f32w_bf16",
     "gemma4_k_to_v_bf16",
+    "gemma4_moe_lane_to_row_i32",
+    "gemma4_moe_weighted_accumulate_bf16",
+    "gemma4_moe_zero_bf16",
     "gemma4_partial_rotary_bf16",
     "gemma4_partial_rotary_f32",
     "gemma4_rmsnorm_f32w_bf16",
@@ -50,8 +64,10 @@ __all__ = [
     "gemma4_rope_inverse_frequencies",
     "gemma4_rotate_split_half",
     "gemma4_router_prescale_bf16",
+    "plan_gemma4_moe_build",
     "plan_gemma4_norm_build",
     "plan_gemma4_rotary_build",
+    "register_gemma4_moe_kernels",
     "register_gemma4_norm_kernels",
     "register_gemma4_rotary_kernels",
 ]
