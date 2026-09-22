@@ -6,7 +6,7 @@ This changelog is for package/API releases. Performance rollup history remains i
 [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md), with detailed benchmark
 evidence under [`benchmarks/results/`](benchmarks/results/).
 
-## v0.7.0 - 2026-09-22
+## v0.6.1 - 2026-09-22
 
 Fixes long-prompt prefix reuse, widens speculative decoding on INT8 KV, and adds
 measurement to the terminal chat client. Prefix reuse now works on prompts long
