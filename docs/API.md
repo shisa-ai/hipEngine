@@ -183,9 +183,12 @@ history-dependent processors use eager native selection. This sampled policy
 uses the packed target verifier for concurrent groups and does not change
 greedy MTP policy. Each request keeps its own seed, token counter, and history
 through admission, retirement, and cancellation.
-Logprob responses, explicit token stops, forced tokens and dynamic constraints
-retain their ordinary-decoding fallback. `"speculative_mtp": false` always
-disables MTP for a request.
+The sampled route serves logprob responses, explicit token stops, and the
+min-token/EOS floor, and reports the same per-token logprob the autoregressive
+route reports for the request. Forced tokens and dynamic constraints retain
+their ordinary-decoding fallback, and so does every one of these fields on a
+greedy request, whose raw-argmax route still refuses them.
+`"speculative_mtp": false` always disables MTP for a request.
 
 Operators may still select explicit diagnostics with
 `--speculative-mtp-serving opt_in` plus `"speculative_mtp": true`. Explicit

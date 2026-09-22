@@ -6245,6 +6245,13 @@ class Qwen35GGUFResidentModelRunner:
         self._resident_batch_owner_pool_key: _GGUFSessionPoolKey | None = None
         self._rows: dict[int, _GGUFResidentLoopRow] = {}
         self._outputs: dict[int, GenerationOutput] = {}
+        # Per-published-token metadata from committed speculative cycles, keyed
+        # by request. A cycle publishes several tokens at once and its stream
+        # events are decorated after the commit, by which point a cycle that
+        # finishes the request has already reclaimed the row. The blocking
+        # output reads the row's own sample list during reclaim; these events
+        # need a record that outlives the row.
+        self._cycle_token_samples: dict[int, list[Any]] = {}
         self._completed_metadata: dict[int, dict[str, Any]] = {}
         self._next_batch_id = 0
         self._kv_pool: Any | None = None
@@ -9067,11 +9074,19 @@ class Qwen35GGUFResidentModelRunner:
         return [int(request_id) for request_id in request_ids if int(request_id) not in self._outputs]
 
     def take_outputs(self, request_ids: Sequence[int]) -> list[GenerationOutput]:
-        return [self._outputs.pop(int(request_id)) for request_id in request_ids]
+        outputs: list[GenerationOutput] = []
+        for request_id in request_ids:
+            rid = int(request_id)
+            # The blocking output is the last reader of a cycle's recorded
+            # metadata; stream events were decorated while the cycle published.
+            self._cycle_token_samples.pop(rid, None)
+            outputs.append(self._outputs.pop(rid))
+        return outputs
 
     def discard(self, request_ids: Sequence[int]) -> None:
         for request_id in request_ids:
             rid = int(request_id)
+            self._cycle_token_samples.pop(rid, None)
             row = self._rows.pop(rid, None)
             if row is not None:
                 adapter = self._mtp2_adapter
@@ -11303,13 +11318,48 @@ class Qwen35GGUFResidentModelRunner:
             text = "" if suppress_after_special else visible_text
             if raw_text and not visible_text:
                 suppress_after_special = True
+            token_logprob = self._take_cycle_token_logprob(
+                int(event.request_id),
+                int(event.token_id),
+            )
             decorated.append(
                 replace(
                     event,
-                    stream_chunk=replace(chunk, text=text),
+                    stream_chunk=replace(
+                        chunk,
+                        text=text,
+                        token_logprobs=(
+                            chunk.token_logprobs
+                            if token_logprob is None
+                            else (token_logprob,)
+                        ),
+                    ),
                 )
             )
         return tuple(decorated)
+
+    def _take_cycle_token_logprob(
+        self,
+        request_id: int,
+        token_id: int,
+    ) -> TokenLogprob | None:
+        """Consume the recorded metadata for one published token, if any.
+
+        Returns ``None`` when the route recorded nothing for that token, so the
+        caller keeps whatever metadata the scheduler already put on the chunk.
+        """
+
+        pending = self._cycle_token_samples.get(int(request_id))
+        if not pending:
+            return None
+        for index, sample in enumerate(pending):
+            if int(sample.token_id) != int(token_id):
+                continue
+            del pending[index]
+            if not pending:
+                self._cycle_token_samples.pop(int(request_id), None)
+            return _gguf_token_logprob(self.generator.tokenizer, sample)
+        return None
 
     def _native_stream_chunk(self, row: _GGUFResidentLoopRow) -> GenerationStreamChunk:
         slot = row.slot

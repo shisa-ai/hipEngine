@@ -8930,3 +8930,21 @@ Remove this once a failed `_construct_shared_session` in
 ladder with a width the box cannot hold, then assert a full-context session plus the
 chat smoke still allocate. If the failed attempt does not roll back completely, fix
 the rollback instead of weakening the probe.
+
+## Logprobs requests skip the captured-graph sampled accept (open 2026-09-23)
+
+`_device_sampled_accept_plan` in `hipengine/generation/qwen35_gguf_mtp2.py`
+declines a request that asked for logprobs. The captured graph samples and
+accepts on the device and returns no logits row to the host, so the route has
+nothing to report a published token's logprob from; the request falls to the
+eager host accept, which scores each published token against the verified row
+that predicted it. Serving the metadata is what the logprobs path requires, and
+the fallback is exact -- the gate compares it against the autoregressive route
+token for token at zero delta -- so the decline costs the graph's speed on those
+requests, not their correctness.
+
+Remove this once the graph accept can return the per-row values it selected
+from -- the top-1 candidate and its processed logprob, plus the
+retained top-k the request asked for -- for the rows it accepted. The evidence
+that would justify it is the same gate at zero delta with the decline removed
+and the execution path reporting the captured-graph accept.

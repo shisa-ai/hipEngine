@@ -25,14 +25,114 @@ from typing import Any
 
 import numpy as np
 
-from hipengine.generation.sampling import RowSamplingState, processed_distribution
+from hipengine.generation.sampling import RowSamplingState, processed_distribution, reported_logprob
 from hipengine.speculative.interfaces import TargetAcceptSummary, TargetVerifyBatch
 from hipengine.speculative.sampling import (
     SparseDistribution,
     sampled_accept_from_distributions,
 )
 
-__all__ = ["row_prefix_states", "sampled_accept_summary"]
+__all__ = [
+    "chain_edge_rows",
+    "chain_token_logprobs",
+    "row_prefix_states",
+    "sampled_accept_summary",
+]
+
+
+def chain_edge_rows(
+    batch: TargetVerifyBatch,
+    accepted_counts: Sequence[int],
+) -> tuple[tuple[int, ...], ...]:
+    """Return, per request, the row whose logits predicted each published token.
+
+    Row ``r`` holds the distribution for the token *after* the prefix ending at
+    ``r``, so a token on a child edge is predicted by its parent row and the
+    correction or bonus token is predicted by the last accepted row -- the row
+    the accept walk stopped on, which is the request's commit row. The returned
+    tuple therefore starts at the root row and has one entry per published token
+    including that final one, so it aligns with
+    ``accepted_tokens + (next_token,)``. Getting this mapping off by one row is
+    the failure mode this function exists to prevent, so it walks the same
+    parent/child structure ``sampled_accept_from_distributions`` walks rather
+    than assuming a chain shape.
+    """
+
+    children: dict[int, list[int]] = {row: [] for row in range(batch.rows)}
+    for row in batch.candidate_rows:
+        if batch.active_mask[row]:
+            children[int(batch.parent_rows[row])].append(int(row))
+    rows: list[tuple[int, ...]] = []
+    for index, root_row in enumerate(batch.root_rows):
+        accepted = int(accepted_counts[index])
+        path = [int(root_row)]
+        row = int(root_row)
+        for _ in range(accepted):
+            candidates = children[row]
+            if not candidates:
+                raise ValueError(
+                    "accepted chain is longer than the verified rows: row "
+                    f"{row} has no active child"
+                )
+            if len(candidates) > 1:
+                raise ValueError(
+                    "logprob metadata walks a single drafted chain; "
+                    f"row {row} has {len(candidates)} active children"
+                )
+            row = candidates[0]
+            path.append(row)
+        rows.append(tuple(path))
+    return tuple(rows)
+
+
+def chain_token_logprobs(
+    batch: TargetVerifyBatch,
+    target_logits: np.ndarray,
+    states: Mapping[int, RowSamplingState],
+    published_tokens: Sequence[Sequence[int]],
+    accepted_counts: Sequence[int],
+    *,
+    params_for: Callable[[int], Any],
+    token_text_for_id: Callable[[int], str] | None = None,
+) -> tuple[tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...], ...]:
+    """Return each request's published-token logprob metadata from verified rows.
+
+    ``published_tokens[i]`` is what request ``i`` actually published this cycle
+    (accepted tokens followed by the correction or bonus token, already limited
+    by the finish rule). It is never longer than the accepted chain plus that one
+    final token, and the chain prefix it selects is the prefix whose metadata is
+    reported: a cycle that stopped early reports metadata for the tokens it
+    published and none for the ones it did not.
+    """
+
+    logits = np.asarray(target_logits)
+    if logits.ndim != 2:
+        raise ValueError("target_logits must be a two-dimensional row matrix")
+    if logits.shape[0] != batch.rows:
+        raise ValueError("target_logits rows must align with the verified batch")
+    if len(published_tokens) != len(batch.request_ids):
+        raise ValueError("published_tokens must align with request_ids")
+    if len(accepted_counts) != len(batch.request_ids):
+        raise ValueError("accepted_counts must align with request_ids")
+    prefix_states = row_prefix_states(batch, states)
+    rows = chain_edge_rows(batch, accepted_counts)
+    metadata: list[tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...]] = []
+    for index, tokens in enumerate(published_tokens):
+        request_id = int(batch.request_ids[index])
+        params = params_for(request_id)
+        per_token: list[tuple[float | None, tuple[tuple[int, float], ...]]] = []
+        for token, row in zip(tokens, rows[index]):
+            per_token.append(
+                reported_logprob(
+                    logits[row],
+                    params,
+                    prefix_states[row],
+                    int(token),
+                    token_text_for_id=token_text_for_id,
+                )
+            )
+        metadata.append(tuple(per_token))
+    return tuple(metadata)
 
 
 def row_prefix_states(
