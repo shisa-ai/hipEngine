@@ -425,6 +425,51 @@ def test_accounting_counts_failure_reason_pairs_by_category() -> None:
     }
 
 
+def test_accounting_publishes_the_recorded_failure_detail() -> None:
+    """A fallback retires its rows, so the detail must be published with it.
+
+    After a pre-commit failure the row is retired and later steps report a
+    generic ``no_provider`` planner reason; the recorded detail is the only
+    place the cause survives.
+    """
+
+    row = _intent_row()
+    row.mtp2_recoverable_failures = 1
+    row.mtp2_failure_reasons = [
+        "precommit_failure_ar_fallback",
+        "NotImplementedError:long-context packed AR decode requires a row-sized split-K workspace",
+    ]
+
+    accounting = speculative_output_accounting(row)
+
+    assert accounting is not None
+    assert accounting["failure_reasons"] == [
+        {
+            "category": "precommit_failure_ar_fallback",
+            "detail": (
+                "NotImplementedError:long-context packed AR decode requires "
+                "a row-sized split-K workspace"
+            ),
+        }
+    ]
+
+
+def test_accounting_tolerates_a_failure_list_without_a_trailing_detail() -> None:
+    row = _intent_row()
+    row.mtp2_recoverable_failures = 1
+    row.mtp2_failure_reasons = ["precommit_failure_ar_fallback"]
+
+    accounting = speculative_output_accounting(row)
+
+    assert accounting is not None
+    assert accounting["failure_reasons"] == [
+        {"category": "precommit_failure_ar_fallback", "detail": None}
+    ]
+    assert accounting["failure_reason_counts"] == {
+        "precommit_failure_ar_fallback": 1
+    }
+
+
 def test_accounting_records_a_speculative_cycle_without_visible_tokens() -> None:
     """A zero-visible record must not create a fallback position or a count."""
 
