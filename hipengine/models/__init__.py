@@ -3,6 +3,7 @@
 from hipengine.models.base import ModelPlugin
 from hipengine.models.vibevoice_asr import VIBEVOICE_ASR, VibeVoiceASRModel
 from hipengine.models.vibevoice_tts import VIBEVOICE_TTS, VibeVoiceTTSModel
+from hipengine.models.gemma4 import GEMMA4_GGUF, Gemma4GGUFModel
 from hipengine.models.kv_capabilities import (
     KVCapabilityDeclaration,
     KVCapabilityEvidence,
@@ -79,6 +80,8 @@ from hipengine.models.timesfm3 import (
 )
 
 __all__ = [
+    "GEMMA4_GGUF",
+    "Gemma4GGUFModel",
     "LAGUNA_GGUF",
     "MAPLE",
     "MAPLE_LAYER_PATTERN",
