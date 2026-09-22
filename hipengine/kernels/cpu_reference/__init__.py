@@ -29,6 +29,29 @@ from hipengine.kernels.cpu_reference.fixtures import (
     run_fixture,
     save_fixture,
 )
+from hipengine.kernels.cpu_reference.gemma4 import (
+    FULL_ATTENTION,
+    SLIDING_ATTENTION,
+    Gemma4AttentionGeometry,
+    Gemma4ForwardResult,
+    Gemma4LayerWeights,
+    Gemma4RopeConfig,
+    Gemma4TextConfig,
+    Gemma4TextWeights,
+    gemma4_attention_forward,
+    gemma4_attention_mask,
+    gemma4_decoder_layer_forward,
+    gemma4_dense_mlp_forward,
+    gemma4_experts_forward,
+    gemma4_gelu_tanh,
+    gemma4_rmsnorm,
+    gemma4_rope_tables,
+    gemma4_router_topk,
+    gemma4_text_config_from_hf,
+    gemma4_text_forward,
+    gemma4_text_weights_from_hf,
+    register_gemma4_cpu_reference_kernels,
+)
 from hipengine.kernels.cpu_reference.laguna import (
     LagunaAttentionConfig,
     LagunaAttentionResult,
@@ -178,6 +201,7 @@ from hipengine.kernels.cpu_reference.ops import (
 
 def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     _register_base_cpu_reference_kernels(replace=replace)
+    register_gemma4_cpu_reference_kernels(replace=replace)
     register_laguna_cpu_reference_kernels(replace=replace)
     register_moonshine_cpu_reference_kernels(replace=replace)
     register_dflash2_cpu_reference_kernels(replace=replace)
@@ -187,6 +211,14 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
 register_cpu_reference_kernels()
 
 __all__ = [
+    "FULL_ATTENTION",
+    "Gemma4AttentionGeometry",
+    "Gemma4ForwardResult",
+    "Gemma4LayerWeights",
+    "Gemma4RopeConfig",
+    "Gemma4TextConfig",
+    "Gemma4TextWeights",
+    "SLIDING_ATTENTION",
     "DFlash2SelectorResult",
     "LayerCheckResult",
     "LayerFixture",
@@ -254,6 +286,18 @@ __all__ = [
     "gguf_q6_k_gemv",
     "gguf_q8_0_gemv",
     "gguf_quant_gemv",
+    "gemma4_attention_forward",
+    "gemma4_attention_mask",
+    "gemma4_decoder_layer_forward",
+    "gemma4_dense_mlp_forward",
+    "gemma4_experts_forward",
+    "gemma4_gelu_tanh",
+    "gemma4_rmsnorm",
+    "gemma4_rope_tables",
+    "gemma4_router_topk",
+    "gemma4_text_config_from_hf",
+    "gemma4_text_forward",
+    "gemma4_text_weights_from_hf",
     "gr_read",
     "gr_write",
     "grouped_zero_centered_rmsnorm",
@@ -332,6 +376,7 @@ __all__ = [
     "qwen4_exp_reduced_qsa_layer",
     "register_cpu_reference_kernels",
     "register_dms_cpu_reference_kernels",
+    "register_gemma4_cpu_reference_kernels",
     "register_laguna_cpu_reference_kernels",
     "register_moonshine_cpu_reference_kernels",
     "rmsnorm",
