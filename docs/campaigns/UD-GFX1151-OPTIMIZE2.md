@@ -76,7 +76,7 @@ excluded because decode does not stream them):
 | File | Weight bytes/token | Composition (GB) |
 | --- | ---: | --- |
 | plain Q4_K_M | 16.09 GB | Q4_K 10.50, Q6_K 4.45, Q5_K 1.04, F32 0.10 |
-| UD Q4_K_M | 15.39 GB | Q5_K 4.83, IQ4_XS 4.76, Q4_K 3.49, Q6_K 1.47, IQ4_NL 0.33, Q3_K 0.27, IQ3_S 0.15, Q8_0 0.07 |
+| UD Q4_K_M | 15.39 GB | Q5_K 4.83, IQ4_XS 4.76, Q4_K 3.49, Q6_K 1.47, IQ4_NL 0.33, Q3_K 0.27, IQ3_S 0.15, Q8_0 0.07, F32 0.01 |
 
 Plain at 11.58 tok/s streams about 186 GB/s. UD at the same effective rate
 would decode about 12.1 tok/s, **about 1.045x plain**. Report effective GB/s
@@ -173,7 +173,7 @@ Evidence:
 | H9 | UD's gate/up and residual work runs unfused. Plain spends 32.40 ms/token in one fused Q4_K dual local32+SiLU owner (62 launches/token) and folds the residual into its Q4_K/Q6_K owners; UD has no fused dual and pays a separate SiLU-mul and residual add (62 launches/token each). Fusing by per-layer gate/up **type pair** removes launches and the separate passes | decode launches and wall-minus-kernel gap | 2026-09-21 census; UD per-layer gate/up pairs: IQ4_XS/IQ4_XS 20, Q5_K/Q5_K 9, Q4_K/Q4_K 5, Q3_K/Q3_K 1, IQ4_NL/IQ4_NL 1, mixed 28 |
 | H10 | UD stores the 48 GDN layers' `ssm_alpha`/`ssm_beta` as Q8_0 (plain: F32). The fused alpha/beta+conv decode owner admits only `quant_key == "f32"` (`_try_launch_dense_f32_alpha_beta_conv_decode`), so UD falls back to a Q8_0 dual split GEMV plus a separate conv launch | decode, ~0.45 ms/token and ~48 launches/token | census: UD 0.92 ms Q8_0 dual split (47.5 launches) + 0.19 ms conv (46.5) vs plain 0.66 ms fused |
 | H11 | UD's norm launches cost 1.62 ms/token against plain's 0.38 at the same 124.97 launches/token. A different norm variant is being selected, plausibly because the residual is not folded into the preceding owner | decode, ~1.2 ms/token | 2026-09-21 census `norms` family; cause not yet attributed |
-| H12 | gfx1100 runs IQ4_XS/IQ4_NL prefill on the coop64 W4A16 owner (2.0-2.2x the one-wave owner, bit-exact) and Q3_K/IQ3_S on coop32 (1.4-1.5x, bit-exact); gfx1151 runs all seven dense-IQ quants on the one-wave owner. IQ4_XS alone is 4.76 GB of UD. The coop variants are registered only for `hip_gfx1100` (`hip_gfx1100/quant/gguf_iq_wmma_prefill.py`), so this is a registration port plus a policy refinement | prefill | gfx1100 package comments on `GGUF_IQ_DENSE_PREFILL_POLICY`; **gfx1100 evidence, not a gfx1151 rate** |
+| H12 | gfx1100 runs IQ4_XS/IQ4_NL prefill on the coop64 W4A16 owner and Q3_K/IQ3_S on coop32 (all bit-exact); gfx1151's own `GGUF_IQ_DENSE_PREFILL_POLICY` (`hip_gfx1151/__init__.py:2071`) sends all seven dense-IQ quants to the one-wave owner. IQ4_XS alone is 4.76 GB of UD. No registration port is needed: `register_gfx1151_kernels()` mirrors the coop/coop64 keys and all 14 of them resolve for `hip_gfx1151` — only the four per-quant policy overrides are gfx1100-only, and the coop owners have never been exercised on this backend | prefill | gfx1100 package comments on `GGUF_IQ_DENSE_PREFILL_POLICY`: IQ4_NL 2.0-2.2x one-wave, IQ4_XS 1.5-2.1x as coop32 and a further 1.4-1.6x at coop64 over 512-1024 rows, Q3_K/IQ3_S 1.4-1.5x; **gfx1100 evidence, not a gfx1151 rate** |
 
 ## 4. Experiment plan
 
@@ -195,11 +195,14 @@ measured negative.
     (`pre-origin-main-merge-preserve-local-work-20260922`; `stash@{0}` on
     2026-09-23, but the stash stack is shared and the index drifts, so address
     it by SHA) holds the declaration
-    (`hip_gfx1151/__init__.py` +56 lines: `GGUF_IQ_DENSE_DECODE_POLICY`,
+    (`hip_gfx1151/__init__.py` +55 lines: `GGUF_IQ_DENSE_DECODE_POLICY`,
     `GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS`,
     `GGUF_IQ_DENSE_DECODE_STRICT_SLOTS`, `GGUF_IQ_DENSE_VERIFY_POLICY`), a
-    `gguf_linear.py` change, and `tests/test_unit_gguf_linear_dispatch_cache.py`.
-    It was stashed before the 2026-09-22 origin merge and never re-applied.
+    `gguf_linear.py` change, `tests/test_unit_gguf_linear_dispatch_cache.py`,
+    and gate-script edits: `scripts/gguf_iq_local32_decode_gate.py` (adds a
+    `--backend` argument for gating this backend's declaration) and
+    `scripts/gguf_ud_combined_stack_gate.py`. It was stashed before the
+    2026-09-22 origin merge and never re-applied.
     Review it against the post-merge tree and re-derive the hunks; do not
     delete the stash and do not blind-pop it (it also carries unrelated audit
     inventory churn from before the merge).
@@ -276,10 +279,14 @@ measured negative.
   traces first (no new GPU run needed): which norm symbols UD selects versus
   plain, their µs/launch, and what forces the variant. If it follows from the
   unfused residual, it rides with E6; otherwise it is its own routing unit.
-- [ ] **E9 — Cooperative IQ prefill owners on gfx1151 (H12).** Register the
-  coop/coop64 W4A16 prefill variants for `hip_gfx1151` from the shared source,
-  verify bit-exactness against the one-wave owner on the real UD shapes, then
-  refine `GGUF_IQ_DENSE_PREFILL_POLICY` per quant as gfx1100 did. Q3_K's coop32
+- [ ] **E9 — Cooperative IQ prefill owners on gfx1151 (H12).** The
+  coop/coop64 keys already resolve on `hip_gfx1151` — `register_gfx1151_kernels()`
+  mirrors every non-excluded `hip_gfx1100` key, and all 14 coop-family keys
+  were verified present — so there is no registration port to write. The unit
+  is: apply gfx1100's four per-quant overrides to gfx1151's
+  `GGUF_IQ_DENSE_PREFILL_POLICY`, verify bit-exactness against the one-wave
+  owner on the real UD shapes (first exercise of these owners on this
+  backend; the bit-exact record is gfx1100's), then measure. Q3_K's coop32
   route uses the hi+lo split path, so it inherits E2b's pin question. Paired
   prefill A/B at the §5.1 shapes plus a short prompt.
 - [ ] **E5 — Closeout** (runs last, after E6-E9). Final paired run, artifact, one
@@ -320,17 +327,27 @@ what E1-E3 actually attribute:
 
 ### 5.1 Paired baseline (adjudicates every hypothesis)
 
-Two arms, back to back, one thermal window, idle GPU:
+Two arms in one thermal window, idle GPU, plain/UD visits interleaved (ABBA
+order in the block below):
 
 ```bash
+# One thermal window, arms ordered plain, UD, UD, plain (ABBA), idle GPU:
 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 \
   python3 scripts/qwen38_gfx1151_readme_sweep.py \
     --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf \
-    --output /tmp/ud-pair/plain_q4_k_m.json
+    --output /tmp/ud-pair/plain_1.json
 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 \
   python3 scripts/qwen38_gfx1151_readme_sweep.py \
     --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf \
-    --output /tmp/ud-pair/ud_q4_k_m.json
+    --output /tmp/ud-pair/ud_1.json
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 \
+  python3 scripts/qwen38_gfx1151_readme_sweep.py \
+    --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf \
+    --output /tmp/ud-pair/ud_2.json
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 \
+  python3 scripts/qwen38_gfx1151_readme_sweep.py \
+    --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf \
+    --output /tmp/ud-pair/plain_2.json
 ```
 
 Protocol defaults are binding: `--prompt-lengths 512 1024 4096`,
@@ -341,9 +358,11 @@ trajectories pass the 18/18 id, logits and state gate. Record host
 `machine_id`, commit, dirty count, and per-shape CV; adjudicate only against
 the same-window control, never against a row from another host or date.
 
-Order the arms plain, UD, UD, plain (ABBA) within the window rather than a
-single back-to-back pair. Absolute rates moved 4-5% between days, and a single
-pair cannot separate drift inside the window from the change under test. When
+Keep the command block's plain, UD, UD, plain (ABBA) order rather than a
+single back-to-back pair. Absolute rates moved 4-5% between days, and
+a single pair cannot separate drift inside the window from the change under
+test. Report both visits of each arm together; a within-arm disagreement
+wider than the recorded CV band invalidates the window. When
 a lever touches a row-count threshold (for example the dense-IQ prefill
 `min_rows=8`), add one short prompt (16-64 tokens) to the sweep so the
 row-band behavior is exercised away from the 512/1024/4096 points.
@@ -392,11 +411,14 @@ refusal.
   incumbent-production — not against our own incumbent alone, not against an
   external engine's teacher.
 - Bit-exact levers take the fast lane. A route, layout, or fusion change whose
-  end-to-end token ids and logits are bit-identical to the incumbent on the
-  18-prompt suite (for example E7's exact Q8_0→F32 expansion, or E9's coop
-  owners if they reproduce gfx1100's bit-exact record) records that identity
-  check in place of the KL envelope run. The envelope gate binds whenever the
-  arithmetic changes.
+  token ids, forced-step full-vocab logits, and state fingerprints are
+  bit-identical to the incumbent on the 162-row production-reference gate (for
+  example E7's exact Q8_0→F32 expansion, or E9's coop owners if they reproduce
+  gfx1100's bit-exact record) records that identity check in place of the KL
+  envelope run: identity across the gate's forced rows implies KL = 0 on them.
+  Free-run ids on the 18-prompt suite alone do not establish that — greedy
+  stability can hide off-trajectory logit changes. The envelope gate binds
+  whenever the arithmetic changes.
 
 ## 6. Rules
 
