@@ -143,8 +143,9 @@ def _load_records(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         return payload, {}
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
         raise ValueError("input must be a record list or an object containing records")
-    binding = payload.get("tokenizer")
-    if not isinstance(binding, dict):
+    if "tokenizer" in payload:
+        binding = payload["tokenizer"]
+    else:
         metadata = payload.get("metadata", {})
         binding = metadata.get("tokenizer", {}) if isinstance(metadata, dict) else {}
     if not isinstance(binding, dict):
