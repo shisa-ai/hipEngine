@@ -12942,6 +12942,34 @@ def _gguf_int8_bf16_full_attention_layer_indices(
     return tuple(range(min(max(0, int(prefix)), int(full_attention_layers))))
 
 
+def _gguf_packed_decode_max_rows(
+    *,
+    direct_rows: int,
+    retained_decode_kernel: object | None,
+    bf16_full_attention_layer_indices: tuple[int, ...],
+) -> int:
+    """Resolve the packed decode width a resident INT8 session may use.
+
+    The direct INT8 batch leaf reads retained INT8 planes on every
+    full-attention layer it covers. A hybrid layout keeps part of that stack in
+    BF16, and a BF16 layer has no retained planes, so it takes the standard
+    batch leaf instead. One packed batch cannot run both leaves, and the packed
+    execution manifest names a single full-attention route, so a hybrid layout
+    is capped at one row. The session then refuses the packed step, which
+    ``step_batch_native`` already reports as "no packed result" so the caller
+    serializes the rows.
+
+    Without the cap the batch mixes the two leaves and the consistency check in
+    the packed decode raises instead of falling back.
+    """
+
+    if not callable(retained_decode_kernel):
+        return 1
+    if bf16_full_attention_layer_indices:
+        return 1
+    return max(1, int(direct_rows))
+
+
 def _gguf_int8_effective_scale_dtype(
     *,
     kv_storage_dtype: DType,
@@ -14530,6 +14558,59 @@ def _small_b_rowtile_chunks(rows: int, *, max_chunk: int = 6) -> tuple[int, ...]
     return tuple(chunks)
 
 
+def _direct_int8_execution_source(
+    capability: Mapping[str, object] | None,
+) -> Mapping[str, object] | None:
+    """Return the mapping that supplies a runnable direct-INT8 session's bounds.
+
+    ``admit`` runs the resolution itself, so its bounds come from the retained
+    measurement when one exists and from the declaration otherwise.  An explicit
+    ``diagnostic_override`` instead runs the *declared* contract, because the
+    rejected evidence row records that no width passed the quality gate -- not
+    that the kernels cannot execute one -- and it carries no decode variant at
+    all.  Under an override the declaration is therefore the only statement
+    about what the kernels implement.
+
+    Returns ``None`` when this resolution is not a deliberate direct-INT8
+    selection at all, including the engine's own ``fallback_bf16``.
+    """
+
+    if not isinstance(capability, Mapping):
+        return None
+    action = capability.get("runtime_action")
+    if action == "admit":
+        return capability
+    if action != "diagnostic_override":
+        return None
+    declaration = capability.get("declaration")
+    return declaration if isinstance(declaration, Mapping) else None
+
+
+def _mirror_free_direct_int8_capability(
+    capability: Mapping[str, object] | None,
+) -> bool:
+    """Return whether this resolution names a runnable mirror-free direct INT8 mode.
+
+    The storage, layout, and request fields come from the resolution; the bounds
+    come from whatever :func:`_direct_int8_execution_source` selects.
+    """
+
+    if not isinstance(capability, Mapping):
+        return False
+    source = _direct_int8_execution_source(capability)
+    if source is None:
+        return False
+    requested = capability.get("requested")
+    return bool(
+        isinstance(requested, Mapping)
+        and capability.get("effective_kv_storage") == "int8_per_token_head"
+        and requested.get("kv_storage") == "int8_per_token_head"
+        and requested.get("storage_layout") == "uniform"
+        and source.get("persistent_bf16_mirror") is False
+        and int(source.get("max_direct_rows", 0) or 0) >= 1
+    )
+
+
 def _admitted_no_mirror_int8_capability(
     capability: Mapping[str, object] | None,
 ) -> bool:
@@ -14540,36 +14621,56 @@ def _admitted_no_mirror_int8_capability(
     this contract, which governs what may be claimed or promoted, not whether
     the contract runs.  The operative bounds come from the measurement when one
     exists and from the kernel declaration otherwise.
+
+    This is the strict predicate, and it governs allocation.  Route resolution
+    uses :func:`_runnable_no_mirror_int8_capability` instead.
     """
 
     if not isinstance(capability, Mapping):
         return False
-    requested = capability.get("requested")
-    return bool(
-        isinstance(requested, Mapping)
-        and capability.get("runtime_action") == "admit"
-        and capability.get("effective_kv_storage") == "int8_per_token_head"
-        and requested.get("kv_storage") == "int8_per_token_head"
-        and requested.get("storage_layout") == "uniform"
-        and capability.get("persistent_bf16_mirror") is False
-        and int(capability.get("max_direct_rows", 0) or 0) >= 1
-    )
+    if capability.get("runtime_action") != "admit":
+        return False
+    return _mirror_free_direct_int8_capability(capability)
+
+
+def _runnable_no_mirror_int8_capability(
+    capability: Mapping[str, object] | None,
+) -> bool:
+    """Return whether this session may execute persistent mirror-free INT8.
+
+    Identical to :func:`_admitted_no_mirror_int8_capability` except that an
+    explicit ``diagnostic_override`` also counts.  A rejected artifact is a legal
+    reason for the engine to decline INT8 *selection*, and it does: the request
+    falls closed to BF16 unless the operator sets the documented override.  Once
+    the operator has forced INT8, the selection question is answered, and the
+    only remaining gate is whether the kernels execute the contract -- which the
+    declaration states and the registry lookup in
+    :func:`_qualified_kv_decode_batch_route` verifies.  Excluding the override
+    would leave a configuration no command could open.
+    """
+
+    return _mirror_free_direct_int8_capability(capability)
 
 
 def _qualified_kv_decode_batch_route(
     backend: str,
     capability: Mapping[str, object] | None,
 ) -> tuple[int, object | None]:
-    """Resolve the admitted exact decode variant and its physical width."""
+    """Resolve the runnable exact decode variant and its physical width.
 
-    if not _admitted_no_mirror_int8_capability(capability):
+    Reads the runnable predicate, not the admitted one: a session running under
+    an explicit diagnostic override is on direct INT8 and needs the same leaf.
+    """
+
+    if not _runnable_no_mirror_int8_capability(capability):
         return 1, None
     assert isinstance(capability, Mapping)
+    source = _direct_int8_execution_source(capability)
     requested = capability.get("requested")
-    if not isinstance(requested, Mapping):
+    if source is None or not isinstance(requested, Mapping):
         return 1, None
-    max_rows = max(1, int(capability.get("max_direct_rows", 1) or 1))
-    variant = capability.get("decode_batch_variant")
+    max_rows = max(1, int(source.get("max_direct_rows", 1) or 1))
+    variant = source.get("decode_batch_variant")
     quant = requested.get("kv_storage")
     if not isinstance(variant, str) or not variant.strip() or not isinstance(quant, str):
         return 1, None
@@ -16492,18 +16593,19 @@ class Qwen35GGUFResidentSession:
         )
         self.packed_decode_max_rows = 8
         self._retained_decode_kernel = None
-        if self.int8_kv_no_mirror_qualified:
+        direct_rows = 1
+        # Allocation follows the admitted predicate; route resolution follows the
+        # runnable one, so an operator-forced INT8 session still binds the
+        # declared direct leaf and the width the declaration qualifies.
+        if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD and _runnable_no_mirror_int8_capability(
+            self.kv_capability
+        ):
             direct_rows, direct_kernel = _qualified_kv_decode_batch_route(
                 self.runner.backend,
                 self.kv_capability,
             )
             self._retained_decode_kernel = (
                 direct_kernel if callable(direct_kernel) and not self.int8_kv_value_bf16 else None
-            )
-            self.packed_decode_max_rows = (
-                max(1, int(direct_rows))
-                if self._retained_decode_kernel is not None
-                else 1
             )
         requested_positions = 256 if self.max_sequence_length is None else int(self.max_sequence_length)
         rounded_positions = min(
@@ -16548,6 +16650,20 @@ class Qwen35GGUFResidentSession:
                 ),
                 full_attention_layer_count,
             )
+        # The direct INT8 batch leaf reads retained INT8 planes on every
+        # full-attention layer it covers. A hybrid layout keeps part of that
+        # stack in BF16, and those layers have no retained planes, so they take
+        # the standard batch leaf instead. One packed batch cannot run both
+        # leaves and the execution manifest names a single full-attention route,
+        # so a hybrid layout is capped at one row. ``step_batch_native`` already
+        # treats its refusal as "no packed result" and the caller serializes.
+        # ``HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none`` clears the cap by
+        # making the layout uniform.
+        self.packed_decode_max_rows = _gguf_packed_decode_max_rows(
+            direct_rows=direct_rows,
+            retained_decode_kernel=self._retained_decode_kernel,
+            bf16_full_attention_layer_indices=self.int8_bf16_full_attention_layer_indices,
+        )
         custom_bf16_layers = (
             self.kv_storage_layout == "uniform"
             and _env_value(_GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV) is not None
@@ -21629,9 +21745,12 @@ class Qwen35GGUFResidentSession:
         split back into each slot session for the later accept-row commit.
 
         The first production slice is intentionally bounded to the server MTP
-        shape: shared runner, BF16 KV, bulk verifier, no-copy prefill-GDN state
-        capture, and context < 1024 where the existing c1-equivalent
-        full-attention batch decoder is valid. Unsupported shapes raise
+        shape: shared runner, bulk verifier, no-copy prefill-GDN state capture,
+        and context < 1024 where the existing c1-equivalent full-attention batch
+        decoder is valid. KV may be BF16 or direct per-token-head INT8: BF16
+        attends through the context-batch decoder, and INT8 binds the retained
+        payload planes and their scale metadata so the same row-bulk pass runs
+        the retained-decode split-K leaf. Unsupported shapes raise
         ``NotImplementedError`` so the scheduler can fall back to per-slot
         verification.
         """
@@ -21655,8 +21774,10 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident packed verifier buffers are closed")
         if self._bulk_prefill_scratch is None:
             self._ensure_bulk_prefill_workspace()
-        if self.kv_storage_dtype != DType.BF16:
-            raise NotImplementedError("packed target verifier currently supports BF16 KV only")
+        if self.kv_storage_dtype not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
+            raise NotImplementedError(
+                "packed target verifier supports BF16 or per-token-head INT8 KV only"
+            )
         if self.use_expert_sidecar:
             raise NotImplementedError("packed target verifier does not support expert sidecars yet")
         if _gguf_verify_f32_residual_enabled():
@@ -21685,8 +21806,10 @@ class Qwen35GGUFResidentSession:
                 raise NotImplementedError("packed target verifier requires shared runner sessions")
             if session.scratch is None:
                 raise RuntimeError("packed verifier job session is closed")
-            if session.kv_storage_dtype != DType.BF16:
-                raise NotImplementedError("packed target verifier currently supports BF16 KV only")
+            if session.kv_storage_dtype not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
+                raise NotImplementedError(
+                    "packed target verifier supports BF16 or per-token-head INT8 KV only"
+                )
             if str(job.get("bulk_attention_mode", "bulk")) != "bulk":
                 raise NotImplementedError("packed target verifier supports bulk attention mode only")
             if bool(job.get("capture_linear_state_rows", False)) != capture_linear_state_rows:
@@ -21729,6 +21852,28 @@ class Qwen35GGUFResidentSession:
             int(block.start_position) + len(block.input_token_ids)
             for block in slot_blocks
         )
+        # Direct per-token-head INT8 KV runs the same row-bulk attention through
+        # the retained-decode leaf instead of the BF16 context-batch decoder.
+        # That leaf needs every session to expose the same registered kernel and
+        # to declare the group width, so resolve it once for the whole group and
+        # fail closed with a named capability miss when it is unavailable.
+        verifier_session_tuple = tuple(job["session"] for job in job_list)
+        verifier_retained_decode_kernel = (
+            self._packed_ar_direct_decode_kernel_for_sessions(
+                verifier_session_tuple,
+                physical_rows=len(verifier_session_tuple),
+            )
+            if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+            else None
+        )
+        if (
+            self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+            and verifier_retained_decode_kernel is None
+        ):
+            raise NotImplementedError(
+                "packed target verifier requires a shared direct INT8 decode leaf "
+                "at this group width"
+            )
         slot_capacity = max(1024, max_live_count)
         layout = _build_gguf_packed_verify_layout(slot_blocks, slot_capacity=slot_capacity)
         direct_linear_state = self._direct_resident_verify_linear_state(job_list)
@@ -21781,7 +21926,25 @@ class Qwen35GGUFResidentSession:
         )
         add_stage("packed_verify_sync_initial_state", sync_state_start)
         token_upload_start = time.perf_counter()
-        packed_scratch = packed_scratch_base.for_packed_verify_layout(layout, runtime=runtime, stream=stream)
+        packed_scratch = replace(
+            packed_scratch_base.for_packed_verify_layout(
+                layout,
+                runtime=runtime,
+                stream=stream,
+            ),
+            retained_decode_kernel=verifier_retained_decode_kernel,
+        )
+        # The retained INT8 leaf splits the key span across a row-sized workspace;
+        # BF16 keeps the context-batch decoder and needs none.
+        packed_split_workspace = (
+            self._ensure_packed_ar_attention_workspace(
+                rows=rows,
+                max_context_len=int(layout.max_live_count),
+                runtime=runtime,
+            )
+            if verifier_retained_decode_kernel is not None
+            else None
+        )
         _stage_gguf_packed_verify_token_ids(
             layout,
             job_list,
@@ -21890,11 +22053,15 @@ class Qwen35GGUFResidentSession:
                         )
                     add_stage("packed_verify_linear_attn_layers", layer_start)
                 elif layer_type == FULL_ATTENTION:
-                    key_cache, value_cache = packed_state.full_cache(layer_id)
+                    # Bind the retained INT8 planes and their scale metadata when
+                    # this layer stores INT8 directly; a BF16 layer returns the
+                    # same cache-backed scratch this verifier used before.
                     layer_scratch = replace(
-                        packed_scratch,
-                        key_cache=key_cache,
-                        value_cache=value_cache,
+                        self._packed_full_attention_scratch_for_layer(
+                            packed_scratch,
+                            packed_state,
+                            layer_id,
+                        ),
                         cos_table=self.scratch.cos_table,
                         sin_table=self.scratch.sin_table,
                     )
@@ -21908,6 +22075,7 @@ class Qwen35GGUFResidentSession:
                         stage_timings=None,
                         sync_stage_timings=False,
                         stage_prefix="target_block_packed_full_attn",
+                        split_workspace=packed_split_workspace,
                     )
                     if gpu_stage_recorder is not None:
                         gpu_stage_recorder.mark("packed_verify_gpu_full_attn_layers")
@@ -23892,21 +24060,26 @@ class Qwen35GGUFResidentSession:
         )
         if allow_direct_int8_prefill and allow_direct_int8_decode:
             raise ValueError("direct INT8 prefill and decode admission are distinct work classes")
-        if has_direct_int8 and allow_direct_int8_prefill and len(sessions) != 1:
-            raise NotImplementedError(
-                "packed AR direct INT8 is admitted only for single-row prefill until shared prefill ownership is qualified"
-            )
-        if has_direct_int8 and allow_direct_int8_decode:
+        if has_direct_int8 and (allow_direct_int8_prefill or allow_direct_int8_decode):
+            # Prefill and decode are distinct work classes, but they write the
+            # same packed physical cell, so both are bounded by the width the
+            # artifact and backend qualify for direct INT8. A single-row
+            # prefill was the only admitted shape while that ownership was
+            # unqualified; the rows>1 route is now measured at group width, so
+            # the prefill class carries the same limit as decode instead of
+            # collapsing to one row.
             width = len(sessions) if physical_rows is None else int(physical_rows)
             direct_limit = min(
                 max(1, int(getattr(session, "packed_decode_max_rows", 1)))
                 for session in sessions
             )
             if width <= 0 or width > direct_limit:
+                work_class = "prefill" if allow_direct_int8_prefill else "decode"
                 raise NotImplementedError(
-                    f"packed AR direct INT8 physical width {width} exceeds artifact-qualified limit {direct_limit}"
+                    f"packed AR direct INT8 {work_class} physical width {width} "
+                    f"exceeds artifact-qualified limit {direct_limit}"
                 )
-        elif has_direct_int8 and not allow_direct_int8_prefill:
+        elif has_direct_int8:
             raise NotImplementedError(
                 "packed AR direct INT8 attention is not admitted without a bounded BF16 mirror"
             )

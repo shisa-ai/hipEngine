@@ -1,6 +1,6 @@
 {
-  "recorded": "2026-09-21",
-  "note": "Untriaged rows per kind. `audit.py check` fails when a count rises. Lower it by triaging rows; raise it only with a recorded reason.",
+  "recorded": "2026-09-22",
+  "note": "Untriaged rows per kind. `audit.py check` fails when a count rises. Lower it by triaging rows; raise it only with a recorded reason. `select` narrows a kind's gate to matching rows; rows outside the gate stay visible in the state table.",
   "open": {
     "axis-branch": 0,
     "candidate": 0,
@@ -11,6 +11,14 @@
     "stub": 0,
     "ungoverned-flag-branch": 0,
     "unguarded-hip-test": 0,
-    "worklog": 1076
+    "worklog": 88
+  },
+  "select": {
+    "worklog": {
+      "evidence.status": [
+        "blocked",
+        "handoff"
+      ]
+    }
   }
 }

@@ -7,8 +7,15 @@ from hipengine.generation.registry import GenerationRequest
 @pytest.mark.parametrize('supported,fields,expected', [
     (False, {}, 'greedy'), (False, {'eos_token_id': 7}, 'processed'),
     (True, {'eos_token_id': 7}, 'greedy'),
-    (True, {'eos_token_id': 7, 'min_tokens': 1}, 'processed'),
-    (True, {'eos_token_id': 7, 'temperature': 1.0}, 'processed'),
+    # A finish-rule field no longer disqualifies the sampled route: the cycle
+    # commit applies EOS, stop ids, stop sequences, and the min-token EOS floor
+    # to the whole verified chain (limit_chain_accept_finish). min_tokens is also
+    # an EOS-suppression processor, so it leaves the raw-greedy fast path and the
+    # sampled route -- which applies the request's pipeline per row -- serves it.
+    (True, {'eos_token_id': 7, 'min_tokens': 1}, 'sampled'),
+    (True, {'eos_token_id': 7, 'temperature': 1.0}, 'sampled'),
+    # ignore_eos is a finish-rule relaxation and does not leave the fast path, so
+    # the request stays unqualified rather than being called sampled.
     (True, {'eos_token_id': 7, 'ignore_eos': True}, 'processed'),
 ])
 def test_runner_eos_permission_does_not_relax_other_sampling(supported, fields, expected):

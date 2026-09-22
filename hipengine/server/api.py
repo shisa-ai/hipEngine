@@ -4419,6 +4419,22 @@ class _ReadinessState:
     last_startup_checks: dict[str, Any] = field(default_factory=dict)
 
 
+class StartupFailure(RuntimeError):
+    """Eager startup cannot complete, so the server must not keep serving.
+
+    Raised out of the ASGI lifespan after the diagnosis has been recorded and
+    logged. Uvicorn turns a lifespan startup exception into a non-zero exit, which
+    is the honest signal for a server that has nothing to serve: left running, it
+    answers every request with 503 and the reason is only visible in ``/ready``.
+    """
+
+    def __init__(self, stage: str, guidance: str, cause: BaseException) -> None:
+        super().__init__(f"startup {stage} failed: {type(cause).__name__}: {cause}")
+        self.stage = stage
+        self.guidance = guidance
+        self.cause = cause
+
+
 @dataclass(frozen=True)
 class _ContinuationRecord:
     id: str
@@ -4482,6 +4498,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "warmup_s": None,
             "scratch_probe_s": None,
             "chat_smoke_s": None,
+            "mtp_smoke_s": None,
             "startup_total_s": None,
         },
     )
@@ -5358,6 +5375,30 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         readiness.last_startup_memory = startup_memory
         readiness.last_startup_checks = startup_checks
         _record_startup_memory_snapshot(startup_memory, "startup_begin")
+
+        def fail_startup(
+            stage: str,
+            exc: BaseException,
+            *,
+            guidance: str,
+            timings: Mapping[str, float | None] | None = None,
+        ) -> None:
+            """Record the failed stage, then end startup instead of serving 503s.
+
+            The recorded diagnosis still reaches ``/ready`` for the stages that
+            recover, and the log carries it for this one; what it must not do is
+            leave a process listening with nothing behind it.
+            """
+
+            mark_startup_failed(
+                readiness,
+                exc,
+                startup_started=startup_started,
+                stage=stage,
+                guidance=guidance,
+                timings=timings,
+            )
+            raise StartupFailure(stage, guidance, exc) from exc
         max_tokens = max(1, int(config.eager_load_max_tokens))
         if not config.eager_load:
             max_context = configured_max_context_tokens()
@@ -5440,16 +5481,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "status": "failed",
                     "exception_type": type(exc).__name__,
                 }
-                mark_startup_failed(
-                    readiness,
+                _LOGGER.exception("STARTUP_ENGINE_CREATE: failed")
+                fail_startup(
+                    "engine_create",
                     exc,
-                    startup_started=startup_started,
-                    stage="engine_create",
                     guidance="Check the configured model path, backend, quantization, and server logs.",
                     timings={"engine_create_s": round(time.perf_counter() - engine_started, 6)},
                 )
-                _LOGGER.exception("STARTUP_ENGINE_CREATE: failed")
-                return
             engine_create_s = time.perf_counter() - engine_started
             _LOGGER.info(
                 "MODEL_LOAD: engine created elapsed=%.1fs; preparing weights, "
@@ -5464,18 +5502,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "status": "failed",
                     "exception_type": type(exc).__name__,
                 }
-                mark_startup_failed(
-                    readiness,
+                fail_startup(
+                    "resident_prepare",
                     exc,
-                    startup_started=startup_started,
-                    stage="resident_prepare",
                     guidance="Try a lower --max-context-tokens or --kv-storage int8_per_token_head.",
                     timings={
                         "engine_create_s": round(engine_create_s, 6),
                         "resident_prepare_s": round(time.perf_counter() - prepare_started, 6),
                     },
                 )
-                return
             resident_prepare_s = time.perf_counter() - prepare_started
             _LOGGER.info(
                 "Config: model=%s served_model=%s max_context_tokens=%s "
@@ -5506,11 +5541,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "max_tokens": max_tokens,
                 "exception_type": type(exc).__name__,
             }
-            mark_startup_failed(
-                readiness,
+            _LOGGER.exception("WARMUP: failed during eager startup")
+            fail_startup(
+                "raw_warmup",
                 exc,
-                startup_started=startup_started,
-                stage="raw_warmup",
                 guidance="Check backend generation logs and lower --eager-load-max-tokens if needed.",
                 timings={
                     "engine_create_s": round(engine_create_s, 6),
@@ -5518,8 +5552,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "warmup_s": round(time.perf_counter() - warmup_started, 6),
                 },
             )
-            _LOGGER.exception("WARMUP: failed during eager startup")
-            return
         warmup_s = time.perf_counter() - warmup_started
         startup_checks["raw_warmup"] = {"status": "passed", "max_tokens": max_tokens}
         _record_startup_memory_snapshot(startup_memory, "after_raw_warmup")
@@ -5527,16 +5559,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         scratch_probe_s: float | None = None
         scratch_probe_started = time.perf_counter()
         max_prompt_tokens = _startup_max_prompt_tokens(max_context)
+        mtp_startup_warmup_requested = str(config.speculative_mtp_serving) != "off"
+        mtp_route_enabled = mtp_startup_warmup_requested and _engine_supports_speculative_mtp(engine)
         if config.startup_scratch_probe:
             scratch_preparer = getattr(engine, "prepare_request_scratch", None)
             scratch_probe_context_unknown = max_prompt_tokens is None
             scratch_probe_prompt_tokens = 64 if max_prompt_tokens is None else int(max_prompt_tokens)
             scratch_probe_batch_size = max(1, int(config.max_active_requests or 1))
-            mtp_startup_warmup_requested = str(config.speculative_mtp_serving) != "off"
-            mtp_route_enabled = (
-                mtp_startup_warmup_requested
-                and _engine_supports_speculative_mtp(engine)
-            )
             if not mtp_route_enabled:
                 plain_ar_limit = getattr(
                     engine,
@@ -5553,6 +5582,20 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         scratch_probe_batch_size,
                         plain_ar_limit,
                     )
+            requested_scratch_probe_batch_size = scratch_probe_batch_size
+            scratch_probe_width_reduction: dict[str, Any] | None = None
+            if scratch_probe_batch_size > 1:
+                scratch_probe_width_reduction = _startup_probe_width_reduction(
+                    engine,
+                    width=scratch_probe_batch_size,
+                )
+                if scratch_probe_width_reduction is not None:
+                    _LOGGER.warning(
+                        "STARTUP_SCRATCH_PROBE: width %d reduced to 1; %s",
+                        scratch_probe_batch_size,
+                        scratch_probe_width_reduction["detail"],
+                    )
+                    scratch_probe_batch_size = 1
             if max_prompt_tokens is None and scratch_probe_batch_size <= 1:
                 startup_checks["scratch_probe"] = {"enabled": True, "status": "skipped", "reason": "unknown_context"}
             elif not callable(scratch_preparer):
@@ -5565,65 +5608,114 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     scratch_probe_prompt_tokens,
                     scratch_probe_batch_size,
                 )
-                try:
-                    def run_scratch_probe() -> Any:
-                        mtp_warmup_env = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
-                        previous_mtp_warmup = os.environ.get(mtp_warmup_env)
-                        os.environ[mtp_warmup_env] = "1" if mtp_startup_warmup_requested else "0"
-                        try:
-                            return scratch_preparer(
-                                max_prompt_tokens=scratch_probe_prompt_tokens,
-                                max_new_tokens=0,
-                                sampling_params=sampling,
-                                max_batch_size=scratch_probe_batch_size,
-                                release_after_probe=True,
-                            )
-                        finally:
-                            if previous_mtp_warmup is None:
-                                os.environ.pop(mtp_warmup_env, None)
-                            else:
-                                os.environ[mtp_warmup_env] = previous_mtp_warmup
+                scratch_probe_failed_attempts: list[dict[str, Any]] = []
 
-                    scratch_result = await run_in_threadpool(
-                        run_scratch_probe
-                    )
-                except Exception as exc:
-                    startup_checks["scratch_probe"] = {
-                        "enabled": True,
-                        "status": "failed",
-                        "max_prompt_tokens": None if scratch_probe_context_unknown else scratch_probe_prompt_tokens,
-                        "probe_prompt_tokens": scratch_probe_prompt_tokens,
-                        "context_unknown": scratch_probe_context_unknown,
-                        "exception_type": type(exc).__name__,
-                    }
-                    _LOGGER.error(
-                        "STARTUP_SCRATCH_PROBE: failed at probe_prompt_tokens=%d: %s. "
-                        "Try a lower --max-context-tokens or a higher scratch/headroom reserve.",
-                        scratch_probe_prompt_tokens,
-                        exc,
-                    )
-                    mark_startup_failed(
-                        readiness,
-                        exc,
-                        startup_started=startup_started,
-                        stage="scratch_probe",
-                        guidance="Try a lower --max-context-tokens or a higher scratch/headroom reserve.",
-                        timings={
-                            "engine_create_s": round(engine_create_s, 6),
-                            "resident_prepare_s": round(resident_prepare_s, 6),
-                            "warmup_s": round(warmup_s, 6),
-                            "scratch_probe_s": round(time.perf_counter() - scratch_probe_started, 6),
-                        },
-                    )
-                    return
-                startup_checks["scratch_probe"] = {
+                def run_scratch_probe() -> Any:
+                    mtp_warmup_env = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
+                    previous_mtp_warmup = os.environ.get(mtp_warmup_env)
+                    os.environ[mtp_warmup_env] = "1" if mtp_startup_warmup_requested else "0"
+                    try:
+                        return scratch_preparer(
+                            max_prompt_tokens=scratch_probe_prompt_tokens,
+                            max_new_tokens=0,
+                            sampling_params=sampling,
+                            max_batch_size=scratch_probe_batch_size,
+                            release_after_probe=True,
+                        )
+                    finally:
+                        if previous_mtp_warmup is None:
+                            os.environ.pop(mtp_warmup_env, None)
+                        else:
+                            os.environ[mtp_warmup_env] = previous_mtp_warmup
+
+                while True:
+                    try:
+                        scratch_result = await run_in_threadpool(run_scratch_probe)
+                    except Exception as exc:
+                        scratch_probe_failed_attempts.append(
+                            {
+                                "max_batch_size": scratch_probe_batch_size,
+                                "exception_type": type(exc).__name__,
+                            }
+                        )
+                        if scratch_probe_batch_size > 1:
+                            # Every probe slot is its own resident session, so a wider probe
+                            # can fail to allocate while one slot fits. Retry at the narrowest
+                            # width before treating the failure as fatal.
+                            _LOGGER.warning(
+                                "STARTUP_SCRATCH_PROBE: width %d failed to allocate (%s); "
+                                "retrying at width 1",
+                                scratch_probe_batch_size,
+                                exc,
+                            )
+                            scratch_probe_batch_size = 1
+                            continue
+                        startup_checks["scratch_probe"] = {
+                            "enabled": True,
+                            "status": "failed",
+                            "max_prompt_tokens": (
+                                None
+                                if scratch_probe_context_unknown
+                                else scratch_probe_prompt_tokens
+                            ),
+                            "probe_prompt_tokens": scratch_probe_prompt_tokens,
+                            "context_unknown": scratch_probe_context_unknown,
+                            "requested_max_batch_size": requested_scratch_probe_batch_size,
+                            "max_batch_size": scratch_probe_batch_size,
+                            "exception_type": type(exc).__name__,
+                            "failed_attempts": scratch_probe_failed_attempts,
+                        }
+                        _LOGGER.error(
+                            "STARTUP_SCRATCH_PROBE: failed at probe_prompt_tokens=%d: %s. "
+                            "Try a lower --max-context-tokens or a higher "
+                            "scratch/headroom reserve.",
+                            scratch_probe_prompt_tokens,
+                            exc,
+                        )
+                        fail_startup(
+                            "scratch_probe",
+                            exc,
+                            guidance=(
+                                "Try a lower --max-context-tokens or a higher "
+                                "scratch/headroom reserve."
+                            ),
+                            timings={
+                                "engine_create_s": round(engine_create_s, 6),
+                                "resident_prepare_s": round(resident_prepare_s, 6),
+                                "warmup_s": round(warmup_s, 6),
+                                "scratch_probe_s": round(
+                                    time.perf_counter() - scratch_probe_started, 6
+                                ),
+                            },
+                        )
+                    else:
+                        break
+                scratch_probe_check: dict[str, Any] = {
                     "enabled": True,
                     "status": "passed",
-                    "max_prompt_tokens": None if scratch_probe_context_unknown else scratch_probe_prompt_tokens,
+                    "max_prompt_tokens": (
+                        None if scratch_probe_context_unknown else scratch_probe_prompt_tokens
+                    ),
                     "probe_prompt_tokens": scratch_probe_prompt_tokens,
                     "context_unknown": scratch_probe_context_unknown,
+                    "requested_max_batch_size": requested_scratch_probe_batch_size,
+                    "max_batch_size": scratch_probe_batch_size,
                     "result": scratch_result,
                 }
+                if scratch_probe_width_reduction is not None:
+                    scratch_probe_check["status"] = "reduced"
+                    scratch_probe_check["width_reduction"] = scratch_probe_width_reduction
+                    scratch_probe_check["width_reduction_detail"] = scratch_probe_width_reduction[
+                        "detail"
+                    ]
+                if scratch_probe_failed_attempts:
+                    scratch_probe_check["status"] = "reduced"
+                    scratch_probe_check["failed_attempts"] = scratch_probe_failed_attempts
+                    scratch_probe_check["width_reduction_detail"] = (
+                        f"width {scratch_probe_failed_attempts[-1]['max_batch_size']} failed to "
+                        f"allocate ({scratch_probe_failed_attempts[-1]['exception_type']})"
+                    )
+                startup_checks["scratch_probe"] = scratch_probe_check
         else:
             startup_checks["scratch_probe"] = {"enabled": False, "status": "disabled"}
         scratch_probe_s = time.perf_counter() - scratch_probe_started
@@ -5661,6 +5753,86 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         else:
             startup_checks["chat_smoke"] = {"enabled": False, "status": "disabled"}
 
+        # The chat smoke above runs the route a request without `speculative_mtp`
+        # resolves to, which is not the route an explicit MTP request runs. Warm the
+        # speculative path too, so the first user request that asks for MTP by name
+        # does not pay for kernels, scratch, and draft state nothing has touched yet.
+        mtp_smoke_s: float | None = None
+        if config.startup_chat_smoke and mtp_route_enabled:
+            mtp_smoke_started = time.perf_counter()
+            mtp_smoke_request = ChatCompletionRequest(
+                model=config.model_id,
+                messages=[
+                    ChatMessage(role="user", content=_startup_mtp_smoke_prompt(config.eager_load_prompt))
+                ],
+                temperature=0.0,
+                top_p=1.0,
+                max_tokens=_STARTUP_MTP_SMOKE_MAX_TOKENS,
+                speculative_mtp=True,
+            )
+            try:
+                async with session_lock:
+                    mtp_smoke_prompt = chat_prompt_for_request(mtp_smoke_request, engine)
+                    mtp_smoke_sampling = sampling_params(mtp_smoke_request, (mtp_smoke_prompt,), engine)
+                    mtp_smoke_prompt_tokens = _count_tokens_for_admission(engine, mtp_smoke_prompt)
+                    _validate_context_budget(
+                        effective_max_context_tokens(engine), engine, (mtp_smoke_prompt,), mtp_smoke_sampling
+                    )
+                    # Resolve the route exactly as a served request does, so the warmup
+                    # runs the route an explicit MTP request would take here -- and so a
+                    # route this server would refuse fails the warmup the same way.
+                    mtp_smoke_route, mtp_smoke_route_decision = _generation_route_for_request(
+                        config,
+                        mtp_smoke_request,
+                        engine=engine,
+                        sampling=mtp_smoke_sampling,
+                        prompts=(mtp_smoke_prompt,),
+                    )
+                _LOGGER.info(
+                    "WARMUP_SPECULATIVE_MTP: route=%s prompt_tokens=%d max_tokens=%d",
+                    mtp_smoke_route,
+                    mtp_smoke_prompt_tokens,
+                    int(mtp_smoke_sampling.max_tokens),
+                )
+                warmup_result = await generation_batcher.submit(
+                    (mtp_smoke_prompt,),
+                    mtp_smoke_sampling,
+                    detailed=True,
+                    include_batch_metadata=True,
+                    route=mtp_smoke_route,
+                    route_decision=mtp_smoke_route_decision,
+                )
+            except Exception as exc:
+                # A speculative warmup failure is not a serving failure: the route
+                # has its own decline-and-fall-back path, and the request that would
+                # have paid this cost still runs. Report it and stay ready.
+                mtp_smoke_s = time.perf_counter() - mtp_smoke_started
+                startup_checks["mtp_smoke"] = {
+                    "enabled": True,
+                    "status": "failed",
+                    "exception_type": type(exc).__name__,
+                }
+                _LOGGER.warning("WARMUP_SPECULATIVE_MTP: failed; serving continues", exc_info=True)
+            else:
+                mtp_smoke_s = time.perf_counter() - mtp_smoke_started
+                startup_checks["mtp_smoke"] = {
+                    "enabled": True,
+                    "status": "passed",
+                    "route": str(mtp_smoke_route),
+                    "realized_route": _warmup_realized_route(warmup_result),
+                    "prompt_tokens": int(mtp_smoke_prompt_tokens),
+                    "max_tokens": int(mtp_smoke_sampling.max_tokens),
+                }
+                _record_startup_memory_snapshot(startup_memory, "after_mtp_smoke")
+        elif config.startup_chat_smoke:
+            startup_checks["mtp_smoke"] = {
+                "enabled": False,
+                "status": "disabled",
+                "reason": "mtp_route_disabled",
+            }
+        else:
+            startup_checks["mtp_smoke"] = {"enabled": False, "status": "disabled"}
+
         guard_memory = _device_memory_snapshot()
         if guard_memory is not None:
             startup_memory["guard"] = guard_memory
@@ -5677,16 +5849,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "warmup_s": round(warmup_s, 6),
             "scratch_probe_s": None if scratch_probe_s is None else round(scratch_probe_s, 6),
             "chat_smoke_s": None if chat_smoke_s is None else round(chat_smoke_s, 6),
+            "mtp_smoke_s": None if mtp_smoke_s is None else round(mtp_smoke_s, 6),
             "startup_total_s": round(startup_total_s, 6),
         }
         _LOGGER.info(
-            "LOAD_TIMING: model=%s engine_create_s=%.3f resident_prepare_s=%.3f warmup_s=%.3f scratch_probe_s=%s chat_smoke_s=%s startup_total_s=%.3f",
+            "LOAD_TIMING: model=%s engine_create_s=%.3f resident_prepare_s=%.3f warmup_s=%.3f scratch_probe_s=%s chat_smoke_s=%s mtp_smoke_s=%s startup_total_s=%.3f",
             config.model_id,
             engine_create_s,
             resident_prepare_s,
             warmup_s,
             "skipped" if scratch_probe_s is None else f"{scratch_probe_s:.3f}",
             "skipped" if chat_smoke_s is None else f"{chat_smoke_s:.3f}",
+            "skipped" if mtp_smoke_s is None else f"{mtp_smoke_s:.3f}",
             startup_total_s,
         )
         _log_pretty_startup_summary(
@@ -6749,6 +6923,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 diagnostics.append(
                     f"{readiness.startup_error.get('message')}: {readiness.startup_error.get('guidance')}"
                 )
+        scratch_check = readiness.last_startup_checks.get("scratch_probe")
+        if isinstance(scratch_check, Mapping) and str(scratch_check.get("status")) == "reduced":
+            diagnostics.append(
+                "startup scratch probe ran at width "
+                f"{scratch_check.get('max_batch_size')} instead of "
+                f"{scratch_check.get('requested_max_batch_size')}: "
+                f"{scratch_check.get('width_reduction_detail')}"
+            )
         runtime_status = readiness.status
         runtime_ready = bool(readiness.ready)
         if service_health is not None and not bool(service_health.get("serving", True)):
@@ -11684,6 +11866,92 @@ def _startup_max_prompt_tokens(max_context_tokens: int | None) -> int | None:
     if max_context_tokens is None:
         return None
     return max(1, int(max_context_tokens) - 1)
+
+
+def _startup_probe_width_reduction(engine: Any, *, width: int) -> dict[str, Any] | None:
+    """Price a width-N startup probe before running it.
+
+    Every probe slot is its own resident session, and a resident session preallocates
+    its KV pages and packed workspace lease. The capacity estimator prices one
+    session, so nothing priced the multiplication a wider probe performs: the probe
+    asked for four slots, each slot's price fitted on its own, and the fourth
+    allocation failed after four HIP out-of-memory attempts.
+
+    Returns ``None`` when the probe should run at the configured width. An engine that
+    cannot be priced returns ``None`` too, and so does one whose estimate says no
+    session fits at all: a missing or unusable estimate must not silently drop a
+    warmup, and the narrow probe is the fallback that speaks for itself.
+    """
+
+    estimator = getattr(engine, "resident_capacity_estimate", None)
+    if not callable(estimator):
+        return None
+    try:
+        headroom = estimator(max_batch_size=1, requested_context_tokens=None)
+        if headroom is None:
+            return None
+        session_context = int(getattr(headroom, "allocatable_context_tokens", 0) or 0)
+        if session_context <= 0:
+            return None
+        priced = estimator(max_batch_size=1, requested_context_tokens=session_context)
+        if priced is None:
+            return None
+        per_session_bytes = int(getattr(priced, "requested_total_bytes", 0) or 0)
+        usable_bytes = int(getattr(priced, "usable_bytes", 0) or 0)
+    except Exception as exc:  # noqa: BLE001 - a pricing failure must not fail startup
+        _LOGGER.debug("STARTUP_SCRATCH_PROBE: width preflight unavailable: %s", exc)
+        return None
+    if per_session_bytes <= 0 or usable_bytes <= 0:
+        return None
+    required_bytes = per_session_bytes * int(width)
+    if required_bytes <= usable_bytes:
+        return None
+    return {
+        "reason": "insufficient_free_memory_for_width",
+        "requested_width": int(width),
+        "session_context_tokens": session_context,
+        "per_session_bytes": per_session_bytes,
+        "required_bytes": required_bytes,
+        "usable_bytes": usable_bytes,
+        "free_bytes": int(getattr(priced, "available_bytes", 0) or 0),
+        "reserve_bytes": int(getattr(priced, "reserve_bytes", 0) or 0),
+        "detail": (
+            f"{int(width)} concurrent sessions need {_format_bytes(required_bytes)} "
+            f"against {_format_bytes(usable_bytes)} usable"
+        ),
+    }
+
+
+# Tokens the startup speculative warmup generates. Enough for several draft/verify
+# cycles, small enough that the warmup stays a startup cost and not a benchmark.
+_STARTUP_MTP_SMOKE_MAX_TOKENS = 8
+# Words in the warmup prompt, built by repeating ``--eager-load-prompt``. A prompt
+# this size exercises the prefill path a real request takes, unlike the 9-token chat
+# smoke, without paying a full 512-token prefill at every server start.
+_STARTUP_MTP_SMOKE_PROMPT_WORDS = 128
+
+
+def _startup_mtp_smoke_prompt(eager_load_prompt: str) -> str:
+    """A warmup prompt long enough for the speculative route to draft and verify."""
+
+    words = str(eager_load_prompt).split() or ["warmup"]
+    repeats = max(1, -(-_STARTUP_MTP_SMOKE_PROMPT_WORDS // len(words)))
+    return " ".join(words * repeats)
+
+
+def _warmup_realized_route(result: Any) -> str | None:
+    """The route a completed warmup batch ran, when the batcher reports one.
+
+    The batcher resolves an unavailable speculative route to AR before dispatch, so
+    the requested route alone cannot tell an operator whether the speculative path
+    was actually warmed.
+    """
+
+    shape = getattr(result, "generation_shape", None)
+    if not isinstance(shape, Mapping):
+        return None
+    route = shape.get("route")
+    return None if route is None else str(route)
 
 
 def _record_startup_memory_snapshot(target: dict[str, Any], stage: str) -> dict[str, Any] | None:
@@ -16638,6 +16906,11 @@ def _usage(
         completion_details["rejected_prediction_tokens"] = rejected
     if completion_details:
         usage["completion_tokens_details"] = completion_details
+    cached_tokens = _prefix_cached_token_total(details)
+    if cached_tokens is not None:
+        # Reuse can only shrink prompt work, never grow it, so the reported
+        # count is clamped to the prompt it was served from.
+        usage["prompt_tokens_details"] = {"cached_tokens": min(cached_tokens, prompt_tokens)}
     return usage
 
 
@@ -16712,6 +16985,45 @@ def _mtp_accepted_rejected_counts(
     if not found:
         return None
     return accepted, max(0, generated - accepted)
+
+
+def _prefix_cache_diagnostics(detail: GenerationOutput) -> Mapping[str, Any] | None:
+    """Return one output's per-request prefix-cache block, when the backend published it."""
+
+    telemetry = getattr(detail, "telemetry", None)
+    if isinstance(telemetry, Mapping):
+        diagnostics = telemetry.get("diagnostics")
+    else:
+        diagnostics = None if telemetry is None else getattr(telemetry, "diagnostics", None)
+    if not isinstance(diagnostics, Mapping):
+        return None
+    block = diagnostics.get("prefix_cache")
+    return block if isinstance(block, Mapping) else None
+
+
+def _prefix_cached_token_total(
+    details: Sequence[GenerationOutput] | None,
+) -> int | None:
+    """Sum prompt tokens served from the prefix cache across generation outputs.
+
+    Mirrors vLLM's ``usage.prompt_tokens_details.cached_tokens``: the count is a
+    subset of ``prompt_tokens``, and a request that reused nothing reports zero.
+    Returns ``None`` when no output carried prefix-cache telemetry, which is
+    different from a cache that was consulted and missed -- callers must not
+    report a zero they did not measure.
+    """
+
+    cached = 0
+    found = False
+    for detail in (details or ()):
+        block = _prefix_cache_diagnostics(detail)
+        if block is None:
+            continue
+        found = True
+        reused = block.get("reused_tokens")
+        if isinstance(reused, int) and not isinstance(reused, bool) and reused > 0:
+            cached += reused
+    return cached if found else None
 
 
 def _mtp_output_reconciliation(

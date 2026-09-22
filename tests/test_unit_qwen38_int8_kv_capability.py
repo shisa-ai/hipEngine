@@ -58,6 +58,50 @@ def _artifact(*, sha256: str, size_bytes: int) -> ModelArtifactIdentity:
     )
 
 
+def _declaration(**changes) -> dict[str, object]:
+    """The gfx1151 declaration's execution bounds, as ``as_dict`` reports them."""
+
+    base: dict[str, object] = {
+        "max_direct_rows": 4,
+        "persistent_bf16_mirror": False,
+        "decode_batch_variant": (
+            "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans"
+        ),
+    }
+    base.update(changes)
+    return base
+
+
+def _forced_payload(
+    *,
+    declaration: dict[str, object] | None = _declaration(),
+    effective_kv_storage: str = "int8_per_token_head",
+    requested: dict[str, str] | None = None,
+) -> dict[str, object]:
+    """A ``diagnostic_override`` resolution for a quality-rejected artifact.
+
+    The rejected evidence row supplies ``max_direct_rows=0``, no decode variant,
+    and ``persistent_bf16_mirror=False``; the declaration supplies the bounds a
+    forced session executes.  The top-level fields are kept at their evidence
+    values so a test that starts reading them by mistake fails here rather than
+    passing for the wrong reason.
+    """
+
+    return {
+        "runtime_action": "diagnostic_override",
+        "effective_kv_storage": effective_kv_storage,
+        "persistent_bf16_mirror": False,
+        "max_direct_rows": 0,
+        "decode_batch_variant": None,
+        "declaration": declaration,
+        "requested": requested
+        or {
+            "kv_storage": "int8_per_token_head",
+            "storage_layout": "uniform",
+        },
+    }
+
+
 def test_registered_capabilities_match_retained_artifact_model_identities() -> None:
     passing_path = (
         _REPO_ROOT
@@ -176,6 +220,121 @@ def test_qwen38_gfx1151_exact_artifact_int8_capability_remains_rejected() -> Non
     assert payload["promotion_eligible"] is False
     assert payload["effective_kv_storage"] == "bf16"
     assert "0.7778" in payload["reason"]
+
+
+def test_gfx1151_rejected_artifact_binds_the_direct_leaf_under_diagnostic_override() -> None:
+    """A recorded rejection governs selection; an explicit override governs execution.
+
+    The rejected artifact falls closed to BF16 on its own, so no direct leaf is
+    bound and a session cannot silently run mirror-free INT8.  Once the operator
+    forces INT8 through the documented override, the selection question is
+    answered and the remaining gate is the declaration, which the registry
+    lookup verifies.  Excluding the override would leave a configuration no
+    command could open.
+    """
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    plugin = Qwen35GGUFModel()
+    rejected = plugin.resolve_kv_capability(
+        key=_key(
+            sha256=_REJECT_SHA256,
+            size_bytes=17_106_775_008,
+            backend="hip_gfx1151",
+        ),
+        artifact=_artifact(sha256=_REJECT_SHA256, size_bytes=17_106_775_008),
+    )
+    register_gfx1151_kernels()
+
+    # The engine's own BF16 fallback binds nothing, before and after the change.
+    assert gguf_runner._qualified_kv_decode_batch_route(
+        "hip_gfx1151",
+        rejected.as_dict(),
+    ) == (1, None)
+
+    forced = rejected.with_runtime_outcome(
+        effective_kv_storage="int8_per_token_head",
+        runtime_action="diagnostic_override",
+        reason="explicit unverified INT8 KV diagnostic override is enabled",
+    )
+    payload = forced.as_dict()
+    assert payload["effective_kv_storage"] == "int8_per_token_head"
+    # Allocation still reads the strict predicate; only the route widens.
+    assert gguf_runner._admitted_no_mirror_int8_capability(payload) is False
+    assert gguf_runner._runnable_no_mirror_int8_capability(payload) is True
+
+    max_rows, kernel = gguf_runner._qualified_kv_decode_batch_route(
+        "hip_gfx1151",
+        payload,
+    )
+    assert max_rows == 4
+    assert kernel is qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans
+
+
+def test_direct_int8_route_refuses_a_contract_no_kernel_registers() -> None:
+    """The declaration covers the contract; the registry decides execution.
+
+    A capability that names an unregistered variant is still a running
+    mirror-free INT8 mode, so the predicate admits it, and route resolution
+    independently reports that there is no kernel.  Callers fail closed on the
+    missing kernel rather than on the predicate.
+    """
+
+    payload = _forced_payload(
+        declaration={
+            "max_direct_rows": 4,
+            "persistent_bf16_mirror": False,
+            "decode_batch_variant": "no_such_registered_variant",
+        },
+    )
+
+    assert gguf_runner._runnable_no_mirror_int8_capability(payload) is True
+    assert gguf_runner._qualified_kv_decode_batch_route(
+        "hip_gfx1151",
+        payload,
+    ) == (1, None)
+
+
+def test_direct_int8_route_refuses_every_non_running_resolution() -> None:
+    """Only a deliberate INT8 selection reaches the direct leaf."""
+
+    for label, capability in (
+        # The engine's own BF16 fallback keeps its BF16 storage.
+        ("bf16 fallback", _forced_payload(effective_kv_storage="bf16")),
+        # A contract no declaration covers has no execution bounds at all.
+        ("no declaration", _forced_payload(declaration=None)),
+        # A mirror means the layer is not on direct INT8 at all.
+        (
+            "mirror retained",
+            _forced_payload(declaration=_declaration(persistent_bf16_mirror=True)),
+        ),
+        # Direct width zero is not a runnable width.
+        ("zero direct width", _forced_payload(declaration=_declaration(max_direct_rows=0))),
+        # The packed physical cell is uniform-only.
+        (
+            "non-uniform layout",
+            _forced_payload(
+                requested={
+                    "kv_storage": "int8_per_token_head",
+                    "storage_layout": "tail4_hadamard_group32",
+                }
+            ),
+        ),
+        # A BF16 request cannot resolve an INT8 route.
+        (
+            "bf16 requested",
+            _forced_payload(
+                requested={"kv_storage": "bf16", "storage_layout": "uniform"}
+            ),
+        ),
+        ("absent", None),
+    ):
+        assert gguf_runner._admitted_no_mirror_int8_capability(capability) is False, label
+        assert gguf_runner._runnable_no_mirror_int8_capability(capability) is False, label
+        assert gguf_runner._qualified_kv_decode_batch_route(
+            "hip_gfx1151",
+            capability,
+        ) == (1, None), label
 
 
 def test_identity_never_gates_admission_but_capability_does() -> None:

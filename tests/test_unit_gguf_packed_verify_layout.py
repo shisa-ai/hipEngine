@@ -1660,10 +1660,18 @@ def test_gguf_packed_ar_admits_mirrored_int8_and_fails_closed_without_mirror() -
         (owner,),
         allow_direct_int8_prefill=True,
     ) == direct
-    with pytest.raises(NotImplementedError, match="single-row prefill"):
+    # Prefill and decode write the same packed physical cell, so the prefill
+    # class carries the same artifact-qualified width limit as decode instead
+    # of collapsing to a single row.
+    assert owner._packed_ar_kv_layout_for_sessions(
+        (owner, peer),
+        allow_direct_int8_prefill=True,
+    ) == direct
+    with pytest.raises(NotImplementedError, match="prefill physical width 9 exceeds artifact-qualified limit 8"):
         owner._packed_ar_kv_layout_for_sessions(
             (owner, peer),
             allow_direct_int8_prefill=True,
+            physical_rows=9,
         )
     with pytest.raises(NotImplementedError, match="without a bounded BF16 mirror"):
         owner._packed_ar_kv_layout_for_sessions((owner, peer))
@@ -1688,6 +1696,17 @@ def test_gguf_packed_ar_admits_mirrored_int8_and_fails_closed_without_mirror() -
         allow_direct_int8_decode=True,
         physical_rows=4,
     ) == direct
+    assert owner._packed_ar_kv_layout_for_sessions(
+        (owner, peer),
+        allow_direct_int8_prefill=True,
+        physical_rows=4,
+    ) == direct
+    with pytest.raises(NotImplementedError, match="prefill physical width 5 exceeds artifact-qualified limit 4"):
+        owner._packed_ar_kv_layout_for_sessions(
+            (owner, peer),
+            allow_direct_int8_prefill=True,
+            physical_rows=5,
+        )
     peer.packed_decode_max_rows = 1
     with pytest.raises(NotImplementedError, match="physical width 4"):
         owner._packed_ar_kv_layout_for_sessions(

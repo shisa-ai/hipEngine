@@ -8,6 +8,194 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
 
 ## Unreleased
 
+### Fixed
+
+- A long-context INT8 KV server no longer returns HTTP 500 on a request that
+  follows a concurrent autoregressive/speculative pair, and multi-choice no
+  longer fails on such a server. The direct INT8 batch leaf reads retained INT8
+  planes on every full-attention layer it covers, but a long-context INT8
+  session keeps a BF16 prefix of those layers for quality, so those layers have
+  no retained planes and take the standard batch leaf instead. One packed batch
+  cannot run both leaves, and the session was still advertising the declared
+  width, so it built a batch that the packed decode then rejected. Such a
+  session now caps the packed width at one row and serializes; results are
+  unchanged and stay exact against the autoregressive baseline.
+- `/ready` reports the effective width as
+  `model.kv_capability.max_packed_rows`, which previously differed silently from
+  the declared `max_direct_rows`.
+
+## v0.6.1 - 2026-09-22
+
+Fixes long-prompt prefix reuse, widens speculative decoding on INT8 KV, and adds
+measurement to the terminal chat client. Prefix reuse now works on prompts long
+enough that a reply crosses a cache boundary — the case where it previously
+reused nothing and re-prefilled the entire prompt on the non-speculative route.
+Speculative decoding on INT8 KV now covers sampled requests and multi-request
+groups, and the autoregressive finish rule applies to a whole verified chain, so
+`min_tokens`, EOS and stop ids, and stop sequences are servable on the
+speculative routes. Hardware validation covers Radeon RDNA 3 (`gfx1100`: RX 7900
+XTX, Pro W7900) and Strix Halo (`gfx1151`: Ryzen AI MAX+ 395 with Radeon 8060S);
+support and results are specific to each model and backend. Numbers live in
+[`benchmarks/README.md`](benchmarks/README.md) and the dated performance history
+in [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md).
+
+### Added
+
+- **`/bench` in the terminal chat client.** `hipengine chat` gains `/bench [in]
+  [out]` (default 512 in, 32 out), which sends one cold and one repeat request
+  per route of the running server and prints one column per metric:
+  `mtp | cache | prefill tok/s | prompt tok/s | decode tok/s | ttft s | tpot ms`.
+  TTFT and TPOT are separate columns because they are the two sides of the trade
+  speculative decoding makes against decode throughput. Each route gets its own
+  nonce-prefixed prompt so one route's cold run cannot hit the other's cache
+  entry, and a route the server refuses is reported as a note instead of failing
+  the bench. The plain, dependency-free client prints the same table.
+- **Prefix-cache accounting in responses and chat.** Chat completions now report
+  the vLLM-compatible `usage.prompt_tokens_details.cached_tokens`, summed from
+  the per-request prefix-cache diagnostics. It is omitted entirely when no output
+  carried prefix telemetry, so the server never reports a zero it did not
+  measure, while a cache that was consulted and missed reports `0`. The chat
+  client's per-reply line reports `N tokens · prefill X tok/s · decode X tok/s ·
+  cached N · ttft · total`, adds `prompt X tok/s` when a cache hit made the
+  prefilled portion smaller than the prompt, and `/usage` gains a cumulative
+  `cached` row.
+- **Startup warms the width the server admits and the speculative route.** The
+  scratch probe was sized from `max_active_requests or 1`, and unset means "no
+  server-wide cap", so on a default server the probe asked for one row and
+  skipped every packed and MTP warmup it exists to run. The probe now takes the
+  width the server can actually admit, and a new `mtp_smoke` startup stage sends
+  one bounded request with `speculative_mtp: true` through the production
+  batcher before readiness, recording both the resolved route and the route the
+  batcher realized, so a silent fallback to normal decoding is visible. A failing
+  MTP warmup is recorded as `failed` and does not fail startup.
+- **Sampled and multi-request speculative decoding on INT8 KV.** The packed
+  target verifier binds the retained INT8 payload planes and their per-token-head
+  scale metadata, so a speculative request group of more than one row speculates
+  instead of falling back to normal decoding, and multi-session packed INT8
+  prefill no longer collapses to one row. Requests using `temperature`,
+  penalties, `logit_bias`, or `suppress_token_ids` now speculate on INT8 KV as
+  well; the declarations list `greedy_fast` and `sampled` for INT8, and the
+  runtime gate that requires an evidence row matching this backend,
+  architecture, weight quant, and artifact size is unchanged. A group width the
+  artifact does not qualify for fails with a named capability error rather than
+  downgrading silently.
+- **Speculative routes honour the autoregressive finish rule.** The cycle commit
+  implemented one finish rule — EOS on the last visible token of a greedy chain —
+  so `min_tokens`, `eos_token_id`, `stop_token_ids`, and
+  `stop_token_sequences` had to stay off the speculative routes. The rule now
+  applies to the whole verified chain, selects the terminal prefix, commits
+  before the terminal token, retains no model state past that prefix, and reports
+  `eos` or `stop` with the same `stop_token_id` / stop-sequence detail the
+  autoregressive route reports. The four fields are servable.
+- **An engine-neutral agentic session replay harness.**
+  `scripts/agentic_session_compare.py` replays a recorded agent session against
+  any OpenAI-compatible endpoint over HTTP, preserving `tool_calls`,
+  `tool_call_id`, and `name` verbatim instead of flattening them to role and
+  content. It requests `stream_options.include_usage` and records per-turn
+  prompt tokens, first-token time, decode rate, wall time, content deltas, and
+  tool-call chunks, aggregating cold and warm passes separately. `--dry-run`
+  checks request fidelity offline and `--no-tools` omits the tool array.
+
+### Changed
+
+- **The startup scratch probe prices its width before allocating it.** The probe
+  acquires one resident session per slot, each preallocating its own KV pages and
+  packed workspace lease, but the capacity estimator prices one session — so a
+  widened probe asked for four slots that each fitted alone and the fourth
+  allocation failed after four out-of-memory attempts at startup. The probe runs
+  at the configured request width, reduces to one slot when the machine cannot
+  hold that width, records the numbers in `startup.checks.scratch_probe` and the
+  `/ready` diagnostics, and retries at width one when a wider probe fails to
+  allocate. Only a width-one failure is fatal, and a fatal eager-startup stage
+  now exits non-zero instead of leaving the process listening while unready.
+- **A diagnostic override runs the direct INT8 route on its declared contract.**
+  Route resolution required the runtime action to be `admit`, so a documented
+  `diagnostic_override` — where the engine has already answered the selection
+  question — never consulted the kernels. "May this session execute mirror-free
+  INT8" is now a capability question that admits the override, while "is it
+  admitted to allocate" stays strict and still governs the retained BF16 mirrors.
+  The registry lookup remains the capability check, so a contract no kernel
+  registers still refuses.
+
+### Fixed
+
+- **Prefix reuse no longer loses the boundary a following turn can reach.** The
+  native decode step refreshes the prefix cache after every token, so any reply
+  long enough to cross the next 256-token boundary captured a boundary *past*
+  that request's own prompt end, and the supersede loop evicted the
+  prompt-aligned capture with it. The survivor sat deeper than any token count a
+  following turn can match, so that turn matched no live prefix at all and
+  re-prefilled the whole prompt. Both boundaries are now captured and retained,
+  with the prompt-aligned one ranked above the decode-time one, which a resend
+  cannot reach; under retained-budget pressure the decode-time entry is trimmed
+  first. Measured on `qwen3.8-27b` on `hip_gfx1151` with one server command and
+  the `/bench` cold-then-cached pair, before and after on the same machine:
+  with speculation off, a 2048-token prompt reused 0 tokens at 8.19 s to first
+  token before the fix and 1792 tokens at 1.32 s after it; 8192 reused 0 at
+  32.41 s and 7680 at 1.43 s. The speculative route already reused 1792 and 7680,
+  and every route that already reused keeps its depth.
+- **`LLM` exposes the resident capacity estimate.** The startup probe's width
+  preflight looked for `resident_capacity_estimate` on the object the server
+  holds, and `LLM` delegates generator hooks through explicit methods rather
+  than attribute passthrough. The lookup found nothing, so every probe ran at its
+  configured width and the preflight was dead code on a real server. Unit tests
+  passed because their fakes carried the method.
+- **`/help` no longer drops the `/bench` arguments.** The help table passed
+  command strings straight to the renderer, which read `[in]` and `[out]` as
+  style tags and removed them, so `/help` showed `/bench` with no arguments while
+  the plain client printed them.
+- **`docs/ENVS.md` describes which commands get the 503.** The
+  `HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS` entry claimed an exhausted command
+  budget is reported as HTTP 503 `engine_unavailable`. That holds for commands
+  that serve a request, and not for the readiness and metrics diagnostics, which
+  swallow the exception and lose their live snapshot fields instead.
+
+### Known Limitations
+
+- `/ready`'s worst-case latency is the engine command timeout, which defaults to
+  300 seconds, because the readiness read enqueues a command onto the single
+  driver thread and waits behind whatever engine work is already running. The
+  event loop stays responsive and the verdict comes from the server's own startup
+  state, so this costs diagnostics rather than correctness, but no load balancer
+  treats a five-minute probe response as healthy. Lower
+  `HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS` for a tight probe. `/health` returns
+  a static payload and is unaffected.
+- The finish-rule and metadata set (`min_tokens`, `eos_token_id`, stop ids, stop
+  sequences, and `logprobs`) is still refused on both BF16 and INT8 KV
+  speculative routes; only the sampled route applies the finish rule. This is not
+  a storage question and the refusal is explicit.
+- The prefix cache's retained budget is still `max(1, capacity)` entries while a
+  long-decoding request can now hold two, so under a saturated budget
+  conversation capacity trades against decode-time reuse depth. The decode-time
+  entry is trimmed first, so the effective floor is the previous behavior.
+- INT8 speculative decoding does not establish INT8-versus-BF16 output quality or
+  a throughput gain. Packed INT8 verification now runs at group widths up to
+  four, and broader memory-pressure qualification remains open.
+- The direct INT8 route under a diagnostic override binds the declared leaf on
+  live `gfx1151`: `/ready` reports `runtime_action: diagnostic_override` with
+  `effective_kv_storage: int8_per_token_head`, and the server gate's per-request
+  assertions see `kv_attention_source: int8_direct` with zero persistent BF16
+  mirror bytes. Reaching that route needs a context above 8192 tokens, because at
+  or below that length the INT8 route deliberately keeps the exact BF16 decode
+  mirror as a correctness measure.
+- On this host's `Qwen3.8-27B` `Q4_K_M` artifact, whose INT8 KV quality record is
+  rejected, that override-gated INT8 route can produce a different token from its
+  own autoregressive route; one case on the server gate's `code_lru_cache` prompt
+  differs by a single space. It reproduces identically at v0.6.0, so this release
+  does not introduce it. The BF16 default is exact: all 18 gate prompts match
+  between autoregressive and speculative decoding on BF16 KV.
+- A long-context INT8 KV server can return HTTP 500 on a request that follows a
+  concurrent autoregressive/speculative pair. The default INT8 layout keeps a
+  BF16 prefix of eight full-attention layers, and a packed decode with more than
+  one row routes those layers and the INT8 layers through different attention
+  paths, which the packed-decode consistency check rejects. The lifecycle gate
+  fails at its multi-choice check on that layout and passes all seven checks when
+  the layers are uniformly INT8, which is the diagnostic layout. The concurrent
+  requests themselves succeed; the failure appears on the next request. Avoid
+  this combination by keeping `--max-context-tokens` at or below 8192, which uses
+  a uniform layout.
+- APIs and supported combinations may change before 1.0.
+
 ## v0.6.0 - 2026-09-20
 
 Alpha release adding OCR and speech runtimes, broader dynamic-GGUF support,

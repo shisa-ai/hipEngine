@@ -141,3 +141,133 @@ def test_terminal_cursor_publication_updates_only_the_owned_slot():
     assert published == [(11,)]
     assert target._position == 11
     assert target._target_scratch_owner.position_host.tolist() == [99, 12]
+
+
+@pytest.mark.parametrize("index", [0, 1, 2, 3])
+def test_stop_token_id_stops_inside_an_accepted_chain(index):
+    """A stop token id mid-chain publishes no token after it.
+
+    ``generated_tokens`` is the request's already-published count, so the floor
+    and the stop are evaluated against the same coordinates the autoregressive
+    route uses.
+    """
+
+    predictions = [5, 6, 7, 8]
+    predictions[index] = 42
+    batch = _batch(tuple(predictions[:3]))
+    original = _summary(batch, predictions)
+    summary, finish = streaming.limit_chain_accept_finish(
+        batch, original, eos_token_id=2, stop_token_ids=(42,), generated_tokens=9,
+    )
+    assert finish is not None
+    assert finish.reason == "stop"
+    assert finish.stop_token_id == 42
+    assert summary.accepted_counts == (index,)
+    assert summary.accepted_tokens == (tuple(predictions[:index]),)
+    assert summary.next_tokens == (42,)
+    assert summary.commit_rows == (index,)
+    assert summary.commit_positions == (10 + index,)
+    assert summary.commit_tokens == ((100 if index == 0 else predictions[index - 1]),)
+
+
+@pytest.mark.parametrize("index", [0, 1, 2, 3])
+def test_stop_sequence_stops_inside_an_accepted_chain(index):
+    """A multi-token stop sequence mid-chain selects the terminal prefix."""
+
+    predictions = [5, 6, 7, 8]
+    predictions[index] = 11
+    if index + 1 < len(predictions):
+        predictions[index + 1] = 12
+    batch = _batch(tuple(predictions[:3]))
+    original = _summary(batch, predictions)
+    summary, finish = streaming.limit_chain_accept_finish(
+        batch, original, eos_token_id=2,
+        stop_token_sequences=((11, 12),), generated_tokens=9,
+    )
+    # The sequence only completes at the token after it, so a chain that ends
+    # before the second token cannot match it.
+    if index + 1 >= len(predictions):
+        assert finish is None
+        assert summary is original
+        return
+    assert finish is not None
+    assert finish.reason == "stop"
+    assert finish.stop_sequence == (11, 12)
+    assert summary.accepted_counts == (index + 1,)
+    assert summary.next_tokens == (12,)
+    assert summary.commit_positions == (10 + index + 1,)
+
+
+def test_stop_sequence_spanning_the_published_boundary_is_detected():
+    """A sequence started before this cycle completes inside it.
+
+    ``published_tokens`` is what the request already emitted.  Without it the
+    commit would miss a stop sequence straddling the boundary and publish past
+    the stop, which is the defect this rule exists to prevent.
+    """
+
+    batch = _batch()
+    original = _summary(batch, (5, 6, 7, 8))
+    summary, finish = streaming.limit_chain_accept_finish(
+        batch, original, eos_token_id=2,
+        published_tokens=(11,), stop_token_sequences=((11, 5),),
+        generated_tokens=1,
+    )
+    assert finish is not None
+    assert finish.reason == "stop"
+    assert finish.stop_sequence == (11, 5)
+    assert summary.accepted_counts == (0,)
+    assert summary.next_tokens == (5,)
+    assert summary.commit_tokens == (100,)
+    assert summary.commit_positions == (10,)
+
+
+def test_min_tokens_delays_only_eos_not_a_stop_token():
+    """The floor is EOS suppression, matching the autoregressive processor."""
+
+    batch = _batch()
+    original = _summary(batch, (5, 2, 7, 8))
+    _, delayed = streaming.limit_chain_accept_finish(
+        batch, original, eos_token_id=2, generated_tokens=9, min_tokens=20,
+    )
+    assert delayed is None
+
+    stop_batch = _batch()
+    stop_original = _summary(stop_batch, (5, 42, 7, 8))
+    _, stop_finish = streaming.limit_chain_accept_finish(
+        stop_batch, stop_original, eos_token_id=2, stop_token_ids=(42,),
+        generated_tokens=9, min_tokens=20,
+    )
+    assert stop_finish is not None
+    assert stop_finish.reason == "stop"
+
+
+def test_finish_rule_is_storage_agnostic():
+    """The rule reads tokens, so INT8 and BF16 KV select the same prefix.
+
+    The batch and summary carry no storage, which is what lets the sampled route
+    declare the same scope on either KV dtype.
+    """
+
+    results = []
+    for _storage in ("int8_per_token_head", "bf16"):
+        batch = _batch()
+        original = _summary(batch, (5, 42, 7, 8))
+        summary, finish = streaming.limit_chain_accept_finish(
+            batch, original, eos_token_id=2, stop_token_ids=(42,), generated_tokens=9,
+        )
+        results.append((summary.accepted_counts, summary.next_tokens, finish))
+    assert results[0] == results[1]
+    assert results[0][0] == (1,)
+    assert results[0][1] == (42,)
+
+
+def test_chain_finish_reports_no_finish_when_the_chain_runs_out():
+    batch = _batch()
+    original = _summary(batch, (5, 6, 7, 8))
+    summary, finish = streaming.limit_chain_accept_finish(
+        batch, original, eos_token_id=2, stop_token_ids=(42,),
+        stop_token_sequences=((11, 12),), generated_tokens=9,
+    )
+    assert finish is None
+    assert summary is original

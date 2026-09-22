@@ -339,11 +339,6 @@ or KV flags, `Qwen3.8-27B-Q4_K_M.gguf` (SHA-256 `7b2aec3b…c89f1b`):
 | BF16 | 1 | 121,344 | 207,456 B | 24.62 GiB | 34.4 GiB |
 | BF16 | 4 | 40,960 | 600,963 B | 24.62 GiB | 40.7 GiB |
 
-INT8 KV is used only when the loaded artifact is qualified for it; the gate is
-keyed on the exact artifact SHA-256, size, backend, target, weight quant, layout,
-and scale dtype. An unqualified artifact falls back to BF16 with the reason
-recorded in `/ready`, so the row above is specific to the qualified artifact.
-
 The selection follows each model's own KV growth rate, so models differ
 by their attention geometry rather than by a per-model table. The 3 GiB reserve
 covers 2.66 GiB of device memory the capacity model does not price at all — HIP
