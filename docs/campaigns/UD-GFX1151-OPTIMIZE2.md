@@ -18,7 +18,10 @@ two fixes those campaigns recorded but did not land on this backend.
 **Objective.** Close the UD-versus-plain Q4_K_M throughput gap on zbook
 without regressing absolute UD rates or its production-profile quality:
 
-- Decode: move `UD decode / plain decode` from **0.675x** toward 1.0x.
+- Decode: move `UD decode / plain decode` from **0.675x** toward the
+  bytes-read parity point of about **1.045x** (§1.1). 1.0x is not the finish
+  line: UD streams fewer weight bytes per token than plain, so at 1.0x UD is
+  still slower than plain per byte read.
 - Prefill: move `UD prefill / plain prefill` from **0.59-0.63x** toward 1.0x.
 - Quality: every promoted route stays inside the calibrated production
   envelope of [`EXECUTION-PROFILES.md`](../EXECUTION-PROFILES.md) §6.1
@@ -62,6 +65,23 @@ profile-quality and serving gates a published row requires. These are
 **zbook-lane** rates; the published plain row (404.474 / 12.150) belongs to
 the separate desktop `gfx1151` machine and is not a baseline here
 ([`docs/OPTIMIZATION.md`](../OPTIMIZATION.md) §2).
+
+### 1.1 Bytes-read parity
+
+Decode on this host is weight-streaming bound, so the decode target is set by
+bytes read per token, not by the plain arm's rate. Summed from the GGUF tensor
+tables (layers 0-63 plus `output.weight`; `token_embd` and the NextN block
+excluded because decode does not stream them):
+
+| File | Weight bytes/token | Composition (GB) |
+| --- | ---: | --- |
+| plain Q4_K_M | 16.09 GB | Q4_K 10.50, Q6_K 4.45, Q5_K 1.04, F32 0.10 |
+| UD Q4_K_M | 15.39 GB | Q5_K 4.83, IQ4_XS 4.76, Q4_K 3.49, Q6_K 1.47, IQ4_NL 0.33, Q3_K 0.27, IQ3_S 0.15, Q8_0 0.07 |
+
+Plain at 11.58 tok/s streams about 186 GB/s. UD at the same effective rate
+would decode about 12.1 tok/s, **about 1.045x plain**. Report effective GB/s
+for each arm, and for each kernel family in a census, next to tok/s. This is
+an inferred ceiling from byte counts, not a measured rate.
 
 ### Comparison history
 
@@ -150,6 +170,10 @@ Evidence:
 | H6 | Once C1 removes the strict-IQ bottleneck, launch count and host submission may become material. Pair-family fusion, row batching, or graph-capture reuse for the remaining Q4/Q5/Q6/Q8 projections can win even when each leaf is near its practical read roof | decode launch overhead | C1 census: 130.78 strict-IQ launches/token; the paired baseline does not yet separate leaf time from submission/graph overhead |
 | H7 | UD's raw Q5/Q6/Q8 tensors have layout candidates beyond the current Q4/Q5 focus: Q8 T16 decode, Q6 qmicro-planar/T16, and dense sidecar routes that E1/E3 show are still bypassed. Rank them by bytes and launch share, not by similarity to the plain arm | prefill and decode remainder | route-audit counts; registered gfx1151 Q8/Q6 families in `docs/KERNELS.md` |
 | H8 | Owner thresholds and crossover bands were measured on other shapes or lanes and may leave a gfx1151 gap at 512/1024/4096. A sweep around each selected boundary, including values below, above, and unrelated to it, can recover wins without changing arithmetic | prefill and decode owner selection | gfx1151 package's measured row-band ladders and the anti-threshold rule in `OPTIMIZATION.md` §5 |
+| H9 | UD's gate/up and residual work runs unfused. Plain spends 32.40 ms/token in one fused Q4_K dual local32+SiLU owner (62 launches/token) and folds the residual into its Q4_K/Q6_K owners; UD has no fused dual and pays a separate SiLU-mul and residual add (62 launches/token each). Fusing by per-layer gate/up **type pair** removes launches and the separate passes | decode launches and wall-minus-kernel gap | 2026-09-21 census; UD per-layer gate/up pairs: IQ4_XS/IQ4_XS 20, Q5_K/Q5_K 9, Q4_K/Q4_K 5, Q3_K/Q3_K 1, IQ4_NL/IQ4_NL 1, mixed 28 |
+| H10 | UD stores the 48 GDN layers' `ssm_alpha`/`ssm_beta` as Q8_0 (plain: F32). The fused alpha/beta+conv decode owner admits only `quant_key == "f32"` (`_try_launch_dense_f32_alpha_beta_conv_decode`), so UD falls back to a Q8_0 dual split GEMV plus a separate conv launch | decode, ~0.45 ms/token and ~48 launches/token | census: UD 0.92 ms Q8_0 dual split (47.5 launches) + 0.19 ms conv (46.5) vs plain 0.66 ms fused |
+| H11 | UD's norm launches cost 1.62 ms/token against plain's 0.38 at the same 124.97 launches/token. A different norm variant is being selected, plausibly because the residual is not folded into the preceding owner | decode, ~1.2 ms/token | 2026-09-21 census `norms` family; cause not yet attributed |
+| H12 | gfx1100 runs IQ4_XS/IQ4_NL prefill on the coop64 W4A16 owner (2.0-2.2x the one-wave owner, bit-exact) and Q3_K/IQ3_S on coop32 (1.4-1.5x, bit-exact); gfx1151 runs all seven dense-IQ quants on the one-wave owner. IQ4_XS alone is 4.76 GB of UD. The coop variants are registered only for `hip_gfx1100` (`hip_gfx1100/quant/gguf_iq_wmma_prefill.py`), so this is a registration port plus a policy refinement | prefill | gfx1100 package comments on `GGUF_IQ_DENSE_PREFILL_POLICY`; **gfx1100 evidence, not a gfx1151 rate** |
 
 ## 4. Experiment plan
 
@@ -158,7 +182,7 @@ The paired baseline (§5.1) re-runs after every retained lever; the campaign
 closes when the gap targets in §1 are met or the remaining hypotheses are
 measured negative.
 
-- [ ] **E0 — Baseline frozen.** Both paired artifacts recorded
+- [x] **E0 — Baseline frozen.** Both paired artifacts recorded
   (`performance_claim: false`). Done 2026-09-23.
 - [ ] **E1 — Fresh prefill attribution.** rocprofv3 `--kernel-trace` census of
   both arms at the matched 512-token prefill shape at current HEAD, same
@@ -166,8 +190,11 @@ measured negative.
   pinned compiler-version file, `HIPENGINE_REQUIRE_CACHED_BUILD=1`). Output: a
   ranked per-kernel prefill table for both arms. Tests H1; sizes E3.
 - [ ] **E2 — Dense-IQ decode policy declaration (C1 / H2).**
-  - [ ] E2a — Recover the existing draft: `stash@{0}
-    (pre-origin-main-merge-preserve-local-work-20260922)` holds the declaration
+  - [ ] E2a — Recover the existing draft: stash
+    `9a381b0c1223597e5605ac17dedf99f43a5de66a`
+    (`pre-origin-main-merge-preserve-local-work-20260922`; `stash@{0}` on
+    2026-09-23, but the stash stack is shared and the index drifts, so address
+    it by SHA) holds the declaration
     (`hip_gfx1151/__init__.py` +56 lines: `GGUF_IQ_DENSE_DECODE_POLICY`,
     `GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS`,
     `GGUF_IQ_DENSE_DECODE_STRICT_SLOTS`, `GGUF_IQ_DENSE_VERIFY_POLICY`), a
@@ -179,6 +206,17 @@ measured negative.
   - [ ] E2b — Verify the pin-relevance question first: does gfx1151's prefill
     policy run the Q3_K hi+lo-split path that `GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS`
     exists for? The answer decides whether the prefill pin applies here.
+  - [ ] E2b′ — Leaf timing before the gate: time each local32 owner against
+    the strict GEMV on every real UD dense-IQ shape on gfx1151 (min-of-N,
+    interleaved). This gives the gfx1151 per-launch factor that the
+    pre-registered prediction below depends on, cheaply.
+    **Pre-registered prediction:** at a 2.5-2.9x per-launch factor, the
+    61.64 ms/token strict share falls to 21-25 ms/token, UD wall moves from
+    about 125 to 85-88 ms/token, and paired decode lands at **0.98-1.02x**.
+    E2 alone is expected to close most of the decode gap; a result well below
+    that band means another cost is hiding, and E4 starts from that residual.
+    Include `local32_pair_silu_bf16_bf16_out` for the 20 IQ4_XS/IQ4_XS
+    gate/up layers (H9) in the same declaration if its gate passes with it.
   - [ ] E2c — Land declaration + applicable pins, run the 162-row
     production-reference gate (18 prompts × 9 forced steps) before enabling,
     and confirm the dispatch table resolves the local32 owners.
@@ -211,11 +249,40 @@ measured negative.
   launch count, graph replay, host submission, and synchronization. If launch
   overhead becomes material after H2, test row batching, pair/dual owners, or
   graph-capture reuse as separate routing units. Re-rank after every retained
-  route; adopt the strict-kernel-tuning prohibition from §6.
+  route; adopt the strict-kernel-tuning prohibition from §6. Run E4 after E3:
+  UD's 103 Q4_K tensors plan `kernel:gguf_q4_k` rather than plain's
+  `gguf_q4_k_t16_v1`, and UD's Q4_K single local32 launches run about
+  167 µs against plain's 120 µs, so H4's Q4_K item is probably a C2 layout
+  consequence. Re-census after E3 before writing any Q4_K owner change.
   - [ ] E4a — For every new owner, test rows 1, 2, 3, 4, 8, 16, and the
     production boundary shapes, plus one non-boundary shape. Preserve the
     strict fallback and verify the selected symbol in a real user request.
-- [ ] **E5 — Closeout.** Final paired run, artifact, one
+- [ ] **E6 — Gate/up and residual fusion by type pair (H9).** After E2 and E3,
+  re-census the FFN block. Route same-type pairs to existing dual owners first
+  (IQ4_XS pair-SiLU if not already landed in E2; Q5_K
+  `q5_k_t16_dense_dual_silu`, which needs E3's T16 layout). Then size the 28
+  mixed-type layers: plain's Q6/Q4 mixed-pair owner is the precedent for a
+  two-quant dual. Residual folding into the IQ local32 and Q5_K owners is a
+  separate unit. Judge each on decode wall and launches/token, not kernel time
+  alone.
+- [ ] **E7 — GDN alpha/beta on the fused path (H10).** Make UD's Q8_0
+  `ssm_alpha`/`ssm_beta` reach the fused alpha/beta+conv owner, either by
+  planning a load-time Q8_0→F32 expansion (exact in weight value: an fp16
+  scale times an int8 is representable in f32) or by a Q8_0 input variant of
+  the fused owner. Key eligibility on the stored dtype and shape, never on the
+  artifact identity. Check the prefill alpha/beta route for the same split.
+  Confirm the fused symbol fires through `LLM.generate()`.
+- [ ] **E8 — Attribute the norm-cost gap (H11).** From the existing 2026-09-21
+  traces first (no new GPU run needed): which norm symbols UD selects versus
+  plain, their µs/launch, and what forces the variant. If it follows from the
+  unfused residual, it rides with E6; otherwise it is its own routing unit.
+- [ ] **E9 — Cooperative IQ prefill owners on gfx1151 (H12).** Register the
+  coop/coop64 W4A16 prefill variants for `hip_gfx1151` from the shared source,
+  verify bit-exactness against the one-wave owner on the real UD shapes, then
+  refine `GGUF_IQ_DENSE_PREFILL_POLICY` per quant as gfx1100 did. Q3_K's coop32
+  route uses the hi+lo split path, so it inherits E2b's pin question. Paired
+  prefill A/B at the §5.1 shapes plus a short prompt.
+- [ ] **E5 — Closeout** (runs last, after E6-E9). Final paired run, artifact, one
   `benchmarks/CHANGELOG.md` line per retained lever, worklog entries, and this
   document's status flipped to `closed` with the end-state table filled in.
 
@@ -274,6 +341,13 @@ trajectories pass the 18/18 id, logits and state gate. Record host
 `machine_id`, commit, dirty count, and per-shape CV; adjudicate only against
 the same-window control, never against a row from another host or date.
 
+Order the arms plain, UD, UD, plain (ABBA) within the window rather than a
+single back-to-back pair. Absolute rates moved 4-5% between days, and a single
+pair cannot separate drift inside the window from the change under test. When
+a lever touches a row-count threshold (for example the dense-IQ prefill
+`min_rows=8`), add one short prompt (16-64 tokens) to the sweep so the
+row-band behavior is exercised away from the 512/1024/4096 points.
+
 ### 5.2 Kernel attribution
 
 `rocprofv3 --kernel-trace` through `scripts/gguf_decode_graph_rocprof_driver.py`
@@ -317,6 +391,12 @@ refusal.
 - Reference-error rule from the route campaign: score candidate-production vs
   incumbent-production — not against our own incumbent alone, not against an
   external engine's teacher.
+- Bit-exact levers take the fast lane. A route, layout, or fusion change whose
+  end-to-end token ids and logits are bit-identical to the incumbent on the
+  18-prompt suite (for example E7's exact Q8_0→F32 expansion, or E9's coop
+  owners if they reproduce gfx1100's bit-exact record) records that identity
+  check in place of the KL envelope run. The envelope gate binds whenever the
+  arithmetic changes.
 
 ## 6. Rules
 
@@ -335,13 +415,20 @@ refusal.
 
 ## 7. Status scoreboard
 
-| Lever | Hypothesis | Paired decode Δ | Paired prefill Δ | Quality gate | State |
-| --- | --- | ---: | ---: | --- | --- |
-| E0 baseline (2026-09-23) | — | −32.5 / −31.9 / −32.5% | −36.7 / −40.7 / −40.5% | n/a (diagnostic) | recorded |
-| E1 prefill census | H1/H5/H7/H8 | — | — | n/a | open |
-| E2 decode policy declaration | H2 | — | — | required | open (draft in stash) |
-| E3 production per-tensor repack | H3/H5/H7 | — | — | required | open |
-| E4 Q5/Q4 decode owners | H4/H6 | — | — | required | open |
+| Lever | Hypothesis | Paired decode Δ | Paired prefill Δ | UD launches/token | UD wall − kernel (ms/token) | Quality gate | State |
+| --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| E0 baseline (2026-09-23) | — | −32.5 / −31.9 / −32.5% | −36.7 / −40.7 / −40.5% | 856.41 (plain 571.59)¹ | 9.81 (plain 6.54)¹ | n/a (diagnostic) | recorded |
+| E1 prefill census | H1/H5/H7/H8 | — | — | — | — | n/a | open |
+| E2 decode policy declaration | H2 | — | — | — | — | required | open (draft in stash; predicted 0.98-1.02x) |
+| E3 production per-tensor repack | H3/H5/H7 | — | — | — | — | required | open |
+| E4 Q5/Q4 decode owners | H4/H6 | — | — | — | — | required | open |
+| E6 gate/up + residual fusion | H9 | — | — | — | — | required | open |
+| E7 GDN alpha/beta fused path | H10 | — | — | — | — | bit-exact lane if exact | open |
+| E8 norm-cost attribution | H11 | — | — | — | — | n/a | open |
+| E9 coop IQ prefill owners | H12 | — | — | — | — | bit-exact lane if exact | open |
+
+¹ From the 2026-09-21 decode census (512-token prefill, 32 graph-replay
+steps), not the 2026-09-23 re-check.
 
 ## 8. Out of scope / carried
 
