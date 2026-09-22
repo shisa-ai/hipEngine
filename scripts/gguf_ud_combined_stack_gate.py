@@ -120,8 +120,13 @@ def main() -> None:
         return prompt[:args.prompt_tokens]
 
     def run(prefill_policy, decode_policy, forced_tokens=None):
+        # Reassigning either policy table changes a dispatch-resolution input
+        # that the launch memo does not key on (it is an import-time constant
+        # in production), so the memo must be dropped or the second arm reuses
+        # the first arm's owners and the two arms measure the same kernels.
         be.GGUF_IQ_DENSE_PREFILL_POLICY = prefill_policy
         be.GGUF_IQ_DENSE_DECODE_POLICY = decode_policy
+        gl.clear_gguf_linear_dispatch_cache()
         logits_rows = []
         tokens = []
         first = session.prefill(prompt, use_bulk=True, bulk_attention_mode="bulk",
@@ -161,6 +166,7 @@ def main() -> None:
     finally:
         be.GGUF_IQ_DENSE_PREFILL_POLICY = SHIPPED_PREFILL
         be.GGUF_IQ_DENSE_DECODE_POLICY = SHIPPED_DECODE
+        gl.clear_gguf_linear_dispatch_cache()
 
     metrics = evaluate_logits(ref_logits, cand_logits)
     top1 = float(np.mean(np.argmax(ref_logits, -1) == np.argmax(cand_logits, -1)))
@@ -227,6 +233,7 @@ def _run_category_heldout_gate(args, compiler_version) -> None:
     """
 
     from hipengine.benchmark.correctness import evaluate_logits
+    from hipengine.runtime import gguf_linear as gl
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
     from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
     from hipengine.loading.gguf import scan_gguf
@@ -267,6 +274,7 @@ def _run_category_heldout_gate(args, compiler_version) -> None:
             def _arm(prefill_policy, decode_policy, prompt_ids, forced=None):
                 be.GGUF_IQ_DENSE_PREFILL_POLICY = prefill_policy
                 be.GGUF_IQ_DENSE_DECODE_POLICY = decode_policy
+                gl.clear_gguf_linear_dispatch_cache()
                 logits_rows = []
                 cur = session.prefill(
                     prompt_ids, use_bulk=True, bulk_attention_mode="bulk",
@@ -297,6 +305,7 @@ def _run_category_heldout_gate(args, compiler_version) -> None:
                     # owner boundary.
                     be.GGUF_IQ_DENSE_PREFILL_POLICY = INCUMBENT_PREFILL
                     be.GGUF_IQ_DENSE_DECODE_POLICY = INCUMBENT_DECODE
+                    gl.clear_gguf_linear_dispatch_cache()
                     ids = list(seed_ids)
                     cur = session.prefill(
                         ids, use_bulk=True, bulk_attention_mode="bulk",
@@ -375,6 +384,7 @@ def _run_category_heldout_gate(args, compiler_version) -> None:
     finally:
         be.GGUF_IQ_DENSE_PREFILL_POLICY = SHIPPED_PREFILL
         be.GGUF_IQ_DENSE_DECODE_POLICY = SHIPPED_DECODE
+        gl.clear_gguf_linear_dispatch_cache()
 
     kl_all = np.concatenate(pooled_kl)
     top1_all = np.concatenate(pooled_top1)
