@@ -82,6 +82,82 @@ def test_llm_generate_reaches_the_gemma4_generator(tmp_path: pathlib.Path) -> No
     assert outputs[0], "generation returned no text"
 
 
+def test_gemma4_chat_tokenization_does_not_double_the_bos(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A rendered chat prompt is complete; BOS must not be prepended again.
+
+    The artifact's template emits ``{{ bos_token }}`` itself, so encoding the
+    rendered string with ``add_special_tokens=True`` inserts a second ``<bos>``.
+    llama.cpp tokenizes a rendered chat prompt with ``add_special=false``
+    (``tools/completion/completion.cpp``), and HuggingFace's
+    ``apply_chat_template(tokenize=True)`` does the same, so a doubled BOS is a
+    prompt the reference implementations never produce.
+    """
+
+    from hipengine.generation.gemma4_gguf import make_gemma4_generator_gfx1100
+
+    model_path = _write_generate_fixture(tmp_path)
+    generator = make_gemma4_generator_gfx1100(
+        model_path=model_path,
+        weight_index=object(),
+        model_plugin=object(),
+    )
+    bos = generator.tokenizer.bos_token_id
+    assert bos is not None, "the fixture declares no BOS token"
+
+    ids = generator.tokenize_chat("Hello")
+
+    assert ids[0] == bos, f"the chat prompt does not start with BOS: {ids}"
+    assert ids.count(bos) == 1, (
+        f"the rendered template already emitted <bos> and the tokenizer added "
+        f"another: {ids}"
+    )
+
+
+def test_gemma4_factory_forwards_max_sequence_length() -> None:
+    """The public context limit reaches the generator instead of being dropped.
+
+    ``LLM._factory_capacity_kwargs`` forwards a configured limit only to a
+    factory that declares it. Without this parameter the Gemma 4 factory
+    silently kept its own default, so a caller who asked for a smaller context
+    still got a runner sized for the default -- and on the real 26B artifact
+    that default needs more device memory than the card has.
+    """
+
+    from hipengine.generation.gemma4_gguf import make_gemma4_generator_gfx1100
+
+    generator = make_gemma4_generator_gfx1100(
+        model_path="/nonexistent/gemma4.gguf",
+        weight_index=object(),
+        model_plugin=object(),
+        max_sequence_length=1536,
+    )
+
+    assert generator.context_length == 1536
+
+
+@_needs_hip
+def test_llm_max_sequence_length_reaches_the_gemma4_generator(
+    tmp_path: pathlib.Path,
+) -> None:
+    """``LLM(max_sequence_length=...)`` sizes the Gemma 4 runner's context."""
+
+    import hipengine
+
+    model_path = _write_generate_fixture(tmp_path)
+    llm = hipengine.LLM(model=str(model_path), max_sequence_length=1024)
+    try:
+        generator = llm._get_text_generator()
+        inner = getattr(generator, "_inner", generator)
+        assert inner.context_length == 1024, (
+            f"LLM(max_sequence_length=1024) built a runner with context "
+            f"{inner.context_length}"
+        )
+    finally:
+        llm.close()
+
+
 @_needs_hip
 def test_llm_generate_honours_max_tokens(tmp_path: pathlib.Path) -> None:
     """The decode loop stops at the requested token budget.

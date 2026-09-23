@@ -108,6 +108,11 @@ class Gemma4GGUFGenerator:
         thought channel that suppresses reasoning. Passing it explicitly keeps
         the reasoning behaviour a caller gets from depending on a decision
         rather than on a Jinja default.
+
+        The rendered template is a complete prompt, so it is encoded without
+        adding special tokens. The canonical template emits ``{{ bos_token }}``
+        itself; adding BOS here would insert a second one, which is a prompt
+        neither llama.cpp nor HuggingFace ever produces.
         """
 
         template = self.tokenizer.chat_template
@@ -121,7 +126,7 @@ class Gemma4GGUFGenerator:
             messages.append({"role": "system", "content": str(system)})
         messages.append({"role": "user", "content": str(user)})
         rendered = _render_chat_template(template, messages, enable_thinking=enable_thinking)
-        return tuple(self.tokenizer.encode(rendered, add_special_tokens=True))
+        return tuple(self.tokenizer.encode(rendered, add_special_tokens=False))
 
     def count_tokens(self, text: str) -> int:
         return len(self.tokenize(text))
@@ -269,12 +274,26 @@ def make_gemma4_generator_gfx1100(
     model_path: str | Path,
     weight_index: WeightIndex,
     model_plugin: Any,
+    max_sequence_length: int | None = None,
 ) -> Gemma4GGUFGenerator:
+    """Create the gfx1100 Gemma 4 generator.
+
+    ``max_sequence_length`` is the public ``LLM`` context limit. The runner's
+    context sizes both the KV cache and the per-layer prefill scratch, so the
+    limit has to reach it: the default context is the artifact's own ceiling
+    rather than what a device can hold, and a caller who asks for less must get
+    less.
+    """
+
+    context_length = _GEMMA4_DEFAULT_CONTEXT
+    if max_sequence_length is not None:
+        context_length = int(max_sequence_length)
     return Gemma4GGUFGenerator(
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,
         backend="hip_gfx1100",
+        context_length=context_length,
     )
 
 
