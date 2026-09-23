@@ -5278,7 +5278,7 @@
         },
         "runtime_sites": [
           "hipengine/generation/qwen35_gguf.py:560",
-          "hipengine/server/api.py:5646"
+          "hipengine/server/api.py:5661"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -5299,7 +5299,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP",
-      "evidence_hash": "9216b2d29dc0"
+      "evidence_hash": "f3227a9b5e61"
     },
     {
       "kind": "flag",
@@ -20881,10 +20881,10 @@
         "runtime_sites": [
           "hipengine/generation/qwen35_paro.py:3938",
           "hipengine/generation/qwen35_gguf.py:12448",
-          "hipengine/server/api.py:7377",
-          "hipengine/server/api.py:7380",
-          "hipengine/server/api.py:7381",
-          "hipengine/server/api.py:7412"
+          "hipengine/server/api.py:7392",
+          "hipengine/server/api.py:7395",
+          "hipengine/server/api.py:7396",
+          "hipengine/server/api.py:7427"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -20905,7 +20905,7 @@
         ]
       },
       "id": "flag/HIPENGINE_QWEN35_NATIVE_SAMPLER",
-      "evidence_hash": "1d393c59476b"
+      "evidence_hash": "7ed90f1b2fba"
     },
     {
       "kind": "flag",

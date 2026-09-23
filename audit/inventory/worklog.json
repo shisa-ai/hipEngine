@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10657,
-    "current": 3425,
+    "entries": 10660,
+    "current": 3428,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1101,
+    "rows": 1102,
     "by_rule": {
       "dependency": 36,
       "legacy-next": 109,
-      "status": 956
+      "status": 957
     }
   },
   "rows": [
@@ -41444,6 +41444,44 @@
       },
       "id": "worklog/20260922T135001.642352Z-lhl-int8-mtp-sampled-live-acceptance-3c67cb",
       "evidence_hash": "af392fe0650e"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260923T064203.578808Z-lhl-dms-mtp-d55114",
+      "title": "Gate the INT8 per-head DMS attention the verifier must reuse",
+      "location": "worklog/entries/20260923T064203.578808Z-lhl-dms-mtp-d55114.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "dms-mtp",
+        "written": "2026-09-23",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Route the verifier's DMS rows to this kernel: teach\n  `_full_attn_shared_batch_spans` to accept `spans_mode == \"per_head_variable\"`\n  (counts `[rows, kv_heads]`, the DMS store's payload and scale planes) and\n  resolve the DMS INT8 attention plus its split-K workspace instead of the\n  paged verify-chain leaf, then narrow the `_dms_backend` decline at\n  `qwen35_gguf_mtp2.py:2855` to what is genuinely unsupported.\n- Acceptance still needs the end-to-end parity run: the INT8 verify chain over a\n  DMS-shaped span set against the AR route for the same retention policy.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260923T064203.578808Z-lhl-dms-mtp-d55114.md",
+        "refs": [],
+        "tokens": [
+          "attention",
+          "dms",
+          "gate",
+          "head",
+          "int8",
+          "per",
+          "reuse",
+          "verifier"
+        ]
+      },
+      "id": "worklog/20260923T064203.578808Z-lhl-dms-mtp-d55114",
+      "evidence_hash": "0767be081497"
     }
   ]
 }

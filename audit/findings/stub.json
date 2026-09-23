@@ -5571,9 +5571,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/server/api.py:12657",
+      "key": "hipengine/server/api.py:12672",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/server/api.py:12657",
+      "location": "hipengine/server/api.py:12672",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -5584,7 +5584,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:12657"
+          "hipengine/server/api.py:12672"
         ],
         "tokens": [
           "notimplementederror",
@@ -5592,14 +5592,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/server/api.py:12657",
-      "evidence_hash": "eb52f21b45b6"
+      "id": "stub/hipengine/server/api.py:12672",
+      "evidence_hash": "9a22e4f3ded2"
     },
     {
       "kind": "stub",
-      "key": "hipengine/server/api.py:12670",
+      "key": "hipengine/server/api.py:12685",
       "title": "unimplemented: raise NotImplementedError(\"speculative MTP serving is not supported by this engine\")",
-      "location": "hipengine/server/api.py:12670",
+      "location": "hipengine/server/api.py:12685",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -5610,7 +5610,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:12670"
+          "hipengine/server/api.py:12685"
         ],
         "tokens": [
           "engine",
@@ -5623,14 +5623,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/server/api.py:12670",
-      "evidence_hash": "120a15f53236"
+      "id": "stub/hipengine/server/api.py:12685",
+      "evidence_hash": "41c182ec80bb"
     },
     {
       "kind": "stub",
-      "key": "hipengine/server/api.py:3900",
+      "key": "hipengine/server/api.py:3907",
       "title": "unimplemented: raise NotImplementedError(\"controlled multi-row streaming is not supported by this generator\")",
-      "location": "hipengine/server/api.py:3900",
+      "location": "hipengine/server/api.py:3907",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -5641,7 +5641,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:3900"
+          "hipengine/server/api.py:3907"
         ],
         "tokens": [
           "controlled",
@@ -5655,14 +5655,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/server/api.py:3900",
-      "evidence_hash": "e1f7ca343b00"
+      "id": "stub/hipengine/server/api.py:3907",
+      "evidence_hash": "981d55b86e85"
     },
     {
       "kind": "stub",
-      "key": "hipengine/server/api.py:4296",
+      "key": "hipengine/server/api.py:4311",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/server/api.py:4296",
+      "location": "hipengine/server/api.py:4311",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -5673,7 +5673,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:4296"
+          "hipengine/server/api.py:4311"
         ],
         "tokens": [
           "notimplementederror",
@@ -5681,14 +5681,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/server/api.py:4296",
-      "evidence_hash": "7ffa0de2aebd"
+      "id": "stub/hipengine/server/api.py:4311",
+      "evidence_hash": "5809f542ba35"
     },
     {
       "kind": "stub",
-      "key": "hipengine/server/api.py:4306",
+      "key": "hipengine/server/api.py:4321",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/server/api.py:4306",
+      "location": "hipengine/server/api.py:4321",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -5699,7 +5699,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:4306"
+          "hipengine/server/api.py:4321"
         ],
         "tokens": [
           "notimplementederror",
@@ -5707,14 +5707,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/server/api.py:4306",
-      "evidence_hash": "1eda5ba4ff84"
+      "id": "stub/hipengine/server/api.py:4321",
+      "evidence_hash": "83dfa549102a"
     },
     {
       "kind": "stub",
-      "key": "hipengine/server/api.py:4355",
+      "key": "hipengine/server/api.py:4370",
       "title": "unimplemented: raise NotImplementedError(\"multi-row streaming is not supported by this generator\")",
-      "location": "hipengine/server/api.py:4355",
+      "location": "hipengine/server/api.py:4370",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -5725,7 +5725,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:4355"
+          "hipengine/server/api.py:4370"
         ],
         "tokens": [
           "generator",
@@ -5738,8 +5738,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/server/api.py:4355",
-      "evidence_hash": "394d4fab9484"
+      "id": "stub/hipengine/server/api.py:4370",
+      "evidence_hash": "d92994a21fdd"
     },
     {
       "kind": "stub",

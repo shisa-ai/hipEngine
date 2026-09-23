@@ -136,7 +136,7 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 182,
-        "referrers": 75,
+        "referrers": 76,
         "runtime_referrers": [
           "hipengine/generation/qwen35_gguf_mtp2.py",
           "hipengine/kvcache/dms.py",
@@ -166,7 +166,7 @@
         ]
       },
       "id": "kernel/cpu_reference/dms.py",
-      "evidence_hash": "4311967157d5"
+      "evidence_hash": "603c11702c8c"
     },
     {
       "kind": "kernel",
@@ -1519,7 +1519,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 1414,
-        "referrers": 19,
+        "referrers": 20,
         "runtime_referrers": [
           "hipengine/kvcache/dms.py",
           "hipengine/kvcache/dms_device.py",
@@ -1551,7 +1551,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/attention/dms_compact.hip",
-      "evidence_hash": "71980dcb138a"
+      "evidence_hash": "472db3dda383"
     },
     {
       "kind": "kernel",
@@ -1562,7 +1562,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 727,
-        "referrers": 19,
+        "referrers": 20,
         "runtime_referrers": [
           "hipengine/kvcache/dms.py",
           "hipengine/kvcache/dms_device.py",
@@ -1591,7 +1591,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/attention/dms_compact.py",
-      "evidence_hash": "11ab2a6afa63"
+      "evidence_hash": "a871c9d69754"
     },
     {
       "kind": "kernel",
@@ -1602,14 +1602,15 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 422,
-        "referrers": 2,
+        "referrers": 3,
         "runtime_referrers": [
           "hipengine/kvcache/dms_device.py"
         ],
-        "test_referrers": []
+        "test_referrers": [
+          "tests/test_gpu_dms_compact_attn_decode_int8_hip.py"
+        ]
       },
       "signals": [
-        "no test file names it",
         "4 __global__ entry point(s), none named elsewhere"
       ],
       "hints": {
@@ -1627,7 +1628,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/attention/dms_compact_int8.hip",
-      "evidence_hash": "8569b6ba22e4"
+      "evidence_hash": "f40b2d86b90e"
     },
     {
       "kind": "kernel",
@@ -1638,15 +1639,15 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 76,
-        "referrers": 1,
+        "referrers": 2,
         "runtime_referrers": [
           "hipengine/kvcache/dms_device.py"
         ],
-        "test_referrers": []
+        "test_referrers": [
+          "tests/test_gpu_dms_compact_attn_decode_int8_hip.py"
+        ]
       },
-      "signals": [
-        "no test file names it"
-      ],
+      "signals": [],
       "hints": {
         "anchor": "hip_gfx1100",
         "refs": [
@@ -1661,7 +1662,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/attention/dms_compact_int8.py",
-      "evidence_hash": "a121156563d9"
+      "evidence_hash": "5fac091e51a4"
     },
     {
       "kind": "kernel",
@@ -2386,7 +2387,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 51,
-        "referrers": 89,
+        "referrers": 90,
         "runtime_referrers": [
           "hipengine/generation/qwen35_gguf.py",
           "hipengine/loading/qwen35_gguf.py",
@@ -2420,7 +2421,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/convert/gather.hip",
-      "evidence_hash": "38f7bab09f7d"
+      "evidence_hash": "ad004cdecb4d"
     },
     {
       "kind": "kernel",
@@ -2431,7 +2432,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 129,
-        "referrers": 89,
+        "referrers": 90,
         "runtime_referrers": [
           "hipengine/generation/qwen35_gguf.py",
           "hipengine/loading/qwen35_gguf.py",
@@ -2462,7 +2463,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/convert/gather.py",
-      "evidence_hash": "cb12459cfa81"
+      "evidence_hash": "1b1d529631dd"
     },
     {
       "kind": "kernel",
@@ -8962,7 +8963,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 664,
-        "referrers": 867,
+        "referrers": 868,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
@@ -8996,7 +8997,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/speculative/mtp.hip",
-      "evidence_hash": "c1b81a6a1d81"
+      "evidence_hash": "f0c22098dc06"
     },
     {
       "kind": "kernel",
@@ -9007,7 +9008,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 453,
-        "referrers": 867,
+        "referrers": 868,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
@@ -9038,7 +9039,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/speculative/mtp.py",
-      "evidence_hash": "a8c860b644f3"
+      "evidence_hash": "11853aa719a6"
     },
     {
       "kind": "kernel",
@@ -9769,7 +9770,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 62,
-        "referrers": 443,
+        "referrers": 444,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
@@ -9800,7 +9801,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/vibevoice/registered.py",
-      "evidence_hash": "1986b23e3b3b"
+      "evidence_hash": "fd355a28c15f"
     },
     {
       "kind": "kernel",
@@ -9967,7 +9968,7 @@
         "backend": "unknown",
         "suffix": ".py",
         "lines": 165,
-        "referrers": 456,
+        "referrers": 457,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
@@ -9996,7 +9997,7 @@
         ]
       },
       "id": "kernel/policy.py",
-      "evidence_hash": "c7c8beb9c5de"
+      "evidence_hash": "1e3ab80471df"
     },
     {
       "kind": "kernel",
@@ -10007,7 +10008,7 @@
         "backend": "unknown",
         "suffix": ".py",
         "lines": 204,
-        "referrers": 662,
+        "referrers": 663,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
@@ -10036,7 +10037,7 @@
         ]
       },
       "id": "kernel/registry.py",
-      "evidence_hash": "403483c4ccc9"
+      "evidence_hash": "32587adf0ca2"
     },
     {
       "kind": "kernel",
