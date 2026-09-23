@@ -1201,6 +1201,30 @@ arm; investigate the dominant measured cost, not blind kernel tuning.
   `attn_gate`/`ssm_*` by GDN value head, `ssm_out` row-split), and
   `_rank_payload` already slices any role, so the work is admitting the group
   kind and giving each rank a sharded attention geometry.)
+- [ ] **Attention head sharding - verified mapping (2026-09-23, no code yet).** The
+  shard manifest's attention slices and a halved config agree exactly on the real
+  artifact, so the existing prefill helpers can run sharded attention without a
+  parallel implementation. Sharded config: `head_count` 24 -> 12,
+  `head_count_kv` 4 -> 2, `ssm_group_count` 16 -> 8, `ssm_inner_size`
+  6144 -> 3072, `ssm_time_step_rank` 48 -> 24; `key_length`, `value_length`,
+  `ssm_state_size`, `ssm_conv_kernel`, `hidden_size`, `feed_forward_length`
+  unchanged; `attn_norm`, `post_attention_norm` and `ssm_norm` stay replicated.
+  Rank-0 local shapes that match it: `attn_q` (6144, 5120) `= 2 * q_width`,
+  `attn_k`/`attn_v` (512, 5120) `= kv_width`, `attn_output` (5120, 3072) with
+  columns `= q_width`, `attn_qkv` (5120, 5120) `= linear_qkv_width`,
+  `attn_gate` (3072, 5120) `= ssm_inner_size`, `ssm_alpha`/`ssm_beta` (24, 5120)
+  and `ssm_a`/`ssm_dt.bias` (24,) `= ssm_time_step_rank`, `ssm_conv1d`
+  (5120, 4), `ssm_out` (5120, 3072). `gdn_head_map` gives rank 0 key heads 0-7
+  and rank 1 key heads 8-15, 24 value heads each in tile-major order. Both
+  helpers take their geometry from `self.q_width` / `self.kv_width` / `cfg.*`, and
+  the KV cache and conv/recurrent state are sized from that same config, so all
+  three become per-rank automatically. Remaining work: admit the `group` kind and
+  raw layouts to `_rank_payload`; substitute the uploaded `ShardWeight`s and the
+  sharded config into the runner via `dataclasses.replace` on the frozen weights
+  dataclasses and extend the slot allowlist; add the attention-output reduce
+  (`attn_output` and `ssm_out` are row-split) to the bulk prefill loop and then to
+  the graph-captured decode schedule; then the production gates, which include the
+  decode matrix because sharding attention changes decode arithmetic too.
 - [x] Connect prefill, one-token decode, positions, KV allocation, reset, EOS,
   and resource teardown. Prefill must produce the same rank-local state layout
   consumed by decode, including chunk boundaries and long contexts. (The
