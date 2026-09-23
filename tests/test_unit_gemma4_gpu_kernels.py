@@ -1033,6 +1033,89 @@ def test_experts_forward_matches_the_reference(device) -> None:
 
 
 @_needs_hip
+@pytest.mark.parametrize("scratch_tokens", [12, 40])
+def test_experts_forward_runs_a_narrow_block_through_a_wide_scratch(
+    device, scratch_tokens
+) -> None:
+    """A narrower block must produce the same result as a wider scratch.
+
+    The runner sizes the expert scratch once for the widest block it will run
+    and then pushes single-token decode steps through it. That makes
+    ``scratch.tokens`` a capacity, not the block width, so every kernel must be
+    told the *live* lane count rather than the buffer's.
+
+    Passing the capacity instead lets the group-scatter kernels walk lanes that
+    were never written, indexing with uninitialized expert ids and offsets. That
+    reads outside every expert buffer and the device raises an SQ privilege
+    fault it never recovers from: no error is reported and the next
+    synchronizing call blocks forever, which is indistinguishable from a hang in
+    whatever call happens to be next.
+
+    Sizing the scratch to exactly the block width, as every other expert test
+    does, cannot detect this.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        Gemma4ExpertScratch,
+        gemma4_experts_forward_bf16,
+    )
+
+    tokens, top_k, hidden_size, intermediate, num_experts = 6, 4, 64, 48, 8
+    rng = np.random.default_rng(41)
+
+    hidden = (rng.standard_normal((tokens, hidden_size)) * 0.5).astype(np.float32)
+    selected = np.stack([rng.permutation(num_experts)[:top_k] for _ in range(tokens)]).astype(
+        np.int64
+    )
+    weights = rng.random((tokens, top_k)).astype(np.float32)
+    gate_up = (rng.standard_normal((num_experts, 2 * intermediate, hidden_size)) * 0.3).astype(
+        np.float32
+    )
+    down = (rng.standard_normal((num_experts, hidden_size, intermediate)) * 0.3).astype(np.float32)
+
+    hidden_ptr = device.put(_to_bf16_bits(hidden))
+    selected_ptr = device.put(selected)
+    weights_ptr = device.put(weights)
+    gate_up_ptr = device.put(_to_bf16_bits(gate_up))
+    down_ptr = device.put(_to_bf16_bits(down))
+    out_ptr = device.out((tokens, hidden_size), np.uint16)
+
+    scratch = Gemma4ExpertScratch(
+        tokens=scratch_tokens,
+        top_k=top_k,
+        hidden_size=hidden_size,
+        intermediate=intermediate,
+        num_experts=num_experts,
+    )
+    try:
+        gemma4_experts_forward_bf16(
+            hidden_ptr,
+            selected_ptr,
+            weights_ptr,
+            gate_up_ptr,
+            down_ptr,
+            out_ptr,
+            scratch=scratch,
+            rows=tokens,
+        )
+        got = _from_bf16_bits(device.get(out_ptr, (tokens, hidden_size), np.uint16))
+    finally:
+        scratch.free()
+
+    expected = gemma4_experts_forward(
+        hidden,
+        selected,
+        weights,
+        gate_up_proj=gate_up,
+        down_proj=down,
+    )
+    assert np.allclose(got, expected, atol=5e-2, rtol=5e-2), (
+        f"scratch_tokens={scratch_tokens} rows={tokens}: "
+        f"max abs diff {np.abs(got - expected).max():.4g}"
+    )
+
+
+@_needs_hip
 def test_experts_forward_weights_each_lane_by_its_route(device) -> None:
     """Zeroing one lane's route weight must remove exactly that lane's expert.
 

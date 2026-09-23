@@ -164,7 +164,14 @@ def gemma4_experts_forward_bf16(
     hidden_size = scratch.hidden_size
     intermediate = scratch.intermediate
     num_experts = scratch.num_experts
-    lanes = scratch.total_lanes
+    # ``lanes`` is the live lane count for *this* call, not the buffer's
+    # capacity. The group-scatter kernels iterate it over ``sorted_lanes`` and
+    # ``sorted_experts``, so passing the capacity makes them walk lanes that
+    # were never written and index with uninitialized expert ids and offsets.
+    # That reads far outside every expert buffer, which the device reports as an
+    # SQ privilege fault and never recovers from - the fault is silent and the
+    # next synchronizing call simply blocks forever.
+    lanes = tokens * top_k
     kwargs = {"stream": stream}
     if library is not None:
         kwargs["library"] = library
