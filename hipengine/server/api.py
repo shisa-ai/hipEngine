@@ -3421,6 +3421,13 @@ class _GenerationBatcher:
                     item.sampling,
                     include_cancellation_token=False,
                 ),
+                # The thinking policy decides what the MTP dispatch does with
+                # this request's sampler-level budget, and it is not visible in
+                # the sampling params: the request path leaves them untouched and
+                # the dispatch applies the policy. Two requests that differ only
+                # in policy are therefore not interchangeable, and coalescing
+                # them would apply one policy's answer to both.
+                item.thinking_policy,
             ),
         )
 
@@ -4116,18 +4123,26 @@ class _GenerationBatcher:
 
     async def _stream_single(self, item: _QueuedGeneration, *, engine: Any | None = None) -> None:
         assert item.stream_queue is not None
+        route = _execution_route_for_static_intent(item.route, item.route_decision)
+        sampling = _sampling_for_realized_generation_route(
+            item.sampling,
+            item.route_decision,
+        )
+        if str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
+            # The same dispatch boundary the blocking path uses: the policy
+            # decides whether this route serves the request's own budget or its
+            # raw-argmax-exact form. Without this the two transports disagreed
+            # about a hint request's enforcement.
+            sampling = _mtp_dispatch_sampling(
+                sampling,
+                thinking_policy=item.thinking_policy,
+            )
         try:
             async for chunk in _stream_engine_text(
                 self._engine_factory() if engine is None else engine,
                 item.prompts[0],
-                _sampling_for_realized_generation_route(
-                    item.sampling,
-                    item.route_decision,
-                ),
-                route=_execution_route_for_static_intent(
-                    item.route,
-                    item.route_decision,
-                ),
+                sampling,
+                route=route,
             ):
                 if _queued_generation_cancelled(item):
                     raise GenerationCancelled(_queued_generation_finish_details(item))
