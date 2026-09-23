@@ -398,6 +398,7 @@ class Gemma4Runner:
     _scratches: list[Gemma4LayerScratch] = field(default_factory=list, repr=False)
     _kv: list[Gemma4LayerKV] = field(default_factory=list, repr=False)
     _caches: list[DeviceBuffer] = field(default_factory=list, repr=False)
+    _staging: dict[str, tuple[DeviceBuffer, int]] = field(default_factory=dict, repr=False)
     _position: int = field(default=0, repr=False)
     _closed: bool = field(default=False, repr=False)
 
@@ -451,6 +452,27 @@ class Gemma4Runner:
         self._buffers.append(buffer)
         return buffer
 
+    def _staging_buffer(self, name: str, nbytes: int) -> DeviceBuffer:
+        """Return a reusable device buffer of at least ``nbytes``.
+
+        Grown on demand and otherwise kept, never freed after a kernel launch.
+        Freeing a buffer that an in-flight kernel still reads is a use-after-free
+        the driver may only notice later, as a page-not-present fault somewhere
+        else entirely. It also puts a device synchronization point on every layer
+        of every token, which is most of what a decode step would otherwise cost.
+        Growth is rare - a buffer is only replaced when a call needs more than
+        any previous call did - so this frees O(log) times over a session rather
+        than several times per token.
+        """
+
+        held = self._staging.get(name)
+        if held is not None and held[1] >= nbytes:
+            return held[0]
+        buffer = malloc(nbytes)
+        self._buffers.append(buffer)
+        self._staging[name] = (buffer, nbytes)
+        return buffer
+
     def reset(self) -> None:
         """Rewind to an empty sequence without freeing the cache."""
 
@@ -472,6 +494,7 @@ class Gemma4Runner:
         for buffer in self._buffers:
             free(buffer)
         self._buffers.clear()
+        self._staging.clear()
         self._scratches.clear()
         self._kv.clear()
         self._caches.clear()
@@ -545,35 +568,32 @@ class Gemma4Runner:
         positions = np.arange(start, start + rows, dtype=np.int64)
         for index, layer in enumerate(self.weights.layers):
             attention = config.geometry(index)
-            # The rope tables are F32 (tokens, head_dim) with the rotated half
+            # The rope tables are F32 (rows, head_dim) with the rotated half
             # doubled, which is the layout gemma4_partial_rotary_bf16 indexes.
             cos, sin = gemma4_rope_cos_sin_tables(attention.rope, positions)
-            cos_buf = self._upload(np.ascontiguousarray(cos, dtype=np.float32))
-            sin_buf = self._upload(np.ascontiguousarray(sin, dtype=np.float32))
-            try:
-                mask_buf = self._upload(_keep_mask(attention, start, rows))
-                try:
-                    gemma4_layer_forward_bf16(
-                        self._hidden.ptr,
-                        cos_buf.ptr,
-                        sin_buf.ptr,
-                        mask_buf.ptr,
-                        layer,
-                        scratch=self._scratches[index],
-                        kv=Gemma4LayerKV(
-                            key_cache=self._kv[index].key_cache,
-                            value_cache=self._kv[index].value_cache,
-                            capacity=self.capacity,
-                            write_offset=start,
-                        ),
-                        rows=rows,
-                        eps=config.rms_norm_eps,
-                    )
-                finally:
-                    self._discard(mask_buf)
-            finally:
-                self._discard(cos_buf)
-                self._discard(sin_buf)
+            cos_buf = self._stage_upload(
+                f"cos{index}", np.ascontiguousarray(cos, dtype=np.float32)
+            )
+            sin_buf = self._stage_upload(
+                f"sin{index}", np.ascontiguousarray(sin, dtype=np.float32)
+            )
+            mask_buf = self._stage_upload(f"mask{index}", _keep_mask(attention, start, rows))
+            gemma4_layer_forward_bf16(
+                self._hidden.ptr,
+                cos_buf.ptr,
+                sin_buf.ptr,
+                mask_buf.ptr,
+                layer,
+                scratch=self._scratches[index],
+                kv=Gemma4LayerKV(
+                    key_cache=self._kv[index].key_cache,
+                    value_cache=self._kv[index].value_cache,
+                    capacity=self.capacity,
+                    write_offset=start,
+                ),
+                rows=rows,
+                eps=config.rms_norm_eps,
+            )
 
         # --- final norm and lm head -----------------------------------------
         # Only the last row is needed: the caller wants the next-token
@@ -610,19 +630,12 @@ class Gemma4Runner:
             logits = (np.tanh(logits / cap) * cap).astype(np.float32)
         return logits
 
-    def _upload(self, values: np.ndarray) -> DeviceBuffer:
-        buffer = malloc(values.nbytes)
+    def _stage_upload(self, name: str, values: np.ndarray) -> DeviceBuffer:
+        """Copy ``values`` into the reusable staging buffer for ``name``."""
+
+        buffer = self._staging_buffer(name, values.nbytes)
         copy_host_to_device(buffer, host_array_ptr(values), values.nbytes)
         return buffer
-
-    def _discard(self, buffer: DeviceBuffer) -> None:
-        """Free a per-call staging buffer.
-
-        Per-call rather than cached because the rope tables and the mask both
-        depend on the block's positions, so they are rebuilt every call anyway.
-        """
-
-        free(buffer)
 
     def next_token(self, logits: np.ndarray, *, temperature: float = 0.0) -> int:
         """Pick the next token from ``logits``.
