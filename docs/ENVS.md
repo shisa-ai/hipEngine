@@ -944,6 +944,7 @@ in [`benchmarks/HARNESSES.md`](../benchmarks/HARNESSES.md) for the protocols.
 | `HIPENGINE_QUANT_QUALITY_MIOPEN_DEPTHWISE` | `0` | In the torch-side quant-quality teacher, `1` keeps the MIOpen depthwise route on gfx1151 instead of the fallback. |
 | `CROSSOVER_MODEL` / `CROSSOVER_QUANT` | unset | Model/quant pair for the crossover sweep scripts. |
 | `SWEEP_MODEL` / `HEADROOM_MODEL` / `HEADROOM_QUANT` / `GGUF_Q4KM_MODEL` / `PARO_MODEL` / `MODEL` / `MODELS_DIR` | per-script defaults | Model-path inputs for the sweep, headroom, and matrix harnesses. |
+| `G4_LAYER` | `0` | Zero-based Gemma 4 layer selected by `scripts/gemma4_real_layer_dump.py` and `scripts/gemma4_real_layer_hf_check.py` for real-weight layer diagnostics; does not affect public inference. |
 | `EVIE_MATCHED_DIR` | unset | Matched-output directory for the Evie comparison harness. |
 | `BENCH_EXTRA_JSON` | unset | Extra JSON merged into a bench artifact. |
 | `BENCH_INCLUDE_HIPENGINE` | unset | Includes the hipEngine arm in the shared comparison bench. |
