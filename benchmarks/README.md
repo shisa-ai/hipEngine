@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-20**
+Last updated: **2026-09-23**
 
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
@@ -975,6 +975,36 @@ longer than the workspace forces a rebuild mid-session.
 [capacity cell](results/2026-09-18-w7900-bulk-cap2048-c1-512.json) ·
 [serial control](results/2026-09-18-w7900-tp2-serial-c1-512-shaped-warmup.json) ·
 [production gate](results/2026-09-18-w7900-tp2-bulk-prefill-gate-prompt-sized.json).
+
+**Where the prefill deficit is, measured 2026-09-23.** Per-phase, per-layer
+stream-event attribution on the same route and shape (512 tokens, even split,
+`reduce_mode=device`, source-F16 owner off) resolves the 109 ms deficit above
+into two measured terms. Rank 0 (W7900) is the pacer at 490.8 ms, and its phases
+are 233.4 ms of attention, 188.4 ms of sharded MLP chain and 59.4 ms of exchange
+- 7.52 ms per layer, all device-busy (the attention phase's host span is 78.3 ms
+against its 233.4 ms device span, so it is not enqueue-bound).
+
+The attention phase is **fully replicated**: `_bulk_attention_layer` calls the
+full-width attention helpers, which project `2 * q_width` and read the unsharded
+`attn_q`/`attn_k`/`attn_v`/`attn_output` weights, so both ranks run identical
+attention work. The 48 linear-attention (GDN) layers carry 181.0 ms of that
+phase and the 16 full-attention layers carry 52.6 ms. The phase is GEMM-bound
+rather than kernel-bound (31.7 TFLOP/s on GDN layers and 34.6 on full-attention
+layers, against 46.5 for the sharded MLP chain at the even split's 8704-wide
+shard), so a head split halves it. That accounts for the deficit exactly: a head
+split removes 116.7 ms of replicated work for one added reduce, worth **57.3 ms
+(11.7%)**, and the 48.1 ms that would remain is exactly the 0.38 ms/layer by
+which this route's reduce (0.93 ms/layer) exceeds the 0.55 ms/layer that
+llama.cpp's measured 385.4 ms implies.
+
+The per-layer exchange is near the platform floor rather than the recoverable
+cost: it moves 5.24 MB per rank per direction (bf16 partial, 512x5120) at about
+11.3 GB/s of PCIe traffic, against 7.09 GB/s (`all_reduce:rows1024:bf16`) and
+11.52 GB/s (`broadcast:rows1024:fp32`) measured for the staged transports on
+this host. An earlier note that the replicated GDN/attention work is "only ~7%
+of profiled kernel time" counted the attention kernel alone and not the
+replicated projections; it is superseded.
+[Attribution](results/2026-09-23-w7900-tp2-prefill-critical-path-attribution.json).
 
 **Sustained numerical gate, measured 2026-09-18.** Three arms on one host
 (W7900 rank 0, RX 7900 XTX rank 1), 18 product prompts, 128 teacher-forced

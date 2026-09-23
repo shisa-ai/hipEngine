@@ -150,6 +150,38 @@ own. Attribution of the loss between the per-layer exchange and the shard-tile
 shape is the next unit. Artifact:
 [`2026-09-19-w7900-tp2-bulk-prefill-length-scaling.json`](../benchmarks/results/2026-09-19-w7900-tp2-bulk-prefill-length-scaling.json).
 
+**The gap is unsharded attention, not the exchange or the shard-tile shape
+(2026-09-23).** Stream-event attribution per phase and per layer on the same
+route (512 tokens, even split, `reduce_mode=device`, source-F16 owner off, W7900
+at 490.8 ms) resolves what the 2026-09-19 note left open. Rank 0 (W7900) is the
+pacer, and its prefill is **233.4 ms of attention, 188.4 ms of sharded MLP chain
+and 59.4 ms of exchange** - 7.52 ms per layer, all of it device-busy (the
+attention phase's host span is 78.3 ms against its 233.4 ms device span, so it
+is not enqueue-bound). The attention phase is *fully replicated*:
+`_bulk_attention_layer` calls the full-width
+`_run_full_attention_prefill_attn_rows` and
+`_run_linear_attention_prefill_attn_rows`, which project `2 * q_width` and read
+the unsharded `attn_q`/`attn_k`/`attn_v`/`attn_output` weights, so both ranks
+run identical attention work. The 48 linear-attention (GDN) layers carry 181.0 ms
+of that phase and the 16 full-attention layers carry 52.6 ms.
+
+The phase is GEMM-bound rather than kernel-bound - 31.7 TFLOP/s on GDN layers and
+34.6 on full-attention layers against 46.5 for the sharded MLP chain at the
+even split's 8704-wide shard - so the
+projections dominate it and a head split halves it. That accounts for the whole
+remaining gap: a head split removes 116.7 ms of replicated work for one added
+reduce, worth **57.3 ms (11.7%)**, and the 48.1 ms left over is exactly the
+0.38 ms/layer by which this route's reduce (0.93 ms/layer) exceeds the 0.55
+ms/layer that the fork's measured 385.4 ms implies. Two earlier readings are
+superseded: that replicated GDN/attention is "only ~7% of profiled kernel time"
+counted the attention kernel alone and not the replicated projections, and sizing
+the loss against the 1444 tok/s single-card-efficiency projection does not
+identify the cost. The per-layer exchange itself is near the platform floor, not
+a fixable inefficiency: it moves 5.24 MB per rank per direction (bf16 partial,
+512x5120) at about 11.3 GB/s of PCIe traffic, against 7.09-11.52 GB/s measured
+for the staged transports on this host. Artifact:
+[`2026-09-23-w7900-tp2-prefill-critical-path-attribution.json`](../benchmarks/results/2026-09-23-w7900-tp2-prefill-critical-path-attribution.json).
+
 **Capacity after the residency fix (2026-09-18).** Tier-1 allocation probes at
 the retained 0.44/0.56 split give per-rank device VRAM of **11.994 / 13.182 GiB
 at 8192**, 19.564 / 20.752 at 131072, and **22.594 / 23.781 GiB at 180224** with
@@ -1160,7 +1192,15 @@ arm; investigate the dominant measured cost, not blind kernel tuning.
   per-rank GDN/conv scratch zeroing; stale-state discipline is pinned by
   teacher-forced-after-generation tests, but that is replicated attention,
   not attention sharding. The vocabulary head IS row-sharded, commit
-  7c2a7fb66.)
+  7c2a7fb66. Measured value of this unit: the replicated attention phase is
+  233.4 of the pacer's 490.8 ms and 47.6% of the wall, and the 48 GDN layers
+  carry 77.5% of it, so sharding both halves is worth a predicted 57.3 ms
+  (11.7%) net of the one added reduce - see "The gap is unsharded attention"
+  above. The shard manifest already computes both slice sets
+  (`attn_q`/`attn_k`/`attn_v`/`attn_output` as head groups, `attn_qkv`/
+  `attn_gate`/`ssm_*` by GDN value head, `ssm_out` row-split), and
+  `_rank_payload` already slices any role, so the work is admitting the group
+  kind and giving each rank a sharded attention geometry.)
 - [x] Connect prefill, one-token decode, positions, KV allocation, reset, EOS,
   and resource teardown. Prefill must produce the same rank-local state layout
   consumed by decode, including chunk boundaries and long contexts. (The
