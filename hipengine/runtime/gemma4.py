@@ -44,6 +44,7 @@ from hipengine.kernels.cpu_reference.gemma4 import (
     Gemma4TextConfig,
     gemma4_text_config_from_hf,
 )
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import gemma4_attention_shared_bytes
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rope import gemma4_rope_cos_sin_tables
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
     Gemma4LayerGeometry,
@@ -438,6 +439,8 @@ class Gemma4Runner:
             self.max_block = min(self.capacity, DEFAULT_PREFILL_BLOCK)
         if self.max_block > self.capacity:
             raise ValueError("max_block must not exceed capacity")
+        for attention in config.attention:
+            gemma4_attention_shared_bytes(head_dim=attention.head_dim, keys=self.capacity)
 
         hidden = config.hidden_size
         # Each layer's dense MLP can have its own width. Use the per-layer
