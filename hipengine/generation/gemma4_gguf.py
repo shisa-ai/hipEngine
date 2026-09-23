@@ -94,7 +94,22 @@ class Gemma4GGUFGenerator:
 
         return tuple(self.tokenizer.encode(str(text)))
 
-    def tokenize_chat(self, user: str, *, system: str | None = None) -> tuple[int, ...]:
+    def tokenize_chat(
+        self,
+        user: str,
+        *,
+        system: str | None = None,
+        enable_thinking: bool = True,
+    ) -> tuple[int, ...]:
+        """Tokenize one user turn through the artifact's chat template.
+
+        ``enable_thinking`` defaults to True. The Gemma 4 template treats it as a
+        bare variable defaulting to false, and the false branch emits an empty
+        thought channel that suppresses reasoning. Passing it explicitly keeps
+        the reasoning behaviour a caller gets from depending on a decision
+        rather than on a Jinja default.
+        """
+
         template = self.tokenizer.chat_template
         if not template:
             raise ValueError(
@@ -105,7 +120,7 @@ class Gemma4GGUFGenerator:
         if system:
             messages.append({"role": "system", "content": str(system)})
         messages.append({"role": "user", "content": str(user)})
-        rendered = _render_chat_template(template, messages)
+        rendered = _render_chat_template(template, messages, enable_thinking=enable_thinking)
         return tuple(self.tokenizer.encode(rendered, add_special_tokens=True))
 
     def count_tokens(self, text: str) -> int:
@@ -236,36 +251,17 @@ class Gemma4GGUFGenerator:
             raise RuntimeError("Gemma 4 generator is closed")
 
 
-def _render_chat_template(template: str, messages: list[dict[str, str]]) -> str:
-    """Render a Jinja chat template, refusing anything this adapter cannot run.
+def _render_chat_template(
+    template: str,
+    messages: list[dict[str, str]],
+    *,
+    enable_thinking: bool = True,
+) -> str:
+    """Render the artifact's template, passing its bare variables explicitly."""
 
-    The templates real Gemma artifacts carry use only ``messages``,
-    ``add_generation_prompt``, ``bos_token`` and ``eos_token``. Rather than
-    half-implement Jinja, this raises for a template that needs more, so a prompt
-    is never silently formatted differently from what the model was trained on.
-    """
+    from hipengine.chat.gemma4 import render_gemma4_chat
 
-    try:
-        from jinja2 import Environment
-    except ImportError as exc:  # pragma: no cover - jinja2 is a hard dependency here
-        raise ImportError(
-            "rendering a chat template requires jinja2; pass preformatted text instead"
-        ) from exc
-
-    environment = Environment(autoescape=False)  # noqa: S701 - not HTML
-    try:
-        compiled = environment.from_string(template)
-        return compiled.render(
-            messages=messages,
-            add_generation_prompt=True,
-            bos_token="<bos>",
-            eos_token="<eos>",
-        )
-    except Exception as exc:
-        raise ValueError(
-            f"the artifact's chat template could not be rendered ({exc}); "
-            "pass preformatted text instead"
-        ) from exc
+    return render_gemma4_chat(template, messages, enable_thinking=enable_thinking)
 
 
 def make_gemma4_generator_gfx1100(
