@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10665,
-    "current": 3433,
+    "entries": 10666,
+    "current": 3434,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1095,
+    "rows": 1096,
     "by_rule": {
       "dependency": 36,
       "legacy-next": 109,
-      "status": 950
+      "status": 951
     }
   },
   "rows": [
@@ -41192,14 +41192,14 @@
         "written": "2026-09-23",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "1. Build the arena-with-guards experiment above, so the over-read faults at the\n   buffer that caused it.\n2. Fix the over-read, then re-run 20+ decode steps clean.\n3. Only then is the generation adapter's end-to-end path validated.\n4. Then the real artifact at\n   `/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf`.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as blocked \u2014 the entry says the unit is blocked",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260923T020151.588610Z-lhl-gemma4-decode-fault-b43475.md",
@@ -41216,7 +41216,48 @@
         ]
       },
       "id": "worklog/20260923T020151.588610Z-lhl-gemma4-decode-fault-b43475",
-      "evidence_hash": "93afbfc9d557"
+      "evidence_hash": "fcc05aa4cfd0"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260923T021546.607698Z-lhl-gemma4-decode-fault-26eb39",
+      "title": "Decode fault narrowed: over-read is layout-sensitive and outside the runner's own buffers",
+      "location": "worklog/entries/20260923T021546.607698Z-lhl-gemma4-decode-fault-26eb39.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-decode-fault",
+        "written": "2026-09-23",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "The experiment the blocker entry already named, now with a narrowed target:\nallocate the scratch buffers through one large arena with a guard region after\neach, so an over-read faults deterministically at the buffer that caused it.\n`Gemma4LayerScratch` takes its buffers from a list it owns, so the arena can be\nintroduced there without touching the kernels.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260923T021546.607698Z-lhl-gemma4-decode-fault-26eb39.md",
+        "refs": [],
+        "tokens": [
+          "buffers",
+          "decode",
+          "fault",
+          "layout",
+          "narrowed",
+          "outside",
+          "over",
+          "own",
+          "read",
+          "runner",
+          "sensitive"
+        ]
+      },
+      "id": "worklog/20260923T021546.607698Z-lhl-gemma4-decode-fault-26eb39",
+      "evidence_hash": "d4ad4b97b96e"
     }
   ]
 }
