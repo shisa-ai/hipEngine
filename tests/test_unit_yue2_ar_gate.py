@@ -14,6 +14,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tests._torch_absence import run_in_clean_interpreter
+
 REPO = Path(__file__).resolve().parents[1]
 VOCAB = 184704
 
@@ -240,9 +242,11 @@ def test_gate_requires_the_broad_floor(gate):
     assert not gate._gate_passes({"pooled_mean_kl": None, "top1_agreement": None})
 
 
-def test_artifact_provenance_names_the_machine_and_the_command(gate):
+def test_artifact_provenance_names_the_machine_and_the_command(gate, request):
     """The evidence-policy fields are collected, never typed into the artifact."""
 
+    if not run_in_clean_interpreter(request.node.nodeid):
+        return
     provenance = gate._provenance(
         ["--prefill-variant", "strict", "--json", "out.json"],
         REPO / "tests/fixtures/yue2",

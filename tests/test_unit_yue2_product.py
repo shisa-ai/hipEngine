@@ -17,6 +17,7 @@ import numpy as np
 import pytest
 
 from hipengine.generation.yue2 import GenerationConfig, Sampling, SongRequest
+from tests._torch_absence import run_in_clean_interpreter
 from hipengine.runtime.yue2_session import (
     SemanticResult,
     SongResult,
@@ -351,14 +352,20 @@ def test_result_save_writes_data_not_pickle(session, tmp_path):
 
 # -- torch-free product path --------------------------------------------
 
-def test_the_product_path_never_imports_torch(session):
+def test_the_product_path_never_imports_torch(session, request):
     """The whole staged path must stay torch-free.
 
     Everything the session reaches is imported here - the generation protocol,
     the AR session, the NAR kernel wrappers, the VAE runtime, the model plugin -
     and torch must not appear. A silently imported torch would invalidate the
     architectural claim rather than fail loudly.
+
+    Runs in a clean child interpreter: a sibling unit test that imports torch
+    must not decide this claim through suite order.
     """
+
+    if not run_in_clean_interpreter(request.node.nodeid):
+        return
 
     import sys
 
