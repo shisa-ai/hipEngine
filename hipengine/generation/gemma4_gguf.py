@@ -69,7 +69,7 @@ class Gemma4GGUFGenerator:
     tool_parser_name = "gemma_tags"
 
     def __post_init__(self) -> None:
-        self.model_path = Path(self.weight_index.model_path).expanduser().resolve()
+        self.model_path = Path(self.model_path).expanduser().resolve()
         self.backend = resolve_backend(self.backend)
         self.context_length = int(self.context_length)
         if self.context_length <= 0:
