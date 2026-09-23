@@ -1,0 +1,265 @@
+---
+status: current
+owns: Gemma 4 26B-A4B gfx1100 single-request optimization plan, measurement contract, candidate sequence, and completion criteria.
+---
+# Gemma 4 26B-A4B optimization campaign
+
+## Objective and scope
+
+Improve real Gemma 4 26B-A4B GGUF text-inference latency and throughput without
+regressing output correctness or request ownership. Start with the working
+`gemma4` branch at `1ea13cf8c`, not an isolated kernel harness. The primary lane
+is host `epyc`, physical GPU1, RX 7900 XTX, `hip_gfx1100`, the existing
+`gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf` artifact, greedy decoding, and BF16 KV.
+
+The user requested this campaign after the text-inference review. This document
+creates the plan; no tuning run or autonomous loop has started. The first
+execution milestone is a validated measurement harness and baseline. Kernel
+changes follow measured attribution, not the hypotheses listed below.
+
+Success means lower public request latency and improved prefill/decode costs,
+with the selected default path verified through `LLM.generate()` and
+`hipengine serve`. There is no invented throughput target or minimum percentage
+win. Same-artifact llama.cpp is an engine comparison; Qwen3.6-35B-A3B on the
+same GPU is a product reference, not an arithmetic oracle or a model-quality
+comparison.
+
+First tranche: single-request inference through 4096 prompt tokens with 128
+outputs, plus correctness checks at chunk boundaries and longer contexts.
+Exclude multi-GPU, new quantizations, MTP, tool parsing, multimodal input,
+non-greedy sampling, and unrelated backend work. Native incremental streaming
+and contexts beyond the existing attention limit are follow-on work unless
+profiling makes their underlying changes necessary for this tranche. Do not
+change model semantics or public defaults merely to improve a benchmark.
+
+Normative rules remain in [OPTIMIZATION](../OPTIMIZATION.md),
+[BENCHMARK](../BENCHMARK.md), [EXECUTION-PROFILES](../EXECUTION-PROFILES.md), and
+[TESTING](../TESTING.md). This plan does not supersede them.
+
+## Starting evidence and missing measurements
+
+The [review closure](../../worklog/entries/20260923T091939.935292Z-lhl-gemma4-review-closure-474f1e.md)
+records working direct generation, chunked prefill, server chat/SSE, and the
+request/ownership/geometry fixes. Its smoke timings combine prefill and decode,
+exclude loading, and are single samples. They are not the campaign baseline.
+Existing W7900 Qwen rows use another GPU and a different protocol; do not quote
+ratios against them.
+
+`Gemma4Runner.forward()` already separates prefill blocks from one-token
+forwards, but `scripts/gemma4_real_generate.py` times the combined request.
+`scripts/gemma4_llamacpp_compare.py` is a CPU first-token correctness diagnostic,
+not a GPU engine-performance comparator. No separated Gemma campaign harness is
+provided yet. The harness, comparator adapter, and evaluator described below
+are deliverables, not commands that already exist.
+
+The implementation has concrete profiling candidates:
+
+- `hipengine/runtime/gemma4.py::_forward_block` computes and uploads per-layer
+  RoPE tables and masks on the host, then copies full logits to the host and
+  applies softcapping there.
+- Every prefill block computes its final norm/output head, although only the
+  last block's logits reach the caller.
+- `gemma4_project` delegates quantized projections to `launch_gguf_linear`.
+  Record the effective kernel selected for each row count and weight type;
+  do not assume the optimized Qwen path is automatically selected.
+- Gemma attention stores all live-key scores in shared memory and decode uses
+  the same computation with one query row. The existing 512-wide-head ceiling
+  is 15616 live keys. Tiling may improve performance and remove that resource
+  limit, but neither outcome is established by source inspection.
+
+These are hypotheses, not measured bottlenecks.
+
+## Measurement contract
+
+### Freeze before tuning
+
+Create a compact baseline artifact with the full source commit, clean/dirty
+state, model identity/fingerprint, tokenizer/template identity, effective
+execution profile and variant manifest, compiler/runtime versions, GPU identity,
+power/clock settings, visibility variables, and exact commands. Hashes identify
+evidence; never use them as runtime admission rules. Pin the baseline commit
+and preserve it for paired runs; do not reset another worker's files.
+
+Use `env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1` on `epyc` and verify that
+logical device zero is the RX 7900 XTX before each measurement session. Check
+ROCm liveness and competing GPU work. Keep clocks, power policy, environment,
+KV policy, cache state, and model artifact unchanged across each pair. Run
+engines sequentially, not concurrently on the GPU. Separate cold load/JIT from
+warm resident measurements and exclude profiler overhead from headline timing.
+
+### Workload matrix and accounting
+
+| Scope | Workloads | Purpose |
+| --- | --- | --- |
+| Primary timing | Exact 128, 512, 1024, 4096 prompt tokens; 128 generated tokens; one request | Short and medium contexts, separate prefill/decode/wall costs |
+| Boundary correctness | 1, 127, 511, 512, 513, 793, 1023, 1024, 1025 prompt tokens | Chunk thresholds, both sides, and unrelated shapes |
+| Long correctness | 8191 prompt tokens plus one output at capacity 8192; small fixtures at the LDS boundary | Capacity/position accounting without claiming long-context speed |
+| Public chat | Multi-category natural prompts; thinking on/off; stop naturally | Template, EOS, reasoning, request-wall latency |
+| Public server | Regular and SSE versions of matched chat requests | Serving overhead and answer/reasoning parity |
+
+The primary matrix fixes capacity at 8192 and prefill block at 512 initially.
+Any block-size sweep is a separate named experiment, including memory cost.
+Generate and save exact token IDs before timing; match prompt IDs within each
+same-model engine comparison. Assert actual prompt/output counts. Fixed-length
+runs explicitly ignore EOS in both arms; natural-EOS runs report the actual
+count and are never silently mixed with fixed-length rows. No padding output
+counts or forwarding an unused final token.
+
+Report all timing phases, not just a single tokens/s field:
+
+- Load, JIT/preparation, and warmup separately from measured requests.
+- Prefill latency and input tokens/s, including the last-row output head.
+- First-token latency, with sampler time and its timing boundary stated.
+- Decode latency and tokens/s with the exact denominator: after the first token
+  comes from prefill, 128 outputs require 127 subsequent decode forwards.
+- Public request wall time and generated tokens divided by that time, explicitly
+  labeled as including prefill. Record reasoning and answer tokens separately.
+- HTTP time to first visible content and completion time. The existing SSE
+  adapter buffers generation; its first event is not GPU time to first token.
+- Allocator peak, device-memory scope, scratch/staging/KV bytes, and allocation,
+  transfer, synchronization, and kernel-launch counts when instrumented.
+
+Use explicit HIP synchronization around diagnostic GPU phase timing. Preserve
+untouched public wall measurements to detect instrumentation effects. Validate
+phase/count accounting with deterministic fake-runner tests and a real request.
+
+Use one full-shape warmup and at least three measured samples per arm. Candidate
+confirmation uses four balanced baseline/candidate pairs, alternating AB/BA
+order (two of each), and stores every sample plus median/p95/min/max/stdev. Freeze the same
+prompt suite and heldouts before tuning. Repeated-token inputs may supplement
+kernel diagnostics but cannot replace natural multi-category public workloads.
+Follow BENCHMARK's variance rejection rule; investigate noisy results instead
+of selecting the best run or repeating until a desired result appears.
+
+### Comparators
+
+1. **Incumbent hipEngine:** same artifact, GPU, inputs, profile, request settings,
+   and harness; this decides whether an optimization improved the implementation.
+2. **llama.cpp HIP:** same Gemma GGUF, physical GPU and exact input token IDs,
+   greedy output, matched thinking/template/BOS/EOS and context settings.
+   Record backend/KV-type differences where exact matching is unavailable.
+   Pin its source/build and reproduce exact commands; do not assume the CPU
+   first-token comparison script launches this engine.
+3. **Qwen3.6-35B-A3B GGUF UD-Q4_K_M:** same RX 7900 XTX, timing boundaries,
+   workload sizes, greedy mode and BF16 KV where supported. It uses its own
+   template/tokenizer and is a different-model latency reference. Probe capacity
+   first; if it cannot fit the requested configuration, record that resource
+   result rather than silently changing GPU or quantization. ParoQuant W4 is an
+   optional separately labeled comparison, not a substitute for the GGUF row.
+
+## Correctness and acceptance
+
+Establish the incumbent against existing CPU/GPU fixtures and the independent
+HF/llama.cpp checks before treating it as a teacher. A matching incumbent can
+still share an implementation bug. Freeze teacher tokens, prompt categories,
+heldouts, task scoring, and paired non-inferiority margins before evaluating
+arithmetic candidates. Use the full `mtpbench-code-general-ja.jsonl` category
+set plus heldouts; this is prompt coverage, not speculative decoding.
+
+For exact host/ownership work, require unchanged logits/IDs under the declared
+same-schedule contract, request accounting, and resource lifetime checks.
+For changed arithmetic, use the full production profile, not an ad hoc bitwise
+veto: 500–1000 shared-chain teacher-forced full-vocabulary rows, global and
+per-category/shape/transition metrics, three deterministic repeats, finite
+state, and task/heldout checks. The normative KL limits are mean <= 1e-3,
+p95 <= 5e-3, p99 <= 2e-2, maximum <= 5e-2; top-1 >= 99% overall and >= 97% in
+every scope. Rows above 2e-2 require explicit diagnosis. Include BF16-relative
+checks where a teacher is available; missing teacher data is not fabricated.
+The CPU-reference outer floor alone cannot promote changed arithmetic.
+
+Preserve strict registered fallbacks for fused or reassociated variants.
+Exercise reset/reuse, failed allocation, cancellation/cleanup, chunk boundaries,
+sliding/global attention, tied/untied heads, and unequal FFN widths as applicable.
+Device argmax must preserve tie-breaking, softcap semantics, EOS and stop rules;
+softcap monotonicity in real arithmetic alone does not prove floating-point
+argmax parity.
+
+A candidate is kept when its declared correctness/profile gates pass and paired
+measurements show improvement in the targeted phase or public wall time without
+a confirmed regression in another primary workload. No minimum percentage gain
+is required. If another row worsens, rerun that paired row with bounded extra
+samples to distinguish noise; do not average a real regression away. Document
+sub-window wins honestly when aggregate latency is flat. An ambiguous result
+is inconclusive, not an automatic promotion or rejection. Freeze any automated
+noise/regression decision rule in the baseline artifact before launching a loop.
+
+Accepted changes ship on the ordinary path. Confirm selected kernels, sampler,
+and fallback reason through `LLM.generate()` or `hipengine serve`; a private
+harness-only win is not shipped. Do not add model-name allowlists or default-off
+flags because a configuration has not been benchmarked.
+
+## Execution milestones
+
+- [ ] **G0 — Harness and baseline.** Implement separated phase timing and public
+  wall measurement with accounting tests; freeze evaluator and provenance;
+  measure the matrix and same-GPU comparators. Record unsupported comparator
+  configurations honestly. No kernel tuning before the baseline exists.
+- [ ] **G1 — Attribution.** Prebuild outside `rocprofv3`, supply the compiler
+  version file and require cached builds. Trace one short and one long primary
+  shape with plausible named dispatches; attribute GPU time, host gaps,
+  transfers, synchronization, allocation and output-head work. Rank candidates
+  by measured contribution. Retain compact summaries, not raw profiler dumps.
+- [ ] **G2 — Host and redundant-work candidates.** Evaluate intermediate-block
+  output-head avoidance, RoPE/mask reuse or device generation, bounded scratch
+  reuse, and device greedy sampling only when G1 supports them. One hypothesis
+  per atomic unit; RED/GREEN tests before implementation where practical.
+- [ ] **G3 — Dominant kernels.** Tune the measured projection/MoE/attention
+  bottleneck, with in-tree kernels and registry dispatch. Explore row-batched
+  projection routes, decode specialization or tiled attention in measured order.
+  Graph capture/fusion follows stable pointer and state ownership, not before it.
+- [ ] **G4 — Integrated confirmation.** Repeat the primary paired matrix,
+  correctness/heldouts and live chat/SSE; verify no hidden fallback. Re-measure
+  llama.cpp and Qwen with the frozen comparison contract and report differences
+  without conflating model quality or hardware.
+- [ ] **G5 — Closure.** Publish accepted evidence and rejected/inconclusive
+  candidates, update the model guide, and leave a clean committed worktree with
+  explicit follow-on work. Run the milestone `--suite all` gate once; use the
+  repository's focused-repair rule for isolated failures rather than blindly
+  repeating the entire suite.
+
+After each measured candidate, record the hypothesis, exact diff/commit, profile,
+metric samples, quality packet, selection evidence and keep/reject/inconclusive
+reason. Three unsuccessful candidates in one bottleneck trigger re-profiling
+before further variants. If no supported win remains after that reassessment,
+close the tranche with its measurements; do not manufacture progress. A hung
+GPU, external ownership conflict, or broken oracle is a blocker to repair and
+record, not permission to reset unrelated work or weaken correctness.
+
+## Commands available now
+
+These are functional checks, not the planned performance harness:
+
+```bash
+# From the gemma4 worktree, with the model artifact available:
+env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 PYTHONPATH=. \
+  .venv/bin/python scripts/gemma4_real_generate.py \
+  --artifact /mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf \
+  --context 8192 --max-tokens 96 --long-probe-words 700 \
+  --out /tmp/gemma4-campaign-functional.jsonl
+
+env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 \
+  .venv/bin/python -m pytest tests/test_unit_gemma4_*.py tests/test_gpu_gemma4_*.py -q
+
+.venv/bin/python -m pytest tests/test_unit_gemma4_chat.py \
+  tests/test_integration_server_api.py tests/test_integration_poolside_v1_reasoning.py \
+  tests/test_unit_qwen4exp_chat_protocol.py -q
+```
+
+G0 must add and document exact benchmark, correctness and comparator commands
+before G1 begins. Before kernel work, run the lineage check in OPTIMIZATION;
+the review's missing external peer checkout is a known environment issue to
+resolve or explicitly scope, not a successful lineage result. Use the Tier-1
+allocation probe for capacity questions before full-prompt tests.
+
+## Deliverables and handoff
+
+Each accepted performance result updates `benchmarks/results/`,
+`benchmarks/README.md` and `benchmarks/CHANGELOG.md` together, with a new immutable
+worklog entry and source commit. Keep raw logs/traces and model weights outside
+Git. Inventory temporary flags and rejected routes in `docs/REFACTOR.md` and
+run the audit gate; do not raise its budget.
+
+No performance row is added by this planning commit. The review recorded two
+unrelated default-suite failures and a published-command documentation failure;
+carry their exact evidence forward without claiming the repository is globally
+green. Fix newly introduced failures within the candidate that caused them.
