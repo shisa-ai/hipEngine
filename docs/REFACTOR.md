@@ -8085,3 +8085,22 @@ later 512-row passes); and with the owner disabled the route still allocated its
 third, the per-rank rocBLAS handles were cleared without `Rocblas.close()`,
 leaked a `rocblas_create_handle` per rank per session.
 registered strict fallback, not just the timing A/B.
+
+## 2026-09-23 Shard-payload types keep their `Mlp` names while carrying any family — open
+
+- `hipengine/distributed/shard_weights.py` now materializes two shard families
+  through one path: the dense MLP (`MLP_FAMILY`) and attention under head
+  sharding (`ATTENTION_FAMILY`). The public types were not renamed, so
+  `MlpShardLayer`, `MlpShardPayload`, `MLPShardError`, `shard_bytes`,
+  `upload_mlp_shard_weights` and `resolve_mlp_shard_context` all still read as
+  MLP-only while an attention payload flows through them.
+- The MLP-named entry points are kept as thin wrappers so the shipped TP2 route
+  and `scripts/tp2_*.py` are untouched; the family-neutral spellings
+  (`materialize_shards`, `resolve_shard_context`, `upload_shard_weights`,
+  `materialize_attention_shards`, `resolve_attention_shard_context`) are the
+  ones new code should use.
+- Removal condition: once the head-sharding route is promoted and the MLP-only
+  wrappers have no callers, rename the types and functions to family-neutral
+  names, drop the wrappers, and update
+  `tests/test_unit_distributed_shard_weights.py`, which is the only test that
+  imports the type names.
