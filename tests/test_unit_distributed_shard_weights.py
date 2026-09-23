@@ -167,3 +167,237 @@ def test_a_degree_that_does_not_split_the_mlp_is_refused_before_allocation() -> 
     # read, mirroring the shard manifest's own admission rule.
     with pytest.raises(MLPShardError, match="does not split"):
         resolve_mlp_shard_context(str(GGUF_PATH), world_size=3)
+
+
+# ---------------------------------------------------------------------------
+# The attention (head-sharding) family
+# ---------------------------------------------------------------------------
+
+
+def _source_row_runs(plan, rank: int) -> list[tuple[int, int]]:
+    """Contiguous ``(start_row, row_count)`` runs of source rows one rank owns."""
+
+    row_bytes = int(plan.source_row_bytes)
+    runs: list[tuple[int, int]] = []
+    for segment in plan.slice_for(int(rank)).iter_segments():
+        start = int(segment.source_offset) // row_bytes
+        rows = int(segment.nbytes) // row_bytes
+        if runs and runs[-1][0] + runs[-1][1] == start:
+            runs[-1] = (runs[-1][0], runs[-1][1] + rows)
+        else:
+            runs.append((start, rows))
+    return runs
+
+
+def test_the_attention_family_slots_cover_both_layer_types() -> None:
+    from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION
+    from hipengine.distributed.shard_weights import (
+        ATTENTION_FAMILY,
+        FULL_ATTENTION_SLOTS,
+        LINEAR_ATTENTION_SLOTS,
+        MLP_FAMILY,
+    )
+
+    assert ATTENTION_FAMILY.slots_for(FULL_ATTENTION) == FULL_ATTENTION_SLOTS
+    assert ATTENTION_FAMILY.slots_for(LINEAR_ATTENTION) == LINEAR_ATTENTION_SLOTS
+    # The GDN set names materialization slots, not GGUF tensor names: the source
+    # of ``ssm_dt_bias`` is ``blk.N.ssm_dt.bias``, which has no ``.weight``.
+    assert "ssm_dt_bias" in LINEAR_ATTENTION_SLOTS
+    assert "ssm_a" in LINEAR_ATTENTION_SLOTS
+    # A layer type the family does not describe is a refusal, not a silent
+    # fallback to the other set.
+    with pytest.raises(MLPShardError, match="no tensor set"):
+        ATTENTION_FAMILY.slots_for("mtp_block")
+    # The dense-MLP family keeps its own contract, including refusing raw
+    # layouts; attention needs them because its GDN parameters are dense_f32.
+    assert MLP_FAMILY.allow_raw is False
+    assert ATTENTION_FAMILY.allow_raw is True
+    assert MLP_FAMILY.allowed_kinds == frozenset({"column", "row"})
+    assert ATTENTION_FAMILY.allowed_kinds == frozenset({"group", "row"})
+
+
+def test_the_q5_k_t16_repack_and_the_dense_layouts_resolve() -> None:
+    from hipengine.distributed.shard_weights import _t16_repack_for_layout
+
+    # ssm_out resolves to gguf_q5_k_t16_v1 on the target artifact; before this
+    # unit that layout had no entry and the payload builder refused it.
+    assert callable(_t16_repack_for_layout("gguf_q5_k_t16_v1", "gguf_q5_k"))
+    # Dense/raw layouts have no repack: the rank payload is its slice's bytes.
+    for layout in ("dense_f32", "dense_bf16", "raw_gguf"):
+        assert _t16_repack_for_layout(layout, "f32") is None
+    # A t16-family layout with no recorded repack is still a named refusal
+    # rather than a silently wrong payload.
+    with pytest.raises(MLPShardError, match="no t16 repack"):
+        _t16_repack_for_layout("gguf_q8_0_t16_v1", "gguf_q8_0")
+
+
+@requires_model
+def test_the_attention_family_refuses_a_degree_that_does_not_split_the_heads() -> None:
+    from hipengine.distributed.shard_weights import resolve_attention_shard_context
+
+    # head_count 24 does not split across 5, and neither does the GDN group
+    # count or time-step rank; the refusal must name the axis.
+    with pytest.raises(MLPShardError, match="does not split across 5 ranks"):
+        resolve_attention_shard_context(str(GGUF_PATH), world_size=5)
+
+
+@requires_model
+def test_attention_shards_materialize_each_layer_types_own_slots() -> None:
+    from hipengine.distributed.shard_weights import (
+        FULL_ATTENTION_SLOTS,
+        LINEAR_ATTENTION_SLOTS,
+        materialize_attention_shards,
+    )
+
+    shards = materialize_attention_shards(str(GGUF_PATH), world_size=2, layer_ids=(0, 3))
+    for rank in (0, 1):
+        gdn = shards[0].rank_payloads(rank)
+        full = shards[3].rank_payloads(rank)
+        assert set(gdn) == set(LINEAR_ATTENTION_SLOTS)
+        assert set(full) == set(FULL_ATTENTION_SLOTS)
+        # Local shapes are the rank's own slices, not the full tensors.
+        assert gdn["attn_qkv"].local_shape == (5120, 5120)
+        assert gdn["attn_gate"].local_shape == (3072, 5120)
+        assert gdn["ssm_alpha"].local_shape == (24, 5120)
+        assert gdn["ssm_a"].local_shape == (24,)
+        assert gdn["ssm_conv1d"].local_shape == (5120, 4)
+        assert gdn["ssm_out"].local_shape == (5120, 3072)
+        assert full["attn_q"].local_shape == (6144, 5120)
+        assert full["attn_k"].local_shape == (512, 5120)
+        assert full["attn_v"].local_shape == (512, 5120)
+        assert full["attn_output"].local_shape == (5120, 3072)
+        # Raw slots carry their slice bytes verbatim; t16 slots are tiled.
+        assert gdn["ssm_alpha"].layout == "dense_f32"
+        assert gdn["ssm_alpha"].payload.nbytes == 24 * 5120 * 4
+        assert gdn["ssm_a"].payload.nbytes == 24 * 4
+        assert "t16" in full["attn_q"].layout
+        assert "t16" in gdn["ssm_out"].layout
+    # A halved config's derived widths must equal those slices: this is what
+    # lets the existing attention helpers run sharded attention unchanged.
+    _, _, _, config = resolve_mlp_shard_context(str(GGUF_PATH), world_size=2)
+    assert config.head_count // 2 * config.key_length == 3072          # q_width
+    assert config.head_count // 2 * 2 * config.key_length == 6144      # 2*q_width
+    assert config.head_count_kv // 2 * config.key_length == 512        # kv_width
+    assert config.ssm_inner_size // 2 == 3072                          # attn_gate rows
+    assert config.ssm_time_step_rank // 2 == 24                        # alpha rows
+
+
+@requires_model
+def test_attention_local_head_indices_are_identity_under_a_halved_config() -> None:
+    """The materialized rows must match a plain halved config's local indexing.
+
+    If they did not, a rank would read another rank's heads and the sharded
+    route would be silently wrong. Full attention is a contiguous prefix, so
+    local head j is global head ``rank * local_heads + j``. GDN value heads are
+    tile-major (llama.cpp order, ``k = v % k_heads``), which is exactly what
+    makes ``local_k = local_v % local_k_heads`` hold - the identity mapping the
+    runner's own per-head loops use.
+    """
+
+    from hipengine.loading.gguf import scan_gguf
+    from hipengine.loading.qwen35_gguf import qwen35_gguf_config_from_metadata
+    from hipengine.loading.qwen35_gguf_shards import (
+        build_shard_manifest,
+        gdn_head_map,
+    )
+
+    info = scan_gguf(str(GGUF_PATH))
+    config = qwen35_gguf_config_from_metadata(info)
+    manifest = build_shard_manifest(info, world_size=2, model_hash="head-identity")
+    by_name = {plan.name: plan for plan in manifest.tensors}
+    local_q_heads = config.head_count // 2
+    local_kv_heads = config.head_count_kv // 2
+
+    for rank in (0, 1):
+        # Full attention: contiguous prefix on every axis.
+        for role, rows_per_head, local_heads in (
+            ("attn_q", 2 * config.key_length, local_q_heads),
+            ("attn_k", config.key_length, local_kv_heads),
+            ("attn_v", config.value_length, local_kv_heads),
+        ):
+            runs = _source_row_runs(by_name[f"blk.3.{role}.weight"], rank)
+            assert runs == [(rank * local_heads * rows_per_head, local_heads * rows_per_head)]
+        # Grouped-query ratio is preserved, so local q head j pairs with local
+        # kv head j // (local_q_heads // local_kv_heads), same as globally.
+        assert config.head_count // config.head_count_kv == local_q_heads // local_kv_heads
+
+        # GDN: the value-head runs are the head map's own local order, which is
+        # tile-major, so a rank's rows come in one run per value tile.
+        head_map = gdn_head_map(config, rank, 2)
+        owned_v = head_map.v_heads_for()
+        expected_runs: list[tuple[int, int]] = []
+        for global_v in owned_v:
+            if expected_runs and expected_runs[-1][0] + expected_runs[-1][1] == global_v:
+                expected_runs[-1] = (expected_runs[-1][0], expected_runs[-1][1] + 1)
+            else:
+                expected_runs.append((global_v, 1))
+        assert len(expected_runs) == head_map.tiles
+        assert sum(rows for _, rows in expected_runs) == head_map.local_v_heads
+        alpha_runs = _source_row_runs(by_name["blk.0.ssm_alpha.weight"], rank)
+        assert alpha_runs == expected_runs
+        for local_v in range(head_map.local_v_heads):
+            global_v = owned_v[local_v]
+            # Global pairing is k = v % k_heads; local pairing must agree.
+            assert global_v % head_map.k_heads == head_map.k_heads_for()[
+                local_v % head_map.local_k_heads
+            ]
+            assert head_map.local_k_head(local_v) == global_v % head_map.k_heads
+        # The gate projection has head_v_dim rows per value head, same order.
+        gate_runs = _source_row_runs(by_name["blk.0.attn_gate.weight"], rank)
+        assert gate_runs == [
+            (start * head_map.head_v_dim, rows * head_map.head_v_dim)
+            for start, rows in expected_runs
+        ]
+
+
+@requires_model
+def test_raw_attention_payloads_are_the_owned_heads_rows() -> None:
+    """A dense slot's rank payload must decode to its own heads' values.
+
+    Checked against the head map rather than against the slice machinery, so a
+    mis-strided or repacked dense payload cannot pass by agreeing with itself.
+    """
+
+    from hipengine.distributed.shard_weights import materialize_attention_shards
+    from hipengine.loading.gguf import GGUFReader, scan_gguf
+    from hipengine.loading.qwen35_gguf import qwen35_gguf_config_from_metadata
+    from hipengine.loading.qwen35_gguf_shards import gdn_head_map
+
+    reader = GGUFReader(str(GGUF_PATH))
+    info = scan_gguf(str(GGUF_PATH))
+    config = qwen35_gguf_config_from_metadata(info)
+    shards = materialize_attention_shards(str(GGUF_PATH), world_size=2, layer_ids=(0,))
+
+    # ssm_alpha: one f32 row per value head, so payload row j must be the
+    # source row of the j-th global value head this rank owns.
+    alpha_info = reader.tensor_info("blk.0.ssm_alpha.weight")
+    alpha_source = np.memmap(
+        reader.path,
+        dtype=np.float32,
+        mode="r",
+        offset=int(alpha_info.data_offset),
+        shape=(config.ssm_time_step_rank, config.hidden_size),
+    )
+    # ssm_a: one f32 scalar per value head.
+    a_info = reader.tensor_info("blk.0.ssm_a")
+    a_source = np.memmap(
+        reader.path,
+        dtype=np.float32,
+        mode="r",
+        offset=int(a_info.data_offset),
+        shape=(config.ssm_time_step_rank,),
+    )
+    for rank in (0, 1):
+        owned = list(gdn_head_map(config, rank, 2).v_heads_for())
+        payloads = shards[0].rank_payloads(rank)
+        alpha = np.frombuffer(
+            np.asarray(payloads["ssm_alpha"].payload).tobytes(), dtype=np.float32
+        ).reshape(len(owned), config.hidden_size)
+        assert np.array_equal(alpha, np.asarray(alpha_source[owned]))
+        decay = np.frombuffer(
+            np.asarray(payloads["ssm_a"].payload).tobytes(), dtype=np.float32
+        )
+        assert np.array_equal(decay, np.asarray(a_source[owned]))
+        # The two ranks partition the source rather than overlapping it.
+        assert payloads["ssm_alpha"].nbytes == int(alpha_info.nbytes) // 2
+        assert payloads["ssm_a"].nbytes == int(a_info.nbytes) // 2
