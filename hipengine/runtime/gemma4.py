@@ -421,38 +421,51 @@ class Gemma4Runner:
             raise ValueError("max_block must not exceed capacity")
 
         hidden = config.hidden_size
-        self._token_ids = self._alloc(self.max_block * _I64_BYTES)
-        self._hidden = self._alloc(self.max_block * hidden * _BF16_BYTES)
-        self._normalized = self._alloc(hidden * _BF16_BYTES)
-        self._logits = self._alloc(int(config.vocab_size or 0) * _F32_BYTES)
+        # Every buffer taken below is owned by this runner, so a failure
+        # partway through construction must release the ones already taken
+        # rather than leaving them to the garbage collector, which does not own
+        # device memory. The scratch objects are in the same list: they hold no
+        # device buffers until a forward pass asks for one, but cleanup still
+        # runs over them for symmetry with close().
+        try:
+            self._token_ids = self._alloc(self.max_block * _I64_BYTES)
+            self._hidden = self._alloc(self.max_block * hidden * _BF16_BYTES)
+            self._normalized = self._alloc(hidden * _BF16_BYTES)
+            self._logits = self._alloc(int(config.vocab_size or 0) * _F32_BYTES)
 
-        for index, attention in enumerate(config.attention):
-            self._scratches.append(
-                Gemma4LayerScratch(
-                    tokens=self.max_block,
-                    hidden_size=hidden,
-                    dense_intermediate=config.intermediate_size,
-                    geometry=_layer_geometry(attention),
-                    num_experts=config.num_experts,
-                    top_k=config.top_k_experts,
-                    expert_intermediate=config.moe_intermediate_size,
+            for index, attention in enumerate(config.attention):
+                self._scratches.append(
+                    Gemma4LayerScratch(
+                        tokens=self.max_block,
+                        hidden_size=hidden,
+                        dense_intermediate=config.intermediate_size,
+                        geometry=_layer_geometry(attention),
+                        num_experts=config.num_experts,
+                        top_k=config.top_k_experts,
+                        expert_intermediate=config.moe_intermediate_size,
+                    )
                 )
-            )
-            key = self._alloc(
-                self.capacity * attention.num_kv_heads * attention.head_dim * _BF16_BYTES
-            )
-            value = self._alloc(
-                self.capacity * attention.num_kv_heads * attention.head_dim * _BF16_BYTES
-            )
-            self._caches.extend((key, value))
-            self._kv.append(
-                Gemma4LayerKV(
-                    key_cache=key.ptr,
-                    value_cache=value.ptr,
-                    capacity=self.capacity,
-                    write_offset=0,
+                key = self._alloc(
+                    self.capacity * attention.num_kv_heads * attention.head_dim * _BF16_BYTES
                 )
-            )
+                value = self._alloc(
+                    self.capacity * attention.num_kv_heads * attention.head_dim * _BF16_BYTES
+                )
+                self._caches.extend((key, value))
+                self._kv.append(
+                    Gemma4LayerKV(
+                        key_cache=key.ptr,
+                        value_cache=value.ptr,
+                        capacity=self.capacity,
+                        write_offset=0,
+                    )
+                )
+        except BaseException:
+            # Mark closed first so a later close() cannot free the same buffers
+            # a second time, then release everything taken so far.
+            self._closed = True
+            self._release_owned()
+            raise
 
     def _alloc(self, nbytes: int) -> DeviceBuffer:
         if nbytes <= 0:
@@ -469,17 +482,29 @@ class Gemma4Runner:
         the driver may only notice later, as a page-not-present fault somewhere
         else entirely. It also puts a device synchronization point on every layer
         of every token, which is most of what a decode step would otherwise cost.
-        Growth is rare - a buffer is only replaced when a call needs more than
-        any previous call did - so this frees O(log) times over a session rather
-        than several times per token.
+        Growth is rare and geometric: a buffer is replaced only when a call
+        needs more than any previous call did, and then it at least doubles, so a
+        rising request replaces the buffer O(log) times over a session rather
+        than several times per token. Replaced allocations are retained, never
+        freed, so the memory a name holds stays within a constant factor of its
+        largest request instead of growing with the number of requests.
         """
 
         held = self._staging.get(name)
-        if held is not None and held[1] >= nbytes:
-            return held[0]
-        buffer = malloc(nbytes)
+        if held is not None:
+            if held[1] >= nbytes:
+                return held[0]
+            # Geometric growth: at least double the current capacity, so a
+            # request that keeps rising replaces the buffer O(log) times over a
+            # session. Keeping the replaced allocation makes the retained total
+            # O(largest request) rather than the sum of every request; freeing
+            # it would be a use-after-free for an in-flight kernel.
+            capacity = max(nbytes, held[1] * 2)
+        else:
+            capacity = nbytes
+        buffer = malloc(capacity)
         self._buffers.append(buffer)
-        self._staging[name] = (buffer, nbytes)
+        self._staging[name] = (buffer, capacity)
         return buffer
 
     def reset(self) -> None:
@@ -494,10 +519,14 @@ class Gemma4Runner:
                 write_offset=0,
             )
 
-    def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
+    def _release_owned(self) -> None:
+        """Free every allocation this runner owns, once.
+
+        Shared by :meth:`close` and the constructor's failure path. Staging
+        buffers are members of ``_buffers``, so iterating that list releases
+        them too, including the replaced allocations growth deliberately kept.
+        """
+
         for scratch in self._scratches:
             scratch.free()
         for buffer in self._buffers:
@@ -507,6 +536,12 @@ class Gemma4Runner:
         self._scratches.clear()
         self._kv.clear()
         self._caches.clear()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._release_owned()
 
     @property
     def position(self) -> int:
