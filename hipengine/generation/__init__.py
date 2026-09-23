@@ -145,6 +145,7 @@ def register_builtin_generators() -> None:
 
     global _BUILTINS_REGISTERED
     if not _BUILTINS_REGISTERED:
+        from hipengine.generation import gemma4_gguf as _gemma4_gguf  # noqa: F401
         from hipengine.generation import laguna_gguf as _laguna_gguf  # noqa: F401
         from hipengine.generation import maple as _maple  # noqa: F401
         from hipengine.generation import qwen35_gguf as _qwen35_gguf  # noqa: F401

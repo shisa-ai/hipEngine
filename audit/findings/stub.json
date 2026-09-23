@@ -293,6 +293,37 @@
     },
     {
       "kind": "stub",
+      "key": "hipengine/generation/gemma4_gguf.py:232",
+      "title": "unimplemented: raise NotImplementedError(\"Gemma 4 basic runner: \" + \"; \".join(blockers))",
+      "location": "hipengine/generation/gemma4_gguf.py:232",
+      "evidence": {
+        "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
+        "why": "NotImplementedError in runtime code"
+      },
+      "signals": [
+        "NotImplementedError in runtime code"
+      ],
+      "hints": {
+        "anchor": "hipengine/generation/gemma4_gguf.py",
+        "refs": [
+          "hipengine/generation/gemma4_gguf.py:232"
+        ],
+        "tokens": [
+          "basic",
+          "blockers",
+          "gemma",
+          "join",
+          "notimplementederror",
+          "raise",
+          "runner",
+          "unimplemented"
+        ]
+      },
+      "id": "stub/hipengine/generation/gemma4_gguf.py:232",
+      "evidence_hash": "26bc6a300684"
+    },
+    {
+      "kind": "stub",
       "key": "hipengine/generation/laguna_dflash.py:349",
       "title": "unimplemented: raise NotImplementedError(",
       "location": "hipengine/generation/laguna_dflash.py:349",
