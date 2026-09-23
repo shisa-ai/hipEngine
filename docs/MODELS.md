@@ -29,6 +29,7 @@ tests. Automatic hardware selection (`backend="auto"`) covers AMD `gfx1100` and
 | Qwen3.x MoE | 35B-A3B: GGUF `Q4_K_M`, `Q4_K_S`, `UD-Q3_K_M`, `UD-Q4_K_M`<br>35B-A3B: [ParoQuant W4](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed) | Yes | Yes | — | [GGUF](reference/GGUF.md) |
 | Qwen3.8 Flash-Next | 125B-A6B + sparse PLE: GGUF `UD-Q4_K_XL`; optional Q8 MTP and BF16 mmproj | — | Yes: text/QSA, opt-in MTP, ≤1K image/video, c2 serving | — | [Campaign](campaigns/QWEN3.8-FLASH-NEXT.md) |
 | Laguna S 2.1 | [GGUF `Q4_K_M`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF); BF16 DFlash drafter is an explicit opt-in | — | Yes | — | [Laguna](campaigns/LAGUNA.md) |
+| Gemma 4 | 26B-A4B: GGUF `UD-Q4_K_XL` | Text/chat on RX 7900 XTX; greedy, BF16 KV | — | — | [Gemma 4](model-cards/MODEL-GEMMA4.md) |
 | Maple-Preview 20B-A1B | [2-bit MLX](https://huggingface.co/deepgrove/maple-preview-2bit-mlx) | Yes | Yes | Python API only | [Maple](campaigns/MAPLE.md) |
 
 Dynamic-GGUF coverage is artifact-specific: the integration packet measured
