@@ -202,11 +202,12 @@ not either decode column.
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | 2026-07/08 |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | 2026-08-17 |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** | 2026-09-20 |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | — | **10.84** | **19.3** | 2026-09-23 |
 
-September 20 rows: Framework Desktop. Qwen3.8 `Q4_K_M` MTP uses three drafts
-and 25 output tokens per request: **1.98x** its matched 11.30 tok/s AR,
-not the 512/128 decode column. This is a short-context measurement.
-35B MTP is the July 19 opt-in result.
+September 20: Framework Desktop. Qwen3.8 `Q4_K_M` MTP: **1.98x** its matched
+11.30 tok/s AR, 25 output tokens. A short-context measurement. 35B MTP is
+the July 19 opt-in result. INT8-KV row: **1.78x** AR at c1, **2.39x** at c2,
+**3.06x** at c4, documented override.
 [Measurements](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-20-gfx1151-v060-headline-refresh.json).
 
 **Time-series forecasting (TimesFM 2.5 200M).** hipEngine decodes batch=8,
