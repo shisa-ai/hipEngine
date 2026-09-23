@@ -896,6 +896,7 @@ artifacts or explicitly opt into GPU-gated suites. They are not product knobs.
 | `HIPENGINE_MOONSHINE_SNAPSHOT` | local default | Moonshine HuggingFace snapshot directory override for the Moonshine GPU tests. |
 | `HIPENGINE_MOONSHINE_FIXTURE_DIR` / `HIPENGINE_MOONSHINE_FIXTURES_SIX` / `HIPENGINE_MOONSHINE_SIX_FIXTURE_DIR` | local defaults | Moonshine audio fixture directory overrides for the single- and six-fixture suites. |
 | `VIBEVOICE_STANDALONE_GGUF` / `VIBEVOICE_STANDALONE_REPORT` | local defaults | VibeVoice standalone-encoder GGUF and report fixture paths for the VibeVoice tests. |
+| `HIPENGINE_TORCH_ABSENCE_CHILD` | unset | Internal re-execution flag set by `tests/_torch_absence.py` to the pytest node id running in a fresh interpreter; the clean child detects it and runs the real test body instead of recursing. |
 | `VIBEVOICE_REFERENCE_HF` / `VIBEVOICE_REFERENCE_AUDIO` | local defaults | VibeVoice HuggingFace reference snapshot and reference audio fixture paths for the encoder comparison tests. |
 
 ## Benchmark and development harness variables
