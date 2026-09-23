@@ -66,7 +66,7 @@ class Gemma4GGUFGenerator:
     supports_stream_logprobs = False
     chat_template_family = "gemma"
     reasoning_parser_name = "gemma_tags"
-    tool_parser_name = "gemma_tags"
+    tool_parser_name = "unsupported"
 
     def __post_init__(self) -> None:
         self.model_path = Path(self.model_path).expanduser().resolve()
@@ -93,6 +93,28 @@ class Gemma4GGUFGenerator:
         """Tokenize preformatted text; use ``tokenize_chat`` for a plain message."""
 
         return tuple(self.tokenizer.encode(str(text)))
+
+    def render_chat_prompt(
+        self,
+        messages,
+        *,
+        tools=None,
+        enable_thinking: bool = True,
+        add_generation_prompt: bool = True,
+    ) -> str:
+        """Render the embedded template through the server's model protocol."""
+
+        from hipengine.chat.gemma4 import render_gemma4_chat
+
+        if tools:
+            raise NotImplementedError("Gemma 4 server tool-call parsing is not implemented")
+        return render_gemma4_chat(
+            self.tokenizer.chat_template,
+            messages,
+            tools=tools,
+            enable_thinking=enable_thinking,
+            add_generation_prompt=add_generation_prompt,
+        )
 
     def tokenize_chat(
         self,
@@ -125,7 +147,7 @@ class Gemma4GGUFGenerator:
         if system:
             messages.append({"role": "system", "content": str(system)})
         messages.append({"role": "user", "content": str(user)})
-        rendered = _render_chat_template(template, messages, enable_thinking=enable_thinking)
+        rendered = self.render_chat_prompt(messages, enable_thinking=enable_thinking)
         return tuple(self.tokenizer.encode(rendered, add_special_tokens=False))
 
     def count_tokens(self, text: str) -> int:
@@ -265,19 +287,6 @@ class Gemma4GGUFGenerator:
     def _require_open(self) -> None:
         if self._closed:
             raise RuntimeError("Gemma 4 generator is closed")
-
-
-def _render_chat_template(
-    template: str,
-    messages: list[dict[str, str]],
-    *,
-    enable_thinking: bool = True,
-) -> str:
-    """Render the artifact's template, passing its bare variables explicitly."""
-
-    from hipengine.chat.gemma4 import render_gemma4_chat
-
-    return render_gemma4_chat(template, messages, enable_thinking=enable_thinking)
 
 
 def make_gemma4_generator_gfx1100(

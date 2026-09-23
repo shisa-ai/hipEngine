@@ -97,3 +97,84 @@ def test_a_broken_template_reports_the_cause() -> None:
     # as the empty string, so a missing variable would not raise at all.
     with pytest.raises(ValueError, match="could not be rendered"):
         render_gemma4_chat("{% for m in %}", _MESSAGES)
+
+
+@pytest.mark.parametrize("enable_thinking", [False, True])
+def test_server_protocol_uses_the_artifact_template(enable_thinking) -> None:
+    from types import SimpleNamespace
+
+    from hipengine.generation.gemma4_gguf import Gemma4GGUFGenerator
+    from hipengine.server.api import (
+        ChatCompletionRequest,
+        _render_chat_prompt_with_model_protocol,
+        _thinking_control_from_request,
+    )
+
+    generator = Gemma4GGUFGenerator("/unused.gguf", object(), object())
+    generator._tokenizer = SimpleNamespace(chat_template=_TEMPLATE)
+    request = ChatCompletionRequest(
+        model="test", messages=_MESSAGES,
+        chat_template_kwargs={"enable_thinking": enable_thinking},
+    )
+    rendered = _render_chat_prompt_with_model_protocol(
+        request,
+        thinking=_thinking_control_from_request(request, chat_default_max_tokens=None),
+        engine=generator,
+        validate_tool_transcript=True,
+    )
+    assert rendered == render_gemma4_chat(
+        _TEMPLATE, _MESSAGES, enable_thinking=enable_thinking,
+    )
+    assert "<|im_start|>" not in rendered
+
+
+@pytest.mark.parametrize("split", range(60))
+def test_server_splits_gemma_thought_channels_across_chunks(split) -> None:
+    from hipengine.server.api import _ReasoningSplitter, _strip_chat_terminal_markers
+
+    text = "<|channel>thought\nLet me check.<channel|>Paris.<turn|>"
+    parser = _ReasoningSplitter()
+    parts = parser.feed(text[:split]) + parser.feed(text[split:]) + parser.finish()
+    assert "".join(value for field, value in parts if field == "reasoning_content") == "Let me check."
+    content = "".join(value for field, value in parts if field == "content")
+    assert content == "Paris."
+    assert _strip_chat_terminal_markers("Paris.<turn|>") == "Paris."
+
+
+def test_server_tools_fail_with_the_missing_parser_capability() -> None:
+    from hipengine.generation.gemma4_gguf import Gemma4GGUFGenerator
+
+    generator = Gemma4GGUFGenerator("/unused.gguf", object(), object())
+    with pytest.raises(NotImplementedError, match="tool-call parsing"):
+        generator.render_chat_prompt(_MESSAGES, tools=[{"type": "function"}])
+
+    from hipengine.server.api import (
+        ChatCompletionRequest, OpenAIHTTPError,
+        _render_chat_prompt_with_model_protocol, _thinking_control_from_request,
+    )
+    request = ChatCompletionRequest(
+        model="test", messages=_MESSAGES,
+        tools=[{"type": "function", "function": {
+            "name": "lookup", "parameters": {"type": "object", "properties": {}},
+        }}],
+    )
+    with pytest.raises(OpenAIHTTPError) as error:
+        _render_chat_prompt_with_model_protocol(
+            request, engine=generator, validate_tool_transcript=True,
+            thinking=_thinking_control_from_request(request, chat_default_max_tokens=None),
+        )
+    assert error.value.status_code == 400
+    assert "tool-call parsing" in str(error.value.message)
+
+
+def test_gemma_reasoning_spans_and_length_phase_agree() -> None:
+    from hipengine.server.api import _classify_chat_length_phase, _reasoning_text_segments
+
+    text = "<|channel>thought\nCheck.<channel|>Paris."
+    segments = _reasoning_text_segments(text)
+    assert [(field, text[start:end]) for field, start, end in segments] == [
+        ("reasoning_content", "Check."), ("content", "Paris."),
+    ]
+    assert _classify_chat_length_phase("<|channel>thought\nCheck.") == "reasoning"
+    assert _classify_chat_length_phase("<|channel>thought\nCheck.<chan") == "closing_think"
+    assert _classify_chat_length_phase(text) == "answer"

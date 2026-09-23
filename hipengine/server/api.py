@@ -107,7 +107,7 @@ _THINKING_START_MARKER = "<think>"
 _THINKING_CLOSE_MARKER = "</think>"
 _TOOL_CALL_START_MARKER = "<tool_call>"
 _TOOL_CALL_END_MARKER = "</tool_call>"
-_CHAT_TEMPLATE_TERMINAL_MARKERS = ("<|im_end|>",)
+_CHAT_TEMPLATE_TERMINAL_MARKERS = ("<|im_end|>", "<turn|>")
 _CHAT_TEMPLATE_RESIDUE_MARKERS = ("<|endoftext|>", "<|im_start|>", "<|im_end|>")
 _CHAT_TEMPLATE_RESIDUE_ROLES = ("assistant", "developer", "system", "tool", "user")
 _TOOL_CALL_ARGUMENT_STREAM_CHARS = 128
@@ -10921,15 +10921,18 @@ def _render_chat_prompt_with_model_protocol(
     renderer_kwargs = {}
     if getattr(target,"chat_template_reasoning_effort",False) and thinking.effort is not None:
         renderer_kwargs["reasoning_effort"] = thinking.effort
-    return str(
-        renderer(
-            messages,
-            tools=tools,
-            enable_thinking=_model_template_thinking_enabled(thinking),
-            add_generation_prompt=True,
-            **renderer_kwargs,
+    try:
+        return str(
+            renderer(
+                messages,
+                tools=tools,
+                enable_thinking=_model_template_thinking_enabled(thinking),
+                add_generation_prompt=True,
+                **renderer_kwargs,
+            )
         )
-    )
+    except NotImplementedError as exc:
+        raise OpenAIHTTPError(400, str(exc), code="unsupported_parameter") from exc
 
 
 def _render_prepared_chat_prompt_for_request(
@@ -16609,13 +16612,17 @@ def _reasoning_text_segments(text: str) -> tuple[tuple[str, int, int], ...]:
     cursor = 0
     in_reasoning = False
     while cursor < len(text):
-        tag = _REASONING_CLOSE_TAG if in_reasoning else _REASONING_OPEN_TAG
-        index = text.find(tag, cursor)
-        if index < 0:
+        tags = _REASONING_CLOSE_TAGS if in_reasoning else _REASONING_OPEN_TAGS
+        found = min(
+            ((index, tag) for tag in tags if (index := text.find(tag, cursor)) >= 0),
+            default=None,
+        )
+        if found is None:
             if cursor < len(text):
                 field = "reasoning_content" if in_reasoning else "content"
                 segments.append((field, cursor, len(text)))
             break
+        index, tag = found
         if index > cursor:
             field = "reasoning_content" if in_reasoning else "content"
             segments.append((field, cursor, index))
@@ -17512,8 +17519,8 @@ def _safe_count(counter: Any, text: str) -> int:
         return 0
 
 
-_REASONING_OPEN_TAG = "<think>"
-_REASONING_CLOSE_TAG = "</think>"
+_REASONING_OPEN_TAGS = ("<think>", "<|channel>thought\n")
+_REASONING_CLOSE_TAGS = ("</think>", "<channel|>")
 
 
 class _ReasoningSplitter:
@@ -17564,9 +17571,12 @@ class _ReasoningSplitter:
     def _drain(self, *, final: bool) -> list[_ReasoningPart]:
         outputs: list[_ReasoningPart] = []
         while self._buffer:
-            markers = (
-                (self._buffer.find(_REASONING_OPEN_TAG), _REASONING_OPEN_TAG, True),
-                (self._buffer.find(_REASONING_CLOSE_TAG), _REASONING_CLOSE_TAG, False),
+            markers = tuple(
+                (self._buffer.find(tag), tag, next_state)
+                for tags, next_state in (
+                    (_REASONING_OPEN_TAGS, True), (_REASONING_CLOSE_TAGS, False)
+                )
+                for tag in tags
             )
             found = min((item for item in markers if item[0] >= 0), default=None)
             if found is not None:
@@ -17582,9 +17592,17 @@ class _ReasoningSplitter:
                 self._buffer = ""
                 break
             keep = max(
-                _tag_suffix_len(self._buffer, _REASONING_OPEN_TAG),
-                _tag_suffix_len(self._buffer, _REASONING_CLOSE_TAG),
+                _tag_suffix_len(self._buffer, tag)
+                for tag in (*_REASONING_OPEN_TAGS, *_REASONING_CLOSE_TAGS)
             )
+            # A terminal marker can straddle stream chunks. Hold both partial
+            # and complete trailing markers until finish_parts can strip them;
+            # once emitted, a client cannot retract them.
+            keep = max(keep, *(
+                len(tag) if self._buffer.endswith(tag)
+                else _tag_suffix_len(self._buffer, tag)
+                for tag in _CHAT_TEMPLATE_TERMINAL_MARKERS
+            ))
             emit_len = len(self._buffer) - keep
             if emit_len > 0:
                 self._append(outputs, self._buffer[:emit_len], self._buffer_start)
@@ -17615,11 +17633,13 @@ def _tag_suffix_len(text: str, tag: str) -> int:
 
 
 def _classify_chat_length_phase(text: str) -> str:
-    if _tag_suffix_len(text, _REASONING_OPEN_TAG):
+    if any(_tag_suffix_len(text, tag) for tag in _REASONING_OPEN_TAGS):
         return "reasoning"
-    in_reasoning = text.rfind(_REASONING_OPEN_TAG) > text.rfind(_REASONING_CLOSE_TAG)
+    in_reasoning = max(text.rfind(tag) for tag in _REASONING_OPEN_TAGS) > max(
+        text.rfind(tag) for tag in _REASONING_CLOSE_TAGS
+    )
     if in_reasoning:
-        if _tag_suffix_len(text, _REASONING_CLOSE_TAG):
+        if any(_tag_suffix_len(text, tag) for tag in _REASONING_CLOSE_TAGS):
             return "closing_think"
         return "reasoning"
     if _has_unclosed_tool_call(text):
