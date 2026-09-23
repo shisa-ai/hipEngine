@@ -4,6 +4,13 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from hipengine.core.memory import (
+    copy_device_to_host,
+    copy_host_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+)
 from hipengine.kvcache.dms_device import DMSDevicePayloadStore
 from hipengine.kernels.cpu_reference.dms import encode_dms_payload
 from tests.test_gpu_dms_streaming_pack_hip import _bf16_bits, _bf16_from_bits, _hip_available
@@ -114,5 +121,132 @@ def test_int8_pack_append_attention_and_restore(tokens, dim, heads, q_heads, mon
             sl = slice(base[h], base[h] + cap[h])
             for name in ("k_bits", "v_bits", "k_scales", "v_scales", "positions", "evict"):
                 np.testing.assert_array_equal(getattr(restored, name)[sl], getattr(view, name)[sl])
+    finally:
+        store.close()
+
+
+def test_int8_verify_rows_bind_per_head_variable_spans():
+    """A verify chain binds [rows, kv_heads] spans through the store, not just the kernel.
+
+    The DMS AR route attends one row: the store publishes one ``[kv_heads]``
+    extent plane and sizes its split workspace for a single row. The verifier
+    has to attend N verifier rows of the same request, each row reading its own
+    per-head live count over the same per-head extents, so the span set is
+    ``[rows, kv_heads]`` and the split workspace has to cover ``rows`` as well
+    as the split count.
+
+    The oracle is that AR route itself: the same kernel called once per row with
+    that row's own ``[kv_heads]`` counts and its own one-row workspace.
+    """
+
+    heads, q_heads, dim = 2, 8, 64
+    tokens, rows, window = 520, 3, 4
+    slots = (tokens + rows + 4) * heads + 5
+    retrofit = SimpleNamespace(
+        num_layers=1,
+        num_kv_heads=heads,
+        num_q_heads=q_heads,
+        head_dim=dim,
+        window_size=window,
+    )
+    store = DMSDevicePayloadStore(
+        retrofit=retrofit,
+        slots_per_layer=slots,
+        max_pack_rows=tokens + rows,
+        codec="int8_per_token_head",
+    )
+    rng = np.random.default_rng(9301)
+    try:
+        k = _bf16_bits(rng.normal(size=(tokens, heads, dim)).astype(np.float32))
+        v = _bf16_bits(rng.normal(size=(tokens, heads, dim)).astype(np.float32))
+        k[0] = 0  # positive finite scales for an all-zero vector
+        # Head 0 never evicts, so it retains the whole prompt. Head 1 evicts
+        # every other token outside the recency window, so the two heads hold
+        # different numbers of tokens: the DMS law the verifier must read.
+        # Evictions stop before the window, which keeps every surviving token
+        # non-evicted, so the appends below extend both heads by exactly one.
+        evict = np.zeros((tokens, heads), dtype=np.uint8)
+        evict[1:tokens - window - 1:2, 1] = 1
+        base = np.array(
+            [5 + h * (tokens + rows + 2) for h in range(heads)], dtype=np.int32
+        )
+        cap = np.full(heads, tokens + rows, dtype=np.int32)
+        store.pack_layer(0, k, v, evict, base, cap)
+        live0 = store.live_counts(0).copy()
+        assert live0[0] == tokens, live0
+        assert 0 < live0[1] < tokens, live0
+
+        # The verifier appends its own draft tokens to the same extents. This
+        # unit binds the span set; the retention policy for those appends is a
+        # separate unit, so nothing is evicted here.
+        live = live0.copy()
+        for r in range(rows):
+            kn = _bf16_bits(rng.normal(size=(heads, dim)).astype(np.float32))
+            vn = _bf16_bits(rng.normal(size=(heads, dim)).astype(np.float32))
+            store.append_layer(
+                0, kn, vn, np.zeros(heads, np.uint8), tokens + r, base, cap, live
+            )
+            live = store.live_counts(0).copy()
+        assert np.array_equal(live, live0 + rows), (live, live0)
+
+        # Row r reads the request's extent plus the draft tokens rows 0..r wrote.
+        row_live = np.stack([live0 + r + 1 for r in range(rows)]).astype(np.int32)
+        row_base = np.repeat(base[None, :], rows, axis=0).astype(np.int32)
+        assert np.all(row_live <= live), (row_live, live)
+        q = rng.normal(size=(rows, q_heads, dim)).astype(np.float32)
+
+        # The workspace has to cover every row, not just the widest split.
+        capacity = int(row_live.max())
+        splits = max(1, (capacity + 255) // 256)
+        assert splits > 1, "case must exercise the split-K path"
+
+        out = np.empty_like(q)
+        store.attention_rows(0, q=q, out=out, base=row_base, live=row_live)
+        assert np.isfinite(out).all(), "canary read produced non-finite output"
+
+        # Oracle: the AR route, one row at a time, same kernel and same payload.
+        reference = np.empty_like(out)
+        for r in range(rows):
+            store.attention_layer(
+                0, q=q[r], out=reference[r], base=base, live=row_live[r]
+            )
+        np.testing.assert_allclose(out, reference, rtol=3e-5, atol=3e-5), {
+            "per_row_ar_mismatch": {
+                "max_abs_diff": float(np.max(np.abs(out - reference))),
+            }
+        }
+
+        # A binding that ignored the row axis would repeat one row's answer.
+        assert not np.allclose(out[0], out[-1], rtol=1e-3, atol=1e-3)
+
+        # The device entry point is the one a graph-resident verifier uses: no
+        # host staging for Q or the output, only the bound extent planes.
+        base_ptr, live_ptr = store.bind_row_spans(0, base=row_base, live=row_live)
+        assert store.split_workspace_bytes >= rows * q_heads * splits * dim * 4
+        q_dev = malloc(q.nbytes)
+        out_dev = malloc(q.nbytes)
+        try:
+            copy_host_to_device(q_dev, host_array_ptr(np.ascontiguousarray(q)), q.nbytes)
+            store.attention_rows_device(
+                0,
+                q_ptr=q_dev.ptr,
+                out_ptr=out_dev.ptr,
+                rows=rows,
+                score_capacity=capacity,
+                base_ptr=base_ptr,
+                live_ptr=live_ptr,
+            )
+            direct = np.empty_like(q)
+            copy_device_to_host(host_array_ptr(direct), out_dev, direct.nbytes)
+        finally:
+            free(q_dev)
+            free(out_dev)
+        np.testing.assert_allclose(direct, reference, rtol=3e-5, atol=3e-5)
+
+        # Repeating the binding must be deterministic.
+        repeat = np.empty_like(q)
+        for _ in range(8):
+            store.attention_rows(0, q=q, out=repeat, base=row_base, live=row_live)
+            np.testing.assert_array_equal(out, repeat)
     finally:
         store.close()
