@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10669,
-    "current": 3437,
+    "entries": 10677,
+    "current": 3445,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1098,
@@ -41115,14 +41115,14 @@
         "written": "2026-09-22",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "1. Add `gemma4_scale_bf16` with a test against a NumPy multiply.\n2. Write `hipengine/runtime/gemma4.py` \u2014 weight load, embedding gather, layer loop,\n   final norm, lm_head.\n3. The generation adapter, so `LLM.generate()` reaches it.\n4. Run end to end on GPU1 and compare against the HF oracle.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260922T212126.927272Z-lhl-gemma4-runner-plan-b8e915.md",
@@ -41140,7 +41140,7 @@
         ]
       },
       "id": "worklog/20260922T212126.927272Z-lhl-gemma4-runner-plan-b8e915",
-      "evidence_hash": "fa1b9c5e10c2"
+      "evidence_hash": "e8416c90eb3b"
     },
     {
       "kind": "worklog",

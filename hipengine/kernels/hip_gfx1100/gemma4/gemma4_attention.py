@@ -87,6 +87,26 @@ def build_gemma4_attention(
     )
 
 
+def gemma4_attention_shared_bytes(*, head_dim: int, keys: int) -> int:
+    """Validate the resident-logit kernel's gfx1100 shared-memory requirement.
+
+    This implementation stores one logit per live key in LDS. Larger contexts
+    need a tiled attention implementation, not a larger prefill scratch block.
+    """
+
+    if head_dim <= 0 or keys <= 0:
+        raise ValueError("head_dim and keys must be positive")
+    threads = min(256, 1 << (int(head_dim) - 1).bit_length())
+    required = (int(head_dim) + int(keys) + threads) * 4
+    if required > 64 * 1024:
+        raise NotImplementedError(
+            f"Gemma 4 gfx1100 attention requires {required} bytes of shared memory "
+            f"for head_dim={head_dim}, keys={keys}; this kernel supports at most "
+            "65536 bytes and needs tiled attention for this context"
+        )
+    return required
+
+
 def _check_prefill_shape(tokens: int, num_heads: int, num_kv_heads: int, head_dim: int) -> None:
     for name, value in (
         ("tokens", tokens),
@@ -129,6 +149,7 @@ def _launch_prefill(
     key_count = tokens if keys is None else int(keys)
     if key_count <= 0:
         raise ValueError("keys must be positive")
+    gemma4_attention_shared_bytes(head_dim=head_dim, keys=key_count)
     library = library or build_gemma4_attention(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, symbol, _ARGTYPES_PREFILL, ctypes.c_int)

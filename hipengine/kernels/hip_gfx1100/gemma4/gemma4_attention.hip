@@ -198,10 +198,18 @@ int launch_gemma4_attention_prefill(
   if (num_heads % num_kv_heads != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int threads = static_cast<int>(
-      head_dim < kGemma4AttentionMaxThreads ? head_dim : kGemma4AttentionMaxThreads);
+  // The tree reductions require a power-of-two block width. Rounding down
+  // would leave dimensions unrepresented; launching head_dim threads directly
+  // drops lanes whenever head_dim is not a power of two.
+  int threads = 1;
+  while (threads < head_dim && threads < kGemma4AttentionMaxThreads) {
+    threads <<= 1;
+  }
   const size_t shared_bytes =
       static_cast<size_t>(head_dim + keys + threads) * sizeof(float);
+  if (shared_bytes > 64 * 1024) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
   hipLaunchKernelGGL(
       gemma4_attention_prefill_kernel<scalar_t>,
       dim3(static_cast<unsigned int>(tokens * num_heads)),
