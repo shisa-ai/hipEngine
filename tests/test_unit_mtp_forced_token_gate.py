@@ -56,7 +56,7 @@ def _fields(name: str) -> dict:
             "forced_tokens_pending": list(FORCED[name]),
             "forced_token_reason": "gate",
         }
-    if name == "thinking_hard_close":
+    if name.startswith("thinking_hard_close"):
         return {
             "thinking_close_token_ids": list(CLOSE_IDS),
             "thinking_hard_token_cap": gate.THINKING_CAP,
@@ -106,7 +106,7 @@ def _arm(
             tuple(700 + index for index in range(gate.THINKING_CAP))
             + CLOSE_IDS
             + CONTINUATION
-            if case.name == "thinking_hard_close"
+            if case.name.startswith("thinking_hard_close")
             else tuple(fields.get("forced_tokens_pending") or SEQUENCE) + CONTINUATION
         )
         cases[case.name] = {
@@ -486,6 +486,24 @@ def test_the_tool_case_carries_a_required_constraint_and_is_gated(
     broken["cases"]["tool_call_required"]["request"]["text"] = "<tool_call>"
     with pytest.raises(AssertionError, match="tool_envelope_was_not_completed"):
         gate._check(broken, arm="mtp")
+
+
+def test_the_greedy_thinking_case_matches_the_sampled_one_apart_from_the_draw() -> None:
+    """The cap is per-row state, so it is exercised at both temperatures."""
+
+    cases = {
+        case.name: case
+        for case in gate.CASES
+        if case.name.startswith("thinking_hard_close")
+    }
+    assert set(cases) == {"thinking_hard_close", "thinking_hard_close_greedy"}
+    sampled = cases["thinking_hard_close"]
+    greedy = cases["thinking_hard_close_greedy"]
+    assert sampled.temperature > 0.0
+    assert greedy.temperature == 0.0
+    assert greedy.prompt == sampled.prompt
+    assert greedy.extras == sampled.extras
+    assert greedy.thinking_close_text == sampled.thinking_close_text
 
 
 def test_the_thinking_case_carries_a_budget_and_is_gated() -> None:

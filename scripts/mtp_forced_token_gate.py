@@ -171,6 +171,20 @@ CASES: tuple[Case, ...] = (
         extras={"thinking_hard_token_cap": THINKING_CAP},
     ),
     Case(
+        name="thinking_hard_close_greedy",
+        purpose=(
+            "The same hard cap on a greedy request. The budget is per-row state "
+            "either way, and a greedy request has no draw to hide a difference "
+            "behind, so the two arms must publish identical ids with the close "
+            "at the cap index."
+        ),
+        prompt=THINK_PROMPT,
+        max_tokens=24,
+        temperature=0.0,
+        thinking_close_text=THINKING_CLOSE_TEXT,
+        extras={"thinking_hard_token_cap": THINKING_CAP},
+    ),
+    Case(
         name="force_sequence_completion",
         purpose=(
             "A partially matched force-sequence queues its remainder from inside "
@@ -460,7 +474,7 @@ def _check(observations: dict[str, Any], *, arm: str) -> dict[str, Any]:
             assert '"read"' in text, {
                 "tool_envelope_named_the_wrong_tool": {"case": case.name, "text": text}
             }
-        if case.name == "thinking_hard_close":
+        if case.name.startswith("thinking_hard_close"):
             # The cap queues the close once the row's own prefix has reached it,
             # so the close starts at the cap index on either route: the budget is
             # the same per-row state machine.
