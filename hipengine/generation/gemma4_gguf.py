@@ -160,11 +160,11 @@ class Gemma4GGUFGenerator:
                 eos_id: int | None = None
                 stop_ids = set(request.stop_token_ids)
                 configured_eos = (
-                    self.tokenizer.eos_token_id
+                    set(self.tokenizer.stop_token_ids)
                     if request.eos_token_id is None
-                    else int(request.eos_token_id)
+                    else {int(request.eos_token_id)}
                 )
-                for _ in range(request.max_tokens):
+                for step in range(request.max_tokens):
                     raise_if_generation_deadline_expired(request)
                     token_id = runner.next_token(logits)
                     generated.append(token_id)
@@ -174,13 +174,13 @@ class Gemma4GGUFGenerator:
                         break
                     if (
                         not request.ignore_eos
-                        and configured_eos is not None
-                        and token_id == configured_eos
+                        and token_id in configured_eos
                     ):
                         finish_reason = "stop"
                         eos_id = token_id
                         break
-                    logits = runner.forward([token_id])
+                    if step + 1 < request.max_tokens:
+                        logits = runner.forward([token_id])
                 outputs.append(
                     GenerationOutput(
                         text=self.tokenizer.decode(generated, skip_special=False),
@@ -216,11 +216,14 @@ class Gemma4GGUFGenerator:
         if self._runner is not None:
             return self._runner
         started = time.perf_counter()
-        self._weights = load_gemma4_device_weights(self.reader, backend=self.backend)
-        self._runner = Gemma4Runner(
-            weights=self._weights,
-            capacity=self.context_length,
-        )
+        weights = load_gemma4_device_weights(self.reader, backend=self.backend)
+        try:
+            runner = Gemma4Runner(weights=weights, capacity=self.context_length)
+        except BaseException:
+            weights.free()
+            raise
+        self._weights = weights
+        self._runner = runner
         self._load_seconds = time.perf_counter() - started
         return self._runner
 
@@ -242,8 +245,16 @@ class Gemma4GGUFGenerator:
             blockers.append("multi-token stop sequences are not implemented")
         if request.forced_tokens_pending or request.post_thinking_forced_tokens_pending:
             blockers.append("forced-token queues are not implemented")
-        if request.tool_call_constraint is not None or request.json_object_close_forcing:
+        if (
+            request.tool_call_constraint is not None
+            or request.json_object_close_forcing
+            or request.grammar is not None
+        ):
             blockers.append("structured constraints are not implemented")
+        if request.force_sequence_completion_token_sequences:
+            blockers.append("forced sequence completion is not implemented")
+        if request.thinking_hard_token_cap is not None or request.thinking_soft_close_window:
+            blockers.append("thinking budget controls are not implemented")
         if request.min_tokens or request.logprobs or request.top_logprobs:
             blockers.append("min_tokens/logprobs are not implemented")
         if request.kv_storage not in {"auto", "bf16"}:
@@ -278,11 +289,9 @@ def make_gemma4_generator_gfx1100(
 ) -> Gemma4GGUFGenerator:
     """Create the gfx1100 Gemma 4 generator.
 
-    ``max_sequence_length`` is the public ``LLM`` context limit. The runner's
-    context sizes both the KV cache and the per-layer prefill scratch, so the
-    limit has to reach it: the default context is the artifact's own ceiling
-    rather than what a device can hold, and a caller who asks for less must get
-    less.
+    ``max_sequence_length`` is the public ``LLM`` context limit and sizes the
+    runner's KV cache. Prefill scratch is bounded separately by its block size.
+    An omitted limit uses the generator's 8192-token default.
     """
 
     context_length = _GEMMA4_DEFAULT_CONTEXT
