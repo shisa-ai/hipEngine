@@ -70,3 +70,7 @@ attention reduction/shared-memory boundaries.
 These are functional checks, not a model-quality evaluation or a published
 throughput comparison. The [review closure](../../worklog/entries/20260923T091939.935292Z-lhl-gemma4-review-closure-474f1e.md)
 records the commands, commits, and validation limitations.
+
+The [optimization campaign](../campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md) defines
+the planned same-GPU baseline, phase timing, profiling, and correctness gates.
+No campaign performance results are published yet.
