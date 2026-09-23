@@ -154,6 +154,13 @@ class Gemma4DeviceWeights:
     layers: tuple[Gemma4LayerPointers, ...]
     backend: str
     lm_head: Gemma4GGUFDeviceWeight | None = None
+    # Per-layer dense-MLP widths, in layer order. The artifact's
+    # ``feed_forward_length`` may differ by layer, and the kernels read the
+    # width from the scratch they are handed; carrying the real widths here is
+    # what keeps each layer's scratch at its own size instead of the maximum.
+    # Empty on a synthetic/legacy weights object, which falls back to the
+    # config's single value.
+    dense_intermediate: tuple[int, ...] = ()
     _owned: list[Any] = field(default_factory=list, repr=False)
     _freed: bool = field(default=False, repr=False)
 
@@ -309,13 +316,24 @@ def load_gemma4_device_weights(
         lm_head = None
         if not config.tie_word_embeddings:
             lm_head = materialize_gemma4_gguf_device_weight(
-                reader, require("output"), backend=backend
+                reader, require("lm_head"), backend=backend
             )
             owned.append(lm_head)
 
         layers = []
         for index in range(config.num_hidden_layers):
             layers.append(_build_layer(reader, index, by_slot, config, backend, owned))
+
+        # Dense MLP width is a per-layer property of the artifact. The metadata
+        # carries a ``feed_forward_length`` array that may differ across layers,
+        # and the kernels size the dense projections from the width they are
+        # handed. Read each layer's width from its planned ``ffn_gate`` spec (the
+        # logical shape's leading dimension is the projection's out_features) so
+        # a narrower layer is never dispatched at the widest layer's size.
+        dense_intermediate = tuple(
+            int(by_slot[f"layers.{index}.ffn_gate"].source.shape[0])
+            for index in range(config.num_hidden_layers)
+        )
     except BaseException:
         for item in owned:
             item.free()
@@ -328,6 +346,7 @@ def load_gemma4_device_weights(
         layers=tuple(layers),
         backend=backend,
         lm_head=lm_head,
+        dense_intermediate=dense_intermediate,
         _owned=owned,
     )
 
@@ -421,6 +440,17 @@ class Gemma4Runner:
             raise ValueError("max_block must not exceed capacity")
 
         hidden = config.hidden_size
+        # Each layer's dense MLP can have its own width. Use the per-layer
+        # widths the loader recorded from the artifact; a synthetic weights
+        # object that carries none falls back to the config's single value.
+        dense_widths = getattr(self.weights, "dense_intermediate", ()) or (
+            config.intermediate_size,
+        ) * len(config.attention)
+        if len(dense_widths) != len(config.attention):
+            raise ValueError(
+                f"weights carry {len(dense_widths)} dense widths but the config "
+                f"has {len(config.attention)} layers"
+            )
         # Every buffer taken below is owned by this runner, so a failure
         # partway through construction must release the ones already taken
         # rather than leaving them to the garbage collector, which does not own
@@ -438,7 +468,7 @@ class Gemma4Runner:
                     Gemma4LayerScratch(
                         tokens=self.max_block,
                         hidden_size=hidden,
-                        dense_intermediate=config.intermediate_size,
+                        dense_intermediate=dense_widths[index],
                         geometry=_layer_geometry(attention),
                         num_experts=config.num_experts,
                         top_k=config.top_k_experts,
