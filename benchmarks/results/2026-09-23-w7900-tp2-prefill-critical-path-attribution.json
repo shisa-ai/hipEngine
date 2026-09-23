@@ -1,0 +1,190 @@
+{
+ "schema": 1,
+ "kind": "tp2_prefill_critical_path_attribution",
+ "status": "measurement_no_performance_claim",
+ "performance_claim": false,
+ "date": "2026-09-23",
+ "host": "epyc",
+ "hardware": [
+  "amdgpu card0 pci 0000:0d:00.0 AMD Radeon Pro W7900 44.98 GiB",
+  "amdgpu card1 AMD Radeon RX 7900 XTX 23.98 GiB"
+ ],
+ "backend": "hip_gfx1100",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "quant": "gguf_q4_k_m",
+ "protocol": {
+  "tool": "scripts/tp2_prefill_phase_attribution.py",
+  "prompt_tokens": 512,
+  "repeats": 3,
+  "logits_rows": 1,
+  "uneven_split": null,
+  "reduce_mode": "device",
+  "schedule": "graphed",
+  "route": "rank-local bulk prefill",
+  "t16_f16_rocblas_owner": false
+ },
+ "headline": {
+  "wall_ms": 490.7776,
+  "wall_ms_samples": [
+   490.778,
+   491.505,
+   491.558
+  ],
+  "prefill_tok_per_s": 1043.242,
+  "uninstrumented_wall_ms_min": 487.19,
+  "instrumentation_overhead_percent": 0.736
+ },
+ "phases_ms": {
+  "0": {
+   "attention": 233.3914,
+   "norm_residual": 2.7975,
+   "mlp": 250.4824,
+   "mlp_chain": 188.4331,
+   "mlp_exchange": 59.4164,
+   "mlp_cast": 0.3069,
+   "mlp_residual": 2.0247,
+   "tail": 1.3435
+  },
+  "1": {
+   "attention": 208.8638,
+   "norm_residual": 2.2253,
+   "mlp": 275.6014,
+   "mlp_chain": 168.0355,
+   "mlp_exchange": 105.3125,
+   "mlp_cast": 0.2516,
+   "mlp_residual": 1.73,
+   "tail": 1.3667
+  }
+ },
+ "phase_sum_share_of_wall": {
+  "0": {
+   "phase_sum_ms": 488.0147,
+   "unaccounted_ms": 2.7629,
+   "share_of_wall": 0.9944
+  },
+  "1": {
+   "phase_sum_ms": 488.0571,
+   "unaccounted_ms": 2.7205,
+   "share_of_wall": 0.9945
+  }
+ },
+ "per_layer_type": {
+  "device0_w7900": {
+   "attention": {
+    "gdn_per_layer_ms": 3.7706,
+    "gdn_total_ms": 180.9881,
+    "full_per_layer_ms": 3.2903,
+    "full_total_ms": 52.6446
+   },
+   "norm_residual": {
+    "gdn_per_layer_ms": 0.0436,
+    "gdn_total_ms": 2.0908,
+    "full_per_layer_ms": 0.0439,
+    "full_total_ms": 0.7018
+   },
+   "mlp_chain": {
+    "gdn_per_layer_ms": 2.9572,
+    "gdn_total_ms": 141.944,
+    "full_per_layer_ms": 2.9422,
+    "full_total_ms": 47.0754
+   },
+   "mlp_exchange": {
+    "gdn_per_layer_ms": 0.9306,
+    "gdn_total_ms": 44.6708,
+    "full_per_layer_ms": 0.9257,
+    "full_total_ms": 14.811
+   },
+   "mlp_residual": {
+    "gdn_per_layer_ms": 0.0318,
+    "gdn_total_ms": 1.524,
+    "full_per_layer_ms": 0.0314,
+    "full_total_ms": 0.5026
+   }
+  },
+  "device1_xtx": {
+   "attention": {
+    "gdn_per_layer_ms": 3.3698,
+    "gdn_total_ms": 161.7495,
+    "full_per_layer_ms": 2.9126,
+    "full_total_ms": 46.6023
+   },
+   "norm_residual": {
+    "gdn_per_layer_ms": 0.0346,
+    "gdn_total_ms": 1.6622,
+    "full_per_layer_ms": 0.0353,
+    "full_total_ms": 0.5643
+   },
+   "mlp_chain": {
+    "gdn_per_layer_ms": 2.639,
+    "gdn_total_ms": 126.6705,
+    "full_per_layer_ms": 2.5884,
+    "full_total_ms": 41.4142
+   },
+   "mlp_exchange": {
+    "gdn_per_layer_ms": 1.6644,
+    "gdn_total_ms": 79.8928,
+    "full_per_layer_ms": 1.6737,
+    "full_total_ms": 26.7797
+   },
+   "mlp_residual": {
+    "gdn_per_layer_ms": 0.0271,
+    "gdn_total_ms": 1.3022,
+    "full_per_layer_ms": 0.0269,
+    "full_total_ms": 0.4307
+   }
+  }
+ },
+ "critical_path_model": {
+  "critical_rank": 0,
+  "per_layer_ms": {
+   "attention_replicated": 3.6467,
+   "mlp_chain_sharded": 2.9443,
+   "mlp_exchange": 0.9284,
+   "sum": 7.5194
+  },
+  "per_prefill_ms": {
+   "attention_replicated": 233.3914,
+   "mlp_chain_sharded": 188.4331,
+   "mlp_exchange": 59.4164,
+   "other": 9.5367
+  },
+  "attention_share_of_wall": 0.4756,
+  "llamacpp_tp2_model": {
+   "note": "llama.cpp TP=2 shards attention as well as the MLP, so its per-layer path is attention_half + mlp_half + two reduces. Applying that decomposition to the measured hipEngine phases predicts the measured llama.cpp time only if its per-layer reduce is cheaper than ours.",
+   "attention_half_ms": 116.7,
+   "mlp_half_ms": 188.43,
+   "two_reduces_at_our_cost_ms": 118.83,
+   "other_ms": 9.54,
+   "predicted_ms_at_our_reduce_cost": 433.5,
+   "measured_llamacpp_ms": 385.4,
+   "llamacpp_implied_reduce_ms_per_layer": 0.5526,
+   "hipengine_measured_reduce_ms_per_layer": 0.9284
+  },
+  "sharding_upside_ms": {
+   "attention_removed": 116.7,
+   "attention_reduce_added": 59.42,
+   "net": 57.28,
+   "net_percent_of_wall": 11.67,
+   "predicted_wall_after_ms": 433.5,
+   "predicted_tok_per_s_after": 1181.1
+  },
+  "residual_gap_after_sharding_ms": 48.1,
+  "residual_gap_explained_by_reduce_cost_ms": 48.1
+ },
+ "findings": [
+  "The attention phase is fully replicated: _bulk_attention_layer calls the full-width _run_full_attention_prefill_attn_rows / _run_linear_attention_prefill_attn_rows, which read out_features=2*q_width and the unsharded attn_q/k/v/output weights, so both ranks execute identical attention work.",
+  "The attention phase is device-bound, not enqueue-bound: 233.39 ms of device span against 78.30 ms of host span.",
+  "The 48 linear-attention (GDN) layers carry 180.99 ms of the 233.63 ms attention phase (77.5%); the 16 full-attention layers carry 52.64 ms.",
+  "Attention is GEMM-bound, not kernel-bound: per-layer rates are 31.7 TFLOP/s (GDN) and 34.6 TFLOP/s (full attention) against 46.5 TFLOP/s for the sharded MLP chain at the even split's 8704-wide shard, so the projections dominate the phase and a head split halves them.",
+  "Device 0 (W7900) is the pacer at every replicated phase (attention 233.39 vs 208.86; chain 188.43 vs 168.04), so the even split makes the slower card the pacer and device 1 absorbs the imbalance as 45.9 ms of extra spin wait inside mlp_exchange.",
+  "The 0.93 ms/layer mlp_exchange moves 5.24 MB per rank per direction (bf16 partial, 512x5120) at about 11.3 GB/s of PCIe traffic, at or above the host's measured staged-collective rate (7.09 GB/s all_reduce:rows1024:bf16; 11.52 GB/s broadcast:rows1024:fp32 in benchmarks/results/tp2_collective_bench.json). The reduce is near the platform floor rather than a fixable inefficiency.",
+  "Superseded: the note that replicated GDN/attention is 'only ~7% of profiled kernel time' counted the attention kernel alone, not the replicated q/k/v and output projections that make up most of the phase.",
+  "The whole 104.8 ms gap decomposes into unsharded attention (117 ms of replicated work that a head split removes for one added reduce) and a per-layer reduce that is 0.38 ms more expensive than the 0.55 ms/layer llama.cpp's measured 385.4 ms implies."
+ ],
+ "limits": [
+  "Stream-event spans, not kernel traces: a device span includes any bubble inside the phase. The host/device span ratio separates the two, and attention's host span is 3x smaller than its device span.",
+  "The sharding upside is an upper bound: half the attention phase minus one added reduce of the measured mlp_exchange size. It does not model the smaller GEMM shapes a head split produces, which will cost some efficiency.",
+  "Single shape (512 tokens), single split (even), c=1. Not a prompt-length scaling or quality result."
+ ],
+ "source_artifact": "/tmp/tp2_phase_perlayer_even.json (per-layer spans, 3 paired repeats)"
+}
