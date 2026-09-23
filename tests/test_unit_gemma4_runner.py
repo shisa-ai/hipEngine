@@ -260,6 +260,52 @@ def test_incremental_decode_matches_a_dense_prefill(artifact: GGUFReader) -> Non
 
 
 @_needs_hip
+def test_a_prompt_wider_than_max_block_is_chunked_exactly(artifact: GGUFReader) -> None:
+    """A prompt wider than the block bound must not need a wider scratch.
+
+    The per-layer scratch is sized from ``max_block``, so a runner that refused
+    a wider prompt would force every caller to size scratch for the whole
+    context. The chunked path has to produce the same logits as one wide block:
+    the mask is absolute-position based, so block boundaries are an execution
+    detail, not part of the computation.
+
+    The fixture is 12 tokens long, so the wide side is what a real 8192-token
+    context would be relative to a 512-token block -- a prompt several times the
+    block bound.
+    """
+
+    token_ids = [3, 7, 11, 2, 5, 9, 1, 4, 6, 8, 10, 12]
+    weights = load_gemma4_device_weights(artifact)
+    try:
+        wide = Gemma4Runner(weights=weights, capacity=32, max_block=len(token_ids))
+        try:
+            wide_logits = wide.forward(token_ids)
+            assert wide.position == len(token_ids)
+        finally:
+            wide.close()
+
+        chunked = Gemma4Runner(weights=weights, capacity=32, max_block=4)
+        try:
+            chunked_logits = chunked.forward(token_ids)
+            assert chunked.position == len(token_ids), (
+                "a chunked forward advanced the position by "
+                f"{chunked.position} instead of {len(token_ids)}"
+            )
+        finally:
+            chunked.close()
+
+        scale = float(np.abs(wide_logits).max())
+        assert scale > 0
+        assert np.allclose(chunked_logits, wide_logits, rtol=5e-2, atol=5e-2 * scale), (
+            f"chunked prefill diverged from a single wide block: "
+            f"max abs diff {np.abs(chunked_logits - wide_logits).max():.4g} "
+            f"against scale {scale:.4g}"
+        )
+    finally:
+        weights.free()
+
+
+@_needs_hip
 def test_a_sliding_layer_ignores_positions_beyond_its_window(artifact: GGUFReader) -> None:
     """The sliding window must actually bound attention.
 

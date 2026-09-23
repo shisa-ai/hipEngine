@@ -73,6 +73,15 @@ _BF16_BYTES = 2
 _F32_BYTES = 4
 _I64_BYTES = 8
 
+# Widest block a single forward call hands to the kernels when the caller does
+# not ask for a specific one. The per-layer scratch is sized from this, and the
+# scratch is what makes the difference between a context that loads and one
+# that does not: on the real 26B UD-Q4_K_XL artifact, sizing it for the whole
+# 8192-token context costs 52.68 GB against 3.29 GB for a 512-token block, on
+# top of 17.00 GB of resident blocks and 1.85 GB of KV. A prompt wider than
+# this is forwarded as consecutive blocks, which is exact.
+DEFAULT_PREFILL_BLOCK = 512
+
 # Which layer field each artifact slot feeds. The slot names are the loader's;
 # the fields are the layer's. Kept as one table so the two cannot drift apart
 # silently.
@@ -407,7 +416,7 @@ class Gemma4Runner:
         if self.capacity <= 0:
             raise ValueError("capacity must be positive")
         if self.max_block <= 0:
-            self.max_block = self.capacity
+            self.max_block = min(self.capacity, DEFAULT_PREFILL_BLOCK)
         if self.max_block > self.capacity:
             raise ValueError("max_block must not exceed capacity")
 
@@ -510,6 +519,14 @@ class Gemma4Runner:
         this repeatedly with single tokens is incremental decode and calling it
         once with a prompt is prefill. Both are the same computation.
 
+        A prompt wider than ``max_block`` is forwarded as consecutive blocks.
+        ``max_block`` bounds the per-layer scratch, which is a property of the
+        widest block a device is asked to hold rather than of the context: at
+        the real 26B artifact's default context the difference is 52.68 GB of
+        scratch against 3.29 GB. Chunking is exact here -- the mask is built
+        from absolute positions, and a one-token-at-a-time path is already
+        bit-identical to a dense prefill.
+
         ``apply_softcap=False`` returns the raw projection, before
         ``final_logit_softcapping``. The cap is part of the model's output
         distribution and so is applied by default; the raw values are exposed
@@ -519,23 +536,39 @@ class Gemma4Runner:
 
         if self._closed:
             raise RuntimeError("runner is closed")
-        config = self.weights.config
         tokens = [int(t) for t in token_ids]
         rows = len(tokens)
         if rows == 0:
             raise ValueError("token_ids must not be empty")
-        if rows > self.max_block:
-            raise ValueError(f"{rows} tokens exceeds max_block {self.max_block}")
         if self._position + rows > self.capacity:
             raise ValueError(
                 f"{rows} tokens from position {self._position} exceeds capacity {self.capacity}"
             )
-        vocab = int(config.vocab_size or 0)
+        vocab = int(self.weights.config.vocab_size or 0)
         if vocab <= 0:
             raise ValueError("config carries no vocab_size, so logits cannot be sized")
         for token in tokens:
             if not 0 <= token < vocab:
                 raise ValueError(f"token id {token} is outside the vocabulary of {vocab}")
+
+        logits = None
+        for start in range(0, rows, self.max_block):
+            logits = self._forward_block(
+                tokens[start : start + self.max_block], apply_softcap=apply_softcap
+            )
+        assert logits is not None
+        return logits
+
+    def _forward_block(
+        self, tokens: Sequence[int], *, apply_softcap: bool = True
+    ) -> np.ndarray:
+        """Run one block of at most ``max_block`` tokens; see :meth:`forward`."""
+
+        config = self.weights.config
+        rows = len(tokens)
+        if rows > self.max_block:
+            raise ValueError(f"{rows} tokens exceeds max_block {self.max_block}")
+        vocab = int(config.vocab_size or 0)
 
         hidden = config.hidden_size
         start = self._position
