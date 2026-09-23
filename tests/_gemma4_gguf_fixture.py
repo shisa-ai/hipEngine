@@ -260,9 +260,18 @@ def default_fixture_tensors(
     projection_type: GGMLQuantizationType = GGMLQuantizationType.Q8_0,
     expert_type: GGMLQuantizationType = GGMLQuantizationType.Q4_K,
     embedding_type: GGMLQuantizationType = GGMLQuantizationType.Q8_0,
+    vocab: int = FIXTURE_VOCAB,
 ) -> list[tuple[str, tuple[int, ...], GGMLQuantizationType]]:
+    """Return the fixture tensor list.
+
+    ``vocab`` sizes the embedding and must match whatever the metadata declares,
+    since the loader checks the two against each other. ``tokenizer_fixture_metadata``
+    carries a wider token list than ``FIXTURE_VOCAB``, so an end-to-end generation
+    test has to widen this to match or the load fails with a shape error.
+    """
+
     tensors: list[tuple[str, tuple[int, ...], GGMLQuantizationType]] = [
-        ("token_embd.weight", (FIXTURE_VOCAB, FIXTURE_HIDDEN), embedding_type),
+        ("token_embd.weight", (vocab, FIXTURE_HIDDEN), embedding_type),
         ("output_norm.weight", (FIXTURE_HIDDEN,), GGMLQuantizationType.F32),
         ("rope_freqs.weight", (FIXTURE_HEAD_DIM_GLOBAL // 2,), GGMLQuantizationType.F32),
     ]
