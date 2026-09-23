@@ -12,10 +12,10 @@ llama.cpp's greedy output for that sequence is ``<|channel>thought``; the
 tokenizer has no single token for that string, so the first token it emits is
 ``<|channel>`` (id 100), followed by ``thought``.
 
-The context limit is set explicitly. The runner sizes its per-layer prefill
-scratch from the context, and the generator's default context is larger than a
-48 GB device can hold once the 17 GB of resident blocks and that scratch are
-both live.
+The context limit defaults to the generator's own. The runner sizes its
+per-layer prefill scratch from the widest block it forwards rather than from the
+context, so a prompt wider than that block is forwarded as consecutive blocks and
+the context no longer decides whether the artifact fits on the device.
 """
 
 from __future__ import annotations
@@ -47,11 +47,26 @@ PROMPTS = [
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--context", type=int, default=2048)
+    parser.add_argument("--context", type=int, default=None)
     parser.add_argument("--max-tokens", type=int, default=12)
     parser.add_argument("--artifact", type=Path, default=ARTIFACT)
     parser.add_argument("--out", type=Path, default=OUT)
+    parser.add_argument(
+        "--long-probe-words",
+        type=int,
+        default=0,
+        help="add a probe whose user message is this many words, to force "
+        "prefill across more than one block (0 disables)",
+    )
     arguments = parser.parse_args()
+
+    probes = list(PROMPTS)
+    if arguments.long_probe_words > 0:
+        # Deliberately bland and repetitive: the point is the block count, not
+        # the answer.
+        sentence = "The quick brown fox jumps over the lazy dog. "
+        words = (sentence * (arguments.long_probe_words // len(sentence.split()) + 1)).split()
+        probes.append(("thinking-on-long", " ".join(words[: arguments.long_probe_words])))
 
     llm = hipengine.LLM(
         model=str(arguments.artifact),
@@ -61,13 +76,15 @@ def main() -> int:
     try:
         generator = llm._get_text_generator()
         inner = getattr(generator, "_inner", generator)
+        runner = inner._ensure_runner()
         print(
             f"generator={type(inner).__name__} backend={llm.resolved_backend} "
-            f"quant={llm.resolved_quant} context={inner.context_length}",
+            f"quant={llm.resolved_quant} context={inner.context_length} "
+            f"max_block={runner.max_block}",
             flush=True,
         )
 
-        for name, content in PROMPTS:
+        for name, content in probes:
             prompt_ids = inner.tokenize_chat(content, enable_thinking=True)
             if name == "thinking-on":
                 print(
