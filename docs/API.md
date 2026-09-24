@@ -100,6 +100,12 @@ declarations use `fp32` scales, so `--kv-scale-dtype fp16` falls back to BF16.
 The reason and requested/effective storage are recorded in `/ready` and the
 KVCache summary. Passing `--kv-storage bf16` explicitly matches the default.
 
+Resident memory is admitted as one budget. A request's target KV and scales, its
+draft KV, the verifier scratch, the decode graph, and the retained prefix
+entries are priced together, and a request that does not fit is refused before
+anything is allocated, naming the consumer that did not fit. That refusal is
+answered as capacity rather than as an internal fault.
+
 `/ready` also reports `model.kv_capability.max_packed_rows`, the effective
 row width a packed decode batch may use. It can be below the declared
 `max_direct_rows`: the direct INT8 batch leaf reads retained INT8 planes on

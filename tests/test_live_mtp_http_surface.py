@@ -33,7 +33,7 @@ MODEL = Path(
     os.environ.get("HIPENGINE_INT8_MTP_MODEL", "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 )
 SERVED_MODEL = MODEL.name
-PORT = int(os.environ.get("HIPENGINE_MTP_SURFACE_PORT", "8097"))
+PORT = 8097
 MAX_TOKENS = 24
 
 TOOLS = [

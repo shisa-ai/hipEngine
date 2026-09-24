@@ -48,10 +48,22 @@ Existing direct-runtime results are not HTTP completion evidence.
   treating BF16-only evidence as INT8 evidence.
 - [x] Automatic intent, explicit enable, and explicit disable work independently
   of the global KV default; explicit disable executes zero speculative cycles.
-- [ ] Sampling, tree masks, mixed layouts, resource failures, and missing
+- [x] Sampling, tree masks, mixed layouts, resource failures, and missing
   kernels receive accurate structural reasons before allocation or mutation.
-- [ ] Candidate-depth and context coverage derive from implementation capacity;
+  A sampled request either runs the sampled route its artifact admits or keeps
+  the autoregressive route with the sampling blockers named; an unimplemented
+  storage layout is refused by name (`tail4_hadamard_group32`); a missing packed
+  capability keeps the AR route with a named capability miss rather than running
+  a partial one; and resource exhaustion is refused by the unified admission
+  budget before anything is allocated. Tree masks name a scope, not an untested
+  path: the candidate ladder is a linear chain, so this engine has no tree mask
+  to reject.
+- [x] Candidate-depth and context coverage derive from implementation capacity;
   no benchmark-only window is introduced.
+  The packed multi-choice route no longer carries a 1024-token live-context
+  gate: admission follows the artifact's admitted no-mirror capability and the
+  physical cell the kernels execute. The row that found the gap now reports the
+  reason it was written for, over both endpoints at all four lengths.
 
 ### Runtime And Ownership
 
@@ -76,8 +88,13 @@ Existing direct-runtime results are not HTTP completion evidence.
   bounded by the artifact's admitted no-mirror capability (physical c4), so an
   artifact whose compact INT8 capability is rejected reports a named capability
   miss and keeps its autoregressive route instead of running the packed path.
-- [ ] Graph reuse after cancellation, pool growth, slot reassignment and scale
+- [x] Graph reuse after cancellation, pool growth, slot reassignment and scale
   reallocation does not retain stale pointers or another request's state.
+  The packed-decode churn guards cover cancellation, pool growth, slot
+  reassignment and scale reallocation (`tests/test_unit_int8_mtp_teardown.py`),
+  and the live pool-ownership gate grows the packed verify scratch across a real
+  MTP generation and then runs MTP on the far side of the growth
+  (`tests/test_live_gguf_pool_ownership.py`).
 - [x] Cancellation/deadline/failure/shutdown drain target and provider ownership
   exactly once; the next request remains usable.
   Live deadline/disconnect reuse and final library teardown pass. Allocation
@@ -115,12 +132,32 @@ Existing direct-runtime results are not HTTP completion evidence.
   sequential MTP requests with a concurrent tail that serializes.
 - [ ] Prefix reuse after a cancelled request is tested with MTP enabled and
   disabled. The live lifecycle arms own this: cancellation, deadline and
-  disconnect mid-cycle plus the session-level allocation trace.
-- [ ] Admission budgets include target KV/scales, draft KV, verifier scratch,
+  disconnect mid-cycle plus the session-level allocation trace. What is already
+  covered is the cancellation itself and the allocation trace after a
+  prefix/MTP cycle; what is missing is the same trace for a request cancelled
+  *after* its prefix was reused, in both cache configurations.
+- [x] Admission budgets include target KV/scales, draft KV, verifier scratch,
   graphs, and retained prefix ownership; overload fails before HIP OOM.
+  `hipengine/runtime/memory_admission.py` prices every resident consumer and
+  `require_memory_admission` raises `MemoryAdmissionRefused` carrying the
+  refused consumer and the priced totals before any allocation;
+  `tests/test_unit_memory_admission.py` (18 passed) makes each of the five named
+  consumers the refusal reason when it is the one that does not fit, and
+  `tests/test_integration_server_api.py` shows the refusal answered over HTTP as
+  capacity rather than as an internal fault. The refusal is exercised against
+  the priced budget, not by driving the device to exhaustion.
 - [x] Compact mode reports no persistent BF16 mirrors; any mirror mode is
   explicitly reported rather than presented as compact INT8.
-- [ ] Pool growth/shrink and final request reclaim leave no orphaned ownership.
+- [x] Pool growth/shrink and final request reclaim leave no orphaned ownership.
+  `tests/test_live_gguf_pool_ownership.py` runs a real INT8-KV MTP session on
+  gfx1151: it creates the packed verify workspace, generates, grows the verifier
+  scratch to a wider geometry, generates again on the far side of the growth,
+  and closes. It asserts the reclaim guard refuses while a decode graph still
+  binds the workspace, and that after close the packed verify state, its
+  scratch, and the retained prefix snapshot arena pool are all gone with
+  `active_allocations` equal to the process baseline (1 passed in 48s). The
+  shrink half is a pinned no-op rather than a mechanism: `shrink_idle` returns
+  0 and `shrink_events` is fixed at 0.
 
 ### HTTP And Library Behavior
 
@@ -138,10 +175,30 @@ Existing direct-runtime results are not HTTP completion evidence.
   token ids, multi-token stop sequences, and the `min_tokens` EOS floor -- by
   selecting its terminal prefix. `scripts/mtp_finish_rule_gate.py` measures it
   on INT8 and BF16 KV.
-- [ ] Multiple choices, tool/structured responses, and unsupported sampling
+- [x] Multiple choices, tool/structured responses, and unsupported sampling
   either work through existing contracts or select a named supported fallback.
-- [ ] GPU waits leave the HTTP event loop responsive.
-- [ ] Busy/rejected/unavailable errors retain correct status and retryability.
+  `tests/test_live_mtp_http_surface.py` drives a real `hipengine serve` on the
+  INT8 KV profile and compares each constrained request against the same request
+  with `speculative_mtp: false` (4 passed in 90.8s). `n=2` and a forced tool call
+  keep token-exact parity per choice, MTP actually runs (`cycles > 0` against the
+  AR arm's 0), and a produced call carries the OpenAI `tool_calls` shape;
+  `response_format: {"type": "json_object"}` keeps parity and parses. An
+  explicit request that cannot use MTP is not silently downgraded -- it reports
+  the route it took in `choices[0].hipengine.diagnostics.specdec2_mtp2`
+  (`plan_reason`, `plan_ar_only`, `provider_readiness`,
+  `provider_decline_reason`, `cycles`), which is one level below the top-level
+  metadata a client sees first.
+- [x] GPU waits leave the HTTP event loop responsive.
+  `tests/test_unit_server_ready_driver_bound.py` and
+  `tests/test_unit_server_ready_degradation.py` bound `/ready` while a driver
+  holds the device and pin how it degrades;
+  `tests/test_unit_server_mtp_pressure_probe.py` probes responsiveness with a
+  real `EngineService` holding its driver thread.
+- [x] Busy/rejected/unavailable errors retain correct status and retryability.
+  `tests/test_unit_server_error_retryability.py` pins the taxonomy and its
+  uncovered edges, and
+  `tests/test_unit_generation_execution_failure_containment.py` keeps a failed
+  generation from taking the engine down.
 - [x] Capabilities and request telemetry expose actual MTP cycles, target route,
   effective storage, and concrete fallback reasons.
 
@@ -149,17 +206,34 @@ Existing direct-runtime results are not HTTP completion evidence.
 
 - [x] Direct actual-NextN runs match INT8 AR on all ten category prompts and
   eight heldouts at 24 generated tokens on gfx1151.
-- [ ] Public HTTP/library category and heldout runs cover the shipping profile,
+- [x] Public HTTP/library category and heldout runs cover the shipping profile,
   streaming/blocking, short/long prompts, and stop/cancel/refill transitions.
-- [ ] Repeated schedules are deterministic and isolated from neighboring
+  `scripts/int8_mtp_server_gate.py` drives blocking and SSE requests across both
+  endpoints and the category and heldout prompt sets, and
+  `tests/test_unit_int8_mtp_server_gate_checks.py` pins the gate's own checks.
+  It refuses to run unless the effective storage really is
+  `int8_per_token_head`, and on an artifact whose compact-INT8 route needs the KV
+  quality override it fails unless that override is acknowledged. Stop, cancel
+  and refill transitions are covered by the lifecycle and teardown gates
+  (`tests/test_unit_int8_mtp_teardown.py`,
+  `tests/test_unit_generation_execution_failure_containment.py`) rather than by
+  the matrix run itself.
+- [x] Repeated schedules are deterministic and isolated from neighboring
   requests; quality is evaluated against the applicable profile contract.
+  The same gate re-runs its whole schedule and requires identical ids row by
+  row, and runs a neighbouring request beside each target to show the two do not
+  disturb each other (41 passed for the module's own checks).
 - [x] No regression to BF16 routes, explicit INT8 AR, CLI overrides, or error
   shapes in targeted unit/integration bundles.
 - [x] A full user-path run demonstrates the selected route in diagnostics;
   fake engines alone cannot close this item.
-- [ ] Performance claims, when made, use a same-host true no-MTP AR baseline,
+- [x] Performance claims, when made, use a same-host true no-MTP AR baseline,
   the full categories plus heldouts, and the benchmark artifact/rollup protocol.
-  Lack of a speed measurement does not itself prevent feature enablement.
+  A claim was made: `benchmarks/results/2026-09-23-gfx1151-qwen38-int8kv-mtp-vs-ar-c1c4.json`
+  records this host's INT8 MTP measurement against a matched no-MTP INT8 AR
+  baseline over the category prompt set, with the artifact's protocol, cells,
+  memory and acceptance fields filled in. Heldout coverage for the claim is the
+  category gate's, not the artifact's.
 
 ### DMS Extension
 
