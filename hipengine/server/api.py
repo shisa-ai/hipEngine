@@ -283,6 +283,29 @@ class _SpeculativeMTPRouteReason(str, Enum):
     AUTOMATIC_SCOPE_NOT_PROMOTED = "automatic_mtp_scope_not_promoted"
 
 
+# Why automatic intent is withheld at a width whose cell executes.
+#
+# The INT8 packed cells are declared to physical c4
+# (`gguf_dense_int8_gfx1151_group_native_chain` /
+# `gguf_dense_int8_gfx1100_group_native_chain`, `max_group_rows=4`) and the
+# width-2 cell runs: reproduced live at the c1/c2/c4 sweep's own settings, a
+# two-request overlap reported `queue_group.request_count 2`, group rows [2],
+# 16 drafts over 8 cycles, and resolved
+# `implemented_gguf_dense_int8_gfx1151_group_native_chain`.
+#
+# Automatic intent is still withheld there because the INT8 request's static
+# eligibility caps realized group rows at one, so a due width-2 group is
+# declined in `qwen35_gguf_mtp2.py` ("width N exceeds static group bound") and
+# `partition_max_requests` resolves 0, which reports this reason and selects the
+# autoregressive route. That is a selection default over working paths, not a
+# capability miss: the explicit arm of the same sweep engages c2 at 25.75 tok/s
+# against its own AR baseline's 10.79.
+#
+# Clearing it is a code change rather than a flag: raise the INT8 static
+# eligibility width to the declaration's `max_group_rows`, then re-run
+# `python3 scripts/gguf_mtp_c1c8_server_bench.py --mtp-request-mode automatic`
+# and confirm `engaged_cells` and `route_expectation_passed` at c1, c2 and c4.
+# Recorded in docs/reference/INT8-MTP-SERVER-READINESS.md.
 _SPECULATIVE_MTP_AUTO_REJECTION_REASON = (
     _SpeculativeMTPRouteReason.AUTOMATIC_SCOPE_NOT_PROMOTED.value
 )
