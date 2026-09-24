@@ -244,6 +244,19 @@ effective wave-size record for the rest of the gfx1151-qualifying set; the
 the loop's declared scope), so its bands still name the base past 384 — the
 decision lives one level down until a router-band update is scoped.
 
+**Iteration 9 (same day): q6 planar leaf route — +5.3% (395.67 → 416.49).**
+The post-w64 trace ranked the q6 planar family #3 at 217.8 ms (16.9% of
+prefill kernel time); an env-gated wrapper trace proved 100% of it flowed
+through the `shared4r6` leaf — its 384-row row-tile forces `grid.y=2` at
+512 rows. Delegating rows >= 385 to the four-wave/three-output-tile
+sibling `shared4_gfx1100` (measured only in gfx1100 FFN-down bands per
+`b51b17a35`, never A/B'd on gfx1151) gained **+5.26%** (416.49 ± 0.16 vs
+395.67 ± 0.22 base); `shared4r9` (576-row single tile) was +0.58%,
+`shared4_row64` −3.6%; all four arms byte-identical `correctness_sanity`.
+Same-basis caveat as above: the gfx1151 q6 router bands still name r6 for
+rows 288-1024, so the decision lives at the leaf until a router-band
+update is scoped.
+
 ### G. Measurement tooling and MALL discipline (LOW cost, enables everything above)
 
 From `docs/PERFORMANCE.md` and their tool tree:
