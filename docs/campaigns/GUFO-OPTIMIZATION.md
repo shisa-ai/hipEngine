@@ -98,6 +98,27 @@ strict unfused fallback" invariant naturally (the current unfused chain is the
 fallback). Expected gain targets the compute/memory round-trip share of the
 27B prefill gap; Flash-Next's chain would benefit the same way.
 
+**Measured on-route status (2026-09-24, gfx1151, Qwen3.8-27B `Q4_K_M`,
+512/128 sweep).** On the route this model selects, none of the three
+standalone quantize passes above execute: a full-kernel trace of the 512-row
+prefill dispatchs no activation-quantize kernel at all (the only name
+matching `quantize` is the weight-side `gguf_q5_k_t16_dequantize_f16_tile_octet`,
+8.2 ms/pass). Activations stay BF16 straight from the fused gate/up SiLU
+GEMM epilogue (`gguf_q4_t16_dense_dual_wmma_prefill_silu`) into the next
+GEMM, so c192's pass elimination is already structural on this route — one
+standalone pass fewer than gufo's Q8_1 chain. The weight-side passes that do
+run (`bf16_to_f32`, 4.2 ms/pass, feeding the hipBLAS `Cijk` GEMMs at 36.7
+ms/pass) sit in a different accumulation-order class, so folding or flipping
+them is a production-profile change, not a strict-class one. The remaining
+strict-class fold — the c173 norm-into-GEMM-prologue analog — saves at most
+12.58 MB per norm site (a BF16 output write plus its GEMM read at 512 x
+6,144 x 2 B); even counting every one of the 129 norm dispatches per pass
+gives ~1.6 GB, ~1.9 ms at 864 GB/s, a 0.14% ceiling against the +0.31%
+needed to clear the 382.12041 baseline (380.9576 same-day stock). §7 item 3
+cannot move the 512-row metric on this route; the batch-2048 shapes where
+gufo's 221 MB → 137 MB per-norm regime applies are carried as revisit queue
+item 9.
+
 ### B. Shape-routed W8A8 blocked-WMMA prefill GEMM for Flash-Next (HIGH)
 
 gufo's Flash-Next prefill engine is a shape-dispatched W8A8 blocked-WMMA GEMM
@@ -310,6 +331,7 @@ revisited is the design, per §3B.
 | 6 | Wide-Q6 shared4 verifier candidate (`HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4`) | W1 verifier shapes at R20/R24/R32 | Default-off pending complete C6/C8 strict-teacher, determinism, task, and performance gates (`docs/REFACTOR.md` 2026-09-01) | Medium: run the named gates | Cheap to finish — the gates are already specified; run or reject |
 | 7 | Paged suffix prefill route | 6.5 ms/token vs 0.39 ms/token slot-local on a gapped placement (0.8B probe) | Not correctness-gated; open performance debt with a partial gather-route fix (`docs/REFACTOR.md` 2026-09-19, "the real prize") | Medium | Worth its own unit once prefix-cache traffic is profiled; several-times-slower-per-token on every backend |
 | 8 | Device top-512 QSA selector | Replaces host NumPy exact selection at 262K scale | Gated on exact GPU selector matching Transformers/llama indices at 2,052/4K/16K/64K/262K plus isolation gates | Medium | Revisit with Flash-Next long-context work (item 1) |
+| 9 | §3A norm/activation epilogue fusions at batch-2048 shapes (gufo c173/c174) | gufo: 221 MB → 137 MB per norm at batch 2048 | No measurable share at 512 rows on the selected-WMMA route: zero activation-quantize dispatchs in the 2026-09-24 trace, and a 0.14% theoretical ceiling on the norm fold versus the +0.31% acceptance gap (§3A status note) | Medium: 2048-row trace plus the norm-side fusion behind the strict gate; the norm kernel lives outside the Sep-24 loop scope (`kernels/hip_gfx1100/norm/`) | Revisit with the matched-protocol §7.1 run at larger shapes |
 
 **Settled decisions this campaign does not reopen:**
 
@@ -345,7 +367,11 @@ revisited is the design, per §3B.
    shares before touching kernels; then start item 1 of §5 with §3B's
    fidelity strategy.
 3. **Bit-identical prefill epilogue fusions** (§3A) on the 27B Q4 prefill
-   chain, strict class, unfused fallback already registered.
+   chain, strict class, unfused fallback already registered. *(2026-09-24:
+   measured no-target on the selected-WMMA route at 512 rows — no
+   activation-quantize passes run, and the norm-fold ceiling is 0.14% versus
+   the +0.31% acceptance gap; see the §3A status note and revisit queue
+   item 9.)*
 4. **Wave-geometry + MALL audit** (§3F, §3G): effective wave size per
    gfx1151-qualifying kernel; decode harness working set sized to per-token
    weight footprint.
