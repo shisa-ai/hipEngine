@@ -379,22 +379,25 @@ per row. hipEngine and llama.cpp run the identical frozen prompt token-id
 sequence; decode tok/s is the 127 single-token forwards of a 128-output row
 divided by their measured time. hipEngine rates come from the public
 `LLM.generate()` path, whose output token ids match the instrumented timing
-loop at every position on all 14 measured rows.
+loop at every position on every row of this matrix and of the paired baseline.
+hipEngine's decode attention kernel is bit-exact with the path it replaced, so
+the timing change moves no token.
 
 | Engine | Prefill 1024 | Decode at 1024/128 |
 | --- | ---: | ---: |
 | llama.cpp HIP `8cfc315`, same GGUF | **3910** | **68.92** |
-| hipEngine | 128.1 | 16.09 |
+| hipEngine | 127.8 | 20.42 |
 
-hipEngine's own shape matrix at 128 outputs: decode 32.25 tok/s at a 128-token
-prompt, 22.02 at 512, 16.09 at 1024, 10.14 at 4096; prefill 139.7 / 135 /
-128.1 / about 106 tok/s at the same shapes. First-token latency at 1024 is
-7.96-8.03 s and public request wall time is 15.86-15.92 s including prefill.
+hipEngine's own shape matrix at 128 outputs: decode 33.96 tok/s at a 128-token
+prompt, 26.56 at 512, 20.42 at 1024, 11.71 at 4096; prefill 139.7 / 134.7 /
+127.8 / 108 tok/s at the same shapes. First-token latency at 1024 is 8.01 s
+and public request wall time is 14.25 s including prefill.
 For product context on the same GPU and workload, Qwen3.6-35B-A3B
 `UD-Q4_K_M` in hipEngine measures 3281 prefill and 114.57 decode tok/s — a
 different model and tokenizer, used as a speed reference only.
 
-[G0 baseline, comparators, boundary rows and provenance](results/2026-09-24-gemma4-26b-a4b-g0-baseline.json).
+[Post-kernel matrix, paired baseline and provenance](results/2026-09-24-gemma4-26b-a4b-decode-kernel.json);
+[baseline matrix, comparators and boundary rows](results/2026-09-24-gemma4-26b-a4b-g0-baseline.json).
 
 ### DMS INT8 offline evaluation — RX 7900 XTX
 
