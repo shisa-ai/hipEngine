@@ -2286,8 +2286,18 @@ GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE = {
     "gguf_q4_k_t16_v1": {
         (5_120, 1_024): "dense_single_col4_bf16_bf16_out",
     },
+    # E4a (UD-GFX1151-OPTIMIZE2): rows=1 Q5_T16 decode shapes routed to the
+    # tile8 owner. Per-shape screen (bit-exact vs direct and the gguf_quant_gemv
+    # reference at rows=1): ffn_up 1.16x, ffn_down 1.28x, attn_gate 1.36x,
+    # attn_qkv 1.39x, attn_q 1.18x, ssm_out 1.56x. attn_v (5_120, 1_024) is
+    # deliberately absent: 0.99x, no win over the direct owner.
     "gguf_q5_k_t16_v1": {
+        (5_120, 6_144): "t16_gemv_decode_tile8_bf16_bf16_out",
+        (5_120, 10_240): "t16_gemv_decode_tile8_bf16_bf16_out",
+        (5_120, 12_288): "t16_gemv_decode_tile8_bf16_bf16_out",
+        (5_120, 17_408): "t16_gemv_decode_tile8_bf16_bf16_out",
         (6_144, 5_120): "t16_gemv_decode_tile8_bf16_bf16_out",
+        (17_408, 5_120): "t16_gemv_decode_tile8_bf16_bf16_out",
     },
 }
 # Qwen3.8-27B P2: use byte-neutral planar-qmicro Q6 where architecture-local

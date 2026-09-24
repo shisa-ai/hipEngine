@@ -449,9 +449,36 @@ measured negative.
   Candidates each stay open behind their own gates (E4a shape matrix, strict
   fallback, symbol verified in a real request, route-table test, paired
   same-window A/B).
-  - [ ] E4a — For every new owner, test rows 1, 2, 3, 4, 8, 16, and the
-    production boundary shapes, plus one non-boundary shape. Preserve the
-    strict fallback and verify the selected symbol in a real user request.
+  - [x] E4a — **Executed 2026-09-25 (iteration 8): route lever (b), leaf
+    tuning (a) not needed.** The census pot was a policy-table miss, not an
+    owner defect: gfx1151's `GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE` carried
+    exactly one Q5_T16 shape — `ssm_out` (6144,5120), which is plain's only
+    Q5 tensor — so UD's other six decode shapes (119 tensors: ffn_up/down,
+    attn_q/qkv/v/gate) fell through to the 242.9 µs direct owner (census
+    item 1, 20.47 ms/tok). Rows=1 screen, tile8 vs direct vs the
+    `gguf_quant_gemv` reference: **bit-exact on all seven production
+    shapes**; tile8 wins ffn_up 1.16x (393.0→339.8 µs), ffn_down 1.28x
+    (415.7→324.9), attn_gate 1.36x (186.2→136.5), attn_qkv 1.39x
+    (284.1→204.7), attn_q 1.18x (292.0→248.1); **attn_v kept direct**
+    (47.6 vs 47.8 µs, 0.99x — no win). One lever: five rows added to the
+    gfx1151 table. Route conservation through `hipengine.LLM.generate()`:
+    direct 4410→504 resolves, tile8 1953→5859, total 20599 unchanged —
+    every moved resolve landed on tile8, no silent fallback; plain arm
+    untouched (its sole Q5 shape was already routed). Guard green: unit
+    contract RED→GREEN (`test_gfx1151_backend_aliases_gfx1100_kernel_keys`,
+    pre-existing `ssm_out` C1 route test still passes), 8-shape GPU
+    exactness node 83.7 s, full default-tier suite + fixtures + three
+    smokes all exit 0, stash 9a381b0c untouched. Shape-matrix note: the C1
+    route is rows==1-only by construction (`_t16_c1_variant_dispatch`
+    guards rows!=1, non-t16 ABI, and native-batch sessions), so rows 2–16
+    keep their rowtile/direct owners unchanged; no new kernel means the
+    strict-fallback clause is n/a, and the real-request symbol check is the
+    route probe above. Paired A/B `ud_plain_parity` **pending** per lead
+    directive: three consecutive windows invalidated by campaign 5.1's 2%
+    prefill@512 visit check (5.71% / 5.39% / 6.33%; plain_1 303–314 vs
+    settled plain_2 287–295; a 60-minute clean GPU idle did not settle the
+    first visit). The check binds plain's prefill, which this rows==1
+    decode-route edit cannot affect.
 - [ ] **E6 — Gate/up and residual fusion by type pair (H9).** After E2 and E3,
   re-census the FFN block. Route same-type pairs to existing dual owners first
   (IQ4_XS pair-SiLU if not already landed in E2; Q5_K
@@ -641,6 +668,7 @@ refusal.
 | E2 decode policy declaration | H2 | window invalidated (see State) | window invalidated; A/B prefill 0.9994x | 807.97 (E0-protocol census) | 6.28 (unprofiled wall 91.81 − pure 85.53) | **PASS**: 162-row ×2 bit-identical (KL mean 4.68e-5, max 8.55e-4, top1 1.0000 overall/per-scope), local32 probe gate, LLM.generate route probe | executed 2026-09-24: paired A/B decode **1.3330x** (8.1089 → 10.8090 tok/s, CV 0.76%/0.13%), strict-IQ 61.64 → 5.36 ms/token (−91%), unprofiled warm 1.347x vs E0; `ud_plain_parity` **pending** per lead directive 2026-09-25 (set pending and move on) — three windows invalidated by campaign 5.1's 2% prefill@512 visit check under evening host drift (probe start 314 vs 286-292 floor; the 04:48 baseline agreed to 0.5%); iteration 5 logged with metric unchanged; record in the E2d artifact + E2 checkboxes |
 | E3 production per-tensor repack | H3/H5/H7 | — (report-surface unit; runtime allocation byte-identical) | — | — | — | **PASS**: RED→GREEN unit tests, live UD-file gate, full-suite broad run + focused repair, route-audit plain 0-diff control, `LLM.generate` route probe PASS ×2 arms | executed 2026-09-25: **H5 divergence located** — the planner was always per-tensor-correct; admission coerced `decode_repack=None`→False plus a model-wide raw-IQ veto, and the route-audit script pre-applied the same veto, so both report surfaces recorded `repack=OFF`. Fix = shared `resolve_gguf_decode_repack` + eligibility-gated veto; `model-wide` seam reproduces the pre-fix record, plain control 0 differing scalars; UD report: raw_gguf 395→136 residents (12.60→6.23 GB), planned 16.08→15.85 GiB (gfx1100) / →15.19 GiB (gfx1151), routes Q4_K 103×`q4_k_t16`, Q5_K 131×`q5_k_t16`, Q6_K 24×`q6_k_qmicro_planar`, Q8_0 104×`q8_0_t16`. No perf claim owed (no runtime change); metric untouched → iteration logged. Artifact: `benchmarks/results/2026-09-25-zbook-e3-route-audit-repack-truth.json` |
 | E4 Q5/Q4 decode owners | H4/H6 | — (census attribution only; no retained owner yet) | census window 0.9202 (86.24 vs 93.73 ms/tok graph-mode profiled, not a paired A/B) | 807.97 launches/token (plain 571.59) | — | re-census reproducibility PASS: top-6 kernels ≤0.2% vs E2d, launches/token identical, pure −0.14% | census recorded 2026-09-25 (iteration 7): trace split kernel 91.1% UD / 92.5% plain of wall, non-kernel ≈10.3 µs per launch UD / 11.4 plain — kernel pots rank first; re-rank (1) Q5 selected-down direct GEMV 20.47 ms/tok @242.9 µs/launch, no plain counterpart (both arms' tile8 ≈111 µs/launch; composition 131 vs 48 Q5_K), (2) Q4_K single local32 157.9 vs plain 119.5 µs/launch same T16 layout, (3) IQ4_XS local32 family 24.15 ms/tok (E9-adjacent); premise correction committed `73e5e4300`; artifact `benchmarks/results/2026-09-25-zbook-e4-decode-recensus.json`; each candidate stays open behind route-table test + paired A/B + E4a shape matrix |
+| E4a Q5_T16 route to tile8 | H4 | **pending** (3 windows invalidated, lead directive: set pending and move on) | pending (same windows) | — (route unit; same tensors and launches/token, different owner) | — | **PASS**: rows=1 tile8==direct==`gguf_quant_gemv` bit-exact on 7 production shapes + control (GPU node 83.7 s), unit contract RED→GREEN, full guard green (suite+fixtures+3 smokes), `LLM.generate` route-probe conservation 20599 resolves unchanged | executed 2026-09-25 (iteration 8): five rows added to gfx1151 `GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE` (ffn_up 1.16x, ffn_down 1.28x, attn_gate 1.36x, attn_qkv 1.39x, attn_q 1.18x at rows=1; attn_v kept direct at 0.99x) — closes census item 1's route half (direct 242.9 µs/launch vs tile8 137–248 by shape); plain arm untouched; `ud_plain_parity` pending: windows invalidated 5.71/5.39/6.33% vs the 2% plain-prefill@512 visit check, 60-min idle did not settle plain_1; metric unchanged, iteration logged |
 | E6 gate/up + residual fusion | H9 | — | — | — | — | required | open |
 | E7 GDN alpha/beta fused path | H10 | — | — | — | — | bit-exact lane if exact | open |
 | E8 norm-cost attribution | H11 | — | — | — | — | n/a | open |
