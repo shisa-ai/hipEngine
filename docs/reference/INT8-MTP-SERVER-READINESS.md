@@ -93,8 +93,29 @@ Existing direct-runtime results are not HTTP completion evidence.
   specific supported fallback without corrupting provider position.
   Radix caching now retains four provider checkpoints by default; the live
   W7900 gate verifies 512-token hits and actual MTP after restoration.
-- [ ] Prefix hit/miss, eviction under pressure, and reuse after cancellation are
-  tested with MTP enabled and disabled.
+- [x] Prefix hit/miss and eviction under pressure, with MTP enabled and
+  disabled. `scripts/int8_mtp_prefix_pressure_gate.py` runs one request sequence
+  against two servers that differ only in `--prefix-cache`. The retained working
+  set is bounded by the request capacity -- one durable boundary per active
+  request -- and trimmed oldest-first, so seeding `2 x capacity` distinct prompts
+  evicts the oldest half deterministically. On this host that is capacity 4 with
+  8 seeds, and the recorded residency series stops growing at 5. The
+  first-seeded prompt then misses (`fallback_reason` `"miss"`, no match, no
+  reuse) while the last-seeded one hits with 512 reused tokens
+  (`matched_tokens` 512, `source` `completed_snapshot`), and the disabled-cache
+  server reports `cache_off` with zero residency for the same sequence. Every
+  probe returns the same generated ids in all four configurations, and the
+  speculative arm over reused KV returns ids identical to the autoregressive arm
+  over that same reused KV, which is the provider-position check. A miss
+  re-populates a boundary, so the two arms of an evicted probe use different
+  prompts; a hit refreshes the boundary it just used, so the resident probe can
+  reuse one prompt for both arms. True request overlap was not achievable on
+  this host: the startup scratch probe runs at width 1 here (4 concurrent
+  sessions need 208.20 GiB against 57.07 GiB usable), so the pressure comes from
+  sequential MTP requests with a concurrent tail that serializes.
+- [ ] Prefix reuse after a cancelled request is tested with MTP enabled and
+  disabled. The live lifecycle arms own this: cancellation, deadline and
+  disconnect mid-cycle plus the session-level allocation trace.
 - [ ] Admission budgets include target KV/scales, draft KV, verifier scratch,
   graphs, and retained prefix ownership; overload fails before HIP OOM.
 - [x] Compact mode reports no persistent BF16 mirrors; any mirror mode is
@@ -257,6 +278,10 @@ Commands against an already running INT8 server:
 .venv/bin/python scripts/int8_mtp_prefix_gate.py \
   --base-url http://127.0.0.1:8098 --model int8-mtp \
   --json /tmp/int8-mtp-prefix.json
+.venv/bin/python scripts/int8_mtp_prefix_pressure_gate.py \
+  --base-url http://127.0.0.1:8098 --no-reuse-base-url http://127.0.0.1:8099 \
+  --model int8-mtp --capacity 4 \
+  --json /tmp/int8-mtp-prefix-pressure.json
 .venv/bin/python scripts/int8_mtp_sampled_gate.py \
   --base-url http://127.0.0.1:8098 --model int8-mtp \
   --json /tmp/int8-mtp-sampled.json
@@ -288,10 +313,14 @@ existing approximate-KV diagnostic override it requires
 `--allow-kv-diagnostic-override` as well.
 
 For a server deliberately using an existing approximate-KV diagnostic
-override, the category, lifecycle, prefix and sampled commands require
+override, the category, lifecycle, prefix, pressure and sampled commands require
 `--allow-kv-diagnostic-override`. The category
 gate rejects BF16 mirrors unless `--allow-mirror` is explicitly requested.
-Neither switch enables MTP or changes server policy.
+Neither switch enables MTP or changes server policy. The pressure gate needs two
+servers of the same capacity, one launched with `--prefix-cache radix` and one
+with `--prefix-cache off`; it asserts each server's `/ready` mode rather than
+trusting the launch, and `--capacity` must match their `--max-active-requests`
+because that value is what bounds the retained working set.
 
 - [Shared-table primitive](../../worklog/entries/20260920T151032.854230Z-lhl-int8-mtp-shared-attention-f8afc4.md)
 - [Native verifier checkpoint](../../worklog/entries/20260920T153527.801947Z-lhl-int8-mtp-native-verifier-b8c7e7.md)
