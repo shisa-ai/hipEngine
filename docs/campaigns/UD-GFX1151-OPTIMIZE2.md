@@ -184,11 +184,45 @@ measured negative.
 
 - [x] **E0 — Baseline frozen.** Both paired artifacts recorded
   (`performance_claim: false`). Done 2026-09-23.
-- [ ] **E1 — Fresh prefill attribution.** rocprofv3 `--kernel-trace` census of
+- [x] **E1 — Fresh prefill attribution.** rocprofv3 `--kernel-trace` census of
   both arms at the matched 512-token prefill shape at current HEAD, same
   protocol as the 2026-09-21 decode census (warm build outside the profiler,
   pinned compiler-version file, `HIPENGINE_REQUIRE_CACHED_BUILD=1`). Output: a
   ranked per-kernel prefill table for both arms. Tests H1; sizes E3.
+  **Done 2026-09-24, `performance_claim: false`.**
+  ([artifact](../../benchmarks/results/2026-09-24-zbook-ud-plain-q4km-prefill-census.json))
+  - **H1 refuted as stated**: both arms run WMMA prefill families throughout;
+    misc GEMV is 0.2% of the UD window. The +952.4 ms window delta (plain
+    1687.9 ms / 1740 dispatches vs UD 2640.3 ms / 1264, ratio 0.6393) is
+    ranked instead as **dense-IQ one-wave W4A16 at 48.18% of the UD window**
+    (1272.1 ms, 135 launches, IQ4_XS template `<0>` alone 1020.1 ms at 8719
+    µs/launch ×117) and **Q5_T16 WMMA at 24.81%** (655.0 ms). Q4_T16 (346.9
+    ms vs plain 971.5) and Q6_T16 (66.8 vs 402.7) are *cheaper* on UD — the
+    composition shift, not a GEMV fallback, is the gap.
+  - **Sizes E9 (H12) as the largest single prefill lever**: the 48.18% is
+    exactly the one-wave owner E9's coop/coop64 overrides target. Mechanism
+    arithmetic only (gfx1100 record, not a gfx1151 rate): 1.5× on that family
+    → ratio ≈ 0.76, 2× → ≈ 0.84; parity still needs the Q5_T16 pot (E4/E6).
+  - **Live route probe passes both arms** through `hipengine.LLM.generate()`
+    (campaign §5.2): plain resolves its T16/dual WMMA owners; UD resolves
+    `dense_wmma_w4a16_prefill_bf16_bf16_out` for all four dense-IQ quants
+    (234/14/14/8 resolves) — the same owner as census symbol
+    `gguf_iq_prefill_wmma_kernel`, registered by `gguf_iq_wmma_prefill.py`.
+  - **E3a input (H5 live fact)**: the shipped path resolves *T16 layout keys*
+    for UD (`gguf_q4_k_t16_v1`, `gguf_q5_k_t16_v1`,
+    `gguf_q6_k_t16_qmicro_planar_v1`, `gguf_q8_0_t16_v1`) while the committed
+    route audit records `repack=OFF` with those families on
+    `raw-gguf-kernel`. E3a must locate which surface diverged before any
+    layout change is written.
+  - **H7 ranked low for prefill** (Q8 71.5 ms / 2.7%, Q6 66.8 ms / 2.5%);
+    **H8 shows no threshold artifact**: the unprofiled 256→4096 ladder drifts
+    monotonically (UD/plain 0.643 → 0.596), so the widening long-prompt gap is
+    a row-scaling effect, not a cusp at 512.
+  - Protocol note: the first identical census (2026-09-23) lived under
+    `/tmp` and was destroyed by the 2026-09-24 host reboot; the recorded
+    re-run from `~/ud-e1-census/` reproduced its ranked shares to within
+    ~1%. `--kernel-trace` yields timing/geometry only — no bandwidth counters,
+    so per-family GB/s from §1.1 remains unmeasured.
 - [ ] **E2 — Dense-IQ decode policy declaration (C1 / H2).**
   - [ ] E2a — Recover the existing draft: stash
     `9a381b0c1223597e5605ac17dedf99f43a5de66a`
@@ -434,13 +468,18 @@ refusal.
 - **One lever per unit, committed after validation.** No bundling a routing
   change with a kernel edit.
 - **Absolute regression disqualifies a ratio win** — for both arms.
+- **Unresolvable zbook swings are pending, not blockers.** When a gate
+  comparison on this host stays outside the recorded CV band for reasons that
+  cannot be separated from power/thermal throttle, record the item as pending
+  for the desktop gfx1151 lane and move on to the next experiment; do not
+  chase the number on zbook. (Lead directive, 2026-09-23.)
 
 ## 7. Status scoreboard
 
 | Lever | Hypothesis | Paired decode Δ | Paired prefill Δ | UD launches/token | UD wall − kernel (ms/token) | Quality gate | State |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
 | E0 baseline (2026-09-23) | — | −32.5 / −31.9 / −32.5% | −36.7 / −40.7 / −40.5% | 856.41 (plain 571.59)¹ | 9.81 (plain 6.54)¹ | n/a (diagnostic) | recorded |
-| E1 prefill census | H1/H5/H7/H8 | — | — | — | — | n/a | open |
+| E1 prefill census | H1/H5/H7/H8 | — | census window 0.6393 (1687.9 vs 2640.3 ms, not a paired A/B) | 1264/window (plain 1740) | — | n/a (attribution) | recorded 2026-09-24: H1 refuted, IQ one-wave 48.18% + Q5_T16 24.81% rank the gap; route probe PASS; T16-live-vs-audit-OFF divergence owed to E3a |
 | E2 decode policy declaration | H2 | — | — | — | — | required | open (draft in stash; predicted 0.98-1.02x) |
 | E3 production per-tensor repack | H3/H5/H7 | — | — | — | — | required | open |
 | E4 Q5/Q4 decode owners | H4/H6 | — | — | — | — | required | open |
