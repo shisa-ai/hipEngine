@@ -479,6 +479,28 @@ measured negative.
     settled plain_2 287–295; a 60-minute clean GPU idle did not settle the
     first visit). The check binds plain's prefill, which this rows==1
     decode-route edit cannot affect.
+  - [x] E4b — **Executed 2026-09-25 (iteration 9): item 2 adjudicated
+    composition, negative result; item 1's move confirmed.** Post-E4a
+    re-census (same E0 protocol; artifact
+    `benchmarks/results/2026-09-25-zbook-e4b-post-e4a-recensus.json`):
+    the direct GEMV symbol left the top 12 (tile8 now owns all Q5 at
+    24.02 ms/tok, 116.2 launches/tok; Q5 family 25.22 → 24.02 ms/tok and
+    −10.7 launches/tok; UD pure 85.53 → 84.83 vs plain 79.81 unchanged;
+    plain control totals identical at 571.59 launches/tok). Item 2
+    (Q4_K single local32, UD 158.0 vs plain 119.5 µs/launch) is **not an
+    owner defect**: both arms run the same kernel symbol and
+    same-kernel+same-shape speed is arm-identical (tile8 111.2/111.5
+    precedent); the gap is role/shape skew plus per-tensor quant scatter
+    — plain pairs 65/65 ffn layers as (Q4_K,Q4_K) into 62 dual-SiLU
+    launches/tok, UD has only 5 (Q4_K,Q4_K), 20 (IQ4_XS,IQ4_XS) pairable
+    via the IQ dual (19.4/tok in-window), 9 (Q5_K,Q5_K), and **13
+    mixed-quant gate/up layers unpairable under every same-quant rule**
+    (26 singleton launches). Closing that scatter would re-plan the
+    artifact's per-tensor quants — a bytes/arithmetic change under the
+    execution-profile gate, not a code-route lever. Re-rank: item 3 =
+    IQ4_XS local32 family 24.25 ms/tok (dual_silu 9.80 + gemv<2,1> 7.51
+    + gemv<4,1> 6.94) — UD-only quants with no plain counterpart, so a
+    within-UD variant/shape question, E9-adjacent.
 - [ ] **E6 — Gate/up and residual fusion by type pair (H9).** After E2 and E3,
   re-census the FFN block. Route same-type pairs to existing dual owners first
   (IQ4_XS pair-SiLU if not already landed in E2; Q5_K
@@ -669,6 +691,7 @@ refusal.
 | E3 production per-tensor repack | H3/H5/H7 | — (report-surface unit; runtime allocation byte-identical) | — | — | — | **PASS**: RED→GREEN unit tests, live UD-file gate, full-suite broad run + focused repair, route-audit plain 0-diff control, `LLM.generate` route probe PASS ×2 arms | executed 2026-09-25: **H5 divergence located** — the planner was always per-tensor-correct; admission coerced `decode_repack=None`→False plus a model-wide raw-IQ veto, and the route-audit script pre-applied the same veto, so both report surfaces recorded `repack=OFF`. Fix = shared `resolve_gguf_decode_repack` + eligibility-gated veto; `model-wide` seam reproduces the pre-fix record, plain control 0 differing scalars; UD report: raw_gguf 395→136 residents (12.60→6.23 GB), planned 16.08→15.85 GiB (gfx1100) / →15.19 GiB (gfx1151), routes Q4_K 103×`q4_k_t16`, Q5_K 131×`q5_k_t16`, Q6_K 24×`q6_k_qmicro_planar`, Q8_0 104×`q8_0_t16`. No perf claim owed (no runtime change); metric untouched → iteration logged. Artifact: `benchmarks/results/2026-09-25-zbook-e3-route-audit-repack-truth.json` |
 | E4 Q5/Q4 decode owners | H4/H6 | — (census attribution only; no retained owner yet) | census window 0.9202 (86.24 vs 93.73 ms/tok graph-mode profiled, not a paired A/B) | 807.97 launches/token (plain 571.59) | — | re-census reproducibility PASS: top-6 kernels ≤0.2% vs E2d, launches/token identical, pure −0.14% | census recorded 2026-09-25 (iteration 7): trace split kernel 91.1% UD / 92.5% plain of wall, non-kernel ≈10.3 µs per launch UD / 11.4 plain — kernel pots rank first; re-rank (1) Q5 selected-down direct GEMV 20.47 ms/tok @242.9 µs/launch, no plain counterpart (both arms' tile8 ≈111 µs/launch; composition 131 vs 48 Q5_K), (2) Q4_K single local32 157.9 vs plain 119.5 µs/launch same T16 layout, (3) IQ4_XS local32 family 24.15 ms/tok (E9-adjacent); premise correction committed `73e5e4300`; artifact `benchmarks/results/2026-09-25-zbook-e4-decode-recensus.json`; each candidate stays open behind route-table test + paired A/B + E4a shape matrix |
 | E4a Q5_T16 route to tile8 | H4 | **pending** (3 windows invalidated, lead directive: set pending and move on) | pending (same windows) | — (route unit; same tensors and launches/token, different owner) | — | **PASS**: rows=1 tile8==direct==`gguf_quant_gemv` bit-exact on 7 production shapes + control (GPU node 83.7 s), unit contract RED→GREEN, full guard green (suite+fixtures+3 smokes), `LLM.generate` route-probe conservation 20599 resolves unchanged | executed 2026-09-25 (iteration 8): five rows added to gfx1151 `GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE` (ffn_up 1.16x, ffn_down 1.28x, attn_gate 1.36x, attn_qkv 1.39x, attn_q 1.18x at rows=1; attn_v kept direct at 0.99x) — closes census item 1's route half (direct 242.9 µs/launch vs tile8 137–248 by shape); plain arm untouched; `ud_plain_parity` pending: windows invalidated 5.71/5.39/6.33% vs the 2% plain-prefill@512 visit check, 60-min idle did not settle plain_1; metric unchanged, iteration logged |
+| E4b Q4_K single composition check | H4/H6 | — (adjudication unit; no retained change) | — (re-census window, not a paired A/B) | 807.97 (plain 571.59, both identical to E4) | — | census + quant-map evidence: same kernel symbol both arms, tile8 cross-arm speed-identity precedent (111.2/111.5), per-block gate/up quant map recorded in the artifact | adjudicated 2026-09-25 (iteration 9): item 2 **NEGATIVE — composition** (role/shape skew + 13 mixed-quant unpairable layers), not an owner defect; post-E4a effect confirmed (direct symbol out of top-12, Q5 family 25.22→24.02 ms/tok, UD pure 85.53→84.83 vs plain 79.81); re-rank item 3 = IQ4_XS family 24.25 ms/tok (UD-only, E9-adjacent); `ud_plain_parity` pending per lead directive (windows 5.71/5.39/6.33% vs 2% check); artifact `benchmarks/results/2026-09-25-zbook-e4b-post-e4a-recensus.json` |
 | E6 gate/up + residual fusion | H9 | — | — | — | — | required | open |
 | E7 GDN alpha/beta fused path | H10 | — | — | — | — | bit-exact lane if exact | open |
 | E8 norm-cost attribution | H11 | — | — | — | — | n/a | open |
