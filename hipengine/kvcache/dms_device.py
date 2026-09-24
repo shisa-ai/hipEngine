@@ -77,6 +77,7 @@ class DMSDevicePayloadSnapshot:
     """Temporary request-owned compact journal; never a persistent dense shadow."""
 
     extents: tuple[DMSDeviceExtentSnapshot, ...]
+    live_counts: np.ndarray
 
 
 def _float32_to_bf16_bits(values: np.ndarray) -> np.ndarray:
@@ -1172,7 +1173,13 @@ class DMSDevicePayloadStore:
                         v_scales=v_scales,
                     )
                 )
-        return DMSDevicePayloadSnapshot(extents=tuple(extents))
+        live_counts = np.empty((self._layers, self._heads), dtype=np.int32)
+        for layer in range(self._layers):
+            live_counts[layer] = self.live_counts(layer)
+        return DMSDevicePayloadSnapshot(
+            extents=tuple(extents),
+            live_counts=live_counts,
+        )
 
     def restore(self, snapshot: DMSDevicePayloadSnapshot) -> None:
         """Restore request-owned compact extents byte-for-byte after failure."""
@@ -1182,6 +1189,9 @@ class DMSDevicePayloadStore:
             raise TypeError("DMS device restore requires DMSDevicePayloadSnapshot")
         if len(snapshot.extents) != self._layers * self._heads:
             raise ValueError("DMS device snapshot extent count mismatch")
+        live_counts = np.asarray(snapshot.live_counts)
+        if live_counts.shape != (self._layers, self._heads) or live_counts.dtype != np.int32:
+            raise ValueError("DMS device snapshot live-count shape/dtype mismatch")
         seen: set[tuple[int, int]] = set()
         all_planes = []
         for extent in snapshot.extents:
@@ -1220,6 +1230,12 @@ class DMSDevicePayloadStore:
                 elif values is not None:
                     raise ValueError("BF16 DMS snapshot must not contain INT8 scales")
             all_planes.extend(planes)
+        # The live-count plane is request state as much as the payload is: the
+        # next device append cross-checks the device count against the host
+        # model, so leaving it at its post-append value fails the next cycle.
+        for layer in range(self._layers):
+            self._ensure_layer(layer)
+            all_planes.append((live_counts[layer], self._live_meta[layer], 0))
         # Validate every extent before mutating any device bytes.
         for array, destination, byte_offset in all_planes:
             contiguous = np.ascontiguousarray(array)
