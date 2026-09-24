@@ -61,10 +61,14 @@ from hipengine.distributed.shard_exec import upload_shard_weight
 from hipengine.distributed.shard_group import MlpShardGroup
 from hipengine.distributed.tp2_prefill import run_sharded_mlp_with_residual
 from hipengine.distributed.shard_weights import (
-    MLP_TENSORS,
+    SHARD_FAMILIES,
+    attention_sharded_config,
+    family_slot_names,
+    materialize_attention_shards,
     materialize_mlp_shards,
     resolve_mlp_shard_context,
     upload_mlp_shard_weights,
+    upload_shard_weights,
 )
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION
 from hipengine.loading.qwen35_gguf_admission import build_qwen35_gguf_role_manifest
@@ -132,29 +136,45 @@ class GenerationResult:
 
 def rank_slot_allowlist_from_records(
     records: Sequence[Sequence[str]],
+    *,
+    families: Sequence[str] = ("mlp",),
 ) -> tuple[str, ...]:
     """The rank's resident slot allowlist for a file's role manifest records.
 
-    A ``tp2`` rank's MLP is entirely served by its own shard of
-    ``ffn_gate``/``ffn_up``/``ffn_down`` (``_shard_group.forward``), so the
-    full-width MLP copy the generic runner would materialize is dead residency:
-    it is never read on this path. The only reader of a runner's resident MLP is
-    ``_local_mlp``, which runs in ``mode != 'tp2'``. Measured on the supplied
-    Q4_K_M GGUF that copy is 9.650 GiB of source weights, so every rank was
-    holding half of it (4.825 GiB) for nothing - the shard's own half is
-    materialized and uploaded separately.
+    A slot that a shard family replaces must not be materialized at full width:
+    the shard group serves it, so the generic runner's copy is dead residency.
+    ``families`` names the shard families this route runs, and each one's
+    replaced slots come from the shard module's own tables, so the allowlist and
+    the materializer cannot disagree about what a family replaces.
 
-    The leaves come from the shard module's own tensor list, so the allowlist
-    and the shard materializer cannot disagree about what the shard replaces.
+    For ``mlp`` that is ``ffn_gate``/``ffn_up``/``ffn_down``: a ``tp2`` rank's
+    MLP is entirely served by its own shard (``_shard_group.forward``). The only
+    reader of a runner's resident MLP is ``_local_mlp``, which runs in
+    ``mode != 'tp2'``. Measured on the supplied Q4_K_M GGUF that copy is 9.650
+    GiB of source weights, so every rank was holding half of it (4.825 GiB) for
+    nothing - the shard's own half is materialized and uploaded separately.
+
+    Adding ``attention`` drops the full-width attention and GDN copies the same
+    way, which is what makes the head-sharded route's residency per-rank rather
+    than replicated.
     """
 
     slots = tuple(str(record[0]) for record in records)
-    mlp_leaves = {name.split(".")[0] for name in MLP_TENSORS}
-    excluded = {slot for slot in slots if slot.rsplit(".", 1)[-1] in mlp_leaves}
-    if not excluded:
-        raise TP2GroupError(
-            "the file's role manifest has no MLP shard leaves to exclude"
-        )
+    replaced: set[str] = set()
+    for name in families:
+        family = SHARD_FAMILIES.get(str(name))
+        if family is None:
+            raise TP2GroupError(
+                f"unknown shard family {name!r}; "
+                f"expected one of {sorted(SHARD_FAMILIES)}"
+            )
+        leaves = family_slot_names(family)
+        if not any(slot.rsplit(".", 1)[-1] in leaves for slot in slots):
+            raise TP2GroupError(
+                f"the file's role manifest has no {name} shard leaves to exclude"
+            )
+        replaced |= leaves
+    excluded = {slot for slot in slots if slot.rsplit(".", 1)[-1] in replaced}
     allowed = tuple(slot for slot in slots if slot not in excluded)
     if not allowed:
         raise TP2GroupError("the rank slot allowlist resolved empty")
@@ -176,6 +196,7 @@ class MlpTP2GenerationSession:
         schedule: str | None = None,
         reduce_mode: str | None = None,
         head_shard: bool | None = None,
+        attention_shard: bool = False,
         bulk_prefill: bool = False,
         bulk_prefill_rows: int | None = None,
         use_wmma_prefill: bool | None = None,
@@ -258,6 +279,15 @@ class MlpTP2GenerationSession:
         self.head_shard = bool(head_shard)
         if self.head_shard and self.mode != "tp2":
             raise ValueError("the sharded head is tp2-only")
+        # Head-sharded *attention* is a different axis from ``head_shard``, which
+        # is the sharded logits head. Construction is allowed so the substituted
+        # geometry is real and testable, but no head-sharded layer may run until
+        # the attention-output reduce is wired: see ``_require_attention_reduce``.
+        if attention_shard and self.mode != "tp2":
+            raise ValueError("attention head sharding is tp2-only")
+        self.attention_shard = bool(attention_shard)
+        self._full_config: Any | None = None
+        self._attention_shard_weights: dict[int, dict[int, dict[str, Any]]] = {}
         self._head_plan: Any | None = None
         self._head_weights: dict[int, Any] = {}
         self._head_logits_bufs: dict[int, Any] = {}
@@ -417,9 +447,16 @@ class MlpTP2GenerationSession:
                 raise
 
         try:
+            if self.attention_shard:
+                # Materialize and upload before the rank loop: the substitution
+                # happens inside each rank's own device scope, and each rank's
+                # scratch plan is then allocated from its substituted geometry.
+                self._build_attention_shards()
             for device in self.devices:
                 self._build_rank(device)
-            self._config = self._runners[self.control_device].weights.config
+            # The model's own config, not a rank's slice: the session describes
+            # the model, each runner describes its rank's geometry.
+            self._config = self._full_config
             if self.mode == "tp2":
                 self._build_shard_group()
             if self.head_shard:
@@ -473,7 +510,12 @@ class MlpTP2GenerationSession:
         manifest = build_qwen35_gguf_role_manifest(
             build_qwen35_gguf_tensor_map(info)
         )
-        return rank_slot_allowlist_from_records(manifest.records)
+        families = ["mlp"]
+        if self.attention_shard:
+            families.append("attention")
+        return rank_slot_allowlist_from_records(
+            manifest.records, families=tuple(families)
+        )
 
     def _build_rank(self, device: int) -> None:
         """One rank's runner and scratch, entirely inside its device scope."""
@@ -487,6 +529,14 @@ class MlpTP2GenerationSession:
                 deferred_device_slots=("root.lm_head",) if self.head_shard else (),
                 selected_slots=self._slot_allowlist,
             )
+            if self._full_config is None:
+                self._full_config = runner.weights.config
+            if self.attention_shard:
+                # Before the scratch plan: ``_FullStackScratch.allocate`` sizes
+                # the KV cache, conv state, recurrent/alpha state and rope
+                # tables from this runner's geometry, so substituting the rank's
+                # config first is what makes those per-rank.
+                self._apply_attention_shard(device, runner)
             scratch = _FullStackScratch.allocate(
                 runner,
                 runtime=self.runtime,
@@ -495,6 +545,80 @@ class MlpTP2GenerationSession:
             scratch.zero_states(self.runtime)
             self._runners[device] = runner
             self._scratches[device] = scratch
+
+    def _require_attention_reduce(self) -> None:
+        """Refuse to run a head-sharded layer before its reduce is wired.
+
+        Head sharding makes ``attn_output`` and ``ssm_out`` a hidden-size partial
+        per rank, and the post-attention norm consumes the sum. Until the layer
+        loop sums it, the residual would carry only this rank's half - silently
+        wrong rather than merely slow, which is why this guard sits at the point
+        where a layer would run and not only in a docstring.
+        """
+
+        if self.attention_shard:
+            raise TP2GroupError(
+                "attention head sharding needs the attention-output reduce wired "
+                "into the layer loop first; without it each rank's residual would "
+                "carry only its own heads' partial (docs/REFACTOR.md)"
+            )
+
+    def _build_attention_shards(self) -> None:
+        """Materialize and upload every rank's attention head shards.
+
+        The payloads are the planner's own slices of ``attn_q``/``attn_k``/
+        ``attn_v``/``attn_output`` and the GDN set, uploaded device-scoped to the
+        rank that owns them. Nothing is substituted here: the substitution needs
+        the rank's runner, so it happens in that rank's device scope.
+        """
+
+        if self.mode != "tp2":
+            raise TP2GroupError("attention head sharding is tp2-only")
+        shards = materialize_attention_shards(
+            self.model_path, world_size=len(self.devices)
+        )
+        self._attention_shard_weights = upload_shard_weights(
+            self.runtime, shards, devices=self.devices
+        )
+
+    def _apply_attention_shard(self, device: int, runner: Any) -> None:
+        """Give one rank its attention shards and its head-local geometry.
+
+        Two substitutions, and both are required:
+
+        * the weights - the rank's own head slices replace the full-width
+          attention slots, which the slot allowlist already kept out of
+          residency, so nothing is left unreferenced;
+        * the config - the runner derives ``q_width``, ``kv_width``,
+          ``linear_qkv_width`` and ``ssm_value_dim`` from it, and those are the
+          widths its kernels launch with. Halving the head axes is what makes
+          those launches read the rank's own rows, so the payloads and the
+          geometry come from one manifest and cannot disagree.
+
+        ``ShardWeight`` is the ``Qwen35GGUFDeviceWeight`` stand-in the launchers
+        consume, so the resident layer map takes it unchanged.
+        """
+
+        weights = runner.weights
+        if weights is None:
+            raise TP2GroupError(f"rank {device} has no resident weights to shard")
+        uploaded = self._attention_shard_weights
+        if not uploaded:
+            raise TP2GroupError("the attention shards were not materialized")
+        sharded_config = attention_sharded_config(
+            weights.config, world_size=len(self.devices)
+        )
+        layers = []
+        for layer in weights.layers:
+            rank_roles = uploaded.get(layer.layer_id, {}).get(int(device))
+            if not rank_roles:
+                raise TP2GroupError(
+                    f"rank {device} has no attention shard for layer {layer.layer_id}"
+                )
+            layers.append(replace(layer, weights={**layer.weights, **rank_roles}))
+        runner.weights = replace(
+            weights, config=sharded_config, layers=tuple(layers)
+        )
 
     def _build_shard_group(self) -> None:
         """Materialize and upload every layer's rank shards, then group them."""
@@ -972,6 +1096,7 @@ class MlpTP2GenerationSession:
         src: Mapping[int, int],
         rows: int,
     ) -> None:
+        self._require_attention_reduce()
         for device in self.devices:
             runner = self._runners[device]
             scratch = self._bulk_chunk_scratch.get(
@@ -1482,6 +1607,7 @@ class MlpTP2GenerationSession:
         position: int,
         stages: dict[str, float],
     ) -> None:
+        self._require_attention_reduce()
         mark = time.perf_counter()
         for device in self.devices:
             src, _dst = hidden_ptrs[device]

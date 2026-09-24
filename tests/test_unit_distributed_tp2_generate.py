@@ -625,6 +625,49 @@ def test_rank_slot_allowlist_refuses_a_manifest_without_mlp_leaves() -> None:
         )
 
 
+def test_rank_slot_allowlist_drops_the_attention_leaves_when_head_sharded() -> None:
+    """With head sharding on, the full-width attention copies go too.
+
+    Each rank's attention is served by its own head shard, so keeping the
+    generic runner's full-width copy would be replicated residency the shard
+    already covers - the same argument that drops the MLP leaves, applied to the
+    attention family. The leaf names come from the family tables, so this list
+    cannot drift from what ``materialize_attention_shards`` replaces.
+    """
+
+    records = [
+        ("root.token_embedding", "root", (VOCAB, HIDDEN), "Q6_K"),
+        ("root.output_norm", "root", (HIDDEN,), "F32"),
+        ("layers.0.attn_qkv", "linear_attention", (HIDDEN, HIDDEN), "Q6_K"),
+        ("layers.0.attn_gate", "linear_attention", (HIDDEN, HIDDEN), "Q4_K"),
+        ("layers.0.ssm_alpha", "linear_attention", (HIDDEN,), "F32"),
+        ("layers.0.ssm_out", "linear_attention", (HIDDEN, HIDDEN), "Q6_K"),
+        ("layers.0.ffn_gate", "linear_attention", (FFN, HIDDEN), "Q4_K"),
+        ("layers.0.ffn_up", "linear_attention", (FFN, HIDDEN), "Q4_K"),
+        ("layers.0.ffn_down", "linear_attention", (HIDDEN, FFN), "Q6_K"),
+        ("layers.1.attn_q", "full_attention", (HIDDEN, HIDDEN), "Q6_K"),
+        ("layers.1.attn_k", "full_attention", (HIDDEN, HIDDEN), "Q6_K"),
+        ("layers.1.attn_output", "full_attention", (HIDDEN, HIDDEN), "Q6_K"),
+        ("layers.1.ffn_gate", "full_attention", (FFN, HIDDEN), "Q4_K"),
+    ]
+    assert tg.rank_slot_allowlist_from_records(
+        records, families=("mlp", "attention")
+    ) == (
+        "root.token_embedding",
+        "root.output_norm",
+    )
+    # The MLP-only default still keeps the attention copies, so the two flags
+    # are independent.
+    mlp_only = tg.rank_slot_allowlist_from_records(records)
+    assert "layers.1.attn_q" in mlp_only
+    assert "layers.0.attn_qkv" in mlp_only
+    assert "layers.0.ssm_out" in mlp_only
+    assert "layers.1.ffn_gate" not in mlp_only
+
+    with pytest.raises(TP2GroupError, match="unknown shard family"):
+        tg.rank_slot_allowlist_from_records(records, families=("mlp", "nope"))
+
+
 def test_tp2_rank_runner_omits_the_shard_owned_mlp_slots(env) -> None:
     env["queue_logits"]([2, 2])
     session = _session(env)

@@ -23,6 +23,8 @@ from hipengine.distributed.shard_weights import (
     MLPShardError,
     MlpShardLayer,
     _t16_repack_for_layout,
+    attention_sharded_config,
+    family_slot_names,
     materialize_mlp_shards,
     resolve_mlp_shard_context,
     shard_bytes,
@@ -348,6 +350,202 @@ def test_attention_local_head_indices_are_identity_under_a_halved_config() -> No
             (start * head_map.head_v_dim, rows * head_map.head_v_dim)
             for start, rows in expected_runs
         ]
+
+
+def _synthetic_attention_config(**overrides):
+    """A frozen config with only the axes head sharding touches, for pure tests."""
+
+    from dataclasses import dataclass
+
+    @dataclass(frozen=True)
+    class _Config:
+        head_count: int = 48
+        head_count_kv: int = 8
+        ssm_group_count: int = 16
+        ssm_inner_size: int = 6144
+        ssm_time_step_rank: int = 48
+        hidden_size: int = 5120
+        key_length: int = 128
+        value_length: int = 128
+        ssm_state_size: int = 128
+        feed_forward_length: int = 17408
+
+    return _Config(**overrides)
+
+
+def test_attention_sharded_config_halves_only_the_head_axes() -> None:
+    """Head sharding moves the head axes and leaves the replicated ones alone.
+
+    The residual stream, the per-head key/value widths, the SSM state width and
+    the FFN width are not head counts, so halving any of them would misdescribe
+    the rank's payloads.
+    """
+
+    config = _synthetic_attention_config()
+    sharded = attention_sharded_config(config, world_size=2)
+
+    assert sharded.head_count == config.head_count // 2
+    assert sharded.head_count_kv == config.head_count_kv // 2
+    assert sharded.ssm_group_count == config.ssm_group_count // 2
+    assert sharded.ssm_inner_size == config.ssm_inner_size // 2
+    assert sharded.ssm_time_step_rank == config.ssm_time_step_rank // 2
+    # The derived widths the runner reads follow from those axes.
+    assert sharded.head_count * sharded.key_length == 3072
+    assert sharded.head_count_kv * sharded.value_length == 512
+    assert 2 * sharded.ssm_group_count * sharded.ssm_state_size + sharded.ssm_inner_size == 5120
+    # Grouped-query pairing is preserved, so local q head j still pairs with the
+    # same kv head it did globally.
+    assert sharded.head_count // sharded.head_count_kv == config.head_count // config.head_count_kv
+
+    for replicated in (
+        "hidden_size",
+        "key_length",
+        "value_length",
+        "ssm_state_size",
+        "feed_forward_length",
+    ):
+        assert getattr(sharded, replicated) == getattr(config, replicated), replicated
+    assert sharded != config, "a halved config must not be the unsharded one"
+
+    assert attention_sharded_config(config, world_size=1) == config
+
+
+def test_attention_sharded_config_refuses_an_axis_that_does_not_split() -> None:
+    """A degree that cannot divide a head axis must refuse, not truncate."""
+
+    config = _synthetic_attention_config(ssm_time_step_rank=45)
+    with pytest.raises(MLPShardError, match="ssm.time_step_rank 45 does not split"):
+        attention_sharded_config(config, world_size=2)
+    with pytest.raises(MLPShardError, match="world_size must be positive"):
+        attention_sharded_config(_synthetic_attention_config(), world_size=0)
+
+
+def test_family_slot_names_are_the_tables_own_leaves() -> None:
+    """The allowlist's leaf names come from the family tables, not a copy."""
+
+    from hipengine.distributed.shard_weights import MLP_FAMILY, SHARD_FAMILIES
+
+    assert family_slot_names(MLP_FAMILY) == frozenset(MLP_ROLES)
+    assert sorted(SHARD_FAMILIES) == ["attention", "mlp"]
+    assert family_slot_names(SHARD_FAMILIES["attention"]) >= {
+        "attn_q",
+        "attn_k",
+        "attn_v",
+        "attn_output",
+        "attn_qkv",
+        "ssm_out",
+    }
+
+
+@requires_model
+def test_attention_sharded_config_widths_reproduce_every_payload_shape() -> None:
+    """The halved config's derived widths must equal the payloads' own shapes.
+
+    This is the property that makes the substitution safe: the runner derives
+    every attention width from its config, so if the halved config described a
+    different geometry than the shards hold, the kernels would read the wrong
+    rows - silently, since both would be internally consistent.
+    """
+
+    from hipengine.distributed.shard_weights import materialize_attention_shards
+    from hipengine.loading.gguf import scan_gguf
+    from hipengine.loading.qwen35_gguf import (
+        FULL_ATTENTION,
+        LINEAR_ATTENTION,
+        qwen35_gguf_config_from_metadata,
+    )
+
+    config = qwen35_gguf_config_from_metadata(scan_gguf(str(GGUF_PATH)))
+    sharded = attention_sharded_config(config, world_size=2)
+    q_width = sharded.head_count * sharded.key_length
+    kv_width = sharded.head_count_kv * sharded.value_length
+    qkv_width = (
+        2 * sharded.ssm_group_count * sharded.ssm_state_size + sharded.ssm_inner_size
+    )
+    hidden = sharded.hidden_size
+    full_layer = config.layer_types.index(FULL_ATTENTION)
+    linear_layer = config.layer_types.index(LINEAR_ATTENTION)
+    shards = materialize_attention_shards(
+        str(GGUF_PATH), world_size=2, layer_ids=(full_layer, linear_layer)
+    )
+
+    # attn_q carries the query and its output gate, so it is 2 * q_width rows.
+    expected = {
+        full_layer: {
+            "attn_q": (2 * q_width, hidden),
+            "attn_k": (kv_width, hidden),
+            "attn_v": (kv_width, hidden),
+            "attn_output": (hidden, q_width),
+        },
+        linear_layer: {
+            "attn_qkv": (qkv_width, hidden),
+            "attn_gate": (sharded.ssm_inner_size, hidden),
+            "ssm_alpha": (sharded.ssm_time_step_rank, hidden),
+            "ssm_beta": (sharded.ssm_time_step_rank, hidden),
+            "ssm_a": (sharded.ssm_time_step_rank,),
+            "ssm_dt_bias": (sharded.ssm_time_step_rank,),
+            "ssm_conv1d": (qkv_width, config.ssm_conv_kernel),
+            "ssm_out": (hidden, sharded.ssm_inner_size),
+        },
+    }
+    for layer_id, roles in expected.items():
+        payloads = shards[layer_id].rank_payloads(0)
+        assert set(payloads) == set(roles), f"layer {layer_id} slot set"
+        for role, shape in roles.items():
+            assert payloads[role].local_shape == shape, (
+                f"layer {layer_id} {role}: payload is {payloads[role].local_shape}, "
+                f"the halved config says {shape}"
+            )
+    # The unsharded widths are twice the payloads', so the assertion above is
+    # not vacuously true of any config.
+    assert config.head_count * config.key_length == 2 * q_width
+
+
+@requires_model
+def test_head_sharding_halves_the_resident_scratch_plan() -> None:
+    """The scratch plan follows the halved widths, so residency becomes per-rank.
+
+    ``_FullStackScratch.allocate`` sizes the KV cache, conv state, recurrent
+    state and rope tables from this plan, and the plan is a pure function of the
+    config plus the widths. Substituting the rank's config before allocation is
+    therefore what makes the whole scratch stack per-rank instead of replicated,
+    which is why the substitution has to happen before ``allocate``.
+    """
+
+    from hipengine.loading.gguf import scan_gguf
+    from hipengine.loading.qwen35_gguf import qwen35_gguf_config_from_metadata
+    from hipengine.runtime.qwen35_gguf_runner import _full_stack_scratch_plan
+
+    config = qwen35_gguf_config_from_metadata(scan_gguf(str(GGUF_PATH)))
+    sharded = attention_sharded_config(config, world_size=2)
+
+    def plan(cfg):
+        return _full_stack_scratch_plan(
+            cfg,
+            hidden_size=cfg.hidden_size,
+            ffn_size=cfg.feed_forward_length,
+            q_width=cfg.head_count * cfg.key_length,
+            kv_width=cfg.head_count_kv * cfg.value_length,
+            linear_qkv_width=(
+                2 * cfg.ssm_group_count * cfg.ssm_state_size + cfg.ssm_inner_size
+            ),
+            max_sequence_length=4096,
+            materialize=False,
+        )
+
+    full_plan = plan(config)
+    sharded_plan = plan(sharded)
+    full_total = sum(int(size) for size in full_plan.owner_sizes)
+    sharded_total = sum(int(size) for size in sharded_plan.owner_sizes)
+
+    # The KV payload is the head-proportional term, so it must halve exactly.
+    assert sharded_plan.kv_payload_bytes * 2 == full_plan.kv_payload_bytes
+    # The whole stack shrinks but does not halve: the fixed-width buffers and the
+    # block/position counts do not follow the head axes.
+    assert sharded_plan.owner_sizes != full_plan.owner_sizes
+    assert 0.5 < sharded_total / full_total < 1.0, (
+        f"scratch plan went {full_total} -> {sharded_total}, which is not a partial reduction"
+    )
 
 
 @requires_model
