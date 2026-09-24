@@ -7720,3 +7720,68 @@ def test_q4_iq4_mixed_pair_silu_route_rows1_mirror_family() -> None:
     # out, rows, K, N.
     assert args == (100, 14, 10, 200, 1, 5_120, 17_408)
     assert kwargs["stream"] == 0
+
+
+def test_iq4_q5_mixed_pair_silu_route_rows1_and_declines() -> None:
+    """E6b-3: (IQ4_XS gate, Q5_K up) fires the mixed pair owner at rows==1.
+
+    The ordered (23, 4) family - 3 gate/up layers, the largest remaining
+    mixed combo. Side A is the session-qualified IQ4_XS local32 decode
+    owner (raw) exactly like E6b-1; side B is the Q5_T16 decode owner
+    the E4a policy routes to the exact tile8 chain at (5120, 17408)
+    (t16 abi, resolved before the route runs). rows != 1 declines.
+    """
+    from hipengine.kernels.hip_gfx1100.quant import (
+        gguf_iq_source_mmq_prefill as iq_mmq,
+    )
+
+    gate = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_iq4_xs")
+    up = _fake_weight(layout=LAYOUT_GGUF_Q5_K_T16, quant_key="gguf_q5_k_t16_v1")
+    pair_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_iq4_xs+gguf_q5_k_t16_v1",
+        "iq4_q5_pair_silu_bf16_bf16_out",
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def fake_pair(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    # Self-sufficient under any collection breadth (see the E6b-1 test).
+    from hipengine.kernels.backends import load_backend_kernel_package
+
+    load_backend_kernel_package("hip_gfx1151")
+    register(pair_key, fake_pair, replace=True)
+    try:
+        with iq_mmq.iq_dense_mmq_session(True):
+            assert launch_gguf_linear_pair_silu(
+                gate,
+                up,
+                x_ptr=100,
+                out_ptr=200,
+                rows=1,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                use_gemv_decode=True,
+            )
+            assert not launch_gguf_linear_pair_silu(
+                gate,
+                up,
+                x_ptr=100,
+                out_ptr=200,
+                rows=2,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                use_gemv_decode=True,
+            )
+    finally:
+        unregister(pair_key)
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    # Gate first (IQ4_XS raw, ptr 10), up second (Q5_K T16 tiles, ptr 14).
+    assert args == (100, 10, 14, 200, 1, 5_120, 17_408)
+    assert kwargs["stream"] == 0
