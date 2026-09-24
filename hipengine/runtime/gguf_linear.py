@@ -6121,6 +6121,64 @@ def launch_gguf_linear_pair_silu(
         "gguf_q4_k",
         "pack8_bf16_bf16_out",
     )
+    # E6b-1: (IQ4_XS gate, Q4_K up) mixed pair + SiLU (2026-09-25): the
+    # ordered (23, 12) family - 7 gate/up layers in the UD artifact. Side
+    # A takes the session-qualified local32 decode owner (the same
+    # execution-owner gate as the IQ4 same-quant dual); side B takes the
+    # Q4_K dense decode owner - the same side-B contract plain's q6_q4
+    # mixed route uses. The fused owner is bit-exact with
+    # single/single/silu_mul (side A is the local32 dual's split-K chain,
+    # side B the dense Q4T16 single's single-wave chain, both bf16-rounded
+    # exactly where silu_mul_separate_out would read them), so it owes no
+    # new accuracy evidence beyond the already-gated singles. The reversed
+    # order (12, 23) and the other mixed families are separate units.
+    iq4_q4_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_iq4_xs+gguf_q4_k_t16_v1",
+        "iq4_q4_pair_silu_bf16_bf16_out",
+    )
+    q4_t16_dense_decode = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "dense_single_local32_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(iq4_q4_pair)
+    if (
+        rows == 1
+        and dispatch_a_decode.key == iq4_xs_local32_decode
+        and dispatch_b.key == q4_t16_dense_decode
+        and in_features % 256 == 0
+        and out_features % 8 == 0
+        and is_registered(iq4_q4_pair)
+    ):
+        fn = resolve(
+            backend=iq4_q4_pair.backend,
+            layer=iq4_q4_pair.layer,
+            quant=iq4_q4_pair.quant,
+            variant=iq4_q4_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None if libraries is None else libraries.get(iq4_q4_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            # Side A (IQ4_XS local32) reads the raw allocation - the local32
+            # column bytes live there, exactly as the IQ4 same-quant dual
+            # passes them; side B (Q4_K T16) reads its repacked tiles.
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
     # Q5 T16 gate/up decode dual (2026-09-10): fires only when both sides
     # dispatch to the Q5 T16 direct-GEMV decode owner at rows == 1; the
     # registered variant defaults to the bit-exact dense dual SiLU GEMV.
