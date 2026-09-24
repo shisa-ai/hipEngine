@@ -9231,7 +9231,12 @@ class Qwen35GGUFResidentModelRunner:
                 self._completed_metadata.clear()
                 self._clear_prefix_snapshots()
                 if self._kv_pool is not None:
-                    self._teardown_kv_pool(release_workspace_state=False)
+                    # The owner's packed workspace holds a private-workspace
+                    # reservation in the pool, and `close()` rejects one that
+                    # is still held. Releasing the idle workspace first is what
+                    # frees it, so this path matches reconfigure/resize rather
+                    # than skipping the release and failing the pool close.
+                    self._teardown_kv_pool(release_workspace_state=True)
                 self._release_available_sessions()
             except BaseException as exc:  # pragma: no cover - defensive cleanup
                 error = exc
