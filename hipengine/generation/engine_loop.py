@@ -2731,7 +2731,16 @@ class ResidentEngineLoop:
         if not callable(resolve_width):
             return None
         max_requests = int(resolve_width(work))
-        if max_requests <= 0 or len(work.request_ids) <= max_requests:
+        if max_requests <= 0:
+            # RF-M5 (docs/REFACTOR.md): a zero bound is the partition owner's
+            # instruction that this group must not run MTP sub-groups -- it is
+            # over-width, ineligible, or disabled -- so serve the whole item as
+            # one autoregressive batch. Falling through to the speculative
+            # cycle here was the 2026-09-19 width-8 fail-open: the cycle ran
+            # whole-item draft cycles on a group the partition owner had
+            # routed to AR.
+            return tuple(self._run_ar_decode(work))
+        if len(work.request_ids) <= max_requests:
             return None
         events: list[EngineLoopEvent] = []
         for start in range(0, len(work.request_ids), max_requests):

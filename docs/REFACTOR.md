@@ -151,7 +151,23 @@ keeping `max_batch_size=1` for the per-request KV terms. This changes the
 resolved auto context, so it needs the same measurement protocol as the entry
 above before it becomes a default.
 
-## Wide MTP groups run without a prompt provider, and the over-width demotion is inert (found 2026-09-19)
+## Wide MTP groups run without a prompt provider, and the over-width demotion is inert (found 2026-09-19) — RESOLVED
+
+Resolved in three steps. (1) The `(8, 3)` cell left
+`GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"]` in 9c8ff5444; the
+explicit capacity-8 route now falls to the registered strict fallback
+`gguf_target_ar`, and the production-admission rerun recorded in
+`benchmarks/results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json`
+confirms the withdrawal. (2) Speculation routes by priming source instead of
+sink refusal (3edac59c9): a row whose prompt sink was refused declines
+capability with `provider_state_absent` before any cycle can open a provider
+(regression:
+`tests/test_unit_qwen35_gguf_mtp2_seam.py::test_capability_refuses_a_row_whose_prompt_sink_was_refused`).
+(3) A zero partition bound is one whole-batch AR step in the engine instead of
+"do not partition" (regression:
+`tests/test_unit_specdec2_engine_loop.py::test_zero_partition_bound_stops_a_wide_capable_runner_from_cycling`).
+The observations below record the original finding; the first bullet's claim
+that the production width table lists `(8, 3)` predates the withdrawal.
 
 - `hipengine/kernels/hip_gfx1151/__init__.py` lists `(8, 3)` in
   `GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"]`, but
@@ -7320,7 +7336,18 @@ batches (len(sessions) >= 2) with a RED-first contract
   policy. Do not restore a scalar ceiling or broaden intervening widths. Keep
   the registered strict fallback.
 
-## RF-M5 — production whole-batch AR route for over-width MTP due items (2026-08-31)
+## RF-M5 — production whole-batch AR route for over-width MTP due items (2026-08-31) — RESOLVED
+
+Resolved: `_maybe_run_partitioned_speculative_decode` now treats a zero
+partition bound as one whole-batch AR step instead of "do not partition"
+(`tests/test_unit_specdec2_engine_loop.py::test_zero_partition_bound_stops_a_wide_capable_runner_from_cycling`
+pins the engine decision against a runner whose capability would grant the
+wide cycle), and the admission owner caps gfx1151 production MTP widths at
+four (9c8ff5444), so C5-C8 never enter MTP and the census artifact's true-AR
+column stays their operative baseline -- no remeasure row is claimed here.
+Decision: the partitioner-level threshold is retained deliberately as the
+zero-bound signal the engine maps; it is not a redundant defense. The
+observation below records the measured inert state from 2026-09-19.
 
 `GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS = {"production": 4}` plus a
 zero `partition_max_requests` result make an over-bound due batch take one
