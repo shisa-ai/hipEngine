@@ -88,6 +88,27 @@ Existing direct-runtime results are not HTTP completion evidence.
 
   Batched AR decoding gains more from resident width than MTP does, so the MTP
   ratio falls as width rises even though MTP throughput rises at every width.
+  Per-request cycle and draft counts are identical at every width, which on its
+  own is equally consistent with a fused group stepping in lockstep and with
+  singleton cycles sharing a wider batch. `plan_group_rows` is the plan and
+  `verifier_rows` is a declared shape field, so the call itself was measured:
+  `scripts/gguf_mtp_packed_group_width_probe.py` patches
+  `Qwen35GGUFResidentSession.verify_target_blocks_batch` -- the call that runs
+  the packed verifier, one job per row of the cycle group -- and records
+  `len(jobs)` for every call. At widths 2 and 4 every call carried the whole
+  group:
+
+  ```
+  jobs=2: 91 calls
+  jobs=4: 91 calls
+  total calls: 182
+  ```
+
+  No call carried one job. The sweep's own arithmetic agrees: 83 request-cycles
+  per width at widths 1, 2 and 4, so one group call per cycle covers 1, 2 and 4
+  rows respectively. The wider group is real, and the shared direct INT8 decode
+  leaf is what verifies it.
+
   This artifact is diagnostic and not promotable: `/ready` reports
   `status: rejected`, `runtime_action: diagnostic_override`,
   `promotion_eligible: false`. It is the evidence for this row, not a topline
