@@ -215,6 +215,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_pack8_gemv import (
     register_gguf_k_selected_pack8_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_selected_pack8_gemv import (
+    register_gguf_q5_1_selected_pack8_gemv_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     register_gguf_q4_k_selected_prefill_kernels,
 )
@@ -35401,6 +35404,14 @@ _COMPACT_MOE_Q4_DUAL_GEMV_KEYS = {
     ),
 }
 _COMPACT_MOE_DOWN_GEMV_KEYS = {
+    # Gemma 4 26B-A4B MoE down experts are raw Q5_1 (24-byte/32-element
+    # blocks): pack8 GEMV over in_features % 32 == 0, including 704.
+    "gguf_q5_1": KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q5_1",
+        "selected_pack8_gemv_decode_compact_bf16_bf16_out",
+    ),
     "gguf_q5_k": KernelKey(
         "hip_gfx1100",
         "moe_linear",
@@ -35443,6 +35454,17 @@ _COMPACT_MOE_DOWN_GEMV_KEYS = {
         "gguf_q6_k_x8_v1",
         "selected_x8_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out",
     ),
+}
+
+# in_features alignment each compact down GEMV declares for the FFN width,
+# keyed by the same quant keys as _COMPACT_MOE_DOWN_GEMV_KEYS. Unlisted
+# quants default to 256 at the guard: Q4_K/Q5_K/Q6_K superblocks and the
+# x8/t16 tile packs all consume 256-element in-features. Raw Q5_1 blocks are
+# 32 elements, so Gemma 4's ffn=704 compact-routes there while a wide-block
+# down quant (e.g. a Q5_K straggler layer) keeps falling back to the legacy
+# per-row path. Registry data drives the guard -- no identity branches.
+_COMPACT_MOE_DOWN_GEMV_IN_ALIGNMENT = {
+    "gguf_q5_1": 32,
 }
 _COMPACT_MOE_GEMV_DECODE_SCRATCH = (
     "moe_group_counts",
@@ -37595,7 +37617,13 @@ def _try_run_post_attention_moe_c1_compact_gemv(
     expert_ffn = int(cfg.expert_feed_forward_length)
     if top_k <= 0 or top_k > int(getattr(scratch, "moe_selected_rows_capacity", top_k)):
         return False
-    if hidden_size % 256 != 0 or expert_ffn % 256 != 0 or expert_ffn % 8 != 0:
+    # FFN-width alignment follows the resolved down kernel's declared
+    # requirement (registry data, not an identity branch): wide-block quants
+    # need 256 and keep the legacy fallback at ffn=704, raw Q5_1 needs only
+    # 32. hidden_size % 256 is the Q4_K dual gate_up superblock on the in
+    # side; % 8 is the pack8 lane floor shared by gate_up out and silu.
+    down_in_alignment = _COMPACT_MOE_DOWN_GEMV_IN_ALIGNMENT.get(down_weight.spec.quant_key, 256)
+    if hidden_size % 256 != 0 or expert_ffn % down_in_alignment != 0 or expert_ffn % 8 != 0:
         return False
     _validate_raw_rank3_expert_weight(
         gate_weight,
@@ -37985,6 +38013,7 @@ def _ensure_compact_moe_gemv_registered() -> None:
     register_paro_combine_kernels()
     register_gguf_q4_k_selected_pack8_gemv_kernels()
     register_gguf_k_selected_pack8_gemv_kernels()
+    register_gguf_q5_1_selected_pack8_gemv_kernels()
     register_gguf_t16_selected_gemv_kernels()
     register_gguf_x8_selected_gemv_kernels()
 

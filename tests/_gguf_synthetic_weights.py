@@ -22,6 +22,7 @@ Q4_K_BLOCK_BYTES = 144
 Q5_K_BLOCK_BYTES = 176
 Q6_K_BLOCK_BYTES = 210
 Q8_0_BLOCK_BYTES = 34
+Q5_1_BLOCK_BYTES = 24
 
 
 def _pack_q4_k_scales(scales: np.ndarray, mins: np.ndarray) -> np.ndarray:
@@ -184,4 +185,43 @@ def make_q8_0_weight(out_features: int, in_features: int) -> np.ndarray:
         for block_idx in range(blocks_per_row):
             start = block_idx * Q8_0_BLOCK_BYTES
             data[out_idx, start : start + Q8_0_BLOCK_BYTES] = _make_q8_0_block(out_idx, block_idx)
+    return data
+
+
+def _make_q5_1_block(out_idx: int, block_idx: int) -> np.ndarray:
+    d = np.float16(0.015625 * (1 + (out_idx % 5)))
+    m = np.float16(0.0078125 * (1 + (block_idx % 3)))
+    q = ((np.arange(32, dtype=np.int64) + out_idx * 7 + block_idx * 13) % 32).astype(np.uint8)
+    # Q5_1 layout: fp16 d, fp16 m, uint32 qh (bit i = high bit of element i,
+    # little-endian), qs[16] (low nibble = elements 0..15, high = 16..31).
+    # Dequant: w = d*q5 + m, matching hipengine/quant/gguf.py and the GPU
+    # dequant_q5_1 helper bit for bit.
+    qh_u32 = np.uint32(0)
+    for i in range(32):
+        qh_u32 |= np.uint32((q[i] >> 4) & 1) << np.uint32(i)
+    qh = np.asarray([qh_u32], dtype=np.uint32).view(np.uint8)
+    low = (q[:16] & 0x0F).astype(np.uint8)
+    high = ((q[16:] & 0x0F) << 4).astype(np.uint8)
+    qs = (low | high).astype(np.uint8)
+    return np.concatenate(
+        [
+            np.asarray([d], dtype=np.float16).view(np.uint8),
+            np.asarray([m], dtype=np.float16).view(np.uint8),
+            qh,
+            qs,
+        ]
+    )
+
+
+def make_q5_1_weight(out_features: int, in_features: int) -> np.ndarray:
+    """Build raw Q5_1 bytes ``[out_features, blocks * 24]`` (32 per block)."""
+
+    if in_features % 32:
+        raise ValueError("in_features must be a multiple of 32")
+    blocks_per_row = in_features // 32
+    data = np.empty((out_features, blocks_per_row * Q5_1_BLOCK_BYTES), dtype=np.uint8)
+    for out_idx in range(out_features):
+        for block_idx in range(blocks_per_row):
+            start = block_idx * Q5_1_BLOCK_BYTES
+            data[out_idx, start : start + Q5_1_BLOCK_BYTES] = _make_q5_1_block(out_idx, block_idx)
     return data

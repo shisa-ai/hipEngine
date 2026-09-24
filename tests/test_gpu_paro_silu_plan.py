@@ -223,6 +223,49 @@ def test_silu_mul_separate_out_f32_matches_cpu_reference() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("features", [256, 704])
+def test_silu_mul_dual_out_bf16_matches_cpu_reference(features: int) -> None:
+    """Packed [rows, 2*features] gate||up SiLU-mul at qwen35 and Gemma 4
+    widths. The compact c=1 decode chain runs this at features=704; the
+    elementwise kernel declares no alignment contract, so the oracle pins
+    the arithmetic at both geometries."""
+    rng = np.random.default_rng(20260924 + features)
+    rows = 3
+    gate_f = rng.normal(size=(rows, features)).astype(np.float32)
+    up_f = rng.normal(size=(rows, features)).astype(np.float32)
+    packed_bits = _bf16_bits(np.concatenate([gate_f, up_f], axis=1))
+    out_bits = np.empty((rows, features), dtype=np.uint16)
+
+    runtime = get_hip_runtime()
+    library = build_paro_silu(load=True)
+    bufs: list = []
+    try:
+        in_d = _dev(np.ascontiguousarray(packed_bits), runtime, bufs)
+        out_d = malloc(out_bits.nbytes, runtime=runtime)
+        bufs.append(out_d)
+        silu_mul_dual_out_bf16(
+            in_d.ptr,
+            out_d.ptr,
+            rows,
+            features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out_bits), out_d, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    gate_b = _bf16_to_f32(packed_bits[:, :features])
+    up_b = _bf16_to_f32(packed_bits[:, features:])
+    expected = gate_b * (1.0 / (1.0 + np.exp(-gate_b))) * up_b
+    # The kernel rounds each output element to bf16; compare on that grid.
+    expected_bf16 = _bf16_to_f32(_bf16_bits(expected))
+    np.testing.assert_allclose(_bf16_to_f32(out_bits), expected_bf16, rtol=1.0e-2, atol=1.0e-3)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_silu_mul_separate_bf16_may_replace_gate_in_place() -> None:
     rng = np.random.default_rng(20260814)
     rows = 7

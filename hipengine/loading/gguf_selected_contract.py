@@ -63,6 +63,9 @@ _ALLOCATION = MappingProxyType({
     **{row[2]: "raw" for row in RAW_SELECTED_CONSUMERS},
     **{row[3]: "tiles" for row in REPACKED_SELECTED_CONSUMERS},
     "gguf_q5_k_t16_v1": "tiles",
+    # Raw Q5_1 expert weights (legacy qwen4_exp_q5_1 selected GEMV and the
+    # compact pack8 down GEMV) stay in their GGUF row-major layout.
+    "gguf_q5_1": "raw",
 })
 _ENTRY = MappingProxyType({
     "single": "_launch_selected_raw_gguf_moe_linear",
