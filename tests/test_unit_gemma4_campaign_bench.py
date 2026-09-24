@@ -17,6 +17,7 @@ import pytest
 
 from scripts.gemma4_campaign_bench import (
     exact_prompt_ids,
+    memory_row,
     run_instrumented,
     summarize,
 )
@@ -196,6 +197,30 @@ def test_exact_prompt_ids_hits_the_target_exactly():
         5,
         4,
     ]
+
+
+def test_memory_row_reports_used_and_peak_from_labeled_samples():
+    row = memory_row(
+        [
+            ("before_load", 25_600_000_000, 25_753_026_560),
+            ("after_load", 10_400_000_000, 25_753_026_560),
+            ("after_runs", 10_100_000_000, 25_753_026_560),
+        ]
+    )
+    assert row["total_bytes"] == 25_753_026_560
+    assert row["used_bytes"]["before_load"] == 25_753_026_560 - 25_600_000_000
+    assert row["used_bytes"]["after_load"] == 25_753_026_560 - 10_400_000_000
+    assert row["peak_used_bytes"] == 25_753_026_560 - 10_100_000_000
+    assert row["labels"] == ["before_load", "after_load", "after_runs"]
+
+
+def test_memory_row_rejects_empty_bad_shape_and_inconsistent_totals():
+    with pytest.raises(ValueError, match="at least one"):
+        memory_row([])
+    with pytest.raises(ValueError, match="label"):
+        memory_row([("only", 100, 200, "extra")])
+    with pytest.raises(ValueError, match="total"):
+        memory_row([("a", 100, 200), ("b", 90, 210)])
 
 
 def test_exact_prompt_ids_rejects_nonpositive_target():
