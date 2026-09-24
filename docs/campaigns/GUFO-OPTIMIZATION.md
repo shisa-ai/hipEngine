@@ -268,6 +268,19 @@ gfx1151 — the device's geometry preference is family-specific (the
 planar family won with a four-wave sibling; the standard family loses
 with it), so sibling sweeps must stay measured per family.
 
+**Iteration 11: host-gap hypothesis refuted, attribution complete.**
+`qwen38_prefill_sweep_trace.py --rows 512` on the 416.49 state shows
+`wall_minus_gpu_ms = 0.012` (wall 1241.71, GPU span 1241.70) — no
+launch/sync gap remains in the host path, and named GPU stages account
+for 99.6% of wall. Stage attribution cross-checks the kernel trace
+(`ffn_gate_up` 428 ms = dual-silu, `ffn_down_residual` 279 ms =
+shared_b). Every remaining wall-time owner of significant size is
+outside this loop's declared scope: the gdn stack (241 ms,
+`linear_attn/`), dense_gemv (~29 ms, `linear/`), and the hipblaslt
+heuristic (~37 ms, `core/`); within scope, dual-silu's lever space is
+exhausted under the strict bit-exact class (body x2, rowtile x4, env
+all reverted; `smallm` rejects rows > 16).
+
 ### G. Measurement tooling and MALL discipline (LOW cost, enables everything above)
 
 From `docs/PERFORMANCE.md` and their tool tree:
