@@ -9,6 +9,7 @@ import pytest
 
 import hipengine.generation.mtp_sampled_accept as mtp_sampled_accept
 import hipengine.speculative.sampling as speculative_sampling
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.models.qwen35 import Qwen35GGUFModel
 from hipengine.models.kv_capabilities import ModelArtifactIdentity
 from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
@@ -84,8 +85,57 @@ def test_dense_int8_mtp_uses_implementation_admission(capacity, budget):
     assert payload["evidence_artifacts"] == []
     eligibility = SpeculativeMTPStaticEligibility.from_mapping(payload["static_eligibility"])
     assert eligibility.eligible
-    assert eligibility.max_realized_group_rows == 1
+    assert eligibility.max_candidate_count == budget
+    # The width bound is the storage's widest automatic-eligible declaration,
+    # not the singleton declaration this realized width selects.
+    assert eligibility.max_realized_group_rows == 4
     assert eligibility.implementation_key == "gguf_dense_int8_native_chain"
+
+
+def test_int8_automatic_width_bound_follows_the_storage_not_the_singleton_declaration():
+    """A singleton INT8 request may join the wider group its kernels implement.
+
+    The readiness record had the automatic arm at physical c2 withheld with
+    `automatic_mtp_scope_not_promoted`: the C1 declaration a singleton key
+    selects offers one row, so the request's static width bound was 1, the
+    resident planner resolved a due width-2 group to zero, and the group fell to
+    AR. The bound describes the due group a request may be a *member* of, which
+    the planner forms from concurrent requests rather than from the width this
+    request realizes alone, so it follows the widest automatic-eligible
+    declaration for the storage and backend. The candidate depth stays with the
+    declaration the realized width selects, which is what keeps a wider cell the
+    package does not list fail-closed instead of admitted by the bound.
+    """
+
+    policy = tuple(
+        backend_package_capability(
+            "hip_gfx1151", "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS", {}
+        )["production"]
+    )
+    assert (2, 2) in policy
+    assert (2, 7) not in policy
+
+    decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=_key(candidate_budget=2)
+    )
+    eligibility = SpeculativeMTPStaticEligibility.from_mapping(
+        decision.as_dict()["static_eligibility"]
+    )
+    assert eligibility.implementation_key == "gguf_dense_int8_native_chain"
+    assert eligibility.max_candidate_count == 2
+    assert eligibility.max_realized_group_rows == 4
+    # The width-2 cell the planner would now form is one the package lists.
+    assert (2, eligibility.max_candidate_count) in policy
+
+    deeper = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=_key(candidate_budget=7)
+    )
+    deeper_eligibility = SpeculativeMTPStaticEligibility.from_mapping(
+        deeper.as_dict()["static_eligibility"]
+    )
+    assert deeper_eligibility.max_candidate_count == 7
+    assert deeper_eligibility.max_realized_group_rows == 4
+    assert (2, deeper_eligibility.max_candidate_count) not in policy
 
 
 @pytest.mark.parametrize("rows", [2, 4])
