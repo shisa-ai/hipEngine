@@ -534,6 +534,20 @@ measured negative.
   clearing command are in `docs/REFACTOR.md`; one-layer leftovers (Q5/Q6/Q3
   same-quant singles) are below any route's fixed cost. **No same-quant route
   gap remains; step 1 closes.**
+  **Step 2a landed 2026-09-25 (E6b, iteration 12):** the largest single
+  mixed family — ordered (IQ4_XS gate, Q4_K up), 7 layers — now runs a
+  fused pair owner: new `iq4_q4_pair_silu_kernel<2>` (side A carries the
+  local32 dual's split-K contract via the shared `_local32_waves` rule,
+  side B the dense Q4T16 single's single-wave chain published from wave
+  0, so neither side re-associates K). Production-shape screen (5120,
+  17408) rows=1: **bit-exact and 1.04×** (504.2 vs 523.3 µs/layer).
+  Conservation census through `LLM.generate()` (e4b → e6b baseline):
+  pair +6.78, IQ4 singles −6.79, Q4 singles −6.78, silu −6.78 →
+  **807.97 → 794.41 launches/tok (−13.56, exact four-family
+  conservation, zero collateral drift)**, decode pure_us −54.6 µs/tok.
+  Remaining for step 2: 21 mixed layers across 9 ordered combos (6
+  K-quant in 3 combos, 15 IQ4-involved in 6 more), each its own unit;
+  residual folding stays E6c.
 - [ ] **E7 — GDN alpha/beta on the fused path (H10).** Make UD's Q8_0
   `ssm_alpha`/`ssm_beta` reach the fused alpha/beta+conv owner, either by
   planning a load-time Q8_0→F32 expansion (exact in weight value: an fp16
@@ -719,6 +733,7 @@ refusal.
 | E4b Q4_K single composition check | H4/H6 | — (adjudication unit; no retained change) | — (re-census window, not a paired A/B) | 807.97 (plain 571.59, both identical to E4) | — | census + quant-map evidence: same kernel symbol both arms, tile8 cross-arm speed-identity precedent (111.2/111.5), per-block gate/up quant map recorded in the artifact | adjudicated 2026-09-25 (iteration 9): item 2 **NEGATIVE — composition** (role/shape skew + 13 mixed-quant unpairable layers), not an owner defect; post-E4a effect confirmed (direct symbol out of top-12, Q5 family 25.22→24.02 ms/tok, UD pure 85.53→84.83 vs plain 79.81); re-rank item 3 = IQ4_XS family 24.25 ms/tok (UD-only, E9-adjacent); `ud_plain_parity` pending per lead directive (windows 5.71/5.39/6.33% vs 2% check); artifact `benchmarks/results/2026-09-25-zbook-e4b-post-e4a-recensus.json` |
 | E4c IQ4_XS family composition check | H4 | — (adjudication unit; no retained change) | — (re-census window, not a paired A/B) | 807.97 (plain 571.59) | — | tensor-role map reconciles census: dual 19.4/tok = 20 pairable layers all fused (97%, remainder block-type), singles = inherent roles (down ×27, attention ×32) + 22 mixed layers, pairable count fully consumed | adjudicated 2026-09-25 (iteration 10): item 3 **NEGATIVE — composition**, no same-quant route gap; `<2,1>`/`<4,1>` split is shape-class selection with no same-shape alternative; **E4 complete** (item 1 route-landed E4a, items 2-3 negative E4b/E4c); mixed-layer sizing confirmed at exactly 28 (22 IQ4 + 6 K-quant) and handed to E6; `ud_plain_parity` pending per lead directive; metric unchanged, iteration logged |
 | E6a same-quant pair routes | H9 | — (route screen; nothing enabled, no retained change) | — | 807.97 (unchanged by construction — route declined) | — | **PASS**: dual == 2×tile8+silu_mul chain bit-exact at (5120,17408) rows=1 (screen + existing unit oracle), allocate-once timing ×200, guard green, docs gates 4/4 | adjudicated 2026-09-25 (iteration 11): Q5_K same-quant dual **screened and REJECTED — 0.93×** (705.6 vs 653.6 µs/layer) since E4a moved singles to tile8; IQ4 pair-SiLU already firing (19.4/tok, E2); dormancy causes (poisoned Q4 variant inheritance, tile8 dispatch predicate, dead 5620 branch) + re-screen clearing command recorded in `docs/REFACTOR.md`; E6 step 1 closes with no same-quant route gap; `ud_plain_parity` pending per lead directive; metric unchanged, iteration logged |
+| E6b mixed pair (IQ4_XS, Q4_K) | H9 | iq4_q4_pair_silu_kernel<2> (new fused pair owner) vs iq4/q4 singles + silu_mul | 1.04× (504.2 vs 523.3 µs/layer at (5120,17408) rows=1, allocate-once ×50) | 807.97 → **794.41 (−13.56, exact 4-family conservation)** | −54.6 µs/tok (84828.8 → 84774.2) | **PASS**: bit-exact vs chain at full production scale + K=5120 unit oracle; unit route test (fires ordered / declines reversed and rows≠1); production probe through LLM.generate shows pair 6.78/tok with zero collateral drift; guard green, docs gates 4/4 | landed 2026-09-25 (iteration 12): the 7-layer (23,12) family on its own fused owner — side A = local32 dual split-K contract (shared `_local32_waves`), side B = dense Q4T16 single's single-wave chain published from wave 0 (no K re-association on either side); the first production probe crashed on `KeyError: 'tiles'` — side A reads `raw`, caught only by the LLM.generate gate because the unit fake exposed all allocations (harness-vs-production lesson recorded in the worklog entry); 21 mixed layers across 9 ordered combos + E6c residual folding remain as separate units; `ud_plain_parity` pending per lead directive |
 | E6 gate/up + residual fusion | H9 | — | — | — | — | required | open |
 | E7 GDN alpha/beta fused path | H10 | — | — | — | — | bit-exact lane if exact | open |
 | E8 norm-cost attribution | H11 | — | — | — | — | n/a | open |

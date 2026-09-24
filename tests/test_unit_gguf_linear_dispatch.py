@@ -7567,3 +7567,86 @@ def test_qwen4exp_mmq_prefill_session_swaps_f32_f32_prefill(monkeypatch) -> None
     finally:
         for k, fn in originals.items():
             register(k, fn, replace=True)
+
+
+def test_iq4_q4_mixed_pair_silu_route_rows1_ordered_and_declines() -> None:
+    """E6b-1: (IQ4_XS gate, Q4_K up) fires the mixed pair owner at rows==1.
+
+    The ordered combo (IQ4_XS, Q4_K) is the largest mixed-quant gate/up
+    family in the UD artifact (7 layers). Side A must take the session-
+    qualified local32 decode owner exactly like the IQ4 same-quant dual;
+    side B must take the Q4_K dense decode owner (the same side-B contract
+    plain's q6_q4 mixed route uses). The reversed order and rows != 1 are
+    separate units and must decline this route.
+    """
+    from hipengine.kernels.hip_gfx1100.quant import (
+        gguf_iq_source_mmq_prefill as iq_mmq,
+    )
+
+    # Production IQ4_XS dense gate/up weights dispatch under the raw
+    # ``gemv_bf16_bf16_out`` parent (the session-qualified decode rewrite
+    # runs on raw-abi dispatches), so the fake mirrors that parent.
+    gate = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_iq4_xs")
+    up = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16, quant_key="gguf_q4_k_t16_v1"
+    )
+    pair_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_iq4_xs+gguf_q4_k_t16_v1",
+        "iq4_q4_pair_silu_bf16_bf16_out",
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def fake_pair(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(pair_key, fake_pair, replace=True)
+    try:
+        with iq_mmq.iq_dense_mmq_session(True):
+            assert launch_gguf_linear_pair_silu(
+                gate,
+                up,
+                x_ptr=100,
+                out_ptr=200,
+                rows=1,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                use_gemv_decode=True,
+            )
+            # Reversed order is a different family (its own unit) and must
+            # not resolve this key.
+            assert not launch_gguf_linear_pair_silu(
+                up,
+                gate,
+                x_ptr=100,
+                out_ptr=200,
+                rows=1,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                use_gemv_decode=True,
+            )
+            # rows != 1 is not this route's admission.
+            assert not launch_gguf_linear_pair_silu(
+                gate,
+                up,
+                x_ptr=100,
+                out_ptr=200,
+                rows=2,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                use_gemv_decode=True,
+            )
+    finally:
+        unregister(pair_key)
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    # Side A (IQ4_XS local32) reads the raw allocation (ptr 10), side B
+    # (Q4_K T16) its tiles (ptr 14); argument contract is
+    # x, gate raw, up tiles, out, rows, K, N.
+    assert args == (100, 10, 14, 200, 1, 5_120, 17_408)
+    assert kwargs["stream"] == 0
