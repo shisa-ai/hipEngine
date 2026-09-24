@@ -24,6 +24,36 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
   `model.kv_capability.max_packed_rows`, which previously differed silently from
   the declared `max_direct_rows`.
 
+### Known Limitations
+
+- INT8 speculative decoding's supported scope is dense GGUF with a NextN head,
+  uniform paged per-token/head INT8 K/V with `fp32` per-token-head scales, and
+  registered gfx11 kernels. Inside that scope, packed verification runs at
+  group widths up to the artifact's admitted no-mirror capability (physical c4),
+  and sampled requests, `n>1` multi-choice in one request, and concurrent
+  requests coalesced into one decode step all speculate and match the
+  autoregressive ids.
+- Compact DMS is a retention topology on top of INT8, not another name for it.
+  DMS plus INT8 MTP runs the same row-bulk verifier with the DMS store journal
+  for eviction and compaction, and reproduces the DMS plus INT8 autoregressive
+  ids and finish reason. The packed decode graph is BF16-only, so a DMS INT8 row
+  verifies through the serial-exact route with `allow_graph=False`.
+- The route a speculative request actually took is reported one level below the
+  top-level metadata: `choices[0].hipengine.diagnostics.specdec2_mtp2` carries
+  `plan_reason`, `plan_ar_only`, `provider_readiness`, `provider_decline_reason`,
+  `cycles`, and `failure_reason_counts`. An explicit `speculative_mtp: true`
+  request that cannot use the speculative route is not silently downgraded -- it
+  either runs MTP or reports why it did not -- but a client reading only the
+  top-level block sees zero cycles and no reason.
+- A structured request (`response_format: {"type": "json_object"}`) declines the
+  speculative provider on INT8 KV and decodes autoregressively with that reason
+  reported. The JSON-object close-forcing processor also raises one recoverable
+  `precommit_failure_ar_fallback` ("no finite logits remain after token
+  constraints") that the fallback absorbs; the response is still valid JSON.
+- INT8 speculative decoding still does not establish INT8-versus-BF16 output
+  quality, and the INT8 storage policy's own resident-context figures do not
+  transfer to the BF16 default.
+
 ## v0.6.1 - 2026-09-22
 
 Fixes long-prompt prefix reuse, widens speculative decoding on INT8 KV, and adds
