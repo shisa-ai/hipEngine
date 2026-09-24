@@ -424,10 +424,16 @@ measured negative.
   overhead becomes material after H2, test row batching, pair/dual owners, or
   graph-capture reuse as separate routing units. Re-rank after every retained
   route; adopt the strict-kernel-tuning prohibition from §6. Run E4 after E3:
-  UD's 103 Q4_K tensors plan `kernel:gguf_q4_k` rather than plain's
-  `gguf_q4_k_t16_v1`, and UD's Q4_K single local32 launches run about
-  167 µs against plain's 120 µs, so H4's Q4_K item is probably a C2 layout
-  consequence. Re-census after E3 before writing any Q4_K owner change.
+  **premise correction (E3, 2026-09-25):** the original note here said UD's
+  103 Q4_K tensors plan `kernel:gguf_q4_k` rather than plain's
+  `gguf_q4_k_t16_v1` — that came from the stale route audit. E3's postfix
+  audit shows **both** arms plan their Q4_K tensors as
+  `kernel:gguf_q4_k_t16_v1` (UD 103×, plain 288×), so the layout-consequence
+  reading of H4 is refuted: UD's Q4_K single local32 launching about 167 µs
+  against plain's 120 µs at the same T16 layout is a genuine owner-tuning
+  candidate, not a C2 artifact. Re-census after E3 before writing any Q4_K
+  owner change (E3 changed report surfaces only, so census deltas vs E2d
+  indicate drift, not layout change).
   - [ ] E4a — For every new owner, test rows 1, 2, 3, 4, 8, 16, and the
     production boundary shapes, plus one non-boundary shape. Preserve the
     strict fallback and verify the selected symbol in a real user request.
