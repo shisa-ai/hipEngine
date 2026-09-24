@@ -625,6 +625,75 @@ def test_rank_slot_allowlist_refuses_a_manifest_without_mlp_leaves() -> None:
         )
 
 
+def _attention_reduce_stub(*, attention_shard: bool, attn_out_ptrs=(0xA000, 0xA100)):
+    """Just the session state ``_bulk_attention_reduce`` reads, with a recorder."""
+
+    from types import SimpleNamespace
+
+    calls: list[tuple] = []
+
+    class _Group:
+        def reduce_device_payload(self, layer_id, partials, outs, *, phase, rows):
+            calls.append(
+                (int(layer_id), dict(partials), dict(outs), int(phase), int(rows))
+            )
+
+    scratch = {
+        device: SimpleNamespace(attn_out=SimpleNamespace(ptr=ptr))
+        for device, ptr in enumerate(attn_out_ptrs)
+    }
+    session = SimpleNamespace(
+        attention_shard=attention_shard,
+        reduce_mode="device",
+        devices=(0, 1),
+        _bulk_shard_group=_Group(),
+        _bulk_scratch=scratch,
+        _bulk_chunk_scratch={},
+        _bulk_attn_reduced={0: 0xB000, 1: 0xB100},
+    )
+    return session, calls
+
+
+def test_bulk_attention_reduce_takes_the_attention_phase_slot() -> None:
+    """The attention reduce needs its own slot and its own destination.
+
+    Head sharding reduces twice per layer, and the peer's spin exits as soon as
+    its flag reaches the step, so the attention reduction cannot share a staging
+    slot with the MLP's. It also must not write in place: the spin-add kernel
+    declares its input and output ``__restrict__``, so the sum goes to the
+    separate buffer the post-attention norm then reads.
+    """
+
+    session, calls = _attention_reduce_stub(attention_shard=True)
+    tg.MlpTP2GenerationSession._bulk_attention_reduce(session, 5, 512)
+
+    assert calls == [
+        (5, {0: 0xA000, 1: 0xA100}, {0: 0xB000, 1: 0xB100}, 1, 512)
+    ], "the attention phase is phase 1 and the MLP keeps phase 0"
+    # The consumer reads the reduced buffer, not the rank's own partial.
+    assert tg.MlpTP2GenerationSession._bulk_attention_output_ptr(session, 0) == 0xB000
+    assert tg.MlpTP2GenerationSession._bulk_attention_output_ptr(session, 1) == 0xB100
+
+
+def test_bulk_attention_reduce_is_a_no_op_without_head_sharding() -> None:
+    """The unsharded route is untouched: no reduce, and the norm reads attn_out."""
+
+    session, calls = _attention_reduce_stub(attention_shard=False)
+    tg.MlpTP2GenerationSession._bulk_attention_reduce(session, 5, 512)
+    assert calls == []
+    assert tg.MlpTP2GenerationSession._bulk_attention_output_ptr(session, 0) == 0xA000
+    assert tg.MlpTP2GenerationSession._bulk_attention_output_ptr(session, 1) == 0xA100
+
+
+def test_bulk_attention_reduce_needs_the_device_reduction() -> None:
+    """A host-reduced group cannot serve the attention reduce, so it refuses."""
+
+    session, _calls = _attention_reduce_stub(attention_shard=True)
+    session.reduce_mode = "host"
+    with pytest.raises(TP2GroupError, match="needs the device-side reduction"):
+        tg.MlpTP2GenerationSession._bulk_attention_reduce(session, 5, 512)
+
+
 def test_rank_slot_allowlist_drops_the_attention_leaves_when_head_sharded() -> None:
     """With head sharding on, the full-width attention copies go too.
 
