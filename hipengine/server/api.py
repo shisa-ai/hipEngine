@@ -80,6 +80,7 @@ from hipengine.generation.qwen35_gguf_mtp2 import (
 from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.kvcache import PREFIX_CACHE_DEFAULT, resolve_prefix_cache_mode
+from hipengine.runtime.memory_admission import MemoryAdmissionRefused
 from hipengine.server.multimodal import (
     extract_chat_media,
     media_for_engine,
@@ -6039,14 +6040,25 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         budget expire (``EngineCommandTimeout``). Neither is the request's
         fault, and a client can retry both once the engine serves again, so
         answering ``internal_error`` would tell it the opposite of the truth.
+
+        A request refused by the admission budget (``MemoryAdmissionRefused``)
+        is a capacity answer, not a fault: the refusal is raised before anything
+        is allocated, the engine stays healthy, and the same request may fit once
+        the priced consumers shrink. It carries its own error code so a client
+        can tell "too large right now" from "the engine cannot answer".
         """
 
         engine_unavailable = isinstance(exc, (EngineServiceClosed, EngineCommandTimeout))
-        status_code = 503 if engine_unavailable else 500
-        code = "engine_unavailable" if engine_unavailable else "internal_error"
+        overload_refused = isinstance(exc, MemoryAdmissionRefused)
+        if engine_unavailable:
+            status_code, code = 503, "engine_unavailable"
+        elif overload_refused:
+            status_code, code = 503, exc.code
+        else:
+            status_code, code = 500, "internal_error"
         message = (
             str(exc)
-            if engine_unavailable
+            if (engine_unavailable or overload_refused)
             else f"unhandled server error: {type(exc).__name__}: {exc}"
         )
         _LOGGER.exception(

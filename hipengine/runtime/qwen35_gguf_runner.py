@@ -44,6 +44,11 @@ from hipengine.core.tensor import Tensor
 from hipengine.core.rocblas import Rocblas
 from hipengine.dispatch.kv import resolve_paged_attn_decode
 from hipengine.runtime.gguf_packed_manifest import build_packed_decode_execution_manifest
+from hipengine.runtime.memory_admission import (
+    MemoryAdmissionRefused,
+    MemoryConsumer,
+    price_memory_admission,
+)
 from hipengine.runtime.moe_graph import MoeGraphCache
 from hipengine.kernels.hip_gfx1100.attention import (
     aotriton_attn_fwd_compact_varlen,
@@ -18649,14 +18654,17 @@ class Qwen35GGUFResidentSession:
             self._device_kv_layout = layout
         page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
         configured_budget_mib = getattr(self, "kv_pool_memory_budget_mib", None)
+        pool_consumer = MemoryConsumer("kv_pool", int(capacity) * int(page_bytes))
         if configured_budget_mib is not None:
             # Explicit ceilings apply even when HIP memory telemetry is absent.
-            max_pages = int(configured_budget_mib) * 1024**2 // page_bytes
-            if max_pages < capacity:
-                raise MemoryError(
-                    "initial arena and workspace lease exceed the KV pool budget: "
-                    f"{capacity * page_bytes} > {int(configured_budget_mib) * 1024**2} bytes"
-                )
+            decision = price_memory_admission(
+                free_bytes=int(configured_budget_mib) * 1024**2,
+                consumers=(pool_consumer,),
+                reserve_bytes=0,
+            )
+            if not decision.admitted:
+                raise MemoryAdmissionRefused(decision)
+            max_pages = int(decision.available_bytes) // page_bytes
         else:
             max_pages = capacity
             mem_get_info = getattr(runtime, "mem_get_info", None)
@@ -18666,9 +18674,14 @@ class Qwen35GGUFResidentSession:
                 except Exception:
                     pass
                 else:
-                    max_pages = int(max(0, int(free_bytes) - 3 * 1024**3) // page_bytes)
-                    if max_pages < capacity:
-                        raise MemoryError("initial KV pool exceeds available memory after reserve")
+                    # One priced consumer today; the budget API is what prices the
+                    # rest as they are wired in.
+                    decision = price_memory_admission(
+                        free_bytes=int(free_bytes), consumers=(pool_consumer,)
+                    )
+                    if not decision.admitted:
+                        raise MemoryAdmissionRefused(decision)
+                    max_pages = int(max(0, decision.available_bytes) // page_bytes)
         growth_chunk_pages = max(1, min(128, max_pages - capacity))
         backing = _allocate_qwen35_gguf_kv_chunk(
             self.runner,
