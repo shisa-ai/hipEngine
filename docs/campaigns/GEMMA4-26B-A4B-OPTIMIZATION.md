@@ -62,10 +62,12 @@ The implementation has concrete profiling candidates:
 - `gemma4_project` delegates quantized projections to `launch_gguf_linear`.
   Record the effective kernel selected for each row count and weight type;
   do not assume the optimized Qwen path is automatically selected.
-- Gemma attention stores all live-key scores in shared memory and decode uses
-  the same computation with one query row. The existing 512-wide-head ceiling
-  is 15616 live keys. Tiling may improve performance and remove that resource
-  limit, but neither outcome is established by source inspection.
+- Gemma attention stores all live-key scores in shared memory. Decode now has
+  a dedicated bit-exact kernel (barrier rounds batched across a tile of keys,
+  `tokens == 1` routing in `attention_symbol`), landed under G3; see worklog
+  entry `20260924T102206.088801Z-lhl-gemma4-a651b0.md`. The 512-wide-head
+  resource ceiling on live-key count is unchanged for the block kernel and
+  its tiled decode twin still keys off the same shared-bytes check.
 
 These are hypotheses, not measured bottlenecks.
 
@@ -222,6 +224,15 @@ flags because a configuration has not been benchmarked.
   bottleneck, with in-tree kernels and registry dispatch. Explore row-batched
   projection routes, decode specialization or tiled attention in measured order.
   Graph capture/fusion follows stable pointer and state ownership, not before it.
+  *Status 2026-09-24: decode attention specialization landed — a bit-exact
+  decode kernel batches barrier rounds across 8 keys and halves the reduction
+  barrier cost (0.263 vs 0.458 ms/launch microbenchmark on the RX 7900 XTX).
+  Campaign row at 1024p/128o: decode 16.09 -> 20.48 tok/s, prefill unchanged,
+  public-path token-id parity exact. Design history, refuted variants and the
+  divergent-shuffle gotcha are in worklog entry
+  `20260924T102206.088801Z-lhl-gemma4-a651b0.md`. Remaining G3 candidates in
+  measured order: q4_k decode GEMV registration (changed arithmetic — needs the
+  deferred evaluator freeze), pack8 launch count, then re-profile.
 - [ ] **G4 — Integrated confirmation.** Repeat the primary paired matrix,
   correctness/heldouts and live chat/SSE; verify no hidden fallback. Re-measure
   llama.cpp and Qwen with the frozen comparison contract and report differences

@@ -1,8 +1,13 @@
-"""Raw-pointer wrappers for the Gemma 4 prefill attention family on gfx1100.
+"""Raw-pointer wrappers for the Gemma 4 attention family on gfx1100.
 
 Gemma 4 attention is *ungated*. Every Qwen3.5 prefill variant reads an attention
 gate and multiplies by ``sigmoid(gate)``; Laguna's ungated kernel hard-codes
 Laguna's head geometry. Neither can serve Gemma 4, so this family exists.
+
+Two kernels serve the family and :func:`attention_symbol` routes between them:
+the original correctness-first block kernel for multi-token blocks, and a
+decode kernel for ``tokens == 1`` that reproduces the block kernel's arithmetic
+bit-for-bit while batching barrier rounds across keys.
 
 Two Gemma 4 specifics the caller must respect, both documented on the kernel:
 
@@ -32,6 +37,8 @@ _OUTPUT_NAME = "gemma4_attention.so"
 
 _SYMBOL_PREFILL_BF16 = "hipengine_gemma4_attention_prefill_bf16"
 _SYMBOL_PREFILL_F32 = "hipengine_gemma4_attention_prefill_f32"
+_SYMBOL_DECODE_BF16 = "hipengine_gemma4_attention_decode_bf16"
+_SYMBOL_DECODE_F32 = "hipengine_gemma4_attention_decode_f32"
 
 _ARGTYPES_PREFILL = (
     ctypes.c_void_p,
@@ -127,6 +134,23 @@ def _check_launch(runtime: HipRuntime, err: int) -> None:
         runtime.check(int(err))
 
 
+def attention_symbol(dtype: str, *, tokens: int, head_dim: int) -> str:
+    """Select the attention entry point for one launch.
+
+    A decode step (``tokens == 1``) runs the batched-barrier decode kernel,
+    which matches the block kernel's outputs bit-for-bit at about half its
+    barrier cost. Multi-token blocks keep the original block kernel.
+    ``head_dim`` only has to be positive (shape validation happens in the
+    launcher).
+    """
+
+    if dtype not in ("bf16", "f32"):
+        raise ValueError(f"unsupported attention dtype: {dtype!r}")
+    if tokens == 1:
+        return _SYMBOL_DECODE_BF16 if dtype == "bf16" else _SYMBOL_DECODE_F32
+    return _SYMBOL_PREFILL_BF16 if dtype == "bf16" else _SYMBOL_PREFILL_F32
+
+
 def _launch_prefill(
     symbol: str,
     query_ptr: int,
@@ -197,11 +221,13 @@ def gemma4_attention_prefill_bf16(
     ``keys`` defaults to ``tokens``, which is the dense prefill case where the
     block being attended is the block of queries. Passing a larger ``keys`` with
     ``key``/``value`` pointing at a KV cache gives the decode step: one query row
-    attending over the live context.
+    attending over the live context. At ``tokens == 1`` this routes to the
+    decode kernel (:func:`attention_symbol`); its output is bit-identical to the
+    block kernel's.
     """
 
     _launch_prefill(
-        _SYMBOL_PREFILL_BF16,
+        attention_symbol("bf16", tokens=tokens, head_dim=head_dim),
         query_ptr,
         key_ptr,
         value_ptr,
@@ -239,11 +265,12 @@ def gemma4_attention_prefill_f32(
     """F32 entry point, for validating against the f32 CPU reference.
 
     The reference works in f32, so comparing through a BF16 round trip would
-    measure the rounding rather than the kernel.
+    measure the rounding rather than the kernel. Routed like the BF16 wrapper:
+    ``tokens == 1`` selects the decode kernel.
     """
 
     _launch_prefill(
-        _SYMBOL_PREFILL_F32,
+        attention_symbol("f32", tokens=tokens, head_dim=head_dim),
         query_ptr,
         key_ptr,
         value_ptr,
