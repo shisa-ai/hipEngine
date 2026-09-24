@@ -224,7 +224,7 @@ measured negative.
     ~1%. `--kernel-trace` yields timing/geometry only — no bandwidth counters,
     so per-family GB/s from §1.1 remains unmeasured.
 - [ ] **E2 — Dense-IQ decode policy declaration (C1 / H2).**
-  - [ ] E2a — Recover the existing draft: stash
+  - [x] E2a — Recover the existing draft: stash
     `9a381b0c1223597e5605ac17dedf99f43a5de66a`
     (`pre-origin-main-merge-preserve-local-work-20260922`; `stash@{0}` on
     2026-09-23, but the stash stack is shared and the index drifts, so address
@@ -240,10 +240,42 @@ measured negative.
     Review it against the post-merge tree and re-derive the hunks; do not
     delete the stash and do not blind-pop it (it also carries unrelated audit
     inventory churn from before the merge).
-  - [ ] E2b — Verify the pin-relevance question first: does gfx1151's prefill
+    **Done 2026-09-24:** hunks re-derived and applied after review (the stash
+    is intact and un-popped; a patch copy lives in `~/ud-e1-census/`). The
+    stash's comment promised
+    `tests/test_unit_gfx1151_iq_dense_policy_parity.py` but carried only its
+    dispatch-cache half; the full parity test was recovered from pre-merge
+    commit `29c4792d9` (the WIP that produced the stash) and passes 22/22
+    with the declaration applied. The declaration moves three names out of
+    the gfx1100-only capability ledger, so
+    `test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads` was
+    updated 25→22 and the transferred rows moved to a dated note in
+    `docs/archive/20260909-GFX1151-GFX1100-TRANSFER-AUDIT.md`. Route probe
+    through `hipengine.LLM.generate()` confirms local32 fires (124
+    selections), strict fallback resolves for the 4 pinned IQ3_S slots and
+    the deliberately-unrouted Q3_K, prefill W4A16 unchanged. Guard chain
+    green (compileall, pytest, fixtures, 3 smokes).
+  - [x] E2b — Verify the pin-relevance question first: does gfx1151's prefill
     policy run the Q3_K hi+lo-split path that `GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS`
     exists for? The answer decides whether the prefill pin applies here.
-  - [ ] E2b′ — Leaf timing before the gate: time each local32 owner against
+    **Answer 2026-09-24: yes, the pin applies.** (1) gfx1151's
+    `GGUF_IQ_DENSE_PREFILL_POLICY` routes `gguf_q3_k` to the one-wave owner
+    `dense_wmma_w4a16_prefill_bf16_bf16_out` (rows 8-131072), whose launcher
+    `hipengine_gguf_iq_wmma_prefill_bf16_bf16_out` dispatches
+    `case 3 → launch_iq_wmma_prefill<3>` (Q3_K is quant 3). (2) The split is
+    a property of the quant, not the variant: `SPLIT_LO = (Q == 3 || Q == 5
+    || Q == 6)` is constexpr in both the one-wave kernel
+    (`gguf_iq_wmma_prefill.hip:218`) and the coop kernel (`:378`), so every
+    prefill variant gfx1151 can select runs Q3_K through the hi+lo split
+    path - the arithmetic class the pin exists for. (3) The production
+    binding is present: `_iq_dense_mmq_strict_slots()`
+    (`qwen35_gguf_runner.py:20463`) reads
+    `GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS` for the backend keyed by
+    `(file_type, artifact preset)`, and `_iq_dense_prefill_dispatch` checks
+    the pinned slot before policy admission. The recovered declaration's
+    prefill pin (`layers.0.ffn_up` on UD-Q4_K_M) therefore transfers and is
+    exercised by `test_gfx1151_prefill_keeps_the_strict_owner_for_the_pinned_slot`.
+  - [x] E2b′ — Leaf timing before the gate: time each local32 owner against
     the strict GEMV on every real UD dense-IQ shape on gfx1151 (min-of-N,
     interleaved). This gives the gfx1151 per-launch factor that the
     pre-registered prediction below depends on, cheaply.
@@ -254,11 +286,84 @@ measured negative.
     that band means another cost is hiding, and E4 starts from that residual.
     Include `local32_pair_silu_bf16_bf16_out` for the 20 IQ4_XS/IQ4_XS
     gate/up layers (H9) in the same declaration if its gate passes with it.
-  - [ ] E2c — Land declaration + applicable pins, run the 162-row
+    **Done 2026-09-24:** `scripts/gguf_iq_local32_decode_leaf.py` timed all
+    13 real dense-IQ shapes (rows 1/2/4, min-of-N interleaved; the two Q3_K
+    shapes report `local32=false` and are excluded — Q3_K stays deliberately
+    unrouted). Artifact: `~/ud-e1-census/e2b-leaf-timing.json`.
+    - rows==1 per-launch factor over the 11 measured shapes: **mean 2.51,
+      range 1.89–3.96**. The mean sits at the floor of the registered
+      2.5–2.9 band and the distribution is bimodal: **IQ4_XS (117 of the
+      124 routed slots) averages 2.06 (1.89–2.19), below the band**, while
+      IQ4_NL (7 slots) averages 3.77 (3.47–3.96). The effective factor for
+      the dominant family is therefore ~2.0x, not 2.5x, so the prediction
+      below is at risk on its dominant term; E2d's paired A/B adjudicates
+      the actual decode ratio, not this input.
+    - local32-vs-strict rows==1 output: max relative difference 2.94e-3
+      (reassociation class, screened by the KL gates in E2c), correlation
+      ≈ 1.
+    - pair arm (`blk.1` IQ4_XS/IQ4_XS gate/up): `local32_pair_silu` is
+      **bit-exact to the unfused chain**, 2.01x faster than the two strict
+      GEMVs, and 1.02x faster than the chain (~10 µs/pair). The pair row
+      ships in this declaration; the E2c probe gate resolves its owner
+      through the resident session (`local32_pair_silu_bf16_bf16_out` in
+      the candidate owner list).
+  - [x] E2c — Land declaration + applicable pins, run the 162-row
     production-reference gate (18 prompts × 9 forced steps) before enabling,
     and confirm the dispatch table resolves the local32 owners.
-  - [ ] E2d — Paired A/B of the decode arms; record ms/token family shares to
+    **Done 2026-09-24.** Declaration + both pin tables landed with E2a (the
+    pins run in both arms). Gate:
+    `gguf_ud_combined_stack_gate.py --backend hip_gfx1151 --category-heldout
+    --decode-tokens 9` — gfx1151 mode pairs the shipped decode policy
+    (candidate) against the all-strict decode incumbent with the shipped
+    prefill route held constant in both arms, so the paired difference is
+    exactly the E2 lever. **PASS** over pooled 180 positions (18 prompts ×
+    (9 forced steps + 1 prefill-last row); the 162 forced-step rows are the
+    campaign's count): KL mean 4.68e-5 (≤1e-3), p95 2.72e-4 (≤5e-3), p99
+    7.03e-4 (≤2e-2), max 8.55e-4 (≤5e-2), top1 1.0000 (≥0.99), every scope
+    top1 1.0000 (≥0.97; code 60 / general_en 40 / general_ja 40 /
+    mixed_ja_en 40), candidate logits finite, no diagnostic above the p99
+    envelope. The calibration arm (incumbent vs all-strict, same forced
+    tokens) measures mean 1.84e-4 / max 1.06e-2 — the candidate decode
+    re-route moves logits ~3.9x **less** than the prefill-route choice
+    production already ships. Artifact:
+    `~/ud-e1-census/e2c-162row-gate-run1.json`; deterministic repeat in
+    flight at record time. The six-quant local32 probe gate
+    (`gguf_iq_local32_decode_gate.py --backend hip_gfx1151`) also PASSes:
+    KL mean 2.33e-4, max 4.93e-3, top1 1.0, finite, prefill KL 0, candidate
+    owners incl. `local32_pair_silu`.
+    Dispatch confirmation through `hipengine.LLM.generate()` (48 decode
+    steps, `~/ud-e1-census/e2c-llm-route-probe.log`, `RESULT e2a: PASS`):
+    local32 singles **3948** resolves, **pair dual 940** (~20/step = all 20
+    IQ4_XS/IQ4_XS layers), strict fallback **517** (pinned IQ3_S + declared
+    Q3_K), prefill W4A16 intact **134**, verify-row owner 0 (no verifier
+    rows in this window).
+  - [x] E2d — Paired A/B of the decode arms; record ms/token family shares to
     confirm the strict-IQ share actually moved.
+    **Done 2026-09-24.** Same-window paired A/B
+    (`gguf_iq_dense_decode_ab.py --backend hip_gfx1151 --repetitions 3
+    --steps 32`; arms alternate in one process, each captures its own decode
+    graph, owner assertions enforced): decode **8.1089 → 10.8090 tok/s,
+    ratio 1.3330x** (CV 0.76% / 0.13%); prefill 188.93 / 188.81 tok/s,
+    ratio 0.9994x — the lever is decode-only as designed. Incumbent owners
+    W4A16-prefill + strict gemv; candidate adds `local32_gemv` and
+    `local32_pair_silu`. Artifact: `~/ud-e1-census/e2d-paired-ab.json`.
+    Decode census (E0 protocol — 512-token prefill, 4 warm, capture, 8 warm
+    replays, 0.5 s gap, 32 graph steps, rocprofv3 1.3.5 `--kernel-trace`,
+    trailing-`advance_decode_position` window):
+    **strict-IQ family 61.64 → 5.36 ms/token (−91.3%)** — the share moved.
+    The work landed on the IQ4 local32 family at 25.80 ms/token: pair dual
+    `gguf_iq4_xs_local32_dual_silu<2>` 9.74 ms/token at 19.38 launches/token
+    (all 20 IQ4_XS/IQ4_XS layers), IQ4_XS singles 14.40, IQ4_NL 1.66;
+    combined IQ route 31.16 ms/token vs 61.64 strict-only. Residual strict
+    5.36 ms/token = exactly the 11 non-local32 slots (Q3_K 7 declared
+    strict + IQ3_S 4 pinned) at 10.66 launches/token. Pure window
+    115.39 → 85.53 ms/token; 807.97 launches/token. Unprofiled warm decode
+    **10.89 tok/s vs E0's 8.085 on the identical same-host protocol
+    (1.347x)**. Q5_K direct GEMV (20.50 ms/token) and Q4_K single local32
+    (14.08) are unchanged and now rank first and second — E3/E4/E6's pots.
+    Evidence bundle (OPTIMIZATION §2 fields): `benchmarks/results/2026-09-24-
+    zbook-gfx1151-ud-iq-decode-policy-e2d.json` (`performance_claim: false`;
+    the loop's `ud_plain_parity` is the paired UD/plain claim vehicle).
 - [ ] **E3 — Production per-tensor repack (C2 / H3).**
   - [ ] E3a — Reconcile the recorded item-1 state against the production
     `repack=OFF` route table: locate where the admission call chain drops the
@@ -480,7 +585,7 @@ refusal.
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
 | E0 baseline (2026-09-23) | — | −32.5 / −31.9 / −32.5% | −36.7 / −40.7 / −40.5% | 856.41 (plain 571.59)¹ | 9.81 (plain 6.54)¹ | n/a (diagnostic) | recorded |
 | E1 prefill census | H1/H5/H7/H8 | — | census window 0.6393 (1687.9 vs 2640.3 ms, not a paired A/B) | 1264/window (plain 1740) | — | n/a (attribution) | recorded 2026-09-24: H1 refuted, IQ one-wave 48.18% + Q5_T16 24.81% rank the gap; route probe PASS; T16-live-vs-audit-OFF divergence owed to E3a |
-| E2 decode policy declaration | H2 | — | — | — | — | required | open (draft in stash; predicted 0.98-1.02x) |
+| E2 decode policy declaration | H2 | window invalidated (see State) | window invalidated; A/B prefill 0.9994x | 807.97 (E0-protocol census) | 6.28 (unprofiled wall 91.81 − pure 85.53) | **PASS**: 162-row ×2 bit-identical (KL mean 4.68e-5, max 8.55e-4, top1 1.0000 overall/per-scope), local32 probe gate, LLM.generate route probe | executed 2026-09-24: paired A/B decode **1.3330x** (8.1089 → 10.8090 tok/s, CV 0.76%/0.13%), strict-IQ 61.64 → 5.36 ms/token (−91%), unprofiled warm 1.347x vs E0; `ud_plain_parity` owed — three windows invalidated by campaign 5.1's 2% prefill@512 visit check under evening host drift (plain 302-312 vs 291.9→286.4; the 04:48 baseline agreed to 0.5%); record in the E2d artifact + E2 checkboxes |
 | E3 production per-tensor repack | H3/H5/H7 | — | — | — | — | required | open |
 | E4 Q5/Q4 decode owners | H4/H6 | — | — | — | — | required | open |
 | E6 gate/up + residual fusion | H9 | — | — | — | — | required | open |

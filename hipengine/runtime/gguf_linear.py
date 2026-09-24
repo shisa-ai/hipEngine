@@ -2826,7 +2826,23 @@ _Q8_1_DISPATCH_RESOLVE_CACHE: dict[tuple, tuple | bool] = {}
 
 
 def _iq_dense_dispatch_cache_state() -> tuple | None:
-    """Return the semantic dense-IQ owner state used by dispatch resolution."""
+    """Return the semantic dense-IQ owner state used by dispatch resolution.
+
+    This is the *dynamic* half of the dense-IQ routing input: whether a
+    session is bound, whether it carries an activation plane, and which slots
+    it pinned to the strict owner. The three policy tables
+    (``GGUF_IQ_DENSE_{PREFILL,DECODE,VERIFY}_POLICY``) are deliberately not
+    part of the key because they are import-time constants - the registry
+    generation covers a registry swap, and these cover a session swap.
+
+    A caller that *reassigns* a policy table mid-process therefore changes a
+    resolution input the memo does not see, and every already-memoized
+    (weight, shape, rows, slot) keeps its old owner. Such a caller must call
+    ``clear_gguf_linear_dispatch_cache()`` when it flips the table - the
+    policy A/B gates do, and they additionally assert at the real launch site
+    that the two arms resolved different kernels, because a silent cache hit
+    is indistinguishable from a bit-exact route.
+    """
 
     if iq_dense_mmq_workspace() is None:
         return None
