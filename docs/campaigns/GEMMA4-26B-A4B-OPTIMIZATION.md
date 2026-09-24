@@ -194,11 +194,26 @@ flags because a configuration has not been benchmarked.
   wall measurement with accounting tests; freeze evaluator and provenance;
   measure the matrix and same-GPU comparators. Record unsupported comparator
   configurations honestly. No kernel tuning before the baseline exists.
+  *Status 2026-09-24: harness, matrix, boundary rows, both comparators, and
+  the consolidated artifact are published
+  (`benchmarks/results/2026-09-24-gemma4-26b-a4b-g0-baseline.json`, commit
+  `8a3d35193`). The evaluator-freeze sub-item is deferred to immediately
+  before the first changed-arithmetic candidate — host/exact candidates and
+  profiling need only the already-passing public-path ID parity — and the
+  deferral is recorded in that artifact's `limitations`.
 - [ ] **G1 — Attribution.** Prebuild outside `rocprofv3`, supply the compiler
   version file and require cached builds. Trace one short and one long primary
   shape with plausible named dispatches; attribute GPU time, host gaps,
   transfers, synchronization, allocation and output-head work. Rank candidates
   by measured contribution. Retain compact summaries, not raw profiler dumps.
+  *Status 2026-09-24: both shapes traced and ranked; compact summaries and the
+  recipe fix live in worklog entry
+  `20260924T091834.106937Z-lhl-gemma4-optimization-6a8d54.md` (raw dumps not
+  committed). Headline: decode is device-bound — attention is 79.2% of decode
+  device time at KV~4096 (150.86 ms/step) and 24% at KV~129; q4_k 23% and
+  pack8 19% at KV~129; pack8 runs 410 launches/step. Open sub-item: transfer
+  attribution (kernel-trace reports no copies; one `--hip-api-trace` run
+  remains), so this box stays unchecked.
 - [ ] **G2 — Host and redundant-work candidates.** Evaluate intermediate-block
   output-head avoidance, RoPE/mask reuse or device generation, bounded scratch
   reuse, and device greedy sampling only when G1 supports them. One hypothesis
@@ -227,7 +242,25 @@ record, not permission to reset unrelated work or weaken correctness.
 
 ## Commands available now
 
-These are functional checks, not the planned performance harness:
+The G0 harness exists: `scripts/gemma4_campaign_bench.py` separates prefill,
+decode, first-token and public wall time, verifies public-path token-id
+parity, and records a memory row; `scripts/gemma4_llamacpp_reference_bench.py`
+runs the same-artifact llama.cpp comparator. To profile either with
+`rocprofv3`, precompute the compiler version outside the profiler:
+
+```bash
+hipcc --version > /tmp/hipcc_version.txt
+env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 \
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipcc_version.txt PYTHONPATH=. \
+  rocprofv3 --kernel-trace --output-format json -d <out-dir> -o trace.json -- \
+  .venv/bin/python scripts/gemma4_campaign_bench.py \
+  --prompt <P> --output <O> --samples 1 --warmup 0
+```
+
+Without the version-file pair the profiled first forward spawns
+`<compiler> --version` and deadlocks under the profiler — that failure is
+already on record in the G1 worklog entry above.
 
 ```bash
 # From the gemma4 worktree, with the model artifact available:
@@ -245,8 +278,9 @@ env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 \
   tests/test_unit_qwen4exp_chat_protocol.py -q
 ```
 
-G0 must add and document exact benchmark, correctness and comparator commands
-before G1 begins. Before kernel work, run the lineage check in OPTIMIZATION;
+Exact benchmark, correctness and comparator commands are documented in the
+G0 baseline artifact and the G1 worklog entry above. Before kernel work, run
+the lineage check in OPTIMIZATION;
 the review's missing external peer checkout is a known environment issue to
 resolve or explicitly scope, not a successful lineage result. Use the Tier-1
 allocation probe for capacity questions before full-prompt tests.
