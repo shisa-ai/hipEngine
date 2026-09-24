@@ -64,21 +64,54 @@ Existing direct-runtime results are not HTTP completion evidence.
   gate: admission follows the artifact's admitted no-mirror capability and the
   physical cell the kernels execute. The row that found the gap now reports the
   reason it was written for, over both endpoints at all four lengths.
-- [ ] Automatic intent at physical c2 on INT8 KV. The cell is reached and the
-  INT8 group route resolves; what stops it is that the run's KV capability
-  resolves to no declaration, so no shared direct decode leaf exists at a group
-  width above one. The declared contract for this artifact is refused separately,
-  on quality grounds.
+- [x] Automatic intent at physical c2 on INT8 KV. Automatic MTP now engages at
+  c1, c2 and c4 on the INT8 cell. The gate was the capability key, not the
+  kernels: the request carried the fp16 scale-dtype default while every INT8
+  declaration is keyed fp32, so no declaration matched and no shared direct
+  decode leaf could resolve above one row. Binding the declared dtype
+  (`declared_int8_scale_dtype`, `07e33bbb7`) opens the cell. The product default
+  is unchanged: this artifact's INT8 no-mirror contract is quality-rejected on
+  gfx1151, so a default INT8 request still falls back to BF16 and the
+  diagnostic override is what reaches the cell.
 
   The run: `scripts/gguf_mtp_c1c8_server_bench.py --kv-storage
   int8_per_token_head --mtp-request-mode automatic` with
-  `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED=1` (the artifact is unqualified for
-  INT8, so the diagnostic override is what reaches the cell; `/ready` then
-  reports `effective_kv_storage: int8_per_token_head`, `runtime_action:
-  diagnostic_override`). Artifact:
-  `benchmarks/results/2026-09-24-gfx1151-qwen38-int8kv-mtp-vs-ar-c1c4-automatic.json`.
-  c1 engages 10/10 at 18.15 tok/s against its AR baseline's 10.80, exact 10/10.
-  c2 and c4 engage 0/10, and the response says why:
+  `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED=1`. Artifact:
+  `benchmarks/results/2026-09-24-gfx1151-qwen38-int8kv-declared-fp32-mtp-vs-ar-c1c4-automatic.json`
+  (status complete, 224 s, no failure reasons):
+
+  | physical width | engaged | exact | AR tok/s | MTP tok/s | ratio |
+  | --- | --- | --- | --- | --- | --- |
+  | c1 | 10/10 | 10/10 | 10.77 | 18.14 | 1.684x |
+  | c2 | 10/10 | 10/10 | 17.24 | 25.24 | 1.464x |
+  | c4 | 10/10 | 10/10 | 26.00 | 31.70 | 1.220x |
+
+  Batched AR decoding gains more from resident width than MTP does, so the MTP
+  ratio falls as width rises even though MTP throughput rises at every width.
+  This artifact is diagnostic and not promotable: `/ready` reports
+  `status: rejected`, `runtime_action: diagnostic_override`,
+  `promotion_eligible: false`. It is the evidence for this row, not a topline
+  benchmark row, and the numbers above are not a product performance claim.
+
+  What the fixed run reports, and what the broken one reported before it:
+
+  ```
+  requested.scale_dtype: fp32              # was fp16
+  declaration: {max_direct_rows: 4, decode_batch_variant:
+                per_token_head_gqa_splitk_gate_bf16_batch_strided_spans}
+  max_packed_rows: 4                       # was 1
+  max_direct_rows: 0                       # the rejected evidence row, unchanged
+  reason: complete 1K/8 transfer rejected: minimum-prompt top-1 agreement 0.7778
+          is below the 0.90 gate; bound the declared fp32 scale dtype, not the
+          requested fp16; explicit unverified INT8 KV diagnostic override is enabled
+  ```
+
+  The diagnosis below is what the cell took to reach, kept because three
+  readings of it were wrong before the fourth held, and because the reason
+  string now carries the whole chain.
+
+  Before the fix, c1 engaged 10/10 while c2 and c4 engaged 0/10, and the
+  response said:
 
   ```
   selected_route: speculative_mtp
@@ -143,23 +176,30 @@ Existing direct-runtime results are not HTTP completion evidence.
   retained verdict behind the contract it keeps the request off
   (`_unmatched_contract_note` in `hipengine/models/kv_capabilities.py`, pinned by
   `test_unmatched_scale_axis_names_the_declared_verdict_it_overrides`).
-  Clearing routes, in order:
 
-  1. Resolve the capability for the scale dtype the session will actually run
-     instead of the raw request default. The existing
-     `test_gfx1151_rejected_artifact_binds_the_direct_leaf_under_diagnostic_override`
-     shows the fp32 key under the override makes
-     `_qualified_kv_decode_batch_route` return `(4, kernel)`: the shared direct
-     leaf exists at four rows, so this is the change that should open c2 and c4.
-  2. Pass the quality gate for this artifact's INT8 no-mirror contract on
+  The fix that opened the cell: `declared_int8_scale_dtype` in
+  `hipengine/generation/qwen35_gguf.py` returns the scale dtype the declarations
+  name for the request's other axes when the requested dtype is not among them,
+  and `_resolve_request_kv_policy` binds it on the policy before resolving the
+  capability, so the capability, the policy, and the allocation agree on one
+  contract. The substitution is reported in the reason rather than applied
+  silently. `_direct_int8_execution_source` supplies the declaration under a
+  `diagnostic_override`, so the fp32 key makes `_qualified_kv_decode_batch_route`
+  return `(4, kernel)`, which is the four-row shared leaf the width-2 group
+  needs.
+
+  What still governs the product default is the quality rejection, and it is
+  route 2 below. Registering an fp16-keyed declaration is unnecessary: the
+  default request now resolves to the declared dtype.
+
+  1. Pass the quality gate for this artifact's INT8 no-mirror contract on
      gfx1151 at 0.90 minimum-prompt top-1 agreement and record the pass as that
      fp32 key's evidence row. The quality basis is
      `benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json`
-     re-read against the gate. This governs the product default; route 1 governs
-     the cell.
-  3. Register an fp16-keyed declaration for the same axes if the direct leaf is
-     expected to run fp16 scales. Route 1 makes this unnecessary for the
-     default request.
+     re-read against the gate. Until then a default INT8 request on this
+     artifact falls back to BF16, as it should.
+  2. If a future contract is meant to run fp16 scales, register an fp16-keyed
+     declaration for those axes instead of relying on the substitution.
 
   Two earlier readings of this row are superseded and kept only as history: an
   INT8 static width bound (fixed in `7c3914162`, and it was real -- it just is
