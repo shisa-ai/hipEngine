@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from hipengine.core.dtype import DType
 from hipengine.core.memory import (
     copy_device_to_host,
     copy_host_to_device,
@@ -13,6 +14,7 @@ from hipengine.core.memory import (
 )
 from hipengine.kvcache.dms_device import DMSDevicePayloadStore
 from hipengine.kernels.cpu_reference.dms import encode_dms_payload
+from hipengine.kernels.registry import resolve
 from tests.test_gpu_dms_streaming_pack_hip import _bf16_bits, _bf16_from_bits, _hip_available
 
 pytestmark = pytest.mark.skipif(not _hip_available(), reason="HIP runtime unavailable")
@@ -249,4 +251,240 @@ def test_int8_verify_rows_bind_per_head_variable_spans():
             store.attention_rows(0, q=q, out=repeat, base=row_base, live=row_live)
             np.testing.assert_array_equal(out, repeat)
     finally:
+        store.close()
+
+
+def test_int8_verify_chain_leaf_binds_dms_spans_and_gates():
+    """The compact verify-chain leaf, against the AR route finished by the same gate.
+
+    The paged verify-chain leaf reads one page table and one live count per row.
+    A DMS span set is a dense extent per ``(row, kv head)`` with per-slot int8
+    scale planes, so the compact layer carries its own leaf. The oracle is the
+    AR route's own attention for each row, through the same gate multiply.
+    """
+
+    from hipengine.core.device import Device
+    from hipengine.core.tensor import Tensor
+    from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
+
+    heads, q_heads, dim = 2, 8, 64
+    tokens, rows, window = 300, 3, 4
+    slots = (tokens + rows + 4) * heads + 5
+    retrofit = SimpleNamespace(
+        num_layers=1,
+        num_kv_heads=heads,
+        num_q_heads=q_heads,
+        head_dim=dim,
+        window_size=window,
+    )
+    store = DMSDevicePayloadStore(
+        retrofit=retrofit,
+        slots_per_layer=slots,
+        max_pack_rows=tokens + rows,
+        codec="int8_per_token_head",
+    )
+    rng = np.random.default_rng(9317)
+    buffers: dict[str, object] = {}
+
+    def upload(name: str, array: np.ndarray) -> object:
+        array = np.ascontiguousarray(array)
+        buf = malloc(array.nbytes)
+        buffers[name] = buf
+        copy_host_to_device(buf, host_array_ptr(array), array.nbytes)
+        return buf
+
+    try:
+        k = _bf16_bits(rng.normal(size=(tokens, heads, dim)).astype(np.float32))
+        v = _bf16_bits(rng.normal(size=(tokens, heads, dim)).astype(np.float32))
+        k[0] = 0
+        evict = np.zeros((tokens, heads), dtype=np.uint8)
+        evict[1:tokens - window - 1:2, 1] = 1
+        base = np.array(
+            [5 + h * (tokens + rows + 2) for h in range(heads)], dtype=np.int32
+        )
+        cap = np.full(heads, tokens + rows, dtype=np.int32)
+        store.pack_layer(0, k, v, evict, base, cap)
+        live0 = store.live_counts(0).copy()
+        live = live0.copy()
+        for r in range(rows):
+            kn = _bf16_bits(rng.normal(size=(heads, dim)).astype(np.float32))
+            vn = _bf16_bits(rng.normal(size=(heads, dim)).astype(np.float32))
+            store.append_layer(
+                0, kn, vn, np.zeros(heads, np.uint8), tokens + r, base, cap, live
+            )
+            live = store.live_counts(0).copy()
+
+        row_live = np.stack([live0 + r + 1 for r in range(rows)]).astype(np.int32)
+        row_base = np.repeat(base[None, :], rows, axis=0).astype(np.int32)
+        capacity = int(row_live.max())
+        chunk = 256
+        splits = max(1, (capacity + chunk - 1) // chunk)
+
+        # The span set the runner hands the leaf: one extent per (row, kv head),
+        # declared as [rows, layers, kv_heads]. The store's own per-layer planes
+        # are what the kernel indexes, exactly as the AR route passes its own.
+        base_ptr, live_ptr = store.bind_row_spans(0, base=row_base, live=row_live)
+        device = Device("hip", 0)
+        key_ptrs = store.layer_device_ptrs(0)
+        scale_ptrs = store.layer_scale_ptrs(0)
+        spans = KVLiveSpans(
+            base_offsets=Tensor.from_handle(
+                base_ptr, (rows, 1, heads), DType.INT32, device
+            ),
+            live_counts=Tensor.from_handle(
+                live_ptr, (rows, 1, heads), DType.INT32, device
+            ),
+            max_live_count=capacity,
+            token_positions=None,
+            evict_mask=None,
+            storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            spans_mode="per_head_variable",
+            span_role="verify_chain",
+            scale_metadata=KVScaleMetadata(
+                scale_dtype=DType.FP32,
+                k_scale=Tensor.from_handle(
+                    scale_ptrs["k_scale_ptr"], (rows, 1, heads, tokens + rows), DType.FP32, device
+                ),
+                v_scale=Tensor.from_handle(
+                    scale_ptrs["v_scale_ptr"], (rows, 1, heads, tokens + rows), DType.FP32, device
+                ),
+            ),
+        )
+
+        q = rng.normal(size=(rows, q_heads, dim)).astype(np.float32)
+        gate_f32 = rng.normal(size=(rows, q_heads, dim)).astype(np.float32)
+        gate = _bf16_bits(gate_f32)
+        scale = float(dim) ** -0.5
+        q_dev = upload("q", q)
+        gate_dev = upload("gate", gate)
+        out_dev = upload("out", np.zeros((rows, q_heads, dim), dtype=np.uint16))
+        result_dev = upload("result", np.zeros_like(q))
+        partial_out = upload(
+            "po", np.zeros((rows * q_heads * splits, dim), dtype=np.float32)
+        )
+        partial_m = upload("pm", np.zeros((rows * q_heads * splits,), dtype=np.float32))
+        partial_l = upload("pl", np.zeros((rows * q_heads * splits,), dtype=np.float32))
+
+        from hipengine.kernels.hip_gfx1100.attention.dms_compact_int8 import (
+            dms_compact_int8_verify_chain_gate_bf16_spans,
+            register_dms_compact_int8_kernels,
+        )
+
+        register_dms_compact_int8_kernels()
+        assert (
+            resolve(
+                backend="hip_gfx1100",
+                layer="dms_compact_attn_decode",
+                quant="int8_per_token_head",
+                variant="verify_chain_gate_bf16_spans",
+            )
+            is dms_compact_int8_verify_chain_gate_bf16_spans
+        )
+
+        dms_compact_int8_verify_chain_gate_bf16_spans(
+            q_dev.ptr,
+            key_ptrs[0],
+            key_ptrs[1],
+            scale_ptrs["k_scale_ptr"],
+            scale_ptrs["v_scale_ptr"],
+            gate_dev.ptr,
+            out_dev.ptr,
+            result_dev.ptr,
+            partial_out.ptr,
+            partial_m.ptr,
+            partial_l.ptr,
+            base_ptr,
+            live_ptr,
+            spans,
+            rows,
+            chunk,
+            splits,
+            q_heads,
+            heads,
+            dim,
+            q_heads * dim,
+            q_heads * dim,
+            dim,
+            1,
+            q_heads * dim,
+            dim,
+            1,
+            scale,
+        )
+        got = np.zeros((rows, q_heads, dim), dtype=np.uint16)
+        copy_device_to_host(host_array_ptr(got), out_dev, got.nbytes)
+
+        # Oracle: the AR route, one row at a time, finished by the same gate.
+        from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
+            qwen35_full_attn_gate_mul_bf16,
+        )
+
+        reference = np.zeros_like(got)
+        for r in range(rows):
+            row_out = np.empty((q_heads, dim), dtype=np.float32)
+            store.attention_layer(0, q=q[r], out=row_out, base=base, live=row_live[r])
+            row_out_dev = upload(f"row{r}", row_out)
+            row_gate_dev = upload(f"rgate{r}", gate[r])
+            row_ref_dev = upload(f"rref{r}", np.zeros((q_heads, dim), dtype=np.uint16))
+            qwen35_full_attn_gate_mul_bf16(
+                row_out_dev.ptr, row_gate_dev.ptr, row_ref_dev.ptr, q_heads * dim
+            )
+            copy_device_to_host(
+                host_array_ptr(reference[r : r + 1]), row_ref_dev, reference[r : r + 1].nbytes
+            )
+
+        got_f32 = _bf16_from_bits(got).astype(np.float32)
+        ref_f32 = _bf16_from_bits(reference).astype(np.float32)
+        assert np.isfinite(got_f32).all(), "canary read produced non-finite output"
+        np.testing.assert_allclose(got_f32, ref_f32, rtol=3e-5, atol=3e-5), {
+            "verify_chain_leaf_mismatch": {
+                "max_abs_diff": float(np.max(np.abs(got_f32 - ref_f32))),
+            }
+        }
+        # Rows must differ: a leaf that ignored the row axis would repeat one.
+        assert not np.allclose(got_f32[0], got_f32[-1], rtol=1e-3, atol=1e-3)
+        # The gate is applied, not skipped, and with its exact law: a zero gate
+        # is sigmoid(0) = 0.5, so the output must be half the attention plane.
+        zero_gate = upload("zerogate", np.zeros_like(gate))
+        dms_compact_int8_verify_chain_gate_bf16_spans(
+            q_dev.ptr,
+            key_ptrs[0],
+            key_ptrs[1],
+            scale_ptrs["k_scale_ptr"],
+            scale_ptrs["v_scale_ptr"],
+            zero_gate.ptr,
+            out_dev.ptr,
+            result_dev.ptr,
+            partial_out.ptr,
+            partial_m.ptr,
+            partial_l.ptr,
+            base_ptr,
+            live_ptr,
+            spans,
+            rows,
+            chunk,
+            splits,
+            q_heads,
+            heads,
+            dim,
+            q_heads * dim,
+            q_heads * dim,
+            dim,
+            1,
+            q_heads * dim,
+            dim,
+            1,
+            scale,
+        )
+        gated = np.zeros_like(got)
+        copy_device_to_host(host_array_ptr(gated), out_dev, gated.nbytes)
+        raw = np.zeros_like(q)
+        copy_device_to_host(host_array_ptr(raw), result_dev, raw.nbytes)
+        assert np.isfinite(raw).all()
+        np.testing.assert_allclose(
+            _bf16_from_bits(gated).astype(np.float32), 0.5 * raw, rtol=1e-2, atol=1e-2
+        ), {"zero_gate_is_not_half_attention": float(np.max(np.abs(_bf16_from_bits(gated).astype(np.float32) - 0.5 * raw)))}
+    finally:
+        for buf in buffers.values():
+            free(buf)
         store.close()
