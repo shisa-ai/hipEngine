@@ -1,0 +1,409 @@
+{
+  "schema": 2,
+  "status": "accepted",
+  "performance_claim": false,
+  "kind": "gemma4_campaign_g0_baseline",
+  "date": "2026-09-24",
+  "created_at": "2026-09-24T08:49:53.535640+00:00",
+  "run_tag": "gemma4-26b-a4b-g0-baseline",
+  "summary": "Gemma 4 26B-A4B UD-Q4_K_XL G0 baseline on RX 7900 XTX: separated-phase primary matrix, boundary/capacity correctness rows, and same-GPU comparators (llama.cpp same artifact; Qwen3.6-35B-A3B shipping route). Baseline row, not an optimization claim; the campaign target is pinned to these numbers.",
+  "execution_profile": null,
+  "execution_profile_note": "The gemma4 GGUF path resolved no execution-profile override (resolved_execution_profile=None); registered strict unfused fallbacks per the fused-kernel invariant. Profile-schema fields are intentionally null rather than asserted.",
+  "arithmetic_class": "T0",
+  "generated_id_equality": {
+    "binding": true,
+    "diagnostic": {},
+    "evidence": "instrumented runner rows match untouched LLM.generate() token ids at every position on all 14 measured rows (public_path_parity=true)"
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-24T08:49:53.535571+00:00",
+    "host_name": "epyc",
+    "repo_root": "/home/lhl/hipEngine-gemma4",
+    "hipengine_commit": "b828d142f435b4f7abfc29f7c7d312309509657a",
+    "git_branch": "gemma4",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "auto",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "model_path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "f28cfd664022342bce241e6236474be472a6133a1fbbf9c6c48f8db9153f0e99",
+      "size_bytes": 17010980576,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8504966000,
+        17009932000
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf UD-Q4_K_XL (registry key gguf_q4_k_m)",
+    "kv_dtype": "bf16",
+    "command": [
+      "env",
+      "-u",
+      "HIP_VISIBLE_DEVICES",
+      "ROCR_VISIBLE_DEVICES=1",
+      "PYTHONPATH=.",
+      ".venv/bin/python",
+      "scripts/gemma4_campaign_bench.py",
+      "--prompt",
+      "1024",
+      "--output",
+      "128",
+      "--samples",
+      "3"
+    ],
+    "environment": {
+      "ROCR_VISIBLE_DEVICES": "1",
+      "HSA_OVERRIDE_GFX_VERSION": "11.0.0"
+    },
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "build_profile": null,
+    "timing_protocol": "median-of-3-after-1-full-shape-warmup",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+      "status": "not_captured"
+    }
+  },
+  "host": "epyc",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "cus": 96,
+    "vram_total_bytes": 25753026560,
+    "pci": "0000:10:00.0"
+  },
+  "workload": {
+    "shape": "single-request c=1, fixed-length greedy, EOS ignored",
+    "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL",
+    "model_path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "quant": "UD-Q4_K_XL",
+    "kv_policy": "bf16",
+    "context": 8192,
+    "prefill_block": 512,
+    "concurrency": 1,
+    "primary_shapes": [
+      {
+        "prompt_tokens": 128,
+        "gen_tokens": 128
+      },
+      {
+        "prompt_tokens": 512,
+        "gen_tokens": 128
+      },
+      {
+        "prompt_tokens": 1024,
+        "gen_tokens": 128
+      },
+      {
+        "prompt_tokens": 4096,
+        "gen_tokens": 128
+      }
+    ],
+    "boundary_prompts": [
+      1,
+      127,
+      511,
+      512,
+      513,
+      793,
+      1023,
+      1024,
+      1025,
+      8191
+    ],
+    "capacity_row": "8191 prompt + 1 output at context 8192",
+    "warmup_runs": 1,
+    "measured_runs": 3
+  },
+  "commands": {
+    "environment": [
+      "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1",
+      "rocm-smi --showclock --showpower",
+      "hipcc --version"
+    ],
+    "benchmark": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 PYTHONPATH=. .venv/bin/python scripts/gemma4_campaign_bench.py --prompt <128|512|1024|4096> --output 128 --samples 3",
+    "correctness": [
+      "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 .venv/bin/python -m pytest tests/test_unit_gemma4_*.py tests/test_gpu_gemma4_*.py -q",
+      "scripts/gemma4_campaign_bench.py --prompt <boundary> --output 16 --samples 1 (public_path_parity must be true per row)"
+    ],
+    "llamacpp_comparator": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 PYTHONPATH=. .venv/bin/python scripts/gemma4_llamacpp_reference_bench.py",
+    "qwen_reference": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 PYTHONPATH=. .venv/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 1024 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --max-sequence-length 8192 --kv-storage bf16 --public-ar-profile",
+    "capacity_probes": "scripts/gguf_capacity_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --max-sequence-length 8192 --prompt-length 1024 --decode-tokens 128 [--kv-storage bf16]"
+  },
+  "correctness": {
+    "passed": true,
+    "oracle": "public-path id parity plus gemma4 unit/GPU suites",
+    "llamacpp_tokenizer_parity": "POST /tokenize over the decoded campaign text returned exactly the 1024 campaign ids (first_divergence absent)",
+    "guard_suite": "tests/test_unit_gemma4_*.py tests/test_gpu_gemma4_*.py",
+    "guard_result": "310 passed",
+    "boundary_rows_all_public_path_parity": true,
+    "kl_mean": null,
+    "kl_p95": null,
+    "kl_p99": null,
+    "kl_max": null,
+    "top1_agreement": null,
+    "kl_note": "T0 unchanged arithmetic; no teacher-forced KL row applies",
+    "command_exit_code": 0
+  },
+  "measurements": {
+    "decode_tok_s": {
+      "samples": [
+        16.09121496716893,
+        16.093058065263303,
+        16.12119597961047
+      ],
+      "median": 16.093058065263303,
+      "p95": 16.12119597961047,
+      "min": 16.09121496716893,
+      "max": 16.12119597961047,
+      "stdev": 0.01680277924141139
+    },
+    "prefill_tok_s": {
+      "samples": [
+        127.51697398947962,
+        128.14015291991592,
+        127.94960190652587
+      ],
+      "median": 127.94960190652587,
+      "p95": 128.14015291991592,
+      "min": 127.51697398947962,
+      "max": 128.14015291991592,
+      "stdev": 0.31932965794287343
+    },
+    "first_token_s": {
+      "samples": [
+        8.030336529947817,
+        7.991282125003636,
+        8.003179331310093
+      ],
+      "median": 8.003179331310093,
+      "p95": 8.030336529947817,
+      "min": 7.991282125003636,
+      "max": 8.030336529947817,
+      "stdev": 0.0200179232243312
+    },
+    "public_wall_s": {
+      "samples": [
+        15.922914145514369,
+        15.882950910367072,
+        15.881076328456402
+      ],
+      "median": 15.882950910367072,
+      "p95": 15.922914145514369,
+      "min": 15.881076328456402,
+      "max": 15.922914145514369,
+      "stdev": 0.023632524046865038
+    },
+    "matrix": {
+      "128": {
+        "decode_tok_s": 32.25399113309748,
+        "prefill_tok_s": 139.5554693034452,
+        "first_token_s": 0.9172221990302205,
+        "wall_s": 4.855381481349468,
+        "public_path_parity": true
+      },
+      "512": {
+        "decode_tok_s": 22.018404075917147,
+        "prefill_tok_s": 134.50793046909072,
+        "first_token_s": 3.8065072521567345,
+        "wall_s": 9.574484682641923,
+        "public_path_parity": true
+      },
+      "1024": {
+        "decode_tok_s": 16.093058065263303,
+        "prefill_tok_s": 127.94960190652587,
+        "first_token_s": 8.003179331310093,
+        "wall_s": 15.882950910367072,
+        "public_path_parity": true
+      },
+      "4096": {
+        "decode_tok_s": 10.137137331399686,
+        "prefill_tok_s": 108.04726964028147,
+        "first_token_s": 37.909365229308605,
+        "wall_s": 50.43762996327132,
+        "public_path_parity": true
+      }
+    },
+    "boundary": {
+      "1": {
+        "prompt_tokens": 1,
+        "output_tokens": 16,
+        "public_path_parity": true,
+        "rc": 0
+      },
+      "127": {
+        "prompt_tokens": 127,
+        "output_tokens": 16,
+        "public_path_parity": true,
+        "rc": 0
+      },
+      "511": {
+        "prompt_tokens": 511,
+        "output_tokens": 16,
+        "public_path_parity": true,
+        "rc": 0
+      },
+      "512": {
+        "prompt_tokens": 512,
+        "output_tokens": 16,
+        "public_path_parity": true,
+        "rc": 0
+      },
+      "513": {
+        "prompt_tokens": 513,
+        "output_tokens": 16,
+        "public_path_parity": true,
+        "rc": 0
+      },
+      "793": {
+        "prompt_tokens": 793,
+        "output_tokens": 16,
+        "public_path_parity": true,
+        "rc": 0
+      },
+      "1023": {
+        "prompt_tokens": 1023,
+        "output_tokens": 16,
+        "public_path_parity": true,
+        "rc": 0
+      },
+      "1024": {
+        "prompt_tokens": 1024,
+        "output_tokens": 16,
+        "public_path_parity": true,
+        "rc": 0
+      },
+      "1025": {
+        "prompt_tokens": 1025,
+        "output_tokens": 16,
+        "public_path_parity": true,
+        "rc": 0
+      },
+      "8191": {
+        "prompt_tokens": 8191,
+        "output_tokens": 1,
+        "public_path_parity": true,
+        "rc": 0
+      }
+    },
+    "boundary_note": "boundary rows used --output 16 --samples 1 --warmup 0; they are correctness rows and their rates are not headline numbers. The 8191 row used --output 1 and reports decode_tps=none by design."
+  },
+  "comparators": {
+    "llamacpp_same_artifact": {
+      "source": "/mnt/nvme1/llama-gemma4",
+      "commit": "8cfc315a8abd654938f21d64ec683f8035d403fa",
+      "server_command": [
+        "/mnt/nvme1/llama-gemma4/build-hip/bin/llama-server",
+        "-m",
+        "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "-ngl",
+        "99",
+        "-fa",
+        "on",
+        "-ctk",
+        "bf16",
+        "-ctv",
+        "bf16",
+        "-c",
+        "8192",
+        "-np",
+        "1",
+        "-b",
+        "4096",
+        "-ub",
+        "1024",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18793",
+        "--no-cache-prompt",
+        "--fit",
+        "off"
+      ],
+      "kv": "bf16",
+      "context": 8192,
+      "prompt_ids_sha256": "9730ebf884a19ea6f10c23dcc84061702b7663d53f092f8a75832667b472e211",
+      "text_probe": {
+        "match": true,
+        "bos": null,
+        "tokens": 1024,
+        "llama_tokens": 1024,
+        "expected": 1024
+      },
+      "decode_tok_s": 68.91608029211736,
+      "prefill_tok_s": 3909.8444844083497,
+      "decode_samples": [
+        73.94107071328098,
+        60.192654410747096,
+        68.91608029211736
+      ],
+      "conventions": {
+        "decode_tps": "(outputs - 1) / predicted_ms; predicted_ms also spans the first greedy sample",
+        "prefill_tps": "prompt_tokens / prompt_ms",
+        "greedy": "temperature=0, top_k=1, seed=12345, ignore_eos=true, cache_prompt=false"
+      },
+      "gap_vs_hipengine": {
+        "decode_x": 4.282348327622827,
+        "prefill_x": 30.557691670386777
+      }
+    },
+    "qwen36_35b_a3b_shipping_route": {
+      "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "kv": "bf16",
+      "graph_replay_decode": true,
+      "shipping_ar_route_mismatch": false,
+      "decode_tok_s": 114.57163365011709,
+      "prefill_tok_s": 3281.2938595936644,
+      "decode_samples": [
+        114.57163365011709,
+        114.62146374256602,
+        114.46844055411063
+      ],
+      "note": "different-model product reference with its own tokenizer; prompt content is engine-local by campaign rule. Default-route run (no --public-ar-profile) measured decode 114.13 tok/s and prefers the slower non-shipping prefill route."
+    },
+    "qwen36_capacity_tier1": {
+      "max_sequence_length": 8192,
+      "int8_kv_status": "pass",
+      "int8_peak_gib": 21.621222,
+      "bf16_kv_status": "pass",
+      "bf16_peak_gib": 21.541876,
+      "finite_logits": true
+    }
+  },
+  "campaign_target": {
+    "definition": "Gemma median decode tok/s at 1024 prompt / 128 output >= 70% of the Qwen3.6-35B-A3B shipping-route reference at the same workload",
+    "qwen_reference_decode_tok_s": 114.57163365011709,
+    "target_decode_tok_s": 80.20014355508197,
+    "baseline_decode_tok_s": 16.093058065263303,
+    "ratio_baseline_over_target": 0.2006612127098063,
+    "llamacpp_same_artifact_decode_tok_s": 68.91608029211736
+  },
+  "decision": {
+    "accepted": true,
+    "reason": "G0 baseline and comparators: guard 310 passed, public-path parity exact on every row, exact tokenizer-id parity for the comparator, capacity probes passed, GPUs verified idle before measurement. Baseline rates pinned; no optimization claim (performance_claim=false)."
+  },
+  "limitations": [
+    "Single measurement session on 2026-09-24; rows are not paired against a prior baseline because none existed.",
+    "One 512-prompt prefill sample (sample 2, 4.69 s vs 3.80 s) shows a host-side outlier; kept in the artifact rather than trimmed.",
+    "llama.cpp decode samples spread 60.19-73.94 tok/s (about 9%); the median is reported and the spread recorded.",
+    "llama.cpp predicted_ms includes the first greedy sample; hipEngine decode_s starts after it (one host sample inside a >1 s phase).",
+    "LDS attention-boundary fixtures (15616 live keys) are unreachable at the 8192 primary capacity and remain covered by tests/test_gpu_gemma4_attention_geometry.py.",
+    "The teacher-forced evaluator freeze (G0 'freeze evaluator and provenance') is still open and is required before the first changed-arithmetic candidate, not before host/exact or profiling work.",
+    "Qwen reference used repeated-token prompts (qwen35_gguf_bench --token-id default construction) while hipEngine rows use the frozen natural corpus; prompt content is engine-local for a different-model reference."
+  ],
+  "note": "Engine code (hipengine/) did not change across all measured rows; commits between rows touched only scripts/tests/docs. Raw per-run artifacts lived in /tmp during the session; this file consolidates them."
+}
