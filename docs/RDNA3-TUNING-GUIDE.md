@@ -18,7 +18,10 @@ design guide, not a benchmark scoreboard. Use [BENCHMARK.md](BENCHMARK.md) and
 It is also the entry point for the accumulated tuning lessons of both trees. The
 rules are consolidated here; the case studies, derivations, and campaign
 evidence behind each one remain in the documents listed in section 14, starting
-with [LESSONS-LEARNED.md](LESSONS-LEARNED.md).
+with [LESSONS-LEARNED.md](LESSONS-LEARNED.md). New architecture-independent
+porting/runtime gotchas belong there; architecture-specific guidance belongs
+here. Keep implementation history and experiment logs in `worklog/entries/`
+and `benchmarks/results/`, not in either guide.
 
 ## Contents
 
@@ -617,6 +620,38 @@ under a direct `rocprofv3 --kernel-trace` and roll up with
 without any error. Always diff the written `protocol` block against a
 retained packet before trusting a comparison.
 
+### 4.10 Cache-only profiling and row-scaling attribution
+
+For GGUF owner traces, `scripts/gguf_continuous_owner_rocprof.py` separates
+unprofiled compilation, cache-only warmup, and the final profiled child. Use a
+new scoped cache with `--rebuild`; the workflow does not delete the shared cache.
+It checks for compiler activity and cache mutation during profiling.
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 scripts/gguf_continuous_owner_rocprof.py \
+  --source-root . --model /models/gguf/model.gguf --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --cache-root /tmp/hipengine-profile/cache/owner-check \
+  --run-root /tmp/hipengine-profile/runs --run-tag owner-check \
+  --gpu-max-hw-queues 2 --rebuild --profile \
+  --out /tmp/hipengine-profile/runs/owner-check.json
+```
+
+Replace the model, backend, queue count, and fresh run/cache paths for the
+workload. Profile the final executing child, not a parent harness that spawns
+other Python processes.
+
+For row-scaling comparisons, `scripts/gguf_rocprof_width_scale_diff.py`
+distinguishes `per_row_launches` (more launches) from `per_row_inside_launch`
+(longer launches). Keep speculation disabled in both input runs when measuring
+ordinary decode scaling; removing it only from the summary cannot undo extra
+work in one trace. Kernels present in only one arm must remain visible.
+
+Check kernel identity, grid/workgroup, duration, VGPR, LDS, and scratch in the
+trace. If the profiler exports only start/end timestamps, subtract them. Keep
+raw traces outside Git.
+
 ## 5. Core kernel-tuning rules
 
 ### 5.1 Fix layout before instruction selection
@@ -1176,6 +1211,19 @@ close it.
 ## 7. Host, memory, and dispatch tuning
 
 ### 7.1 Keep JIT work out of launch wrappers
+
+The base HIP build profiles in `hipengine/core/build.py` are:
+
+| Profile | Base flags | Wavefront | Use |
+| --- | --- | --- | --- |
+| `decode` | `-mllvm -amdgpu-unroll-threshold-local=600 -mcumode` | 32 | Decode projections and attention |
+| `prefill` | `-mllvm -amdgpu-unroll-threshold-local=600` | 32 | Matrix-tiled and multi-row work |
+| `baseline` | No profile-specific flags | 32 | Debugging and reference builds |
+
+Family flags and explicit environment overrides can change these settings;
+inspect the build manifest. CU mode is not wave64. Use wave-local shuffles
+within a wave and shared memory for cross-wave exchange; a wave64 experiment
+needs explicit flags, generated-code inspection, and reduction fixtures.
 
 A hot launch path must not:
 
@@ -1791,7 +1839,7 @@ Use these paths when applying the guide:
 | Area | Source of truth |
 | --- | --- |
 | Architecture and plugin design | [PLAN.md](PLAN.md) |
-| Kernel inventory, lineage, and path map | [KERNELS.md](KERNELS.md) |
+| Kernel source catalog and implementation relationships | [KERNELS.md](KERNELS.md) |
 | Strict and production numerical contracts | [EXECUTION-PROFILES.md](EXECUTION-PROFILES.md) |
 | Fixtures, oracles, and validation tiers | [TESTING.md](TESTING.md) |
 | Benchmark protocols and evidence policy | [BENCHMARK.md](BENCHMARK.md) |
@@ -1817,10 +1865,10 @@ The kernel registry is keyed by `(backend, layer, quant, variant)`. Add
 architecture and shape policy through registration and backend capability data;
 do not add backend or quantization branches to engine/model dispatch code.
 
-Before porting a kernel, run the lineage check described in
-[KERNELS.md](KERNELS.md). External repositories are read-only lineage and idea
-sources. New kernels, tests, profiling, and promotion evidence belong in this
-tree.
+Before porting a kernel, follow the lineage and contract-preservation guidance in
+[LESSONS-LEARNED.md](LESSONS-LEARNED.md#porting-without-changing-the-contract).
+External repositories are read-only lineage and idea sources. New kernels,
+tests, profiling, and promotion evidence belong in this tree.
 
 ## 14. Further reading
 
@@ -1830,8 +1878,8 @@ Start with these documents for details deliberately omitted here:
   per-family analysis.
 - [ROOFLINE-gfx1151.md](reference/ROOFLINE-gfx1151.md): Strix Halo geometry, unified
   memory, local roofs, and architecture bring-up.
-- [KERNELS.md](KERNELS.md): active variants, source lineage, build profiles, and
-  the current optimal path map.
+- [KERNELS.md](KERNELS.md): kernel sources, model/quant organization, arithmetic
+  variants, and fused/unfused relationships.
 - [EXECUTION-PROFILES.md](EXECUTION-PROFILES.md): exact ownership and numerical
   promotion rules.
 - [LESSONS-LEARNED.md](LESSONS-LEARNED.md): detailed case studies, including
