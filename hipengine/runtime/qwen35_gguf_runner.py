@@ -17045,6 +17045,37 @@ class Qwen35GGUFResidentSession:
         self.bind_device_kv_allocation(pool, allocation)
         self._dms_dense_prefill_pool = pool
 
+    def _retain_published_target_hidden(
+        self, *, runtime: HipRuntime, stream: int = 0
+    ) -> bool:
+        """Move the published trunk row off the bulk workspace before release.
+
+        ``last_target_hidden`` is a raw device pointer, so it cannot detect
+        that its backing buffer was freed. The bulk prefill publishes the final
+        trunk row from bulk scratch, and a target-attached consumer -- the MTP
+        transaction journal's initial-state snapshot above all -- reads it after
+        prefill returns. Retain the row in the session's persistent hidden
+        buffer before the workspace goes away, or that reader copies from freed
+        memory.
+        """
+
+        source_ptr = int(self._last_target_hidden_ptr)
+        if source_ptr == 0:
+            return False
+        hidden = self._hidden_a
+        if hidden is None or source_ptr == int(hidden.ptr):
+            return False
+        row_nbytes = int(self.runner.hidden_size) * DType.BF16.itemsize
+        runtime.memcpy_async(
+            int(hidden.ptr),
+            source_ptr,
+            row_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
+        self._last_target_hidden_ptr = int(hidden.ptr)
+        return True
+
     def _finalize_external_dms_prefill(
         self,
         collector: _ExternalDMSDevicePrefillCollector,
@@ -17062,6 +17093,9 @@ class Qwen35GGUFResidentSession:
         # before the compact pack so it does not coexist with the dense
         # BF16 pool and the compact destination (2026-09-07 memory review,
         # target 3). A later prefill re-acquires it lazily.
+        self._retain_published_target_hidden(
+            runtime=self.runtime or get_hip_runtime(), stream=int(stream)
+        )
         self._release_bulk_prefill_workspace()
         decisions = collector.finalize(stream=stream)
         positions = np.arange(int(tokens), dtype=np.int32)
