@@ -287,6 +287,19 @@ __global__ void dms_append_decode_kernel(
   __shared__ int32_t s_flag[kDmsPackThreads];
   __shared__ int32_t s_chunk_total;
 
+  // Row staging for the shift phase, matching the INT8 sibling.  A dropped row
+  // moves every later keeper in the chunk one slot left, so a thread's
+  // destination can be another thread's source; reading the source and writing
+  // the destination in one sequence lets the loser read a value another thread
+  // already moved, which duplicates one position and loses another.  A chunk
+  // that shifts stages every keeper's row so a barrier separates the read phase
+  // from the write phase.
+  constexpr int32_t kStageTile = 8;
+  __shared__ uint16_t s_stage_k[kDmsPackThreads * kStageTile];
+  __shared__ uint16_t s_stage_v[kDmsPackThreads * kStageTile];
+  __shared__ int32_t s_stage_pos[kDmsPackThreads];
+  __shared__ uint8_t s_stage_evict[kDmsPackThreads];
+
   // Pass 1: count keepers (read-only; overflow must fail closed).
   int32_t keepers = 0;
   for (int32_t chunk0 = 0; chunk0 < live; chunk0 += kDmsPackThreads) {
@@ -336,24 +349,51 @@ __global__ void dms_append_decode_kernel(
       s_flag[tid] += delta;
       __syncthreads();
     }
-    if (in_chunk && s_flag[tid] > (tid > 0 ? s_flag[tid - 1] : 0)) {
-      // This slot is kept: exclusive rank = chunk_rank + inclusive - 1.
-      const int32_t dst = base + chunk_rank + s_flag[tid] - 1;
+    const int32_t chunk_rows =
+        (live - chunk0) < kDmsPackThreads ? (live - chunk0) : kDmsPackThreads;
+    const int32_t chunk_total = s_flag[kDmsPackThreads - 1];
+    // A keeper shifts when a row before it was dropped -- in this chunk or any
+    // earlier one.  Only a chunk that neither dropped a row nor inherits an
+    // earlier drop leaves every keeper in place, and only that chunk can skip
+    // the staging.
+    if (chunk_rank != chunk0 || chunk_total != chunk_rows) {
+      const int32_t rank = s_flag[tid];
+      const bool keeper = in_chunk && rank > (tid > 0 ? s_flag[tid - 1] : 0);
       const int32_t src = base + chunk0 + tid;
-      if (dst != src) {
-        const uint16_t* sk = k_slot + static_cast<int64_t>(src) * dim;
-        const uint16_t* sv = v_slot + static_cast<int64_t>(src) * dim;
-        uint16_t* dk = k_slot + static_cast<int64_t>(dst) * dim;
-        uint16_t* dv = v_slot + static_cast<int64_t>(dst) * dim;
-        for (int32_t d = 0; d < dim; d++) {
-          dk[d] = sk[d];
-          dv[d] = sv[d];
+      const int32_t dst = keeper ? (base + chunk_rank + rank - 1) : src;
+      s_stage_pos[tid] = keeper ? token_positions[src] : 0;
+      s_stage_evict[tid] = keeper ? slot_evict[src] : uint8_t(0);
+      __syncthreads();
+      for (int32_t c0 = 0; c0 < dim; c0 += kStageTile) {
+        for (int32_t j = 0; j < kStageTile; j++) {
+          const int32_t c = c0 + j;
+          if (c < dim) {
+            s_stage_k[tid * kStageTile + j] =
+                keeper ? k_slot[static_cast<int64_t>(src) * dim + c] : uint16_t(0);
+            s_stage_v[tid * kStageTile + j] =
+                keeper ? v_slot[static_cast<int64_t>(src) * dim + c] : uint16_t(0);
+          }
         }
-        token_positions[dst] = token_positions[src];
-        slot_evict[dst] = slot_evict[src];
+        __syncthreads();
+        if (keeper) {
+          for (int32_t j = 0; j < kStageTile; j++) {
+            const int32_t c = c0 + j;
+            if (c < dim) {
+              k_slot[static_cast<int64_t>(dst) * dim + c] =
+                  s_stage_k[tid * kStageTile + j];
+              v_slot[static_cast<int64_t>(dst) * dim + c] =
+                  s_stage_v[tid * kStageTile + j];
+            }
+          }
+        }
+        __syncthreads();
+      }
+      if (keeper) {
+        token_positions[dst] = s_stage_pos[tid];
+        slot_evict[dst] = s_stage_evict[tid];
       }
     }
-    s_chunk_total = s_flag[kDmsPackThreads - 1];
+    s_chunk_total = chunk_total;
     __syncthreads();
     chunk_rank += s_chunk_total;
     __syncthreads();
