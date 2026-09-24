@@ -519,8 +519,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     metric_name = f"decode_tps_{args.prompt}p{args.output}o"
     decode_value = stats["decode_tps"]
     if decode_value is None:
-        print("ERROR: no measurable decode phase", file=sys.stderr)
-        return 1
+        if args.output > 1:
+            print("ERROR: no measurable decode phase", file=sys.stderr)
+            return 1
+        # Single-output rows (the campaign's 8191+1 capacity row) are legal
+        # correctness rows with no decode phase; they report no metric.
+        print("decode_tps=none")
+        print(f"{metric_name}=none")
+        print(f"artifact={args.out}")
+        return 0
     print(f"decode_tps={decode_value:.4f}")
     print(f"{metric_name}={decode_value:.4f}")
     print(f"artifact={args.out}")
