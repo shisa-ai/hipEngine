@@ -6225,6 +6225,71 @@ def launch_gguf_linear_pair_silu(
             **kwargs,
         )
         return True
+    # E6b-3: (IQ4_XS gate, Q5_K up) mixed pair + SiLU (2026-09-25): the
+    # ordered (23, 4) family - 3 gate/up layers, the largest remaining
+    # mixed combo after 2a/2b. Side A is the session-qualified local32
+    # decode owner (raw), exactly like E6b-1; side B is the Q5_T16 decode
+    # owner the E4a policy table routes to the exact tile8 chain at this
+    # shape (t16 abi, resolved before this route runs). The fused owner
+    # is bit-exact with single/single/silu_mul - side A unchanged, side B
+    # the tile8 single's 4-group chain emulated in wave 0 - so it owes no
+    # new accuracy evidence beyond the already-gated singles. Other
+    # remaining mixed combos are separate units.
+    iq4_q5_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_iq4_xs+gguf_q5_k_t16_v1",
+        "iq4_q5_pair_silu_bf16_bf16_out",
+    )
+    q5_t16_tile8_decode = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_q5_k_t16_v1",
+        "t16_gemv_decode_tile8_bf16_bf16_out",
+    )
+    # The raw resolve above does not consult the shape policy the singles
+    # get for their decode sibling; apply the same rewrite here so the
+    # route gates on the owner production actually selects (the E4a tile8
+    # entry for this (K, N)) rather than the direct parent.
+    dispatch_b_c1 = _t16_c1_variant_dispatch(
+        dispatch_b,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    _ensure_linear_kernel_registered(iq4_q5_pair)
+    if (
+        rows == 1
+        and dispatch_a_decode.key == iq4_xs_local32_decode
+        and dispatch_b_c1.key == q5_t16_tile8_decode
+        and in_features % 256 == 0
+        and out_features % 16 == 0
+        and is_registered(iq4_q5_pair)
+    ):
+        fn = resolve(
+            backend=iq4_q5_pair.backend,
+            layer=iq4_q5_pair.layer,
+            quant=iq4_q5_pair.quant,
+            variant=iq4_q5_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None if libraries is None else libraries.get(iq4_q5_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            # Gate first: IQ4_XS raw (local32); up second: Q5_K T16 tiles.
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
     # Q5 T16 gate/up decode dual (2026-09-10): fires only when both sides
     # dispatch to the Q5 T16 direct-GEMV decode owner at rows == 1; the
     # registered variant defaults to the bit-exact dense dual SiLU GEMV.

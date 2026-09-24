@@ -37,6 +37,27 @@ constexpr int Q4_T16_Q_OFFSET = Q4_T16_MIN_OFFSET + Q4_SUBBLOCKS * T16_COLS;
 constexpr int Q4_T16_BLOCK_BYTES =
     Q4_T16_Q_OFFSET + Q4_SUBBLOCKS * Q4_SUBBLOCK * (T16_COLS / 2);
 
+// Q5_T16 tile layout (E6b-3): same header/scales/mins shape as Q4_T16
+// with the 4-bit coeff split into a low nibble plane and a 1-bit high
+// plane - copied from gguf_t16_selected_gemv.hip so both owners agree.
+constexpr int Q5_T16_D_OFFSET = 0;
+constexpr int Q5_T16_DMIN_OFFSET = Q5_T16_D_OFFSET + T16_COLS * 2;
+constexpr int Q5_T16_SCALE_OFFSET = Q5_T16_DMIN_OFFSET + T16_COLS * 2;
+constexpr int Q5_T16_MIN_OFFSET = Q5_T16_SCALE_OFFSET + Q4_SUBBLOCKS * T16_COLS;
+constexpr int Q5_T16_QL_OFFSET = Q5_T16_MIN_OFFSET + Q4_SUBBLOCKS * T16_COLS;
+constexpr int Q5_T16_QH_OFFSET = Q5_T16_QL_OFFSET + Q4_SUBBLOCKS * Q4_SUBBLOCK * (T16_COLS / 2);
+constexpr int Q5_T16_BLOCK_BYTES = Q5_T16_QH_OFFSET + Q4_SUBBLOCKS * Q4_SUBBLOCK * (T16_COLS / 8);
+
+// The tile8 single's exact wave reduction (verbatim shfl sequence).
+#define IQ_PAIR_T16_WAVE_REDUCE(acc) \
+  do {                               \
+    acc += __shfl_down(acc, 16);     \
+    acc += __shfl_down(acc, 8);      \
+    acc += __shfl_down(acc, 4);      \
+    acc += __shfl_down(acc, 2);      \
+    acc += __shfl_down(acc, 1);      \
+  } while (0)
+
 // Both owners serve eight output columns per block: the local32 dual's
 // GGUF_IQ_LOCAL32_COLS and the dense Q4T16 single's kTileCols.
 constexpr int COLS = 8;
@@ -62,6 +83,26 @@ __device__ inline float fp16_bits_to_float(uint16_t bits) {
   return static_cast<float>(in.f16);
 }
 
+__device__ inline float q5_fp16_bytes_to_float(const uint8_t* p) {
+  return fp16_bits_to_float(
+      static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8));
+}
+
+// t16_q5_quant verbatim from gguf_t16_selected_gemv.hip: the 5-bit
+// coefficient is the low nibble plane plus the high bit plane.
+__device__ inline uint8_t iq4_q5_quant(const uint8_t* tile, int sb,
+                                       int lane32, int col) {
+  const uint8_t low_packed = tile[Q5_T16_QL_OFFSET +
+                                  (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) +
+                                  (col >> 1)];
+  const uint8_t low = (col & 1) ? (low_packed >> 4) : (low_packed & 0x0Fu);
+  const uint8_t high_packed = tile[Q5_T16_QH_OFFSET +
+                                   (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 8) +
+                                   (col >> 3)];
+  const uint8_t high = (high_packed >> (col & 7)) & 0x01u;
+  return low | (high << 4);
+}
+
 __device__ float bf16_load(uint16_t x) {
   union {
     uint32_t u;
@@ -80,7 +121,7 @@ __device__ uint16_t bf16_store(float x) {
   return uint16_t((v.u + 0x7fff + ((v.u >> 16) & 1)) >> 16);
 }
 
-template <int WAVES, bool GATE_IS_Q4 = false>
+template <int WAVES, bool GATE_IS_Q4 = false, bool UP_IS_Q5 = false>
 __global__ __launch_bounds__(32 * WAVES, 16 / WAVES > 0 ? 16 / WAVES : 1)
 void iq4_q4_pair_silu_kernel(
     const uint16_t* __restrict__ x,
@@ -123,6 +164,8 @@ void iq4_q4_pair_silu_kernel(
   }
 
   // Side A: split-K across waves - the local32 dual's loop verbatim.
+  __shared__ float xwave_a[WAVES > 1 ? WAVES : 1][COLS];
+  __shared__ float xwave_b[WAVES > 1 ? WAVES : 1][COLS];
   for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
     const uint16_t* xp = x + blk * 256 + lane * 8;
     float xv[8];
@@ -150,8 +193,75 @@ void iq4_q4_pair_silu_kernel(
     }
   }
 
-  // Side B: the dense Q4T16 single's full single-wave chain, recomputed
-  // in every wave; only wave 0's partial is published below.
+  // Side B: UP_IS_Q5=false keeps the dense Q4T16 single's full
+  // single-wave chain recomputed in every wave (only wave 0's partial is
+  // published below). UP_IS_Q5=true (E6b-3) instead emulates the dense
+  // Q5T16 tile8 single's exact 128-thread chain inside wave 0: that
+  // single runs 4 wave-groups over strided k (thread (g,l) owns
+  // k = g*32+lane and +128 per superblock), wave-reduces each group with
+  // the same shfl tree, then sums the four lane-0 results serially in
+  // group order. Lane 0 of wave 0 reproduces all of that (group
+  // accumulators in the single's fmaf order), so side B stays
+  // bit-identical to the tile8 owner for any WAVES value.
+  if constexpr (UP_IS_Q5) {
+    // Wave w emulates single-waves g = wave, wave+WAVES, ... (identity
+    // lane mapping within each group: single thread (g, lane) owns
+    // k = g*32+lane and +128 per superblock). Each group keeps the
+    // single's fmaf order, its own shfl-tree reduce, and lane-0 publish;
+    // the four results are summed serially in group order afterwards.
+    __shared__ float s_q5r[4][COLS];
+    for (int g = wave; g < 4; g += WAVES) {
+      float acc[COLS];
+#pragma unroll
+      for (int t = 0; t < COLS; ++t) acc[t] = 0.0f;
+      for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+        const uint8_t* tile =
+            wb + (out_tile * blocks_per_row + blk) * Q5_T16_BLOCK_BYTES;
+#pragma unroll
+        for (int half_k = 0; half_k < 2; ++half_k) {
+          const int k_in_block = g * 32 + lane + half_k * 128;
+          const int sb5 = k_in_block >> 5;
+          const int lane32 = k_in_block & 31;
+          const float xv = bf16_load(x[blk * QK_K + k_in_block]);
+#pragma unroll
+          for (int local_col = 0; local_col < COLS; ++local_col) {
+            const int col = col_base + local_col;
+            const float d = q5_fp16_bytes_to_float(
+                tile + Q5_T16_D_OFFSET + col * 2);
+            const float dmin = q5_fp16_bytes_to_float(
+                tile + Q5_T16_DMIN_OFFSET + col * 2);
+            const float scale = d * static_cast<float>(
+                tile[Q5_T16_SCALE_OFFSET + sb5 * T16_COLS + col]);
+            const float minv = dmin * static_cast<float>(
+                tile[Q5_T16_MIN_OFFSET + sb5 * T16_COLS + col]);
+            const float q = static_cast<float>(
+                iq4_q5_quant(tile, sb5, lane32, col));
+            acc[local_col] += xv * (scale * q - minv);
+          }
+        }
+      }
+#pragma unroll
+      for (int local_col = 0; local_col < COLS; ++local_col)
+        IQ_PAIR_T16_WAVE_REDUCE(acc[local_col]);
+      if (lane == 0)
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) s_q5r[g][t] = acc[t];
+    }
+    __syncthreads();
+    // The single sums the four lane-0 group results serially in g order;
+    // thread 0 reproduces that exact association from shared memory.
+    if (tid == 0) {
+      float total[COLS];
+#pragma unroll
+      for (int t = 0; t < COLS; ++t) {
+        float v = s_q5r[0][t] + s_q5r[1][t];
+        v += s_q5r[2][t];
+        v += s_q5r[3][t];
+        total[t] = v;
+        xwave_b[0][t] = v;
+      }
+    }
+  } else {
   for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
     const uint8_t* tile =
         wb + (out_tile * blocks_per_row + blk) * Q4_T16_BLOCK_BYTES;
@@ -208,21 +318,23 @@ void iq4_q4_pair_silu_kernel(
       }
     }
   }
+  }  // end if constexpr (UP_IS_Q5) else (Q4 chain)
 
 #pragma unroll
   for (int t = 0; t < COLS; ++t)
     for (int delta = 16; delta; delta >>= 1) {
       acc_a[t] += __shfl_down(acc_a[t], delta);
-      acc_b[t] += __shfl_down(acc_b[t], delta);
+      if constexpr (!UP_IS_Q5)
+        acc_b[t] += __shfl_down(acc_b[t], delta);
     }
 
-  __shared__ float xwave_a[WAVES > 1 ? WAVES : 1][COLS];
-  __shared__ float xwave_b[WAVES > 1 ? WAVES : 1][COLS];
   if (lane == 0) {
 #pragma unroll
     for (int t = 0; t < COLS; ++t) {
       xwave_a[wave][t] = acc_a[t];
-      xwave_b[wave][t] = acc_b[t];
+      // The Q5 path already published its wave-0 lane-0 total directly
+      // into xwave_b[0]; only the Q4 chain publishes per wave here.
+      if constexpr (!UP_IS_Q5) xwave_b[wave][t] = acc_b[t];
     }
   }
   __syncthreads();
@@ -318,4 +430,40 @@ extern "C" int hipengine_gguf_q4_iq4_pair_silu(const void* x, const void* wa,
         default:
             return int(hipErrorInvalidValue);
     }
+}
+// E6b-3 family: (IQ4_XS gate, Q5_K up). wa is the IQ4_XS local32 raw
+// weight (side A geometry unchanged), wb the Q5_K T16 tiles for the
+// tile8-exact side-B chain; the gate stays side A (GATE_IS_Q4=false).
+// N must be a multiple of 16: Q5 tiles are resident 16-column tiles.
+extern "C" int hipengine_gguf_iq4_q5_pair_silu(const void* x, const void* wa,
+    const void* wb, void* out, int64_t rows, int64_t K, int64_t N, int waves,
+    void* stream) {
+  if (!x || !wa || !wb || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 ||
+      N % 16)
+    return int(hipErrorInvalidValue);
+  const dim3 grid(unsigned((N + COLS - 1) / COLS));
+  const hipStream_t s = (hipStream_t)stream;
+  int err;
+  switch (waves) {
+    case 1:
+      err = (iq4_q4_pair_silu_kernel<1, false, true><<<grid, 32, 0, s>>>(
+                 (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                 (uint16_t*)out, K, N),
+             int(hipGetLastError()));
+      return err;
+    case 2:
+      err = (iq4_q4_pair_silu_kernel<2, false, true><<<grid, 64, 0, s>>>(
+                 (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                 (uint16_t*)out, K, N),
+             int(hipGetLastError()));
+      return err;
+    case 4:
+      err = (iq4_q4_pair_silu_kernel<4, false, true><<<grid, 128, 0, s>>>(
+                 (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                 (uint16_t*)out, K, N),
+             int(hipGetLastError()));
+      return err;
+    default:
+      return int(hipErrorInvalidValue);
+  }
 }
