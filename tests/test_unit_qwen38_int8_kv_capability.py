@@ -385,6 +385,48 @@ def test_identity_never_gates_admission_but_capability_does() -> None:
     assert wrong_target.runtime_action == "fallback_bf16"
 
 
+def test_unmatched_scale_axis_names_the_declared_verdict_it_overrides() -> None:
+    """A key one axis off a declared contract names that axis and its verdict.
+
+    This is the refused cell the INT8 MTP readiness row records: the request
+    resolves to fp16 scales while every INT8 declaration is keyed fp32, so the
+    refusal reads as an absent implementation even though the artifact's real
+    verdict is a retained quality rejection at the declared fp32 contract.
+    """
+
+    plugin = Qwen35GGUFModel()
+
+    rejected = plugin.resolve_kv_capability(
+        key=_key(
+            sha256=_REJECT_SHA256,
+            size_bytes=17_106_775_008,
+            backend="hip_gfx1151",
+            scale_dtype="fp16",
+        ),
+        artifact=_artifact(sha256=_REJECT_SHA256, size_bytes=17_106_775_008),
+    )
+    assert rejected.status == "unsupported"
+    assert rejected.runtime_action == "fallback_bf16"
+    assert "no registered kernel implements" in rejected.reason
+    assert "scale_dtype (declared 'fp32', requested 'fp16')" in rejected.reason
+    assert "the retained verdict for that contract is rejected" in rejected.reason
+    assert "0.7778" in rejected.reason
+
+    # The same axis on the artifact whose retained row is qualified.
+    qualified = plugin.resolve_kv_capability(
+        key=_key(
+            sha256=_PASS_SHA256,
+            size_bytes=17_106_773_984,
+            backend="hip_gfx1100",
+            scale_dtype="fp16",
+        ),
+        artifact=_artifact(sha256=_PASS_SHA256, size_bytes=17_106_773_984),
+    )
+    assert qualified.status == "unsupported"
+    assert "scale_dtype (declared 'fp32', requested 'fp16')" in qualified.reason
+    assert "the retained verdict for that contract is qualified" in qualified.reason
+
+
 def test_model_artifact_identity_hashes_content_and_invalidates_on_change(tmp_path: Path) -> None:
     path = tmp_path / "same-name.gguf"
     path.write_bytes(b"first-artifact")

@@ -409,6 +409,86 @@ def _declaration_matches(row: KVCapabilityDeclaration, key: KVCapabilityKey) -> 
     )
 
 
+_CONTRACT_AXES = (
+    "backend",
+    "target_arch",
+    "weight_quant",
+    "kv_storage",
+    "storage_layout",
+    "scale_dtype",
+    "scale_granularity",
+)
+
+
+def _axis_mismatch(row: KVCapabilityDeclaration, key: KVCapabilityKey) -> str | None:
+    """Name the first axis a declaration does not cover for this request.
+
+    A ``None`` weight quant declares any quant, so that axis never differs.
+    """
+
+    for axis in _CONTRACT_AXES:
+        declared = getattr(row, axis)
+        if declared is None:
+            continue
+        requested = getattr(key, axis)
+        if declared != requested:
+            return f"{axis} (declared {declared!r}, requested {requested!r})"
+    return None
+
+
+def _unmatched_contract_note(
+    declarations: Sequence[KVCapabilityDeclaration],
+    evidence: Sequence[KVCapabilityEvidence],
+    key: KVCapabilityKey,
+) -> str | None:
+    """Name the closest declared contract and the verdict retained against it.
+
+    An unmatched key is the least informative refusal this module produces: the
+    artifact, backend, quant and KV storage can all be declared while one axis
+    -- most often the scale dtype -- keeps the request off that declaration, and
+    the refusal then reads as though no kernel implements any of it. Naming the
+    axis that differs, and the decision already recorded for the contract it
+    keeps the request off, turns that into the reason a reader can act on.
+    """
+
+    closest: KVCapabilityDeclaration | None = None
+    closest_mismatch: str | None = None
+    closest_matched = -1
+    for row in declarations:
+        mismatch = _axis_mismatch(row, key)
+        if mismatch is None:
+            continue
+        matched = sum(
+            1
+            for axis in _CONTRACT_AXES
+            if getattr(row, axis) is None or getattr(row, axis) == getattr(key, axis)
+        )
+        if matched > closest_matched:
+            closest, closest_mismatch, closest_matched = row, mismatch, matched
+    if closest is None or closest_mismatch is None:
+        return None
+
+    note = f"the closest declared contract differs on {closest_mismatch}"
+    for row in evidence:
+        row_key = row.key
+        if not _artifact_identity_matches(row_key, key):
+            continue
+        if row_key.scale_dtype == key.scale_dtype:
+            continue
+        if any(
+            getattr(row_key, axis) != getattr(closest, axis)
+            for axis in ("backend", "target_arch", "kv_storage", "storage_layout")
+        ):
+            continue
+        if row_key.scale_granularity != key.scale_granularity:
+            continue
+        return (
+            f"{note}, and the retained verdict for that contract is "
+            f"{row.decision}: {row.reason}"
+        )
+    return f"{note}; no retained verdict covers that contract"
+
+
 def _key_matches(row: KVCapabilityKey, key: KVCapabilityKey) -> bool:
     """Match every non-artifact axis exactly and the artifact axis by identity."""
 
@@ -445,6 +525,7 @@ def resolve_kv_capability(
         (row for row in declarations if _declaration_matches(row, key)), None
     )
     if declaration is None:
+        note = _unmatched_contract_note(declarations, evidence, key)
         return KVCapabilityResolution(
             key=key,
             artifact=artifact,
@@ -452,7 +533,7 @@ def resolve_kv_capability(
             effective_kv_storage="bf16",
             reason=(
                 "no registered kernel implements this backend/target/quant/KV/"
-                "scale contract"
+                "scale contract" + (f"; {note}" if note else "")
             ),
             runtime_action="fallback_bf16",
         )

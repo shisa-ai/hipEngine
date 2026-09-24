@@ -138,24 +138,28 @@ Existing direct-runtime results are not HTTP completion evidence.
   different file (17,106,773,984 bytes, sha256 `7b2aec3b...`), not the artifact
   on this host (17,106,775,008 bytes, sha256 `7e78da5d...`).
 
-  So the refusal is correct in effect and misleading in report: at physical c2
-  the cell is closed because the declared contract is quality-rejected on
-  gfx1151, while the reason a user sees names a contract miss on an undeclared
-  fp16-scale variant. Clearing routes, in order:
+  So the refusal is correct in effect and misleading in report, and the report
+  is now legible: the unmatched-key reason names the differing axis and the
+  retained verdict behind the contract it keeps the request off
+  (`_unmatched_contract_note` in `hipengine/models/kv_capabilities.py`, pinned by
+  `test_unmatched_scale_axis_names_the_declared_verdict_it_overrides`).
+  Clearing routes, in order:
 
-  1. Pass the quality gate for this artifact's INT8 no-mirror contract on
+  1. Resolve the capability for the scale dtype the session will actually run
+     instead of the raw request default. The existing
+     `test_gfx1151_rejected_artifact_binds_the_direct_leaf_under_diagnostic_override`
+     shows the fp32 key under the override makes
+     `_qualified_kv_decode_batch_route` return `(4, kernel)`: the shared direct
+     leaf exists at four rows, so this is the change that should open c2 and c4.
+  2. Pass the quality gate for this artifact's INT8 no-mirror contract on
      gfx1151 at 0.90 minimum-prompt top-1 agreement and record the pass as that
      fp32 key's evidence row. The quality basis is
      `benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json`
-     re-read against the gate.
-  2. Register an fp16-keyed declaration for the same axes if the direct leaf is
-     expected to run fp16 scales. An override run would then report its own
-     capability instead of an unmatched key.
-
-  A separate unit is worth opening for the report itself: an unverified-override
-  run should name the declared verdict it is overriding, so the quality
-  rejection is visible where the refusal happens instead of only in the
-  registry.
+     re-read against the gate. This governs the product default; route 1 governs
+     the cell.
+  3. Register an fp16-keyed declaration for the same axes if the direct leaf is
+     expected to run fp16 scales. Route 1 makes this unnecessary for the
+     default request.
 
   Two earlier readings of this row are superseded and kept only as history: an
   INT8 static width bound (fixed in `7c3914162`, and it was real -- it just is
