@@ -1,14 +1,82 @@
 ---
 status: current
-owns: Local do-not-chase findings and recurring kernel/runtime pitfalls. Largely superseded in kernel scope by RDNA3-TUNING-GUIDE.md.
+owns: Architecture-independent porting, build, and runtime gotchas, plus historical integration case studies.
 ---
 # Lessons Learned
 
-This file records hipEngine-specific debugging lessons that are likely to recur.
-Keep entries compact, evidence-backed, and actionable. Parent-workspace kernel
-R&D notes still belong in `~/amd-gpu-tuning/LESSONS-LEARNED.md`; this file is
-for issues observed while integrating stable kernels into hipEngine runtime,
-state, and gates.
+This file owns architecture-independent porting, build, and runtime lessons.
+Put architecture-specific guidance in [RDNA3-TUNING-GUIDE.md](RDNA3-TUNING-GUIDE.md).
+Keep new guidance compact and actionable; implementation history and measurements
+belong in immutable `worklog/entries/` and `benchmarks/results/`. The older case
+studies below remain as references, not instructions to append more history.
+
+## Porting without changing the contract
+
+- Check external source drift with
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` before copying
+  a family. `docs/source_lineage.json` owns baseline commits; inspect drift
+  before an intentional baseline update.
+- Develop in `hipengine/kernels/<backend>/`, not the read-only reference tree.
+  Record the upstream file and commit in the port commit and worklog.
+- Separate mechanical porting from optimization. Preserve arithmetic order,
+  rounding boundaries, storage layout, launch bounds, and compiler flags first.
+- Use raw device pointers and explicit shapes/strides/dtypes, not framework
+  tensors. Extract embedded device source into `.hip` or `.cu` files.
+- Register `(backend, layer, quant, variant)` keys rather than branching on
+  backend or quantization in engine/model code. Use `is_registered()` to test
+  whether an exact key exists: `resolve()` can return a fallback.
+- Preserve the complete `KVLiveSpans` interface and register strict unfused
+  chains for composites. An execution profile selects existing variants; it
+  does not add a registry axis.
+- Add the narrow fixture/oracle and exercise the public route using the gates
+  in [OPTIMIZATION.md](OPTIMIZATION.md) and [TESTING.md](TESTING.md). Add only
+  source rows and implementation relationships to [KERNELS.md](KERNELS.md).
+
+## Device buffers: initialization and source lifetime
+
+Do not rely on a fresh allocation appearing zeroed. Recycled memory can retain
+old values. If a kernel reads unwritten scratch or masked cache slots, reset
+those mutable regions at the use boundary, with stream ordering that precedes
+the read. Multiplication by zero is not a reset: `NaN * 0` stays NaN.
+
+Use a byte clear such as `runtime.memset(ptr, 0, nbytes)` for zero state.
+Test mutable scratch by poisoning it before reuse and comparing outputs;
+exclude initialized read-only constants and weights. Keep request-history
+isolation tests separate from deliberate scratch poisoning. The shared
+`tests/_poison_probe.py` helper checks collection coverage, but callers must
+still identify the expected mutable buffer families.
+
+For synchronous NumPy uploads, use
+`hipengine.core.memory.copy_host_array_to_device`. It retains the source array,
+requires contiguous storage, and checks both source and destination bounds.
+Passing `host_array_ptr(np.zeros_like(x))` to the pointer-only copy API loses
+the temporary's owner before the copy starts. A named local held through the
+copy is also valid.
+
+A synchronous copy completes before returning; no extra device-wide drain is
+needed for source lifetime. An asynchronous upload must retain its source until
+stream completion. See `tests/test_gpu_device_memory_hygiene.py` and
+`tests/test_live_surya_gpu.py::test_gpu_state_rezero_clears_recycled_nan`.
+
+## Build-cache identity and diagnosis
+
+hipEngine uses `hipengine/core/build.py`, not PyTorch extension loading. Its
+shared objects are cached under `~/.cache/hipengine/build/` by default, or the
+explicit build-cache root. Source, flags, compiler version, and target identity
+must match the intended build; a successful load alone does not establish that.
+
+Compiler-version environment overrides are cached by compiler plus the raw
+values of all four override variables. Keying only by compiler reuses stale
+resolution after an override changes. Version-file contents are cached for that
+identity: do not rewrite a pinned version file in place during a session.
+
+If a kernel hangs with an idle GPU after source changes, inspect build identity
+and the affected cache entry before blaming the kernel. Rebuild only the
+identified family in a private cache where possible; do not delete another
+worker's shared cache. Profiling can cause a similar symptom by injecting its
+libraries into compiler probes; the ROCm-specific procedure is in
+[RDNA3-TUNING-GUIDE.md §4.9](RDNA3-TUNING-GUIDE.md#49-rocprofv3-toolchain-traps).
+
 
 ## 2026-05-15 — Native prefill flakiness can hide in full-attention prefill softmax
 
