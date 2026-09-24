@@ -257,6 +257,17 @@ Same-basis caveat as above: the gfx1151 q6 router bands still name r6 for
 rows 288-1024, so the decision lives at the leaf until a router-band
 update is scoped.
 
+**Iteration 10: standard-q6 sibling A/B — negative, no change.** The
+standard-q6 family (82.7 ms, 6.4%) already runs its designed HIGH-band
+owner (`shared8r3`, rows 385-1024); there is no fallthrough. Two
+bit-exact sibling arms at rows >= 385 (byte-identical
+`correctness_sanity`) both regressed: four-wave `shared4` 399.61
+(-4.1%) and plain direct-dense 387.68 (-6.9%) vs stock 416.49. The
+32-col/384-row 8r3 geometry is confirmed best for this family on
+gfx1151 — the device's geometry preference is family-specific (the
+planar family won with a four-wave sibling; the standard family loses
+with it), so sibling sweeps must stay measured per family.
+
 ### G. Measurement tooling and MALL discipline (LOW cost, enables everything above)
 
 From `docs/PERFORMANCE.md` and their tool tree:
