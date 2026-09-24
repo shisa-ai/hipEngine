@@ -322,12 +322,35 @@ Existing direct-runtime results are not HTTP completion evidence.
   the resident-session surface only -- no `dms_metadata_path` reaches the engine,
   LLM, or HTTP layer -- so these arms observe the lifecycle at the cycle
   boundary the verifier owns rather than through an HTTP client disconnect.
-- [ ] Prefix reuse after a cancelled request is tested with MTP enabled and
-  disabled. The lifecycle half of this row is now covered: cancellation, deadline
-  and disconnect mid-cycle and the session-level allocation trace are green in
-  `tests/test_live_dms_int8_mtp_lifecycle.py`. What is still missing is the same
-  trace for a request cancelled *after* its prefix was reused, in both cache
-  configurations.
+- [x] Prefix reuse after a cancelled request is tested with MTP enabled and
+  disabled. `tests/test_live_int8_mtp_prefix_reuse_cancel.py` runs both cache
+  configurations (`prefix_cache="radix"` and `"off"`) and both MTP
+  configurations inside each of them, on the INT8 KV cell with the diagnostic
+  override this host needs. Each arm seeds a boundary with one full request,
+  issues the same 579-token prompt again, and cancels that request
+  mid-generation; two cancellations run per arm. The arms assert what they
+  measure rather than what they infer: the response's own
+  `FinishDetails(reason="cancelled")`, `reused_tokens: 512` against a
+  `_REUSED_TOKENS` floor of 256 for the reuse, no reuse at all in the cache-off
+  control, the pool's page and refcount counts plus `active_allocations` back on
+  the seeded baseline after each cancellation, and the same prompt reproducing
+  the seed's exact ids afterwards, so the prefix the cancellation interrupted is
+  still intact. **2 passed**, 61 s and 64 s.
+
+  Scope, stated exactly. Prefix reuse is an engine mechanism --
+  `HIPENGINE_PREFIX_CACHE` is read by the engine loop and the server, while
+  `dms_metadata_path` is read by the resident session, so the two never meet in
+  one harness -- and this row is therefore covered at the engine surface, where
+  a request can be cancelled after its prefix was reused. The DMS store trace
+  stays with the lifecycle arms above, which abort a cycle on a resident DMS row
+  and compare the store; they cover cancellation, deadline and disconnect
+  mid-cycle. Two surface details are worth recording, because both cost a
+  diagnosis: a cancelled speculative *stream* on this path ends without
+  publishing its terminal chunk, so the engine's cancellation is only observable
+  through the blocking response's finish details, and the arms therefore use a
+  timer-driven cancel against a blocking request. The prompt is text rather than
+  the parity gate's pre-tokenized content tokens, which stop on the first token
+  through this surface.
 - [x] Admission budgets include target KV/scales, draft KV, verifier scratch,
   graphs, and retained prefix ownership; overload fails before HIP OOM.
   `hipengine/runtime/memory_admission.py` prices every resident consumer and
@@ -515,7 +538,9 @@ The independent W7900 run on its supported exact Q4_K_M artifact also passes
 the full 108-request matrix and lifecycle gate without diagnostic overrides.
 Nine primitive GPU cases pass there. Prefix-on restoration passes all four
 categories with actual 512-token cache hits, compact INT8 and AR-matching MTP.
-Pressure/eviction and DMS work remain open. The resumable-prefill repair is
+The checklist's pressure, eviction and DMS rows are closed; the broader
+pressure/long-context matrix is not a row here and remains separate work. The
+resumable-prefill repair is
 integrated: public gfx1151 requests at 2053/4097/6149 tokens now execute MTP and
 match AR; mid-prefill deadline/reuse also passes.
 
@@ -526,11 +551,12 @@ W7900 library probe confirms output parity, a 512-token hit, and zero outstandin
 HIP allocations after close. Dynamic verifier scratch growth belongs to the
 persistent session root, and retained target snapshot arenas are closed.
 
-The C1 serving implementation is available; this checklist is not fully closed.
-DMS contracts beyond the single-request serial route, unified provider/target
-byte budgeting, and the broader pressure/long-context matrix remain separate
-open items. Explicit unsupported implementation requests return named errors
-rather than being advertised as working MTP.
+The C1 serving implementation is available and every row in this checklist is
+now checked. What the checklist does not cover remains separate work: DMS
+contracts beyond the single-request serial route, unified provider/target byte
+budgeting, and the broader pressure/long-context matrix. Explicit unsupported
+implementation requests return named errors rather than being advertised as
+working MTP.
 
 Commands against an already running INT8 server:
 
