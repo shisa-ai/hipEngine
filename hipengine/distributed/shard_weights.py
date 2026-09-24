@@ -123,6 +123,74 @@ ATTENTION_FAMILY = ShardFamily(
     allow_raw=True,
 )
 
+#: The families by name, so a caller can say which shard families serve a route
+#: instead of naming the leaves itself. Anything that needs to know what a
+#: family replaces resolves it through here, so the answer cannot drift from the
+#: tables above.
+SHARD_FAMILIES: Mapping[str, ShardFamily] = {
+    MLP_FAMILY.name: MLP_FAMILY,
+    ATTENTION_FAMILY.name: ATTENTION_FAMILY,
+}
+
+
+def family_slot_names(family: ShardFamily) -> frozenset[str]:
+    """Every slot a family's shards replace, across all its layer types.
+
+    These are materialization slot names (``ffn_gate``, ``ssm_dt_bias``), the
+    same names the runner resolves through ``layer.weight(slot)``.
+    """
+
+    return frozenset(
+        slot for slots in family.slots_by_layer_type.values() for slot in slots
+    )
+
+
+#: The config axes head sharding divides, as ``(config attribute, metadata name)``.
+#: Each is a per-rank head or channel count, so dividing it is what makes the
+#: runner's derived widths agree with the payloads the family materialized. The
+#: metadata name is the one the GGUF advertises, so a refusal reads like the
+#: file's own vocabulary.
+ATTENTION_SHARD_AXES: tuple[tuple[str, str], ...] = (
+    ("head_count", "attention.head_count"),
+    ("head_count_kv", "attention.head_count_kv"),
+    ("ssm_group_count", "ssm.group_count"),
+    ("ssm_inner_size", "ssm.inner_size"),
+    ("ssm_time_step_rank", "ssm.time_step_rank"),
+)
+
+
+def attention_sharded_config(config: Any, *, world_size: int) -> Any:
+    """The attention-sharded config: the rank-local halves of the head axes.
+
+    Head sharding splits the attention heads, not the residual stream, so only
+    the axes :data:`ATTENTION_SHARD_AXES` names move. ``hidden_size``,
+    ``key_length``, ``value_length``, ``ssm_state_size`` and
+    ``feed_forward_length`` describe replicated or per-head dimensions and stay
+    as they are, which is what keeps the runner's derived ``q_width``,
+    ``kv_width``, ``linear_qkv_width`` and ``ssm_value_dim`` consistent with the
+    payloads :func:`materialize_attention_shards` produced.
+
+    An even split gives every rank the same counts, so this is rank-free. An
+    uneven attention split would need per-rank counts and is not expressed here.
+    """
+
+    from dataclasses import replace
+
+    world = int(world_size)
+    if world < 1:
+        raise MLPShardError(f"world_size must be positive, got {world_size!r}")
+    if world == 1:
+        return config
+    updates: dict[str, int] = {}
+    for attribute, metadata_name in ATTENTION_SHARD_AXES:
+        value = int(getattr(config, attribute))
+        if value % world:
+            raise MLPShardError(
+                f"{metadata_name} {value} does not split across {world} ranks"
+            )
+        updates[attribute] = value // world
+    return replace(config, **updates)
+
 
 @dataclass(frozen=True)
 class MlpShardPayload:
@@ -331,17 +399,11 @@ def _preflight_family_axes(
                 f"feed_forward_length {ffn} does not split across {world_size} ranks"
             )
         return
-    axes = {
-        "attention.head_count": int(config.head_count),
-        "attention.head_count_kv": int(config.head_count_kv),
-        "ssm.group_count": int(config.ssm_group_count),
-        "ssm.inner_size": int(config.ssm_inner_size),
-        "ssm.time_step_rank": int(config.ssm_time_step_rank),
-    }
-    for axis, value in axes.items():
+    for attribute, metadata_name in ATTENTION_SHARD_AXES:
+        value = int(getattr(config, attribute))
         if value % world_size:
             raise MLPShardError(
-                f"{axis} {value} does not split across {world_size} ranks"
+                f"{metadata_name} {value} does not split across {world_size} ranks"
             )
 
 

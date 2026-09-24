@@ -33,6 +33,37 @@
   per-rank bandwidth probe is added later, the hand-measured shares here are
   what it should reproduce.
 
+## TP2 head-sharded attention (`attention_shard`) (2026-09-24)
+
+- `MlpTP2GenerationSession(attention_shard=...)` gives each rank half the
+  attention heads: the rank's own slices of `attn_q`/`attn_k`/`attn_v`/
+  `attn_output` and the GDN set replace the full-width slots, and the rank's
+  halved config (`attention_sharded_config`) makes the runner derive matching
+  `q_width`/`kv_width`/`linear_qkv_width`/`ssm_value_dim`. Both the payloads and
+  the geometry come from one shard manifest, so they cannot disagree. This is a
+  different axis from `head_shard`, which is the sharded logits head.
+- **Not enableable: no forward pass runs while it is on.** Splitting the heads
+  makes `attn_output` and `ssm_out` a hidden-size partial per rank, and the
+  post-attention norm consumes the sum. Until the layer loop performs that
+  reduce, each rank's residual would carry only its own half - wrong output, not
+  a slow one. `_require_attention_reduce` therefore refuses at
+  `_bulk_attention_layer` and `_enqueue_layer`, which is the point where a layer
+  would run, so a new caller cannot bypass it by not knowing.
+- Removal condition: once the attention-output reduce is wired into the
+  bulk-prefill loop and the graphed decode schedule (the exchange mechanism is
+  already chosen and implemented: `MlpShardGroup(reductions_per_layer=2)` with
+  `reduce_device_payload(..., phase=1)`), drop the guard, run the production
+  gate, and promote `attention_shard=True` to the tp2 default. Until then the
+  parameter should stay, because the substitution is what the next unit builds
+  on and re-deriving it would repeat the payload/geometry agreement argument.
+- Known consequence to re-qualify at promotion: the attention shape keys change.
+  `_gguf_full_attention_split_decode_policy` and
+  `_gguf_grouped_gqa_decode_shape` look variants up by a shape tuple containing
+  `head_count`/`head_count_kv`, so a halved shape misses those tables and falls
+  back to the generic path. That fallback is correct - a variant is only applied
+  at a shape it was qualified at - but the sharded shapes need their own
+  qualification before the head-sharded route can claim those variants.
+
 # hipEngine Refactor / Dead-Path Ledger
 
 ## TP2 `decode_partial_dtype` knob (2026-09-17)
