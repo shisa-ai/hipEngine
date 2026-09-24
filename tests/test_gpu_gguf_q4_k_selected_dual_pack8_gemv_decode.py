@@ -229,6 +229,8 @@ _EXPERT_LAYOUTS = [
         (512, 256, 256),
         (1024, 512, 2048),
         (2048, 2048, 4096),
+        # Gemma 4 c=1 decode geometry: in = hidden 2816, gate/up = ffn 704.
+        (2816, 704, 704),
     ],
 )
 def test_p9_b1_bf16_bf16_compact_matches_cpu_oracle(

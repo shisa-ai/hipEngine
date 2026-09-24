@@ -1138,18 +1138,97 @@ def test_compact_gemv_missing_compact_scratch_falls_back(monkeypatch: pytest.Mon
     assert "compact_gate_up" not in [name for name, _ in calls]
 
 
+def test_compact_gemv_q5_1_down_ffn704_routes_compact(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gemma 4 26B-A4B geometry: raw Q5_1 down blocks are 32 elements, so
+    ffn=704 compact-routes with Q4_K dual gate/up once the Q5_1 down GEMV
+    resolves. Dimensions mirror the artifact: hidden 2816, FFN 704."""
+    monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_MOE_C1", "1")
+    runner, scratch = _fake_runner_and_scratch(hidden=2816, ffn=704)
+    layer = runner.weights.layer(0)
+    layer._weights["ffn_gate_exps"] = _FakeWeight(
+        "ffn_gate_exps", "gguf_q4_k", 12, experts=4, out_features=704, in_features=2816
+    )
+    layer._weights["ffn_up_exps"] = _FakeWeight(
+        "ffn_up_exps", "gguf_q4_k", 13, experts=4, out_features=704, in_features=2816
+    )
+    layer._weights["ffn_down_exps"] = _FakeWeight(
+        "ffn_down_exps", "gguf_q5_1", 14, experts=4, out_features=2816, in_features=704
+    )
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    _patch_compact_scheduler(monkeypatch, calls)
+    _patch_compact_gemv_registry(monkeypatch, calls, down_quant="gguf_q5_1")
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", _fail_if_called("legacy_pair"))
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_linear", _fail_if_called("legacy_linear"))
+    set_gemv_decode_enabled(True)
+
+    runner._run_post_attention_moe_c1(0, out_ptr=9000, scratch=scratch, stream=7)
+
+    names = [name for name, _ in calls]
+    assert "legacy_pair" not in names
+    assert "legacy_linear" not in names
+    assert ("compact_gate_up", (2, 2816, 704, 704, 4)) in calls
+    assert ("silu_dual", (2, 704)) in calls
+    assert ("compact_down", (2, 704, 2816, 4)) in calls
+
+
+def test_compact_gemv_wide_block_down_ffn704_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 256-superblock down quant at ffn=704 keeps the legacy fallback even
+    when every compact kernel key resolves -- the FFN alignment guard, not
+    registry availability, rejects it, per layer."""
+    monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_MOE_C1", "1")
+    runner, scratch = _fake_runner_and_scratch(hidden=2816, ffn=704)
+    layer = runner.weights.layer(0)
+    layer._weights["ffn_gate_exps"] = _FakeWeight(
+        "ffn_gate_exps", "gguf_q4_k", 12, experts=4, out_features=704, in_features=2816
+    )
+    layer._weights["ffn_up_exps"] = _FakeWeight(
+        "ffn_up_exps", "gguf_q4_k", 13, experts=4, out_features=704, in_features=2816
+    )
+    layer._weights["ffn_down_exps"] = _FakeWeight(
+        "ffn_down_exps", "gguf_q5_k", 14, experts=4, out_features=2816, in_features=704
+    )
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    _patch_compact_gemv_registry(monkeypatch, calls, down_quant="gguf_q5_k")
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_pair",
+        lambda *args, **kwargs: calls.append(("legacy_pair", None)) or False,
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_linear",
+        lambda weight, *args, **kwargs: calls.append(("legacy_linear", weight.spec.source.name)),
+    )
+    set_gemv_decode_enabled(True)
+
+    runner._run_post_attention_moe_c1(0, out_ptr=9000, scratch=scratch, stream=7)
+
+    assert ("legacy_pair", None) in calls
+    assert [payload for name, payload in calls if name == "legacy_linear"] == [
+        "ffn_gate_exps",
+        "ffn_up_exps",
+        "ffn_down_exps",
+    ]
+    assert "compact_down" not in [name for name, _ in calls]
+
+
 # ---------------------------------------------------------------------------
 # Fake fixtures (mirrors test_unit_qwen35_gguf_compact_moe_wmma_routing.py).
 # ---------------------------------------------------------------------------
 
 
-def _fake_runner_and_scratch(*, strip_compact_scratch: bool = False):
+def _fake_runner_and_scratch(
+    *, strip_compact_scratch: bool = False, hidden: int = 256, ffn: int = 256
+):
     cfg = SimpleNamespace(
         is_moe=True,
         expert_used_count=2,
         expert_count=4,
-        hidden_size=256,
-        expert_feed_forward_length=256,
+        hidden_size=hidden,
+        expert_feed_forward_length=ffn,
         expert_shared_feed_forward_length=16,
     )
     layer = _FakeLayer()
