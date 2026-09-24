@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-21**
+Last updated: **2026-09-24**
 
 Qwen3.8-27B Q4_K_M sampling on **zbook / Radeon 8060S (gfx1151)**:
 full-vocabulary GPU sampling achieves **11.61 decode tok/s and 9.63 engine
@@ -370,6 +370,31 @@ three times the context of four.
 
 [Full comparison and source review](results/2026-09-08-rx7900xtx-engine-comparison.md)
 and [commands, samples and checks](results/2026-09-08-rx7900xtx-engine-comparison.json).
+
+### Gemma 4 26B-A4B `UD-Q4_K_XL` — RX 7900 XTX
+
+Gemma 4 26B-A4B `UD-Q4_K_XL` on one RX 7900 XTX: single request, greedy,
+BF16 KV, 8192-token context, one full-shape warmup and three measured samples
+per row. hipEngine and llama.cpp run the identical frozen prompt token-id
+sequence; decode tok/s is the 127 single-token forwards of a 128-output row
+divided by their measured time. hipEngine rates come from the public
+`LLM.generate()` path, whose output token ids match the instrumented timing
+loop at every position on all 14 measured rows.
+
+| Engine | Prefill 1024 | Decode at 1024/128 |
+| --- | ---: | ---: |
+| llama.cpp HIP `8cfc315`, same GGUF | **3910** | **68.92** |
+| hipEngine | 128.1 | 16.09 |
+
+hipEngine's own shape matrix at 128 outputs: decode 32.25 tok/s at a 128-token
+prompt, 22.02 at 512, 16.09 at 1024, 10.14 at 4096; prefill 139.7 / 135 /
+128.1 / about 106 tok/s at the same shapes. First-token latency at 1024 is
+7.96-8.03 s and public request wall time is 15.86-15.92 s including prefill.
+For product context on the same GPU and workload, Qwen3.6-35B-A3B
+`UD-Q4_K_M` in hipEngine measures 3281 prefill and 114.57 decode tok/s — a
+different model and tokenizer, used as a speed reference only.
+
+[G0 baseline, comparators, boundary rows and provenance](results/2026-09-24-gemma4-26b-a4b-g0-baseline.json).
 
 ### DMS INT8 offline evaluation — RX 7900 XTX
 
