@@ -64,6 +64,24 @@ Existing direct-runtime results are not HTTP completion evidence.
   gate: admission follows the artifact's admitted no-mirror capability and the
   physical cell the kernels execute. The row that found the gap now reports the
   reason it was written for, over both endpoints at all four lengths.
+- [ ] Automatic intent at physical c2 on INT8 KV. The cell executes -- a live
+  two-request overlap resolves
+  `implemented_gguf_dense_int8_gfx1151_group_native_chain` with group rows [2],
+  16 drafts over 8 cycles, and the explicit arm of the same sweep engages it at
+  25.75 tok/s against its own AR baseline's 10.79 -- but automatic intent is
+  withheld with `automatic_mtp_scope_not_promoted`, because the INT8 request's
+  static eligibility caps realized group rows at one while the declaration
+  offers `max_group_rows=4`. This is a selection default over working paths, not
+  a capability miss. The cause is recorded where the gate is defined
+  (`_SPECULATIVE_MTP_AUTO_REJECTION_REASON` in `hipengine/server/api.py`), and
+  the route that lifts it is named there: raise the INT8 static eligibility
+  width to the declaration's `max_group_rows`, then re-run
+  `python3 scripts/gguf_mtp_c1c8_server_bench.py --mtp-request-mode automatic`
+  and confirm `engaged_cells` and `route_expectation_passed` at c1, c2 and c4.
+  Evidence: `benchmarks/results/2026-09-23-gfx1151-qwen38-int8kv-mtp-vs-ar-c1c4.json`
+  (automatic arm: c2 engaged 0/10, route `default`, decision reason
+  `automatic_mtp_scope_not_promoted`; explicit arm: c2 2.386x with 10/10
+  engaged).
 
 ### Runtime And Ownership
 
