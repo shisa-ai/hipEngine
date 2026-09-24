@@ -1,0 +1,113 @@
+{
+ "schema": 1,
+ "kind": "tp2_attention_reduce_placement_ab",
+ "status": "design_decision_with_measurement",
+ "performance_claim": false,
+ "date": "2026-09-23",
+ "host": "epyc",
+ "hardware": [
+  "rank 0: AMD Radeon Pro W7900 (gfx1100, 48 GiB)",
+  "rank 1: AMD Radeon RX 7900 XTX (gfx1100, 24 GiB)"
+ ],
+ "backend": "hip_gfx1100",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "quant": "gguf_q4_k_m",
+ "question": "Head sharding makes attn_output/ssm_out row-parallel, so each rank holds a hidden-size partial that must be summed before the post-attention norm. Where should that second per-layer reduction live: a second CompiledDeviceExchange instance, or extra slots on the existing one?",
+ "protocol": {
+  "tool": "scripts/tp2_attention_exchange_ab_probe.py",
+  "rows": 512,
+  "hidden": 5120,
+  "layers": 64,
+  "reductions_per_layer": 2,
+  "repeats": 9,
+  "warmup": 2,
+  "partial_dtype": "bf16",
+  "bytes_per_reduction_per_rank": 5242880,
+  "correctness": "bit-exact against the host RNE-narrowed bf16 sum, every reduction, both ranks"
+ },
+ "variants": {
+  "split": {
+   "design": "second CompiledDeviceExchange instance, num_layers=2 each",
+   "exchanges": 2,
+   "staging_bytes_per_rank": 20971520,
+   "measured_ms_per_reduction": {
+    "run1_split_first": 2.6242,
+    "run2_split_second": 0.9801,
+    "run3_split_alone": 1.0278
+   },
+   "min_ms": {
+    "run1_split_first": 335.899,
+    "run2_split_second": 125.449,
+    "run3_split_alone": 131.554
+   },
+   "median_ms": {
+    "run1_split_first": 409.249,
+    "run2_split_second": 221.377,
+    "run3_split_alone": 133.205
+   }
+  },
+  "phases": {
+   "design": "one instance, num_layers=4, slot = 2 * (layer_id % 2) + phase",
+   "exchanges": 1,
+   "staging_bytes_per_rank": 20971520,
+   "measured_ms_per_reduction": {
+    "run1_phases_second": 0.9642,
+    "run2_phases_first": 1.6938,
+    "run3_phases_alone": 1.6907
+   },
+   "min_ms": {
+    "run1_phases_second": 123.419,
+    "run2_phases_first": 216.809,
+    "run3_phases_alone": 216.405
+   },
+   "median_ms": {
+    "run1_phases_second": 204.811,
+    "run2_phases_first": 369.256,
+    "run3_phases_alone": 287.755
+   }
+  },
+  "shared": {
+   "design": "one instance, num_layers=2, both phases on slot = layer_id % 2",
+   "exchanges": 1,
+   "staging_bytes_per_rank": 10485760,
+   "measured_ms_per_reduction": 0.9422,
+   "min_ms": 120.596,
+   "median_ms": 120.788,
+   "status": "rejected"
+  }
+ },
+ "order_effect": {
+  "finding": "The variant measured first in a process is slower by 1.7-2.7x regardless of which variant it is. The 2.62 ms/reduction recorded for 'split' in the first run is a measurement-order artifact, not a property of the design.",
+  "evidence": "split measured 2.62 when first and 0.98/1.03 when second or alone; phases measured 0.96 when second and 1.69 when first or alone.",
+  "warmed_ms_per_reduction": {
+   "split": 1.003,
+   "phases": 0.964
+  }
+ },
+ "correctness": {
+  "split": {"reductions_checked": 32, "mismatches": 0},
+  "phases": {"reductions_checked": 32, "mismatches": 0},
+  "shared": {
+   "reductions_checked": 160,
+   "mismatches": 0,
+   "shapes": "rows=16 x 16 layers, rows=512 x 8 layers, rows=16 x 64 layers"
+  }
+ },
+ "findings": [
+  "Both placements are throughput-equivalent once warmed (0.964 vs 1.003 ms/reduction, 5.24 MB per rank per reduction, ~5.3 GB/s). The 2-rounds-per-layer structure makes this necessary: the residual add and post_attention_norm sit between the attention output and the MLP, so neither placement can fuse the two rounds, and each pays one staging write, one publish, one peer read and one spin-add per round.",
+  "Both placements cost identical pinned staging: 20.97 MB/rank at 512 rows, because 'split' buys 2+2 slots in two arenas and 'phases' buys 4 slots in one. 'phases' adds one handle, counter and timeout flag where 'split' adds two, so 'phases' is the smaller object with equal memory and equal throughput.",
+  "'shared' is rejected even though it needs half the staging (10.49 MB/rank) and measured no slower: the peer's spin exits as soon as its flag reaches the step (the kernel compares while (*remote_flag < expected)), so the peer is free to overwrite its staging while this rank's spin-add is still reading it, and the protocol carries no acknowledgement. One 25-minute hang was observed in a single 'shared' timing run at the production shape and did not reproduce in two later bounded attempts, so the hazard is argued from the protocol rather than reproduced.",
+  "The reduce cost itself is inherent to head sharding and is not what the placement choice can address: at 0.93-1.0 ms/layer it is ~59 ms of the 116.7 ms that splitting attention saves across 64 layers, and the net 57.3 ms is where the head-sharding win lives."
+ ],
+ "decision": {
+  "chosen": "phases",
+  "reason": "Equal throughput and equal staging to 'split', with one exchange handle, one step counter and one arena, and the phase separation is explicit in the slot index instead of implicit in a second object.",
+  "implementation": "MlpShardGroup(reductions_per_layer=P) sizes the exchange at 2*P slots and reduce_device_payload(..., phase=p) uses slot P * (layer_id % 2) + p. P=1 reproduces the shipped slot = layer_id % 2 exactly, which the existing unit test and the byte-identical GPU device-exchange tests confirm."
+ },
+ "limits": [
+  "The A/B measures the exchange primitive in isolation over a synthetic reduction sequence, not the full head-sharded prefill route, which is not yet wired. It answers the placement question only.",
+  "Wall-time samples have high run-to-run variance (min vs median differ by up to 60%) on this host, so only the order-corrected, warmed comparison is used for the decision.",
+  "The 'shared' rejection rests on the flag protocol's lack of acknowledgement; the observed hang is a single non-reproducing event and is reported as such."
+ ],
+ "source_artifact": "/tmp/tp2_attn_ab_timing.json, /tmp/tp2_attn_ab_rev.json (probe JSON per run)"
+}

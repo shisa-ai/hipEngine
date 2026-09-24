@@ -385,7 +385,13 @@ class _FakeDeviceExchange:
 
 
 def _device_group(
-    rt: FakeHipRuntime, monkeypatch, *, rows: int = 8, hidden: int = 16, per_rank_ffn: int = 8
+    rt: FakeHipRuntime,
+    monkeypatch,
+    *,
+    rows: int = 8,
+    hidden: int = 16,
+    per_rank_ffn: int = 8,
+    reductions_per_layer: int = 1,
 ):
     """A group in device reduce mode over a recording fake exchange."""
 
@@ -413,6 +419,7 @@ def _device_group(
         staging_dtype="bf16",
         rows=rows,
         reduce_mode="device",
+        reductions_per_layer=reductions_per_layer,
     )
     return group, created[0]
 
@@ -493,6 +500,90 @@ def test_device_reduce_bumps_once_per_layer_and_alternates_two_slots(group_env, 
     ]
     # The staged route's cast is skipped: the kernel already wrote bf16.
     assert not [call for call in rt.calls if call[0] == "launch" and "cast" in call[2]]
+
+
+def test_device_reduce_gives_each_phase_its_own_slot(group_env, monkeypatch) -> None:
+    """Two payloads reduced in the same layer must not share a staging slot.
+
+    The peer's spin exits as soon as its flag reaches the step, so the peer is
+    free to overwrite its staging while this rank's spin-add is still reading it,
+    and the protocol carries no acknowledgement that would stop it. The slot set
+    therefore widens with the phase count, and each phase takes its own slot
+    inside the layer's set.
+    """
+
+    rt, _spy = group_env
+    group, exchange = _device_group(rt, monkeypatch, rows=8, reductions_per_layer=2)
+    assert exchange.num_layers == 4, "two alternating sets of two phase slots"
+
+    group.begin_device_group()
+    for layer_id in range(3):
+        for phase in (0, 1):
+            group.reduce_device_payload(
+                layer_id,
+                {0: 0xA0 + layer_id, 1: 0xB0 + layer_id},
+                group._out_ptrs,
+                phase=phase,
+                rows=8,
+            )
+
+    assert exchange.bumps == 6, "one bump per reduction"
+    assert [entry[2] for entry in exchange.enqueues] == [
+        0, 0, 1, 1, 2, 2, 3, 3, 0, 0, 1, 1,
+    ], "phase slots inside a layer's set, with the set alternating by layer"
+    # No two reductions in the same layer share a slot, and no layer reuses the
+    # set its predecessor used.
+    slots = [entry[2] for entry in exchange.enqueues]
+    for offset in range(0, len(slots), 4):
+        first_phase, second_phase = slots[offset : offset + 4][::2]
+        assert first_phase != second_phase
+
+
+def test_device_reduce_single_phase_reproduces_the_shipped_route(
+    group_env, monkeypatch
+) -> None:
+    """``reductions_per_layer=1`` must keep the shipped two-slot sequence.
+
+    The MLP route calls this through ``_forward_device_reduce``, so widening the
+    slot arithmetic for a second payload must not move the first one.
+    """
+
+    rt, _spy = group_env
+    group, exchange = _device_group(rt, monkeypatch, rows=8)
+    assert exchange.num_layers == 2, "one phase still owns two alternating slots"
+    for layer_id in range(3):
+        group.reduce_device_payload(
+            layer_id,
+            {0: 0xA0 + layer_id, 1: 0xB0 + layer_id},
+            group._out_ptrs,
+            rows=8,
+        )
+    assert [entry[2] for entry in exchange.enqueues] == [0, 0, 1, 1, 0, 0]
+
+
+def test_device_reduce_targets_the_named_output_and_checks_the_phase(
+    group_env, monkeypatch
+) -> None:
+    """A second payload needs its own destination and a phase the exchange sized."""
+
+    rt, _spy = group_env
+    group, exchange = _device_group(rt, monkeypatch, rows=8, reductions_per_layer=2)
+    out = {0: 0xC0, 1: 0xD0}
+    group.reduce_device_payload(0, {0: 0xA0, 1: 0xB0}, out, phase=1, rows=8)
+    assert [entry[3] for entry in exchange.enqueues] == [0xC0, 0xD0]
+    assert [entry[2] for entry in exchange.enqueues] == [1, 1]
+
+    for bad_phase in (2, -1):
+        with pytest.raises(ShardGroupError, match="phase must be in"):
+            group.reduce_device_payload(0, {0: 0xA0, 1: 0xB0}, out, phase=bad_phase)
+
+    with pytest.raises(ShardGroupError, match="reductions_per_layer must be at least 1"):
+        _device_group(rt, monkeypatch, rows=8, reductions_per_layer=0)
+
+    # A host-reduced group has no device exchange to reduce through.
+    group._device_exchange = None
+    with pytest.raises(ShardGroupError, match="needs the device-side reduction"):
+        group.reduce_device_payload(0, {0: 0xA0, 1: 0xB0}, out, phase=0)
 
 
 def test_device_reduce_refuses_more_rows_than_capacity(group_env, monkeypatch) -> None:

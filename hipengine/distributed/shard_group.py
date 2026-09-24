@@ -77,6 +77,7 @@ class MlpShardGroup:
         rows: int = 1,
         owns_weights: bool = True,
         reduce_mode: str = "host",
+        reductions_per_layer: int = 1,
     ) -> None:
         if not weights:
             raise ShardGroupError("a shard group needs at least one layer")
@@ -87,6 +88,10 @@ class MlpShardGroup:
         if reduce_mode not in {"host", "device"}:
             raise ShardGroupError(
                 f"unknown reduce_mode {reduce_mode!r}; expected 'host' or 'device'"
+            )
+        if int(reductions_per_layer) < 1:
+            raise ShardGroupError(
+                f"reductions_per_layer must be at least 1, got {reductions_per_layer!r}"
             )
         self._runtime = runtime
         self.devices = tuple(int(d) for d in devices)
@@ -133,6 +138,11 @@ class MlpShardGroup:
         self._owns_weights = bool(owns_weights)
         self.exchange_walls_s: list[float] = []
         self.reduce_mode = str(reduce_mode)
+        # How many separate reductions happen per layer. Each one needs its own
+        # staging slot inside the layer's slot set, so the device exchange owns
+        # ``2 * reductions_per_layer`` slots and a second payload reduced in the
+        # same layer cannot alias the first (see ``reduce_device_payload``).
+        self.reductions_per_layer = int(reductions_per_layer)
 
         self._ranks: dict[tuple[int, int], MlpShardRank] = {}
         for layer_id, per_device in weights.items():
@@ -172,9 +182,11 @@ class MlpShardGroup:
                 runtime,
                 devices=self.devices,
                 streams=self._streams,
-                # Two alternating slots with a counter bump per layer, so the
-                # staging stays a fixed size instead of one slot per layer.
-                num_layers=2,
+                # Two alternating sets of slots, one slot per reduction phase
+                # inside a set, with a counter bump per reduction. The staging
+                # stays a fixed size instead of one slot per layer, and two
+                # payloads reduced in the same layer cannot share a slot.
+                num_layers=2 * self.reductions_per_layer,
                 hidden=int(hidden),
                 rows=self.rows,
             )
@@ -289,27 +301,61 @@ class MlpShardGroup:
         *,
         rows: int,
     ) -> Mapping[int, int]:
-        """Reduce the partials on the device into the bf16 boundary buffer.
+        """Reduce the MLP partials on the device into the bf16 boundary buffer."""
+
+        self.reduce_device_payload(
+            layer_id, partial_ptrs, self._out_ptrs, phase=0, rows=rows
+        )
+        return dict(self._out_ptrs)
+
+    def reduce_device_payload(
+        self,
+        layer_id: int,
+        partial_ptrs: Mapping[int, int],
+        out_ptrs: Mapping[int, int],
+        *,
+        phase: int = 0,
+        rows: int | None = None,
+    ) -> None:
+        """Sum one payload across the ranks on the device into ``out_ptrs``.
 
         The counterpart of the staged route's host sum plus cast, with both of
         those removed: the spin-add kernel sums this rank's partial with the
-        peer's staged partial in bf16 and writes the boundary buffer directly,
-        so nothing is read back over PCIe and no cast kernel is enqueued.
+        peer's staged partial in bf16 and writes ``out_ptrs`` directly, so
+        nothing is read back over PCIe and no cast kernel is enqueued.
 
-        Each layer bumps the step counter before its exchange. Two slots are
-        reused, so without the bump the peer's published flag would already
-        satisfy the spin's comparison and the kernel would sum the previous
-        layer's staging. The timeout flags are reset once per group (see
-        ``begin_device_group``) rather than per layer, so a timeout in any layer
-        is still visible to the final ``wait``.
+        ``phase`` names which reduction within ``layer_id`` this is, and the two
+        must not share a staging slot. The peer's spin exits as soon as its flag
+        reaches the step, so the peer is free to overwrite its staging while this
+        rank's spin-add is still reading it, and the protocol carries no
+        acknowledgement that would prevent that. Slots are therefore ``phase``
+        inside a set, and the set alternates by layer: ``slot`` is
+        ``reductions_per_layer * (layer_id % 2) + phase`` out of the
+        ``2 * reductions_per_layer`` the exchange owns.
+
+        Each reduction bumps the step counter first, so the peer's published flag
+        cannot already satisfy the spin's comparison and make the kernel sum the
+        previous payload's staging. The timeout flags are reset once per group
+        (see :meth:`begin_device_group`) rather than per reduction, so a timeout
+        in any reduction is still visible to the final ``wait``.
         """
 
         exchange = self._device_exchange
-        assert exchange is not None
-        if int(rows) > int(self.rows):
+        if exchange is None:
+            raise ShardGroupError(
+                "reduce_device_payload needs the device-side reduction; "
+                f"reduce_mode is {self.reduce_mode!r}"
+            )
+        phases = int(self.reductions_per_layer)
+        if not 0 <= int(phase) < phases:
+            raise ShardGroupError(
+                f"phase must be in [0, {phases}) for this group, got {phase!r}"
+            )
+        resolved = int(self.rows if rows is None else rows)
+        if resolved > int(self.rows):
             raise ShardGroupError(
                 "the device-side reduction stages a fixed rows x hidden block, "
-                f"so it cannot exceed the group capacity ({self.rows} rows), got {rows}"
+                f"so it cannot exceed the group capacity ({self.rows} rows), got {resolved}"
             )
         # The exchange was built for the group's capacity, so a shorter active
         # count still stages and reduces the whole block. That is correct (each
@@ -318,12 +364,11 @@ class MlpShardGroup:
         # the unused fraction. The bulk prefill sizes its workspace to the
         # prompt, so the two agree on the common path.
         exchange.bump()
-        slot = int(layer_id) % 2
+        slot = phases * (int(layer_id) % 2) + int(phase)
         for rank, device in enumerate(self.devices):
             exchange.enqueue_rank(
-                rank, int(partial_ptrs[device]), slot, self._out_ptrs[device]
+                rank, int(partial_ptrs[device]), slot, int(out_ptrs[device])
             )
-        return dict(self._out_ptrs)
 
     def begin_device_group(self) -> None:
         """Clear the device exchange's spin-timeout flags, once per prefill.
