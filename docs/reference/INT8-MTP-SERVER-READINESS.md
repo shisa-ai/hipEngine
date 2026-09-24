@@ -65,9 +65,10 @@ Existing direct-runtime results are not HTTP completion evidence.
   physical cell the kernels execute. The row that found the gap now reports the
   reason it was written for, over both endpoints at all four lengths.
 - [ ] Automatic intent at physical c2 on INT8 KV. The cell is reached and the
-  INT8 group declaration resolves; what stops it is that this artifact's INT8
-  no-mirror contract is quality-rejected on gfx1151, so no shared direct decode
-  leaf exists at a group width above one.
+  INT8 group route resolves; what stops it is that the run's KV capability
+  resolves to no declaration, so no shared direct decode leaf exists at a group
+  width above one. The declared contract for this artifact is refused separately,
+  on quality grounds.
 
   The run: `scripts/gguf_mtp_c1c8_server_bench.py --kv-storage
   int8_per_token_head --mtp-request-mode automatic` with
@@ -106,44 +107,55 @@ Existing direct-runtime results are not HTTP completion evidence.
   resolves one direct INT8 decode leaf for the whole group and fails closed when
   it cannot (`_packed_ar_direct_decode_kernel_for_sessions`). That leaf resolves
   only when every session exposes the same callable `_retained_decode_kernel`
-  and `packed_decode_max_rows >= width`, and both follow from the artifact's
-  admitted capability: `/ready` reports `max_direct_rows: 0` and
-  `declaration: null` for this contract, so `packed_decode_max_rows` stays at 1
-  (`_gguf_packed_decode_max_rows` returns 1 when no retained kernel is callable)
-  and a two-row group cannot use the leaf. `rollback_cycle` then disables every
-  request in the failed plan, which is why the rest of those requests report
-  "unregistered or disabled" and every following step falls back with
-  `no_provider` -- 506 plan-trace occurrences in the diagnostic run, none of
-  them a separate failure.
+  and `packed_decode_max_rows >= width`. Both come from the admitted capability,
+  and this run has none: `/ready` reports `max_direct_rows: 0`,
+  `declaration: null` and `reason: "no registered kernel implements this
+  backend/target/quant/KV/scale contract"`. `_gguf_packed_decode_max_rows`
+  returns 1 when no retained kernel is callable, so a two-row group cannot use
+  the leaf. `rollback_cycle` then disables every request in the failed plan,
+  which is why the rest of those requests report "unregistered or disabled" and
+  every following step falls back with `no_provider` -- 506 plan-trace
+  occurrences in the diagnostic run, none of them a separate failure.
 
-  `max_direct_rows: 0` is a quality decision, not a missing implementation.
-  `_QWEN38_GGUF_KV_CAPABILITY_EVIDENCE` in `hipengine/models/qwen35.py` carries
-  this artifact's `(hip_gfx1151, gguf_q4_k_m, int8_per_token_head, uniform,
-  fp32)` key with `decision="rejected"` -- "complete 1K/8 transfer rejected:
-  minimum-prompt top-1 agreement 0.7778 is below the 0.90 gate" -- and a
-  rejected row sets `max_direct_rows=0`. The declaration for the same key
-  (`_QWEN38_GGUF_KV_CAPABILITY_DECLARATIONS`) does name `max_direct_rows=4` and
-  the `per_token_head_gqa_splitk_gate_bf16_batch_strided_spans` batch variant,
-  but the evidence row zeroes it. The `decision="qualified"` gfx1100 row with
-  `max_direct_rows=4` covers a different file (17,106,773,984 bytes, sha256
-  `7b2aec3b...`), not the artifact on this host (17,106,775,008 bytes, sha256
-  `7e78da5d...`).
+  That reason is a scale-dtype key mismatch, not a missing implementation. Every
+  INT8 KV declaration in `hipengine/models/qwen35.py` is keyed
+  `scale_dtype="fp32"`, and no fp16-keyed INT8 declaration exists anywhere in
+  the tree. This run's key is `scale_dtype: "fp16"`: `_prepared_kv_scale_dtype`
+  defaults to fp16, and `_gguf_int8_effective_scale_dtype` raises it to fp32 only
+  when a BF16 full-attention mirror is present at long context. With the
+  diagnostic override and a mirror-free uniform layout the request stays fp16,
+  so `resolve_kv_capability` finds no declaration and reports the generic miss.
 
-  The refusal is therefore correct and correctly reported: a recorded observed
-  failure for this configuration, named where it fires, with the same cell
-  running one row wide. Clearing route: pass the quality gate for this
-  artifact's INT8 no-mirror contract on gfx1151 at 0.90 minimum-prompt top-1
-  agreement, record the pass as that key's evidence row, and re-run the command
-  above; `max_direct_rows` then reports 4, the shared leaf resolves, and c2 and
-  c4 should engage with `engaged_cells` and `route_expectation_passed` at c1, c2
-  and c4. The quality basis is
-  `benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json`
-  re-read against the gate -- not a benchmark row this file can supply.
+  The declared contract is refused as well, for a different reason and only on
+  this artifact. `_QWEN38_GGUF_KV_CAPABILITY_EVIDENCE` carries this artifact's
+  `(hip_gfx1151, gguf_q4_k_m, int8_per_token_head, uniform, fp32)` key with
+  `decision="rejected"` -- "complete 1K/8 transfer rejected: minimum-prompt
+  top-1 agreement 0.7778 is below the 0.90 gate" -- and a rejected row returns
+  `effective_kv_storage: bf16`. So a default INT8 request on this artifact falls
+  back to BF16, and the only route into the INT8 cell is
+  `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED=1`, which is where this row's run
+  sits. The `decision="qualified"` gfx1100 row with `max_direct_rows=4` covers a
+  different file (17,106,773,984 bytes, sha256 `7b2aec3b...`), not the artifact
+  on this host (17,106,775,008 bytes, sha256 `7e78da5d...`).
 
-  Open question for that unit: the run requests `scale_dtype: fp16` while the
-  declaration and the evidence row are both keyed on `fp32`, so the declared
-  contract does not match the requested one. Confirm which the direct leaf is
-  expected to run before treating the quality pass as the only missing piece.
+  So the refusal is correct in effect and misleading in report: at physical c2
+  the cell is closed because the declared contract is quality-rejected on
+  gfx1151, while the reason a user sees names a contract miss on an undeclared
+  fp16-scale variant. Clearing routes, in order:
+
+  1. Pass the quality gate for this artifact's INT8 no-mirror contract on
+     gfx1151 at 0.90 minimum-prompt top-1 agreement and record the pass as that
+     fp32 key's evidence row. The quality basis is
+     `benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json`
+     re-read against the gate.
+  2. Register an fp16-keyed declaration for the same axes if the direct leaf is
+     expected to run fp16 scales. An override run would then report its own
+     capability instead of an unmatched key.
+
+  A separate unit is worth opening for the report itself: an unverified-override
+  run should name the declared verdict it is overriding, so the quality
+  rejection is visible where the refusal happens instead of only in the
+  registry.
 
   Two earlier readings of this row are superseded and kept only as history: an
   INT8 static width bound (fixed in `7c3914162`, and it was real -- it just is
