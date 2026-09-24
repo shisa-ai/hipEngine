@@ -2133,6 +2133,11 @@ class _GGUFPackedTargetState:
     kv_backing_kind: str = "private"
     private_workspace_pool: object | None = None
     private_workspace_token: object | None = None
+    # Charge for the conv/recurrent state buffers themselves. They are device
+    # mallocs this state owns, so they are priced through the same pool budget
+    # as the KV payload and released with these buffers.
+    resident_charge_pool: object | None = None
+    resident_charge_token: object | None = None
 
     def __post_init__(self) -> None:
         if self.kv_backing_kind not in {"private", "pool_lease", "unleased"}:
@@ -2254,7 +2259,22 @@ class _GGUFPackedTargetState:
         state_buffers: list[object] = []
         kv_cache_fields: dict[str, tuple] | None = None
         private_workspace_token = None
+        resident_charge_token = None
         try:
+            linear_layers = sum(
+                1 for layer_type in cfg.layer_types if layer_type == LINEAR_ATTENTION
+            )
+            state_scratch_nbytes = linear_layers * (
+                conv_state_nbytes + recurrent_state_nbytes
+            )
+            if kv_pool is not None and state_scratch_nbytes > 0:
+                # Charged before the buffers are allocated, so an overload is
+                # refused by name instead of surfacing as a HIP OOM mid-loop.
+                reserve = getattr(kv_pool, "reserve_resident_bytes", None)
+                if callable(reserve):
+                    resident_charge_token = reserve(
+                        "packed_verify_scratch", state_scratch_nbytes
+                    )
             for layer_type in cfg.layer_types:
                 if layer_type == LINEAR_ATTENTION:
                     conv_state = buf(conv_state_nbytes)
@@ -2380,6 +2400,8 @@ class _GGUFPackedTargetState:
                 free(buffer, runtime=runtime)
             if private_workspace_token is not None:
                 kv_pool.release_private_workspace(private_workspace_token)
+            if resident_charge_token is not None:
+                kv_pool.release_private_workspace(resident_charge_token)
             raise
         if kv_cache_fields is None:
             kv_cache_fields = {
@@ -2406,6 +2428,8 @@ class _GGUFPackedTargetState:
             kv_backing_kind=backing_kind,
             private_workspace_pool=kv_pool if private_workspace_token is not None else None,
             private_workspace_token=private_workspace_token,
+            resident_charge_pool=kv_pool if resident_charge_token is not None else None,
+            resident_charge_token=resident_charge_token,
         )
 
     def linear_state_pair(self, layer_id: int) -> tuple[object, object]:
@@ -28029,6 +28053,10 @@ class Qwen35GGUFResidentSession:
             token = getattr(self._packed_verify_state, "private_workspace_token", None)
             if token is not None:
                 pool.release_private_workspace(token)
+            charge_pool = getattr(self._packed_verify_state, "resident_charge_pool", None)
+            charge_token = getattr(self._packed_verify_state, "resident_charge_token", None)
+            if charge_token is not None:
+                charge_pool.release_private_workspace(charge_token)
         self._packed_verify_state = None
         self._packed_verify_session_ids = ()
         self._packed_verify_max_written_positions = ()
