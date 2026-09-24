@@ -211,6 +211,7 @@ qwen35moe fast-path safety gate.
 | --- | --- | --- |
 | `HIPENGINE_COMPILER_VERSION_TEXT` | unset | Literal compiler-version text for cache keys; avoids probing `<compiler> --version`. |
 | `HIPENGINE_COMPILER_VERSION_FILE` | unset | Reads compiler-version text from a file. Recommended for cached benchmarks/profiling. |
+| `UD_HIPCC_VERSION_FILE` | `/tmp/ud-hipcc-version.txt` | Script-local alias: the leaf-timing harness (`scripts/gguf_iq_local32_decode_leaf.py`) reads its pinned compiler-version text from this path before building the microbenchmark library. |
 | `HIPENGINE_HIPCC_VERSION_TEXT` / `HIPENGINE_HIPCC_VERSION_FILE` | unset | Compiler-specific override for `hipcc`; takes precedence over the generic compiler-version vars. The same per-compiler pattern applies to other compiler basenames (e.g. `HIPENGINE_NVCC_VERSION_FILE` for `nvcc`). |
 | `HIPENGINE_REQUIRE_CACHED_BUILD` | unset | When true, JIT builds must hit the build cache; a cache miss is an error instead of a `hipcc` spawn. Set by benchmark/test harnesses from `--require-cached-build` so a measured or profiled process never invokes the compiler. |
 | `HIPENGINE_BUILD_CACHE_ROOT` | unset | Explicit build-cache root directory; used by the continuous-owner profiling harness alongside `HIPENGINE_REQUIRE_CACHED_BUILD`. |

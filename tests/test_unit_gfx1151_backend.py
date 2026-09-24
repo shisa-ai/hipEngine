@@ -1872,6 +1872,12 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
             (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
         },
+        # 2026-09-24, E2c: the bound UD preset extends the identity to a
+        # 3-tuple, so the plain row above never applied to the UD artifact
+        # and the rows==1 pair launcher was never entered for it.
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): {
+            (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
+        },
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
             (1, 5_120, 17_408): (
                 "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
@@ -1901,6 +1907,12 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
         {},
     ) == {
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+            (1, 5_120, 17_408): "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
+        },
+        # 2026-09-24, E2c: native-session mirror of the explicit UD row in
+        # the serial table, so the UD stamp resolves the same qualified
+        # owner regardless of which capability table is consulted first.
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): {
             (1, 5_120, 17_408): "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
         },
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
@@ -1957,6 +1969,62 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
             "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
         )
     )
+
+
+def test_gfx1151_pair_silu_policy_reaches_the_ud_preset_identity() -> None:
+    """The UD artifact's extended identity must enter the rows==1 pair route.
+
+    ``_gguf_policy_identity`` extends the key with the bound admission preset
+    so certified-plain rows never silently apply to a UD artifact that merely
+    shares the stamp. Before the explicit UD rows existed, that extension made
+    the lookup miss both pair-silu tables: the decode-variant resolver returned
+    ``None``, the runner's ``rows == 1`` launcher gate short-circuited, and
+    every gate/up pair ran as two projections plus the separate SiLU - so the
+    registered IQ4_XS local32 dual owner could not fire (observed in the E2a
+    route probe: zero ``local32_pair_silu`` resolves through
+    ``LLM.generate()``).
+    """
+    from hipengine.runtime import qwen35_gguf_runner as gguf_runner
+
+    config = SimpleNamespace(is_moe=False, architecture="qwen35")
+
+    def _weights(preset):
+        return SimpleNamespace(
+            config=config,
+            geometry=QWEN35_DENSE_H5120_GEOMETRY,
+            file_type_name="MOSTLY_Q4_K_M",
+            artifact_preset_key=preset,
+            model_name="Qwen3.8-27B-UD-Q4_K_M",
+        )
+
+    ud_weights = _weights("gguf_ud_q4_k_m")
+    assert gguf_runner._gguf_policy_identity(ud_weights) == (
+        QWEN35_DENSE_H5120_GEOMETRY,
+        "MOSTLY_Q4_K_M",
+        "gguf_ud_q4_k_m",
+    )
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        SimpleNamespace(backend="hip_gfx1151", weights=ud_weights),
+        rows=1,
+        in_features=5_120,
+        out_features=17_408,
+    ) == "dense_dual_local32_bf16_bf16_out"
+    # The preset-less plain control keeps resolving its 2-tuple row.
+    plain_weights = _weights(None)
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        SimpleNamespace(backend="hip_gfx1151", weights=plain_weights),
+        rows=1,
+        in_features=5_120,
+        out_features=17_408,
+    ) == "dense_dual_local32_bf16_bf16_out"
+    # The native-session capability table carries the same explicit stamp.
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES",
+        {},
+    )[(QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m")] == {
+        (1, 5_120, 17_408): "dense_dual_q8_1x2_dp4a_bf16_bf16_out"
+    }
 
 
 def test_gfx1151_dense_pair_silu_t128_variant_binds_threads(monkeypatch) -> None:
@@ -3490,7 +3558,11 @@ def test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads() -> None:
         for name in gfx1100_only & live_read
         if name.startswith("GGUF_")
     }
-    assert len(expected) == 25
+    # 25 before campaign UD-GFX1151-OPTIMIZE2 E2a (2026-09-24) declared
+    # three of these on gfx1151 (GGUF_IQ_DENSE_{PREFILL,DECODE}_STRICT_SLOTS,
+    # GGUF_IQ_DENSE_VERIFY_POLICY), which removes them from the gfx1100-only
+    # set and their ledger rows with them: 25 -> 22.
+    assert len(expected) == 22
 
     ledger_path = (
         Path(__file__).resolve().parents[1]
