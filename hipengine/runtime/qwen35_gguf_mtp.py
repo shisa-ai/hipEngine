@@ -7,6 +7,7 @@ import sys
 
 from dataclasses import dataclass, replace
 import time
+from types import SimpleNamespace
 from typing import Any, Callable, Sequence
 
 import numpy as np
@@ -1054,6 +1055,151 @@ def _resolve_gguf_verifier_backend(
     return normalized
 
 
+class _DMSStoreJournal:
+    """Journal a compact-DMS row through the store's own transaction.
+
+    The resident ``_StateJournal`` snapshots the target's conv/recurrent state
+    and its hidden rows, but a compact-DMS row keeps its KV in per-head extents
+    with per-slot payload and scale planes, so its KV has to be journaled by
+    the store. The resident journal still owns every non-KV tap, so this class
+    composes it rather than replacing it.
+
+    Each row is captured *after* that row's append, matching how the resident
+    journal is used. That ordering is what lets a commit keep the accepted
+    prefix: restoring the selected row's snapshot is exactly "state as of the
+    accepted prefix", and the rejected rows' writes go with it. Restoring the
+    initial snapshot undoes the whole cycle.
+    """
+
+    def __init__(
+        self,
+        *,
+        target: Qwen35GGUFResidentSession,
+        resident: _StateJournal,
+        max_rows: int,
+    ) -> None:
+        backend = getattr(target, "_dms_backend", None)
+        if backend is None:
+            raise ValueError("compact DMS journal requires a session with a DMS backend")
+        self.target = target
+        self.backend = backend
+        self.resident = resident
+        self.max_rows = int(max_rows)
+        self.producer_capture_initial_state = bool(
+            resident.producer_capture_initial_state
+        )
+        # A compact-DMS row cannot use the native target graph, so it always
+        # verifies through the serial route and needs row snapshots.
+        self.initial_state_only = False
+        self._request_id: int | None = None
+        self._initial: Any | None = None
+        self._rows: dict[int, Any] = {}
+        self.closed = False
+
+    # -- binding and delegation -------------------------------------------
+
+    def bind_request(self, request_id: int) -> None:
+        """Bind the row this journal serves; the store keys ownership by request."""
+
+        request_id = int(request_id)
+        if self._request_id is not None and self._request_id != request_id:
+            raise RuntimeError(
+                "compact DMS journal is bound to one request: "
+                f"bound={self._request_id} requested={request_id}"
+            )
+        self._request_id = request_id
+
+    @property
+    def row_hidden(self) -> DeviceBuffer:
+        return self.resident.row_hidden
+
+    def _copy_d2d(self, dst: int, src: int, nbytes: int, *, stream: int) -> None:
+        self.resident._copy_d2d(dst, src, nbytes, stream=stream)
+
+    def _lease_row(self) -> Any:
+        if self._request_id is None:
+            raise RuntimeError("compact DMS journal has no bound request")
+        state = self.backend.state_for_request(self._request_id)
+        return SimpleNamespace(lease=state.lease)
+
+    def _snapshot(self) -> Any:
+        return self.backend.begin_transaction([self._lease_row()], None)
+
+    def _retire_transaction(self) -> None:
+        if self._initial is None:
+            return
+        self.backend.commit(self._initial, None)
+        self._initial = None
+        self._rows.clear()
+
+    # -- journal interface -------------------------------------------------
+
+    def hidden_nbytes(self) -> int:
+        return self.resident.hidden_nbytes()
+
+    def state_row_capacity(self) -> int:
+        return self.resident.state_row_capacity()
+
+    def hidden_rows_tensor(self, rows: int) -> Tensor:
+        return self.resident.hidden_rows_tensor(rows)
+
+    def capture_initial(
+        self,
+        *,
+        stream: int = 0,
+        force_consumer_state: bool = False,
+    ) -> None:
+        self._initial = self._snapshot()
+        self._rows.clear()
+        self.resident.capture_initial(
+            stream=stream,
+            force_consumer_state=force_consumer_state,
+        )
+
+    def mark_initial_state_captured(self) -> None:
+        self.resident.mark_initial_state_captured()
+
+    def capture_hidden_rows(self, hidden_rows: np.ndarray, *, stream: int = 0) -> None:
+        self.resident.capture_hidden_rows(hidden_rows, stream=stream)
+
+    def capture_row(self, row: int, *, stream: int = 0) -> None:
+        self.resident.capture_row(row, stream=stream)
+        self._rows[int(row)] = self._snapshot()
+
+    def restore_initial(self, *, stream: int = 0) -> None:
+        if self._initial is not None:
+            self.backend.rollback(self._initial)
+            self._initial = None
+        self._rows.clear()
+        self.resident.restore_initial(stream=stream)
+
+    def restore_row(self, row: int, *, stream: int = 0) -> None:
+        self._restore_store_row(int(row))
+        self.resident.restore_row(row, stream=stream)
+
+    def restore_native_row(self, row: int, *, position: int, stream: int = 0) -> None:
+        self._restore_store_row(int(row))
+        self.resident.restore_native_row(row, position=position, stream=stream)
+
+    def _restore_store_row(self, row: int) -> None:
+        snapshot = self._rows.get(row)
+        if snapshot is None:
+            raise RuntimeError(
+                f"compact DMS journal has no snapshot for row {row}; "
+                f"captured rows={sorted(self._rows)}"
+            )
+        self.backend.rollback(snapshot)
+        self._retire_transaction()
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        self._initial = None
+        self._rows.clear()
+        self.resident.close()
+
+
 class Qwen35GGUFTransactionalVerifier:
     """Shared-ABI chain verifier with journaled GGUF state/KV commit.
 
@@ -1104,6 +1250,15 @@ class Qwen35GGUFTransactionalVerifier:
             producer_capture_initial_state=initial_state_only,
             initial_state_only=initial_state_only,
         )
+        if getattr(target, "_dms_backend", None) is not None:
+            # A compact-DMS row keeps its KV in the store, not in the resident
+            # span planes this journal snapshots, so the store's own
+            # transaction has to carry the KV side of the cycle.
+            self.journal = _DMSStoreJournal(
+                target=target,
+                resident=self.journal,
+                max_rows=self.max_candidate_budget + 1,
+            )
         self._primary_journal = self.journal
         self._serial_journal: _StateJournal | None = None
         self._buckets: dict[object, Qwen35GGUFVerifyGraphBucket] = {}
@@ -1260,6 +1415,11 @@ class Qwen35GGUFTransactionalVerifier:
         if self._prepared is not None:
             raise RuntimeError("a GGUF target verification transaction is already open")
         self._validate_chain(batch)
+        bind_request = getattr(self.journal, "bind_request", None)
+        if callable(bind_request):
+            # The store keys ownership by request id, so the journal has to know
+            # which row it is journaling before it snapshots anything.
+            bind_request(int(batch.request_ids[0]))
         budgets = tuple(int(value) for value in remaining_decode)
         if len(budgets) != len(batch.request_ids) or any(value < 0 for value in budgets):
             raise ValueError("remaining_decode must be non-negative and align with requests")

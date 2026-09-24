@@ -2852,21 +2852,14 @@ class Qwen35GGUFMTP2Adapter:
                 self._last_capability_silent_reason = silent_reason
                 return None
             target = row.lease.session
-            if getattr(target, "_dms_backend", None) is not None:
-                # Named capability miss, not a policy choice. The verifier's
-                # journal publishes an accepted prefix by resetting resident
-                # span position/context metadata, and rollback restores the
-                # pre-verify metadata. A compact-DMS row has no resident span
-                # metadata to reset: its writes land in per-head extents with
-                # per-slot payload and scale planes, so a journaled commit would
-                # publish a prefix the store never wrote. The route that lifts
-                # this is the store's own transaction
-                # (DMSCompactBackend.begin_transaction/commit/rollback, which
-                # already snapshots per-head live counts, token positions,
-                # eviction, host payload and scales, and the device store): when
-                # the verifier drives that for a DMS row instead of the resident
-                # span journal, this decline goes. Tracked as tasks 10 and 11.
-                return self._decline("compact_dms_mtp_transaction_not_implemented")
+            # A compact-DMS row is journaled by the store's own transaction
+            # (Qwen35GGUFTransactionalVerifier selects _DMSStoreJournal for a
+            # session carrying a _dms_backend, which snapshots per-head live
+            # counts, token positions, eviction, host payload and scales, the
+            # allocator ownership, and the device store). The resident span
+            # journal could not serve this row: its writes land in per-head
+            # extents with per-slot payload and scale planes, so a journaled
+            # commit would publish a prefix the store never wrote.
             if not self._target_profile_supported(target):
                 return self._decline("target execution profile unsupported")
             targets.append(target)
