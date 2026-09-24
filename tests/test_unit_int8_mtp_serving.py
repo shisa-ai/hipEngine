@@ -364,3 +364,42 @@ def test_resident_int8_capacity_uses_layout_contract_not_evidence_width():
     runner._reserve_sessions()
     assert checked == [4]
     assert len(runner._available) == 4
+
+
+def test_dms_retention_presents_the_uniform_layout_int8_mtp_declares() -> None:
+    """A DMS row adds no storage layout, so admission must already cover it.
+
+    DMS is a retention policy over the same paged planes, not another storage
+    layout.  The resident path resolves a ``FixedPagedKVPolicy``, whose
+    ``storage_layout`` is ``"uniform"`` unless tail4 Hadamard is explicitly
+    requested, so the INT8 declaration's ``("uniform",)`` already covers a DMS
+    row and ``mtp_kv_layout_unsupported`` must not be its refusal reason.  This
+    pins the admission half of the DMS extension: the layout axis stays covered
+    even though DMS changes the live-span policy.
+    """
+
+    from hipengine.core.dtype import DType
+    from hipengine.kvcache.policy import FixedPagedKVPolicy
+
+    # What a DMS INT8 session presents: the DMS serving scripts pass no
+    # kv_policy, so the resident path resolves INT8 per-token-head storage at
+    # the default uniform layout.
+    policy = FixedPagedKVPolicy(
+        block_size=256, storage_dtype=DType.INT8_PER_TOKEN_HEAD
+    )
+    assert policy.storage_layout == "uniform"
+
+    decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=_key(kv_layout=policy.storage_layout),
+    )
+    assert decision.admitted, decision.reason
+    assert decision.failed_axes == ()
+    assert "mtp_kv_layout_unsupported" not in decision.failed_axes
+
+    # The one layout the INT8 chain still refuses is the quantized tail
+    # layout: a different storage layout, not a DMS retention policy.
+    refused = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=_key(kv_layout="tail4_hadamard_group32"),
+    )
+    assert not refused.admitted
+    assert refused.reason == "mtp_kv_layout_unsupported"

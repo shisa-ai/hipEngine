@@ -142,14 +142,27 @@ Existing direct-runtime results are not HTTP completion evidence.
 
 ### DMS Extension
 
-- [ ] Bind per-head variable spans and their quantized scale planes.
-- [ ] Journal eviction decisions, token positions, compaction and allocator
+- [x] Bind per-head variable spans and their quantized scale planes.
+- [x] Journal eviction decisions, token positions, compaction and allocator
   ownership across rejected candidates; cursor reset alone is insufficient.
-- [ ] Commit only accepted DMS mutations; rollback/cancellation restores the
+- [x] Commit only accepted DMS mutations; rollback/cancellation restores the
   complete pre-cycle state, including payload moved by compaction.
 - [ ] Test real DMS+INT8 MTP against the same DMS+INT8 AR retention policy.
-- [x] Until those operations exist, report the missing DMS transaction contract
-  explicitly and retain supported AR behavior.
+  This needs DMS sidecar artifacts, because the resident serving path loads a
+  trained external linear sidecar (`load_external_dms_sidecar`). The artifacts
+  the last live run used are not on this host, so the gate starts by rebuilding
+  them with `scripts/qwen38_dms_capture.py`,
+  `scripts/qwen38_dms_build_labels.py`, and
+  `scripts/qwen38_dms_train_sidecar.py`.
+- [x] Report a DMS refusal by its actual cause. The former
+  `compact_dms_mtp_transaction_not_implemented` decline is gone: the
+  transactional verifier selects the DMS store journal whenever the target
+  carries a `_dms_backend`, so a missing transaction contract is no longer a
+  reason to refuse. On the storage-layout axis a DMS row presents the same
+  `"uniform"` layout as dense INT8, which the INT8 MTP declaration already
+  covers, so `mtp_kv_layout_unsupported` is not a DMS refusal either. The one
+  layout the INT8 chain still refuses is `tail4_hadamard_group32`, a different
+  storage layout rather than a DMS retention policy.
 
 ## Execution Order
 
@@ -259,6 +272,7 @@ Neither switch enables MTP or changes server policy.
 - [Zero-allocation teardown](../../worklog/entries/20260920T222915.794666Z-lhl-int8-mtp-teardown-owners-3864b7.md)
 - `tests/test_unit_int8_verify_attention.py`
 - `tests/test_unit_gguf_int8_mtp.py`
+- `tests/test_unit_int8_mtp_serving.py`
 - `tests/test_gpu_qwen38_int8_batch_attention_gpu.py`
 - `tests/test_live_gguf_int8_mtp.py`
 
