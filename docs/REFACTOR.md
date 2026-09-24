@@ -8925,3 +8925,31 @@ Remove this once a failed `_construct_shared_session` in
 ladder with a width the box cannot hold, then assert a full-context session plus the
 chat smoke still allocate. If the failed attempt does not roll back completely, fix
 the rollback instead of weakening the probe.
+
+## Dormant Q5_T16 rows==1 dual block with poisoned variant inheritance (open 2026-09-25)
+
+`launch_gguf_linear_pair_silu`'s Q5 block (`hipengine/runtime/gguf_linear.py`, the
+`q5_t16_pair_variant = registered_decode_variant or "q5_dense_dual_silu..."` path) is
+dormant on `hip_gfx1151` for three stacked reasons found in E6a (UD-GFX1151-OPTIMIZE2
+iteration 11): the identity policy row hands back the **Q4** variant name
+`dense_dual_local32_bf16_bf16_out` (the row mirrors plain by design; the IQ4 branch
+selects its own key and ignores the value, the Q5 block inherits it blindly, and the
+resulting key is unregistered under `gguf_q5_k_t16_v1`); post-E4a both sides dispatch
+`t16_gemv_decode_tile8_bf16_bf16_out` while the rule demands the direct key; and the
+earlier `_q5_t16_dense_pair_silu_variant(rows)` branch at the `dense_pair_quant ==
+"gguf_q5_k_t16_v1"` test is dead code (`dense_pair_quant` only ever holds quants in
+`_Q4_T16_DENSE_QUANTS`, which excludes Q5).
+
+E6a's gate says leave it dormant: at the production shape (5120, 17408) rows=1 the
+dual is bit-exact against the 2× tile8 + `silu_mul_separate_out_bf16` chain but
+**loses** it — 705.6 vs 653.6 µs/layer (0.93×, allocate-once timing, 200 launches,
+`~/ud-e1-census/e6a_screen.py`) — because the dual kernel mirrors the direct
+owner's schedule while the singles now run on the faster tile8 owner.
+
+Clearing command: re-screen `dual vs 2×tile8 chain` at rows=1 before any change
+here; only if the dual wins at the current dispatched singles does it make sense to
+fix the variant selection (Q5 branch selects its own key, mirroring the IQ4
+precedent), extend the dispatch predicate to the tile8 key, and update the block's
+stale comment (it still describes the direct-only rows==1 condition). Until that
+screen passes, the dormancy is load-bearing and the dead branch plus the stale
+comment should be cleaned up instead.

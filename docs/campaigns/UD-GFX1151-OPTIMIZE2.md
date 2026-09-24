@@ -525,6 +525,15 @@ measured negative.
   two-quant dual. Residual folding into the IQ local32 and Q5_K owners is a
   separate unit. Judge each on decode wall and launches/token, not kernel time
   alone.
+  **Step 1 adjudicated 2026-09-25 (E6a, iteration 11):** IQ4_XS pair-SiLU is
+  already firing (19.4 launches/tok, landed in E2, confirmed by E4c) and the
+  Q5_K same-quant dual was screened at the production shape (5120, 17408)
+  rows=1 — **bit-exact but 0.93× versus the 2×tile8 chain (705.6 vs 653.6
+  µs/layer), so the route is NOT enabled** (the dual mirrors the direct owner's
+  schedule; post-E4a singles run tile8). Dormancy causes and the re-screen
+  clearing command are in `docs/REFACTOR.md`; one-layer leftovers (Q5/Q6/Q3
+  same-quant singles) are below any route's fixed cost. **No same-quant route
+  gap remains; step 1 closes.**
 - [ ] **E7 — GDN alpha/beta on the fused path (H10).** Make UD's Q8_0
   `ssm_alpha`/`ssm_beta` reach the fused alpha/beta+conv owner, either by
   planning a load-time Q8_0→F32 expansion (exact in weight value: an fp16
@@ -709,6 +718,7 @@ refusal.
 | E4a Q5_T16 route to tile8 | H4 | **pending** (3 windows invalidated, lead directive: set pending and move on) | pending (same windows) | — (route unit; same tensors and launches/token, different owner) | — | **PASS**: rows=1 tile8==direct==`gguf_quant_gemv` bit-exact on 7 production shapes + control (GPU node 83.7 s), unit contract RED→GREEN, full guard green (suite+fixtures+3 smokes), `LLM.generate` route-probe conservation 20599 resolves unchanged | executed 2026-09-25 (iteration 8): five rows added to gfx1151 `GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE` (ffn_up 1.16x, ffn_down 1.28x, attn_gate 1.36x, attn_qkv 1.39x, attn_q 1.18x at rows=1; attn_v kept direct at 0.99x) — closes census item 1's route half (direct 242.9 µs/launch vs tile8 137–248 by shape); plain arm untouched; `ud_plain_parity` pending: windows invalidated 5.71/5.39/6.33% vs the 2% plain-prefill@512 visit check, 60-min idle did not settle plain_1; metric unchanged, iteration logged |
 | E4b Q4_K single composition check | H4/H6 | — (adjudication unit; no retained change) | — (re-census window, not a paired A/B) | 807.97 (plain 571.59, both identical to E4) | — | census + quant-map evidence: same kernel symbol both arms, tile8 cross-arm speed-identity precedent (111.2/111.5), per-block gate/up quant map recorded in the artifact | adjudicated 2026-09-25 (iteration 9): item 2 **NEGATIVE — composition** (role/shape skew + 13 mixed-quant unpairable layers), not an owner defect; post-E4a effect confirmed (direct symbol out of top-12, Q5 family 25.22→24.02 ms/tok, UD pure 85.53→84.83 vs plain 79.81); re-rank item 3 = IQ4_XS family 24.25 ms/tok (UD-only, E9-adjacent); `ud_plain_parity` pending per lead directive (windows 5.71/5.39/6.33% vs 2% check); artifact `benchmarks/results/2026-09-25-zbook-e4b-post-e4a-recensus.json` |
 | E4c IQ4_XS family composition check | H4 | — (adjudication unit; no retained change) | — (re-census window, not a paired A/B) | 807.97 (plain 571.59) | — | tensor-role map reconciles census: dual 19.4/tok = 20 pairable layers all fused (97%, remainder block-type), singles = inherent roles (down ×27, attention ×32) + 22 mixed layers, pairable count fully consumed | adjudicated 2026-09-25 (iteration 10): item 3 **NEGATIVE — composition**, no same-quant route gap; `<2,1>`/`<4,1>` split is shape-class selection with no same-shape alternative; **E4 complete** (item 1 route-landed E4a, items 2-3 negative E4b/E4c); mixed-layer sizing confirmed at exactly 28 (22 IQ4 + 6 K-quant) and handed to E6; `ud_plain_parity` pending per lead directive; metric unchanged, iteration logged |
+| E6a same-quant pair routes | H9 | — (route screen; nothing enabled, no retained change) | — | 807.97 (unchanged by construction — route declined) | — | **PASS**: dual == 2×tile8+silu_mul chain bit-exact at (5120,17408) rows=1 (screen + existing unit oracle), allocate-once timing ×200, guard green, docs gates 4/4 | adjudicated 2026-09-25 (iteration 11): Q5_K same-quant dual **screened and REJECTED — 0.93×** (705.6 vs 653.6 µs/layer) since E4a moved singles to tile8; IQ4 pair-SiLU already firing (19.4/tok, E2); dormancy causes (poisoned Q4 variant inheritance, tile8 dispatch predicate, dead 5620 branch) + re-screen clearing command recorded in `docs/REFACTOR.md`; E6 step 1 closes with no same-quant route gap; `ud_plain_parity` pending per lead directive; metric unchanged, iteration logged |
 | E6 gate/up + residual fusion | H9 | — | — | — | — | required | open |
 | E7 GDN alpha/beta fused path | H10 | — | — | — | — | bit-exact lane if exact | open |
 | E8 norm-cost attribution | H11 | — | — | — | — | n/a | open |
