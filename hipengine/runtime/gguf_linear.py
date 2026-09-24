@@ -6179,6 +6179,52 @@ def launch_gguf_linear_pair_silu(
             **kwargs,
         )
         return True
+    # E6b-2 mirror: (Q4_K gate, IQ4_XS up) mixed pair + SiLU (2026-09-25):
+    # the ordered (12, 23) family - 6 gate/up layers. Side A takes the
+    # Q4_K dense decode owner (tiles), side B the session-qualified
+    # local32 owner (raw), and the fused epilogue applies SiLU to the Q4
+    # chain - the geometry-order swap the mirror wrapper handles. Same
+    # exactness contract as E6b-1 with the gate/up roles exchanged; the
+    # other mixed families remain separate units.
+    q4_iq4_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1+gguf_iq4_xs",
+        "q4_iq4_pair_silu_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(q4_iq4_pair)
+    if (
+        rows == 1
+        and dispatch_a.key == q4_t16_dense_decode
+        and dispatch_b_decode.key == iq4_xs_local32_decode
+        and in_features % 256 == 0
+        and out_features % 16 == 0
+        and is_registered(q4_iq4_pair)
+    ):
+        fn = resolve(
+            backend=q4_iq4_pair.backend,
+            layer=q4_iq4_pair.layer,
+            quant=q4_iq4_pair.quant,
+            variant=q4_iq4_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None if libraries is None else libraries.get(q4_iq4_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            # Gate first: Q4_K tiles; up second: IQ4_XS raw (local32).
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
     # Q5 T16 gate/up decode dual (2026-09-10): fires only when both sides
     # dispatch to the Q5 T16 direct-GEMV decode owner at rows == 1; the
     # registered variant defaults to the bit-exact dense dual SiLU GEMV.

@@ -548,6 +548,28 @@ measured negative.
   Remaining for step 2: 21 mixed layers across 9 ordered combos (6
   K-quant in 3 combos, 15 IQ4-involved in 6 more), each its own unit;
   residual folding stays E6c.
+  **Step 2b landed 2026-09-25 (E6b-2, iteration 13):** the mirror family
+  — ordered (Q4_K gate, IQ4_XS up), 6 layers (combo 12/23) — runs its
+  own fused owner: same kernel body as 2a with one structural delta, a
+  `GATE_IS_Q4` template flag whose epilogue takes the gate from side B's
+  Q4 chain. Pointer roles never swap (each side keeps its decode
+  geometry); only which rounded accumulator feeds the SiLU gate changes.
+  Second extern-C symbol `hipengine_gguf_q4_iq4_pair_silu`; route key
+  `gguf_q4_k_t16_v1+gguf_iq4_xs` / `q4_iq4_pair_silu_bf16_bf16_out`
+  (gate-first at the route, reordered to the C geometry ABI by the
+  wrapper). Production-shape screen (5120, 17408) rows=1: **bit-exact
+  and 1.03×** (498.0 vs 511.6 µs/layer). Conservation census (e6b →
+  e6b2): mirror pair +5.81, q4 singles −5.81, IQ4 singles −5.81, silu
+  −5.81 → **794.41 → 782.78 launches/tok (−11.63, exact four-family
+  conservation, zero collateral drift)**, decode pure_us −72.5 µs/tok;
+  E6b-1's owner unchanged (its `<2>` now demangles `<2, false>` —
+  template default, same arithmetic). Test-harness lesson: conftest's
+  collection-baseline registry restore makes a narrow two-test run
+  order-dependent; both route tests now self-serve
+  `load_backend_kernel_package("hip_gfx1151")` (fills missing keys only)
+  so they pass in either order under any collection breadth. Remaining
+  for step 2: 15 mixed layers across 8 ordered combos, each its own
+  unit; residual folding stays E6c.
 - [ ] **E7 — GDN alpha/beta on the fused path (H10).** Make UD's Q8_0
   `ssm_alpha`/`ssm_beta` reach the fused alpha/beta+conv owner, either by
   planning a load-time Q8_0→F32 expansion (exact in weight value: an fp16
@@ -734,6 +756,7 @@ refusal.
 | E4c IQ4_XS family composition check | H4 | — (adjudication unit; no retained change) | — (re-census window, not a paired A/B) | 807.97 (plain 571.59) | — | tensor-role map reconciles census: dual 19.4/tok = 20 pairable layers all fused (97%, remainder block-type), singles = inherent roles (down ×27, attention ×32) + 22 mixed layers, pairable count fully consumed | adjudicated 2026-09-25 (iteration 10): item 3 **NEGATIVE — composition**, no same-quant route gap; `<2,1>`/`<4,1>` split is shape-class selection with no same-shape alternative; **E4 complete** (item 1 route-landed E4a, items 2-3 negative E4b/E4c); mixed-layer sizing confirmed at exactly 28 (22 IQ4 + 6 K-quant) and handed to E6; `ud_plain_parity` pending per lead directive; metric unchanged, iteration logged |
 | E6a same-quant pair routes | H9 | — (route screen; nothing enabled, no retained change) | — | 807.97 (unchanged by construction — route declined) | — | **PASS**: dual == 2×tile8+silu_mul chain bit-exact at (5120,17408) rows=1 (screen + existing unit oracle), allocate-once timing ×200, guard green, docs gates 4/4 | adjudicated 2026-09-25 (iteration 11): Q5_K same-quant dual **screened and REJECTED — 0.93×** (705.6 vs 653.6 µs/layer) since E4a moved singles to tile8; IQ4 pair-SiLU already firing (19.4/tok, E2); dormancy causes (poisoned Q4 variant inheritance, tile8 dispatch predicate, dead 5620 branch) + re-screen clearing command recorded in `docs/REFACTOR.md`; E6 step 1 closes with no same-quant route gap; `ud_plain_parity` pending per lead directive; metric unchanged, iteration logged |
 | E6b mixed pair (IQ4_XS, Q4_K) | H9 | iq4_q4_pair_silu_kernel<2> (new fused pair owner) vs iq4/q4 singles + silu_mul | 1.04× (504.2 vs 523.3 µs/layer at (5120,17408) rows=1, allocate-once ×50) | 807.97 → **794.41 (−13.56, exact 4-family conservation)** | −54.6 µs/tok (84828.8 → 84774.2) | **PASS**: bit-exact vs chain at full production scale + K=5120 unit oracle; unit route test (fires ordered / declines reversed and rows≠1); production probe through LLM.generate shows pair 6.78/tok with zero collateral drift; guard green, docs gates 4/4 | landed 2026-09-25 (iteration 12): the 7-layer (23,12) family on its own fused owner — side A = local32 dual split-K contract (shared `_local32_waves`), side B = dense Q4T16 single's single-wave chain published from wave 0 (no K re-association on either side); the first production probe crashed on `KeyError: 'tiles'` — side A reads `raw`, caught only by the LLM.generate gate because the unit fake exposed all allocations (harness-vs-production lesson recorded in the worklog entry); 21 mixed layers across 9 ordered combos + E6c residual folding remain as separate units; `ud_plain_parity` pending per lead directive |
+| E6b-2 mirror pair (Q4_K, IQ4_XS) | H9 | iq4_q4_pair_silu_kernel<2, true> (GATE_IS_Q4 epilogue flag) vs q4/iq4 singles + silu_mul | 1.03× (498.0 vs 511.6 µs/layer at (5120,17408) rows=1, allocate-once ×50) | 794.41 → **782.78 (−11.63, exact 4-family conservation)** | −72.5 µs/tok (84774.2 → 84701.7) | **PASS**: bit-exact vs the swapped chain at full production scale + K=5120 unit oracle; unit route test fires the mirror at rows==1, declines rows≠1 (both E6b route tests order-independent under any collection breadth after the load_backend self-sufficiency fix); mirror owner live at 5.81/tok in the census with zero collateral drift; guard green, docs gates 4/4 | landed 2026-09-25 (iteration 13): 6-layer (12,23) family on the same body with a `GATE_IS_Q4` template flag — pointers keep their decode geometry, only the gate accumulator swaps; the wrapper reorders the gate-first route order to the C geometry ABI; E6b-1's `<2>` demangles `<2, false>` (template default, arithmetic unchanged); 15 mixed layers across 8 ordered combos + E6c residual folding remain as separate units; `ud_plain_parity` pending per lead directive |
 | E6 gate/up + residual fusion | H9 | — | — | — | — | required | open |
 | E7 GDN alpha/beta fused path | H10 | — | — | — | — | bit-exact lane if exact | open |
 | E8 norm-cost attribution | H11 | — | — | — | — | n/a | open |

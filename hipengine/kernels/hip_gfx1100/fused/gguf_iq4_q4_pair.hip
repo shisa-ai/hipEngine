@@ -80,7 +80,7 @@ __device__ uint16_t bf16_store(float x) {
   return uint16_t((v.u + 0x7fff + ((v.u >> 16) & 1)) >> 16);
 }
 
-template <int WAVES>
+template <int WAVES, bool GATE_IS_Q4 = false>
 __global__ __launch_bounds__(32 * WAVES, 16 / WAVES > 0 ? 16 / WAVES : 1)
 void iq4_q4_pair_silu_kernel(
     const uint16_t* __restrict__ x,
@@ -235,9 +235,20 @@ void iq4_q4_pair_silu_kernel(
       // Side B publishes wave 0 only: that chain is the single's own.
       const float tb = xwave_b[0][t];
       // bf16-round both accumulators exactly like the unfused path,
-      // then the silu_mul kernel's arithmetic verbatim.
-      const float ga = bf16_load(bf16_store(ta));
-      const float ub = bf16_load(bf16_store(tb));
+      // then the silu_mul kernel's arithmetic verbatim. The gate/up
+      // roles follow the family: GATE_IS_Q4=false (E6b-1, IQ4 gate)
+      // takes the gate from side A's local32 chain; GATE_IS_Q4=true
+      // (E6b-2 mirror, Q4 gate) takes it from side B's Q4 chain. The
+      // pointer roles never swap - each side keeps its own decode
+      // geometry - only which rounded accumulator is the gate changes.
+      float ga, ub;
+      if constexpr (GATE_IS_Q4) {
+        ga = bf16_load(bf16_store(tb));
+        ub = bf16_load(bf16_store(ta));
+      } else {
+        ga = bf16_load(bf16_store(ta));
+        ub = bf16_load(bf16_store(tb));
+      }
       const float sig = 1.0f / (1.0f + expf(-ga));
       out[n0 + t] = bf16_store(ga * sig * ub);
     }
@@ -256,17 +267,51 @@ extern "C" int hipengine_gguf_iq4_q4_pair_silu(const void* x, const void* wa,
     int err;
     switch (waves) {
         case 1:
-            err = (iq4_q4_pair_silu_kernel<1><<<grid, 32, 0, s>>>(
+            err = (iq4_q4_pair_silu_kernel<1, false><<<grid, 32, 0, s>>>(
                 (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
                 (uint16_t*)out, K, N), int(hipGetLastError()));
             return err;
         case 2:
-            err = (iq4_q4_pair_silu_kernel<2><<<grid, 64, 0, s>>>(
+            err = (iq4_q4_pair_silu_kernel<2, false><<<grid, 64, 0, s>>>(
                 (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
                 (uint16_t*)out, K, N), int(hipGetLastError()));
             return err;
         case 4:
-            err = (iq4_q4_pair_silu_kernel<4><<<grid, 128, 0, s>>>(
+            err = (iq4_q4_pair_silu_kernel<4, false><<<grid, 128, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        default:
+            return int(hipErrorInvalidValue);
+    }
+}
+
+// E6b-2 mirror family: (Q4_K gate, IQ4_XS up). Pointer roles keep their
+// decode geometry exactly as above - wa is still the IQ4_XS local32
+// weight, wb still the Q4_K T16 tiles - only the epilogue takes the gate
+// from side B's Q4 chain (GATE_IS_Q4=true). Callers pass (iq4, q4) here;
+// the Python wrapper swaps the route's (gate=q4, up=iq4) order to match.
+extern "C" int hipengine_gguf_q4_iq4_pair_silu(const void* x, const void* wa,
+    const void* wb, void* out, int64_t rows, int64_t K, int64_t N, int waves,
+    void* stream) {
+    if (!x || !wa || !wb || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 8)
+        return int(hipErrorInvalidValue);
+    const dim3 grid(unsigned((N + COLS - 1) / COLS));
+    const hipStream_t s = (hipStream_t)stream;
+    int err;
+    switch (waves) {
+        case 1:
+            err = (iq4_q4_pair_silu_kernel<1, true><<<grid, 32, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 2:
+            err = (iq4_q4_pair_silu_kernel<2, true><<<grid, 64, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 4:
+            err = (iq4_q4_pair_silu_kernel<4, true><<<grid, 128, 0, s>>>(
                 (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
                 (uint16_t*)out, K, N), int(hipGetLastError()));
             return err;
