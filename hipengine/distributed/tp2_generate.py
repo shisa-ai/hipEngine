@@ -682,9 +682,6 @@ class MlpTP2GenerationSession:
             # residual add folded into the next layer's graph) reads a stable
             # pointer. The eager schedule keeps the two-slot alternation.
             slot_sets=len(self._config.layer_types) if self.schedule == "graphed" else 2,
-            # Head sharding reduces twice per layer: the attention-output partial
-            # before the post-attention norm, then the MLP down partial.
-            reductions_per_layer=2 if self.attention_shard else 1,
         )
 
     def _alloc_step_buffers(self, device: int) -> None:
@@ -743,26 +740,37 @@ class MlpTP2GenerationSession:
 
         return len(self._config.layer_types) + int(layer_id)
 
-    def _reduce_attention_partial_eager(self, layer_id: int) -> None:
-        """Sum the ranks' attention-output partials on the device (eager path).
+    def _enqueue_attention_reduce(
+        self, layer_id: int, device: int, attn_out: int
+    ) -> None:
+        """Enqueue one rank's attention-output reduction on the session exchange.
 
-        The eager composition of the same reduce the captured schedule enqueues
-        inside each layer's graph. It goes through the group's own exchange,
-        which is the one the eager MLP reduce uses.
+        Both bodies that run a head-sharded layer use this: the captured graph
+        records it, and the eager body enqueues it directly. They share it
+        deliberately - in a graphed session the eager body is the warmup that
+        forces the allocations and JIT builds the capture then relies on, so a
+        reduce that existed only in the captured copy could drift from the one
+        the warmup exercised.
+
+        It goes through the session's exchange rather than the shard group's,
+        because the group is the host-staged route's and is host-mode whenever
+        the eager body runs: the eager schedule is host-reduced by construction
+        (``reduce_mode == "device"`` requires the graphed schedule), and a
+        graphed session's eager body is only its warmup. Slots are unique per
+        layer, so this needs no counter bump.
         """
 
-        if not self.attention_shard:
-            return
-        group = self._shard_group
-        assert group is not None
-        group.reduce_device_payload(
-            layer_id,
-            {device: self._scratches[device].attn_out.ptr for device in self.devices},
-            {
-                device: self._attention_reduce_destination(device)
-                for device in self.devices
-            },
-            phase=1,
+        exchange = self._device_exchange
+        if exchange is None:
+            raise TP2GroupError(
+                "attention head sharding needs the session's device exchange; "
+                "this session has none"
+            )
+        exchange.enqueue_rank(
+            self.devices.index(int(device)),
+            int(attn_out),
+            self._attention_exchange_slot(layer_id),
+            self._attention_reduce_destination(device),
         )
 
     # -- opt-in rank-local bulk prefill ------------------------------------
@@ -1754,14 +1762,13 @@ class MlpTP2GenerationSession:
                     raise TP2GroupError(
                         f"unsupported GGUF layer type {layer_type!r}"
                     )
+                # Head sharding makes the attention output a per-rank partial,
+                # and the post-attention norm below consumes the sum.
+                if self.attention_shard:
+                    self._enqueue_attention_reduce(layer_id, device, attn_out)
         stages["attention"] = stages.get("attention", 0.0) + (
             time.perf_counter() - mark
         )
-
-        # Head sharding makes the attention output a per-rank partial, and the
-        # post-attention norm below consumes the sum, so this reduce sits between
-        # them and nowhere else.
-        self._reduce_attention_partial_eager(layer_id)
 
         mark = time.perf_counter()
         for device in self.devices:
@@ -1971,17 +1978,11 @@ class MlpTP2GenerationSession:
                         f"unsupported GGUF layer type {layer_type!r}"
                     )
                 if self.attention_shard:
-                    # The same reduce the eager path runs, but captured into this
-                    # layer's own graph: the partial is produced here and the
+                    # The same reduce the eager body enqueues, recorded here
+                    # instead: the partial is produced in this graph and the
                     # add+norm below consumes it, so it cannot be deferred to the
-                    # next layer's segment the way the MLP partial is. Slots are
-                    # unique per layer, so this needs no counter bump.
-                    self._device_exchange.enqueue_rank(
-                        self.devices.index(device),
-                        attn_out,
-                        self._attention_exchange_slot(layer_id),
-                        self._attention_reduce_destination(device),
-                    )
+                    # next layer's segment the way the MLP partial is.
+                    self._enqueue_attention_reduce(layer_id, device, attn_out)
                 self._add_norm_kernel(runner)(
                     src,
                     self._attention_reduce_output(device, scratch),

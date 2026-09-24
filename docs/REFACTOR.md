@@ -35,6 +35,24 @@
 
 ## TP2 head-sharded attention (`attention_shard`) (2026-09-24)
 
+- **A session whose constructor raises leaks VRAM.** `close()` is an instance
+  method and the class has no `__del__`, so every buffer `__init__` already
+  allocated is left to process exit. A harness that retried construction in one
+  process OOM'd at a 16 GiB free window, then 15, then 14, and only succeeded at
+  13: each failure had leaked a rank's worth of VRAM and made the next attempt
+  worse. One route per process made the same window work first try. Fix by
+  freeing what `__init__` built on the way out (a `try/except` that calls the
+  same teardown `close` uses, or a `__del__` fallback), rather than requiring
+  callers to know not to retry in-process.
+- **The route's numerics fail the gate and GDN layers are where it breaks.**
+  Head-sharded vs unsharded bulk prefill on a 64-token prompt: `mean_kl` 0.3626,
+  `top1_agreement` 0.5938, against 0.05 and 0.90. The reduce is not the cause -
+  it is bit-identical across ranks and layer 0 matches the unsharded route to 6%
+  relative. The relative L2 error is 6% at layer 0 (GDN), 49% at layer 1 (GDN)
+  and 100% at layer 2 (GDN), so the GDN shard slice is the first place to look.
+  See `worklog/entries/20260924T145431.513808Z-lhl-tp2-attention-shard-numerics-fail-8e1277.md`.
+  `attention_shard` stays default-off until this is resolved.
+
 - `MlpTP2GenerationSession(attention_shard=...)` gives each rank half the
   attention heads: the rank's own slices of `attn_q`/`attn_k`/`attn_v`/
   `attn_output` and the GDN set replace the full-width slots, and the rank's
