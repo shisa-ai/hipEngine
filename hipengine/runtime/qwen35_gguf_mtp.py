@@ -1192,11 +1192,22 @@ class _DMSStoreJournal:
         self._retire_transaction()
 
     def close(self) -> None:
+        """Release the journal; an open cycle is rolled back, never dropped.
+
+        A shutdown or disconnect path can reach close() with a cycle still
+        open. Dropping the snapshot instead of applying it would strand exactly
+        the writes this journal exists to undo, so an open transaction is
+        rolled back here. The verifier normally rolls back before closing, in
+        which case there is nothing left to undo and this is a no-op.
+        """
+
         if self.closed:
             return
         self.closed = True
-        self._initial = None
-        self._rows.clear()
+        if self._initial is not None:
+            self.backend.rollback(self._initial)
+            self._initial = None
+            self._rows.clear()
         self.resident.close()
 
 
