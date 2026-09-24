@@ -5727,6 +5727,25 @@ def test_capability_admits_a_complete_current_prompt_buffer() -> None:
     ) is not None
 
 
+def test_capability_refuses_a_row_whose_prompt_sink_was_refused() -> None:
+    # A row whose prompt streaming was refused (the
+    # physical_streaming_category_rejected class) prefills with no hidden-row
+    # buffer at all, so its priming source is absent. Capability must decline
+    # it before any cycle can open a provider: a listed width may never run
+    # draft cycles against a refused prompt sink. This is the fail-closed gate
+    # for the 2026-09-19 width-8 incident (docs/REFACTOR.md wide MTP groups
+    # entry), fixed by routing speculation by priming source in 3edac59c9.
+    rid = 9
+    row = _priming_gate_row(prompt_tokens=12, generated_tokens=1)
+    adapter = _priming_gate_adapter(rows={rid: row}, prompt_hidden={})
+
+    assert adapter.capability(
+        (SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25),)
+    ) is None
+    assert adapter._states == {}
+    assert adapter._last_capability_silent_reason == "provider_state_absent"
+
+
 def test_capability_no_longer_declines_a_compact_dms_row_for_its_transaction() -> None:
     # The verifier now journals a compact-DMS row through the store's own
     # transaction (_DMSStoreJournal selects itself for a session carrying a
