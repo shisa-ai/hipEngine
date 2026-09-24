@@ -667,18 +667,42 @@ class Gemma4Runner:
 
         # --- layers ---------------------------------------------------------
         positions = np.arange(start, start + rows, dtype=np.int64)
+        # Tables depend only on the rope contract and this block's positions,
+        # the mask only on the sliding window and this block's range, so each
+        # distinct geometry is staged once per block instead of once per layer:
+        # layers of the same kind uploaded byte-identical copies 30 times per
+        # decode step on the production model. Both config dataclasses are
+        # frozen, so the rope config is a value key, and no buffer is rewritten
+        # while the block runs — the next block's copies are stream-ordered
+        # behind this block's kernels, exactly as the per-layer staging was.
+        tables: dict[Gemma4RopeConfig, tuple[DeviceBuffer, DeviceBuffer]] = {}
+        masks: dict[int | None, DeviceBuffer] = {}
         for index, layer in enumerate(self.weights.layers):
             attention = config.geometry(index)
             # The rope tables are F32 (rows, head_dim) with the rotated half
             # doubled, which is the layout gemma4_partial_rotary_bf16 indexes.
-            cos, sin = gemma4_rope_cos_sin_tables(attention.rope, positions)
-            cos_buf = self._stage_upload(
-                f"cos{index}", np.ascontiguousarray(cos, dtype=np.float32)
-            )
-            sin_buf = self._stage_upload(
-                f"sin{index}", np.ascontiguousarray(sin, dtype=np.float32)
-            )
-            mask_buf = self._stage_upload(f"mask{index}", _keep_mask(attention, start, rows))
+            staged = tables.get(attention.rope)
+            if staged is None:
+                cos, sin = gemma4_rope_cos_sin_tables(attention.rope, positions)
+                staged = (
+                    self._stage_upload(
+                        f"cos{attention.rope}",
+                        np.ascontiguousarray(cos, dtype=np.float32),
+                    ),
+                    self._stage_upload(
+                        f"sin{attention.rope}",
+                        np.ascontiguousarray(sin, dtype=np.float32),
+                    ),
+                )
+                tables[attention.rope] = staged
+            cos_buf, sin_buf = staged
+            mask_buf = masks.get(attention.sliding_window)
+            if mask_buf is None:
+                mask_buf = self._stage_upload(
+                    f"mask{attention.sliding_window}",
+                    _keep_mask(attention, start, rows),
+                )
+                masks[attention.sliding_window] = mask_buf
             gemma4_layer_forward_bf16(
                 self._hidden.ptr,
                 cos_buf.ptr,
