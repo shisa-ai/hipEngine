@@ -648,3 +648,103 @@ def test_batched_device_exchange_keeps_a_timeout_visible_across_layers() -> None
                 for buffer in buffers[device]:
                     rt.free(buffer)
                 rt.stream_destroy(streams[device])
+
+
+def test_device_exchange_serves_two_reductions_in_one_layer() -> None:
+    """Head sharding reduces twice per layer: the attention-output partial before
+    the post-attention norm, then the MLP down partial. This drives that layout
+    through the real device exchange - ``num_layers = 2 * reductions_per_layer``
+    with ``slot = reductions_per_layer * (layer % 2) + phase`` - and checks each
+    phase against its own host sum.
+
+    What this establishes: the doubled slot space is real on the driver side and
+    both reductions produce the correct sum through it. What it does **not**
+    establish: that a shared slot would be caught here. The hazard is a timing
+    race - the peer's spin exits as soon as its flag reaches the step, so the peer
+    may overwrite its own staging while this rank's spin-add is still reading it -
+    and with a payload this small the reader always wins. Mutating the slot to
+    collide both phases leaves this test green, so the deterministic guard is the
+    slot-arithmetic assertion in
+    ``test_unit_distributed_shard_group.py::test_device_reduce_gives_each_phase_its_own_slot``,
+    not this.
+    """
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.distributed.device_exchange_compiled import CompiledDeviceExchange
+
+    rt = get_hip_runtime()
+    if not _two_devices(rt):
+        pytest.skip("this test needs two visible devices")
+    hidden, phases = 256, 2
+    rng = np.random.default_rng(2026)
+    streams = {}
+    for device in (0, 1):
+        with scoped_current_device(rt, device):
+            streams[device] = rt.stream_create()
+    exchange = CompiledDeviceExchange(
+        rt,
+        devices=(0, 1),
+        streams=streams,
+        num_layers=2 * phases,
+        hidden=hidden,
+    )
+    buffers: dict[int, list[int]] = {0: [], 1: []}
+    try:
+        outs: dict[int, dict[int, int]] = {phase: {} for phase in range(phases)}
+        for phase in range(phases):
+            for device in (0, 1):
+                with scoped_current_device(rt, device):
+                    outs[phase][device] = rt.malloc(hidden * 2)
+                    buffers[device].append(outs[phase][device])
+
+        # Two layers exercise the set alternation as well as the phase split.
+        exchange.reset_timeouts()
+        for layer in range(2):
+            payloads: dict[int, dict[int, tuple[int, np.ndarray]]] = {}
+            for phase in range(phases):
+                payloads[phase] = {}
+                for device in (0, 1):
+                    # Finite bf16, not raw bits: a random uint16 lands on the
+                    # exponent 0xFF patterns often enough that the comparison
+                    # would spend part of its budget on NaN == NaN.
+                    values = rng.normal(0.0, 1.0, size=hidden).astype(np.float32)
+                    bits = (values.view(np.uint32) >> 16).astype(np.uint16)
+                    with scoped_current_device(rt, device):
+                        buffer = rt.malloc(hidden * 2)
+                        buffers[device].append(buffer)
+                        rt.memcpy(buffer, bits.ctypes.data, hidden * 2, 3)
+                        payloads[phase][device] = (buffer, bits)
+            for phase in range(phases):
+                exchange.bump()
+                slot = phases * (layer % 2) + phase
+                for rank, device in enumerate((0, 1)):
+                    exchange.enqueue_rank(
+                        rank, payloads[phase][device][0], slot, outs[phase][device]
+                    )
+            exchange.wait()
+            for phase in range(phases):
+                expected = _narrow_bf16_rne(
+                    _widen_bf16(payloads[phase][0][1])
+                    + _widen_bf16(payloads[phase][1][1])
+                )
+                for device in (0, 1):
+                    got = np.empty(hidden, dtype="<u2")
+                    with scoped_current_device(rt, device):
+                        rt.memcpy(got.ctypes.data, outs[phase][device], hidden * 2, 2)
+                    np.testing.assert_array_equal(
+                        got,
+                        expected,
+                        err_msg=(
+                            f"layer {layer} phase {phase} device {device}: a "
+                            "per-layer reduction did not get its own staging slot"
+                        ),
+                    )
+    finally:
+        exchange.close()
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                rt.stream_synchronize(streams[device])
+                for buffer in buffers[device]:
+                    rt.free(buffer)
+                rt.stream_destroy(streams[device])
