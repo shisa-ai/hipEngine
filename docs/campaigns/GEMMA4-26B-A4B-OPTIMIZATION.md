@@ -233,6 +233,18 @@ flags because a configuration has not been benchmarked.
   `20260924T102206.088801Z-lhl-gemma4-a651b0.md`. Remaining G3 candidates in
   measured order: q4_k decode GEMV registration (changed arithmetic — needs the
   deferred evaluator freeze), pack8 launch count, then re-profile.
+  *Status 2026-09-24 (iteration 15, final): the teacher-forced evaluator is
+  frozen and the multi-block attention split was built, measured (0.102 vs
+  0.263 ms/launch) and **rejected at the gate** (kl_max 0.304 > 0.05; bf16-KV
+  amplification) — evidence row
+  `2026-09-24-gemma4-26b-a4b-attention-split-rejected.json`. The q4_k decode
+  re-route's selection point was located and closed in the same span: it is
+  stacked behind a default-off diagnostic env, a missing Q5_1 compact down
+  kernel (no table entry in any family) and an `expert_ffn % 256` guard the
+  artifact's ffn=704 fails — full analysis in worklog entry
+  `20260924T111851.082630Z-lhl-gemma4-f98888.md`. The loop ends at its
+  15-iteration cap at 23.1517 tok/s (+43.9% vs the 16.0931 baseline); G4/G5
+  remain open milestone work.
 - [ ] **G4 — Integrated confirmation.** Repeat the primary paired matrix,
   correctness/heldouts and live chat/SSE; verify no hidden fallback. Re-measure
   llama.cpp and Qwen with the frozen comparison contract and report differences
