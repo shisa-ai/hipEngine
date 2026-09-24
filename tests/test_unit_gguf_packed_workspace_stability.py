@@ -1404,3 +1404,90 @@ def test_mtp_verify_width_packs_rows_inside_one_slot() -> None:
     assert four_rows.rows == 16
     assert four_rows.slot_count == 4
     assert gguf_runner.packed_verify_lease_slot_ceiling(4) == four_rows.slot_count
+
+
+def test_engine_close_releases_the_owner_workspace_before_the_pool(monkeypatch) -> None:
+    """Engine close must free the packed workspace before closing the pool.
+
+    The owner's packed workspace holds a private-workspace reservation in the
+    pool, and ``GlobalDeviceKVPool.close`` refuses to close while one is held.
+    The guarded release is what frees it, so a close that skips the release
+    fails at the pool with "cannot close global device KV pool with private
+    workspace" -- which is what an INT8 MTP server session hit on shutdown
+    (the bench's own artifact write is what surfaced it, after every cell had
+    already run). Reconfigure/resize already release the idle workspace first;
+    close is pinned here to the same order.
+    """
+
+    from dataclasses import replace
+
+    from hipengine.generation import qwen35_gguf as gguf_engine
+    from hipengine.kvcache.device_global import GlobalDeviceKVPool
+
+    _install_fake_device(monkeypatch)
+    layout = replace(_int8_kv_layout(), bf16_mirror_layer_indices=(1, 3))
+    page_bytes = gguf_runner._qwen35_gguf_kv_page_bytes(
+        _allocator_fake_runner().weights.config, layout
+    )
+    pool = GlobalDeviceKVPool(
+        page_bytes=page_bytes,
+        backend_fingerprint="test",
+        generation=1,
+        backing=SimpleNamespace(layout=layout),
+        plane_page_pointers={"key": (100, 200)},
+        pointer_table_pointers={"key": 300},
+        metadata_descriptor_pointer=400,
+        close_storage=lambda: None,
+        max_pages=20,
+    )
+    token = pool.reserve_private_workspace(4 * page_bytes, "packed_verify_scratch")
+    assert pool.private_workspace_bytes == 4 * page_bytes
+    # The refusal below is the one the release has to prevent: without it the
+    # pool is exactly as unclosable as the failed shutdown reported.
+    with pytest.raises(RuntimeError, match="private workspace"):
+        pool.close()
+
+    order: list[str] = []
+
+    class _Owner:
+        def release_idle_packed_workspace(self) -> int:
+            order.append("release_workspace")
+            pool.release_private_workspace(token)
+            return 4 * page_bytes
+
+        def bind_workspace_kv_pool(self, value) -> None:
+            order.append("bind")
+
+        def close(self) -> None:
+            order.append("owner_close")
+
+    runner = object.__new__(gguf_engine.Qwen35GGUFResidentModelRunner)
+    runner._closed = False
+    runner._rows = {}
+    runner._outputs = {}
+    runner._completed_metadata = {}
+    runner._mtp2_adapter = None
+    runner._kv_pool = pool
+    runner._resident_batch_owner = _Owner()
+    runner._available = []
+    runner._resident_batch_owner_pool_key = None
+    runner.generator = SimpleNamespace(
+        target_arch="gfx1151", close=lambda: order.append("generator_close")
+    )
+    monkeypatch.setattr(
+        gguf_engine.Qwen35GGUFResidentModelRunner,
+        "_flush_all_packed_owners",
+        lambda self: None,
+    )
+    monkeypatch.setattr(
+        gguf_engine.Qwen35GGUFResidentModelRunner,
+        "_clear_prefix_snapshots",
+        lambda self: None,
+    )
+
+    runner.close()
+
+    assert order[0] == "release_workspace"
+    assert order[-1] == "generator_close"
+    assert runner._kv_pool is None
+    assert pool.private_workspace_bytes == 0
