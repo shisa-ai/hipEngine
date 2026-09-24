@@ -24,6 +24,7 @@ from hipengine.kvcache.dms import (
     DMSCodecQualification,
     DMSRetrofitConfig,
 )
+from hipengine.runtime import qwen35_gguf_mtp as mtp_module
 from hipengine.runtime.qwen35_gguf_mtp import _DMSStoreJournal
 
 
@@ -354,3 +355,112 @@ def test_the_journal_is_always_serial_capable_and_delegates_hidden_state() -> No
 
     journal.close()
     assert resident.closed is True
+
+
+def test_cancellation_mid_cycle_restores_the_pre_cycle_store() -> None:
+    """A cycle abandoned after some rows leaves nothing behind."""
+
+    backend = _prepared_backend()
+    journal, resident = _journal(backend)
+    before = _store_state(backend, 0)
+
+    journal.capture_initial(stream=0)
+    rng = np.random.default_rng(5)
+    # Two rows were verified when the request was cancelled.
+    _run_cycle(backend, journal, request_id=0, rows=2, start_position=9, rng=rng)
+
+    journal.restore_initial(stream=0)
+
+    _assert_store_state_equal(_store_state(backend, 0), before)
+    assert journal._initial is None
+    assert journal._rows == {}
+    assert ("restore_initial", 0) in resident.calls
+
+
+def test_deadline_mid_cycle_is_exact_and_the_unwind_is_idempotent() -> None:
+    """A deadline can fire with only part of the chain captured."""
+
+    backend = _prepared_backend()
+    journal, _resident = _journal(backend)
+    before = _store_state(backend, 0)
+
+    journal.capture_initial(stream=0)
+    rng = np.random.default_rng(7)
+    # The deadline fired after the first row was captured.
+    _run_cycle(backend, journal, request_id=0, rows=1, start_position=9, rng=rng)
+    journal.restore_initial(stream=0)
+    _assert_store_state_equal(_store_state(backend, 0), before)
+
+    # A second unwind (a deadline handler plus a shutdown, say) must not move it.
+    journal.restore_initial(stream=0)
+    _assert_store_state_equal(_store_state(backend, 0), before)
+
+
+def test_a_cancelled_cycle_leaves_the_next_one_exact() -> None:
+    """Cancellation, then a committed cycle on the same row."""
+
+    backend = _prepared_backend()
+    journal, _resident = _journal(backend)
+    rng = np.random.default_rng(6)
+
+    journal.capture_initial(stream=0)
+    _run_cycle(backend, journal, request_id=0, rows=2, start_position=9, rng=rng)
+    journal.restore_initial(stream=0)
+
+    journal.capture_initial(stream=0)
+    after_each = _run_cycle(backend, journal, request_id=0, rows=3, start_position=9, rng=rng)
+    journal.restore_row(2, stream=0)
+    _assert_store_state_equal(_store_state(backend, 0), after_each[2])
+
+
+def test_shutdown_rolls_back_an_open_cycle_instead_of_dropping_it() -> None:
+    """A disconnect or shutdown reaching close() must not strand the cycle."""
+
+    backend = _prepared_backend()
+    resident = _RecordingResident()
+    journal = _DMSStoreJournal(
+        target=SimpleNamespace(_dms_backend=backend),
+        resident=resident,
+        max_rows=4,
+    )
+    journal.bind_request(0)
+    before = _store_state(backend, 0)
+
+    journal.capture_initial(stream=0)
+    rng = np.random.default_rng(8)
+    _run_cycle(backend, journal, request_id=0, rows=2, start_position=9, rng=rng)
+
+    journal.close()
+
+    _assert_store_state_equal(_store_state(backend, 0), before)
+    assert resident.closed is True
+    journal.close()  # idempotent: a second teardown changes nothing
+    _assert_store_state_equal(_store_state(backend, 0), before)
+
+
+def test_the_adapter_owns_no_hip_allocations(monkeypatch) -> None:
+    """Teardown cannot leak adapter-owned HIP allocations: it makes none.
+
+    Everything the adapter holds is host-side store state, released by rollback
+    or commit, and the resident journal keeps owning every device buffer. A full
+    lifecycle therefore has to complete without touching the allocator at all,
+    which is what makes "zero outstanding HIP allocations after teardown" hold
+    for the adapter by construction rather than by measurement.
+    """
+
+    def _boom(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("the compact DMS journal must not allocate device memory")
+
+    monkeypatch.setattr(mtp_module, "malloc", _boom)
+    monkeypatch.setattr(mtp_module, "free", _boom)
+
+    backend = _prepared_backend()
+    journal, _resident = _journal(backend)
+    journal.capture_initial(stream=0)
+    rng = np.random.default_rng(9)
+    after_each = _run_cycle(backend, journal, request_id=0, rows=2, start_position=9, rng=rng)
+    journal.restore_row(1, stream=0)
+    _assert_store_state_equal(_store_state(backend, 0), after_each[1])
+    journal.close()
+    assert journal._initial is None
+    assert journal._rows == {}
