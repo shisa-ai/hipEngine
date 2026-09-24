@@ -65,8 +65,9 @@ Existing direct-runtime results are not HTTP completion evidence.
   physical cell the kernels execute. The row that found the gap now reports the
   reason it was written for, over both endpoints at all four lengths.
 - [ ] Automatic intent at physical c2 on INT8 KV. The cell is reached and the
-  INT8 group declaration resolves; what stops it is provider registration for a
-  realized group wider than one.
+  INT8 group declaration resolves; what stops it is that this artifact's INT8
+  no-mirror contract is quality-rejected on gfx1151, so no shared direct decode
+  leaf exists at a group width above one.
 
   The run: `scripts/gguf_mtp_c1c8_server_bench.py --kv-storage
   int8_per_token_head --mtp-request-mode automatic` with
@@ -91,21 +92,58 @@ Existing direct-runtime results are not HTTP completion evidence.
   fallback_reason: no_provider
   ```
 
-  So the route layer admits the INT8 packed group -- the static width bound is
-  no longer what declines it, and the declaration that resolves is the group
-  chain -- but the MTP2 provider is never registered for those requests, the
-  plan reports AR-only, and every step falls back with `no_provider`. That is a
-  registration gap for realized groups wider than one, not a selection default
-  and not a capability miss: the same cell runs when the group is one row wide,
-  and the explicit arm engages c2 on this artifact's default cell.
+  `no_provider` is the aftermath, not the cause. The first cycle of every
+  width-2 group names what actually failed; with
+  `HIPENGINE_DEBUG_SAMPLED_ROUTE=1` the diagnostic run reports it 11 times, once
+  per group:
 
-  Clearing route: register the request's static intent for a realized group
-  wider than one and re-run the command above, confirming `engaged_cells` and
-  `route_expectation_passed` at c1, c2 and c4. Start at
-  `register_speculative_request` in `hipengine/generation/qwen35_gguf.py` and
-  `Qwen35GGUFMTP2Adapter.register_request` in
-  `hipengine/generation/qwen35_gguf_mtp2.py`, which is where a request becomes
-  "registered or disabled".
+  ```
+  [cycle-failure] ids=(2, 3) reason=NotImplementedError:packed target verifier
+  requires a shared direct INT8 decode leaf at this group width
+  ```
+
+  `verify_target_blocks_batch` in `hipengine/runtime/qwen35_gguf_runner.py`
+  resolves one direct INT8 decode leaf for the whole group and fails closed when
+  it cannot (`_packed_ar_direct_decode_kernel_for_sessions`). That leaf resolves
+  only when every session exposes the same callable `_retained_decode_kernel`
+  and `packed_decode_max_rows >= width`, and both follow from the artifact's
+  admitted capability: `/ready` reports `max_direct_rows: 0` and
+  `declaration: null` for this contract, so `packed_decode_max_rows` stays at 1
+  (`_gguf_packed_decode_max_rows` returns 1 when no retained kernel is callable)
+  and a two-row group cannot use the leaf. `rollback_cycle` then disables every
+  request in the failed plan, which is why the rest of those requests report
+  "unregistered or disabled" and every following step falls back with
+  `no_provider` -- 506 plan-trace occurrences in the diagnostic run, none of
+  them a separate failure.
+
+  `max_direct_rows: 0` is a quality decision, not a missing implementation.
+  `_QWEN38_GGUF_KV_CAPABILITY_EVIDENCE` in `hipengine/models/qwen35.py` carries
+  this artifact's `(hip_gfx1151, gguf_q4_k_m, int8_per_token_head, uniform,
+  fp32)` key with `decision="rejected"` -- "complete 1K/8 transfer rejected:
+  minimum-prompt top-1 agreement 0.7778 is below the 0.90 gate" -- and a
+  rejected row sets `max_direct_rows=0`. The declaration for the same key
+  (`_QWEN38_GGUF_KV_CAPABILITY_DECLARATIONS`) does name `max_direct_rows=4` and
+  the `per_token_head_gqa_splitk_gate_bf16_batch_strided_spans` batch variant,
+  but the evidence row zeroes it. The `decision="qualified"` gfx1100 row with
+  `max_direct_rows=4` covers a different file (17,106,773,984 bytes, sha256
+  `7b2aec3b...`), not the artifact on this host (17,106,775,008 bytes, sha256
+  `7e78da5d...`).
+
+  The refusal is therefore correct and correctly reported: a recorded observed
+  failure for this configuration, named where it fires, with the same cell
+  running one row wide. Clearing route: pass the quality gate for this
+  artifact's INT8 no-mirror contract on gfx1151 at 0.90 minimum-prompt top-1
+  agreement, record the pass as that key's evidence row, and re-run the command
+  above; `max_direct_rows` then reports 4, the shared leaf resolves, and c2 and
+  c4 should engage with `engaged_cells` and `route_expectation_passed` at c1, c2
+  and c4. The quality basis is
+  `benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json`
+  re-read against the gate -- not a benchmark row this file can supply.
+
+  Open question for that unit: the run requests `scale_dtype: fp16` while the
+  declaration and the evidence row are both keyed on `fp32`, so the declared
+  contract does not match the requested one. Confirm which the direct leaf is
+  expected to run before treating the quality pass as the only missing piece.
 
   Two earlier readings of this row are superseded and kept only as history: an
   INT8 static width bound (fixed in `7c3914162`, and it was real -- it just is
