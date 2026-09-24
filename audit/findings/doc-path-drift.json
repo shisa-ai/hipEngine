@@ -1,7 +1,7 @@
 {
   "kind": "doc-path-drift",
   "meta": {
-    "paths_checked": 1565,
+    "paths_checked": 1569,
     "skipped_as_illustrative": 1350,
     "exempt": [
       "docs/campaigns/",
