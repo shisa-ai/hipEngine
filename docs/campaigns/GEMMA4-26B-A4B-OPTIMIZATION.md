@@ -242,9 +242,10 @@ flags because a configuration has not been benchmarked.
   stacked behind a default-off diagnostic env, a missing Q5_1 compact down
   kernel (no table entry in any family) and an `expert_ffn % 256` guard the
   artifact's ffn=704 fails — full analysis in worklog entry
-  `20260924T111851.082630Z-lhl-gemma4-f98888.md`. The loop ends at its
-  15-iteration cap at 23.1517 tok/s (+43.9% vs the 16.0931 baseline); G4/G5
-  remain open milestone work.
+  `20260924T111851.082630Z-lhl-gemma4-f98888.md`. At the original 15-iteration
+  cap the loop stood at 23.1517 tok/s (+43.9% vs the 16.0931 baseline);
+  **2026-09-24 lead decision: the cap is raised to 500 iterations and the
+  loop restarted** — G4/G5 and the Q5_1 kernel campaign remain in scope.
 - [ ] **G4 — Integrated confirmation.** Repeat the primary paired matrix,
   correctness/heldouts and live chat/SSE; verify no hidden fallback. Re-measure
   llama.cpp and Qwen with the frozen comparison contract and report differences
