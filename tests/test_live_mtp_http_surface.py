@@ -22,6 +22,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -97,7 +98,9 @@ def client():
     env = os.environ.copy()
     env.setdefault("HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG", "1")
     env.setdefault("HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS", "none")
-    log = open(ROOT / "benchmarks" / f"mtp_http_surface_{PORT}.log", "wb")
+    log = tempfile.NamedTemporaryFile(
+        prefix=f"mtp_http_surface_{PORT}_", suffix=".log", delete=False
+    )
     command = [
         sys.executable,
         "-m",
