@@ -420,3 +420,51 @@ def test_the_runner_refuses_to_overrun_its_capacity(artifact: GGUFReader) -> Non
     finally:
         runner.close()
         weights.free()
+
+
+@_needs_hip
+def test_staging_buffers_are_one_per_geometry_kind_not_per_layer(
+    tmp_path: pathlib.Path,
+) -> None:
+    """One staging pair per distinct rope contract, one mask per window.
+
+    The forward pass used to rebuild and re-upload the RoPE tables and keep
+    mask inside the layer loop: for layers of the same kind those bytes are
+    identical, so a 30-layer production decode step pushed 90 tiny H2D copies
+    per step where two rope contracts and two sliding windows need at most six.
+    The buffer *content* is byte-identical either way (parity is covered by the
+    reference tests); what must hold here is the sharing itself, keyed by
+    geometry value rather than layer index.
+    """
+
+    layer_types = (
+        "sliding_attention",
+        "sliding_attention",
+        "full_attention",
+        "full_attention",
+    )
+    reader = GGUFReader(
+        write_fixture_gguf(
+            tmp_path / "gemma4_kinds.gguf",
+            default_fixture_tensors(layer_types=layer_types),
+            fixture_metadata(layer_types=layer_types),
+        )
+    )
+    weights = load_gemma4_device_weights(reader)
+    runner = Gemma4Runner(weights=weights, capacity=32)
+    try:
+        runner.forward([1, 5, 9, 13])
+        runner.forward([4])  # rows == 1, the decode shape
+        config = weights.config
+        geometries = [config.geometry(i) for i in range(len(layer_types))]
+        ropes = {g.rope for g in geometries}
+        windows = {g.sliding_window for g in geometries}
+        expected = 2 * len(ropes) + len(windows)
+        assert len(runner._staging) == expected, (
+            f"expected {expected} staging buffers "
+            f"({len(ropes)} rope kinds x cos/sin + {len(windows)} mask kinds), "
+            f"got {len(runner._staging)}: {sorted(runner._staging)}"
+        )
+    finally:
+        runner.close()
+        weights.free()
