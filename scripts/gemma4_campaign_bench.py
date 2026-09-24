@@ -383,6 +383,38 @@ def _public_wall(llm: Any, prompt_ids: Sequence[int], max_tokens: int) -> dict[s
     }
 
 
+def memory_row(samples: Sequence[tuple[str, int, int]]) -> dict:
+    """Build the artifact memory block from labeled ``(label, free, total)`` rows.
+
+    Every row must agree on total device memory; a mismatch means the device
+    changed mid-run (or a sample tuple was malformed), which would make the
+    per-label used-bytes comparisons meaningless.
+    """
+    if not samples:
+        raise ValueError("memory_row needs at least one (label, free, total) sample")
+    labels: list[str] = []
+    used: dict[str, int] = {}
+    total: int | None = None
+    for sample in samples:
+        if len(sample) != 3:
+            raise ValueError(
+                "each memory sample must be (label, free_bytes, total_bytes)"
+            )
+        label, free_bytes, total_bytes = sample
+        if total is None:
+            total = int(total_bytes)
+        elif int(total_bytes) != total:
+            raise ValueError(f"inconsistent device total: {total_bytes} != {total}")
+        used[str(label)] = total - int(free_bytes)
+        labels.append(str(label))
+    return {
+        "total_bytes": total,
+        "used_bytes": used,
+        "peak_used_bytes": max(used.values()),
+        "labels": labels,
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifact", type=Path, default=DEFAULT_ARTIFACT)
@@ -423,6 +455,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     from hipengine.core.hip import get_hip_runtime
 
     get_hip_runtime().device_synchronize()
+    mem_samples: list[tuple[str, int, int]] = [
+        ("before_load", *get_hip_runtime().mem_get_info())
+    ]
 
     llm, runner, loading = _resolve_generator(args.artifact, args.context)
     generator = llm._get_text_generator()
@@ -432,6 +467,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"max_block {loading['max_block']})",
         flush=True,
     )
+    mem_samples.append(("after_load", *get_hip_runtime().mem_get_info()))
 
     prompt_ids = exact_prompt_ids(generator.tokenize, args.prompt)
     if len(prompt_ids) != args.prompt:
@@ -489,6 +525,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         flush=True,
     )
 
+    mem_samples.append(("after_runs", *get_hip_runtime().mem_get_info()))
+
     artifact = {
         "label": args.label,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -508,6 +546,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ).hexdigest(),
         "provenance": provenance,
         "loading": loading,
+        "memory": memory_row(mem_samples),
         "warmups": warmups,
         "samples": samples,
         "stats": stats,
