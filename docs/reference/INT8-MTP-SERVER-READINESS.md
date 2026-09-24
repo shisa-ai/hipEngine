@@ -148,12 +148,34 @@ Existing direct-runtime results are not HTTP completion evidence.
   this host: the startup scratch probe runs at width 1 here (4 concurrent
   sessions need 208.20 GiB against 57.07 GiB usable), so the pressure comes from
   sequential MTP requests with a concurrent tail that serializes.
+- [x] Cancellation, deadline and disconnect mid-cycle restore the store, and the
+  session's teardown leaves no outstanding allocations.
+  `tests/test_live_dms_int8_mtp_lifecycle.py` (4 passed, live tier) drives the
+  same resident DMS+INT8 harness the parity gate uses. Each arm opens a real
+  verify cycle -- which appends its rows to the DMS store -- and asserts the
+  cycle actually mutated the store before aborting, so the rollback is not
+  vacuous. Restoration is compared field by field against the pre-cycle state:
+  host payload and scale planes, positions, live counts, evict mask, range
+  capacity, base offsets, extents, and the extent pool's and ledger's own
+  allocator state, plus the device payload store's K/V payload, scale, position,
+  evict and live-count planes (the signature requires the device store to exist,
+  so those planes cannot be skipped silently). The arms are cancellation
+  (`GenerationCancelled`), a real expired deadline through the module's own
+  `_deadline_checkpoint` factory (`GenerationDeadlineExceeded`, with a second
+  unwind asserted to be idempotent), and an unexpected mid-cycle exception
+  (`ConnectionResetError`) -- each followed by a fresh cycle that must still
+  commit exactly the autoregressive tokens. The fourth arm returns
+  `memory_stats()["active_allocations"]` to its pre-session baseline after
+  teardown with an open, uncommitted cycle. Scope, stated exactly: DMS reaches
+  the resident-session surface only -- no `dms_metadata_path` reaches the engine,
+  LLM, or HTTP layer -- so these arms observe the lifecycle at the cycle
+  boundary the verifier owns rather than through an HTTP client disconnect.
 - [ ] Prefix reuse after a cancelled request is tested with MTP enabled and
-  disabled. The live lifecycle arms own this: cancellation, deadline and
-  disconnect mid-cycle plus the session-level allocation trace. What is already
-  covered is the cancellation itself and the allocation trace after a
-  prefix/MTP cycle; what is missing is the same trace for a request cancelled
-  *after* its prefix was reused, in both cache configurations.
+  disabled. The lifecycle half of this row is now covered: cancellation, deadline
+  and disconnect mid-cycle and the session-level allocation trace are green in
+  `tests/test_live_dms_int8_mtp_lifecycle.py`. What is still missing is the same
+  trace for a request cancelled *after* its prefix was reused, in both cache
+  configurations.
 - [x] Admission budgets include target KV/scales, draft KV, verifier scratch,
   graphs, and retained prefix ownership; overload fails before HIP OOM.
   `hipengine/runtime/memory_admission.py` prices every resident consumer and
