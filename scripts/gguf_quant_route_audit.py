@@ -120,6 +120,7 @@ from hipengine.loading.qwen35_gguf_policy import (  # noqa: E402
     gguf_ar_raw_iq_contract,
     gguf_fp16_recurrent_state_default,
     resolve_gguf_dense_flags,
+    resolve_ud_repack_eligibility,
 )
 from hipengine.quant.gguf import (  # noqa: E402
     GGMLQuantizationType,
@@ -1068,14 +1069,20 @@ def plan(backend: str, metadata: dict, maps: MappedTensorMaps, *, environ=None) 
         backend, file_type, capability_reader=source_capability_reader(), environ=environ
     )
     requested_repack = gguf_decode_repack_enabled(None)
-    # The production AR planner vetoes decode repack itself for raw-IQ AR layers;
-    # pre-applying the same veto keeps the per-slot fallback path identical.
     raw_iq = gguf_ar_raw_iq_contract(
         tensor.ggml_type
         for layer in maps.model_map.layers
         for tensor in layer.tensors.values()
     )
-    repack = requested_repack and not raw_iq
+    # E3: mirror plan_qwen35_gguf_materialization instead of pre-applying
+    # the model-wide veto. The planner vetoes model-wide only under
+    # HIPENGINE_UD_REPACK_ELIGIBILITY=model-wide; the shipped per-tensor
+    # default vetoes raw-IQ tensors per tensor and keeps every eligible
+    # Q4/Q5/Q6/Q8 tensor repacking. Pre-applying the veto here recorded
+    # repack=OFF for files the runtime loads with T16 routes.
+    repack = requested_repack and not (
+        resolve_ud_repack_eligibility() == "model-wide" and raw_iq
+    )
 
     ar_pairs = _ar_slot_tensor_pairs(maps.model_map)
     try:

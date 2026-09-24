@@ -122,6 +122,26 @@ def gguf_tensor_repack_eligible(ggml_type_id: int) -> bool:
     return int(ggml_type_id) not in _AR_RAW_IQ_GGML_TYPE_IDS
 
 
+HIPENGINE_GGUF_DECODE_REPACK_ENV = "HIPENGINE_GGUF_DECODE_REPACK"
+
+
+def resolve_gguf_decode_repack(value: bool | None = None, environ: Any = None) -> bool:
+    """Resolve the model-level decode-repack request.
+
+    ``None`` reads the environment (default: on). Shared by the admission
+    plan flags and the materialization planner so ``decode_repack=None`` has
+    exactly one meaning on both surfaces (E3: admission used to coerce None
+    to False and pre-apply the model-wide veto, recording repack=OFF for
+    files the runtime loads with T16 routes).
+    """
+
+    if value is not None:
+        return bool(value)
+    env = os.environ if environ is None else environ
+    raw = str(env.get(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1"))
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def gguf_ar_f32_linear_contraction(ggml_type_ids: Iterable[int]) -> bool:
     """Return the model-wide F32 alpha/beta/router linear contraction gate.
 
