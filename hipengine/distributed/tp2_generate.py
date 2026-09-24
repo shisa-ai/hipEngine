@@ -280,11 +280,17 @@ class MlpTP2GenerationSession:
         if self.head_shard and self.mode != "tp2":
             raise ValueError("the sharded head is tp2-only")
         # Head-sharded *attention* is a different axis from ``head_shard``, which
-        # is the sharded logits head. Construction is allowed so the substituted
-        # geometry is real and testable, but no head-sharded layer may run until
-        # the attention-output reduce is wired: see ``_require_attention_reduce``.
+        # is the sharded logits head. Splitting the heads makes each rank's
+        # attention output a partial, and every path that runs a layer sums it on
+        # the device, so this route needs the device-side reduction.
         if attention_shard and self.mode != "tp2":
             raise ValueError("attention head sharding is tp2-only")
+        if attention_shard and self.reduce_mode != "device":
+            raise ValueError(
+                "attention head sharding needs the device-side reduction to sum "
+                "each rank's attention-output partial; reduce_mode is "
+                f"{self.reduce_mode!r}"
+            )
         self.attention_shard = bool(attention_shard)
         self._full_config: Any | None = None
         self._attention_shard_weights: dict[int, dict[int, dict[str, Any]]] = {}
@@ -388,6 +394,7 @@ class MlpTP2GenerationSession:
         self._bulk_hidden: dict[int, tuple[int, int]] = {}
         self._bulk_token_buf: dict[int, Any] = {}
         self._bulk_logits_buf: dict[int, Any] = {}
+        self._bulk_attn_reduced: dict[int, int] = {}
         self._bulk_host_tokens: np.ndarray | None = None
         self._bulk_final_hidden: dict[int, int] = {}
         self._uploaded_shard_weights: Any | None = None
@@ -546,23 +553,6 @@ class MlpTP2GenerationSession:
             self._runners[device] = runner
             self._scratches[device] = scratch
 
-    def _require_attention_reduce(self) -> None:
-        """Refuse to run a head-sharded layer before its reduce is wired.
-
-        Head sharding makes ``attn_output`` and ``ssm_out`` a hidden-size partial
-        per rank, and the post-attention norm consumes the sum. Until the layer
-        loop sums it, the residual would carry only this rank's half - silently
-        wrong rather than merely slow, which is why this guard sits at the point
-        where a layer would run and not only in a docstring.
-        """
-
-        if self.attention_shard:
-            raise TP2GroupError(
-                "attention head sharding needs the attention-output reduce wired "
-                "into the layer loop first; without it each rank's residual would "
-                "carry only its own heads' partial (docs/REFACTOR.md)"
-            )
-
     def _build_attention_shards(self) -> None:
         """Materialize and upload every rank's attention head shards.
 
@@ -692,6 +682,9 @@ class MlpTP2GenerationSession:
             # residual add folded into the next layer's graph) reads a stable
             # pointer. The eager schedule keeps the two-slot alternation.
             slot_sets=len(self._config.layer_types) if self.schedule == "graphed" else 2,
+            # Head sharding reduces twice per layer: the attention-output partial
+            # before the post-attention norm, then the MLP down partial.
+            reductions_per_layer=2 if self.attention_shard else 1,
         )
 
     def _alloc_step_buffers(self, device: int) -> None:
@@ -708,6 +701,13 @@ class MlpTP2GenerationSession:
                 buffers["logits_buf"] = malloc(
                     runner.vocab_size * 4, runtime=self.runtime
                 )
+            if self.attention_shard:
+                # Head sharding's attention-output reduce needs a destination
+                # distinct from the rank's own partial: the spin-add kernel
+                # declares its input and its output ``__restrict__``.
+                buffers["attn_reduced"] = malloc(
+                    hidden_size * 2, runtime=self.runtime
+                )
             if self.mode == "tp1":
                 buffers["mlp_gate"] = malloc(runner.ffn_size * 2, runtime=self.runtime)
                 buffers["mlp_up"] = malloc(runner.ffn_size * 2, runtime=self.runtime)
@@ -715,6 +715,55 @@ class MlpTP2GenerationSession:
                 buffers["mlp_out"] = malloc(runner.hidden_size * 2, runtime=self.runtime)
         self._step_buffers[device] = buffers
         self._extra_buffers[device].extend(buffers.values())
+
+    def _attention_reduce_output(self, device: int, scratch: Any) -> int:
+        """The attention-output pointer the post-attention norm must read.
+
+        Without head sharding that is the rank's own full attention output. With
+        it, the reduced sum, because each rank's output is only its own heads'
+        partial.
+        """
+
+        if self.attention_shard:
+            return int(self._step_buffers[int(device)]["attn_reduced"].ptr)
+        return int(scratch.attn_out.ptr)
+
+    def _attention_reduce_destination(self, device: int) -> int:
+        """Where this rank's attention-output reduction is written."""
+
+        return int(self._step_buffers[int(device)]["attn_reduced"].ptr)
+
+    def _attention_exchange_slot(self, layer_id: int) -> int:
+        """The session exchange's slot for a layer's attention reduction.
+
+        Head sharding takes the second half of the slot space rather than
+        renumbering the first, so the unsharded layout - the one the validated
+        decode schedule was measured with - stays exactly what it was.
+        """
+
+        return len(self._config.layer_types) + int(layer_id)
+
+    def _reduce_attention_partial_eager(self, layer_id: int) -> None:
+        """Sum the ranks' attention-output partials on the device (eager path).
+
+        The eager composition of the same reduce the captured schedule enqueues
+        inside each layer's graph. It goes through the group's own exchange,
+        which is the one the eager MLP reduce uses.
+        """
+
+        if not self.attention_shard:
+            return
+        group = self._shard_group
+        assert group is not None
+        group.reduce_device_payload(
+            layer_id,
+            {device: self._scratches[device].attn_out.ptr for device in self.devices},
+            {
+                device: self._attention_reduce_destination(device)
+                for device in self.devices
+            },
+            phase=1,
+        )
 
     # -- opt-in rank-local bulk prefill ------------------------------------
 
@@ -744,6 +793,17 @@ class MlpTP2GenerationSession:
                 hidden_a = malloc(rows * runner.hidden_size * 2, runtime=self.runtime)
                 hidden_b = malloc(rows * runner.hidden_size * 2, runtime=self.runtime)
                 token_buf = malloc(rows * np.int64().nbytes, runtime=self.runtime)
+                # The reduced attention output, when the attention phase produces
+                # a per-rank partial. It is a separate buffer rather than an
+                # in-place update of ``scratch.attn_out``: the spin-add kernel
+                # declares both its input and its output ``__restrict__``, and
+                # handing it the same pointer would make that contract false for
+                # a read-modify-write it does not need to perform.
+                attn_reduced = (
+                    malloc(rows * runner.hidden_size * 2, runtime=self.runtime)
+                    if self.attention_shard
+                    else None
+                )
                 if self.head_shard:
                     logits_buf = malloc(
                         rows * int(self._head_plan.rows_per_rank) * 4,
@@ -758,6 +818,9 @@ class MlpTP2GenerationSession:
             self._bulk_scratch[device] = scratch
             self._bulk_hidden[device] = (hidden_a.ptr, hidden_b.ptr)
             self._bulk_token_buf[device] = token_buf
+            if attn_reduced is not None:
+                self._bulk_attn_reduced[device] = int(attn_reduced.ptr)
+                self._bulk_buffers[device].append(attn_reduced)
             if logits_buf is not None:
                 self._bulk_logits_buf[device] = logits_buf
             self._bulk_buffers[device].extend([hidden_a, hidden_b, token_buf])
@@ -780,6 +843,12 @@ class MlpTP2GenerationSession:
             rows=rows,
             owns_weights=False,
             reduce_mode=self.reduce_mode,
+            # Head sharding reduces twice per layer: the attention-output partial
+            # before the post-attention norm, then the MLP down partial. Each
+            # needs its own staging slot, because the peer's spin exits as soon
+            # as its flag reaches the step and could otherwise overwrite the
+            # staging under this rank's reader.
+            reductions_per_layer=2 if self.attention_shard else 1,
         )
 
     def _release_bulk_prefill_workspace(self) -> None:
@@ -808,6 +877,7 @@ class MlpTP2GenerationSession:
         self._bulk_hidden.clear()
         self._bulk_token_buf.clear()
         self._bulk_logits_buf.clear()
+        self._bulk_attn_reduced.clear()
         for device, buffers in self._bulk_buffers.items():
             for buffer in buffers:
                 try:
@@ -966,6 +1036,10 @@ class MlpTP2GenerationSession:
             group.begin_device_group()
         for layer_id, layer_type in enumerate(self._config.layer_types):
             self._bulk_attention_layer(layer_id, layer_type, src, rows)
+            # Head sharding makes the attention output a per-rank partial, and
+            # the post-attention norm below consumes the sum, so this reduce sits
+            # between them and nowhere else.
+            self._bulk_attention_reduce(layer_id, rows)
             self._bulk_norm_residual_layer(layer_id, src, rows)
             self._bulk_sharded_mlp_layer(layer_id, src, dst, rows)
             src, dst = dst, src
@@ -1096,7 +1170,6 @@ class MlpTP2GenerationSession:
         src: Mapping[int, int],
         rows: int,
     ) -> None:
-        self._require_attention_reduce()
         for device in self.devices:
             runner = self._runners[device]
             scratch = self._bulk_chunk_scratch.get(
@@ -1150,6 +1223,60 @@ class MlpTP2GenerationSession:
                         f"unsupported GGUF layer type {layer_type!r}"
                     )
 
+    def _bulk_attention_reduce(self, layer_id: int, rows: int) -> None:
+        """Sum the ranks' attention-output partials into the consumed buffer.
+
+        Head sharding splits the heads, so each rank's attention phase - full
+        attention's ``attn_output`` projection and GDN's ``ssm_out`` - produces a
+        hidden-size partial: the rank's own heads' contribution to the residual.
+        The post-attention norm needs the full sum, so this is the reduce the
+        head split owes the layer.
+
+        ``phase=1`` keeps this reduction's staging slot separate from the MLP's,
+        which is what ``reductions_per_layer=2`` sized the exchange for.
+        """
+
+        if not self.attention_shard:
+            return
+        group = self._bulk_shard_group
+        if group is None:
+            raise TP2GroupError(
+                "attention head sharding needs the bulk-prefill shard group"
+            )
+        if self.reduce_mode != "device":
+            raise TP2GroupError(
+                "attention head sharding needs the device-side reduction; "
+                f"reduce_mode is {self.reduce_mode!r}"
+            )
+        group.reduce_device_payload(
+            layer_id,
+            {
+                device: int(
+                    self._bulk_chunk_scratch.get(device, self._bulk_scratch[device])
+                    .attn_out.ptr
+                )
+                for device in self.devices
+            },
+            {device: self._bulk_attn_reduced[device] for device in self.devices},
+            phase=1,
+            rows=rows,
+        )
+
+    def _bulk_attention_output_ptr(self, device: int) -> int:
+        """The attention-output pointer the post-attention norm must read.
+
+        Without head sharding that is the rank's own full attention output. With
+        it, the reduced sum, because each rank's output is only its own heads'
+        partial.
+        """
+
+        device = int(device)
+        if self.attention_shard:
+            return int(self._bulk_attn_reduced[device])
+        return int(
+            self._bulk_chunk_scratch.get(device, self._bulk_scratch[device]).attn_out.ptr
+        )
+
     def _bulk_norm_residual_layer(
         self,
         layer_id: int,
@@ -1173,7 +1300,7 @@ class MlpTP2GenerationSession:
                 runner._run_post_attention_norm_residual_rows(
                     layer_id,
                     int(src[device]),
-                    scratch.attn_out.ptr,
+                    self._bulk_attention_output_ptr(device),
                     scratch,
                     rows=rows,
                     stream=self._rank_stream(device),
@@ -1607,7 +1734,6 @@ class MlpTP2GenerationSession:
         position: int,
         stages: dict[str, float],
     ) -> None:
-        self._require_attention_reduce()
         mark = time.perf_counter()
         for device in self.devices:
             src, _dst = hidden_ptrs[device]
@@ -1632,6 +1758,11 @@ class MlpTP2GenerationSession:
             time.perf_counter() - mark
         )
 
+        # Head sharding makes the attention output a per-rank partial, and the
+        # post-attention norm below consumes the sum, so this reduce sits between
+        # them and nowhere else.
+        self._reduce_attention_partial_eager(layer_id)
+
         mark = time.perf_counter()
         for device in self.devices:
             src, _dst = hidden_ptrs[device]
@@ -1641,7 +1772,7 @@ class MlpTP2GenerationSession:
                 scratch = self._scratches[device]
                 self._add_norm_kernel(runner)(
                     src,
-                    scratch.attn_out.ptr,
+                    self._attention_reduce_output(device, scratch),
                     runner.weights.layer(layer_id)
                     .weight("post_attention_norm")
                     .allocation()
@@ -1726,13 +1857,18 @@ class MlpTP2GenerationSession:
         # The device-side exchange serves one slot per layer; the config is
         # only known after the ranks are built.
         if self.reduce_mode == "device" and self._device_exchange is None:
+            layer_count = len(self._config.layer_types)
             self._device_exchange = CompiledDeviceExchange(
                 self.runtime,
                 devices=self.devices,
                 streams={
                     device: self._created_streams[device] for device in self.devices
                 },
-                num_layers=len(self._config.layer_types),
+                # Head sharding needs a second reduction per layer, and it takes
+                # the second half of the slot space rather than renumbering the
+                # first: the unsharded layout stays exactly what the validated
+                # decode schedule was measured with.
+                num_layers=layer_count * (2 if self.attention_shard else 1),
                 hidden=self.hidden_size,
             )
         # Warmup: one eager token forces every lazy allocation (split-decode
@@ -1834,9 +1970,21 @@ class MlpTP2GenerationSession:
                     raise TP2GroupError(
                         f"unsupported GGUF layer type {layer_type!r}"
                     )
+                if self.attention_shard:
+                    # The same reduce the eager path runs, but captured into this
+                    # layer's own graph: the partial is produced here and the
+                    # add+norm below consumes it, so it cannot be deferred to the
+                    # next layer's segment the way the MLP partial is. Slots are
+                    # unique per layer, so this needs no counter bump.
+                    self._device_exchange.enqueue_rank(
+                        self.devices.index(device),
+                        attn_out,
+                        self._attention_exchange_slot(layer_id),
+                        self._attention_reduce_destination(device),
+                    )
                 self._add_norm_kernel(runner)(
                     src,
-                    scratch.attn_out.ptr,
+                    self._attention_reduce_output(device, scratch),
                     runner.weights.layer(layer_id)
                     .weight("post_attention_norm")
                     .allocation()

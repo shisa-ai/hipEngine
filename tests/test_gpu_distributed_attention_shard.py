@@ -195,6 +195,12 @@ def test_head_sharded_attention_substitutes_rank_geometry_and_scratch() -> None:
             for buffer in reversed(sharded_scratch.buffers):
                 free(buffer, runtime=runtime)
 
-        # A head-sharded layer must refuse to run while the reduce is unwired.
-        with pytest.raises(TP2GroupError, match="attention-output reduce"):
-            MlpTP2GenerationSession._require_attention_reduce(stub)
+        # The decode paths reduce too, so no guard is needed: the captured
+        # schedule gives the attention reduction its own half of the session
+        # exchange's slot space, which is what keeps the unsharded layout - the
+        # one the validated decode schedule was measured with - untouched.
+        slot_stub = types.SimpleNamespace(_config=types.SimpleNamespace(layer_types=("a",) * 4))
+        assert [
+            MlpTP2GenerationSession._attention_exchange_slot(slot_stub, layer_id)
+            for layer_id in range(4)
+        ] == [4, 5, 6, 7], "the attention slots start after the MLP's"

@@ -42,20 +42,33 @@
   `q_width`/`kv_width`/`linear_qkv_width`/`ssm_value_dim`. Both the payloads and
   the geometry come from one shard manifest, so they cannot disagree. This is a
   different axis from `head_shard`, which is the sharded logits head.
-- **Not enableable: no forward pass runs while it is on.** Splitting the heads
-  makes `attn_output` and `ssm_out` a hidden-size partial per rank, and the
-  post-attention norm consumes the sum. Until the layer loop performs that
-  reduce, each rank's residual would carry only its own half - wrong output, not
-  a slow one. `_require_attention_reduce` therefore refuses at
-  `_bulk_attention_layer` and `_enqueue_layer`, which is the point where a layer
-  would run, so a new caller cannot bypass it by not knowing.
-- Removal condition: once the attention-output reduce is wired into the
-  bulk-prefill loop and the graphed decode schedule (the exchange mechanism is
-  already chosen and implemented: `MlpShardGroup(reductions_per_layer=2)` with
-  `reduce_device_payload(..., phase=1)`), drop the guard, run the production
-  gate, and promote `attention_shard=True` to the tp2 default. Until then the
-  parameter should stay, because the substitution is what the next unit builds
-  on and re-deriving it would repeat the payload/geometry agreement argument.
+- **Every path that runs a layer now reduces.** Splitting the heads makes
+  `attn_output` and `ssm_out` a hidden-size partial per rank, and the
+  post-attention norm consumes the sum. Three call sites perform that reduce,
+  each through the mechanism its own phase already uses:
+  `_bulk_attention_reduce` between `_bulk_attention_layer` and
+  `_bulk_norm_residual_layer` (the bulk group, `reduce_device_payload(...,
+  phase=1)`, with `reductions_per_layer=2` sizing the exchange for the second
+  per-layer reduction); `_reduce_attention_partial_eager` in `_enqueue_layer`
+  (the decode group's exchange, same phase); and an `enqueue_rank` inside
+  `_capture_layer_graph`, because the captured schedule produces the partial and
+  consumes it inside one graph and so cannot defer it to the next layer's
+  segment the way it defers the MLP partial. The captured path takes slots
+  `layer_count + layer_id` out of a doubled `num_layers` rather than
+  renumbering the MLP's, so the unsharded slot layout stays exactly what the
+  validated decode schedule was measured with. Each reduce writes a destination
+  buffer distinct from the rank's own partial, because the spin-add kernel
+  declares its input and its output `__restrict__`.
+- **Two copies of the layer body have to stay in sync.** `_enqueue_layer` and
+  `_capture_layer_graph` each carry their own attention/add+norm/MLP sequence,
+  and the guard that preceded this change existed because only one of them could
+  be wired at a time. They should share one body; recorded here rather than
+  merged now, because the captured copy interleaves the previous layer's
+  deferred reduce and residual add and that ordering is what the graph is for.
+- Removal condition: promote `attention_shard=True` to the tp2 default once the
+  production gate passes on the sharded route. Until then the parameter should
+  stay, because the substitution is what the remaining work builds on and
+  re-deriving it would repeat the payload/geometry agreement argument.
 - Known consequence to re-qualify at promotion: the attention shape keys change.
   `_gguf_full_attention_split_decode_policy` and
   `_gguf_grouped_gqa_decode_shape` look variants up by a shape tuple containing
