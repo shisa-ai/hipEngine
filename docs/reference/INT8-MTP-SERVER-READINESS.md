@@ -147,13 +147,42 @@ Existing direct-runtime results are not HTTP completion evidence.
   ownership across rejected candidates; cursor reset alone is insufficient.
 - [x] Commit only accepted DMS mutations; rollback/cancellation restores the
   complete pre-cycle state, including payload moved by compaction.
-- [ ] Test real DMS+INT8 MTP against the same DMS+INT8 AR retention policy.
-  This needs DMS sidecar artifacts, because the resident serving path loads a
-  trained external linear sidecar (`load_external_dms_sidecar`). The artifacts
-  the last live run used are not on this host, so the gate starts by rebuilding
-  them with `scripts/qwen38_dms_capture.py`,
-  `scripts/qwen38_dms_build_labels.py`, and
-  `scripts/qwen38_dms_train_sidecar.py`.
+- [x] Test real DMS+INT8 MTP against the same DMS+INT8 AR retention policy.
+  `tests/test_live_dms_int8_mtp_parity.py` runs both arms as resident
+  `Qwen35GGUFResidentSession` rows sharing one policy: the same trained external
+  linear sidecar, the same `create_dms_int8_evaluation_backend` factory, and one
+  prompt per category from `benchmarks/prompts/mtpbench-code-general-ja.jsonl`
+  at a 768-token context, deterministically repeated so the 256-token DMS window
+  forces compaction. Each arm decodes 12 tokens; the speculative arm runs three
+  cycles of three candidates plus a bonus token, drafted from the AR arm's own
+  output, which isolates the retention and transaction axes from draft quality.
+  On all four categories the speculative arm reproduces the AR ids and finish
+  reason exactly with every cycle fully accepted (`accepted_counts (3,3,3)`),
+  and both arms report the same policy outcome: a maximum live count of 525 over
+  49792 logical token rows (778 logical tokens across 64 compact rows) and
+  `actual_compression_ratio` 1.4857 against a target ratio of 2. A fifth case
+  corrupts one candidate to force partial acceptance; the committed sequence
+  stays an exact AR prefix, and the policy is compared against an AR arm stopped
+  at the same token count, where the live count matches as well. The gate drives
+  the serial-exact verify route with `allow_graph=False`, because the packed
+  decode graph is BF16-only and cannot serve an INT8 KV DMS row.
+  The sidecar this gate ran against is
+  `~/dms-artifacts/qwen38-external-v1/sidecar/dms_metadata.json`
+  (sha256 `85e84d0068f8f885edbb96468434b49768f8b7d0fcb01895080a131562e0cee0`,
+  `artifact_fingerprint` `7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169`),
+  rebuilt on this host with `scripts/qwen38_dms_train_sidecar.py` and its
+  capture/label predecessors. The sidecar the earlier live run used is not on
+  this host, so the earlier run's `metadata_sha256` no longer identifies the
+  artifact under test.
+- [x] Restore the device payload store's live counts with the rest of the
+  request state. `DMSDevicePayloadStore.snapshot` captures the per-head live
+  counts and `restore` writes them back alongside the payload, position,
+  eviction and scale planes. Without them, a commit that keeps only part of an
+  appended prefix, or a rollback, left the device counts at their post-append
+  values and the next append failed its host/device cross-check with
+  `DMS direct append device/host live-count mismatch`.
+  `tests/test_gpu_dms_int8_device_payloads.py` asserts the restored live-count
+  plane.
 - [x] Report a DMS refusal by its actual cause. The former
   `compact_dms_mtp_transaction_not_implemented` decline is gone: the
   transactional verifier selects the DMS store journal whenever the target
@@ -200,7 +229,7 @@ the full 108-request matrix and lifecycle gate without diagnostic overrides.
 Nine primitive GPU cases pass there. Prefix-on restoration passes all four
 categories with actual 512-token cache hits, compact INT8 and AR-matching MTP.
 Pressure/eviction and DMS work remain open. The resumable-prefill repair is
-integrated: public gfx1151 requests at2053/4097/6149 tokens now execute MTP and
+integrated: public gfx1151 requests at 2053/4097/6149 tokens now execute MTP and
 match AR; mid-prefill deadline/reuse also passes.
 
 Checkpoint lifetime now follows target eviction and adapter shutdown. A target
@@ -211,10 +240,10 @@ HIP allocations after close. Dynamic verifier scratch growth belongs to the
 persistent session root, and retained target snapshot arenas are closed.
 
 The C1 serving implementation is available; this checklist is not fully closed.
-Compact-DMS transactions, unified provider/target byte
-budgeting, and the broader pressure/long-context matrix remain separate open
-items. Explicit unsupported implementation requests return named errors rather
-than being advertised as working MTP.
+DMS contracts beyond the single-request serial route, unified provider/target
+byte budgeting, and the broader pressure/long-context matrix remain separate
+open items. Explicit unsupported implementation requests return named errors
+rather than being advertised as working MTP.
 
 Commands against an already running INT8 server:
 

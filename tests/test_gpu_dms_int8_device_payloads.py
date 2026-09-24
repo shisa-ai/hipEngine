@@ -123,6 +123,10 @@ def test_int8_pack_append_attention_and_restore(tokens, dim, heads, q_heads, mon
             sl = slice(base[h], base[h] + cap[h])
             for name in ("k_bits", "v_bits", "k_scales", "v_scales", "positions", "evict"):
                 np.testing.assert_array_equal(getattr(restored, name)[sl], getattr(view, name)[sl])
+        # The live-count plane belongs to the restored state too. The next
+        # device append cross-checks it against the host model, so a count left
+        # at its post-append value fails the following cycle.
+        np.testing.assert_array_equal(store.live_counts(0), live)
     finally:
         store.close()
 
