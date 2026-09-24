@@ -151,8 +151,14 @@ tables).
 
 Open reconciliation owed to C2: the closed route campaign recorded item-1
 per-tensor repack as landed (44.2% optimized bytes, K_M), while the
-production route table above still reports `repack=OFF` at HEAD. Experiment E3
-step 1 resolves which path diverged before any layout change is written.
+production route table above still reported `repack=OFF` at HEAD. **Resolved
+by E3 (2026-09-25):** the planner was never the diverged path — production
+resolved `decode_repack=None` to the env default and applied per-tensor
+eligibility all along (E1's live probe was the true view). The admission
+report coerced `None` to `False` and pre-applied the model-wide raw-IQ veto,
+and `gguf_quant_route_audit.py` pre-applied the same veto itself, so both
+report surfaces recorded `repack=OFF`. Evidence:
+[`benchmarks/results/2026-09-25-zbook-e3-route-audit-repack-truth.json`](../../benchmarks/results/2026-09-25-zbook-e3-route-audit-repack-truth.json).
 
 Evidence:
 [`benchmarks/results/2026-09-21-gfx1151-qwen38-ud-vs-plain-q4km-baseline.json`](../../benchmarks/results/2026-09-21-gfx1151-qwen38-ud-vs-plain-q4km-baseline.json),
@@ -364,27 +370,53 @@ measured negative.
     Evidence bundle (OPTIMIZATION §2 fields): `benchmarks/results/2026-09-24-
     zbook-gfx1151-ud-iq-decode-policy-e2d.json` (`performance_claim: false`;
     the loop's `ud_plain_parity` is the paired UD/plain claim vehicle).
-- [ ] **E3 — Production per-tensor repack (C2 / H3).**
-  - [ ] E3a — Reconcile the recorded item-1 state against the production
+- [x] **E3 — Production per-tensor repack (C2 / H3).** Executed 2026-09-25;
+  resolution recorded in the scoreboard row and the C2 reconciliation note
+  above. The unit changed report surfaces only — runtime allocation is
+  byte-identical — so no profiled A/B is owed and the parity metric is
+  untouched (iteration logged with metric unchanged).
+  - [x] E3a — Reconcile the recorded item-1 state against the production
     `repack=OFF` route table: locate where the admission call chain drops the
     eligibility mode (`preflight_qwen35_gguf_artifact()` call site and the
-    upstream `decode_repack` flag).
-  - [ ] E3b — Fix the call chain so `per-tensor` reaches the planner on the
+    upstream `decode_repack` flag). **Found two report-surface drops:**
+    admission's `repack_veto is None` branch coerced `decode_repack=None` to
+    `False` and pre-applied the model-wide raw-IQ veto without consulting
+    `resolve_ud_repack_eligibility()`; `gguf_quant_route_audit.py`
+    pre-applied the same veto itself. The planner (`plan_qwen35_gguf_
+    materialization`) was correct all along.
+  - [x] E3b — Fix the call chain so `per-tensor` reaches the planner on the
     production AR path; add a route-table test that fails when the UD file
-    plans `repack=OFF` under the default policy.
-  - [ ] E3c — Execution-profile gate for every variant that changes
+    plans `repack=OFF` under the default policy. **Fixed in admission +
+    audit** (shared `resolve_gguf_decode_repack` in `qwen35_gguf_policy`);
+    RED→GREEN: `test_unit_qwen35_gguf_decode_repack_semantics` (3 new E3
+    tests), live UD-file gate `test_e3_ud_file_default_policy_plans_repack_on`,
+    route-audit unit file incl. a pinned `model-wide` rollback-seam test.
+  - [x] E3c — Execution-profile gate for every variant that changes
     arithmetic or layout, then paired A/B (prefill and decode) plus the route
-    audit diff (optimized bytes before/after).
-  - [ ] E3d — Verify the shipping path, not just the CPU audit: capture the
+    audit diff (optimized bytes before/after). **No variant changes
+    arithmetic or layout on the shipped path** (report-surface fix only), so
+    the profiled A/B is not owed; route-audit prefix/postfix diff recorded —
+    plain control: 0 differing scalars on both backends; UD
+    `decode_repack_enabled` False→True, raw_gguf residents 395→136
+    (12.60→6.23 GB), accepted planned 16.08→15.85 GiB (gfx1100) /
+    16.08→15.19 GiB (gfx1151).
+  - [x] E3d — Verify the shipping path, not just the CPU audit: capture the
     materialization manifest, resident-byte totals, selected variant, and
     fallback reason from `hipengine.LLM.generate()` for both files. Reconcile
     those fields with the route-audit output and fail the experiment if the
-    audit and launched owner disagree.
+    audit and launched owner disagree. **PASS both arms:** the route probe
+    through `hipengine.LLM.generate()` resolves the T16 census owners
+    (q4_k_t16/q5_k_t16/q6_k_qmicro_planar/q8_0_t16 prefill) plus the dense-IQ
+    W4A16 census owner on the UD arm and the T16 prefill family on plain,
+    `RESULT PASS` with exit 0 for each arm (logs:
+    `e3-llm-route-probe-{ud,plain}.log`), agreeing with the postfix audit.
   - [ ] E3e — After per-tensor routing is reachable, rank the raw remainder by
-    bytes and launch share. Explicitly check Q8_0 T16, Q6_K qmicro-planar/T16,
-    Q5/Q6 sidecars, Q3_K W4A16 eligibility, and the lm-head route. Each
-    candidate gets its own route-table test and paired A/B; do not widen a role
-    predicate from static similarity alone.
+    bytes and launch share. **Bytes rank recorded** (postfix audit, gfx1100):
+    IQ4_XS ×117, IQ4_NL ×7, Q3_K ×7, IQ3_S ×4, Q4_K tied-source ×1 = 136 raw
+    residents / 6.23 GB. Launch-share re-rank after E4's re-census; each
+    candidate (Q8_0 T16 decode, Q6_K variants, Q5/Q6 sidecars, Q3_K W4A16,
+    lm-head route) still gets its own route-table test and paired A/B — do not
+    widen a role predicate from static similarity alone.
 - [ ] **E4 — Ranked decode remainder (H4 / H6 / H7).** Q5_K direct GEMV and
   Q4_K single local32 owners/routes, in census order, each behind its own gate
   and paired A/B. Before writing a new leaf, split the trace into kernel time,
@@ -586,7 +618,7 @@ refusal.
 | E0 baseline (2026-09-23) | — | −32.5 / −31.9 / −32.5% | −36.7 / −40.7 / −40.5% | 856.41 (plain 571.59)¹ | 9.81 (plain 6.54)¹ | n/a (diagnostic) | recorded |
 | E1 prefill census | H1/H5/H7/H8 | — | census window 0.6393 (1687.9 vs 2640.3 ms, not a paired A/B) | 1264/window (plain 1740) | — | n/a (attribution) | recorded 2026-09-24: H1 refuted, IQ one-wave 48.18% + Q5_T16 24.81% rank the gap; route probe PASS; T16-live-vs-audit-OFF divergence owed to E3a |
 | E2 decode policy declaration | H2 | window invalidated (see State) | window invalidated; A/B prefill 0.9994x | 807.97 (E0-protocol census) | 6.28 (unprofiled wall 91.81 − pure 85.53) | **PASS**: 162-row ×2 bit-identical (KL mean 4.68e-5, max 8.55e-4, top1 1.0000 overall/per-scope), local32 probe gate, LLM.generate route probe | executed 2026-09-24: paired A/B decode **1.3330x** (8.1089 → 10.8090 tok/s, CV 0.76%/0.13%), strict-IQ 61.64 → 5.36 ms/token (−91%), unprofiled warm 1.347x vs E0; `ud_plain_parity` **pending** per lead directive 2026-09-25 (set pending and move on) — three windows invalidated by campaign 5.1's 2% prefill@512 visit check under evening host drift (probe start 314 vs 286-292 floor; the 04:48 baseline agreed to 0.5%); iteration 5 logged with metric unchanged; record in the E2d artifact + E2 checkboxes |
-| E3 production per-tensor repack | H3/H5/H7 | — | — | — | — | required | open |
+| E3 production per-tensor repack | H3/H5/H7 | — (report-surface unit; runtime allocation byte-identical) | — | — | — | **PASS**: RED→GREEN unit tests, live UD-file gate, full-suite broad run + focused repair, route-audit plain 0-diff control, `LLM.generate` route probe PASS ×2 arms | executed 2026-09-25: **H5 divergence located** — the planner was always per-tensor-correct; admission coerced `decode_repack=None`→False plus a model-wide raw-IQ veto, and the route-audit script pre-applied the same veto, so both report surfaces recorded `repack=OFF`. Fix = shared `resolve_gguf_decode_repack` + eligibility-gated veto; `model-wide` seam reproduces the pre-fix record, plain control 0 differing scalars; UD report: raw_gguf 395→136 residents (12.60→6.23 GB), planned 16.08→15.85 GiB (gfx1100) / →15.19 GiB (gfx1151), routes Q4_K 103×`q4_k_t16`, Q5_K 131×`q5_k_t16`, Q6_K 24×`q6_k_qmicro_planar`, Q8_0 104×`q8_0_t16`. No perf claim owed (no runtime change); metric untouched → iteration logged. Artifact: `benchmarks/results/2026-09-25-zbook-e3-route-audit-repack-truth.json` |
 | E4 Q5/Q4 decode owners | H4/H6 | — | — | — | — | required | open |
 | E6 gate/up + residual fusion | H9 | — | — | — | — | required | open |
 | E7 GDN alpha/beta fused path | H10 | — | — | — | — | bit-exact lane if exact | open |
