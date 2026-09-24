@@ -795,9 +795,29 @@ def gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
     tile_m: int | None = None,
     tile_n: int | None = None,
 ) -> None:
-    """Launch cooperative dense Q4T16 WMMA prefill (BF16->BF16)."""
+    """Launch cooperative dense Q4T16 WMMA prefill (BF16->BF16).
+
+    Past 384 rows every measured owner band in the gfx1151 router is
+    exhausted and this leaf is the fallthrough owner; there the
+    bit-exact 64-column sibling halves redundant activation traffic:
+    395.44 vs 381.40 tok/s at 512/128 with identical greedy outputs
+    (2026-09-24 gfx1151 ablation, campaign §3F/§7.4; the 3w8r3/2w2/2w4
+    siblings measured 340.7/351.5/359.7 on the same cell).
+    """
 
     del tile_m, tile_n
+    if int(rows) >= 385:
+        return gguf_q4_k_t16_wmma_prefill_shared_b_w64_bf16_bf16_out(
+            x_ptr,
+            tiles_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
     _launch_dense_t16(
         _Q4_DENSE_WMMA_SHARED_B_BF16,
         x_ptr,

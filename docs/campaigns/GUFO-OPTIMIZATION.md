@@ -221,6 +221,29 @@ blocked by gates, not by absence of headroom. First step when the GPU is free:
 record the effective wave size our gfx1151-qualifying kernels actually compile
 to, then treat geometry as a per-kernel ablation under the existing gates.
 
+**Measured on-route status (2026-09-24, gfx1151, Qwen3.8-27B `Q4_K_M`,
+512/128).** First ablation executed under this item. The gfx1151 router's
+measured owner bands stop at 384 rows (`SHARED2_384_MAX_ROWS`), so the
+512-row production cell reached the 48-column shared-B base purely by
+fallthrough — and that family is 337.9 ms, 25.4% of prefill, in the same-day
+kernel trace. A/B of the same-`.hip` siblings at rows >= 385 (base wrapper
+delegation, all five arms with identical `correctness_sanity` blocks):
+
+| rows >= 385 owner | prefill tok/s (mean of 3) | vs base |
+| --- | ---: | ---: |
+| shared-B 48-col base (stock) | 381.40 | — |
+| **w64 64-col** | **395.44** | **+3.7%** |
+| shared_b3w8r3 | 340.66 | -10.7% |
+| shared_b2w2 | 351.55 | -7.8% |
+| shared_b2w4 | 359.71 | -5.7% |
+
+The base leaf (`hipengine/kernels/hip_gfx1100/quant/gguf_k_t16_selected_prefill.py`)
+now delegates to w64 past 384 rows. The remaining §3F work is the per-kernel
+effective wave-size record for the rest of the gfx1151-qualifying set; the
+`hipengine/kernels/hip_gfx1151/` host router itself was not edited (outside
+the loop's declared scope), so its bands still name the base past 384 — the
+decision lives one level down until a router-band update is scoped.
+
 ### G. Measurement tooling and MALL discipline (LOW cost, enables everything above)
 
 From `docs/PERFORMANCE.md` and their tool tree:
