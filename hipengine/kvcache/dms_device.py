@@ -346,11 +346,13 @@ class DMSDevicePayloadStore:
         # a split workspace sized for a single row. A verifier binds several
         # rows of the same request at once, so it needs [rows, kv_heads] planes
         # and a workspace covering the row axis as well as the split count.
-        # Both grow on demand and are bounded by the store's row bound.
+        # The extent planes are per layer, like the persistent [kv_heads] ones,
+        # so binding one layer cannot silently redirect another. Both grow on
+        # demand and are bounded by the store's row bound.
         self._max_rows = int(max_pack_rows)
         self._split_rows = 0
-        self._rows_base: DeviceBuffer | None = None
-        self._rows_live: DeviceBuffer | None = None
+        self._rows_base: list[DeviceBuffer | None] = [None] * self._layers
+        self._rows_live: list[DeviceBuffer | None] = [None] * self._layers
         self._rows_capacity = 0
         self._rows_q: DeviceBuffer | None = None
         self._rows_out: DeviceBuffer | None = None
@@ -749,8 +751,9 @@ class DMSDevicePayloadStore:
         The AR route publishes one ``[kv_heads]`` plane per layer, which is the
         extent of its single row. The attention kernel indexes a span set as
         ``row * kv_heads + head``, so a verifier that binds several rows of one
-        request at once needs the pair of planes that index carries. A binding
-        stays valid until a later bind grows the planes.
+        request at once needs the pair of planes that index carries, for the
+        layer being attended. A binding stays valid until a later bind grows the
+        planes; layers are independent, as they are for the persistent planes.
         """
 
         rows = int(rows)
@@ -758,15 +761,20 @@ class DMSDevicePayloadStore:
             raise ValueError("DMS multi-row extents exceed the store's row bound")
         if rows <= self._rows_capacity:
             return
-        old_buffers = (self._rows_base, self._rows_live)
-        if any(buffer is not None for buffer in old_buffers):
+        old_buffers = [
+            buffer
+            for pair in zip(self._rows_base, self._rows_live)
+            for buffer in pair
+            if buffer is not None
+        ]
+        if old_buffers:
             self._runtime.device_synchronize()
             for buffer in old_buffers:
                 self._buffers.remove(buffer)
                 free(buffer, runtime=self._runtime)
         nbytes = rows * self._heads * 4
-        self._rows_base = self._alloc(nbytes)
-        self._rows_live = self._alloc(nbytes)
+        self._rows_base = [self._alloc(nbytes) for _ in range(self._layers)]
+        self._rows_live = [self._alloc(nbytes) for _ in range(self._layers)]
         self._rows_capacity = rows
 
     def bind_row_spans(
@@ -779,9 +787,10 @@ class DMSDevicePayloadStore:
         """Publish ``[rows, kv_heads]`` extents and return their device pointers.
 
         ``base`` and ``live`` are the DMS span set's per-(row, kv head) dense
-        extents: every row reads its own number of tokens from the same
-        per-head planes, which is the ``per_head_variable`` layout the compact
-        store already produces.
+        extents for one layer: every row reads its own number of tokens from the
+        same per-head planes, which is the ``per_head_variable`` layout the
+        compact store already produces. Each layer keeps its own planes, so a
+        caller may bind every layer up front and then attend them in any order.
         """
 
         self._check_closed()
@@ -802,12 +811,12 @@ class DMSDevicePayloadStore:
             raise ValueError("DMS multi-row extents must be non-negative")
         self._ensure_row_planes(rows)
         copy_host_to_device(
-            self._rows_base, host_array_ptr(base_values), base_values.nbytes
+            self._rows_base[layer], host_array_ptr(base_values), base_values.nbytes
         )
         copy_host_to_device(
-            self._rows_live, host_array_ptr(live_values), live_values.nbytes
+            self._rows_live[layer], host_array_ptr(live_values), live_values.nbytes
         )
-        return int(self._rows_base.ptr), int(self._rows_live.ptr)
+        return int(self._rows_base[layer].ptr), int(self._rows_live[layer].ptr)
 
     def attention_rows_device(
         self,
@@ -844,14 +853,16 @@ class DMSDevicePayloadStore:
         if capacity <= 0:
             raise ValueError("DMS direct device attention requires positive capacity")
         if base_ptr is None or live_ptr is None:
-            if self._rows_base is None or self._rows_live is None:
+            bound_base = self._rows_base[layer]
+            bound_live = self._rows_live[layer]
+            if bound_base is None or bound_live is None:
                 raise ValueError("bind DMS multi-row extents before attending them")
             if rows > self._rows_capacity:
                 raise ValueError(
                     "DMS multi-row attention exceeds the bound extent planes"
                 )
-            base_ptr = self._rows_base.ptr
-            live_ptr = self._rows_live.ptr
+            base_ptr = bound_base.ptr
+            live_ptr = bound_live.ptr
         effective_scale = float(scale) if scale is not None else float(self._dim**-0.5)
         num_splits = self._ensure_split_workspace(capacity, rows)
         assert self._split_partial_out is not None
