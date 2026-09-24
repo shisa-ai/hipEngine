@@ -240,3 +240,117 @@ def test_builtin_registry_exposes_distinct_dense_and_moe_factories() -> None:
         resolve_gguf_mtp2_adapter("moe_nextn")
         is create_qwen35_gguf_moe_mtp2_adapter
     )
+
+
+class _RecordingPool:
+    """Minimal stand-in for the KV pool's named resident-consumer ledger."""
+
+    def __init__(self, *, refuse: str | None = None) -> None:
+        self.charges: list[tuple[str, int]] = []
+        self.released: list[tuple[str, int]] = []
+        self.refuse = refuse
+        self._tokens: dict[object, tuple[str, int]] = {}
+
+    def reserve_resident_bytes(self, name, nbytes):
+        if self.refuse == str(name):
+            from hipengine.runtime.memory_admission import (
+                MemoryAdmissionRefused,
+                MemoryConsumer,
+                price_memory_admission,
+            )
+
+            raise MemoryAdmissionRefused(
+                price_memory_admission(
+                    free_bytes=1,
+                    consumers=(MemoryConsumer(str(name), int(nbytes)),),
+                    reserve_bytes=0,
+                )
+            )
+        token = object()
+        self.charges.append((str(name), int(nbytes)))
+        self._tokens[token] = (str(name), int(nbytes))
+        return token
+
+    def release_private_workspace(self, token):
+        self.released.append(self._tokens.pop(token))
+
+
+def _charge_test_adapter(pool) -> Qwen35GGUFMoEMTP2Adapter:
+    adapter = object.__new__(Qwen35GGUFMoEMTP2Adapter)
+    adapter.owner = SimpleNamespace(_kv_pool=pool)
+    adapter._resident_charge_tokens = {}
+    return adapter
+
+
+def test_moe_adapter_prices_its_slabs_through_the_pool_budget() -> None:
+    """The draft-KV and target-hidden slabs are charged, per target, by name."""
+
+    pool = _RecordingPool()
+    adapter = _charge_test_adapter(pool)
+
+    adapter._charge_resident_slab(7, "draft_kv", 2048)
+    adapter._charge_resident_slab(7, "target_hidden_slab", 1024)
+    adapter._charge_resident_slab(9, "draft_kv", 512)
+    assert pool.charges == [
+        ("draft_kv", 2048),
+        ("target_hidden_slab", 1024),
+        ("draft_kv", 512),
+    ]
+
+    # One target's slabs can be freed on their own; the rest stay charged.
+    adapter._release_resident_slab_charges(7)
+    assert pool.released == [("draft_kv", 2048), ("target_hidden_slab", 1024)]
+    assert set(adapter._resident_charge_tokens) == {9}
+
+    adapter._release_resident_slab_charges()
+    assert pool.released[-1] == ("draft_kv", 512)
+    assert adapter._resident_charge_tokens == {}
+    assert pool._tokens == {}
+
+
+def test_moe_adapter_slab_charge_is_refused_before_allocating() -> None:
+    """A refusal propagates out of the charge, so no malloc is reached."""
+
+    from hipengine.runtime.memory_admission import MemoryAdmissionRefused
+
+    pool = _RecordingPool(refuse="draft_kv")
+    adapter = _charge_test_adapter(pool)
+
+    with pytest.raises(MemoryAdmissionRefused) as caught:
+        adapter._charge_resident_slab(7, "draft_kv", 4096)
+
+    assert caught.value.refused_consumer == "draft_kv"
+    assert "draft_kv" in str(caught.value)
+    assert pool.charges == []
+    assert adapter._resident_charge_tokens == {}
+
+
+def test_moe_adapter_skips_the_charge_when_the_pool_has_no_ledger() -> None:
+    adapter = _charge_test_adapter(SimpleNamespace())
+    adapter._charge_resident_slab(7, "draft_kv", 4096)
+    adapter._charge_resident_slab(7, "target_hidden_slab", 0)
+    assert adapter._resident_charge_tokens == {}
+    # Releasing with nothing charged is a no-op rather than an error.
+    adapter._release_resident_slab_charges()
+    adapter._release_resident_slab_charges(7)
+
+
+def test_moe_dense_kv_size_helper_matches_what_the_allocator_allocates(monkeypatch) -> None:
+    """The priced bytes are the allocated bytes, not a second estimate."""
+
+    from hipengine.generation import qwen35_gguf as gguf
+
+    allocated: list[int] = []
+
+    def fake_malloc(nbytes, *, runtime):
+        allocated.append(int(nbytes))
+        return DeviceBuffer(ptr=0x1000, nbytes=int(nbytes))
+
+    monkeypatch.setattr("hipengine.core.memory.malloc", fake_malloc)
+    key_cache, value_cache, buffers = gguf._allocate_mtp_dense_kv(
+        runtime=SimpleNamespace(), capacity=64, qk_head_dim=128, kv_heads=2
+    )
+
+    priced = gguf._mtp_dense_kv_nbytes(capacity=64, qk_head_dim=128, kv_heads=2)
+    assert priced == sum(allocated) == int(key_cache.nbytes) + int(value_cache.nbytes)
+    assert len(buffers) == 2
