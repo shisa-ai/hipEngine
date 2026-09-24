@@ -1297,6 +1297,17 @@ def _new_mtp_draft_runner(
     )
 
 
+def _mtp_dense_kv_nbytes(*, capacity: int, qk_head_dim: int, kv_heads: int = 2) -> int:
+    """Bytes ``_allocate_mtp_dense_kv`` will allocate for this geometry.
+
+    Exposed so an admission budget can price the draft KV slab before the
+    allocation happens, instead of the limit being discovered as a HIP OOM.
+    """
+
+    rows = int(capacity)
+    return 2 * rows * int(kv_heads) * int(qk_head_dim) * 4
+
+
 def _allocate_mtp_dense_kv(
     *,
     runtime: Any,
@@ -1307,7 +1318,9 @@ def _allocate_mtp_dense_kv(
     from hipengine.core.memory import malloc
 
     rows = int(capacity)
-    key_nbytes = rows * int(kv_heads) * int(qk_head_dim) * 4
+    key_nbytes = _mtp_dense_kv_nbytes(
+        capacity=rows, qk_head_dim=qk_head_dim, kv_heads=kv_heads
+    ) // 2
     value_nbytes = key_nbytes
     key_cache = malloc(key_nbytes, runtime=runtime)
     value_cache = malloc(value_nbytes, runtime=runtime)
