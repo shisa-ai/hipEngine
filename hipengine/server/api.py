@@ -285,26 +285,35 @@ class _SpeculativeMTPRouteReason(str, Enum):
 
 # Why automatic intent is withheld at a width whose cell executes.
 #
-# The INT8 packed cells are declared to physical c4
-# (`gguf_dense_int8_gfx1151_group_native_chain` /
-# `gguf_dense_int8_gfx1100_group_native_chain`, `max_group_rows=4`) and the
-# width-2 cell runs: reproduced live at the c1/c2/c4 sweep's own settings, a
-# two-request overlap reported `queue_group.request_count 2`, group rows [2],
-# 16 drafts over 8 cycles, and resolved
-# `implemented_gguf_dense_int8_gfx1151_group_native_chain`.
+# Two independent causes have been recorded here, and only the second is what a
+# live c2 overlap actually reports today.
 #
-# Automatic intent is still withheld there because the INT8 request's static
-# eligibility caps realized group rows at one, so a due width-2 group is
-# declined in `qwen35_gguf_mtp2.py` ("width N exceeds static group bound") and
-# `partition_max_requests` resolves 0, which reports this reason and selects the
-# autoregressive route. That is a selection default over working paths, not a
-# capability miss: the explicit arm of the same sweep engages c2 at 25.75 tok/s
-# against its own AR baseline's 10.79.
+# 1. The INT8 static width bound. A singleton INT8 request selected the C1
+#    declaration (`gguf_dense_int8_native_chain`, depth 7, one row) and carried
+#    `max_realized_group_rows=1`, so `partition_max_requests` resolved a due
+#    width-2 group to 0 even though the packed cells are declared to physical c4
+#    and execute. Fixed in `hipengine/models/qwen35.py`: the static width bound
+#    now follows the widest automatic-eligible declaration for the request's
+#    storage and backend, while depth stays with the declaration the realized
+#    width selects, so an unlisted wider cell still fails closed.
 #
-# Clearing it is a code change rather than a flag: raise the INT8 static
-# eligibility width to the declaration's `max_group_rows`, then re-run
-# `python3 scripts/gguf_mtp_c1c8_server_bench.py --mtp-request-mode automatic`
-# and confirm `engaged_cells` and `route_expectation_passed` at c1, c2 and c4.
+# 2. The storage a sweep actually runs. `scripts/gguf_mtp_c1c8_server_bench.py`
+#    builds `LLM` and `ServerConfig` without a KV storage selector and has never
+#    contained one, so it runs the product default; `/ready` reports
+#    `effective_kv_storage: bf16` for that construction, and a realized width-2
+#    automatic overlap resolves the retained BF16 row
+#    `qwen38-q4km-gfx1151-production-bf16-c2-k3-d24`, whose
+#    `automatic_eligible` is false and whose reason is
+#    `diagnostic_production_c2_after_ar_rebase`. That is a promotion decision on
+#    a measured cell -- the explicit arm of the same sweep engages it at 25.75
+#    tok/s against its own AR baseline's 10.79 -- so the route that lifts it is
+#    that row's promotion, not a code change here.
+#
+# A request that wants the INT8 cell has to reach a server whose `/ready`
+# reports `effective_kv_storage: int8_per_token_head` (the CLI route,
+# `hipengine serve --kv-storage int8_per_token_head`, which the INT8 category,
+# lifecycle, prefix, pressure and sampled gates already assert), and a bench
+# artifact has to record that cell or it cannot be told apart from a BF16 one.
 # Recorded in docs/reference/INT8-MTP-SERVER-READINESS.md.
 _SPECULATIVE_MTP_AUTO_REJECTION_REASON = (
     _SpeculativeMTPRouteReason.AUTOMATIC_SCOPE_NOT_PROMOTED.value
