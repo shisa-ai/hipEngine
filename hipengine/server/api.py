@@ -311,9 +311,20 @@ class _SpeculativeMTPRouteReason(str, Enum):
 #
 # A request that wants the INT8 cell has to reach a server whose `/ready`
 # reports `effective_kv_storage: int8_per_token_head` (the CLI route,
-# `hipengine serve --kv-storage int8_per_token_head`, which the INT8 category,
-# lifecycle, prefix, pressure and sampled gates already assert), and a bench
-# artifact has to record that cell or it cannot be told apart from a BF16 one.
+# `hipengine serve --kv-storage int8_per_token_head`, or the bench's own
+# `--kv-storage`, which now records the cell and refuses a mismatch).
+#
+# 3. Provider registration for a realized group wider than one. Measured on the
+#    INT8 cell itself (automatic arm, c1/c2/c4), the route layer admits --
+#    `selected_route: speculative_mtp`,
+#    `selection_reason: implemented_gguf_dense_int8_gfx1151_group_native_chain`
+#    -- and the resident owner then reports `plan_ar_only: true`,
+#    `plan_reason: no_provider`,
+#    `provider_decline_reason: request N unregistered or disabled`, so every
+#    step falls back with `no_provider` and this reason is not the one the
+#    response reports (`backend_k0_fallback` is). The requests are never
+#    registered with the MTP2 adapter at a width above one; that registration is
+#    the gate, not this constant.
 # Recorded in docs/reference/INT8-MTP-SERVER-READINESS.md.
 _SPECULATIVE_MTP_AUTO_REJECTION_REASON = (
     _SpeculativeMTPRouteReason.AUTOMATIC_SCOPE_NOT_PROMOTED.value
