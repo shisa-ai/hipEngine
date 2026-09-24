@@ -1676,40 +1676,56 @@ def test_q5_t16_dense_tile8_matches_production_bits(
     t16_selected_library,
 ) -> None:
     rng = np.random.default_rng(0x38A58)
-    rows, in_features, out_features = 1, 512, 32
-    raw = make_q5_k_weight(out_features, in_features)
-    tiles = repack_gguf_q5_k_tile16(raw[None, ...]).tiles
-    x_bf16 = _f32_to_bf16_u16(
-        rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
-    )
-    control = _run_dense_single(
-        gguf_q5_k_t16_gemv_decode_bf16_bf16_out,
-        x_bf16,
-        tiles,
-        out_features,
-        np.uint16,
-        t16_selected_library,
-    )
-    candidate = _run_dense_single(
-        gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out,
-        x_bf16,
-        tiles,
-        out_features,
-        np.uint16,
-        t16_selected_library,
-    )
+    # E4a (UD-GFX1151-OPTIMIZE2): rows=1 tile8-vs-direct exactness over every
+    # Q5_T16 production decode shape of Qwen3.8-27B UD plus a small
+    # non-boundary shape. Five of these shapes now route to tile8 through
+    # GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE; attn_v (5_120, 1_024) keeps the
+    # direct owner (0.99x in the paired screen) but must stay exact either way.
+    shapes = [
+        (1, 512, 32),                      # small non-boundary control
+        (1, 6_144, 5_120),                 # ssm_out
+        (1, 5_120, 17_408),                # ffn_up
+        (1, 17_408, 5_120),                # ffn_down
+        (1, 5_120, 6_144),                 # attn_gate
+        (1, 5_120, 10_240),                # attn_qkv
+        (1, 5_120, 1_024),                 # attn_v
+        (1, 5_120, 12_288),                # attn_q
+    ]
+    for rows, in_features, out_features in shapes:
+        raw = make_q5_k_weight(out_features, in_features)
+        tiles = repack_gguf_q5_k_tile16(raw[None, ...]).tiles
+        x_bf16 = _f32_to_bf16_u16(
+            rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
+        )
+        control = _run_dense_single(
+            gguf_q5_k_t16_gemv_decode_bf16_bf16_out,
+            x_bf16,
+            tiles,
+            out_features,
+            np.uint16,
+            t16_selected_library,
+        )
+        candidate = _run_dense_single(
+            gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out,
+            x_bf16,
+            tiles,
+            out_features,
+            np.uint16,
+            t16_selected_library,
+        )
 
-    np.testing.assert_array_equal(candidate, control)
-    expected = gguf_quant_gemv(
-        _bf16_u16_to_f32(x_bf16),
-        raw,
-        GGMLQuantizationType.Q5_K,
-    )
-    np.testing.assert_allclose(
-        _bf16_u16_to_f32(candidate),
-        expected,
-        **_TOL,
-    )
+        shape = (in_features, out_features)
+        np.testing.assert_array_equal(candidate, control, err_msg=f"{shape}")
+        expected = gguf_quant_gemv(
+            _bf16_u16_to_f32(x_bf16),
+            raw,
+            GGMLQuantizationType.Q5_K,
+        )
+        np.testing.assert_allclose(
+            _bf16_u16_to_f32(candidate),
+            expected,
+            **_TOL,
+        )
 
 
 def _run_direct_dual_silu_q8_dp4a(

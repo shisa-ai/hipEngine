@@ -2731,8 +2731,17 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         "gguf_q4_k_t16_v1": {
             (5_120, 1_024): "dense_single_col4_bf16_bf16_out",
         },
+        # E4a (UD-GFX1151-OPTIMIZE2): every Q5_T16 decode shape whose rows=1
+        # micro-screen shows tile8 bit-exact and faster routes to the tile8
+        # owner. attn_v (5_120, 1_024) stays on the direct owner: 0.99x
+        # (no win) in the same screen.
         "gguf_q5_k_t16_v1": {
+            (5_120, 6_144): "t16_gemv_decode_tile8_bf16_bf16_out",
+            (5_120, 10_240): "t16_gemv_decode_tile8_bf16_bf16_out",
+            (5_120, 12_288): "t16_gemv_decode_tile8_bf16_bf16_out",
+            (5_120, 17_408): "t16_gemv_decode_tile8_bf16_bf16_out",
             (6_144, 5_120): "t16_gemv_decode_tile8_bf16_bf16_out",
+            (17_408, 5_120): "t16_gemv_decode_tile8_bf16_bf16_out",
         },
     }
     assert GFX1100_GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS == 0
