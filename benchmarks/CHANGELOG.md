@@ -6108,3 +6108,4 @@ Examples:
 - 2026-09-09: `2026-09-09-framework-qwen4exp-post-q5k-family.json` + `...-baselines-v5.json` — R2d six-promotion refresh: device 14.697s (-10.9%), HE PP 268/286/263, Vulkan lead 1.28/1.36/1.56x PP.
 - 2026-09-09: R10 layer-graph A/B (code-p4096) — bit-exact, TG -0.5%; rejected as the measured path.
 - 2026-09-09: q8-wmma-down promotion A/B (12-case, campaign harness) — PP +8.44% geo-mean all-win, TG neutral; T1 gates per worklog 20260909T220000.
+- 2026-09-24: `2026-09-24-gemma4-26b-a4b-attention-split-rejected.json` — Gemma 4 decode-attention multi-block split: symbol 0.102ms vs 0.263ms (2.6x), rejected at the teacher-forced gate (kl_max 0.304 > 0.05 bar; bf16-KV amplification).

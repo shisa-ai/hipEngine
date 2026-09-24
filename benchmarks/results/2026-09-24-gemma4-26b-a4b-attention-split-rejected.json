@@ -1,0 +1,92 @@
+{
+  "kind": "gemma4_candidate_gate_verdict",
+  "verdict": "rejected",
+  "candidate": "decode-attention multi-block split (slice kernel + sync-free combine, keys > 256)",
+  "reason": "kl_max 0.3036 exceeds the binding production-table bar 0.05; bit-exactness unattainable under re-grouped reduction with bf16 KV feedback",
+  "gate": {
+    "baseline_path": "/mnt/nvme1/gemma4-eval/teacher-forced-6224cc0576fb.npz",
+    "baseline_sha256": "a79a3146c1d56792b22526199df2df992d86294637fee612b58981b621d50acf",
+    "chain_sha256": "9730ebf884a19ea6f10c23dcc84061702b7663d53f092f8a75832667b472e211",
+    "direction": "kl(baseline || candidate)",
+    "rows": 1023,
+    "vocab": 262144,
+    "percentile_method": "nearest-rank",
+    "kl_mean": 0.000856049523590813,
+    "kl_p95": 0.00021369373613974973,
+    "kl_p99": 0.011052621182649928,
+    "kl_max": 0.30362118442192454,
+    "top1_rate": 0.9990224828934506,
+    "top1_flips": 1,
+    "top1_flip_rows": [291],
+    "failed": ["kl_max"],
+    "rows_kl_gt_0.05": [272, 278, 288, 291],
+    "thresholds": {
+      "kl_mean": 0.001,
+      "kl_p95": 0.005,
+      "kl_p99": 0.02,
+      "kl_max": 0.05,
+      "top1_rate": 0.99
+    },
+    "threshold_source": "docs/EXECUTION-PROFILES.md production table"
+  },
+  "control": {
+    "policy": "gemma4_decode_slices forced to 1 (parent single-kernel path)",
+    "identical_to_baseline": true,
+    "kl_max": 0.0,
+    "kl_mean": 0.0,
+    "note": "proves harness determinism and that all divergence is the split arithmetic"
+  },
+  "slice_bisection": {
+    "dynamic_policy": "kl_max 0.3036 (4 digits) at keys > 256 with up to 16 slices",
+    "fixed_s2": "kl_max 0.3036, same 4 failing rows, row-291 logit rms 2.5713",
+    "conclusion": "verdict is driven by the exp-shift/grouping difference common to any split, not slice count"
+  },
+  "performance": {
+    "performance_claim": true,
+    "scope": "single-kernel microbench of the exported decode symbol, campaign attention shape, 3 stable runs",
+    "baseline_ms_per_launch": 0.263,
+    "candidate_ms_per_launch": 0.102,
+    "speedup": 2.58,
+    "campaign_metric_impact": "not measured: candidate failed its promotion gate before harness promotion"
+  },
+  "correctness_band": {
+    "f32_max_rel_vs_parent": 0.00011440667890066307,
+    "f32_max_abs_vs_parent": 1.430511474609375e-06,
+    "keys_tested": [1, 256, 257, 300, 517, 777, 1040, 1152, 4096],
+    "attention_suite_with_candidate": "92/92 pass (parity + routing + geometry, bounded f32 band, bf16 exact at suite shapes)",
+    "bf16_model_config_flips": "1-ulp bf16 output flips observed at (16,8,256) keys=257 and (16,2,512) keys=292 — the gate-failure seed"
+  },
+  "model_decode_structure": {
+    "calls_logged": 30690,
+    "layers_per_step": 30,
+    "steps": 1023,
+    "configs": [
+      {"heads": 16, "kv_heads": 8, "head_dim": 256, "scale": 1.0, "calls": 25575},
+      {"heads": 16, "kv_heads": 2, "head_dim": 512, "scale": 1.0, "calls": 5115}
+    ],
+    "mask": "dense (live == keys on every call)",
+    "keys_by_row": "keys = row + 1; split engages at row 256 (keys 257)"
+  },
+  "candidate_patch": {
+    "path": "/mnt/nvme1/gemma4-eval/gemma4-attention-split-candidate.patch",
+    "sha256": "ab777fb9fbfc4f9ffca868a7f8a8d2252688d10e243ebd7623279b22be0803d3",
+    "base_commit": "378afb64db9bde71458a586d6b6d1ffcb986a5b4"
+  },
+  "gate_artifacts": {
+    "verdict_json": "/mnt/nvme1/gemma4-eval/gate-split-1790247558.json",
+    "captures": [
+      "/mnt/nvme1/gemma4-eval/candidate-split.npz",
+      "/mnt/nvme1/gemma4-eval/candidate-s2.npz",
+      "/mnt/nvme1/gemma4-eval/candidate-s1control.npz",
+      "/mnt/nvme1/gemma4-eval/candidate-instr.npz"
+    ]
+  },
+  "provenance": {
+    "git_commit": "378afb64db9bde71458a586d6b6d1ffcb986a5b4",
+    "gpu": "AMD Radeon RX 7900 XTX (physical GPU1, ROCR_VISIBLE_DEVICES=1)",
+    "artifact_path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "context_length": 8192
+  },
+  "rows": 1023,
+  "vocab": 262144
+}
