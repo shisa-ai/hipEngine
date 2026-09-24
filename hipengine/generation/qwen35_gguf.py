@@ -1342,6 +1342,56 @@ class _GGUFNativeBatchRun:
     scheduling: dict[str, Any]
 
 
+def declared_int8_scale_dtype(
+    declarations: Sequence[Any],
+    *,
+    backend: str,
+    target_arch: str,
+    weight_quant: str | None,
+    kv_storage: str,
+    storage_layout: str,
+    scale_granularity: str,
+    requested_scale_dtype: str,
+) -> str | None:
+    """The scale dtype the kernels declare for this INT8 KV contract.
+
+    Every INT8 KV declaration names the scale dtype its decode leaf reads, and
+    the request default (fp16) is not it. A key carrying an undeclared dtype
+    matches no declaration at all, so the capability resolves as a contract miss
+    instead of admitting -- or refusing -- the contract that exists, and
+    ``max_direct_rows`` comes back zero even where a declaration covers the
+    artifact. Binding the declared dtype keeps the capability, the prepared
+    policy and the allocation on one contract.
+
+    Returns ``None`` when the request already carries a declared dtype, when no
+    declaration covers the other axes, or when none names a dtype.
+    """
+
+    declared: list[str] = []
+    for row in declarations:
+        if getattr(row, "backend", None) != backend:
+            continue
+        if getattr(row, "target_arch", None) != target_arch:
+            continue
+        row_quant = getattr(row, "weight_quant", None)
+        if row_quant is not None and weight_quant is not None:
+            if row_quant != weight_quant:
+                continue
+        if getattr(row, "kv_storage", None) != kv_storage:
+            continue
+        if getattr(row, "storage_layout", None) != storage_layout:
+            continue
+        if getattr(row, "scale_granularity", None) != scale_granularity:
+            continue
+        dtype = str(getattr(row, "scale_dtype", "") or "")
+        if dtype and dtype not in declared:
+            declared.append(dtype)
+    requested = str(requested_scale_dtype)
+    if requested in declared or not declared:
+        return None
+    return declared[0]
+
+
 @dataclass
 class Qwen35GGUFBringupGenerator:
     """Public API GGUF greedy generator over a persistent resident session."""
@@ -1558,7 +1608,34 @@ class Qwen35GGUFBringupGenerator:
         )
         resolved = requested
         if requested.storage_dtype.value == "int8_per_token_head":
+            requested_dtype = str(requested.scale_dtype.value)
+            declared_dtype = declared_int8_scale_dtype(
+                getattr(self.model_plugin, "kv_capability_declarations", ()),
+                backend=str(self.backend),
+                target_arch=str(self.target_arch),
+                weight_quant=self._kv_weight_quant_key(),
+                kv_storage=requested.storage_dtype.value,
+                storage_layout=str(requested.storage_layout),
+                scale_granularity=str(requested.scale_granularity),
+                requested_scale_dtype=requested_dtype,
+            )
+            if declared_dtype is not None:
+                requested = replace(
+                    requested,
+                    scale_dtype=DType.parse(declared_dtype),
+                )
+                resolved = requested
             capability = self._resolve_int8_kv_capability(requested)
+            if declared_dtype is not None:
+                capability = capability.with_runtime_outcome(
+                    effective_kv_storage=capability.effective_kv_storage,
+                    runtime_action=capability.runtime_action,
+                    reason=(
+                        f"{capability.reason}; bound the declared "
+                        f"{declared_dtype} scale dtype, not the requested "
+                        f"{requested_dtype}"
+                    ),
+                )
             if capability.runtime_action != "admit":
                 if self._int8_kv_diagnostic_override_enabled():
                     capability = capability.with_runtime_outcome(

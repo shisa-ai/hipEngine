@@ -427,6 +427,62 @@ def test_unmatched_scale_axis_names_the_declared_verdict_it_overrides() -> None:
     assert "the retained verdict for that contract is qualified" in qualified.reason
 
 
+def test_int8_request_binds_the_declared_scale_dtype_not_the_fp16_default() -> None:
+    """The fp16 request default matches no INT8 declaration; fp32 is declared.
+
+    Keying the capability on the undeclared default resolves no declaration, so
+    the artifact reports a contract miss and `max_direct_rows: 0` -- which is
+    what keeps the shared direct decode leaf from resolving at a group width
+    above one. Binding the declared dtype is what makes the override's
+    four-row leaf reachable, as
+    `test_gfx1151_rejected_artifact_binds_the_direct_leaf_under_diagnostic_override`
+    shows for the fp32 key.
+    """
+
+    from hipengine.generation.qwen35_gguf import declared_int8_scale_dtype
+
+    declarations = Qwen35GGUFModel().kv_capability_declarations
+    axes = {
+        "backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "weight_quant": "gguf_q4_k_m",
+        "kv_storage": "int8_per_token_head",
+        "storage_layout": "uniform",
+        "scale_granularity": "per_token_head",
+    }
+
+    assert (
+        declared_int8_scale_dtype(
+            declarations, requested_scale_dtype="fp16", **axes
+        )
+        == "fp32"
+    )
+    # A request already on a declared dtype is left alone.
+    assert (
+        declared_int8_scale_dtype(
+            declarations, requested_scale_dtype="fp32", **axes
+        )
+        is None
+    )
+    # Axes no declaration covers do not borrow another contract's dtype.
+    assert (
+        declared_int8_scale_dtype(
+            declarations,
+            requested_scale_dtype="fp16",
+            **{**axes, "scale_granularity": "hadamard_group32"},
+        )
+        is None
+    )
+    assert (
+        declared_int8_scale_dtype(
+            declarations,
+            requested_scale_dtype="fp16",
+            **{**axes, "backend": "hip_gfx1100", "target_arch": "gfx1100"},
+        )
+        == "fp32"
+    )
+
+
 def test_model_artifact_identity_hashes_content_and_invalidates_on_change(tmp_path: Path) -> None:
     path = tmp_path / "same-name.gguf"
     path.write_bytes(b"first-artifact")
