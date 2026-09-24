@@ -64,41 +64,57 @@ Existing direct-runtime results are not HTTP completion evidence.
   gate: admission follows the artifact's admitted no-mirror capability and the
   physical cell the kernels execute. The row that found the gap now reports the
   reason it was written for, over both endpoints at all four lengths.
-- [ ] Automatic intent at physical c2 on INT8 KV. The named verification
-  command does not reach INT8, so this row cannot be cleared by it as written.
-  `scripts/gguf_mtp_c1c8_server_bench.py` constructs `LLM` and `ServerConfig`
-  without a KV storage selector and has never contained one, so it runs the
-  product default; `/ready` reports `effective_kv_storage: bf16` for that exact
-  construction, including when `int8_per_token_head` is passed to both objects.
-  Every artifact that script has produced under an `int8kv` name is therefore a
-  BF16 run. Read live at a realized width of 2 (full route decision, commit
-  `86de3308`), the withholding there is a retained **BF16** evidence row:
-  `policy_cell: qwen38-q4km-gfx1151-production-bf16-c2-k3-d24`,
-  `reason: diagnostic_production_c2_after_ar_rebase`, `automatic_eligible:
-  false`, `static_intent_allowed: false`, so
-  `_serving_plan_route_decision` reports
-  `automatic_mtp_scope_not_promoted`. That is a promotion decision on a measured
-  cell -- the explicit arm of the same sweep engages it at 25.75 tok/s against
-  its own AR baseline's 10.79 -- not a capability miss and not an INT8 static
-  bound.
+- [ ] Automatic intent at physical c2 on INT8 KV. The cell is reached and the
+  INT8 group declaration resolves; what stops it is provider registration for a
+  realized group wider than one.
 
-  The INT8 static-width half of the original finding was real and is now fixed:
-  a request's static width bound follows the widest automatic-eligible
-  declaration for its storage and backend instead of the singleton declaration
-  its own realized width selects (`hipengine/models/qwen35.py`, commit
-  `7c3914162`, pinned by `tests/test_unit_int8_mtp_serving.py`). It is simply
-  not what withholds this sweep's c2, because this sweep is not the INT8 cell.
+  The run: `scripts/gguf_mtp_c1c8_server_bench.py --kv-storage
+  int8_per_token_head --mtp-request-mode automatic` with
+  `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED=1` (the artifact is unqualified for
+  INT8, so the diagnostic override is what reaches the cell; `/ready` then
+  reports `effective_kv_storage: int8_per_token_head`, `runtime_action:
+  diagnostic_override`). Artifact:
+  `benchmarks/results/2026-09-24-gfx1151-qwen38-int8kv-mtp-vs-ar-c1c4-automatic.json`.
+  c1 engages 10/10 at 18.15 tok/s against its AR baseline's 10.80, exact 10/10.
+  c2 and c4 engage 0/10, and the response says why:
 
-  Clearing route, corrected: run the automatic arm against a server whose
-  `/ready` reports `effective_kv_storage: int8_per_token_head` -- the CLI route
-  (`hipengine serve --kv-storage int8_per_token_head`), which the category,
-  lifecycle, prefix, pressure and sampled gates already assert -- and confirm
-  `engaged_cells` and `route_expectation_passed` at c1, c2 and c4 there. If the
-  bench is to be the vehicle for an INT8 row it needs a KV-storage selector that
-  the run records, otherwise its artifact cannot be told apart from a BF16 one.
+  ```
+  selected_route: speculative_mtp
+  selection_reason: implemented_gguf_dense_int8_gfx1151_group_native_chain
+  effective_route: default
+  decision_reason: backend_k0_fallback
+  execution.plan_group_rows: 2
+  execution.plan_ar_only: true
+  execution.plan_reason: no_provider
+  execution.provider_readiness: declined
+  execution.provider_decline_reason: request 26 unregistered or disabled
+  fallback_reason: no_provider
+  ```
 
-  Recorded run: `benchmarks/results/2026-09-24-gfx1151-qwen38-default-kv-mtp-vs-ar-c1c4-automatic.json`
-  (status failed; c1 and c4 engaged 10/10, c2 0/10).
+  So the route layer admits the INT8 packed group -- the static width bound is
+  no longer what declines it, and the declaration that resolves is the group
+  chain -- but the MTP2 provider is never registered for those requests, the
+  plan reports AR-only, and every step falls back with `no_provider`. That is a
+  registration gap for realized groups wider than one, not a selection default
+  and not a capability miss: the same cell runs when the group is one row wide,
+  and the explicit arm engages c2 on this artifact's default cell.
+
+  Clearing route: register the request's static intent for a realized group
+  wider than one and re-run the command above, confirming `engaged_cells` and
+  `route_expectation_passed` at c1, c2 and c4. Start at
+  `register_speculative_request` in `hipengine/generation/qwen35_gguf.py` and
+  `Qwen35GGUFMTP2Adapter.register_request` in
+  `hipengine/generation/qwen35_gguf_mtp2.py`, which is where a request becomes
+  "registered or disabled".
+
+  Two earlier readings of this row are superseded and kept only as history: an
+  INT8 static width bound (fixed in `7c3914162`, and it was real -- it just is
+  not what the INT8 cell reports now), and a BF16 evidence row. The BF16 row
+  reading came from running the automatic sweep without a KV selector: that
+  script had none until `d8b683afa`, so it ran the product default and the
+  artifacts it wrote under an `int8kv` name were BF16 runs. The bench now takes
+  `--kv-storage`, records the requested and effective cell, and refuses to write
+  an artifact when the requested cell did not resolve.
   Evidence: `benchmarks/results/2026-09-23-gfx1151-qwen38-int8kv-mtp-vs-ar-c1c4.json`
   (automatic arm: c2 engaged 0/10, route `default`, decision reason
   `automatic_mtp_scope_not_promoted`; explicit arm: c2 2.386x with 10/10
