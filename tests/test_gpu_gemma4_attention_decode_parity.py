@@ -239,16 +239,16 @@ def test_public_wrapper_tokens_one_routes_to_decode_result(attention_library):
 @pytest.mark.parametrize(
     "head_dim,expected",
     [
-        (512, "warp"),  # two 256-lane tree widths per row: the warp kernel's shape
-        (256, "block"),  # one tree width per row: 16 warps cannot hide the key walk
-        (128, "block"),  # sub-256 geometry is outside the warp kernel entirely
-        (768, "block"),  # three tree widths: no warp instantiation
+        (512, "class"),  # two 256-lane tree widths per row
+        (256, "class"),  # the artifact's sliding-layer geometry
+        (128, "block"),  # sub-256 geometry is outside the key-class kernel
+        (768, "block"),  # three tree widths: no instantiation
     ],
 )
 def test_decode_variant_selection_is_by_geometry(attention_library, head_dim, expected):
     """The launcher's kernel choice is observable, not inferred from timings.
 
-    Both paths are bit-identical, so a parity test cannot tell them apart; this
+    All three paths are bit-identical, so a parity test cannot tell them apart; this
     asserts which one the launcher selected for the shape a caller reaches.
     """
 

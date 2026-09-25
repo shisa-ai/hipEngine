@@ -291,29 +291,23 @@ __device__ __forceinline__ float gemma4_warp_tree(float (&v)[8], unsigned int la
   return v[0];
 }
 
+__device__ inline float gemma4_decode_tree1(
+    float* partial, float value, unsigned int threads, unsigned int tid);
+
 // ---------------------------------------------------------------------------
-// Warp-per-(token, head) decode kernel.
+// Key-class decode kernel: the block kernel's 128-warp concurrency with the
+// intra-warp per-key reduction.
 //
-// The block kernel reduces 256 tree lanes through LDS: a barrier round per
-// stride >= 32, a shared partial row per key, and a publish/broadcast pair per
-// tile. Every one of those is a cross-wave round trip, and measurement puts the
-// cost there rather than in the loads or the arithmetic (ablation study,
-// worklog entry 20260925T194545.594823Z). This kernel keeps the same 256-lane
-// tree, the same ascending-j publish order, the same pass-2 lane partition and
-// the same pass-3 per-dimension chains, but maps eight tree lanes onto each
-// warp lane so the whole reduction is five shuffles plus three in-lane adds
-// with no LDS traffic and no barriers inside the key walk.
-//
-// Tree-lane layout: warp lane w owns tree lanes [8w, 8w+8). The block kernel's
-// strides 128/64/32/16/8 become lane distances 16/8/4/2/1 and its strides
-// 4/2/1 become in-lane adds on lane 0 - the same pairs in the same order, so
-// every logit and the denominator are bit-identical to the block kernel's.
-//
-// The shuffles stay outside their lane guards for the same reason the block
-// kernel's do: on gfx1100 a __shfl_down whose source lane sits in an inactive
-// branch returns 0 and silently drops terms.
-template <typename scalar_t, int kHalves, int kKeysPerTile, int kWarpsPerBlock>
-__global__ void gemma4_attention_decode_warp_kernel(
+// Eight warps share one (token, head); warp w owns the keys w, w+8, w+16, ...
+// and computes each of their logits with the shuffle-exact 256-lane tree above,
+// so pass 1 has no LDS traffic and no barriers at all. The two cross-warp
+// reductions move out of the key walk: each warp publishes its own running
+// maximum and the row maximum is the fmaxf of the eight (order-independent, so
+// bit-exact). Pass 2 and pass 3 are the block kernel's own partitions verbatim -
+// tree lane L accumulates keys j == L (mod 256) ascending, and each dimension
+// keeps its ascending-j chain - so only pass 1 changed shape.
+template <typename scalar_t, int kHalves, int kKeysPerTile>
+__global__ void gemma4_attention_decode_class_kernel(
     const scalar_t* __restrict__ query,
     const scalar_t* __restrict__ key,
     const scalar_t* __restrict__ value,
@@ -330,15 +324,17 @@ __global__ void gemma4_attention_decode_warp_kernel(
   constexpr int kTreeLanes = kWarpLanes * kOwn; // 256, the block kernel's lane count
 
   extern __shared__ float shared[];
-  const unsigned int lane = threadIdx.x & (kWarpLanes - 1);
-  const unsigned int warp = threadIdx.x / kWarpLanes;
-  const int64_t head_index =
-      static_cast<int64_t>(blockIdx.x) * kWarpsPerBlock + static_cast<int64_t>(warp);
-  if (head_index >= tokens * num_heads) {
-    return;
-  }
-  float* logits_s = shared + static_cast<size_t>(warp) * static_cast<size_t>(keys);
+  float* logits_s = shared;
+  float* partial = logits_s + keys;            // kTreeLanes floats for tree1
+  float* max_s = partial + kTreeLanes;         // one running max per warp
 
+  const unsigned int threads = blockDim.x;
+  const unsigned int tid = threadIdx.x;
+  const unsigned int lane = tid & (kWarpLanes - 1);
+  const unsigned int warp = tid / kWarpLanes;
+  const unsigned int warps = threads / kWarpLanes;
+
+  const int64_t head_index = static_cast<int64_t>(blockIdx.x);
   const int64_t token = head_index / num_heads;
   const int64_t head = head_index - token * num_heads;
   const int64_t kv_head = head / (num_heads / num_kv_heads);
@@ -356,24 +352,22 @@ __global__ void gemma4_attention_decode_warp_kernel(
 
   const uint8_t* mask_row = keep_mask + token * keys;
 
-  // Pass 1: per-key logits. A whole tile of keys is in flight at once - mask
-  // bytes first, then every key's K row unconditionally (masked and
-  // out-of-range keys read the clamped row 0 and are discarded at publish), so
-  // the tile's memory-level parallelism is exposed instead of one key per
-  // memory round trip. running_max walks the same ascending-j fmaxf chain.
+  // Pass 1: this warp's key class, kKeysPerTile keys in flight, each logit
+  // reduced by the intra-warp tree.
   float running_max = -INFINITY;
-  for (int64_t j0 = 0; j0 < keys; j0 += kKeysPerTile) {
+  for (int64_t j0 = static_cast<int64_t>(warp); j0 < keys;
+       j0 += static_cast<int64_t>(warps) * kKeysPerTile) {
     float dot[kKeysPerTile][kOwn];
     bool active[kKeysPerTile];
 #pragma unroll
     for (int t = 0; t < kKeysPerTile; ++t) {
-      const int64_t j = j0 + t;
+      const int64_t j = j0 + static_cast<int64_t>(t) * warps;
       const bool in_range = j < keys;
       active[t] = in_range && mask_row[in_range ? j : 0] != 0;
     }
 #pragma unroll
     for (int t = 0; t < kKeysPerTile; ++t) {
-      const int64_t j = j0 + t;
+      const int64_t j = j0 + static_cast<int64_t>(t) * warps;
       const int64_t j_load = j < keys ? j : 0;
       const scalar_t* k_row = key + (j_load * num_kv_heads + kv_head) * head_dim;
 #pragma unroll
@@ -390,7 +384,7 @@ __global__ void gemma4_attention_decode_warp_kernel(
     }
 #pragma unroll
     for (int t = 0; t < kKeysPerTile; ++t) {
-      const int64_t j = j0 + t;
+      const int64_t j = j0 + static_cast<int64_t>(t) * warps;
       float v[kOwn];
 #pragma unroll
       for (int i = 0; i < kOwn; ++i) {
@@ -406,61 +400,36 @@ __global__ void gemma4_attention_decode_warp_kernel(
       }
     }
   }
-  const float row_max = __shfl(running_max, 0);
+  if (lane == 0) {
+    max_s[warp] = running_max;
+  }
+  __syncthreads();
+  float row_max = -INFINITY;
+  for (unsigned int w = 0; w < warps; ++w) {
+    row_max = fmaxf(row_max, max_s[w]);
+  }
 
-  // Pass 2: the block kernel's per-lane denominator partition - tree lane L
-  // accumulates keys j == L (mod 256) in ascending order - with the weights
-  // stored back over their logits for pass 3 to reuse.
-  float acc[kOwn];
-#pragma unroll
-  for (int i = 0; i < kOwn; ++i) {
-    acc[i] = 0.0f;
+  // Pass 2: the block kernel's per-lane denominator partition.
+  float local_sum = 0.0f;
+  for (int64_t j = tid; j < keys; j += threads) {
+    const float weight = expf(logits_s[j] - row_max);
+    local_sum += weight;
+    logits_s[j] = weight;
   }
-  for (int64_t j0 = base; j0 < keys; j0 += kTreeLanes) {
-#pragma unroll
-    for (int i = 0; i < kOwn; ++i) {
-      const int64_t j = j0 + i;
-      if (j < keys) {
-        const float weight = expf(logits_s[j] - row_max);
-        acc[i] += weight;
-        logits_s[j] = weight;
-      }
-    }
-  }
-  const float denominator = __shfl(gemma4_warp_tree(acc, lane), 0);
+  const float denominator = gemma4_decode_tree1(partial, local_sum, threads, tid);
 
-  // Pass 3: the block kernel's weighted sums with the precomputed weight, one
-  // ascending-j chain per dimension.
-  float out_reg[kHalves][kOwn];
-#pragma unroll
-  for (int h = 0; h < kHalves; ++h) {
-#pragma unroll
-    for (int i = 0; i < kOwn; ++i) {
-      out_reg[h][i] = 0.0f;
-    }
-  }
-  for (int64_t j = 0; j < keys; ++j) {
-    const float weight = logits_s[j];
-    if (weight == 0.0f) {
-      continue;
-    }
-    const scalar_t* v_row = value + (j * num_kv_heads + kv_head) * head_dim;
-#pragma unroll
-    for (int h = 0; h < kHalves; ++h) {
-#pragma unroll
-      for (int i = 0; i < kOwn; ++i) {
-        out_reg[h][i] += weight * gemma4_attn_to_float(v_row[h * kTreeLanes + base + i]);
+  // Pass 3: the block kernel's weighted sums with the precomputed weight.
+  for (int64_t d = tid; d < head_dim; d += threads) {
+    float acc = 0.0f;
+    for (int64_t j = 0; j < keys; ++j) {
+      const float weight = logits_s[j];
+      if (weight == 0.0f) {
+        continue;
       }
+      const scalar_t* v_row = value + (j * num_kv_heads + kv_head) * head_dim;
+      acc += weight * gemma4_attn_to_float(v_row[d]);
     }
-  }
-  scalar_t* out_row = out + head_index * head_dim;
-#pragma unroll
-  for (int h = 0; h < kHalves; ++h) {
-#pragma unroll
-    for (int i = 0; i < kOwn; ++i) {
-      out_row[h * kTreeLanes + base + i] =
-          gemma4_attn_to_scalar<scalar_t>(out_reg[h][i] / denominator);
-    }
+    out[head_index * head_dim + d] = gemma4_attn_to_scalar<scalar_t>(acc / denominator);
   }
 }
 
@@ -651,13 +620,10 @@ void gemma4_decode_launch(
       keys);
 }
 
-// Warp-per-head decode launcher. head_dim must be a multiple of the block
-// kernel's 256 tree lanes (1 or 2 halves here); the caller falls back to the
-// block kernel for every other geometry. Shared memory is one logit row per
-// warp, which is smaller than the block kernel's requirement for the same
-// shape, so the caller's shared-bytes check stays a valid upper bound.
-template <typename scalar_t, int kHalves, int kWarpsPerBlock>
-int gemma4_decode_warp_launch(
+// Key-class decode launcher: eight warps per (token, head), one warp per key
+// class, the block kernel's pass 2 and pass 3.
+template <typename scalar_t, int kHalves>
+int gemma4_decode_class_launch(
     const scalar_t* query,
     const scalar_t* key,
     const scalar_t* value,
@@ -671,65 +637,22 @@ int gemma4_decode_warp_launch(
     int64_t keys,
     hipStream_t stream) {
   constexpr int kKeysPerTile = 4;
-  const int64_t heads = tokens * num_heads;
-  const unsigned int grid =
-      static_cast<unsigned int>((heads + kWarpsPerBlock - 1) / kWarpsPerBlock);
-  const unsigned int threads = static_cast<unsigned int>(kWarpsPerBlock) * 32u;
+  constexpr unsigned int kThreads = 256;
   const size_t shared_bytes =
-      static_cast<size_t>(kWarpsPerBlock) * static_cast<size_t>(keys) * sizeof(float);
-  gemma4_attention_decode_warp_kernel<scalar_t, kHalves, kKeysPerTile, kWarpsPerBlock>
-      <<<dim3(grid), dim3(threads), shared_bytes, stream>>>(
-          query,
-          key,
-          value,
-          keep_mask,
-          out,
-          num_heads,
-          num_kv_heads,
-          head_dim,
-          scale,
-          tokens,
+      (static_cast<size_t>(keys) + 256 + 8) * sizeof(float);
+  if (shared_bytes > 64 * 1024) {
+    return -1;
+  }
+  const unsigned int grid = static_cast<unsigned int>(tokens * num_heads);
+  gemma4_attention_decode_class_kernel<scalar_t, kHalves, kKeysPerTile>
+      <<<dim3(grid), dim3(kThreads), shared_bytes, stream>>>(
+          query, key, value, keep_mask, out, num_heads, num_kv_heads, head_dim, scale, tokens,
           keys);
   return static_cast<int>(hipGetLastError());
 }
 
-template <typename scalar_t, int kHalves>
-int gemma4_decode_warp_dispatch(
-    const scalar_t* query,
-    const scalar_t* key,
-    const scalar_t* value,
-    const uint8_t* keep_mask,
-    scalar_t* out,
-    int64_t num_heads,
-    int64_t num_kv_heads,
-    int64_t head_dim,
-    float scale,
-    int64_t tokens,
-    int64_t keys,
-    hipStream_t stream) {
-  // Pack as many (token, head) pairs per block as the logit rows allow, then
-  // fall back to the block kernel if even one row does not fit.
-  const size_t row_bytes = static_cast<size_t>(keys) * sizeof(float);
-  if (row_bytes * 4 <= 48 * 1024) {
-    return gemma4_decode_warp_launch<scalar_t, kHalves, 4>(
-        query, key, value, keep_mask, out, num_heads, num_kv_heads, head_dim, scale, tokens,
-        keys, stream);
-  }
-  if (row_bytes * 2 <= 48 * 1024) {
-    return gemma4_decode_warp_launch<scalar_t, kHalves, 2>(
-        query, key, value, keep_mask, out, num_heads, num_kv_heads, head_dim, scale, tokens,
-        keys, stream);
-  }
-  if (row_bytes <= 48 * 1024) {
-    return gemma4_decode_warp_launch<scalar_t, kHalves, 1>(
-        query, key, value, keep_mask, out, num_heads, num_kv_heads, head_dim, scale, tokens,
-        keys, stream);
-  }
-  return -1;  // no warp-kernel shape fits: caller uses the block kernel
-}
-
-// Which decode kernel the launcher last selected: 1 = warp-per-head (head_dim
-// == 512), 0 = block kernel. Introspection only - it changes no behaviour, and
+// Which decode kernel the launcher last selected: 1 = key-class (head_dim 256
+// or 512), 0 = block kernel. Introspection only - it changes no behaviour, and
 // it is what the routing test asserts instead of inferring the path from
 // timings.
 inline int& gemma4_decode_selection() {
@@ -762,17 +685,19 @@ int launch_gemma4_attention_decode(
     threads_i <<= 1;
   }
   const unsigned int threads = static_cast<unsigned int>(threads_i);
-  // Warp-per-head path: head_dim == 512 (two of the block kernel's 256 tree
-  // lanes per row), where the shuffle-only tree measured 28% faster than the
-  // block kernel (851 vs 1186 us at keys=1024). At head_dim == 256 the same
-  // kernel loses (822 vs 700 us) because one warp per (token, head) leaves 16
-  // warps on the machine and there is not enough concurrency to hide the key
-  // walk, so that geometry keeps the block kernel.
-  if (head_dim == 512) {
-    const int rc = gemma4_decode_warp_dispatch<scalar_t, 2>(query, key, value, keep_mask, out,
-        num_heads, num_kv_heads, head_dim, scale, tokens, keys, stream);
+  // Key-class path: head_dim is exactly one or two of the block kernel's 256
+  // tree lanes, so each key's logit can be reduced by the intra-warp shuffle
+  // tree instead of a shared partial row plus a barrier sequence. Measured
+  // 421 us (head_dim 256) and 665 us (head_dim 512) against the block kernel's
+  // 652-700 and 1186 us at keys=1024. Any other geometry uses the block kernel.
+  if (head_dim == 256 || head_dim == 512) {
+    const int rc = head_dim == 256
+        ? gemma4_decode_class_launch<scalar_t, 1>(query, key, value, keep_mask, out, num_heads,
+              num_kv_heads, head_dim, scale, tokens, keys, stream)
+        : gemma4_decode_class_launch<scalar_t, 2>(query, key, value, keep_mask, out, num_heads,
+              num_kv_heads, head_dim, scale, tokens, keys, stream);
     if (rc >= 0) {
-      gemma4_decode_selection() = 1;  // warp-per-head
+      gemma4_decode_selection() = 1;  // key-class
       return rc;
     }
   }
@@ -819,7 +744,7 @@ int launch_gemma4_attention_decode(
 
 }  // namespace
 
-// Returns 1 when the last decode launch used the warp-per-head kernel, 0 when it
+// Returns 1 when the last decode launch used the key-class kernel, 0 when it
 // used the block kernel. Test/introspection surface for the routing contract.
 extern "C" int hipengine_gemma4_attention_decode_variant(void) {
   return gemma4_decode_selection();

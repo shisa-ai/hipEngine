@@ -324,6 +324,31 @@ flags because a configuration has not been benchmarked.
   warps per (token, head) with a strided key class per warp and the two
   cross-warp reductions hoisted to once per launch; then the 8.0 ms/token host
   gap from iteration 19.
+  *Status 2026-09-25 (iteration 22): **accepted, and it supersedes iteration 21**.
+  Eight warps share one (token, head); warp `w` owns the keys `w, w+8, w+16, ...`
+  and reduces each of their logits with the shuffle-exact 256-lane tree, so pass
+  1 has no LDS traffic and no barriers, while the two cross-warp reductions
+  leave the key walk (each warp publishes its running maximum; the row maximum
+  is the order-independent `fmaxf` of the eight). Pass 2 and pass 3 stay the
+  block kernel's own partitions verbatim, so the kernel remains **bit-exact**
+  (parity suite green at both real geometries, keys 1..8192, both dtypes) and
+  needs no production-profile gate. It beats the block kernel on **both**
+  geometries — 421-428 us vs 652-700 us at sliding/1024 and 665-696 us vs
+  1186 us at full/1024 — so it replaces the warp-per-head kernel, which is
+  deleted as dead code rather than kept as an unselected variant. Campaign
+  metric **33.0213 tok/s from 24.5964 (+34.3%)**, and **+105% over the 16.0931
+  baseline**; public-path parity true. All four rows improved: 128p 44.08 ->
+  47.63, 512p 32.63 -> 39.94, 4096p 14.48 -> 21.45, prefill within noise, public
+  wall improved on every row. Evidence row
+  `2026-09-25-gemma4-26b-a4b-key-class-decode-accepted.json`, worklog entry
+  `20260925T205258.017905Z-lhl-gemma-4-decode-attention-key-class-kernel-keeps-59134e.md`.
+  Position against the comparators: the same-artifact llama.cpp reference is
+  68.92 tok/s, so the engine is at 48% of it (23% at the campaign baseline); the
+  campaign target of 70% of the Qwen3.6-35B-A3B reference (114.57 tok/s) is
+  80.2 tok/s. Next in measured order: pass 3 of the decode attention kernel,
+  which still walks every key once per lane with a single 2-byte V load and a
+  shared-logit read and has never been restructured; then the 8.0 ms/token host
+  gap from iteration 19.
 - [ ] **G4 — Integrated confirmation.** Repeat the primary paired matrix,
   correctness/heldouts and live chat/SSE; verify no hidden fallback. Re-measure
   llama.cpp and Qwen with the frozen comparison contract and report differences

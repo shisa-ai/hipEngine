@@ -1,0 +1,77 @@
+{
+  "kind": "gemma4_campaign_candidate",
+  "verdict": "accepted",
+  "recorded": "2026-09-25, gemma4-moe-perf/g0 iteration 22",
+  "candidate": "key-class decode attention: eight warps per (token, head), one warp per key class, each logit reduced by the shuffle-exact 256-lane tree",
+  "reason": "bit-exact against the block kernel and faster on both geometries (421-428 us vs 652-700 us sliding, 665-696 us vs 1186 us full at keys=1024), moving the campaign metric to 33.0213 tok/s from 24.5964 (+34.3%) and to +105% over the 16.0931 baseline",
+  "supersedes": "benchmarks/results/2026-09-25-gemma4-26b-a4b-warp-decode-accepted.json (warp-per-head, head_dim 512 only)",
+  "mechanism": {
+    "before": "one 256-thread block per (token, head) with the reduction tree spanning its eight warps, so every key costs a shared partial row, three LDS tree rounds, a publish/broadcast pair and a barrier sequence; iteration 20 measured the per-key cost as invariant to the work inside the key iteration, and grid scaling showed the machine ~16x idle",
+    "after": "warp w of eight owns the keys w, w+8, w+16, ... and evaluates each key's whole 256-lane tree with shuffles (lane w owns tree lanes [8w, 8w+8), so strides 128/64/32/16/8 are lane distances 16/8/4/2/1 and strides 4/2/1 are in-lane adds). Pass 1 has no LDS traffic and no barriers. The two cross-warp reductions leave the key walk: each warp publishes its running maximum and the row maximum is the fmaxf of the eight (order-independent, hence bit-exact). Pass 2 and pass 3 are the block kernel's own partitions verbatim.",
+    "trade": "each warp does 8x more tree work per key than the block kernel's distributed tree, but it is issue work rather than a barrier-and-LDS round trip, and 128 warps of concurrency hide it",
+    "why_this_beats_iteration_21": "the warp-per-head kernel removed the same machinery but left 16 warps for a decode step (one per head), which is why it lost at head_dim 256; the key-class kernel keeps the block kernel's 128 warps"
+  },
+  "correctness": {
+    "contract": "bit-exact with the block kernel (same-schedule arithmetic), not a changed-arithmetic candidate: no production-profile KL gate applies",
+    "parity_suite": "tests/test_gpu_gemma4_attention_decode_parity.py",
+    "parity_result": "bitwise equal on every shape, both dtypes, keep and holes masks; green together with tests/test_gpu_gemma4_attention_geometry.py",
+    "covered_shapes": [
+      {"num_heads": 16, "num_kv_heads": 2, "head_dim": 256, "keys": 1024},
+      {"num_heads": 16, "num_kv_heads": 8, "head_dim": 512, "keys": 1024},
+      {"num_heads": 16, "num_kv_heads": 2, "head_dim": 256, "keys": 2055},
+      {"num_heads": 16, "num_kv_heads": 2, "head_dim": 256, "keys": 8192}
+    ],
+    "routing_test": "tests/test_gpu_gemma4_attention_decode_parity.py::test_decode_variant_selection_is_by_geometry - asserts head_dim 512 -> class, 256 -> class, 128/768 -> block through hipengine_gemma4_attention_decode_variant()",
+    "public_path_parity": "true on all four re-measured campaign rows"
+  },
+  "performance": {
+    "microbench": {
+      "tool": "scripts/gemma4_attention_decode_bench.py",
+      "protocol": "one launch per measurement window, 30 iterations, same clock state per comparison, device sync at the end",
+      "rows": [
+        {"geometry": "sliding head_dim=256 keys=1024", "block_us": "652-700", "iteration_21_us": 822, "key_class_us": "421-428"},
+        {"geometry": "full head_dim=512 keys=1024", "block_us": 1186, "iteration_21_us": "851-870", "key_class_us": "665-696"},
+        {"geometry": "full head_dim=512 keys=2048", "block_us": 2210, "iteration_21_us": 1489, "key_class_us": 1174}
+      ]
+    },
+    "campaign_rows": {
+      "metric": "decode_tps",
+      "command": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --samples 3",
+      "label": "g3-key-class",
+      "primary": {"row": "1024p", "incumbent": 24.5964, "candidate": 33.0213, "delta": "+34.3%", "samples": "33.00/33.02/33.02", "prefill_tok_s": 129, "public_wall_s": "13.09 -> 11.81"},
+      "other_rows": [
+        {"row": "128p", "decode_incumbent": 44.08, "decode_candidate": 47.63, "prefill_tok_s": "139 -> 139", "public_wall_s": "3.81 -> 3.58"},
+        {"row": "512p", "decode_incumbent": 32.63, "decode_candidate": 39.94, "prefill_tok_s": "135 -> 135-136", "public_wall_s": "7.70 -> 6.96"},
+        {"row": "4096p", "decode_incumbent": 14.48, "decode_candidate": 21.45, "prefill_tok_s": "108 -> 108", "public_wall_s": "46.68 -> 43.80"}
+      ],
+      "regression_check": "decode improved on all four rows (+8.1% to +48.1%), prefill is unchanged within run-to-run noise on all four, public wall time improved on all four"
+    },
+    "campaign_position": {
+      "campaign_baseline": 16.0931,
+      "candidate": 33.0213,
+      "vs_baseline": "+105%",
+      "llamacpp_same_artifact_decode_tok_s": 68.92,
+      "fraction_of_llamacpp": "48% (23% at the campaign baseline)",
+      "campaign_target": "70% of the Qwen3.6-35B-A3B reference 114.57 tok/s = 80.2 tok/s"
+    }
+  },
+  "changes": {
+    "kernel": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip - gemma4_attention_decode_class_kernel and its launcher; dispatch selects it for head_dim 256 and 512, block kernel for every other geometry and for shapes whose logit row does not fit LDS; the warp-per-head kernel and launcher from iteration 21 are deleted as dead code; gemma4_warp_tree is reused unchanged",
+    "python": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py - gemma4_attention_decode_variant() reports class/block",
+    "tests": "tests/test_gpu_gemma4_attention_decode_parity.py - routing expectations updated to class/class/block/block",
+    "flags": "none: one measured geometry rule inside the launcher, no env var and no fallback chain"
+  },
+  "provenance": {
+    "commit": "pending (this unit)",
+    "worklog_entry": "worklog/entries/20260925T205258.017905Z-lhl-gemma-4-decode-attention-key-class-kernel-keeps-59134e.md",
+    "gates": {
+      "parity": "green (decode parity + attention geometry)",
+      "guard": "pytest tests/test_unit_gemma4_*.py tests/test_gpu_gemma4_*.py -q exit 0",
+      "routing": "4 passed"
+    }
+  },
+  "next": [
+    "pass 3 of the decode attention kernel is now the largest remaining piece: it walks every key once per lane with one 2-byte V load and a shared-logit read, and was never restructured",
+    "the 8.0 ms/token host gap measured in iteration 19 is untouched"
+  ]
+}

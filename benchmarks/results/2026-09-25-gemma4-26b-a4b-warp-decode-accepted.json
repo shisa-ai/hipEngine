@@ -162,5 +162,11 @@
       "guard": "pytest tests/test_unit_gemma4_*.py tests/test_gpu_gemma4_*.py -q exit 0",
       "spills": "none (no scratch_ instructions in the compiled warp kernel)"
     }
+  },
+  "superseded": {
+    "by": "benchmarks/results/2026-09-25-gemma4-26b-a4b-key-class-decode-accepted.json",
+    "when": "2026-09-25, iteration 22",
+    "why": "the warp-per-head kernel won only at head_dim 512 and lost at head_dim 256 because one warp per (token, head) is 16 warps; the key-class kernel keeps eight warps per head and wins at both geometries (421-428 us sliding, 665-696 us full), so the warp-per-head kernel was deleted rather than kept as an unselected variant",
+    "measurements_still_valid": "the iteration-21 microbenchmark and campaign numbers describe the code as it stood at commit 2d94af6cb; they are kept as the record of that candidate"
   }
 }

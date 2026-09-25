@@ -98,7 +98,7 @@ def build_gemma4_attention(
 def gemma4_attention_decode_variant(library: ctypes.CDLL | None = None) -> str:
     """Which decode kernel the launcher last selected.
 
-    ``"warp"`` is the warp-per-head shuffle-tree kernel (``head_dim == 512``),
+    ``"class"`` is the key-class shuffle-tree kernel (``head_dim`` 256 or 512),
     ``"block"`` is the original 256-thread block kernel. Introspection only: the
     two paths are bit-identical, so this is how callers and tests confirm which
     one ran rather than inferring it from timings.
@@ -106,7 +106,7 @@ def gemma4_attention_decode_variant(library: ctypes.CDLL | None = None) -> str:
 
     library = library or build_gemma4_attention(load=True)
     fn = signed_kernel_fn(library, _SYMBOL_DECODE_VARIANT, [], ctypes.c_int)
-    return "warp" if int(fn()) == 1 else "block"
+    return "class" if int(fn()) == 1 else "block"
 
 
 def gemma4_attention_shared_bytes(*, head_dim: int, keys: int) -> int:
