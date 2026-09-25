@@ -389,6 +389,36 @@ flags because a configuration has not been benchmarked.
   the 319-340 us launch, and pass 2 walks every key per lane through LDS), then
   the 8.0 ms/token host gap from iteration 19 (1116 launches x 7.2 us), which is
   now comparable to the whole attention cost.
+  *Status 2026-09-25 (iteration 24): **accepted**. Pass 1's shuffle tree was the
+  measured bottleneck (clean ablations, each keeping the data dependencies alive:
+  replacing the tree with in-lane adds saved 108 us of 318 at sliding, skipping
+  the pass-1 key loop 158 us, while the K loads cost only 25-31 us and the pass-2
+  loop and the LDS logit store cost nothing). It is latency-bound, not
+  throughput-bound - 40 warp-wide shuffles per key in a dependent chain with only
+  8 warps per block and 16 blocks per decode step - so the block is now **512
+  threads with 16 key classes and keys-per-tile 2** (swept 2/4/8 ->
+  290.3/294.1/303.1 us sliding, 271.2/280.4/422.2 us full; 1024 threads was
+  worse on both geometries). The denominator reduction is **pinned to the block
+  kernel's 256 lanes** via `kGemma4ReduceThreads`: pass 2 runs on group 0 and the
+  other 256-thread groups execute `gemma4_decode_tree1` with an empty sum only to
+  reach its barriers, because the tree's addition order depends on its lane count
+  and a 512-thread block would otherwise round the denominator differently
+  (measured: 3.3% of elements off by 1-2 bf16 ulps). Parity caught both
+  512-thread defects before any row was taken. Microbenchmark: sliding 318.9 ->
+  288.4 us and full 339.8 -> 270.1 us at keys=1024, full 509.5 -> 399 us at
+  keys=2048. Campaign metric **41.9049 -> 43.6297 tok/s (+4.1%)**, **+171% over
+  the 16.0931 baseline**; 512p 46.43 -> 47.32, 4096p 25.78 -> 28.49, 128p 48.56
+  -> 48.20 (inside the 47.6-48.8 band that row has held for three iterations,
+  re-measured with a bounded paired rerun), prefill unchanged, public parity
+  true. The engine is at **63% of the same-artifact llama.cpp reference** (68.92
+  tok/s). Evidence row `2026-09-25-gemma4-26b-a4b-wide-block-accepted.json`,
+  worklog entry
+  `20260925T212657.692407Z-lhl-gemma-4-decode-attention-512-thread-block-for-th-423bf9.md`.
+  Next: pass 1's tree still issues 40 shuffles per key and any cheaper reduction
+  changes the addition order, which makes it a changed-arithmetic candidate that
+  needs the production-profile gate rather than parity; and the 8.0 ms/token host
+  gap from iteration 19 (1116 launches x 7.2 us) is now larger than the whole
+  attention kernel.
 - [ ] **G4 — Integrated confirmation.** Repeat the primary paired matrix,
   correctness/heldouts and live chat/SSE; verify no hidden fallback. Re-measure
   llama.cpp and Qwen with the frozen comparison contract and report differences
