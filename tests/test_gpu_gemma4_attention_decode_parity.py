@@ -25,6 +25,11 @@ _SHAPES = [
     (2, 2, 512, 96),  # head_dim 512 -> kTile edge over the 256 thread cap
     (1, 1, 768, 64),  # head_dim above the 256-wide thread cap -> multi-term dots
     (1, 1, 6, 40),  # head_dim < 32 -> sub-wave workgroup (shfl-only tree)
+    # Warp-per-head path (head_dim exactly one or two 256-lane tree widths).
+    (16, 2, 256, 1024),  # the artifact's sliding-layer geometry
+    (16, 8, 512, 1024),  # the artifact's full-layer geometry
+    (16, 2, 256, 2055),  # odd key count past the kKeysPerTile tile edge
+    (16, 2, 256, 8192),  # context cap: one logit row per block
 ]
 
 
@@ -230,3 +235,34 @@ def test_public_wrapper_tokens_one_routes_to_decode_result(attention_library):
     finally:
         for buffer in buffers:
             free(buffer)
+
+@pytest.mark.parametrize(
+    "head_dim,expected",
+    [
+        (512, "warp"),  # two 256-lane tree widths per row: the warp kernel's shape
+        (256, "block"),  # one tree width per row: 16 warps cannot hide the key walk
+        (128, "block"),  # sub-256 geometry is outside the warp kernel entirely
+        (768, "block"),  # three tree widths: no warp instantiation
+    ],
+)
+def test_decode_variant_selection_is_by_geometry(attention_library, head_dim, expected):
+    """The launcher's kernel choice is observable, not inferred from timings.
+
+    Both paths are bit-identical, so a parity test cannot tell them apart; this
+    asserts which one the launcher selected for the shape a caller reaches.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        gemma4_attention_decode_variant,
+    )
+
+    _run_both_symbols(
+        attention_library,
+        dtype="bf16",
+        num_heads=16,
+        num_kv_heads=2,
+        head_dim=head_dim,
+        keys=64,
+        mask_mode="keep",
+    )
+    assert gemma4_attention_decode_variant(attention_library) == expected

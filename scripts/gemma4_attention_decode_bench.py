@@ -51,20 +51,21 @@ GEOMETRIES = {
 }
 
 
-def run_case(library, runtime, *, keys: int, geometry: str, mask_mode: str, iters: int) -> dict:
+def run_case(library, runtime, *, keys: int, geometry: str, mask_mode: str, iters: int,
+             tokens: int = 1) -> dict:
     geo = GEOMETRIES[geometry]
     num_heads = geo["num_heads"]
     num_kv_heads = geo["num_kv_heads"]
     head_dim = geo["head_dim"]
 
     rng = np.random.default_rng(0)
-    q = rng.normal(0, 0.3, size=(1, num_heads, head_dim)).astype(np.float16)
+    q = rng.normal(0, 0.3, size=(tokens, num_heads, head_dim)).astype(np.float16)
     k = rng.normal(0, 0.3, size=(keys, num_kv_heads, head_dim)).astype(np.float16)
     v = rng.normal(0, 0.3, size=(keys, num_kv_heads, head_dim)).astype(np.float16)
-    mask = np.ones((1, keys), dtype=np.uint8)
+    mask = np.ones((tokens, keys), dtype=np.uint8)
     if mask_mode == "zero":
         mask[:] = 0
-    out = np.zeros((1, num_heads, head_dim), dtype=np.float16)
+    out = np.zeros((tokens, num_heads, head_dim), dtype=np.float16)
 
     buffers = []
     ptrs = []
@@ -78,7 +79,7 @@ def run_case(library, runtime, *, keys: int, geometry: str, mask_mode: str, iter
     def once() -> None:
         gemma4_attention_prefill_bf16(
             q_p, k_p, v_p, m_p, o_p,
-            tokens=1,
+            tokens=tokens,
             num_heads=num_heads,
             num_kv_heads=num_kv_heads,
             head_dim=head_dim,
@@ -101,10 +102,11 @@ def run_case(library, runtime, *, keys: int, geometry: str, mask_mode: str, iter
             free(buf)
 
     per_launch_us = (time.perf_counter() - started) / iters * 1e6
-    unique_kv = keys * num_kv_heads * head_dim * 2 * 2  # K+V bf16, read once
-    issued_kv = keys * num_heads * head_dim * 2 * 2 * 3  # per query head, 3 passes
+    unique_kv = tokens * keys * num_kv_heads * head_dim * 2 * 2  # K+V bf16, read once
+    issued_kv = tokens * keys * num_heads * head_dim * 2 * 2 * 3  # per query head, 3 passes
     return {
         "geometry": geometry,
+        "tokens": tokens,
         "keys": keys,
         "mask": mask_mode,
         "per_launch_us": per_launch_us,
@@ -122,6 +124,13 @@ def main() -> int:
                         default=["sliding", "full"])
     parser.add_argument("--mask", choices=("keep", "zero"), default="keep")
     parser.add_argument("--iters", type=int, default=50)
+    parser.add_argument(
+        "--tokens",
+        type=int,
+        default=1,
+        help="query rows (blocks = tokens * num_heads); scales the grid to separate "
+             "latency-bound from throughput-bound behaviour",
+    )
     args = parser.parse_args()
 
     runtime = get_hip_runtime()
@@ -132,10 +141,11 @@ def main() -> int:
             row = run_case(
                 library, runtime,
                 keys=keys, geometry=geometry, mask_mode=args.mask, iters=args.iters,
+                tokens=args.tokens,
             )
             rows.append(row)
             print(
-                f"{row['geometry']:8s} keys={row['keys']:5d} mask={row['mask']:4s} "
+                f"{row['geometry']:8s} tokens={row['tokens']:2d} keys={row['keys']:5d} mask={row['mask']:4s} "
                 f"{row['per_launch_us']:9.1f} us/launch  "
                 f"unique-KV {row['unique_kv_mb']:6.2f} MB -> {row['unique_kv_gbps']:6.1f} GB/s  "
                 f"issued {row['issued_kv_mb']:7.2f} MB -> {row['issued_kv_gbps']:6.1f} GB/s",

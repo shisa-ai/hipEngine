@@ -39,6 +39,7 @@ _SYMBOL_PREFILL_BF16 = "hipengine_gemma4_attention_prefill_bf16"
 _SYMBOL_PREFILL_F32 = "hipengine_gemma4_attention_prefill_f32"
 _SYMBOL_DECODE_BF16 = "hipengine_gemma4_attention_decode_bf16"
 _SYMBOL_DECODE_F32 = "hipengine_gemma4_attention_decode_f32"
+_SYMBOL_DECODE_VARIANT = "hipengine_gemma4_attention_decode_variant"
 
 _ARGTYPES_PREFILL = (
     ctypes.c_void_p,
@@ -92,6 +93,20 @@ def build_gemma4_attention(
         load=load,
         require_cached=require_cached,
     )
+
+
+def gemma4_attention_decode_variant(library: ctypes.CDLL | None = None) -> str:
+    """Which decode kernel the launcher last selected.
+
+    ``"warp"`` is the warp-per-head shuffle-tree kernel (``head_dim == 512``),
+    ``"block"`` is the original 256-thread block kernel. Introspection only: the
+    two paths are bit-identical, so this is how callers and tests confirm which
+    one ran rather than inferring it from timings.
+    """
+
+    library = library or build_gemma4_attention(load=True)
+    fn = signed_kernel_fn(library, _SYMBOL_DECODE_VARIANT, [], ctypes.c_int)
+    return "warp" if int(fn()) == 1 else "block"
 
 
 def gemma4_attention_shared_bytes(*, head_dim: int, keys: int) -> int:
