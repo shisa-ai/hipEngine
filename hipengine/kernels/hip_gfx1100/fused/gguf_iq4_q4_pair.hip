@@ -121,7 +121,18 @@ __device__ uint16_t bf16_store(float x) {
   return uint16_t((v.u + 0x7fff + ((v.u >> 16) & 1)) >> 16);
 }
 
-template <int WAVES, bool GATE_IS_Q4 = false, bool UP_IS_Q5 = false>
+// Four template axes: GATE_IS_Q4 picks which side's rounded accumulator
+// is the gate (pointer roles never swap), UP_IS_Q5 selects side B's
+// wave-distributed tile8 emulation over the Q4 dense chain, and
+// A_IS_CHAIN (E6b-4) runs side A as the Q4_K T16 tile chain instead of
+// the IQ4_XS local32 split-K - for (Q4_K gate, Q5_K up) pairs neither
+// side is IQ4, and the Q4 gate chain is per-wave-redundant like side B
+// (the epilogue takes wave 0's published value, not a cross-wave sum).
+template <
+    int WAVES,
+    bool GATE_IS_Q4 = false,
+    bool UP_IS_Q5 = false,
+    bool A_IS_CHAIN = false>
 __global__ __launch_bounds__(32 * WAVES, 16 / WAVES > 0 ? 16 / WAVES : 1)
 void iq4_q4_pair_silu_kernel(
     const uint16_t* __restrict__ x,
@@ -164,8 +175,70 @@ void iq4_q4_pair_silu_kernel(
   }
 
   // Side A: split-K across waves - the local32 dual's loop verbatim.
+  // A_IS_CHAIN (E6b-4) replaces it with the dense Q4T16 single's full
+  // chain over wa's tiles: every wave recomputes the whole row (all
+  // waves publish identical wave-0-redundant values, shfl-reduced per
+  // wave like side B), and the epilogue takes xwave_a[0].
   __shared__ float xwave_a[WAVES > 1 ? WAVES : 1][COLS];
   __shared__ float xwave_b[WAVES > 1 ? WAVES : 1][COLS];
+  if constexpr (A_IS_CHAIN) {
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* tile =
+        wa + (out_tile * blocks_per_row + blk) * Q4_T16_BLOCK_BYTES;
+    float scale[COLS];
+    float min_value[COLS];
+#pragma unroll
+    for (int local_pair = 0; local_pair < COLS / 2; ++local_pair) {
+      const int local_col0 = local_pair * 2;
+      const int local_col1 = local_col0 + 1;
+      const int col0 = col_base + local_col0;
+      const uint32_t d =
+          *reinterpret_cast<const uint32_t*>(tile + Q4_T16_D_OFFSET + col0 * 2);
+      const uint32_t dmin = *reinterpret_cast<const uint32_t*>(
+          tile + Q4_T16_DMIN_OFFSET + col0 * 2);
+      const uint16_t coeff_scale = *reinterpret_cast<const uint16_t*>(
+          tile + Q4_T16_SCALE_OFFSET + sb * T16_COLS + col0);
+      const uint16_t coeff_min = *reinterpret_cast<const uint16_t*>(
+          tile + Q4_T16_MIN_OFFSET + sb * T16_COLS + col0);
+      scale[local_col0] = fp16_bits_to_float(static_cast<uint16_t>(d)) *
+                          static_cast<float>(coeff_scale & 0xFFu);
+      scale[local_col1] = fp16_bits_to_float(static_cast<uint16_t>(d >> 16)) *
+                          static_cast<float>(coeff_scale >> 8);
+      min_value[local_col0] = fp16_bits_to_float(static_cast<uint16_t>(dmin)) *
+                              static_cast<float>(coeff_min & 0xFFu);
+      min_value[local_col1] =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin >> 16)) *
+          static_cast<float>(coeff_min >> 8);
+    }
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int k_in_block = k_lane_base + j;
+      const int lane32 = k_in_block & 31;
+      const float xv = bf16_load(x[blk * QK_K + k_in_block]);
+#pragma unroll
+      for (int local_pair = 0; local_pair < COLS / 2; ++local_pair) {
+        const int local_col0 = local_pair * 2;
+        const int local_col1 = local_col0 + 1;
+        const int q_word = Q4_T16_Q_OFFSET +
+            (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) + (col_base >> 1);
+        const uint32_t packed_word =
+            *reinterpret_cast<const uint32_t*>(tile + q_word);
+        const uint8_t packed =
+            static_cast<uint8_t>((packed_word >> (8 * local_pair)) & 0xFFu);
+        acc_a[local_col0] = fmaf(
+            xv,
+            static_cast<float>(packed & 0x0Fu) * scale[local_col0] -
+                min_value[local_col0],
+            acc_a[local_col0]);
+        acc_a[local_col1] = fmaf(
+            xv,
+            static_cast<float>(packed >> 4) * scale[local_col1] -
+                min_value[local_col1],
+            acc_a[local_col1]);
+      }
+    }
+  }
+  } else {
   for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
     const uint16_t* xp = x + blk * 256 + lane * 8;
     float xv[8];
@@ -192,6 +265,7 @@ void iq4_q4_pair_silu_kernel(
       }
     }
   }
+  }  // end if constexpr (A_IS_CHAIN) else (IQ4 local32 split-K)
 
   // Side B: UP_IS_Q5=false keeps the dense Q4T16 single's full
   // single-wave chain recomputed in every wave (only wave 0's partial is
@@ -341,9 +415,16 @@ void iq4_q4_pair_silu_kernel(
   if (tid < COLS) {
     const int t = tid;
     if (n0 + t < N) {
-      float ta = 0.0f;
+      float ta;
+      if constexpr (A_IS_CHAIN) {
+        // Side A's chain is per-wave redundant: wave 0's published value
+        // is the single's own result (same convention as side B).
+        ta = xwave_a[0][t];
+      } else {
+        ta = 0.0f;
 #pragma unroll
-      for (int wv = 0; wv < WAVES; ++wv) ta += xwave_a[wv][t];
+        for (int wv = 0; wv < WAVES; ++wv) ta += xwave_a[wv][t];
+      }
       // Side B publishes wave 0 only: that chain is the single's own.
       const float tb = xwave_b[0][t];
       // bf16-round both accumulators exactly like the unfused path,
@@ -466,4 +547,36 @@ extern "C" int hipengine_gguf_iq4_q5_pair_silu(const void* x, const void* wa,
     default:
       return int(hipErrorInvalidValue);
   }
+}
+// E6b-4 family: (Q4_K gate, Q5_K up). Neither side is IQ4: wa is the
+// Q4_K T16 tiles (side A's chain, A_IS_CHAIN=true), wb the Q5_K T16
+// tiles (side B's wave-distributed tile8 emulation). Gate-first
+// argument order already matches (Q4 gate first), so no reorder.
+extern "C" int hipengine_gguf_q4_q5_pair_silu(const void* x, const void* wa,
+    const void* wb, void* out, int64_t rows, int64_t K, int64_t N, int waves,
+    void* stream) {
+    if (!x || !wa || !wb || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 8)
+        return int(hipErrorInvalidValue);
+    const dim3 grid(unsigned((N + COLS - 1) / COLS));
+    const hipStream_t s = (hipStream_t)stream;
+    int err;
+    switch (waves) {
+        case 1:
+            err = (iq4_q4_pair_silu_kernel<1, false, true, true><<<grid, 32, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 2:
+            err = (iq4_q4_pair_silu_kernel<2, false, true, true><<<grid, 64, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 4:
+            err = (iq4_q4_pair_silu_kernel<4, false, true, true><<<grid, 128, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        default:
+            return int(hipErrorInvalidValue);
+    }
 }
