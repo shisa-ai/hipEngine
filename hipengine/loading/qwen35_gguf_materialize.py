@@ -197,8 +197,13 @@ def validate_qwen35_gguf_resident_prerequisites(spec: Qwen35GGUFWeightSpec) -> N
                 len(shape) not in (2, 3) or quant_layout(source.ggml_type).storage_dtype != "uint8_blocks"
             ):
                 raise ValueError("raw GGUF resident requires rank-2 or rank-3 block storage")
-            if spec.layout == LAYOUT_DENSE_F32 and source.ggml_type != GGMLQuantizationType.F32:
-                raise ValueError("dense F32 resident requires F32 source")
+            if spec.layout == LAYOUT_DENSE_F32 and not (
+                source.ggml_type == GGMLQuantizationType.F32
+                or dequantization_supported(source.ggml_type)
+            ):
+                raise ValueError(
+                    "dense F32 resident requires F32 source or a supported CPU decoder"
+                )
             if spec.layout == LAYOUT_DENSE_BF16 and not dequantization_supported(source.ggml_type):
                 raise ValueError("dense BF16 resident requires a supported CPU decoder")
         else:
@@ -1560,6 +1565,25 @@ def _spec_for_tensor(
             allocation_names=("raw",),
             sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
+    if (
+        qtype == GGMLQuantizationType.Q8_0
+        and slot_path.endswith((".ssm_alpha", ".ssm_beta"))
+    ):
+        # E7 (UD-GFX1151-OPTIMIZE2 H10): expand Q8_0 alpha/beta to dense F32
+        # at load so the weights satisfy the fused alpha/beta+conv decode
+        # owner's quant_key == "f32" + raw-allocation contract exactly like
+        # the F32-source tensors. Exact in value: an fp16 scale times an int8
+        # value is representable in F32. Eligibility keys on the stored dtype
+        # and the slot only, never on artifact identity. The materializer
+        # performs the dequantization (same CPU decoder as the dense-BF16
+        # fallback).
+        return Qwen35GGUFWeightSpec(
+            slot_path=slot_path,
+            source=tensor,
+            quant_key="f32",
+            layout=LAYOUT_DENSE_F32,
+            allocation_names=("raw",),
+        )
     if qtype == GGMLQuantizationType.Q8_0 and decode_repack and slot_path.startswith("layers.") and len(tensor.shape) == 2:
         allocation_names = ("tiles",)
         if gguf_q8_0_raw_sidecar_enabled() and (
@@ -2047,10 +2071,16 @@ def _materialize_spec(
             )
         }
     elif spec.layout == LAYOUT_DENSE_F32:
+        if GGMLQuantizationType(spec.source.ggml_type) == GGMLQuantizationType.F32:
+            f32 = raw
+        else:
+            # E7: Q8_0 alpha/beta expand to dense F32 on the way in; the
+            # dequantization is exact in F32 (fp16 scale x int8 value).
+            f32 = dequantize_gguf_data(raw, spec.source.ggml_type)
         allocations = {
             "raw": load_host_array_to_device_as_dtype(
                 spec.source.name,
-                raw,
+                f32,
                 DType.FP32,
                 source_dtype="F32",
                 device=device,
