@@ -74,12 +74,127 @@ CUDA_PROFILES: dict[ProfileName, BuildProfile] = {
 def _resolve_cache_root(cache_root: str | Path | None) -> Path:
     if cache_root is not None:
         return Path(cache_root).expanduser()
-    environment_root = (os.environ.get(_ENV_BUILD_CACHE_ROOT) or "").strip()
+    environment_root = _env_get(_ENV_BUILD_CACHE_ROOT).strip()
     return Path(environment_root).expanduser() if environment_root else DEFAULT_CACHE_ROOT
 
 
+# Environment variables that change what a HIP build resolves to. Every knob the
+# key derivation (`_resolve_cache_root`, `_target_arch_from_environment`,
+# `_resolve_compiler_version`) or the flag builders (`_maybe_prefill_mcumode`,
+# `_maybe_disable_unroll600`, `_rocm_device_lib_flags`) reads must appear here,
+# because ``_build_fast_key`` treats an unlisted knob as constant for the
+# lifetime of the process. `test_unit_build.py` fails if a listed name stops
+# changing the key or a new `HIPENGINE_*` knob is read by the build path without
+# being listed.
+_BUILD_ENV_KEYS = (
+    _ENV_BUILD_CACHE_ROOT,
+    _ENV_HIP_ARCH,
+    _ENV_HIP_OFFLOAD_ARCH,
+    _ENV_REQUIRE_CACHED_BUILD,
+    _ENV_ROCM_DEVICE_LIB_PATH,
+    _ENV_HIP_DEVICE_LIB_PATH,
+    "HIPENGINE_PREFILL_MCUMODE",
+    "HIPENGINE_DISABLE_UNROLL600",
+)
+_BUILD_ENV_KEYS_BYTES = tuple(name.encode("ascii") for name in _BUILD_ENV_KEYS)
+
+
+def _build_env_signature(compiler: str) -> tuple:
+    """Raw values of every environment knob the HIP build path reads."""
+
+    if _fast_environ_available():
+        values = tuple(_env_value(_ENVIRON_DATA.get(key)) for key in _BUILD_ENV_KEYS_BYTES)
+    else:
+        values = tuple(os.environ.get(name) or "" for name in _BUILD_ENV_KEYS)
+    return values + (_environment_version_identity(compiler),)
+
+
+def _build_fast_key(
+    *,
+    family: str,
+    profile: ProfileName,
+    output_name: str | None,
+    sources: Sequence[str | Path],
+    cache_root: str | Path | None,
+    compiler: str,
+    compiler_version: str | None,
+    target_arch: str | None,
+    include_dirs: Sequence[str | Path],
+    extra_flags: Sequence[str],
+) -> tuple | None:
+    """Cheap identity for a repeated per-launch ``build_X(load=True)`` request.
+
+    The kernel launchers resolve their library on every launch (they do not pass
+    ``library=``), so ``build_hip`` re-derives the compiler version, the target
+    arch and the cache root once per *kernel launch*: measured at 8.0 us of an
+    11.8 us host launch cost, against 1.8 us for the bare ctypes call. This key
+    is built from the raw call inputs plus the environment values those
+    derivations read, so a repeated request short-circuits before the
+    derivations run while a mid-process environment change still selects a
+    fresh resolution.
+
+    Returns ``None`` when an input is neither a string nor a path-like: converting
+    it is exactly the cost this key exists to avoid, so those calls take the slow
+    path.
+    """
+
+    try:
+        # ``os.fspath`` is a plain attribute read for both ``str`` and ``Path``,
+        # unlike ``str(Path(...))``, which re-parses the path (~2 us) and is the
+        # second largest term in the derivation this fast path removes.
+        source_names = tuple(os.fspath(source) for source in sources)
+        include_names = tuple(os.fspath(directory) for directory in include_dirs)
+        cache_root_name = None if cache_root is None else os.fspath(cache_root)
+    except TypeError:
+        return None
+    return (
+        family,
+        profile,
+        output_name,
+        source_names,
+        cache_root_name,
+        compiler,
+        compiler_version,
+        target_arch,
+        include_names,
+        tuple(extra_flags),
+        _build_env_signature(compiler),
+    )
+
+
+# ``os.environ`` is a ``MutableMapping`` wrapper that fsencodes the key on every
+# access (~0.46 us on POSIX), and its ``_data`` is the *bytes*-keyed dict it
+# shares with ``os.environb``. The per-launch build fast path reads a dozen knobs
+# per kernel launch, so it reads that dict directly with precomputed byte keys
+# and falls back to the public mapping whenever CPython does not expose it or a
+# caller has swapped ``os.environ`` for another object. Both paths observe
+# in-place mutations of ``os.environ``, so the environment-response contract is
+# unchanged.
+_ENVIRON_DATA = getattr(os.environ, "_data", None)
+if not isinstance(_ENVIRON_DATA, dict):
+    _ENVIRON_DATA = None
+
+
+def _fast_environ_available() -> bool:
+    """True when the raw environment dict may be read directly."""
+
+    return _ENVIRON_DATA is not None and getattr(os.environ, "_data", None) is _ENVIRON_DATA
+
+
+def _env_value(raw: object) -> str:
+    return "" if raw is None else (raw if isinstance(raw, str) else raw.decode("utf-8"))
+
+
+def _env_get(name: str) -> str:
+    """Read one environment variable without ``os.environ``'s per-access cost."""
+
+    if _fast_environ_available():
+        return _env_value(_ENVIRON_DATA.get(name.encode("ascii")))
+    return os.environ.get(name) or ""
+
+
 def _environment_requires_cached_build() -> bool:
-    raw = (os.environ.get(_ENV_REQUIRE_CACHED_BUILD) or "").strip().lower()
+    raw = _env_get(_ENV_REQUIRE_CACHED_BUILD).strip().lower()
     if not raw:
         return False
     if raw in {"1", "true", "yes", "on"}:
@@ -263,6 +378,25 @@ def build_hip(
     every HIP builder in the process fail closed without per-call plumbing.
     """
 
+    fast_key: tuple | None = None
+    if load and not dry_run and not force:
+        fast_key = _build_fast_key(
+            family=family,
+            profile=profile,
+            output_name=output_name,
+            sources=sources,
+            cache_root=cache_root,
+            compiler=compiler,
+            compiler_version=compiler_version,
+            target_arch=target_arch,
+            include_dirs=include_dirs,
+            extra_flags=extra_flags,
+        )
+        if fast_key is not None:
+            cached_fast = _FAST_PATH_CACHE.get(fast_key)
+            if cached_fast is not None:
+                return cached_fast
+
     require_cached = bool(require_cached or _environment_requires_cached_build())
 
     # Process-level loaded-library cache. Without it, every ``build_hip(load=True)``
@@ -329,6 +463,8 @@ def build_hip(
     lib = ctypes.CDLL(str(artifact.output_path))
     if cache_key is not None:
         _LOADED_LIB_CACHE[cache_key] = lib
+    if fast_key is not None:
+        _FAST_PATH_CACHE[fast_key] = lib
     return lib
 
 
@@ -428,6 +564,10 @@ _COMPILER_VERSION_CACHE: dict[str, str] = {}
 # Process-level cache of loaded ``ctypes.CDLL`` handles keyed by build identity.
 _LOADED_LIB_CACHE: dict[tuple, "ctypes.CDLL"] = {}
 
+# Fast path in front of the loaded-library cache, keyed on the raw request plus
+# the build environment signature. See ``_build_fast_key``.
+_FAST_PATH_CACHE: dict[tuple, "ctypes.CDLL"] = {}
+
 
 def _resolve_compiler_version(
     *,
@@ -460,6 +600,31 @@ def _resolve_compiler_version(
 
 
 _ENV_VERSION_CACHE: dict[tuple[str, tuple[str, str, str, str]], str] = {}
+_VERSION_ENV_KEYS_BYTES: dict[str, tuple[bytes, bytes, bytes, bytes]] = {}
+
+
+def _version_env_keys_bytes(compiler: str) -> tuple[bytes, bytes, bytes, bytes]:
+    """The four version-override variables' byte keys, built once per compiler.
+
+    ``_environment_version_identity`` runs on every per-launch build fast path,
+    where building the two per-compiler names with f-strings and re-encoding
+    them costs more than the reads themselves.
+    """
+
+    keys = _VERSION_ENV_KEYS_BYTES.get(compiler)
+    if keys is None:
+        specific = _compiler_env_prefix(compiler)
+        keys = tuple(
+            name.encode("ascii")
+            for name in (
+                f"{specific}_VERSION_TEXT",
+                "HIPENGINE_COMPILER_VERSION_TEXT",
+                f"{specific}_VERSION_FILE",
+                "HIPENGINE_COMPILER_VERSION_FILE",
+            )
+        )
+        _VERSION_ENV_KEYS_BYTES[compiler] = keys
+    return keys
 
 
 def _environment_version_identity(compiler: str) -> tuple[str, str, str, str]:
@@ -471,12 +636,14 @@ def _environment_version_identity(compiler: str) -> tuple[str, str, str, str]:
     or pointing the file variable at different content) must select a
     different resolution instead of reusing the first cached value.
     """
+    if _fast_environ_available():
+        return tuple(_env_value(_ENVIRON_DATA.get(key)) for key in _version_env_keys_bytes(compiler))
     specific = _compiler_env_prefix(compiler)
     return (
-        os.environ.get(f"{specific}_VERSION_TEXT", ""),
-        os.environ.get("HIPENGINE_COMPILER_VERSION_TEXT", ""),
-        os.environ.get(f"{specific}_VERSION_FILE", ""),
-        os.environ.get("HIPENGINE_COMPILER_VERSION_FILE", ""),
+        _env_get(f"{specific}_VERSION_TEXT"),
+        _env_get("HIPENGINE_COMPILER_VERSION_TEXT"),
+        _env_get(f"{specific}_VERSION_FILE"),
+        _env_get("HIPENGINE_COMPILER_VERSION_FILE"),
     )
 
 
@@ -522,7 +689,7 @@ def _compiler_env_prefix(compiler: str) -> str:
 
 
 def _target_arch_from_environment() -> str | None:
-    return os.environ.get(_ENV_HIP_ARCH) or os.environ.get(_ENV_HIP_OFFLOAD_ARCH)
+    return _env_get(_ENV_HIP_ARCH) or _env_get(_ENV_HIP_OFFLOAD_ARCH)
 
 
 def _cuda_target_arch_from_environment() -> str | None:
@@ -530,7 +697,7 @@ def _cuda_target_arch_from_environment() -> str | None:
 
 
 def _rocm_device_lib_flags() -> tuple[str, ...]:
-    path = os.environ.get(_ENV_ROCM_DEVICE_LIB_PATH) or os.environ.get(_ENV_HIP_DEVICE_LIB_PATH)
+    path = _env_get(_ENV_ROCM_DEVICE_LIB_PATH) or _env_get(_ENV_HIP_DEVICE_LIB_PATH)
     if not path:
         return ()
     resolved = str(Path(path).expanduser())

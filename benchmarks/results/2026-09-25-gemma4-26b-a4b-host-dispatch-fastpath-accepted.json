@@ -1,0 +1,105 @@
+{
+  "kind": "gemma4_campaign_candidate",
+  "verdict": "accepted",
+  "recorded": "2026-09-25, gemma4-moe-perf/g0 iteration 25",
+  "candidate": "build fast path in front of the loaded-library cache (hipengine/core/build.py)",
+  "reason": "iteration 24's launch census found ~14 tiny elementwise launches per layer per decode step (~420/step before any GEMM) and attributed the 8.0 ms/token host gap measured in iteration 19 to them. Decomposing the per-launch host cost found the gap was not in the HIP call: a bare ctypes call with prebuilt args costs 1.84 us, signed_kernel_fn 0.53 us, but the launcher wrapper cost 11.81 us. The extra ~9.5 us was build_hip re-deriving its cache key on every launch, because the kernel launchers resolve their library per call (they pass no library= kwarg): build_gemma4_norm(load=True) alone measured 7.97 us, of which _resolve_compiler_version was 2.05, the target-arch read 0.85, cache-root resolution 0.48, os.fspath/Path normalisation ~2.2, and the rest call glue. os.environ.get costs 0.463 us per read on POSIX because the mapping fsencodes the key on every access, so the 8-12 environment reads in the derivation were the largest single term.",
+  "mechanism": {
+    "diagnosis": "per-launch library resolution, not the HIP launch itself, dominated host launch cost",
+    "cause": "build_hip computed its cache key - compiler version probe, target-arch read, cache-root resolution and path normalisation - before consulting _LOADED_LIB_CACHE, so a repeated identical per-launch load paid ~8 us of key derivation for a dict lookup",
+    "fix": "_FAST_PATH_CACHE in front of the loaded-library cache, keyed on the raw request (family, profile, output_name, os.fspath(sources), cache_root, compiler, compiler_version, target_arch, os.fspath(include_dirs), extra_flags) plus _build_env_signature(compiler). os.fspath rather than str(Path(...)) because the latter re-parses the path (~2 us) and is the second largest term being removed.",
+    "environment_soundness": "_BUILD_ENV_KEYS lists every knob the key derivation or the flag builders read (cache root, both arch vars, require_cached, both device-lib-path vars, HIPENGINE_PREFILL_MCUMODE, HIPENGINE_DISABLE_UNROLL600), plus the four version-override variables via _environment_version_identity. A mid-process environment change therefore selects a fresh resolution instead of a stale library, which is the contract _LOADED_LIB_CACHE already had.",
+    "cheap_environment_reads": "_env_get and _build_env_signature read the bytes-keyed dict behind os.environ (_ENVIRON_DATA, shared with os.environb) with precomputed byte keys instead of the public mapping, and fall back to os.environ.get whenever CPython does not expose that dict or a caller has swapped os.environ for another object. Both paths observe in-place mutations, so the response to environment changes is unchanged. _version_env_keys_bytes caches the four per-compiler version keys so the f-string construction is not repeated per launch."
+  },
+  "correctness": {
+    "contract": "host-side only: no kernel, no arithmetic and no model code changed, so token identity is preserved by construction and is confirmed end to end by the campaign harness's public path parity on every re-measured row",
+    "red_first": "tests/test_unit_build.py::test_build_hip_per_launch_load_does_not_rederive_its_key counts _resolve_compiler_version calls across six identical per-launch loads: RED before the change (6 derivations), GREEN after (1).",
+    "contract_tests": [
+      "test_build_hip_fast_path_honours_environment_changes (HIPENGINE_BUILD_CACHE_ROOT mid-process selects a different artifact)",
+      "test_build_fast_key_changes_with_every_build_environment_knob (each listed knob moves the key)",
+      "test_build_fast_key_lists_every_environment_knob_the_build_path_reads (source scan: an unlisted HIPENGINE_* read fails the test; it caught HIPENGINE_CUDA_ARCH/HIPENGINE_CUDA_TARGET_ARCH, which are CUDA-path-only)",
+      "test_env_get_falls_back_when_environ_is_replaced (the private-dict fast read stays correct when os.environ is swapped)"
+    ],
+    "guards": "148 passed on the gemma4 bundle (unit contracts, attention routing/geometry, campaign bench unit, GPU decode parity, GPU attention geometry, GPU weight geometry); 130 passed across every other build_hip consumer (test_unit_cuda_sm120a_backend, test_unit_gfx1151_backend, test_unit_qwen38_int8_batch_decode_ownership_trace, test_integration_mtp_bench_tool)",
+    "public_path_parity": "true on all four re-measured campaign rows"
+  },
+  "performance": {
+    "host_launch_cost": {
+      "tool": "direct ctypes microbenchmark of hipengine_gemma4_rmsnorm_f32w_bf16 through the launcher, 3000 launches",
+      "bare_ctypes_call_prebuilt_args_us": 1.84,
+      "signed_kernel_fn_lookup_us": 0.53,
+      "launcher_wrapper_before_us": 11.81,
+      "launcher_wrapper_after_us": 5.27,
+      "build_gemma4_norm_load_before_us": 7.97,
+      "build_gemma4_norm_load_after_us": 2.38,
+      "fast_key_before_us": 6.47,
+      "fast_key_after_us": 1.88,
+      "os_environ_get_us": 0.463,
+      "note": "host cost per launch, measured on an idle device with no GPU work in flight; the same 3000-launch loop with one final device sync gives the same number, confirming the loop is host-bound"
+    },
+    "real_decode_path": {
+      "tool": "counted build_hip entries and slow-path derivations across LLM.generate(1024 prompt, 32 output)",
+      "build_hip_entries": 31647,
+      "fast_path_hits": 31647,
+      "slow_path_derivations": 0,
+      "build_calls_per_decode_step": 989,
+      "host_time_removed_per_step_ms": 6.4,
+      "note": "989 build calls per step x 6.5 us saved per call"
+    },
+    "campaign_rows": {
+      "metric": "decode_tps",
+      "command": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --samples 3",
+      "label": "host-dispatch-fastpath",
+      "primary": {
+        "row": "1024p",
+        "incumbent": 43.6297,
+        "candidate": 43.9827,
+        "delta": "+0.8%",
+        "prefill_tok_s": "129 -> 129",
+        "public_wall_s": "10.58 -> 10.88"
+      },
+      "other_rows": [
+        {
+          "row": "512p",
+          "decode_incumbent": 47.32,
+          "decode_candidate": 48.1231,
+          "delta": "+1.7%",
+          "prefill_tok_s": "135 -> 135",
+          "public_wall_s": "6.56 -> 6.43"
+        },
+        {
+          "row": "128p",
+          "decode_incumbent": 48.491,
+          "decode_candidate": 51.9685,
+          "delta": "+7.2%",
+          "prefill_tok_s": "139 -> 139",
+          "public_wall_s": "3.58 -> 3.36",
+          "note": "incumbent is iteration 24's bounded paired rerun of 48.4910; the single-shot reading was 48.20"
+        },
+        {
+          "row": "4096p",
+          "decode_incumbent": 28.49,
+          "decode_candidate": 28.5889,
+          "delta": "+0.3% (flat)",
+          "prefill_tok_s": "108 -> 108",
+          "public_wall_s": "42.42 -> 42.34"
+        }
+      ],
+      "regression_check": "no row regressed: decode improved on three rows and held on the fourth, prefill unchanged on every row, public wall improved on three rows and held on the fourth"
+    },
+    "campaign_position": {
+      "campaign_baseline": 16.0931,
+      "candidate": 43.9827,
+      "over_baseline": "+173%"
+    },
+    "interpretation": "the gain scales inversely with per-step GPU work (+7.2% at 128p, +1.7% at 512p, +0.8% at 1024p, flat at 4096p), which is the signature of host dispatch time that is hidden behind GPU execution at long prompts and exposed at short ones. This closes iteration 19's host-gap hypothesis as a critical-path item at the campaign's primary row: removing 6.4 ms/token of host time moved 1024p by +0.8%, so the remaining step time there is GPU work."
+  },
+  "scope": {
+    "files": [
+      "hipengine/core/build.py",
+      "tests/test_unit_build.py"
+    ],
+    "flags_added": "none",
+    "fallbacks": "none: the fast path is unconditional and the public-mapping read is a portability guard, not a configuration switch"
+  }
+}
