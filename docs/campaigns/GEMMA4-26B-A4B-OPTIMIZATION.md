@@ -262,6 +262,20 @@ flags because a configuration has not been benchmarked.
   `tests/test_gpu_gguf_q8_0_pack8_gemv_decode_parity.py`. Because the compact
   route's session guard is this same switch, evaluating compact on its own
   merits requires decoupling that guard.
+  *Status 2026-09-25 (iteration 19): the measured order changed. A decode-phase
+  `rocprofv3` trace diff puts `gemma4_attention_decode_kernel` at **24.0 ms of
+  the 45.7 ms token (53%)**, the MoE decode linears at 6.2 ms combined (13.6%),
+  dense projections 3.9 ms, norms 1.4 ms, and host dispatch across 1116
+  launches at 8.0 ms (7.2 us each). Two explanations for the attention cost were closed by
+  measurement: it is not KV-bandwidth-bound (an all-zero keep-mask, which
+  removes every K/V load, is only 11% faster) and not barrier-bound (widening
+  the launcher's tile ceiling from 8 to 32 gives tile 8 = 598.5 us against
+  16 = 1076.8 and 32 = 722.5 at sliding/1024 - a regression, reverted). The
+  kernel is latency-bound at a 16-block grid with one 2-byte dependent load per
+  thread per key, so the lever is memory-level parallelism in the tile walk.
+  Evidence row `2026-09-25-gemma4-26b-a4b-decode-bottleneck-profile.json`,
+  tool `scripts/gemma4_attention_decode_bench.py`, worklog entry
+  `20260925T193532.806869Z-lhl-gemma4-2b8481.md`.
 - [ ] **G4 — Integrated confirmation.** Repeat the primary paired matrix,
   correctness/heldouts and live chat/SSE; verify no hidden fallback. Re-measure
   llama.cpp and Qwen with the frozen comparison contract and report differences
