@@ -760,6 +760,12 @@ run).
   2–4 ≤ 1.9e-04 relative) and zeroes the inactive tail, for both the Python and
   compiled drivers (`benchmarks/results/2026-09-17-w7900-tp2-batched-prefill-probe.json`).
 
+> **Superseded 2026-09-25.** The dispatch-context fix landed on 2026-09-17, the
+> route passed the arm-vs-control production comparison on 2026-09-18, and on
+> 2026-09-25 it was re-validated on the configuration that ships and became the
+> default TP2 prefill schedule (`bulk_prefill=None` resolves to on for tp2).
+> The text below describes the 2026-09-17 state.
+
 ### P2 status (2026-09-17)
 
 The rank-local bulk prefill path is implemented end to end and opt-in
