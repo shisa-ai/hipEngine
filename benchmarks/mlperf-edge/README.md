@@ -7,6 +7,73 @@ The campaign and comparison rules are in
 The first attempt used the upstream runner unchanged. The repaired run uses
 only the coordinator-timestamp patch documented below.
 
+## Speculative 140-turn comparison: 2026-09-25
+
+**hipEngine and llama.cpp complete the replay in less wall time than gufo in
+these passes.** All three execute speculation and return valid tool calls.
+This compares the frozen Qwen3.6 workload, not each project's headline setup.
+
+| Metric | hipEngine MTP | llama.cpp MTP | Patched gufo DFlash2 |
+| --- | ---: | ---: | ---: |
+| Completed turns | 140/140 | 140/140 | 140/140 |
+| Measured replay phase | 793.15 s | 827.10 s | 1,041.49 s |
+| Mean / median turn latency | 5.665 / 4.405 s | 5.908 / 4.462 s | 7.439 / 5.195 s |
+| Mean client-visible first output | 2.535 s | 2.872 s | 7.039 s |
+| Inline command-name IoU | 0.5586 | 0.6423 | 0.6387 |
+| Accepted / proposed draft tokens | 7,000 / 8,121 | 7,565 / 8,178 | 2,584 / 16,369 |
+| Draft acceptance | 86.20% | 92.50% | 15.79% |
+| Prefix-token reuse | 95.31% | 95.95% | 96.55% |
+| Effective cache-inclusive prefill | 4,744 tok/s | 6,089 tok/s | approximately 8,023 tok/s |
+
+Same physical `gfx1151` / Radeon 8060S host, concurrency 1, 32K context,
+temperature 0, seed 42, thinking off, maximum 1024 output tokens, and frozen
+recorded histories. hipEngine runs production profile at `c22902eda`;
+llama.cpp uses the same `1ebf790cd` binary as its AR baseline. No tool is executed.
+hipEngine and llama.cpp use BF16 target KV; llama.cpp's draft KV defaults to
+FP16. Gufo uses FP16 target KV and the user-selected Qwen3.8 DFlash2 draft.
+
+The original GGUF has no NextN weights. For the MTP arms, a separate container
+copies **all 851 original target tensors byte-for-byte** and adds 15 Qwen3.6
+NextN tensors from `unsloth/Qwen3.6-27B-MTP-GGUF` revision
+`5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace`. Target tensor hashes are verified;
+the container hash differs. Gufo uses the original file unchanged. No target
+quantization or weights were substituted.
+
+Both MTP arms have zero empty, malformed, truncated or failed responses.
+hipEngine executes speculative cycles on all 140 requests with zero recoverable
+speculative failures. Compared with each engine's earlier AR pass, 139/140
+hipEngine and 132/140 llama.cpp rendered outputs match after removing generated
+tool IDs. hipEngine's command IoU is unchanged; llama.cpp's changes from 0.6420
+to 0.6423. These are replay diagnostics, **not accuracy parity or a BFCL pass**.
+Gufo's inline score is close to llama.cpp's and higher than hipEngine's; that
+metric does not establish whether command arguments solve the task. Shared
+upstream-scored quality evaluation remains pending.
+
+Effective prefill divides each engine's full prompt-token count by pooled
+prefill time, including prefix reuse. Tokenization differs: hipEngine counts
+1,400,682 prompt tokens and reuses 1,335,040; llama.cpp counts 1,675,019 and reuses
+1,607,127. Prefill totals are 295.278 / 275.096 seconds. hipEngine's streamed
+decode window totals 436.152 seconds for 9,847 output tokens; llama.cpp's engine
+eval totals 514.129 seconds for 10,263 tokens. These windows are not equivalent
+and must not be presented as interchangeable decode throughput. Harness TPOT
+is still unsuitable for tool-call comparisons, as explained below.
+
+[Compact artifact](../results/2026-09-25-gfx1151-edge-speculative-140.json)
+contains commands, hashes, measurements and validation. Raw root:
+`~/gate-runs/mlperf-edge-speculative-20260925`. The primary hipEngine run is
+`hipengine-screen-140-accounted/`; the first pass is also preserved (791.28 s,
+same accepted/proposed totals) but its extra logger was filtered and cache
+counts were not captured. The repeat changes only telemetry capture.
+llama.cpp uses verbosity 5 to expose prompt counts; logging overhead is included.
+Runs are serial with fresh servers and no concurrent GPU work. Repeat with a
+new output directory, the artifact's server command, and:
+
+```bash
+cd ~/mlperf-edge-endpoints
+.venv/bin/inference-endpoint benchmark from-config --config "$HOME/gate-runs/mlperf-edge-speculative-20260925/hipengine-screen-140-accounted/config.yaml"
+.venv/bin/inference-endpoint benchmark from-config --config "$HOME/gate-runs/mlperf-edge-speculative-20260925/llamacpp-screen-140/config.yaml"
+```
+
 ## Paired 140-turn autoregressive screen: 2026-09-25
 
 **The engines have similar elapsed time in this single pass; hipEngine has a
@@ -127,9 +194,9 @@ There are no empty or failed responses. Every response finishes `tool_calls`;
 all calls have parseable arguments and a nonempty `command` string. This is
 output sanity, not an accuracy pass. The inline score measures executable-name
 overlap; BFCL and numerical quality gates have not run. No tool is executed.
-The earlier hipEngine/llama.cpp results are **autoregressive baselines**, not the
-final accelerated comparison. Different outputs and KV settings, one pass and
-no gufo AR control prevent attributing the elapsed-time difference to DFlash2.
+The earlier hipEngine/llama.cpp results are **autoregressive baselines**; the
+speculative comparison is recorded above. Different outputs and KV settings,
+one gufo pass and no gufo AR control prevent attributing its elapsed time to DFlash2.
 
 **Tool output is buffered:** 132/140 first visible chunks arrive within 1 ms of
 completion. Internal first-token timestamps average 1.762 s, but they do not

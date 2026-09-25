@@ -1,0 +1,491 @@
+{
+  "kind": "mlperf_edge_speculative_screen",
+  "schema_version": 1,
+  "date": "2026-09-25",
+  "status": "completed_diagnostic",
+  "official_mlperf_result": false,
+  "host": {
+    "name": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm_version": "HIP version: 7.15.26333-0000000"
+  },
+  "hipengine_commit": "c22902eda2662ca12023d6311cc90e6fc9b2d77f",
+  "source_state": "Production sources committed; unrelated audit inventory dirty. Logging-only wrapper external. No kernel edits.",
+  "workload": {
+    "baseline_artifact": "2026-09-25-gfx1151-mlperf-edge-140.json",
+    "frozen_manifest": {
+      "source_sha256": "b7da8c4ffbe1cabd79c4d8169e5201541e006364b4bfc016d01d893e20ee6f70",
+      "subset_sha256": "af173ad508159c95d76876db8abf4f384f4af9131378ebfe5279929cf126b9fe",
+      "conversations": {
+        "pallets__flask-5014": 27,
+        "pydata__xarray-6721": 52,
+        "pytest-dev__pytest-6202": 61
+      },
+      "source_rows": 280,
+      "generated_turns": 140,
+      "harness_revision": "e71b928f8a72fd0c9d850dc5ddd8fd7760356354",
+      "hipengine_revision": "2fafa58f5df2abc18dc79d488e7b44c527b3ca21",
+      "llama_binary_revision": "1ebf790cda38d827559548f67b0469189690cc8c",
+      "llama_binary_sha256": "d496e87f0988ea72dd3f0e9e727b4ce4bb11ca3212869205f7fe302e64fb2072",
+      "timing_policy": "Use unchanged client formulas and corrected coordinator timestamps. No injected delays or real tool execution. Server timing logs are separate diagnostics, not interchangeable denominators.",
+      "repeats": 1,
+      "order": [
+        "hipengine",
+        "llamacpp"
+      ]
+    },
+    "context": 32768,
+    "concurrency": 1,
+    "temperature": 0,
+    "seed": 42,
+    "max_tokens": 1024,
+    "thinking": false,
+    "preserve_thinking": null,
+    "kv": "bf16 target (gufo comparison fp16)",
+    "tools_executed": false,
+    "tool_delays_injected": false,
+    "cache": "Enabled; fresh server each run"
+  },
+  "target": {
+    "original_sha256": "5ed60d0af4650a854b1755bd392f9aef4872643dc25a254bc68043fa638392a0",
+    "assembled_sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "original_target_tensors_verified_identical": 851,
+    "additional_mtp_tensors": 15,
+    "mtp_repo": "unsloth/Qwen3.6-27B-MTP-GGUF",
+    "mtp_revision": "5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace",
+    "mtp_range_sha256": "a22aeb4d60b74a018f9b3ef03ef1836d4fd117f1004729f6f500ab2b203c22ed",
+    "container_note": "Target tensor bytes unchanged; container adds NextN tensors and metadata. Not the identical gufo GGUF file."
+  },
+  "arms": {
+    "hipengine": {
+      "summary": {
+        "turns": 140,
+        "latency_s": {
+          "n": 140,
+          "sum": 793.1296712339999,
+          "mean": 5.665211937385714,
+          "median": 4.4045928615,
+          "min": 2.001957301,
+          "max": 37.590917424
+        },
+        "ttft_s": {
+          "n": 140,
+          "sum": 354.880665481,
+          "mean": 2.534861896292857,
+          "median": 2.0824973865,
+          "min": 0.724337217,
+          "max": 17.65814519
+        },
+        "post_first_visible_s": {
+          "n": 140,
+          "sum": 438.249005753,
+          "mean": 3.130350041092857,
+          "median": 2.0791391150000003,
+          "min": 0.871133403,
+          "max": 34.634837264
+        },
+        "output_tokens": {
+          "n": 140,
+          "sum": 9706,
+          "mean": 69.32857142857142,
+          "median": 48.0,
+          "min": 27,
+          "max": 688
+        },
+        "content_only_tokens": 1295,
+        "tool_only_tokens": 8377,
+        "finish_reasons": {
+          "tool_calls": 140
+        },
+        "empty": 0,
+        "raw_markup_in_content": 0,
+        "invalid_tool_arguments": 0,
+        "server_prefill_ms": {
+          "n": 140,
+          "sum": 295278.1,
+          "mean": 2109.1292857142857,
+          "median": 1678.2,
+          "min": 619.2,
+          "max": 17609.2
+        },
+        "server_generation_ms": {
+          "n": 140,
+          "sum": 436152.2,
+          "mean": 3115.372857142857,
+          "median": 2061.85,
+          "min": 857.5,
+          "max": 34616.7
+        },
+        "server_generation_tokens": {
+          "n": 140,
+          "sum": 9847,
+          "mean": 70.33571428571429,
+          "median": 49.0,
+          "min": 28,
+          "max": 689
+        }
+      },
+      "duration_s": 793.14589586,
+      "inline_command_iou": 0.5586,
+      "usage": {
+        "prompt": 1400682,
+        "cached": 1335040,
+        "cached_fraction": 0.9531356867583077,
+        "accepted": 7000,
+        "rejected": 1121,
+        "acceptance": 0.8619628124615195,
+        "prefill_ms": 295277.756,
+        "effective_prefill_tps": 4743.6082520215305,
+        "duration_s": 793.14589586,
+        "ttft_mean_s": 2.534861896292857,
+        "score": 0.5586,
+        "speculating_requests": 140,
+        "recoverable_failures": 0.0
+      },
+      "kv_target": "bf16",
+      "kv_draft": "bf16",
+      "speculation": "NextN MTP depth3",
+      "server_command": [
+        "bash",
+        "/tmp/t17-env.sh",
+        "python",
+        "/home/lhl/gate-runs/mlperf-edge-speculative-20260925/capture-server-v2.py",
+        "--model",
+        "/home/lhl/models/mlperf-edge/weights/Qwen3.6-27B-original-target-plus-MTP-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1151",
+        "--served-model-name",
+        "Qwen3.6-27B-Q4_K_M",
+        "--max-context-tokens",
+        "32768",
+        "--kv-storage",
+        "bf16",
+        "--execution-profile",
+        "production",
+        "--metrics",
+        "prometheus",
+        "--info",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8098",
+        "--log-level",
+        "info",
+        "--speculative-mtp-serving",
+        "enabled"
+      ],
+      "runner_command": [
+        "/home/lhl/mlperf-edge-endpoints/.venv/bin/inference-endpoint",
+        "benchmark",
+        "from-config",
+        "--config",
+        "/home/lhl/gate-runs/mlperf-edge-speculative-20260925/hipengine-screen-140-accounted/config.yaml"
+      ],
+      "start_utc": "2026-09-25T15:44:58Z",
+      "end_utc": "2026-09-25T15:58:35Z",
+      "repetitions": 1,
+      "server_rows_aligned": true,
+      "valid_tool_calls": 140
+    },
+    "llamacpp": {
+      "summary": {
+        "turns": 140,
+        "latency_s": {
+          "n": 140,
+          "sum": 827.064717366,
+          "mean": 5.907605124042857,
+          "median": 4.462415838,
+          "min": 2.52138162,
+          "max": 37.21953488
+        },
+        "ttft_s": {
+          "n": 140,
+          "sum": 402.126219948,
+          "mean": 2.872330142485714,
+          "median": 2.528323533,
+          "min": 1.381419331,
+          "max": 13.490637452
+        },
+        "post_first_visible_s": {
+          "n": 140,
+          "sum": 424.938497418,
+          "mean": 3.035274981557143,
+          "median": 1.8179575005,
+          "min": 0.830769483,
+          "max": 34.553012685
+        },
+        "output_tokens": {
+          "n": 140,
+          "sum": 10123,
+          "mean": 72.30714285714286,
+          "median": 45.0,
+          "min": 26,
+          "max": 728
+        },
+        "content_only_tokens": 376,
+        "tool_only_tokens": 9740,
+        "finish_reasons": {
+          "tool_calls": 140
+        },
+        "empty": 0,
+        "raw_markup_in_content": 0,
+        "invalid_tool_arguments": 0,
+        "server_prefill_ms": {
+          "n": 140,
+          "sum": 275095.87,
+          "mean": 1964.9705,
+          "median": 1610.08,
+          "min": 651.04,
+          "max": 12599.33
+        },
+        "server_generation_ms": {
+          "n": 140,
+          "sum": 514129.4,
+          "mean": 3672.352857142857,
+          "median": 2439.3599999999997,
+          "min": 1601.28,
+          "max": 35173.42
+        },
+        "server_generation_tokens": {
+          "n": 140,
+          "sum": 10263,
+          "mean": 73.30714285714286,
+          "median": 46.0,
+          "min": 27,
+          "max": 729
+        }
+      },
+      "duration_s": 827.101640184,
+      "inline_command_iou": 0.6423,
+      "usage": {
+        "prompt_tokens": 1675019,
+        "fresh_tokens": 67892,
+        "cached_tokens": 1607127,
+        "accepted": 7565,
+        "proposed": 8178,
+        "cached_fraction": 0.9594679224534169,
+        "acceptance": 0.9250427977500612,
+        "effective_prefill_tps": 6088.855496085783,
+        "speculating_requests": 140
+      },
+      "kv_target": "bf16",
+      "kv_draft": "fp16",
+      "speculation": "NextN MTP depth3",
+      "server_command": [
+        "bash",
+        "/tmp/t17-env.sh",
+        "/home/lhl/llama.cpp/llama.cpp-hip/build-hip-release/bin/llama-server",
+        "--model",
+        "/home/lhl/models/mlperf-edge/weights/Qwen3.6-27B-original-target-plus-MTP-Q4_K_M.gguf",
+        "--alias",
+        "Qwen3.6-27B-Q4_K_M",
+        "--ctx-size",
+        "32768",
+        "--parallel",
+        "1",
+        "--n-gpu-layers",
+        "99",
+        "--cache-type-k",
+        "bf16",
+        "--cache-type-v",
+        "bf16",
+        "--reasoning",
+        "off",
+        "--metrics",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8098",
+        "--spec-type",
+        "draft-mtp",
+        "--log-verbosity",
+        "5"
+      ],
+      "runner_command": [
+        "/home/lhl/mlperf-edge-endpoints/.venv/bin/inference-endpoint",
+        "benchmark",
+        "from-config",
+        "--config",
+        "/home/lhl/gate-runs/mlperf-edge-speculative-20260925/llamacpp-screen-140/config.yaml"
+      ],
+      "start_utc": "2026-09-25T16:02:40Z",
+      "end_utc": "2026-09-25T16:17:02Z",
+      "repetitions": 1,
+      "server_rows_aligned": true,
+      "valid_tool_calls": 141,
+      "binary_revision": "1ebf790cda38d827559548f67b0469189690cc8c",
+      "binary_sha256": "d496e87f0988ea72dd3f0e9e727b4ce4bb11ca3212869205f7fe302e64fb2072"
+    }
+  },
+  "ar_output_comparison": {
+    "hipengine": {
+      "same_rendered_output": 139,
+      "total": 140,
+      "changed_turns": [
+        [
+          "pydata__xarray-6721",
+          7
+        ]
+      ]
+    },
+    "llamacpp": {
+      "same_rendered_output": 132,
+      "total": 140,
+      "changed_turns": [
+        [
+          "pytest-dev__pytest-6202",
+          1
+        ],
+        [
+          "pytest-dev__pytest-6202",
+          3
+        ],
+        [
+          "pytest-dev__pytest-6202",
+          91
+        ],
+        [
+          "pytest-dev__pytest-6202",
+          109
+        ],
+        [
+          "pydata__xarray-6721",
+          61
+        ],
+        [
+          "pallets__flask-5014",
+          17
+        ],
+        [
+          "pallets__flask-5014",
+          33
+        ],
+        [
+          "pallets__flask-5014",
+          49
+        ]
+      ]
+    }
+  },
+  "caveats": [
+    "Fixed replay with recorded history, no tools executed, no BFCL or numerical gate. Not full MLPerf result.",
+    "Inline command-name IoU is not functional task accuracy.",
+    "Different outputs and tokenization across engines; compare wall latency directly, label internal timing denominators.",
+    "hipEngine streamed decode window differs from llama.cpp engine eval and gufo engine decode wall.",
+    "Original hipEngine screen lacked extra telemetry because logger was filtered; primary repeat repairs only capture. Both retained.",
+    "AR output comparison ignores generated tool IDs but compares content, reasoning, tool names and raw argument strings. Not token/logit parity."
+  ],
+  "raw_root": "/home/lhl/gate-runs/mlperf-edge-speculative-20260925",
+  "files": {
+    "hipengine-screen-140-accounted/server.log": {
+      "sha256": "4ae802e293ed49a198fb54af2a0eb747bfbfb271d4884cccb2d6838dc4f1a355",
+      "bytes": 276508
+    },
+    "hipengine-screen-140-accounted/server-command.json": {
+      "sha256": "80d4bd05fe6cddb0ef31550a5948f34ed460827dc7e80b1da877175bd66f1aee",
+      "bytes": 578
+    },
+    "hipengine-screen-140-accounted/runner-command.json": {
+      "sha256": "fbd200c58abf8fd459ee25040c61c0c93547a18c4e0e97ef39d870e7ee7f3704",
+      "bytes": 215
+    },
+    "hipengine-screen-140-accounted/config.yaml": {
+      "sha256": "5e4d30a89e09ef876eef13ac797e911a7553a4b657617da5698484be4ef7a658",
+      "bytes": 1001
+    },
+    "hipengine-screen-140-accounted/metrics-before.txt": {
+      "sha256": "0378d5a6b955ba93136e45cfcf6cd8e3cab8a2dbd6b5a0dd9302a68e40b957dc",
+      "bytes": 20882
+    },
+    "hipengine-screen-140-accounted/metrics-after.txt": {
+      "sha256": "3a4a3e0bed7d2f646bd3ae61260f9e1c7bdbb6e89d22cbfc8f9f16050e1f77c5",
+      "bytes": 21010
+    },
+    "hipengine-screen-140-accounted/harness/events.jsonl": {
+      "sha256": "bbe450e54562997d78afc926fd25c0607b44705ab90bf0a4c4cedb4d3a2f074b",
+      "bytes": 7167159
+    },
+    "hipengine-screen-140-accounted/harness/scores.json": {
+      "sha256": "5bf174282ffa511966ca153d10de2bb8cbac61843057cb97eda34cbb088f023c",
+      "bytes": 36425
+    },
+    "hipengine-screen-140-accounted/harness/performance/result_summary.json": {
+      "sha256": "719d4c0ea10428b3db2d8cc0f8f1caaaf4c907260210d49ca7f4f7f41f434aaa",
+      "bytes": 21941
+    },
+    "hipengine-screen-140-accounted/usage-analysis.json": {
+      "sha256": "e7cd0a477667ec77153181893625a326fc80ce94dbf2fcf405bc3248f597c380",
+      "bytes": 287392
+    },
+    "llamacpp-screen-140/server.log": {
+      "sha256": "30059e3a708a8c20e0383c7c8f3b2b77302bc08c89f98dc56a28a75cf3804bfb",
+      "bytes": 20069575
+    },
+    "llamacpp-screen-140/server-command.json": {
+      "sha256": "82bf2179177c905bfc5a0022c0f75cb5a07de7efc0f9dfe751e33e8b3f192ba4",
+      "bytes": 536
+    },
+    "llamacpp-screen-140/runner-command.json": {
+      "sha256": "ab0b2e1d7cfa46b73de096d3161f2ba690e28bf0c8048709d85dfbd76c82a547",
+      "bytes": 204
+    },
+    "llamacpp-screen-140/config.yaml": {
+      "sha256": "272e120497738e8f93c736dd326456b72e2399e7dadecb766afa4812a5edf2b5",
+      "bytes": 989
+    },
+    "llamacpp-screen-140/metrics-before.txt": {
+      "sha256": "6b99f955a2a48388e55975958beab8b913c86933a12e50de82abd4151eb4a2ec",
+      "bytes": 1621
+    },
+    "llamacpp-screen-140/metrics-after.txt": {
+      "sha256": "404ca95911e88564d053e4b2bc08a5e1fcb484b18b239e50a9b54b35c62311ae",
+      "bytes": 1659
+    },
+    "llamacpp-screen-140/harness/events.jsonl": {
+      "sha256": "c85ad4eaadaeb40adb8460546ddc8925d727fb3fa435a6b65eab89edd3cfe7ea",
+      "bytes": 6929116
+    },
+    "llamacpp-screen-140/harness/scores.json": {
+      "sha256": "7652ae136171a9ea698169a5a036a9acf66ccecddaa091ffb0610144e5263743",
+      "bytes": 36549
+    },
+    "llamacpp-screen-140/harness/performance/result_summary.json": {
+      "sha256": "f4f5695180885cb2c9d093554b258b4cedcfbccc0847557ed4c9c4350bc68def",
+      "bytes": 21902
+    },
+    "llamacpp-screen-140/usage-analysis.json": {
+      "sha256": "bc35982c1bedff7b91d4f94eaeb78596ea9e07f103e959ede4318139b58da2c1",
+      "bytes": 15941
+    },
+    "assemble-mtp.py": {
+      "sha256": "037d8d869323b1b3a72354a3f14ba263b3559baf23f6cb8da06933a9bf669006",
+      "bytes": 2713
+    },
+    "mtp-assembly.json": {
+      "sha256": "e93f61b247e0cb7ebca7993d113fbb7bde70f7ca929e7b2c1f887ba4cb944e84",
+      "bytes": 136636
+    },
+    "capture-server.py": {
+      "sha256": "ea8b3cb3472d5c97db981263fa8ce667055ef094495cf79c33d3acb7559b4c5c",
+      "bytes": 470
+    },
+    "capture-server-v2.py": {
+      "sha256": "4fb6dc05576952f9b285fd1ed6b508c624f11de9ca47f9d73c25775735247ad1",
+      "bytes": 440
+    },
+    "ar-output-comparison.json": {
+      "sha256": "63a40a373f8a899f197ecbd79c0b0273f80d35c47cc28ff4513d4f274df52454",
+      "bytes": 748
+    }
+  },
+  "hipengine_first_pass": {
+    "duration_s": 791.283256137,
+    "completed": 140,
+    "accepted": 7000,
+    "proposed": 8121,
+    "cache_counts": "not captured",
+    "raw_dir": "hipengine-screen-140"
+  }
+}
