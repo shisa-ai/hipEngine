@@ -27,6 +27,7 @@
 
 #include <hip/hip_runtime.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -39,6 +40,13 @@ inline int blocks_of(int n) { return (n + 255) / 256; }
 constexpr int32_t kOk = 0;
 constexpr int32_t kErrArg = -1;
 constexpr int32_t kErrHip = -2;
+
+// Every allocation a handle takes is counted here and released by the
+// destructor, so ownership is observable: a create/close cycle and a create that
+// failed halfway through must both leave this at zero. The timeout flags are the
+// reason it exists - they were allocated per rank and never freed, which nothing
+// else in the process could see.
+std::atomic<long long> g_live_allocations{0};
 
 struct Tp2DeviceExchange {
   int world = 0;
@@ -66,6 +74,44 @@ struct Tp2DeviceExchange {
   std::vector<unsigned int*> timeout_flags;
   unsigned int max_spins = 0;
   std::string error;
+
+  // Every device and mapped allocation this handle owns is freed here, on the
+  // device that owns it. The destructor is the only caller, which is what makes
+  // the create function's failure paths safe: they `delete ex` exactly as the
+  // destroy entry point does, so a handle that failed halfway through releases
+  // the arenas, counters and timeout flags it had already taken. Each pointer is
+  // appended to its vector the moment it exists and nulled after the free, so
+  // the vectors say exactly what exists and a second call is a no-op.
+  ~Tp2DeviceExchange() {
+    int previous_device = 0;
+    const bool restore = hipGetDevice(&previous_device) == hipSuccess;
+    for (size_t rank = 0; rank < devices.size(); ++rank) {
+      (void)hipSetDevice(devices[rank]);
+      if (rank < staging_host.size() && staging_host[rank] != nullptr) {
+        (void)hipHostFree(staging_host[rank]);
+        staging_host[rank] = nullptr;
+        g_live_allocations.fetch_sub(1);
+      }
+      if (rank < flags_host.size() && flags_host[rank] != nullptr) {
+        (void)hipHostFree(flags_host[rank]);
+        flags_host[rank] = nullptr;
+        g_live_allocations.fetch_sub(1);
+      }
+      if (rank < counters.size() && counters[rank] != nullptr) {
+        (void)hipFree(counters[rank]);
+        counters[rank] = nullptr;
+        g_live_allocations.fetch_sub(1);
+      }
+      if (rank < timeout_flags.size() && timeout_flags[rank] != nullptr) {
+        (void)hipFree(timeout_flags[rank]);
+        timeout_flags[rank] = nullptr;
+        g_live_allocations.fetch_sub(1);
+      }
+    }
+    if (restore) {
+      (void)hipSetDevice(previous_device);
+    }
+  }
 };
 
 int32_t set_hip_error(Tp2DeviceExchange* ex, hipError_t code, const char* what) {
@@ -206,6 +252,11 @@ void* tp2_dev_exchange_create(
       delete ex;
       return nullptr;
     }
+    // Tracked the moment it exists: the destructor frees what the vectors hold,
+    // so a failure on any later line of this iteration still releases this
+    // arena instead of leaking it.
+    ex->staging_host.push_back(sh);
+    g_live_allocations.fetch_add(1);
     std::memset(sh, 0, arena_bytes);
     unsigned char* sd = nullptr;
     if (hipHostGetDevicePointer(reinterpret_cast<void**>(&sd), sh, 0) != hipSuccess) {
@@ -223,6 +274,8 @@ void* tp2_dev_exchange_create(
       delete ex;
       return nullptr;
     }
+    ex->flags_host.push_back(fh);
+    g_live_allocations.fetch_add(1);
     std::memset(fh, 0, static_cast<size_t>(num_layers) * sizeof(unsigned int));
     unsigned int* fd = nullptr;
     if (hipHostGetDevicePointer(reinterpret_cast<void**>(&fd), fh, 0) != hipSuccess) {
@@ -238,6 +291,8 @@ void* tp2_dev_exchange_create(
       delete ex;
       return nullptr;
     }
+    ex->counters.push_back(counter);
+    g_live_allocations.fetch_add(1);
     if (hipMemset(counter, 0, sizeof(unsigned int)) != hipSuccess) {
       *error_code = set_hip_error(ex, hipGetLastError(), "hipMemset counter");
       hipSetDevice(previous_device);
@@ -251,16 +306,14 @@ void* tp2_dev_exchange_create(
       delete ex;
       return nullptr;
     }
+    ex->timeout_flags.push_back(timeout_flag);
+    g_live_allocations.fetch_add(1);
     if (hipMemset(timeout_flag, 0, sizeof(unsigned int)) != hipSuccess) {
       *error_code = set_hip_error(ex, hipGetLastError(), "hipMemset timeout flag");
       hipSetDevice(previous_device);
       delete ex;
       return nullptr;
     }
-    ex->staging_host.push_back(sh);
-    ex->flags_host.push_back(fh);
-    ex->counters.push_back(counter);
-    ex->timeout_flags.push_back(timeout_flag);
   }
   ex->max_spins = max_spins;
   // Per-rank device views of both ranks' arenas: with device r current,
@@ -527,28 +580,21 @@ const char* tp2_dev_exchange_last_error(void* handle) {
   return static_cast<Tp2DeviceExchange*>(handle)->error.c_str();
 }
 
+// How many allocations the driver currently owns, process-wide. Ownership
+// accounting for the lifecycle tests: a create/close cycle and a create that
+// failed partway must both leave this at zero.
+long long tp2_dev_exchange_live_allocations(void) {
+  return g_live_allocations.load();
+}
+
 void tp2_dev_exchange_destroy(void* handle) {
   auto* ex = static_cast<Tp2DeviceExchange*>(handle);
   if (ex == nullptr) {
     return;
   }
-  int previous_device = 0;
-  if (hipGetDevice(&previous_device) != hipSuccess) {
-    previous_device = 0;
-  }
-  for (int rank = 0; rank < ex->world; ++rank) {
-    (void)hipSetDevice(ex->devices[rank]);
-    if (rank < static_cast<int>(ex->staging_host.size()) && ex->staging_host[rank] != nullptr) {
-      (void)hipHostFree(ex->staging_host[rank]);
-    }
-    if (rank < static_cast<int>(ex->flags_host.size()) && ex->flags_host[rank] != nullptr) {
-      (void)hipHostFree(ex->flags_host[rank]);
-    }
-    if (rank < static_cast<int>(ex->counters.size()) && ex->counters[rank] != nullptr) {
-      (void)hipFree(ex->counters[rank]);
-    }
-  }
-  (void)hipSetDevice(previous_device);
+  // The destructor owns the teardown, so this is the same path a create that
+  // failed halfway through takes, and the timeout flags are freed here rather
+  // than only in this entry point.
   delete ex;
 }
 

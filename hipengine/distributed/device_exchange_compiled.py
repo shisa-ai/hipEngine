@@ -85,7 +85,24 @@ def _bind(library: Any) -> None:
     library.tp2_dev_exchange_last_error.restype = ctypes.c_char_p
     library.tp2_dev_exchange_destroy.argtypes = [ctypes.c_void_p]
     library.tp2_dev_exchange_destroy.restype = None
+    library.tp2_dev_exchange_live_allocations.argtypes = []
+    library.tp2_dev_exchange_live_allocations.restype = ctypes.c_int64
     library._tp2_dev_exchange_bound = True
+
+
+def device_exchange_live_allocations(library: Any | None = None) -> int:
+    """How many allocations the device-exchange driver currently owns.
+
+    Process-wide ownership accounting, not a size: a create/close cycle and a
+    create that failed halfway through must both leave this at zero. It exists
+    because the timeout flags were allocated per rank and never freed, and
+    nothing else in the process could observe that.
+    """
+
+    if library is None:
+        library = build_tp2_device_exchange()
+    _bind(library)
+    return int(library.tp2_dev_exchange_live_allocations())
 
 
 class CompiledDeviceExchange:
@@ -135,6 +152,16 @@ class CompiledDeviceExchange:
         self.step_begins = 0
         self.enqueues: list[tuple[int, int, int]] = []
         self.waits = 0
+        # Steps whose submission has not been observed by a ``wait`` yet.
+        # ``step_begin`` and ``reset_timeouts`` both clear the device timeout
+        # flags, so a clear that lands while an earlier step is unobserved can
+        # erase a spin timeout no one has seen - and because the spin kernel
+        # writes nothing on timeout, the erased failure would leave a stale
+        # output row passing as a result. Only submissions that execute count:
+        # the counter bumps and flag clears, not the enqueues a graph capture
+        # records (nothing has run, so no flag can be set), which is why
+        # ``enqueue_rank`` is deliberately not counted here.
+        self._unobserved_steps = 0
 
         if library is None:
             library = build_tp2_device_exchange()
@@ -175,12 +202,35 @@ class CompiledDeviceExchange:
         if self._handle is None:
             raise TransportStateError("device exchange is closed")
 
+    def _refuse_unobserved_clear(self, what: str) -> None:
+        """Refuse a flag clear while an earlier step's outcome is unobserved.
+
+        The flags are sticky on purpose (that is what ``bump`` is for), so the
+        only safe rule is to refuse the clear until a wait has observed the
+        group's outcome rather than to clear and hope the failure was not real.
+        """
+
+        if self._unobserved_steps:
+            raise TransportStateError(
+                f"device exchange cannot {what} while {self._unobserved_steps} "
+                "step(s) have been submitted and not waited: clearing the "
+                "spin-timeout flags now would erase a timeout no wait has "
+                "observed, and the spin kernel writes nothing on timeout, so a "
+                "stale output row would pass as a result"
+            )
+
     # -- the reduction ----------------------------------------------------
 
     def step_begin(self) -> None:
-        """Bump both ranks' step counters once, on their own streams."""
+        """Bump both ranks' step counters once, on their own streams.
+
+        This also clears the timeout flags, so it starts a step: it refuses
+        while an earlier step's outcome is unobserved, because the clear would
+        erase that step's timeout.
+        """
 
         self._require_live()
+        self._refuse_unobserved_clear("begin a step")
         code = self._library.tp2_dev_exchange_step_begin(ctypes.c_void_p(self._handle))
         if code != _OK:
             self._poisoned = True
@@ -190,6 +240,7 @@ class CompiledDeviceExchange:
             message = detail.decode(errors="replace") if detail else "unknown error"
             raise TransportStateError(f"device exchange step_begin failed: {message}")
         self.step_begins += 1
+        self._unobserved_steps += 1
 
     def reset_timeouts(self) -> None:
         """Clear both ranks' spin-timeout flags without touching the counters.
@@ -197,10 +248,13 @@ class CompiledDeviceExchange:
         A batched group resets once and then bumps per layer, so a timeout in
         any layer stays visible to :meth:`wait` instead of being cleared by the
         next layer's bump. The spin kernel writes nothing on timeout, so a
-        cleared flag would let a stale output row pass as a result.
+        cleared flag would let a stale output row pass as a result - which is
+        also why this refuses while an earlier step is unobserved: the clear
+        would erase a timeout that no wait has reported yet.
         """
 
         self._require_live()
+        self._refuse_unobserved_clear("reset the spin timeouts")
         code = self._library.tp2_dev_exchange_reset_timeouts(
             ctypes.c_void_p(self._handle)
         )
@@ -233,6 +287,7 @@ class CompiledDeviceExchange:
             message = detail.decode(errors="replace") if detail else "unknown error"
             raise TransportStateError(f"device exchange bump failed: {message}")
         self.step_begins += 1
+        self._unobserved_steps += 1
 
     def enqueue_rank(
         self,
@@ -278,6 +333,9 @@ class CompiledDeviceExchange:
             message = detail.decode(errors="replace") if detail else "unknown error"
             raise TransportStateError(f"device exchange wait failed: {message}")
         self.waits += 1
+        # The step's outcome is now observed: a later clear cannot erase a
+        # timeout this wait would have raised on.
+        self._unobserved_steps = 0
 
     # -- teardown ---------------------------------------------------------
 

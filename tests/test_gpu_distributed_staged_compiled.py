@@ -612,6 +612,11 @@ def test_batched_device_exchange_keeps_a_timeout_visible_across_layers() -> None
     let a stale output row pass as a result. ``reset_timeouts`` exists to be
     called once per group for exactly this reason, and ``bump`` must not clear
     the flag the way ``step_begin`` does.
+
+    The second layer bumps and exchanges nothing. That is what makes the test
+    bite: if the bump cleared the flag, no later spin would set it again, so the
+    wait below would report success and this test would fail. A second layer
+    that also timed out would make a clearing bump pass instead.
     """
 
     from hipengine.core.device import scoped_current_device
@@ -656,11 +661,80 @@ def test_batched_device_exchange_keeps_a_timeout_visible_across_layers() -> None
         # Only rank 0 exchanges, so its spin expires and sets its timeout flag.
         exchange.bump()
         exchange.enqueue_rank(0, partials[0], 0, outs[0])
-        # The next layer's bump must leave that flag set: if it cleared it the
-        # way step_begin does, the wait below would report success and the
-        # unwritten output row would pass as a result.
+        # The next layer's bump must leave that flag set, and it deliberately
+        # runs no exchange of its own: a bump that cleared the flag the way
+        # step_begin does would leave nothing to set it again, so the wait below
+        # would return success.
+        exchange.bump()
+        with pytest.raises(TransportStateError, match="spin timeout"):
+            exchange.wait()
+    finally:
+        exchange.close()
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                rt.stream_synchronize(streams[device])
+                for buffer in buffers[device]:
+                    rt.free(buffer)
+                rt.stream_destroy(streams[device])
+
+
+def test_a_successful_later_layer_does_not_mask_an_earlier_timeout() -> None:
+    """A completed exchange must not make an earlier layer's timeout vanish.
+
+    ``wait`` reads each rank's flag after that rank's stream has drained and
+    reports what it finds; it does not clear anything. So a layer whose exchange
+    completes leaves the flags alone, and the earlier layer's timeout still
+    reaches the caller. This is the arm a wait that cleared on success would
+    fail, and it is also the arm that a bump-then-succeed sequence would hide if
+    the later layer timed out as well.
+    """
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.distributed.device_exchange_compiled import CompiledDeviceExchange
+    from hipengine.distributed.transport import TransportStateError
+
+    rt = get_hip_runtime()
+    if not _two_devices(rt):
+        pytest.skip("this test needs two visible devices")
+    hidden, rows = 256, 4
+    n = hidden * rows
+    streams = {}
+    for device in (0, 1):
+        with scoped_current_device(rt, device):
+            streams[device] = rt.stream_create()
+    exchange = CompiledDeviceExchange(
+        rt,
+        devices=(0, 1),
+        streams=streams,
+        num_layers=2,
+        hidden=hidden,
+        rows=rows,
+        max_spins=20_000,
+    )
+    buffers: dict[int, list[int]] = {0: [], 1: []}
+    try:
+        outs = {}
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                outs[device] = rt.malloc(n * 2)
+                buffers[device].append(outs[device])
+        partials = {}
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                buffer = rt.malloc(n * 2)
+                buffers[device].append(buffer)
+                rt.memset(buffer, 0, n * 2)
+                partials[device] = buffer
+
+        exchange.reset_timeouts()
+        # Layer 0: rank 1 publishes nothing, so rank 0's spin expires.
+        exchange.bump()
+        exchange.enqueue_rank(0, partials[0], 0, outs[0])
+        # Layer 1: both ranks publish, so this exchange completes.
         exchange.bump()
         exchange.enqueue_rank(0, partials[0], 1, outs[0])
+        exchange.enqueue_rank(1, partials[1], 1, outs[1])
         with pytest.raises(TransportStateError, match="spin timeout"):
             exchange.wait()
     finally:
@@ -770,4 +844,100 @@ def test_device_exchange_serves_two_reductions_in_one_layer() -> None:
                 rt.stream_synchronize(streams[device])
                 for buffer in buffers[device]:
                     rt.free(buffer)
+                rt.stream_destroy(streams[device])
+
+
+def test_create_and_destroy_returns_every_owned_allocation() -> None:
+    """A create/close cycle must give back everything the handle took.
+
+    Creation takes four allocations per rank - a mapped staging arena, a mapped
+    flag array, a step counter and a spin-timeout flag - and the timeout flags
+    were the ones destruction missed, so every cycle leaked one device
+    allocation per rank. The driver counts what it owns, which makes the leak
+    visible without guessing at allocator granularity: the count must be back to
+    its resting value after the cycles.
+    """
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.distributed.device_exchange_compiled import (
+        CompiledDeviceExchange,
+        device_exchange_live_allocations,
+    )
+
+    rt = get_hip_runtime()
+    if not _two_devices(rt):
+        pytest.skip("this test needs two visible devices")
+    streams = {}
+    for device in (0, 1):
+        with scoped_current_device(rt, device):
+            streams[device] = rt.stream_create()
+    try:
+        # Warm up first: the first construction builds the library, and the
+        # build is not part of the accounting under test.
+        warmup = CompiledDeviceExchange(
+            rt, devices=(0, 1), streams=streams, num_layers=2, hidden=256, rows=4
+        )
+        warmup.close()
+        resting = device_exchange_live_allocations()
+        for _cycle in range(50):
+            exchange = CompiledDeviceExchange(
+                rt, devices=(0, 1), streams=streams, num_layers=2, hidden=256, rows=4
+            )
+            exchange.close()
+        assert device_exchange_live_allocations() == resting, (
+            "50 create/close cycles must not leave allocations behind"
+        )
+    finally:
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
+                rt.stream_destroy(streams[device])
+
+
+def test_a_create_that_fails_partway_releases_what_it_already_took() -> None:
+    """Partial construction must not leak either.
+
+    Rank 0 is a real device and rank 1 is not, so rank 0's four allocations
+    succeed and the second rank's device switch fails. The handle is destroyed on
+    that path exactly as ``close`` destroys it, so the count must come back to
+    its resting value instead of holding rank 0's arenas.
+    """
+
+    from hipengine.core.device import scoped_current_device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.distributed.device_exchange_compiled import (
+        CompiledDeviceExchange,
+        device_exchange_live_allocations,
+    )
+    from hipengine.distributed.transport import TransportStateError
+
+    rt = get_hip_runtime()
+    if not _two_devices(rt):
+        pytest.skip("this test needs two visible devices")
+    streams = {}
+    for device in (0, 1):
+        with scoped_current_device(rt, device):
+            streams[device] = rt.stream_create()
+    try:
+        warmup = CompiledDeviceExchange(
+            rt, devices=(0, 1), streams=streams, num_layers=2, hidden=256, rows=4
+        )
+        warmup.close()
+        resting = device_exchange_live_allocations()
+        with pytest.raises(TransportStateError):
+            CompiledDeviceExchange(
+                rt,
+                devices=(0, 999),
+                streams={0: streams[0], 999: streams[1]},
+                num_layers=2,
+                hidden=256,
+                rows=4,
+            )
+        assert device_exchange_live_allocations() == resting, (
+            "a create that failed on the second rank must release the first "
+            "rank's allocations"
+        )
+    finally:
+        for device in (0, 1):
+            with scoped_current_device(rt, device):
                 rt.stream_destroy(streams[device])
