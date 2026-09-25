@@ -9967,7 +9967,7 @@
       "kind": "candidate",
       "key": "ud-gfx1151-optimize2-e6-closeout-mixed-pair-i-84c7e4f5c092",
       "title": "E6 closeout mixed pair (IQ3_S, IQ4_XS) \u2014 UD-GFX1151-OPTIMIZE2.md",
-      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:934",
+      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:925",
       "evidence": {
         "verdict_word": "removed",
         "measurements": [
@@ -10003,13 +10003,13 @@
         ]
       },
       "id": "candidate/ud-gfx1151-optimize2-e6-closeout-mixed-pair-i-84c7e4f5c092",
-      "evidence_hash": "721c02d3a1bb"
+      "evidence_hash": "91acdf8035af"
     },
     {
       "kind": "candidate",
       "key": "ud-gfx1151-optimize2-e6-closeout-mixed-pair-q-0ecd916d0d02",
       "title": "| E6 closeout mixed pair (Q5_K, Q6_K planar) | H9 | (route not shipped \u2014 nothing \u2014 UD-GFX1151-OPTIMIZE2.md",
-      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:935",
+      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:926",
       "evidence": {
         "verdict_word": "removed",
         "measurements": [
@@ -10045,13 +10045,13 @@
         ]
       },
       "id": "candidate/ud-gfx1151-optimize2-e6-closeout-mixed-pair-q-0ecd916d0d02",
-      "evidence_hash": "7ca2ec6e7ab0"
+      "evidence_hash": "284cbbdfdd0a"
     },
     {
       "kind": "candidate",
       "key": "ud-gfx1151-optimize2-e6a-same-quant-pair-rout-0bd879073325",
       "title": "E6a same-quant pair routes \u2014 UD-GFX1151-OPTIMIZE2.md",
-      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:926",
+      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:917",
       "evidence": {
         "verdict_word": "rejected",
         "measurements": [
@@ -10087,13 +10087,13 @@
         ]
       },
       "id": "candidate/ud-gfx1151-optimize2-e6a-same-quant-pair-rout-0bd879073325",
-      "evidence_hash": "dc4df08268d7"
+      "evidence_hash": "55d294bf2285"
     },
     {
       "kind": "candidate",
       "key": "ud-gfx1151-optimize2-e6b-5-mixed-pair-q3-k-iq-b3f517eba5b7",
       "title": "E6b-5 mixed pair (Q3_K, IQ4_XS) \u2014 UD-GFX1151-OPTIMIZE2.md",
-      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:931",
+      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:922",
       "evidence": {
         "verdict_word": "removed",
         "measurements": [
@@ -10131,13 +10131,13 @@
         ]
       },
       "id": "candidate/ud-gfx1151-optimize2-e6b-5-mixed-pair-q3-k-iq-b3f517eba5b7",
-      "evidence_hash": "a1089091ccaa"
+      "evidence_hash": "0f42fc4b9241"
     },
     {
       "kind": "candidate",
       "key": "ud-gfx1151-optimize2-e6b-7-mixed-pair-iq4-xs-18be840c88d3",
       "title": "E6b-7 mixed pair (IQ4_XS, Q3_K) \u2014 UD-GFX1151-OPTIMIZE2.md",
-      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:933",
+      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:924",
       "evidence": {
         "verdict_word": "removed",
         "measurements": [
@@ -10173,7 +10173,7 @@
         ]
       },
       "id": "candidate/ud-gfx1151-optimize2-e6b-7-mixed-pair-iq4-xs-18be840c88d3",
-      "evidence_hash": "a15d931967aa"
+      "evidence_hash": "38b69bce93ea"
     }
   ]
 }

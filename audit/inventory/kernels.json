@@ -3862,7 +3862,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 1726,
-        "referrers": 588,
+        "referrers": 587,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/benchmark/session_replay.py",
@@ -3894,7 +3894,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/linear_attn/conv.hip",
-      "evidence_hash": "c7c2d505618f"
+      "evidence_hash": "74318759ffe9"
     },
     {
       "kind": "kernel",
@@ -3905,7 +3905,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 1276,
-        "referrers": 588,
+        "referrers": 587,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/benchmark/session_replay.py",
@@ -3936,7 +3936,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/linear_attn/conv.py",
-      "evidence_hash": "4804858962ca"
+      "evidence_hash": "160b0497ab68"
     },
     {
       "kind": "kernel",

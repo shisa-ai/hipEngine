@@ -583,12 +583,12 @@ def test_small_plain_q8_0_control_passes_default_operations():
 
 @pytest.mark.skipif(not UD_Q4_K_M.exists(), reason=f"pinned artifact missing: {UD_Q4_K_M}")
 def test_native_multirow_alpha_beta_requires_a_bf16_pointer_owner():
-    # UD stores alpha/beta as Q8_0. E7 expands them to the dense F32 resident
-    # at load (exact fp16-scale x int8 dequant), so the file type stays Q8_0
-    # while the resident is F32 with a "raw" allocation. The native multirow
-    # owner passes allocation("raw") to dense_gemv_out_bf16 (uint16_t* weight
-    # ABI), so the F32 resident must still be refused for that owner: an F32
-    # buffer is not a BF16 pointer.
+    # UD stores alpha/beta as Q8_0. Under the shipped per-tensor eligibility
+    # (E3: admission now mirrors the planner) they repack to Q8_0 T16 — the
+    # runtime always planned them that way; only the admission report used to
+    # record the stale model-wide-veto view. The native multirow owner passes
+    # allocation("raw") to dense_gemv_out_bf16 (uint16_t* weight ABI), so
+    # either resident form must still be refused for that owner.
     report = _preflight_real(
         UD_Q4_K_M, "hip_gfx1100", operations=(QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS,)
     )
@@ -606,7 +606,7 @@ def test_native_multirow_alpha_beta_requires_a_bf16_pointer_owner():
         for layer in linear_layers
         for slot in ("ssm_alpha", "ssm_beta")
     }
-    assert all(u.resident_layout == LAYOUT_DENSE_F32 for u in alpha_refusals)
+    assert all(u.resident_layout == LAYOUT_GGUF_Q8_0_T16 for u in alpha_refusals)
     assert "BF16" in alpha_refusals[0].reason
 
 
@@ -626,12 +626,9 @@ def test_e3_ud_file_default_policy_plans_repack_on():
 
 
 @pytest.mark.skipif(not SMALL_Q8_0.exists(), reason=f"pinned artifact missing: {SMALL_Q8_0}")
-def test_q8_0_alpha_beta_file_cannot_enter_the_native_bf16_pointer_owner():
-    # A plain Q8_0 file stores alpha/beta as Q8_0; E7 expands them to the
-    # dense F32 resident with a "raw" allocation (the former sole-T16 form no
-    # longer exists for alpha/beta). The native BF16-pointer owner still
-    # cannot consume them: dense_gemv_out_bf16 needs a BF16 pointer, and the
-    # resident is F32.
+def test_sole_t16_alpha_beta_cannot_enter_the_native_bf16_pointer_owner():
+    # A repacked plain Q8_0 file plans alpha/beta as sole T16 residents with
+    # no "raw" allocation at all: the BF16-pointer owner cannot even resolve.
     report = _preflight_real(
         SMALL_Q8_0, "hip_gfx1100", operations=(QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS,)
     )
@@ -639,7 +636,7 @@ def test_q8_0_alpha_beta_file_cannot_enter_the_native_bf16_pointer_owner():
         u for u in report.unsupported if u.role_class == "recurrent_alpha_beta"
     ]
     assert alpha_refusals
-    assert {u.resident_layout for u in alpha_refusals} == {LAYOUT_DENSE_F32}
+    assert {u.resident_layout for u in alpha_refusals} == {LAYOUT_GGUF_Q8_0_T16}
     _reader, model_map, _nextn = _real_map(SMALL_Q8_0)
     flags = _dense_flags("hip_gfx1100", _real_stamp(SMALL_Q8_0))
     spec = plan_qwen35_gguf_weight_spec(
@@ -648,9 +645,9 @@ def test_q8_0_alpha_beta_file_cannot_enter_the_native_bf16_pointer_owner():
         contract_f32_linear=False,
         **{**flags, "decode_repack": True},
     )
-    assert spec.layout == LAYOUT_DENSE_F32
-    assert spec.quant_key == "f32"
-    assert spec.allocation_names == ("raw",)
+    assert spec.layout == LAYOUT_GGUF_Q8_0_T16
+    assert spec.allocation_names == ("tiles",)
+    assert "raw" not in spec.allocation_names
 
 
 def test_contracted_bf16_alpha_beta_qualified_for_native_rows():
@@ -3651,30 +3648,20 @@ def test_unaffected_sidecar_and_t16_controls_keep_exact_accounting():
         planned_qwen35_gguf_weight_allocation_nbytes,
     )
 
-    # E7 control: Q8_0 alpha/beta expands to the dense F32 resident with
-    # exact F32-element sizing; the T16 tiles formula keeps exact accounting
-    # on a non-alpha Q8_0 slot (attn_qkv) where the tiled path still plans.
+    # Raw-sidecar control: Q8_0 alpha/beta with decode repack plans sole T16
+    # tiles (the raw sidecar needs its own env); the tiles accounting is exact.
     q8_map = _synthetic_model_map(
         embedding_type=GGMLQuantizationType.Q8_0,
         alpha_beta_type=GGMLQuantizationType.Q8_0,
-        attn_qkv_type=GGMLQuantizationType.Q8_0,
     )
     alpha = q8_map.layers[0].tensors["ssm_alpha"]
     q8_spec = plan_qwen35_gguf_weight_spec(
         "layers.0.ssm_alpha", alpha, decode_repack=True
     )
-    assert q8_spec.layout == LAYOUT_DENSE_F32
-    assert dict(planned_qwen35_gguf_weight_allocation_nbytes(q8_spec)) == {
-        "raw": int(alpha.n_elements) * 4
-    }
-    attn_qkv = q8_map.layers[0].tensors["attn_qkv"]
-    t16_spec = plan_qwen35_gguf_weight_spec(
-        "layers.0.attn_qkv", attn_qkv, decode_repack=True
-    )
-    assert t16_spec.layout == LAYOUT_GGUF_Q8_0_T16
-    t16_planned = dict(planned_qwen35_gguf_weight_allocation_nbytes(t16_spec))
-    assert t16_planned["tiles"] == (int(attn_qkv.byte_shape[0]) // 16) * (
-        int(attn_qkv.byte_shape[1]) // GGUF_Q8_0_BLOCK_BYTES
+    assert q8_spec.layout == LAYOUT_GGUF_Q8_0_T16
+    q8_planned = dict(planned_qwen35_gguf_weight_allocation_nbytes(q8_spec))
+    assert q8_planned["tiles"] == (int(alpha.byte_shape[0]) // 16) * (
+        int(alpha.byte_shape[1]) // GGUF_Q8_0_BLOCK_BYTES
     ) * GGUF_Q8_0_T16_BLOCK_BYTES
 
     # Q6 qmicro-planar resident layout control (already formula-supported).
