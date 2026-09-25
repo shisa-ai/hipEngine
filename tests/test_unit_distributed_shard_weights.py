@@ -448,7 +448,12 @@ def test_attention_ssm_a_payload_is_the_kernel_a_log_abi_not_the_source() -> Non
     layer = materialize_attention_shards(str(GGUF_PATH), world_size=2, layer_ids=(0,))[0]
     manifest = build_shard_manifest(scan_gguf(str(GGUF_PATH)), world_size=2)
     streamed: dict[int, np.ndarray] = {}
-    for plan, payload in iter_rank_payloads(reader, manifest, rank=0):
+    # Filtered to the tensor under test: the loader is the thing being checked
+    # here, not the manifest, and an unfiltered walk reads every tensor in the
+    # model to find one.
+    for plan, payload in iter_rank_payloads(
+        reader, manifest, rank=0, tensor_filter={"blk.0.ssm_a"}
+    ):
         if plan.name == "blk.0.ssm_a":
             streamed[0] = np.asarray(payload).reshape(-1)
     for rank in range(2):
