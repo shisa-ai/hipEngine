@@ -37,6 +37,8 @@ from hipengine.loading.qwen35_gguf_policy import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, annotations only
+    import numpy as np
+
     from hipengine.loading.gguf_selected_contract import SelectedCallIntent
     from hipengine.loading.qwen35_gguf_admission import (
         Qwen35GGUFAdmissionCertificate,
@@ -1668,6 +1670,26 @@ def _gguf_ssm_a_to_kernel_a_log(raw: object):
     if np.any(coeff >= 0.0):
         raise ValueError("GGUF qwen35 ssm_a must contain negative decay coefficients")
     return np.ascontiguousarray(np.log(-coeff), dtype=np.float32)
+
+
+def ssm_a_slice_to_kernel_a_log(local: object) -> np.ndarray:
+    """Apply the same ABI conversion to one already-sliced F32 byte range.
+
+    The replicated path converts the whole tensor (:func:`_gguf_ssm_a_to_kernel_a_log`)
+    before it uploads. The rank-payload path copies source bytes verbatim, so it
+    has to convert its own slice. Both callers share this one definition of the
+    ABI: a slice that keeps the raw coefficient is read by the GDN kernels as an
+    ``A_log``, which changes ``exp(a_log)`` and therefore every head's decay.
+    """
+
+    import numpy as np
+
+    values = np.frombuffer(
+        np.ascontiguousarray(local, dtype=np.uint8).tobytes(), dtype="<f4"
+    )
+    return np.ascontiguousarray(
+        _gguf_ssm_a_to_kernel_a_log(values), dtype="<f4"
+    ).view(np.uint8).reshape(-1)
 
 
 def _is_token_embedding_slot(slot_path: str) -> bool:

@@ -45,7 +45,7 @@ from hipengine.loading.qwen35_gguf import (
 from hipengine.loading.qwen35_gguf_admission import build_qwen35_gguf_role_manifest
 from hipengine.loading.qwen35_gguf_shards import (
     build_shard_manifest,
-    materialize_slice,
+    materialize_payload_slice,
     source_payload,
 )
 
@@ -459,7 +459,9 @@ def _rank_payload(
     reconstructed from the GGUF tensor. ``allow_raw`` admits resident layouts
     with no t16 repack (``dense_f32`` and friends), whose rank payload is the
     slice's bytes verbatim; without it such a layout stays a named refusal,
-    which is what the dense-MLP family wants.
+    which is what the dense-MLP family wants. Payloads come from
+    :func:`materialize_payload_slice`, so a slot whose kernel ABI differs from
+    its source encoding (``ssm_a``) is converted here rather than at upload.
     """
 
     payloads: dict[str, MlpShardPayload] = {}
@@ -473,7 +475,9 @@ def _rank_payload(
         )
         repack = _t16_repack_for_layout(layout, str(info.ggml_type_name))
         shard = plan.slice_for(int(rank))
-        local = materialize_slice(source, shard)
+        local = materialize_payload_slice(
+            plan.name, source, shard, ggml_type_name=str(info.ggml_type_name)
+        )
         local_shape = tuple(int(dim) for dim in shard.local_shape)
         if repack is None:
             if not allow_raw:

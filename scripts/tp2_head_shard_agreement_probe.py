@@ -66,15 +66,157 @@ def _parse_layers(text: str) -> tuple[int, ...]:
     return tuple(int(part) for part in text.split(",") if part.strip())
 
 
+def weight_device_ptr(weight) -> int | None:
+    """The resident pointer of a weight, whichever allocation name it uses.
+
+    A replicated weight defaults to ``"raw"`` and a repacked or sharded one does
+    not, so the name has to come from the weight's own spec rather than the
+    default argument.
+    """
+
+    names = tuple(getattr(getattr(weight, "spec", None), "allocation_names", ()) or ())
+    for name in names:
+        try:
+            ptr, _ = buffer_ptr_nbytes(weight.allocation(name))
+        except (AttributeError, KeyError, TypeError):
+            # A weight that does not expose this allocation name is not the one
+            # being asked about; keep looking rather than failing the trace.
+            continue
+        if ptr is not None:
+            return ptr
+    return None
+
+
+def install_linear_launch_trace(runner_module, layer_id: int):
+    """Record the linear launches the runner actually makes for one layer.
+
+    A projection that silently declines to launch leaves its output buffer
+    holding whatever was there before, which is indistinguishable from a wrong
+    result unless the launch itself is observed. The runner calls the imported
+    names, so the trace patches the module attributes.
+    """
+
+    trace: list[dict[str, object]] = []
+
+    def wrap(name: str, original):
+        def traced(*args, **kwargs):
+            result = original(*args, **kwargs)
+            weight = args[0] if args else None
+            spec = getattr(weight, "spec", None)
+            entry = {
+                "call": name,
+                "result": result if isinstance(result, bool) else None,
+                "quant_key": getattr(spec, "quant_key", None),
+                "layout": getattr(spec, "layout", None),
+                "operands": tuple(getattr(spec, "operands", ()) or ()),
+                "weight_ptr": weight_device_ptr(weight),
+                "out_features": kwargs.get("out_features"),
+                "in_features": kwargs.get("in_features"),
+                "rows": kwargs.get("rows"),
+                "out_ptr": args[3] if len(args) > 3 else None,
+            }
+            if entry["out_features"] in (24, 48) or entry["quant_key"] is not None:
+                trace.append(entry)
+            return result
+
+        return traced
+
+    for name in ("launch_gguf_linear", "launch_gguf_linear_pair"):
+        original = getattr(runner_module, name)
+        setattr(runner_module, name, wrap(name, original))
+    return trace
+
+
+def scratch_pointer_map(scratch) -> dict[str, list[int]]:
+    """The device pointer and size of every buffer the GDN path touches.
+
+    Two buffers that overlap in address are aliased, which is how a stage can
+    silently overwrite an earlier stage's output without any stage reporting an
+    error.
+    """
+
+    pointers: dict[str, list[int]] = {}
+    for name in (
+        "linear_alpha",
+        "linear_beta",
+        "linear_alpha_f32",
+        "linear_beta_f32",
+        "linear_qkv",
+        "linear_qkv_f32",
+        "linear_z",
+        "conv_out",
+        "prefill_decay",
+        "prefill_beta",
+        "prefill_query",
+        "prefill_key",
+        "prefill_value",
+        "prefill_query_scale",
+        "recurrent_out",
+        "norm",
+        "post_norm_f32",
+    ):
+        ptr, nbytes = buffer_ptr_nbytes(getattr(scratch, name, None))
+        if ptr is not None:
+            pointers[name] = [ptr, nbytes]
+    return pointers
+
+
+def buffer_ptr_nbytes(buffer):
+    """``(ptr, nbytes)`` for either device-allocation shape in this tree.
+
+    The runner's scratch holds plain device buffers, the loader's weight map
+    holds ``DeviceTensorAllocation`` wrappers whose ``buffer`` is the allocation,
+    and a shard payload's allocation exposes its pointer directly. Reading the
+    raw bytes needs the pointer and length, not the wrapper's identity.
+    """
+
+    if buffer is None:
+        return None, None
+    ptr = getattr(buffer, "ptr", None)
+    nbytes = getattr(buffer, "nbytes", None)
+    if ptr is None or nbytes is None:
+        inner = getattr(buffer, "buffer", None)
+        if isinstance(inner, int):
+            # A shard payload's allocation holds its pointer directly.
+            ptr = inner
+        elif inner is not None:
+            ptr = getattr(inner, "ptr", None)
+            nbytes = getattr(inner, "nbytes", None)
+    if ptr is None or nbytes is None:
+        return None, None
+    return int(ptr), int(nbytes)
+
+
+def runner_layer_weights(session, device: int, layer_id: int, role: str):
+    """The resident weight the runner would launch for ``role`` on ``device``.
+
+    The sharded route swaps each layer's weights for the rank's payload, so this
+    reads whatever the layer actually holds rather than re-deriving a payload.
+    """
+
+    runner = session._runners[device]
+    layer = runner.weights.layers[layer_id]
+    try:
+        return layer.weight(role)
+    except (AttributeError, KeyError):
+        # A layer that does not hold this role has nothing to report.
+        return None
+
+
 def _run_route(
     route: str, layers: tuple[int, ...], out: Path, lockstep: bool = False
 ) -> int:
     import numpy as np
 
     from hipengine.distributed.tp2_generate import MlpTP2GenerationSession
+    from hipengine.runtime import qwen35_gguf_runner as runner_module
+
+    launch_trace = install_linear_launch_trace(runner_module, 0)
 
     captured: dict[tuple[int, int], "np.ndarray"] = {}
     partials: dict[tuple[int, int], "np.ndarray"] = {}
+    states: dict[tuple[str, int, int], "np.ndarray"] = {}
+    pointers_at_residual: dict[tuple[int, int, str], dict[str, list[int]]] = {}
     if layers:
         from hipengine.core.device import scoped_current_device
         from hipengine.core.hip import get_hip_runtime
@@ -106,6 +248,64 @@ def _run_route(
                         runtime.memcpy(
                             part.ctypes.data, int(scratch.attn_out.ptr), rows * hidden * 2, 2
                         )
+                        # The linear-attention state this layer just wrote. Its
+                        # per-head layout is what the recurrence indexes, so a
+                        # sharded rank's own heads can be compared against the
+                        # full-width route's heads directly.
+                        decode_scratch = self._scratches[device]
+                        for name, buffers in (
+                            ("state", decode_scratch.layer_recurrent_states),
+                            ("convstate", decode_scratch.layer_conv_states),
+                        ):
+                            buffer = buffers[layer_id]
+                            ptr, nbytes = buffer_ptr_nbytes(buffer)
+                            if ptr is None:
+                                continue
+                            raw = np.empty(nbytes, dtype="<u1")
+                            runtime.memcpy(raw.ctypes.data, ptr, nbytes, 2)
+                            states[name, layer_id, device] = raw.copy()
+                        # The recurrence's own inputs. They live on the bulk
+                        # chunk scratch the layer runs from, not the decode
+                        # scratch that owns the persistent state. Every one of
+                        # them is invisible at token 0 except through a zero
+                        # state, so comparing them against the full-width route
+                        # separates a wrong per-head decay from wrong state
+                        # addressing.
+                        for name in (
+                            "prefill_decay",
+                            "prefill_beta",
+                            "prefill_query",
+                            "prefill_key",
+                            "prefill_value",
+                            "recurrent_out",
+                            "linear_alpha",
+                            "linear_beta",
+                            "conv_out",
+                        ):
+                            holder = scratch if hasattr(scratch, name) else decode_scratch
+                            ptr, nbytes = buffer_ptr_nbytes(getattr(holder, name, None))
+                            if ptr is None:
+                                continue
+                            raw = np.empty(nbytes, dtype="<u1")
+                            runtime.memcpy(raw.ctypes.data, ptr, nbytes, 2)
+                            states["buf_" + name, layer_id, device] = raw.copy()
+                        # The per-head decay inputs as they sit on the device. A
+                        # wrong row here is a payload bug; a right row with a
+                        # wrong decay is a prepare/geometry bug.
+                        for role in ("ssm_a", "ssm_dt_bias", "ssm_alpha"):
+                            weight = runner_layer_weights(self, device, layer_id, role)
+                            if weight is None:
+                                continue
+                            ptr, nbytes = buffer_ptr_nbytes(weight.allocation())
+                            if ptr is None:
+                                continue
+                            raw = np.empty(nbytes, dtype="<u1")
+                            runtime.memcpy(raw.ctypes.data, ptr, nbytes, 2)
+                            states["w_" + role, layer_id, device] = raw.copy()
+                        # The same map the projection capture records, so the two
+                        # moments' buffers can be matched by address.
+                        for tag, holder in (("bulk", scratch), ("decode", decode_scratch)):
+                            pointers_at_residual[(layer_id, device, tag)] = scratch_pointer_map(holder)
                         runtime.device_synchronize()
                     captured[layer_id, device] = host.copy()
                     partials[layer_id, device] = part.copy()
@@ -149,6 +349,20 @@ def _run_route(
             np.save(out / f"{route}_l{layer_id}_d{device}.npy", host)
         for (layer_id, device), part in partials.items():
             np.save(out / f"{route}_partial_l{layer_id}_d{device}.npy", part)
+        for (name, layer_id, device), raw in states.items():
+            np.save(out / f"{route}_{name}_l{layer_id}_d{device}.npy", raw)
+        (out / f"{route}_launch_trace.json").write_text(
+            json.dumps(launch_trace, indent=1)
+        )
+        (out / f"{route}_pointers_at_residual.json").write_text(
+            json.dumps(
+                {
+                    f"l{layer}_d{device}_{tag}": value
+                    for (layer, device, tag), value in pointers_at_residual.items()
+                },
+                indent=1,
+            )
+        )
         info = {
             "route": route,
             "attention_shard": route == "sharded",
@@ -166,6 +380,43 @@ def _run_route(
                 session._device_exchange, "num_layers", None
             ),
             "hidden_size": session.hidden_size,
+            # The unsharded model geometry, so the per-rank values above can be
+            # read as an actual split rather than assumed to be one.
+            "model_geometry": {
+                name: int(getattr(session._config, name))
+                for name in (
+                    "head_count",
+                    "head_count_kv",
+                    "ssm_group_count",
+                    "ssm_time_step_rank",
+                    "ssm_state_size",
+                    "ssm_inner_size",
+                )
+                if getattr(session._config, name, None) is not None
+            },
+            # The state geometry the dumps above must be read with.
+            "linear_state": {
+                device: {
+                    "fp16_recurrent_state": bool(
+                        getattr(session._runners[device], "fp16_recurrent_state", False)
+                    ),
+                    "ssm_time_step_rank": int(
+                        session._runners[device].weights.config.ssm_time_step_rank
+                    ),
+                    "ssm_state_size": int(
+                        session._runners[device].weights.config.ssm_state_size
+                    ),
+                    "ssm_inner_size": int(
+                        session._runners[device].weights.config.ssm_inner_size
+                    ),
+                    "linear_qkv_width": int(session._runners[device].linear_qkv_width),
+                    "ssm_value_dim": int(session._runners[device].ssm_value_dim),
+                    "ssm_conv_kernel": int(
+                        session._runners[device].weights.config.ssm_conv_kernel
+                    ),
+                }
+                for device in session.devices
+            },
         }
         (out / f"{route}.json").write_text(json.dumps(info, indent=1) + "\n")
         print(json.dumps(info, indent=1), flush=True)

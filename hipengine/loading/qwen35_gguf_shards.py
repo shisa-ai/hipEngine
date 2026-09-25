@@ -1324,6 +1324,43 @@ def materialize_slice(source: np.ndarray, shard_slice: TensorShardSlice, *, allo
     return destination
 
 
+def materialize_payload_slice(
+    plan_name: str,
+    source: np.ndarray,
+    shard_slice: TensorShardSlice,
+    *,
+    ggml_type_name: str | None = None,
+) -> np.ndarray:
+    """``materialize_slice`` plus the slot's source-to-kernel ABI step.
+
+    A rank payload is what a kernel will read, not the raw source bytes. GGUF
+    ``ssm_a`` holds the negative decay coefficient while the GDN kernels take
+    ``A_log``, and the replicated materializer converts the whole tensor before
+    it uploads. Every slicing path has to convert its own slice for the same
+    reason: a rank that uploaded the raw coefficient would have the kernel read
+    it as an ``A_log``, changing ``exp(a_log)`` and therefore every head's
+    decay. One definition of the conversion, every payload path through here.
+
+    ``ggml_type_name`` is only consulted for an ``ssm_a`` plan, where a
+    non-F32 source cannot be converted and is refused rather than passed
+    through as if it had been.
+    """
+
+    local = materialize_slice(source, shard_slice)
+    if str(plan_name).endswith(".ssm_a"):
+        if str(ggml_type_name or "").lower() != "f32":
+            raise ShardPlanError(
+                f"{plan_name}: ssm_a must be F32 to resolve the kernel A_log "
+                f"ABI, got {ggml_type_name!r}"
+            )
+        from hipengine.loading.qwen35_gguf_materialize import (
+            ssm_a_slice_to_kernel_a_log,
+        )
+
+        local = ssm_a_slice_to_kernel_a_log(local)
+    return local
+
+
 def materialize_manifest(
     reader: Any,
     manifest: ShardManifest,
@@ -1344,7 +1381,12 @@ def materialize_manifest(
         tensor = reader.tensor_info(plan.name)
         source = source_payload(reader.path, data_offset=tensor.data_offset, nbytes=tensor.nbytes)
         for rank in range(manifest.world_size):
-            payloads[rank][plan.name] = materialize_slice(source, plan.slice_for(rank))
+            payloads[rank][plan.name] = materialize_payload_slice(
+                plan.name,
+                source,
+                plan.slice_for(rank),
+                ggml_type_name=getattr(tensor, "ggml_type_name", None),
+            )
     return payloads
 
 
@@ -1371,7 +1413,12 @@ def iter_rank_payloads(
             continue
         tensor = reader.tensor_info(plan.name)
         source = source_payload(reader.path, data_offset=tensor.data_offset, nbytes=tensor.nbytes)
-        yield plan, materialize_slice(source, plan.slice_for(int(rank)))
+        yield plan, materialize_payload_slice(
+            plan.name,
+            source,
+            plan.slice_for(int(rank)),
+            ggml_type_name=getattr(tensor, "ggml_type_name", None),
+        )
         del source
 
 
