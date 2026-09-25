@@ -25,20 +25,88 @@
     "gap_per_launch_us": 7.2,
     "note": "1116 kernel launches per decode step (trace delta over 24 forwards). The 8.04 ms gap between summed kernel time and wall time is host dispatch/launch latency: 7.2 us per launch, not GPU work.",
     "kernels": [
-      {"kernel": "gemma4_attention_decode_kernel<unsigned short, 8>", "ms_per_step": 24.03, "launches_per_step": 30, "share_of_traced": 0.637},
-      {"kernel": "gguf_q4_k_selected_prefill_out_kernel", "ms_per_step": 3.18, "launches_per_step": 29, "share_of_traced": 0.084, "role": "MoE gate_up (Q4_K)"},
-      {"kernel": "q5_1_selected_gemv_bf16_bf16_kernel", "ms_per_step": 3.04, "launches_per_step": 29, "share_of_traced": 0.081, "role": "MoE down (Q5_1)"},
-      {"kernel": "gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short>", "ms_per_step": 2.93, "launches_per_step": 205, "share_of_traced": 0.078, "role": "dense projections"},
-      {"kernel": "gguf_k_pack8_prefill_out_kernel<unsigned short, float>", "ms_per_step": 0.95, "launches_per_step": 1, "share_of_traced": 0.025, "role": "lm_head (f32 out)"},
-      {"kernel": "gemma4_rmsnorm_kernel", "ms_per_step": 0.85, "launches_per_step": 151, "share_of_traced": 0.023},
-      {"kernel": "gemma4_moe_weighted_accumulate_kernel", "ms_per_step": 0.47, "launches_per_step": 30, "share_of_traced": 0.012},
-      {"kernel": "gemma4_add_rmsnorm_scale_kernel", "ms_per_step": 0.36, "launches_per_step": 60, "share_of_traced": 0.010},
-      {"kernel": "qwen35_moe_group_compact_active_kernel", "ms_per_step": 0.22, "launches_per_step": 30},
-      {"kernel": "gemma4_router_prescale_kernel", "ms_per_step": 0.21, "launches_per_step": 30},
-      {"kernel": "qwen35_router_select_kernel", "ms_per_step": 0.20, "launches_per_step": 30},
-      {"kernel": "__amd_rocclr_copyBuffer", "ms_per_step": 0.13, "launches_per_step": 67},
-      {"kernel": "gemma4_head_rmsnorm_kernel", "ms_per_step": 0.14, "launches_per_step": 60},
-      {"kernel": "qwen35_moe_group_prefix_active_kernel", "ms_per_step": 0.15, "launches_per_step": 30}
+      {
+        "kernel": "gemma4_attention_decode_kernel<unsigned short, 8>",
+        "ms_per_step": 24.03,
+        "launches_per_step": 30,
+        "share_of_traced": 0.637
+      },
+      {
+        "kernel": "gguf_q4_k_selected_prefill_out_kernel",
+        "ms_per_step": 3.18,
+        "launches_per_step": 29,
+        "share_of_traced": 0.084,
+        "role": "MoE gate_up (Q4_K)"
+      },
+      {
+        "kernel": "q5_1_selected_gemv_bf16_bf16_kernel",
+        "ms_per_step": 3.04,
+        "launches_per_step": 29,
+        "share_of_traced": 0.081,
+        "role": "MoE down (Q5_1)"
+      },
+      {
+        "kernel": "gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short>",
+        "ms_per_step": 2.93,
+        "launches_per_step": 205,
+        "share_of_traced": 0.078,
+        "role": "dense projections"
+      },
+      {
+        "kernel": "gguf_k_pack8_prefill_out_kernel<unsigned short, float>",
+        "ms_per_step": 0.95,
+        "launches_per_step": 1,
+        "share_of_traced": 0.025,
+        "role": "lm_head (f32 out)"
+      },
+      {
+        "kernel": "gemma4_rmsnorm_kernel",
+        "ms_per_step": 0.85,
+        "launches_per_step": 151,
+        "share_of_traced": 0.023
+      },
+      {
+        "kernel": "gemma4_moe_weighted_accumulate_kernel",
+        "ms_per_step": 0.47,
+        "launches_per_step": 30,
+        "share_of_traced": 0.012
+      },
+      {
+        "kernel": "gemma4_add_rmsnorm_scale_kernel",
+        "ms_per_step": 0.36,
+        "launches_per_step": 60,
+        "share_of_traced": 0.01
+      },
+      {
+        "kernel": "qwen35_moe_group_compact_active_kernel",
+        "ms_per_step": 0.22,
+        "launches_per_step": 30
+      },
+      {
+        "kernel": "gemma4_router_prescale_kernel",
+        "ms_per_step": 0.21,
+        "launches_per_step": 30
+      },
+      {
+        "kernel": "qwen35_router_select_kernel",
+        "ms_per_step": 0.2,
+        "launches_per_step": 30
+      },
+      {
+        "kernel": "__amd_rocclr_copyBuffer",
+        "ms_per_step": 0.13,
+        "launches_per_step": 67
+      },
+      {
+        "kernel": "gemma4_head_rmsnorm_kernel",
+        "ms_per_step": 0.14,
+        "launches_per_step": 60
+      },
+      {
+        "kernel": "qwen35_moe_group_prefix_active_kernel",
+        "ms_per_step": 0.15,
+        "launches_per_step": 30
+      }
     ],
     "bucket_rollup": {
       "attention_decode_ms": 24.03,
@@ -57,26 +125,86 @@
   "attention_kernel_microbench": {
     "tool": "scripts/gemma4_attention_decode_bench.py",
     "geometry": {
-      "sliding_layers": {"count": 25, "num_heads": 16, "num_kv_heads": 2, "head_dim": 256},
-      "full_layers": {"count": 5, "num_heads": 16, "num_kv_heads": 8, "head_dim": 512}
+      "sliding_layers": {
+        "count": 25,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 256
+      },
+      "full_layers": {
+        "count": 5,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 512
+      }
     },
     "keep_mask": [
-      {"geometry": "sliding", "keys": 128, "us": 139.2},
-      {"geometry": "sliding", "keys": 512, "us": 417.5},
-      {"geometry": "sliding", "keys": 1024, "us": 606.0},
-      {"geometry": "sliding", "keys": 2048, "us": 989.6},
-      {"geometry": "full", "keys": 128, "us": 160.5},
-      {"geometry": "full", "keys": 512, "us": 655.6},
-      {"geometry": "full", "keys": 1024, "us": 1185.6},
-      {"geometry": "full", "keys": 2048, "us": 2264.9}
+      {
+        "geometry": "sliding",
+        "keys": 128,
+        "us": 139.2
+      },
+      {
+        "geometry": "sliding",
+        "keys": 512,
+        "us": 417.5
+      },
+      {
+        "geometry": "sliding",
+        "keys": 1024,
+        "us": 606.0
+      },
+      {
+        "geometry": "sliding",
+        "keys": 2048,
+        "us": 989.6
+      },
+      {
+        "geometry": "full",
+        "keys": 128,
+        "us": 160.5
+      },
+      {
+        "geometry": "full",
+        "keys": 512,
+        "us": 655.6
+      },
+      {
+        "geometry": "full",
+        "keys": 1024,
+        "us": 1185.6
+      },
+      {
+        "geometry": "full",
+        "keys": 2048,
+        "us": 2264.9
+      }
     ],
     "zero_mask": [
-      {"geometry": "sliding", "keys": 1024, "us": 497.9},
-      {"geometry": "full", "keys": 1024, "us": 756.8}
+      {
+        "geometry": "sliding",
+        "keys": 1024,
+        "us": 497.9,
+        "invalid": true,
+        "invalid_reason": "all-keys-masked makes logit=-INFINITY for every key, so row_max=-INFINITY and exp(logit-row_max)=exp(NaN)=NaN; `if (weight == 0.0f) continue;` never fires on NaN, so pass 3 still issued every V load and the ablation removed nothing"
+      },
+      {
+        "geometry": "full",
+        "keys": 1024,
+        "us": 756.8,
+        "invalid": true,
+        "invalid_reason": "all-keys-masked makes logit=-INFINITY for every key, so row_max=-INFINITY and exp(logit-row_max)=exp(NaN)=NaN; `if (weight == 0.0f) continue;` never fires on NaN, so pass 3 still issued every V load and the ablation removed nothing"
+      }
     ],
     "implied_per_token_ms_at_1024_context": 21.08,
     "run_to_run_spread_us": "sliding keys=1024 measured 599-722 us across runs (clock state); rankings stable",
-    "resource_usage": {"vgpr": 56, "sgpr": 128, "scratch_bytes": 0, "workgroup": 256, "grid_blocks": 16}
+    "resource_usage": {
+      "vgpr": 56,
+      "sgpr": 128,
+      "scratch_bytes": 0,
+      "workgroup": 256,
+      "grid_blocks": 16
+    }
   },
   "hypotheses_closed": [
     {
@@ -91,8 +219,10 @@
     }
   ],
   "mechanism": {
-    "summary": "latency-bound at very low occupancy: one 256-thread block per (token, head) means a 16-block grid on 96 CUs, and each key costs every thread one 2-byte dependent global load plus its share of a 256-lane tree, so memory-level parallelism per warp is the binding constraint.",
-    "implication": "the lever is memory-level parallelism (wider per-thread loads staged through LDS, more warps in flight), not byte count and not barrier count. Any such change must keep the lane-to-dimension mapping, the ascending-j publish order, and the 256-lane tree, which the existing decode-vs-block bit-exact parity suite (tests/test_gpu_gemma4_attention_decode_parity.py) enforces."
+    "summary": "the per-key cost (~0.5-0.6 us, ~1000+ cycles) is invariant to the work inside the key iteration: removing the mask load, the K load, the dot product, the 256-lane reduction tree, all four tile-loop barriers, the publish broadcast and the running-max chain each leaves the time within noise. The 256-thread / 8-warp / 5-barrier-per-8-keys structure is itself the cost.",
+    "superseded_summary": "latency-bound at very low occupancy with one dependent 2-byte load per thread per key (iteration 19) - not supported: removing those loads changes nothing on the sliding geometry.",
+    "implication": "micro-optimization inside the existing per-key loop cannot win; the lever is a different decomposition. Candidate: one warp per (token, head), 32 lanes x 8 dims, 16-byte vector loads, no shared-memory traffic and no barriers, with the 256-lane tree reproduced by 5 shuffle rounds plus 3 in-lane rounds in identical association order so the result stays bit-exact.",
+    "constraint": "any such change must keep the lane-to-dimension mapping, the ascending-j publish order, and the 256-lane tree, which tests/test_gpu_gemma4_attention_decode_parity.py enforces."
   },
   "campaign_attribution_correction": {
     "previous": "G3 pursued the MoE decode linears as the dominant decode cost, on iteration-15 trace figures of 9.15 ms/step (gguf_q4_k_selected_prefill_out) and 5.15 ms/step (q5_1_selected_gemv_bf16_bf16).",
@@ -102,5 +232,22 @@
   "artifacts": {
     "tool": "scripts/gemma4_attention_decode_bench.py",
     "traces": "/tmp/g4prof-4, /tmp/g4prof-20 (iteration-local; method and numbers above are the durable record)"
-  }
+  },
+  "corrections": [
+    {
+      "recorded": "2026-09-25, gemma4-moe-perf/g0 iteration 20",
+      "supersedes": "attention_kernel_microbench.zero_mask and hypotheses_closed[0] (KV-bandwidth-bound)",
+      "reason": "the zero-mask ablation was methodologically invalid; the NaN weight path left pass-3 V loads running",
+      "corrected_measurement": {
+        "method": "K and V loads replaced inside the tile/pass-3 bodies with load-free arithmetic, mask left valid, so the loop structure and every non-load instruction are preserved",
+        "sliding_keys1024_baseline_us": "600-708 across runs",
+        "sliding_keys1024_no_k_no_v_loads_us": 591.1,
+        "full_keys1024_baseline_us": 1185.7,
+        "full_keys1024_no_k_no_v_loads_us": 871.2
+      },
+      "consequence": "the KV-bandwidth rejection stands but for the opposite reason: loads are ~0% of the sliding geometry and ~26% of the full geometry, so bytes moved are not the sliding limiter either",
+      "ablation_evidence_row": "benchmarks/results/2026-09-25-gemma4-26b-a4b-decode-attention-ablation.json",
+      "worklog_entry": "worklog/entries/20260925T194545.594823Z-lhl-gemma-4-decode-attention-ablation-cost-is-invari-cad8cd.md"
+    }
+  ]
 }
