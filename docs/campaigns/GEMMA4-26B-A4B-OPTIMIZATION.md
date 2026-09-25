@@ -544,10 +544,15 @@ flags because a configuration has not been benchmarked.
   (the first pass was discarded: it reported the split 2.2x slower at
   sliding/1024, which contradicts the end-to-end row, and was taken while a peer
   job held 10.7 GiB of the device), puts sliding/1024 at -17%, sliding/8192 at
-  -21%, full/8192 at -20% and full/1024 at +20%. That last cell is the one loss,
-  worth ~0.24 ms per step over 5 of 30 layers, and a geometry-aware policy is the
-  obvious next refinement; it is not attempted yet because the A/B that would
-  justify it was taken under contention. The same A/B answers iteration 27's open
+  -21%, full/8192 at -20% and full/1024 at +20%. That last cell was the one loss, and
+  it is now closed as not worth pursuing: re-measured with both GPUs idle (arms
+  interleaved, two passes each), the full geometry at 1024 keys loses 3.5%, not
+  the 20% the contended pass reported, and full/2048 is already a 16% win. The
+  remaining loss is 5 of 30 layers at 9.6 us each - about 48 us per step, or
+  +0.2% end-to-end - against the cost of plumbing head_dim into the selection
+  policy. The clean-device pass also puts every other cell 4-10% above its
+  contended reading: sliding/1024 -14%, sliding/2048 -24%, sliding/8192 -24%,
+  full/8192 -19%. The same A/B answers iteration 27's open
   question - the weighted layer mix predicts ~0.9 ms saved against the 0.72 ms
   measured, so the ~2.4 ms that iteration 22's 57-71% pass-3 share implied was an
   overestimated share rather than an inefficient kernel.
