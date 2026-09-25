@@ -1,0 +1,49 @@
+{
+  "kind": "gemma4_campaign_candidate",
+  "verdict": "rejected",
+  "recorded": "2026-09-25, gemma4-moe-perf/g0 iteration 26",
+  "candidate": "gemma4_warp_tree2: interleave the two keys' pass-1 shuffle trees level by level",
+  "reason": "neutral at sliding and slower at full, so it was reverted. It also corrects iteration 24's reading of the tree: the cost is block-level SIMD-pipe throughput, not a serialised chain, which is why interleaving cannot help and why adding warps (1024 threads) did not help either.",
+  "mechanism": {
+    "hypothesis": "the two keys per tile interleave their K loads and dot products but then run two back-to-back 5-level shuffle chains of 40 shuffles each, so the second tree waits on the first; interleaving the levels gives the warp two independent chains to overlap",
+    "why_it_failed": "1024 keys x 40 shuffles x 16 warps = 655k shuffles in the 108 us iteration 24 measured, i.e. ~5 cycles per shuffle per warp, which is the block's 16 warps saturating its 4 SIMD pipes. Both calls are inlined and independent, so the scheduler had already overlapped them; the chain was never the limiter.",
+    "corrected_diagnosis": "pass 1's tree is block-level pipe-throughput bound. The structural limiter is the grid: gemma4_attention_decode_launch sets grid = tokens * num_heads, so a decode step launches 16 blocks of 512 threads on a 96-CU GPU.",
+    "next_candidate": "split-K: divide each head's key range across N blocks and combine their (max, denominator, weighted-V) partials with an online-softmax rescale. Changed arithmetic, so it needs the docs/EXECUTION-PROFILES.md production-profile gate via scripts/gemma4_teacher_forced_gate.py rather than parity, and its payoff is occupancy rather than removed work."
+  },
+  "correctness": {
+    "contract": "bit-exact with the incumbent kernel (same per-key addition order)",
+    "evidence": "103 tests green across tests/test_gpu_gemma4_attention_decode_parity.py, tests/test_gpu_gemma4_attention_geometry.py and tests/test_unit_gemma4_attention_routing.py, plus public_path_parity=true on the campaign row. Bit-exactness was never the problem; the candidate simply does not help."
+  },
+  "performance": {
+    "kernel": {
+      "tool": "scripts/gemma4_attention_decode_bench.py --keys 1024 2048 --iters 30",
+      "sliding_keys_1024": {
+        "incumbent_us": 288.4,
+        "candidate_us": 290.7
+      },
+      "full_keys_1024": {
+        "incumbent_us": 270.1,
+        "candidate_us": 280.2
+      },
+      "full_keys_2048": {
+        "incumbent_us": 399.0,
+        "candidate_us": 420.6
+      }
+    },
+    "campaign_row": {
+      "row": "1024p/128o",
+      "incumbent": 43.9827,
+      "candidate": 44.0065,
+      "delta": "+0.05% (flat, and the kernel is measurably slower, so the row is noise)",
+      "public_path_parity": true
+    },
+    "verdict": "reverted: a kernel that is 0.8-5.4% slower at the kernel level while the row moves 0.05% is a slower kernel hiding in row noise"
+  },
+  "scope": {
+    "files_touched_then_reverted": [
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip"
+    ],
+    "final_tree": "byte-identical to the last accepted commit (empty git diff)",
+    "flags_added": "none"
+  }
+}
