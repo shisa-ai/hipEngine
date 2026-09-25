@@ -641,6 +641,7 @@ GGUF_T16_SELECTED_C1_VARIANTS_BY_QUANT_SHAPE = {
 # rows 2-3 retain both independently qualified owners.
 GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
     "gguf_q4_k_t16_v1": 4,
+    "gguf_q5_k_t16_v1": 1,
     "gguf_q6_k_t16_qmicro_planar_v1": 3,
 }
 # Byte-neutral planar qmicro owns the measured dense-H5120 rank-2 Q6 family
