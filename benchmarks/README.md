@@ -18,6 +18,22 @@ valid decode-rate evidence. BFCL and full performance gates have not run.
 [Protocol, commands and breakdown](mlperf-edge/README.md) ·
 [Artifact](results/2026-09-25-gfx1151-mlperf-edge-140.json).
 
+A compatibility-patched **gufo + Qwen3.8 DFlash2 draft** completes the same
+Qwen3.6 target workload with **FP16 KV**, active speculation and prefix caching:
+
+| Engine | Completed | Mean turn latency | Measured phase | Inline command IoU |
+| --- | ---: | ---: | ---: | ---: |
+| Patched gufo, Qwen3.6 target + Qwen3.8 DFlash2 | 140/140 | 7.439 s | 1,041.49 s | 0.6387 |
+
+Draft acceptance is 15.79%; prefix token reuse is 96.55%. Effective prefill is
+approximately 8,023 tok/s (full prompt tokens / pooled prefill seconds, durations
+reconstructed from rounded server rates). Client-visible TTFT averages 7.039 s:
+132/140 responses buffer tool output until essentially completion. The prior
+pair is AR, not the final speculative comparison. Different KV/output settings
+and no gufo AR control prevent a speculative-speedup or quality-parity claim.
+BFCL has not run. [Timing definitions and checks](mlperf-edge/README.md#patched-gufo-with-cross-version-dflash2-2026-09-25) ·
+[Artifact](results/2026-09-25-gfx1151-gufo-dflash-edge-140.json).
+
 
 Qwen3.8-27B Q4_K_M sampling on **zbook / Radeon 8060S (gfx1151)**:
 full-vocabulary GPU sampling achieves **11.61 decode tok/s and 9.63 engine
