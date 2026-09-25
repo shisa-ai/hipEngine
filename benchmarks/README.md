@@ -4,10 +4,11 @@ Last updated: **2026-09-25**
 
 MLPerf Edge Agentic integration diagnostic on **gfx1151 / Radeon 8060S**,
 Qwen3.6-27B Q4_K_M, production profile, BF16 KV, 32K window and concurrency 1:
-27/27 requests completed, but one empty output and invalid TPOT prevent a clean
-integration pass. No BFCL gate or decode-speed comparison is claimed.
+27/27 requests completed with valid structured calls, no empty outputs and no
+negative response-timing windows after the XML-streaming repair and the separate
+harness timestamp patch. No BFCL gate or decode-speed comparison is claimed.
 [Run record](mlperf-edge/README.md) ·
-[Diagnostic artifact](results/2026-09-25-gfx1151-mlperf-edge-smoke.json).
+[Repair artifact](results/2026-09-25-gfx1151-mlperf-edge-repair.json).
 
 
 Qwen3.8-27B Q4_K_M sampling on **zbook / Radeon 8060S (gfx1151)**:

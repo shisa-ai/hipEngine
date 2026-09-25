@@ -309,7 +309,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
 | `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, max allowed/recommended `max_tokens`, required/overflow context, and clear/truncation policy using the same admission arithmetic as generation, including optional app-local `session.id` transcript prefixes plus `session.context_overflow_policy` for chat. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
 | `POST /v1/completions` | Built in | Text prompt(s), one token-ID row, or token-ID rows to `LLM.generate()`. Exact-token prompts support live SSE for one row and buffered SSE for multiple rows; they do not support `echo`, continuations, or sessions. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
-| `POST /v1/chat/completions` | Built in | Renders text messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. With Qwen4Exp `--vision-model`, one multipart user message may include bounded base64 `image/png` `image_url` parts and uses the model-owned multimodal path (`n=1`, non-streaming, no tools/session/continuation). Text supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
+| `POST /v1/chat/completions` | Built in | Renders text messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. With Qwen4Exp `--vision-model`, one multipart user message may include bounded base64 `image/png` `image_url` parts and uses the model-owned multimodal path (`n=1`, non-streaming, no tools/session/continuation). Text supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style XML function envelopes or legacy `<tool_call>{...}</tool_call>` output. |
 
 ## Examples
 
@@ -1058,8 +1058,17 @@ Qwen-style tool block into the rendered chat prompt and expects the model to
 emit tool calls as:
 
 ```text
-<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>
+<tool_call>
+<function=read>
+<parameter=path>
+README.md
+</parameter>
+</function>
+</tool_call>
 ```
+
+Legacy `<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>`
+blocks are also accepted by the compatibility parser.
 
 The server converts those blocks to OpenAI-compatible `message.tool_calls` in
 non-streaming responses or `delta.tool_calls` chunks in streaming responses, with
@@ -1069,10 +1078,16 @@ remaining assistant text. If that entire remainder consists only of Qwen
 `<|endoftext|>` / `<|im_start|>` / `<|im_end|>` controls, whitespace, and a
 marker-bound chat role label, it is discarded as leaked template residue.
 Ordinary or interior literal text is preserved, and non-tool outputs are
-unchanged. Long streaming `function.arguments` strings are
-split into concatenable fragments after the full tool-call block has been parsed
-and validated; the first chunk carries the function name, and all chunks carry
-the same tool-call id and index. Buffered c>N streams can preserve backend
+unchanged. For single-choice streams using the XML host constraint, content and
+string-typed argument values stream incrementally; non-string values wait until
+the parameter closes so they can be decoded as JSON. The first argument chunk
+carries the function name, and all chunks carry the same tool-call id and index.
+The server validates the completed call and checks it against the streamed
+arguments before emitting `finish_reason: "tool_calls"`. Clients must wait for
+that finish event before executing a call. Truncated or invalid live calls end
+with an SSE error, never a successful empty response. Legacy JSON compatibility
+and other buffered paths split arguments after parsing and validation.
+Buffered c>N streams can preserve backend
 scheduler chunk telemetry on those argument fragments when the validated
 argument string is a contiguous span of the raw tool-call block. Prior assistant
 `tool_calls` and `role: "tool"`
@@ -1100,12 +1115,15 @@ Tokenizer encode/decode-backed tool requests combine prompt/rendering, host
 processed-logits constraints, and post-generation parsing/validation. If either
 capability is unavailable, the strict mask is not installed and the existing
 prompt/parse plus fail-closed result validator remains authoritative. In
-`tool_choice="auto"`, candidate masking admits either normal text or one
-canonical `<tool_call>` envelope and prevents switching from visible content to
-a later tool call. Required and specific choices admit only the envelope. The
-envelope grammar enforces a declared tool name plus strict root-object JSON
-arguments before token selection; full function JSON Schema semantics remain in
-the post-generation validator. Unless thinking is explicitly disabled, the
+`tool_choice="auto"`, the XML host constraint admits normal text, including a
+preamble before a tool call. Required and specific choices admit only tool
+calls. The constraint enforces declared function names and parameter-envelope
+structure; values are opaque text until parsing, and full function JSON Schema
+semantics remain in the post-generation validator. Parallel calls require
+`parallel_tool_calls=true`. The closing XML tag is preserved for parsing rather
+than registered as a stop sequence; generic outer-tag repair is not used for
+XML because it can close an unfinished parameter incorrectly. Unless thinking
+is explicitly disabled, the
 grammar also accepts one optional `<think>...</think>` prefix before applying
 the final text/tool branch, including when no tokenized thinking budget owns the
 phase. Once a tool block parses successfully, the
@@ -1125,7 +1143,9 @@ ended because the generation budget was exhausted; in that case
 `invalid_tool_call` failures, chat requests may set
 `invalid_tool_call_error_mode="hard_error"` to receive an HTTP error in
 non-streaming responses or an SSE `error` chunk in streaming responses. The
-default remains the normal chat response described above.
+default remains the normal chat response described above on buffered and
+non-streaming paths. Live XML streams always surface final validation failures
+as SSE errors, because argument fragments may already have reached the client.
 For buffered c>N streams that have backend scheduler chunks, final done choices
 also include private `choices[].hipengine.withheld_scheduler_tool_chunks`
 diagnostics when those chunks were withheld because the parsed tool call was
@@ -1571,7 +1591,7 @@ when `invalid_tool_call_error_mode="hard_error"`.
 | --- | ---: | --- | --- |
 | `unsupported_parameter` | 400 | no | Unsupported request field/value. Legacy `error.code` can be `unsupported_content_type` for non-text chat content parts. |
 | `unsupported_feature` | 501 | no | Requested optional runtime feature is unavailable for the served model, for example tokenizer/counting diagnostics without tokenizer hooks. |
-| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for parsed undeclared tool names, multi-call output without `parallel_tool_calls=true`, strict tool result-validation failures, and unparseable `<tool_call>` markup in tool-enabled requests; opt-in HTTP/SSE hard-error payload when `invalid_tool_call_error_mode="hard_error"`. Compatibility parsing recovers a duplicated `<tool_call>` start marker only when the wrapped inner JSON is valid. |
+| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for parsed undeclared tool names, multi-call output without `parallel_tool_calls=true`, strict tool result-validation failures, and unparseable `<tool_call>` markup in tool-enabled requests; opt-in HTTP/SSE hard-error payload when `invalid_tool_call_error_mode="hard_error"`, or an SSE error by default for live XML streams. Compatibility parsing recovers a duplicated `<tool_call>` start marker only when the wrapped inner JSON is valid. |
 | `schema_violation` | 422 | no | Request body or server-side request validation errors; also normal `finish_details.reason` for invalid `response_format` or strict tool schema results. Legacy `error.code` is `validation_error` or `invalid_request`. |
 | `invalid_continuation` | 400 | no | Unknown, consumed, wrong-endpoint, wrong-model, or otherwise incompatible `continuation_id`. |
 | `continuation_expired` | 410 | no | Known `continuation_id` that expired before resume. |
