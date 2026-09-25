@@ -35,7 +35,11 @@ OpenAI-incompatible parallel-call opt-in default raises its unchanged-diagnostic
 result to 75/96: all 23 newly passing cases are parallel-call cases, with no
 pass-to-fail regressions. Llama.cpp and gufo outputs are unchanged. Gufo has three additional
 failures versus llama.cpp. These diagnostic scores do not establish accuracy
-parity or certify the full gate. Full performance and BFCL gates
+parity or certify the full gate. A later clean build of halo-box
+`strix-llama.cpp@03895887abe6` on Vulkan/RADV completes the same replay in
+643.08 s (mean 4.593 s) and passes 77/96 diagnostic cases, using BF16 target KV
+and the same target-plus-NextN GGUF. This is a separate engine/backend arm;
+existing measurements are unchanged. Full performance and BFCL gates
 have not run. Writing this plan
 does not start or resume another optimization
 loop. Kernel tuning, an NVFP4 port,

@@ -7,6 +7,64 @@ The campaign and comparison rules are in
 The first attempt used the upstream runner unchanged. The repaired run uses
 only the coordinator-timestamp patch documented below.
 
+## Latest halo-box Vulkan comparison: 2026-09-26
+
+`halo-box/strix-llama.cpp` at `03895887abe6b46473e0a2e07d0a82fe44484894`
+completes the fixed replay in **643.08 s** and passes **77/96 BFCL cases**.
+This is the shortest measured replay and highest diagnostic count among these
+configurations, not a general quality or kernel-speed claim.
+
+| Metric | hipEngine MTP | llama.cpp HIP MTP | Gufo DFlash2 | Halo-box Vulkan MTP |
+| --- | ---: | ---: | ---: | ---: |
+| Replay completed | 140/140 | 140/140 | 140/140 | 140/140 |
+| Replay time | 793.15 s | 827.10 s | 1,041.49 s | 643.08 s |
+| Mean / median latency | 5.665 / 4.405 s | 5.908 / 4.462 s | 7.439 / 5.195 s | 4.593 / 3.258 s |
+| Mean visible TTFT | 2.535 s | 2.872 s | 7.039 s | 2.176 s |
+| Draft acceptance | 86.20% | 92.50% | 15.79% | 92.39% |
+| Prefix-token reuse | 95.31% | 95.95% | 96.55% | 96.61% |
+| Effective cache-inclusive prefill | 4,744 tok/s | 6,089 tok/s | approximately 8,023 tok/s | 6,892 tok/s |
+| BFCL correct | 75/96 | 76/96 | 73/96 | 77/96 |
+| BFCL overall | 78.125% | 79.167% | 76.042% | 80.208% |
+| BFCL normalized | 82.29% | 84.38% | 81.25% | 85.42% |
+
+Only halo-box was newly built and run. hipEngine quality includes the corrected
+parallel-call default; its performance row predates that fix. Existing results
+are unchanged. Halo-box uses the project's recommended Vulkan backend on
+Mesa 26.2.2-arch3.2 RADV, whereas hipEngine and the saved llama.cpp arm use HIP.
+All run on the same Radeon 8060S host and Qwen3.6 Q4_K_M target tensors.
+Halo-box uses the same target-plus-NextN GGUF as the other MTP arms, BF16 target
+KV, FP16 draft KV, depth 3, 32K context, c1, temperature 0, seed 42, thinking off
+and output limit 1024. Speculative prefill and adaptive draft length stay off
+(the fork's defaults); no prompt tokens are selectively dropped.
+
+Every halo-box replay response has valid structured tool calls: 141 calls,
+zero missing turns, and all finishes `tool_calls`. All 140 requests propose
+MTP tokens, with 8,052 accepted of 8,715 proposed. Full prompt tokens total
+1,675,019, cached 1,618,168 and fresh 56,851; pooled prefill time is 243.041 s.
+Engine eval time is 374.449 s for 10,926 server-counted output tokens, yielding
+29.18 tok/s under that denominator. This is not interchangeable with hipEngine's
+streamed decode window. Inline command-name IoU is 0.6381, not task accuracy.
+
+The unchanged frozen BFCL96 manifest and upstream scorer complete all 96 cases,
+with no missing/empty responses. Independent per-case scoring reproduces every
+subset score, and issued request payload hashes match the other engines.
+Halo-box and llama.cpp agree on 93/96 verdicts: halo-box alone passes
+`live_parallel_6-3-0` and `live_parallel_multiple_4-3-0`; llama.cpp alone passes
+`live_parallel_11-7-0`. A one-case net advantage cannot establish quality
+superiority or accuracy parity. The full 995-case gate has not run.
+
+[Artifact, commands, hashes and per-case verdicts](../results/2026-09-26-gfx1151-halo-edge140-bfcl96.json).
+Raw root: `~/gate-runs/halo-edge-20260926`. A clean dedicated source checkout
+was configured with `GGML_VULKAN=ON`, `CMAKE_BUILD_TYPE=Release` and
+`LLAMA_BUILD_TESTS=OFF`; `llama-server` was built with 12 jobs. Binary SHA-256:
+`137da8657b75150215bb2c45b109f307f134b53af8ff4bd29058f21130783cc9`.
+The real streamed preflight verifies BF16 KV and active MTP. `run-comparison.py`
+starts fresh servers for `screen-140/` and `bfcl96/`, invokes the same upstream
+CLI and frozen-selection wrapper, then stops each server. No competing GPU or
+compiler load ran during measurement. Repeat into new output directories;
+commands and configs in the artifact identify the exact workload. This is a
+single-pass engine/backend comparison, not an isolated fork optimization test.
+
 ## Parallel-call default repair: 2026-09-26
 
 hipEngine now allows multiple calls when `parallel_tool_calls` is omitted or

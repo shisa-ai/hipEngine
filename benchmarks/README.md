@@ -2,6 +2,17 @@
 
 Last updated: **2026-09-26**
 
+**Halo-box Vulkan MTP** (`strix-llama.cpp@03895887abe6`) completes the same
+Qwen3.6 Q4_K_M 140-turn replay on Radeon 8060S in **643.08 s** (mean **4.593 s**),
+and passes **77/96** frozen BFCL diagnostic cases. Saved hipEngine/llama.cpp HIP
+MTP times are 793.15/827.10 s, with corrected hipEngine quality 75/96 and
+llama.cpp 76/96; gufo is 1,041.49 s and 73/96. The new arm uses BF16 target KV,
+FP16 draft KV and the same target-plus-NextN tensor bytes. Different backends
+and outputs preclude an isolated kernel gain; the small diagnostic does not
+establish accuracy parity or a full-gate pass.
+[Four-engine table and protocol](mlperf-edge/README.md#latest-halo-box-vulkan-comparison-2026-09-26) ·
+[Artifact](results/2026-09-26-gfx1151-halo-edge140-bfcl96.json).
+
 A **96-case BFCL quality diagnostic** on the same Qwen3.6 target and speculative
 configurations scores hipEngine **75/96**, llama.cpp **76/96**, and gufo **73/96**.
 All cases complete. Correcting hipEngine's omitted `parallel_tool_calls` default
