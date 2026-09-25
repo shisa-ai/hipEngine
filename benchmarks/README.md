@@ -918,7 +918,9 @@ of for all of them. On the same host, model, 512-token prompt, 128 decode tokens
 and c=1 session: **39.3 -> 1032.9 tok/s prefill (26.3x)** with decode unchanged
 (38.35 -> 39.27) and per-rank VRAM **12.43 -> 15.39 GiB**. For reference at the
 same shape: the single-card resident bulk prefill route is 890.8 tok/s, llama.cpp
-TP=1 is 941.8 and llama.cpp's TP=2 tensor split is 1474.6. The head projection
+TP=1 is 941.8 and llama.cpp's TP=2 tensor split is 1474.6 (the last is the figure
+recorded at the time; it does not reproduce, and the same protocol now measures
+1332.1 - see the matched comparison below). The head projection
 was 46% of the route's kernel time, because picking the next token needs the last
 row and nothing else - the single-card and token-serial routes both project one
 row, while the bulk path was projecting all 512 and reading 508 MB per rank back
@@ -945,30 +947,63 @@ by default) for the separate reason below. The per-tensor kernel mix behind this
 route, and the largest known gap in it, are recorded in
 [`docs/REFACTOR.md`](../docs/REFACTOR.md).
 
-**Matched llama.cpp comparison, measured 2026-09-20.** Same host, same model
-bytes (`7b2aec3b…`), 512-token prompt, 128 decode tokens, f16 KV, c=1, three
-repetitions, prefill and decode measured separately:
+**Matched llama.cpp comparison, measured 2026-09-25.** Same host, same model
+bytes, 512-token prompt, 128 decode tokens, f16 KV on both engines, c=1, three
+repetitions, prefill and decode measured separately, all arms in one window:
 
 | engine | transport | prefill tok/s | decode tok/s |
 | --- | --- | ---: | ---: |
-| llama.cpp TP=2 | `-sm tensor -ts 1/1`, NCCL allreduce | 1328.4 ± 10.5 | 41.46 ± 0.46 |
-| llama.cpp TP=2 | `-sm tensor`, internal q8 allreduce, P2P on | 1321.3 ± 12.1 | 41.38 ± 0.38 |
-| hipEngine TP2 | rank-local bulk prefill, host-staged exchange | 1035.2 | 39.17 |
-| llama.cpp TP=1 | single device | 934.8 ± 2.9 | 30.39 ± 0.04 |
+| llama.cpp TP=2 | `-sm tensor -ts 1/1` | 1332.1 ± 11.8 | 40.68 ± 1.77 |
+| **hipEngine TP2** | rank-local bulk prefill, device exchange, head-sharded attention | **1066.3** | **41.64** |
+| llama.cpp TP=2 | `-sm layer` (pipeline, the default) | 978.7 ± 1.8 | 29.22 ± 0.12 |
+| llama.cpp TP=1 | single device, XTX | 1057.9 ± 2.2 | 37.14 ± 0.09 |
+| llama.cpp TP=1 | single device, W7900 | 938.0 ± 1.3 | 30.37 ± 0.06 |
+| hipEngine TP1 | single device, XTX | token-serial prefill 36.57 | 34.90 |
+| hipEngine TP1 | single device, W7900 | token-serial prefill 30.07 | 28.78 |
 
-So the current prefill deficit is **28.3%** against llama.cpp's tensor split -
-about **109 ms** to remove from a 494.6 ms prefill - and decode is **5.9%**
-behind. Both engines' transport configurations are recorded in
-[`results/2026-09-20-w7900-tp2-matched-llamacpp-prefill-decode.json`](results/2026-09-20-w7900-tp2-matched-llamacpp-prefill-decode.json).
+So prefill is **20.0% behind** llama.cpp's tensor split - about **96 ms** to
+remove from a 480 ms prefill - and decode is **level** (41.64 against 40.68, well
+inside llama.cpp's own ± 1.77 spread). The prefill figure is if anything
+understated: llama-bench's `pp512` projects the prompt's output rows where this
+route uses `logits_rows=1`, which is worth a few percent of a 384 ms prefill in
+llama.cpp's favour.
+
+Two results from llama.cpp's other multi-GPU modes are worth stating, because
+they are what a llama.cpp user on this pair would actually run. Its **pipeline
+split loses to a single card on both axes** (978.7 against 1057.9 prefill, 29.22
+against 37.14 decode), and its **row split does not load this model at all**
+(`-sm row -ts 1/1` fails with `failed to load model`), so `-sm tensor` is the
+only working multi-GPU tensor-parallel mode here.
+
+**What the second card buys, on each engine:** llama.cpp 1.26x prefill and 1.10x
+decode over its own best single card; hipEngine 1.08x prefill and 1.19x decode
+over ours. TP2's decode scaling is the stronger of the two and its prefill
+scaling is the weaker one, which is where the 20% deficit lives.
+
+**TP2 against TP1, same host and shape:** decode 1.45x the W7900 and 1.19x the
+XTX; bulk prefill 1.21x and 1.08x against the single-card bulk-prefill controls.
+On the route both engines ship by default (token-serial prefill, decode-shaped
+steps) TP2 is 1.46x and 1.20x. The one caveat is that the single-card
+bulk-prefill controls are from an earlier revision, because this harness's TP1
+arms prefill token-serial; the token-serial-vs-token-serial ratio is the cleanest
+same-route statement, and the bulk-prefill comparison is against
+`results/2026-09-14-*-512-128-matched-tp1.json`.
+
+Both engines' transport configurations are recorded in
+[`results/2026-09-25-w7900-tp2-tp1-llamacpp-three-way.json`](results/2026-09-25-w7900-tp2-tp1-llamacpp-three-way.json),
+next to the
+[2026-09-20 recording](results/2026-09-20-w7900-tp2-matched-llamacpp-prefill-decode.json)
+of the same protocol, which measured a 28.3% prefill and 5.9% decode deficit at
+that revision.
 
 The earlier figure of 1474.6 tok/s for llama.cpp's TP=2 tensor split **does not
 reproduce** on this host: the same build (`15995a1`), model bytes and host now
-measure 1328.4, and the number stays in the 1321-1328 range under the internal
+measure 1332.1, and the number stays in the 1321-1332 range under the internal
 allreduce and P2P flags the original note attributes to it. The TP=1 companion
-from that same note *does* reproduce (934.8 against a recorded 941.8, -0.7%), so
+from that same note *does* reproduce (938.0 against a recorded 941.8, -0.4%), so
 this is specific to the tensor-split arm rather than a host-wide clock or thermal
 difference. Treat 1474.6 as unreproduced, and size the remaining work against
-the 28.3% deficit above rather than the larger figure it implies.
+the 20% deficit above rather than the larger figure it implies.
 Bulk prefill stays opt-in: chunked bulk prefill is not implemented, so a prompt
 longer than the workspace forces a rebuild mid-session.
 [Prompt-sized cell](results/2026-09-18-w7900-bulk-prompt-c1-512.json) ·
@@ -976,13 +1011,14 @@ longer than the workspace forces a rebuild mid-session.
 [serial control](results/2026-09-18-w7900-tp2-serial-c1-512-shaped-warmup.json) ·
 [production gate](results/2026-09-18-w7900-tp2-bulk-prefill-gate-prompt-sized.json).
 
-**Where the prefill deficit is, measured 2026-09-23.** Per-phase, per-layer
+**Where the prefill deficit was, measured 2026-09-23.** Per-phase, per-layer
 stream-event attribution on the same route and shape (512 tokens, even split,
-`reduce_mode=device`, source-F16 owner off) resolves the 109 ms deficit above
-into two measured terms. Rank 0 (W7900) is the pacer at 490.8 ms, and its phases
-are 233.4 ms of attention, 188.4 ms of sharded MLP chain and 59.4 ms of exchange
-- 7.52 ms per layer, all device-busy (the attention phase's host span is 78.3 ms
-against its 233.4 ms device span, so it is not enqueue-bound).
+`reduce_mode=device`, source-F16 owner off) resolved the deficit as it stood at
+that revision into two measured terms. Rank 0 (W7900) was the pacer at 490.8 ms,
+and its phases were 233.4 ms of attention, 188.4 ms of sharded MLP chain and
+59.4 ms of exchange - 7.52 ms per layer, all device-busy (the attention phase's
+host span was 78.3 ms against its 233.4 ms device span, so it was not
+enqueue-bound).
 
 The attention phase is **fully replicated**: `_bulk_attention_layer` calls the
 full-width attention helpers, which project `2 * q_width` and read the unsharded

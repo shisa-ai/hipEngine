@@ -1,0 +1,127 @@
+{
+ "schema": 1,
+ "kind": "tp2_tp1_llamacpp_three_way_matched",
+ "status": "performance_claim",
+ "performance_claim": true,
+ "date": "2026-09-25",
+ "host": "epyc",
+ "hardware": {
+  "device0": "AMD Radeon Pro W7900 (gfx1100, 46064 MiB)",
+  "device1": "AMD Radeon RX 7900 XTX (gfx1100, 24560 MiB)",
+  "p2p": "hipDeviceCanAccessPeer is 0 both ways on this pair"
+ },
+ "matched": {
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "prompt_tokens": 512,
+  "decode_tokens": 128,
+  "concurrency": 1,
+  "kv_cache": "f16/f16 both engines",
+  "repetitions": 3,
+  "llamacpp_command": "/home/lhl/llama.cpp/llama.cpp-rdna3-opt/build-rocm-gfx1100/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -p 512 -n 128 -r 3 -ngl 999 -ctk f16 -ctv f16 -fa auto <split flags>",
+  "llamacpp_build": "15995a1 (llama.cpp-rdna3-opt/build-rocm-gfx1100)",
+  "hipengine_command": "uv run python scripts/tp2_c1_bench.py --mode {tp1,tp2} [--devices 0|1] [--bulk-prefill] --prompt-length 512 --decode-tokens 128 --repeats 3",
+  "hipengine_revision": "0f495a4d9 (attention_shard resolves on for tp2 by default)",
+  "measured_in_one_window": true,
+  "timing_boundary": "llama-bench pp512/tg128 medians of 3; hipEngine per-generation wall including its own synchronize, median of 3 after one unmeasured prefill"
+ },
+ "llamacpp": {
+  "llamacpp_tp2_tensor": {
+   "flags": "-sm tensor -ts 1/1",
+   "prefill_tok_s": 1332.14,
+   "prefill_sd": 11.84,
+   "decode_tok_s": 40.68,
+   "decode_sd": 1.77
+  },
+  "llamacpp_tp2_layer_pipeline": {
+   "flags": "-sm layer",
+   "prefill_tok_s": 978.74,
+   "prefill_sd": 1.82,
+   "decode_tok_s": 29.22,
+   "decode_sd": 0.12
+  },
+  "llamacpp_tp1_w7900": {
+   "flags": "-sm none -dev ROCm0",
+   "prefill_tok_s": 938.01,
+   "prefill_sd": 1.32,
+   "decode_tok_s": 30.37,
+   "decode_sd": 0.06
+  },
+  "llamacpp_tp1_xtx": {
+   "flags": "-sm none -dev ROCm1",
+   "prefill_tok_s": 1057.85,
+   "prefill_sd": 2.16,
+   "decode_tok_s": 37.14,
+   "decode_sd": 0.09
+  }
+ },
+ "hipengine": {
+  "hipengine_tp2_bulk_shard": {
+   "prefill_tok_s": 1053.6,
+   "prefill_tok_s_median": 1066.314,
+   "decode_tok_s": 41.64,
+   "prefill_p50_ms": 485.953,
+   "decode_p50_ms": 24.01
+  },
+  "hipengine_tp1_w7900": {
+   "prefill_tok_s": 30.026,
+   "prefill_tok_s_median": 30.07,
+   "decode_tok_s": 28.77,
+   "decode_tok_s_median": 28.776
+  },
+  "hipengine_tp1_xtx": {
+   "prefill_tok_s": 36.547,
+   "prefill_tok_s_median": 36.573,
+   "decode_tok_s": 34.869,
+   "decode_tok_s_median": 34.897
+  }
+ },
+ "llamacpp_failures": {
+  "row_split": "-sm row -ts 1/1 fails to load this model: 'llama_bench: error: failed to load model'. The row split is the other tensor-parallel-shaped mode in this build and it does not run here, so llama.cpp's only working multi-GPU TP on this pair is -sm tensor."
+ },
+ "ratios": {
+  "hipengine_tp2_prefill_over_llamacpp_tp2": 0.8005,
+  "hipengine_tp2_decode_over_llamacpp_tp2": 1.0236,
+  "hipengine_tp2_prefill_over_llamacpp_tp1_xtx": 1.008,
+  "hipengine_tp2_decode_over_hipengine_tp1_w7900": 1.447,
+  "hipengine_tp2_decode_over_hipengine_tp1_xtx": 1.1932,
+  "hipengine_tp2_tokenserial_prefill_over_hipengine_tp1_w7900": 1.4629,
+  "hipengine_tp2_tokenserial_prefill_over_hipengine_tp1_xtx": 1.2028,
+  "llamacpp_tp2_prefill_over_llamacpp_tp1_xtx": 1.2593,
+  "llamacpp_tp2_decode_over_llamacpp_tp1_xtx": 1.0953,
+  "llamacpp_layer_pipeline_over_single_card": {
+   "prefill": 0.9252,
+   "decode": 0.7868
+  }
+ },
+ "deficits": {
+  "prefill_percent_vs_llamacpp_tp2": 19.95,
+  "prefill_ms_to_remove": 95.8,
+  "decode_percent_vs_llamacpp_tp2": -2.36,
+  "previous_recording": "results/2026-09-20-w7900-tp2-matched-llamacpp-prefill-decode.json measured the same protocol at hipEngine 1035.2 prefill / 39.17 decode against llama.cpp 1328.44 / 41.46, i.e. a 28.33% prefill deficit and 5.85% decode deficit. Both hipEngine numbers have moved since (device-side MLP reduction, head-sharded attention by default)."
+ },
+ "bulk_prefill_tp1_controls_from_an_earlier_revision": {
+  "note": "The TP1 arms of scripts/tp2_c1_bench.py prefill token-serial, so they are not the bulk-prefill control. The bulk-prefill TP1 numbers are from the 2026-09-14 resident-control artifacts at the same shape, on an earlier revision: 878.42 prefill / 29.57 decode on the W7900 and 988.10 / 35.35 on the XTX. Against those, TP2 bulk prefill is 1.21x and 1.08x.",
+  "w7900": {
+   "prefill_tok_s": 878.42,
+   "decode_tok_s": 29.57
+  },
+  "xtx": {
+   "prefill_tok_s": 988.1,
+   "decode_tok_s": 35.35
+  },
+  "artifacts": [
+   "results/2026-09-14-w7900-qwen38-q4km-int8-512-128-matched-tp1.json",
+   "results/2026-09-14-rx7900xtx-qwen38-q4km-int8-512-128-matched-tp1.json"
+  ]
+ },
+ "limits": [
+  "llama-bench's pp512 projects the prompt's output rows where the hipEngine bulk route uses logits_rows=1 (the last row only), which is worth a few percent of a 384 ms prefill in llama.cpp's favour. The prefill deficit above is therefore if anything understated.",
+  "llama.cpp's tg128 stddev is 1.77 tok/s against our 0.10, so the decode figures are level within llama.cpp's own spread; the prefill figures are 11.84 against our 13.0 sd on a 1066 tok/s median, also level.",
+  "The TP1 bulk-prefill controls are from an earlier revision; the fresh TP1 arms in this window are token-serial, which is why the token-serial-vs-token-serial ratio (1.46x / 1.20x) is the cleanest same-route TP2-vs-TP1 statement here.",
+  "The second card buys llama.cpp 1.26x prefill and 1.10x decode over its own best single card, and it buys hipEngine 1.08x prefill and 1.19x decode over ours: our TP2 scales decode better and prefill worse."
+ ],
+ "source_artifacts": [
+  "results/2026-09-20-w7900-tp2-matched-llamacpp-prefill-decode.json",
+  "results/2026-09-25-w7900-tp2-attention-shard-route.json"
+ ]
+}
