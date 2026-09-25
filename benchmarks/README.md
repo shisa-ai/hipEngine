@@ -2,13 +2,21 @@
 
 Last updated: **2026-09-25**
 
-MLPerf Edge Agentic integration diagnostic on **gfx1151 / Radeon 8060S**,
-Qwen3.6-27B Q4_K_M, production profile, BF16 KV, 32K window and concurrency 1:
-27/27 requests completed with valid structured calls, no empty outputs and no
-negative response-timing windows after the XML-streaming repair and the separate
-harness timestamp patch. No BFCL gate or decode-speed comparison is claimed.
-[Run record](mlperf-edge/README.md) ·
-[Repair artifact](results/2026-09-25-gfx1151-mlperf-edge-repair.json).
+MLPerf Edge Agentic fixed **140-turn screen**, physical host **gfx1151 / Radeon
+8060S**, same Qwen3.6-27B Q4_K_M, BF16 KV, 32K window, concurrency 1,
+reasoning off and shipped cache policies:
+
+| Engine | Completed | Mean turn latency | Measured phase | Inline command IoU |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine production, AR host sampler | 140/140 | 8.925 s | 1,249.47 s | 0.5586 |
+| llama.cpp HIP, AR | 140/140 | 9.157 s | 1,282.06 s | 0.6420 |
+
+One fresh-server pass each, with different outputs: not a stable speedup or
+quality-parity finding. Both return valid calls without empty/missing/error
+responses. Harness TPOT has a post-first-chunk tokenization defect and is not
+valid decode-rate evidence. BFCL and full performance gates have not run.
+[Protocol, commands and breakdown](mlperf-edge/README.md) ·
+[Artifact](results/2026-09-25-gfx1151-mlperf-edge-140.json).
 
 
 Qwen3.8-27B Q4_K_M sampling on **zbook / Radeon 8060S (gfx1151)**:

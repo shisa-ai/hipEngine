@@ -12,13 +12,15 @@ turns and pass the separate Berkeley Function Calling Leaderboard (BFCL) v4
 accuracy gate. Start with small, fixed subsets to find integration failures and
 estimate full-run cost before committing a device for hours.
 
-This is a **campaign plan, not a full benchmark result**. The repaired 27-turn
-integration check is recorded in
-[`benchmarks/mlperf-edge/README.md`](../../benchmarks/mlperf-edge/README.md):
-27/27 valid structured calls, no empty outputs and no negative response-timing
-windows. The original failed attempt is preserved alongside it. The repaired
-run uses a separately identified harness timestamp patch; no BFCL or decode-rate
-comparison is claimed. The fixed 140-turn screen is next. Writing this plan
+The **140-turn paired screen** is recorded in
+[`benchmarks/mlperf-edge/README.md`](../../benchmarks/mlperf-edge/README.md).
+Both engines complete all turns; mean latency is 8.925 s for hipEngine and
+9.157 s for llama.cpp on the same gfx1151 host and Qwen3.6-27B Q4_K_M artifact.
+Inline command-overlap scores are 0.5586 and 0.6420 respectively. This is one
+pass, not a stable speedup or quality-parity finding. Harness TPOT has a
+chunk-dependent tokenization defect and cannot support a decode-rate comparison.
+The earlier repaired 27-turn integration diagnostic and original failure are
+preserved. Full performance and BFCL gates have not run. Writing this plan
 does not start or resume another optimization
 loop. Kernel tuning, an NVFP4 port,
 Windows bring-up, and an official submission are outside the initial scope.
@@ -139,7 +141,8 @@ replacement for the MLCommons runner.
 
 ## 4. Execution stages and deliverables
 
-Setup and the repaired 27-turn diagnostic are recorded; larger stages are pending.
+Setup, the repaired 27-turn diagnostic and the paired 140-turn screen are recorded;
+full performance and accuracy stages are pending.
 The linked run record preserves the original failures and the passing repeat.
 Do not run competing servers or another GPU
 campaign on the selected device. Record physical host, device, memory allocation,
@@ -308,8 +311,11 @@ reasoning off, concurrency 1, and no integration defect.
 | Full BFCL gate | 2–4 hours | Upstream documents approximately three hours; actual generated lengths and scoring overhead need measurement |
 | Combined full run | Roughly 3–7 hours | Sum of planning ranges; the reference config times out at six hours, so the upper end will not complete under its unchanged deadline |
 
-Reserve **a half-day device slot for one full combined arm**, then update the
-reservation from the subset. A complete same-host two-engine comparison needs
+Reserve **a half-day device slot for one full combined arm**. The September 25
+screen measures about 21 minutes per arm; allow 25–30 minutes including startup
+and drain for a repeat. Keep the full performance allowance at 1–3 hours rather
+than claiming a stratified prediction from only three trajectories. BFCL runtime
+has not been measured. A complete same-host two-engine comparison needs
 roughly twice the device time, plus restarts; a short paired screen is the
 recommended first investment. One-time environment/model acquisition and API
 integration may take hours independently of device timing; network speed and
@@ -345,7 +351,11 @@ justify shrinking the official workload or disabling an implemented feature.
 - [x] Create and test deterministic whole-conversation smoke/config generation.
 - [x] Verify a real hipEngine HTTP tool/reasoning/token-accounting probe.
 - [x] Clear the output/timing failures from the completed 27-turn attempt.
-- [ ] Run the fixed 140-turn paired screen; revise the ETA.
+- [x] Run the fixed 140-turn paired screen; revise the ETA.
+- [ ] Repair harness TPOT's post-first-tool-chunk tokenization before using it
+  for decode-rate comparisons; preserve original metrics.
+- [ ] Compare gufo on the frozen Qwen3.6 subset, pinning its executable and actual
+  decoding settings; do not substitute its published Qwen3.8 configuration.
 - [ ] Run the small BFCL diagnostic if needed, without claiming a gate pass.
 - [ ] Run full combined evaluation and same-GGUF baseline; retain both verdicts.
 - [ ] Publish qualified-by-scope local artifacts and close with findings.
