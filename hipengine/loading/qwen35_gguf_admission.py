@@ -1225,6 +1225,20 @@ def _certified_coverage() -> tuple[Qwen35GGUFOperationCoverage, ...]:
             note="Contracted F32 alpha/beta resident (dense BF16).",
         )
     )
+    # E7 (UD-GFX1151-OPTIMIZE2 H10): Q8_0 alpha/beta expand to the dense F32
+    # resident at load (exact fp16-scale x int8 expansion), so the file type
+    # stays Q8_0 while consumption is the plain F32-resident linear route.
+    records.extend(
+        _surface_records(
+            (*row_ops, QWEN35_GGUF_OP_AR_PREFILL),
+            "recurrent_alpha_beta",
+            LAYOUT_DENSE_F32,
+            frozenset({"Q8_0"}),
+            activation=GGUF_ACTIVATION_BF16,
+            output=GGUF_OUTPUT_BF16,
+            note="Expanded Q8_0 alpha/beta resident (dense F32, E7).",
+        )
+    )
     # Native multirow: identical projection coverage (the native route launches
     # the same layout-aware linear/pair consumers), but alpha/beta must be a
     # dense BF16 owner because the route passes allocation("raw") directly to
@@ -1439,6 +1453,15 @@ def _f32_input_coverage() -> tuple[Qwen35GGUFOperationCoverage, ...]:
             strict_fallback="dense_gemv/f32/f32_hidden_f32_out (F32-input route)",
             note="Supplied F32 input; verifier projections explicitly cast the output to BF16.",
         ))
+    # E7: expanded Q8_0 alpha/beta residents follow the same declared F32
+    # input route as their F32-source counterparts.
+    records.extend(_surface_records(
+        (QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_DECODE_ROWS),
+        "recurrent_alpha_beta", LAYOUT_DENSE_F32, frozenset({"Q8_0"}),
+        activation=GGUF_ACTIVATION_F32, output=GGUF_OUTPUT_F32,
+        strict_fallback="dense_gemv/f32/f32_hidden_f32_out (F32-input route)",
+        note="Expanded Q8_0 alpha/beta resident (dense F32, E7, declared F32 input).",
+    ))
     router = resolve_router_consumer_contract(LAYOUT_DENSE_F32, "f32", "f32")
     for operation in (QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_DECODE_ROWS, QWEN35_GGUF_OP_AR_PREFILL):
         records.append(Qwen35GGUFOperationCoverage(
