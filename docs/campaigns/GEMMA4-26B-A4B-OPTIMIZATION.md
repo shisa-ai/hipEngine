@@ -389,6 +389,28 @@ flags because a configuration has not been benchmarked.
   the 319-340 us launch, and pass 2 walks every key per lane through LDS), then
   the 8.0 ms/token host gap from iteration 19 (1116 launches x 7.2 us), which is
   now comparable to the whole attention cost.
+  *Iteration 24 closing diagnostic (launch census through the public
+  `LLM.generate()` path, counting every kernel launch for 1024 prompt + 32
+  output):* **21,813 launches**, of which only 18 distinct symbols are launched
+  through the ctypes path - the rest are hipblaslt. Per layer per decode step
+  the elementwise kernels dominate the count: 5x `rmsnorm_f32w`, 2x
+  `head_rmsnorm_f32w`, 2x `add_rmsnorm_scale`, 1x `rmsnorm_weightless`, 1x
+  `partial_rotary`, 1x `gelu_tanh_mul_split`, 1x `router_prescale`, 1x
+  `router_logits` = **14 tiny elementwise launches per layer per step**, or
+  ~420 per step across 30 layers, before any GEMM. At the ~6-7 us host cost per
+  launch measured in iteration 19 that is the bulk of the 8.0 ms/token host gap,
+  which is now comparable to the whole attention kernel (8.5 ms of a 22.9 ms
+  step). Two candidate directions, in order of expected size: (1) capture the
+  decode step as a HIP graph - `hipengine/core/hip.py` already exposes
+  `stream_begin_capture`, graph instantiation and `hipGraphLaunch`, and nothing
+  calls them, so the machinery exists and is unexercised; (2) fuse the
+  per-layer elementwise chains, for which `HIPENGINE_FUSED_RMSNORM_ROTATE`
+  already exists but defaults to off on a justification ("pending verifier
+  economics") that the Product Defaults rule does not accept as a cause, so the
+  next iteration should measure it on/off through the campaign row and ship it
+  on if it holds. Measure before either: the census above counts launches, not
+  their host cost, and no trace-based attribution has been possible since
+  rocprofv3 began hanging on this box.
   *Status 2026-09-25 (iteration 24): **accepted**. Pass 1's shuffle tree was the
   measured bottleneck (clean ablations, each keeping the data dependencies alive:
   replacing the tree with in-lane adds saved 108 us of 318 at sliding, skipping
