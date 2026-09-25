@@ -10060,6 +10060,63 @@ class Qwen35GGUFResidentModelRunner:
         native_compact_prefill = False
         final_prefix_boundary = (len(row.prompt_ids) // 256) * 256
 
+        # Processed argmax needs host logits, but its draft provider still
+        # needs every newly computed prompt hidden row. Stream both cache
+        # misses and restored suffixes through the packed prefill sink, just
+        # as the native route does, without dropping the request's processors.
+        sinks = (
+            self._begin_mtp2_prompt_streaming((row,))
+            if row.mtp2_candidate_budget > 0 else (None,)
+        )
+        if sinks[0] is not None:
+            prefill_batch = getattr(
+                self._packed_execution_owner(session), "prefill_batch_native", None
+            )
+            start = time.perf_counter()
+            chunk_start = int(session.position) - int(row.prefix_reused_tokens)
+            segments = _gguf_prefix_suffix_segments(
+                int(session.position), len(row.prompt_ids), chunk
+            )
+            try:
+                if not callable(prefill_batch):
+                    raise RuntimeError("MTP processed prefill requires packed hidden sinks")
+                for index, segment in enumerate(segments):
+                    want_output = bool(final_chunk and index == len(segments) - 1)
+                    with _temporary_env(
+                        {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
+                    ):
+                        results = prefill_batch(
+                            [segment], sessions=[session],
+                            full_prompt_lengths=[len(row.prompt_ids)],
+                            return_logits=want_output, return_hidden_seeds=False,
+                            sample_output=want_output,
+                            target_hidden_chunk_sinks=sinks,
+                            target_hidden_request_ids=(row.request_id,),
+                            target_hidden_chunk_starts=(chunk_start,),
+                            finish_target_hidden_sinks=False,
+                        )
+                    chunk_start += len(segment)
+                    self._refresh_prefix_cache(row)
+                    if want_output:
+                        result_list = [] if results is None else list(results)
+                        if len(result_list) != 1 or getattr(result_list[0], "logits", None) is None:
+                            raise RuntimeError("MTP processed prefill returned no logits")
+                        result = result_list[0]
+                if final_chunk:
+                    self._finish_mtp2_prompt_streaming((row,), sinks, success=True)
+            except BaseException:
+                self._finish_mtp2_prompt_streaming((row,), sinks, success=False)
+                raise
+            row.prefill_ms += _timing_ms_since(start)
+            row.prefill_chunk_count += len(segments)
+            self._route_counts["processed_argmax_mtp_streamed_prefill_chunks"] += len(segments)
+            if row.prefix_reused_tokens:
+                self._prefix_phase_add("suffix_prefill", start)
+            self._refresh_prefix_cache_at_prompt_boundary(row, lease)
+            if final_chunk:
+                self._finish_sampled_prefill(row, result, native_compact_prefill=True)
+            return
+
         if row.prefix_reused_tokens:
             # A reused prefix is never prefilled, so this row's prompt activation
             # cannot produce the full-prompt hidden rows a provider needs. Run

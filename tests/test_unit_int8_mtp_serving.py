@@ -234,12 +234,11 @@ def test_int8_declares_the_sampled_route_the_accept_path_implements(rows):
     assert decision.as_dict()["implementation_key"].startswith("gguf_dense_int8")
 
 
-def test_only_int8_declarations_list_sampled_and_the_runtime_gate_is_storage_blind():
-    """The two layers that decide the sampled scope, asserted at their sources.
+def test_dense_declarations_list_sampled_and_static_mode_gate_is_storage_blind():
+    """Both storage implementations advertise processed acceptance.
 
-    Admission reads the declaration's `sampling_modes`; the runtime gate reads
-    evidence rows. The second is storage-blind, which is what keeps INT8's wider
-    declaration from being a wider effective scope than BF16's.
+    The adapter's static mode advertisement does not replace per-request
+    storage admission through the implementation resolver.
     """
 
     declarations = Qwen35GGUFModel().speculative_mtp_serving_implementations
@@ -249,7 +248,7 @@ def test_only_int8_declarations_list_sampled_and_the_runtime_gate_is_storage_bli
             declaration.sampling_modes
         )
     assert by_storage["int8_per_token_head"] == {("greedy_fast", "sampled")}
-    assert by_storage["bf16"] == {("greedy_fast",)}
+    assert by_storage["bf16"] == {("greedy_fast", "sampled")}
 
     import hipengine.generation.qwen35_gguf_mtp2 as mtp2
 

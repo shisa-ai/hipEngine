@@ -821,29 +821,38 @@ class LLM:
 
     @property
     def speculative_mtp_sampling_modes(self) -> tuple[str, ...]:
-        """Return the sampling modes this artifact's evidence rows admit.
+        """Return implemented sampling modes admitted by the serving resolver.
 
-        ``speculative_mtp_serving_capability`` resolves one mode (the rows' own
-        first mode), which cannot answer whether a *sampled* request is admitted.
-        The serving layer needs that answer before it decides whether a request
-        keeps typed speculative intent or falls to K0, so each mode a row
-        declares is resolved against that row's own physical scope.
+        Evidence may describe additional scopes, but its absence must not hide
+        a mode the model plugin declares. Resolve each candidate against the
+        loaded engine before advertising it; declarations do not bypass the
+        request's backend, storage, depth or resource checks.
         """
 
         _weight_index, model_plugin = self._load_model_metadata()
         evidence = tuple(
             getattr(model_plugin, "speculative_mtp_serving_evidence", ()) or ()
         )
+        scopes = [
+            (row.sampling_modes, int(row.realized_group_rows), str(row.kv_storage))
+            for row in evidence
+        ]
+        scopes.extend(
+            (declaration.sampling_modes, 1, str(self.kv_storage or declaration.kv_storage))
+            for declaration in tuple(
+                getattr(model_plugin, "speculative_mtp_serving_implementations", ()) or ()
+            )
+        )
         admitted: list[str] = []
-        for row in evidence:
-            for mode in tuple(getattr(row, "sampling_modes", ()) or ()):
+        for modes, group_rows, storage in scopes:
+            for mode in modes:
                 mode = str(mode)
                 if mode in admitted:
                     continue
                 decision = self.resolve_speculative_mtp_serving_plan(
-                    realized_group_rows=int(row.realized_group_rows),
+                    realized_group_rows=group_rows,
                     sampling_mode=mode,
-                    kv_storage=str(row.kv_storage),
+                    kv_storage=storage,
                     memory_fit=True,
                 )
                 if decision is not None and bool(getattr(decision, "admitted", False)):

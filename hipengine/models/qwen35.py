@@ -780,6 +780,7 @@ class Qwen35GGUFModel:
         # inherits.
         SpeculativeMTPServingImplementation(
             name="gguf_dense_bf16_gfx1100_c1_native_chain",
+            sampling_modes=("greedy_fast", "sampled"),
             kv_storage="bf16",
             backends=(("hip_gfx1100", "gfx1100"),),
             max_candidate_count=7,
@@ -789,6 +790,7 @@ class Qwen35GGUFModel:
         ),
         SpeculativeMTPServingImplementation(
             name="gguf_dense_bf16_gfx1100_group_native_chain",
+            sampling_modes=("greedy_fast", "sampled"),
             kv_storage="bf16",
             backends=(("hip_gfx1100", "gfx1100"),),
             max_candidate_count=3,
@@ -798,6 +800,7 @@ class Qwen35GGUFModel:
         ),
         SpeculativeMTPServingImplementation(
             name="gguf_dense_bf16_gfx1151_c1_native_chain",
+            sampling_modes=("greedy_fast", "sampled"),
             kv_storage="bf16",
             backends=(("hip_gfx1151", "gfx1151"),),
             max_candidate_count=7,
@@ -807,6 +810,7 @@ class Qwen35GGUFModel:
         ),
         SpeculativeMTPServingImplementation(
             name="gguf_dense_bf16_gfx1151_group_native_chain",
+            sampling_modes=("greedy_fast", "sampled"),
             kv_storage="bf16",
             backends=(("hip_gfx1151", "gfx1151"),),
             max_candidate_count=3,
