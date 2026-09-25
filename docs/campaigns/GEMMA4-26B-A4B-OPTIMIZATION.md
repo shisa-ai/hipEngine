@@ -446,6 +446,35 @@ flags because a configuration has not been benchmarked.
   figure. `HIPENGINE_FUSED_RMSNORM_ROTATE` still defaults off on a justification
   the Product Defaults rule does not accept as a cause; measure it on/off through
   the campaign row and ship it on if it holds.
+  *Status 2026-09-25 (iteration 26): **rejected**, and it corrects the diagnosis
+  of pass 1's tree.* Iteration 24 measured the tree at 108 us of a 288 us sliding
+  launch and iteration 24's 1024-thread regression showed more warps do not help,
+  which pointed at a serialised dependent chain inside each warp: the two keys per
+  tile interleave their K loads and dot products but then call
+  `gemma4_warp_tree` twice, each a 5-level chain of 40 shuffles. A
+  `gemma4_warp_tree2` that issues both keys' shuffles per level - bit-exact, same
+  register footprint, same kKeysPerTile=2 - was **neutral at sliding and slower
+  at full** (sliding 288.4 -> 290.7 us, full 270.1 -> 280.2 us at keys=1024, full
+  399 -> 420.6 us at keys=2048) while the campaign row stayed flat
+  (43.9827 -> 44.0065, +0.05%). Reverted. The arithmetic says why: 1024 keys x 40
+  shuffles x 16 warps is 655k shuffles in 108 us, about 5 cycles per shuffle per
+  warp, which is the block's 16 warps saturating its 4 SIMD pipes - so the chain
+  was already overlapped (both calls are inlined and independent, and the
+  scheduler interleaves them) and the tree is **block-level pipe throughput**, not
+  latency. That also explains iteration 24's 1024-thread regression: more warps
+  cannot add SIMD pipes to a block. The real limiter is structural and was
+  confirmed in the launcher: `grid = tokens * num_heads`, so a decode step
+  launches **16 blocks on a 96-CU GPU** with 512 threads each. Pass 1's tree cost
+  is therefore irreducible *within one block* and the candidate that can move it
+  is **split-K**: divide each head's key range across N blocks and combine their
+  (max, denominator, weighted-V) partials with an online-softmax rescale. That is
+  changed arithmetic - it reorders the weighted sums - so it needs the
+  production-profile gate from `docs/EXECUTION-PROFILES.md`, not parity, and the
+  evaluator for it is `scripts/gemma4_teacher_forced_gate.py`. It is also the
+  first candidate in this campaign whose payoff comes from occupancy rather than
+  from removing work: at 16 of 96 CUs there is room for roughly 4x before other
+  limits bind, against an attention share of 8.5 ms in a 22.9 ms step. Evidence row
+  `2026-09-25-gemma4-26b-a4b-tree2-interleave-rejected.json`.
   *Status 2026-09-25 (iteration 24): **accepted**. Pass 1's shuffle tree was the
   measured bottleneck (clean ablations, each keeping the data dependencies alive:
   replacing the tree with in-lane adds saved 108 us of 318 at sliding, skipping
