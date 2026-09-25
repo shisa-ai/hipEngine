@@ -8879,3 +8879,30 @@ Remove this once a failed `_construct_shared_session` in
 ladder with a width the box cannot hold, then assert a full-context session plus the
 chat smoke still allocate. If the failed attempt does not roll back completely, fix
 the rollback instead of weakening the probe.
+
+## The Gemma 4 two-phase decode split waits on its execution-profile gate (open 2026-09-25)
+
+The two-phase decode split (`gemma4_attention_decode_slice_kernel` plus
+`gemma4_attention_decode_combine_kernel`, selected by `decode_slices` in
+`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py`) changes the association
+order of the decode weighted-V sum, so `docs/EXECUTION-PROFILES.md` requires its
+execution-profile gate before it can be the default path. It is implemented, parity-tested
+(1e-4 relative in f32, one bf16 ulp against the single-kernel path) and measured at
+45.4170 vs 43.9827 tok/s (+3.26%) at 1024p/128o, but the gate itself has never reached a
+numerics verdict: each attempt died in `hipMalloc` because a peer job held ~6.9 GiB on
+the target device, which is more than the margin the model needs.
+
+`_SPLIT_GATE_PASSED = False` is the precondition, defined beside that constant with the
+clearing command. Flip it to True, run
+
+```
+env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 PYTHONPATH=. \
+  .venv/bin/python scripts/gemma4_teacher_forced_gate.py gate \
+  --baseline /mnt/nvme1/gemma4-eval/teacher-forced-6224cc0576fb.npz \
+  --out benchmarks/results/2026-09-26-gemma4-26b-a4b-two-phase-split-gate.json
+```
+
+and delete this entry plus the constant on a passing verdict. On a failing verdict keep
+the constant and record the kl_max row instead. Do not delete the split: it is correct
+and measured-positive, and the gate decides whether it may be the default, not whether
+it works.

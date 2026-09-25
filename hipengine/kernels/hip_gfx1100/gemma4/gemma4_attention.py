@@ -56,6 +56,97 @@ _ARGTYPES_PREFILL = (
     ctypes.c_int64,
 )
 
+# Decode adds the two-phase split's scratch pointer and slice count; the prefill
+# symbols keep the twelve-argument form.
+_ARGTYPES_DECODE = _ARGTYPES_PREFILL + (ctypes.c_void_p, ctypes.c_int)
+
+_DECODE_SYMBOLS = (_SYMBOL_DECODE_BF16, _SYMBOL_DECODE_F32)
+_SYMBOL_SPLIT_WORKSPACE_BYTES = "hipengine_gemma4_decode_split_workspace_bytes"
+# Split scratch, grown and reused rather than freed per launch: freeing under an
+# in-flight stream is a use-after-free and a fresh hipMalloc would become a
+# per-launch cost, the same convention the runtime's staging buffers use. Keyed
+# by stream, because two streams sharing one buffer would interleave phase 1 of
+# one launch with phase 2 of another. The owner objects are held so the arena
+# cannot collect them.
+_SPLIT_WORKSPACES: dict = {}
+
+# The two-phase split changes arithmetic (the association order of the weighted-V
+# sum), so docs/EXECUTION-PROFILES.md requires its execution-profile gate before
+# it becomes the default path, and that gate has not run yet: a peer job held
+# ~6.9 GiB on the target device, leaving less than the model's footprint, so
+# every attempt died in ``hipMalloc`` before reaching a numerics verdict. The
+# split is implemented, measured at **45.4170 vs 43.9827 tok/s (+3.26%)** and
+# parity-tested (1e-4 relative in f32, one bf16 ulp); only the precondition is
+# outstanding. Clearing command::
+#
+#   env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 PYTHONPATH=. \
+#     .venv/bin/python scripts/gemma4_teacher_forced_gate.py gate \
+#     --baseline /mnt/nvme1/gemma4-eval/teacher-forced-6224cc0576fb.npz \
+#     --out benchmarks/results/2026-09-26-gemma4-26b-a4b-two-phase-split-gate.json
+#
+# Flip this to True to run that gate (it is what selects the candidate path); a
+# passing verdict retires this constant and the docs/REFACTOR.md entry.
+_SPLIT_GATE_PASSED = False
+
+
+def decode_slices(keys: int) -> int:
+    """Key slices the two-phase decode split uses at this context length.
+
+    The split exists because the decode kernel's parallelism is structurally low:
+    ``grid = tokens * num_heads`` launches 16 blocks on a 96-CU GPU, and
+    ``scripts/gemma4_attention_scale_probe.py`` measures per-head time improving
+    6.9x going from 16 to 64 blocks while 128 blocks is worse in total time than
+    64. One slice per ~512 keys puts a 1024-key row at 2 slices (32 blocks) and a
+    2048-key row at 4 (64 blocks, the measured optimum). Below 512 keys the
+    single-kernel path already has enough work per block to amortise its launch,
+    and the split would pay two extra kernels and a workspace round trip for
+    nothing.
+    """
+
+    if not _SPLIT_GATE_PASSED:
+        return 1
+    return _split_slices_policy(keys)
+
+
+def _split_slices_policy(keys: int) -> int:
+    """The split's slice count, once its precondition is met."""
+
+    if keys < 512:
+        return 1
+    slices = 1
+    while slices < 4 and keys > slices * 512:
+        slices <<= 1
+    return slices
+
+
+def split_workspace_bytes(
+    tokens: int, num_heads: int, head_dim: int, keys: int, slices: int, *,
+    library: ctypes.CDLL | None = None,
+) -> int:
+    """Bytes of scratch the split needs, from the kernel's own definition."""
+
+    library = library or build_gemma4_attention(load=True)
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_SPLIT_WORKSPACE_BYTES,
+        (ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int),
+        ctypes.c_size_t,
+    )
+    return int(fn(int(tokens), int(num_heads), int(head_dim), int(keys), int(slices)))
+
+
+def _split_workspace_ptr(nbytes: int, stream: int) -> int:
+    """Return a scratch pointer of at least ``nbytes`` for this stream."""
+
+    entry = _SPLIT_WORKSPACES.get(stream)
+    if entry is not None and entry[1] >= nbytes:
+        return entry[0].ptr
+    from hipengine.core.memory import malloc
+
+    buffer = malloc(int(nbytes))
+    _SPLIT_WORKSPACES[stream] = (buffer, int(nbytes))
+    return buffer.ptr
+
 
 def plan_gemma4_attention_build(
     *,
@@ -191,6 +282,40 @@ def _launch_prefill(
     gemma4_attention_shared_bytes(head_dim=head_dim, keys=key_count)
     library = library or build_gemma4_attention(load=True)
     runtime = runtime or get_hip_runtime()
+    if symbol in _DECODE_SYMBOLS:
+        # Two-phase split: phase 1 is this same kernel stopping after pass 2 and
+        # writing its weights, phase 2 accumulates the weighted V sum over a
+        # slice of the key range, and a combine sums the slices. Selected by
+        # context length, because the kernel's parallelism is structurally low
+        # (grid = tokens * num_heads is 16 blocks on a 96-CU GPU).
+        slices = decode_slices(key_count)
+        workspace = 0
+        if slices > 1:
+            workspace = _split_workspace_ptr(
+                split_workspace_bytes(
+                    tokens, num_heads, head_dim, key_count, slices, library=library
+                ),
+                stream,
+            )
+        fn = signed_kernel_fn(library, symbol, _ARGTYPES_DECODE, ctypes.c_int)
+        err = fn(
+            query_ptr,
+            key_ptr,
+            value_ptr,
+            keep_mask_ptr,
+            out_ptr,
+            tokens,
+            num_heads,
+            num_kv_heads,
+            head_dim,
+            ctypes.c_float(scale),
+            stream,
+            key_count,
+            ctypes.c_void_p(workspace),
+            ctypes.c_int(slices),
+        )
+        _check_launch(runtime, err)
+        return
     fn = signed_kernel_fn(library, symbol, _ARGTYPES_PREFILL, ctypes.c_int)
     err = fn(
         query_ptr,
