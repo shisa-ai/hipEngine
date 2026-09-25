@@ -545,8 +545,13 @@ def _compare(out: Path, layers: tuple[int, ...]) -> int:
 
         # The split check: on the sharded route each rank holds half the heads'
         # contribution; on the unsharded route both ranks hold the whole thing.
-        # If the two partials sum to the unsharded output, the split computes
-        # the right value and any remaining error belongs to the reduction.
+        # This is the same comparison the reduced output makes against the same
+        # reference, so on its own it does not separate bf16 narrowing of the
+        # partials from a remaining error inside them - a same-input control that
+        # runs the full and the rank-local projections over one captured input is
+        # what would. Read it as the magnitude the split's own arithmetic
+        # accounts for, and take the reduction's exactness from the host-sum
+        # check, which is independent of it.
         base_part = out / f"baseline_partial_l{layer}_d0.npy"
         shard_parts = [
             out / f"sharded_partial_l{layer}_d{device}.npy" for device in (0, 1)

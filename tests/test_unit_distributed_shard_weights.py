@@ -841,3 +841,218 @@ def test_raw_attention_payloads_are_the_owned_heads_rows() -> None:
         # The two ranks partition the source rather than overlapping it.
         assert payloads["ssm_alpha"].nbytes == int(alpha_info.nbytes) // 2
         assert payloads["ssm_a"].nbytes == int(a_info.nbytes) // 2
+
+
+# -- the ssm_a source-to-kernel ABI, without the model -------------------------
+#
+# The real-model checks above are integration coverage: they skip wherever
+# /models is absent. The conversion they pin is the one that made a head-sharded
+# rank disagree with the replicated route from token 1 on, so it also needs a
+# regression that runs everywhere. These build their own F32 ssm_a payload and
+# drive the same entry points the runtime and the loader drive.
+
+
+#: One head's value from the real model. GGUF stores the negative decay
+#: coefficient, the GDN kernels take ``A_log``, and the conversion is
+#: ``log(-coefficient)``. The two differ by orders of magnitude inside ``exp``,
+#: so a payload that skipped the conversion cannot pass by tolerance.
+SSM_A_SOURCE_COEFFICIENT = -0.0406350195
+SSM_A_KERNEL_A_LOG = -3.203125
+
+
+def _synthetic_ssm_a_plan(*, heads: int = 4, world_size: int = 2, element_ranges=None):
+    """An ``ssm_a`` plan over synthetic F32 heads.
+
+    ``ssm_a`` carries one scalar per value head and splits as axis-0 groups, so
+    the even rule gives each head its own one-element segment - the shape the
+    real model resolves to - and an explicit boundary needs the single-segment
+    form the uneven split is defined for. The segments are in axis-0 elements,
+    and F32's element size comes from the quant type.
+    """
+
+    from hipengine.loading.qwen35_gguf_shards import (
+        GROUP,
+        AxisSegment,
+        TensorShardRule,
+        build_tensor_shard_plan,
+    )
+
+    segments = (
+        (AxisSegment(start=0, stop=heads, group=1),)
+        if element_ranges is not None
+        else tuple(
+            AxisSegment(start=head, stop=head + 1, group=1) for head in range(heads)
+        )
+    )
+    rule = TensorShardRule(kind=GROUP, axis=0, segments=segments)
+    return build_tensor_shard_plan(
+        name="blk.0.ssm_a",
+        shape=(heads,),
+        nbytes=heads * 4,
+        quant_type_id=0,
+        quant_type_name="F32",
+        rule=rule,
+        world_size=world_size,
+        element_ranges=element_ranges,
+    )
+
+
+def _synthetic_ssm_a_source(heads: int = 4) -> np.ndarray:
+    """Negative decay coefficients as the raw bytes a GGUF payload would hold."""
+
+    coefficients = np.asarray(
+        [
+            SSM_A_SOURCE_COEFFICIENT,
+            -0.0097656250,
+            -0.5,
+            -2.0,
+        ][:heads],
+        dtype="<f4",
+    )
+    assert np.all(coefficients < 0.0)
+    return coefficients.view(np.uint8).reshape(-1)
+
+
+def _owned_a_log(source: np.ndarray, shard) -> np.ndarray:
+    """The conversion applied to exactly the heads one rank owns."""
+
+    from hipengine.loading.qwen35_gguf_materialize import _gguf_ssm_a_to_kernel_a_log
+
+    coefficients = source.view("<f4")[shard.axis_start : shard.axis_stop]
+    return np.ascontiguousarray(_gguf_ssm_a_to_kernel_a_log(coefficients), dtype="<f4")
+
+
+@pytest.mark.parametrize(
+    "element_ranges",
+    [None, ((0, 1), (1, 4))],
+    ids=["even", "uneven"],
+)
+def test_the_ssm_a_abi_is_applied_to_every_rank_slice(element_ranges) -> None:
+    """Every payload path funnels through this, so it is checked per rank.
+
+    The conversion is per element and applied to whatever bytes the rank's slice
+    yields, so a boundary that moves cannot skip it. The uneven case is that
+    boundary-independence at the shared entry point: the planner itself refuses
+    an uneven split on head-structured axes, which ``ssm_a`` is, so the uneven
+    manifest coverage stays with the planner's own tests.
+    """
+
+    from hipengine.loading.qwen35_gguf_shards import materialize_payload_slice
+
+    source = _synthetic_ssm_a_source()
+    plan = _synthetic_ssm_a_plan(element_ranges=element_ranges)
+    for rank in (0, 1):
+        shard = plan.slice_for(rank)
+        got = materialize_payload_slice(
+            "blk.0.ssm_a", source, shard, ggml_type_name="F32"
+        )
+        want = _owned_a_log(source, shard)
+        raw = source.view("<f4")[shard.axis_start : shard.axis_stop]
+        assert np.array_equal(got.view("<f4"), want), (
+            f"rank {rank} ssm_a payload is not the kernel A_log ABI"
+        )
+        assert not np.array_equal(got.view("<f4"), raw), (
+            f"rank {rank} ssm_a payload is the raw source coefficient"
+        )
+        # The ABI is a different magnitude, not a rounding difference: exp() of
+        # the two differs by orders of magnitude, which is why the kernel's
+        # decay changed rather than drifting.
+        assert not np.allclose(np.exp(want), np.exp(raw), rtol=1e-3)
+
+
+def test_the_ssm_a_abi_is_the_kernel_a_log_of_the_source_coefficient() -> None:
+    """Pin the direction of the conversion, not just that it happened.
+
+    ``log(-coefficient)`` is not its own inverse, so a conversion applied in the
+    wrong direction is still a conversion. This fixes one real value pair.
+    """
+
+    from hipengine.loading.qwen35_gguf_materialize import _gguf_ssm_a_to_kernel_a_log
+
+    converted = _gguf_ssm_a_to_kernel_a_log(
+        np.asarray([SSM_A_SOURCE_COEFFICIENT], dtype=np.float32)
+    )
+    assert converted[0] == pytest.approx(SSM_A_KERNEL_A_LOG, rel=1e-6)
+    # exp(A_log) is the coefficient's magnitude, which is what the kernel's
+    # decay term multiplies; with the raw coefficient in that slot it would be
+    # exp(-0.0406) instead of 0.0406.
+    assert float(np.exp(converted[0])) == pytest.approx(
+        -SSM_A_SOURCE_COEFFICIENT, rel=1e-6
+    )
+
+
+def test_the_streaming_loader_applies_the_same_ssm_a_abi(tmp_path) -> None:
+    """The loader-facing path is a separate call site, so it is driven here.
+
+    It slices its own source bytes through the same definition, which is what
+    keeps the streaming path from drifting away from the runtime path.
+    """
+
+    from hipengine.loading.qwen35_gguf_shards import (
+        ShardManifest,
+        iter_rank_payloads,
+    )
+
+    source = _synthetic_ssm_a_source()
+    path = tmp_path / "synthetic_payload.bin"
+    path.write_bytes(source.tobytes())
+    plan = _synthetic_ssm_a_plan()
+
+    class _SyntheticReader:
+        """The two members the streaming loader reads: a path and a tensor table."""
+
+        def __init__(self, path, plan) -> None:
+            self.path = path
+            self._info = type(
+                "TensorInfo",
+                (),
+                {
+                    "name": plan.name,
+                    "nbytes": plan.source_nbytes,
+                    "data_offset": 0,
+                    "ggml_type_name": "F32",
+                },
+            )()
+
+        def tensor_info(self, name):
+            assert name == self._info.name
+            return self._info
+
+    manifest = ShardManifest(
+        model_hash="synthetic",
+        world_size=2,
+        hidden_size=8,
+        tensors=(plan,),
+    )
+    reader = _SyntheticReader(path, plan)
+    for rank in (0, 1):
+        yielded = {
+            name: payload
+            for name, payload in (
+                (item.name, payload)
+                for item, payload in iter_rank_payloads(reader, manifest, rank=rank)
+            )
+        }
+        assert set(yielded) == {"blk.0.ssm_a"}, "the loader must yield the tensor"
+        shard = plan.slice_for(rank)
+        assert np.array_equal(
+            np.asarray(yielded["blk.0.ssm_a"]).view("<f4"),
+            _owned_a_log(source, shard),
+        ), f"rank {rank} streaming payload is not the kernel A_log ABI"
+        assert not np.array_equal(
+            np.asarray(yielded["blk.0.ssm_a"]).view("<f4"),
+            source.view("<f4")[shard.axis_start : shard.axis_stop],
+        )
+
+
+def test_an_ssm_a_payload_that_is_not_f32_is_refused_rather_than_passed_through() -> None:
+    """A non-F32 ssm_a cannot be converted, so it must not be uploaded as if it had."""
+
+    from hipengine.loading.qwen35_gguf_shards import ShardPlanError, materialize_payload_slice
+
+    source = _synthetic_ssm_a_source()
+    plan = _synthetic_ssm_a_plan()
+    with pytest.raises(ShardPlanError, match="ssm_a must be F32"):
+        materialize_payload_slice(
+            "blk.0.ssm_a", source, plan.slice_for(0), ggml_type_name="Q4_K"
+        )
