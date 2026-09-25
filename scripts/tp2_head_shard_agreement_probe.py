@@ -599,6 +599,7 @@ def _compare(out: Path, layers: tuple[int, ...]) -> int:
                 f"max_abs={stats['max_abs']:.4g} exact={stats['exact']}"
             )
 
+    out.mkdir(parents=True, exist_ok=True)
     (out / "compare.json").write_text(json.dumps(report, indent=1) + "\n")
     return 0
 

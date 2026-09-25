@@ -111,5 +111,21 @@ def test_unit_narrow_bf16_rne_rounds_half_to_even() -> None:
     assert probe._narrow_bf16_rne(values).tolist() == [0x3F80, 0xC020, 0x0000]
 
 
+def test_unit_compare_writes_its_report_into_a_directory_that_does_not_exist(
+    tmp_path: Path,
+) -> None:
+    """A compare on its own is still worth the report, and it must not crash.
+
+    The capture commands are separate invocations, so a compare can be the first
+    thing to touch the output directory. Writing the report is the last step of a
+    comparison whose printed results have already been read, so a missing parent
+    there loses the machine-readable half of an expensive run.
+    """
+
+    fresh = tmp_path / "not-created-yet"
+    assert probe._compare(fresh, (0,)) == 0
+    assert (fresh / "compare.json").exists()
+
+
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(pytest.main([__file__, "-q"]))
