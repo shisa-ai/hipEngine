@@ -54,11 +54,9 @@ def test_split_slice_policy_covers_both_sides_of_every_threshold():
     7000) are included so the test does not only prove the thresholds.
     """
 
-    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
-        _split_slices_policy,
-    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import decode_slices
 
-    policy = _split_slices_policy
+    policy = decode_slices
     assert policy(1) == 1
     assert policy(256) == 1  # unrelated to any boundary
     assert policy(511) == 1  # just below the first splittable length
@@ -73,21 +71,18 @@ def test_split_slice_policy_covers_both_sides_of_every_threshold():
     assert policy(8192) == 4  # the artifact's context cap
 
 
-def test_split_stays_off_the_default_path_until_its_gate_passes():
-    """The precondition is the reason the default path is unchanged.
+def test_split_is_the_default_decode_path():
+    """The split ships on, and this is what keeps it that way.
 
-    The split changes arithmetic, so docs/EXECUTION-PROFILES.md requires its
-    execution-profile gate first. Until that verdict exists the launcher must
-    report the single-kernel path for every length - which is what keeps the
-    incumbent's bit-exactness the production behaviour.
+    It changes arithmetic, so it needed its execution-profile gate before it
+    could be the default: that gate passed on 2026-09-25 (kl_max 0.0067 against
+    the 0.05 bar, zero top-1 flips over 1023 teacher-forced rows). A change that
+    reverts the selection back to the single kernel for ordinary decode lengths
+    is a regression, not a safe default, and this test is what catches it.
     """
 
-    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as module
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import decode_slices
 
-    assert module._SPLIT_GATE_PASSED is False, (
-        "the split may only be the default path once its gate passes; if the gate "
-        "has passed, retire the constant and the docs/REFACTOR.md entry instead of "
-        "deleting this test"
-    )
-    for keys in (256, 1024, 8192):
-        assert module.decode_slices(keys) == 1
+    assert decode_slices(1024) == 2
+    assert decode_slices(4096) == 4
+    assert decode_slices(8192) == 4
