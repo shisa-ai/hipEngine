@@ -349,6 +349,19 @@ flags because a configuration has not been benchmarked.
   which still walks every key once per lane with a single 2-byte V load and a
   shared-logit read and has never been restructured; then the 8.0 ms/token host
   gap from iteration 19.
+  *Iteration 22 closing diagnostic (timing-only ablation, V loads removed from
+  pass 3 of the key-class kernel, `--keys 1024 --iters 30`):* sliding 427.9 ->
+  183.4 us, full 696.0 -> 204.1 us. Pass 3 is therefore **57% of the sliding
+  kernel and 71% of the full one** (244 us and 492 us of the 1024-key launch),
+  and passes 1 and 2 together are only 183-204 us. Pass 3 reads 16.78 MB unique
+  at full in 492 us (34 GB/s) while the same loop with the loads removed moves
+  100.66 MB issued in 204 us (493 GB/s), so it is latency-bound on a 2-byte
+  per-key V load inside a dependent accumulate chain, not bandwidth-bound. The
+  next candidate is an **order-preserving register prefetch** in pass 3 (load
+  key `j + n*threads` into a register while accumulating key `j`, so the
+  ascending-j accumulation order is untouched and the kernel stays bit-exact),
+  which is the same register-and-no-branch shape that made pass 1 fast. Pass 3
+  has never been restructured in this campaign.
 - [ ] **G4 — Integrated confirmation.** Repeat the primary paired matrix,
   correctness/heldouts and live chat/SSE; verify no hidden fallback. Re-measure
   llama.cpp and Qwen with the frozen comparison contract and report differences
