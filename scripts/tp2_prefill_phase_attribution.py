@@ -384,6 +384,22 @@ class PhaseRecorder:
         return out
 
 
+def route_fields(session: Any) -> dict[str, Any]:
+    """The route a report was measured on, so the artifact is self-describing.
+
+    The attention route changes the computation - head sharding moves the
+    attention phase and adds a second reduction per layer - so a report that
+    does not name it cannot be compared with another one. Recorded as resolved
+    rather than as the flag, because a run that leaves the default alone still
+    has a route.
+    """
+
+    return {
+        "reduce_mode": getattr(session, "reduce_mode", None),
+        "attention_shard": bool(getattr(session, "attention_shard", False)),
+    }
+
+
 def _phase_sum(spans: dict[str, float]) -> float:
     return sum(spans[name] for name in TOP_LEVEL_PHASES)
 
@@ -566,7 +582,8 @@ def main(argv: list[str] | None = None) -> int:
         "logits_rows": logits_rows,
         "repeats": int(args.repeats),
         "layer_count": int(len(session._config.layer_types)),
-        "reduce_mode": getattr(session, "reduce_mode", None),
+        # The route the numbers describe, resolved rather than requested.
+        **route_fields(session),
         "device_reduce": bool(recorder.device_reduce),
         "headline_repeat": headline_index,
         "wall_ms": wall_ms,

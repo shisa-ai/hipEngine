@@ -253,3 +253,37 @@ def test_instrumentation_overhead_is_signed_as_added_latency() -> None:
     overhead_ms = instrumented - uninstrumented_min
     assert overhead_ms > 0.0
     assert round(100.0 * overhead_ms / uninstrumented_min, 2) == 0.53
+
+
+def test_a_report_names_the_route_it_measured() -> None:
+    """The artifact has to be self-describing about the attention route.
+
+    Head sharding moves the attention phase and adds a second reduction per
+    layer, so two reports from the same shape and different routes are not
+    comparable unless each one says which route it measured. The field is the
+    resolved route, not the flag: a run that leaves the default alone still ran
+    one.
+    """
+
+    class _Session:
+        def __init__(self, **fields) -> None:
+            for name, value in fields.items():
+                setattr(self, name, value)
+
+    fields = attribution.route_fields(
+        _Session(reduce_mode="device", attention_shard=True)
+    )
+    assert fields == {"reduce_mode": "device", "attention_shard": True}
+    # A session that leaves the default alone resolves its own route, and a
+    # session that predates the flag reports no sharding rather than raising.
+    assert attribution.route_fields(
+        _Session(reduce_mode="device", attention_shard=False)
+    )["attention_shard"] is False
+    assert attribution.route_fields(_Session(reduce_mode="host")) == {
+        "reduce_mode": "host",
+        "attention_shard": False,
+    }
+    assert attribution.route_fields(_Session()) == {
+        "reduce_mode": None,
+        "attention_shard": False,
+    }
