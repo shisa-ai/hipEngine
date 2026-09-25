@@ -4,6 +4,36 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## Dormant (Q3_K gate, IQ4_XS up) fused pair registration (2026-09-25) — AWAITING A CLEARING SCREEN
+
+E6b-5 built the fused pair+SiLU owner for the 3-layer (Q3_K, IQ4_XS)
+family: `B_KIND=2` in `gguf_iq4_q4_pair.hip` (side B = the strict
+per-row Q3_K GEMV's exact 128-thread tile emulated across the pair's
+waves), the `hipengine_gguf_q3_iq4_pair_silu` entry point, its Python
+wrapper, and the registered key `gguf_q3_k+gguf_iq4_xs`. It is
+bit-exact against `q3 strict single + iq4 local32 single + silu_mul`
+at K=5120 (GPU test) and at (5120, 17408) rows=1 (screen), but the
+production screen measured **0.92-0.99x across five runs - never the
+required >= 1.00** - so the route block ships dormant: no dispatch
+path selects this key, and production behavior is unchanged by
+construction.
+
+Clearing command: re-run `~/ud-e1-census/e6b5_screen.py` (or its
+successor) after a structural change to the pair (e.g. overlapping
+side A and side B phases, or a lower-overhead strict emulation); if it
+measures >= 1.00x bit-exact, add the route block back in
+`hipengine/runtime/gguf_linear.py` keyed on
+(`linear`,`gguf_q3_k`,`gemv_bf16_bf16_out`) + the session-qualified
+IQ4 local32 owner (the exact predicates existed in iteration 16's
+history) and delete this entry.
+
+Removal condition: if the fused pair family is redesigned or the Q3
+layers change quant, delete `B_KIND==2`, the q3 extern-C wrapper, the
+Python wrapper/registration, and the two GPU tests together - dead
+code with no route does not accumulate a second life.
+Evidence: `docs/campaigns/UD-GFX1151-OPTIMIZE2.md` E6b-5 row;
+`worklog/entries/20260925T011636.401265Z-lhl-ud-gfx1151-optimize2-e6b5-q3-iq4-negative-c7f21a.md` (this unit's entry).
+
 ## Dense27B prefix oracle disagreement after prefix/MTP integration (2026-09-20) — RESOLVED
 
 The merge qualification at p1024+s200 on Qwen3.8-27B Q4_K_M / gfx1151
