@@ -246,6 +246,22 @@ flags because a configuration has not been benchmarked.
   cap the loop stood at 23.1517 tok/s (+43.9% vs the 16.0931 baseline);
   **2026-09-24 lead decision: the cap is raised to 500 iterations and the
   loop restarted** — G4/G5 and the Q5_1 kernel campaign remain in scope.
+  *Status 2026-09-24 (iterations 16-18): the compact Q5_1 down GEMV landed as
+  default-off capability, and the dense pack8-GEMV decode rewrite
+  (`HIPENGINE_GGUF_GEMV_DECODE`) was **rejected at the production gate**: it is
+  not a bit-exact drop-in — the decode kernel walks eight consecutive k per
+  thread with the per-block scale hoisted, while the legacy pack8 kernel walks
+  unit stride, so per-thread partial sums cover different k-sets and a small
+  fraction of bf16 outputs land one ULP apart (32/1023 top-1 flips, kl_max
+  2.447 vs the 5e-2 bar) with no measurable speed win. Attribution is complete:
+  a resolve-level probe shows this single substitution is the whole candidate
+  (205 launches change, nothing else), the forced-rewrite arm is bit-identical
+  to the env-on arm, and the default path is bit-identical to the frozen
+  baseline. Evidence row
+  `2026-09-24-gemma4-26b-a4b-pack8-decode-rejected.json`; mechanism pinned by
+  `tests/test_gpu_gguf_q8_0_pack8_gemv_decode_parity.py`. Because the compact
+  route's session guard is this same switch, evaluating compact on its own
+  merits requires decoupling that guard.
 - [ ] **G4 — Integrated confirmation.** Repeat the primary paired matrix,
   correctness/heldouts and live chat/SSE; verify no hidden fallback. Re-measure
   llama.cpp and Qwen with the frozen comparison contract and report differences
