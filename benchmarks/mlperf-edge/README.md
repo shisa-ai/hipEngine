@@ -1,10 +1,109 @@
-# MLPerf Edge Agentic integration smoke
+# MLPerf Edge Agentic local evaluations
 
-This directory documents a **27-turn integration diagnostic**, not a full MLPerf
-result or BFCL accuracy pass. The campaign and comparison rules are in
+This directory records a **140-turn paired speed screen** and the earlier
+27-turn integration diagnostics, not a full MLPerf result or BFCL accuracy pass.
+The campaign and comparison rules are in
 [`docs/campaigns/MLPERF-EDGE-AGENTIC.md`](../../docs/campaigns/MLPERF-EDGE-AGENTIC.md).
 The first attempt used the upstream runner unchanged. The repaired run uses
 only the coordinator-timestamp patch documented below.
+
+## Paired 140-turn screen: 2026-09-25
+
+**The engines have similar elapsed time in this single pass; hipEngine has a
+lower inline command-overlap score.** Both complete all 140 turns without
+errors, missing turns, empty outputs, malformed arguments or length-limited
+responses. Every response finishes with `tool_calls`. hipEngine produces 140
+valid `bash` calls; llama.cpp produces 141 (one response contains two).
+
+Same physical host `gfx1151` (machine ID `55ea6c509d0b49eea8de7094a1023668`),
+Ryzen AI Max+ 395 / Radeon 8060S, identical Qwen3.6-27B Q4_K_M bytes, BF16 KV,
+32,768-token window, concurrency 1, temperature 0, seed 42, maximum 1,024 output
+tokens, reasoning off. All issued prompt data matches across engines; canonical
+client prompt lengths span 1,363–22,902 tokens. No generated tool is executed,
+and recorded tool delays are not injected.
+
+| Metric | hipEngine | llama.cpp |
+| --- | ---: | ---: |
+| Measured replay phase | 1,249.47 s | 1,282.06 s |
+| Mean turn latency | 8.925 s | 9.157 s |
+| Median turn latency | 6.537 s | 6.525 s |
+| Mean time to first visible output | 2.589 s | 2.832 s |
+| Mean first-output-to-completion time | 6.336 s | 6.325 s |
+| Full-message client token estimate | 9,703 | 9,799 |
+| Inline executable-call multiset IoU | 0.5586 | 0.6420 |
+
+Medians in this table use the conventional sample median; the artifact also
+preserves upstream's percentile estimates, which use a different convention.
+The measured phase is 2.54% shorter for hipEngine, but this is one sequential
+pass per engine with different outputs, not a stable speedup claim. Only 49/140
+paired responses contain identical command lists. IoU measures overlap with
+recorded executable names, not command-argument correctness, issue resolution or
+BFCL accuracy. No BFCL sample or numerical quality gate ran.
+
+| Trajectory | Turns | Mean latency: hipEngine / llama.cpp | Client output tokens: hipEngine / llama.cpp | IoU: hipEngine / llama.cpp |
+| --- | ---: | ---: | ---: | ---: |
+| Flask | 27 | 8.407 / 10.875 s | 1,586 / 2,315 | 0.6574 / 0.6975 |
+| Xarray | 52 | 10.190 / 10.112 s | 4,280 / 4,119 | 0.5513 / 0.6154 |
+| Pytest | 61 | 8.075 / 7.584 s | 3,837 / 3,365 | 0.5210 / 0.6402 |
+
+### Timing boundaries and a TPOT defect
+
+**Do not use this run's harness TPOT as decode-speed evidence.** Its mean values
+are 68.885 / 96.541 ms, but `TpotTrigger` removes the first stream chunk before
+retokenizing the remaining message. That can remove the tool name. Both runner
+logs record a chat-template `UndefinedError` followed by fallback tokenization.
+A saved-output replay reproduces both means exactly: the post-first token
+estimates total 12,275 / 9,709, versus only 9,703 / 9,799 for the full messages.
+Chunk shape changes the denominator, so the apparent TPOT advantage is not a
+valid engine decode-rate comparison. Original distributions are preserved, not
+silently corrected. Coordinator-arrival elapsed times do not depend on this
+tokenization and remain usable.
+
+Server-reported prompt-processing totals are 276.340 / 257.870 seconds. They
+include each engine's selected cache reuse, not full-prompt recomputation.
+hipEngine reports 885.619 seconds of `stream_decode_ms`, measured since its first
+observed output token, and 9,844 generated tokens. llama.cpp reports 1,002.894
+seconds of `eval time` and 9,939 generated tokens. These are different timing
+windows and token denominators; do not divide them into an isolated kernel-speed
+claim or equate them with client-visible tool-argument generation.
+
+### Provenance and repeat commands
+
+hipEngine ran `2fafa58f5`, production profile, radix prefix cache, with route
+counters confirming 140 host-sampler AR requests and zero MTP. llama.cpp's HIP
+binary reports `1ebf790cda38d827559548f67b0469189690cc8c`; its checkout HEAD is
+newer and is not the measured binary identity. It used its prompt cache and
+recurrent checkpoints, with no speculative implementation configured. The
+[compact artifact](../results/2026-09-25-gfx1151-mlperf-edge-140.json) contains
+binary/model hashes, original distributions, exact commands, host/compiler
+provenance and hashes of all raw files.
+
+Raw root: `~/gate-runs/mlperf-edge-140-20260925`. Each arm contains `config.yaml`,
+`server-command.json`, `runner-command.json`, logs, counters and the upstream
+reports. `manifest.json` freezes the 280 source rows / 140 generated turns.
+`run-edge-140.py` records orchestration; `environment.sh` preserves the local
+ROCm environment. Both measured servers started fresh, hipEngine first; a
+separate llama.cpp tool-call preflight ran before either measured process.
+
+With the corresponding server command from the artifact running, the measured
+CLI commands were:
+
+```bash
+cd ~/mlperf-edge-endpoints
+.venv/bin/inference-endpoint benchmark from-config --config "$HOME/gate-runs/mlperf-edge-140-20260925/hipengine/config.yaml"
+.venv/bin/inference-endpoint benchmark from-config --config "$HOME/gate-runs/mlperf-edge-140-20260925/llamacpp/config.yaml"
+```
+
+For a repeat, copy configurations to a new run directory and change `report_dir`;
+do not overwrite the recorded results. Run servers sequentially. Budget about
+25–30 minutes per subset arm including startup/drain margin, based on this
+21-minute measured phase. Keep the full performance reservation at 1–3 hours
+per engine: these three correlated trajectories do not establish a reliable
+stratified prediction for the other 17. Full BFCL runtime is unmeasured.
+
+The next requested comparison is gufo on this same model and frozen subset,
+with a separate function-calling quality diagnostic. Its published results with
+other model/quantization/speculation settings are not direct baselines here.
 
 ## Repaired run: 2026-09-25
 
@@ -50,8 +149,8 @@ directory with the preparation and execution commands below.
 source hashes, patch identity, exact command, counters, output checks and raw
 artifact hashes. Raw data is under
 `~/gate-runs/mlperf-edge-repair-20260925/replay-2`; focused SSE captures are under
-its sibling `closure-fix`. The server is stopped. The next campaign step is the
-fixed 140-turn screen; neither that screen nor the full BFCL gate has run.
+its sibling `closure-fix`. The server was stopped after validation. The fresh
+140-turn screen is recorded above; the full BFCL gate has not run.
 
 ## First attempt: 2026-09-25
 
