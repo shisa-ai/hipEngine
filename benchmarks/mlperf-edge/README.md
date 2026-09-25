@@ -101,9 +101,38 @@ do not overwrite the recorded results. Run servers sequentially. Budget about
 per engine: these three correlated trajectories do not establish a reliable
 stratified prediction for the other 17. Full BFCL runtime is unmeasured.
 
-The next requested comparison is gufo on this same model and frozen subset,
-with a separate function-calling quality diagnostic. Its published results with
-other model/quantization/speculation settings are not direct baselines here.
+## Gufo preflight: 2026-09-25
+
+**Stock gufo does not load the comparison GGUF.** A separate clean checkout of
+[`gufo-org/gufo` at `98641a6503da2ec5d6dbb1888ddc95f8a3e13b28`](https://github.com/gufo-org/gufo/tree/98641a6503da2ec5d6dbb1888ddc95f8a3e13b28)
+built successfully on the same host. `gufo serve llm` exits with status 1 before
+HTTP readiness:
+
+```text
+Qwen3.8 GGUF chat template SHA-256 is not a recognized pinned version: 55d4931433fe502b794226ee7f4d206a6bdd436ac9f80eb7d8ebb4c639f9ea0c
+```
+
+`src/models/qwen/chat_template.cpp` classifies a model with 64 layers, hidden
+size 5120 and vocabulary size 248320 as Qwen3.8, even without that name. It then
+requires one of two template hashes. Our Qwen3.6 file reaches that rejection.
+This is an observed loader refusal, not a finding that its tensor kernels
+cannot execute Qwen3.6. No template, model bytes or gufo source was changed to
+bypass it, and no HTTP generation, 140-turn replay or BFCL evaluation ran.
+
+The Qwen execution policy also declares FP16/FP32 attention KV, with FP16 as the
+production default; it does not offer the BF16 KV used by the paired engines.
+A future comparison must identify that difference rather than claim identical
+KV settings. BF16 recurrent-state storage is a separate setting.
+
+The first build hit a GCC 16 standard-header/HIP `__noinline__` macro conflict.
+Adding `-DCMAKE_CXX_FLAGS="-include format"` resolved it without a source patch.
+Build logs, CMake cache, executable, exact server command and loader log are in
+`~/gate-runs/gufo-edge-20260925`; the
+[worklog entry](../../worklog/entries/20260925T131432.066109Z-lhl-gufo-edge-screen-55564b.md)
+records the executable hash and reproduction command. There is **no gufo speed
+or accuracy result** from this attempt. Testing a compatibility-patched gufo or
+moving all engines to a shared Qwen3.8 artifact would be a separately labelled
+comparison, not a completion of the stock same-GGUF arm.
 
 ## Repaired run: 2026-09-25
 
