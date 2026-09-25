@@ -268,14 +268,34 @@ flags because a configuration has not been benchmarked.
   dense projections 3.9 ms, norms 1.4 ms, and host dispatch across 1116
   launches at 8.0 ms (7.2 us each). Two explanations for the attention cost were closed by
   measurement: it is not KV-bandwidth-bound (an all-zero keep-mask, which
-  removes every K/V load, is only 11% faster) and not barrier-bound (widening
+  removes every K/V load, is only 11% faster - **withdrawn in iteration 20: the
+  all-masked build produces NaN weights, so `weight == 0.0f` never fired and no
+  V load was actually removed**) and not barrier-bound (widening
   the launcher's tile ceiling from 8 to 32 gives tile 8 = 598.5 us against
   16 = 1076.8 and 32 = 722.5 at sliding/1024 - a regression, reverted). The
   kernel is latency-bound at a 16-block grid with one 2-byte dependent load per
   thread per key, so the lever is memory-level parallelism in the tile walk.
-  Evidence row `2026-09-25-gemma4-26b-a4b-decode-bottleneck-profile.json`,
-  tool `scripts/gemma4_attention_decode_bench.py`, worklog entry
+  Evidence row `2026-09-25-gemma4-26b-a4b-decode-bottleneck-profile.json`
+  (amended with a labeled `corrections` block), tool
+  `scripts/gemma4_attention_decode_bench.py`, worklog entry
   `20260925T193532.806869Z-lhl-gemma4-2b8481.md`.
+  *Status 2026-09-25 (iteration 20): an eight-point ablation study of the decode
+  attention kernel closed the remaining cost hypotheses and **changed the
+  mechanism**. Re-measured correctly, K/V loads are ~0% of the sliding geometry
+  (591 vs 600-708 us at keys=1024) and 26% of the full geometry (871 vs 1186 us).
+  Removing the 256-lane reduction tree (585 us), all four tile-loop barriers
+  (684 us), the mask byte load (1118 us, worse), the publish broadcast and the
+  running-max chain (696 us) each leaves the time within noise of baseline, and a
+  minimal tile body carrying no loads and no dot product at all still costs 525
+  us. Cost is ~5.3 us per 8-key tile (~0.5-0.6 us per key) and is **invariant to
+  the work inside the key iteration**, so the 256-thread / 8-warp /
+  5-barrier-per-8-keys structure is itself the cost and micro-optimization inside
+  the existing loop cannot win. Next candidate: one warp per (token, head) with
+  32 lanes x 8 dims, 16-byte vector loads, no shared-memory traffic and no
+  barriers, reproducing the 256-lane tree with 5 shuffle rounds plus 3 in-lane
+  rounds in identical association order so the result stays bit-exact. Evidence
+  row `2026-09-25-gemma4-26b-a4b-decode-attention-ablation.json`, worklog entry
+  `20260925T194545.594823Z-lhl-gemma-4-decode-attention-ablation-cost-is-invari-cad8cd.md`.
 - [ ] **G4 — Integrated confirmation.** Repeat the primary paired matrix,
   correctness/heldouts and live chat/SSE; verify no hidden fallback. Re-measure
   llama.cpp and Qwen with the frozen comparison contract and report differences

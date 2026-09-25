@@ -1,0 +1,70 @@
+{
+  "kind": "gemma4_decode_attention_ablation",
+  "recorded": "2026-09-25, gemma4-moe-perf/g0 iteration 20",
+  "candidate": "none - diagnostic ablation study of the decode attention kernel, no change kept",
+  "workload": {
+    "artifact": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "gpu": "physical GPU1, RX 7900 XTX, hip_gfx1100",
+    "geometry_sliding": {
+      "layers": 25,
+      "num_heads": 16,
+      "num_kv_heads": 2,
+      "head_dim": 256
+    },
+    "geometry_full": {
+      "layers": 5,
+      "num_heads": 16,
+      "num_kv_heads": 8,
+      "head_dim": 512
+    },
+    "kernel": "gemma4_attention_decode_kernel<unsigned short, 8>",
+    "context_share_of_decode_token": "24.0 ms of 45.7 ms (53%) at 1024p/128o, iteration 19 trace"
+  },
+  "method": {
+    "tool": "scripts/gemma4_attention_decode_bench.py",
+    "protocol": "sliding geometry, keys=1024, 40 iterations, mask=keep, one launch per measurement window, device sync at the end",
+    "ablation_style": "each row is a temporary patch to hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip that removes one component while leaving the loop structure and all other instructions intact; every patch reverted before commit",
+    "correctness": "ablated builds compute wrong results by construction and were used for timing only; the unmodified build's attention geometry suite is green (tests/test_gpu_gemma4_attention_geometry.py, 42 passed, exit 0)",
+    "run_to_run_spread": "baseline measured 600-708 us across runs (clock state); rankings are stable and every ablation below is within or below that band",
+    "jit": "cached builds; each patch forced one rebuild before measurement"
+  },
+  "results_sliding_keys1024": [
+    {"variant": "baseline", "us": "600-708", "verdict": "reference"},
+    {"variant": "reduction tree removed (3 shared rounds + 5 shuffle rounds)", "us": 585.2, "verdict": "no effect"},
+    {"variant": "all 4 tile-loop barriers removed", "us": 684.1, "verdict": "worse"},
+    {"variant": "K loads removed (dot += q_s[d])", "us": 591.1, "verdict": "no effect"},
+    {"variant": "K and V loads removed", "us": 591.1, "verdict": "no effect"},
+    {"variant": "mask byte load removed (keep = j < keys)", "us": 1117.8, "verdict": "worse - all K loads now execute"},
+    {"variant": "minimal tile body: partial[kb*threads+tid] = q_s[tid] only", "us": 524.9, "verdict": "-15%, the residual is loop scaffolding"},
+    {"variant": "publish broadcast + running-max update removed", "us": 695.7, "verdict": "no effect"}
+  ],
+  "results_full_keys1024": [
+    {"variant": "baseline", "us": 1185.7, "verdict": "reference"},
+    {"variant": "K and V loads removed", "us": 871.2, "verdict": "-26%: the full geometry is the memory-sensitive one"}
+  ],
+  "tile_scaling": {
+    "geometry": "sliding",
+    "mask": "keep",
+    "points": [
+      {"keys": 8, "tiles": 1, "us": 18.4},
+      {"keys": 16, "tiles": 2, "us": 26.3},
+      {"keys": 64, "tiles": 8, "us": 74.8},
+      {"keys": 256, "tiles": 32, "us": 284.2},
+      {"keys": 1024, "tiles": 128, "us": 707.9}
+    ],
+    "fit": "~5.3 us per 8-key tile plus ~15 us fixed launch cost; equivalently ~0.5-0.6 us per key"
+  },
+  "conclusion": {
+    "finding": "the per-key cost is invariant to the work inside the key iteration - every load, the reduction tree, the barriers, the publish and the running-max chain can be removed without moving the time",
+    "not_the_cost": ["KV bytes moved (sliding)", "the 256-lane reduction tree", "tile-loop barriers", "the mask byte load", "the publish/broadcast pair", "the running-max chain"],
+    "is_the_cost": "the 256-thread / 8-warp / 5-barrier-per-8-keys structure itself, at a 16-block grid on 96 CUs",
+    "implication": "micro-optimizing inside the existing per-key loop cannot win; the next candidate is a different decomposition",
+    "next_candidate": "one warp per (token, head): 32 lanes x 8 dims for the sliding geometry, 16-byte vector loads per key, no shared-memory traffic and no barriers, with the 256-lane tree reproduced by 5 shuffle rounds (lane distances 16, 8, 4, 2, 1) plus 3 in-lane rounds (element distances 4, 2, 1) in identical association order, keeping the result bit-exact against the strict reference"
+  },
+  "artifacts": {
+    "worklog_entry": "worklog/entries/20260925T194545.594823Z-lhl-gemma-4-decode-attention-ablation-cost-is-invari-cad8cd.md",
+    "corrects": "benchmarks/results/2026-09-25-gemma4-26b-a4b-decode-bottleneck-profile.json (zero_mask measurement invalid: NaN weights left pass-3 V loads running)",
+    "driver": "scripts/gemma4_attention_decode_bench.py",
+    "parity_suite": "tests/test_gpu_gemma4_attention_geometry.py, tests/test_gpu_gemma4_attention_decode_parity.py"
+  }
+}
