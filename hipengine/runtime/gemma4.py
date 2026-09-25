@@ -718,6 +718,7 @@ class Gemma4Runner:
                 ),
                 rows=rows,
                 eps=config.rms_norm_eps,
+                key_begin=_sliding_read_range(attention, start, rows),
             )
 
         # --- final norm and lm head -----------------------------------------
@@ -790,6 +791,43 @@ def _layer_geometry(attention: Gemma4AttentionGeometry) -> Gemma4LayerGeometry:
         scale=attention.scale,
         k_eq_v=attention.k_eq_v,
     )
+
+
+def _sliding_read_range(
+    attention: Gemma4AttentionGeometry,
+    start: int,
+    rows: int,
+) -> int:
+    """First cached key a decode step must walk, or 0 when nothing is skipped.
+
+    A sliding layer's keep-mask zeroes every key outside its window, but the
+    mask is full width, so the attention kernel walks the whole live context
+    and the walk is what costs: measured on the RX 7900 XTX, the decode kernel's
+    time tracks ``keys``, not the number of live keys. Gemma 4 has 25 sliding
+    layers of 30, so at context 4096 that is 3073 keys walked per layer whose
+    weight is exactly zero.
+
+    Skipping them is bit-exact. A masked key contributes ``exp(-inf) = 0`` to
+    the denominator and the same to the weighted sum, and dropping terms whose
+    value is zero leaves the surviving terms in their original order, so the
+    reduction is unchanged rather than merely close. The one thing that has to
+    hold is that the skipped keys are *exactly* the masked ones; the unit tests
+    pin that against the mask itself for a range of window and context lengths.
+
+    Only a one-row block may skip. A prefill block's rows sit at different
+    positions and so have different windows, and its mask rows are strided by
+    the full key count, so the single pointer offset this enables would read the
+    wrong mask row rather than a shorter one.
+    """
+
+    window = attention.sliding_window
+    if window is None or rows != 1:
+        return 0
+    window = int(window)
+    if window <= 0:
+        raise ValueError(f"sliding_window must be positive, got {window}")
+    live = start + rows
+    return max(0, live - window)
 
 
 def _keep_mask(

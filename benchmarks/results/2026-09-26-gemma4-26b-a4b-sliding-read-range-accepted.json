@@ -1,0 +1,49 @@
+{
+  "kind": "gemma4_campaign_candidate",
+  "verdict": "accepted",
+  "recorded": "2026-09-26, gemma4-moe-perf/g0 iteration 30",
+  "candidate": "sliding-layer read range plus a head-width-aware decode slice policy: a decode step on a sliding layer now passes the attention kernel only the keys its window can keep, and decode_slices takes head_dim so 256-wide heads take 4 slices as soon as the split is entered",
+  "reason": "A sliding layer's keep-mask zeroes every key outside its window, but the mask is full width, so the kernel walks the whole live context while only the last 1024 keys can contribute. At context 4096 that is 3073 keys walked per layer whose weight is exactly zero, on 25 of Gemma 4's 30 layers. The walk is what costs: the decode kernel's time tracks keys, not the number of live keys. Skipping the masked keys is bit-exact rather than approximate, because a masked key contributes exp(-inf) = 0 to both the denominator and the weighted sum, and dropping terms whose value is zero leaves the surviving terms in their original order. So this is a pure win that grows with context, with no arithmetic change and no execution-profile gate to pass.",
+  "mechanism": {
+    "read_range": "gemma4_layer_forward_bf16 gained key_begin: it moves the key pointer, the value pointer and the keep-mask pointer forward together by key_begin (key/value by key_begin * num_kv_heads * head_dim BF16 elements, the mask by key_begin uint8 columns) and passes keys - key_begin. The kernel is untouched, so there is no new ABI and no kernel-side change to review.",
+    "restriction": "Only a one-row block may skip. A prefill block's rows sit at different positions and so have different windows, and its mask rows are strided by the full key count, so the single pointer offset would read the wrong mask row rather than a shorter one. _sliding_read_range returns 0 for rows != 1, and the public-path check confirmed prefill blocks (rows=512) never skipped.",
+    "range_derivation": "_sliding_read_range(attention, start, rows) returns max(0, live - window) for a sliding layer and a one-row block, where live = start + rows. A unit test pins it against the mask itself - the first key the range keeps is the first key the mask keeps - across window and context combinations rather than only at the thresholds.",
+    "slice_policy": "decode_slices(keys, head_dim): head_dim <= 256 returns 4 slices as soon as the 1024-key entry threshold is reached; head_dim 512 keeps the previous doubling rule unchanged. The 512-keys-per-slice floor the wide geometry needs is the wrong rule for a narrow head, whose key tile holds twice as many keys per stage. Measured on the sliding geometry at 1024 keys: 4 slices 192.2 us against 244.4 for 2, paired with two passes per arm.",
+    "why_the_policy_change_was_forced": "The read range made this case load-bearing. Sliding layers used to hand the policy the whole live context (1152 keys at the metric row) and got 4 slices; once they began handing it exactly 1024 keys the old rule gave 2, which cost 1.3 ms per step and turned the first measurement of this change into a 5.5% regression (45.2913 -> 42.8098). The regression is what exposed the wrong floor, and the corrected policy recovers it and adds the read range's own win on top.",
+    "dead_code_removed": "decode_slices had an unreachable second loop after its return statement, left by the previous policy edit. Removed."
+  },
+  "correctness": {
+    "parity": "This is a same-schedule change, so exact output token ids are required and hold: the 128-token generation is byte-identical to an incumbent arm of the same code path run minutes earlier in the same session (128/128 ids, first 8 = [43424, 5990, 39188, 1003, 3363, 506, 8459, 14994]). public_path_parity is true on all four rows.",
+    "why_bit_exact": "A masked key contributes exp(-inf) = 0 to the denominator and the same to the weighted sum, and the row maximum is unchanged because the dropped entries were -inf. Removing zero-valued terms does not reorder the survivors, so the reduction is identical rather than close.",
+    "intended_path": "Confirmed on the public LLM.generate() surface rather than inferred from timings, by spying on both selection functions during a real 1024-token generate: 525 sliding-layer calls skipped keys (key_begin 1..7, growing with context) and selected head_dim=256 keys=1024 slices=4; the 5 full layers stayed at key_begin=0; prefill blocks (rows=512) never skipped. No fallback was introduced or taken.",
+    "gate_not_required": "No arithmetic changed. The slice counts the campaign's 1024p row uses are the same ones the split's production-profile gate covered (4 for both geometries), and the shortened key range only drops terms whose value is zero, so the gated numerics are unchanged. The gate result stands: kl_max 0.006746 against the 0.05 bar with zero top-1 flips over 1023 teacher-forced rows.",
+    "tests": "New tests/test_unit_gemma4_sliding_read_range.py (8 tests) pins the range against the mask; tests/test_unit_gemma4_attention_routing.py pins both head-width policies at 1/512/1023/1024/1152/4096/8192 keys including values unrelated to the thresholds; tests/test_gpu_gemma4_attention_decode_parity.py was updated for the new signature. Guard: every unit and GPU Gemma 4 test passes (exit 0) on GPU1 with the configured command."
+  },
+  "performance": {
+    "metric": "decode_tps",
+    "command": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --samples 3",
+    "label": "sliding-read-range",
+    "campaign_rows": {
+      "128p": "51.9240 -> 51.7789 (flat, and inert by construction: key_begin is 0 whenever the window exceeds the live context)",
+      "512p": "48.0158 -> 47.9667 (flat, inert for the same reason)",
+      "1024p": "45.3015 -> 45.8427 (+1.2%)",
+      "4096p": "31.7066 -> 42.7662 (+34.9%)"
+    },
+    "campaign_position": "45.8427 tok/s at 1024p/128o against the 16.0931 baseline (+185%) and the campaign's 70%-of-Qwen stop condition of 80.2 tok/s, so the engine is at 57% of that target and 66.5% of the same-artifact llama.cpp reference (68.92 tok/s).",
+    "paired_incumbent": "The incumbent arm of the same code path measured 45.2913 in the same session, reproducing the loop's recorded 45.3015 to within 0.02% and validating the pairing. The first measurement of this change, before the slice policy was corrected, was 42.8098.",
+    "interpretation": "The win is small at the metric row and large at 4096p because the skipped fraction is what scales: at 1024p the window hides only the first 0-128 of 1152 keys, while at 4096p it hides 3073 of 4224 - 73% of the walk, on 25 of 30 layers. That is the shape the change was built for, and it moves the long-context row from 42.8% of the Qwen target to 53.3%. The 128p and 512p rows are not merely unregressed but untouched: with fewer live keys than the window, key_begin is 0 and the layer passes byte-identical pointer and key arguments to the kernel.",
+    "measurement_context": "All timing rows were measured on physical GPU1 (RX 7900 XTX) with both GPUs idle; the guard was run on GPU1 as configured."
+  },
+  "scope": {
+    "files": [
+      "hipengine/runtime/gemma4.py",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_layer.py",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py",
+      "tests/test_unit_gemma4_sliding_read_range.py",
+      "tests/test_unit_gemma4_attention_routing.py",
+      "tests/test_gpu_gemma4_attention_decode_parity.py"
+    ],
+    "flags_added": "none. key_begin is a parameter with a 0 default and the runtime computes it unconditionally; decode_slices takes head_dim as a parameter rather than reading a flag or an environment variable.",
+    "fallbacks": "none. Below the window the read range is a no-op, and below 1024 keys the launcher takes the single-kernel path by policy, which is a measured threshold rather than a fallback from a failed path."
+  }
+}

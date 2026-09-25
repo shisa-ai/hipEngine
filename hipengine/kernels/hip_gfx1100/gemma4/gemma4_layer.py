@@ -320,6 +320,7 @@ def gemma4_layer_forward_bf16(
     rows: int | None = None,
     eps: float = 1e-6,
     rotary_dim: int | None = None,
+    key_begin: int = 0,
     stream: int = 0,
 ) -> int:
     """Run one Gemma 4 decoder layer over a block of tokens, in place.
@@ -329,6 +330,13 @@ def gemma4_layer_forward_bf16(
     positions and ``keep_mask_ptr`` is a ``(rows, keys)`` uint8 keep-mask
     covering exactly those positions — including the sliding-window bound on
     sliding layers, which this function does not re-derive.
+
+    ``key_begin`` drops cached keys the caller knows are masked out, by moving
+    the key, value and mask pointers forward together and shortening ``keys``.
+    It is only valid for a one-row block, where the mask has a single row to
+    offset; the caller owns that restriction (see ``_sliding_read_range``). It
+    changes no arithmetic: a masked key contributes zero to both reductions, so
+    the remaining terms keep their order and the result is bit-identical.
 
     Returns ``hidden_ptr`` so the call reads as a pipeline stage.
     """
@@ -428,14 +436,24 @@ def gemma4_layer_forward_bf16(
             stream,
         )
 
+    key_begin = int(key_begin)
+    if key_begin < 0:
+        raise ValueError(f"key_begin must be non-negative, got {key_begin}")
+    if key_begin and kv is None:
+        raise ValueError("key_begin requires a cache to skip into")
+
     gemma4_attention_prefill_bf16(
         buf("q_rot"),
-        kv.key_cache if kv is not None else buf("k_rot"),
-        kv.value_cache if kv is not None else buf("v"),
-        keep_mask_ptr,
+        (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
+        if kv is not None
+        else buf("k_rot"),
+        (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
+        if kv is not None
+        else buf("v"),
+        keep_mask_ptr + key_begin,
         buf("context"),
         tokens=rows,
-        keys=None if kv is None else kv.write_offset + rows,
+        keys=None if kv is None else kv.write_offset + rows - key_begin,
         num_heads=num_heads,
         num_kv_heads=num_kv_heads,
         head_dim=head_dim,
