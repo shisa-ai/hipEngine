@@ -1,18 +1,73 @@
 #!/usr/bin/env python3
-"""Exercise INT8 MTP through a running OpenAI-compatible hipEngine server."""
+"""Exercise INT8 MTP through a running OpenAI-compatible hipEngine server.
+
+The default schedule is the short-prompt category suite. ``--long-prompt-tokens``
+adds synthetic long-prompt rows built from this repository's own documents, so
+the same run also covers prompt lengths near the server's configured capacity.
+"""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import sys
-from typing import Any
+from typing import Any, Callable, Iterable
 
 import httpx
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# Long-prompt rows are built from committed prose rather than from a repeated
+# seed. Repetition is the point to avoid: a prompt that tiles one paragraph can
+# drive the model into a degenerate loop, and two configurations that both emit
+# that loop would agree trivially.
+LONG_PROMPT_SOURCES = (
+    "docs/PLAN.md",
+    "docs/KERNELS.md",
+    "docs/TESTING.md",
+    "docs/API.md",
+    "benchmarks/HISTORY.md",
+    "docs/RDNA3-TUNING-GUIDE.md",
+)
+
+
+def _token_mismatch_detail(reference: list[int], candidate: list[int]) -> dict[str, Any]:
+    """Return a stable first-difference diagnostic for token-exactness failures."""
+
+    common = min(len(reference), len(candidate))
+    for index in range(common):
+        if reference[index] != candidate[index]:
+            return {
+                "index": index,
+                "reference_token": reference[index],
+                "candidate_token": candidate[index],
+                "reference_length": len(reference),
+                "candidate_length": len(candidate),
+            }
+    if len(reference) != len(candidate):
+        return {
+            "index": common,
+            "reference_token": reference[common] if common < len(reference) else None,
+            "candidate_token": candidate[common] if common < len(candidate) else None,
+            "reference_length": len(reference),
+            "candidate_length": len(candidate),
+        }
+    return {}
+
+
+def assert_token_exact(reference: list[int], candidate: list[int], *, prompt: str, endpoint: str) -> None:
+    """Reject output drift with enough context to reproduce the failing row."""
+
+    detail = _token_mismatch_detail(reference, candidate)
+    assert not detail, {
+        "prompt": prompt,
+        "endpoint": endpoint,
+        "reason": "token_exactness_mismatch",
+        **detail,
+    }
 
 
 def blocking_result(body: dict[str, Any]) -> dict[str, Any]:
@@ -108,11 +163,8 @@ def run_triple(client, args, row, endpoint):
             result = blocking_result(response.json())
         assert_result(result, speculative=speculative, compact=not args.allow_mirror)
         results.append(result)
-    assert results[0]["ids"] == results[1]["ids"] == results[2]["ids"], {
-        "prompt": row["id"],
-        "endpoint": endpoint,
-        "ids": [result["ids"] for result in results],
-    }
+    assert_token_exact(results[0]["ids"], results[1]["ids"], prompt=row["id"], endpoint=endpoint)
+    assert_token_exact(results[0]["ids"], results[2]["ids"], prompt=row["id"], endpoint=endpoint)
     assert len({result["usage"]["prompt_tokens"] for result in results}) == 1
     return results
 
@@ -194,6 +246,118 @@ def check_isolation(client, args, target, neighbour, endpoint, baseline):
             "neighbour_id": neighbour["id"], "neighbour_ids": neighbour_ids[0]}
 
 
+def long_prompt_text(
+    text: str, target_tokens: int, tokenize: Callable[[str], list[int]]
+) -> tuple[str, int]:
+    """Return the longest character prefix of ``text`` at or under ``target_tokens``.
+
+    Binary search rather than a proportional guess, because the point of the row
+    is a prompt length the caller can name: a length that drifts with the prose
+    would quietly stop covering the capacity it was chosen for.
+    """
+
+    tokens = tokenize(text)
+    if len(tokens) <= target_tokens:
+        return text, len(tokens)
+    low, high = 1, len(text)
+    best_text, best_count = text[:1], len(tokenize(text[:1]))
+    while low <= high:
+        middle = (low + high) // 2
+        candidate = text[:middle]
+        count = len(tokenize(candidate))
+        if count <= target_tokens:
+            best_text, best_count = candidate, count
+            low = middle + 1
+        else:
+            high = middle - 1
+    return best_text, best_count
+
+
+def long_prompt_rows(
+    targets: Iterable[int],
+    tokenize: Callable[[str], list[int]],
+    sources: Iterable[str] = LONG_PROMPT_SOURCES,
+) -> list[dict[str, Any]]:
+    """Build one long-prompt row per requested token count."""
+
+    text = "\n\n".join((ROOT / name).read_text() for name in sources)
+    digest = hashlib.sha256(text.encode()).hexdigest()
+    rows = []
+    for target in targets:
+        body, actual = long_prompt_text(text, int(target), tokenize)
+        rows.append({
+            "id": f"long_{int(target)}",
+            "category": "long",
+            "messages": [{"role": "user", "content": body}],
+            "target_prompt_tokens": int(target),
+            "prompt_tokens": actual,
+            "source_sha256": digest,
+        })
+    return rows
+
+
+def check_long_multichoice(client, args, row, capability, baseline_ids):
+    """Require both choices of a long-prompt group to match the autoregressive ids.
+
+    Token identity is the contract at every prompt length, and it is asserted
+    unconditionally: a packed group that decodes differently from the
+    autoregressive baseline is wrong regardless of how it was scheduled.
+
+    Whether the group *speculates* is a separate question, because the packed
+    path admits a bounded live context and a group past that bound falls back to
+    autoregressive decoding inside its own cycle. That fallback is recorded, not
+    assumed: the group must name its cause -- a planner decline or a recorded
+    cycle failure -- because a group that silently stops speculating is
+    indistinguishable from one that lost its provider, which is the defect this
+    check exists to catch. The two choices must agree about it either way; a
+    group whose rows took different routes is not a group.
+    """
+
+    payload = request_payload(args, row, "/v1/completions", speculative=True, streamed=False)
+    payload["n"] = 2
+    response = client.post("/v1/completions", json=payload)
+    response.raise_for_status()
+    choices = response.json()["choices"]
+    assert len(choices) == 2, {"long_multichoice": {"choices": len(choices)}}
+    ids = [choice["hipengine"]["generated_token_ids"] for choice in choices]
+    cycles = [
+        int(choice["hipengine"]["timing"].get("mtp_cycles_count", 0) or 0)
+        for choice in choices
+    ]
+    assert all(value == baseline_ids for value in ids), {
+        "long_multichoice": {
+            "id": row["id"], "baseline_ids": baseline_ids,
+            "choice_ids": ids, "cycles": cycles,
+        },
+    }
+    assert len(set(cycles)) == 1, {
+        "long_multichoice_route_split": {"id": row["id"], "cycles": cycles},
+    }
+    if cycles[0] > 0:
+        packed_rows = capability.get("max_packed_rows")
+        assert packed_rows is None or int(packed_rows) >= 2, {
+            "long_multichoice_cycles": cycles,
+            "max_packed_rows": packed_rows,
+        }
+        return {"id": row["id"], "cycles": cycles, "speculates": True, "ids": ids}
+    reasons = []
+    for choice in choices:
+        block = choice["hipengine"]["diagnostics"].get("specdec2_mtp2", {})
+        decline = block.get("provider_decline_reason")
+        if decline:
+            reasons.append(str(decline))
+        for failure in block.get("failure_reasons") or ():
+            if failure.get("detail"):
+                reasons.append(str(failure["detail"]))
+    assert reasons, {
+        "long_multichoice_silent_decline": {"id": row["id"], "cycles": cycles},
+    }
+    return {
+        "id": row["id"], "cycles": cycles, "speculates": False, "ids": ids,
+        "decline_reasons": sorted(set(reasons)),
+    }
+
+
 def run(args):
     rows = []
     for filename in ("mtpbench-code-general-ja.jsonl", "gdn-prefill-category-heldouts.jsonl"):
@@ -201,6 +365,7 @@ def run(args):
         rows.extend(json.loads(line) for line in path.read_text().splitlines() if line.strip())
     if args.limit:
         rows = rows[:args.limit]
+    long_targets = [int(value) for value in args.long_prompt_tokens.split(",") if value.strip()]
     report = {
         "command": sys.argv,
         "scope": "http_correctness",
@@ -223,6 +388,25 @@ def run(args):
             assert capability["effective_kv_storage"] == "int8_per_token_head", capability
             if capability.get("diagnostic_override"):
                 assert args.allow_kv_diagnostic_override, "KV quality diagnostic override must be acknowledged"
+            if long_targets:
+                def tokenize(text: str) -> list[int]:
+                    response = client.post("/v1/hipengine/tokenize", json={"text": text})
+                    response.raise_for_status()
+                    return response.json()["token_ids"]
+
+                long_rows = long_prompt_rows(long_targets, tokenize)
+                rows.extend(long_rows)
+                report["long_prompt"] = {
+                    "targets": long_targets,
+                    "sources": list(LONG_PROMPT_SOURCES),
+                    "rows": [
+                        {"id": row["id"], "target_prompt_tokens": row["target_prompt_tokens"],
+                         "prompt_tokens": row["prompt_tokens"]}
+                        for row in long_rows
+                    ],
+                }
+            else:
+                report["long_prompt"] = {"skipped": True}
             for row in rows:
                 for endpoint in ("/v1/completions", "/v1/chat/completions"):
                     results = run_triple(client, args, row, endpoint)
@@ -234,6 +418,12 @@ def run(args):
                         "stream_mtp_cycles": results[2]["cycles"],
                     })
                     print(f"PASS {row['id']} {endpoint}", flush=True)
+            if long_targets:
+                longest = rows[-1]
+                report["long_prompt"]["multichoice"] = check_long_multichoice(
+                    client, args, longest, capability,
+                    baselines[(longest["id"], "/v1/completions")],
+                )
             if args.skip_determinism:
                 report["determinism"] = {"skipped": True}
             else:
@@ -272,13 +462,21 @@ def run(args):
     return 0 if report["passed"] else 1
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:8098")
     parser.add_argument("--model", default="int8-mtp")
     parser.add_argument("--max-tokens", type=int, default=24)
     parser.add_argument("--timeout", type=float, default=300)
     parser.add_argument("--limit", type=int, default=0, help="Diagnostic subset; not complete-suite evidence")
+    parser.add_argument(
+        "--long-prompt-tokens",
+        default="",
+        help=(
+            "Comma-separated long-prompt row sizes, e.g. 2048,4096; "
+            "empty keeps the short suite only"
+        ),
+    )
     parser.add_argument("--allow-mirror", action="store_true")
     parser.add_argument("--allow-kv-diagnostic-override", action="store_true")
     parser.add_argument(
@@ -287,6 +485,11 @@ def main():
         help="Skip the repeatability and isolation checks; not complete-suite evidence",
     )
     parser.add_argument("--json", type=Path, required=True)
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
     if args.max_tokens < 4 or args.limit < 0 or args.timeout <= 0:
         parser.error("max-tokens must be >=4, limit >=0, and timeout >0")

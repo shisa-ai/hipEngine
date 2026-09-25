@@ -9,6 +9,7 @@ import pytest
 
 import hipengine.generation.mtp_sampled_accept as mtp_sampled_accept
 import hipengine.speculative.sampling as speculative_sampling
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.models.qwen35 import Qwen35GGUFModel
 from hipengine.models.kv_capabilities import ModelArtifactIdentity
 from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
@@ -84,8 +85,57 @@ def test_dense_int8_mtp_uses_implementation_admission(capacity, budget):
     assert payload["evidence_artifacts"] == []
     eligibility = SpeculativeMTPStaticEligibility.from_mapping(payload["static_eligibility"])
     assert eligibility.eligible
-    assert eligibility.max_realized_group_rows == 1
+    assert eligibility.max_candidate_count == budget
+    # The width bound is the storage's widest automatic-eligible declaration,
+    # not the singleton declaration this realized width selects.
+    assert eligibility.max_realized_group_rows == 4
     assert eligibility.implementation_key == "gguf_dense_int8_native_chain"
+
+
+def test_int8_automatic_width_bound_follows_the_storage_not_the_singleton_declaration():
+    """A singleton INT8 request may join the wider group its kernels implement.
+
+    The readiness record had the automatic arm at physical c2 withheld with
+    `automatic_mtp_scope_not_promoted`: the C1 declaration a singleton key
+    selects offers one row, so the request's static width bound was 1, the
+    resident planner resolved a due width-2 group to zero, and the group fell to
+    AR. The bound describes the due group a request may be a *member* of, which
+    the planner forms from concurrent requests rather than from the width this
+    request realizes alone, so it follows the widest automatic-eligible
+    declaration for the storage and backend. The candidate depth stays with the
+    declaration the realized width selects, which is what keeps a wider cell the
+    package does not list fail-closed instead of admitted by the bound.
+    """
+
+    policy = tuple(
+        backend_package_capability(
+            "hip_gfx1151", "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS", {}
+        )["production"]
+    )
+    assert (2, 2) in policy
+    assert (2, 7) not in policy
+
+    decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=_key(candidate_budget=2)
+    )
+    eligibility = SpeculativeMTPStaticEligibility.from_mapping(
+        decision.as_dict()["static_eligibility"]
+    )
+    assert eligibility.implementation_key == "gguf_dense_int8_native_chain"
+    assert eligibility.max_candidate_count == 2
+    assert eligibility.max_realized_group_rows == 4
+    # The width-2 cell the planner would now form is one the package lists.
+    assert (2, eligibility.max_candidate_count) in policy
+
+    deeper = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=_key(candidate_budget=7)
+    )
+    deeper_eligibility = SpeculativeMTPStaticEligibility.from_mapping(
+        deeper.as_dict()["static_eligibility"]
+    )
+    assert deeper_eligibility.max_candidate_count == 7
+    assert deeper_eligibility.max_realized_group_rows == 4
+    assert (2, deeper_eligibility.max_candidate_count) not in policy
 
 
 @pytest.mark.parametrize("rows", [2, 4])
@@ -137,6 +187,10 @@ def test_sampled_accept_takes_verified_rows_and_no_storage_input() -> None:
         "token_text_for_id",
         "transaction_id",
         "remaining_decode",
+        # The per-row text observer the text-keyed constraints need. It carries a
+        # tokenizer callback, not storage: a KV layout still cannot reach the
+        # accept path.
+        "observe_text",
     }
     assert not any(
         token in name
@@ -232,7 +286,9 @@ def test_sampled_route_names_its_remaining_gap_and_not_the_kernel():
     `hipengine/models/qwen35.py` states it where the declarations are built: the
     autoregressive finish rule (stop tokens and EOS mid-cycle) is contained per
     request by the servable-blocker set rather than fixed, and the device-side
-    accept that used to be the second precondition landed 2026-09-19.
+    accept that used to be the second precondition landed 2026-09-19. The finish
+    rule itself now runs on the whole verified chain, so the ledger entry is the
+    resolved one and the remaining refusal family is the hook family.
     """
 
     import hipengine.generation.qwen35_gguf_mtp2 as mtp2
@@ -249,7 +305,7 @@ def test_sampled_route_names_its_remaining_gap_and_not_the_kernel():
     refactor = (
         pathlib.Path(__file__).resolve().parents[1] / "docs" / "REFACTOR.md"
     ).read_text()
-    assert "Sampled-route finish-rule blockers (open)" in refactor
+    assert "Sampled-route finish-rule blockers — resolved" in refactor
 
 
 @pytest.mark.parametrize("rows", [1, 2, 3, 4])
@@ -358,3 +414,42 @@ def test_resident_int8_capacity_uses_layout_contract_not_evidence_width():
     runner._reserve_sessions()
     assert checked == [4]
     assert len(runner._available) == 4
+
+
+def test_dms_retention_presents_the_uniform_layout_int8_mtp_declares() -> None:
+    """A DMS row adds no storage layout, so admission must already cover it.
+
+    DMS is a retention policy over the same paged planes, not another storage
+    layout.  The resident path resolves a ``FixedPagedKVPolicy``, whose
+    ``storage_layout`` is ``"uniform"`` unless tail4 Hadamard is explicitly
+    requested, so the INT8 declaration's ``("uniform",)`` already covers a DMS
+    row and ``mtp_kv_layout_unsupported`` must not be its refusal reason.  This
+    pins the admission half of the DMS extension: the layout axis stays covered
+    even though DMS changes the live-span policy.
+    """
+
+    from hipengine.core.dtype import DType
+    from hipengine.kvcache.policy import FixedPagedKVPolicy
+
+    # What a DMS INT8 session presents: the DMS serving scripts pass no
+    # kv_policy, so the resident path resolves INT8 per-token-head storage at
+    # the default uniform layout.
+    policy = FixedPagedKVPolicy(
+        block_size=256, storage_dtype=DType.INT8_PER_TOKEN_HEAD
+    )
+    assert policy.storage_layout == "uniform"
+
+    decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=_key(kv_layout=policy.storage_layout),
+    )
+    assert decision.admitted, decision.reason
+    assert decision.failed_axes == ()
+    assert "mtp_kv_layout_unsupported" not in decision.failed_axes
+
+    # The one layout the INT8 chain still refuses is the quantized tail
+    # layout: a different storage layout, not a DMS retention policy.
+    refused = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=_key(kv_layout="tail4_hadamard_group32"),
+    )
+    assert not refused.admitted
+    assert refused.reason == "mtp_kv_layout_unsupported"

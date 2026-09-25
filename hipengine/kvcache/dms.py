@@ -1002,6 +1002,29 @@ class CompactExtentPool:
             "free_ranges_by_layer": [list(ranges) for ranges in self._free],
         }
 
+    def state_snapshot(self) -> dict[str, Any]:
+        """Return a restorable copy of allocation ownership and free ranges.
+
+        ``snapshot`` above reports pool health; this captures the allocator
+        itself so a rolled-back transaction can put ownership back exactly as
+        it was, including the free ranges that a compaction coalesced.
+        """
+
+        return {
+            "free": [list(ranges) for ranges in self._free],
+            "owners": dict(self._owners),
+            "allocation_failures": int(self.allocation_failures),
+            "high_water_slots": int(self.high_water_slots),
+        }
+
+    def restore_state(self, snapshot: dict[str, Any]) -> None:
+        """Restore ownership and free ranges captured by ``state_snapshot``."""
+
+        self._free = [list(ranges) for ranges in snapshot["free"]]
+        self._owners = dict(snapshot["owners"])
+        self.allocation_failures = int(snapshot["allocation_failures"])
+        self.high_water_slots = int(snapshot["high_water_slots"])
+
     def assert_conserved(self) -> None:
         occupied = sum(
             extent.length
@@ -1056,6 +1079,23 @@ class CompactExtentPool:
 
 
 @dataclass(frozen=True, slots=True)
+class DMSAllocatorSnapshot:
+    """Restorable allocation ownership for one DMS transaction.
+
+    A speculative cycle evicts and compacts, which releases provisional
+    slots, shrinks per-head extents and coalesces free ranges. Restoring the
+    payload planes alone would leave the allocator holding the post-cycle
+    layout, so the ownership records travel with the payload snapshot.
+    """
+
+    extent_pool: dict[str, Any]
+    ledger: dict[str, Any]
+    range_capacity: np.ndarray
+    base_offsets: np.ndarray
+    extents: tuple[CompactExtent, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class DMSOperation:
     operation_id: str
     lease: KVLease
@@ -1069,6 +1109,7 @@ class DMSOperation:
     logical_tokens: int
     device_snapshot: DMSDevicePayloadSnapshot | None
     counter_snapshot: tuple[int, int, int, int]
+    allocator_snapshot: DMSAllocatorSnapshot | None = None
 
 
 _CODEC_EVALUATION_ACCESS = object()
@@ -1934,6 +1975,13 @@ class DMSCompactBackend:
                 int(self.evicted_tokens),
                 int(self.released_provisional_slots),
             ),
+            allocator_snapshot=DMSAllocatorSnapshot(
+                extent_pool=self.extents.state_snapshot(),
+                ledger=self.ledger.state_snapshot(),
+                range_capacity=state.range_capacity.copy(),
+                base_offsets=state.base_offsets.copy(),
+                extents=tuple(state.extents),
+            ),
         )
 
     def commit(self, operation: Any, result: Any) -> ResourceDelta:
@@ -1976,6 +2024,12 @@ class DMSCompactBackend:
             self.evicted_tokens,
             self.released_provisional_slots,
         ) = operation.counter_snapshot
+        if operation.allocator_snapshot is not None:
+            self.extents.restore_state(operation.allocator_snapshot.extent_pool)
+            self.ledger.restore_state(operation.allocator_snapshot.ledger)
+            state.range_capacity[...] = operation.allocator_snapshot.range_capacity
+            state.base_offsets[...] = operation.allocator_snapshot.base_offsets
+            state.extents = tuple(operation.allocator_snapshot.extents)
         return ResourceDelta(
             operation_id=f"rollback:{operation.operation_id}",
             lease_id=operation.lease.lease_id,

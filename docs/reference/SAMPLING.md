@@ -110,9 +110,12 @@ sampling keeps its CPU acceptance oracle. Eager native verification also
 consumes resident GPU logits; only the serial debugging oracle needs a
 full-logit readback, which is reported in telemetry. The
 standalone coupled-accept kernels remain numerical test oracles, not the
-default native serving implementation. Logprob responses, token-stop
-constraints, and other unsupported sampled-MTP fields fall back to ordinary
-decoding before speculative execution.
+default native serving implementation. Token-stop constraints are served: the
+cycle commit applies the autoregressive finish rule -- stop token ids,
+multi-token stop sequences, and the `min_tokens` EOS floor -- to the whole
+verified chain and selects its terminal prefix. Logprob responses and other
+unsupported sampled-MTP fields fall back to ordinary decoding before
+speculative execution.
 
 Concurrent groups share the packed target forward and selected-state commit,
 but sample each request's verified row span with its own seed and absolute
@@ -331,11 +334,24 @@ fast path rather than failing merely because a client sent `top_p=0.95` with
 Speculative/MTP compatibility is stricter until target verification can run the
 same processed-logit policy as autoregressive generation.
 `supports_speculative_mtp_sampling()` returns true only for `GREEDY_FAST`
-requests; `speculative_mtp_sampling_blockers()` reports the fields that require
-AR fallback today, including `logit_bias`, penalties, suppress-token ids,
+requests; `speculative_mtp_sampling_blockers()` reports the fields the raw-argmax
+route refuses, including `logit_bias`, penalties, suppress-token ids,
 min-token/EOS policy, token stops, pending forced-token queues, post-thinking
 forced-token queues, token-sequence completion repair, JSON/tool constraints,
-`temperature > 0`, and requested logprobs. The resident scheduler applies this
+`temperature > 0`, and requested logprobs. A request that carries one of those
+fields does not necessarily fall back to AR: the sampled route
+(`supports_sampled_speculative_mtp()`) serves the sampling law, the finish rule,
+the logprob metadata, the forced-token queues, and the text-keyed constraints
+(`json_object_close_forcing`, `tool_call_constraint`), which mask each row from
+the decoded text of the tokens the cycle published before it. The thinking budget
+is served too: the walk prepares each row's selection exactly where the
+autoregressive route does, so a reached hard cap queues its close sequence and the
+commit consumes that override for the position it governs. Nothing is left on
+`SAMPLED_MTP_UNSERVABLE_BLOCKERS` in `hipengine/generation/sampling.py`; the
+raw-argmax route keeps its own refusal of these fields, so a greedy thinking
+request still falls back to the autoregressive path, and the server's default
+`hint` policy relaxes the budget before that check. The
+resident scheduler applies this
 guard before emitting
 speculative target-verification work, so rows that need processed logits cannot
 silently enter the raw-argmax MTP path. Successful scheduler verify work and
@@ -643,7 +659,7 @@ fully vectorized at first:
 | GGUF guards | `hipengine/generation/qwen35_gguf.py` | Follow shared sampler extraction after PARO path is green. |
 | PARO projection | `hipengine/runtime/qwen35_paro_runner.py` | Split logits projection from argmax selection. |
 | Batch scheduler | `hipengine/generation/batch_scheduler.py` | Extend per-row sampler params/history and finish reasons. |
-| Native kernels | `kernels/hip_gfx1100/linear/lm_head.hip` and new sampler kernels if needed | Add GPU processors/top-k/softmax/RNG/sample selection under registry keys. |
+| Native kernels | `hipengine/kernels/hip_gfx1100/linear/lm_head.hip` and new sampler kernels if needed | Add GPU processors/top-k/softmax/RNG/sample selection under registry keys. |
 | Tests | `tests/test_sampling*.py`, server tests, Qwen smoke tests | Add pure CPU sampler tests, request plumbing tests, and GPU1 smoke gates. |
 
 ## Implementation tracks

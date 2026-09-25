@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "scope": "HTTP correctness gates on the mirror-free uniform INT8 MTP scope. Diagnostic execution of a rejected approximate-KV artifact under the documented override; no performance and no KV-quality claim.",
+  "code_commit": "566bbf1d53673a0732e3b8e020f7d30132f9c5af",
+  "code_commit_note": "7451cc099 (benchmark artifact and worklog entry only) landed between the two gate runs and changes no code.",
+  "host": "gfx1151",
+  "backend": "hip_gfx1151",
+  "execution_profile": "production",
+  "max_context_tokens": 9216,
+  "max_active_requests": 4,
+  "speculative_candidate_budget": 3,
+  "artifact": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "content_verified": true,
+    "error": null
+  },
+  "kv_capability": {
+    "capability_id": "22c71484da2499afe8765e1674cf21532b0103b3cc5e3211994998b7aaf8cf28",
+    "status": "rejected",
+    "runtime_action": "diagnostic_override",
+    "diagnostic_override": true,
+    "effective_kv_storage": "int8_per_token_head",
+    "max_packed_rows": 4,
+    "persistent_bf16_mirror": false,
+    "declaration": {
+      "backend": "hip_gfx1151",
+      "target_arch": "gfx1151",
+      "weight_quant": null,
+      "kv_storage": "int8_per_token_head",
+      "storage_layout": "uniform",
+      "scale_dtype": "fp32",
+      "scale_granularity": "per_token_head",
+      "max_direct_rows": 4,
+      "max_serial_resident_rows": 4,
+      "persistent_bf16_mirror": false,
+      "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+      "reason": "registered int8 per-token-head paged decode chain; the row-batched producer and its strided reducer are implemented to physical c4"
+    },
+    "evidence": {
+      "decision": "rejected",
+      "scope": "native_no_mirror_quality",
+      "quality_artifact": "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json",
+      "reason": "complete 1K/8 transfer rejected: minimum-prompt top-1 agreement 0.7778 is below the 0.90 gate",
+      "max_direct_rows": 0,
+      "max_serial_resident_rows": 0,
+      "persistent_bf16_mirror": false,
+      "decode_batch_variant": null
+    }
+  },
+  "environment": {
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED": "1",
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+    "HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS": "0"
+  },
+  "servers": [
+    {
+      "port": 18198,
+      "served_model_name": "int8-lru-diag-20260922",
+      "prefix_cache": "off",
+      "gates": [
+        "lifecycle"
+      ],
+      "command": "bash /tmp/t17-env-int8-lru.sh /home/lhl/miniforge3/envs/vllm/bin/python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name int8-lru-diag-20260922 --max-context-tokens 9216 --max-active-requests 4 --kv-storage int8_per_token_head --kv-scale-dtype fp32 --execution-profile production --speculative-mtp-serving enabled --speculative-candidate-budget 3 --prefix-cache off --no-startup-chat-smoke --no-startup-scratch-probe --host 127.0.0.1 --port 18198 --info"
+    },
+    {
+      "port": 18199,
+      "served_model_name": "int8-lru-radix-20260922",
+      "prefix_cache": "radix",
+      "gates": [
+        "prefix"
+      ],
+      "command": "bash /tmp/t17-env-int8-lru.sh /home/lhl/miniforge3/envs/vllm/bin/python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name int8-lru-radix-20260922 --max-context-tokens 9216 --max-active-requests 4 --kv-storage int8_per_token_head --kv-scale-dtype fp32 --execution-profile production --speculative-mtp-serving enabled --speculative-candidate-budget 3 --prefix-cache radix --no-startup-chat-smoke --no-startup-scratch-probe --host 127.0.0.1 --port 18199 --info"
+    }
+  ],
+  "gate_commands": {
+    "lifecycle": ".venv/bin/python scripts/int8_mtp_server_lifecycle_gate.py --base-url http://127.0.0.1:18198 --model int8-lru-diag-20260922 --allow-kv-diagnostic-override --json /tmp/int8-lru-lifecycle-20260922.json",
+    "prefix": ".venv/bin/python scripts/int8_mtp_prefix_gate.py --base-url http://127.0.0.1:18199 --model int8-lru-radix-20260922 --allow-kv-diagnostic-override --json /tmp/int8-lru-prefix-20260922.json"
+  },
+  "lifecycle_gate": {
+    "scope": "http_lifecycle",
+    "passed": true,
+    "checks": {
+      "automatic_and_explicit_off": true,
+      "concurrent_mixed_ar_mtp": true,
+      "multichoice_speculates_and_matches_ar": true,
+      "stop_inside_speculation": true,
+      "disconnect_reclaim": true,
+      "deadline_reclaim": true,
+      "post_cancel_deadline_reuse": true
+    },
+    "kv_capability": {
+      "schema_version": 1,
+      "capability_id": "22c71484da2499afe8765e1674cf21532b0103b3cc5e3211994998b7aaf8cf28",
+      "status": "rejected",
+      "runtime_action": "diagnostic_override",
+      "promotion_eligible": false,
+      "max_direct_rows": 0,
+      "max_serial_resident_rows": 0,
+      "persistent_bf16_mirror": false,
+      "decode_batch_variant": null,
+      "declaration": {
+        "backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "weight_quant": null,
+        "kv_storage": "int8_per_token_head",
+        "storage_layout": "uniform",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head",
+        "max_direct_rows": 4,
+        "max_serial_resident_rows": 4,
+        "persistent_bf16_mirror": false,
+        "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+        "reason": "registered int8 per-token-head paged decode chain; the row-batched producer and its strided reducer are implemented to physical c4"
+      },
+      "diagnostic_override": true,
+      "requested": {
+        "artifact_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+        "artifact_size_bytes": 17106775008,
+        "artifact_execution_fingerprint": "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa",
+        "backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "weight_quant": "gguf_q4_k_m",
+        "kv_storage": "int8_per_token_head",
+        "storage_layout": "uniform",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head"
+      },
+      "effective_kv_storage": "int8_per_token_head",
+      "artifact": {
+        "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "size_bytes": 17106775008,
+        "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+        "content_verified": true,
+        "error": null
+      },
+      "evidence": {
+        "decision": "rejected",
+        "scope": "native_no_mirror_quality",
+        "quality_artifact": "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json",
+        "reason": "complete 1K/8 transfer rejected: minimum-prompt top-1 agreement 0.7778 is below the 0.90 gate",
+        "max_direct_rows": 0,
+        "max_serial_resident_rows": 0,
+        "persistent_bf16_mirror": false,
+        "decode_batch_variant": null
+      },
+      "reason": "complete 1K/8 transfer rejected: minimum-prompt top-1 agreement 0.7778 is below the 0.90 gate; explicit unverified INT8 KV diagnostic override is enabled",
+      "max_packed_rows": 4
+    },
+    "final_queue": {
+      "depth": 0,
+      "max_depth": null,
+      "worker_active": false,
+      "active_requests": 0,
+      "max_active_requests": 4,
+      "scheduler_fairness": {
+        "policy": "fifo_compatible_sampling_key",
+        "compatible_sampling_coalescing": true,
+        "continuous_decode": true,
+        "preemptive_fairness": false
+      },
+      "batch_window_ms": 0.0
+    }
+  },
+  "prefix_gate": {
+    "passed": true,
+    "rows": [
+      {
+        "category": "code",
+        "reused_tokens": 512,
+        "cycles": 8.0,
+        "ids": [
+          271,
+          760,
+          1822,
+          55687,
+          314,
+          279,
+          1510,
+          18479,
+          87682,
+          63,
+          709,
+          369,
+          421,
+          279,
+          1879,
+          1103,
+          314,
+          26126,
+          369,
+          1118,
+          10300,
+          539,
+          836,
+          5732
+        ]
+      },
+      {
+        "category": "general_en",
+        "reused_tokens": 512,
+        "cycles": 7.0,
+        "ids": [
+          271,
+          760,
+          1822,
+          55687,
+          303,
+          81611,
+          264,
+          2526,
+          27258,
+          3638,
+          494,
+          27413,
+          310,
+          71100,
+          369,
+          421,
+          279,
+          3638,
+          579,
+          795,
+          1558,
+          321,
+          7465,
+          1902
+        ]
+      },
+      {
+        "category": "general_ja",
+        "reused_tokens": 512,
+        "cycles": 10.0,
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          579,
+          1876,
+          369,
+          264,
+          11173,
+          9640,
+          303,
+          10452,
+          9859,
+          364,
+          264,
+          14542,
+          3019,
+          310,
+          43088,
+          264,
+          2526,
+          5138,
+          12654
+        ]
+      },
+      {
+        "category": "mixed_ja_en",
+        "reused_tokens": 512,
+        "cycles": 7.0,
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          369,
+          9859,
+          728,
+          310,
+          25,
+          198,
+          16,
+          13,
+          7860,
+          5437,
+          537,
+          264,
+          10452,
+          5020,
+          303,
+          6163,
+          198,
+          17,
+          13
+        ]
+      }
+    ],
+    "kv_capability": {
+      "schema_version": 1,
+      "capability_id": "22c71484da2499afe8765e1674cf21532b0103b3cc5e3211994998b7aaf8cf28",
+      "status": "rejected",
+      "runtime_action": "diagnostic_override",
+      "promotion_eligible": false,
+      "max_direct_rows": 0,
+      "max_serial_resident_rows": 0,
+      "persistent_bf16_mirror": false,
+      "decode_batch_variant": null,
+      "declaration": {
+        "backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "weight_quant": null,
+        "kv_storage": "int8_per_token_head",
+        "storage_layout": "uniform",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head",
+        "max_direct_rows": 4,
+        "max_serial_resident_rows": 4,
+        "persistent_bf16_mirror": false,
+        "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+        "reason": "registered int8 per-token-head paged decode chain; the row-batched producer and its strided reducer are implemented to physical c4"
+      },
+      "diagnostic_override": true,
+      "requested": {
+        "artifact_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+        "artifact_size_bytes": 17106775008,
+        "artifact_execution_fingerprint": "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa",
+        "backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "weight_quant": "gguf_q4_k_m",
+        "kv_storage": "int8_per_token_head",
+        "storage_layout": "uniform",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head"
+      },
+      "effective_kv_storage": "int8_per_token_head",
+      "artifact": {
+        "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "size_bytes": 17106775008,
+        "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+        "content_verified": true,
+        "error": null
+      },
+      "evidence": {
+        "decision": "rejected",
+        "scope": "native_no_mirror_quality",
+        "quality_artifact": "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json",
+        "reason": "complete 1K/8 transfer rejected: minimum-prompt top-1 agreement 0.7778 is below the 0.90 gate",
+        "max_direct_rows": 0,
+        "max_serial_resident_rows": 0,
+        "persistent_bf16_mirror": false,
+        "decode_batch_variant": null
+      },
+      "reason": "complete 1K/8 transfer rejected: minimum-prompt top-1 agreement 0.7778 is below the 0.90 gate; explicit unverified INT8 KV diagnostic override is enabled",
+      "max_packed_rows": 4
+    }
+  },
+  "coverage": {
+    "lifecycle": "AR versus MTP token identity, automatic and explicit-off MTP, concurrent mixed AR/MTP coalescing, multi-choice speculation and identity at the uniform width, stop inside an accepted chain, disconnect reclaim, deadline reclaim and reuse after cancellation.",
+    "prefix": "Real 512-token target-prefix hits on four categories with the mirror-free layout, MTP cycles after provider restoration, and AR versus MTP token identity on the restored prefix.",
+    "not_covered": "Long-prompt parity, prefix eviction under pressure, throughput, and approximate-KV quality. The artifact's quality decision stays rejected."
+  }
+}

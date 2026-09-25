@@ -1271,8 +1271,22 @@ def test_private_workspace_budget_and_buffer_lifecycle(monkeypatch, fail_at):
     if fail_at is None:
         state = allocate()
         assert state.kv_backing_kind == "private"
-        assert pool.private_workspace_bytes == 4 * page_bytes
-        assert pool.accounted_bytes == 6 * page_bytes
+        scratch_bytes = sum(
+            int(buffer.nbytes)
+            for buffer in (*state.layer_conv_states, *state.layer_recurrent_states)
+            if buffer is not None
+        )
+        assert scratch_bytes > 0
+        assert state.resident_charge_token is not None
+        # Both resident consumers of this state are charged: its own scratch
+        # buffers first, then the private KV payload.
+        assert [item.name for item in pool.resident_consumers] == [
+            "kv_arena",
+            "packed_verify_scratch",
+            "private_workspace",
+        ]
+        assert pool.private_workspace_bytes == 4 * page_bytes + scratch_bytes
+        assert pool.accounted_bytes == 6 * page_bytes + scratch_bytes
         owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
         owner._packed_verify_state = state
         owner._packed_verify_scratch = None
@@ -1282,7 +1296,66 @@ def test_private_workspace_budget_and_buffer_lifecycle(monkeypatch, fail_at):
         with pytest.raises(MemoryError, match="budget" if fail_at == "budget" else "injected"):
             allocate()
         if fail_at == "budget":
-            assert calls == 4  # recurrent state only; no private KV was allocated
+            # A two-page budget cannot hold the scratch buffers, and the scratch
+            # is priced before they are allocated, so the refusal lands with
+            # nothing allocated at all rather than after four buffers existed.
+            assert calls == 0
+    assert live == set()
+    assert pool.private_workspace_bytes == 0
+    pool.release_workspace("qwen35_gguf_packed_execution")
+    pool.close()
+
+
+def test_private_kv_payload_is_refused_by_name_once_the_scratch_fits(monkeypatch) -> None:
+    """The KV-payload charge is still refused, by name, when the scratch fits.
+
+    This is the same refusal the two-page case used to exercise; pricing the
+    scratch first moved that case earlier, so the payload refusal needs a budget
+    that holds the scratch and not the payload.
+    """
+
+    from dataclasses import replace
+
+    from hipengine.kvcache.device_global import GlobalDeviceKVPool
+    from hipengine.runtime.memory_admission import MemoryAdmissionRefused
+
+    _install_fake_device(monkeypatch)
+    runner = _allocator_fake_runner()
+    layout = replace(_int8_kv_layout(), bf16_mirror_layer_indices=(1, 3))
+    page_bytes = gguf_runner._qwen35_gguf_kv_page_bytes(runner.weights.config, layout)
+    pool = GlobalDeviceKVPool(
+        page_bytes=page_bytes, backend_fingerprint="test", generation=1,
+        backing=SimpleNamespace(layout=layout),
+        plane_page_pointers={"key": (100, 200)},
+        pointer_table_pointers={"key": 300}, metadata_descriptor_pointer=400,
+        close_storage=lambda: None, max_pages=5,
+    )
+    pool.lease_workspace("qwen35_gguf_packed_execution", 2)
+    live = set()
+    calls = 0
+    real_malloc = gguf_runner.malloc
+
+    def malloc(nbytes, **kwargs):
+        nonlocal calls
+        calls += 1
+        buffer = real_malloc(nbytes, **kwargs)
+        live.add(buffer.ptr)
+        return buffer
+
+    monkeypatch.setattr(gguf_runner, "malloc", malloc)
+    monkeypatch.setattr(gguf_runner, "free", lambda buffer, **kwargs: live.remove(buffer.ptr))
+
+    with pytest.raises(MemoryAdmissionRefused) as caught:
+        gguf_runner._GGUFPackedTargetState.allocate(
+            runner, slot_count=1, max_sequence_length=1024,
+            runtime=SimpleNamespace(), kv_layout=layout, kv_pool=pool,
+        )
+
+    refusal = caught.value
+    assert refusal.refused_consumer == "private_workspace"
+    assert "private_workspace" in str(refusal)
+    # The scratch charge fit, so its four buffers exist and are freed with it.
+    assert calls == 4
     assert live == set()
     assert pool.private_workspace_bytes == 0
     pool.release_workspace("qwen35_gguf_packed_execution")
@@ -1331,3 +1404,90 @@ def test_mtp_verify_width_packs_rows_inside_one_slot() -> None:
     assert four_rows.rows == 16
     assert four_rows.slot_count == 4
     assert gguf_runner.packed_verify_lease_slot_ceiling(4) == four_rows.slot_count
+
+
+def test_engine_close_releases_the_owner_workspace_before_the_pool(monkeypatch) -> None:
+    """Engine close must free the packed workspace before closing the pool.
+
+    The owner's packed workspace holds a private-workspace reservation in the
+    pool, and ``GlobalDeviceKVPool.close`` refuses to close while one is held.
+    The guarded release is what frees it, so a close that skips the release
+    fails at the pool with "cannot close global device KV pool with private
+    workspace" -- which is what an INT8 MTP server session hit on shutdown
+    (the bench's own artifact write is what surfaced it, after every cell had
+    already run). Reconfigure/resize already release the idle workspace first;
+    close is pinned here to the same order.
+    """
+
+    from dataclasses import replace
+
+    from hipengine.generation import qwen35_gguf as gguf_engine
+    from hipengine.kvcache.device_global import GlobalDeviceKVPool
+
+    _install_fake_device(monkeypatch)
+    layout = replace(_int8_kv_layout(), bf16_mirror_layer_indices=(1, 3))
+    page_bytes = gguf_runner._qwen35_gguf_kv_page_bytes(
+        _allocator_fake_runner().weights.config, layout
+    )
+    pool = GlobalDeviceKVPool(
+        page_bytes=page_bytes,
+        backend_fingerprint="test",
+        generation=1,
+        backing=SimpleNamespace(layout=layout),
+        plane_page_pointers={"key": (100, 200)},
+        pointer_table_pointers={"key": 300},
+        metadata_descriptor_pointer=400,
+        close_storage=lambda: None,
+        max_pages=20,
+    )
+    token = pool.reserve_private_workspace(4 * page_bytes, "packed_verify_scratch")
+    assert pool.private_workspace_bytes == 4 * page_bytes
+    # The refusal below is the one the release has to prevent: without it the
+    # pool is exactly as unclosable as the failed shutdown reported.
+    with pytest.raises(RuntimeError, match="private workspace"):
+        pool.close()
+
+    order: list[str] = []
+
+    class _Owner:
+        def release_idle_packed_workspace(self) -> int:
+            order.append("release_workspace")
+            pool.release_private_workspace(token)
+            return 4 * page_bytes
+
+        def bind_workspace_kv_pool(self, value) -> None:
+            order.append("bind")
+
+        def close(self) -> None:
+            order.append("owner_close")
+
+    runner = object.__new__(gguf_engine.Qwen35GGUFResidentModelRunner)
+    runner._closed = False
+    runner._rows = {}
+    runner._outputs = {}
+    runner._completed_metadata = {}
+    runner._mtp2_adapter = None
+    runner._kv_pool = pool
+    runner._resident_batch_owner = _Owner()
+    runner._available = []
+    runner._resident_batch_owner_pool_key = None
+    runner.generator = SimpleNamespace(
+        target_arch="gfx1151", close=lambda: order.append("generator_close")
+    )
+    monkeypatch.setattr(
+        gguf_engine.Qwen35GGUFResidentModelRunner,
+        "_flush_all_packed_owners",
+        lambda self: None,
+    )
+    monkeypatch.setattr(
+        gguf_engine.Qwen35GGUFResidentModelRunner,
+        "_clear_prefix_snapshots",
+        lambda self: None,
+    )
+
+    runner.close()
+
+    assert order[0] == "release_workspace"
+    assert order[-1] == "generator_close"
+    assert runner._kv_pool is None
+    assert pool.private_workspace_bytes == 0
