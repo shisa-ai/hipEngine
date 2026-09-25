@@ -881,11 +881,29 @@ default-off and the token-serial route remains the committed prefill schedule.
   512-token prompt, 128 decode tokens, c=1: prefill **39.1 -> 459.7 tok/s
   (11.8x)**, decode 38.36 -> 38.94, per-rank VRAM **12.43 -> 15.39 GiB**; a
   pinned 2048-row capacity costs 22.55 GiB per rank and measures 384.5 tok/s.
-- **Blocker (remaining):** the route stays opt-in because chunked bulk prefill
-  is not implemented, so a prompt longer than the workspace forces a mid-session
-  rebuild, and a *deferred* large workspace is erratic (25-137 tok/s against 386
-  when built at construction), so an explicit `bulk_prefill_rows` is still
-  allocated eagerly. Localizing that slowdown is the next unit. Bit-identical layer-0 intermediates do **not**
+- **Shipped (2026-09-25):** the route is the default TP2 prefill schedule.
+  `MlpTP2GenerationSession(bulk_prefill=None)` resolves to on for tp2 and off for
+  tp1, and `bulk_prefill=False` is the registered rollback and the gate's
+  reference arm. The production comparison re-run on the shipped configuration
+  with the default engaged passes every gate - 831 rows, mean KL 2.107e-04, p95
+  7.948e-04, p99 4.589e-03, max KL 1.157e-02, top-1 99.88%, category top-1 >=
+  99.63%, three determinism sweeps matching per row, reset/reuse and
+  reset-after-generation boundaries bit-exact, no non-finite rows
+  (`benchmarks/results/2026-09-25-w7900-tp2-bulk-default-gate.json`) - a better
+  pass than the 2026-09-18 candidate on every tail metric, and reproducible to
+  the last digit against the flagged run of the same revision. Prefill at 512
+  tokens is 1057-1085 tok/s against 43.99 tok/s for the token-serial rollback.
+- **Retired blocker:** the *deferred* large workspace is **not** erratic. A
+  ladder harness (`scripts/tp2_bulk_workspace_contract.py`) measured a lazily
+  built workspace at 0.889 s for a 1024-token prefill against 0.938 s for one
+  allocated at construction, so the 25-137 tok/s reading recorded on 2026-09-18
+  does not reproduce and is withdrawn.
+- **Limits (remaining, not blockers):** chunked bulk prefill is not implemented,
+  so a prompt above the session capacity is refused exactly as the token-serial
+  route refuses it (and a pinned `bulk_prefill_rows` refuses earlier with an
+  explicit capacity message). The workspace never shrinks, so a 52-token prompt
+  after a 1024-token one costs the 1024-row workspace's time (0.508 s against
+  0.170 s) - still ~2.4x faster than the token-serial rollback at that length. Bit-identical layer-0 intermediates do **not**
   by themselves prove that every end-to-end difference came from the dispatch
   context; the A/B above is the controlled intervention, and it shows the
   remaining gap is no longer a single monotone defect — the heldout's max/mean

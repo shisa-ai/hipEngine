@@ -7883,6 +7883,27 @@ prefill for prompts longer than the capacity, and the same gate re-run at each
 prompt width that the ladder admits. The capacity-64 MLP relative-error finding
 remains open as a diagnostic.
 
+## 2026-09-25 TP2 bulk prefill rollback flag — retained deliberately
+
+`MlpTP2GenerationSession(bulk_prefill=...)` keeps a three-state switch after the
+rank-local bulk prefill became the shipped tp2 prefill schedule: `None` (the
+default) resolves to on for tp2 and off for tp1, `False` selects the token-serial
+walk, and an explicit `True` on tp1 still raises.
+
+This is not leftover scaffolding to delete on the next cleanup pass:
+
+- `False` is the registered rollback for the shipped schedule. If a bulk-prefill
+  failure appears in the field, the route must be recoverable without editing the
+  engine.
+- It is the reference arm the production comparison needs. `tp2_teacher_coverage_broad.py`
+  scores the tp2 arm against the matched TP1 controls, and the token-serial arm is
+  what makes a schedule-attributable difference visible rather than a numerical
+  one.
+
+Remove it only if the rollback stops being needed *and* the comparison harness
+gains an equivalent reference. The flag is cheap: it selects a schedule at
+construction and carries no per-call branch on the hot path.
+
 ## 2026-09-17 TP2 bulk prefill omits the resident dispatch context — fixed
 
 `MlpTP2GenerationSession.bulk_prefill` called the shared resident layer helpers

@@ -197,7 +197,10 @@ class MlpTP2GenerationSession:
         reduce_mode: str | None = None,
         head_shard: bool | None = None,
         attention_shard: bool | None = None,
-        bulk_prefill: bool = False,
+        # ``None`` selects the mode's default: on for tp2, meaningless for tp1.
+        # ``False`` is the tp2 rollback and the reference arm for gate
+        # comparisons; an explicit ``True`` on tp1 still raises below.
+        bulk_prefill: bool | None = None,
         bulk_prefill_rows: int | None = None,
         use_wmma_prefill: bool | None = None,
         use_gemv_decode: bool | None = None,
@@ -327,10 +330,16 @@ class MlpTP2GenerationSession:
         self.control_device = self.devices[0]
         self.max_sequence_length = int(max_sequence_length)
         self.stage_trace = bool(stage_trace)
-        # Opt-in experimental rank-local bulk prefill. Off by default: the
-        # token-serial prefill stays the committed route until this candidate
-        # passes the production numerical envelope end to end.
-        self.bulk_prefill_enabled = bool(bulk_prefill)
+        # The rank-local bulk prefill is the shipped tp2 prefill schedule; the
+        # tp1 route has no bulk at all. ``None`` therefore means "this mode's
+        # default" rather than "off", so a tp1 session is not asked to resolve
+        # a tp2-only flag, and ``bulk_prefill=False`` remains the tp2 rollback.
+        # It passed the production comparison on the current revision
+        # (benchmarks/results/2026-09-25-w7900-tp2-bulk-current-gate.json) and is
+        # faster than the token-serial walk at every prompt length measured.
+        self.bulk_prefill_enabled = (
+            self.mode == "tp2" if bulk_prefill is None else bool(bulk_prefill)
+        )
         self.bulk_prefill_rows = (
             int(bulk_prefill_rows) if bulk_prefill_rows is not None else None
         )
@@ -943,7 +952,7 @@ class MlpTP2GenerationSession:
     ) -> np.ndarray:
         """Whole-prompt rank-local bulk prefill; returns ``(rows, vocab)`` logits.
 
-        Experimental opt-in candidate. Each layer runs the attention/GDN
+        The shipped TP2 prefill schedule. Each layer runs the attention/GDN
         helper, the post-attention norm+residual helper, the batched sharded
         MLP exchange and one residual add on every rank, then the final norm
         and head. The prompt must fit ``bulk_prefill_rows``; chunked bulk
@@ -1528,7 +1537,7 @@ class MlpTP2GenerationSession:
 
     @property
     def prefill_schedule(self) -> str:
-        """Prefill arithmetic schedule; TP2 drives token-by-token prefill only.
+        """Prefill arithmetic schedule: ``bulk-tp2`` unless bulk is disabled.
 
         This is an ownership/provenance fact, not a performance claim. It exists
         so a teacher-forced comparison cannot silently mix a bulk prefill teacher
@@ -1562,10 +1571,10 @@ class MlpTP2GenerationSession:
         GDN conv/recurrent state) is zeroed first, so back-to-back calls on
         one session never inherit the previous call's state.
 
-        When the session was built with ``bulk_prefill=True`` the prompt is
-        consumed by the rank-local bulk prefill candidate in one shot and the
-        loop below starts at the first decode position; otherwise the prompt is
-        walked token by token, which is the committed schedule.
+        The prompt is consumed by the rank-local bulk prefill in one shot and the
+        loop below starts at the first decode position. With
+        ``bulk_prefill=False`` the prompt is walked token by token instead, which
+        is the registered rollback and the reference arm for gate comparisons.
         """
 
         self._require_live()
