@@ -1024,9 +1024,14 @@ interleaved twice:
 | head-sharded attention | 1056.27 / 1046.27 tok/s | 41.55 / 41.66 tok/s | 11.952 GiB |
 
 Sharding is **7.6% / 5.7% faster in prefill, 10.8% / 11.0% faster in decode, and
-3.327 GiB lighter per rank** (-21.8%). Decode gains more than prefill because
-decode is weight-bandwidth-bound and its attention reduction is a ~4 us spin-add
-at rows=1, while the batched prefill reduction costs 1.39 ms/layer.
+3.327 GiB lighter per rank** (-21.8%). The VRAM figure is the harness's
+`memory_after_warmup` reading - device used minus the pre-session baseline,
+sampled once the prompt-shaped bulk-prefill workspace exists, which is the
+footprint a caller lives with. Before that warmup the same measure reads
+12.291 -> 8.961 GiB, so the saving does not depend on which reading is taken.
+Decode gains more than prefill because decode is weight-bandwidth-bound and its
+attention reduction is a ~4 us spin-add at rows=1, while the batched prefill
+reduction costs 1.39 ms/layer.
 
 An interleaved prefill-only A/B (same host, same shape, `997.96 / 992.49 ->
 1067.60 / 1056.70 tok/s`) attributes the prefill delta on rank 0, which is the
