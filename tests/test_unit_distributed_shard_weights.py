@@ -352,6 +352,246 @@ def test_attention_local_head_indices_are_identity_under_a_halved_config() -> No
         ]
 
 
+# ---------------------------------------------------------------------------
+# The runtime payloads, checked against the file's own value-head order
+# ---------------------------------------------------------------------------
+#
+# The GGUF value-head order is a property of the file, so the expectation below
+# comes from the two references that define it, not from this repository's shard
+# rule or ``gdn_head_map``:
+#
+# * the converter that wrote the file (llama.cpp ``convert_hf_to_gguf.py``,
+#   ``_LinearAttentionVReorderBase``: HF stores V heads grouped by K head as
+#   ``[G0_v0..v{r-1}, G1_v0..v{r-1}, ...]`` and GGUF stores them tiled as
+#   ``[K0, K1, ..., K0, K1, ...]``), and
+# * the runtime that consumes it (llama.cpp ``src/models/qwen35.cpp``: the fused
+#   qkv rows are ``key_dim`` q rows, then ``key_dim`` k rows, then the value
+#   rows, and ``ggml_repeat_4d(q_conv, ..., num_v_heads, ...)`` tiles the K heads
+#   across the V axis, so V head ``v`` pairs with K head ``v % n_k_heads``).
+#
+# The check is on bytes: the expected local slice is built from the source rows
+# (or columns) the rule assigns, put through the same repack the runtime uses,
+# and compared with the payload the runtime actually hands the kernels.
+
+
+def _tiled_local_heads(config, rank: int, world_size: int) -> list[int]:
+    """Global value heads a rank owns, in the local slot order the kernels use."""
+
+    k_heads = int(config.ssm_group_count)
+    local_k = k_heads // int(world_size)
+    return [
+        tile * k_heads + rank * local_k + index
+        for tile in range(int(config.ssm_time_step_rank) // k_heads)
+        for index in range(local_k)
+    ]
+
+
+def _repacked(local_bytes, rows: int, row_bytes: int, layout: str, source_type: str) -> np.ndarray:
+    """The runtime's own repack of a local slice, or the bytes for raw layouts."""
+
+    repack = _t16_repack_for_layout(str(layout), source_type)
+    flat = np.ascontiguousarray(local_bytes, dtype=np.uint8).reshape(-1)
+    if repack is None:
+        return flat
+    expert = flat.reshape(1, int(rows), int(row_bytes))
+    return np.ascontiguousarray(np.asarray(repack(expert).tiles)).reshape(-1)
+
+
+def _source_rows(reader, name: str, row_indexes, *, row_bytes: int, rows: int) -> np.ndarray:
+    """Concatenate whole source rows, so the caller's row choice is the only input."""
+
+    from hipengine.loading.qwen35_gguf_shards import source_payload
+
+    info = reader.tensor_info(name)
+    view = np.asarray(
+        source_payload(reader.path, data_offset=info.data_offset, nbytes=info.nbytes)
+    ).reshape(int(rows), int(row_bytes))
+    return np.ascontiguousarray(np.concatenate([view[int(r)] for r in row_indexes])).reshape(-1)
+
+
+@requires_model
+def test_attention_ssm_a_payload_is_the_kernel_a_log_abi_not_the_source() -> None:
+    """A rank's ``ssm_a`` payload must be the converted A_log, not the source.
+
+    GGUF stores the negative decay coefficient and the GDN kernels take
+    ``A_log``, computing ``exp(-exp(A_log) * softplus(alpha + dt))``. The
+    replicated materializer converts the tensor before it uploads, so a shard
+    payload that kept the source coefficient would have the kernel read it as an
+    ``A_log`` instead: every head's decay becomes ``exp(-exp(A) * ...)`` rather
+    than ``exp(-A * ...)``. Token 0 is unaffected because the state is zero
+    there, which is what makes this a silent failure rather than an obvious one.
+    """
+
+    from hipengine.distributed.shard_weights import materialize_attention_shards
+    from hipengine.loading.gguf import GGUFReader, scan_gguf
+    from hipengine.loading.qwen35_gguf import qwen35_gguf_config_from_metadata
+    from hipengine.loading.qwen35_gguf_materialize import _gguf_ssm_a_to_kernel_a_log
+    from hipengine.loading.qwen35_gguf_shards import (
+        build_shard_manifest,
+        iter_rank_payloads,
+        source_payload,
+    )
+
+    config = qwen35_gguf_config_from_metadata(scan_gguf(str(GGUF_PATH)))
+    reader = GGUFReader(str(GGUF_PATH))
+    info = reader.tensor_info("blk.0.ssm_a")
+    source = np.asarray(
+        source_payload(reader.path, data_offset=info.data_offset, nbytes=info.nbytes)
+    ).reshape(-1)
+    raw = source.view("<f4")
+    a_log = _gguf_ssm_a_to_kernel_a_log(raw)
+    assert np.all(raw < 0.0) and np.all(a_log < 0.0)
+    # The conversion is a different magnitude per head, so the two cannot be
+    # confused by a tolerance: exp() of them differs by orders of magnitude.
+    assert not np.allclose(np.exp(a_log), np.exp(raw), rtol=1e-3)
+
+    layer = materialize_attention_shards(str(GGUF_PATH), world_size=2, layer_ids=(0,))[0]
+    manifest = build_shard_manifest(scan_gguf(str(GGUF_PATH)), world_size=2)
+    streamed: dict[int, np.ndarray] = {}
+    for plan, payload in iter_rank_payloads(reader, manifest, rank=0):
+        if plan.name == "blk.0.ssm_a":
+            streamed[0] = np.asarray(payload).reshape(-1)
+    for rank in range(2):
+        owned = _tiled_local_heads(config, rank, 2)
+        want = np.ascontiguousarray(a_log[owned], dtype="<f4")
+        got = np.asarray(layer.rank_payloads(rank)["ssm_a"].payload).reshape(-1)
+        assert np.array_equal(got.view("<f4"), want), (
+            f"rank {rank} ssm_a payload is not the kernel A_log ABI"
+        )
+        assert not np.array_equal(got.view("<f4"), raw[owned])
+    assert streamed, "the loader path did not yield blk.0.ssm_a"
+    assert np.array_equal(
+        streamed[0].view("<f4"),
+        np.ascontiguousarray(a_log[_tiled_local_heads(config, 0, 2)], dtype="<f4"),
+    ), "the streaming loader path must apply the same ABI"
+
+
+@requires_model
+def test_attention_runtime_payloads_carry_the_tiled_local_slices() -> None:
+    """Every slot the sharded route uploads must hold the heads it claims.
+
+    The manifest path and this runtime path are separate code paths, and this is
+    the one the head-sharded route uploads from. A rank that held another rank's
+    heads, or held its own heads in a different order than ``local_k = local_v %
+    local_k_heads`` assumes, would compute a plausible-looking wrong answer.
+    """
+
+    from hipengine.distributed.shard_weights import materialize_attention_shards
+    from hipengine.loading.gguf import GGUFReader, scan_gguf
+    from hipengine.loading.qwen35_gguf import qwen35_gguf_config_from_metadata
+    from hipengine.loading.qwen35_gguf_shards import source_payload
+
+    config = qwen35_gguf_config_from_metadata(scan_gguf(str(GGUF_PATH)))
+    k_heads = int(config.ssm_group_count)
+    head_k = int(config.ssm_state_size)
+    v_heads = int(config.ssm_time_step_rank)
+    head_v = int(config.ssm_inner_size) // v_heads
+    tiles = v_heads // k_heads
+    world_size = 2
+    local_k = k_heads // world_size
+    key_width = k_heads * head_k
+    reader = GGUFReader(str(GGUF_PATH))
+    layer = materialize_attention_shards(str(GGUF_PATH), world_size=world_size, layer_ids=(0,))[0]
+
+    # (slot, source tensor, source row count, rows per value head)
+    value_axes = (
+        ("attn_gate", "blk.0.attn_gate.weight", v_heads * head_v, head_v),
+        ("ssm_alpha", "blk.0.ssm_alpha.weight", v_heads, 1),
+        ("ssm_beta", "blk.0.ssm_beta.weight", v_heads, 1),
+        ("ssm_a", "blk.0.ssm_a", v_heads, 1),
+        ("ssm_dt_bias", "blk.0.ssm_dt.bias", v_heads, 1),
+    )
+    for rank in range(world_size):
+        owned = _tiled_local_heads(config, rank, world_size)
+        assert len(owned) == v_heads // world_size
+        # The pairing the rank-local kernel relies on: local slot j pairs with
+        # local K head ``j % local_k_heads``, which must be the global K head of
+        # the value head it holds.
+        for local_slot, global_v in enumerate(owned):
+            assert global_v % k_heads == rank * local_k + local_slot % local_k
+        for slot, name, rows, per_head in value_axes:
+            payload = layer.rank_payloads(rank)[slot]
+            info = reader.tensor_info(name)
+            row_bytes = int(info.nbytes) // rows
+            want = _source_rows(
+                reader,
+                name,
+                [global_v * per_head + i for global_v in owned for i in range(per_head)],
+                row_bytes=row_bytes,
+                rows=rows,
+            )
+            if slot == "ssm_a":
+                # GGUF ``ssm_a`` is the negative decay coefficient and the GDN
+                # kernels take ``A_log``, so the uploaded slice is the converted
+                # one. The rows are the same rows; only the ABI differs.
+                want = np.log(-want.view("<f4")).astype("<f4").view(np.uint8)
+            want = _repacked(
+                want, len(owned) * per_head, row_bytes, payload.layout, info.ggml_type_name
+            )
+            got = np.asarray(payload.payload).reshape(-1)
+            assert got.size == want.size, (slot, got.size, want.size)
+            assert np.array_equal(got, want), f"{slot} rank {rank} holds the wrong heads"
+
+        # The fused qkv's q and k blocks, then its value block per tile.
+        qkv = layer.rank_payloads(rank)["attn_qkv"]
+        info = reader.tensor_info("blk.0.attn_qkv.weight")
+        qkv_rows = 2 * key_width + v_heads * head_v
+        qkv_row_bytes = int(info.nbytes) // qkv_rows
+        want_rows = (
+            [rank * local_k * head_k + i for i in range(local_k * head_k)]
+            + [key_width + rank * local_k * head_k + i for i in range(local_k * head_k)]
+            + [
+                2 * key_width + tile * k_heads * head_v + global_v * head_v + i
+                for tile in range(tiles)
+                for global_v in range(rank * local_k, (rank + 1) * local_k)
+                for i in range(head_v)
+            ]
+        )
+        want = _repacked(
+            _source_rows(
+                reader,
+                "blk.0.attn_qkv.weight",
+                want_rows,
+                row_bytes=qkv_row_bytes,
+                rows=qkv_rows,
+            ),
+            len(want_rows),
+            qkv_row_bytes,
+            qkv.layout,
+            info.ggml_type_name,
+        )
+        got = np.asarray(qkv.payload).reshape(-1)
+        assert got.size == want.size, (got.size, want.size)
+        assert np.array_equal(got, want), f"attn_qkv rank {rank} holds the wrong rows"
+
+        # ssm_out splits the value-head axis of its input, and a value head is
+        # narrower than one quant block, so the unit is the tile's own run.
+        out = layer.rank_payloads(rank)["ssm_out"]
+        info = reader.tensor_info("blk.0.ssm_out.weight")
+        out_rows = int(config.hidden_size)
+        out_row_bytes = int(info.nbytes) // out_rows
+        block_size = 256
+        type_size = out_row_bytes * block_size // int(config.ssm_inner_size)
+        segment_bytes = local_k * head_v // block_size * type_size
+        view = np.asarray(
+            source_payload(reader.path, data_offset=info.data_offset, nbytes=info.nbytes)
+        ).reshape(out_rows, out_row_bytes)
+        pieces = []
+        for tile in range(tiles):
+            start = (tile * k_heads + rank * local_k) * head_v // block_size * type_size
+            pieces.append(view[:, start : start + segment_bytes])
+        want = _repacked(
+            np.ascontiguousarray(np.concatenate(pieces, axis=1)),
+            out_rows,
+            tiles * segment_bytes,
+            out.layout,
+            info.ggml_type_name,
+        )
+        got = np.asarray(out.payload).reshape(-1)
+        assert got.size == want.size, (got.size, want.size)
+        assert np.array_equal(got, want), f"ssm_out rank {rank} holds the wrong columns"
+
+
 def _synthetic_attention_config(**overrides):
     """A frozen config with only the axes head sharding touches, for pure tests."""
 
@@ -576,7 +816,8 @@ def test_raw_attention_payloads_are_the_owned_heads_rows() -> None:
         offset=int(alpha_info.data_offset),
         shape=(config.ssm_time_step_rank, config.hidden_size),
     )
-    # ssm_a: one f32 scalar per value head.
+    # ssm_a: one f32 scalar per value head, uploaded as the kernel's ``A_log``
+    # (``log(-coefficient)``) rather than as the GGUF coefficient.
     a_info = reader.tensor_info("blk.0.ssm_a")
     a_source = np.memmap(
         reader.path,
@@ -595,7 +836,8 @@ def test_raw_attention_payloads_are_the_owned_heads_rows() -> None:
         decay = np.frombuffer(
             np.asarray(payloads["ssm_a"].payload).tobytes(), dtype=np.float32
         )
-        assert np.array_equal(decay, np.asarray(a_source[owned]))
+        assert np.array_equal(decay, np.log(-np.asarray(a_source[owned])))
+        assert not np.array_equal(decay, np.asarray(a_source[owned]))
         # The two ranks partition the source rather than overlapping it.
         assert payloads["ssm_alpha"].nbytes == int(alpha_info.nbytes) // 2
         assert payloads["ssm_a"].nbytes == int(a_info.nbytes) // 2
