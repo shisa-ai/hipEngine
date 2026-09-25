@@ -1,0 +1,294 @@
+{
+ "schema": 1,
+ "kind": "tp2_attention_shard_prefill_ab",
+ "status": "performance_claim",
+ "performance_claim": true,
+ "date": "2026-09-25",
+ "host": "epyc",
+ "hardware": [
+  "amdgpu card0 pci 0000:0d:00.0 AMD Radeon Pro W7900 44.98 GiB",
+  "amdgpu card1 AMD Radeon RX 7900 XTX 23.98 GiB",
+  "AMD Ryzen 9 5950X 16-Core Processor"
+ ],
+ "backend": "hip_gfx1100",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "quant": "Q4_K_M",
+ "protocol": {
+  "harness": "scripts/tp2_prefill_phase_attribution.py",
+  "command": "uv run python scripts/tp2_prefill_phase_attribution.py --prompt-tokens 512 --repeats 3 [--attention-shard] --save-logits ... --json ...",
+  "prompt": "512 tokens, repeated token id 9707, max-sequence-length 2048",
+  "repeats": 3,
+  "interleave": "replicated, sharded, replicated, sharded in one background task on one host",
+  "session": "MlpTP2GenerationSession(mode=tp2, devices=(0,1), bulk_prefill=True, schedule=graphed, reduce_mode=device, even split, logits_rows=1)",
+  "variable": "attention_shard False (replicated) against True (head-sharded)"
+ },
+ "headline": {
+  "replicated_wall_ms": 513.0448,
+  "sharded_wall_ms": 479.5803,
+  "delta_ms": -33.464,
+  "delta_percent": -6.523,
+  "replicated_tok_per_s": 998.0,
+  "sharded_tok_per_s": 1067.6,
+  "tok_per_s_percent": 6.978,
+  "worst_vs_worst": {
+   "replicated_wall_ms": 515.8742,
+   "sharded_wall_ms": 484.5489,
+   "delta_ms": -31.325,
+   "delta_percent": -6.072,
+   "separation": "the arms do not overlap: the slowest sharded run is faster than the fastest replicated run"
+  }
+ },
+ "arms": {
+  "replicated": [
+   {
+    "round": 1,
+    "wall_ms": 513.0448,
+    "wall_ms_samples": [
+     513.045,
+     515.329,
+     516.29
+    ],
+    "uninstrumented_wall_ms": [
+     512.515,
+     511.271,
+     512.337
+    ],
+    "uninstrumented_min_ms": 511.271,
+    "prefill_tok_per_s": 997.964,
+    "instrumentation_overhead_percent": 0.347,
+    "phases_ms": {
+     "rank0": {
+      "attention": 230.6688,
+      "attn_reduce": 0.325,
+      "norm_residual": 2.7192,
+      "mlp": 276.4026,
+      "mlp_chain": 186.7223,
+      "mlp_exchange": 87.0623,
+      "mlp_cast": 0.3027,
+      "mlp_residual": 2.0139,
+      "tail": 1.2739
+     },
+     "rank1": {
+      "attention": 206.2204,
+      "attn_reduce": 0.2886,
+      "norm_residual": 2.191,
+      "mlp": 301.4572,
+      "mlp_chain": 167.2331,
+      "mlp_exchange": 131.9867,
+      "mlp_cast": 0.2509,
+      "mlp_residual": 1.732,
+      "tail": 1.2638
+     }
+    },
+    "reduce_mode": "device",
+    "device_reduce": true,
+    "attention_shard": false
+   },
+   {
+    "round": 2,
+    "wall_ms": 515.8742,
+    "wall_ms_samples": [
+     516.423,
+     515.874,
+     518.062
+    ],
+    "uninstrumented_wall_ms": [
+     512.929,
+     512.726,
+     512.681
+    ],
+    "uninstrumented_min_ms": 512.681,
+    "prefill_tok_per_s": 992.49,
+    "instrumentation_overhead_percent": 0.623,
+    "phases_ms": {
+     "rank0": {
+      "attention": 231.4813,
+      "attn_reduce": 0.3289,
+      "norm_residual": 2.7353,
+      "mlp": 278.5864,
+      "mlp_chain": 187.6886,
+      "mlp_exchange": 88.2755,
+      "mlp_cast": 0.3035,
+      "mlp_residual": 2.016,
+      "tail": 1.2403
+     },
+     "rank1": {
+      "attention": 205.3444,
+      "attn_reduce": 0.2833,
+      "norm_residual": 2.1831,
+      "mlp": 305.3369,
+      "mlp_chain": 167.2332,
+      "mlp_exchange": 135.8704,
+      "mlp_cast": 0.2547,
+      "mlp_residual": 1.7264,
+      "tail": 1.2363
+     }
+    },
+    "reduce_mode": "device",
+    "device_reduce": true,
+    "attention_shard": false
+   }
+  ],
+  "sharded": [
+   {
+    "round": 1,
+    "wall_ms": 479.5803,
+    "wall_ms_samples": [
+     479.58,
+     486.27,
+     481.309
+    ],
+    "uninstrumented_wall_ms": [
+     476.444,
+     476.975,
+     477.195
+    ],
+    "uninstrumented_min_ms": 476.444,
+    "prefill_tok_per_s": 1067.6,
+    "instrumentation_overhead_percent": 0.658,
+    "phases_ms": {
+     "rank0": {
+      "attention": 121.6118,
+      "attn_reduce": 89.137,
+      "norm_residual": 2.4026,
+      "mlp": 263.4652,
+      "mlp_chain": 172.7891,
+      "mlp_exchange": 88.1458,
+      "mlp_cast": 0.2913,
+      "mlp_residual": 1.9383,
+      "tail": 1.2631
+     },
+     "rank1": {
+      "attention": 115.199,
+      "attn_reduce": 95.8453,
+      "norm_residual": 1.9486,
+      "mlp": 263.661,
+      "mlp_chain": 157.9511,
+      "mlp_exchange": 103.4841,
+      "mlp_cast": 0.2506,
+      "mlp_residual": 1.724,
+      "tail": 1.2534
+     }
+    },
+    "reduce_mode": "device",
+    "device_reduce": true,
+    "attention_shard": true
+   },
+   {
+    "round": 2,
+    "wall_ms": 484.5489,
+    "wall_ms_samples": [
+     484.549,
+     490.307,
+     487.571
+    ],
+    "uninstrumented_wall_ms": [
+     483.295,
+     483.567,
+     485.399
+    ],
+    "uninstrumented_min_ms": 483.295,
+    "prefill_tok_per_s": 1056.653,
+    "instrumentation_overhead_percent": 0.259,
+    "phases_ms": {
+     "rank0": {
+      "attention": 122.0162,
+      "attn_reduce": 91.4715,
+      "norm_residual": 2.3885,
+      "mlp": 265.763,
+      "mlp_chain": 171.9423,
+      "mlp_exchange": 91.2559,
+      "mlp_cast": 0.2925,
+      "mlp_residual": 1.9505,
+      "tail": 1.276
+     },
+     "rank1": {
+      "attention": 115.5593,
+      "attn_reduce": 98.2108,
+      "norm_residual": 1.9491,
+      "mlp": 265.9155,
+      "mlp_chain": 157.7632,
+      "mlp_exchange": 105.9268,
+      "mlp_cast": 0.2477,
+      "mlp_residual": 1.726,
+      "tail": 1.2713
+     }
+    },
+    "reduce_mode": "device",
+    "device_reduce": true,
+    "attention_shard": true
+   }
+  ]
+ },
+ "phase_delta_rank0_ms": {
+  "attention": -109.057,
+  "attn_reduce": 88.812,
+  "norm_residual": -0.317,
+  "mlp": -12.937,
+  "mlp_chain": -13.933,
+  "mlp_exchange": 1.084,
+  "mlp_cast": -0.011,
+  "mlp_residual": -0.076,
+  "tail": -0.011
+ },
+ "phase_delta_rank1_ms": {
+  "attention": -91.021,
+  "attn_reduce": 95.557,
+  "norm_residual": -0.242,
+  "mlp": -37.796,
+  "mlp_chain": -9.282,
+  "mlp_exchange": -28.503,
+  "mlp_cast": -0.0,
+  "mlp_residual": -0.008,
+  "tail": -0.01
+ },
+ "correctness": {
+  "timed_shape_logits": {
+   "rows": 1,
+   "vocab": 248320,
+   "mean_kl": 7.326590133596937e-06,
+   "top1_agreement": 1.0,
+   "comparison": "sharded prefill logits against the replicated arm's, same session configuration, same prompt"
+  },
+  "broader_gate": {
+   "harness": "scripts/tp2_head_shard_agreement_probe.py",
+   "prompt_tokens": 64,
+   "mean_kl": 0.001169,
+   "top1_agreement": 0.9844,
+   "per_layer_reduction_check": "exact host-sum of both ranks' bf16 partials at every layer of layers 0-4, both ranks",
+   "note": "the 64-token gate compares all 64 rows; the timed shape compares the single row the product path reads"
+  }
+ },
+ "prediction_vs_measured": {
+  "source": "benchmarks/results/2026-09-23-w7900-tp2-prefill-critical-path-attribution.json",
+  "predicted_delta_percent": -11.7,
+  "measured_delta_percent": -6.523,
+  "predicted_attention_saving_ms": 116.7,
+  "measured_attention_saving_ms": 109.057,
+  "modeled_reduce_cost_ms": 59.0,
+  "measured_reduce_cost_ms": 88.812,
+  "why": "the attention half of the split landed as predicted; the added reduction costs 1.39 ms/layer instead of the 0.93 ms/layer the model took from the 2026-09-23 exchange measurement, and that difference is the whole gap between the prediction and the result"
+ },
+ "limits": [
+  "Not promoted to the default: attention_shard stays False. The flag changes arithmetic (each rank's attention output becomes a partial) and also reaches the captured decode graph, so promotion needs the production-profile mean/tail/max KL, top-1 by category, determinism and task gates over a decode trajectory, which have not been run. The replicated route remains the default and the registered fallback.",
+  "The timed shape gates prefill logits only. The decode trajectory of the sharded route is ungated.",
+  "Rank 0's MLP chain is 13-16 ms faster with attention sharded, reproducibly across both rounds. The phase table measures it; the cause is not established.",
+  "Both arms' exchange cost is 1.36-1.39 ms/layer in this session, against 0.93 ms/layer measured on 2026-09-23 on the same host. The absolute rates are not comparable across those sessions; only the same-session pair is.",
+  "Attention sharding halves the attention phase, so its remaining cost is spread across two GEMM-sized kernels per layer and one reduction; no kernel-level attribution of the sharded attention phase was taken."
+ ],
+ "source_artifacts": [
+  "results/2026-09-23-w7900-tp2-prefill-critical-path-attribution.json",
+  "results/2026-09-23-w7900-tp2-attention-reduce-placement-ab.json",
+  "results/2026-09-19-w7900-tp2-bulk-prefill-device-reduction-c1-512.json"
+ ],
+ "raw_reports": {
+  "replicated": {
+   "1": 513.0448,
+   "2": 515.8742
+  },
+  "sharded": {
+   "1": 479.5803,
+   "2": 484.5489
+  }
+ }
+}
