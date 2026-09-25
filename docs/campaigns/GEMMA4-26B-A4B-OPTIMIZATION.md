@@ -550,7 +550,9 @@ flags because a configuration has not been benchmarked.
   the 20% the contended pass reported, and full/2048 is already a 16% win. The
   remaining loss is 5 of 30 layers at 9.6 us each - about 48 us per step, or
   +0.2% end-to-end - against the cost of plumbing head_dim into the selection
-  policy. The clean-device pass also puts every other cell 4-10% above its
+  policy. That plumbing was done in iteration 30 for the narrow head only, after
+  the read range made it load-bearing (see below); the wide geometry still runs
+  this rule. The clean-device pass also puts every other cell 4-10% above its
   contended reading: sliding/1024 -14%, sliding/2048 -24%, sliding/8192 -24%,
   full/8192 -19%. The same A/B answers iteration 27's open
   question - the weighted layer mix predicts ~0.9 ms saved against the 0.72 ms
@@ -558,6 +560,51 @@ flags because a configuration has not been benchmarked.
   overestimated share rather than an inefficient kernel.
   Evidence row
   `2026-09-26-gemma4-26b-a4b-two-phase-split-accepted.json`.
+  *Accepted 2026-09-26 (iteration 30): the sliding layers were walking keys the
+  mask had already zeroed, and fixing it forced a correction to the slice policy
+  above.* A sliding layer's keep-mask zeroes every key outside its window, but the
+  mask is full width, so the kernel walked the whole live context: at context
+  4096, 3073 of 4224 keys per layer whose weight is exactly zero, on 25 of the 30
+  layers. The walk is what costs - the decode kernel's time tracks `keys`, not
+  the number of live keys - and iteration 24's census of per-layer launches had
+  not looked at the key range itself. `gemma4_layer_forward_bf16` gained
+  `key_begin`, which moves the key, value and mask pointers forward together and
+  shortens `keys`; the kernel is untouched, so there is no new ABI. The change is
+  **bit-exact rather than close**: a masked key contributes `exp(-inf) = 0` to
+  both reductions, the row maximum is unchanged because the dropped entries were
+  `-inf`, and removing zero-valued terms does not reorder the survivors. So no
+  arithmetic changed and no gate was owed - the 128-token generation is
+  byte-identical to the incumbent arm, and `public_path_parity` is true on all
+  four rows. Only a one-row block may skip: a prefill block's rows sit at
+  different positions and its mask rows are strided by the full key count, so the
+  single pointer offset would read the wrong mask row. The public-path check
+  confirmed that prefill blocks (rows=512) never skipped.
+  **The first measurement was a 5.5% regression (45.2913 -> 42.8098), and the
+  cause was the slice policy.** Handing sliding layers exactly 1024 keys instead
+  of the whole live context dropped them from 4 slices to 2, because the rule
+  kept more than 512 keys per slice - a floor that is wrong for a 256-wide head,
+  whose key tile holds twice as many keys per stage. That cost 1.3 ms per step,
+  which is the whole regression. `decode_slices` now takes `head_dim`: narrow
+  heads take 4 slices as soon as the 1024-key entry threshold is reached
+  (measured 192.2 us against 244.4 for 2 at 1024 keys, paired with two passes per
+  arm), while the 512-wide `attention_k_eq_v` layers keep the doubling rule
+  unchanged. A dead loop after the function's `return`, left by the earlier
+  policy edit, was removed in the same pass.
+  Final rows, incumbent -> candidate: **1024p 45.3015 -> 45.8427 (+1.2%)**,
+  4096p 31.7066 -> **42.7662 (+34.9%)**, 512p 48.0158 -> 47.9667 and 128p
+  51.9240 -> 51.7789 flat. The last two are not merely unregressed but untouched:
+  with fewer live keys than the window, `key_begin` is 0 and the layer passes
+  byte-identical pointer and key arguments to the kernel. The gradient is the
+  point - the skipped fraction is what scales, 0-128 of 1152 keys at the metric
+  row against 3073 of 4224 at 4096p - so the long-context row moved from 42.8% to
+  53.3% of the Qwen stop condition while the metric row gained 1.2%. Intended
+  path confirmed through the public `LLM.generate()` surface by spying on both
+  selection functions: 525 sliding-layer calls skipped keys (1..7, growing with
+  context) and selected `head_dim=256 keys=1024 slices=4`, the 5 full layers
+  stayed at 0, and prefill never skipped. Evidence row
+  `2026-09-26-gemma4-26b-a4b-sliding-read-range-accepted.json`; the campaign's
+  rollup for the three acceptances since 2026-09-24 was owed and is now in
+  `benchmarks/CHANGELOG.md` and `benchmarks/README.md`.
   *Gate verdict 2026-09-25: **passed**, and comfortably.* Against the frozen
   8192-context baseline over all 1023 teacher-forced rows: **kl_max 0.006746**
   (bar 0.05), kl_mean 9.03e-06 (0.001), kl_p95 5.25e-06 (0.005), kl_p99

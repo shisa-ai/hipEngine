@@ -317,7 +317,7 @@ def _split_ab(library, *, dtype, num_heads, num_kv_heads, head_dim, keys, mask_m
         split_workspace_bytes,
     )
 
-    slices = decode_slices(keys)
+    slices = decode_slices(keys, head_dim)
     assert slices > 1, "shape is below the split's context threshold"
 
     rng = np.random.default_rng(seed)
@@ -401,7 +401,7 @@ def test_split_matches_single_kernel_within_float_precision(
         keys=keys,
         mask_mode="holes",
     )
-    assert slices == decode_slices_for(keys)
+    assert slices == decode_slices_for(keys, head_dim)
     np.testing.assert_allclose(candidate, reference, rtol=1e-4, atol=1e-4, equal_nan=True)
 
 
@@ -423,7 +423,7 @@ def test_split_bf16_matches_single_kernel_within_one_ulp(
     np.testing.assert_allclose(candidate, reference, rtol=1e-2, atol=1e-3, equal_nan=True)
 
 
-def decode_slices_for(keys):
+def decode_slices_for(keys, head_dim):
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import decode_slices
 
-    return decode_slices(keys)
+    return decode_slices(keys, head_dim)
