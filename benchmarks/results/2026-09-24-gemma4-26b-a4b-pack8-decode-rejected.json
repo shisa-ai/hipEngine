@@ -1,0 +1,88 @@
+{
+ "kind": "gemma4_candidate_gate_verdict",
+ "verdict": "rejected",
+ "candidate": "dense pack8-GEMV decode rewrite (HIPENGINE_GGUF_GEMV_DECODE=1): gguf_q8_0 linear rows==1 pack8_gemv_bf16_bf16_out -> pack8_gemv_decode_bf16_bf16_out",
+ "reason": "Not a bit-exact drop-in: the decode kernel's per-thread k-association differs from the legacy pack8 kernel's by design, so a small fraction of bf16 outputs land one ULP apart; the binding production gate amplifies that to 32/1023 top-1 flips. No measurable speed win either, so the candidate fails on both axes.",
+ "gate": {
+  "baseline_path": "/mnt/nvme1/gemma4-eval/teacher-forced-6224cc0576fb.npz",
+  "baseline_sha256": "a79a3146c1d56792b22526199df2df992d86294637fee612b58981b621d50acf",
+  "chain_sha256": "9730ebf884a19ea6f10c23dcc84061702b7663d53f092f8a75832667b472e211",
+  "direction": "kl(baseline || candidate)",
+  "rows": 1023,
+  "vocab": 262144,
+  "percentile_method": "nearest-rank",
+  "kl_mean": 0.031058537547676904,
+  "kl_p95": 0.15958517630552094,
+  "kl_p99": 0.7734342683146284,
+  "kl_max": 2.447051957360533,
+  "top1_rate": 0.9687194525904204,
+  "top1_flips": 32,
+  "failed": ["kl_mean", "kl_p95", "kl_p99", "kl_max", "top1_rate"],
+  "passed": false,
+  "thresholds": {
+   "kl_mean": 0.001,
+   "kl_p95": 0.005,
+   "kl_p99": 0.02,
+   "kl_max": 0.05,
+   "top1_rate": 0.99
+  },
+  "threshold_source": "docs/EXECUTION-PROFILES.md production table",
+  "run": "iteration 17 gate arm A, re-confirmed in iteration 18 on the post-reset GPU"
+ },
+ "controls": {
+  "default_path_equals_frozen_baseline": {
+   "policy": "env off, no rewrite",
+   "identical_to_baseline": true,
+   "kl_mean": 0.0,
+   "kl_max": 0.0,
+   "rows_compared": 65,
+   "note": "current tree's default path is bit-identical to the frozen baseline; the iteration-16 commits did not touch it"
+  },
+  "forced_rewrite_equals_env_on": {
+   "policy": "env off, _gemv_decode_dispatch forced on",
+   "identical_to_env_on": true,
+   "max_abs_logit_diff": 0.0,
+   "rows_compared": 65,
+   "note": "the single kernel substitution is the entire candidate; no second mechanism and no hidden fallback"
+  },
+  "compact_only_env": {
+   "policy": "HIPENGINE_GGUF_COMPACT_MOE_C1=1 alone",
+   "kl_mean": 0.0,
+   "kl_max": 0.0,
+   "top1_rate": 1.0,
+   "note": "compact does not fire without the gemv session; also an exact default-path control"
+  }
+ },
+ "isolation": {
+  "method": "resolve-level probe diffing every dispatched kernel key between env off and env on",
+  "launches_changed": 205,
+  "only_change": "linear|gguf_q8_0|pack8_gemv_bf16_bf16_out -> linear|gguf_q8_0|pack8_gemv_decode_bf16_bf16_out",
+  "prefill_keys_changed": 0,
+  "note": "prefill, attention, norm, MoE and lm-head dispatch are untouched; the lm_head asks for f32 output and is not rewritten"
+ },
+ "root_cause": {
+  "mechanism": "different per-thread k-association between the two kernels",
+  "legacy_kernel": "gguf_k_pack8_prefill_out_kernel: k += blockDim.x (unit stride, one element per thread per iteration), acc += xv * w",
+  "decode_kernel": "vec_stride = blockDim.x * 8 with eight consecutive k per thread and the per-block scale hoisted, acc = fmaf(xv, d * qs, acc)",
+  "consequence": "per-thread partial sums cover different k-sets, so f32 rounding differs and a small fraction of bf16 outputs land one ULP apart",
+  "measured_rate": "1-2 differing elements per 8192 at blk.5.attn_q.weight (in=2816, out=8192); 0 of 6 other real dense tensors probed in a single pass",
+  "both_kernels_accurate": "each is within one bf16 ulp of the f32 CPU oracle at all seven real dense shapes (tests/test_gpu_gguf_q8_0_pack8_gemv_decode_parity.py)",
+  "feasibility": "the eight-consecutive/hoisted-scale walk IS the optimization, so bit-exactness and the speed trick are mutually exclusive at this design point"
+ },
+ "performance": {
+  "verdict": "no measurable win",
+  "rows": {
+   "16p4o_tok_s_off": [46.6024, 48.2405, 47.0187],
+   "16p4o_tok_s_on": [46.9732, 44.6826, 48.9555],
+   "1024p128o_tok_s_default": 23.1326,
+   "1024p128o_tok_s_both_envs": 23.2045,
+   "1024p128o_delta_pct": 0.31
+  }
+ },
+ "artifacts": {
+  "test": "tests/test_gpu_gguf_q8_0_pack8_gemv_decode_parity.py",
+  "gate_verdict_json": "/tmp/gate17-a-gemv.json (iteration-local; values embedded above)"
+ },
+ "follow_on": "The compact MoE route (iteration 16) uses this same switch as its session guard, so evaluating compact on its own merits requires decoupling the guard from HIPENGINE_GGUF_GEMV_DECODE.",
+ "recorded": "2026-09-24, gemma4-moe-perf/g0 iteration 18"
+}
