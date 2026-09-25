@@ -739,3 +739,40 @@ extern "C" int hipengine_gguf_q5_q4_pair_silu(const void* x, const void* wa,
             return int(hipErrorInvalidValue);
     }
 }
+// E6b-7 family: (IQ4_XS gate, Q3_K up) - the original E6b-5 geometry
+// (IQ4 in side A's slot, Q3 in side B's) under the OPPOSITE epilogue
+// role: route order is gate-first (IQ4, Q3), which already matches the
+// C geometry, so no wrapper reorder happens. wa is the IQ4_XS raw
+// blocks (local32 split-K = the GATE), wb the Q3_K raw blocks
+// (B_KIND=2 strict-GEMV emulation = the UP); GATE_IS_Q4=false takes
+// the gate from side A (the IQ4 chain). Arithmetic identical to the
+// dormant E6b-5 instance - only the rounded accumulator feeding the
+// silu differs, same proven bit-exact contract.
+extern "C" int hipengine_gguf_iq4_q3_pair_silu(const void* x, const void* wa,
+    const void* wb, void* out, int64_t rows, int64_t K, int64_t N, int waves,
+    void* stream) {
+    if (!x || !wa || !wb || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 8)
+        return int(hipErrorInvalidValue);
+    const dim3 grid(unsigned((N + COLS - 1) / COLS));
+    const hipStream_t s = (hipStream_t)stream;
+    int err;
+    switch (waves) {
+        case 1:
+            err = (iq4_q4_pair_silu_kernel<1, false, 2, false><<<grid, 32, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 2:
+            err = (iq4_q4_pair_silu_kernel<2, false, 2, false><<<grid, 64, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 4:
+            err = (iq4_q4_pair_silu_kernel<4, false, 2, false><<<grid, 128, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        default:
+            return int(hipErrorInvalidValue);
+    }
+}

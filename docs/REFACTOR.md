@@ -4,7 +4,7 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
-## Dormant (Q3_K gate, IQ4_XS up) fused pair registration (2026-09-25) — AWAITING A CLEARING SCREEN
+## Dormant (Q3_K gate, IQ4_XS up) and (IQ4_XS gate, Q3_K up) fused pair registrations (2026-09-25) — AWAITING A CLEARING SCREEN
 
 E6b-5 built the fused pair+SiLU owner for the 3-layer (Q3_K, IQ4_XS)
 family: `B_KIND=2` in `gguf_iq4_q4_pair.hip` (side B = the strict
@@ -18,19 +18,40 @@ required >= 1.00** - so the route block ships dormant: no dispatch
 path selects this key, and production behavior is unchanged by
 construction.
 
-Clearing command: re-run `~/ud-e1-census/e6b5_screen.py` (or its
-successor) after a structural change to the pair (e.g. overlapping
-side A and side B phases, or a lower-overhead strict emulation); if it
-measures >= 1.00x bit-exact, add the route block back in
-`hipengine/runtime/gguf_linear.py` keyed on
-(`linear`,`gguf_q3_k`,`gemv_bf16_bf16_out`) + the session-qualified
-IQ4 local32 owner (the exact predicates existed in iteration 16's
-history) and delete this entry.
+**E6b-7 added the reverse direction the same day (iteration 18):**
+(IQ4_XS gate, Q3_K up), 1 layer (blk.0), under a second instantiation
+`<W, GATE_IS_Q4=false, B_KIND=2, A_IS_CHAIN=false>` and its own
+extern-C `hipengine_gguf_iq4_q3_pair_silu` + wrapper
+`gguf_iq4_q3_pair_silu_bf16_bf16_out` + registration key
+`gguf_iq4_xs+gguf_q3_k` (route order == C geometry, no reorder; the
+epilogue takes the gate from side A's IQ4 chain). Bit-exact at K=5120
+(GPU suite) and at (5120, 17408) rows=1, but five production screens
+measured **0.95 / 0.97 / 1.03 / 0.96 / 0.95 - mean 0.972, four of five
+below the >= 1.00 gate** (the lone 1.03 inside the historical screen
+spread), so its route block was also removed and production stayed
+byte-identical by construction (LLM probe: pair7 = 0 dispatches, all
+five shipped families intact). The structural cause is the same one
+recorded for the first direction: sides keep identical arithmetic, so
+the direction swap cannot change the wall picture.
+
+Clearing command: re-run `~/ud-e1-census/e6b5_screen.py` and
+`~/ud-e1-census/e6b7_screen.py` (or successors) after a structural
+change to the pair (e.g. overlapping side A and side B phases, or a
+lower-overhead strict emulation); if either direction measures >=
+1.00x bit-exact, add that direction's route block back in
+`hipengine/runtime/gguf_linear.py` keyed on its ordered pair
+(`gguf_q3_k+gguf_iq4_xs` gate-first, or `gguf_iq4_xs+gguf_q3_k`) with
+the matching predicates (Q3 side = decode dispatch ==
+(`linear`,`gguf_q3_k`,`gemv_bf16_bf16_out`) raw; IQ4 side =
+session-qualified local32 decode owner; both raw ABI; exact route
+blocks existed in iterations 16 and 18 history) and delete this
+entry.
 
 Removal condition: if the fused pair family is redesigned or the Q3
-layers change quant, delete `B_KIND==2`, the q3 extern-C wrapper, the
-Python wrapper/registration, and the two GPU tests together - dead
-code with no route does not accumulate a second life.
+layers change quant, delete `B_KIND==2`, both extern-C wrappers, both
+Python wrappers/registrations (both ordered keys), and the four GPU
+tests together - dead code with no route does not accumulate a second
+life.
 Evidence: `docs/campaigns/UD-GFX1151-OPTIMIZE2.md` E6b-5 row;
 `worklog/entries/20260925T011636.401265Z-lhl-ud-gfx1151-optimize2-e6b5-q3-iq4-negative-c7f21a.md` (this unit's entry).
 
