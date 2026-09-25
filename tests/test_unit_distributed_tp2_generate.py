@@ -10,6 +10,7 @@ poison-on-failure, and teardown - without touching hardware.
 from __future__ import annotations
 
 import ctypes
+from dataclasses import dataclass, field
 from types import SimpleNamespace
 
 import numpy as np
@@ -71,16 +72,42 @@ class FakeConfig:
         self.hidden_size = HIDDEN
 
 
+@dataclass
+class FakeLayerWeights:
+    """One resident layer: the id the substitution matches and the roles it merges."""
+
+    layer_id: int
+    weights: dict = field(default_factory=dict)
+
+
+@dataclass
 class FakeWeights:
-    def __init__(self, layer_types) -> None:
-        self.config = FakeConfig(layer_types)
+    """Stand-in for the resident layer map.
+
+    A dataclass because the attention-shard substitution rewrites the resident
+    map with ``dataclasses.replace``: it swaps in the sharded config and merges
+    each rank's head slices into that layer's roles. The fields are exactly what
+    the substitution reads and writes, so a test can see the merge land.
+    """
+
+    layer_types: tuple
+    config: FakeConfig = field(default=None)
+    layers: tuple = field(default=())
+
+    def __post_init__(self) -> None:
+        if self.config is None:
+            self.config = FakeConfig(self.layer_types)
+        if not self.layers:
+            self.layers = tuple(
+                FakeLayerWeights(layer_id=layer_id)
+                for layer_id in range(len(self.layer_types))
+            )
 
     def root(self, slot: str) -> FakeWeight:
         return FakeWeight(f"root.{slot}")
 
     def layer(self, layer_id: int) -> FakeLayer:
         return FakeLayer(layer_id)
-
     def free(self, *, runtime=None) -> None:
         if getattr(self, "freed", False):
             raise AssertionError("weights freed twice")
@@ -252,6 +279,26 @@ class FakeShardGroup:
         )
         self.exchange_walls_s.append(0.0)
         return {0: 0x5400, 1: 0x5500}
+
+    def reduce_device_payload(
+        self, layer_id, source_ptrs, destination_ptrs, *, phase=0, rows=None
+    ):
+        """The head-sharded route's attention-output reduction.
+
+        It is a device-side reduction like the MLP's, so it records into the
+        same ``reduces`` list with the phase that keeps its staging slot
+        separate from the MLP's. A session that leaves the attention route at
+        its default calls this once per layer between the attention phase and
+        the norm that consumes the sum.
+        """
+
+        self.reduces.append(
+            (
+                tuple(int(source_ptrs[d]) for d in sorted(source_ptrs)),
+                int(phase),
+            )
+        )
+        return {int(d): int(destination_ptrs[d]) for d in destination_ptrs}
 
     def output_ptr(self, device: int) -> int:
         return {0: 0x5000, 1: 0x5100}[int(device)]
@@ -428,6 +475,29 @@ def env(monkeypatch):
     head_plans: list[Any] = []
     head_uploads: list[tuple[int, str, str]] = []
     head_freed: list[int] = []
+    attention_plans: list[int] = []
+
+    def fake_materialize_attention(model_path, *, world_size, layer_ids=None,
+                                   backend="hip_gfx1100"):
+        # The real materializer reads the GGUF; this fixture's model path is a
+        # fake, so the planner is pinned to a per-layer stub and the pure
+        # planner is covered directly in the shard-weight tests.
+        attention_plans.append(int(world_size))
+        return {layer_id: object() for layer_id in range(len(LAYER_TYPES))}
+
+    def fake_upload_shard_weights(runtime, shards, *, devices):
+        # One role per rank is enough to exercise the substitution: the rank's
+        # own head slice replaces the full-width slot, and the session reads
+        # the resulting layer map.
+        return {
+            layer_id: {int(device): {"attn_q": FakeHeadWeight(device)} for device in devices}
+            for layer_id in shards
+        }
+
+    def fake_attention_sharded_config(config, *, world_size):
+        # Geometry is the GPU test's subject (it runs the real planner against
+        # the real GGUF); here the identity keeps the fixture's config type.
+        return config
 
     class FakeHeadAllocation:
         def __init__(self, device):
@@ -544,6 +614,9 @@ def env(monkeypatch):
     monkeypatch.setattr(tg, "upload_mlp_shard_weights", fake_upload)
     monkeypatch.setattr(tg, "materialize_head_shards", fake_materialize_head)
     monkeypatch.setattr(tg, "upload_shard_weight", fake_upload_shard_weight)
+    monkeypatch.setattr(tg, "materialize_attention_shards", fake_materialize_attention)
+    monkeypatch.setattr(tg, "upload_shard_weights", fake_upload_shard_weights)
+    monkeypatch.setattr(tg, "attention_sharded_config", fake_attention_sharded_config)
 
     def queue_logits(preferred_ids):
         # Each finish step reads one f32 row per rank (the sharded head is
@@ -567,6 +640,7 @@ def env(monkeypatch):
         "destroyed_streams": destroyed_streams,
         "device_exchanges": device_exchanges,
         "head_plans": head_plans,
+        "attention_plans": attention_plans,
         "head_uploads": head_uploads,
         "head_freed": head_freed,
         "injected_rows": injected_rows,
@@ -1011,9 +1085,14 @@ def test_graphed_schedule_needs_the_compiled_driver() -> None:
         )
 
 
-def _graphed_session(env) -> MlpTP2GenerationSession:
+def _graphed_session(env, *, attention_shard=False) -> MlpTP2GenerationSession:
     # The device-side exchange is the graphed default (see the host opt-out
-    # test below).
+    # test below). The attention route is pinned here: the graphed tests assert
+    # the schedule and the exchange bookkeeping, and a session that inherits the
+    # engine's default would silently change which route those assertions
+    # describe. The default's own bookkeeping is asserted by
+    # ``test_attention_shard_default_on_for_tp2_and_refused_where_it_cannot_run``
+    # and by ``test_graphed_attention_reduce_takes_a_second_slot_per_layer``.
     return MlpTP2GenerationSession(
         "fake.gguf",
         devices=(0, 1),
@@ -1021,6 +1100,7 @@ def _graphed_session(env) -> MlpTP2GenerationSession:
         max_sequence_length=64,
         schedule="graphed",
         reduce_mode="device",
+        attention_shard=attention_shard,
     )
 
 
@@ -1075,6 +1155,54 @@ def test_graphed_steps_launch_graphs_and_reduce_on_device(env) -> None:
     ranks = sorted(rank for rank, _slot, _ptr in exchange.enqueues)
     assert ranks == [0, 0, 0, 0, 1, 1, 1, 1]
     session.close()
+
+
+def test_graphed_attention_reduce_takes_a_second_slot_per_layer(env) -> None:
+    """The default route's attention reduce is a second reduction per layer.
+
+    Head sharding makes each rank's attention output a partial, and the norm
+    that consumes it sits between the attention phase and the MLP, so this
+    reduction cannot be merged with the MLP's. It therefore takes slots of its
+    own: the peer's spin exits as soon as its flag reaches the step, so two
+    reductions sharing a slot can have the peer overwrite the payload this rank
+    is still reading. The layout is fixed rather than renumbered - the unsharded
+    slots are the ones the validated decode schedule was measured with, so the
+    attention reductions take the second half of the slot space - and the
+    replicated opt-out adds neither the slots nor the reductions.
+    """
+
+    env["queue_logits"]([0, 1, 2, 3])
+    replicated = _graphed_session(env, attention_shard=False)
+    replicated.generate([2], max_new_tokens=1, eos_token_id=None)
+    replicated_slots = sorted(
+        slot for _rank, slot, _ptr in env["device_exchanges"][-1].enqueues
+    )
+    replicated_reduces = list(env["groups"][-1].reduces)
+    replicated.close()
+
+    env["queue_logits"]([0, 1, 2, 3])
+    sharded = _graphed_session(env, attention_shard=True)
+    sharded.generate([2], max_new_tokens=1, eos_token_id=None)
+    sharded_slots = sorted(
+        slot for _rank, slot, _ptr in env["device_exchanges"][-1].enqueues
+    )
+    sharded_reduces = list(env["groups"][-1].reduces)
+    sharded.close()
+
+    layers = len(LAYER_TYPES)
+    attention_slots = {layers + layer_id for layer_id in range(layers)}
+    # Neither route reduces through the shard group here: the graphed schedule's
+    # reductions run on the session's device exchange (the group's own entry
+    # point is the bulk prefill's).
+    assert replicated_reduces == []
+    assert sharded_reduces == []
+    # The attention reductions occupy the second half of the slot space, one per
+    # layer, and the replicated route enqueues none of them.
+    assert attention_slots.issubset(set(sharded_slots))
+    assert not attention_slots & set(replicated_slots)
+    # The first half is not renumbered: every slot the replicated route uses is
+    # still used by the sharded one.
+    assert set(replicated_slots).issubset(set(sharded_slots))
 
 
 def test_graphed_replay_owns_position_and_token_metadata(env) -> None:
@@ -1171,6 +1299,43 @@ def test_graphed_host_reduce_opt_out_reduces_per_layer(env) -> None:
     assert [slot for _ptrs, slot in group.reduces] == [0, 1, 2] * 2
     assert env["device_exchanges"] == []
     session.close()
+
+
+def test_attention_shard_default_on_for_tp2_and_refused_where_it_cannot_run(env) -> None:
+    """The head split is the tp2 default; the replicated route is the opt-out.
+
+    It needs the device-side reduction, so it is on exactly where that reduction
+    is: a tp2 session on the captured graph schedule. The eager schedule reduces
+    through the host transport and must be refused rather than silently sharded.
+    """
+
+    session = MlpTP2GenerationSession("fake.gguf", devices=(0, 1), mode="tp2")
+    assert session.schedule == "graphed"
+    assert session.attention_shard is True
+    session.close()
+    session = MlpTP2GenerationSession(
+        "fake.gguf", devices=(0, 1), mode="tp2", attention_shard=False
+    )
+    assert session.attention_shard is False
+    session.close()
+    # The eager schedule cannot reduce on the device, so the default is off
+    # there and asking for it explicitly is an error.
+    session = MlpTP2GenerationSession(
+        "fake.gguf", devices=(0, 1), mode="tp2", schedule="eager"
+    )
+    assert session.attention_shard is False
+    session.close()
+    with pytest.raises(ValueError, match="device-side reduction"):
+        MlpTP2GenerationSession(
+            "fake.gguf",
+            devices=(0, 1),
+            mode="tp2",
+            schedule="eager",
+            attention_shard=True,
+        )
+    # The TP1 control has no second rank to shard onto.
+    with pytest.raises(ValueError, match="tp2-only"):
+        MlpTP2GenerationSession("fake.gguf", devices=(0,), mode="tp1", attention_shard=True)
 
 
 def test_head_shard_validation_and_default_on(env) -> None:

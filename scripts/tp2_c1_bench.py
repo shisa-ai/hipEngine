@@ -98,6 +98,14 @@ def main(argv: list[str] | None = None) -> int:
         help="tp2 only: bulk prefill workspace rows (default: the session's "
         "max sequence length, which is what dominates its resident memory)",
     )
+    parser.add_argument(
+        "--attention-shard",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="tp2 only: head-shard the attention/GDN phase across the two ranks "
+        "(the session default for a tp2 session on the graphed schedule). Pass "
+        "--no-attention-shard to measure the replicated route instead",
+    )
     parser.add_argument("--max-sequence-length", type=int, default=None)
     parser.add_argument("--token-id", type=int, default=9707)
     parser.add_argument(
@@ -163,6 +171,11 @@ def main(argv: list[str] | None = None) -> int:
                 if args.bulk_prefill_rows is not None and args.mode == "tp2"
                 else None
             ),
+            attention_shard=(
+                None
+                if args.attention_shard is None or args.mode != "tp2"
+                else bool(args.attention_shard)
+            ),
         )
         result["build_seconds"] = round(time.perf_counter() - started, 3)
         group = getattr(session, "_shard_group", None)
@@ -173,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
             "reduce_mode": getattr(session, "reduce_mode", None),
             "decode_partial_dtype": getattr(session, "decode_partial_dtype", None),
             "head_shard": getattr(session, "head_shard", None),
+            "attention_shard": getattr(session, "attention_shard", None),
             "per_rank_ffn": (
                 {str(k): int(v) for k, v in group.per_rank_ffn.items()} if group else None
             ),

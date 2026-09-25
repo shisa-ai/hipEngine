@@ -1009,42 +1009,68 @@ replicated projections; it is superseded.
 **Head-sharded attention, measured 2026-09-25.** Head sharding splits full
 attention's heads and the GDN value heads across the ranks, so `attn_output`
 and `ssm_out` become row-parallel and each rank holds a hidden-size partial that
-the post-attention norm consumes. Both arms ran on one host and one shape
-(512-token prompt, `Qwen3.8-27B-Q4_K_M`, even split, `reduce_mode=device`,
-graphed schedule, `bulk_prefill`), interleaved twice:
+the post-attention norm consumes. It is the default for a `mode="tp2"` session
+on the graphed schedule with the device-side reduction. `attention_shard=False`
+selects the replicated route, which keeps the whole attention stack on both
+ranks and is one flag away.
 
-| arm | prefill wall | prefill rate |
-| --- | ---: | ---: |
-| replicated attention | 513.045 / 515.874 ms | 998.0 / 992.5 tok/s |
-| head-sharded attention | 479.580 / 484.549 ms | 1067.6 / 1056.7 tok/s |
+Both routes ran on one host at one shape (512-token prompt, 128 decode tokens,
+`Qwen3.8-27B-Q4_K_M`, even split, `bulk_prefill`, 3 resident repeats),
+interleaved twice:
 
-The sharded route is **6.5% faster at equal rounds (998.0 -> 1067.6 tok/s)** and
-6.1% faster worst-vs-worst, and the arms do not overlap, so the separation
-exceeds the run-to-run spread. Rank 0 (W7900) is the pacer and its phase table
-closes the delta: attention 230.67 -> 121.61 ms, the added attention-output
-reduction 0.33 -> 89.14 ms, the MLP 276.40 -> 263.47 ms, everything else flat,
-for a 513.0 -> 479.6 ms sum against the measured 513.045 -> 479.580 ms wall.
+| arm | prefill | decode | session VRAM per rank |
+| --- | ---: | ---: | ---: |
+| replicated attention | 982.16 / 989.80 tok/s | 37.51 / 37.53 tok/s | 15.279 GiB |
+| head-sharded attention | 1056.27 / 1046.27 tok/s | 41.55 / 41.66 tok/s | 11.952 GiB |
 
-The attention saving is the predicted half (116.7 ms modeled, 109.1 measured).
-The reduction is not: it costs **1.39 ms/layer against the 0.93 ms/layer** the
-earlier critical-path model took from this host's exchange measurement, and that
-difference is the whole gap between the predicted 11.7% and the measured 6.5%.
-The reduction moves the same payload as the MLP's (5.24 MB bf16 per rank per
-direction) at the same 1.38 ms/layer, so the two reductions now carry 177 ms of
-a 480 ms prefill. Part of the win is balance rather than arithmetic: with the
-replicated attention halved, rank 1 stops absorbing spin wait in the MLP
-exchange (131.99 -> 103.48 ms), because the even split had made the slower card
-the pacer on a phase both ranks ran in full.
+Sharding is **7.6% / 5.7% faster in prefill, 10.8% / 11.0% faster in decode, and
+3.327 GiB lighter per rank** (-21.8%). Decode gains more than prefill because
+decode is weight-bandwidth-bound and its attention reduction is a ~4 us spin-add
+at rows=1, while the batched prefill reduction costs 1.39 ms/layer.
 
-Correctness at the timed shape: **mean KL 7.32659e-06, top-1 agreement 1.0000,
-identical top-5**. The broader gate is the 64-token agreement probe (mean KL
-0.001169, top-1 0.9844) with an exact host-sum check of both ranks' bf16
-partials at every layer of layers 0-4. Head-sharded attention is **not the
-default**: the flag changes arithmetic and also reaches the captured decode
-graph, so it needs the production-profile KL/top-1/determinism/task gates over a
-decode trajectory, which have not been run. `attention_shard` stays `False` and
-the replicated route stays the registered fallback.
-[Artifact](results/2026-09-25-w7900-tp2-attention-shard-prefill-ab.json).
+An interleaved prefill-only A/B (same host, same shape, `997.96 / 992.49 ->
+1067.60 / 1056.70 tok/s`) attributes the prefill delta on rank 0, which is the
+pacer: attention 230.67 -> 121.61 ms, the added attention-output reduction
+0.33 -> 89.14 ms, the MLP 276.40 -> 263.47 ms, everything else flat, for a
+513.0 -> 479.6 ms sum against the measured 513.045 -> 479.580 ms wall. The
+attention saving is the predicted half (116.7 ms modeled, 109.1 measured). The
+reduction is not: it moves the same payload as the MLP's (5.24 MB bf16 per rank
+per direction) at the same 1.38 ms/layer, so the two reductions carry 177 ms of
+a 480 ms prefill, and a batched reduction below this host's staged-collective
+ceiling is the remaining lever. Part of the win is balance rather than
+arithmetic: with replicated attention halved, rank 1 stops absorbing spin wait
+in the MLP exchange (131.99 -> 103.48 ms), because the even split had made the
+slower card the pacer on a phase both ranks ran in full.
+
+**Correctness, 756 rows per arm over 18 product prompts at the D=42 horizon
+declared in [`docs/EXECUTION-PROFILES.md` 6.5](../docs/EXECUTION-PROFILES.md)**, against a same-revision TP1
+teacher (3 bit-identical sweeps, empty identity diff), on both prefill routes:
+
+| arm | prefill | mean KL | p95 KL | p99 KL | max KL | top-1 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| replicated attention | bulk | 8.370e-05 | 3.955e-04 | 7.547e-04 | 3.691e-03 | 99.47% |
+| head-sharded attention | bulk | 1.034e-04 | 5.083e-04 | 9.799e-04 | 8.461e-03 | 99.60% |
+| replicated attention | token-serial | 9.442e-05 | 4.411e-04 | 1.029e-03 | 4.955e-03 | 99.74% |
+| head-sharded attention | token-serial | 1.106e-04 | 4.831e-04 | 9.776e-04 | 1.357e-02 | 99.74% |
+
+Every bar passes on every arm with 3.7x or better margin (mean bound 1e-03,
+p95 5e-03, p99 2e-02, max 5e-02, top-1 99% global and 97% per category; worst
+category 0.9940) and no prompt breaches. The sharded arms flip no additional
+rows (3 of 756 against the replicated arm's 4 on bulk, 2 against 2 on
+token-serial) while carrying a higher KL tail, which is the shape of
+boundary-rounding noise at near-ties. Two independent processes produced
+**bit-identical KL curves and bit-identical last-row hashes on 18/18 prompts**
+for both arms, so same-schedule determinism holds. The uneven 0.44/0.56 split
+also runs head-sharded (1023.65 tok/s prefill, 43.44 tok/s decode, 10.829 /
+12.391 GiB per rank), and the reduction takes the second half of the exchange
+slot space so the validated unsharded slot layout is not renumbered. Control and
+ownership are unchanged: the same rank-scoped allocation, the same device
+exchange, one extra slot per layer. The production profile's own status stays
+`diagnostic_only`, because the task-quality and BF16-relative gates are
+unqualified for the TP2 route as a whole; what is established here is the
+numerical envelope and the route choice.
+[Artifact](results/2026-09-25-w7900-tp2-attention-shard-route.json) ·
+[phase attribution](results/2026-09-25-w7900-tp2-attention-shard-prefill-ab.json).
 
 **Sustained numerical gate, measured 2026-09-18.** Three arms on one host
 (W7900 rank 0, RX 7900 XTX rank 1), 18 product prompts, 128 teacher-forced

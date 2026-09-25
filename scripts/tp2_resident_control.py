@@ -355,12 +355,18 @@ class NativeARAdapter:
         self.owner.close()
 
 
-def create_native_adapter(model, arm, *, capacity=200, bulk_prefill=False):
+def create_native_adapter(model, arm, *, capacity=200, bulk_prefill=False, attention_shard=None):
     if arm != 'tp2':
         if bulk_prefill:
             raise ValueError('bulk_prefill selects the TP2 rank-local candidate; the TP1 arm is already bulk')
+        if attention_shard:
+            raise ValueError('attention_shard selects a TP2 route; the TP1 arm has no second rank to shard onto')
         return NativeARAdapter(create_resident_control(model, capacity=capacity, capture_rows=False), resident=True)
     from hipengine.distributed.tp2_generate import MlpTP2GenerationSession
+    # ``attention_shard=None`` keeps the session's own default rather than
+    # pinning one, so a harness that does not name the route measures the route
+    # the engine actually ships.
+    extra = {} if attention_shard is None else {'attention_shard': bool(attention_shard)}
     return NativeARAdapter(MlpTP2GenerationSession(model, devices=(0, 1), mode='tp2',
         max_sequence_length=capacity, bulk_prefill=bool(bulk_prefill),
-        bulk_prefill_rows=capacity if bulk_prefill else None), resident=False)
+        bulk_prefill_rows=capacity if bulk_prefill else None, **extra), resident=False)

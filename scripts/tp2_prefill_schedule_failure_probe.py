@@ -15,6 +15,11 @@ revision and reports the whole per-position KL curve for each:
                 sensitivity reference: no TP2 arithmetic is involved)
 ``tp2-serial``  the TP2 session's committed prefill route
 ``tp2-bulk``    the TP2 rank-local bulk prefill candidate
+``tp2-bulk-shard`` the same route with the attention phase head-sharded across
+                   the two ranks instead of replicated on both
+``tp2-serial-shard`` the token-serial prefill route with the same attention head
+                   split, because a default that shards attention reaches both
+                   prefill routes and neither may be ungated
 
 Suite mode (``--prompts all``) walks the whole teacher suite instead of one
 prompt and reports, per arm, how many prompts breach the ceiling and the
@@ -74,7 +79,14 @@ from scripts.tp2_teacher_coverage_broad import (  # noqa: E402
 #: seconds later), which would otherwise block every cross-arm comparison.
 _HOST_PROCESS_FIELDS = ("host",)
 
-ARMS = ("tp1-bulk", "tp1-serial", "tp2-serial", "tp2-bulk")
+ARMS = (
+    "tp1-bulk",
+    "tp1-serial",
+    "tp2-serial",
+    "tp2-bulk",
+    "tp2-bulk-shard",
+    "tp2-serial-shard",
+)
 
 
 def _identity_diff(teacher: dict, current: dict) -> dict[str, dict[str, str]]:
@@ -304,11 +316,16 @@ def main(argv: list[str] | None = None) -> int:
                 adapter.prefill_use_bulk = False
         else:
             adapter = create_native_adapter(
-                args.model, "tp2", capacity=200, bulk_prefill=arm == "tp2-bulk"
+                args.model,
+                "tp2",
+                capacity=200,
+                bulk_prefill=arm.startswith("tp2-bulk"),
+                attention_shard=arm.endswith("-shard"),
             )
         arm_record: dict[str, object] = {
             "prefill_schedule": adapter.prefill_schedule,
             "prefill_use_bulk": adapter.prefill_use_bulk,
+            "attention_shard": bool(getattr(adapter.session, "attention_shard", False)),
             "seconds": 0.0,
         }
         result["arms"] = {**(result.get("arms") or {}), arm: arm_record}
