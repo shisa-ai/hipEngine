@@ -50,7 +50,7 @@
         {
           "row": "128p",
           "decode_incumbent": 51.9685,
-          "decode_candidate": 51.9240,
+          "decode_candidate": 51.924,
           "delta": "-0.1% (flat)",
           "public_wall_s": "3.36 -> 3.37"
         },
@@ -78,5 +78,23 @@
     ],
     "flags_added": "none. The split's precondition (_SPLIT_GATE_PASSED) was retired when its gate passed; decode_slices now returns the policy unconditionally.",
     "fallbacks": "none: below 1024 keys the launcher takes the single-kernel path by policy, which is a measured choice with a named threshold, not a fallback from a failed path."
-  }
+  },
+  "corrections": [
+    {
+      "recorded": "2026-09-26, same iteration, after the device went idle",
+      "corrects": "mechanism.per_launch_ab.full_1024 and performance.interpretation's closing claim that a geometry-aware policy is the obvious next refinement",
+      "reason": "the per-launch A/B was taken while a peer job held the device, and interleaving the arms removes most but not all of that distortion. Re-measured with both GPUs idle, the full geometry at 1024 keys loses 3.5% split, not the 20% the contended pass reported.",
+      "clean_device_ab": {
+        "method": "same harness, arms interleaved, both GPUs idle, two passes per arm",
+        "sliding_1024": "286.0 -> 244.6 us (-14%)",
+        "sliding_2048": "430.1 -> 326.3 us (-24%)",
+        "sliding_8192": "1125.4 -> 854.1 us (-24%)",
+        "full_1024": "276.2 -> 285.8 us (+3.5%, a loss)",
+        "full_2048": "418.5 -> 352.8 us (-16%)",
+        "full_8192": "1287.6 -> 1039.3 us (-19%)"
+      },
+      "conclusion": "the geometry-aware refinement is not worth doing and is closed: the only losing cell is 5 of 30 layers at 9.6 us each, about 48 us per step, or +0.2% end-to-end, against the cost of plumbing head_dim into the selection policy. The clean-device numbers also run 4-10% above the contended ones, so the earlier absolute values were pessimistic across the board.",
+      "kept_out_of_the_row_body": "the amendment is additive; the accepted verdict, the gate and the campaign rows above are unchanged by it"
+    }
+  ]
 }
