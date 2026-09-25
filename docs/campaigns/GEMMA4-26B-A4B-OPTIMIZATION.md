@@ -658,6 +658,34 @@ flags because a configuration has not been benchmarked.
   GGUF dispatch, which selects on row count, so rows == 1 already takes the
   decode branch. Their 3.9 ms is kernel quality too, and the same repack applies.
   Diagnostic only: no product path changed, no row moved.
+  *Diagnostic 2026-09-26 (iteration 33): the routing hypothesis is closed, and
+  the campaign's three-cheap-candidates rule is now in play.* A resolve-level
+  probe over a real 1024-token `LLM.generate()` - spying on
+  `kernels.registry.resolve` and its `gguf_linear` binding - shows every decode
+  projection already taking a decode-shaped GEMV: `gguf_q4_k`,
+  `gguf_q5_1` and `gguf_q5_k` all resolve to
+  `selected_gemv_bf16_bf16_out` (783 / 783 / 27 resolutions), and `gguf_q8_0`
+  takes `pack8_gemv_bf16_bf16_out` at decode while its prefill rows take
+  `exact_prefill_tile16x4_bf16_bf16_out` (205 each).
+  That `gguf_q4_k` selection is **the same kernel iteration 31 measured at 104
+  GB/s** - `gguf_q4_k_selected_gemv_bf16_bf16_out` - so the measurement and the
+  production path are the same code and the loop is closed. There is no faster
+  registered variant to re-route to: `local32_fixed_meta_gemv_decode` exists for
+  q4_k but only with f32 output, which the bf16 scratch cannot consume, and the
+  `pack8_gemv_decode_*` alternative was rejected at the gate in iteration 18
+  (kl_max 2.447, 32/1023 top-1 flips) with no measurable speed win in the first
+  place. This also corrects iteration 15's note, which described the q4_k decode
+  path as running a prefill-shaped kernel; it does not.
+  **Three cheap candidates are now closed by measurement rather than argument:**
+  the fused MoE megakernel (1.85x slower at these shapes, and the wrong
+  activation), the launch-structure refactor (the host cost is hidden and the
+  selected form reaches the same 104 GB/s in 3 launches instead of 16), and the
+  routing change (every projection is already on a decode GEMV). What remains is
+  **kernel work, not dispatch work**: either a Q4_K/Q5_1 decode GEMV that reads
+  the plain block layout with real memory-level parallelism, or the t16 repack
+  that makes the existing vectorized family reachable. The campaign's
+  three-failed-candidates rule therefore applies - the next step is a re-profile
+  or a scope decision, not another routing probe.
   *Gate verdict 2026-09-25: **passed**, and comfortably.* Against the frozen
   8192-context baseline over all 1023 teacher-forced rows: **kl_max 0.006746**
   (bar 0.05), kl_mean 9.03e-06 (0.001), kl_p95 5.25e-06 (0.005), kl_p99
