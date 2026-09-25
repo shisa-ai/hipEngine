@@ -2,7 +2,26 @@
 
 Last updated: **2026-09-25**
 
-MLPerf Edge Agentic fixed **140-turn screen**, physical host **gfx1151 / Radeon
+MLPerf Edge Agentic **speculative 140-turn screen**, physical host **gfx1151 /
+Radeon 8060S**, Qwen3.6-27B Q4_K_M target tensors, 32K context and concurrency 1:
+
+| Engine | Completed | Mean turn latency | Measured phase | Inline command IoU |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine production + Qwen3.6 MTP | 140/140 | 5.665 s | 793.15 s | 0.5586 |
+| llama.cpp HIP + Qwen3.6 MTP | 140/140 | 5.908 s | 827.10 s | 0.6423 |
+| Patched gufo + Qwen3.8 DFlash2 | 140/140 | 7.439 s | 1,041.49 s | 0.6387 |
+
+All three execute speculation and return valid tool calls. MTP arms use a
+separate GGUF with all original target tensor bytes preserved plus NextN
+weights; gufo uses the original target file. hipEngine/llama.cpp target KV is
+BF16, gufo target KV is FP16. Effective cache-inclusive prefill is 4,744 / 6,089 /
+approximately 8,023 tok/s; client-visible TTFT averages 2.535 / 2.872 / 7.039 s.
+Different outputs, tokenization and timing windows preclude a kernel-throughput
+or accuracy-parity claim. Inline IoU is not task correctness; BFCL is pending.
+[Protocol and accounting](mlperf-edge/README.md#speculative-140-turn-comparison-2026-09-25) ·
+[Paired MTP artifact](results/2026-09-25-gfx1151-edge-speculative-140.json).
+
+Earlier **autoregressive 140-turn screen**, physical host **gfx1151 / Radeon
 8060S**, same Qwen3.6-27B Q4_K_M, BF16 KV, 32K window, concurrency 1,
 reasoning off and shipped cache policies:
 
@@ -29,7 +48,7 @@ Draft acceptance is 15.79%; prefix token reuse is 96.55%. Effective prefill is
 approximately 8,023 tok/s (full prompt tokens / pooled prefill seconds, durations
 reconstructed from rounded server rates). Client-visible TTFT averages 7.039 s:
 132/140 responses buffer tool output until essentially completion. The prior
-pair is AR, not the final speculative comparison. Different KV/output settings
+pair below the speculative table is AR. Different KV/output settings
 and no gufo AR control prevent a speculative-speedup or quality-parity claim.
 BFCL has not run. [Timing definitions and checks](mlperf-edge/README.md#patched-gufo-with-cross-version-dflash2-2026-09-25) ·
 [Artifact](results/2026-09-25-gfx1151-gufo-dflash-edge-140.json).

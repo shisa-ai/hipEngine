@@ -24,9 +24,13 @@ preserved. A compatibility-patched gufo run with the unchanged Qwen3.6 target,
 a user-selected Qwen3.8 DFlash2 Q4_K_M draft and FP16 attention KV completes
 140/140 turns in 1,041.49 s (mean 7.439 s, inline IoU 0.6387). Actual draft
 acceptance is 15.79%; prefix token reuse is 96.55%. It buffers tool output on
-132/140 turns. The run record labels the KV and speculation differences;
-hipEngine/llama.cpp speculative reruns and the shared quality diagnostic remain
-pending. Full performance and BFCL gates have not run. Writing this plan
+132/140 turns. The speculative hipEngine/llama.cpp screens also complete all
+140 turns, in 793.15/827.10 s (mean 5.665/5.908 s), with acceptance 86.20%/92.50%
+and prefix reuse 95.31%/95.95%. Their separate GGUF container preserves all
+original target tensor bytes and adds Qwen3.6 NextN weights; the original file
+contains no MTP block. BF16 target KV differs from gufo's FP16 target KV.
+The shared quality diagnostic remains pending. Full performance and BFCL gates
+have not run. Writing this plan
 does not start or resume another optimization
 loop. Kernel tuning, an NVFP4 port,
 Windows bring-up, and an official submission are outside the initial scope.
@@ -360,7 +364,7 @@ justify shrinking the official workload or disabling an implemented feature.
 - [x] Run the fixed 140-turn paired screen; revise the ETA.
 - [ ] Repair harness TPOT's post-first-tool-chunk tokenization before using it
   for decode-rate comparisons; preserve original metrics.
-- [ ] Compare gufo on the frozen Qwen3.6 subset, pinning its executable and actual
+- [x] Compare gufo on the frozen Qwen3.6 subset, pinning its executable and actual
   decoding settings; do not substitute its published Qwen3.8 configuration.
 - [ ] Run the small BFCL diagnostic if needed, without claiming a gate pass.
 - [ ] Run full combined evaluation and same-GGUF baseline; retain both verdicts.
