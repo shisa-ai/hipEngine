@@ -22,21 +22,61 @@
       "tool": "scripts/gemma4_attention_decode_bench.py",
       "protocol": "one launch per measurement window, 30 iterations, device sync at the end",
       "rows": [
-        {"geometry": "sliding head_dim=256 keys=1024", "iteration_22_us": 427.9, "candidate_us": 318.9},
-        {"geometry": "full head_dim=512 keys=1024", "iteration_22_us": 696.0, "candidate_us": 339.8},
-        {"geometry": "sliding head_dim=256 keys=2048", "candidate_us": 441.1},
-        {"geometry": "full head_dim=512 keys=2048", "iteration_22_us": 1174, "candidate_us": 509.5}
+        {
+          "geometry": "sliding head_dim=256 keys=1024",
+          "iteration_22_us": 427.9,
+          "candidate_us": 318.9
+        },
+        {
+          "geometry": "full head_dim=512 keys=1024",
+          "iteration_22_us": 696.0,
+          "candidate_us": 339.8
+        },
+        {
+          "geometry": "sliding head_dim=256 keys=2048",
+          "candidate_us": 441.1
+        },
+        {
+          "geometry": "full head_dim=512 keys=2048",
+          "iteration_22_us": 1174,
+          "candidate_us": 509.5
+        }
       ]
     },
     "campaign_rows": {
       "metric": "decode_tps",
       "command": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --samples 3",
       "label": "g3-pass3-pipeline",
-      "primary": {"row": "1024p", "incumbent": 33.0213, "candidate": 41.9049, "delta": "+26.9%", "prefill_tok_s": 129, "public_wall_s": "11.81 -> 10.58"},
+      "primary": {
+        "row": "1024p",
+        "incumbent": 33.0213,
+        "candidate": 41.9049,
+        "delta": "+26.9%",
+        "prefill_tok_s": 129,
+        "public_wall_s": "11.81 -> 10.58"
+      },
       "other_rows": [
-        {"row": "128p", "decode_incumbent": 47.63, "decode_candidate": 48.56, "prefill_tok_s": "139 -> 139", "public_wall_s": "3.58 -> 3.58"},
-        {"row": "512p", "decode_incumbent": 39.94, "decode_candidate": 46.43, "prefill_tok_s": "135 -> 135", "public_wall_s": "6.96 -> 6.56"},
-        {"row": "4096p", "decode_incumbent": 21.45, "decode_candidate": 25.78, "prefill_tok_s": "108 -> 108", "public_wall_s": "43.80 -> 42.73"}
+        {
+          "row": "128p",
+          "decode_incumbent": 47.63,
+          "decode_candidate": 48.56,
+          "prefill_tok_s": "139 -> 139",
+          "public_wall_s": "3.58 -> 3.58"
+        },
+        {
+          "row": "512p",
+          "decode_incumbent": 39.94,
+          "decode_candidate": 46.43,
+          "prefill_tok_s": "135 -> 135",
+          "public_wall_s": "6.96 -> 6.56"
+        },
+        {
+          "row": "4096p",
+          "decode_incumbent": 21.45,
+          "decode_candidate": 25.78,
+          "prefill_tok_s": "108 -> 108",
+          "public_wall_s": "43.80 -> 42.73"
+        }
       ],
       "regression_check": "decode improved on all four rows (+2.0% to +26.9%), prefill is unchanged within run-to-run noise on all four, public wall time improved or held on all four"
     },
@@ -55,7 +95,7 @@
     "flags": "none: one measured geometry rule inside the launcher, no env var and no fallback chain"
   },
   "provenance": {
-    "commit": "pending (this unit)",
+    "commit": "d1219c241",
     "worklog_entry": "worklog/entries/20260925T210516.062297Z-lhl-gemma-4-decode-attention-pass-3-prefetched-v-loa-21a053.md",
     "gates": {
       "parity": "green (decode parity + attention geometry)",
