@@ -2,14 +2,15 @@
 
 Last updated: **2026-09-26**
 
-A separate **96-case BFCL quality diagnostic** on the same Qwen3.6 target and
-speculative configurations scores hipEngine **52/96**, llama.cpp **76/96**, and
-gufo **73/96**. All cases complete. hipEngine requires explicit parallel-call
-opt-in, which the upstream harness omits; that explains 23 of the 24-case gap
-against llama.cpp. Gufo has three additional failures versus llama.cpp. This
-small diagnostic is not the full accuracy gate or an accuracy-parity finding.
-[Quality results and protocol](mlperf-edge/README.md#bfcl-quality-diagnostic-2026-09-26) ·
-[Artifact](results/2026-09-26-gfx1151-bfcl96-quality.json).
+A **96-case BFCL quality diagnostic** on the same Qwen3.6 target and speculative
+configurations scores hipEngine **75/96**, llama.cpp **76/96**, and gufo **73/96**.
+All cases complete. Correcting hipEngine's omitted `parallel_tool_calls` default
+from disabled to enabled raises its score from 52/96, with 23 newly passing
+parallel-call cases and no regressions. The unchanged llama.cpp/gufo outputs
+are reused. This small diagnostic is not the full accuracy gate or an
+accuracy-parity finding. Performance rows below predate the default repair.
+[Quality results and protocol](mlperf-edge/README.md#parallel-call-default-repair-2026-09-26) ·
+[Artifact](results/2026-09-26-gfx1151-bfcl96-parallel-default.json).
 
 MLPerf Edge Agentic **speculative 140-turn screen**, physical host **gfx1151 /
 Radeon 8060S**, Qwen3.6-27B Q4_K_M target tensors, 32K context and concurrency 1:

@@ -30,9 +30,10 @@ and prefix reuse 95.31%/95.95%. Their separate GGUF container preserves all
 original target tensor bytes and adds Qwen3.6 NextN weights; the original file
 contains no MTP block. BF16 target KV differs from gufo's FP16 target KV.
 The separate fixed BFCL diagnostic completes 96/96 cases in each engine:
-hipEngine 52 correct, llama.cpp 76, gufo 73. The harness omits parallel-call
-opt-in, so hipEngine returns one call on all 32 parallel-call cases; this
-accounts for 23 of its 24-case gap versus llama.cpp. Gufo has three additional
+hipEngine initially 52 correct, llama.cpp 76, gufo 73. Fixing hipEngine's
+OpenAI-incompatible parallel-call opt-in default raises its unchanged-diagnostic
+result to 75/96: all 23 newly passing cases are parallel-call cases, with no
+pass-to-fail regressions. Llama.cpp and gufo outputs are unchanged. Gufo has three additional
 failures versus llama.cpp. These diagnostic scores do not establish accuracy
 parity or certify the full gate. Full performance and BFCL gates
 have not run. Writing this plan

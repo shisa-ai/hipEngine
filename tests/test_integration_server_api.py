@@ -2024,7 +2024,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "allows_pending_tool_calls_at_transcript_end": True,
             "applies_to_session_snapshots": True,
         },
-        "parallel_tool_calls_requires_opt_in": True,
+        "parallel_tool_calls_requires_opt_in": False,
         "parallel_tool_calls": True,
         "streaming_argument_chunks": True,
         "streaming_argument_chunk_chars": 128,
@@ -20660,7 +20660,8 @@ def test_chat_completion_strict_tool_schema_rejects_bounded_subset_violations(ar
     assert "tool_calls" not in choice["message"]
 
 
-def test_chat_completion_parallel_tool_calls_require_explicit_opt_in() -> None:
+@pytest.mark.parametrize("parallel", [None, True])
+def test_chat_completion_parallel_tool_calls_default_on_and_false_disables(parallel) -> None:
     output = (
         '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'
         '<tool_call>{"name":"read","arguments":{"path":"WORKLOG.md"}}</tool_call>'
@@ -20691,7 +20692,7 @@ def test_chat_completion_parallel_tool_calls_require_explicit_opt_in() -> None:
 
     rejected_response = TestClient(rejected).post(
         "/v1/chat/completions",
-        json={"model": "fake-model", "messages": [{"role": "user", "content": "read files"}], "tools": tools},
+        json={"model": "fake-model", "messages": [{"role": "user", "content": "read files"}], "tools": tools, "parallel_tool_calls": False},
     )
     accepted_response = TestClient(accepted).post(
         "/v1/chat/completions",
@@ -20699,7 +20700,7 @@ def test_chat_completion_parallel_tool_calls_require_explicit_opt_in() -> None:
             "model": "fake-model",
             "messages": [{"role": "user", "content": "read files"}],
             "tools": tools,
-            "parallel_tool_calls": True,
+            **({} if parallel is None else {"parallel_tool_calls": parallel}),
         },
     )
 
@@ -20707,6 +20708,38 @@ def test_chat_completion_parallel_tool_calls_require_explicit_opt_in() -> None:
     accepted_choice = accepted_response.json()["choices"][0]
     assert accepted_choice["finish_reason"] == "tool_calls"
     assert len(accepted_choice["message"]["tool_calls"]) == 2
+
+
+@pytest.mark.parametrize("parallel", [None, True, False])
+def test_xml_parallel_default_matches_sampling_and_streaming(parallel) -> None:
+    chunks = [
+        '<tool_call>\n<function=bash>\n<parameter=command>\necho one\n</parameter>\n</function>\n</tool_call>',
+        '<tool_call>\n<function=bash>\n<parameter=command>\necho two\n</parameter>\n</function>\n</tool_call>',
+    ]
+    fake = FakeLLM(outputs=['unused'], stream_chunks=chunks)
+    body = {
+        'model': 'fake-model', 'messages': [{'role': 'user', 'content': 'run both'}],
+        'stream': True, 'chat_template_kwargs': {'enable_thinking': False},
+        'tools': [{'type': 'function', 'function': {'name': 'bash', 'parameters': {
+            'type': 'object', 'properties': {'command': {'type': 'string'}},
+            'required': ['command'],
+        }}}],
+        **({} if parallel is None else {'parallel_tool_calls': parallel}),
+    }
+    from hipengine.server.api import ChatCompletionRequest, _tool_call_sampling_constraint
+    constraint = _tool_call_sampling_constraint(
+        ChatCompletionRequest(**body), fake, chat_default_max_tokens=None,
+    )
+    assert constraint.parallel_tool_calls is (parallel is not False)
+    client = TestClient(create_app(ServerConfig(model='fake-path', served_model_name='fake-model'), llm=fake))
+    payloads = _sse_payloads(client.post('/v1/chat/completions', json=body).text)
+    if parallel is False:
+        assert any(p.get('error', {}).get('code') == 'invalid_tool_call' for p in payloads)
+    else:
+        calls = [c for p in payloads for choice in p.get('choices', [])
+                 for c in choice.get('delta', {}).get('tool_calls', [])]
+        assert len({c['id'] for c in calls}) == 2
+        assert payloads[-1]['choices'][0]['finish_reason'] == 'tool_calls'
 
 
 @pytest.mark.parametrize("truncated", [False, True])
@@ -23377,7 +23410,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
         "allows_pending_tool_calls_at_transcript_end": True,
         "applies_to_session_snapshots": True,
     }
-    assert artifact["capabilities"]["features"]["tools"]["parallel_tool_calls_requires_opt_in"] is True
+    assert artifact["capabilities"]["features"]["tools"]["parallel_tool_calls_requires_opt_in"] is False
     assert artifact["capabilities"]["features"]["tools"]["streaming_argument_chunks"] is True
     assert artifact["capabilities"]["features"]["tools"]["streaming_argument_chunk_chars"] == 128
     assert artifact["capabilities"]["features"]["reasoning_controls"]["token_budget_enforced"] is True

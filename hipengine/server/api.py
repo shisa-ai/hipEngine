@@ -1377,7 +1377,7 @@ def _tools_capability(
             "allows_pending_tool_calls_at_transcript_end": True,
             "applies_to_session_snapshots": True,
         },
-        "parallel_tool_calls_requires_opt_in": True,
+        "parallel_tool_calls_requires_opt_in": False,
         "parallel_tool_calls": True,
         "streaming_argument_chunks": True,
         "streaming_argument_chunk_chars": _TOOL_CALL_ARGUMENT_STREAM_CHARS,
@@ -14110,7 +14110,7 @@ def _grammar_sampling_spec(request, engine):
         if mode!="none" and getattr(target,"model_owned_tool_grammar",False):
             spec = {"format":"qwen4exp_tools","tools":tools,
                     "mode":"required" if mode in {"required","function"} else "auto",
-                    "name":name,"answer":spec,"parallel":bool(request.parallel_tool_calls)}
+                    "name":name,"answer":spec,"parallel":request.parallel_tool_calls is not False}
     if spec is not None:
         if isinstance(request,ChatCompletionRequest):
             thinking = _thinking_control_from_request(request,chat_default_max_tokens=None)
@@ -14164,7 +14164,7 @@ def _tool_call_sampling_constraint(
         tool_names=names,
         mode=constraint_mode,
         envelope="xml",
-        parallel_tool_calls=bool(request.parallel_tool_calls),
+        parallel_tool_calls=request.parallel_tool_calls is not False,
         forbidden_text_prefixes=forbidden,
         thinking_start_marker=_THINKING_START_MARKER if thinking_enabled else None,
         thinking_end_marker=_THINKING_CLOSE_MARKER if thinking_enabled else None,
@@ -18324,7 +18324,7 @@ def _validate_chat_tool_result(
         if strict and mode in {"required", "function"}:
             return _tool_validation_failure("tool_required_not_satisfied")
         return _ToolValidationResult(parsed)
-    if len(parsed.tool_calls) > 1 and not bool(request.parallel_tool_calls):
+    if len(parsed.tool_calls) > 1 and request.parallel_tool_calls is False:
         return _tool_validation_failure("invalid_tool_call")
 
     tools_by_name = _tool_map_by_name(request.tools)

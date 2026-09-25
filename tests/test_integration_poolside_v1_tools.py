@@ -189,7 +189,7 @@ def test_poolside_v1_streaming_fragments_arguments_with_stable_call_id() -> None
 
 
 
-def test_poolside_v1_multiple_calls_require_parallel_opt_in_and_have_distinct_ids() -> None:
+def test_poolside_v1_multiple_calls_default_on_and_false_disables() -> None:
     fixture = _fixture()
     case = next(item for item in fixture["cases"] if item["name"] == "multiple_adjacent_calls")
 
@@ -204,6 +204,7 @@ def test_poolside_v1_multiple_calls_require_parallel_opt_in_and_have_distinct_id
             "model": "fake-model",
             "messages": [{"role": "user", "content": "Weather in both cities?"}],
             "tools": fixture["tools"],
+            "parallel_tool_calls": False,
         },
     )
     assert rejected.status_code == 200
@@ -221,7 +222,6 @@ def test_poolside_v1_multiple_calls_require_parallel_opt_in_and_have_distinct_id
             "model": "fake-model",
             "messages": [{"role": "user", "content": "Weather in both cities?"}],
             "tools": fixture["tools"],
-            "parallel_tool_calls": True,
         },
     )
     assert accepted.status_code == 200

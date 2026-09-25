@@ -7,7 +7,41 @@ The campaign and comparison rules are in
 The first attempt used the upstream runner unchanged. The repaired run uses
 only the coordinator-timestamp patch documented below.
 
+## Parallel-call default repair: 2026-09-26
+
+hipEngine now allows multiple calls when `parallel_tool_calls` is omitted or
+`true`; explicit `false` still restricts output to at most one call. This fixes
+an OpenAI-compatibility defect in host constraints, model-owned grammar and
+result validation. The capability response reports that opt-in is unnecessary.
+
+Rerunning **only hipEngine** with the unchanged 96-case manifest and upstream
+scorer gives **75/96 (78.125%)**, up from 52/96. All 23 newly passing cases are
+parallel-call cases; no prior pass becomes a failure. All requests complete,
+with no missing/empty outputs, active MTP on all 96 and zero recoverable MTP
+failures. Saved llama.cpp and gufo results are not rerun or modified.
+
+| Quality metric | hipEngine fixed | llama.cpp MTP | Gufo DFlash2 |
+| --- | ---: | ---: | ---: |
+| Correct / issued | 75/96 | 76/96 | 73/96 |
+| Overall accuracy | 78.125% | 79.167% | 76.042% |
+| Upstream normalized score | 82.29% | 84.38% | 81.25% |
+| Parallel-call cases correct | 23/32 | 23/32 | 21/32 |
+
+HipEngine and llama.cpp agree on 93/96 pass/fail verdicts. Llama.cpp alone
+passes `irrelevance_16` and `live_parallel_8-4-0`; hipEngine alone passes
+`live_parallel_6-3-0`. This small diagnostic does not establish
+accuracy parity or certify the full gate. The old result below stays as the
+pre-fix baseline. The 140-turn performance rows also predate this default fix;
+no post-fix latency claim is made.
+
+[Repair artifact, exact commands and changed verdicts](../results/2026-09-26-gfx1151-bfcl96-parallel-default.json).
+Raw output: `~/gate-runs/edge-bfcl-quality-20260925/hipengine-parallel-default/`.
+CPU regression suite, focused API/streaming/constraint tests, fixtures and
+smoke checks pass. Tests cover omitted, true and explicit false values.
+
 ## BFCL quality diagnostic: 2026-09-26
+
+The following is the **pre-fix baseline**, preserved without re-scoring.
 
 On a fixed **96-case diagnostic**, gufo passes **73/96 (76.04%)**, llama.cpp
 passes **76/96 (79.17%)**, and hipEngine passes **52/96 (54.17%)**. All three

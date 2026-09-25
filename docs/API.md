@@ -1119,15 +1119,16 @@ prompt/parse plus fail-closed result validator remains authoritative. In
 preamble before a tool call. Required and specific choices admit only tool
 calls. The constraint enforces declared function names and parameter-envelope
 structure; values are opaque text until parsing, and full function JSON Schema
-semantics remain in the post-generation validator. Parallel calls require
-`parallel_tool_calls=true`. The closing XML tag is preserved for parsing rather
+semantics remain in the post-generation validator. Parallel calls are allowed
+when `parallel_tool_calls` is omitted or `true`; explicit `false` limits output
+to at most one call. The closing XML tag is preserved for parsing rather
 than registered as a stop sequence; generic outer-tag repair is not used for
 XML because it can close an unfinished parameter incorrectly. Unless thinking
 is explicitly disabled, the
 grammar also accepts one optional `<think>...</think>` prefix before applying
 the final text/tool branch, including when no tokenized thinking budget owns the
 phase. Once a tool block parses successfully, the
-server also rejects multiple parsed calls unless `parallel_tool_calls=true` is
+server also rejects multiple parsed calls when `parallel_tool_calls=false` is
 explicitly supplied. It does strict result validation when `tool_choice` is
 `none`, `required`, or a specific function, when any tool function declares
 `"strict": true`, or when `parallel_tool_calls` is explicitly supplied. Strict
@@ -1591,7 +1592,7 @@ when `invalid_tool_call_error_mode="hard_error"`.
 | --- | ---: | --- | --- |
 | `unsupported_parameter` | 400 | no | Unsupported request field/value. Legacy `error.code` can be `unsupported_content_type` for non-text chat content parts. |
 | `unsupported_feature` | 501 | no | Requested optional runtime feature is unavailable for the served model, for example tokenizer/counting diagnostics without tokenizer hooks. |
-| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for parsed undeclared tool names, multi-call output without `parallel_tool_calls=true`, strict tool result-validation failures, and unparseable `<tool_call>` markup in tool-enabled requests; opt-in HTTP/SSE hard-error payload when `invalid_tool_call_error_mode="hard_error"`, or an SSE error by default for live XML streams. Compatibility parsing recovers a duplicated `<tool_call>` start marker only when the wrapped inner JSON is valid. |
+| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for parsed undeclared tool names, multi-call output with `parallel_tool_calls=false`, strict tool result-validation failures, and unparseable `<tool_call>` markup in tool-enabled requests; opt-in HTTP/SSE hard-error payload when `invalid_tool_call_error_mode="hard_error"`, or an SSE error by default for live XML streams. Compatibility parsing recovers a duplicated `<tool_call>` start marker only when the wrapped inner JSON is valid. |
 | `schema_violation` | 422 | no | Request body or server-side request validation errors; also normal `finish_details.reason` for invalid `response_format` or strict tool schema results. Legacy `error.code` is `validation_error` or `invalid_request`. |
 | `invalid_continuation` | 400 | no | Unknown, consumed, wrong-endpoint, wrong-model, or otherwise incompatible `continuation_id`. |
 | `continuation_expired` | 410 | no | Known `continuation_id` that expired before resume. |
