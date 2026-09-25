@@ -1,0 +1,82 @@
+{
+  "kind": "gemma4_campaign_candidate",
+  "verdict": "accepted",
+  "recorded": "2026-09-26, gemma4-moe-perf/g0 iteration 28",
+  "candidate": "two-phase decode split: phase 1 writes pass 2's weights and denominator, gemma4_attention_decode_slice_kernel accumulates the weighted-V sum over a slice of the key range, and a combine sums the slices (hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip)",
+  "reason": "the decode kernel's parallelism is structurally low - grid = tokens * num_heads launches 16 blocks on a 96-CU GPU - and pass 3 is the part that can be split without touching the numerics: phase 1 keeps the incumbent kernel's passes 1 and 2, so the denominator and every summand's weight are the single-kernel path's own f32 values and the only change is the association order of an f32 sum. That is what distinguishes it from the per-slice-max split rejected on 2026-09-24 (kl_max 0.304), which rescaled per slice and amplified bf16-KV error.",
+  "mechanism": {
+    "structure": "phase 1 = the existing key-class kernel stopping after pass 2, writing weights (tokens*num_heads*keys f32) and a (denominator, row max) header; phase 2 = one block per (token, head, slice); combine = one block per (token, head), summing slices in ascending order and dividing by phase 1's denominator",
+    "workspace": "per-stream and grow-only, under 1 MiB at the artifact's geometry; a null workspace or slices <= 1 selects the single-kernel path, and with the split parameters null the incumbent kernel is bit-for-bit unchanged",
+    "per_launch_ab": {
+      "method": "scripts/gemma4_attention_decode_bench.py run twice per arm with the arms interleaved, split on (public wrapper as shipped) vs split forced to 1 by monkeypatching decode_slices, on GPU1",
+      "sliding_1024": "275.6 -> 229.4 us (-17%)",
+      "sliding_8192": "1153.3 -> 915.3 us (-21%)",
+      "full_1024": "245.4 -> 293.3 us (+20%, a loss)",
+      "full_8192": "1273.1 -> 1015.7 us (-20%)",
+      "note": "the first A/B pass was discarded: it reported sliding/1024 at 563 us for the split against 256 us for the single kernel, which contradicts the end-to-end row, and re-running with the arms interleaved gave the stable 229 vs 276 above. The discarded pass was taken while a peer job held 10.7 GiB of the device; the retained one while it held 4.5 GiB. Within-run interleaving is what makes these ratios usable at all under contention, and absolute values are not."
+    },
+    "slice_policy_correction": {
+      "entry_threshold": "1024 keys, not 512. Paired interleaved 512p rows: single 48.0433 and 47.9830 against split 46.5579 and 46.5885 tok/s, so a 512-key context is 3.0% slower split than unsplit - the fixed cost (weights round trip, two extra launches, combine) is not paid back at that length. 1024 keys measures 17% faster per launch.",
+      "growth": "aggressive above the threshold. Holding every slice at 512+ keys was tried and rejected by the primary row itself: at a 1024-token prompt, 4 slices over keys 1025-1151 measures 45.3015 tok/s against 41.7934 with 2 slices, so more slices is better once splitting at all, and the count doubles while a slice still carries more than 512 keys, capped at 4."
+    }
+  },
+  "correctness": {
+    "gate": "scripts/gemma4_teacher_forced_gate.py gate --baseline /mnt/nvme1/gemma4-eval/teacher-forced-6224cc0576fb.npz, 1023 teacher-forced rows: kl_max 0.006746 (bar 0.05), kl_mean 9.027e-06 (0.001), kl_p95 5.248e-06 (0.005), kl_p99 6.118e-05 (0.02), top-1 rate 1.0 with zero flips (bar 0.99), passed true, failed []",
+    "gate_device": "measured on GPU0 (Radeon Pro W7900) because a peer job held ~7 GiB of GPU1 and every attempt there died in hipMalloc, including at context 4096. GPU0 is the same gfx1100 ISA running the same compiled kernel, so the arithmetic is identical and the numerics verdict transfers; performance does not transfer, and every timing row below is GPU1.",
+    "parity": "tests/test_gpu_gemma4_attention_decode_parity.py 65/65: the 57 incumbent tests still assert bit-equality and the 8 split A/B tests assert 1e-4 relative in f32 and one bf16 ulp on the artifact's two real geometries at 1024, 2055 and 8192 keys",
+    "intended_path": "confirmed on the public surface, not inferred from timings: hipengine.LLM.generate() with the campaign's 1024-token prompt reports gemma4_decode_selection() == 2 (key-class two-phase split) via the newly exported introspection symbol. A short 43-token generation reports 1, which is the policy working rather than a fallback - the split starts at 1024 keys.",
+    "red_first": "the split A/B tests were written before the split worked and failed on the first run, catching a real bug: phase 1 wrote weights at split_weights[j] without the per-head offset, so all 16 heads wrote the same row. The same pass found that the pre-existing parity test called the decode symbols through the 12-argument argtypes tuple, which would have handed the kernel a garbage workspace pointer once the parameters existed."
+  },
+  "performance": {
+    "metric": "decode_tps",
+    "command": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --samples 3",
+    "label": "two-phase-split",
+    "campaign_rows": {
+      "primary": {
+        "row": "1024p",
+        "incumbent": 43.9827,
+        "candidate": 45.3015,
+        "delta": "+3.0%",
+        "public_wall_s": "10.88 -> 10.76"
+      },
+      "other_rows": [
+        {
+          "row": "512p",
+          "decode_incumbent": 48.1231,
+          "decode_candidate": 48.0158,
+          "delta": "-0.2% (flat)",
+          "public_wall_s": "6.43 -> 6.44"
+        },
+        {
+          "row": "128p",
+          "decode_incumbent": 51.9685,
+          "decode_candidate": 51.9240,
+          "delta": "-0.1% (flat)",
+          "public_wall_s": "3.36 -> 3.37"
+        },
+        {
+          "row": "4096p",
+          "decode_incumbent": 28.5889,
+          "decode_candidate": 31.7066,
+          "delta": "+10.9%",
+          "public_wall_s": "42.34 -> 41.73"
+        }
+      ],
+      "regression_check": "no row regressed. The split is selected only at 1024 keys and above, so the 128p and 512p rows run the incumbent single-kernel path unchanged; the 512p row is additionally covered by the paired interleaved A/B above, which is what set the threshold. Prefill is untouched by construction (the split applies only at tokens == 1) and public wall moved with decode on every row.",
+      "caveat": "the primary row is a median of 3 samples; the other rows are single samples measured in the same session as the corrected policy, and their incumbents come from the previous accepted row's artifact. The 512p threshold decision does not rest on those single samples - it rests on the paired interleaved A/B, whose two arms are 48.04/47.98 against 46.56/46.59."
+    },
+    "campaign_position": "43.9827 -> 45.3015 tok/s at 1024p/128o, against the 16.0931 baseline and the campaign's 70%-of-Qwen stop condition",
+    "interpretation": "the win is smaller at the metric row than at 4096p because the split's benefit scales with keys per slice while its fixed cost does not. The 0.72 ms saved per step at the metric row is consistent with the per-launch A/B weighted for the artifact's layer mix (25 sliding + 5 full at ~1152 keys: about 8.1 -> 7.2 ms), so iteration 27's open question - why 0.72 ms rather than the ~2.4 ms that iteration 22's 57-71% pass-3 share predicted - is answered by that share being too high, not by the slice kernel being inefficient. The one losing cell is the full geometry at short context (+20% at full/1024, 5 of 30 layers), which is worth about 0.24 ms per step and is the obvious next refinement: a geometry-aware policy could keep the full layers unsplit below ~2048 keys. That refinement is deliberately not attempted here because the A/B that would justify it was taken under contention."
+  },
+  "scope": {
+    "files": [
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py",
+      "tests/test_gpu_gemma4_attention_decode_parity.py",
+      "tests/test_unit_gemma4_attention_routing.py",
+      "docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md"
+    ],
+    "flags_added": "none. The split's precondition (_SPLIT_GATE_PASSED) was retired when its gate passed; decode_slices now returns the policy unconditionally.",
+    "fallbacks": "none: below 1024 keys the launcher takes the single-kernel path by policy, which is a measured choice with a named threshold, not a fallback from a failed path."
+  }
+}

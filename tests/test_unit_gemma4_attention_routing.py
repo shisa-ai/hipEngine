@@ -47,26 +47,28 @@ def test_small_head_dim_stays_on_decode_kernel():
 def test_split_slice_policy_covers_both_sides_of_every_threshold():
     """The split's context thresholds, exercised off the threshold points too.
 
-    ``decode_slices`` is the gate that decides whether a decode step takes the
-    single-kernel path or the two-phase split, so its boundaries matter: 512 is
-    the first length that can be split, 1024 the last 2-slice length, and 2048
-    and beyond the 4-slice plateau. Values unrelated to any boundary (3000,
-    7000) are included so the test does not only prove the thresholds.
+    ``decode_slices`` decides whether a decode step takes the single-kernel path
+    or the two-phase split, so its boundaries matter. Two measured facts set
+    them: the split's fixed cost needs 1024 keys to be paid back (a 512-key
+    context is 3.0% slower split than unsplit), and above that threshold more
+    slices is better (4 slices beat 2 at a 1024-token prompt). Values unrelated
+    to any boundary (300, 700, 3000, 7000) are included so the test does not only
+    prove the thresholds.
     """
 
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import decode_slices
 
     policy = decode_slices
     assert policy(1) == 1
-    assert policy(256) == 1  # unrelated to any boundary
-    assert policy(511) == 1  # just below the first splittable length
-    assert policy(512) == 1  # exactly on it: the split is not yet worth it
-    assert policy(513) == 2  # just above it
-    assert policy(768) == 2  # unrelated
-    assert policy(1024) == 2  # the last 2-slice length
-    assert policy(1025) == 4  # just above it
-    assert policy(2048) == 4  # exactly on the 4-slice boundary
+    assert policy(300) == 1  # unrelated to any boundary
+    assert policy(700) == 1  # unrelated, inside the single-kernel range
+    assert policy(1023) == 1  # just below the first splittable length
+    assert policy(1024) == 2  # exactly on it: 2 slices beat the single kernel
+    assert policy(1025) == 4  # just above it: doubling resumes
+    assert policy(1152) == 4  # the 1024p row's decode range
+    assert policy(2048) == 4  # the 4-slice plateau
     assert policy(3000) == 4  # unrelated, inside the plateau
+    assert policy(4096) == 4  # the campaign's long-context row
     assert policy(7000) == 4  # unrelated, inside the plateau
     assert policy(8192) == 4  # the artifact's context cap
 

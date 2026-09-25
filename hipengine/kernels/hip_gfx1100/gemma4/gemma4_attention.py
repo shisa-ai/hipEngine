@@ -62,6 +62,7 @@ _ARGTYPES_DECODE = _ARGTYPES_PREFILL + (ctypes.c_void_p, ctypes.c_int)
 
 _DECODE_SYMBOLS = (_SYMBOL_DECODE_BF16, _SYMBOL_DECODE_F32)
 _SYMBOL_SPLIT_WORKSPACE_BYTES = "hipengine_gemma4_decode_split_workspace_bytes"
+_SYMBOL_DECODE_SELECTION = "hipengine_gemma4_decode_selection"
 # Split scratch, grown and reused rather than freed per launch: freeing under an
 # in-flight stream is a use-after-free and a fresh hipMalloc would become a
 # per-launch cost, the same convention the runtime's staging buffers use. Keyed
@@ -74,20 +75,36 @@ _SPLIT_WORKSPACES: dict = {}
 def decode_slices(keys: int) -> int:
     """Key slices the two-phase decode split uses at this context length.
 
-    The split exists because the decode kernel's parallelism is structurally low:
-    ``grid = tokens * num_heads`` launches 16 blocks on a 96-CU GPU, and
-    ``scripts/gemma4_attention_scale_probe.py`` measures per-head time improving
-    6.9x going from 16 to 64 blocks while 128 blocks is worse in total time than
-    64. One slice per ~512 keys puts a 1024-key row at 2 slices (32 blocks) and a
-    2048-key row at 4 (64 blocks, the measured optimum). Below 512 keys the
-    single-kernel path already has enough work per block to amortise its launch,
-    and the split would pay two extra kernels and a workspace round trip for
-    nothing.
+    Two measured effects, and they point in different directions.
+
+    *Whether* to split at all is decided by the split's fixed cost - a weights
+    round trip through global memory, two extra kernel launches and a combine -
+    which needs a long enough context to be paid back. Paired interleaved runs
+    put a 512-key context 3.0% *slower* than the single kernel (46.57 vs 48.01
+    tok/s, two pairs each), while 1024 keys is 17% faster per launch. So the
+    entry threshold is 1024 keys.
+
+    *How many* slices, once splitting, is a pure parallelism question, and more
+    is better until the cap: at a 1024-token prompt the row measures 45.33 tok/s
+    with 4 slices over keys 1025-1151 against 41.79 with 2, so the growth below
+    the threshold stays aggressive (doubling while a slice still carries more
+    than 512 keys) rather than holding every slice at 512 or more.
 
     Its execution-profile gate passed on 2026-09-25 - kl_max 0.0067 against the
-    0.05 bar with zero top-1 flips over 1023 teacher-forced rows - so this is
-    the default decode path above 512 keys.
+    0.05 bar with zero top-1 flips over 1023 teacher-forced rows.
     """
+
+    if keys < 1024:
+        return 1
+    slices = 1
+    while slices < 4 and keys > slices * 512:
+        slices <<= 1
+    return slices
+
+    slices = 1
+    while slices < 4 and keys >= (slices * 2) * 512:
+        slices <<= 1
+    return slices
 
     if keys < 512:
         return 1
@@ -95,6 +112,21 @@ def decode_slices(keys: int) -> int:
     while slices < 4 and keys > slices * 512:
         slices <<= 1
     return slices
+
+
+def decode_selection(library: ctypes.CDLL | None = None) -> int:
+    """Which decode kernel the launcher last selected.
+
+    0 = block kernel, 1 = key-class single kernel, 2 = key-class two-phase split.
+    Introspection for confirming that the intended path ran: the three are
+    numerically close by design, so a timing or a parity test cannot tell them
+    apart, and a caller who needs to know which one a real request took needs
+    this rather than an inference.
+    """
+
+    library = library or build_gemma4_attention(load=True)
+    fn = signed_kernel_fn(library, _SYMBOL_DECODE_SELECTION, (), ctypes.c_int)
+    return int(fn())
 
 
 def split_workspace_bytes(

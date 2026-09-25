@@ -526,6 +526,33 @@ flags because a configuration has not been benchmarked.
   speed mechanism is the rejected per-slice-max split's (0.102 vs 0.263
   ms/launch) with the rescale removed, and the open question is whether
   association alone clears the kl_max bar.
+  *Accepted 2026-09-26 (iteration 28): the slice policy was wrong and the
+  acceptance rows caught it.* The first shipped policy split from 513 keys. The
+  512p row then measured 48.12 -> 46.31, and a paired interleaved A/B (single
+  48.0433 and 47.9830 against split 46.5579 and 46.5885 tok/s) confirmed it: a
+  512-key context is 3.0% *slower* split than unsplit, because the split's fixed
+  cost - a weights round trip through global memory, two extra kernel launches
+  and a combine - is not paid back at that length. Raising the entry threshold
+  to 1024 keys fixed it (512p back to 48.0158), but the first attempt at the
+  fix also held every slice at 512+ keys, which the primary row itself rejected:
+  4 slices over keys 1025-1151 measure 45.3015 tok/s against 41.7934 with 2. The
+  final policy is therefore an entry threshold of 1024 keys and then aggressive
+  growth (doubling while a slice still carries more than 512 keys, capped at 4).
+  Final rows, incumbent -> candidate: **1024p 43.9827 -> 45.3015 (+3.0%)**,
+  4096p 28.5889 -> 31.7066 (**+10.9%**), 512p 48.1231 -> 48.0158 (flat), 128p
+  51.9685 -> 51.9240 (flat). The per-launch A/B, taken with the arms interleaved
+  (the first pass was discarded: it reported the split 2.2x slower at
+  sliding/1024, which contradicts the end-to-end row, and was taken while a peer
+  job held 10.7 GiB of the device), puts sliding/1024 at -17%, sliding/8192 at
+  -21%, full/8192 at -20% and full/1024 at +20%. That last cell is the one loss,
+  worth ~0.24 ms per step over 5 of 30 layers, and a geometry-aware policy is the
+  obvious next refinement; it is not attempted yet because the A/B that would
+  justify it was taken under contention. The same A/B answers iteration 27's open
+  question - the weighted layer mix predicts ~0.9 ms saved against the 0.72 ms
+  measured, so the ~2.4 ms that iteration 22's 57-71% pass-3 share implied was an
+  overestimated share rather than an inefficient kernel.
+  Evidence row
+  `2026-09-26-gemma4-26b-a4b-two-phase-split-accepted.json`.
   *Gate verdict 2026-09-25: **passed**, and comfortably.* Against the frozen
   8192-context baseline over all 1023 teacher-forced rows: **kl_max 0.006746**
   (bar 0.05), kl_mean 9.03e-06 (0.001), kl_p95 5.25e-06 (0.005), kl_p99

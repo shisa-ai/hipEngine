@@ -1138,6 +1138,13 @@ extern "C" int hipengine_gemma4_attention_prefill_f32(
 // passing ``split_slices <= 1`` or a null workspace selects the single-kernel
 // path. The caller owns the allocation because it is reused across steps and
 // must outlive the in-flight stream.
+// Which decode kernel the launcher last selected, exported so a caller can
+// confirm the intended path actually ran rather than inferring it from timings:
+// 0 = block kernel, 1 = key-class single kernel, 2 = key-class two-phase split.
+extern "C" int hipengine_gemma4_decode_selection(void) {
+  return gemma4_decode_selection();
+}
+
 // Workspace sizing for the two-phase split, exported so the Python launcher and
 // the kernel share one definition of the layout: a mismatch between the two
 // would be memory corruption, not a slow path.
