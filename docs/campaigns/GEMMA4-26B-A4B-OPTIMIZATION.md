@@ -508,6 +508,35 @@ flags because a configuration has not been benchmarked.
   and 71% of the full one, while passes 1 and 2 together are only 183-204 us. This
   is the variant to build and gate; the per-slice-max variant stays rejected.
   `2026-09-25-gemma4-26b-a4b-tree2-interleave-rejected.json`.
+  *Implemented 2026-09-25 (iteration 28).* The two-phase split is built and on the
+  default path. Phase 1 is the existing class kernel stopping after pass 2 and
+  writing its weights plus a `(denominator, row max)` header; phase 2 is
+  `gemma4_attention_decode_slice_kernel`, which accumulates the weighted V sum
+  over its slice of the key range; a combine sums the slices in ascending order
+  and divides by phase 1's denominator. `decode_slices(keys)` keeps 1 slice below
+  512 keys (the single-kernel path, unchanged), 2 from 513-1024 and 4 from 1025
+  up, so the metric context's sliding layers run 32 blocks and its full layers
+  32-64 - the probe's saturation point. The workspace is per-stream and
+  grow-only; every launch the runner makes is on the default stream. Contract:
+  phase 1's denominator and every summand's weight are the incumbent path's own
+  f32 values, so the sole change is the association order of the f32 weighted
+  sum. Measured on the artifact's two real geometries at 1024, 2055 and 8192
+  keys, the split agrees with the single-kernel path to 1e-4 relative in f32 and
+  within one bf16 ulp, where the incumbent parity tests assert bit-equality. The
+  speed mechanism is the rejected per-slice-max split's (0.102 vs 0.263
+  ms/launch) with the rescale removed, and the open question is whether
+  association alone clears the kl_max bar.
+  *Measured 2026-09-25 (iteration 28):* **45.4170 tok/s** median of 3 samples at
+  1024p/128o against the incumbent's 43.9827 - **+3.26%**, 22.74 -> 22.02 ms per
+  step, 0.72 ms saved. That is far below what the probe's 3.3x per-head scaling
+  at 32 blocks implies if pass 3 carried iteration 22's 57-71% share: halving a
+  57% pass 3 would have saved ~2.4 ms, not 0.72. So either the real pass-3 share
+  of the production step is near 17% rather than the ablation's figure, or the
+  slice kernel is less efficient per unit work than the whole-kernel probe
+  suggested. `scripts/gemma4_attention_decode_bench.py` can separate those two
+  in one bounded run at the real geometry, and it should be run before any
+  further split tuning. The split is kept because it is measured-positive and
+  correct, not because the mechanism is understood yet.
   *Iteration 26 closing diagnostic (`scripts/gemma4_attention_scale_probe.py`,
   sliding geometry head_dim=256 keys=1024, 30 iterations):* varying the head count
   varies the number of launched blocks, since `grid = tokens * num_heads` and each

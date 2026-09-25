@@ -400,7 +400,14 @@ __global__ void gemma4_attention_decode_class_kernel(
     int64_t head_dim,
     float scale,
     int64_t tokens,
-    int64_t keys) {
+    int64_t keys,
+    // Split phase 1 (see gemma4_attention_decode_slice_kernel): when
+    // ``split_weights`` is non-null this kernel stops after pass 2 and writes the
+    // precomputed weights plus the (denominator, row max) header instead of
+    // running pass 3. The incumbent single-kernel path passes nullptr and is
+    // byte-for-byte the kernel it was before this parameter existed.
+    float* __restrict__ split_weights = nullptr,
+    float* __restrict__ split_header = nullptr) {
   constexpr int kWarpLanes = 32;
   constexpr int kOwn = 8;                       // tree lanes per warp lane
   constexpr int kTreeLanes = kWarpLanes * kOwn; // 256, the block kernel's lane count
@@ -518,6 +525,22 @@ __global__ void gemma4_attention_decode_class_kernel(
   // all threads reach gemma4_decode_tree1's barriers, and their sums are empty.
   const float denominator = partial[0];
 
+  if (split_weights != nullptr) {
+    // Split phase 1: hand pass 3 to gemma4_attention_decode_slice_kernel. The
+    // weights written here are the ones pass 3 would have read from LDS, and
+    // the header carries the row max the slice weights were built against, so
+    // every slice's summands are bit-identical to the incumbent path's and the
+    // combine is a plain sum rather than a per-slice rescale.
+    for (int64_t j = tid; j < keys; j += threads) {
+      split_weights[head_index * keys + j] = logits_s[j];
+    }
+    if (tid == 0) {
+      split_header[head_index * 2] = denominator;
+      split_header[head_index * 2 + 1] = row_max;
+    }
+    return;
+  }
+
   // Pass 3: the block kernel's weighted sums with the precomputed weight, but
   // with the V loads issued kPrefetch keys ahead of the accumulation that
   // consumes them. Each lane walks all `keys` with one 2-byte load per key
@@ -573,6 +596,120 @@ __device__ inline float gemma4_decode_tree1(
   }
   __syncthreads();
   return partial[0];
+}
+
+// Split phase 2: one block per (token, head, slice) accumulates the weighted V
+// sum over its slice of the key range, reading the weights phase 1 wrote.
+//
+// This is the only changed arithmetic in the two-phase split: the incumbent
+// accumulates one ascending-j chain over every key, and this accumulates
+// ascending j within a slice and then sums the slices in ascending order. Every
+// summand's weight is the same f32 value the incumbent path uses - there is no
+// per-slice max and no second expf - so the perturbation is the association
+// order of an f32 sum, not a rescale.
+//
+// The slicing exists because the kernel's parallelism is structurally low:
+// grid = tokens * num_heads puts 16 blocks on a 96-CU GPU, and
+// scripts/gemma4_attention_scale_probe.py measures per-head time improving 6.9x
+// from 16 to 64 blocks.
+template <typename scalar_t, int kDimsPerLane, int kPrefetch>
+__global__ void gemma4_attention_decode_slice_kernel(
+    const float* __restrict__ weights,
+    const scalar_t* __restrict__ value,
+    float* __restrict__ slice_out,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t keys,
+    int64_t slices) {
+  const unsigned int threads = blockDim.x;
+  const unsigned int tid = threadIdx.x;
+  const int64_t linear = static_cast<int64_t>(blockIdx.x);
+  const int64_t token = linear / (num_heads * slices);
+  const int64_t head = (linear / slices) % num_heads;
+  const int64_t slice = linear % slices;
+  const int64_t kv_head = head / (num_heads / num_kv_heads);
+  const int64_t head_index = token * num_heads + head;
+
+  // Ceil-divided slices, with the last one clamped: the same range phase 1 and
+  // the combine must agree on.
+  const int64_t slice_len = (keys + slices - 1) / slices;
+  const int64_t j_begin = slice * slice_len;
+  int64_t j_end = j_begin + slice_len;
+  if (j_end > keys) {
+    j_end = keys;
+  }
+  if (j_begin >= j_end) {
+    return;
+  }
+
+  const float* w_row = weights + head_index * keys;
+  const scalar_t* v_base = value + kv_head * head_dim;
+  const int64_t v_row_stride = num_kv_heads * head_dim;
+  float* out_row = slice_out + (head_index * slices + slice) * head_dim;
+
+  const int64_t step = static_cast<int64_t>(threads) * kDimsPerLane;
+  for (int64_t d0 = static_cast<int64_t>(tid) * kDimsPerLane; d0 < head_dim; d0 += step) {
+    gemma4_pair2<scalar_t> pipe[kPrefetch];
+#pragma unroll
+    for (int n = 0; n < kPrefetch; ++n) {
+      const int64_t jn = j_begin + n;
+      pipe[n] = jn < j_end
+          ? *reinterpret_cast<const gemma4_pair2<scalar_t>*>(
+                v_base + jn * v_row_stride + d0)
+          : gemma4_pair2<scalar_t>{static_cast<scalar_t>(0), static_cast<scalar_t>(0)};
+    }
+    float acc_lo = 0.0f;
+    float acc_hi = 0.0f;
+    for (int64_t j = j_begin; j < j_end; ++j) {
+      const gemma4_pair2<scalar_t> v_cur = pipe[0];
+#pragma unroll
+      for (int n = 0; n < kPrefetch - 1; ++n) {
+        pipe[n] = pipe[n + 1];
+      }
+      const int64_t jn = j + kPrefetch;
+      pipe[kPrefetch - 1] = jn < j_end
+          ? *reinterpret_cast<const gemma4_pair2<scalar_t>*>(
+                v_base + jn * v_row_stride + d0)
+          : gemma4_pair2<scalar_t>{static_cast<scalar_t>(0), static_cast<scalar_t>(0)};
+      const float weight = w_row[j];
+      if (weight == 0.0f) {
+        continue;
+      }
+      acc_lo += weight * gemma4_attn_to_float(v_cur.lo);
+      if (kDimsPerLane == 2) {
+        acc_hi += weight * gemma4_attn_to_float(v_cur.hi);
+      }
+    }
+    out_row[d0] = acc_lo;
+    if (kDimsPerLane == 2 && d0 + 1 < head_dim) {
+      out_row[d0 + 1] = acc_hi;
+    }
+  }
+}
+
+// Split phase 3: sum the slice partials in ascending slice order and divide by
+// phase 1's denominator. One block per (token, head); each lane owns its own d
+// stride and reads the same few slice values, so no synchronisation is needed.
+template <typename scalar_t>
+__global__ void gemma4_attention_decode_combine_kernel(
+    const float* __restrict__ slice_out,
+    const float* __restrict__ header,
+    scalar_t* __restrict__ out,
+    int64_t num_heads,
+    int64_t head_dim,
+    int64_t slices) {
+  const int64_t head_index = static_cast<int64_t>(blockIdx.x);
+  const float denominator = header[head_index * 2];
+  const float* slices_base = slice_out + head_index * slices * head_dim;
+  scalar_t* out_row = out + head_index * head_dim;
+  for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
+    float acc = 0.0f;
+    for (int64_t s = 0; s < slices; ++s) {
+      acc += slices_base[s * head_dim + d];
+    }
+    out_row[d] = gemma4_attn_to_scalar<scalar_t>(acc / denominator);
+  }
 }
 
 template <typename scalar_t, int kTile>
@@ -770,6 +907,84 @@ inline int& gemma4_decode_selection() {
   return selection;
 }
 
+// Bytes of workspace the split needs for one launch: the weights phase 1 hands
+// to phase 2 (tokens * num_heads * keys floats), the (denominator, row max)
+// header per (token, head), and the f32 slice partials
+// (tokens * num_heads * slices * head_dim floats).
+size_t gemma4_decode_split_workspace_bytes(
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t head_dim,
+    int64_t keys,
+    int slices) {
+  const size_t weights = static_cast<size_t>(tokens) * num_heads * keys;
+  const size_t header = static_cast<size_t>(tokens) * num_heads * 2;
+  const size_t partials =
+      static_cast<size_t>(tokens) * num_heads * slices * head_dim;
+  return (weights + header + partials) * sizeof(float);
+}
+
+template <typename scalar_t, int kHalves, int kDimsPerLane>
+int gemma4_decode_split_launch(
+    const scalar_t* query,
+    const scalar_t* key,
+    const scalar_t* value,
+    const uint8_t* keep_mask,
+    scalar_t* out,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t tokens,
+    int64_t keys,
+    hipStream_t stream,
+    float* workspace,
+    int slices) {
+  constexpr int kKeysPerTile = 2;
+  constexpr unsigned int kThreads = 512;
+  constexpr int kPrefetch = 4;
+  const size_t shared_bytes =
+      (static_cast<size_t>(keys) + 256 * (kThreads / kGemma4ReduceThreads) +
+       kThreads / 32) * sizeof(float);
+  if (shared_bytes > 64 * 1024 || workspace == nullptr || slices < 2) {
+    return -1;
+  }
+  float* weights = workspace;
+  float* header = weights + static_cast<size_t>(tokens) * num_heads * keys;
+  float* partials = header + static_cast<size_t>(tokens) * num_heads * 2;
+
+  const unsigned int head_grid = static_cast<unsigned int>(tokens * num_heads);
+  gemma4_attention_decode_class_kernel<scalar_t, kHalves, kKeysPerTile>
+      <<<dim3(head_grid), dim3(kThreads), shared_bytes, stream>>>(
+          query, key, value, keep_mask, out, num_heads, num_kv_heads, head_dim, scale, tokens,
+          keys, weights, header);
+  int rc = static_cast<int>(hipGetLastError());
+  if (rc != 0) {
+    return rc;
+  }
+
+  const unsigned int slice_grid =
+      static_cast<unsigned int>(tokens * num_heads * slices);
+  if (head_dim >= 2 * static_cast<int64_t>(kThreads)) {
+    gemma4_attention_decode_slice_kernel<scalar_t, 2, kPrefetch>
+        <<<dim3(slice_grid), dim3(kThreads), 0, stream>>>(
+            weights, value, partials, num_heads, num_kv_heads, head_dim, keys, slices);
+  } else {
+    gemma4_attention_decode_slice_kernel<scalar_t, 1, kPrefetch>
+        <<<dim3(slice_grid), dim3(kThreads), 0, stream>>>(
+            weights, value, partials, num_heads, num_kv_heads, head_dim, keys, slices);
+  }
+  rc = static_cast<int>(hipGetLastError());
+  if (rc != 0) {
+    return rc;
+  }
+
+  gemma4_attention_decode_combine_kernel<scalar_t>
+      <<<dim3(head_grid), dim3(kThreads), 0, stream>>>(
+          partials, header, out, num_heads, head_dim, slices);
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename scalar_t>
 int launch_gemma4_attention_decode(
     const scalar_t* query,
@@ -783,7 +998,9 @@ int launch_gemma4_attention_decode(
     int64_t head_dim,
     float scale,
     hipStream_t stream,
-    int64_t keys) {
+    int64_t keys,
+    float* split_workspace,
+    int split_slices) {
   if (tokens <= 0 || keys <= 0 || num_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
@@ -801,6 +1018,19 @@ int launch_gemma4_attention_decode(
   // 421 us (head_dim 256) and 665 us (head_dim 512) against the block kernel's
   // 652-700 and 1186 us at keys=1024. Any other geometry uses the block kernel.
   if (head_dim == 256 || head_dim == 512) {
+    if (split_slices > 1 && split_workspace != nullptr) {
+      const int split_rc = head_dim == 256
+          ? gemma4_decode_split_launch<scalar_t, 1, 1>(query, key, value, keep_mask, out, num_heads,
+                num_kv_heads, head_dim, scale, tokens, keys, stream, split_workspace,
+                split_slices)
+          : gemma4_decode_split_launch<scalar_t, 2, 2>(query, key, value, keep_mask, out, num_heads,
+                num_kv_heads, head_dim, scale, tokens, keys, stream, split_workspace,
+                split_slices);
+      if (split_rc >= 0) {
+        gemma4_decode_selection() = 2;  // key-class, two-phase split
+        return split_rc;
+      }
+    }
     const int rc = head_dim == 256
         ? gemma4_decode_class_launch<scalar_t, 1>(query, key, value, keep_mask, out, num_heads,
               num_kv_heads, head_dim, scale, tokens, keys, stream)
@@ -902,6 +1132,24 @@ extern "C" int hipengine_gemma4_attention_prefill_f32(
 // Decode entry points: tokens == 1 routes here from the Python wrapper. Same
 // arithmetic as the prefill kernel above, two barriers per block instead of
 // ~2 * keys — see gemma4_attention_decode_kernel.
+//
+// ``split_workspace`` is the two-phase split's scratch (see
+// gemma4_decode_split_workspace_bytes) and ``split_slices`` its slice count;
+// passing ``split_slices <= 1`` or a null workspace selects the single-kernel
+// path. The caller owns the allocation because it is reused across steps and
+// must outlive the in-flight stream.
+// Workspace sizing for the two-phase split, exported so the Python launcher and
+// the kernel share one definition of the layout: a mismatch between the two
+// would be memory corruption, not a slow path.
+extern "C" size_t hipengine_gemma4_decode_split_workspace_bytes(
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t head_dim,
+    int64_t keys,
+    int slices) {
+  return gemma4_decode_split_workspace_bytes(tokens, num_heads, head_dim, keys, slices);
+}
+
 extern "C" int hipengine_gemma4_attention_decode_bf16(
     const uint16_t* query,
     const uint16_t* key,
@@ -914,10 +1162,12 @@ extern "C" int hipengine_gemma4_attention_decode_bf16(
     int64_t head_dim,
     float scale,
     hipStream_t stream,
-    int64_t keys) {
+    int64_t keys,
+    float* split_workspace,
+    int split_slices) {
   return launch_gemma4_attention_decode<uint16_t>(
       query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
-      stream, keys);
+      stream, keys, split_workspace, split_slices);
 }
 
 extern "C" int hipengine_gemma4_attention_decode_f32(
@@ -932,8 +1182,10 @@ extern "C" int hipengine_gemma4_attention_decode_f32(
     int64_t head_dim,
     float scale,
     hipStream_t stream,
-    int64_t keys) {
+    int64_t keys,
+    float* split_workspace,
+    int split_slices) {
   return launch_gemma4_attention_decode<float>(
       query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
-      stream, keys);
+      stream, keys, split_workspace, split_slices);
 }
