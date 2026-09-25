@@ -362,6 +362,33 @@ flags because a configuration has not been benchmarked.
   ascending-j accumulation order is untouched and the kernel stays bit-exact),
   which is the same register-and-no-branch shape that made pass 1 fast. Pass 3
   has never been restructured in this campaign.
+  *Status 2026-09-25 (iteration 23): **accepted**. Pass 3 is now pipelined and
+  geometry-selected. `gemma4_decode_pass3<kDimsPerLane, kPrefetch, scalar_t>` is
+  factored out of the key-class kernel: it loads the V value of key `j + 4` into
+  a register while accumulating key `j` (the `weight == 0` skip the block kernel
+  uses was what stopped the compiler from hoisting the loads, so the walk had
+  been serialising at memory latency), and when `head_dim >= 2 * threads` lane L
+  owns the dimensions 2L and 2L+1 and issues one `gemma4_pair2` load - 4 bytes
+  for 16-bit KV - instead of two 2-byte loads. The sliding geometry
+  (`head_dim` 256 = threads) keeps the scalar load, because a two-dimension
+  mapping there idles half the block: 336.9 us two-wide against 318.9 us scalar.
+  Depth 4 is the swept optimum (2/4/8/16 -> 384.1/315.7/336.0/337.6 us sliding,
+  578.1/419.3/464.4/465.3 us full). Only *when* a load is issued and which lane
+  owns which dimension changed, never the per-dimension ascending-j order, so
+  the kernel stays **bit-exact** (parity and geometry suites green, both load
+  paths covered). Microbenchmark: sliding 427.9 -> 318.9 us and full 696.0 ->
+  339.8 us at keys=1024, full 1174 -> 509.5 us at keys=2048. Campaign metric
+  **33.0213 -> 41.9049 tok/s (+26.9%)**, **+160% over the 16.0931 baseline**;
+  all four rows improved (128p 47.63 -> 48.56, 512p 39.94 -> 46.43, 4096p 21.45
+  -> 25.78), prefill unchanged within noise, public wall improved or held, public
+  parity true. The engine is now at **61% of the same-artifact llama.cpp
+  reference** (68.92 tok/s), from 23% at the campaign baseline. Evidence row
+  `2026-09-25-gemma4-26b-a4b-pass3-pipeline-accepted.json`, worklog entry
+  `20260925T210516.062297Z-lhl-gemma-4-decode-attention-pass-3-prefetched-v-loa-21a053.md`.
+  Next in measured order: passes 1 and 2 are the larger half again (183-204 us of
+  the 319-340 us launch, and pass 2 walks every key per lane through LDS), then
+  the 8.0 ms/token host gap from iteration 19 (1116 launches x 7.2 us), which is
+  now comparable to the whole attention cost.
 - [ ] **G4 — Integrated confirmation.** Repeat the primary paired matrix,
   correctness/heldouts and live chat/SSE; verify no hidden fallback. Re-measure
   llama.cpp and Qwen with the frozen comparison contract and report differences

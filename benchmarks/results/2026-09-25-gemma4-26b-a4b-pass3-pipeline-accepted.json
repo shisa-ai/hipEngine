@@ -1,0 +1,69 @@
+{
+  "kind": "gemma4_campaign_candidate",
+  "verdict": "accepted",
+  "recorded": "2026-09-25, gemma4-moe-perf/g0 iteration 23",
+  "candidate": "decode attention pass 3: register-prefetched V loads (depth 4) plus geometry-selected two-dimension loads",
+  "reason": "bit-exact against the block kernel and cuts the pass that the iteration-22 ablation identified as 57-71% of the decode attention kernel: sliding 427.9 -> 318.9 us and full 696.0 -> 339.8 us at keys=1024, full 1174 -> 509.5 us at keys=2048. Campaign metric 33.0213 -> 41.9049 tok/s (+26.9%), +160% over the 16.0931 baseline",
+  "mechanism": {
+    "diagnosis": "iteration 22 closed with a timing-only ablation that removed pass 3's V loads: sliding 427.9 -> 183.4 us, full 696.0 -> 204.1 us. Pass 3 was moving 16.78 MB unique at full in 492 us (34 GB/s) while the same loop without the loads moved 100.66 MB issued in 204 us (493 GB/s), so it was latency-bound, not bandwidth-bound",
+    "cause": "each lane walks all `keys` with one 2-byte load per key inside a dependent accumulate chain, and the `weight == 0` skip that the block kernel uses stops the compiler from hoisting those loads, so the walk serialised at memory latency: ~1024 loads per lane at ~240-480 ns matches the measured 244-492 us",
+    "fix": "load the V value of key j + kPrefetch into a register while key j is accumulated, so the loads have independent addresses that issue ahead of use. The pipeline only changes *when* a load is issued: the accumulation stays the ascending-j chain per dimension and the `weight == 0` skip is untouched, so the result is unchanged bit for bit",
+    "second_fix": "when head_dim >= 2 * threads (the full-attention geometry, head_dim 512 with 256 threads) lane L owns the dimensions 2L and 2L+1 and issues one gemma4_pair2 load - 4 bytes for 16-bit KV, 8 for 32-bit - instead of two 2-byte loads. The alignas on the pair type is what makes the compiler emit a single vector load; it holds because head_dim is even for every geometry the launcher routes here and the KV base is a device allocation. The sliding geometry (head_dim 256 = threads) keeps the scalar load, since a two-dimension mapping there would idle half the block: measured 336.9 us two-wide against 318.9 us scalar",
+    "pipeline_depth": "kPrefetch swept at 2/4/8/16: 384.1/315.7/336.0/337.6 us sliding and 578.1/419.3/464.4/465.3 us full. Depth 4 is the optimum on both geometries; deeper pipelines lose to register pressure"
+  },
+  "correctness": {
+    "contract": "bit-exact with the block kernel (same-schedule arithmetic): only *when* a load is issued and which lane owns which dimension changed, never the per-dimension ascending-j accumulation order or the weight==0 skip",
+    "parity_suite": "tests/test_gpu_gemma4_attention_decode_parity.py",
+    "parity_result": "green together with tests/test_gpu_gemma4_attention_geometry.py - bitwise equality on every shape, both dtypes, keep and holes masks, including the two-dimension load path (head_dim 512) and the scalar path (head_dim 256) at keys 1..8192",
+    "public_path_parity": "true on all four re-measured campaign rows"
+  },
+  "performance": {
+    "microbench": {
+      "tool": "scripts/gemma4_attention_decode_bench.py",
+      "protocol": "one launch per measurement window, 30 iterations, device sync at the end",
+      "rows": [
+        {"geometry": "sliding head_dim=256 keys=1024", "iteration_22_us": 427.9, "candidate_us": 318.9},
+        {"geometry": "full head_dim=512 keys=1024", "iteration_22_us": 696.0, "candidate_us": 339.8},
+        {"geometry": "sliding head_dim=256 keys=2048", "candidate_us": 441.1},
+        {"geometry": "full head_dim=512 keys=2048", "iteration_22_us": 1174, "candidate_us": 509.5}
+      ]
+    },
+    "campaign_rows": {
+      "metric": "decode_tps",
+      "command": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --samples 3",
+      "label": "g3-pass3-pipeline",
+      "primary": {"row": "1024p", "incumbent": 33.0213, "candidate": 41.9049, "delta": "+26.9%", "prefill_tok_s": 129, "public_wall_s": "11.81 -> 10.58"},
+      "other_rows": [
+        {"row": "128p", "decode_incumbent": 47.63, "decode_candidate": 48.56, "prefill_tok_s": "139 -> 139", "public_wall_s": "3.58 -> 3.58"},
+        {"row": "512p", "decode_incumbent": 39.94, "decode_candidate": 46.43, "prefill_tok_s": "135 -> 135", "public_wall_s": "6.96 -> 6.56"},
+        {"row": "4096p", "decode_incumbent": 21.45, "decode_candidate": 25.78, "prefill_tok_s": "108 -> 108", "public_wall_s": "43.80 -> 42.73"}
+      ],
+      "regression_check": "decode improved on all four rows (+2.0% to +26.9%), prefill is unchanged within run-to-run noise on all four, public wall time improved or held on all four"
+    },
+    "campaign_position": {
+      "campaign_baseline": 16.0931,
+      "candidate": 41.9049,
+      "vs_baseline": "+160%",
+      "llamacpp_same_artifact_decode_tok_s": 68.92,
+      "fraction_of_llamacpp": "61% (23% at the campaign baseline)",
+      "campaign_target": "70% of the Qwen3.6-35B-A3B reference 114.57 tok/s = 80.2 tok/s"
+    }
+  },
+  "changes": {
+    "kernel": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip - gemma4_decode_pass3<kDimsPerLane, kPrefetch, scalar_t> factored out of gemma4_attention_decode_class_kernel, called with <2, 4> when head_dim >= 2 * threads and <1, 4> otherwise; gemma4_pair2<scalar_t> with alignas(2 * sizeof(scalar_t)) added for the two-dimension load",
+    "tests": "none changed: the existing parity and geometry suites cover both new paths (head_dim 512 exercises two-dimension loads, head_dim 256 the scalar path)",
+    "flags": "none: one measured geometry rule inside the launcher, no env var and no fallback chain"
+  },
+  "provenance": {
+    "commit": "pending (this unit)",
+    "worklog_entry": "worklog/entries/20260925T210516.062297Z-lhl-gemma-4-decode-attention-pass-3-prefetched-v-loa-21a053.md",
+    "gates": {
+      "parity": "green (decode parity + attention geometry)",
+      "guard": "pytest tests/test_unit_gemma4_*.py tests/test_gpu_gemma4_*.py -q exit 0"
+    }
+  },
+  "next": [
+    "passes 1 and 2 of the key-class kernel are now the larger half again: 183-204 us of the 319-340 us launch, and pass 2 walks every key per lane through LDS",
+    "the 8.0 ms/token host gap from iteration 19 (1116 launches x 7.2 us) is now comparable to the whole attention cost and is untouched"
+  ]
+}
