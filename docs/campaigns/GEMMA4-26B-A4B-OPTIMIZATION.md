@@ -411,6 +411,41 @@ flags because a configuration has not been benchmarked.
   on if it holds. Measure before either: the census above counts launches, not
   their host cost, and no trace-based attribution has been possible since
   rocprofv3 began hanging on this box.
+  *Status 2026-09-25 (iteration 25): **accepted**, and it closes the host-gap
+  hypothesis rather than confirming it.* Decomposing the per-launch host cost
+  found the gap was not in the HIP call: a bare ctypes call with prebuilt args
+  costs **1.84 us** and the `signed_kernel_fn` lookup 0.53 us, but the launcher
+  wrapper cost **11.81 us**. The extra ~9.5 us was `build_hip` re-deriving its
+  cache key on every launch, because the kernel launchers resolve their library
+  per call (they pass no `library=`): `build_gemma4_norm(load=True)` alone was
+  7.97 us, of which `_resolve_compiler_version` 2.05, the target-arch read 0.85,
+  cache-root resolution 0.48, path normalisation ~2.2, and the rest call glue.
+  `os.environ.get` costs 0.463 us per read on POSIX (the mapping fsencodes the
+  key on every access), so the 8-12 environment reads were the largest single
+  term. A fast path in front of the loaded-library cache, keyed on the raw
+  request plus a `_BUILD_ENV_KEYS` environment signature, takes the wrapper to
+  **5.27 us** and removes **6.4 ms of host time per decode step** (989 build
+  calls per step x 6.5 us; 31,647 fast-path hits and 0 slow-path derivations
+  across a 1024p+32o generate). Campaign rows: 1024p 43.6297 -> **43.9827
+  (+0.8%)**, 512p 47.32 -> 48.1231 (+1.7%), 128p 48.4910 -> **51.9685 (+7.2%)**,
+  4096p 28.49 -> 28.5889 (flat), prefill unchanged, public wall improved or held,
+  `public_path_parity=true` throughout. The gradient is the finding: **host
+  dispatch is hidden behind GPU execution at long prompts and exposed only where
+  per-step GPU work is small**, so iteration 19's 8.0 ms/token host gap is not on
+  the critical path at the primary row - removing 6.4 ms/token there bought
+  +0.8%, which means the remaining 22.9 ms step at 1024p is GPU work. Evidence
+  row `2026-09-25-gemma4-26b-a4b-host-dispatch-fastpath-accepted.json`, worklog
+  entry
+  `20260925T214512.713190Z-lhl-gemma-4-host-dispatch-build-fast-path-removes-6-00f1cb.md`.
+  Next: GPU-side work at the primary row, in the order iteration 19's trace
+  implies - attention (8.5 ms of the 22.9 ms step, with pass 1's shuffle tree and
+  the pass-3 pipeline already improved in iterations 23-24), the MoE decode
+  linears (6.2 ms), the dense projections (3.9 ms). HIP graph capture remains
+  worth measuring for the short-prompt rows, where host cost is still exposed,
+  but it should be scoped by its 128p/512p benefit rather than by the old 8 ms
+  figure. `HIPENGINE_FUSED_RMSNORM_ROTATE` still defaults off on a justification
+  the Product Defaults rule does not accept as a cause; measure it on/off through
+  the campaign row and ship it on if it holds.
   *Status 2026-09-25 (iteration 24): **accepted**. Pass 1's shuffle tree was the
   measured bottleneck (clean ablations, each keeping the data dependencies alive:
   replacing the tree with in-lane adds saved 108 us of 318 at sliding, skipping
