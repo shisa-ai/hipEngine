@@ -632,6 +632,32 @@ flags because a configuration has not been benchmarked.
   scope, not a one-iteration edit. Diagnostic only: no product path changed, no
   row moved. Evidence row
   `2026-09-26-gemma4-26b-a4b-moe-bandwidth-probe.json`.
+  *Diagnostic 2026-09-26 (iteration 32): the launch structure is not the MoE's
+  problem, and the cheap refactor is refuted.* `gemma4_experts.py` states its own
+  structure - "one launch per non-empty expert with a pointer offset into the
+  stacked expert weights, not one launch per token-lane" - so at decode, where
+  top_k 8 makes all 8 selected experts non-empty, a layer issues **8 gate_up
+  GEMVs and 8 down GEMVs**, plus a memset, three grouping kernels, a gather and
+  the weighted accumulate. Sixteen GEMV launches per layer looked like the
+  obvious lever, and at ~5.3 us of host cost each it is ~2.5 ms per step of
+  dispatch work.
+  It is the wrong lever, for two measured reasons. First, each launch carries
+  ~13 us of GPU work (0.207 ms per layer over 16 launches), so the host cost is
+  *hidden* behind execution - the same finding iteration 25 reached from the
+  other direction. Second, and decisively, the microbench's **selected** form
+  does the same layer in 3 launches and reaches **104 GB/s, the same ~11% of
+  peak** as the per-expert form. Two different launch structures, one bandwidth.
+  So neither fusing the launches nor skipping the grouping pipeline (which is
+  provably redundant at one token, where every lane carries the same hidden row)
+  would move the number: **the cost is the kernel's memory access pattern**, and
+  the fix is the vectorized/repacked route, not the orchestration. The decode
+  fast path is recorded here as refuted rather than left as an attractive
+  unmeasured idea.
+  The dense projections were checked the same way and are also not mis-routed:
+  both `gemma4_project` and `gemma4_project_experts_selected` go through the
+  GGUF dispatch, which selects on row count, so rows == 1 already takes the
+  decode branch. Their 3.9 ms is kernel quality too, and the same repack applies.
+  Diagnostic only: no product path changed, no row moved.
   *Gate verdict 2026-09-25: **passed**, and comfortably.* Against the frozen
   8192-context baseline over all 1023 teacher-forced rows: **kl_max 0.006746**
   (bar 0.05), kl_mean 9.03e-06 (0.001), kl_p95 5.25e-06 (0.005), kl_p99
