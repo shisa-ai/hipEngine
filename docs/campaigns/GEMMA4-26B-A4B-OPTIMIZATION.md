@@ -686,6 +686,33 @@ flags because a configuration has not been benchmarked.
   that makes the existing vectorized family reachable. The campaign's
   three-failed-candidates rule therefore applies - the next step is a re-profile
   or a scope decision, not another routing probe.
+  *Diagnostic 2026-09-26 (iteration 34): that closure was premature, and a live
+  candidate came out of testing it.* A direct A/B of the two Q4_K decode GEMVs at
+  a dense projection shape (rows 1, in 2816, out 4096, 6.49 MB of Q4_K, paired
+  passes) gives **plain `gemv_bf16_bf16_out` 0.0582 ms (111.6 GB/s) against
+  `selected_gemv_bf16_bf16_out` 0.0659 ms (98.5 GB/s) - the plain kernel is
+  13.3% faster, and the two are bit-identical (0 bf16 ulp)**. So there *is* a
+  faster registered variant; iteration 33's "no faster registered variant
+  exists" was wrong.
+  The cause is a declared routing table, not a fallback:
+  `hipengine/loading/gguf_selected_contract.py` lists
+  `("Q4_K", "linear", "gguf_q4_k", "selected_gemv_bf16_bf16_out", ...)` in
+  `RAW_SELECTED_CONSUMERS`, and the resolve probe shows the dense projections
+  requesting exactly that variant. A dense projection has no expert indirection
+  to justify the selected ABI. **The contract file is out of this loop's scope
+  and is shared with other models, so it was not changed.** The in-scope route is
+  `gemma4_project` in `kernels/hip_gfx1100/gemma4/gemma4_layer.py`, which can pass
+  `registered_variant=` to `launch_gguf_linear` (the hint is consumed by
+  `_registered_variant_dispatch`, which is row-conditioned); it is also the right
+  seam because `gemma4_project` carries the dense projections while the routed
+  experts go through `gemma4_project_experts_selected`.
+  **The candidate to land next:** prefer the plain GEMV for Gemma 4's dense
+  projections at decode, guarded by an `is_registered` check cached per quant so
+  the check does not run per launch. Worth roughly 13% of the dense projections'
+  3.9 ms, about 0.5 ms per step or 2% of the metric, and it is bit-identical so
+  it needs token-id parity rather than a numerical gate. Not landed here because
+  it needs the full validation set - verify, guard, and the other primary rows -
+  which does not fit in the iteration that found it.
   *Gate verdict 2026-09-25: **passed**, and comfortably.* Against the frozen
   8192-context baseline over all 1023 teacher-forced rows: **kl_max 0.006746**
   (bar 0.05), kl_mean 9.03e-06 (0.001), kl_p95 5.25e-06 (0.005), kl_p99
