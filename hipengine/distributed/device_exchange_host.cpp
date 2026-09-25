@@ -130,20 +130,23 @@ __global__ void tp2_dev_spin_add_bf16(
   const unsigned int expected = *own_counter;
   if (threadIdx.x == 0) {
     unsigned int spins = 0;
-    while (*remote_flag < expected) {
-      if (++spins >= max_spins) {
-        // Bounded failure: exit instead of hanging the group. The host's
-        // wait checks this flag after the streams sync.
-        atomicExch(const_cast<unsigned int*>(timeout_flag), 1u);
-        return;
-      }
+    while (*remote_flag < expected && spins < max_spins) {
+      ++spins;
       __builtin_amdgcn_s_sleep(64);
     }
+    // Bounded failure: record the timeout and fall through to the barrier
+    // rather than returning early. Every thread of the block reaches
+    // __syncthreads() below; a divergent return before it would rely on an
+    // unsupported guarantee about exited work-items arriving at a barrier.
+    if (*remote_flag < expected) {
+      atomicExch(const_cast<unsigned int*>(timeout_flag), 1u);
+    }
   }
-  // Every block's lead thread waits for the flag (or times out), then the
-  // block barriers behind it, so no thread reads the staged row before the
+  // Every block's lead thread waits for the flag (or records a timeout), then
+  // the block barriers behind it, so no thread reads the staged row before the
   // remote's copy is visible at system scope - and a timeout poisons this
-  // rank's output instead of publishing one.
+  // rank's output instead of publishing one. The post-barrier test is uniform
+  // across the block, so the whole block returns together.
   __syncthreads();
   if (*timeout_flag != 0u) {
     return;

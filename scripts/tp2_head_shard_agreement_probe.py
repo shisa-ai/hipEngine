@@ -210,6 +210,59 @@ def _load_bf16(path: Path):
     return (bits.astype(np.uint32) << 16).view(np.float32).astype(np.float64)
 
 
+def _widen_bf16(bits):
+    import numpy as np
+
+    return (np.asarray(bits).astype("<u4") << 16).view("<f4")
+
+
+def _narrow_bf16_rne(values):
+    """RNE f32 -> bf16, the boundary cast the exchange narrows with."""
+
+    import numpy as np
+
+    u = np.asarray(values).astype("<f4").view("<u4")
+    return ((u + 0x7FFF + ((u >> 16) & 1)) >> 16).astype("<u2")
+
+
+def _reduction_check(out: Path, layer: int, report: dict) -> None:
+    """Does the consumed value equal the host sum of the two real partials?
+
+    Rank agreement is not this check. Both ranks consume the same reduced row,
+    so two ranks agreeing with each other is also what a wrong slot, a doubled
+    partial, or a stale row produces. The only thing that rules those out is
+    comparing the consumed bytes against the sum of the two partials the ranks
+    actually wrote, computed here on the host.
+    """
+
+    import numpy as np
+
+    parts = [out / f"sharded_partial_l{layer}_d{device}.npy" for device in (0, 1)]
+    reduced = [out / f"sharded_l{layer}_d{device}.npy" for device in (0, 1)]
+    if not all(path.exists() for path in parts + reduced):
+        return
+    expected = _narrow_bf16_rne(_widen_bf16(np.load(parts[0])) + _widen_bf16(np.load(parts[1])))
+    stats: dict[str, object] = {}
+    for device, path in enumerate(reduced):
+        got = np.load(path)
+        stats[f"rank{device}_exact"] = bool(np.array_equal(got, expected))
+        stats[f"rank{device}_mismatched_elems"] = int((got != expected).sum())
+        if not stats[f"rank{device}_exact"]:
+            delta = _load_bf16(path) - (
+                _load_bf16(parts[0]) + _load_bf16(parts[1])
+            )
+            scale = np.sqrt(np.mean((_load_bf16(parts[0]) + _load_bf16(parts[1])) ** 2)) + 1e-12
+            stats[f"rank{device}_rel_rms"] = float(
+                np.sqrt(np.mean(delta**2)) / scale
+            )
+    report.setdefault("reduction", {})[str(layer)] = stats
+    print(
+        f"  L{layer} reduction: rank0 exact={stats['rank0_exact']} "
+        f"({stats['rank0_mismatched_elems']} elems), "
+        f"rank1 exact={stats['rank1_exact']} ({stats['rank1_mismatched_elems']} elems)"
+    )
+
+
 def _compare(out: Path, layers: tuple[int, ...]) -> int:
     import numpy as np
 
@@ -270,6 +323,7 @@ def _compare(out: Path, layers: tuple[int, ...]) -> int:
             )
         if not arrays:
             continue
+        _reduction_check(out, layer, report)
         # Both ranks compute the same tensor on the unsharded route and hold
         # complementary halves on the sharded one, so rank agreement is a
         # separate signal from route agreement: a rank that disagrees with its

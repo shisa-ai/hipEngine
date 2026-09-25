@@ -22,6 +22,7 @@ import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, Mapping
 
 import numpy as np
 import pytest
@@ -50,6 +51,7 @@ from hipengine.loading.qwen35_gguf_shards import (
     partition_groups,
     reconstruct_tensor,
     shard_rule_for_tensor,
+    source_payload,
     validate_plan_coverage,
 )
 
@@ -747,6 +749,293 @@ def test_unit_shards_quant_types_are_never_repacked(manifest_n2):
                 assert shard_slice.row_split.local_row_bytes % plan.type_size == 0
             for segment in shard_slice.iter_segments():
                 assert segment.nbytes % plan.type_size == 0, (plan.name, plan.quant_type)
+
+
+# ---------------------------------------------------------------------------
+# 2b. Real-model content: the head each rank's loaded rows actually carry
+# ---------------------------------------------------------------------------
+#
+# The GGUF value-head order is a property of the file, not of this planner, so
+# the expectation below is derived from the two references that define it:
+#
+# * the converter that wrote the file (llama.cpp ``convert_hf_to_gguf.py``,
+#   ``_LinearAttentionVReorderBase``: HF stores V heads grouped by K head as
+#   ``[G0_v0..v{r-1}, G1_v0..v{r-1}, ...]`` and GGUF stores them tiled as
+#   ``[K0, K1, ..., K0, K1, ...]``), and
+# * the runtime that consumes it (llama.cpp ``src/models/qwen35.cpp``: the fused
+#   qkv rows are ``key_dim`` q rows, then ``key_dim`` k rows, then the value
+#   rows, and ``ggml_repeat_4d(q_conv, ..., num_v_heads, ...)`` tiles the K heads
+#   across the V axis, so V head ``v`` pairs with K head ``v % n_k_heads``).
+#
+# Both rules are written out longhand here instead of being imported from
+# ``hipengine.loading.qwen35_gguf_shards``, so a wrong axis interpretation in
+# the planner cannot pass this test by agreeing with itself. The comparison is
+# on payload bytes: the local payload is hashed head-block by head-block and
+# each block is matched back to the source row it actually came from, so the
+# observed mapping is read out of the file rather than assumed.
+
+
+def _gguf_tiled_geometry(config: Any) -> tuple[int, int, int, int, int]:
+    """``(k_heads, head_k, v_heads, head_v, tiles)`` from the model config."""
+
+    k_heads = int(config.ssm_group_count)
+    head_k = int(config.ssm_state_size)
+    v_heads = int(config.ssm_time_step_rank)
+    head_v = int(config.ssm_inner_size) // v_heads
+    assert v_heads % k_heads == 0
+    return k_heads, head_k, v_heads, head_v, v_heads // k_heads
+
+
+def _gguf_tiled_local_heads(*, rank: int, world_size: int, config: Any) -> list[int]:
+    """Global value heads a rank owns, in the local slot order the kernel uses.
+
+    A rank owns the contiguous K-head run ``[rank * local_k, (rank + 1) * local_k)``
+    and, for each V tile, the value heads of those K heads; the local slot order
+    is tile-major, which is the order the materialized rows and columns have.
+    """
+
+    k_heads, _head_k, _v_heads, _head_v, tiles = _gguf_tiled_geometry(config)
+    local_k = k_heads // world_size
+    return [
+        tile * k_heads + rank * local_k + local_k_index
+        for tile in range(tiles)
+        for local_k_index in range(local_k)
+    ]
+
+
+def _block_digest(payload: np.ndarray, start: int, stop: int) -> bytes:
+    return hashlib.sha256(np.asarray(payload[start:stop]).tobytes()).digest()
+
+
+def _source_head_digests(
+    source: np.ndarray, *, rows: int, row_bytes: int, head_rows: int
+) -> dict[bytes, tuple[int, ...]]:
+    """Every whole-head row block in a source payload, keyed by its bytes.
+
+    The value is a tuple because two heads can hold byte-identical blocks (the
+    per-head scalar axes of a real checkpoint do). A local slot carrying such a
+    block is genuinely indistinguishable from the other candidate, so the
+    caller compares against the candidate set rather than a single index.
+    """
+
+    view = np.asarray(source).reshape(rows, row_bytes)
+    assert rows % head_rows == 0
+    blocks: dict[bytes, list[int]] = {}
+    for head in range(rows // head_rows):
+        digest = hashlib.sha256(view[head * head_rows : (head + 1) * head_rows].tobytes()).digest()
+        blocks.setdefault(digest, []).append(head)
+    return {digest: tuple(heads) for digest, heads in blocks.items()}
+
+
+def _observed_local_heads(
+    payload: np.ndarray,
+    *,
+    head_digests: Mapping[bytes, tuple[int, ...]],
+    head_rows: int,
+    row_bytes: int,
+) -> list[tuple[int, ...]]:
+    """Read each local value slot's source-head candidates out of its bytes."""
+
+    local_rows = int(payload.size) // row_bytes
+    assert local_rows % head_rows == 0
+    view = np.asarray(payload).reshape(local_rows, row_bytes)
+    observed = []
+    for head in range(local_rows // head_rows):
+        digest = hashlib.sha256(view[head * head_rows : (head + 1) * head_rows].tobytes()).digest()
+        assert digest in head_digests, (
+            f"local value slot {head} carries bytes that appear nowhere in the source tensor"
+        )
+        observed.append(head_digests[digest])
+    return observed
+
+
+def _materialized_rank_payloads(reader: Any, manifest: ShardManifest, name: str) -> dict[int, np.ndarray]:
+    """Run the loader's own path for one tensor: one payload per rank."""
+
+    tensor = reader.tensor_info(name)
+    source = source_payload(reader.path, data_offset=tensor.data_offset, nbytes=tensor.nbytes)
+    plan = manifest.plan_for(name)
+    return {rank: materialize_slice(source, plan.slice_for(rank)) for rank in range(manifest.world_size)}
+
+
+@requires_model
+@pytest.mark.parametrize(
+    "name",
+    (
+        "blk.0.attn_gate.weight",
+        "blk.0.ssm_alpha.weight",
+        "blk.0.ssm_beta.weight",
+        "blk.0.ssm_a",
+        "blk.0.ssm_dt.bias",
+    ),
+)
+def test_unit_real_gguf_value_head_rows_carry_the_declared_heads(manifest_n2, model_config, name):
+    """Each rank's loaded value rows must be the source rows of the heads it owns.
+
+    The observed mapping is read out of the payload bytes, not out of the plan:
+    every local head-sized row block is hashed and matched to the source head
+    block with the same bytes. What the kernel then relies on is the pairing
+    invariant asserted last: local slot ``j`` must hold a value head whose K head
+    is the local K head ``j % local_k_heads``, because the sharded kernel runs
+    with the rank-local head counts and pairs ``v % n_k_heads`` inside them.
+
+    A real checkpoint can hold byte-identical blocks for two different heads, so
+    a slot's content proves it carries *a* head with those bytes: the assertion
+    is that the derived head is among the slot's candidates. Slots whose bytes
+    are unique are exact, and the test requires at least one of them so it
+    cannot pass vacuously.
+    """
+
+    from hipengine.loading.gguf import GGUFReader
+
+    reader = GGUFReader(GGUF_PATH)
+    k_heads, _head_k, v_heads, head_v, _tiles = _gguf_tiled_geometry(model_config)
+    plan = manifest_n2.plan_for(name)
+    rows = int(plan.source_shape[0])
+    head_rows = head_v if rows == v_heads * head_v else 1
+    row_bytes = int(plan.source_nbytes) // rows
+    assert row_bytes * rows == int(plan.source_nbytes)
+
+    tensor = reader.tensor_info(name)
+    source = source_payload(reader.path, data_offset=tensor.data_offset, nbytes=tensor.nbytes)
+    head_digests = _source_head_digests(source, rows=rows, row_bytes=row_bytes, head_rows=head_rows)
+
+    world_size = manifest_n2.world_size
+    local_k_heads = k_heads // world_size
+    unique_slots = 0
+    for rank, payload in _materialized_rank_payloads(reader, manifest_n2, name).items():
+        observed = _observed_local_heads(
+            payload, head_digests=head_digests, head_rows=head_rows, row_bytes=row_bytes
+        )
+        expected = _gguf_tiled_local_heads(rank=rank, world_size=world_size, config=model_config)
+        assert len(observed) == v_heads // world_size
+        for local_slot, (candidates, global_head) in enumerate(zip(observed, expected)):
+            assert global_head in candidates, (
+                f"{name}: rank {rank} local slot {local_slot} carries the bytes of "
+                f"value head(s) {candidates}, not the head it owns ({global_head})"
+            )
+            unique_slots += len(candidates) == 1
+            assert global_head % k_heads == rank * local_k_heads + local_slot % local_k_heads, (
+                f"{name}: local slot {local_slot} on rank {rank} holds value head {global_head}, "
+                "which the kernel's local v % n_k_heads pairing cannot serve"
+            )
+        assert len(set(expected)) == len(expected), f"{name}: rank {rank} claims a value head twice"
+    assert sorted(
+        head
+        for rank in range(world_size)
+        for head in _gguf_tiled_local_heads(rank=rank, world_size=world_size, config=model_config)
+    ) == list(range(v_heads)), f"{name}: value heads are not partitioned once"
+    assert unique_slots > 0, f"{name}: every local slot is byte-ambiguous, so the check is vacuous"
+
+
+@requires_model
+def test_unit_real_gguf_qkv_local_blocks_carry_the_declared_heads(manifest_n2, model_config):
+    """The fused qkv and conv1d shards must place q, k, and v rows as declared.
+
+    The q and k blocks are checked against the K heads the *content* of the
+    value block says the rank owns, so the three blocks are tied together by
+    bytes rather than by a shared index formula.
+    """
+
+    from hipengine.loading.gguf import GGUFReader
+
+    reader = GGUFReader(GGUF_PATH)
+    k_heads, head_k, v_heads, head_v, _tiles = _gguf_tiled_geometry(model_config)
+    world_size = manifest_n2.world_size
+    local_k_heads = k_heads // world_size
+    key_width = k_heads * head_k
+
+    for name in ("blk.0.attn_qkv.weight", "blk.0.ssm_conv1d.weight"):
+        plan = manifest_n2.plan_for(name)
+        rows = int(plan.source_shape[0])
+        row_bytes = int(plan.source_nbytes) // rows
+        assert rows == 2 * key_width + v_heads * head_v, name
+
+        tensor = reader.tensor_info(name)
+        source = source_payload(reader.path, data_offset=tensor.data_offset, nbytes=tensor.nbytes)
+        value_bytes = 2 * key_width * row_bytes
+        head_digests = _source_head_digests(
+            source[value_bytes:], rows=v_heads * head_v, row_bytes=row_bytes, head_rows=head_v
+        )
+        for rank, payload in _materialized_rank_payloads(reader, manifest_n2, name).items():
+            local_rows = int(payload.size) // row_bytes
+            local_key_width = local_k_heads * head_k
+            assert local_rows == 2 * local_key_width + (v_heads // world_size) * head_v
+
+            # Value block: observed heads must be the declared ones.
+            value_start = 2 * local_key_width * row_bytes
+            observed = _observed_local_heads(
+                payload[value_start:],
+                head_digests=head_digests,
+                head_rows=head_v,
+                row_bytes=row_bytes,
+            )
+            expected = _gguf_tiled_local_heads(
+                rank=rank, world_size=world_size, config=model_config
+            )
+            for local_slot, (candidates, global_head) in enumerate(zip(observed, expected)):
+                assert global_head in candidates, (
+                    f"{name}: rank {rank} value slot {local_slot} carries the bytes of "
+                    f"value head(s) {candidates}, not the head it owns ({global_head})"
+                )
+
+            # q and k blocks must be the source rows of the K heads those value
+            # heads pair with, in local K-head order.
+            for local_k_index in range(local_k_heads):
+                global_k_head = rank * local_k_heads + local_k_index
+                for block, offset in ((0, 0), (1, key_width)):
+                    local_start = (block * local_k_heads + local_k_index) * head_k * row_bytes
+                    local_stop = local_start + head_k * row_bytes
+                    source_start = (offset + global_k_head * head_k) * row_bytes
+                    source_stop = source_start + head_k * row_bytes
+                    assert np.array_equal(
+                        np.asarray(payload[local_start:local_stop]),
+                        np.asarray(source[source_start:source_stop]),
+                    ), f"{name}: rank {rank} local {'qk'[block]} head {local_k_index} is misplaced"
+
+
+@requires_model
+def test_unit_real_gguf_ssm_out_columns_carry_the_declared_heads(manifest_n2, model_config):
+    """The row-split output projection must take each tile's own column run.
+
+    ``ssm_out`` splits on the value-head axis of its input, and a value head is
+    narrower than one quant block, so the check works at tile granularity: each
+    local row holds one column segment per tile, and each segment must be the
+    source columns of that tile's K-head run on this rank.
+    """
+
+    from hipengine.loading.gguf import GGUFReader
+
+    reader = GGUFReader(GGUF_PATH)
+    k_heads, _head_k, _v_heads, head_v, tiles = _gguf_tiled_geometry(model_config)
+    world_size = manifest_n2.world_size
+    local_k_heads = k_heads // world_size
+
+    name = "blk.0.ssm_out.weight"
+    plan = manifest_n2.plan_for(name)
+    rows = int(plan.source_shape[0])
+    row_bytes = int(plan.source_nbytes) // rows
+    tensor = reader.tensor_info(name)
+    source = source_payload(reader.path, data_offset=tensor.data_offset, nbytes=tensor.nbytes)
+    view = np.asarray(source).reshape(rows, row_bytes)
+
+    blocks_per_tile = local_k_heads * head_v // plan.block_size
+    assert blocks_per_tile * plan.block_size == local_k_heads * head_v
+    segment_bytes = blocks_per_tile * plan.type_size
+    for rank, payload in _materialized_rank_payloads(reader, manifest_n2, name).items():
+        local_row_bytes = int(payload.size) // rows
+        assert local_row_bytes == tiles * segment_bytes
+        local = np.asarray(payload).reshape(rows, local_row_bytes)
+        for tile in range(tiles):
+            source_block = (tile * k_heads + rank * local_k_heads) * head_v // plan.block_size
+            source_start = source_block * plan.type_size
+            source_stop = source_start + segment_bytes
+            local_start = tile * segment_bytes
+            local_stop = local_start + segment_bytes
+            for row in range(0, rows, max(1, rows // 8)):
+                assert np.array_equal(
+                    local[row, local_start:local_stop], view[row, source_start:source_stop]
+                ), f"{name}: rank {rank} row {row} tile {tile} columns are misplaced"
 
 
 # ---------------------------------------------------------------------------
