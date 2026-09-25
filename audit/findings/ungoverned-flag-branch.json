@@ -1201,9 +1201,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:36244:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:36382:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
       "title": "runtime branch on HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:36244",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:36382",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -1220,7 +1220,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:36244:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
+          "hipengine/runtime/qwen35_gguf_runner.py:36382:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
         ],
         "tokens": [
           "branch",
@@ -1233,14 +1233,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:36244:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
-      "evidence_hash": "33e1e54016ea"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:36382:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "evidence_hash": "1b185a365d8e"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:3772:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:3801:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
       "title": "runtime branch on HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD: default-off with no removal condition recorded",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:3772",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:3801",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -1257,7 +1257,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:3772:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
+          "hipengine/runtime/qwen35_gguf_runner.py:3801:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD"
         ],
         "tokens": [
           "branch",
@@ -1270,8 +1270,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:3772:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
-      "evidence_hash": "53dc4c6d675c"
+      "id": "ungoverned-flag-branch/hipengine/runtime/qwen35_gguf_runner.py:3801:HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD",
+      "evidence_hash": "1a54fe0d4a6f"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -3497,9 +3497,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/server/api.py:2239:HIPENGINE_API_KEY",
+      "key": "hipengine/server/api.py:2283:HIPENGINE_API_KEY",
       "title": "runtime branch on HIPENGINE_API_KEY: default-off with no removal condition recorded",
-      "location": "hipengine/server/api.py:2239",
+      "location": "hipengine/server/api.py:2283",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_API_KEY to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_API_KEY`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -3516,7 +3516,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:2239:HIPENGINE_API_KEY"
+          "hipengine/server/api.py:2283:HIPENGINE_API_KEY"
         ],
         "tokens": [
           "branch",
@@ -3529,8 +3529,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/server/api.py:2239:HIPENGINE_API_KEY",
-      "evidence_hash": "fd19c8960055"
+      "id": "ungoverned-flag-branch/hipengine/server/api.py:2283:HIPENGINE_API_KEY",
+      "evidence_hash": "e9d597f9c056"
     }
   ]
 }

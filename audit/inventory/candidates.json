@@ -1,8 +1,8 @@
 {
   "kind": "candidates",
   "meta": {
-    "campaign_docs_scanned": 64,
-    "candidates": 230
+    "campaign_docs_scanned": 65,
+    "candidates": 231
   },
   "rows": [
     {
@@ -776,6 +776,39 @@
       },
       "id": "candidate/gguf-q3-opt-32-daba2ac8291b",
       "evidence_hash": "c31b9e90d429"
+    },
+    {
+      "kind": "candidate",
+      "key": "gufo-optimization-packed-verifier-model-gr-0e17fba54c66",
+      "title": "- Packed verifier model graphs \u2014 rejected by measurement (0.19\u20130.62% gains, \u2014 GUFO-OPTIMIZATION.md",
+      "location": "docs/campaigns/GUFO-OPTIMIZATION.md:316",
+      "evidence": {
+        "verdict_word": "rejected",
+        "measurements": [
+          "0.62%"
+        ],
+        "excerpt": "- Packed verifier model graphs \u2014 rejected by measurement (0.19\u20130.62% gains,"
+      },
+      "signals": [
+        "recorded as 'rejected' while citing a measurement"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GUFO-OPTIMIZATION.md",
+        "refs": [
+          "0.62%"
+        ],
+        "tokens": [
+          "gains",
+          "graphs",
+          "measurement",
+          "model",
+          "packed",
+          "rejected",
+          "verifier"
+        ]
+      },
+      "id": "candidate/gufo-optimization-packed-verifier-model-gr-0e17fba54c66",
+      "evidence_hash": "f840c141aca1"
     },
     {
       "kind": "candidate",

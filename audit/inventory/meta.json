@@ -1,14 +1,14 @@
 {
   "candidates": {
-    "campaign_docs_scanned": 61,
-    "candidates": 225
+    "campaign_docs_scanned": 65,
+    "candidates": 231
   },
   "flags": {
-    "names": 747,
+    "names": 752,
     "roots": "hipengine, scripts, tests, benchmarks"
   },
   "kernels": {
-    "sources": 255,
+    "sources": 263,
     "registry_keys": 300,
     "backends": [
       "cpu_reference",
@@ -20,21 +20,21 @@
   },
   "ledger": {
     "source": "docs/REFACTOR.md",
-    "headings": 404
+    "headings": 408
   },
-  "generated": "2026-09-24T05:13:44+00:00",
-  "commit": "1a8a55d46",
+  "generated": "2026-09-25T19:16:09+00:00",
+  "commit": "462f63906",
   "worklog": {
     "source": "worklog/entries",
-    "entries": 10669,
-    "current": 3437,
+    "entries": 10778,
+    "current": 3546,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1102,
+    "rows": 1140,
     "by_rule": {
-      "dependency": 36,
+      "dependency": 37,
       "legacy-next": 109,
-      "status": 957
+      "status": 994
     }
   }
 }
