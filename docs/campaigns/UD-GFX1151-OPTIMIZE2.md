@@ -750,10 +750,34 @@ measured negative.
   loop's pre-registered keep-revert acceptance (metric must improve) reverted
   the change at measure (`d238b1597`). Scoreboard row below records the
   executed-and-reverted status; re-ship = `git revert d238b1597`.**
-- [ ] **E8 — Attribute the norm-cost gap (H11).** From the existing 2026-09-21
+- [x] **E8 — Attribute the norm-cost gap (H11).** From the existing 2026-09-21
   traces first (no new GPU run needed): which norm symbols UD selects versus
   plain, their µs/launch, and what forces the variant. If it follows from the
   unfused residual, it rides with E6; otherwise it is its own routing unit.
+  **Attributed 2026-09-25 (iteration 24) from the paired E1 base traces
+  (`~/ud-e1-census/{trace-ud,trace-plain}/*_kernel_trace.csv`), no new GPU
+  run: both arms execute exactly 774 layer-norm instances per window
+  (conservation: UD 384 add_rmsnorm + 390 rmsnorm = plain 128 + 134 + 512
+  fixed5120). Plain routes 512/774 (66%) through
+  `gguf_norm_fixed5120_wave256<true|false>` at 3.46/2.77 µs/launch; UD
+  selects it 0 times and spends 24.66 ms/window on the generic
+  `gguf_add_rmsnorm_bf16_f32_weight` (41.25 µs/launch) +
+  `gguf_rmsnorm_bf16_f32_weight` (22.62 µs) versus plain's 22.12 ms — a
+  +2.54 ms/window gap. **What forces the variant:**
+  `_gguf_policy_identity` extends the policy key with the bound
+  `artifact_preset_key` for UD artifacts, so UD looks up
+  `(H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m")` in
+  `GGUF_NORM_RESIDUAL_DECODE_POLICIES`, which only carries the historical
+  2-tuple plain rows; the 3-tuple misses by design (docstring: certified-
+  plain rows "can never silently apply to a UD artifact … falls back to the
+  generic path") and the caller takes the generic fallback. E6c added the
+  UD-lane rows to `GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES` but not to
+  this norm sibling, and the residual is already fused inside both arms'
+  add-norm kernels — so the gap does **not** ride with E6. **Verdict: its
+  own routing unit.** Named follow-up: qualify the
+  `(H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m")` row for
+  `bf16_out_fixed5120_wave256` on UD shapes (bit-exact record needed — the
+  D08-D5 exactness package covers the plain lanes only), then measure.**
 - [ ] **E9 — Cooperative IQ prefill owners on gfx1151 (H12).** The
   coop/coop64 keys already resolve on `hip_gfx1151` — `register_gfx1151_kernels()`
   mirrors every non-excluded `hip_gfx1100` key, and all 14 coop-family keys
@@ -945,7 +969,7 @@ refusal.
 | E6 same-quant gap (Q3_K, Q3_K) | H9 | — (nothing built) vs q3 strict gemv + q3 strict gemv + silu_mul | — (no entry expressible: side A has no strict-Q3 kind; the strict-emulation class screened 0.60–0.99× across E6b-5/7 + E6 closeout, so a predicted-failing body was not built) | 703.34 (unchanged by construction) | — | **PASS as a recorded capability miss with a clearing command**: named missing piece = A-side strict-Q3 chain kind (mirror of B_KIND=2 into the A slot); clearing command in `docs/REFACTOR.md` (port A_KIND=4, instantiate `<W, GATE_IS_Q4=false, B_KIND=2, A_KIND=4>`, prove bit-exact, screen ≥1.00 at (5120,17408) rows=1, then route `gguf_q3_k+gguf_q3_k`); dispatch unit file exit 0 (no route, no registration) | adjudicated 2026-09-25 (iteration 22): 1-layer layer-14 family (fresh probe: raw/decode/c1 all strict `gemv_bf16_bf16_out`, raw layout both sides); no identity gating — any artifact carrying this ordered pair hits the same gap and the same clearing route; `ud_plain_parity` pending per lead directive |
 | E6 gate/up + residual fusion | H9 | — | — | — | — | required | **adjudicated** — every gate/up surface now has a verdict: mixed 6 shipped (E6b-1..4, E6b-6, E6 closeout IQ4_NL/Q5_K) + 4 negative-dormant (E6b-5 0.92–0.99×, E6b-7 0.95–1.03×, closeout IQ3_S/IQ4_XS 0.97–0.99×, Q5_K/Q6_K 0.60–0.61× — all with `docs/REFACTOR.md` clearing commands); same-quant Q4_K/Q4_K 5L already fused (dense-dual admission pinned), IQ4_NL/IQ4_NL 1L shipped 1.04×, Q5_K/Q5_K 9L rejected 0.93× (E6a), Q3_K/Q3_K 1L recorded capability gap (clearing command); residual folded E6c (−31.97) + E6c-2 (−30.03, `gguf_bf16_add` rows-1 → 0) |
 | E7 GDN alpha/beta fused path | H10 | load-time Q8_0→F32 expansion in the dense-F32 spec/materializer (no new kernel body): `qwen35_gguf_materialize` planned `quant_key=f32` + `dense_f32` + `raw` for `.ssm_alpha`/`.ssm_beta` (dtype+slot keyed), materializer dequantized via `dequantize_gguf_data`, admission gained role-scoped `(recurrent_alpha_beta, dense_f32, Q8_0)` records; fused owner `linear_attn_alpha_beta+conv_decode`/`f32`/`bf16_k5120_n48_c10240_k4_c1` (mirrored gfx1151 key, admitted shape (1, 5120, 48, 10240, 4)) | route gate `E7_ROUTE PASS` through `LLM.generate()`: fused resolves 1488× (48 layers × 31 decode steps), unfused decode rows==1 = **0**, prefill rows>1 = 96 (plain-equivalent per-side path), all E6 families intact (31/31/155/31), output non-empty; expansion bit-exact unit oracle (fp16 scale × int8 exact in F32), plain F32 spec unchanged, scope pinned (Q8_0 `ffn_down`/`attn_qkv` keep T16) | 701.41 → **654.91 (−46.50/token = exactly 48×31÷32 = −1488 launches/window; three census runs identical; every other row unchanged — old unfused decode ran 2 launches/layer-step, fused ran 1)** | window 0.744243 vs 0.745498: −0.17% inside the same-commit no-change band (iteration 22's two identical-code windows read 0.743756 and 0.745498); UD decode arm flat (10.32/10.07/10.22 vs 10.31/10.05/10.19 ms) — the launch saving sits below this window's resolution | unit gates all **PASS**: bit-exact expansion oracle + RED→GREEN unit file (5 tests) + live-admission suite green with the native-rows F32-resident refusal preserved + `LLM.generate()` probe PASS + census conservation exact + guard chain green first run + docs 4/4 + audit 0; eligibility keyed on stored dtype+slot, never artifact identity | **executed 2026-09-25 (iteration 23), REVERTED at measure** (`d238b1597`) by the loop's pre-registered keep-revert acceptance (metric must improve; the delta was inside measured noise) — executed-and-recorded per the goal; re-ship with `git revert d238b1597` (source commit `0085e6016`); worklog entry `20260925T101149.420299Z-lhl-e7-…-f3d71c` plus its decision companion record the full evidence |
-| E8 norm-cost attribution | H11 | — | — | — | — | n/a | open |
+| E8 norm-cost attribution | H11 | paired E1 base traces: 774 layer-norm instances in BOTH arms (UD 384 add + 390 plain-rmsnorm = plain 128 + 134 + 512 fixed5120); plain routes 66% to `gguf_norm_fixed5120_wave256<true\|false>` at 3.46/2.77 µs/launch, UD selects it 0×; forcing mechanism = `_gguf_policy_identity`'s UD preset-key extension (3-tuple identity) missing in `GGUF_NORM_RESIDUAL_DECODE_POLICIES` (only 2-tuple plain rows; E6c extended the DOWN policy, not this sibling) → generic fallback by design | trace evidence: UD generic norm cost 24.66 ms/window (41.25+22.62 µs/launch) vs plain 22.12 ms (incl. 512×~3.1 µs fixed5120) = +2.54 ms/window (0.04% of window kernel time) | attribution-only, gate n/a (no numeric campaign gate; traces existing, no new GPU run) | residual already fused inside both arms' add-norm kernels → does NOT ride with E6 | verdict: **executed 2026-09-25 (iteration 24): own routing unit**; follow-up named = qualify the `("MOSTLY_Q4_K_M", "gguf_ud_q4_k_m")` norm row for `bf16_out_fixed5120_wave256` with a UD-shape bit-exact record (D08-D5 covers plain lanes only), then measure |
 | E9 coop IQ prefill owners | H12 | — | — | — | — | bit-exact lane if exact | open |
 
 ¹ From the 2026-09-21 decode census (512-token prefill, 32 graph-replay
