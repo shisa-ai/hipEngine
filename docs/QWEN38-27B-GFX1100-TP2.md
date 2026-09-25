@@ -105,6 +105,33 @@ requires measurement; the review does not establish a performance result.
 
 ## Measured status
 
+**Matched three-way checkpoint (2026-09-25).** Same host, same model bytes,
+512-token prompt, 128 decode tokens, f16 KV both engines, c=1, three
+repetitions, every arm measured in one window:
+
+| Route | Prefill tok/s | Decode tok/s |
+| --- | ---: | ---: |
+| llama.cpp TP=2 (`-sm tensor -ts 1/1`) | 1332.1 ± 11.8 | 40.68 ± 1.77 |
+| hipEngine TP2 (bulk prefill, device exchange, head-sharded attention) | 1066.3 | 41.64 |
+| llama.cpp TP=2 (`-sm layer`, pipeline) | 978.7 ± 1.8 | 29.22 ± 0.12 |
+| llama.cpp TP=1 (XTX) | 1057.9 ± 2.2 | 37.14 ± 0.09 |
+| llama.cpp TP=1 (W7900) | 938.0 ± 1.3 | 30.37 ± 0.06 |
+| hipEngine TP1 (W7900, token-serial prefill) | 30.07 | 28.78 |
+| hipEngine TP1 (XTX, token-serial prefill) | 36.57 | 34.90 |
+
+Prefill is **20.0% behind** the fork's tensor split (95.8 ms of a 480 ms
+prefill, against 28.3% at the 2026-09-20 recording) and decode is **level**
+(41.64 against 40.68, inside llama.cpp's own ±1.77 spread). The prefill deficit
+is if anything understated, because llama-bench's `pp512` projects the prompt's
+output rows where this route uses `logits_rows=1`. llama.cpp's pipeline split
+loses to a single card on both axes, and its row split does not load this model
+at all. The second card buys llama.cpp 1.26x prefill and 1.10x decode over its
+own best single card, and hipEngine 1.08x prefill and 1.19x decode over ours.
+Against this project's own single card, TP2 decode is 1.45x the W7900 and 1.19x
+the XTX, and bulk prefill is 1.21x and 1.08x against the earlier-revision
+bulk-prefill controls. Artifact:
+[`benchmarks/results/2026-09-25-w7900-tp2-tp1-llamacpp-three-way.json`](../benchmarks/results/2026-09-25-w7900-tp2-tp1-llamacpp-three-way.json).
+
 **External cross-engine checkpoint (2026-09-18).** The same
 `Qwen3.8-27B-Q4_K_M.gguf` on the same host, c=1, 512-token prompt, 128 decode
 tokens, f16 KV, no speculative decoding, measured against the
@@ -129,8 +156,9 @@ consumes the rank-local bulk prefill candidate instead of staying token-serial,
 and that route projects the head for the last prompt row rather than for all of
 them, which alone was 46% of its kernel time. TP2 prefill is now **922.1 tok/s**
 at the same shape - 1.04x this project's own single-card shipping bulk route
-(890.8, WMMA confirmed on) and 0.98x llama.cpp TP=1 (941.8), against 1474.6
-for the fork's TP=2 tensor split.
+(890.8, WMMA confirmed on) and 0.98x llama.cpp TP=1 (941.8), against the fork's
+TP=2 tensor split, whose reproducible figure is 1332.1 (1474.6 as recorded
+then).
 Full protocol,
 commands, and artifacts:
 [`benchmarks/HISTORY.md`](../benchmarks/HISTORY.md) "Qwen3.8-27B dense Q4_K_M
@@ -140,7 +168,7 @@ TP1/TP2 vs llama.cpp RDNA3 fork" and
 **Where the remaining TP2 prefill gap is (2026-09-19).** Prefill rate saturates
 near 950-965 tok/s instead of rising with prompt length (787.1 at 256 tokens,
 922.1 at 512, 964.7 at 1024, 947.9 at 2048; marginal cost 0.896, 0.989 and 1.074
-ms/token across those steps), so the gap to the fork's 1474.6 is per-token
+ms/token across those steps), so the gap to the fork's tensor split is per-token
 throughput, not a per-prefill fixed cost. Halving the sharded MLP should have
 made each rank do about 0.62x the single-card work, but the measured wall is
 0.97x, so each rank runs at roughly 64% of the single-card route's efficiency -
