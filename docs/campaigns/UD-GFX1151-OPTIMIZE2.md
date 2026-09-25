@@ -595,6 +595,30 @@ measured negative.
   serving the other shapes; no fallback. Remaining for step 2: 12
   mixed layers across 7 ordered combos, each its own unit; residual
   folding stays E6c.
+  **Step 2d landed 2026-09-25 (E6b-4, iteration 15):** the (Q4_K gate,
+  Q5_K up) family — 3 layers (combo 12, 4), tied for largest remaining
+  and taking the census-share tie-break over Q3_K→IQ4_XS — is the first
+  pair with **no IQ4 side at all**: a fourth template axis `A_IS_CHAIN`
+  runs side A as the dense Q4T16 single's own full chain over wa's
+  tiles (per-wave redundant, wave-0 published — the same convention as
+  side B) instead of the IQ4 local32 split-K, while side B keeps the
+  wave-distributed tile8 emulation from step 2c; the gate stays side A
+  (`GATE_IS_Q4=false`), so only side A's arithmetic changed. Route note:
+  gate compares the raw-resolved Q4 c1 key (like E6b-2), up compares
+  the `_t16_c1_variant_dispatch` tile8 key (like 2c); both sides pass
+  T16 tiles. Screen at (5120, 17408) rows=1: **1.02× (566.6 vs 580.7
+  µs/layer), bit-exact** vs q4 dense single + q5 tile8 single + silu_mul
+  — within the ≤1.05× in-band window step 2c taught, so the census
+  decides the wall story. Census (e6b3 → e6b4): pair4 +2.91, q4 dense
+  −2.91, q5 tile8 −2.90, silu −2.91 (pairs 1–3 demangle with the new
+  fourth template arg — cosmetic) → **776.97 → 771.16 launches/tok
+  (−5.81, exact)** and decode pure_us **−86.4 µs/tok (−0.10%)**, i.e.
+  this pair's chain cost landed where the screen said it would (unlike
+  2c's overstated screen chain; run-to-run spread ≈ ±110 µs noted).
+  LLM.generate probe: pair4 fires exactly 3 layers/decode-step, all
+  four pair families live, q5 tile8/q4 dense keep the other 110/73
+  layers' launches. Remaining for step 2: 9 mixed layers across 6
+  ordered combos, each its own unit; residual folding stays E6c.
 - [ ] **E7 — GDN alpha/beta on the fused path (H10).** Make UD's Q8_0
   `ssm_alpha`/`ssm_beta` reach the fused alpha/beta+conv owner, either by
   planning a load-time Q8_0→F32 expansion (exact in weight value: an fp16
@@ -783,6 +807,7 @@ refusal.
 | E6b mixed pair (IQ4_XS, Q4_K) | H9 | iq4_q4_pair_silu_kernel<2> (new fused pair owner) vs iq4/q4 singles + silu_mul | 1.04× (504.2 vs 523.3 µs/layer at (5120,17408) rows=1, allocate-once ×50) | 807.97 → **794.41 (−13.56, exact 4-family conservation)** | −54.6 µs/tok (84828.8 → 84774.2) | **PASS**: bit-exact vs chain at full production scale + K=5120 unit oracle; unit route test (fires ordered / declines reversed and rows≠1); production probe through LLM.generate shows pair 6.78/tok with zero collateral drift; guard green, docs gates 4/4 | landed 2026-09-25 (iteration 12): the 7-layer (23,12) family on its own fused owner — side A = local32 dual split-K contract (shared `_local32_waves`), side B = dense Q4T16 single's single-wave chain published from wave 0 (no K re-association on either side); the first production probe crashed on `KeyError: 'tiles'` — side A reads `raw`, caught only by the LLM.generate gate because the unit fake exposed all allocations (harness-vs-production lesson recorded in the worklog entry); 21 mixed layers across 9 ordered combos + E6c residual folding remain as separate units; `ud_plain_parity` pending per lead directive |
 | E6b-2 mirror pair (Q4_K, IQ4_XS) | H9 | iq4_q4_pair_silu_kernel<2, true> (GATE_IS_Q4 epilogue flag) vs q4/iq4 singles + silu_mul | 1.03× (498.0 vs 511.6 µs/layer at (5120,17408) rows=1, allocate-once ×50) | 794.41 → **782.78 (−11.63, exact 4-family conservation)** | −72.5 µs/tok (84774.2 → 84701.7) | **PASS**: bit-exact vs the swapped chain at full production scale + K=5120 unit oracle; unit route test fires the mirror at rows==1, declines rows≠1 (both E6b route tests order-independent under any collection breadth after the load_backend self-sufficiency fix); mirror owner live at 5.81/tok in the census with zero collateral drift; guard green, docs gates 4/4 | landed 2026-09-25 (iteration 13): 6-layer (12,23) family on the same body with a `GATE_IS_Q4` template flag — pointers keep their decode geometry, only the gate accumulator swaps; the wrapper reorders the gate-first route order to the C geometry ABI; E6b-1's `<2>` demangles `<2, false>` (template default, arithmetic unchanged); 15 mixed layers across 8 ordered combos + E6c residual folding remain as separate units; `ud_plain_parity` pending per lead directive |
 | E6b-3 mixed pair (IQ4_XS, Q5_K) | H9 | iq4_q4_pair_silu_kernel<2, false, true> (wave-distributed tile8 emulation) vs iq4 local32 + q5 tile8 + silu_mul | 1.03× (573.6 vs 588.1 µs/layer at (5120,17408) rows=1, allocate-once ×50; the first wave-0-only cut screened 0.90× and was restructured before shipping) | 782.78 → **776.97 (−5.81, exact 4-family conservation, reproducible across two runs)** | +95.3 to +110.7 µs/tok (+0.11–0.13%, within the ≤0.62% CV band; pair3 costs 575 µs/launch in-system while the production chain it replaces runs ≈512 µs/layer — the isolated screen's chain overstates production chain cost) | **PASS**: bit-exact vs the swapped chain at full production scale + K=5120 unit oracle; unit route test fires rows==1 / declines rows≠1 (the route applies `_t16_c1_variant_dispatch` explicitly because the pair path resolves without the shape policy); LLM.generate probe: pair3 = exactly 3 layers/decode-step, q5 tile8 retains its other shapes, no fallback; guard green, docs gates 4/4 | landed 2026-09-25 (iteration 14): 3-layer (23,4) family; side B emulates the tile8 single's 4-group chain wave-distributed (g = wave step WAVES, identity lane map, serial g-order sum at thread 0); demangles now show three template args (cosmetic renames of the 2a/2b kernels); 12 mixed layers across 7 ordered combos + E6c residual folding remain as separate units; `ud_plain_parity` pending per lead directive |
+| E6b-4 mixed pair (Q4_K, Q5_K) | H9 | iq4_q4_pair_silu_kernel<2, false, true, true> (A_IS_CHAIN side A + wave-distributed tile8 side B) vs q4 dense + q5 tile8 + silu_mul | 1.02× (566.6 vs 580.7 µs/layer at (5120,17408) rows=1, allocate-once ×50 — in-band window from 2c; census confirms the wall direction) | 776.97 → **771.16 (−5.81, exact 4-family conservation)** | −86.4 µs/tok (84797.0 → 84710.6, −0.10%; direction agrees with the 1.02× screen, magnitude inside the ≈±110 µs run-to-run spread) | **PASS**: bit-exact vs q4 dense + q5 tile8 + silu_mul at K=5120 unit oracle + full production scale; unit route test fires rows==1 / declines rows≠1 (gate keys the raw-resolved Q4 c1 owner, up the `_t16_c1` tile8 owner, both tiles ABI); LLM.generate probe: pair4 = exactly 3 layers/decode-step (45 = 3×15), all four pair families live, q5 tile8/q4 dense retain their other layers, no fallback; guard green, docs gates 4/4 | landed 2026-09-25 (iteration 15): 3-layer (12,4) family, the first pair with no IQ4 side — fourth template axis `A_IS_CHAIN` runs side A as the dense Q4T16 chain (per-wave redundant, wave-0 published), gate stays side A so only side A’s arithmetic changed; demangles show a fourth template arg (cosmetic renames of 2a–2c); 9 mixed layers across 6 ordered combos + E6c residual folding remain as separate units; `ud_plain_parity` pending per lead directive |
 | E6 gate/up + residual fusion | H9 | — | — | — | — | required | open |
 | E7 GDN alpha/beta fused path | H10 | — | — | — | — | bit-exact lane if exact | open |
 | E8 norm-cost attribution | H11 | — | — | — | — | n/a | open |

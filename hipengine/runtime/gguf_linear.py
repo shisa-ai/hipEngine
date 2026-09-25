@@ -6290,6 +6290,55 @@ def launch_gguf_linear_pair_silu(
             **kwargs,
         )
         return True
+    # E6b-4: (Q4_K gate, Q5_K up) mixed pair + SiLU (2026-09-25): the
+    # ordered (12, 4) family - 3 gate/up layers, tied for largest
+    # remaining (census-share tie-break over Q3_K->IQ4_XS). Neither
+    # side is IQ4: gate side A is the Q4_K T16 decode owner (dense
+    # single, raw-resolved like E6b-2), up side B the Q5_T16 tile8 c1
+    # owner the E4a policy selects at this shape (dispatch_b_c1 from the
+    # E6b-3 block above). Both sides read T16 tiles. Bit-exact with
+    # q4 single + q5 tile8 single + silu_mul; no new accuracy evidence
+    # beyond the already-gated singles. Other remaining mixed combos
+    # are separate units.
+    q4_q5_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1+gguf_q5_k_t16_v1",
+        "q4_q5_pair_silu_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(q4_q5_pair)
+    if (
+        rows == 1
+        and dispatch_a.key == q4_t16_dense_decode
+        and dispatch_b_c1.key == q5_t16_tile8_decode
+        and in_features % 256 == 0
+        and out_features % 16 == 0
+        and is_registered(q4_q5_pair)
+    ):
+        fn = resolve(
+            backend=q4_q5_pair.backend,
+            layer=q4_q5_pair.layer,
+            quant=q4_q5_pair.quant,
+            variant=q4_q5_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None if libraries is None else libraries.get(q4_q5_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            # Gate first: Q4_K T16 tiles; up second: Q5_K T16 tiles.
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
     # Q5 T16 gate/up decode dual (2026-09-10): fires only when both sides
     # dispatch to the Q5 T16 direct-GEMV decode owner at rows == 1; the
     # registered variant defaults to the bit-exact dense dual SiLU GEMV.
