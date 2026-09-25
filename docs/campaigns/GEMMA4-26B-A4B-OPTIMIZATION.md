@@ -526,6 +526,16 @@ flags because a configuration has not been benchmarked.
   speed mechanism is the rejected per-slice-max split's (0.102 vs 0.263
   ms/launch) with the rescale removed, and the open question is whether
   association alone clears the kl_max bar.
+  *Device contention blocks the gate (2026-09-25).* The gate selects the split
+  by flipping `_SPLIT_GATE_PASSED` in
+  `hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py`, and two attempts
+  both died in `hipMalloc` before reaching a numerics verdict: a peer worker's
+  job on the same physical GPU holds ~6.9 GiB of its 24 GiB, which leaves less
+  than the model's own footprint. The same OOM reproduces at context 4096, so
+  the weights rather than the KV cache are what does not fit - the split's own
+  workspace is under 1 MiB. Run the gate only when `rocm-smi` shows GPU1 near
+  idle, and check that first: an attempt during a peer job costs a full load
+  (~2 min) and returns no information.
   *Measured 2026-09-25 (iteration 28):* **45.4170 tok/s** median of 3 samples at
   1024p/128o against the incumbent's 43.9827 - **+3.26%**, 22.74 -> 22.02 ms per
   step, 0.72 ms saved. That is far below what the probe's 3.3x per-head scaling
