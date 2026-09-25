@@ -404,11 +404,18 @@ flags because a configuration has not been benchmarked.
   decode step as a HIP graph - `hipengine/core/hip.py` already exposes
   `stream_begin_capture`, graph instantiation and `hipGraphLaunch`, and nothing
   calls them, so the machinery exists and is unexercised; (2) fuse the
-  per-layer elementwise chains, for which `HIPENGINE_FUSED_RMSNORM_ROTATE`
-  already exists but defaults to off on a justification ("pending verifier
-  economics") that the Product Defaults rule does not accept as a cause, so the
-  next iteration should measure it on/off through the campaign row and ship it
-  on if it holds. Measure before either: the census above counts launches, not
+  per-layer elementwise chains. **Correction (iteration 27):**
+  `HIPENGINE_FUSED_RMSNORM_ROTATE` is not a Gemma 4 lever at all - it belongs to
+  the Qwen3.5/PARO MTP verifier path (`hipengine/runtime/qwen35_paro.py`) - and
+  its default-off is supported by a recorded observed regression, not by the
+  "pending verifier economics" phrase ENVS.md uses: it stayed bit-exact while
+  worsening the verifier kernel 13.41 -> 14.09 ms/pass (+5.0%) and the host
+  window 18.45 -> 19.05 ms/pass, because the one-block-per-row RMSNorm reduction
+  serialises the per-group rotate (`docs/REFACTOR.md`, `benchmarks/CHANGELOG.md`,
+  `benchmarks/results/2026-06-08-hipengine-mtp-m15.4-fused-rmsnorm-rotate-neutral.json`).
+  A recorded regression is a legal cause under Product Defaults, so this flag is
+  not a violation and not a Gemma 4 candidate; fusing Gemma 4's own elementwise
+  chain would be a new kernel, not a flag flip. Measure before either: the census above counts launches, not
   their host cost, and no trace-based attribution has been possible since
   rocprofv3 began hanging on this box.
   *Status 2026-09-25 (iteration 25): **accepted**, and it closes the host-gap
@@ -443,9 +450,9 @@ flags because a configuration has not been benchmarked.
   linears (6.2 ms), the dense projections (3.9 ms). HIP graph capture remains
   worth measuring for the short-prompt rows, where host cost is still exposed,
   but it should be scoped by its 128p/512p benefit rather than by the old 8 ms
-  figure. `HIPENGINE_FUSED_RMSNORM_ROTATE` still defaults off on a justification
-  the Product Defaults rule does not accept as a cause; measure it on/off through
-  the campaign row and ship it on if it holds.
+  figure. (The `HIPENGINE_FUSED_RMSNORM_ROTATE` recommendation in this paragraph
+  is withdrawn in the iteration-27 correction above: that flag is Qwen3.5/PARO
+  MTP only, and its default-off rests on a recorded regression.)
   *Status 2026-09-25 (iteration 26): **rejected**, and it corrects the diagnosis
   of pass 1's tree.* Iteration 24 measured the tree at 108 us of a 288 us sliding
   launch and iteration 24's 1024-thread regression showed more warps do not help,
