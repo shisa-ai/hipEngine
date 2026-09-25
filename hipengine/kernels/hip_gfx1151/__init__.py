@@ -1217,6 +1217,7 @@ GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES = frozenset(
 # residual limits remain unchanged for their quant families.
 GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
     "gguf_q4_k_t16_v1": 4,
+    "gguf_q5_k_t16_v1": 1,
     "gguf_q6_k_t16_qmicro_planar_v1": 3,
     "bf16": 512,
 }
@@ -1789,6 +1790,20 @@ GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES = {
         (1, 17_408, 5_120): True,
     },
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
+        (1, 17_408, 5_120): True,
+    },
+    # E6c down-residual fold, unqualified-manifest lane (kept for unpinned
+    # Q4_K_M-stamped H5120 artifacts) and the certificate-bound UD preset
+    # lane the resident Qwen3.8-27B UD-Q4_K_M artifact resolves to at
+    # runtime. Both rows are capability-shaped: dense H5120 geometry +
+    # plain-lane stamp + rows-1 down shape. Kernels resolve per quant -
+    # registered exact siblings (Q5T16/Q4T16/planar Q6) fold, raw-IQ down
+    # owners fall back to the unfused chain because they have no residual
+    # sibling or raw-ABI launcher yet.
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf-unqualified-manifest"): {
+        (1, 17_408, 5_120): True,
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): {
         (1, 17_408, 5_120): True,
     },
 }

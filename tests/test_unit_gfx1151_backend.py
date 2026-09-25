@@ -1334,6 +1334,10 @@ def test_gfx1151_backend_scopes_dense_down_residual_fusions() -> None:
             "gguf_q6_k_t16_qmicro_planar_v1",
             "t16_gemv_decode_bf16_residual_bf16_out",
         ),
+        (
+            "gguf_q5_k_t16_v1",
+            "t16_gemv_decode_bf16_residual_bf16_out",
+        ),
     ):
         assert is_registered(
             KernelKey(
@@ -1349,6 +1353,7 @@ def test_gfx1151_backend_scopes_dense_down_residual_fusions() -> None:
         {},
     ) == {
         "gguf_q4_k_t16_v1": 4,
+        "gguf_q5_k_t16_v1": 1,
         "gguf_q6_k_t16_qmicro_planar_v1": 3,
     }
     assert backend_package_capability(
@@ -1357,6 +1362,7 @@ def test_gfx1151_backend_scopes_dense_down_residual_fusions() -> None:
         None,
     ) == {
         "gguf_q4_k_t16_v1": 4,
+        "gguf_q5_k_t16_v1": 1,
         "gguf_q6_k_t16_qmicro_planar_v1": 3,
         "bf16": 512,
     }
@@ -2074,6 +2080,19 @@ def test_gfx1151_dense_down_residual_policies_are_exact() -> None:
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
             (1, 17_408, 5_120): True
         },
+        # E6c fold lanes: the unqualified-manifest lane plus the
+        # certificate-bound UD preset the resident UD-Q4_K_M artifact
+        # resolves to at runtime.
+        (
+            QWEN35_DENSE_H5120_GEOMETRY,
+            "MOSTLY_Q4_K_M",
+            "gguf-unqualified-manifest",
+        ): {(1, 17_408, 5_120): True},
+        (
+            QWEN35_DENSE_H5120_GEOMETRY,
+            "MOSTLY_Q4_K_M",
+            "gguf_ud_q4_k_m",
+        ): {(1, 17_408, 5_120): True},
     }
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES", {}

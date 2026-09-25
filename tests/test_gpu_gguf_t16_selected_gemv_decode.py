@@ -1250,6 +1250,72 @@ def test_q4_t16_dense_c1_down_residual_is_bit_exact(
     np.testing.assert_array_equal(candidate, expected)
 
 
+def test_q5_t16_dense_c1_down_residual_is_bit_exact(
+    t16_selected_library,
+) -> None:
+    rng = np.random.default_rng(20260925)
+    rows = 1
+    in_features = 512
+    out_features = 32
+    raw = make_q5_k_weight(out_features, in_features)
+    tiles = repack_gguf_q5_k_tile16(raw[None, ...]).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
+    )
+    residual = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, out_features)).astype(np.float32)
+    )
+    projected = _run_dense_single(
+        gguf_q5_k_t16_gemv_decode_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    expected = _f32_to_bf16_u16(
+        _bf16_u16_to_f32(residual) + _bf16_u16_to_f32(projected)
+    )
+    candidate = _run_dense_residual(
+        selected_t16_mod.gguf_q5_k_t16_gemv_decode_bf16_residual_bf16_out,
+        x_bf16,
+        tiles,
+        residual,
+        out_features,
+        t16_selected_library,
+    )
+
+    np.testing.assert_array_equal(candidate, expected)
+    cpu_projection = gguf_quant_gemv(
+        _bf16_u16_to_f32(x_bf16), raw, GGMLQuantizationType.Q5_K,
+    )
+    cpu_composite = (
+        _bf16_u16_to_f32(_f32_to_bf16_u16(cpu_projection))
+        + _bf16_u16_to_f32(residual)
+    )
+    quality = evaluate_logits(
+        cpu_composite, _bf16_u16_to_f32(candidate),
+        kl_threshold=0.05, top1_threshold=0.90,
+    )
+    assert quality.passed
+
+
+def test_q5_t16_down_residual_rejects_multibatch_rows(
+    t16_selected_library,
+) -> None:
+    with pytest.raises(ValueError, match="rows == 1"):
+        selected_t16_mod.gguf_q5_k_t16_gemv_decode_bf16_residual_bf16_out(
+            0,
+            0,
+            0,
+            0,
+            2,
+            512,
+            32,
+            library=t16_selected_library,
+        )
+
+
 def _run_dense_single_chunked(
     fn,
     x_dev,

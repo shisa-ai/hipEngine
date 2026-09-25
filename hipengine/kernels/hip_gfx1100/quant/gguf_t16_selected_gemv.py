@@ -165,6 +165,9 @@ _Q4_SINGLE_DIRECT_FP16 = "hipengine_gguf_q4_k_t16_selected_gemv_fp16_fp16_out"
 _Q5_DENSE_DIRECT_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_decode_bf16_bf16_out"
 )
+_Q5_DENSE_DIRECT_BF16_RESIDUAL = (
+    "hipengine_gguf_q5_k_t16_gemv_decode_bf16_residual_bf16_out"
+)
 _Q5_DENSE_SINGLE_LOCAL32_BF16 = (
     "hipengine_gguf_q5_k_t16_dense_single_local32_gemv_bf16_bf16_out"
 )
@@ -2130,6 +2133,38 @@ def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
     )
 
 
+def gguf_q5_k_t16_gemv_decode_bf16_residual_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact dense Q5T16 c1 decode projection plus rounded residual."""
+
+    if rows != 1:
+        raise ValueError("Q5T16 down-residual composite requires rows == 1")
+    _launch_dense_q5_t16_residual(
+        _Q5_DENSE_DIRECT_BF16_RESIDUAL,
+        x_ptr,
+        tiles_ptr,
+        residual_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -2442,6 +2477,56 @@ def _launch_dense_q5_t16(
     status = fn(
         ctypes.c_void_p(x_ptr),
         ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if status != HIP_SUCCESS:
+        raise RuntimeError(
+            f"{symbol} failed with HIP status {status}: {rt.error_string(status)}"
+        )
+
+
+def _launch_dense_q5_t16_residual(
+    symbol: str,
+    x_ptr: int,
+    tiles_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    """Launch one Q5T16 decode projection plus rounded-BF16 residual."""
+
+    if in_features <= 0 or in_features % _QK_K != 0:
+        raise ValueError("in_features must be a positive multiple of 256")
+    if out_features <= 0 or out_features % _T16_COLS != 0:
+        raise ValueError("out_features must be a positive multiple of 16")
+    lib = library or _t16_selected_gemv_library()
+    rt = runtime or get_hip_runtime()
+    fn = getattr(lib, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    status = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(residual_ptr),
         ctypes.c_void_p(out_ptr),
         ctypes.c_int64(rows),
         ctypes.c_int64(in_features),
@@ -4823,6 +4908,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
             "t16_gemv_decode_bf16_bf16_out",
         ),
         gguf_q5_k_t16_gemv_decode_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear+residual",
+            "gguf_q5_k_t16_v1",
+            "t16_gemv_decode_bf16_residual_bf16_out",
+        ),
+        gguf_q5_k_t16_gemv_decode_bf16_residual_bf16_out,
         replace=replace,
     )
     register(

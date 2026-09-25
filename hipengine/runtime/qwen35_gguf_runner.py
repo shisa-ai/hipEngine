@@ -10062,9 +10062,11 @@ class Qwen35GGUFFullStackRunner:
             rows == 1 and not force_bulk_rows and bool(dense_down_decode_c1)
         )
         down_residual_fused = (
-            next_norm_weight_ptr is None
-            and not f32_residual
-            and (rows > 1 or dense_down_decode_fused)
+            not f32_residual
+            and (
+                (next_norm_weight_ptr is None and rows > 1)
+                or (rounded_next_rms_fn is None and rows == 1)
+            )
             and launch_gguf_linear_residual(
                 layer.weight("ffn_down"),
                 scratch.ffn_intermediate.ptr,
@@ -10078,6 +10080,20 @@ class Qwen35GGUFFullStackRunner:
                 registered_decode=dense_down_decode_fused,
             )
         )
+        if down_residual_fused and next_norm_weight_ptr is not None:
+            # E6c: the composite replaced residual = add(residual, down);
+            # the trailing next-input RMSNorm stays exactly the launch the
+            # unfused else-branch ran after that add.
+            gguf_rmsnorm_bf16_f32_weight(
+                out_ptr,
+                int(next_norm_weight_ptr),
+                int(next_norm_out_ptr),
+                rows=rows,
+                hidden_size=self.hidden_size,
+                eps=self.weights.config.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
         if not down_residual_fused:
             launch_gguf_linear(
                 layer.weight("ffn_down"),

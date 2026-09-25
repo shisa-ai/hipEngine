@@ -242,9 +242,9 @@
     },
     {
       "kind": "axis-branch",
-      "key": "hipengine/kernels/hip_gfx1151/__init__.py:3001",
+      "key": "hipengine/kernels/hip_gfx1151/__init__.py:3098",
       "title": "branches on a registry axis: if quant != \"gguf_q6_k\"",
-      "location": "hipengine/kernels/hip_gfx1151/__init__.py:3001",
+      "location": "hipengine/kernels/hip_gfx1151/__init__.py:3098",
       "evidence": {
         "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
         "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
@@ -255,7 +255,7 @@
       "hints": {
         "anchor": "hipengine/kernels/hip_gfx1151/__init__.py",
         "refs": [
-          "hipengine/kernels/hip_gfx1151/__init__.py:3001"
+          "hipengine/kernels/hip_gfx1151/__init__.py:3098"
         ],
         "tokens": [
           "axis",
@@ -265,14 +265,14 @@
           "registry"
         ]
       },
-      "id": "axis-branch/hipengine/kernels/hip_gfx1151/__init__.py:3001",
-      "evidence_hash": "5c3a6d1a11ea"
+      "id": "axis-branch/hipengine/kernels/hip_gfx1151/__init__.py:3098",
+      "evidence_hash": "dc2b0c338aad"
     },
     {
       "kind": "axis-branch",
-      "key": "hipengine/kernels/vibevoice.py:36",
+      "key": "hipengine/kernels/vibevoice.py:37",
       "title": "branches on a registry axis: if quant=='q4_k_m':",
-      "location": "hipengine/kernels/vibevoice.py:36",
+      "location": "hipengine/kernels/vibevoice.py:37",
       "evidence": {
         "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
         "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
@@ -283,7 +283,7 @@
       "hints": {
         "anchor": "hipengine/kernels/vibevoice.py",
         "refs": [
-          "hipengine/kernels/vibevoice.py:36"
+          "hipengine/kernels/vibevoice.py:37"
         ],
         "tokens": [
           "axis",
@@ -293,14 +293,14 @@
           "registry"
         ]
       },
-      "id": "axis-branch/hipengine/kernels/vibevoice.py:36",
-      "evidence_hash": "cdae62ac3a2f"
+      "id": "axis-branch/hipengine/kernels/vibevoice.py:37",
+      "evidence_hash": "c6b3c162e1fe"
     },
     {
       "kind": "axis-branch",
-      "key": "hipengine/kernels/vibevoice.py:44",
+      "key": "hipengine/kernels/vibevoice.py:45",
       "title": "branches on a registry axis: if quant=='q4_k_m' and name in linear_q4:",
-      "location": "hipengine/kernels/vibevoice.py:44",
+      "location": "hipengine/kernels/vibevoice.py:45",
       "evidence": {
         "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
         "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
@@ -311,7 +311,7 @@
       "hints": {
         "anchor": "hipengine/kernels/vibevoice.py",
         "refs": [
-          "hipengine/kernels/vibevoice.py:44"
+          "hipengine/kernels/vibevoice.py:45"
         ],
         "tokens": [
           "axis",
@@ -323,14 +323,14 @@
           "registry"
         ]
       },
-      "id": "axis-branch/hipengine/kernels/vibevoice.py:44",
-      "evidence_hash": "57d43d7a1520"
+      "id": "axis-branch/hipengine/kernels/vibevoice.py:45",
+      "evidence_hash": "cd017e453c9a"
     },
     {
       "kind": "axis-branch",
-      "key": "hipengine/kernels/vibevoice.py:58",
+      "key": "hipengine/kernels/vibevoice.py:59",
       "title": "branches on a registry axis: if quant=='q4_k_m':",
-      "location": "hipengine/kernels/vibevoice.py:58",
+      "location": "hipengine/kernels/vibevoice.py:59",
       "evidence": {
         "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
         "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
@@ -341,7 +341,7 @@
       "hints": {
         "anchor": "hipengine/kernels/vibevoice.py",
         "refs": [
-          "hipengine/kernels/vibevoice.py:58"
+          "hipengine/kernels/vibevoice.py:59"
         ],
         "tokens": [
           "axis",
@@ -351,8 +351,8 @@
           "registry"
         ]
       },
-      "id": "axis-branch/hipengine/kernels/vibevoice.py:58",
-      "evidence_hash": "ec67199ab1cb"
+      "id": "axis-branch/hipengine/kernels/vibevoice.py:59",
+      "evidence_hash": "68b62b2d6626"
     },
     {
       "kind": "axis-branch",

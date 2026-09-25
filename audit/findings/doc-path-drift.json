@@ -1,8 +1,8 @@
 {
   "kind": "doc-path-drift",
   "meta": {
-    "paths_checked": 1555,
-    "skipped_as_illustrative": 1350,
+    "paths_checked": 1625,
+    "skipped_as_illustrative": 1380,
     "exempt": [
       "docs/campaigns/",
       "docs/archive/",
@@ -637,9 +637,46 @@
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:168:moe/prefill.py",
+      "key": "docs/KERNELS.md:159:linear/dense_gemv.hip",
+      "title": "names `linear/dense_gemv.hip`, which is actually at `hipengine/kernels/hip_gfx1100/linear/dense_gemv.hip`",
+      "location": "docs/KERNELS.md:159",
+      "evidence": {
+        "fix": "Change `linear/dense_gemv.hip` to `hipengine/kernels/hip_gfx1100/linear/dense_gemv.hip`.",
+        "why": "documented path does not exist, but the file is present elsewhere",
+        "target": "linear/dense_gemv.hip",
+        "doc": "docs/KERNELS.md",
+        "actual": [
+          "hipengine/kernels/hip_gfx1100/linear/dense_gemv.hip"
+        ]
+      },
+      "signals": [
+        "documented path does not exist, but the file is present elsewhere"
+      ],
+      "hints": {
+        "anchor": "docs/KERNELS.md",
+        "refs": [
+          "docs/KERNELS.md:159:linear/dense_gemv.hip"
+        ],
+        "tokens": [
+          "actually",
+          "dense_gemv",
+          "hip",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "linear",
+          "names",
+          "which"
+        ]
+      },
+      "id": "doc-path-drift/docs/KERNELS.md:159:linear/dense_gemv.hip",
+      "evidence_hash": "5a9ac171cf04"
+    },
+    {
+      "kind": "doc-path-drift",
+      "key": "docs/KERNELS.md:240:moe/prefill.py",
       "title": "names `moe/prefill.py`, which is actually at `hipengine/kernels/hip_gfx1100/moe/prefill.py`",
-      "location": "docs/KERNELS.md:168",
+      "location": "docs/KERNELS.md:240",
       "evidence": {
         "fix": "Change `moe/prefill.py` to `hipengine/kernels/hip_gfx1100/moe/prefill.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -655,7 +692,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:168:moe/prefill.py"
+          "docs/KERNELS.md:240:moe/prefill.py"
         ],
         "tokens": [
           "actually",
@@ -668,14 +705,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:168:moe/prefill.py",
-      "evidence_hash": "33384530f0ff"
+      "id": "doc-path-drift/docs/KERNELS.md:240:moe/prefill.py",
+      "evidence_hash": "31ada6535dcf"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:175:attention/aotriton.py",
+      "key": "docs/KERNELS.md:247:attention/aotriton.py",
       "title": "names `attention/aotriton.py`, which is actually at `hipengine/kernels/hip_gfx1100/attention/aotriton.py`",
-      "location": "docs/KERNELS.md:175",
+      "location": "docs/KERNELS.md:247",
       "evidence": {
         "fix": "Change `attention/aotriton.py` to `hipengine/kernels/hip_gfx1100/attention/aotriton.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -691,7 +728,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:175:attention/aotriton.py"
+          "docs/KERNELS.md:247:attention/aotriton.py"
         ],
         "tokens": [
           "actually",
@@ -704,14 +741,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:175:attention/aotriton.py",
-      "evidence_hash": "5569e86e185d"
+      "id": "doc-path-drift/docs/KERNELS.md:247:attention/aotriton.py",
+      "evidence_hash": "28cd8288bc5d"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:175:attention/aotriton_wrap.py",
+      "key": "docs/KERNELS.md:247:attention/aotriton_wrap.py",
       "title": "names `attention/aotriton_wrap.py`, which is actually at `hipengine/kernels/hip_gfx1100/attention/aotriton_wrap.py`",
-      "location": "docs/KERNELS.md:175",
+      "location": "docs/KERNELS.md:247",
       "evidence": {
         "fix": "Change `attention/aotriton_wrap.py` to `hipengine/kernels/hip_gfx1100/attention/aotriton_wrap.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -727,7 +764,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:175:attention/aotriton_wrap.py"
+          "docs/KERNELS.md:247:attention/aotriton_wrap.py"
         ],
         "tokens": [
           "actually",
@@ -740,14 +777,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:175:attention/aotriton_wrap.py",
-      "evidence_hash": "b33ac945d17f"
+      "id": "doc-path-drift/docs/KERNELS.md:247:attention/aotriton_wrap.py",
+      "evidence_hash": "752243c50444"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:190:cpu_reference/dms.py",
+      "key": "docs/KERNELS.md:262:cpu_reference/dms.py",
       "title": "names `cpu_reference/dms.py`, which is actually at `hipengine/kernels/cpu_reference/dms.py`",
-      "location": "docs/KERNELS.md:190",
+      "location": "docs/KERNELS.md:262",
       "evidence": {
         "fix": "Change `cpu_reference/dms.py` to `hipengine/kernels/cpu_reference/dms.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -763,7 +800,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:190:cpu_reference/dms.py"
+          "docs/KERNELS.md:262:cpu_reference/dms.py"
         ],
         "tokens": [
           "actually",
@@ -775,14 +812,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:190:cpu_reference/dms.py",
-      "evidence_hash": "9e3fa8472a15"
+      "id": "doc-path-drift/docs/KERNELS.md:262:cpu_reference/dms.py",
+      "evidence_hash": "6d42f4d721a0"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:218:models/qwen35.py",
+      "key": "docs/KERNELS.md:290:models/qwen35.py",
       "title": "names `models/qwen35.py`, which is actually at `hipengine/models/qwen35.py`",
-      "location": "docs/KERNELS.md:218",
+      "location": "docs/KERNELS.md:290",
       "evidence": {
         "fix": "Change `models/qwen35.py` to `hipengine/models/qwen35.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -798,7 +835,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:218:models/qwen35.py"
+          "docs/KERNELS.md:290:models/qwen35.py"
         ],
         "tokens": [
           "actually",
@@ -809,14 +846,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:218:models/qwen35.py",
-      "evidence_hash": "9bb79019fd86"
+      "id": "doc-path-drift/docs/KERNELS.md:290:models/qwen35.py",
+      "evidence_hash": "b9240da0c607"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:219:kernels/backends.py",
+      "key": "docs/KERNELS.md:291:kernels/backends.py",
       "title": "names `kernels/backends.py`, which is actually at `hipengine/kernels/backends.py`",
-      "location": "docs/KERNELS.md:219",
+      "location": "docs/KERNELS.md:291",
       "evidence": {
         "fix": "Change `kernels/backends.py` to `hipengine/kernels/backends.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -832,7 +869,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:219:kernels/backends.py"
+          "docs/KERNELS.md:291:kernels/backends.py"
         ],
         "tokens": [
           "actually",
@@ -843,14 +880,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:219:kernels/backends.py",
-      "evidence_hash": "6eb5cc97d46f"
+      "id": "doc-path-drift/docs/KERNELS.md:291:kernels/backends.py",
+      "evidence_hash": "6daa2c2dcbad"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:220:generation/registry.py",
+      "key": "docs/KERNELS.md:292:generation/registry.py",
       "title": "names `generation/registry.py`, which is actually at `hipengine/generation/registry.py`",
-      "location": "docs/KERNELS.md:220",
+      "location": "docs/KERNELS.md:292",
       "evidence": {
         "fix": "Change `generation/registry.py` to `hipengine/generation/registry.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -866,7 +903,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:220:generation/registry.py"
+          "docs/KERNELS.md:292:generation/registry.py"
         ],
         "tokens": [
           "actually",
@@ -877,14 +914,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:220:generation/registry.py",
-      "evidence_hash": "8264348bb9d3"
+      "id": "doc-path-drift/docs/KERNELS.md:292:generation/registry.py",
+      "evidence_hash": "2ce0c9e97401"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:222:loading/qwen35_gguf_materialize.py",
+      "key": "docs/KERNELS.md:294:loading/qwen35_gguf_materialize.py",
       "title": "names `loading/qwen35_gguf_materialize.py`, which is actually at `hipengine/loading/qwen35_gguf_materialize.py`",
-      "location": "docs/KERNELS.md:222",
+      "location": "docs/KERNELS.md:294",
       "evidence": {
         "fix": "Change `loading/qwen35_gguf_materialize.py` to `hipengine/loading/qwen35_gguf_materialize.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -900,7 +937,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:222:loading/qwen35_gguf_materialize.py"
+          "docs/KERNELS.md:294:loading/qwen35_gguf_materialize.py"
         ],
         "tokens": [
           "actually",
@@ -911,14 +948,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:222:loading/qwen35_gguf_materialize.py",
-      "evidence_hash": "2f37eb532693"
+      "id": "doc-path-drift/docs/KERNELS.md:294:loading/qwen35_gguf_materialize.py",
+      "evidence_hash": "976f8118b372"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:223:runtime/gguf_linear.py",
+      "key": "docs/KERNELS.md:295:runtime/gguf_linear.py",
       "title": "names `runtime/gguf_linear.py`, which is actually at `hipengine/runtime/gguf_linear.py`",
-      "location": "docs/KERNELS.md:223",
+      "location": "docs/KERNELS.md:295",
       "evidence": {
         "fix": "Change `runtime/gguf_linear.py` to `hipengine/runtime/gguf_linear.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -934,7 +971,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:223:runtime/gguf_linear.py"
+          "docs/KERNELS.md:295:runtime/gguf_linear.py"
         ],
         "tokens": [
           "actually",
@@ -945,14 +982,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:223:runtime/gguf_linear.py",
-      "evidence_hash": "7c319bd5fcb1"
+      "id": "doc-path-drift/docs/KERNELS.md:295:runtime/gguf_linear.py",
+      "evidence_hash": "91bf6f524d71"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:224:kernels/registry.py",
+      "key": "docs/KERNELS.md:296:kernels/registry.py",
       "title": "names `kernels/registry.py`, which is actually at `hipengine/kernels/registry.py`",
-      "location": "docs/KERNELS.md:224",
+      "location": "docs/KERNELS.md:296",
       "evidence": {
         "fix": "Change `kernels/registry.py` to `hipengine/kernels/registry.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -968,7 +1005,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:224:kernels/registry.py"
+          "docs/KERNELS.md:296:kernels/registry.py"
         ],
         "tokens": [
           "actually",
@@ -979,14 +1016,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:224:kernels/registry.py",
-      "evidence_hash": "d892812a18a8"
+      "id": "doc-path-drift/docs/KERNELS.md:296:kernels/registry.py",
+      "evidence_hash": "cae26b5a8a6c"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:230:runtime/qwen35_gguf_runner.py",
+      "key": "docs/KERNELS.md:302:runtime/qwen35_gguf_runner.py",
       "title": "names `runtime/qwen35_gguf_runner.py`, which is actually at `hipengine/runtime/qwen35_gguf_runner.py`",
-      "location": "docs/KERNELS.md:230",
+      "location": "docs/KERNELS.md:302",
       "evidence": {
         "fix": "Change `runtime/qwen35_gguf_runner.py` to `hipengine/runtime/qwen35_gguf_runner.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1002,7 +1039,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:230:runtime/qwen35_gguf_runner.py"
+          "docs/KERNELS.md:302:runtime/qwen35_gguf_runner.py"
         ],
         "tokens": [
           "actually",
@@ -1013,14 +1050,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:230:runtime/qwen35_gguf_runner.py",
-      "evidence_hash": "6c1fe1c10eb9"
+      "id": "doc-path-drift/docs/KERNELS.md:302:runtime/qwen35_gguf_runner.py",
+      "evidence_hash": "f0cd8e4abe04"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:230:runtime/qwen35_paro.py",
+      "key": "docs/KERNELS.md:302:runtime/qwen35_paro.py",
       "title": "names `runtime/qwen35_paro.py`, which is actually at `hipengine/runtime/qwen35_paro.py`",
-      "location": "docs/KERNELS.md:230",
+      "location": "docs/KERNELS.md:302",
       "evidence": {
         "fix": "Change `runtime/qwen35_paro.py` to `hipengine/runtime/qwen35_paro.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1036,7 +1073,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:230:runtime/qwen35_paro.py"
+          "docs/KERNELS.md:302:runtime/qwen35_paro.py"
         ],
         "tokens": [
           "actually",
@@ -1047,14 +1084,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:230:runtime/qwen35_paro.py",
-      "evidence_hash": "5f34cdb9c92d"
+      "id": "doc-path-drift/docs/KERNELS.md:302:runtime/qwen35_paro.py",
+      "evidence_hash": "11f2ce44f06c"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:269:hip_gfx1100/__init__.py",
+      "key": "docs/KERNELS.md:341:hip_gfx1100/__init__.py",
       "title": "names `hip_gfx1100/__init__.py`, which is actually at `hipengine/kernels/hip_gfx1100/__init__.py`",
-      "location": "docs/KERNELS.md:269",
+      "location": "docs/KERNELS.md:341",
       "evidence": {
         "fix": "Change `hip_gfx1100/__init__.py` to `hipengine/kernels/hip_gfx1100/__init__.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1070,7 +1107,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:269:hip_gfx1100/__init__.py"
+          "docs/KERNELS.md:341:hip_gfx1100/__init__.py"
         ],
         "tokens": [
           "__init__",
@@ -1082,14 +1119,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:269:hip_gfx1100/__init__.py",
-      "evidence_hash": "0ec225fdb535"
+      "id": "doc-path-drift/docs/KERNELS.md:341:hip_gfx1100/__init__.py",
+      "evidence_hash": "ead3c4139863"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:323:kernels/cpu_reference/timesfm.py",
+      "key": "docs/KERNELS.md:395:kernels/cpu_reference/timesfm.py",
       "title": "names `kernels/cpu_reference/timesfm.py`, which is actually at `hipengine/kernels/cpu_reference/timesfm.py`",
-      "location": "docs/KERNELS.md:323",
+      "location": "docs/KERNELS.md:395",
       "evidence": {
         "fix": "Change `kernels/cpu_reference/timesfm.py` to `hipengine/kernels/cpu_reference/timesfm.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1105,7 +1142,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:323:kernels/cpu_reference/timesfm.py"
+          "docs/KERNELS.md:395:kernels/cpu_reference/timesfm.py"
         ],
         "tokens": [
           "actually",
@@ -1117,14 +1154,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:323:kernels/cpu_reference/timesfm.py",
-      "evidence_hash": "9ef458643904"
+      "id": "doc-path-drift/docs/KERNELS.md:395:kernels/cpu_reference/timesfm.py",
+      "evidence_hash": "edf5b9a5bca3"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:323:loading/timesfm.py",
+      "key": "docs/KERNELS.md:395:loading/timesfm.py",
       "title": "names `loading/timesfm.py`, which is actually at `hipengine/loading/timesfm.py`",
-      "location": "docs/KERNELS.md:323",
+      "location": "docs/KERNELS.md:395",
       "evidence": {
         "fix": "Change `loading/timesfm.py` to `hipengine/loading/timesfm.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1140,7 +1177,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:323:loading/timesfm.py"
+          "docs/KERNELS.md:395:loading/timesfm.py"
         ],
         "tokens": [
           "actually",
@@ -1151,14 +1188,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:323:loading/timesfm.py",
-      "evidence_hash": "81c225a3461a"
+      "id": "doc-path-drift/docs/KERNELS.md:395:loading/timesfm.py",
+      "evidence_hash": "89825add2596"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:323:models/timesfm.py",
+      "key": "docs/KERNELS.md:395:models/timesfm.py",
       "title": "names `models/timesfm.py`, which is actually at `hipengine/models/timesfm.py`",
-      "location": "docs/KERNELS.md:323",
+      "location": "docs/KERNELS.md:395",
       "evidence": {
         "fix": "Change `models/timesfm.py` to `hipengine/models/timesfm.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1174,7 +1211,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:323:models/timesfm.py"
+          "docs/KERNELS.md:395:models/timesfm.py"
         ],
         "tokens": [
           "actually",
@@ -1185,14 +1222,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:323:models/timesfm.py",
-      "evidence_hash": "588d305b95f0"
+      "id": "doc-path-drift/docs/KERNELS.md:395:models/timesfm.py",
+      "evidence_hash": "47f0f9436074"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:324:runtime/timesfm_decode.py",
+      "key": "docs/KERNELS.md:396:runtime/timesfm_decode.py",
       "title": "names `runtime/timesfm_decode.py`, which is actually at `hipengine/runtime/timesfm_decode.py`",
-      "location": "docs/KERNELS.md:324",
+      "location": "docs/KERNELS.md:396",
       "evidence": {
         "fix": "Change `runtime/timesfm_decode.py` to `hipengine/runtime/timesfm_decode.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1208,7 +1245,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:324:runtime/timesfm_decode.py"
+          "docs/KERNELS.md:396:runtime/timesfm_decode.py"
         ],
         "tokens": [
           "actually",
@@ -1219,14 +1256,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:324:runtime/timesfm_decode.py",
-      "evidence_hash": "4e7817b490e8"
+      "id": "doc-path-drift/docs/KERNELS.md:396:runtime/timesfm_decode.py",
+      "evidence_hash": "96381c9f02e7"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:341:kernels/cpu_reference/timesfm3.py",
+      "key": "docs/KERNELS.md:413:kernels/cpu_reference/timesfm3.py",
       "title": "names `kernels/cpu_reference/timesfm3.py`, which is actually at `hipengine/kernels/cpu_reference/timesfm3.py`",
-      "location": "docs/KERNELS.md:341",
+      "location": "docs/KERNELS.md:413",
       "evidence": {
         "fix": "Change `kernels/cpu_reference/timesfm3.py` to `hipengine/kernels/cpu_reference/timesfm3.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1242,7 +1279,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:341:kernels/cpu_reference/timesfm3.py"
+          "docs/KERNELS.md:413:kernels/cpu_reference/timesfm3.py"
         ],
         "tokens": [
           "actually",
@@ -1254,14 +1291,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:341:kernels/cpu_reference/timesfm3.py",
-      "evidence_hash": "94f98ef94118"
+      "id": "doc-path-drift/docs/KERNELS.md:413:kernels/cpu_reference/timesfm3.py",
+      "evidence_hash": "c288d11687a1"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:341:loading/timesfm3.py",
+      "key": "docs/KERNELS.md:413:loading/timesfm3.py",
       "title": "names `loading/timesfm3.py`, which is actually at `hipengine/loading/timesfm3.py`",
-      "location": "docs/KERNELS.md:341",
+      "location": "docs/KERNELS.md:413",
       "evidence": {
         "fix": "Change `loading/timesfm3.py` to `hipengine/loading/timesfm3.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1277,7 +1314,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:341:loading/timesfm3.py"
+          "docs/KERNELS.md:413:loading/timesfm3.py"
         ],
         "tokens": [
           "actually",
@@ -1288,14 +1325,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:341:loading/timesfm3.py",
-      "evidence_hash": "a609de4c0b1c"
+      "id": "doc-path-drift/docs/KERNELS.md:413:loading/timesfm3.py",
+      "evidence_hash": "e66809d740d3"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:341:models/timesfm3.py",
+      "key": "docs/KERNELS.md:413:models/timesfm3.py",
       "title": "names `models/timesfm3.py`, which is actually at `hipengine/models/timesfm3.py`",
-      "location": "docs/KERNELS.md:341",
+      "location": "docs/KERNELS.md:413",
       "evidence": {
         "fix": "Change `models/timesfm3.py` to `hipengine/models/timesfm3.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1311,7 +1348,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:341:models/timesfm3.py"
+          "docs/KERNELS.md:413:models/timesfm3.py"
         ],
         "tokens": [
           "actually",
@@ -1322,14 +1359,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:341:models/timesfm3.py",
-      "evidence_hash": "638db0fb7eff"
+      "id": "doc-path-drift/docs/KERNELS.md:413:models/timesfm3.py",
+      "evidence_hash": "6ef99f04081c"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:342:runtime/timesfm3_decode.py",
+      "key": "docs/KERNELS.md:414:runtime/timesfm3_decode.py",
       "title": "names `runtime/timesfm3_decode.py`, which is actually at `hipengine/runtime/timesfm3_decode.py`",
-      "location": "docs/KERNELS.md:342",
+      "location": "docs/KERNELS.md:414",
       "evidence": {
         "fix": "Change `runtime/timesfm3_decode.py` to `hipengine/runtime/timesfm3_decode.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1345,7 +1382,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:342:runtime/timesfm3_decode.py"
+          "docs/KERNELS.md:414:runtime/timesfm3_decode.py"
         ],
         "tokens": [
           "actually",
@@ -1356,14 +1393,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:342:runtime/timesfm3_decode.py",
-      "evidence_hash": "897f4b876faa"
+      "id": "doc-path-drift/docs/KERNELS.md:414:runtime/timesfm3_decode.py",
+      "evidence_hash": "57858d2abff7"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:367:runtime/surya.py",
+      "key": "docs/KERNELS.md:439:runtime/surya.py",
       "title": "names `runtime/surya.py`, which is actually at `hipengine/runtime/surya.py`",
-      "location": "docs/KERNELS.md:367",
+      "location": "docs/KERNELS.md:439",
       "evidence": {
         "fix": "Change `runtime/surya.py` to `hipengine/runtime/surya.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1379,7 +1416,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:367:runtime/surya.py"
+          "docs/KERNELS.md:439:runtime/surya.py"
         ],
         "tokens": [
           "actually",
@@ -1390,14 +1427,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:367:runtime/surya.py",
-      "evidence_hash": "89f8e5497622"
+      "id": "doc-path-drift/docs/KERNELS.md:439:runtime/surya.py",
+      "evidence_hash": "67b2c08a5605"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:374:kernels/cpu_reference/surya.py",
+      "key": "docs/KERNELS.md:446:kernels/cpu_reference/surya.py",
       "title": "names `kernels/cpu_reference/surya.py`, which is actually at `hipengine/kernels/cpu_reference/surya.py`",
-      "location": "docs/KERNELS.md:374",
+      "location": "docs/KERNELS.md:446",
       "evidence": {
         "fix": "Change `kernels/cpu_reference/surya.py` to `hipengine/kernels/cpu_reference/surya.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1413,7 +1450,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:374:kernels/cpu_reference/surya.py"
+          "docs/KERNELS.md:446:kernels/cpu_reference/surya.py"
         ],
         "tokens": [
           "actually",
@@ -1425,14 +1462,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:374:kernels/cpu_reference/surya.py",
-      "evidence_hash": "d50429649082"
+      "id": "doc-path-drift/docs/KERNELS.md:446:kernels/cpu_reference/surya.py",
+      "evidence_hash": "8e9802bfa101"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:374:loading/surya.py",
+      "key": "docs/KERNELS.md:446:loading/surya.py",
       "title": "names `loading/surya.py`, which is actually at `hipengine/loading/surya.py`",
-      "location": "docs/KERNELS.md:374",
+      "location": "docs/KERNELS.md:446",
       "evidence": {
         "fix": "Change `loading/surya.py` to `hipengine/loading/surya.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1448,7 +1485,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:374:loading/surya.py"
+          "docs/KERNELS.md:446:loading/surya.py"
         ],
         "tokens": [
           "actually",
@@ -1459,14 +1496,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:374:loading/surya.py",
-      "evidence_hash": "c9e1c6bffa9a"
+      "id": "doc-path-drift/docs/KERNELS.md:446:loading/surya.py",
+      "evidence_hash": "67c1c6d36e09"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:374:models/surya.py",
+      "key": "docs/KERNELS.md:446:models/surya.py",
       "title": "names `models/surya.py`, which is actually at `hipengine/models/surya.py`",
-      "location": "docs/KERNELS.md:374",
+      "location": "docs/KERNELS.md:446",
       "evidence": {
         "fix": "Change `models/surya.py` to `hipengine/models/surya.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1482,7 +1519,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:374:models/surya.py"
+          "docs/KERNELS.md:446:models/surya.py"
         ],
         "tokens": [
           "actually",
@@ -1493,14 +1530,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:374:models/surya.py",
-      "evidence_hash": "dd7ab2728bea"
+      "id": "doc-path-drift/docs/KERNELS.md:446:models/surya.py",
+      "evidence_hash": "0aab07269630"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/KERNELS.md:384:speculative/dflash2_drafter.py",
+      "key": "docs/KERNELS.md:456:speculative/dflash2_drafter.py",
       "title": "names `speculative/dflash2_drafter.py`, which is actually at `hipengine/speculative/dflash2_drafter.py`",
-      "location": "docs/KERNELS.md:384",
+      "location": "docs/KERNELS.md:456",
       "evidence": {
         "fix": "Change `speculative/dflash2_drafter.py` to `hipengine/speculative/dflash2_drafter.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1516,7 +1553,7 @@
       "hints": {
         "anchor": "docs/KERNELS.md",
         "refs": [
-          "docs/KERNELS.md:384:speculative/dflash2_drafter.py"
+          "docs/KERNELS.md:456:speculative/dflash2_drafter.py"
         ],
         "tokens": [
           "actually",
@@ -1527,8 +1564,8 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/KERNELS.md:384:speculative/dflash2_drafter.py",
-      "evidence_hash": "563c20f4dd59"
+      "id": "doc-path-drift/docs/KERNELS.md:456:speculative/dflash2_drafter.py",
+      "evidence_hash": "c3cbf44a8472"
     },
     {
       "kind": "doc-path-drift",
@@ -1934,9 +1971,9 @@
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/PLAN.md:1105:loading/qwen35_gguf_consumer_surface.py",
+      "key": "docs/PLAN.md:1116:loading/qwen35_gguf_consumer_surface.py",
       "title": "names `loading/qwen35_gguf_consumer_surface.py`, which is actually at `hipengine/loading/qwen35_gguf_consumer_surface.py`",
-      "location": "docs/PLAN.md:1105",
+      "location": "docs/PLAN.md:1116",
       "evidence": {
         "fix": "Change `loading/qwen35_gguf_consumer_surface.py` to `hipengine/loading/qwen35_gguf_consumer_surface.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1952,7 +1989,7 @@
       "hints": {
         "anchor": "docs/PLAN.md",
         "refs": [
-          "docs/PLAN.md:1105:loading/qwen35_gguf_consumer_surface.py"
+          "docs/PLAN.md:1116:loading/qwen35_gguf_consumer_surface.py"
         ],
         "tokens": [
           "actually",
@@ -1963,14 +2000,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/PLAN.md:1105:loading/qwen35_gguf_consumer_surface.py",
-      "evidence_hash": "931fd1a4fbc8"
+      "id": "doc-path-drift/docs/PLAN.md:1116:loading/qwen35_gguf_consumer_surface.py",
+      "evidence_hash": "fe2ed52ba74a"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/PLAN.md:1107:loading/gguf_selected_contract.py",
+      "key": "docs/PLAN.md:1118:loading/gguf_selected_contract.py",
       "title": "names `loading/gguf_selected_contract.py`, which is actually at `hipengine/loading/gguf_selected_contract.py`",
-      "location": "docs/PLAN.md:1107",
+      "location": "docs/PLAN.md:1118",
       "evidence": {
         "fix": "Change `loading/gguf_selected_contract.py` to `hipengine/loading/gguf_selected_contract.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -1986,7 +2023,7 @@
       "hints": {
         "anchor": "docs/PLAN.md",
         "refs": [
-          "docs/PLAN.md:1107:loading/gguf_selected_contract.py"
+          "docs/PLAN.md:1118:loading/gguf_selected_contract.py"
         ],
         "tokens": [
           "actually",
@@ -1997,14 +2034,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/PLAN.md:1107:loading/gguf_selected_contract.py",
-      "evidence_hash": "75442c3da3c6"
+      "id": "doc-path-drift/docs/PLAN.md:1118:loading/gguf_selected_contract.py",
+      "evidence_hash": "9677436160c2"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/PLAN.md:1116:loading/qwen35_gguf_execution.py",
+      "key": "docs/PLAN.md:1127:loading/qwen35_gguf_execution.py",
       "title": "names `loading/qwen35_gguf_execution.py`, which is actually at `hipengine/loading/qwen35_gguf_execution.py`",
-      "location": "docs/PLAN.md:1116",
+      "location": "docs/PLAN.md:1127",
       "evidence": {
         "fix": "Change `loading/qwen35_gguf_execution.py` to `hipengine/loading/qwen35_gguf_execution.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2020,7 +2057,7 @@
       "hints": {
         "anchor": "docs/PLAN.md",
         "refs": [
-          "docs/PLAN.md:1116:loading/qwen35_gguf_execution.py"
+          "docs/PLAN.md:1127:loading/qwen35_gguf_execution.py"
         ],
         "tokens": [
           "actually",
@@ -2031,14 +2068,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/PLAN.md:1116:loading/qwen35_gguf_execution.py",
-      "evidence_hash": "85745dee7275"
+      "id": "doc-path-drift/docs/PLAN.md:1127:loading/qwen35_gguf_execution.py",
+      "evidence_hash": "db661e5c4ecd"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/PLAN.md:4263:kernels/cuda_sm86",
+      "key": "docs/PLAN.md:4274:kernels/cuda_sm86",
       "title": "names `kernels/cuda_sm86`, which is actually at `hipengine/kernels/cuda_sm86`",
-      "location": "docs/PLAN.md:4263",
+      "location": "docs/PLAN.md:4274",
       "evidence": {
         "fix": "Change `kernels/cuda_sm86` to `hipengine/kernels/cuda_sm86`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2054,7 +2091,7 @@
       "hints": {
         "anchor": "docs/PLAN.md",
         "refs": [
-          "docs/PLAN.md:4263:kernels/cuda_sm86"
+          "docs/PLAN.md:4274:kernels/cuda_sm86"
         ],
         "tokens": [
           "actually",
@@ -2065,14 +2102,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/PLAN.md:4263:kernels/cuda_sm86",
-      "evidence_hash": "725df3101e9e"
+      "id": "doc-path-drift/docs/PLAN.md:4274:kernels/cuda_sm86",
+      "evidence_hash": "502801cfddd0"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/PLAN.md:4316:kernels/hip_gfx1100",
+      "key": "docs/PLAN.md:4327:kernels/hip_gfx1100",
       "title": "names `kernels/hip_gfx1100`, which is actually at `hipengine/kernels/hip_gfx1100`",
-      "location": "docs/PLAN.md:4316",
+      "location": "docs/PLAN.md:4327",
       "evidence": {
         "fix": "Change `kernels/hip_gfx1100` to `hipengine/kernels/hip_gfx1100`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2088,7 +2125,7 @@
       "hints": {
         "anchor": "docs/PLAN.md",
         "refs": [
-          "docs/PLAN.md:4316:kernels/hip_gfx1100"
+          "docs/PLAN.md:4327:kernels/hip_gfx1100"
         ],
         "tokens": [
           "actually",
@@ -2099,14 +2136,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/PLAN.md:4316:kernels/hip_gfx1100",
-      "evidence_hash": "4126fb64a636"
+      "id": "doc-path-drift/docs/PLAN.md:4327:kernels/hip_gfx1100",
+      "evidence_hash": "c7ff7cd842a8"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/PLAN.md:4323:kernels/cpu_reference",
+      "key": "docs/PLAN.md:4334:kernels/cpu_reference",
       "title": "names `kernels/cpu_reference`, which is actually at `hipengine/kernels/cpu_reference`",
-      "location": "docs/PLAN.md:4323",
+      "location": "docs/PLAN.md:4334",
       "evidence": {
         "fix": "Change `kernels/cpu_reference` to `hipengine/kernels/cpu_reference`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2122,7 +2159,7 @@
       "hints": {
         "anchor": "docs/PLAN.md",
         "refs": [
-          "docs/PLAN.md:4323:kernels/cpu_reference"
+          "docs/PLAN.md:4334:kernels/cpu_reference"
         ],
         "tokens": [
           "actually",
@@ -2133,8 +2170,8 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/PLAN.md:4323:kernels/cpu_reference",
-      "evidence_hash": "aa5489a97d35"
+      "id": "doc-path-drift/docs/PLAN.md:4334:kernels/cpu_reference",
+      "evidence_hash": "cb876be136b1"
     },
     {
       "kind": "doc-path-drift",
@@ -2172,9 +2209,9 @@
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:2169:server/api.py",
+      "key": "docs/REFACTOR.md:2266:server/api.py",
       "title": "names `server/api.py`, which is actually at `hipengine/server/api.py`",
-      "location": "docs/REFACTOR.md:2169",
+      "location": "docs/REFACTOR.md:2266",
       "evidence": {
         "fix": "Change `server/api.py` to `hipengine/server/api.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2190,7 +2227,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:2169:server/api.py"
+          "docs/REFACTOR.md:2266:server/api.py"
         ],
         "tokens": [
           "actually",
@@ -2201,14 +2238,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:2169:server/api.py",
-      "evidence_hash": "56ef7ad958b1"
+      "id": "doc-path-drift/docs/REFACTOR.md:2266:server/api.py",
+      "evidence_hash": "b9b3f235b2e6"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:2175:hip_gfx1151/__init__.py",
+      "key": "docs/REFACTOR.md:2272:hip_gfx1151/__init__.py",
       "title": "names `hip_gfx1151/__init__.py`, which is actually at `hipengine/kernels/hip_gfx1151/__init__.py`",
-      "location": "docs/REFACTOR.md:2175",
+      "location": "docs/REFACTOR.md:2272",
       "evidence": {
         "fix": "Change `hip_gfx1151/__init__.py` to `hipengine/kernels/hip_gfx1151/__init__.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2224,7 +2261,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:2175:hip_gfx1151/__init__.py"
+          "docs/REFACTOR.md:2272:hip_gfx1151/__init__.py"
         ],
         "tokens": [
           "__init__",
@@ -2236,14 +2273,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:2175:hip_gfx1151/__init__.py",
-      "evidence_hash": "de702216de29"
+      "id": "doc-path-drift/docs/REFACTOR.md:2272:hip_gfx1151/__init__.py",
+      "evidence_hash": "8009bc52fef8"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:2207:kernels/cpu_reference",
+      "key": "docs/REFACTOR.md:2304:kernels/cpu_reference",
       "title": "names `kernels/cpu_reference`, which is actually at `hipengine/kernels/cpu_reference`",
-      "location": "docs/REFACTOR.md:2207",
+      "location": "docs/REFACTOR.md:2304",
       "evidence": {
         "fix": "Change `kernels/cpu_reference` to `hipengine/kernels/cpu_reference`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2259,7 +2296,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:2207:kernels/cpu_reference"
+          "docs/REFACTOR.md:2304:kernels/cpu_reference"
         ],
         "tokens": [
           "actually",
@@ -2270,48 +2307,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:2207:kernels/cpu_reference",
-      "evidence_hash": "a20a1aeeb7f7"
+      "id": "doc-path-drift/docs/REFACTOR.md:2304:kernels/cpu_reference",
+      "evidence_hash": "6fcd3a3a2702"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:645:runtime/qwen35_gguf_nextn.py",
-      "title": "names `runtime/qwen35_gguf_nextn.py`, which is actually at `hipengine/runtime/qwen35_gguf_nextn.py`",
-      "location": "docs/REFACTOR.md:645",
-      "evidence": {
-        "fix": "Change `runtime/qwen35_gguf_nextn.py` to `hipengine/runtime/qwen35_gguf_nextn.py`.",
-        "why": "documented path does not exist, but the file is present elsewhere",
-        "target": "runtime/qwen35_gguf_nextn.py",
-        "doc": "docs/REFACTOR.md",
-        "actual": [
-          "hipengine/runtime/qwen35_gguf_nextn.py"
-        ]
-      },
-      "signals": [
-        "documented path does not exist, but the file is present elsewhere"
-      ],
-      "hints": {
-        "anchor": "docs/REFACTOR.md",
-        "refs": [
-          "docs/REFACTOR.md:645:runtime/qwen35_gguf_nextn.py"
-        ],
-        "tokens": [
-          "actually",
-          "hipengine",
-          "names",
-          "qwen35_gguf_nextn",
-          "runtime",
-          "which"
-        ]
-      },
-      "id": "doc-path-drift/docs/REFACTOR.md:645:runtime/qwen35_gguf_nextn.py",
-      "evidence_hash": "6a7674ebf426"
-    },
-    {
-      "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:6788:runtime/qwen35_gguf_mtp.py",
+      "key": "docs/REFACTOR.md:6885:runtime/qwen35_gguf_mtp.py",
       "title": "names `runtime/qwen35_gguf_mtp.py`, which is actually at `hipengine/runtime/qwen35_gguf_mtp.py`",
-      "location": "docs/REFACTOR.md:6788",
+      "location": "docs/REFACTOR.md:6885",
       "evidence": {
         "fix": "Change `runtime/qwen35_gguf_mtp.py` to `hipengine/runtime/qwen35_gguf_mtp.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2327,7 +2330,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:6788:runtime/qwen35_gguf_mtp.py"
+          "docs/REFACTOR.md:6885:runtime/qwen35_gguf_mtp.py"
         ],
         "tokens": [
           "actually",
@@ -2338,14 +2341,48 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:6788:runtime/qwen35_gguf_mtp.py",
-      "evidence_hash": "90873e88e990"
+      "id": "doc-path-drift/docs/REFACTOR.md:6885:runtime/qwen35_gguf_mtp.py",
+      "evidence_hash": "83b2daaf2b08"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:7673:kernels/hip_gfx1100/timesfm",
+      "key": "docs/REFACTOR.md:696:runtime/qwen35_gguf_nextn.py",
+      "title": "names `runtime/qwen35_gguf_nextn.py`, which is actually at `hipengine/runtime/qwen35_gguf_nextn.py`",
+      "location": "docs/REFACTOR.md:696",
+      "evidence": {
+        "fix": "Change `runtime/qwen35_gguf_nextn.py` to `hipengine/runtime/qwen35_gguf_nextn.py`.",
+        "why": "documented path does not exist, but the file is present elsewhere",
+        "target": "runtime/qwen35_gguf_nextn.py",
+        "doc": "docs/REFACTOR.md",
+        "actual": [
+          "hipengine/runtime/qwen35_gguf_nextn.py"
+        ]
+      },
+      "signals": [
+        "documented path does not exist, but the file is present elsewhere"
+      ],
+      "hints": {
+        "anchor": "docs/REFACTOR.md",
+        "refs": [
+          "docs/REFACTOR.md:696:runtime/qwen35_gguf_nextn.py"
+        ],
+        "tokens": [
+          "actually",
+          "hipengine",
+          "names",
+          "qwen35_gguf_nextn",
+          "runtime",
+          "which"
+        ]
+      },
+      "id": "doc-path-drift/docs/REFACTOR.md:696:runtime/qwen35_gguf_nextn.py",
+      "evidence_hash": "7833cf742f0c"
+    },
+    {
+      "kind": "doc-path-drift",
+      "key": "docs/REFACTOR.md:7770:kernels/hip_gfx1100/timesfm",
       "title": "names `kernels/hip_gfx1100/timesfm`, which is actually at `hipengine/kernels/hip_gfx1100/timesfm`",
-      "location": "docs/REFACTOR.md:7673",
+      "location": "docs/REFACTOR.md:7770",
       "evidence": {
         "fix": "Change `kernels/hip_gfx1100/timesfm` to `hipengine/kernels/hip_gfx1100/timesfm`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2361,7 +2398,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:7673:kernels/hip_gfx1100/timesfm"
+          "docs/REFACTOR.md:7770:kernels/hip_gfx1100/timesfm"
         ],
         "tokens": [
           "actually",
@@ -2373,14 +2410,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:7673:kernels/hip_gfx1100/timesfm",
-      "evidence_hash": "b6df0060ba5e"
+      "id": "doc-path-drift/docs/REFACTOR.md:7770:kernels/hip_gfx1100/timesfm",
+      "evidence_hash": "b38dc97e9496"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:7674:kernels/hip_gfx1100/timesfm3",
+      "key": "docs/REFACTOR.md:7771:kernels/hip_gfx1100/timesfm3",
       "title": "names `kernels/hip_gfx1100/timesfm3`, which is actually at `hipengine/kernels/hip_gfx1100/timesfm3`",
-      "location": "docs/REFACTOR.md:7674",
+      "location": "docs/REFACTOR.md:7771",
       "evidence": {
         "fix": "Change `kernels/hip_gfx1100/timesfm3` to `hipengine/kernels/hip_gfx1100/timesfm3`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2396,7 +2433,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:7674:kernels/hip_gfx1100/timesfm3"
+          "docs/REFACTOR.md:7771:kernels/hip_gfx1100/timesfm3"
         ],
         "tokens": [
           "actually",
@@ -2408,49 +2445,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:7674:kernels/hip_gfx1100/timesfm3",
-      "evidence_hash": "4dfc8cf8a9c5"
+      "id": "doc-path-drift/docs/REFACTOR.md:7771:kernels/hip_gfx1100/timesfm3",
+      "evidence_hash": "cf7241ab698a"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:772:kernels/hip_gfx1100/vibevoice/q4.py",
-      "title": "names `kernels/hip_gfx1100/vibevoice/q4.py`, which is actually at `hipengine/kernels/hip_gfx1100/vibevoice/q4.py`",
-      "location": "docs/REFACTOR.md:772",
-      "evidence": {
-        "fix": "Change `kernels/hip_gfx1100/vibevoice/q4.py` to `hipengine/kernels/hip_gfx1100/vibevoice/q4.py`.",
-        "why": "documented path does not exist, but the file is present elsewhere",
-        "target": "kernels/hip_gfx1100/vibevoice/q4.py",
-        "doc": "docs/REFACTOR.md",
-        "actual": [
-          "hipengine/kernels/hip_gfx1100/vibevoice/q4.py"
-        ]
-      },
-      "signals": [
-        "documented path does not exist, but the file is present elsewhere"
-      ],
-      "hints": {
-        "anchor": "docs/REFACTOR.md",
-        "refs": [
-          "docs/REFACTOR.md:772:kernels/hip_gfx1100/vibevoice/q4.py"
-        ],
-        "tokens": [
-          "actually",
-          "hip_gfx1100",
-          "hipengine",
-          "kernels",
-          "names",
-          "vibevoice",
-          "which"
-        ]
-      },
-      "id": "doc-path-drift/docs/REFACTOR.md:772:kernels/hip_gfx1100/vibevoice/q4.py",
-      "evidence_hash": "08a316bb8b62"
-    },
-    {
-      "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:7797:runtime/qwen35_gguf_runner.py",
+      "key": "docs/REFACTOR.md:7894:runtime/qwen35_gguf_runner.py",
       "title": "names `runtime/qwen35_gguf_runner.py`, which is actually at `hipengine/runtime/qwen35_gguf_runner.py`",
-      "location": "docs/REFACTOR.md:7797",
+      "location": "docs/REFACTOR.md:7894",
       "evidence": {
         "fix": "Change `runtime/qwen35_gguf_runner.py` to `hipengine/runtime/qwen35_gguf_runner.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2466,7 +2468,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:7797:runtime/qwen35_gguf_runner.py"
+          "docs/REFACTOR.md:7894:runtime/qwen35_gguf_runner.py"
         ],
         "tokens": [
           "actually",
@@ -2477,14 +2479,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:7797:runtime/qwen35_gguf_runner.py",
-      "evidence_hash": "39c9c3793708"
+      "id": "doc-path-drift/docs/REFACTOR.md:7894:runtime/qwen35_gguf_runner.py",
+      "evidence_hash": "b7ac3cb17a64"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:7893:final-decode-campaign-2026-09-11/plainks-trace.csv",
+      "key": "docs/REFACTOR.md:7990:final-decode-campaign-2026-09-11/plainks-trace.csv",
       "title": "names `final-decode-campaign-2026-09-11/plainks-trace.csv`, which is actually at `benchmarks/results/final-decode-campaign-2026-09-11/plainks-trace.csv`",
-      "location": "docs/REFACTOR.md:7893",
+      "location": "docs/REFACTOR.md:7990",
       "evidence": {
         "fix": "Change `final-decode-campaign-2026-09-11/plainks-trace.csv` to `benchmarks/results/final-decode-campaign-2026-09-11/plainks-trace.csv`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2500,7 +2502,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:7893:final-decode-campaign-2026-09-11/plainks-trace.csv"
+          "docs/REFACTOR.md:7990:final-decode-campaign-2026-09-11/plainks-trace.csv"
         ],
         "tokens": [
           "2026",
@@ -2517,14 +2519,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:7893:final-decode-campaign-2026-09-11/plainks-trace.csv",
-      "evidence_hash": "623b30d02e9e"
+      "id": "doc-path-drift/docs/REFACTOR.md:7990:final-decode-campaign-2026-09-11/plainks-trace.csv",
+      "evidence_hash": "f8a032f7efac"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:7894:final-decode-campaign-2026-09-11/plainkm-trace.csv",
+      "key": "docs/REFACTOR.md:7991:final-decode-campaign-2026-09-11/plainkm-trace.csv",
       "title": "names `final-decode-campaign-2026-09-11/plainkm-trace.csv`, which is actually at `benchmarks/results/final-decode-campaign-2026-09-11/plainkm-trace.csv`",
-      "location": "docs/REFACTOR.md:7894",
+      "location": "docs/REFACTOR.md:7991",
       "evidence": {
         "fix": "Change `final-decode-campaign-2026-09-11/plainkm-trace.csv` to `benchmarks/results/final-decode-campaign-2026-09-11/plainkm-trace.csv`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2540,7 +2542,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:7894:final-decode-campaign-2026-09-11/plainkm-trace.csv"
+          "docs/REFACTOR.md:7991:final-decode-campaign-2026-09-11/plainkm-trace.csv"
         ],
         "tokens": [
           "2026",
@@ -2557,14 +2559,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:7894:final-decode-campaign-2026-09-11/plainkm-trace.csv",
-      "evidence_hash": "8bc4a0541126"
+      "id": "doc-path-drift/docs/REFACTOR.md:7991:final-decode-campaign-2026-09-11/plainkm-trace.csv",
+      "evidence_hash": "57c54db0fb42"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:7895:2026-09-11-q5-local32-decode-study/trace-unrouted.csv",
+      "key": "docs/REFACTOR.md:7992:2026-09-11-q5-local32-decode-study/trace-unrouted.csv",
       "title": "names `2026-09-11-q5-local32-decode-study/trace-unrouted.csv`, which is actually at `benchmarks/results/2026-09-11-q5-local32-decode-study/trace-unrouted.csv`",
-      "location": "docs/REFACTOR.md:7895",
+      "location": "docs/REFACTOR.md:7992",
       "evidence": {
         "fix": "Change `2026-09-11-q5-local32-decode-study/trace-unrouted.csv` to `benchmarks/results/2026-09-11-q5-local32-decode-study/trace-unrouted.csv`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2580,7 +2582,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:7895:2026-09-11-q5-local32-decode-study/trace-unrouted.csv"
+          "docs/REFACTOR.md:7992:2026-09-11-q5-local32-decode-study/trace-unrouted.csv"
         ],
         "tokens": [
           "2026",
@@ -2597,14 +2599,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:7895:2026-09-11-q5-local32-decode-study/trace-unrouted.csv",
-      "evidence_hash": "7f5d4ef6e5ed"
+      "id": "doc-path-drift/docs/REFACTOR.md:7992:2026-09-11-q5-local32-decode-study/trace-unrouted.csv",
+      "evidence_hash": "7b114bc03c65"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:7896:final-decode-campaign-2026-09-11/ud-k_m-trace.csv",
+      "key": "docs/REFACTOR.md:7993:final-decode-campaign-2026-09-11/ud-k_m-trace.csv",
       "title": "names `final-decode-campaign-2026-09-11/ud-k_m-trace.csv`, which is actually at `benchmarks/results/final-decode-campaign-2026-09-11/ud-k_m-trace.csv`",
-      "location": "docs/REFACTOR.md:7896",
+      "location": "docs/REFACTOR.md:7993",
       "evidence": {
         "fix": "Change `final-decode-campaign-2026-09-11/ud-k_m-trace.csv` to `benchmarks/results/final-decode-campaign-2026-09-11/ud-k_m-trace.csv`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2620,7 +2622,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:7896:final-decode-campaign-2026-09-11/ud-k_m-trace.csv"
+          "docs/REFACTOR.md:7993:final-decode-campaign-2026-09-11/ud-k_m-trace.csv"
         ],
         "tokens": [
           "2026",
@@ -2637,14 +2639,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:7896:final-decode-campaign-2026-09-11/ud-k_m-trace.csv",
-      "evidence_hash": "1a3e0886e8f0"
+      "id": "doc-path-drift/docs/REFACTOR.md:7993:final-decode-campaign-2026-09-11/ud-k_m-trace.csv",
+      "evidence_hash": "be55747c84ed"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:7897:2026-09-11-q5-local32-decode-study/trace-routed.csv",
+      "key": "docs/REFACTOR.md:7994:2026-09-11-q5-local32-decode-study/trace-routed.csv",
       "title": "names `2026-09-11-q5-local32-decode-study/trace-routed.csv`, which is actually at `benchmarks/results/2026-09-11-q5-local32-decode-study/trace-routed.csv`",
-      "location": "docs/REFACTOR.md:7897",
+      "location": "docs/REFACTOR.md:7994",
       "evidence": {
         "fix": "Change `2026-09-11-q5-local32-decode-study/trace-routed.csv` to `benchmarks/results/2026-09-11-q5-local32-decode-study/trace-routed.csv`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2660,7 +2662,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:7897:2026-09-11-q5-local32-decode-study/trace-routed.csv"
+          "docs/REFACTOR.md:7994:2026-09-11-q5-local32-decode-study/trace-routed.csv"
         ],
         "tokens": [
           "2026",
@@ -2677,14 +2679,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:7897:2026-09-11-q5-local32-decode-study/trace-routed.csv",
-      "evidence_hash": "3f61bfd38ffb"
+      "id": "doc-path-drift/docs/REFACTOR.md:7994:2026-09-11-q5-local32-decode-study/trace-routed.csv",
+      "evidence_hash": "351d2e723aa4"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:7898:final-decode-campaign-2026-09-11/wudkm-trace.csv",
+      "key": "docs/REFACTOR.md:7995:final-decode-campaign-2026-09-11/wudkm-trace.csv",
       "title": "names `final-decode-campaign-2026-09-11/wudkm-trace.csv`, which is actually at `benchmarks/results/final-decode-campaign-2026-09-11/wudkm-trace.csv`",
-      "location": "docs/REFACTOR.md:7898",
+      "location": "docs/REFACTOR.md:7995",
       "evidence": {
         "fix": "Change `final-decode-campaign-2026-09-11/wudkm-trace.csv` to `benchmarks/results/final-decode-campaign-2026-09-11/wudkm-trace.csv`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2700,7 +2702,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:7898:final-decode-campaign-2026-09-11/wudkm-trace.csv"
+          "docs/REFACTOR.md:7995:final-decode-campaign-2026-09-11/wudkm-trace.csv"
         ],
         "tokens": [
           "2026",
@@ -2717,14 +2719,14 @@
           "wudkm"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:7898:final-decode-campaign-2026-09-11/wudkm-trace.csv",
-      "evidence_hash": "0f7fa7827fe3"
+      "id": "doc-path-drift/docs/REFACTOR.md:7995:final-decode-campaign-2026-09-11/wudkm-trace.csv",
+      "evidence_hash": "928ff3514e09"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:7899:final-decode-campaign-2026-09-11/wudks-trace.csv",
+      "key": "docs/REFACTOR.md:7996:final-decode-campaign-2026-09-11/wudks-trace.csv",
       "title": "names `final-decode-campaign-2026-09-11/wudks-trace.csv`, which is actually at `benchmarks/results/final-decode-campaign-2026-09-11/wudks-trace.csv`",
-      "location": "docs/REFACTOR.md:7899",
+      "location": "docs/REFACTOR.md:7996",
       "evidence": {
         "fix": "Change `final-decode-campaign-2026-09-11/wudks-trace.csv` to `benchmarks/results/final-decode-campaign-2026-09-11/wudks-trace.csv`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2740,7 +2742,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:7899:final-decode-campaign-2026-09-11/wudks-trace.csv"
+          "docs/REFACTOR.md:7996:final-decode-campaign-2026-09-11/wudks-trace.csv"
         ],
         "tokens": [
           "2026",
@@ -2757,14 +2759,49 @@
           "wudks"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:7899:final-decode-campaign-2026-09-11/wudks-trace.csv",
-      "evidence_hash": "4a0cdfd2954e"
+      "id": "doc-path-drift/docs/REFACTOR.md:7996:final-decode-campaign-2026-09-11/wudks-trace.csv",
+      "evidence_hash": "afc365df98f0"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/REFACTOR.md:8441:kernels/hip_gfx1100/vibevoice/registered.py",
+      "key": "docs/REFACTOR.md:823:kernels/hip_gfx1100/vibevoice/q4.py",
+      "title": "names `kernels/hip_gfx1100/vibevoice/q4.py`, which is actually at `hipengine/kernels/hip_gfx1100/vibevoice/q4.py`",
+      "location": "docs/REFACTOR.md:823",
+      "evidence": {
+        "fix": "Change `kernels/hip_gfx1100/vibevoice/q4.py` to `hipengine/kernels/hip_gfx1100/vibevoice/q4.py`.",
+        "why": "documented path does not exist, but the file is present elsewhere",
+        "target": "kernels/hip_gfx1100/vibevoice/q4.py",
+        "doc": "docs/REFACTOR.md",
+        "actual": [
+          "hipengine/kernels/hip_gfx1100/vibevoice/q4.py"
+        ]
+      },
+      "signals": [
+        "documented path does not exist, but the file is present elsewhere"
+      ],
+      "hints": {
+        "anchor": "docs/REFACTOR.md",
+        "refs": [
+          "docs/REFACTOR.md:823:kernels/hip_gfx1100/vibevoice/q4.py"
+        ],
+        "tokens": [
+          "actually",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "names",
+          "vibevoice",
+          "which"
+        ]
+      },
+      "id": "doc-path-drift/docs/REFACTOR.md:823:kernels/hip_gfx1100/vibevoice/q4.py",
+      "evidence_hash": "bc2899bd0bae"
+    },
+    {
+      "kind": "doc-path-drift",
+      "key": "docs/REFACTOR.md:8538:kernels/hip_gfx1100/vibevoice/registered.py",
       "title": "names `kernels/hip_gfx1100/vibevoice/registered.py`, which is actually at `hipengine/kernels/hip_gfx1100/vibevoice/registered.py`",
-      "location": "docs/REFACTOR.md:8441",
+      "location": "docs/REFACTOR.md:8538",
       "evidence": {
         "fix": "Change `kernels/hip_gfx1100/vibevoice/registered.py` to `hipengine/kernels/hip_gfx1100/vibevoice/registered.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2780,7 +2817,7 @@
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
-          "docs/REFACTOR.md:8441:kernels/hip_gfx1100/vibevoice/registered.py"
+          "docs/REFACTOR.md:8538:kernels/hip_gfx1100/vibevoice/registered.py"
         ],
         "tokens": [
           "actually",
@@ -2793,8 +2830,8 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/REFACTOR.md:8441:kernels/hip_gfx1100/vibevoice/registered.py",
-      "evidence_hash": "ca5f5aece415"
+      "id": "doc-path-drift/docs/REFACTOR.md:8538:kernels/hip_gfx1100/vibevoice/registered.py",
+      "evidence_hash": "c93f0979b0c8"
     },
     {
       "kind": "doc-path-drift",
@@ -2934,9 +2971,9 @@
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/model-cards/MODEL-VIBEVOICE-TTS.md:711:kernels/hip_gfx1100/vibevoice/decoder.py",
+      "key": "docs/model-cards/MODEL-VIBEVOICE-TTS.md:719:kernels/hip_gfx1100/vibevoice/decoder.py",
       "title": "names `kernels/hip_gfx1100/vibevoice/decoder.py`, which is actually at `hipengine/kernels/hip_gfx1100/vibevoice/decoder.py`",
-      "location": "docs/model-cards/MODEL-VIBEVOICE-TTS.md:711",
+      "location": "docs/model-cards/MODEL-VIBEVOICE-TTS.md:719",
       "evidence": {
         "fix": "Change `kernels/hip_gfx1100/vibevoice/decoder.py` to `hipengine/kernels/hip_gfx1100/vibevoice/decoder.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2952,7 +2989,7 @@
       "hints": {
         "anchor": "docs/model-cards/MODEL-VIBEVOICE-TTS.md",
         "refs": [
-          "docs/model-cards/MODEL-VIBEVOICE-TTS.md:711:kernels/hip_gfx1100/vibevoice/decoder.py"
+          "docs/model-cards/MODEL-VIBEVOICE-TTS.md:719:kernels/hip_gfx1100/vibevoice/decoder.py"
         ],
         "tokens": [
           "actually",
@@ -2965,14 +3002,14 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/model-cards/MODEL-VIBEVOICE-TTS.md:711:kernels/hip_gfx1100/vibevoice/decoder.py",
-      "evidence_hash": "3436bccc1a0b"
+      "id": "doc-path-drift/docs/model-cards/MODEL-VIBEVOICE-TTS.md:719:kernels/hip_gfx1100/vibevoice/decoder.py",
+      "evidence_hash": "3f9c7ecc2bcd"
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/model-cards/MODEL-VIBEVOICE-TTS.md:730:kernels/hip_gfx1100/vibevoice/diffusion.py",
+      "key": "docs/model-cards/MODEL-VIBEVOICE-TTS.md:738:kernels/hip_gfx1100/vibevoice/diffusion.py",
       "title": "names `kernels/hip_gfx1100/vibevoice/diffusion.py`, which is actually at `hipengine/kernels/hip_gfx1100/vibevoice/diffusion.py`",
-      "location": "docs/model-cards/MODEL-VIBEVOICE-TTS.md:730",
+      "location": "docs/model-cards/MODEL-VIBEVOICE-TTS.md:738",
       "evidence": {
         "fix": "Change `kernels/hip_gfx1100/vibevoice/diffusion.py` to `hipengine/kernels/hip_gfx1100/vibevoice/diffusion.py`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -2988,7 +3025,7 @@
       "hints": {
         "anchor": "docs/model-cards/MODEL-VIBEVOICE-TTS.md",
         "refs": [
-          "docs/model-cards/MODEL-VIBEVOICE-TTS.md:730:kernels/hip_gfx1100/vibevoice/diffusion.py"
+          "docs/model-cards/MODEL-VIBEVOICE-TTS.md:738:kernels/hip_gfx1100/vibevoice/diffusion.py"
         ],
         "tokens": [
           "actually",
@@ -3001,8 +3038,42 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/model-cards/MODEL-VIBEVOICE-TTS.md:730:kernels/hip_gfx1100/vibevoice/diffusion.py",
-      "evidence_hash": "ae8442768aa5"
+      "id": "doc-path-drift/docs/model-cards/MODEL-VIBEVOICE-TTS.md:738:kernels/hip_gfx1100/vibevoice/diffusion.py",
+      "evidence_hash": "cb701ebb0837"
+    },
+    {
+      "kind": "doc-path-drift",
+      "key": "docs/model-cards/MODEL-YUE2.md:15:kernels/hip_gfx1100",
+      "title": "names `kernels/hip_gfx1100`, which is actually at `hipengine/kernels/hip_gfx1100`",
+      "location": "docs/model-cards/MODEL-YUE2.md:15",
+      "evidence": {
+        "fix": "Change `kernels/hip_gfx1100` to `hipengine/kernels/hip_gfx1100`.",
+        "why": "documented path does not exist, but the file is present elsewhere",
+        "target": "kernels/hip_gfx1100",
+        "doc": "docs/model-cards/MODEL-YUE2.md",
+        "actual": [
+          "hipengine/kernels/hip_gfx1100"
+        ]
+      },
+      "signals": [
+        "documented path does not exist, but the file is present elsewhere"
+      ],
+      "hints": {
+        "anchor": "docs/model-cards/MODEL-YUE2.md",
+        "refs": [
+          "docs/model-cards/MODEL-YUE2.md:15:kernels/hip_gfx1100"
+        ],
+        "tokens": [
+          "actually",
+          "hip_gfx1100",
+          "hipengine",
+          "kernels",
+          "names",
+          "which"
+        ]
+      },
+      "id": "doc-path-drift/docs/model-cards/MODEL-YUE2.md:15:kernels/hip_gfx1100",
+      "evidence_hash": "209d75432087"
     },
     {
       "kind": "doc-path-drift",
@@ -3790,9 +3861,9 @@
     },
     {
       "kind": "doc-path-drift",
-      "key": "docs/reference/ROCM-AI.md:679:kernels/cpu_reference",
+      "key": "docs/reference/ROCM-AI.md:684:kernels/cpu_reference",
       "title": "names `kernels/cpu_reference`, which is actually at `hipengine/kernels/cpu_reference`",
-      "location": "docs/reference/ROCM-AI.md:679",
+      "location": "docs/reference/ROCM-AI.md:684",
       "evidence": {
         "fix": "Change `kernels/cpu_reference` to `hipengine/kernels/cpu_reference`.",
         "why": "documented path does not exist, but the file is present elsewhere",
@@ -3808,7 +3879,7 @@
       "hints": {
         "anchor": "docs/reference/ROCM-AI.md",
         "refs": [
-          "docs/reference/ROCM-AI.md:679:kernels/cpu_reference"
+          "docs/reference/ROCM-AI.md:684:kernels/cpu_reference"
         ],
         "tokens": [
           "actually",
@@ -3819,8 +3890,8 @@
           "which"
         ]
       },
-      "id": "doc-path-drift/docs/reference/ROCM-AI.md:679:kernels/cpu_reference",
-      "evidence_hash": "0b573531c4b8"
+      "id": "doc-path-drift/docs/reference/ROCM-AI.md:684:kernels/cpu_reference",
+      "evidence_hash": "8647acd9f584"
     },
     {
       "kind": "doc-path-drift",
