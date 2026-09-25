@@ -165,15 +165,16 @@ def _session_factory(
     model: str, *, devices: tuple[int, ...], mode: str,
     resident_control: bool = False, capacity: int = 2048, row_hook=None,
     shard_fractions: tuple[float, ...] | None = None,
-    bulk_prefill: bool = False,
+    bulk_prefill: bool | None = None,
 ) -> object:
     """Seam for mocked tests; constructs one resident session.
 
     ``shard_fractions`` applies to the tp2 arm only. The tp1 controls are the
     comparison basis and must stay exactly as they are, so they never receive
-    it. ``bulk_prefill`` is the same kind of tp2-only candidate switch: it
-    selects the rank-local bulk prefill schedule instead of the committed
-    token-serial one, and the tp1 controls must never receive it either.
+    it. ``bulk_prefill`` is the same kind of tp2-only switch: ``True`` forces the
+    rank-local bulk prefill schedule, ``False`` forces the token-serial rollback,
+    and ``None`` (the default) leaves the session's own default in place, which
+    is what the engine ships. The tp1 controls never receive it either way.
     """
 
     if resident_control:
@@ -183,9 +184,10 @@ def _session_factory(
     from hipengine.distributed.tp2_generate import MlpTP2GenerationSession
 
     uneven_split = shard_fractions if mode == "tp2" else None
+    resolved = (None if bulk_prefill is None else bool(bulk_prefill)) if mode == "tp2" else False
     return MlpTP2GenerationSession(
         model, devices=devices, mode=mode, uneven_split=uneven_split,
-        bulk_prefill=bool(bulk_prefill) and mode == "tp2",
+        bulk_prefill=resolved,
     )
 
 
@@ -884,12 +886,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument('--execution-profile', choices=('strict', 'production'), default='production')
     parser.add_argument('--sustained-arm', choices=('tp1-d0','tp1-d1','tp2'))
-    parser.add_argument('--tp2-bulk-prefill', action='store_true',
-        help='drive the tp2 arm through the session rank-local bulk prefill '
-             'candidate instead of the committed token-serial route, in both '
-             'the full-suite run and the sustained-arm path; the artifact '
-             'records the schedule it measured. The tp1 controls never receive '
-             'it, so they stay the comparison basis')
+    parser.add_argument('--tp2-bulk-prefill', action=argparse.BooleanOptionalAction,
+        default=None,
+        help='force the tp2 arm onto the rank-local bulk prefill '
+             '(--tp2-bulk-prefill) or onto the token-serial rollback '
+             '(--no-tp2-bulk-prefill), in both the full-suite run and the '
+             'sustained-arm path. Omitted, the arm follows the session default, '
+             'which is what the engine ships and what the artifact records. The '
+             'tp1 controls never receive it, so they stay the comparison basis')
     parser.add_argument('--teacher-source', type=Path)
     parser.add_argument(
         '--shard-fractions',
@@ -1026,6 +1030,12 @@ def main(argv: list[str] | None = None) -> int:
             expected_positions=expected_positions,
             vocab_size=vocab_size,
         )
+        # The key names the *control*. Every number in the summary describes the
+        # student, so say which arm that is inside the summary too: a reader who
+        # takes ``comparison["tp1-d0"]`` for a control-vs-teacher reading would
+        # conclude the candidate was never scored.
+        summary["control_arm"] = control
+        summary["student_arm"] = "tp2"
         comparisons[control] = summary
         print(f"{control}: global={summary['global']}", flush=True)
         print(f"{control}: scopes={summary['scopes']}", flush=True)
@@ -1104,6 +1114,7 @@ def main(argv: list[str] | None = None) -> int:
         "protocol": (
             "full teacher-forced trajectories, canonical suite + heldout-only rows, "
             "matched per-GPU TP1 controls, direct control-vs-control byte comparison, "
+            "the TP2 arm as the scored student against each control, "
             "sequential arms, fail-closed gates"
         ),
         "command": shlex.join([sys.executable, *sys.argv]),
@@ -1131,6 +1142,9 @@ def main(argv: list[str] | None = None) -> int:
         "arm_build_s": arm_build_s,
         "device_identities": device_identities,
         "resolved_routes": resolved_routes,
+        # ``comparison`` is keyed by the TP1 control arm and every value in it
+        # describes this arm's logits against that control.
+        "student_arm": "tp2",
         "thresholds": {
             **PRODUCTION_GATE,
             "category_top1_agreement": CATEGORY_TOP1,
@@ -1506,7 +1520,7 @@ def capture_sustained_arm(args):
         fixture=root/'first-numerical-failure.npz'; np.savez(fixture,teacher=teacher,candidate=candidate)
         record.artifact['numerical_failure']={**current,**detail,'fixture':str(fixture)}
     state={}; hashes=[]; first_arrays=[]
-    bulk=bool(getattr(args,'tp2_bulk_prefill',False))
+    bulk=getattr(args,'tp2_bulk_prefill',None)
     if bulk and arm!='tp2': raise ValueError('bulk prefill is a tp2-arm candidate')
     horizon=getattr(args,'horizon',None)
     if horizon is not None and not 0 < int(horizon) <= 128: raise ValueError('horizon outside 1..128 captured rows')

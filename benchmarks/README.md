@@ -944,13 +944,46 @@ cross-route reference comparison on a handful of prompts - so a passing
 arm-vs-control gate and a failing cross-route diagnostic are consistent. Per
 [`docs/EXECUTION-PROFILES.md`](../docs/EXECUTION-PROFILES.md) the arm-vs-control
 comparison is the promotion bar and the cross-route reading is a diagnostic that
-describes the remaining bit-exactness gap; it is not the bar. Bulk prefill stays
-**opt-in** (`bulk_prefill=False` by default) because chunked prefill is not
-implemented, and because the 2026-09-18 pass above predates the device-side MLP
-reduction and the head-sharded attention default, so the gate is being re-run on
-the configuration that would ship. The per-tensor kernel mix behind this route,
+describes the remaining bit-exactness gap; it is not the bar. Bulk prefill is now the
+**shipped tp2 prefill schedule** (`bulk_prefill=None` resolves to on for tp2;
+`bulk_prefill=False` is the registered rollback and the gate's reference arm).
+The gate above was re-run on the configuration that ships, with the default
+engaged rather than a flag: 831 rows, mean KL 2.107e-04, p95 7.948e-04, p99
+4.589e-03, max KL 1.157e-02, top-1 99.88%, category top-1 >= 99.63%, three
+determinism sweeps matching per row, reset/reuse, intervening-prompt and
+reset-after-generation boundaries bit-exact, no non-finite rows, and the two TP1
+controls byte-identical to each other
+(`results/2026-09-25-w7900-tp2-bulk-default-gate.json`). That is a better pass
+than the 2026-09-18 candidate on every tail metric (mean 2.895e-04 -> 2.107e-04,
+max 4.2273e-02 -> 1.157e-02, top-1 99.64% -> 99.88%), and the flagged run of the
+same revision reproduces it to the last digit
+(`results/2026-09-25-w7900-tp2-bulk-current-gate.json`). The per-tensor kernel mix behind this route,
 and the largest known gap in it, are recorded in
 [`docs/REFACTOR.md`](../docs/REFACTOR.md).
+
+**The bulk workspace contract, measured 2026-09-25.** A ladder harness
+(`scripts/tp2_bulk_workspace_contract.py`) walks one session from 52 to 1024
+tokens and back under three workspace policies. Every length produced finite
+logits with the correct argmax and also ran prefill-then-decode in one call; the
+workspace grows on demand and is reused afterwards; and a pinned workspace
+refuses an over-capacity prompt with the documented message rather than
+mishandling it. Two limits are real and stated rather than blocking: **the
+workspace never shrinks**, so a short prompt after a long one costs the long
+workspace's time (0.508 s against 0.170 s for a 52-token prompt, still ~2.4x
+faster than the token-serial rollback), and **chunked prefill is not
+implemented**, so a prompt above the session capacity is refused exactly as the
+token-serial route refuses it. The deferred-allocation slowdown recorded on
+2026-09-18 **does not reproduce**: a lazily built workspace measured 0.889 s for
+a 1024-token prefill against 0.938 s for one allocated at construction, so that
+claim is retired. Artifact:
+[`results/2026-09-25-w7900-tp2-bulk-workspace-contract.json`](results/2026-09-25-w7900-tp2-bulk-workspace-contract.json).
+
+**Prefill rate on the shipped route, measured 2026-09-25.** At a 512-token
+prompt the bulk route measures 1057-1085 tok/s in the ladder and 1066 tok/s in
+the matched c=1 cell, against 43.99 tok/s for the token-serial rollback on the
+same day: **~24x**. At 52 tokens it measures 0.170 s with a 52-row workspace
+against roughly 1.18 s inferred for token-serial at its measured 22.7 ms/token,
+so the shipping route is faster at short prompts as well.
 
 **Matched llama.cpp comparison, measured 2026-09-25.** Same host, same model
 bytes, 512-token prompt, 128 decode tokens, f16 KV on both engines, c=1, three

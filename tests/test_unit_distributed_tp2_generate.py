@@ -655,13 +655,15 @@ def _logits_row(preferred: int) -> np.ndarray:
     return np.ascontiguousarray(row)
 
 
-def _session(env, *, devices=(0, 1), mode="tp2") -> MlpTP2GenerationSession:
+def _session(env, *, devices=(0, 1), mode="tp2", bulk_prefill=None) -> MlpTP2GenerationSession:
+    extra = {} if bulk_prefill is None else {"bulk_prefill": bool(bulk_prefill)}
     return MlpTP2GenerationSession(
         "fake.gguf",
         devices=devices,
         mode=mode,
         max_sequence_length=64,
         schedule="eager",
+        **extra,
     )
 
 
@@ -833,7 +835,7 @@ def test_tp2_interleaves_both_ranks_per_layer(env) -> None:
     # Rows: the sample after each forward. [7, 8] prefill, then two decode
     # steps feed the previous samples.
     env["queue_logits"]([3, 5, 6, 9])
-    session = _session(env)
+    session = _session(env, bulk_prefill=False)
     result = session.generate([7, 8], max_new_tokens=2, eos_token_id=None)
     runners = env["runners"]
     assert len(runners) == 2
@@ -851,7 +853,7 @@ def test_tp2_interleaves_both_ranks_per_layer(env) -> None:
 
 def test_tp2_per_layer_order_is_attn_norm_group_add(env) -> None:
     env["queue_logits"]([1, 1])
-    session = _session(env)
+    session = _session(env, bulk_prefill=False)
     session.generate([9], max_new_tokens=1, eos_token_id=None)
     kinds = [name for _, name, _ in env["launch_log"]]
     # Two positions x three layers x two ranks: both ranks' add+norm leaves
@@ -945,7 +947,7 @@ def test_tp1_generate_keeps_every_mlp_launch_on_the_rank_device(env) -> None:
 
 def test_positions_and_tokens_are_owned_by_the_loop(env) -> None:
     env["queue_logits"]([2, 3, 4, 5, 6])
-    session = _session(env)
+    session = _session(env, bulk_prefill=False)
     result = session.generate([11, 12, 13], max_new_tokens=2, eos_token_id=None)
     assert result.token_ids == (4, 5)
     assert result.finished_on_eos is False
@@ -1015,7 +1017,7 @@ def test_a_shard_failure_is_reported_as_a_group_error(env) -> None:
 
 def test_teacher_forced_logits_return_one_full_row_per_token(env) -> None:
     env["queue_logits"]([0, 1, 2])
-    session = _session(env)
+    session = _session(env, bulk_prefill=False)
     logits = session.teacher_forced_logits([5, 6, 7])
     assert logits.shape == (3, VOCAB)
     assert int(np.argmax(logits[0])) == 0
@@ -1085,14 +1087,18 @@ def test_graphed_schedule_needs_the_compiled_driver() -> None:
         )
 
 
-def _graphed_session(env, *, attention_shard=False) -> MlpTP2GenerationSession:
+def _graphed_session(
+    env, *, attention_shard=False, bulk_prefill=False
+) -> MlpTP2GenerationSession:
     # The device-side exchange is the graphed default (see the host opt-out
-    # test below). The attention route is pinned here: the graphed tests assert
-    # the schedule and the exchange bookkeeping, and a session that inherits the
-    # engine's default would silently change which route those assertions
-    # describe. The default's own bookkeeping is asserted by
-    # ``test_attention_shard_default_on_for_tp2_and_refused_where_it_cannot_run``
-    # and by ``test_graphed_attention_reduce_takes_a_second_slot_per_layer``.
+    # test below). The attention route and the prefill schedule are pinned here:
+    # the graphed tests assert the schedule and the exchange bookkeeping, and a
+    # session that inherits the engine's default would silently change which
+    # route those assertions describe (the shipped tp2 prefill is now the
+    # rank-local bulk prefill). The defaults' own bookkeeping is asserted by
+    # ``test_attention_shard_default_on_for_tp2_and_refused_where_it_cannot_run``,
+    # ``test_graphed_attention_reduce_takes_a_second_slot_per_layer`` and
+    # ``test_bulk_prefill_is_on_by_default``.
     return MlpTP2GenerationSession(
         "fake.gguf",
         devices=(0, 1),
@@ -1101,6 +1107,7 @@ def _graphed_session(env, *, attention_shard=False) -> MlpTP2GenerationSession:
         schedule="graphed",
         reduce_mode="device",
         attention_shard=attention_shard,
+        bulk_prefill=bulk_prefill,
     )
 
 
@@ -1291,6 +1298,7 @@ def test_graphed_host_reduce_opt_out_reduces_per_layer(env) -> None:
         max_sequence_length=64,
         schedule="graphed",
         reduce_mode="host",
+        bulk_prefill=False,
     )  # the explicit opt-out
     session.generate([2], max_new_tokens=1, eos_token_id=None)
     group = env["groups"][0]
@@ -1530,11 +1538,27 @@ def test_f32_partial_dtype_requires_the_host_reduction(env) -> None:
     assert env["groups"][0].staging_dtype == "f32"
 
 
-def test_bulk_prefill_is_off_by_default(env) -> None:
+def test_bulk_prefill_is_on_by_default(env) -> None:
+    """The shipped TP2 prefill schedule is the rank-local bulk prefill.
+
+    It passed the production comparison on the current revision
+    (``benchmarks/results/2026-09-25-w7900-tp2-bulk-current-gate.json``) and is
+    faster than the token-serial walk at every prompt length measured.
+    """
+
     session = _session(env)
+    assert session.bulk_prefill_enabled is True
+    assert session.prefill_schedule == "bulk-tp2"
+    assert len(env["groups"]) == 1
+    session.close()
+
+
+def test_bulk_prefill_can_be_rolled_back(env) -> None:
+    """``bulk_prefill=False`` is the registered rollback and gate reference."""
+
+    session = _session(env, bulk_prefill=False)
     assert session.bulk_prefill_enabled is False
     assert session.prefill_schedule == "token-serial"
-    assert len(env["groups"]) == 1
     with pytest.raises(TP2GroupError, match="not enabled"):
         session.bulk_prefill([1, 2])
     session.close()
@@ -1749,9 +1773,9 @@ def test_teacher_forced_logits_keeps_every_prompt_row(env) -> None:
 
 
 def test_generate_keeps_the_token_serial_prefill_when_bulk_is_off(env) -> None:
-    """The contrast: without the flag every prompt position is its own step."""
+    """The rollback: with ``bulk_prefill=False`` every prompt position is a step."""
 
-    session = _session(env)
+    session = _session(env, bulk_prefill=False)
     env["queue_logits"]([2, 3, 4, 5, 6])
     result = session.generate([11, 12, 13, 14], max_new_tokens=1)
     assert [trace.kind for trace in result.step_traces] == [
@@ -2060,9 +2084,15 @@ def test_bulk_prefill_defaults_to_the_shipped_resident_prefill_policy() -> None:
 
 
 def test_single_row_decode_does_not_enter_the_bulk_dispatch_context(env) -> None:
-    """The single-row route keeps its own per-launch arguments."""
+    """The single-row route keeps its own per-launch arguments.
 
-    session = _session(env)
+    Scoped to the token-serial rollback so the launches under test are decode's
+    own; the mixed bulk-prefill-then-decode path is covered by the production
+    comparison (``scripts/tp2_teacher_coverage_broad.py``) and by the workspace
+    ladder (``scripts/tp2_bulk_workspace_contract.py``).
+    """
+
+    session = _session(env, bulk_prefill=False)
     for _ in range(8):
         env["injected_rows"].append(np.zeros(VOCAB, dtype="<f4"))
     session.generate([1, 2], max_new_tokens=1)

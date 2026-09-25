@@ -367,6 +367,10 @@ def create_native_adapter(model, arm, *, capacity=200, bulk_prefill=False, atten
     # pinning one, so a harness that does not name the route measures the route
     # the engine actually ships.
     extra = {} if attention_shard is None else {'attention_shard': bool(attention_shard)}
+    # ``bulk_prefill=None`` keeps the session's own default rather than pinning
+    # one, so a harness that does not name the schedule measures the schedule
+    # the engine ships. Pinning it also pins the workspace to the capacity.
     return NativeARAdapter(MlpTP2GenerationSession(model, devices=(0, 1), mode='tp2',
-        max_sequence_length=capacity, bulk_prefill=bool(bulk_prefill),
-        bulk_prefill_rows=capacity if bulk_prefill else None, **extra), resident=False)
+        max_sequence_length=capacity,
+        bulk_prefill=(None if bulk_prefill is None else bool(bulk_prefill)),
+        bulk_prefill_rows=(capacity if bulk_prefill else None), **extra), resident=False)
