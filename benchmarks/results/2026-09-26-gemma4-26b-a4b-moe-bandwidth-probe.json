@@ -1,0 +1,25 @@
+{
+  "kind": "gemma4_campaign_diagnostic",
+  "verdict": "diagnostic",
+  "recorded": "2026-09-26, gemma4-moe-perf/g0 iteration 31",
+  "question": "the MoE decode linears are now the largest single item in the step (6.2 ms of ~21.8 ms, 28%) and the campaign had only ever attacked them through specific rejected variants, never by establishing the achieved-bandwidth baseline",
+  "measurement": {
+    "tool": "scripts/gguf_q4_k_moe_ffn_fused_microbench.py",
+    "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 PYTHONPATH=. .venv/bin/python scripts/gguf_q4_k_moe_ffn_fused_microbench.py --hidden 2816 --ffn-len 768 --top-k 8 --experts 128 --iters 50",
+    "shape_caveat": "Gemma 4's real ffn length is 704, which is not a multiple of 256, and the synthetic-weight fixture (tests/_gguf_synthetic_weights.py:make_q4_k_weight) refuses in_features that are not. 768 is the nearest legal substitute, about 9% wider, so the byte counts below are ~9% high and the derived bandwidth is a slight over-estimate. The production kernels support 704 - the real artifact loads and runs - so this is a fixture limitation, not a kernel one.",
+    "device": "physical GPU1, RX 7900 XTX",
+    "unfused_ms_per_layer": 0.3002,
+    "fused_ms_per_layer": 0.5545,
+    "bytes_per_layer": 31354880,
+    "achieved_gbps_unfused": 104.4,
+    "peak_gbps": 900,
+    "fraction_of_peak": 0.116
+  },
+  "findings": [
+    "The fused megakernel (quant/gguf_q4_k_moe_ffn_fused, registered as moe_ffn_selected/gguf_q4_k/fused_dual_silu_down_*) is 1.85x SLOWER than the production unfused chain at these shapes - 0.5545 against 0.3002 ms per layer - so consolidating 3 launches into 1 is not a win here and that candidate is refuted. It is also numerically inadmissible for Gemma 4 regardless: it applies SiLU, and Gemma 4's MoE is gelu_tanh, which is why gemma4_moe.py registers its own gemma4_gelu_tanh_mul_bf16 for expert_geglu. Nothing was changed on that basis.",
+    "The MoE decode linears run at ~104 GB/s, about 12% of the RX 7900 XTX's peak. The memory roofline for the same bytes is ~35 us per layer against the 300 us measured here (and 207 us per layer in production, from the 6.2 ms/step profile divided by 30 layers), so the gap is 6-9x. The MoE is latency-bound, not bandwidth-bound.",
+    "That reframes the campaign's own next candidate. iteration 15 recorded the q4_k decode re-route as blocked behind a default-off diagnostic env, a missing Q5_1 compact down kernel and an expert_ffn % 256 guard; the guard is real but splits differently than recorded - the gate_up projection's in_features is 2816 (11 x 256, legal) and only the down projection's 704 is not. The decode-shaped kernels do exist, in the t16 family (gguf_t16_selected_gemv, registered under gguf_q4_k_t16_v1 and siblings), but they read a REPACKED weight layout, so reaching them means a loader-side repack plus the routing change - which is the campaign's G4/G5 scope, not a one-iteration edit."
+  ],
+  "not_concluded": "No performance claim. Nothing in the product path changed, no row moved, and the fused/unfused comparison is a shape-substituted microbenchmark rather than an end-to-end row.",
+  "next_candidate": "the t16 repack plus selected-decode-GEMV route for the MoE linears, now with a measured 6-9x headroom and a named blocker (loader-side repack) rather than a suspected one; the dense projections (3.9 ms) should be probed the same way before the work starts, since they share the dispatch."
+}

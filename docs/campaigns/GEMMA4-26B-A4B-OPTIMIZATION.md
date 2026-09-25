@@ -605,6 +605,33 @@ flags because a configuration has not been benchmarked.
   `2026-09-26-gemma4-26b-a4b-sliding-read-range-accepted.json`; the campaign's
   rollup for the three acceptances since 2026-09-24 was owed and is now in
   `benchmarks/CHANGELOG.md` and `benchmarks/README.md`.
+  *Diagnostic 2026-09-26 (iteration 31): the MoE decode linears are now the
+  largest single item in the step and the achieved-bandwidth baseline did not
+  exist.* With attention down to roughly 8.5 ms and the host gap cut by 6.4 ms,
+  the MoE's 6.2 ms/step from iteration 19's profile is **28% of the ~21.8 ms
+  step**. A shape-substituted run of
+  `scripts/gguf_q4_k_moe_ffn_fused_microbench.py` (hidden 2816, ffn 768 - 704 is
+  not a multiple of 256 and the synthetic-weight fixture refuses it, so 768 is
+  the nearest legal substitute at ~9% wider; the real kernels handle 704, so that
+  is a fixture limit, not a kernel one) puts the production unfused chain at
+  **0.3002 ms per layer for 31.35 MB, ~104 GB/s or 12% of the RX 7900 XTX's
+  peak**. The memory roofline for those bytes is ~35 us per layer, against 300 us
+  here and 207 us per layer in production: **the MoE is 6-9x off the roofline and
+  is latency-bound, not bandwidth-bound**.
+  Two things follow. The **fused megakernel is refuted** - 0.5545 ms against
+  0.3002, so consolidating three launches into one is 1.85x *slower* at these
+  shapes, and it applies SiLU where Gemma 4's MoE is `gelu_tanh`, which is why
+  `gemma4_moe.py` registers its own GEGLU. And the campaign's own next candidate
+  is re-scoped rather than unblocked: iteration 15 recorded the q4_k decode
+  re-route behind three obstacles, and the `expert_ffn % 256` guard splits
+  differently than recorded - the gate_up projection's in_features is 2816
+  (11 x 256, legal) and only the down projection's 704 is not. The decode-shaped
+  kernels do exist, in the t16 family (`gguf_t16_selected_gemv`, registered under
+  `gguf_q4_k_t16_v1` and siblings), but they read a **repacked** weight layout,
+  so reaching them means a loader-side repack plus the routing change - G4/G5
+  scope, not a one-iteration edit. Diagnostic only: no product path changed, no
+  row moved. Evidence row
+  `2026-09-26-gemma4-26b-a4b-moe-bandwidth-probe.json`.
   *Gate verdict 2026-09-25: **passed**, and comfortably.* Against the frozen
   8192-context baseline over all 1023 teacher-forced rows: **kl_max 0.006746**
   (bar 0.05), kl_mean 9.03e-06 (0.001), kl_p95 5.25e-06 (0.005), kl_p99
