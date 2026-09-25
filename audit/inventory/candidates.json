@@ -2,7 +2,7 @@
   "kind": "candidates",
   "meta": {
     "campaign_docs_scanned": 64,
-    "candidates": 228
+    "candidates": 230
   },
   "rows": [
     {
@@ -9965,9 +9965,93 @@
     },
     {
       "kind": "candidate",
+      "key": "ud-gfx1151-optimize2-e6-closeout-mixed-pair-i-84c7e4f5c092",
+      "title": "E6 closeout mixed pair (IQ3_S, IQ4_XS) \u2014 UD-GFX1151-OPTIMIZE2.md",
+      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:920",
+      "evidence": {
+        "verdict_word": "removed",
+        "measurements": [
+          "544 \u00b5s"
+        ],
+        "excerpt": "| E6 closeout mixed pair (IQ3_S, IQ4_XS) | H9 | (route not shipped \u2014 nothing enabled) vs iq3_s local32 + iq4_xs local32 + silu_mul | **0.97\u20130.99\u00d7** across four runs at (5120,17408) rows=1 (0.99/0.99/0.98/0.97, allocate-once \u00d750 interleaved) \u2014 fails the \u22651.00 gate; bit-exact in every run | 705.28 (unchanged by construction \u2014 no route) | \u2014 (no production change) | **PASS as a negative**: bit-exact v"
+      },
+      "signals": [
+        "recorded as 'removed' while citing a measurement",
+        "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate",
+        "same row also mentions promotion \u2014 may already be resolved"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md",
+        "refs": [
+          "544 \u00b5s"
+        ],
+        "tokens": [
+          "across",
+          "closeout",
+          "enabled",
+          "four",
+          "iq3_s",
+          "iq4_xs",
+          "local32",
+          "mixed",
+          "nothing",
+          "pair",
+          "route",
+          "runs",
+          "shipped",
+          "silu_mul"
+        ]
+      },
+      "id": "candidate/ud-gfx1151-optimize2-e6-closeout-mixed-pair-i-84c7e4f5c092",
+      "evidence_hash": "b101bfbde5f0"
+    },
+    {
+      "kind": "candidate",
+      "key": "ud-gfx1151-optimize2-e6-closeout-mixed-pair-q-0ecd916d0d02",
+      "title": "| E6 closeout mixed pair (Q5_K, Q6_K planar) | H9 | (route not shipped \u2014 nothing \u2014 UD-GFX1151-OPTIMIZE2.md",
+      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:921",
+      "evidence": {
+        "verdict_word": "removed",
+        "measurements": [
+          "692 \u00b5s"
+        ],
+        "excerpt": "| E6 closeout mixed pair (Q5_K, Q6_K planar) | H9 | (route not shipped \u2014 nothing enabled) vs q5 tile8 + q6 planar decode + silu_mul | **0.60\u20130.61\u00d7** across four runs at (5120,17408) rows=1 (pair 1139\u20131154 vs chain 689\u2013692 \u00b5s/layer, allocate-once \u00d750 interleaved) \u2014 far below the \u22651.00 gate; bit-exact in every run | 705.28 (unchanged by construction \u2014 no route) | \u2014 (no production change) | **PASS as"
+      },
+      "signals": [
+        "recorded as 'removed' while citing a measurement",
+        "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate",
+        "same row also mentions promotion \u2014 may already be resolved"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md",
+        "refs": [
+          "692 \u00b5s"
+        ],
+        "tokens": [
+          "across",
+          "closeout",
+          "decode",
+          "enabled",
+          "mixed",
+          "nothing",
+          "pair",
+          "planar",
+          "q5_k",
+          "q6_k",
+          "route",
+          "shipped",
+          "silu_mul",
+          "tile8"
+        ]
+      },
+      "id": "candidate/ud-gfx1151-optimize2-e6-closeout-mixed-pair-q-0ecd916d0d02",
+      "evidence_hash": "5b1305e55644"
+    },
+    {
+      "kind": "candidate",
       "key": "ud-gfx1151-optimize2-e6a-same-quant-pair-rout-0bd879073325",
       "title": "E6a same-quant pair routes \u2014 UD-GFX1151-OPTIMIZE2.md",
-      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:885",
+      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:912",
       "evidence": {
         "verdict_word": "rejected",
         "measurements": [
@@ -10003,13 +10087,13 @@
         ]
       },
       "id": "candidate/ud-gfx1151-optimize2-e6a-same-quant-pair-rout-0bd879073325",
-      "evidence_hash": "d6f1eb8ade1f"
+      "evidence_hash": "8aedb4b8a8e6"
     },
     {
       "kind": "candidate",
       "key": "ud-gfx1151-optimize2-e6b-5-mixed-pair-q3-k-iq-b3f517eba5b7",
       "title": "E6b-5 mixed pair (Q3_K, IQ4_XS) \u2014 UD-GFX1151-OPTIMIZE2.md",
-      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:890",
+      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:917",
       "evidence": {
         "verdict_word": "removed",
         "measurements": [
@@ -10047,13 +10131,13 @@
         ]
       },
       "id": "candidate/ud-gfx1151-optimize2-e6b-5-mixed-pair-q3-k-iq-b3f517eba5b7",
-      "evidence_hash": "9b33a382674d"
+      "evidence_hash": "614e53bceffe"
     },
     {
       "kind": "candidate",
       "key": "ud-gfx1151-optimize2-e6b-7-mixed-pair-iq4-xs-18be840c88d3",
       "title": "E6b-7 mixed pair (IQ4_XS, Q3_K) \u2014 UD-GFX1151-OPTIMIZE2.md",
-      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:892",
+      "location": "docs/campaigns/UD-GFX1151-OPTIMIZE2.md:919",
       "evidence": {
         "verdict_word": "removed",
         "measurements": [
@@ -10089,7 +10173,7 @@
         ]
       },
       "id": "candidate/ud-gfx1151-optimize2-e6b-7-mixed-pair-iq4-xs-18be840c88d3",
-      "evidence_hash": "07c95f1f7f86"
+      "evidence_hash": "d6a9ba0bf9d6"
     }
   ]
 }

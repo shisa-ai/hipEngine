@@ -6427,6 +6427,78 @@ def launch_gguf_linear_pair_silu(
             **kwargs,
         )
         return True
+    # E6 closeout (2026-09-25): the three remaining one-layer mixed
+    # families from the fresh per-block decode recount - (IQ3_S gate,
+    # IQ4_XS up) at layer 11, (IQ4_NL gate, Q5_K up) at layer 50, and
+    # (Q5_K gate, Q6_K qmicro-planar up) at layer 63. All three gate on
+    # the exact owners production selects (the dense-IQ session rewrite
+    # with the spec's slot_path for the raw-IQ sides - both sides of
+    # layer 11 take the session's local32 decode owner, no ffn_gate pin
+    # - and the E4a tile8 c1 rewrite for Q5) and passed the same
+    # allocations the singles read; all three are bit-exact with
+    # single/single/silu_mul. Screens (4 runs each, 2026-09-25) closed
+    # two negative: (IQ3_S, IQ4_XS) 0.97-0.99x and (Q5_K, Q6 planar)
+    # 0.60-0.61x, both below the pre-registered >=1.00 gate, so their
+    # routes do not fire here (dormant kernels + REFACTOR entries,
+    # E6b-5 pattern). Only (IQ4_NL gate, Q5_K up) shipped at 1.03-1.04x.
+    dispatch_a_slot = _iq_dense_decode_dispatch(
+        dispatch_a,
+        rows=rows,
+        out_features=out_features,
+        slot_path=getattr(getattr(weight_a, "spec", None), "slot_path", None),
+    )
+    dispatch_b_slot = _iq_dense_decode_dispatch(
+        dispatch_b,
+        rows=rows,
+        out_features=out_features,
+        slot_path=getattr(getattr(weight_b, "spec", None), "slot_path", None),
+    )
+    iq4nl_q5_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_iq4_nl+gguf_q5_k_t16_v1",
+        "iq4nl_q5_pair_silu_bf16_bf16_out",
+    )
+    iq4_nl_local32_decode = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_iq4_nl",
+        "local32_gemv_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(iq4nl_q5_pair)
+    if (
+        rows == 1
+        and dispatch_a_slot.key == iq4_nl_local32_decode
+        and dispatch_b_c1.key == q5_t16_tile8_decode
+        and in_features % 256 == 0
+        and out_features % 16 == 0
+        and is_registered(iq4nl_q5_pair)
+    ):
+        fn = resolve(
+            backend=iq4nl_q5_pair.backend,
+            layer=iq4nl_q5_pair.layer,
+            quant=iq4nl_q5_pair.quant,
+            variant=iq4nl_q5_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None if libraries is None else libraries.get(iq4nl_q5_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            # Gate first (IQ4_NL raw) already matches C geometry order;
+            # up second: Q5_K T16 tiles (the E4a tile8 c1 owner).
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
     # Q5 T16 gate/up decode dual (2026-09-10): fires only when both sides
     # dispatch to the Q5 T16 direct-GEMV decode owner at rows == 1; the
     # registered variant defaults to the bit-exact dense dual SiLU GEMV.

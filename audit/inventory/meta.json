@@ -1,7 +1,7 @@
 {
   "candidates": {
     "campaign_docs_scanned": 64,
-    "candidates": 228
+    "candidates": 230
   },
   "flags": {
     "names": 750,
@@ -22,12 +22,12 @@
     "source": "docs/REFACTOR.md",
     "headings": 406
   },
-  "generated": "2026-09-25T05:19:40+00:00",
-  "commit": "32c46e6cf",
+  "generated": "2026-09-25T06:47:27+00:00",
+  "commit": "760fd1b23",
   "worklog": {
     "source": "worklog/entries",
-    "entries": 10719,
-    "current": 3487,
+    "entries": 10720,
+    "current": 3488,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1110,
