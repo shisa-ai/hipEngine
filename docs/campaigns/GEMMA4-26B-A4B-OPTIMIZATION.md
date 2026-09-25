@@ -474,6 +474,32 @@ flags because a configuration has not been benchmarked.
   first candidate in this campaign whose payoff comes from occupancy rather than
   from removing work: at 16 of 96 CUs there is room for roughly 4x before other
   limits bind, against an attention share of 8.5 ms in a 22.9 ms step. Evidence row
+  *Iteration 27 correction, and the withdrawn recommendation:* the paragraph
+  above names split-K as the next candidate on the strength of the block-count
+  probe. That recommendation is **withdrawn as written**, because iteration 15
+  already built it: `2026-09-24-gemma4-26b-a4b-attention-split-rejected.json`
+  records the multi-block attention split at **0.102 vs 0.263 ms/launch (2.6x
+  faster, consistent with this probe's headroom) rejected at the production
+  gate on kl_max 0.304 against the 0.05 bar**, attributed to bf16-KV
+  amplification. The unapplied prototype is
+  `/mnt/nvme1/gemma4-eval/gemma4-attention-split-candidate.patch` and it targets
+  the pre-iteration-21 block kernel. So the speed is real and known, and what
+  fails is the numerics - which the probe cannot see and the gate can.
+  *The refinement worth testing instead:* the rejected split gave every slice its
+  own max, so each slice's `expf` arguments differ from the single-kernel row max
+  and the rescale amplifies bf16 error. A two-phase split keeps the arithmetic
+  change to the **association order of the weighted-V sum alone**: phase 1 runs
+  the existing kernel unchanged to produce the logits, the row max and the
+  denominator (16 blocks, bit-identical to today), and phase 2 splits only pass 3
+  across N blocks, each slice accumulating `expf(logit - row_max) * v` over its
+  key range with the *shared* row max. The combine is then a plain sum of the
+  slice partials divided by the already-final denominator - no per-slice rescale,
+  no second `expf`. Every summand's weight is bit-identical to the incumbent
+  path; only the f32 accumulation order over the slice's keys changes, which is
+  a ~1e-7 relative perturbation rather than a rescale. Pass 3 is the part worth
+  splitting anyway: iteration 22's ablation put it at 57% of the sliding kernel
+  and 71% of the full one, while passes 1 and 2 together are only 183-204 us. This
+  is the variant to build and gate; the per-slice-max variant stays rejected.
   `2026-09-25-gemma4-26b-a4b-tree2-interleave-rejected.json`.
   *Iteration 26 closing diagnostic (`scripts/gemma4_attention_scale_probe.py`,
   sliding geometry head_dim=256 keys=1024, 30 iterations):* varying the head count
