@@ -95,7 +95,9 @@
     "decode_tok_per_s": 37.51,
     "session_vram_gib_rank0": 15.278809,
     "session_vram_gib_rank1": 15.278809,
-    "free_gib_rank1": 8.67041
+    "free_gib_rank1": 8.67041,
+    "session_vram_gib_after_load_rank0": 12.291016,
+    "session_vram_gib_after_load_rank1": 12.291016
    },
    {
     "round": 2,
@@ -103,7 +105,9 @@
     "decode_tok_per_s": 37.53,
     "session_vram_gib_rank0": 15.278809,
     "session_vram_gib_rank1": 15.278809,
-    "free_gib_rank1": 8.67041
+    "free_gib_rank1": 8.67041,
+    "session_vram_gib_after_load_rank0": 12.291016,
+    "session_vram_gib_after_load_rank1": 12.291016
    }
   ],
   "sharded": [
@@ -113,7 +117,9 @@
     "decode_tok_per_s": 41.55,
     "session_vram_gib_rank0": 11.951905,
     "session_vram_gib_rank1": 11.951905,
-    "free_gib_rank1": 11.997314
+    "free_gib_rank1": 11.997314,
+    "session_vram_gib_after_load_rank0": 8.960938,
+    "session_vram_gib_after_load_rank1": 8.960938
    },
    {
     "round": 2,
@@ -121,7 +127,9 @@
     "decode_tok_per_s": 41.66,
     "session_vram_gib_rank0": 11.951905,
     "session_vram_gib_rank1": 11.951905,
-    "free_gib_rank1": 11.997314
+    "free_gib_rank1": 11.997314,
+    "session_vram_gib_after_load_rank0": 8.960938,
+    "session_vram_gib_after_load_rank1": 8.960938
    }
   ]
  },
@@ -134,7 +142,9 @@
    10.77,
    11.0
   ],
-  "session_vram_gib_rank1": -3.327
+  "session_vram_gib_rank1": -3.327,
+  "session_vram_gib_rank1_after_load": -3.33,
+  "session_vram_gib_reading": "session_vram_gib_rank1 is the harness's memory_after_warmup reading (device used minus the pre-session baseline, sampled after the warmup that sizes the prompt-shaped bulk-prefill workspace); session_vram_gib_after_load_rank1 is the same measure before that warmup, which is the one tp2_c1_bench prints. The saving is the same in both readings: -3.327 and -3.330 GiB."
  },
  "uneven_split": {
   "fractions": "0.44/0.56",
