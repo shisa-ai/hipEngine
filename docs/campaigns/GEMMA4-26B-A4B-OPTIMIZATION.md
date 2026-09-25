@@ -526,16 +526,26 @@ flags because a configuration has not been benchmarked.
   speed mechanism is the rejected per-slice-max split's (0.102 vs 0.263
   ms/launch) with the rescale removed, and the open question is whether
   association alone clears the kl_max bar.
-  *Device contention blocks the gate (2026-09-25).* The gate selects the split
-  by flipping `_SPLIT_GATE_PASSED` in
-  `hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py`, and two attempts
-  both died in `hipMalloc` before reaching a numerics verdict: a peer worker's
-  job on the same physical GPU holds ~6.9 GiB of its 24 GiB, which leaves less
-  than the model's own footprint. The same OOM reproduces at context 4096, so
-  the weights rather than the KV cache are what does not fit - the split's own
-  workspace is under 1 MiB. Run the gate only when `rocm-smi` shows GPU1 near
-  idle, and check that first: an attempt during a peer job costs a full load
-  (~2 min) and returns no information.
+  *Gate verdict 2026-09-25: **passed**, and comfortably.* Against the frozen
+  8192-context baseline over all 1023 teacher-forced rows: **kl_max 0.006746**
+  (bar 0.05), kl_mean 9.03e-06 (0.001), kl_p95 5.25e-06 (0.005), kl_p99
+  6.12e-05 (0.02), **top-1 rate 1.0 with zero flips** (bar 0.99). That is 45x
+  under the rejected per-slice-max variant's 0.304, which is the whole point of
+  the two-phase design: with no per-slice max there is no rescale to amplify
+  bf16 error, so what remains is the association order of an f32 sum. Verdict
+  artifact `benchmarks/results/2026-09-26-gemma4-26b-a4b-two-phase-split-gate.json`;
+  the split is now the default decode path above 512 keys and
+  `decode_slices`'s thresholds are pinned by a unit test.
+  *The gate ran on GPU0 (W7900), not GPU1, and why that is sound.* Three
+  attempts on GPU1 died in `hipMalloc` - a peer worker's job holds ~6.9 GiB of
+  its 24 GiB, leaving less than the model's footprint (the same OOM reproduces
+  at context 4096, so the weights rather than the KV cache are what do not
+  fit, and the split's own workspace is under 1 MiB). GPU0 is a W7900: the same
+  gfx1100 ISA, the same compiled kernel, so the arithmetic is identical and a
+  numerics verdict transfers. What does *not* transfer is performance - the
+  campaign's timing rows must still be measured on GPU1, whose clocks and
+  bandwidth differ. The gate's verdict JSON carries no provenance block, so the
+  device is recorded here and in the worklog entry instead.
   *Measured 2026-09-25 (iteration 28):* **45.4170 tok/s** median of 3 samples at
   1024p/128o against the incumbent's 43.9827 - **+3.26%**, 22.74 -> 22.02 ms per
   step, 0.72 ms saved. That is far below what the probe's 3.3x per-head scaling

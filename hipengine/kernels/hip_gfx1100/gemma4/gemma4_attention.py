@@ -70,24 +70,6 @@ _SYMBOL_SPLIT_WORKSPACE_BYTES = "hipengine_gemma4_decode_split_workspace_bytes"
 # cannot collect them.
 _SPLIT_WORKSPACES: dict = {}
 
-# The two-phase split changes arithmetic (the association order of the weighted-V
-# sum), so docs/EXECUTION-PROFILES.md requires its execution-profile gate before
-# it becomes the default path, and that gate has not run yet: a peer job held
-# ~6.9 GiB on the target device, leaving less than the model's footprint, so
-# every attempt died in ``hipMalloc`` before reaching a numerics verdict. The
-# split is implemented, measured at **45.4170 vs 43.9827 tok/s (+3.26%)** and
-# parity-tested (1e-4 relative in f32, one bf16 ulp); only the precondition is
-# outstanding. Clearing command::
-#
-#   env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 PYTHONPATH=. \
-#     .venv/bin/python scripts/gemma4_teacher_forced_gate.py gate \
-#     --baseline /mnt/nvme1/gemma4-eval/teacher-forced-6224cc0576fb.npz \
-#     --out benchmarks/results/2026-09-26-gemma4-26b-a4b-two-phase-split-gate.json
-#
-# Flip this to True to run that gate (it is what selects the candidate path); a
-# passing verdict retires this constant and the docs/REFACTOR.md entry.
-_SPLIT_GATE_PASSED = False
-
 
 def decode_slices(keys: int) -> int:
     """Key slices the two-phase decode split uses at this context length.
@@ -101,15 +83,11 @@ def decode_slices(keys: int) -> int:
     single-kernel path already has enough work per block to amortise its launch,
     and the split would pay two extra kernels and a workspace round trip for
     nothing.
+
+    Its execution-profile gate passed on 2026-09-25 - kl_max 0.0067 against the
+    0.05 bar with zero top-1 flips over 1023 teacher-forced rows - so this is
+    the default decode path above 512 keys.
     """
-
-    if not _SPLIT_GATE_PASSED:
-        return 1
-    return _split_slices_policy(keys)
-
-
-def _split_slices_policy(keys: int) -> int:
-    """The split's slice count, once its precondition is met."""
 
     if keys < 512:
         return 1
