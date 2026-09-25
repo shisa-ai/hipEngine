@@ -29,7 +29,12 @@ acceptance is 15.79%; prefix token reuse is 96.55%. It buffers tool output on
 and prefix reuse 95.31%/95.95%. Their separate GGUF container preserves all
 original target tensor bytes and adds Qwen3.6 NextN weights; the original file
 contains no MTP block. BF16 target KV differs from gufo's FP16 target KV.
-The shared quality diagnostic remains pending. Full performance and BFCL gates
+The separate fixed BFCL diagnostic completes 96/96 cases in each engine:
+hipEngine 52 correct, llama.cpp 76, gufo 73. The harness omits parallel-call
+opt-in, so hipEngine returns one call on all 32 parallel-call cases; this
+accounts for 23 of its 24-case gap versus llama.cpp. Gufo has three additional
+failures versus llama.cpp. These diagnostic scores do not establish accuracy
+parity or certify the full gate. Full performance and BFCL gates
 have not run. Writing this plan
 does not start or resume another optimization
 loop. Kernel tuning, an NVFP4 port,
@@ -366,7 +371,7 @@ justify shrinking the official workload or disabling an implemented feature.
   for decode-rate comparisons; preserve original metrics.
 - [x] Compare gufo on the frozen Qwen3.6 subset, pinning its executable and actual
   decoding settings; do not substitute its published Qwen3.8 configuration.
-- [ ] Run the small BFCL diagnostic if needed, without claiming a gate pass.
+- [x] Run the small BFCL diagnostic if needed, without claiming a gate pass.
 - [ ] Run full combined evaluation and same-GGUF baseline; retain both verdicts.
 - [ ] Publish qualified-by-scope local artifacts and close with findings.
 
