@@ -291,6 +291,11 @@ __device__ __forceinline__ float gemma4_warp_tree(float (&v)[8], unsigned int la
   return v[0];
 }
 
+// The denominator reduction is pinned to this lane count whatever the block
+// size is: gemma4_decode_tree1's addition order depends on it, and the block
+// kernel (the bit-exactness reference) uses 256 lanes.
+constexpr unsigned int kGemma4ReduceThreads = 256;
+
 // Two adjacent head dimensions in one load: the class kernel's pass 3 assigns
 // lane L the dimensions 2L and 2L+1, so a 4-byte (16-bit KV) or 8-byte (32-bit
 // KV) load replaces two 2-byte ones. The alignas is what tells the compiler the
@@ -402,8 +407,11 @@ __global__ void gemma4_attention_decode_class_kernel(
 
   extern __shared__ float shared[];
   float* logits_s = shared;
-  float* partial = logits_s + keys;            // kTreeLanes floats for tree1
-  float* max_s = partial + kTreeLanes;         // one running max per warp
+  // One kTreeLanes-float denominator region per 256-thread group, so every
+  // group can run the pinned 256-lane tree without colliding; only group 0's
+  // result is used. See kGemma4ReduceThreads.
+  float* partial = logits_s + keys;
+  float* max_s = partial + kTreeLanes * (blockDim.x / kGemma4ReduceThreads);
 
   const unsigned int threads = blockDim.x;
   const unsigned int tid = threadIdx.x;
@@ -486,14 +494,29 @@ __global__ void gemma4_attention_decode_class_kernel(
     row_max = fmaxf(row_max, max_s[w]);
   }
 
-  // Pass 2: the block kernel's per-lane denominator partition.
+  // Pass 2: the block kernel's per-lane denominator partition. The reduction is
+  // deliberately pinned to the block kernel's 256 lanes whatever the block size
+  // is: gemma4_decode_tree1's order depends on its lane count, so a 512-thread
+  // block would otherwise round the denominator differently and stop being
+  // bit-exact with the reference. Every 256-thread group runs the identical
+  // arithmetic in its own 256-float region of `partial`, so group 0's result is
+  // exactly the 256-lane one; the extra groups are redundant work in a pass that
+  // costs nothing (measured: skipping it entirely saves no time).
+  const unsigned int kReduceThreads = kGemma4ReduceThreads;
+  const unsigned int reduce_tid = tid & (kReduceThreads - 1);
   float local_sum = 0.0f;
-  for (int64_t j = tid; j < keys; j += threads) {
-    const float weight = expf(logits_s[j] - row_max);
-    local_sum += weight;
-    logits_s[j] = weight;
+  if (tid < kReduceThreads) {
+    for (int64_t j = tid; j < keys; j += kReduceThreads) {
+      const float weight = expf(logits_s[j] - row_max);
+      local_sum += weight;
+      logits_s[j] = weight;
+    }
   }
-  const float denominator = gemma4_decode_tree1(partial, local_sum, threads, tid);
+  gemma4_decode_tree1(partial + (tid / kReduceThreads) * kReduceThreads, local_sum,
+                      kReduceThreads, reduce_tid);
+  // Every thread reads group 0's result: the extra groups exist only so that
+  // all threads reach gemma4_decode_tree1's barriers, and their sums are empty.
+  const float denominator = partial[0];
 
   // Pass 3: the block kernel's weighted sums with the precomputed weight, but
   // with the V loads issued kPrefetch keys ahead of the accumulation that
@@ -722,10 +745,11 @@ int gemma4_decode_class_launch(
     int64_t tokens,
     int64_t keys,
     hipStream_t stream) {
-  constexpr int kKeysPerTile = 4;
-  constexpr unsigned int kThreads = 256;
+  constexpr int kKeysPerTile = 2;
+  constexpr unsigned int kThreads = 512;
   const size_t shared_bytes =
-      (static_cast<size_t>(keys) + 256 + 8) * sizeof(float);
+      (static_cast<size_t>(keys) + 256 * (kThreads / kGemma4ReduceThreads) +
+       kThreads / 32) * sizeof(float);
   if (shared_bytes > 64 * 1024) {
     return -1;
   }
