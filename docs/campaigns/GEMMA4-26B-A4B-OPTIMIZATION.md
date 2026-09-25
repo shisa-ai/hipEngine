@@ -713,6 +713,29 @@ flags because a configuration has not been benchmarked.
   it needs token-id parity rather than a numerical gate. Not landed here because
   it needs the full validation set - verify, guard, and the other primary rows -
   which does not fit in the iteration that found it.
+  *Reverted 2026-09-26 (iteration 35): the microbenchmark win did not transfer,
+  and the change cost 10.4%.* Passing
+  `registered_variant="gemv_bf16_bf16_out"` from `gemma4_project` was built,
+  unit-tested and measured end-to-end: **45.8427 -> 41.0714 tok/s (-10.4%)**,
+  with token ids still identical to the incumbent arm, so the change was correct
+  and simply much slower. The hint is not a free preference. `launch_gguf_linear`
+  has five dispatch paths gated on `registered_variant is None`
+  (lines 3108/3123/3186/3229/3267), and passing a variant suppresses all of
+  them; the host cache is not the cause, because `registered_variant` is part of
+  the cache key at line 3343, so this is a kernel-selection effect rather than a
+  re-planning cost. A 10.4% step loss is roughly a 55% slowdown of the dense
+  projections, which is far more than one shape's 13.3% could explain, so the
+  plain GEMV must be substantially slower at the other projection shapes (the
+  k and v projections are far narrower than the q projection the A/B used).
+  **The lesson is the exact inverse of iteration 34's:** there, a cheap
+  measurement beat a paragraph of reasoning; here, a cheap measurement at *one
+  shape* was over-extrapolated to the whole model. A shape-local microbenchmark
+  can refute a claim, but it cannot establish an end-to-end win, and the
+  end-to-end row is what decides. The candidate is closed for this loop: the
+  reachable fix is in the shared caller contract
+  (`hipengine/loading/gguf_selected_contract.py`) or in the dispatch's own
+  preference logic, both outside this loop's scope, and the honest follow-up is
+  a note to that owner rather than a narrower hint from here.
   *Gate verdict 2026-09-25: **passed**, and comfortably.* Against the frozen
   8192-context baseline over all 1023 teacher-forced rows: **kl_max 0.006746**
   (bar 0.05), kl_mean 9.03e-06 (0.001), kl_p95 5.25e-06 (0.005), kl_p99
