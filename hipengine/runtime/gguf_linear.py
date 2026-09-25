@@ -4015,6 +4015,30 @@ def _linear_residual_variant(variant: str) -> str | None:
     return f"{variant[: -len(suffix)]}_bf16_residual_bf16_out"
 
 
+def _residual_rows1_decode_dispatch(dispatch, weight, *, out_features):
+    """Replay the production rows-1 raw decode-owner decision (E6c-2).
+
+    ``launch_gguf_linear``'s dispatch chain applies
+    ``_iq_dense_decode_dispatch`` before resolving the kernel, so with the
+    dense-IQ session bound an unpinned raw slot runs the policy's local32
+    owner while a pinned slot or a policy-less quant keeps the strict GEMV.
+    The rows-1 residual composite resolves from the contract key alone and
+    would therefore pick the wrong parent (and change arithmetic) on every
+    redirected layer. Replaying that one dynamic decision here keeps the
+    composite's parent identical to the unfused chain's owner; the helper
+    self-guards to ``raw`` and leaves every other ABI untouched.
+    """
+
+    if dispatch.abi != "raw":
+        return dispatch
+    return _iq_dense_decode_dispatch(
+        dispatch,
+        rows=1,
+        out_features=out_features,
+        slot_path=getattr(getattr(weight, "spec", None), "slot_path", None),
+    )
+
+
 def _resolve_registered_linear_residual(
     normal_key: KernelKey,
     *,
@@ -4346,6 +4370,12 @@ def launch_gguf_linear_residual(
             weight,
             backend=resolved_backend,
             rows=rows,
+        )
+        # E6c-2: raw slots must composite under the parent production runs
+        # (session-redirected local32 vs pinned/no-policy strict), never the
+        # bare contract key.
+        dispatch = _residual_rows1_decode_dispatch(
+            dispatch, weight, out_features=out_features
         )
         resolved = _resolve_registered_linear_residual(
             dispatch.key,
@@ -7280,6 +7310,36 @@ def _launch_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwa
     )
 
 
+def _launch_raw_residual(
+    fn,
+    weight,
+    x_ptr,
+    residual_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    kwargs,
+) -> None:
+    """Raw-ABI composite launch: parent arg list with the residual inserted.
+
+    E6c-2: the raw consumer contract (``_launch_raw``) plus the same
+    ``residual`` slot every rounded-BF16 residual sibling takes before the
+    output pointer.
+    """
+
+    fn(
+        x_ptr,
+        *linear_weight_pointers("raw", weight),
+        residual_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
 def _launch_dense_bf16(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     fn(
         x_ptr,
@@ -8947,6 +9007,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
 _LAUNCH_RESIDUAL_ABI = {
     "dense_bf16": _launch_dense_bf16_residual,
     "pack8": _launch_pack8_residual,
+    "raw": _launch_raw_residual,
     "t16": _launch_t16_residual,
 }
 

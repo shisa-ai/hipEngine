@@ -1219,6 +1219,17 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
     "gguf_q4_k_t16_v1": 4,
     "gguf_q5_k_t16_v1": 1,
     "gguf_q6_k_t16_qmicro_planar_v1": 3,
+    # E6c-2: the raw dense-IQ residual siblings are rows-1 decode
+    # composites (their parents are rows-1 owners too); the verifier
+    # rows 2-4 local32/strict owners have no residual variant, so cap
+    # these quants before the rows 2-4 residual path could try one.
+    "gguf_iq4_xs": 1,
+    "gguf_iq4_nl": 1,
+    "gguf_iq3_s": 1,
+    "gguf_q3_k": 1,
+    "gguf_iq3_xxs": 1,
+    "gguf_iq2_s": 1,
+    "gguf_iq2_xs": 1,
     "bf16": 512,
 }
 # The attention-RMSNorm source range is statically bounded from resident F32

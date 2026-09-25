@@ -440,7 +440,7 @@
           "hipengine/loading/qwen35_gguf_policy.py:184",
           "hipengine/loading/qwen35_gguf_policy.py:219",
           "hipengine/runtime/qwen35_gguf_runner.py:11716",
-          "hipengine/runtime/gguf_linear.py:7873"
+          "hipengine/runtime/gguf_linear.py:7933"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -458,7 +458,7 @@
         ]
       },
       "id": "flag/HIPENGINE_C8_Q5_PLANAR_DP4A",
-      "evidence_hash": "2df983f293c1"
+      "evidence_hash": "4de91f05420c"
     },
     {
       "kind": "flag",
@@ -3508,7 +3508,7 @@
         },
         "runtime_sites": [
           "hipengine/runtime/gguf_linear.py:3464",
-          "hipengine/runtime/gguf_linear.py:4291"
+          "hipengine/runtime/gguf_linear.py:4315"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -3528,13 +3528,13 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_DENSE_WMMA_BULK",
-      "evidence_hash": "1ea5563d5b8d"
+      "evidence_hash": "cd4819e9fd39"
     },
     {
       "kind": "flag",
       "key": "HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL",
       "title": "HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL",
-      "location": "hipengine/runtime/gguf_linear.py:4277",
+      "location": "hipengine/runtime/gguf_linear.py:4301",
       "evidence": {
         "default": "unknown",
         "sites_by_root": {
@@ -3543,7 +3543,7 @@
           "tests": 5
         },
         "runtime_sites": [
-          "hipengine/runtime/gguf_linear.py:4277"
+          "hipengine/runtime/gguf_linear.py:4301"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -3563,7 +3563,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL",
-      "evidence_hash": "a050c48ced20"
+      "evidence_hash": "8b83cafa3f82"
     },
     {
       "kind": "flag",
@@ -3805,7 +3805,7 @@
           "hipengine/runtime/qwen35_gguf_runner.py:3830",
           "hipengine/runtime/qwen35_gguf_runner.py:4206",
           "hipengine/runtime/qwen35_gguf_runner.py:35847",
-          "hipengine/kernels/hip_gfx1151/__init__.py:1557"
+          "hipengine/kernels/hip_gfx1151/__init__.py:1568"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -3825,7 +3825,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_GDN_PREFILL_MODE",
-      "evidence_hash": "7659d9d52928"
+      "evidence_hash": "fa69812313b0"
     },
     {
       "kind": "flag",
@@ -4352,7 +4352,7 @@
         },
         "runtime_sites": [
           "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:30",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:244"
+          "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py:246"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -4373,7 +4373,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN",
-      "evidence_hash": "d9cad322d003"
+      "evidence_hash": "26e7e55dbaec"
     },
     {
       "kind": "flag",
@@ -6283,7 +6283,7 @@
         "runtime_sites": [
           "hipengine/runtime/gguf_linear.py:3356",
           "hipengine/runtime/gguf_linear.py:3555",
-          "hipengine/runtime/gguf_linear.py:5357"
+          "hipengine/runtime/gguf_linear.py:5387"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -6303,7 +6303,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK",
-      "evidence_hash": "40040770e0c9"
+      "evidence_hash": "aefe440e8aa7"
     },
     {
       "kind": "flag",
@@ -7418,7 +7418,7 @@
       "kind": "flag",
       "key": "HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL",
       "title": "HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL",
-      "location": "hipengine/runtime/gguf_linear.py:4915",
+      "location": "hipengine/runtime/gguf_linear.py:4945",
       "evidence": {
         "default": "unknown",
         "sites_by_root": {
@@ -7427,8 +7427,8 @@
           "tests": 4
         },
         "runtime_sites": [
-          "hipengine/runtime/gguf_linear.py:4915",
-          "hipengine/runtime/gguf_linear.py:6815"
+          "hipengine/runtime/gguf_linear.py:4945",
+          "hipengine/runtime/gguf_linear.py:6845"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -7449,7 +7449,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL",
-      "evidence_hash": "76f12b2f13ec"
+      "evidence_hash": "6bae873c2e09"
     },
     {
       "kind": "flag",
@@ -8353,7 +8353,7 @@
         "runtime_sites": [
           "hipengine/runtime/qwen35_gguf_runner.py:3010",
           "hipengine/runtime/qwen35_gguf_runner.py:3561",
-          "hipengine/kernels/hip_gfx1151/__init__.py:2583"
+          "hipengine/kernels/hip_gfx1151/__init__.py:2594"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -8373,7 +8373,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS",
-      "evidence_hash": "b5d9e61a628c"
+      "evidence_hash": "495060a7b7dc"
     },
     {
       "kind": "flag",
@@ -8775,7 +8775,7 @@
         "runtime_sites": [
           "hipengine/runtime/qwen35_gguf_runner.py:7955",
           "hipengine/runtime/qwen35_gguf_runner.py:11430",
-          "hipengine/kernels/hip_gfx1151/__init__.py:1613"
+          "hipengine/kernels/hip_gfx1151/__init__.py:1624"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -8796,7 +8796,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG",
-      "evidence_hash": "e68759048968"
+      "evidence_hash": "2100c542ce3a"
     },
     {
       "kind": "flag",
@@ -22061,7 +22061,7 @@
         },
         "runtime_sites": [
           "hipengine/generation/qwen4_exp_profiles.py:548",
-          "hipengine/runtime/gguf_linear.py:7634"
+          "hipengine/runtime/gguf_linear.py:7694"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -22081,7 +22081,7 @@
         ]
       },
       "id": "flag/HIPENGINE_QWEN4_EXP_MMQ_TOKEN64",
-      "evidence_hash": "ed582835fc00"
+      "evidence_hash": "611b15e24fcd"
     },
     {
       "kind": "flag",
@@ -23797,7 +23797,7 @@
         },
         "runtime_sites": [
           "hipengine/generation/qwen4_exp_profiles.py:536",
-          "hipengine/runtime/gguf_linear.py:7643"
+          "hipengine/runtime/gguf_linear.py:7703"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -23818,7 +23818,7 @@
         ]
       },
       "id": "flag/HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR",
-      "evidence_hash": "02d344d57eae"
+      "evidence_hash": "9700033af37c"
     },
     {
       "kind": "flag",
@@ -23834,7 +23834,7 @@
         },
         "runtime_sites": [
           "hipengine/generation/qwen4_exp_profiles.py:535",
-          "hipengine/runtime/gguf_linear.py:7652"
+          "hipengine/runtime/gguf_linear.py:7712"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -23854,7 +23854,7 @@
         ]
       },
       "id": "flag/HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4",
-      "evidence_hash": "797ae3711850"
+      "evidence_hash": "f4ef889b5c76"
     },
     {
       "kind": "flag",
