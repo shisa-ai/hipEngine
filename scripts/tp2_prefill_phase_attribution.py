@@ -44,6 +44,11 @@ actionable:
                     route;
 - ``mlp_residual``- the single residual add.
 
+``attn_reduce`` is the head-sharded route's second reduction per layer - the sum
+of the ranks' attention-output partials that the post-attention norm consumes.
+It is recorded on both routes so the two are read off the same phase table; on
+the replicated route the helper is a no-op and the span is zero.
+
 It also reports the group's own ``exchange_walls_s`` (the host-side wall of each
 transport reduction), so a host-bound exchange can be told apart from a
 device-bound one: if the device span is small while the host wall is large, the
@@ -53,6 +58,7 @@ Usage::
 
     python scripts/tp2_prefill_phase_attribution.py [--prompt-tokens 512]
         [--repeats 3] [--model MODEL] [--json OUT.json] [--per-layer]
+        [--attention-shard]
 """
 
 from __future__ import annotations
@@ -73,20 +79,22 @@ import numpy as np  # noqa: E402
 # the numbering is the contract the report reads.
 SLOT_LAYER_START = 0
 SLOT_ATTN_STOP = 1
-SLOT_MLP_START = 2
-SLOT_CHAIN_START = 3
-SLOT_CHAIN_STOP = 4
-SLOT_EXCHANGE_STOP = 5
-SLOT_CAST_STOP = 6
-SLOT_MLP_STOP = 7
-SLOTS_PER_LAYER = 8
+SLOT_ATTN_REDUCE_STOP = 2
+SLOT_MLP_START = 3
+SLOT_CHAIN_START = 4
+SLOT_CHAIN_STOP = 5
+SLOT_EXCHANGE_STOP = 6
+SLOT_CAST_STOP = 7
+SLOT_MLP_STOP = 8
+SLOTS_PER_LAYER = 9
 # The final norm plus the head, recorded once per prefill.
-SLOT_TAIL_START = 8
-SLOT_TAIL_STOP = 9
+SLOT_TAIL_START = 9
+SLOT_TAIL_STOP = 10
 SLOTS_PER_PREFILL = SLOTS_PER_LAYER + 2
 
 PHASES = (
     "attention",
+    "attn_reduce",
     "norm_residual",
     "mlp",
     "mlp_chain",
@@ -98,12 +106,13 @@ PHASES = (
 # ``mlp`` is the whole sharded-MLP phase and the four ``mlp_*`` entries are its
 # decomposition, so only these four top-level phases may be summed: adding the
 # breakdown as well double counts the MLP and reports a total above the wall.
-TOP_LEVEL_PHASES = ("attention", "norm_residual", "mlp", "tail")
+TOP_LEVEL_PHASES = ("attention", "attn_reduce", "norm_residual", "mlp", "tail")
 MLP_PARTS = ("mlp_chain", "mlp_exchange", "mlp_cast", "mlp_residual")
 # The span pairs each phase reads, as (start slot, stop slot) offsets.
 PHASE_SLOTS = {
     "attention": (SLOT_LAYER_START, SLOT_ATTN_STOP),
-    "norm_residual": (SLOT_ATTN_STOP, SLOT_MLP_START),
+    "attn_reduce": (SLOT_ATTN_STOP, SLOT_ATTN_REDUCE_STOP),
+    "norm_residual": (SLOT_ATTN_REDUCE_STOP, SLOT_MLP_START),
     "mlp": (SLOT_MLP_START, SLOT_MLP_STOP),
     "mlp_chain": (SLOT_CHAIN_START, SLOT_CHAIN_STOP),
     "mlp_exchange": (SLOT_CHAIN_STOP, SLOT_EXCHANGE_STOP),
@@ -161,6 +170,17 @@ class PhaseRecorder:
         self.wrapped_bulk_group = group is getattr(session, "_bulk_shard_group", None)
 
         self._wrap(session, "_bulk_attention_layer", self._enter_attention, self._exit_attention)
+        # The head-sharded route owes the layer a second reduction between its
+        # attention partials and the norm that consumes their sum. It is called
+        # on both routes (a no-op when attention is replicated), so recording it
+        # unconditionally keeps one slot contract and reports the replicated
+        # route's cost as the zero-width span it is.
+        self._wrap(
+            session,
+            "_bulk_attention_reduce",
+            self._enter_attention_reduce,
+            self._exit_attention_reduce,
+        )
         self._wrap(session, "_bulk_norm_residual_layer", self._enter_norm, self._exit_norm)
         self._wrap(session, "_bulk_sharded_mlp_layer", self._enter_mlp, self._exit_mlp)
         self._wrap(session, "_finish_bulk_prefill", self._enter_tail, self._exit_tail)
@@ -249,8 +269,16 @@ class PhaseRecorder:
     def _exit_attention(self, *_args: Any, **_kwargs: Any) -> None:
         self._boundary(SLOT_ATTN_STOP)
 
+    def _enter_attention_reduce(self, *_args: Any, **_kwargs: Any) -> None:
+        # attn_stop was recorded by the attention exit hook.
+        return
+
+    def _exit_attention_reduce(self, *_args: Any, **_kwargs: Any) -> None:
+        self._boundary(SLOT_ATTN_REDUCE_STOP)
+
     def _enter_norm(self, *_args: Any, **_kwargs: Any) -> None:
-        # The norm phase starts where attention stopped; no new boundary needed.
+        # The norm phase starts where the attention reduction stopped; no new
+        # boundary needed.
         return
 
     def _exit_norm(self, *_args: Any, **_kwargs: Any) -> None:
@@ -408,9 +436,20 @@ def main(argv: list[str] | None = None) -> int:
         help="rows the head projects; 1 is the product path and 512 is the full-row control",
     )
     parser.add_argument(
+        "--attention-shard",
+        action="store_true",
+        help="head-shard the attention/GDN phase instead of replicating it",
+    )
+    parser.add_argument(
         "--per-layer",
         action="store_true",
         help="include every layer's spans in the JSON (large; for skew analysis)",
+    )
+    parser.add_argument(
+        "--save-logits",
+        type=Path,
+        default=None,
+        help="write the prefill's logits rows so two routes can be compared",
     )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args(argv)
@@ -434,6 +473,7 @@ def main(argv: list[str] | None = None) -> int:
         max_sequence_length=int(args.max_sequence_length),
         uneven_split=fractions,
         bulk_prefill=True,
+        attention_shard=bool(args.attention_shard),
     )
     prompt = [int(args.token_id)] * int(args.prompt_tokens)
     logits_rows = int(args.logits_rows)
@@ -449,6 +489,13 @@ def main(argv: list[str] | None = None) -> int:
         session.bulk_prefill(prompt, logits_rows=logits_rows)
         runtime.device_synchronize()
         return (time.perf_counter() - started) * 1000.0
+
+    if args.save_logits is not None:
+        # The logits are read once, outside the measured region: the two arms of
+        # an attention-shard A/B have to be the same computation, and a timing
+        # report cannot say that on its own.
+        args.save_logits.parent.mkdir(parents=True, exist_ok=True)
+        np.save(args.save_logits, session.bulk_prefill(prompt, logits_rows=logits_rows))
 
     # Uninstrumented reference, measured before the wrappers exist at all: the
     # recorded run pays Python wrapper calls on every helper, and a phase share

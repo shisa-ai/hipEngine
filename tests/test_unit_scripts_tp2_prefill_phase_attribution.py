@@ -40,11 +40,21 @@ def test_top_level_phases_exclude_the_mlp_breakdown() -> None:
     assert "mlp" in attribution.TOP_LEVEL_PHASES
     for part in attribution.MLP_PARTS:
         assert part not in attribution.TOP_LEVEL_PHASES
+    # The head-sharded route's second reduction sits between attention and the
+    # norm that consumes its sum, so it is a top-level phase of its own: the
+    # replicated route reports it as a zero-width span, and folding it into
+    # ``norm_residual`` would hide the cost the A/B exists to measure.
+    assert "attn_reduce" in attribution.TOP_LEVEL_PHASES
+    assert attribution.PHASE_SLOTS["attn_reduce"] == (
+        attribution.SLOT_ATTN_STOP,
+        attribution.SLOT_ATTN_REDUCE_STOP,
+    )
 
 
 def test_phase_sum_is_the_wall_and_not_more() -> None:
     spans = {
         "attention": 224.0,
+        "attn_reduce": 0.0,
         "norm_residual": 2.8,
         "mlp": 312.0,
         "mlp_chain": 185.0,

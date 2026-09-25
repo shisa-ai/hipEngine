@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-23**
+Last updated: **2026-09-25**
 
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
@@ -1005,6 +1005,46 @@ this host. An earlier note that the replicated GDN/attention work is "only ~7%
 of profiled kernel time" counted the attention kernel alone and not the
 replicated projections; it is superseded.
 [Attribution](results/2026-09-23-w7900-tp2-prefill-critical-path-attribution.json).
+
+**Head-sharded attention, measured 2026-09-25.** Head sharding splits full
+attention's heads and the GDN value heads across the ranks, so `attn_output`
+and `ssm_out` become row-parallel and each rank holds a hidden-size partial that
+the post-attention norm consumes. Both arms ran on one host and one shape
+(512-token prompt, `Qwen3.8-27B-Q4_K_M`, even split, `reduce_mode=device`,
+graphed schedule, `bulk_prefill`), interleaved twice:
+
+| arm | prefill wall | prefill rate |
+| --- | ---: | ---: |
+| replicated attention | 513.045 / 515.874 ms | 998.0 / 992.5 tok/s |
+| head-sharded attention | 479.580 / 484.549 ms | 1067.6 / 1056.7 tok/s |
+
+The sharded route is **6.5% faster at equal rounds (998.0 -> 1067.6 tok/s)** and
+6.1% faster worst-vs-worst, and the arms do not overlap, so the separation
+exceeds the run-to-run spread. Rank 0 (W7900) is the pacer and its phase table
+closes the delta: attention 230.67 -> 121.61 ms, the added attention-output
+reduction 0.33 -> 89.14 ms, the MLP 276.40 -> 263.47 ms, everything else flat,
+for a 513.0 -> 479.6 ms sum against the measured 513.045 -> 479.580 ms wall.
+
+The attention saving is the predicted half (116.7 ms modeled, 109.1 measured).
+The reduction is not: it costs **1.39 ms/layer against the 0.93 ms/layer** the
+earlier critical-path model took from this host's exchange measurement, and that
+difference is the whole gap between the predicted 11.7% and the measured 6.5%.
+The reduction moves the same payload as the MLP's (5.24 MB bf16 per rank per
+direction) at the same 1.38 ms/layer, so the two reductions now carry 177 ms of
+a 480 ms prefill. Part of the win is balance rather than arithmetic: with the
+replicated attention halved, rank 1 stops absorbing spin wait in the MLP
+exchange (131.99 -> 103.48 ms), because the even split had made the slower card
+the pacer on a phase both ranks ran in full.
+
+Correctness at the timed shape: **mean KL 7.32659e-06, top-1 agreement 1.0000,
+identical top-5**. The broader gate is the 64-token agreement probe (mean KL
+0.001169, top-1 0.9844) with an exact host-sum check of both ranks' bf16
+partials at every layer of layers 0-4. Head-sharded attention is **not the
+default**: the flag changes arithmetic and also reaches the captured decode
+graph, so it needs the production-profile KL/top-1/determinism/task gates over a
+decode trajectory, which have not been run. `attention_shard` stays `False` and
+the replicated route stays the registered fallback.
+[Artifact](results/2026-09-25-w7900-tp2-attention-shard-prefill-ab.json).
 
 **Sustained numerical gate, measured 2026-09-18.** Three arms on one host
 (W7900 rank 0, RX 7900 XTX rank 1), 18 product prompts, 128 teacher-forced
