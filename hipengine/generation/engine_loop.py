@@ -565,9 +565,13 @@ class SubmitPollTextGenerator:
     def supports_speculative_mtp(self) -> bool:
         """Whether staged or legacy speculative MTP is available."""
 
+        supports = getattr(self._inner, "supports_speculative_mtp", None)
+        # Staged hooks describe runner mechanics, not the loaded artifact's
+        # tensors. Respect an explicit model capability miss before routing.
+        if supports is not None and not bool(supports):
+            return False
         if self._supports_staged_speculative_mtp:
             return True
-        supports = getattr(self._inner, "supports_speculative_mtp", None)
         return bool(supports) and callable(
             getattr(self._inner, "generate_speculative_mtp_detailed", None)
         )

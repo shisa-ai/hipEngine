@@ -2237,27 +2237,35 @@ class Qwen35GGUFMTP2Adapter:
         return None
 
     def _sampled_route_qualified(self) -> bool:
-        """Return whether a measured evidence row qualifies the sampled route.
+        """Advertise processed acceptance when the plugin implements it.
 
-        The sampled route changes how accepted tokens are chosen, so it stays
-        closed until an evidence row for this artifact lists the mode. The check
-        is static (backend, target architecture, weight quant, artifact size),
-        because the capability is built before any request-specific evidence is
-        resolved; the request-time plan still validates the artifact's full
-        identity and fingerprint before a request is admitted at all.
+        This is a static mode advertisement, not request admission. The serving
+        resolver and physical-cell planner still check storage, depth, width,
+        resources and request semantics before provider mutation. Evidence rows
+        remain a compatibility source for plugins without declarations; an
+        unfamiliar artifact cannot suppress a declared implementation.
         """
 
         generator = getattr(self, "generator", None)
         if generator is None:
             return False
         plugin = getattr(generator, "model_plugin", None)
+        backend = str(getattr(generator, "backend", "") or "")
+        arch = str(getattr(generator, "target_arch", "") or "")
+        declarations = tuple(
+            getattr(plugin, "speculative_mtp_serving_implementations", ()) or ()
+        )
+        if any(
+            "sampled" in declaration.sampling_modes
+            and (backend, arch) in declaration.backends
+            for declaration in declarations
+        ):
+            return True
         evidence = tuple(
             getattr(plugin, "speculative_mtp_serving_evidence", ()) or ()
         )
         if not evidence:
             return False
-        backend = str(getattr(generator, "backend", "") or "")
-        arch = str(getattr(generator, "target_arch", "") or "")
         quant = str(getattr(self, "quant", "") or "")
         artifact_size = _adapter_artifact_size(generator)
         import os as _os
