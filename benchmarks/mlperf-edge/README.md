@@ -7,6 +7,75 @@ The campaign and comparison rules are in
 The first attempt used the upstream runner unchanged. The repaired run uses
 only the coordinator-timestamp patch documented below.
 
+## BFCL quality diagnostic: 2026-09-26
+
+On a fixed **96-case diagnostic**, gufo passes **73/96 (76.04%)**, llama.cpp
+passes **76/96 (79.17%)**, and hipEngine passes **52/96 (54.17%)**. All three
+complete every case with no missing or empty responses. These are the pinned
+upstream BFCL extractor/scorer results, not command-name overlap scores.
+
+| Metric | hipEngine MTP | llama.cpp MTP | Patched gufo DFlash2 |
+| --- | ---: | ---: | ---: |
+| Correct / issued | 52/96 | 76/96 | 73/96 |
+| Overall accuracy | 54.17% | 79.17% | 76.04% |
+| Upstream normalized score | 58.33% | 84.38% | 81.25% |
+| Parallel-call cases correct | 0/32 | 23/32 | 21/32 |
+
+**hipEngine's default call-count policy explains most of its gap.** The harness
+omits `parallel_tool_calls`; hipEngine requires explicit `true` and returns
+exactly one call on all 32 parallel-call cases. This accounts for 23 of the
+24 additional cases llama.cpp passes. The remaining difference is an irrelevance
+case. This is a serving-semantics limitation, not evidence that MTP loses model
+accuracy. No server settings or scoring rules were changed after seeing answers.
+
+Gufo and llama.cpp agree on pass/fail for 93/96 cases: both pass 73 and fail 20.
+The three additional gufo failures are:
+
+- `live_multiple_97-42-1`: raw XML tool markup appears in content, with no
+  structured call; its boolean parameter is rendered as `True`.
+- `live_parallel_11-7-0`: food-logging calls add `lunch` meal types that the
+  reference does not accept; llama.cpp omits the optional field.
+- `live_parallel_multiple_12-10-1`: only the class-info call is returned; the
+  requested method-signature call is absent.
+
+Gufo returns raw XML tool markup in content on five cases (listed in the
+artifact); four of these are also llama.cpp scoring failures for other output
+reasons. No returned markup is repaired before scoring.
+
+There is **no gufo AR control**, so these failures cannot be attributed to
+DFlash2. Target KV precision and serving implementations also differ. The sample
+is too small to establish accuracy parity or a narrow degradation bound.
+Neither overall nor normalized diagnostic scores certify the full MLPerf gate.
+
+### Selection and reproducibility
+
+Before any answers, select eight cases from each of the 12 subsets of the
+prescribed 995-case draw. Within each subset, rank IDs by
+`SHA256("edge-bfcl-diagnostic-v1:42:" + sample_id)` and take the first eight.
+This yields 48 non-live, 32 live and 16 hallucination cases. The manifest hash is
+`ed383343a2d60c8b0cb0df67c1dc88aa4b6c7b88fc64725e3354fa5c8696540f`.
+Selection checks verify reproducibility, unique IDs, membership and eight cases
+per subset. A wrapper filters only dataset generation; the pinned upstream
+runner, extractor and scorer are unchanged. Per-case re-scoring reproduces all
+published subset scores; issued request payload hashes match across engines.
+
+Same Radeon 8060S host and speculative server commands as the 140-turn screens
+below, Qwen3.6 Q4_K_M target tensors, 32K context, c1, temperature 0, seed 42,
+1024 output limit and thinking off. hipEngine runs `c450472a9` (production code
+unchanged from `c22902eda`); llama.cpp and gufo binaries are unchanged. Scoring
+uses Endpoints `e71b928f8a72fd0c9d850dc5ddd8fd7760356354` and
+`bfcl-eval==2026.3.23`. Actual speculation is recorded in all three server logs.
+
+[Artifact, commands, manifest and per-case verdicts](../results/2026-09-26-gfx1151-bfcl96-quality.json).
+Raw root: `~/gate-runs/edge-bfcl-quality-20260925`, with completed runs under
+`hipengine-v2/`, `llamacpp-v2/` and `gufo-v3/`. Initial config rejection issued no
+cases; `gufo-v2/` was interrupted after 35 cases by harness orchestration and is
+preserved separately. Only gufo was repeated, with a fresh server and unchanged
+96-case selection. No partial results are combined with the completed run.
+The server is stopped after each run. To repeat, use a new output directory
+and the artifact's exact server/runner commands; `run-frozen.py` invokes the
+upstream `benchmark from-config --accuracy-only` CLI.
+
 ## Speculative 140-turn comparison: 2026-09-25
 
 **hipEngine and llama.cpp complete the replay in less wall time than gufo in
@@ -46,8 +115,8 @@ hipEngine and 132/140 llama.cpp rendered outputs match after removing generated
 tool IDs. hipEngine's command IoU is unchanged; llama.cpp's changes from 0.6420
 to 0.6423. These are replay diagnostics, **not accuracy parity or a BFCL pass**.
 Gufo's inline score is close to llama.cpp's and higher than hipEngine's; that
-metric does not establish whether command arguments solve the task. Shared
-upstream-scored quality evaluation remains pending.
+metric does not establish whether command arguments solve the task. The separate
+upstream-scored diagnostic is recorded above.
 
 Effective prefill divides each engine's full prompt-token count by pooled
 prefill time, including prefix reuse. Tokenization differs: hipEngine counts
