@@ -35,6 +35,7 @@ from hipengine.kernels.hip_gfx1100.fused.gguf_iq4_q4_pair import (  # noqa: E402
     gguf_q4_iq4_pair_silu_bf16_bf16_out,
     gguf_q4_q5_pair_silu_bf16_bf16_out,
     gguf_q3_iq4_pair_silu_bf16_bf16_out,
+    gguf_q5_q4_pair_silu_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (  # noqa: E402
     gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out,
@@ -649,5 +650,125 @@ def test_q3_iq4_pair_silu_is_bit_exact_with_singles_and_silu_mul() -> None:
 
     assert np.array_equal(got, ref), (
         "Q3_K/IQ4_XS pair+SiLU diverged from single/single/silu_mul: "
+        f"{int((got != ref).sum())}/{ref.size} bf16 outputs differ"
+    )
+
+def test_q5_q4_mixed_pair_registered_as_pair_silu_owner() -> None:
+    assert is_registered(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_pair_silu",
+            "gguf_q5_k_t16_v1+gguf_q4_k_t16_v1",
+            "q5_q4_pair_silu_bf16_bf16_out",
+        )
+    )
+
+
+def test_q5_q4_pair_silu_is_bit_exact_with_singles_and_silu_mul() -> None:
+    """E6b-6: (Q5_K gate, Q4_K up) fused owner vs the unfused chain.
+
+    Exact role-swap of the E6b-4 test: gate = Q5_K tile8 single
+    (tiles), up = Q4_K dense single (tiles), reference = those two
+    through silu_mul, all on device. Side A must reproduce the dense
+    single's chain exactly under A_IS_CHAIN (wave-0 published value),
+    side B the tile8 single's 4-group chain exactly; the epilogue takes
+    the gate from side B (GATE_IS_Q4=true) since gate/up roles are
+    exchanged relative to E6b-4.
+    """
+    entries = json.loads((FIXTURE / "real_rows.json").read_text())["entries"]
+    entry = next((e for e in entries if e["type"] == "IQ4_XS"), None)
+    if entry is None:
+        pytest.skip("no IQ4_XS fixture row")
+    with np.load(FIXTURE / "real_rows.npz") as data:
+        k = data[entry["key"] + "_f32"].shape[1]
+    if k % 256:
+        pytest.skip(f"fixture K={k} is not block-aligned")
+
+    rng = np.random.default_rng(0xE6B6)
+    n = 16  # one resident T16 tile column pair
+    raw_gate = make_q5_k_weight(n, k)
+    tiles_gate = np.ascontiguousarray(
+        repack_gguf_q5_k_tile16(raw_gate[None, ...]).tiles
+    )
+    raw_up = make_q4_k_weight(n, k)
+    tiles_up = np.ascontiguousarray(
+        repack_gguf_q4_k_tile16(raw_up[None, ...]).tiles
+    )
+
+    x_bits = bf16(rng.normal(0.0, 0.1, size=(1, k)))
+
+    runtime = get_hip_runtime()
+    bufs = []
+
+    def dev(a: np.ndarray):
+        b = malloc(a.nbytes, runtime=runtime)
+        bufs.append(b)
+        copy_host_to_device(b, host_array_ptr(a), a.nbytes, runtime=runtime)
+        return b
+
+    try:
+        x_b = dev(x_bits)
+        t_gate_b = dev(tiles_gate)
+        t_up_b = dev(tiles_up)
+        ga_b = malloc(n * 2, runtime=runtime); bufs.append(ga_b)
+        ub_b = malloc(n * 2, runtime=runtime); bufs.append(ub_b)
+        ref_b = malloc(n * 2, runtime=runtime); bufs.append(ref_b)
+        got_b = malloc(n * 2, runtime=runtime); bufs.append(got_b)
+        for b in (ga_b, ub_b, ref_b, got_b):
+            copy_host_to_device(
+                b,
+                host_array_ptr(np.zeros(n, dtype=np.uint16)),
+                n * 2,
+                runtime=runtime,
+            )
+
+        q4lib = t16_gemv.build_gguf_t16_selected_gemv(load=True)
+        q5lib = t16_gemv.build_gguf_t16_selected_gemv(load=True)
+
+        # unfused chain: Q5_K tile8 single (gate) + Q4_K dense single
+        # (up) + silu_mul
+        gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out(
+            x_b.ptr, t_gate_b.ptr, ga_b.ptr, 1, k, n, library=q5lib, runtime=runtime
+        )
+        gguf_q4_k_t16_dense_single_local32_bf16_bf16_out(
+            x_b.ptr, t_up_b.ptr, ub_b.ptr, 1, k, n, library=q4lib, runtime=runtime
+        )
+        from hipengine.kernels.hip_gfx1100.fused import (
+            build_paro_silu,
+        )
+
+        silulib2 = build_paro_silu(load=True)
+        silu_mul_separate_out_bf16(
+            ga_b.ptr, ub_b.ptr, ref_b.ptr, 1, n, library=silulib2, runtime=runtime
+        )
+        # fused pair: gate first (Q5 tiles), up second (Q4 tiles) -
+        # the wrapper reorders to C geometry order internally.
+        from hipengine.kernels.hip_gfx1100.fused.gguf_iq4_q4_pair import (
+            build_gguf_iq4_q4_pair,
+        )
+
+        pairlib = build_gguf_iq4_q4_pair(load=True)
+        gguf_q5_q4_pair_silu_bf16_bf16_out(
+            x_b.ptr,
+            t_gate_b.ptr,
+            t_up_b.ptr,
+            got_b.ptr,
+            1,
+            k,
+            n,
+            library=pairlib,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        ref = np.zeros(n, dtype=np.uint16)
+        got = np.zeros(n, dtype=np.uint16)
+        copy_device_to_host(host_array_ptr(ref), ref_b, n * 2, runtime=runtime)
+        copy_device_to_host(host_array_ptr(got), got_b, n * 2, runtime=runtime)
+    finally:
+        for b in reversed(bufs):
+            free(b, runtime=runtime)
+
+    assert np.array_equal(got, ref), (
+        "Q5_K/Q4_K pair+SiLU diverged from single/single/silu_mul: "
         f"{int((got != ref).sum())}/{ref.size} bf16 outputs differ"
     )

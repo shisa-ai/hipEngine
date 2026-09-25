@@ -703,3 +703,39 @@ extern "C" int hipengine_gguf_q3_iq4_pair_silu(const void* x, const void* wa,
             return int(hipErrorInvalidValue);
     }
 }
+// E6b-6 family: (Q5_K gate, Q4_K up) - exact role-swap of the E6b-4
+// pair, no new arithmetic. Route order is gate-first (Q5, Q4), but the
+// C geometry keeps the Q4 chain in side A's slot: wa is the Q4_K T16
+// tiles (A_IS_CHAIN, the dense single's chain = the UP), wb the Q5_K
+// T16 tiles (B_KIND=1, the tile8 single's exact emulation = the GATE);
+// the Python wrapper reorders the route's arguments to match, and
+// GATE_IS_Q4=true takes the gate from side B (the tile8 chain). All
+// three axes are independent - flags proven exact in E6b-2/E6b-3/E6b-4.
+extern "C" int hipengine_gguf_q5_q4_pair_silu(const void* x, const void* wa,
+    const void* wb, void* out, int64_t rows, int64_t K, int64_t N, int waves,
+    void* stream) {
+    if (!x || !wa || !wb || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 8)
+        return int(hipErrorInvalidValue);
+    const dim3 grid(unsigned((N + COLS - 1) / COLS));
+    const hipStream_t s = (hipStream_t)stream;
+    int err;
+    switch (waves) {
+        case 1:
+            err = (iq4_q4_pair_silu_kernel<1, true, true, true><<<grid, 32, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 2:
+            err = (iq4_q4_pair_silu_kernel<2, true, true, true><<<grid, 64, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 4:
+            err = (iq4_q4_pair_silu_kernel<4, true, true, true><<<grid, 128, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        default:
+            return int(hipErrorInvalidValue);
+    }
+}

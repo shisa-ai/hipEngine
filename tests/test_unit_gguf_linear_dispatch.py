@@ -7850,3 +7850,70 @@ def test_q4_q5_mixed_pair_silu_route_rows1_and_declines() -> None:
     args, kwargs = calls[0]
     assert kwargs["stream"] == 0
     del args
+
+
+def test_q5_q4_mixed_pair_silu_route_rows1_and_declines() -> None:
+    """E6b-6: (Q5_K gate, Q4_K up) fires the mixed pair owner at rows==1.
+
+    The ordered (4, 12) family - 2 gate/up layers (blocks 24, 26),
+    the largest remaining mixed combo after 2a-2d (fresh census). Exact
+    role-swap of the shipped 2d pair: gate side A is the Q5_T16 tile8
+    c1 owner the E4a policy selects at this shape (dispatch_a_c1), up
+    side B the raw-resolved Q4_K dense decode owner. Both sides read
+    T16 tiles; the wrapper reorders to C geometry order so side A runs
+    the Q4 chain (up) and the epilogue takes the gate from side B.
+    rows != 1 declines.
+    """
+    from hipengine.kernels.hip_gfx1100.quant import (
+        gguf_iq_source_mmq_prefill as iq_mmq,
+    )
+
+    gate = _fake_weight(layout=LAYOUT_GGUF_Q5_K_T16, quant_key="gguf_q5_k_t16_v1")
+    up = _fake_weight(layout=LAYOUT_GGUF_Q4_K_T16, quant_key="gguf_q4_k_t16_v1")
+    pair_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q5_k_t16_v1+gguf_q4_k_t16_v1",
+        "q5_q4_pair_silu_bf16_bf16_out",
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def fake_pair(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    # Self-sufficient under any collection breadth (see the E6b-1 test).
+    from hipengine.kernels.backends import load_backend_kernel_package
+
+    load_backend_kernel_package("hip_gfx1151")
+    register(pair_key, fake_pair, replace=True)
+    try:
+        with iq_mmq.iq_dense_mmq_session(True):
+            assert launch_gguf_linear_pair_silu(
+                gate,
+                up,
+                x_ptr=100,
+                out_ptr=200,
+                rows=1,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                use_gemv_decode=True,
+            )
+            assert not launch_gguf_linear_pair_silu(
+                gate,
+                up,
+                x_ptr=100,
+                out_ptr=200,
+                rows=2,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                use_gemv_decode=True,
+            )
+    finally:
+        unregister(pair_key)
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert kwargs["stream"] == 0
+    del args

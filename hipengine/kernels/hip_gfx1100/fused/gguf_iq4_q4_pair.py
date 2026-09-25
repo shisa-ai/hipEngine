@@ -25,6 +25,7 @@ _SYMBOL_Q4_GATE = "hipengine_gguf_q4_iq4_pair_silu"
 _SYMBOL_IQ4_Q5 = "hipengine_gguf_iq4_q5_pair_silu"
 _SYMBOL_Q4_Q5 = "hipengine_gguf_q4_q5_pair_silu"
 _SYMBOL_Q3_IQ4 = "hipengine_gguf_q3_iq4_pair_silu"
+_SYMBOL_Q5_Q4 = "hipengine_gguf_q5_q4_pair_silu"
 _QUANT = "gguf_iq4_xs+gguf_q4_k_t16_v1"
 _VARIANT = "iq4_q4_pair_silu_bf16_bf16_out"
 _QUANT_Q4_GATE = "gguf_q4_k_t16_v1+gguf_iq4_xs"
@@ -35,6 +36,8 @@ _QUANT_Q4_Q5 = "gguf_q4_k_t16_v1+gguf_q5_k_t16_v1"
 _VARIANT_Q4_Q5 = "q4_q5_pair_silu_bf16_bf16_out"
 _QUANT_Q3_IQ4 = "gguf_q3_k+gguf_iq4_xs"
 _VARIANT_Q3_IQ4 = "q3_iq4_pair_silu_bf16_bf16_out"
+_QUANT_Q5_Q4 = "gguf_q5_k_t16_v1+gguf_q4_k_t16_v1"
+_VARIANT_Q5_Q4 = "q5_q4_pair_silu_bf16_bf16_out"
 
 _ARGTYPES = (
     [ctypes.c_void_p] * 4
@@ -353,6 +356,60 @@ def gguf_q3_iq4_pair_silu_bf16_bf16_out(
         )
 
 
+def gguf_q5_q4_pair_silu_bf16_bf16_out(
+    x_ptr: int,
+    wq5_ptr: int,
+    wq4_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the rows==1 (Q5_K gate, Q4_K up) pair + SiLU owner.
+
+    E6b-6: exact role-swap of :func:`gguf_q4_q5_pair_silu_bf16_bf16_out`
+    with no new arithmetic. The route passes gate-first (Q5_K tiles,
+    Q4_K tiles), and this wrapper reorders to the C ABI's geometry
+    order (Q4 chain first) - side A runs the dense Q4T16 chain as the
+    UP, side B the tile8 chain as the GATE, and GATE_IS_Q4=true takes
+    the gate from side B. Bit-exact with q5 tile8 single + q4 single +
+    silu_mul for the same reason.
+    """
+    if rows != 1:
+        raise ValueError("Q5_K/Q4_K pair + SiLU decode requires rows == 1")
+    if in_features <= 0 or in_features % 256:
+        raise ValueError("in_features must be a positive multiple of 256")
+    if out_features <= 0 or out_features % 16:
+        raise ValueError("out_features must be a positive multiple of 16")
+    if not all((x_ptr, wq5_ptr, wq4_ptr, out_ptr)):
+        raise ValueError("Q5_K/Q4_K pair pointers must be nonzero")
+    lib = library or _default_library()
+    fn = signed_kernel_fn(lib, _SYMBOL_Q5_Q4, _ARGTYPES, ctypes.c_int)
+    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import _local32_waves
+
+    waves = _local32_waves(in_features, out_features)
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(wq4_ptr),  # C geometry order: Q4 chain side first
+        ctypes.c_void_p(wq5_ptr),
+        ctypes.c_void_p(out_ptr),
+        rows,
+        in_features,
+        out_features,
+        waves,
+        ctypes.c_void_p(stream),
+    )
+    if err:
+        rt = runtime or get_hip_runtime()
+        raise RuntimeError(
+            f"Q5_K/Q4_K pair + SiLU decode failed: {rt.error_string(err)}"
+        )
+
+
 def register_gguf_iq4_q4_pair_kernels(*, replace: bool = False) -> None:
     register(
         KernelKey("hip_gfx1100", "linear_pair_silu", _QUANT, _VARIANT),
@@ -385,6 +442,13 @@ def register_gguf_iq4_q4_pair_kernels(*, replace: bool = False) -> None:
             "hip_gfx1100", "linear_pair_silu", _QUANT_Q3_IQ4, _VARIANT_Q3_IQ4
         ),
         gguf_q3_iq4_pair_silu_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100", "linear_pair_silu", _QUANT_Q5_Q4, _VARIANT_Q5_Q4
+        ),
+        gguf_q5_q4_pair_silu_bf16_bf16_out,
         replace=replace,
     )
 
