@@ -6193,6 +6193,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if isinstance(request, ChatCompletionRequest)
             else ()
         )
+        if tool_call_constraint is not None and tool_call_constraint.envelope == "xml":
+            # XML closure is owned by the structural constraint. Generic close
+            # repair can inject an outer tag into an unfinished parameter, and
+            # a stop sequence strips the closing tag before the parser sees it.
+            force_sequence_completion_token_sequences = ()
         stop_token_sequences = tuple(
             dict.fromkeys((*stop_token_sequences, *force_sequence_completion_token_sequences))
         )
@@ -9248,6 +9253,41 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         )
         buffer_tool_output = bool(request.tools)
+        live_tool_stream = None
+        live_tool_calls: dict[int, _ParsedToolCall] = {}
+
+        def live_tool_events(parts, source_chunk):
+            for part in parts:
+                events = (
+                    [("reasoning_content", -1, "", part.text)]
+                    if part.field == "reasoning_content"
+                    else live_tool_stream.feed(part.text)
+                )
+                yield from live_tool_deltas(events, source_chunk)
+
+        def live_tool_deltas(events, source_chunk):
+            for field, tool_index, name, fragment in events:
+                phase = "tool_call" if field == "tool" else "think" if field == "reasoning_content" else "answer"
+                tokens = token_accounting.observe(phase, fragment) if token_accounting is not None else None
+                if field == "tool":
+                    if name:
+                        live_tool_calls[tool_index] = _ParsedToolCall(
+                            id=f"call_{uuid.uuid4().hex[:24]}", name=name, arguments="",
+                        )
+                    call = live_tool_calls[tool_index]
+                    live_tool_calls[tool_index] = replace(call, arguments=call.arguments + fragment)
+                    yield _chat_stream_tool_call(
+                        response_id, created, config.model_id, live_tool_calls[tool_index],
+                        tool_index=tool_index, argument_chunk=fragment, include_name=bool(name),
+                        tokens=tokens, stream_chunk=source_chunk, include_hipengine=include_hipengine,
+                        stream_started_at=stream_started_at, routing=routing_metadata,
+                    )
+                else:
+                    yield _chat_stream_delta(
+                        response_id, created, config.model_id, field, fragment,
+                        tokens=tokens, stream_chunk=source_chunk, include_hipengine=include_hipengine,
+                        stream_started_at=stream_started_at, routing=routing_metadata, phase=phase,
+                    )
 
         try:
             async def prepare_stream() -> tuple[
@@ -9352,6 +9392,16 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     engine=engine,
                 )
             token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
+            constraint = sampling.tool_call_constraint
+            if buffer_tool_output and constraint is not None and constraint.envelope == "xml":
+                from hipengine.server.tool_stream import XMLToolStream
+
+                live_tool_stream = XMLToolStream(
+                    names=constraint.tool_names,
+                    string_typed=lambda name, key: _xml_parameter_is_string_typed(
+                        request.tools, tool_name=name, key=key,
+                    ),
+                )
             yield _chat_stream_role(
                 response_id,
                 created,
@@ -9388,6 +9438,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     _validate_stream_logprob_chunk(stream_chunk)
                 full_text.append(text)
                 if buffer_tool_output:
+                    if live_tool_stream is not None:
+                        for event in live_tool_events(splitter.feed_parts(text), stream_chunk):
+                            yield event
                     continue
                 source_start = splitter_source_offset
                 source_end = source_start + len(text)
@@ -9443,6 +9496,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     splitter_source_chunks,
                     min_source_start=splitter.pending_source_start,
                 )
+            if live_tool_stream is not None:
+                for event in live_tool_events(splitter.finish_parts(), last_stream_chunk):
+                    yield event
             if not buffer_tool_output:
                 for part in splitter.finish_parts():
                     phase = "think" if part.field == "reasoning_content" else "answer"
@@ -9796,6 +9852,27 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 tool_validation,
                 finish_details=finish_details,
             )
+            live_tool_mismatch = False
+            if live_tool_stream is not None and not live_tool_stream.buffered:
+                try:
+                    live_tool_mismatch = (
+                        live_tool_stream.state != "text"
+                        or [(call.name, json.loads(call.arguments)) for call in live_tool_calls.values()]
+                        != [(call.name, json.loads(call.arguments)) for call in parsed.tool_calls]
+                    )
+                except ValueError:
+                    live_tool_mismatch = True
+            if live_tool_stream is not None and not live_tool_stream.buffered and (tool_validation.failed or live_tool_mismatch):
+                # A partially streamed call must never end as a successful empty
+                # response. Clients may execute it only after tool_calls finish.
+                _LOGGER.warning("Tool stream validation failed: parser_failed=%s stream_state=%s streamed_calls=%d parsed_calls=%d",
+                                tool_validation.failed, live_tool_stream.state,
+                                len(live_tool_calls), len(parsed.tool_calls))
+                hard_error = OpenAIHTTPError(
+                    400, "generated tool call failed validation",
+                    code=tool_validation.failure_reason or "invalid_tool_call",
+                    param="tool_calls", finish_details=finish_details,
+                )
             if hard_error is not None:
                 _record_openai_error(app.state.hipengine_server_metrics, hard_error)
                 _log_stream_failure(
@@ -9845,6 +9922,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 },
                 engine=engine,
             )
+            if live_tool_stream is not None:
+                if live_tool_stream.buffered:
+                    split = _split_reasoning(parsed.text, initially_open=parsed.reasoning_initially_open)
+                    remainder = split.content.removeprefix(live_tool_stream.content)
+                    if split.content.strip() == live_tool_stream.content.strip():
+                        remainder = ""
+                    parsed = replace(parsed, text=remainder, reasoning_initially_open=False)
+                else:
+                    for event in live_tool_deltas(live_tool_stream.finish(), last_stream_chunk):
+                        yield event
+                    # Content and argument fragments already reached the client.
+                    parsed = replace(parsed, text="", tool_calls=(), reasoning_initially_open=False)
             for event in _chat_stream_parsed(
                 response_id,
                 created,
@@ -14074,6 +14163,8 @@ def _tool_call_sampling_constraint(
     return ToolCallConstraintSpec(
         tool_names=names,
         mode=constraint_mode,
+        envelope="xml",
+        parallel_tool_calls=bool(request.parallel_tool_calls),
         forbidden_text_prefixes=forbidden,
         thinking_start_marker=_THINKING_START_MARKER if thinking_enabled else None,
         thinking_end_marker=_THINKING_CLOSE_MARKER if thinking_enabled else None,
@@ -14100,23 +14191,11 @@ def _required_tool_sampling_forced_prefix(
     if name is None:
         return start, False
     try:
-        prefix_ids = _tokenize_text(engine, _tool_call_name_prefix_text(name))
+        prefix_ids = _tokenize_text(engine, f"{_TOOL_CALL_START_MARKER}\n<function={name}>\n")
     except OpenAIHTTPError:
         return start, False
     prefix = tuple(int(token_id) for token_id in prefix_ids)
-    if not prefix:
-        return start, False
-    schema_prefix = _specific_tool_first_required_string_prefix(request, name)
-    if schema_prefix is None:
-        return prefix, False
-    try:
-        schema_prefix_ids = _tokenize_text(engine, schema_prefix)
-    except OpenAIHTTPError:
-        return prefix, False
-    schema_prefix_tokens = tuple(int(token_id) for token_id in schema_prefix_ids)
-    if not schema_prefix_tokens:
-        return prefix, False
-    return schema_prefix_tokens, True
+    return (prefix or start), False
 
 
 def _tool_call_sequence_completion_token_sequences(
@@ -14157,38 +14236,6 @@ def _tool_call_name_prefix_text(name: str) -> str:
         f"{_TOOL_CALL_START_MARKER}"
         f'{{"name":{json.dumps(str(name), ensure_ascii=False, separators=(",", ":"))},"arguments":'
     )
-
-
-def _specific_tool_first_required_string_prefix(
-    request: ChatCompletionRequest,
-    name: str,
-) -> str | None:
-    tool = _tool_map_by_name(request.tools).get(str(name))
-    if tool is None:
-        return None
-    function = _tool_function(tool)
-    if function.get("strict") is not True:
-        return None
-    schema = _tool_parameters_schema(tool)
-    if not isinstance(schema, Mapping) or schema.get("type") != "object":
-        return None
-    if schema.get("additionalProperties") is not False:
-        return None
-    required = schema.get("required")
-    properties = schema.get("properties")
-    if (
-        not isinstance(required, Sequence)
-        or isinstance(required, (str, bytes))
-        or not required
-        or not isinstance(properties, Mapping)
-    ):
-        return None
-    key = required[0]
-    property_schema = properties.get(key) if isinstance(key, str) else None
-    if not isinstance(property_schema, Mapping) or property_schema.get("type") != "string":
-        return None
-    encoded_key = json.dumps(key, ensure_ascii=False, separators=(",", ":"))
-    return f"{_tool_call_name_prefix_text(name)}{{{encoded_key}:\""
 
 
 def _tool_call_close_repair_token_sequences(

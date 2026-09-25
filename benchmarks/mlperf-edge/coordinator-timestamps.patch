@@ -1,0 +1,35 @@
+diff --git a/src/inference_endpoint/load_generator/session.py b/src/inference_endpoint/load_generator/session.py
+index 7780edc..7564844 100644
+--- a/src/inference_endpoint/load_generator/session.py
++++ b/src/inference_endpoint/load_generator/session.py
+@@ -772,9 +772,9 @@ class BenchmarkSession:
+                 self._publisher.publish(
+                     EventRecord(
+                         event_type=SampleEventType.COMPLETE,
+-                        timestamp_ns=resp.completed_at
+-                        if isinstance(resp.completed_at, int)
+-                        else now_ns,
++                        # Match RECV_FIRST/RECV_NON_FIRST: coordinator arrival,
++                        # not a worker timestamp preceding IPC delivery.
++                        timestamp_ns=now_ns,
+                         sample_uuid=query_id,
+                         conversation_id=conv_id_str,
+                         turn=turn_num,
+diff --git a/tests/unit/load_generator/test_async_session.py b/tests/unit/load_generator/test_async_session.py
+index 651a435..058f0b6 100644
+--- a/tests/unit/load_generator/test_async_session.py
++++ b/tests/unit/load_generator/test_async_session.py
+@@ -1365,9 +1365,9 @@ class TestBenchmarkSession:
+         assert [(e.conversation_id, e.turn) for e in complete] == [("conv-9", 5)]
+         assert complete[0].finish_reason == "stop"
+         assert complete[0].worker_id == 3
+-        # QueryResult stamps completed_at itself (force_setattr in __post_init__),
+-        # and that stamp outranks the caller's arrival timestamp.
+-        assert complete[0].timestamp_ns == ok_resp.completed_at
+-        assert complete[0].timestamp_ns != 1_002
++        # Every response event uses coordinator arrival, preserving event order
++        # even if the worker completes before its first chunk reaches us.
++        assert complete[0].timestamp_ns == 1_002
++        assert complete[0].timestamp_ns > publisher.events_of_type(SampleEventType.RECV_FIRST)[0].timestamp_ns
+         assert "q-ok" not in phase_issuer.uuid_to_conv_info
+         assert "q-ok" not in phase_issuer.completed_uuids

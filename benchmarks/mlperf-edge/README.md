@@ -3,7 +3,55 @@
 This directory documents a **27-turn integration diagnostic**, not a full MLPerf
 result or BFCL accuracy pass. The campaign and comparison rules are in
 [`docs/campaigns/MLPERF-EDGE-AGENTIC.md`](../../docs/campaigns/MLPERF-EDGE-AGENTIC.md).
-The smoke uses the upstream Endpoints runner unchanged.
+The first attempt used the upstream runner unchanged. The repaired run uses
+only the coordinator-timestamp patch documented below.
+
+## Repaired run: 2026-09-25
+
+**The 27-turn integration check passes.** On the same `gfx1151` host with
+Qwen3.6-27B Q4_K_M, production, BF16 KV, 32K context and concurrency 1:
+
+- 27/27 requests completed with one valid structured `bash` call each.
+- No empty, missing, errored, dropped or length-limited responses; no raw tool
+  markup in content. Every final reason was `tool_calls`.
+- No negative first-receive-to-completion windows. Direct saved-request probes
+  confirmed incremental content/argument delivery before completion.
+- Route-counter deltas show 27 AR host-sampler requests and zero MTP requests.
+
+The runner's measured phase was 225.36 seconds (3m45s); inline executable-call
+IoU was 0.6574. These are integration diagnostics, **not** a BFCL score or an
+Atlas decode-rate comparison. The output protocol and timestamp basis changed
+from the failed attempt, so the shorter run is not an engine-speedup claim.
+Client-visible token estimates still differ from engine token counts.
+
+The repair aligns the host constraint with the prompted XML function format,
+allows text before an automatic tool call, streams string arguments, and rejects
+invalid or truncated live calls with an SSE error. XML close tags are no longer
+used as stop sequences: that removed them before final parsing. Generic
+outer-tag repair is also disabled for XML; its structural constraint owns safe
+closure. Legacy JSON parsing remains available.
+
+The harness patch makes COMPLETE use coordinator arrival time, matching
+RECV_FIRST and RECV_NON_FIRST. It does not change workload rows, scoring, token
+counts or metric formulas. Apply it to the pinned checkout before a repaired
+repeat (set `HIPENGINE_REPO` to your hipEngine checkout):
+
+```bash
+cd ~/mlperf-edge-endpoints
+git apply --check "$HIPENGINE_REPO/benchmarks/mlperf-edge/coordinator-timestamps.patch"
+git apply "$HIPENGINE_REPO/benchmarks/mlperf-edge/coordinator-timestamps.patch"
+```
+
+The patch includes its session-test expectation; 57 harness session tests passed.
+Do not apply it a second time to an already patched checkout. Use a new `RUN`
+directory with the preparation and execution commands below.
+
+[Repair artifact](../results/2026-09-25-gfx1151-mlperf-edge-repair.json) records
+source hashes, patch identity, exact command, counters, output checks and raw
+artifact hashes. Raw data is under
+`~/gate-runs/mlperf-edge-repair-20260925/replay-2`; focused SSE captures are under
+its sibling `closure-fix`. The server is stopped. The next campaign step is the
+fixed 140-turn screen; neither that screen nor the full BFCL gate has run.
 
 ## First attempt: 2026-09-25
 
