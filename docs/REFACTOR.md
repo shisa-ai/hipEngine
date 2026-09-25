@@ -35,24 +35,25 @@
 
 ## TP2 head-sharded attention (`attention_shard`) (2026-09-24)
 
-- **A session whose constructor raises leaks VRAM.** `close()` is an instance
-  method and the class has no `__del__`, so every buffer `__init__` already
-  allocated is left to process exit. A harness that retried construction in one
-  process OOM'd at a 16 GiB free window, then 15, then 14, and only succeeded at
-  13: each failure had leaked a rank's worth of VRAM and made the next attempt
-  worse. One route per process made the same window work first try. Fix by
-  freeing what `__init__` built on the way out (a `try/except` that calls the
-  same teardown `close` uses, or a `__del__` fallback), rather than requiring
-  callers to know not to retry in-process.
-- **The route's numerics fail the gate and GDN layers are where it breaks.**
-  Head-sharded vs unsharded bulk prefill on a 64-token prompt: `mean_kl` 0.3626,
-  `top1_agreement` 0.5938, against 0.05 and 0.90. The reduce is not the cause -
-  it is bit-identical across ranks and layer 0 matches the unsharded route to 6%
-  relative. The relative L2 error is 6% at layer 0 (GDN), 49% at layer 1 (GDN)
-  and 100% at layer 2 (GDN), so the GDN shard slice is the first place to look.
-  See `worklog/entries/20260924T145431.513808Z-lhl-tp2-attention-shard-numerics-fail-8e1277.md`.
-  `attention_shard` stays default-off until this is resolved.
-
+- Resolved 2026-09-25, when the route was promoted to the tp2 default (graphed
+  schedule, device-side reduction):
+  - **The route's numerics.** The failure was an ABI conversion only the
+    replicated materializer applied. GGUF `ssm_a` holds the negative decay
+    coefficient, the GDN kernels take `A_log`, and the rank-payload path sliced
+    source bytes verbatim, so each rank's device `ssm_a` held the raw
+    coefficient and every head's decay changed. `materialize_payload_slice` in
+    `hipengine/loading/qwen35_gguf_shards.py` is now the only way a payload is
+    built. The recaptured teacher confirms the rest of the gap was not a stale
+    reference. See
+    `worklog/entries/20260925T112122.661729Z-lhl-head-shard-ssm-a-abi-717817.md`.
+  - **A session whose constructor raises leaked VRAM.** `__init__` now frees
+    what it built on the way out, so a harness may retry construction in
+    process.
+- The route's KL tail is still higher than the replicated route's at equal
+  top-1 (max 8.461e-03 and 1.357e-02 against 3.691e-03 and 4.955e-03 over 756
+  rows per arm), with no additional flipped rows. That is the shape of
+  boundary-rounding noise at near-ties and it is inside every bar, but it is
+  recorded rather than explained away.
 - `MlpTP2GenerationSession(attention_shard=...)` gives each rank half the
   attention heads: the rank's own slices of `attn_q`/`attn_k`/`attn_v`/
   `attn_output` and the GDN set replace the full-width slots, and the rank's
@@ -83,17 +84,20 @@
   be wired at a time. They should share one body; recorded here rather than
   merged now, because the captured copy interleaves the previous layer's
   deferred reduce and residual add and that ordering is what the graph is for.
-- Removal condition: promote `attention_shard=True` to the tp2 default once the
-  production gate passes on the sharded route. Until then the parameter should
-  stay, because the substitution is what the remaining work builds on and
-  re-deriving it would repeat the payload/geometry agreement argument.
-- Known consequence to re-qualify at promotion: the attention shape keys change.
+- Removal condition: the flag stays while the replicated route is the
+  registered fallback for a default that changes arithmetic, which is until the
+  sharded route has a full production qualification (task quality and
+  BF16-relative are unqualified for the TP2 route as a whole). Removing the
+  parameter earlier would remove the only way back to the replicated route.
+- Still open at promotion: the attention shape keys change.
   `_gguf_full_attention_split_decode_policy` and
   `_gguf_grouped_gqa_decode_shape` look variants up by a shape tuple containing
   `head_count`/`head_count_kv`, so a halved shape misses those tables and falls
   back to the generic path. That fallback is correct - a variant is only applied
   at a shape it was qualified at - but the sharded shapes need their own
-  qualification before the head-sharded route can claim those variants.
+  qualification before the head-sharded route can claim those variants. The
+  promotion measured the route with the generic fallback in place, so this is a
+  performance item, not a correctness one.
 
 # hipEngine Refactor / Dead-Path Ledger
 
