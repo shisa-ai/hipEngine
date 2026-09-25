@@ -15,10 +15,30 @@
     "parity_suite": "tests/test_gpu_gemma4_attention_decode_parity.py",
     "parity_result": "bitwise equal on every shape, both dtypes, keep and holes masks",
     "warp_path_shapes": [
-      {"num_heads": 16, "num_kv_heads": 2, "head_dim": 256, "keys": 1024},
-      {"num_heads": 16, "num_kv_heads": 8, "head_dim": 512, "keys": 1024},
-      {"num_heads": 16, "num_kv_heads": 2, "head_dim": 256, "keys": 2055},
-      {"num_heads": 16, "num_kv_heads": 2, "head_dim": 256, "keys": 8192}
+      {
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 256,
+        "keys": 1024
+      },
+      {
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 512,
+        "keys": 1024
+      },
+      {
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 256,
+        "keys": 2055
+      },
+      {
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 256,
+        "keys": 8192
+      }
     ],
     "routing_test": "tests/test_gpu_gemma4_attention_decode_parity.py::test_decode_variant_selection_is_by_geometry - asserts head_dim 512 -> warp, 256/128/768 -> block through hipengine_gemma4_attention_decode_variant(), so the intended kernel is confirmed rather than inferred from timing",
     "public_path_parity": "true on all four re-measured campaign rows (instrumented ids == untouched LLM.generate() ids)"
@@ -28,9 +48,24 @@
       "tool": "scripts/gemma4_attention_decode_bench.py",
       "protocol": "one launch per measurement window, 30 iterations, same clock state for each A/B pair, device sync at the end",
       "rows": [
-        {"geometry": "sliding head_dim=256 keys=1024", "block_us": "652-700", "warp_us": 822, "verdict": "warp loses, block kernel retained"},
-        {"geometry": "full head_dim=512 keys=1024", "block_us": 1186, "warp_us": "851-870", "verdict": "warp wins 28%"},
-        {"geometry": "full head_dim=512 keys=2048", "block_us": 2210, "warp_us": 1489, "verdict": "warp wins 33%"}
+        {
+          "geometry": "sliding head_dim=256 keys=1024",
+          "block_us": "652-700",
+          "warp_us": 822,
+          "verdict": "warp loses, block kernel retained"
+        },
+        {
+          "geometry": "full head_dim=512 keys=1024",
+          "block_us": 1186,
+          "warp_us": "851-870",
+          "verdict": "warp wins 28%"
+        },
+        {
+          "geometry": "full head_dim=512 keys=2048",
+          "block_us": 2210,
+          "warp_us": 1489,
+          "verdict": "warp wins 33%"
+        }
       ],
       "clock_caveat": "the same sliding/1024 case measures 652 us at 40 iterations and 486 us at 400, so absolute microbenchmark numbers depend on the clock state; every A/B here compares runs at the same iteration count back to back"
     },
@@ -38,28 +73,82 @@
       "metric": "decode_tps",
       "command": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --samples 3",
       "label": "g3-warp-split",
-      "primary": {"row": "1024p", "incumbent": 23.1517, "candidate": 24.6025, "delta": "+6.3%", "prefill_tok_s": "127.8 -> 129", "public_wall_s": "14.25 -> 13.09"},
+      "primary": {
+        "row": "1024p",
+        "incumbent": 23.1517,
+        "candidate": 24.6025,
+        "delta": "+6.3%",
+        "prefill_tok_s": "127.8 -> 129",
+        "public_wall_s": "14.25 -> 13.09"
+      },
       "other_rows": [
-        {"row": "128p", "decode_incumbent": 43.12, "decode_candidate": 44.08, "prefill_tok_s": "139.7 -> 139", "public_wall_s": "3.85 -> 3.81"},
-        {"row": "512p", "decode_incumbent": 31.26, "decode_candidate": 32.63, "prefill_tok_s": "134.7 -> 135", "public_wall_s": "7.85 -> 7.70"},
-        {"row": "4096p", "decode_incumbent": 12.62, "decode_candidate": 14.48, "prefill_tok_s": "109.0 -> 108", "public_wall_s": "47.66 -> 46.68"}
+        {
+          "row": "128p",
+          "decode_incumbent": 43.12,
+          "decode_candidate": 44.08,
+          "prefill_tok_s": "139.7 -> 139",
+          "public_wall_s": "3.85 -> 3.81"
+        },
+        {
+          "row": "512p",
+          "decode_incumbent": 31.26,
+          "decode_candidate": 32.63,
+          "prefill_tok_s": "134.7 -> 135",
+          "public_wall_s": "7.85 -> 7.70"
+        },
+        {
+          "row": "4096p",
+          "decode_incumbent": 12.62,
+          "decode_candidate": 14.48,
+          "prefill_tok_s": "109.0 -> 108",
+          "public_wall_s": "47.66 -> 46.68"
+        }
       ],
       "regression_check": "decode improved on all four rows, prefill is within run-to-run noise on all four, public wall time improved on all four; no confirmed regression"
     },
     "grid_scaling": {
       "tool": "scripts/gemma4_attention_decode_bench.py --tokens",
       "geometry": "sliding head_dim=256 keys=1024",
-      "points_us": [{"tokens": 1, "blocks": 16, "us": 695}, {"tokens": 2, "blocks": 32, "us": 1097}, {"tokens": 4, "blocks": 64, "us": 1093}, {"tokens": 8, "blocks": 128, "us": 1653}, {"tokens": 16, "blocks": 256, "us": 1116}],
+      "points_us": [
+        {
+          "tokens": 1,
+          "blocks": 16,
+          "us": 695
+        },
+        {
+          "tokens": 2,
+          "blocks": 32,
+          "us": 1097
+        },
+        {
+          "tokens": 4,
+          "blocks": 64,
+          "us": 1093
+        },
+        {
+          "tokens": 8,
+          "blocks": 128,
+          "us": 1653
+        },
+        {
+          "tokens": 16,
+          "blocks": 256,
+          "us": 1116
+        }
+      ],
       "reading": "16x the work costs 1.6x the time: the machine is far from throughput-bound, so the block kernel's remaining cost is per-block latency, not bandwidth or issue rate"
     }
   },
   "refuted_in_this_iteration": {
     "candidate": "branchless batched tile loads (hoist mask bytes, issue all kTile K-row loads unconditionally, discard masked keys at publish)",
-    "measurement_us": {"baseline": 695, "candidate": 910},
+    "measurement_us": {
+      "baseline": 695,
+      "candidate": 910
+    },
     "verdict": "reverted - the load path is not the serialization"
   },
   "provenance": {
-    "commit": "pending (this unit)",
+    "commit": "2d94af6cb",
     "worklog_entry": "worklog/entries/20260925T201309.614359Z-lhl-gemma-4-decode-attention-warp-per-head-kernel-wi-c36c82.md",
     "supersedes_reading": "benchmarks/results/2026-09-25-gemma4-26b-a4b-decode-attention-ablation.json mechanism section (cross-warp machinery identified as the cost)",
     "files": [
