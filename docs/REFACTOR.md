@@ -8166,3 +8166,25 @@ registered strict fallback, not just the timing A/B.
   names, drop the wrappers, and update
   `tests/test_unit_distributed_shard_weights.py`, which is the only test that
   imports the type names.
+
+## 2026-09-25 The GDN shard rule cannot see the kernel variant that reads it — open
+
+- `hipengine/loading/qwen35_gguf_shards.py::shard_rule_for_tensor` takes a model
+  config and nothing else, so the shard plan's value-head layout is fixed at
+  "GGUF tiled order" (`k_head = v_head % k_heads`) with no way to express the
+  other layout the kernel family supports. `_gdn_value_segments` splits each V
+  tile separately for that reason, and `GDNHeadMap` documents the same
+  assumption.
+- The tiled assumption holds for every route that exists today: the
+  `HIPENGINE_GDN_GROUPED_HEADS` build of `kernels/hip_gfx1100/linear_attn/gdn.hip`
+  (grouped, `v_head / (num_v_heads / num_k_heads)`) is used only by
+  `qwen35_paro_runner.py`, which does not consume a shard plan, while the GGUF
+  and TP2 paths resolve the tiled build. The coupling is implicit, so a future
+  sharded route on grouped tensors would silently pair value heads with the
+  wrong key heads rather than fail.
+- Removal condition: give the rule (or the manifest builder) an explicit
+  variant/mapping argument, or assert the selected kernel variant's mapping
+  against the plan's when a sharded route is built. The content check in
+  `tests/test_unit_loading_qwen35_gguf_shards.py` section 2b already verifies
+  the tiled layout against the real checkpoint, so it becomes the
+  tiled-side oracle for that assertion.

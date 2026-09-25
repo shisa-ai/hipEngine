@@ -312,9 +312,14 @@ def test_device_exchange_sums_bit_identically_and_locksteps_on_flags() -> None:
 
 
 def test_device_exchange_spin_timeout_fails_instead_of_hanging() -> None:
-    """A missing/stalled peer must fail the exchange within the spin budget,
-    not hang the group: the spin kernel exits, and the host's wait surfaces
-    the timeout as a transport error."""
+    """A missing peer must fail the exchange, not hang the rank group.
+
+    Three things are pinned, in the order they matter: the spin kernel's bounded
+    exit returns the rank's stream (so ``wait`` cannot block forever), the host
+    surfaces the timeout as a transport error and poisons the handle (so the
+    rank group cannot keep running), and the timed-out exchange publishes
+    nothing (so a stale or partial row cannot pass as a result).
+    """
 
     from hipengine.core.device import scoped_current_device
     from hipengine.core.hip import get_hip_runtime
@@ -340,11 +345,29 @@ def test_device_exchange_spin_timeout_fails_instead_of_hanging() -> None:
             partial = rt.malloc(hidden * 2)
             out = rt.malloc(hidden * 2)
             rt.memset(partial, 0, hidden * 2)
+            # A byte pattern no exchange would produce, so any write is visible.
+            rt.memset(out, 0xAB, hidden * 2)
         exchange.step_begin()
-        # Only rank 0 exchanges; rank 1's spin has no peer publication to see.
+        # Only rank 0 exchanges; rank 1 never publishes, so rank 0's spin has no
+        # flag to see and must give up within its budget.
         exchange.enqueue_rank(0, partial, 0, out)
         with pytest.raises(TransportStateError, match="spin timeout"):
             exchange.wait()
+        # The failure is a handle-level failure: the rank group cannot go on and
+        # read a row that was never summed.
+        with pytest.raises(TransportStateError, match="poisoned"):
+            exchange.step_begin()
+        with pytest.raises(TransportStateError, match="poisoned"):
+            exchange.wait()
+        with scoped_current_device(rt, 0):
+            published = np.empty(hidden, dtype="<u2")
+            rt.memcpy(published.ctypes.data, out, hidden * 2, 2)
+        assert np.all(published.view("<u1") == 0xAB), (
+            "the timed-out exchange wrote an output row instead of publishing nothing"
+        )
+        with scoped_current_device(rt, 0):
+            rt.free(partial)
+            rt.free(out)
     finally:
         exchange.close()
         for device in (0, 1):
