@@ -475,6 +475,22 @@ flags because a configuration has not been benchmarked.
   from removing work: at 16 of 96 CUs there is room for roughly 4x before other
   limits bind, against an attention share of 8.5 ms in a 22.9 ms step. Evidence row
   `2026-09-25-gemma4-26b-a4b-tree2-interleave-rejected.json`.
+  *Iteration 26 closing diagnostic (`scripts/gemma4_attention_scale_probe.py`,
+  sliding geometry head_dim=256 keys=1024, 30 iterations):* varying the head count
+  varies the number of launched blocks, since `grid = tokens * num_heads` and each
+  head reads its own KV rows. Measured - **16 heads/16 blocks 282.1 us (17.63
+  us/head), 32/32 172.4 (5.39), 64/64 164.2 (2.56), 128/128 205.9 (1.61)**. Per-head
+  time improves **6.9x** from 16 to 64 blocks while per-launch time falls only
+  1.7x, and 128 blocks is worse in total time than 64, so the device saturates
+  somewhere around 64 blocks. At the production 16 blocks the kernel moves 16 MB
+  per launch in 282 us - about **57 GB/s of a ~960 GB/s peak, on 16 of 96 CUs**.
+  The decode attention kernel is therefore parallelism-starved, not
+  traffic-bound or reduction-bound, and split-K is the candidate with the right
+  shape: it adds blocks while keeping total traffic constant, which is strictly
+  better than what this probe does (its traffic grows with the head count). The
+  measured ceiling is the 64-block row: a 4-way split should take a decode step's
+  sliding layers from ~282 us toward ~165 us plus the combine, against an
+  attention share of 8.5 ms in a 22.9 ms step.
   *Status 2026-09-25 (iteration 24): **accepted**. Pass 1's shuffle tree was the
   measured bottleneck (clean ablations, each keeping the data dependencies alive:
   replacing the tree with in-lane adds saved 108 us of 318 at sliding, skipping
