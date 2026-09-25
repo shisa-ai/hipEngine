@@ -291,8 +291,85 @@ __device__ __forceinline__ float gemma4_warp_tree(float (&v)[8], unsigned int la
   return v[0];
 }
 
+// Two adjacent head dimensions in one load: the class kernel's pass 3 assigns
+// lane L the dimensions 2L and 2L+1, so a 4-byte (16-bit KV) or 8-byte (32-bit
+// KV) load replaces two 2-byte ones. The alignas is what tells the compiler the
+// pointer is aligned enough to emit a single vector load; it holds because
+// head_dim is even for every geometry the launcher routes here and the KV base
+// is a device allocation.
+template <typename scalar_t>
+struct alignas(2 * sizeof(scalar_t)) gemma4_pair2 {
+  scalar_t lo;
+  scalar_t hi;
+};
+
 __device__ inline float gemma4_decode_tree1(
     float* partial, float value, unsigned int threads, unsigned int tid);
+
+// Pass 3 of the key-class decode kernel, factored out so the load width is a
+// compile-time choice: kDimsPerLane == 2 issues one gemma4_pair2 load for the
+// dimensions 2L and 2L+1 (only used when head_dim >= 2 * threads, so no lane
+// goes idle), kDimsPerLane == 1 issues the original 2-byte load. Both walk the
+// keys ascending per dimension, which is what keeps the result bit-identical to
+// the block kernel.
+//
+// kPrefetch is the pipeline depth: the V value of key j + kPrefetch is loaded
+// while key j is accumulated. Each lane walks every key with one load per key
+// inside a dependent accumulate chain, and the `weight == 0` skip stops the
+// compiler from hoisting those loads, so without the pipeline the walk
+// serialises at memory latency (iteration 22 measured 34 GB/s unique against
+// 493 GB/s for the same loop with the loads removed). The pipeline only changes
+// *when* a load is issued; the accumulation order is untouched.
+template <int kDimsPerLane, int kPrefetch, typename scalar_t>
+__device__ __forceinline__ void gemma4_decode_pass3(
+    const float* __restrict__ logits_s,
+    const scalar_t* __restrict__ v_base,
+    scalar_t* __restrict__ out_row,
+    int64_t v_row_stride,
+    int64_t head_dim,
+    int64_t keys,
+    float denominator,
+    unsigned int threads,
+    unsigned int tid) {
+  const int64_t step = static_cast<int64_t>(threads) * kDimsPerLane;
+  for (int64_t d0 = static_cast<int64_t>(tid) * kDimsPerLane; d0 < head_dim; d0 += step) {
+    gemma4_pair2<scalar_t> pipe[kPrefetch];
+#pragma unroll
+    for (int n = 0; n < kPrefetch; ++n) {
+      const int64_t jn = n;
+      pipe[n] = jn < keys
+          ? *reinterpret_cast<const gemma4_pair2<scalar_t>*>(
+                v_base + jn * v_row_stride + d0)
+          : gemma4_pair2<scalar_t>{static_cast<scalar_t>(0), static_cast<scalar_t>(0)};
+    }
+    float acc_lo = 0.0f;
+    float acc_hi = 0.0f;
+    for (int64_t j = 0; j < keys; ++j) {
+      const gemma4_pair2<scalar_t> v_cur = pipe[0];
+#pragma unroll
+      for (int n = 0; n < kPrefetch - 1; ++n) {
+        pipe[n] = pipe[n + 1];
+      }
+      const int64_t jn = j + kPrefetch;
+      pipe[kPrefetch - 1] = jn < keys
+          ? *reinterpret_cast<const gemma4_pair2<scalar_t>*>(
+                v_base + jn * v_row_stride + d0)
+          : gemma4_pair2<scalar_t>{static_cast<scalar_t>(0), static_cast<scalar_t>(0)};
+      const float weight = logits_s[j];
+      if (weight == 0.0f) {
+        continue;
+      }
+      acc_lo += weight * gemma4_attn_to_float(v_cur.lo);
+      if (kDimsPerLane == 2) {
+        acc_hi += weight * gemma4_attn_to_float(v_cur.hi);
+      }
+    }
+    out_row[d0] = gemma4_attn_to_scalar<scalar_t>(acc_lo / denominator);
+    if (kDimsPerLane == 2 && d0 + 1 < head_dim) {
+      out_row[d0 + 1] = gemma4_attn_to_scalar<scalar_t>(acc_hi / denominator);
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Key-class decode kernel: the block kernel's 128-warp concurrency with the
@@ -418,18 +495,27 @@ __global__ void gemma4_attention_decode_class_kernel(
   }
   const float denominator = gemma4_decode_tree1(partial, local_sum, threads, tid);
 
-  // Pass 3: the block kernel's weighted sums with the precomputed weight.
-  for (int64_t d = tid; d < head_dim; d += threads) {
-    float acc = 0.0f;
-    for (int64_t j = 0; j < keys; ++j) {
-      const float weight = logits_s[j];
-      if (weight == 0.0f) {
-        continue;
-      }
-      const scalar_t* v_row = value + (j * num_kv_heads + kv_head) * head_dim;
-      acc += weight * gemma4_attn_to_float(v_row[d]);
-    }
-    out[head_index * head_dim + d] = gemma4_attn_to_scalar<scalar_t>(acc / denominator);
+  // Pass 3: the block kernel's weighted sums with the precomputed weight, but
+  // with the V loads issued kPrefetch keys ahead of the accumulation that
+  // consumes them. Each lane walks all `keys` with one 2-byte load per key
+  // inside a dependent accumulate chain, and the `weight == 0` skip below stops
+  // the compiler from hoisting those loads, so without the pipeline the walk
+  // serialises at memory latency (iteration 22 measured 34 GB/s unique against
+  // 493 GB/s for the same loop with the loads removed). The prefetch only moves
+  // *when* a load is issued: the accumulation stays the ascending-j chain the
+  // block kernel uses, so the result is unchanged bit for bit.
+  // Pass 3: the block kernel's weighted sums with the precomputed weight, but
+  // pipelined (see gemma4_decode_pass3) and, when the row is wide enough to
+  // keep every lane busy, loaded two dimensions at a time.
+  const int64_t v_row_stride = num_kv_heads * head_dim;
+  const scalar_t* v_base = value + kv_head * head_dim;
+  scalar_t* out_row = out + head_index * head_dim;
+  if (head_dim >= 2 * static_cast<int64_t>(threads)) {
+    gemma4_decode_pass3<2, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, keys,
+                              denominator, threads, tid);
+  } else {
+    gemma4_decode_pass3<1, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, keys,
+                              denominator, threads, tid);
   }
 }
 
