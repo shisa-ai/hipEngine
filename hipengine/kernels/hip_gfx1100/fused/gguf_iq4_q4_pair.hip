@@ -21,6 +21,10 @@
 #include <hip/hip_runtime.h>
 #include <stdint.h>
 
+// IQ3_S's 512-entry codebook (2048 B) for the B_KIND=3 strict emulation,
+// included exactly as the strict kernel itself includes it.
+#include "../quant/gguf_iq3_s_grid.h"
+
 namespace {
 
 using half_t = _Float16;
@@ -47,6 +51,17 @@ constexpr int Q5_T16_MIN_OFFSET = Q5_T16_SCALE_OFFSET + Q4_SUBBLOCKS * T16_COLS;
 constexpr int Q5_T16_QL_OFFSET = Q5_T16_MIN_OFFSET + Q4_SUBBLOCKS * T16_COLS;
 constexpr int Q5_T16_QH_OFFSET = Q5_T16_QL_OFFSET + Q4_SUBBLOCKS * Q4_SUBBLOCK * (T16_COLS / 2);
 constexpr int Q5_T16_BLOCK_BYTES = Q5_T16_QH_OFFSET + Q4_SUBBLOCKS * Q4_SUBBLOCK * (T16_COLS / 8);
+
+// Q6 qmicro-planar tile geometry (verbatim from gguf_q6_k_t16_gemv.hip):
+// d + int8 scales + qmicro records per 16-column tile.
+constexpr int Q6_GROUPS16 = 16;
+constexpr int Q6_T16_D_OFFSET = 0;
+constexpr int Q6_T16_SCALE_OFFSET = Q6_T16_D_OFFSET + T16_COLS * 2;
+constexpr int Q6_T16_QMICRO_OFFSET =
+    Q6_T16_SCALE_OFFSET + Q6_GROUPS16 * T16_COLS;
+constexpr int Q6_T16_QH_OFFSET = Q6_T16_QMICRO_OFFSET + QK_K * (T16_COLS / 2);
+constexpr int Q6_T16_BLOCK_BYTES = Q6_T16_QH_OFFSET + QK_K * (T16_COLS / 4);
+constexpr int Q6_T16_QMICRO_RECORD_BYTES = 12;
 
 // The tile8 single's exact wave reduction (verbatim shfl sequence).
 #define IQ_PAIR_T16_WAVE_REDUCE(acc) \
@@ -126,16 +141,23 @@ __device__ uint16_t bf16_store(float x) {
 // (pointer roles never swap; E6b-2's mirror and E6b-5's Q3 pair both
 // instantiate it true), B_KIND selects side B's chain (0 = dense Q4T16
 // single chain, 1 = E6b-3's wave-distributed tile8 emulation, 2 =
-// E6b-5's strict Q3_K per-row GEMV emulation), and A_IS_CHAIN (E6b-4)
-// runs side A as the Q4_K T16 tile chain instead of the IQ4_XS local32
-// split-K - for (Q4_K gate, Q5_K up) pairs neither side is IQ4, and
-// the Q4 gate chain is per-wave-redundant like the other side-B chains
-// (the epilogue takes wave 0's published value, not a cross-wave sum).
+// E6b-5's strict Q3_K per-row GEMV emulation, 3 = the E6 closeout's
+// strict IQ3_S per-row GEMV emulation (gguf_iq_dense_strict_kernel<2>
+// with the iq3_grid codebook staged in LDS), and A_KIND selects side A:
+// 0 = the IQ4_XS local32 split-K (default), 1 = the dense Q4T16 tile
+// chain (E6b-4; for (Q4_K gate, Q5_K up) pairs neither side is IQ4,
+// and the Q4 gate chain is per-wave-redundant like the side-B chains -
+// the epilogue takes wave 0's published value, not a cross-wave sum),
+// 2 = the E6 closeout's IQ4_NL local32 split-K (18-byte block stride,
+// plain f16 scale, same lane/tree/sum contract as the NL single),
+// 3 = the E6 closeout's IQ3_S local32 split-K's Q==2 path (side B,
+// cross-wave summed like the singles) and the Q6 qmicro-planar
+// single's exact 4-wave chain (side A, published at slot 0).
 template <
     int WAVES,
     bool GATE_IS_Q4 = false,
     int B_KIND = 0,
-    bool A_IS_CHAIN = false>
+    int A_KIND = 0>
 __global__ __launch_bounds__(32 * WAVES, 16 / WAVES > 0 ? 16 / WAVES : 1)
 void iq4_q4_pair_silu_kernel(
     const uint16_t* __restrict__ x,
@@ -178,13 +200,13 @@ void iq4_q4_pair_silu_kernel(
   }
 
   // Side A: split-K across waves - the local32 dual's loop verbatim.
-  // A_IS_CHAIN (E6b-4) replaces it with the dense Q4T16 single's full
+  // A_KIND==1 (E6b-4) replaces it with the dense Q4T16 single's full
   // chain over wa's tiles: every wave recomputes the whole row (all
   // waves publish identical wave-0-redundant values, shfl-reduced per
   // wave like side B), and the epilogue takes xwave_a[0].
   __shared__ float xwave_a[WAVES > 1 ? WAVES : 1][COLS];
   __shared__ float xwave_b[WAVES > 1 ? WAVES : 1][COLS];
-  if constexpr (A_IS_CHAIN) {
+  if constexpr (A_KIND == 1) {
   for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
     const uint8_t* tile =
         wa + (out_tile * blocks_per_row + blk) * Q4_T16_BLOCK_BYTES;
@@ -241,6 +263,110 @@ void iq4_q4_pair_silu_kernel(
       }
     }
   }
+  } else if constexpr (A_KIND == 2) {
+  // Side A = the IQ4_NL local32 single's split-K decode verbatim (the
+  // same contract as the XS branch: blk strided by wave, lane-grouped
+  // contiguous k, wave32 tree, fixed-order cross-wave sum in the
+  // epilogue) under NL's 18-byte block layout: one f16 scale per
+  // 32-element block, four 2-aligned u16 payload reads, and the shared
+  // byte-indexed codebook LUT already staged in s_cb. Multiplication
+  // and accumulation order match the NL single element-for-element.
+  const int64_t col_bytes_nl = (K / 32) * 18;
+  const int byteoff_nl = 2 + (lane & 1) * 8;
+  for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
+    const uint16_t* xp = x + blk * 256 + lane * 8;
+    float xv[8];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) xv[j] = bf16_load(xp[j]);
+#pragma unroll
+    for (int t = 0; t < COLS; ++t) {
+      if (n0 + t >= N) break;
+      const uint8_t* ba = wa + (n0 + t) * col_bytes_nl + (blk * 8 + g) * 18;
+      const float sd_a = half_load(ba);
+      const uint16_t qn[4] = {
+          *reinterpret_cast<const uint16_t*>(ba + byteoff_nl),
+          *reinterpret_cast<const uint16_t*>(ba + byteoff_nl + 2),
+          *reinterpret_cast<const uint16_t*>(ba + byteoff_nl + 4),
+          *reinterpret_cast<const uint16_t*>(ba + byteoff_nl + 6)};
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int code_a = int((qn[j >> 1] >> (8 * (j & 1))) & 0xffu);
+        acc_a[t] += xv[j] * (sd_a * s_cb[code_a + (nib << 8)]);
+      }
+    }
+  }
+  } else if constexpr (A_KIND == 3) {
+  // Side A = the Q6 qmicro-planar single's exact 4-wave chain emulated
+  // across this block's waves (the B_KIND=1 scheme applied to side A):
+  // hardware wave w owns single-waves sw = w, w+WAVES, ... in lane
+  // position, keeping the single's per-thread order (per superblock
+  // k = sw*32+lane then +128, all 16 tile columns interleaved
+  // col_quartet-major), its GGUF_T16 wave tree per sw, and lane-0
+  // publish; thread 0 then sums the four partials in g order exactly
+  // like the single's tid==0 epilogue and publishes to xwave_a[0]
+  // (the epilogue takes slot 0 for A_KIND 1 and 3). acc_a is unused.
+  __shared__ float s_q6r[4][COLS];
+  for (int sw = wave; sw < 4; sw += WAVES) {
+    float acc6[COLS];
+#pragma unroll
+    for (int t = 0; t < COLS; ++t) acc6[t] = 0.0f;
+    const int tid6 = sw * 32 + lane;
+    for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+      const uint8_t* tile6 =
+          wa + (out_tile * blocks_per_row + blk) * Q6_T16_BLOCK_BYTES;
+      const int8_t* scales6 =
+          reinterpret_cast<const int8_t*>(tile6 + Q6_T16_SCALE_OFFSET);
+      const int64_t k_base = blk * QK_K;
+      for (int k_in_block = tid6; k_in_block < QK_K; k_in_block += 128) {
+        const int g16 = k_in_block >> 4;
+        const int subblock = k_in_block >> 5;
+        const int pack = (k_in_block & 31) >> 2;
+        const int k4 = k_in_block & 3;
+        const float xv = bf16_load(x[k_base + k_in_block]);
+#pragma unroll
+        for (int col_quartet = 0; col_quartet < T16_COLS / 4; ++col_quartet) {
+          const int record_index =
+              (subblock * (T16_COLS / 4) + col_quartet) * 8 + pack;
+          const uint8_t* record = tile6 + Q6_T16_QMICRO_OFFSET +
+              record_index * Q6_T16_QMICRO_RECORD_BYTES;
+          const uint16_t low_pair =
+              static_cast<uint16_t>(record[k4]) |
+              (static_cast<uint16_t>(record[4 + k4]) << 8);
+          const uint8_t high_packed = record[8 + k4];
+#pragma unroll
+          for (int col4 = 0; col4 < 4; ++col4) {
+            const int col = col_quartet * 4 + col4;
+            if (col < col_base || col >= col_base + COLS) continue;
+            const uint8_t low_byte =
+                static_cast<uint8_t>(low_pair >> (8 * (col4 >> 1)));
+            const uint8_t low =
+                (col4 & 1) ? (low_byte >> 4) : (low_byte & 0x0Fu);
+            const uint8_t high = (high_packed >> (2 * col4)) & 0x03u;
+            const int q_i = static_cast<int>(low | (high << 4)) - 32;
+            const float d = fp16_bits_to_float(*reinterpret_cast<const uint16_t*>(
+                tile6 + Q6_T16_D_OFFSET + col * 2));
+            const int scale_i = static_cast<int>(scales6[g16 * T16_COLS + col]);
+            acc6[col - col_base] +=
+                xv * (d * static_cast<float>(scale_i * q_i));
+          }
+        }
+      }
+    }
+#pragma unroll
+    for (int t = 0; t < COLS; ++t) IQ_PAIR_T16_WAVE_REDUCE(acc6[t]);
+    if (lane == 0)
+#pragma unroll
+      for (int t = 0; t < COLS; ++t) s_q6r[sw][t] = acc6[t];
+  }
+  __syncthreads();
+  if (tid == 0) {
+#pragma unroll
+    for (int t = 0; t < COLS; ++t) {
+      float total = 0.0f;
+      for (int i = 0; i < 4; ++i) total += s_q6r[i][t];
+      xwave_a[0][t] = total;
+    }
+  }
   } else {
   for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
     const uint16_t* xp = x + blk * 256 + lane * 8;
@@ -268,7 +394,7 @@ void iq4_q4_pair_silu_kernel(
       }
     }
   }
-  }  // end if constexpr (A_IS_CHAIN) else (IQ4 local32 split-K)
+  }  // end if constexpr (A_KIND): 1 chain, 2 NL, 3 Q6, else XS local32
 
   // Side B: B_KIND=0 keeps the dense Q4T16 single's full
   // single-wave chain recomputed in every wave (only wave 0's partial is
@@ -424,6 +550,54 @@ void iq4_q4_pair_silu_kernel(
         xwave_b[0][t] = total;
       }
     }
+  } else if constexpr (B_KIND == 3) {
+    // E6 closeout (IQ3_S): side B = the IQ3_S local32 decode owner's
+    // split-K structure verbatim (the Q==2 path of
+    // gguf_iq_split_local32_gemv_kernel - the session policy owner for
+    // the layer-11 gate, not the strict parent): blk strided by wave,
+    // lane-grouped contiguous XV[8], per-column Q2 payload decode
+    // (f16 d, per-group scale nibble, 9-bit grid index with high bits
+    // from byte 66, per-8 signs), wv = sd * mag * sgn, plain +=
+    // accumulate. The wave32 tree runs in the common reduce below
+    // (B_KIND==3 joins it), lane 0 publishes per wave, and the
+    // epilogue takes B_KIND==3's fixed-order cross-wave sum - the
+    // single's own reduction exactly.
+    constexpr int IQ3S_BYTES = 110;  // hmask32 + qs64 + scales + d16
+    const int64_t col_bytes_i3 = blocks_per_row * IQ3S_BYTES;
+    const int slot_i3 = lane & 3;    // this lane's 8-element slot
+    __shared__ uint8_t s_iq3_grid[2048];
+    for (int i = tid; i < 2048; i += 32 * WAVES)
+      s_iq3_grid[i] = iq3_grid[i];
+    __syncthreads();
+    for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
+      const uint16_t* xp = x + blk * 256 + lane * 8;
+      float xv[8];
+#pragma unroll
+      for (int j = 0; j < 8; ++j) xv[j] = bf16_load(xp[j]);
+#pragma unroll
+      for (int t = 0; t < COLS; ++t) {
+        if (n0 + t >= N) break;
+        const uint8_t* b = wb + (n0 + t) * col_bytes_i3 + blk * IQ3S_BYTES;
+        const float d = half_load(b);
+        const int scale =
+            1 + 2 * ((b[106 + (g >> 1)] >> (4 * (g & 1))) & 15);
+        const float sd = d * float(scale);
+        const int hb = b[66 + g];
+        const int i0 = b[2 + g * 8 + 2 * slot_i3] |
+            (((hb >> (2 * slot_i3)) & 1) << 8);
+        const int i1 = b[2 + g * 8 + 2 * slot_i3 + 1] |
+            (((hb >> (2 * slot_i3 + 1)) & 1) << 8);
+        const int signs = b[74 + g * 4 + slot_i3];
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const int index = j < 4 ? i0 : i1;
+          const float mag = float(s_iq3_grid[index * 4 + (j & 3)]);
+          const float sgn = (signs & (1 << j)) ? -1.0f : 1.0f;
+          const float wv = sd * mag * sgn;
+          acc_b[t] += xv[j] * wv;
+        }
+      }
+    }
   } else {
   for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
     const uint8_t* tile =
@@ -487,17 +661,21 @@ void iq4_q4_pair_silu_kernel(
   for (int t = 0; t < COLS; ++t)
     for (int delta = 16; delta; delta >>= 1) {
       acc_a[t] += __shfl_down(acc_a[t], delta);
-      if constexpr (B_KIND == 0)
+      if constexpr (B_KIND == 0 || B_KIND == 3)
         acc_b[t] += __shfl_down(acc_b[t], delta);
     }
 
   if (lane == 0) {
 #pragma unroll
     for (int t = 0; t < COLS; ++t) {
-      xwave_a[wave][t] = acc_a[t];
-      // The Q5 path already published its wave-0 lane-0 total directly
-      // into xwave_b[0]; only the Q4 chain publishes per wave here.
-      if constexpr (B_KIND == 0) xwave_b[wave][t] = acc_b[t];
+      // A_KIND==3 (Q6) already published its total at slot 0 in side A;
+      // this wave's acc_a is unused there and must not clobber it.
+      if constexpr (A_KIND != 3) xwave_a[wave][t] = acc_a[t];
+      // The Q5 path (B_KIND=1/2) already published its wave-0 lane-0
+      // total directly into xwave_b[0]; the Q4 chain and the IQ3_S
+      // local32 split-K publish per wave.
+      if constexpr (B_KIND == 0 || B_KIND == 3)
+        xwave_b[wave][t] = acc_b[t];
     }
   }
   __syncthreads();
@@ -505,17 +683,30 @@ void iq4_q4_pair_silu_kernel(
     const int t = tid;
     if (n0 + t < N) {
       float ta;
-      if constexpr (A_IS_CHAIN) {
-        // Side A's chain is per-wave redundant: wave 0's published value
-        // is the single's own result (same convention as side B).
-        ta = xwave_a[0][t];
-      } else {
+      if constexpr (A_KIND == 0 || A_KIND == 2) {
+        // Split-K sides: the cross-wave sum of this wave's lane-0
+        // partials (the local32 contract, shared with the singles).
         ta = 0.0f;
 #pragma unroll
         for (int wv = 0; wv < WAVES; ++wv) ta += xwave_a[wv][t];
+      } else {
+        // Chain (A_KIND=1) and Q6-emulation (A_KIND=3) sides publish a
+        // per-wave-redundant total at slot 0: that value is the
+        // single's own result (same convention as side B).
+        ta = xwave_a[0][t];
       }
-      // Side B publishes wave 0 only: that chain is the single's own.
-      const float tb = xwave_b[0][t];
+      // Side B: chains and emulations (B_KIND 1/2) publish wave 0 only
+      // (that value is the single's own); the IQ3_S local32 split-K
+      // (B_KIND=3) publishes per-wave partials like the Q4 chain and
+      // needs the fixed-order cross-wave sum - the single's reduction.
+      float tb;
+      if constexpr (B_KIND == 3) {
+        tb = 0.0f;
+#pragma unroll
+        for (int wv = 0; wv < WAVES; ++wv) tb += xwave_b[wv][t];
+      } else {
+        tb = xwave_b[0][t];
+      }
       // bf16-round both accumulators exactly like the unfused path,
       // then the silu_mul kernel's arithmetic verbatim. The gate/up
       // roles follow the family: GATE_IS_Q4=false (E6b-1, IQ4 gate)
@@ -769,6 +960,113 @@ extern "C" int hipengine_gguf_iq4_q3_pair_silu(const void* x, const void* wa,
             return err;
         case 4:
             err = (iq4_q4_pair_silu_kernel<4, false, 2, false><<<grid, 128, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        default:
+            return int(hipErrorInvalidValue);
+    }
+}
+// E6 closeout family: (IQ3_S gate, IQ4_XS up) - the pinned
+// layer.11.ffn_gate local32 owner plus the session IQ4_XS local32 up
+// (1 layer). Route order is gate-first (IQ3_S, IQ4_XS), but the C
+// geometry keeps IQ4 in side A's slot: wa is the IQ4_XS local32 raw
+// weight (split-K), wb the IQ3_S raw blocks (B_KIND=3, the IQ3_S
+// local32 split-K's Q==2 path verbatim); the Python wrapper reorders
+// the route's arguments to match, and GATE_IS_Q4=true takes the gate
+// from side B (the IQ3_S side).
+extern "C" int hipengine_gguf_iq3s_iq4_pair_silu(const void* x, const void* wa,
+    const void* wb, void* out, int64_t rows, int64_t K, int64_t N, int waves,
+    void* stream) {
+    if (!x || !wa || !wb || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 8)
+        return int(hipErrorInvalidValue);
+    const dim3 grid(unsigned((N + COLS - 1) / COLS));
+    const hipStream_t s = (hipStream_t)stream;
+    int err;
+    switch (waves) {
+        case 1:
+            err = (iq4_q4_pair_silu_kernel<1, true, 3, 0><<<grid, 32, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 2:
+            err = (iq4_q4_pair_silu_kernel<2, true, 3, 0><<<grid, 64, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 4:
+            err = (iq4_q4_pair_silu_kernel<4, true, 3, 0><<<grid, 128, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        default:
+            return int(hipErrorInvalidValue);
+    }
+}
+// E6 closeout family: (IQ4_NL gate, Q5_K up) - the session IQ4_NL
+// local32 gate plus the E4a tile8 Q5 up (layer 50, 1 layer). Gate-first
+// argument order already matches the C geometry (IQ4 side A first), so
+// no reorder: wa is the IQ4_NL raw weight (A_KIND=2, the NL single's
+// split-K verbatim), wb the Q5_K T16 tiles (B_KIND=1, the tile8
+// single's exact 4-group emulation). GATE_IS_Q4=false takes the gate
+// from side A (the NL chain).
+extern "C" int hipengine_gguf_iq4nl_q5_pair_silu(const void* x, const void* wa,
+    const void* wb, void* out, int64_t rows, int64_t K, int64_t N, int waves,
+    void* stream) {
+    if (!x || !wa || !wb || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 16)
+        return int(hipErrorInvalidValue);
+    const dim3 grid(unsigned((N + COLS - 1) / COLS));
+    const hipStream_t s = (hipStream_t)stream;
+    int err;
+    switch (waves) {
+        case 1:
+            err = (iq4_q4_pair_silu_kernel<1, false, 1, 2><<<grid, 32, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 2:
+            err = (iq4_q4_pair_silu_kernel<2, false, 1, 2><<<grid, 64, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 4:
+            err = (iq4_q4_pair_silu_kernel<4, false, 1, 2><<<grid, 128, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        default:
+            return int(hipErrorInvalidValue);
+    }
+}
+// E6 closeout family: (Q5_K gate, Q6_K qmicro-planar up) - the E4a
+// tile8 gate plus the planar decode up (layer 63, 1 layer). Route order
+// is gate-first (Q5, Q6), but the C geometry keeps the new side in
+// side A's slot: wa is the Q6_K planar T16 tiles (A_KIND=3, the
+// planar single's exact 4-wave chain), wb the Q5_K T16 tiles
+// (B_KIND=1, the tile8 single's exact emulation = the GATE); the Python
+// wrapper reorders the route's arguments to match, and GATE_IS_Q4=true
+// takes the gate from side B (the tile8 chain).
+extern "C" int hipengine_gguf_q5_q6_pair_silu(const void* x, const void* wa,
+    const void* wb, void* out, int64_t rows, int64_t K, int64_t N, int waves,
+    void* stream) {
+    if (!x || !wa || !wb || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 16)
+        return int(hipErrorInvalidValue);
+    const dim3 grid(unsigned((N + COLS - 1) / COLS));
+    const hipStream_t s = (hipStream_t)stream;
+    int err;
+    switch (waves) {
+        case 1:
+            err = (iq4_q4_pair_silu_kernel<1, true, 1, 3><<<grid, 32, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 2:
+            err = (iq4_q4_pair_silu_kernel<2, true, 1, 3><<<grid, 64, 0, s>>>(
+                (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
+                (uint16_t*)out, K, N), int(hipGetLastError()));
+            return err;
+        case 4:
+            err = (iq4_q4_pair_silu_kernel<4, true, 1, 3><<<grid, 128, 0, s>>>(
                 (const uint16_t*)x, (const uint8_t*)wa, (const uint8_t*)wb,
                 (uint16_t*)out, K, N), int(hipGetLastError()));
             return err;

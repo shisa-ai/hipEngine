@@ -7917,3 +7917,210 @@ def test_q5_q4_mixed_pair_silu_route_rows1_and_declines() -> None:
     args, kwargs = calls[0]
     assert kwargs["stream"] == 0
     del args
+
+
+def test_iq3s_iq4_mixed_pair_silu_route_rows1_and_declines() -> None:
+    """E6 closeout: (IQ3_S gate, IQ4_XS up) declines - screen negative.
+
+    The ordered IQ3_S/IQ4 family - the layer.11.ffn_gate slot takes the
+    dense-IQ session's local32 decode owner (no ffn_gate pin), and both
+    sides dispatch correctly for a pair, but the production-shape screen
+    ran 0.97-0.99x across four runs against the pre-registered >=1.00
+    gate (2026-09-25), so the route does not fire (E6b-5 negative
+    pattern; the kernel stays registered as a dormant owner with a
+    REFACTOR clearing command). The fake owner must never be called at
+    rows == 1 or rows == 2, in either order.
+    """
+    from hipengine.kernels.hip_gfx1100.quant import (
+        gguf_iq_source_mmq_prefill as iq_mmq,
+    )
+
+    gate = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_iq3_s")
+    gate.spec.slot_path = "layers.11.ffn_gate"
+    up = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_iq4_xs")
+    up.spec.slot_path = "layers.11.ffn_up"
+    pair_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_iq3_s+gguf_iq4_xs",
+        "iq3s_iq4_pair_silu_bf16_bf16_out",
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def fake_pair(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    from hipengine.kernels.backends import load_backend_kernel_package
+
+    load_backend_kernel_package("hip_gfx1151")
+    register(pair_key, fake_pair, replace=True)
+    try:
+        with iq_mmq.iq_dense_mmq_session(True):
+            assert not launch_gguf_linear_pair_silu(
+                gate,
+                up,
+                x_ptr=100,
+                out_ptr=200,
+                rows=1,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                use_gemv_decode=True,
+            )
+            assert not launch_gguf_linear_pair_silu(
+                gate,
+                up,
+                x_ptr=100,
+                out_ptr=200,
+                rows=2,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                use_gemv_decode=True,
+            )
+            # The reversed order (IQ4 gate, IQ3_S up) is a different combo.
+            assert not launch_gguf_linear_pair_silu(
+                up,
+                gate,
+                x_ptr=100,
+                out_ptr=200,
+                rows=1,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                use_gemv_decode=True,
+            )
+    finally:
+        unregister(pair_key)
+
+    assert len(calls) == 0
+    del calls
+
+
+def test_iq4nl_q5_mixed_pair_silu_route_rows1_and_declines() -> None:
+    """E6 closeout: (IQ4_NL gate, Q5_K up) fires the mixed pair at rows==1.
+
+    The ordered IQ4_NL/Q5 family - layer 50. The gate is the session
+    local32 IQ4_NL owner (raw), the up the E4a tile8 c1 owner (tiles);
+    the route order already matches the C geometry (IQ4 side A first).
+    rows != 1 declines.
+    """
+    from hipengine.kernels.hip_gfx1100.quant import (
+        gguf_iq_source_mmq_prefill as iq_mmq,
+    )
+
+    gate = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_iq4_nl")
+    gate.spec.slot_path = "layers.50.ffn_gate"
+    up = _fake_weight(layout=LAYOUT_GGUF_Q5_K_T16, quant_key="gguf_q5_k_t16_v1")
+    up.spec.slot_path = "layers.50.ffn_up"
+    pair_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_iq4_nl+gguf_q5_k_t16_v1",
+        "iq4nl_q5_pair_silu_bf16_bf16_out",
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def fake_pair(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    from hipengine.kernels.backends import load_backend_kernel_package
+
+    load_backend_kernel_package("hip_gfx1151")
+    register(pair_key, fake_pair, replace=True)
+    try:
+        with iq_mmq.iq_dense_mmq_session(True):
+            assert launch_gguf_linear_pair_silu(
+                gate,
+                up,
+                x_ptr=100,
+                out_ptr=200,
+                rows=1,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                use_gemv_decode=True,
+            )
+            assert not launch_gguf_linear_pair_silu(
+                gate,
+                up,
+                x_ptr=100,
+                out_ptr=200,
+                rows=2,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                use_gemv_decode=True,
+            )
+    finally:
+        unregister(pair_key)
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert kwargs["stream"] == 0
+    del args
+
+
+def test_q5_q6_mixed_pair_silu_route_rows1_and_declines() -> None:
+    """E6 closeout: (Q5_K gate, Q6_K planar up) declines - screen negative.
+
+    The ordered Q5/Q6 family - layer 63. Both sides dispatch exactly as
+    a pair would need (gate = E4a tile8 c1 owner, up = raw-contract
+    planar decode owner), but the production-shape screen ran
+    0.60-0.61x across four runs (the Q6 4-wave-chain emulation across
+    block waves costs far more than the launch it saves), well below the
+    pre-registered >=1.00 gate (2026-09-25), so the route does not fire
+    (E6b-5 negative pattern; the kernel stays registered as a dormant
+    owner with a REFACTOR clearing command). The fake owner must never
+    be called at rows == 1 or rows == 2.
+    """
+    gate = _fake_weight(layout=LAYOUT_GGUF_Q5_K_T16, quant_key="gguf_q5_k_t16_v1")
+    gate.spec.slot_path = "layers.63.ffn_gate"
+    up = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+    )
+    up.spec.slot_path = "layers.63.ffn_up"
+    pair_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q5_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1",
+        "q5_q6_pair_silu_bf16_bf16_out",
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def fake_pair(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    from hipengine.kernels.backends import load_backend_kernel_package
+
+    load_backend_kernel_package("hip_gfx1151")
+    register(pair_key, fake_pair, replace=True)
+    try:
+        assert not launch_gguf_linear_pair_silu(
+            gate,
+            up,
+            x_ptr=100,
+            out_ptr=200,
+            rows=1,
+            in_features=5_120,
+            out_features=17_408,
+            backend="hip_gfx1151",
+            use_gemv_decode=True,
+        )
+        assert not launch_gguf_linear_pair_silu(
+            gate,
+            up,
+            x_ptr=100,
+            out_ptr=200,
+            rows=2,
+            in_features=5_120,
+            out_features=17_408,
+            backend="hip_gfx1151",
+            use_gemv_decode=True,
+        )
+    finally:
+        unregister(pair_key)
+
+    assert len(calls) == 0
+    del calls
