@@ -889,6 +889,8 @@ artifacts or explicitly opt into GPU-gated suites. They are not product knobs.
 | `HIPENGINE_TEST_PARO_MODEL` | unset | PARO model directory override for the live PARO tokenizer/EOS tests; falls back to the standard `/models/hipengine/...` candidates. |
 | `HIPENGINE_TEST_REQUIRE_CACHED_BUILD` | unset | When truthy, GPU kernel tests require cached JIT builds (the test-side analogue of `HIPENGINE_REQUIRE_CACHED_BUILD`). |
 | `HIPENGINE_INT8_MTP_MODEL` | `/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` | Dense GGUF model path for the live INT8 MTP test. |
+| `HIPENGINE_DMS_MTP_MODEL` | `/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` | Dense GGUF model path for the live DMS+INT8 MTP parity gate. |
+| `HIPENGINE_DMS_MTP_METADATA` | `~/dms-artifacts/qwen38-external-v1/sidecar/dms_metadata.json` | Trained external DMS sidecar metadata for the live DMS+INT8 MTP parity gate; produced by `scripts/qwen38_dms_train_sidecar.py`. |
 | `HIPENGINE_IQ4_XS_LAYOUT_GGUF` | `/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf` | GGUF artifact for the live IQ4_XS T16 layout test. |
 | `HIPENGINE_UD_ROLE_MODEL` | `/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf` | Published UD K_M model path for the live UD Q5/Q6 role tests. |
 | `HIPENGINE_DMS_DEVICE_PAYLOADS` | unset | DMS device-payload test fixture knob; asserted unset for the host-payload baseline. |

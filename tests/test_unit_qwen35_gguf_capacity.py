@@ -10,6 +10,7 @@ real allocation path.
 from __future__ import annotations
 
 import inspect
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -1070,3 +1071,68 @@ def test_server_explicit_int8_uses_qualified_scale_defaults(monkeypatch) -> None
     matches = [row for row in _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE if row.key == key]
     assert matches, "explicit INT8 with default scales matches no qualification contract"
     assert matches[0].decision == "qualified"
+
+
+def test_a_declared_context_is_what_the_session_is_sized_to(monkeypatch) -> None:
+    """The incident this pins: a declared 4096 was replaced by 183808.
+
+    ``LLM(model, max_sequence_length=N)`` is a declaration about the resident
+    session, and the session used to be sized by automatic selection unless the
+    caller also called ``prepare``. Auto-selection takes the largest context that
+    fits; on this APU the KV pool is host memory, so the substitution allocated
+    tens of GiB the caller never asked for and the machine ran out of RAM.
+    """
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    runner = _auto_context_runner(free_gib=100.0)
+    generator = _auto_context_generator()
+    auto = generator._resolve_auto_context(
+        runner, max_batch_size=1, defer_kv_allocation=False
+    )
+    assert auto is not None and auto > 4096, "the fixture must offer a large context"
+
+    requested: list[int | None] = []
+
+    def _construct(self, shared_runner, *, max_sequence_length, **kwargs):
+        requested.append(max_sequence_length)
+        return SimpleNamespace(max_sequence_length=max_sequence_length)
+
+    monkeypatch.setattr(
+        qwen35_gguf.Qwen35GGUFBringupGenerator,
+        "_construct_shared_session",
+        _construct,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        qwen35_gguf.Qwen35GGUFBringupGenerator,
+        "_configure_session",
+        lambda self, session: None,
+        raising=False,
+    )
+    generator._shared_session_pool = {}
+    generator._shared_session_pool_lock = threading.Lock()
+
+    # Without a declaration the automatic selection decides, as before.
+    generator._acquire_shared_session(runner, pool_name="auto")
+    assert requested == [auto]
+
+    # With one, the declaration decides -- whatever auto-selection would have
+    # chosen.
+    pinned = _auto_context_generator()
+    pinned._shared_session_pool = {}
+    pinned._shared_session_pool_lock = threading.Lock()
+    pinned.declare_max_sequence_length(4096)
+    pinned._acquire_shared_session(runner, pool_name="pinned")
+    assert requested == [auto, 4096]
+
+
+def test_prepare_and_declaration_agree_on_the_pin() -> None:
+    generator = _auto_context_generator()
+    generator.declare_max_sequence_length(4096)
+    assert generator._prepared_max_sequence_length == 4096
+    # A later, smaller declaration must not shrink the pin, and a non-positive
+    # one is a caller error rather than a silent no-op.
+    assert generator.declare_max_sequence_length(1024) == 4096
+    assert generator._prepared_max_sequence_length == 4096
+    with pytest.raises(ValueError):
+        generator.declare_max_sequence_length(0)

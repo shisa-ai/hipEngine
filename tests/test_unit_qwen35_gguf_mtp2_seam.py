@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import inspect
 from types import SimpleNamespace
 
 import numpy as np
@@ -5726,7 +5727,12 @@ def test_capability_admits_a_complete_current_prompt_buffer() -> None:
     ) is not None
 
 
-def test_capability_names_missing_compact_dms_transaction_before_proposal() -> None:
+def test_capability_no_longer_declines_a_compact_dms_row_for_its_transaction() -> None:
+    # The verifier now journals a compact-DMS row through the store's own
+    # transaction (_DMSStoreJournal selects itself for a session carrying a
+    # _dms_backend), so the named capability miss that used to stand here is
+    # gone: a DMS row is decided by its target execution profile like any other
+    # row, and never by the transaction it uses.
     rid = 6
     row = _priming_gate_row(prompt_tokens=12, generated_tokens=1)
     row.lease.session._dms_backend = object()
@@ -5734,11 +5740,16 @@ def test_capability_names_missing_compact_dms_transaction_before_proposal() -> N
         rows={rid: row},
         prompt_hidden={rid: np.zeros((12, 64), dtype=np.float32)},
     )
-    assert adapter.capability(
+    adapter.capability(
         (SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25),)
-    ) is None
-    assert adapter._last_capability_decline == "compact_dms_mtp_transaction_not_implemented"
-    assert adapter._states == {}
+    )
+    assert (
+        getattr(adapter, "_last_capability_decline", None)
+        != "compact_dms_mtp_transaction_not_implemented"
+    )
+    assert "compact_dms_mtp_transaction_not_implemented" not in inspect.getsource(
+        adapter.capability.__func__
+    )
 
 
 def test_prompt_activation_contention_preserves_speculative_intent() -> None:

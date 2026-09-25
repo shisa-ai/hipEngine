@@ -601,6 +601,23 @@ def speculative_output_accounting(row: Any) -> dict[str, Any] | None:
         "failure_reason_counts": {
             str(name): int(value) for name, value in sorted(failure_counts.items())
         },
+        # The category alone cannot answer "why", and the answer does not
+        # survive the fallback: a cycle that failed before commit is recovered by
+        # decoding autoregressively and retiring its rows, so every later step
+        # reports a generic planner reason (``no_provider``) instead of the
+        # failure. Publish the recorded (category, detail) pairs so the cause is
+        # still readable from the response that shows the fallback.
+        "failure_reasons": [
+            {
+                "category": str(failure_reasons[index]),
+                "detail": (
+                    str(failure_reasons[index + 1])
+                    if index + 1 < len(failure_reasons)
+                    else None
+                ),
+            }
+            for index in range(0, len(failure_reasons), 2)
+        ],
         "k0_catchups": _row_int(row, "mtp2_k0_catchups"),
         # Host-wall phase sums for the committed cycles. Published here because
         # the row already carries them and the response did not: the phase split

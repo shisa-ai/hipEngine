@@ -100,6 +100,12 @@ declarations use `fp32` scales, so `--kv-scale-dtype fp16` falls back to BF16.
 The reason and requested/effective storage are recorded in `/ready` and the
 KVCache summary. Passing `--kv-storage bf16` explicitly matches the default.
 
+Resident memory is admitted as one budget. A request's target KV and scales, its
+draft KV, the verifier scratch, the decode graph, and the retained prefix
+entries are priced together, and a request that does not fit is refused before
+anything is allocated, naming the consumer that did not fit. That refusal is
+answered as capacity rather than as an internal fault.
+
 `/ready` also reports `model.kv_capability.max_packed_rows`, the effective
 row width a packed decode batch may use. It can be below the declared
 `max_direct_rows`: the direct INT8 batch leaf reads retained INT8 planes on
@@ -183,9 +189,12 @@ history-dependent processors use eager native selection. This sampled policy
 uses the packed target verifier for concurrent groups and does not change
 greedy MTP policy. Each request keeps its own seed, token counter, and history
 through admission, retirement, and cancellation.
-Logprob responses, explicit token stops, forced tokens and dynamic constraints
-retain their ordinary-decoding fallback. `"speculative_mtp": false` always
-disables MTP for a request.
+The sampled route serves logprob responses, explicit token stops, and the
+min-token/EOS floor, and reports the same per-token logprob the autoregressive
+route reports for the request. Forced tokens and dynamic constraints retain
+their ordinary-decoding fallback, and so does every one of these fields on a
+greedy request, whose raw-argmax route still refuses them.
+`"speculative_mtp": false` always disables MTP for a request.
 
 Operators may still select explicit diagnostics with
 `--speculative-mtp-serving opt_in` plus `"speculative_mtp": true`. Explicit
@@ -233,8 +242,13 @@ Responses that realize MTP report `thinking_policy` and
 `thinking_controls="prompt_hint_only"`. Set `--speculative-mtp-thinking hard`
 (or
 `HIPENGINE_SPECULATIVE_MTP_THINKING=hard`) to keep full host-sampler
-enforcement; then the thinking budget is a hard MTP blocker and thinking
-requests fall back to plain AR. A request can override the server policy with
+enforcement. The budget then stays a hard blocker for the raw-argmax MTP route,
+which cannot enforce it, so a greedy thinking request falls back to plain AR. A
+request that actually samples is served by the sampled MTP route, which applies
+the budget per verified row: the phase machine, EOS suppression, and soft-close
+bias run on each row's own state, and a reached hard cap queues its close
+sequence from inside the cycle that reaches it. A request can override the server
+policy with
 `"speculative_mtp": {"enabled": true, "thinking": "hint" | "hard"}`; the
 capabilities manifest reports the active policy as
 `sampling.speculative_mtp.thinking_policy`.

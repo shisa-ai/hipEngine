@@ -44,6 +44,11 @@ from hipengine.core.tensor import Tensor
 from hipengine.core.rocblas import Rocblas
 from hipengine.dispatch.kv import resolve_paged_attn_decode
 from hipengine.runtime.gguf_packed_manifest import build_packed_decode_execution_manifest
+from hipengine.runtime.memory_admission import (
+    MemoryAdmissionRefused,
+    MemoryConsumer,
+    price_memory_admission,
+)
 from hipengine.runtime.moe_graph import MoeGraphCache
 from hipengine.kernels.hip_gfx1100.attention import (
     aotriton_attn_fwd_compact_varlen,
@@ -2128,6 +2133,11 @@ class _GGUFPackedTargetState:
     kv_backing_kind: str = "private"
     private_workspace_pool: object | None = None
     private_workspace_token: object | None = None
+    # Charge for the conv/recurrent state buffers themselves. They are device
+    # mallocs this state owns, so they are priced through the same pool budget
+    # as the KV payload and released with these buffers.
+    resident_charge_pool: object | None = None
+    resident_charge_token: object | None = None
 
     def __post_init__(self) -> None:
         if self.kv_backing_kind not in {"private", "pool_lease", "unleased"}:
@@ -2249,7 +2259,22 @@ class _GGUFPackedTargetState:
         state_buffers: list[object] = []
         kv_cache_fields: dict[str, tuple] | None = None
         private_workspace_token = None
+        resident_charge_token = None
         try:
+            linear_layers = sum(
+                1 for layer_type in cfg.layer_types if layer_type == LINEAR_ATTENTION
+            )
+            state_scratch_nbytes = linear_layers * (
+                conv_state_nbytes + recurrent_state_nbytes
+            )
+            if kv_pool is not None and state_scratch_nbytes > 0:
+                # Charged before the buffers are allocated, so an overload is
+                # refused by name instead of surfacing as a HIP OOM mid-loop.
+                reserve = getattr(kv_pool, "reserve_resident_bytes", None)
+                if callable(reserve):
+                    resident_charge_token = reserve(
+                        "packed_verify_scratch", state_scratch_nbytes
+                    )
             for layer_type in cfg.layer_types:
                 if layer_type == LINEAR_ATTENTION:
                     conv_state = buf(conv_state_nbytes)
@@ -2375,6 +2400,8 @@ class _GGUFPackedTargetState:
                 free(buffer, runtime=runtime)
             if private_workspace_token is not None:
                 kv_pool.release_private_workspace(private_workspace_token)
+            if resident_charge_token is not None:
+                kv_pool.release_private_workspace(resident_charge_token)
             raise
         if kv_cache_fields is None:
             kv_cache_fields = {
@@ -2401,6 +2428,8 @@ class _GGUFPackedTargetState:
             kv_backing_kind=backing_kind,
             private_workspace_pool=kv_pool if private_workspace_token is not None else None,
             private_workspace_token=private_workspace_token,
+            resident_charge_pool=kv_pool if resident_charge_token is not None else None,
+            resident_charge_token=resident_charge_token,
         )
 
     def linear_state_pair(self, layer_id: int) -> tuple[object, object]:
@@ -17061,6 +17090,37 @@ class Qwen35GGUFResidentSession:
         self.bind_device_kv_allocation(pool, allocation)
         self._dms_dense_prefill_pool = pool
 
+    def _retain_published_target_hidden(
+        self, *, runtime: HipRuntime, stream: int = 0
+    ) -> bool:
+        """Move the published trunk row off the bulk workspace before release.
+
+        ``last_target_hidden`` is a raw device pointer, so it cannot detect
+        that its backing buffer was freed. The bulk prefill publishes the final
+        trunk row from bulk scratch, and a target-attached consumer -- the MTP
+        transaction journal's initial-state snapshot above all -- reads it after
+        prefill returns. Retain the row in the session's persistent hidden
+        buffer before the workspace goes away, or that reader copies from freed
+        memory.
+        """
+
+        source_ptr = int(self._last_target_hidden_ptr)
+        if source_ptr == 0:
+            return False
+        hidden = self._hidden_a
+        if hidden is None or source_ptr == int(hidden.ptr):
+            return False
+        row_nbytes = int(self.runner.hidden_size) * DType.BF16.itemsize
+        runtime.memcpy_async(
+            int(hidden.ptr),
+            source_ptr,
+            row_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
+        self._last_target_hidden_ptr = int(hidden.ptr)
+        return True
+
     def _finalize_external_dms_prefill(
         self,
         collector: _ExternalDMSDevicePrefillCollector,
@@ -17078,6 +17138,9 @@ class Qwen35GGUFResidentSession:
         # before the compact pack so it does not coexist with the dense
         # BF16 pool and the compact destination (2026-09-07 memory review,
         # target 3). A later prefill re-acquires it lazily.
+        self._retain_published_target_hidden(
+            runtime=self.runtime or get_hip_runtime(), stream=int(stream)
+        )
         self._release_bulk_prefill_workspace()
         decisions = collector.finalize(stream=stream)
         positions = np.arange(int(tokens), dtype=np.int32)
@@ -18631,14 +18694,17 @@ class Qwen35GGUFResidentSession:
             self._device_kv_layout = layout
         page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
         configured_budget_mib = getattr(self, "kv_pool_memory_budget_mib", None)
+        pool_consumer = MemoryConsumer("kv_pool", int(capacity) * int(page_bytes))
         if configured_budget_mib is not None:
             # Explicit ceilings apply even when HIP memory telemetry is absent.
-            max_pages = int(configured_budget_mib) * 1024**2 // page_bytes
-            if max_pages < capacity:
-                raise MemoryError(
-                    "initial arena and workspace lease exceed the KV pool budget: "
-                    f"{capacity * page_bytes} > {int(configured_budget_mib) * 1024**2} bytes"
-                )
+            decision = price_memory_admission(
+                free_bytes=int(configured_budget_mib) * 1024**2,
+                consumers=(pool_consumer,),
+                reserve_bytes=0,
+            )
+            if not decision.admitted:
+                raise MemoryAdmissionRefused(decision)
+            max_pages = int(decision.available_bytes) // page_bytes
         else:
             max_pages = capacity
             mem_get_info = getattr(runtime, "mem_get_info", None)
@@ -18648,9 +18714,14 @@ class Qwen35GGUFResidentSession:
                 except Exception:
                     pass
                 else:
-                    max_pages = int(max(0, int(free_bytes) - 3 * 1024**3) // page_bytes)
-                    if max_pages < capacity:
-                        raise MemoryError("initial KV pool exceeds available memory after reserve")
+                    # One priced consumer today; the budget API is what prices the
+                    # rest as they are wired in.
+                    decision = price_memory_admission(
+                        free_bytes=int(free_bytes), consumers=(pool_consumer,)
+                    )
+                    if not decision.admitted:
+                        raise MemoryAdmissionRefused(decision)
+                    max_pages = int(max(0, decision.available_bytes) // page_bytes)
         growth_chunk_pages = max(1, min(128, max_pages - capacity))
         backing = _allocate_qwen35_gguf_kv_chunk(
             self.runner,
@@ -21899,8 +21970,9 @@ class Qwen35GGUFResidentSession:
                 layout,
                 state_indices=np.asarray(direct_state_indices, dtype=np.int64),
             )
-        if int(layout.max_live_count) >= 1024:
-            raise NotImplementedError("packed target verifier currently requires context < 1024")
+        # The packed verifier allocates its split-K workspace below this point,
+        # so a live span past the split threshold is the workspace's own case,
+        # not a reason to refuse the group.
         rows = int(layout.rows)
         if rows > int(self._bulk_prefill_scratch.rows):
             raise NotImplementedError(
@@ -26382,6 +26454,20 @@ class Qwen35GGUFResidentSession:
             stream=stream,
         )
         layout = _rebind_packed_verify_layout_pages(layout, packed_state)
+        # The row-bulk decode splits its K/V walk once a slot's live span crosses
+        # the split threshold and refuses to guess at the workspace. This path
+        # passed none, so a draft step past that threshold failed before commit
+        # and the whole group was recovered by autoregressive decoding, which
+        # looked like speculation simply stopping.
+        split_workspace = (
+            self._ensure_packed_ar_attention_workspace(
+                rows=rows,
+                max_context_len=int(layout.max_live_count),
+                runtime=runtime,
+            )
+            if int(layout.max_live_count) >= 1024
+            else None
+        )
         self._sync_packed_decode_initial_state(
             session_tuple,
             layout,
@@ -26420,7 +26506,7 @@ class Qwen35GGUFResidentSession:
             stage_timings=None,
             sync_stage_timings=False,
             stage_prefix="nextn_batch_full_attn",
-            split_workspace=None,
+            split_workspace=split_workspace,
             kv_write_only=bool(kv_write_only),
         )
         if score_output:
@@ -27983,6 +28069,10 @@ class Qwen35GGUFResidentSession:
             token = getattr(self._packed_verify_state, "private_workspace_token", None)
             if token is not None:
                 pool.release_private_workspace(token)
+            charge_pool = getattr(self._packed_verify_state, "resident_charge_pool", None)
+            charge_token = getattr(self._packed_verify_state, "resident_charge_token", None)
+            if charge_token is not None:
+                charge_pool.release_private_workspace(charge_token)
         self._packed_verify_state = None
         self._packed_verify_session_ids = ()
         self._packed_verify_max_written_positions = ()

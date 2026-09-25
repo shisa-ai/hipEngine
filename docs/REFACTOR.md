@@ -8851,15 +8851,20 @@ every one of its 162 cycles. Remove the flag and
 second protocol or host, or once a wider-group route actually beats the batch AR
 decode; until then the flag is the only way to reproduce the rejected arm.
 
-**Sampled-route finish-rule blockers (open).** The route's servable blocker set is the sampling law and nothing else
-(`temperature`, `logit_bias`, penalties, `suppress_token_ids`) plus
-`ignore_eos`. `min_tokens`, `eos_token_id`, `stop_token_ids`, and
-`stop_token_sequences` are unservable until the route implements the
-autoregressive finish rule: the cycle commit ends a row only when its last
-visible token is the row's EOS, and a stochastic accept has no
-`greedy_chain_eos_limit` bound, so a stop token or EOS can land mid-cycle.
-Moving them back to servable requires a finish-rule gate, not just the
-induced-law gate.
+**Sampled-route finish-rule blockers — resolved (2026-09-22).** The route's
+servable blocker set is the sampling law and nothing else
+(`temperature`, `logit_bias`, penalties, `suppress_token_ids`), plus the
+finish-rule relaxations the cycle commit honors: `ignore_eos`, `min_tokens`,
+`eos_token_id`, `stop_token_ids`, and `stop_token_sequences`. The commit applies
+the autoregressive finish rule to the whole verified chain through
+`hipengine/speculative/streaming.py` `limit_chain_accept_finish`, selecting the
+terminal prefix and reporting `eos` or `stop`, so a stop token or EOS that lands
+mid-cycle publishes nothing after it.
+Evidence: `benchmarks/results/2026-09-22-gfx1151-qwen38-int8-mtp-finish-rule.json`
+and `benchmarks/results/2026-09-22-gfx1151-qwen38-bf16-mtp-finish-rule.json`
+(`scripts/mtp_finish_rule_gate.py`, with `tests/test_unit_mtp_finish_rule_gate.py`
+driving each check to fail against a server that violates it).
+Source: `worklog/entries/20260922T140534.086274Z-lhl-mtp-finish-rule-c10d7c.md`.
 
 **Sampled-route debug traces (env-gated, added 2026-09-18; retained 2026-09-19).**
 `HIPENGINE_DEBUG_SAMPLED_ROUTE` gates stderr traces that name every gate on this
@@ -9056,3 +9061,40 @@ precedent), extend the dispatch predicate to the tile8 key, and update the block
 stale comment (it still describes the direct-only rows==1 condition). Until that
 screen passes, the dormancy is load-bearing and the dead branch plus the stale
 comment should be cleaned up instead.
+## Logprobs requests skip the captured-graph sampled accept (open 2026-09-23)
+
+`_device_sampled_accept_plan` in `hipengine/generation/qwen35_gguf_mtp2.py`
+declines a request that asked for logprobs. The captured graph samples and
+accepts on the device and returns no logits row to the host, so the route has
+nothing to report a published token's logprob from; the request falls to the
+eager host accept, which scores each published token against the verified row
+that predicted it. Serving the metadata is what the logprobs path requires, and
+the fallback is exact -- the gate compares it against the autoregressive route
+token for token at zero delta -- so the decline costs the graph's speed on those
+requests, not their correctness.
+
+Remove this once the graph accept can return the per-row values it selected
+from -- the top-1 candidate and its processed logprob, plus the
+retained top-k the request asked for -- for the rows it accepted. The evidence
+that would justify it is the same gate at zero delta with the decline removed
+and the execution path reporting the captured-graph accept.
+
+## Forced-token requests skip the captured-graph sampled accept (open 2026-09-23)
+
+A request with a pending forced token cannot use the captured-graph sampled
+accept, for the same reason logprobs requests cannot: the graph samples on the
+device and the route needs the row's law on the host to substitute the forced
+token for it. `supports_native_gpu_sampling` in
+`hipengine/generation/sampling.py` refuses those requests, so they take the
+eager host accept, where the override is a point mass on the forced token and
+the accept walk corrects to it. `_sampled_accept_summary` in
+`hipengine/generation/qwen35_gguf_mtp2.py` raises rather than silently sampling
+if a forced token ever reaches the native shape. The fallback is exact -- the
+gate compares both arms token for token, including the queue's position in the
+output -- so the decline costs those requests the graph's speed, not their
+correctness.
+
+Remove this once the graph accept can consume a per-row override, which needs
+the device sampler to take a row's forced token as an input the way the host
+path does. The evidence that would justify it is the same gate with the refusal
+removed and the execution path reporting the captured-graph accept.

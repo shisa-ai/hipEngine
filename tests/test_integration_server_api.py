@@ -39,6 +39,12 @@ from hipengine.generation.sampling import (
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
 )
+from hipengine.runtime.memory_admission import (
+    ADMISSION_REFUSAL_CODE,
+    MemoryAdmissionRefused,
+    MemoryConsumer,
+    price_memory_admission,
+)
 from hipengine.server import ServerConfig, create_app, render_chat_prompt
 from hipengine.server.__main__ import build_parser
 from hipengine.speculative import (
@@ -2822,6 +2828,57 @@ def test_closed_engine_service_answers_with_a_typed_unavailable_error() -> None:
     assert body["error"]["message"] == closed_message
     assert body["error"]["hipengine"]["retryable"] is True
     assert body["error"]["hipengine"]["exception_type"] == "EngineServiceClosed"
+
+
+def test_admission_refusal_answers_with_its_named_capacity_error() -> None:
+    """A pre-mutation capacity refusal is a capacity answer, not an internal fault.
+
+    The admission budget prices every resident consumer before anything is
+    allocated, so a refusal leaves the engine healthy and the same request may
+    fit once memory frees up. The refusal names the consumer that did not fit and
+    carries its own error code, so a client can tell "too large right now" from
+    "the engine cannot answer" -- and from its own malformed request.
+    """
+
+    decision = price_memory_admission(
+        free_bytes=1024**3,
+        consumers=(MemoryConsumer("kv_pool", 8 * 1024**3),),
+        reserve_bytes=0,
+    )
+    refusal = MemoryAdmissionRefused(decision)
+
+    class OverloadedFakeLLM(FakeLLM):
+        def prepare(self, *, max_sequence_length=None, sampling_params):
+            raise refusal
+
+    fake = OverloadedFakeLLM(outputs=["never served"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_completion_tokens": 4,
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.headers["content-type"].startswith("application/json")
+    body = response.json()
+    assert body["error"]["code"] == ADMISSION_REFUSAL_CODE
+    assert body["error"]["code"] != "internal_error"
+    assert body["error"]["message"] == str(refusal)
+    assert "kv_pool" in body["error"]["message"]
 
 
 def test_engine_command_timeout_answers_with_a_typed_unavailable_error() -> None:

@@ -77,6 +77,7 @@ class DMSDevicePayloadSnapshot:
     """Temporary request-owned compact journal; never a persistent dense shadow."""
 
     extents: tuple[DMSDeviceExtentSnapshot, ...]
+    live_counts: np.ndarray
 
 
 def _float32_to_bf16_bits(values: np.ndarray) -> np.ndarray:
@@ -342,6 +343,21 @@ class DMSDevicePayloadStore:
         self._split_partial_out: DeviceBuffer | None = None
         self._split_partial_m: DeviceBuffer | None = None
         self._split_partial_l: DeviceBuffer | None = None
+        # The AR route binds one row: one [kv_heads] extent plane per layer and
+        # a split workspace sized for a single row. A verifier binds several
+        # rows of the same request at once, so it needs [rows, kv_heads] planes
+        # and a workspace covering the row axis as well as the split count.
+        # The extent planes are per layer, like the persistent [kv_heads] ones,
+        # so binding one layer cannot silently redirect another. Both grow on
+        # demand and are bounded by the store's row bound.
+        self._max_rows = int(max_pack_rows)
+        self._split_rows = 0
+        self._rows_base: list[DeviceBuffer | None] = [None] * self._layers
+        self._rows_live: list[DeviceBuffer | None] = [None] * self._layers
+        self._rows_capacity = 0
+        self._rows_q: DeviceBuffer | None = None
+        self._rows_out: DeviceBuffer | None = None
+        self._rows_stage_capacity = 0
         self._closed = False
 
     def _alloc(self, nbytes: int) -> DeviceBuffer:
@@ -482,6 +498,20 @@ class DMSDevicePayloadStore:
         return int(self._split_capacity)
 
     @property
+    def split_workspace_bytes(self) -> int:
+        """Bytes allocated for the split-K partials across their three planes."""
+
+        return sum(
+            int(buffer.nbytes)
+            for buffer in (
+                self._split_partial_out,
+                self._split_partial_m,
+                self._split_partial_l,
+            )
+            if buffer is not None
+        )
+
+    @property
     def split_workspace_ptrs(self) -> tuple[int, int, int]:
         if (
             self._split_partial_out is None
@@ -608,13 +638,21 @@ class DMSDevicePayloadStore:
             **self._scale_kwargs(layer),
         )
 
-    def _ensure_split_workspace(self, score_capacity: int) -> int:
+    def _ensure_split_workspace(self, score_capacity: int, rows: int = 1) -> int:
+        rows = max(1, int(rows))
+        if rows > self._max_rows:
+            raise ValueError(
+                "DMS split workspace rows exceed the store's row bound"
+            )
         num_splits = max(
             1,
             (int(score_capacity) + self._split_chunk - 1) // self._split_chunk,
         )
-        if num_splits <= self._split_capacity:
+        if num_splits <= self._split_capacity and rows <= self._split_rows:
             return num_splits
+        # Grow, never shrink: a one-row call after a verify chain keeps the
+        # wider allocation so the binding it returned stays valid.
+        alloc_rows = max(rows, self._split_rows)
         old_buffers = (
             self._split_partial_out,
             self._split_partial_m,
@@ -629,11 +667,12 @@ class DMSDevicePayloadStore:
                 self._buffers.remove(buffer)
                 free(buffer, runtime=self._runtime)
         self._split_partial_out = self._alloc(
-            self._q_heads * num_splits * self._dim * 4
+            alloc_rows * self._q_heads * num_splits * self._dim * 4
         )
-        self._split_partial_m = self._alloc(self._q_heads * num_splits * 4)
-        self._split_partial_l = self._alloc(self._q_heads * num_splits * 4)
+        self._split_partial_m = self._alloc(alloc_rows * self._q_heads * num_splits * 4)
+        self._split_partial_l = self._alloc(alloc_rows * self._q_heads * num_splits * 4)
         self._split_capacity = num_splits
+        self._split_rows = alloc_rows
         return num_splits
 
     def attention_layer_device(
@@ -706,6 +745,220 @@ class DMSDevicePayloadStore:
             runtime=self._runtime,
             **self._scale_kwargs(layer),
         )
+
+    def _ensure_row_planes(self, rows: int) -> None:
+        """Allocate the ``[rows, kv_heads]`` extent planes on first bind.
+
+        The AR route publishes one ``[kv_heads]`` plane per layer, which is the
+        extent of its single row. The attention kernel indexes a span set as
+        ``row * kv_heads + head``, so a verifier that binds several rows of one
+        request at once needs the pair of planes that index carries, for the
+        layer being attended. A binding stays valid until a later bind grows the
+        planes; layers are independent, as they are for the persistent planes.
+        """
+
+        rows = int(rows)
+        if rows <= 0 or rows > self._max_rows:
+            raise ValueError("DMS multi-row extents exceed the store's row bound")
+        if rows <= self._rows_capacity:
+            return
+        old_buffers = [
+            buffer
+            for pair in zip(self._rows_base, self._rows_live)
+            for buffer in pair
+            if buffer is not None
+        ]
+        if old_buffers:
+            self._runtime.device_synchronize()
+            for buffer in old_buffers:
+                self._buffers.remove(buffer)
+                free(buffer, runtime=self._runtime)
+        nbytes = rows * self._heads * 4
+        self._rows_base = [self._alloc(nbytes) for _ in range(self._layers)]
+        self._rows_live = [self._alloc(nbytes) for _ in range(self._layers)]
+        self._rows_capacity = rows
+
+    def bind_row_spans(
+        self,
+        layer: int,
+        *,
+        base: np.ndarray,
+        live: np.ndarray,
+    ) -> tuple[int, int]:
+        """Publish ``[rows, kv_heads]`` extents and return their device pointers.
+
+        ``base`` and ``live`` are the DMS span set's per-(row, kv head) dense
+        extents for one layer: every row reads its own number of tokens from the
+        same per-head planes, which is the ``per_head_variable`` layout the
+        compact store already produces. Each layer keeps its own planes, so a
+        caller may bind every layer up front and then attend them in any order.
+        """
+
+        self._check_closed()
+        layer = int(layer)
+        if layer < 0 or layer >= self._layers:
+            raise ValueError("DMS multi-row binding layer is out of range")
+        self._ensure_layer(layer)
+        base_values = np.ascontiguousarray(base, dtype=np.int32)
+        live_values = np.ascontiguousarray(live, dtype=np.int32)
+        if base_values.ndim != 2 or base_values.shape != live_values.shape:
+            raise ValueError("DMS multi-row extents must be matching [rows, kv_heads]")
+        rows = int(base_values.shape[0])
+        if base_values.shape[1] != self._heads:
+            raise ValueError("DMS multi-row extents must carry one entry per kv head")
+        if rows <= 1:
+            raise ValueError("DMS multi-row binding requires more than one row")
+        if np.any(base_values < 0) or np.any(live_values < 0):
+            raise ValueError("DMS multi-row extents must be non-negative")
+        self._ensure_row_planes(rows)
+        copy_host_to_device(
+            self._rows_base[layer], host_array_ptr(base_values), base_values.nbytes
+        )
+        copy_host_to_device(
+            self._rows_live[layer], host_array_ptr(live_values), live_values.nbytes
+        )
+        return int(self._rows_base[layer].ptr), int(self._rows_live[layer].ptr)
+
+    def attention_rows_device(
+        self,
+        layer: int,
+        *,
+        q_ptr: int,
+        out_ptr: int,
+        rows: int,
+        score_capacity: int,
+        base_ptr: int | None = None,
+        live_ptr: int | None = None,
+        scale: float | None = None,
+        stream: int = 0,
+    ) -> None:
+        """Attend ``rows`` rows of one request from a bound span set.
+
+        ``base_ptr``/``live_ptr`` are ``[rows, kv_heads]`` int32 device planes;
+        when omitted the most recent :meth:`bind_row_spans` binding is used.
+        Both codecs route through their split-K leaf, which is the leaf whose
+        per-row indexing and partial-output ABI cover more than one row.
+        """
+
+        self._check_closed()
+        layer = int(layer)
+        if layer < 0 or layer >= self._layers:
+            raise ValueError("DMS device attention layer is out of range")
+        rows = int(rows)
+        if rows <= 1:
+            raise ValueError("DMS multi-row attention requires more than one row")
+        if min(int(q_ptr), int(out_ptr)) <= 0:
+            raise ValueError("DMS direct device attention requires non-null pointers")
+        self._ensure_layer(layer)
+        capacity = int(score_capacity)
+        if capacity <= 0:
+            raise ValueError("DMS direct device attention requires positive capacity")
+        if base_ptr is None or live_ptr is None:
+            bound_base = self._rows_base[layer]
+            bound_live = self._rows_live[layer]
+            if bound_base is None or bound_live is None:
+                raise ValueError("bind DMS multi-row extents before attending them")
+            if rows > self._rows_capacity:
+                raise ValueError(
+                    "DMS multi-row attention exceeds the bound extent planes"
+                )
+            base_ptr = bound_base.ptr
+            live_ptr = bound_live.ptr
+        effective_scale = float(scale) if scale is not None else float(self._dim**-0.5)
+        num_splits = self._ensure_split_workspace(capacity, rows)
+        assert self._split_partial_out is not None
+        assert self._split_partial_m is not None
+        assert self._split_partial_l is not None
+        self._attn_split_fn(
+            int(q_ptr),
+            self._k_slot[layer].ptr,
+            self._v_slot[layer].ptr,
+            int(base_ptr),
+            int(live_ptr),
+            self._split_partial_out.ptr,
+            self._split_partial_m.ptr,
+            self._split_partial_l.ptr,
+            int(out_ptr),
+            rows,
+            self._q_heads,
+            self._heads,
+            self._dim,
+            effective_scale,
+            self._split_chunk,
+            num_splits,
+            stream=int(stream),
+            library=self._library,
+            runtime=self._runtime,
+            **self._scale_kwargs(layer),
+        )
+
+    def attention_rows(
+        self,
+        layer: int,
+        *,
+        q: np.ndarray,
+        out: np.ndarray,
+        base: np.ndarray,
+        live: np.ndarray,
+        scale: float | None = None,
+        stream: int = 0,
+    ) -> None:
+        """Host-bound form of :meth:`attention_rows_device`.
+
+        ``q`` is ``[rows, q_heads, dim]`` FP32 and ``out`` is read back into the
+        same shape; ``base``/``live`` are ``[rows, kv_heads]`` int32.
+        """
+
+        self._check_closed()
+        q_values = np.ascontiguousarray(q, dtype=np.float32)
+        out_values = np.ascontiguousarray(out, dtype=np.float32)
+        rows = int(q_values.shape[0])
+        if q_values.shape != (rows, self._q_heads, self._dim):
+            raise ValueError("DMS multi-row attention expects Q [rows, q_heads, dim]")
+        if out_values.shape != q_values.shape:
+            raise ValueError("DMS multi-row attention output must match Q")
+        base_values = np.ascontiguousarray(base, dtype=np.int32)
+        live_values = np.ascontiguousarray(live, dtype=np.int32)
+        if live_values.shape != base_values.shape:
+            raise ValueError("DMS multi-row extents must be matching [rows, kv_heads]")
+        self._ensure_row_stage(rows)
+        copy_host_to_device(
+            self._rows_q, host_array_ptr(q_values), q_values.nbytes
+        )
+        base_ptr, live_ptr = self.bind_row_spans(
+            layer, base=base_values, live=live_values
+        )
+        self.attention_rows_device(
+            layer,
+            q_ptr=self._rows_q.ptr,
+            out_ptr=self._rows_out.ptr,
+            rows=rows,
+            score_capacity=max(1, int(live_values.max())),
+            base_ptr=base_ptr,
+            live_ptr=live_ptr,
+            scale=scale,
+            stream=stream,
+        )
+        copy_device_to_host(host_array_ptr(out_values), self._rows_out, out_values.nbytes)
+
+    def _ensure_row_stage(self, rows: int) -> None:
+        """Allocate ``[rows, q_heads, dim]`` Q/output staging on first host bind."""
+
+        rows = int(rows)
+        if rows <= 0 or rows > self._max_rows:
+            raise ValueError("DMS multi-row staging exceeds the store's row bound")
+        if rows <= self._rows_stage_capacity:
+            return
+        old_buffers = (self._rows_q, self._rows_out)
+        if any(buffer is not None for buffer in old_buffers):
+            self._runtime.device_synchronize()
+            for buffer in old_buffers:
+                self._buffers.remove(buffer)
+                free(buffer, runtime=self._runtime)
+        nbytes = rows * self._q_heads * self._dim * 4
+        self._rows_q = self._alloc(nbytes)
+        self._rows_out = self._alloc(nbytes)
+        self._rows_stage_capacity = rows
 
     def pack_layer(
         self,
@@ -920,7 +1173,13 @@ class DMSDevicePayloadStore:
                         v_scales=v_scales,
                     )
                 )
-        return DMSDevicePayloadSnapshot(extents=tuple(extents))
+        live_counts = np.empty((self._layers, self._heads), dtype=np.int32)
+        for layer in range(self._layers):
+            live_counts[layer] = self.live_counts(layer)
+        return DMSDevicePayloadSnapshot(
+            extents=tuple(extents),
+            live_counts=live_counts,
+        )
 
     def restore(self, snapshot: DMSDevicePayloadSnapshot) -> None:
         """Restore request-owned compact extents byte-for-byte after failure."""
@@ -930,6 +1189,9 @@ class DMSDevicePayloadStore:
             raise TypeError("DMS device restore requires DMSDevicePayloadSnapshot")
         if len(snapshot.extents) != self._layers * self._heads:
             raise ValueError("DMS device snapshot extent count mismatch")
+        live_counts = np.asarray(snapshot.live_counts)
+        if live_counts.shape != (self._layers, self._heads) or live_counts.dtype != np.int32:
+            raise ValueError("DMS device snapshot live-count shape/dtype mismatch")
         seen: set[tuple[int, int]] = set()
         all_planes = []
         for extent in snapshot.extents:
@@ -968,6 +1230,12 @@ class DMSDevicePayloadStore:
                 elif values is not None:
                     raise ValueError("BF16 DMS snapshot must not contain INT8 scales")
             all_planes.extend(planes)
+        # The live-count plane is request state as much as the payload is: the
+        # next device append cross-checks the device count against the host
+        # model, so leaving it at its post-append value fails the next cycle.
+        for layer in range(self._layers):
+            self._ensure_layer(layer)
+            all_planes.append((live_counts[layer], self._live_meta[layer], 0))
         # Validate every extent before mutating any device bytes.
         for array, destination, byte_offset in all_planes:
             contiguous = np.ascontiguousarray(array)
