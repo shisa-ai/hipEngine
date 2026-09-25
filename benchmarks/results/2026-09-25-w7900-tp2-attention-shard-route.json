@@ -1,0 +1,172 @@
+{
+ "schema": 1,
+ "kind": "tp2_attention_shard_route",
+ "status": "performance_claim",
+ "performance_claim": true,
+ "date": "2026-09-25",
+ "host": "epyc",
+ "hardware": [
+  "amdgpu card0 pci 0000:0d:00.0 AMD Radeon Pro W7900 44.98 GiB",
+  "amdgpu card1 AMD Radeon RX 7900 XTX 23.98 GiB",
+  "AMD Ryzen 9 5950X 16-Core Processor"
+ ],
+ "backend": "hip_gfx1100",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "quant": "Q4_K_M",
+ "protocol": {
+  "envelope": "scripts/tp2_prefill_schedule_failure_probe.py --teacher <tp1-d0 same-revision capture> --prompts all --steps 42 --arms <pair> --allow-host-process-drift",
+  "teacher": "recaptured at the measured revision with scripts/tp2_teacher_coverage_broad.py --sustained-arm tp1-d0 --max-sequence-length 200 --repeat-tp2 3, 3 bit-identical sweeps, identity diff empty",
+  "cell": "scripts/tp2_c1_bench.py --mode tp2 --prompt-length 512 --decode-tokens 128 --bulk-prefill --repeats 3 [--attention-shard], interleaved replicated/sharded twice in one background task",
+  "determinism": "the envelope run and a second independent pass over the same suite; compared per prompt on the KL curve (42 values) and the last row's sha256",
+  "horizon": 42,
+  "horizon_declared_by": "docs/EXECUTION-PROFILES.md 6.5"
+ },
+ "thresholds": {
+  "max_kl": 0.05,
+  "mean_kl": 0.001,
+  "p95_kl": 0.005,
+  "p99_kl": 0.02,
+  "top1_agreement": 0.99
+ },
+ "envelope": {
+  "tp2-bulk": {
+   "rows": 756,
+   "mean_kl": 8.370042328042329e-05,
+   "p95_kl": 0.000395465,
+   "p99_kl": 0.0007546820000000014,
+   "max_kl": 0.00369099,
+   "top1_agreement": 0.9947089947089947,
+   "flipped_rows": 4,
+   "prefill_route": "bulk",
+   "attention_shard": false
+  },
+  "tp2-bulk-shard": {
+   "rows": 756,
+   "mean_kl": 0.00010336607142857143,
+   "p95_kl": 0.0005082525,
+   "p99_kl": 0.0009798965000000002,
+   "max_kl": 0.0084608,
+   "top1_agreement": 0.996031746031746,
+   "flipped_rows": 3,
+   "prefill_route": "bulk",
+   "attention_shard": true
+  },
+  "tp2-serial": {
+   "rows": 756,
+   "mean_kl": 9.441562169312169e-05,
+   "p95_kl": 0.0004411275,
+   "p99_kl": 0.001029133,
+   "max_kl": 0.00495462,
+   "top1_agreement": 0.9973544973544973,
+   "flipped_rows": 2,
+   "prefill_route": "token-serial",
+   "attention_shard": false
+  },
+  "tp2-serial-shard": {
+   "rows": 756,
+   "mean_kl": 0.00011057619047619046,
+   "p95_kl": 0.000483095,
+   "p99_kl": 0.0009775540000000035,
+   "max_kl": 0.01357206,
+   "top1_agreement": 0.9973544973544973,
+   "flipped_rows": 2,
+   "prefill_route": "token-serial",
+   "attention_shard": true
+  }
+ },
+ "determinism": {
+  "passes": 2,
+  "prompts_per_arm": 18,
+  "rows_per_prompt": 42,
+  "identical_kl_curves": {
+   "tp2-bulk": "18/18",
+   "tp2-bulk-shard": "18/18"
+  },
+  "identical_last_row_hashes": {
+   "tp2-bulk": "18/18",
+   "tp2-bulk-shard": "18/18"
+  }
+ },
+ "cell": {
+  "replicated": [
+   {
+    "round": 1,
+    "prefill_tok_per_s": 982.16,
+    "decode_tok_per_s": 37.51,
+    "session_vram_gib_rank0": 15.278809,
+    "session_vram_gib_rank1": 15.278809,
+    "free_gib_rank1": 8.67041
+   },
+   {
+    "round": 2,
+    "prefill_tok_per_s": 989.8,
+    "decode_tok_per_s": 37.53,
+    "session_vram_gib_rank0": 15.278809,
+    "session_vram_gib_rank1": 15.278809,
+    "free_gib_rank1": 8.67041
+   }
+  ],
+  "sharded": [
+   {
+    "round": 1,
+    "prefill_tok_per_s": 1056.27,
+    "decode_tok_per_s": 41.55,
+    "session_vram_gib_rank0": 11.951905,
+    "session_vram_gib_rank1": 11.951905,
+    "free_gib_rank1": 11.997314
+   },
+   {
+    "round": 2,
+    "prefill_tok_per_s": 1046.27,
+    "decode_tok_per_s": 41.66,
+    "session_vram_gib_rank0": 11.951905,
+    "session_vram_gib_rank1": 11.951905,
+    "free_gib_rank1": 11.997314
+   }
+  ]
+ },
+ "cell_delta_percent": {
+  "prefill_tok_per_s": [
+   7.55,
+   5.71
+  ],
+  "decode_tok_per_s": [
+   10.77,
+   11.0
+  ],
+  "session_vram_gib_rank1": -3.327
+ },
+ "uneven_split": {
+  "fractions": "0.44/0.56",
+  "per_rank_ffn": {
+   "0": 7680,
+   "1": 9728
+  },
+  "attention_shard": true,
+  "prefill_tok_per_s": 1023.65,
+  "decode_tok_per_s": 43.44,
+  "session_vram_gib_rank0": 10.828858,
+  "session_vram_gib_rank1": 12.391358
+ },
+ "promotion": {
+  "default": "attention_shard resolves to True for mode=tp2 on the graphed schedule with reduce_mode=device",
+  "fallback": "attention_shard=False is the replicated route, one flag away and the previous default",
+  "reasons": [
+   "worst mean KL 1.11e-04 against a 1e-03 bound and worst max KL 1.36e-02 against 5e-02 on the four arms, no breaching prompt",
+   "top-1 by category 0.9940 worst on the bulk sharded arm against a 0.97 bar, and 3 flipped rows of 756 against the replicated arm's 4",
+   "bit-identical KL curves and last-row hashes on 18/18 prompts in two independent processes",
+   "control and ownership unchanged: the same rank-scoped allocation, the same device exchange, an extra slot per layer"
+  ]
+ },
+ "limits": [
+  "The profile's own status stays diagnostic_only at this horizon: the task-quality and BF16-relative gates are unqualified for the TP2 route as a whole, so this records the envelope and the route choice, not a full production qualification.",
+  "The sharded arms carry a higher KL tail than their replicated controls on both prefill routes (max 8.46e-03 and 1.36e-02 against 3.69e-03 and 4.96e-03) while flipping no additional rows. That is the shape of boundary-rounding noise at near-ties, and it is recorded rather than explained away.",
+  "The attention reduction costs 1.39 ms/layer in the bulk prefill, the same as the MLP's, and both are near this host's measured staged-collective ceiling. A batched reduction below it is the remaining lever.",
+  "Rank 0's MLP chain is 13-16 ms faster with attention sharded, reproducibly. The phase table measures it; the cause is not established."
+ ],
+ "source_artifacts": [
+  "results/2026-09-25-w7900-tp2-attention-shard-prefill-ab.json",
+  "results/2026-09-23-w7900-tp2-prefill-critical-path-attribution.json",
+  "results/2026-09-23-w7900-tp2-attention-reduce-placement-ab.json"
+ ]
+}

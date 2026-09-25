@@ -196,7 +196,7 @@ class MlpTP2GenerationSession:
         schedule: str | None = None,
         reduce_mode: str | None = None,
         head_shard: bool | None = None,
-        attention_shard: bool = False,
+        attention_shard: bool | None = None,
         bulk_prefill: bool = False,
         bulk_prefill_rows: int | None = None,
         use_wmma_prefill: bool | None = None,
@@ -283,6 +283,27 @@ class MlpTP2GenerationSession:
         # is the sharded logits head. Splitting the heads makes each rank's
         # attention output a partial, and every path that runs a layer sums it on
         # the device, so this route needs the device-side reduction.
+        if attention_shard is None:
+            # Default: a tp2 session on the captured graph schedule shards the
+            # attention heads. Measured on epyc (W7900 rank 0, RX 7900 XTX rank
+            # 1, Qwen3.8-27B Q4_K_M, 512-token prompt) against the replicated
+            # route in the same session: prefill 982-990 -> 1046-1056 tok/s,
+            # decode 37.5 -> 41.6 tok/s, and 15.28 -> 11.95 GiB per rank, because
+            # each rank then holds half the attention weights. The production
+            # envelope holds on both prefill routes (756 rows each at the
+            # declared D=42 horizon, worst mean KL 1.11e-04 against a 1e-03
+            # bound, worst max KL 1.36e-02 against 5e-02, no breaching prompt)
+            # and the route is deterministic across processes. The eager
+            # schedule cannot use it: it reduces through the host transport, so
+            # the flag is refused there, and the replicated route stays the
+            # explicit opt-out. The host-summed reduction is the same story -
+            # it is the documented transport opt-out, so the default follows the
+            # device reduction rather than making that opt-out a hard error.
+            attention_shard = (
+                self.mode == "tp2"
+                and self.schedule == "graphed"
+                and self.reduce_mode == "device"
+            )
         if attention_shard and self.mode != "tp2":
             raise ValueError("attention head sharding is tp2-only")
         if attention_shard and self.reduce_mode != "device":
