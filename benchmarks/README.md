@@ -1,6 +1,14 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-21**
+Last updated: **2026-09-25**
+
+MLPerf Edge Agentic integration diagnostic on **gfx1151 / Radeon 8060S**,
+Qwen3.6-27B Q4_K_M, production profile, BF16 KV, 32K window and concurrency 1:
+27/27 requests completed, but one empty output and invalid TPOT prevent a clean
+integration pass. No BFCL gate or decode-speed comparison is claimed.
+[Run record](mlperf-edge/README.md) ·
+[Diagnostic artifact](results/2026-09-25-gfx1151-mlperf-edge-smoke.json).
+
 
 Qwen3.8-27B Q4_K_M sampling on **zbook / Radeon 8060S (gfx1151)**:
 full-vocabulary GPU sampling achieves **11.61 decode tok/s and 9.63 engine

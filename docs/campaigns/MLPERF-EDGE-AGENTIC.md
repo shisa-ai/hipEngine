@@ -12,9 +12,13 @@ turns and pass the separate Berkeley Function Calling Leaderboard (BFCL) v4
 accuracy gate. Start with small, fixed subsets to find integration failures and
 estimate full-run cost before committing a device for hours.
 
-This is a **campaign plan, not a benchmark result**. No hipEngine MLPerf run was
-performed while drafting it. Execution starts with §4; writing this plan does
-not start or resume another optimization loop. Kernel tuning, an NVFP4 port,
+This is a **campaign plan, not a full benchmark result**. The first 27-turn
+integration attempt is recorded in
+[`benchmarks/mlperf-edge/README.md`](../../benchmarks/mlperf-edge/README.md):
+all requests completed, but an empty output and unusable TPOT prevent a clean
+integration pass. Execution continues with the diagnosed repairs, not a larger
+comparison. Writing this plan does not start or resume another optimization
+loop. Kernel tuning, an NVFP4 port,
 Windows bring-up, and an official submission are outside the initial scope.
 
 Primary model: **Qwen3.6-27B Q4_K_M GGUF**, matching the reference model and
@@ -133,7 +137,9 @@ replacement for the MLCommons runner.
 
 ## 4. Execution stages and deliverables
 
-All stages below are pending. Do not run competing servers or another GPU
+Setup and the first 27-turn diagnostic are recorded; larger stages are pending.
+The smoke found concrete output/timing failures described in the linked run
+record. Do not run competing servers or another GPU
 campaign on the selected device. Record physical host, device, memory allocation,
 power configuration, OS, ROCm/compiler, model revision and hash, tokenizer and
 chat-template hashes, server commits/dirtiness, harness pin, installed scoring
@@ -332,11 +338,12 @@ justify shrinking the official workload or disabling an implemented feature.
 
 ## 6. Initial handoff checklist
 
-- [ ] Prepare pinned Endpoints/BFCL environment and exact Qwen3.6 model/tokenizer.
-- [ ] Confirm actual reference settings and preserve the upstream config diff.
-- [ ] Create and test deterministic whole-conversation subset/config generation.
-- [ ] Verify real hipEngine HTTP tool/reasoning/token-accounting behavior.
-- [ ] Run 27-turn smoke, then the fixed 140-turn paired screen; revise the ETA.
+- [x] Prepare pinned Endpoints/BFCL environment and exact Qwen3.6 model/tokenizer.
+- [x] Confirm actual reference settings and preserve the upstream config diff.
+- [x] Create and test deterministic whole-conversation smoke/config generation.
+- [x] Verify a real hipEngine HTTP tool/reasoning/token-accounting probe.
+- [ ] Clear the output/timing failures from the completed 27-turn attempt.
+- [ ] Run the fixed 140-turn paired screen; revise the ETA.
 - [ ] Run the small BFCL diagnostic if needed, without claiming a gate pass.
 - [ ] Run full combined evaluation and same-GGUF baseline; retain both verdicts.
 - [ ] Publish qualified-by-scope local artifacts and close with findings.
