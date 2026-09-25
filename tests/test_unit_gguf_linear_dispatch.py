@@ -8124,3 +8124,132 @@ def test_q5_q6_mixed_pair_silu_route_rows1_and_declines() -> None:
 
     assert len(calls) == 0
     del calls
+
+
+def test_q4_q4_same_quant_pair_already_fused_dense_dual_route() -> None:
+    """E6 same-quant closeout: Q4_K/Q4_K is already fused at rows==1.
+
+    Fresh production probe + census adjudication (2026-09-25): the
+    ordered Q4_K/Q4_K family - 5 gate/up layers - does NOT run
+    singles+silu. The pre-existing dense-dual pair route fires on the
+    (dense_single_local32, dense_single_local32) key pair and launches
+    q4_k_t16_dense_dual_local32_silu_gemv_kernel at 4.84 launches/token
+    (~5 layer-units) in the shipped census. This test pins that
+    admission so a future route reordering cannot silently fall the
+    5 layers back to singles+silu; the registered owner is faked here
+    so the assertion never dispatches a real kernel (the original RED
+    attempt proved the route live by faulting on fake pointers - the
+    real kernel dispatched). No new route is added for this combo.
+    """
+    gate = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    gate.spec.slot_path = "layers.3.ffn_gate"
+    up = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    up.spec.slot_path = "layers.3.ffn_up"
+    pair_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_local32_bf16_bf16_out",
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def fake_pair(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    from hipengine.kernels.backends import load_backend_kernel_package
+
+    load_backend_kernel_package("hip_gfx1151")
+    register(pair_key, fake_pair, replace=True)
+    try:
+        assert launch_gguf_linear_pair_silu(
+            gate,
+            up,
+            x_ptr=100,
+            out_ptr=200,
+            rows=1,
+            in_features=5_120,
+            out_features=17_408,
+            backend="hip_gfx1151",
+            use_gemv_decode=True,
+        )
+    finally:
+        unregister(pair_key)
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert kwargs["stream"] == 0
+    del args
+
+
+def test_iq4nl_nl_same_quant_pair_silu_route_rows1_and_declines() -> None:
+    """E6 same-quant closeout: (IQ4_NL gate, IQ4_NL up) fires at rows==1.
+
+    The same-quant IQ4_NL/IQ4_NL family - 1 gate/up layer (layer 27,
+    fresh production probe). Both sides take the dense-IQ session's
+    local32 decode owner (raw layout, slot_path per side), so the route
+    gates on the session-rewritten keys exactly like E6 closeout's
+    IQ4_NL gate. Side A = A_KIND=2 (the NL single's split-K verbatim),
+    side B = B_KIND=4 (the same split-K body mirrored into side B -
+    staging only, element-for-element identical math). rows != 1
+    declines.
+    """
+    from hipengine.kernels.hip_gfx1100.quant import (
+        gguf_iq_source_mmq_prefill as iq_mmq,
+    )
+
+    gate = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_iq4_nl")
+    gate.spec.slot_path = "layers.27.ffn_gate"
+    up = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_iq4_nl")
+    up.spec.slot_path = "layers.27.ffn_up"
+    pair_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_iq4_nl+gguf_iq4_nl",
+        "iq4nl_nl_pair_silu_bf16_bf16_out",
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def fake_pair(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    from hipengine.kernels.backends import load_backend_kernel_package
+
+    load_backend_kernel_package("hip_gfx1151")
+    register(pair_key, fake_pair, replace=True)
+    try:
+        with iq_mmq.iq_dense_mmq_session(True):
+            assert launch_gguf_linear_pair_silu(
+                gate,
+                up,
+                x_ptr=100,
+                out_ptr=200,
+                rows=1,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                use_gemv_decode=True,
+            )
+            assert not launch_gguf_linear_pair_silu(
+                gate,
+                up,
+                x_ptr=100,
+                out_ptr=200,
+                rows=2,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                use_gemv_decode=True,
+            )
+    finally:
+        unregister(pair_key)
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert kwargs["stream"] == 0
+    del args

@@ -59,6 +59,29 @@ production behavior is byte-identical by construction. The third
 closeout direction, (IQ4_NL gate, Q5_K up) at 1.03-1.04x, passed its
 gate and shipped (it is not part of this entry).
 
+**E6 same-quant closeout recorded a capability gap (iteration 22):**
+(Q3_K gate, Q3_K up), 1 layer (layer 14), has no expressible entry -
+side A has no strict-Q3 instantiation (only `B_KIND=2` runs the strict
+Q3 tile, on side B), and every strict-emulation screen to date lands
+0.60-0.99x (E6b-5, E6b-7, E6 closeout), so a predicted-failing body
+was not built. Nothing ships and production is unchanged by
+construction; any artifact carrying this ordered pair hits the same
+gap. The same unit adjudicated (Q4_K, Q4_K) as **already fused** by
+the pre-existing dense-dual route (5 layers, 4.84 launches/token - no
+entry needed, admission test only) and shipped (IQ4_NL gate, IQ4_NL
+up) at 1.04x with `B_KIND=4`; neither belongs to this entry.
+
+Clearing command (Q3_K/Q3_K gap): port the strict per-row Q3_K tile
+into the pair's side A (mirror of `B_KIND==2`, e.g. `A_KIND=4`),
+instantiate `<W, GATE_IS_Q4=false, B_KIND=2, A_KIND=4>` +
+`hipengine_gguf_q3_q3_pair_silu` + wrapper + registration key
+`gguf_q3_k+gguf_q3_k`, prove bit-exact vs `q3 strict + q3 strict +
+silu_mul` at K=5120 and at (5120, 17408) rows=1, then screen
+`~/ud-e1-census/e6_closeout_screen.py` (or successor): only at
+>= 1.00x add the route block in `hipengine/runtime/gguf_linear.py`
+keyed on both sides' raw strict `gemv_bf16_bf16_out` owners at
+rows==1.
+
 Clearing command: re-run `~/ud-e1-census/e6b5_screen.py`,
 `~/ud-e1-census/e6b7_screen.py`, and
 `~/ud-e1-census/e6_closeout_screen.py` (or successors) after a

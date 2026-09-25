@@ -440,7 +440,7 @@
           "hipengine/loading/qwen35_gguf_policy.py:184",
           "hipengine/loading/qwen35_gguf_policy.py:219",
           "hipengine/runtime/qwen35_gguf_runner.py:11716",
-          "hipengine/runtime/gguf_linear.py:8005"
+          "hipengine/runtime/gguf_linear.py:8060"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -458,7 +458,7 @@
         ]
       },
       "id": "flag/HIPENGINE_C8_Q5_PLANAR_DP4A",
-      "evidence_hash": "08da5ce1e38d"
+      "evidence_hash": "d1f70aad9326"
     },
     {
       "kind": "flag",
@@ -7428,7 +7428,7 @@
         },
         "runtime_sites": [
           "hipengine/runtime/gguf_linear.py:4945",
-          "hipengine/runtime/gguf_linear.py:6917"
+          "hipengine/runtime/gguf_linear.py:6972"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -7449,7 +7449,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL",
-      "evidence_hash": "b0affbe183f3"
+      "evidence_hash": "72e078908dbe"
     },
     {
       "kind": "flag",
@@ -22061,7 +22061,7 @@
         },
         "runtime_sites": [
           "hipengine/generation/qwen4_exp_profiles.py:548",
-          "hipengine/runtime/gguf_linear.py:7766"
+          "hipengine/runtime/gguf_linear.py:7821"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -22081,7 +22081,7 @@
         ]
       },
       "id": "flag/HIPENGINE_QWEN4_EXP_MMQ_TOKEN64",
-      "evidence_hash": "b88d991e8b0c"
+      "evidence_hash": "d2843e1a4865"
     },
     {
       "kind": "flag",
@@ -23797,7 +23797,7 @@
         },
         "runtime_sites": [
           "hipengine/generation/qwen4_exp_profiles.py:536",
-          "hipengine/runtime/gguf_linear.py:7775"
+          "hipengine/runtime/gguf_linear.py:7830"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -23818,7 +23818,7 @@
         ]
       },
       "id": "flag/HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR",
-      "evidence_hash": "21d0bc5527c4"
+      "evidence_hash": "142de65b4f7b"
     },
     {
       "kind": "flag",
@@ -23834,7 +23834,7 @@
         },
         "runtime_sites": [
           "hipengine/generation/qwen4_exp_profiles.py:535",
-          "hipengine/runtime/gguf_linear.py:7784"
+          "hipengine/runtime/gguf_linear.py:7839"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -23854,7 +23854,7 @@
         ]
       },
       "id": "flag/HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4",
-      "evidence_hash": "02486db3a539"
+      "evidence_hash": "93d4578737ce"
     },
     {
       "kind": "flag",

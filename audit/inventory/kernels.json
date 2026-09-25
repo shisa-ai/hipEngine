@@ -2668,7 +2668,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".hip",
-        "lines": 1077,
+        "lines": 1149,
         "referrers": 3,
         "runtime_referrers": [],
         "test_referrers": [
@@ -2694,7 +2694,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/fused/gguf_iq4_q4_pair.hip",
-      "evidence_hash": "ea99c88f5076"
+      "evidence_hash": "2a00154d6f20"
     },
     {
       "kind": "kernel",
@@ -2704,7 +2704,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 715,
+        "lines": 783,
         "referrers": 3,
         "runtime_referrers": [],
         "test_referrers": [
@@ -2728,7 +2728,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/fused/gguf_iq4_q4_pair.py",
-      "evidence_hash": "352b5f8d461e"
+      "evidence_hash": "8a5268cf3d77"
     },
     {
       "kind": "kernel",

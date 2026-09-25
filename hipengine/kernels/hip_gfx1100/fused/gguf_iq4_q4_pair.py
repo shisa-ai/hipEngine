@@ -30,6 +30,7 @@ _SYMBOL_IQ4_Q3 = "hipengine_gguf_iq4_q3_pair_silu"
 _SYMBOL_IQ3S_IQ4 = "hipengine_gguf_iq3s_iq4_pair_silu"
 _SYMBOL_IQ4NL_Q5 = "hipengine_gguf_iq4nl_q5_pair_silu"
 _SYMBOL_Q5_Q6 = "hipengine_gguf_q5_q6_pair_silu"
+_SYMBOL_IQ4NL_NL = "hipengine_gguf_iq4nl_nl_pair_silu"
 _QUANT = "gguf_iq4_xs+gguf_q4_k_t16_v1"
 _VARIANT = "iq4_q4_pair_silu_bf16_bf16_out"
 _QUANT_Q4_GATE = "gguf_q4_k_t16_v1+gguf_iq4_xs"
@@ -632,6 +633,63 @@ def gguf_q5_q6_pair_silu_bf16_bf16_out(
         )
 
 
+def gguf_iq4nl_nl_pair_silu_bf16_bf16_out(
+    x_ptr: int,
+    winl_gate_ptr: int,
+    winl_up_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the rows==1 (IQ4_NL gate, IQ4_NL up) pair + SiLU owner.
+
+    E6 same-quant closeout family (the only remaining same-quant combo
+    without a fused owner - Q4_K/Q4_K already runs the dense-dual
+    route, Q5_K/Q5_K closed negative in E6a, Q3_K/Q3_K has no A-side
+    strict kind). The route passes gate-first (both sides IQ4_NL raw,
+    session local32 decode owners), which matches the C geometry - no
+    reorder: wa is the gate (A_KIND=2, the NL single's split-K
+    verbatim), wb the up (B_KIND=4, the same split-K body mirrored
+    into side B - staging only); GATE_IS_Q4=false takes the gate from
+    side A. Bit-exact with iq4_nl local32 single + iq4_nl local32
+    single + silu_mul.
+    """
+    if rows != 1:
+        raise ValueError("IQ4_NL/IQ4_NL pair + SiLU decode requires rows == 1")
+    if in_features <= 0 or in_features % 256:
+        raise ValueError("in_features must be a positive multiple of 256")
+    if out_features <= 0 or out_features % 16:
+        raise ValueError("out_features must be a positive multiple of 16")
+    if not all((x_ptr, winl_gate_ptr, winl_up_ptr, out_ptr)):
+        raise ValueError("IQ4_NL/IQ4_NL pair pointers must be nonzero")
+    lib = library or _default_library()
+    fn = signed_kernel_fn(lib, _SYMBOL_IQ4NL_NL, _ARGTYPES, ctypes.c_int)
+    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import _local32_waves
+
+    waves = _local32_waves(in_features, out_features)
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(winl_gate_ptr),  # geometry order already matches
+        ctypes.c_void_p(winl_up_ptr),
+        ctypes.c_void_p(out_ptr),
+        rows,
+        in_features,
+        out_features,
+        waves,
+        ctypes.c_void_p(stream),
+    )
+    if err:
+        rt = runtime or get_hip_runtime()
+        raise RuntimeError(
+            f"IQ4_NL/IQ4_NL pair + SiLU decode failed: {rt.error_string(err)}"
+        )
+
+
 def register_gguf_iq4_q4_pair_kernels(*, replace: bool = False) -> None:
     register(
         KernelKey("hip_gfx1100", "linear_pair_silu", _QUANT, _VARIANT),
@@ -708,6 +766,16 @@ def register_gguf_iq4_q4_pair_kernels(*, replace: bool = False) -> None:
             "q5_q6_pair_silu_bf16_bf16_out",
         ),
         gguf_q5_q6_pair_silu_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_pair_silu",
+            "gguf_iq4_nl+gguf_iq4_nl",
+            "iq4nl_nl_pair_silu_bf16_bf16_out",
+        ),
+        gguf_iq4nl_nl_pair_silu_bf16_bf16_out,
         replace=replace,
     )
 

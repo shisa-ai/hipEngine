@@ -6499,6 +6499,61 @@ def launch_gguf_linear_pair_silu(
             **kwargs,
         )
         return True
+    # E6 same-quant closeout (2026-09-25): (IQ4_NL gate, IQ4_NL up) -
+    # the only remaining same-quant combo without a fused owner (fresh
+    # production probe + census adjudication: Q4_K/Q4_K's 5 layers
+    # already run the pre-existing dense-dual route at 4.84
+    # launches/token, Q5_K/Q5_K closed negative 0.93x in E6a, and
+    # Q3_K/Q3_K's single layer has no A-side strict-Q3 kind - the
+    # strict-emulation class screened 0.60-0.61x in the E6 closeout
+    # unit, so it stays a recorded capability gap with a clearing
+    # command). Both sides take the dense-IQ session's local32 decode
+    # owner (raw layout, slot_path per side) - the same session keys
+    # the E6 closeout IQ4_NL gate routes on - and gate-first order
+    # matches the C geometry: side A = A_KIND=2 (the NL single's
+    # split-K verbatim), side B = B_KIND=4 (the same body mirrored
+    # into side B, staging only). Bit-exact with local32 + local32 +
+    # silu_mul. rows != 1 declines unchanged.
+    iq4nl_nl_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_iq4_nl+gguf_iq4_nl",
+        "iq4nl_nl_pair_silu_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(iq4nl_nl_pair)
+    if (
+        rows == 1
+        and dispatch_a_slot.key == iq4_nl_local32_decode
+        and dispatch_b_slot.key == iq4_nl_local32_decode
+        and in_features % 256 == 0
+        and out_features % 16 == 0
+        and is_registered(iq4nl_nl_pair)
+    ):
+        fn = resolve(
+            backend=iq4nl_nl_pair.backend,
+            layer=iq4nl_nl_pair.layer,
+            quant=iq4nl_nl_pair.quant,
+            variant=iq4nl_nl_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None if libraries is None else libraries.get(iq4nl_nl_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            # Gate first (IQ4_NL raw) already matches C geometry order;
+            # up second: the same IQ4_NL raw layout.
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
     # Q5 T16 gate/up decode dual (2026-09-10): fires only when both sides
     # dispatch to the Q5 T16 direct-GEMV decode owner at rows == 1; the
     # registered variant defaults to the bit-exact dense dual SiLU GEMV.
