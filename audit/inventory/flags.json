@@ -426,7 +426,7 @@
       "kind": "flag",
       "key": "HIPENGINE_C8_Q5_PLANAR_DP4A",
       "title": "HIPENGINE_C8_Q5_PLANAR_DP4A",
-      "location": "hipengine/loading/qwen35_gguf_materialize.py:678",
+      "location": "hipengine/loading/qwen35_gguf_policy.py:52",
       "evidence": {
         "default": "unknown",
         "sites_by_root": {
@@ -435,10 +435,10 @@
           "tests": 12
         },
         "runtime_sites": [
-          "hipengine/loading/qwen35_gguf_materialize.py:678",
           "hipengine/loading/qwen35_gguf_policy.py:52",
           "hipengine/loading/qwen35_gguf_policy.py:184",
           "hipengine/loading/qwen35_gguf_policy.py:219",
+          "hipengine/loading/qwen35_gguf_materialize.py:678",
           "hipengine/runtime/qwen35_gguf_runner.py:11716",
           "hipengine/runtime/gguf_linear.py:8060"
         ],
@@ -458,7 +458,7 @@
         ]
       },
       "id": "flag/HIPENGINE_C8_Q5_PLANAR_DP4A",
-      "evidence_hash": "d1f70aad9326"
+      "evidence_hash": "0863bc6689af"
     },
     {
       "kind": "flag",
@@ -3202,10 +3202,10 @@
           "hipengine/generation/qwen35_gguf.py:3816",
           "hipengine/loading/__init__.py:186",
           "hipengine/loading/__init__.py:317",
-          "hipengine/loading/qwen35_gguf_materialize.py:32",
-          "hipengine/loading/qwen35_gguf_materialize.py:2088",
           "hipengine/loading/qwen35_gguf_policy.py:125",
-          "hipengine/loading/qwen35_gguf_policy.py:141"
+          "hipengine/loading/qwen35_gguf_policy.py:141",
+          "hipengine/loading/qwen35_gguf_materialize.py:32",
+          "hipengine/loading/qwen35_gguf_materialize.py:2088"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -3226,7 +3226,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_DECODE_REPACK",
-      "evidence_hash": "520b4dd4ef8a"
+      "evidence_hash": "d9b6821ac62a"
     },
     {
       "kind": "flag",
@@ -3242,10 +3242,10 @@
         "runtime_sites": [
           "hipengine/loading/__init__.py:186",
           "hipengine/loading/__init__.py:317",
-          "hipengine/loading/qwen35_gguf_materialize.py:32",
-          "hipengine/loading/qwen35_gguf_materialize.py:2088",
           "hipengine/loading/qwen35_gguf_policy.py:125",
-          "hipengine/loading/qwen35_gguf_policy.py:141"
+          "hipengine/loading/qwen35_gguf_policy.py:141",
+          "hipengine/loading/qwen35_gguf_materialize.py:32",
+          "hipengine/loading/qwen35_gguf_materialize.py:2088"
         ],
         "in_refactor_ledger": false,
         "in_envs_doc": true
@@ -3267,7 +3267,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_DECODE_REPACK_ENV",
-      "evidence_hash": "5c1c128d3f3d"
+      "evidence_hash": "27db7223f2ac"
     },
     {
       "kind": "flag",

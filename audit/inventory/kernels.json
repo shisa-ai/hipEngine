@@ -2350,8 +2350,8 @@
           "hipengine/kvcache/dms_diagnostic.py",
           "hipengine/loading/qwen35_gguf.py",
           "hipengine/loading/qwen35_gguf_consumer_surface.py",
-          "hipengine/loading/qwen35_gguf_admission.py",
-          "hipengine/loading/qwen35_paro.py"
+          "hipengine/loading/qwen35_paro.py",
+          "hipengine/loading/qwen35_gguf_admission.py"
         ],
         "test_referrers": [
           "tests/_gguf_synthetic_weights.py",
@@ -2376,7 +2376,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/convert/cast.hip",
-      "evidence_hash": "1aedcc0adbb4"
+      "evidence_hash": "f594ed276b0e"
     },
     {
       "kind": "kernel",
@@ -2393,8 +2393,8 @@
           "hipengine/kvcache/dms_diagnostic.py",
           "hipengine/loading/qwen35_gguf.py",
           "hipengine/loading/qwen35_gguf_consumer_surface.py",
-          "hipengine/loading/qwen35_gguf_admission.py",
-          "hipengine/loading/qwen35_paro.py"
+          "hipengine/loading/qwen35_paro.py",
+          "hipengine/loading/qwen35_gguf_admission.py"
         ],
         "test_referrers": [
           "tests/_gguf_synthetic_weights.py",
@@ -2418,7 +2418,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/convert/cast.py",
-      "evidence_hash": "995c05be1b81"
+      "evidence_hash": "54a5eec9f4ce"
     },
     {
       "kind": "kernel",
@@ -3456,8 +3456,8 @@
         "referrers": 64,
         "runtime_referrers": [
           "hipengine/loading/qwen35_gguf_consumer_surface.py",
-          "hipengine/loading/qwen35_gguf_materialize.py",
           "hipengine/loading/qwen35_gguf_admission.py",
+          "hipengine/loading/qwen35_gguf_materialize.py",
           "hipengine/runtime/moonshine.py",
           "hipengine/runtime/qwen35_paro.py",
           "hipengine/runtime/vibevoice_qwen2_q4.py"
@@ -3485,7 +3485,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/linear/dense_gemv.hip",
-      "evidence_hash": "e185b0f048d7"
+      "evidence_hash": "b2717710d4ee"
     },
     {
       "kind": "kernel",
@@ -3499,8 +3499,8 @@
         "referrers": 64,
         "runtime_referrers": [
           "hipengine/loading/qwen35_gguf_consumer_surface.py",
-          "hipengine/loading/qwen35_gguf_materialize.py",
           "hipengine/loading/qwen35_gguf_admission.py",
+          "hipengine/loading/qwen35_gguf_materialize.py",
           "hipengine/runtime/moonshine.py",
           "hipengine/runtime/qwen35_paro.py",
           "hipengine/runtime/vibevoice_qwen2_q4.py"
@@ -3527,7 +3527,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/linear/dense_gemv.py",
-      "evidence_hash": "fa7680975fe8"
+      "evidence_hash": "8bfac1fd36a7"
     },
     {
       "kind": "kernel",
