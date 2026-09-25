@@ -1,13 +1,13 @@
 # MLPerf Edge Agentic local evaluations
 
-This directory records a **140-turn paired speed screen** and the earlier
+This directory records **140-turn engine screens** and the earlier
 27-turn integration diagnostics, not a full MLPerf result or BFCL accuracy pass.
 The campaign and comparison rules are in
 [`docs/campaigns/MLPERF-EDGE-AGENTIC.md`](../../docs/campaigns/MLPERF-EDGE-AGENTIC.md).
 The first attempt used the upstream runner unchanged. The repaired run uses
 only the coordinator-timestamp patch documented below.
 
-## Paired 140-turn screen: 2026-09-25
+## Paired 140-turn autoregressive screen: 2026-09-25
 
 **The engines have similar elapsed time in this single pass; hipEngine has a
 lower inline command-overlap score.** Both complete all 140 turns without
@@ -101,7 +101,75 @@ do not overwrite the recorded results. Run servers sequentially. Budget about
 per engine: these three correlated trajectories do not establish a reliable
 stratified prediction for the other 17. Full BFCL runtime is unmeasured.
 
-## Gufo preflight: 2026-09-25
+## Patched gufo with cross-version DFlash2: 2026-09-25
+
+**Gufo completes all 140 turns with active DFlash2 speculation.** The target is
+unchanged Qwen3.6-27B Q4_K_M on the same physical gfx1151 host as the paired
+screen. The user selected a Qwen3.8 DFlash2 Q4_K_M draft; this is a cross-version
+pairing, not a Qwen3.8 target run. Gufo uses FP16 attention KV, unlike the BF16
+KV of the earlier pair. Context, concurrency, sampling and output limits match
+the frozen screen; thinking and history preservation are explicitly off.
+
+| Metric | Patched gufo + DFlash2 |
+| --- | ---: |
+| Completed turns / valid bash calls | 140 / 141 |
+| Measured replay phase | 1,041.49 s |
+| Mean / median turn latency | 7.439 / 5.195 s |
+| Mean client-visible first output | 7.039 s |
+| Inline executable-call multiset IoU | 0.6387 |
+| Full prompt / cached tokens | 1,675,019 / 1,617,191 |
+| Prefix token reuse | 96.55% |
+| Accepted / proposed draft tokens | 2,584 / 16,369 (15.79%) |
+| Effective prefill throughput, approximate | 8,023 tok/s |
+| Server decode throughput, approximate | 12.86 tok/s |
+
+There are no empty or failed responses. Every response finishes `tool_calls`;
+all calls have parseable arguments and a nonempty `command` string. This is
+output sanity, not an accuracy pass. The inline score measures executable-name
+overlap; BFCL and numerical quality gates have not run. No tool is executed.
+The earlier hipEngine/llama.cpp results are **autoregressive baselines**, not the
+final accelerated comparison. Different outputs and KV settings, one pass and
+no gufo AR control prevent attributing the elapsed-time difference to DFlash2.
+
+**Tool output is buffered:** 132/140 first visible chunks arrive within 1 ms of
+completion. Internal first-token timestamps average 1.762 s, but they do not
+measure when the client receives tool arguments. Harness TPOT has only eight
+observations and is not a usable comparison metric for these responses.
+
+Effective prefill is `sum(full prompt tokens) / sum(prefill seconds)`, counting
+the benefit of prefix reuse. Gufo logs rates rounded to 0.1 tok/s, not exact
+prefill/decode durations. Reconstructing each duration from its token count and
+rate yields approximately 208.775 prefill seconds and 792.701 decode seconds.
+The resulting rate intervals from rounding alone are 8,021.57–8,024.63 effective
+prefill tok/s and 12.812–12.913 decode tok/s; these are not repeat-confidence
+intervals. Source inspection identifies prefill as time inside `Prefill()` and
+decode as accumulated decode-step time. Cache restoration (1.667 s total),
+admission, tokenization and snapshot work are outside those windows. Decode
+windows differ across engines; these rates are not isolated kernel comparisons.
+
+The [compatibility patch](gufo-qwen36-template.patch) removes the incorrect
+inference that the shared 64-layer/5120-hidden/248320-vocabulary dimensions imply
+a Qwen3.8 chat template. It changes no weights or kernels. Existing gufo template
+tests and two Qwen3.6 Hugging Face byte-exact tool/history rendering checks pass
+with the explicit options above; other template settings are not certified.
+The preflight completed a real streamed tool call with actual accepted proposals.
+
+[Compact artifact](../results/2026-09-25-gfx1151-gufo-dflash-edge-140.json)
+records the pinned source, patch and binary hashes, target/draft identities,
+commands, timing definitions and raw-file hashes. Raw root:
+`~/gate-runs/gufo-edge-20260925`, with `screen-140/` for the measured run and
+`preflight-dflash/` for the smoke. The draft is
+`z-lab/Qwen3.8-27B-DFlash2-GGUF@2d9571f8ce46e151f61c6499c99dee6079e1d610`.
+Apply the patch to upstream `98641a6503da2ec5d6dbb1888ddc95f8a3e13b28`, rebuild,
+then use the artifact's server command and a copied config with a fresh report
+directory. The measured runner command was:
+
+```bash
+cd ~/mlperf-edge-endpoints
+.venv/bin/inference-endpoint benchmark from-config --config "$HOME/gate-runs/gufo-edge-20260925/screen-140/config.yaml"
+```
+
+## Stock gufo failed preflight: 2026-09-25
 
 **Stock gufo does not load the comparison GGUF.** A separate clean checkout of
 [`gufo-org/gufo` at `98641a6503da2ec5d6dbb1888ddc95f8a3e13b28`](https://github.com/gufo-org/gufo/tree/98641a6503da2ec5d6dbb1888ddc95f8a3e13b28)
@@ -116,8 +184,9 @@ Qwen3.8 GGUF chat template SHA-256 is not a recognized pinned version: 55d493143
 size 5120 and vocabulary size 248320 as Qwen3.8, even without that name. It then
 requires one of two template hashes. Our Qwen3.6 file reaches that rejection.
 This is an observed loader refusal, not a finding that its tensor kernels
-cannot execute Qwen3.6. No template, model bytes or gufo source was changed to
-bypass it, and no HTTP generation, 140-turn replay or BFCL evaluation ran.
+cannot execute Qwen3.6. In this initial attempt no template, model bytes or gufo
+source was changed, and no HTTP generation, replay or BFCL evaluation ran.
+The subsequent patched run is recorded in the preceding section.
 
 The Qwen execution policy also declares FP16/FP32 attention KV, with FP16 as the
 production default; it does not offer the BF16 KV used by the paired engines.
@@ -129,10 +198,9 @@ Adding `-DCMAKE_CXX_FLAGS="-include format"` resolved it without a source patch.
 Build logs, CMake cache, executable, exact server command and loader log are in
 `~/gate-runs/gufo-edge-20260925`; the
 [worklog entry](../../worklog/entries/20260925T131432.066109Z-lhl-gufo-edge-screen-55564b.md)
-records the executable hash and reproduction command. There is **no gufo speed
-or accuracy result** from this attempt. Testing a compatibility-patched gufo or
-moving all engines to a shared Qwen3.8 artifact would be a separately labelled
-comparison, not a completion of the stock same-GGUF arm.
+records the executable hash and reproduction command. This failed stock attempt
+has no speed or accuracy result; the compatibility-patched run is a separately
+labelled comparison.
 
 ## Repaired run: 2026-09-25
 

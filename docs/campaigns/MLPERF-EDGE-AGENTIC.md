@@ -12,7 +12,7 @@ turns and pass the separate Berkeley Function Calling Leaderboard (BFCL) v4
 accuracy gate. Start with small, fixed subsets to find integration failures and
 estimate full-run cost before committing a device for hours.
 
-The **140-turn paired screen** is recorded in
+The **140-turn paired autoregressive screen** is recorded in
 [`benchmarks/mlperf-edge/README.md`](../../benchmarks/mlperf-edge/README.md).
 Both engines complete all turns; mean latency is 8.925 s for hipEngine and
 9.157 s for llama.cpp on the same gfx1151 host and Qwen3.6-27B Q4_K_M artifact.
@@ -20,7 +20,13 @@ Inline command-overlap scores are 0.5586 and 0.6420 respectively. This is one
 pass, not a stable speedup or quality-parity finding. Harness TPOT has a
 chunk-dependent tokenization defect and cannot support a decode-rate comparison.
 The earlier repaired 27-turn integration diagnostic and original failure are
-preserved. Full performance and BFCL gates have not run. Writing this plan
+preserved. A compatibility-patched gufo run with the unchanged Qwen3.6 target,
+a user-selected Qwen3.8 DFlash2 Q4_K_M draft and FP16 attention KV completes
+140/140 turns in 1,041.49 s (mean 7.439 s, inline IoU 0.6387). Actual draft
+acceptance is 15.79%; prefix token reuse is 96.55%. It buffers tool output on
+132/140 turns. The run record labels the KV and speculation differences;
+hipEngine/llama.cpp speculative reruns and the shared quality diagnostic remain
+pending. Full performance and BFCL gates have not run. Writing this plan
 does not start or resume another optimization
 loop. Kernel tuning, an NVFP4 port,
 Windows bring-up, and an official submission are outside the initial scope.
