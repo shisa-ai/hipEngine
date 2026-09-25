@@ -296,6 +296,34 @@ flags because a configuration has not been benchmarked.
   rounds in identical association order so the result stays bit-exact. Evidence
   row `2026-09-25-gemma4-26b-a4b-decode-attention-ablation.json`, worklog entry
   `20260925T194545.594823Z-lhl-gemma-4-decode-attention-ablation-cost-is-invari-cad8cd.md`.
+  *Status 2026-09-25 (iteration 21): **accepted** — the warp-per-head decode
+  kernel with a shuffle-exact 256-lane tree, selected for `head_dim == 512`. The
+  block kernel's tree spans eight warps, so every key costs a shared partial
+  row, three LDS tree rounds, a publish/broadcast pair and a barrier sequence;
+  the new kernel puts all 256 tree lanes inside one warp (lane `w` owns tree
+  lanes `[8w, 8w+8)`), turning strides 128/64/32/16/8 into shuffle lane
+  distances 16/8/4/2/1 and strides 4/2/1 into in-lane adds — same pairs, same
+  order, so it is **bit-exact** (parity suite extended with the four real
+  geometries, keys 1..8192, both dtypes) and needs no production-profile gate.
+  Measured 851-870 us vs the block kernel's 1186 us on the full geometry at
+  keys=1024 (28%), 1489 vs 2210 us at keys=2048. At `head_dim == 256` the same
+  kernel loses (822 vs 652-700 us) because one warp per (token, head) is 16
+  warps against the block kernel's 128, so the launcher keeps the block kernel
+  there; a grid-scaling run (`--tokens` 1/2/4/8/16 -> 695/1097/1093/1653/1116 us)
+  shows the machine is 16x idle and the block kernel's remaining cost is
+  per-block latency. Campaign metric **24.5903-24.6025 tok/s vs 23.1517
+  (+6.2%)** with public-path parity true; decode improved on all four rows
+  (128p 43.12 -> 44.08, 512p 31.26 -> 32.63, 4096p 12.62 -> 14.48), prefill
+  within noise, public wall improved on all four. The iteration's first
+  candidate — branchless batched tile loads — measured 910 vs 695 us and was
+  reverted. Evidence row `2026-09-25-gemma4-26b-a4b-warp-decode-accepted.json`,
+  worklog entry
+  `20260925T201309.614359Z-lhl-gemma-4-decode-attention-warp-per-head-kernel-wi-c36c82.md`.
+  Remaining in measured order: the sliding geometry still runs the block kernel
+  at ~0.6 us per key with the machine 16x idle — the next candidate is eight
+  warps per (token, head) with a strided key class per warp and the two
+  cross-warp reductions hoisted to once per launch; then the 8.0 ms/token host
+  gap from iteration 19.
 - [ ] **G4 — Integrated confirmation.** Repeat the primary paired matrix,
   correctness/heldouts and live chat/SSE; verify no hidden fallback. Re-measure
   llama.cpp and Qwen with the frozen comparison contract and report differences
