@@ -794,6 +794,16 @@ def _resolved_route(session: object) -> dict[str, object]:
         "driver": session.driver,  # type: ignore[attr-defined]
         "reduce_mode": session.reduce_mode,  # type: ignore[attr-defined]
         "head_shard": session.head_shard,  # type: ignore[attr-defined]
+        # ``head_shard`` splits the output head's vocabulary rows; the attention
+        # route is a separate decision. A gate artifact that recorded only the
+        # former could not say which attention path its arithmetic came from.
+        "attention_shard": getattr(session, "attention_shard", None),
+        # The bulk prefill candidate's two switches and the workspace it resolved:
+        # the request flag, the explicit capacity if one was pinned, and the rows
+        # actually allocated (which is what a later prompt has to fit).
+        "bulk_prefill_enabled": getattr(session, "bulk_prefill_enabled", None),
+        "bulk_prefill_rows": getattr(session, "bulk_prefill_rows", None),
+        "bulk_workspace_rows": getattr(session, "_bulk_rows", None),
         "max_sequence_length": session.max_sequence_length,  # type: ignore[attr-defined]
         "uneven_split": (
             None

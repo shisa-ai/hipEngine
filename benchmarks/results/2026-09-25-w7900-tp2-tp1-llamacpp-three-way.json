@@ -115,7 +115,7 @@
   ]
  },
  "limits": [
-  "llama-bench's pp512 projects the prompt's output rows where the hipEngine bulk route uses logits_rows=1 (the last row only), which is worth a few percent of a 384 ms prefill in llama.cpp's favour. The prefill deficit above is therefore if anything understated.",
+  "llama-bench's pp512 and this route both request only the last token's output, so the prefill comparison is like-for-like on output projection. Verified in the source at build 15995a1: llama-bench.cpp:2222 calls llama_decode(ctx, llama_batch_get_one(tokens.data(), n_tokens)), llama-bench never sets logits_all or set_embeddings, and llama-batch.cpp:120-128 then marks only the last token's output - the same logits_rows=1 shape the bulk route uses. An earlier revision of this artifact claimed llama-bench projects the prompt's output rows and that the deficit was therefore understated; that claim was wrong and is withdrawn.",
   "llama.cpp's tg128 stddev is 1.77 tok/s against our 0.10, so the decode figures are level within llama.cpp's own spread; the prefill figures are 11.84 against our 13.0 sd on a 1066 tok/s median, also level.",
   "The TP1 bulk-prefill controls are from an earlier revision; the fresh TP1 arms in this window are token-serial, which is why the token-serial-vs-token-serial ratio (1.46x / 1.20x) is the cleanest same-route TP2-vs-TP1 statement here.",
   "The second card buys llama.cpp 1.26x prefill and 1.10x decode over its own best single card, and it buys hipEngine 1.08x prefill and 1.19x decode over ours: our TP2 scales decode better and prefill worse."
@@ -123,5 +123,12 @@
  "source_artifacts": [
   "results/2026-09-20-w7900-tp2-matched-llamacpp-prefill-decode.json",
   "results/2026-09-25-w7900-tp2-attention-shard-route.json"
- ]
+ ],
+ "corrections": {
+  "date": "2026-09-25",
+  "withdrawn": [
+   "The prefill-deficit-is-understated claim described in limits[0]: llama-bench's normal prefill test requests the last token's output only, verified in the source at the build that was measured."
+  ],
+  "note": "Kept as a field rather than silently edited so a reader of the earlier revision can see what changed. No measured number in this artifact is affected: only the interpretation of the prefill comparison."
+ }
 }
