@@ -250,10 +250,14 @@ def test_kernel_launch_surface_stays_visible_to_the_audit() -> None:
         check_calls += text.count("_check_launch(") - text.count("def _check_launch(")
 
     # Recorded Packet 1 audit numbers. They may grow; they must not silently
-    # change, and the fence exists so Packet 3 sees the growth.
-    assert len(launch_modules) == 51, sorted(str(p.relative_to(root)) for p in launch_modules)
-    assert check_definitions == 31
-    assert check_calls == 452
+    # change, and the fence exists so Packet 3 sees the growth. The two modules
+    # added since the audit are the VibeVoice codec ops
+    # (``hip_gfx1100/vibevoice/{codec_ops,qwen2_ops}.py``), which launch on the
+    # ambient device like every other wrapper here and are not reachable from a
+    # rank-bound runner, so they add no device binding of their own.
+    assert len(launch_modules) == 53, sorted(str(p.relative_to(root)) for p in launch_modules)
+    assert check_definitions == 32
+    assert check_calls == 461
 
     # The wrappers themselves take a stream and no device, which is the reason
     # the thread's current device is the only thing that decides placement.
@@ -282,10 +286,20 @@ def test_distributed_package_binds_devices_through_one_mechanism() -> None:
         for banned in ("hipSetDevice(", "set_device("):
             assert banned not in text, f"{path.name} selects a device directly with {banned}"
 
-    # ``context.py`` binds a rank through ``RankRuntime.activate``; ``rccl.py``
-    # selects the rank's device around communicator calls. Both are the same
-    # primitive, which is the point: there is one mechanism, not three.
-    assert binders == {"context.py", "rccl.py"}
+    # Every module below binds a rank's device around its own rank-scoped work,
+    # and all of them use the one primitive: ``RankRuntime.activate`` for a
+    # session, communicator calls, rank-local weight allocation, per-rank
+    # reduction and staging buffers, and the TP2 driver's own buffers. The set
+    # is listed rather than counted so that a new binder has to be reviewed and
+    # added here deliberately instead of passing as one more file.
+    assert binders == {
+        "context.py",
+        "rccl.py",
+        "shard_exec.py",
+        "shard_group.py",
+        "staged.py",
+        "tp2_generate.py",
+    }
 
 
 def test_free_accepts_unattributed_and_duck_typed_buffers() -> None:
