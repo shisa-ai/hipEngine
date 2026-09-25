@@ -1355,6 +1355,14 @@ def test_gfx1151_backend_scopes_dense_down_residual_fusions() -> None:
         "gguf_q4_k_t16_v1": 4,
         "gguf_q5_k_t16_v1": 1,
         "gguf_q6_k_t16_qmicro_planar_v1": 3,
+        # E6c-2: raw dense-IQ residual siblings are rows-1 composites only.
+        "gguf_iq4_xs": 1,
+        "gguf_iq4_nl": 1,
+        "gguf_iq3_s": 1,
+        "gguf_q3_k": 1,
+        "gguf_iq3_xxs": 1,
+        "gguf_iq2_s": 1,
+        "gguf_iq2_xs": 1,
     }
     assert backend_package_capability(
         "hip_gfx1151",
@@ -1364,6 +1372,13 @@ def test_gfx1151_backend_scopes_dense_down_residual_fusions() -> None:
         "gguf_q4_k_t16_v1": 4,
         "gguf_q5_k_t16_v1": 1,
         "gguf_q6_k_t16_qmicro_planar_v1": 3,
+        "gguf_iq4_xs": 1,
+        "gguf_iq4_nl": 1,
+        "gguf_iq3_s": 1,
+        "gguf_q3_k": 1,
+        "gguf_iq3_xxs": 1,
+        "gguf_iq2_s": 1,
+        "gguf_iq2_xs": 1,
         "bf16": 512,
     }
 

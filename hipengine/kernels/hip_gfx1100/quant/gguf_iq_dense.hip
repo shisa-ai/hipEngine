@@ -1385,3 +1385,428 @@ extern "C" int hipengine_gguf_iq4_xs_t16_local32_rows_gemv(const void* x,
         default: return int(hipErrorInvalidValue);
     }
 }
+
+// ===========================================================================
+// E6c-2: raw dense-IQ rows-1 FFN-down residual composites. Each kernel below
+// is a verbatim copy of its resident parent owner -- same geometry, same
+// accumulation order, same BF16 store rounding -- with the ONLY change being
+// the output epilogue, which replays the exact standalone gguf_bf16_add_kernel
+// the runner pays per layer: round the projection to BF16 first, then FP32-add
+// the already-BF16 residual and round again (float_to_bf16_bits and bf16_store
+// are the same RNE conversion gguf_bf16_add_kernel performs). The composite
+// therefore replaces [owner, gguf_bf16_add] bit-for-bit at rows=1.
+//
+// Host validation keeps rows==1: the parents' verifier siblings (rows 2-4)
+// have no residual variant, and GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT caps
+// these quants at rows 1 so the residual path never asks for one.
+
+// IQ4_XS local32 decode owner + rounded residual. Parent:
+// gguf_iq4_xs_local32_gemv_kernel (verbatim through the cross-wave sum).
+template<int WAVES>
+__global__ __launch_bounds__(32 * WAVES, 16 / WAVES > 0 ? 16 / WAVES : 1)
+void gguf_iq4_xs_local32_residual_gemv_kernel(
+    const uint16_t* __restrict__ x, const uint8_t* __restrict__ w,
+    const uint16_t* __restrict__ residual, uint16_t* __restrict__ out,
+    int64_t K, int64_t N) {
+    constexpr int COLS = GGUF_IQ_LOCAL32_COLS;
+    const int tid = threadIdx.x;
+    const int wave = tid >> 5;
+    const int lane = tid & 31;
+    const int64_t n0 = int64_t(blockIdx.x) * COLS;
+    const int64_t blocks_per_row = K / 256;
+    const int64_t col_bytes = blocks_per_row * 136;
+
+    const int g = lane >> 2;
+    const int nib = (lane >> 1) & 1;
+    const int byteoff = 8 + g * 16 + (lane & 1) * 8;
+
+    __shared__ float s_cb[512];
+    for (int i = tid; i < 512; i += 32 * WAVES)
+        s_cb[i] = float(iq4_values[i >= 256 ? ((i & 255) >> 4) : (i & 15)]);
+    __syncthreads();
+
+    float acc[COLS];
+#pragma unroll
+    for (int t = 0; t < COLS; ++t) acc[t] = 0.0f;
+
+    for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
+        float xv[8];
+#pragma unroll
+        for (int j = 0; j < 8; ++j)
+            xv[j] = bf16_load(x[blk * 256 + lane * 8 + j]);
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) {
+            if (n0 + t >= N) break;
+            const uint8_t* b = w + (n0 + t) * col_bytes + blk * 136;
+            const uint32_t hdr = *reinterpret_cast<const uint32_t*>(b);
+            const uint32_t scl = *reinterpret_cast<const uint32_t*>(b + 4);
+            const int scale = (((scl >> (8 * (g >> 1) + 4 * (g & 1))) & 15) |
+                               (((hdr >> (16 + 2 * g)) & 3) << 4)) - 32;
+            const float s_d = half_load(b) * float(scale);
+            const uint32_t p0 = *reinterpret_cast<const uint32_t*>(b + byteoff);
+            const uint32_t p1 = *reinterpret_cast<const uint32_t*>(b + byteoff + 4);
+            const uint32_t p[2] = {p0, p1};
+#pragma unroll
+            for (int j = 0; j < 8; ++j) {
+                const int code_byte = int((p[j >> 2] >> (8 * (j & 3))) & 0xffu);
+                const float wv = s_d * s_cb[code_byte + (nib << 8)];
+                acc[t] += xv[j] * wv;
+            }
+        }
+    }
+#pragma unroll
+    for (int t = 0; t < COLS; ++t)
+        for (int delta = 16; delta; delta >>= 1)
+            acc[t] += __shfl_down(acc[t], delta);
+    __shared__ float xwave[WAVES > 1 ? WAVES : 1][COLS];
+    if (lane == 0) {
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) xwave[wave][t] = acc[t];
+    }
+    __syncthreads();
+    if (tid < COLS) {
+        const int t = tid;
+        if (n0 + t < N) {
+            float total = 0.0f;
+#pragma unroll
+            for (int wv2 = 0; wv2 < WAVES; ++wv2) total += xwave[wv2][t];
+            // Exact replay of [owner bf16 store] then gguf_bf16_add_kernel.
+            const int64_t idx = n0 + t;
+            const uint16_t down = bf16_store(total);
+            out[idx] = bf16_store(bf16_load(down) + bf16_load(residual[idx]));
+        }
+    }
+}
+
+// IQ4_NL local32 decode owner + rounded residual. Parent:
+// gguf_iq4_nl_local32_gemv_kernel (verbatim through the cross-wave sum).
+template<int WAVES>
+__global__ __launch_bounds__(32 * WAVES, 16 / WAVES > 0 ? 16 / WAVES : 1)
+void gguf_iq4_nl_local32_residual_gemv_kernel(
+    const uint16_t* __restrict__ x, const uint8_t* __restrict__ w,
+    const uint16_t* __restrict__ residual, uint16_t* __restrict__ out,
+    int64_t K, int64_t N) {
+    constexpr int COLS = GGUF_IQ_LOCAL32_COLS;
+    const int tid = threadIdx.x;
+    const int wave = tid >> 5;
+    const int lane = tid & 31;
+    const int64_t n0 = int64_t(blockIdx.x) * COLS;
+    const int64_t blocks_per_row = K / 256;
+    const int64_t col_bytes = (K / 32) * 18;
+
+    const int g = lane >> 2;
+    const int nib = (lane >> 1) & 1;
+    const int byteoff = 2 + (lane & 1) * 8;
+
+    __shared__ float s_cb[512];
+    for (int i = tid; i < 512; i += 32 * WAVES)
+        s_cb[i] = float(iq4_values[i >= 256 ? ((i & 255) >> 4) : (i & 15)]);
+    __syncthreads();
+
+    float acc[COLS];
+#pragma unroll
+    for (int t = 0; t < COLS; ++t) acc[t] = 0.0f;
+
+    for (int64_t blk = wave; blk < blocks_per_row; blk += WAVES) {
+        float xv[8];
+#pragma unroll
+        for (int j = 0; j < 8; ++j)
+            xv[j] = bf16_load(x[blk * 256 + lane * 8 + j]);
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) {
+            if (n0 + t >= N) break;
+            const uint8_t* b =
+                w + (n0 + t) * col_bytes + (blk * 8 + g) * 18;
+            const float s_d = half_load(b);
+            const uint16_t q[4] = {
+                *reinterpret_cast<const uint16_t*>(b + byteoff),
+                *reinterpret_cast<const uint16_t*>(b + byteoff + 2),
+                *reinterpret_cast<const uint16_t*>(b + byteoff + 4),
+                *reinterpret_cast<const uint16_t*>(b + byteoff + 6)};
+#pragma unroll
+            for (int j = 0; j < 8; ++j) {
+                const int code_byte = int((q[j >> 1] >> (8 * (j & 1))) & 0xffu);
+                const float wv = s_d * s_cb[code_byte + (nib << 8)];
+                acc[t] += xv[j] * wv;
+            }
+        }
+    }
+#pragma unroll
+    for (int t = 0; t < COLS; ++t)
+        for (int delta = 16; delta; delta >>= 1)
+            acc[t] += __shfl_down(acc[t], delta);
+    __shared__ float xwave[WAVES > 1 ? WAVES : 1][COLS];
+    if (lane == 0) {
+#pragma unroll
+        for (int t = 0; t < COLS; ++t) xwave[wave][t] = acc[t];
+    }
+    __syncthreads();
+    if (tid < COLS) {
+        const int t = tid;
+        if (n0 + t < N) {
+            float total = 0.0f;
+#pragma unroll
+            for (int wv2 = 0; wv2 < WAVES; ++wv2) total += xwave[wv2][t];
+            const int64_t idx = n0 + t;
+            const uint16_t down = bf16_store(total);
+            out[idx] = bf16_store(bf16_load(down) + bf16_load(residual[idx]));
+        }
+    }
+}
+
+// Strict per-row owner + rounded residual (T=8, R=1, BF16 out: the rows-1
+// decode shape the fold admits). Parent: gguf_iq_dense_strict_kernel,
+// verbatim through the serial wave-0..3 sum; only the store folds.
+template<int Q>
+__launch_bounds__(128, 16) __global__ void gguf_iq_dense_strict_residual_kernel(
+    const uint16_t* x, const uint8_t* w, const uint16_t* residual,
+    uint16_t* out, int64_t K, int64_t N, int64_t rows) {
+    constexpr int T = 8;
+    constexpr int R = 1;
+    constexpr int B = Q == 1 ? 32 : 256;
+    constexpr int S = Q == 0 ? 136 : (Q == 1 ? 18 : (Q == 4 ? 98 : (Q == 5 ? 82 : (Q == 6 ? 74 : 110))));
+    constexpr int GPB = Q == 3 ? 16 : 8;
+    constexpr int HDR = Q == 3 ? T*16 : T*8;
+    int64_t n0 = int64_t(blockIdx.x)*T, row0 = int64_t(blockIdx.y)*R;
+    const int tid = threadIdx.x;
+    const int64_t col_bytes = (K/B) * S;
+    const uint8_t* wcol[T];
+    #pragma unroll
+    for (int t=0;t<T;++t) wcol[t] = w + (n0+t)*col_bytes;
+    float acc[R][T];
+    #pragma unroll
+    for (int r=0;r<R;++r)
+        #pragma unroll
+        for (int t=0;t<T;++t) acc[r][t] = 0.0f;
+    constexpr int RB = 4;
+    __shared__ float s_d[RB][T*16];
+    __shared__ uint32_t s_aux[RB][T*8];
+    __shared__ uint8_t s_qs[RB][T*8];
+    constexpr int GRID_BYTES = Q == 2 ? 2048 : (Q == 4 ? 1024 : (Q == 6 ? 1024 : 0));
+    __shared__ uint8_t s_grid[GRID_BYTES ? GRID_BYTES : 1];
+    if constexpr (GRID_BYTES) {
+        const uint8_t* src;
+        if constexpr (Q == 2) src = iq3_grid;
+        else if constexpr (Q == 4) src = iq3_xxs_grid;
+        else src = reinterpret_cast<const uint8_t*>(IQ2_XS_GRID_PACKED);
+        for (int i = tid; i < GRID_BYTES; i += 128) s_grid[i] = src[i];
+        __syncthreads();
+    }
+    constexpr int CB_FLOATS = Q == 0 ? 512 : 0;
+    __shared__ float s_cb[CB_FLOATS ? CB_FLOATS : 1];
+    if constexpr (CB_FLOATS) {
+        for (int i = tid; i < CB_FLOATS; i += 128) {
+            const int byte = i & 255;
+            const int nib = i >= 256 ? (byte >> 4) : (byte & 15);
+            s_cb[i] = float(iq4_values[nib]);
+        }
+        __syncthreads();
+    }
+    if constexpr (Q == 1) {
+        for (int64_t k = tid; k < K; k += 128) {
+            float xv[R];
+            #pragma unroll
+            for (int r=0;r<R;++r)
+                xv[r] = row0+r < rows ? bf16_load(x[(row0+r)*K+k]) : 0.0f;
+            #pragma unroll
+            for (int t=0;t<T;++t)
+                if (n0+t < N) {
+                    const float wv = weight<Q>(wcol[t] + (k/B)*S, k%B);
+                    #pragma unroll
+                    for (int r=0;r<R;++r) acc[r][t] += xv[r] * wv;
+                }
+        }
+    } else {
+        const int64_t nblk = K / 256;
+        for (int64_t rbase = 0; rbase < nblk; rbase += RB) {
+            const int nb = int(nblk - rbase < RB ? nblk - rbase : RB);
+            for (int slot = tid; slot < nb*HDR; slot += 128) {
+                const int bi = slot / HDR, hslot = slot % HDR;
+                const int t = hslot / GPB, g = hslot % GPB;
+                if (n0+t < N) {
+                const uint8_t* b = wcol[t] + (rbase+bi)*S;
+                if constexpr (Q == 0) {
+                    int hi = int(b[2]) | (int(b[3]) << 8);
+                    int scale = (((b[4+g/2] >> (4*(g&1))) & 15) | (((hi >> (2*g)) & 3) << 4)) - 32;
+                    s_d[bi][t*16+g] = half_load(b) * float(scale);
+                } else if constexpr (Q == 4) {
+                    const uint8_t* p = b+66+4*g;
+                    uint32_t aux = uint32_t(p[0]) | (uint32_t(p[1])<<8)
+                                 | (uint32_t(p[2])<<16) | (uint32_t(p[3])<<24);
+                    s_aux[bi][t*8+g] = aux;
+                    s_d[bi][t*16+g] = (half_load(b) * (0.5f+float(aux>>28))) * 0.5f;
+                } else if constexpr (Q == 6) {
+                    int scale = b[66+g] & 15;
+                    s_d[bi][t*16+g] = (half_load(b) * (0.5f+float(scale))) * 0.25f;
+                    scale = (b[66+g] >> 4) & 15;
+                    s_d[bi][t*16+8+g] = (half_load(b) * (0.5f+float(scale))) * 0.25f;
+                } else if constexpr (Q == 5) {
+                    s_qs[bi][t*8+g] = b[66+g];
+                    int scale = b[74+g] & 15;
+                    s_d[bi][t*16+g] = (half_load(b) * (0.5f+float(scale))) * 0.25f;
+                    scale = (b[74+g] >> 4) & 15;
+                    s_d[bi][t*16+8+g] = (half_load(b) * (0.5f+float(scale))) * 0.25f;
+                } else if constexpr (Q == 2) {
+                    int scale = 1+2*((b[106+g/2] >> (4*(g&1))) & 15);
+                    s_d[bi][t*16+g] = half_load(b) * float(scale);
+                } else if constexpr (Q == 3) {
+                    int scale = ((b[96+(g&7)] >> (4*(g>>3))) & 15)
+                              | (((b[104+(g&3)] >> (2*(g>>2))) & 3) << 4);
+                    s_d[bi][t*16+g] = half_load(b+108) * float(scale-32);
+                }
+                }
+            }
+            __syncthreads();
+            for (int bi=0; bi<nb; ++bi) {
+            #pragma unroll
+            for (int h=0;h<2;++h) {
+                const int k = int(rbase+bi)*256 + h*128 + tid;
+                float xv[R];
+                #pragma unroll
+                for (int r=0;r<R;++r)
+                    xv[r] = row0+r < rows ? bf16_load(x[(row0+r)*K+k]) : 0.0f;
+                #pragma unroll
+                for (int t=0;t<T;++t) {
+                    if (n0+t < N) {
+                        const uint8_t* b = wcol[t] + (rbase+bi)*S;
+                        const int j = k & 31;
+                        const int g = (k & 255) >> 5;
+                        float wv;
+                        if constexpr (Q == 0) {
+                            const int bytev = b[8+g*16+(j&15)];
+                            wv = s_d[bi][t*16+g] * s_cb[bytev + ((j>>4) ? 256 : 0)];
+                        } else if constexpr (Q == 4) {
+                            const uint32_t aux = s_aux[bi][t*8+g];
+                            int index = b[2+g*8+j/4];
+                            int signs = iq_sign_bits((aux >> (7*(j/8))) & 127);
+                            float mag = s_d[bi][t*16+g] * float(s_grid[index*4+(j&3)]);
+                            wv = mag * ((signs & (1<<(j&7))) ? -1.0f : 1.0f);
+                        } else if constexpr (Q == 6) {
+                            const int slot = j >> 3;
+                            const uint8_t* p = b + 2 + 2*(g*4+slot);
+                            int word = int(p[0]) | (int(p[1]) << 8);
+                            int code = (reinterpret_cast<const uint16_t*>(s_grid)[word & 511] >> (2*(j&7))) & 3;
+                            float mag = s_d[bi][t*16+((j>>4)?8:0)+g] * iq2_xs_magnitude(code);
+                            wv = mag * ((iq_sign_bits(word >> 9) & (1<<(j&7))) ? -1.0f : 1.0f);
+                        } else if constexpr (Q == 5) {
+                            const int slot = j >> 3;
+                            int index = b[2+g*4+slot] | (((s_qs[bi][t*8+g] >> (2*slot)) & 3) << 8);
+                            float mag = s_d[bi][t*16+((j>>4)?8:0)+g] * float(iq2_s_grid[index*8+(j&7)]);
+                            wv = mag * ((b[34+g*4+slot] & (1<<(j&7))) ? -1.0f : 1.0f);
+                        } else if constexpr (Q == 2) {
+                            const int grid_slot = j >> 2;
+                            int index = b[2+g*8+grid_slot] | (((b[66+g] >> grid_slot)&1) << 8);
+                            float mag = s_d[bi][t*16+g] * float(s_grid[index*4+(j&3)]);
+                            wv = mag * ((b[74+g*4+j/8] & (1<<(j&7))) ? -1.0f : 1.0f);
+                        } else { // Q == 3
+                            const int kk = k & 255;
+                            int q = (b[32+(kk>>7)*32+(kk&31)] >> (2*((kk&127)>>5))) & 3;
+                            q -= (b[kk&31] & (1 << (kk>>5))) ? 0 : 4;
+                            wv = s_d[bi][t*16+(kk>>4)] * float(q);
+                        }
+                        #pragma unroll
+                        for (int r=0;r<R;++r) acc[r][t] += xv[r] * wv;
+                    }
+                }
+            }
+            }
+            __syncthreads();
+        }
+    }
+    #pragma unroll
+    for (int r=0;r<R;++r)
+        #pragma unroll
+        for (int t=0;t<T;++t)
+            for (int delta=16; delta; delta>>=1) acc[r][t] += __shfl_down(acc[r][t], delta);
+    __shared__ float sums[4][R][T];
+    if ((threadIdx.x & 31)==0)
+        #pragma unroll
+        for (int r=0;r<R;++r)
+            #pragma unroll
+            for (int t=0;t<T;++t) sums[threadIdx.x>>5][r][t] = acc[r][t];
+    __syncthreads();
+    for (int slot = threadIdx.x; slot < R*T; slot += 128) {
+        const int r = slot / T, t = slot % T;
+        if (row0+r < rows && n0+t < N) {
+            float total=0;
+            for (int i=0;i<4;++i) total += sums[i][r][t];
+            const int64_t index = (row0+r)*N + n0 + t;
+            // Exact replay of the parent's bf16 store, then gguf_bf16_add_kernel.
+            const uint16_t down = bf16_store(total);
+            out[index] = bf16_store(bf16_load(down) + bf16_load(residual[index]));
+        }
+    }
+}
+
+extern "C" int hipengine_gguf_iq4_xs_local32_gemv_residual(const void* x,
+    const void* w, const void* residual, void* out, int64_t rows, int64_t K,
+    int64_t N, int waves, void* stream) {
+    if (!x || !w || !residual || !out || rows != 1 || K <= 0 || K % 256
+        || N <= 0 || N % 8)
+        return int(hipErrorInvalidValue);
+    const dim3 grid(unsigned((N + GGUF_IQ_LOCAL32_COLS - 1) / GGUF_IQ_LOCAL32_COLS));
+    const hipStream_t s = (hipStream_t)stream;
+    const uint16_t* xp = (const uint16_t*)x;
+    const uint8_t* wp = (const uint8_t*)w;
+    const uint16_t* rp = (const uint16_t*)residual;
+    uint16_t* op = (uint16_t*)out;
+    switch (waves) {
+        case 1: gguf_iq4_xs_local32_residual_gemv_kernel<1>
+            <<<grid, 32, 0, s>>>(xp, wp, rp, op, K, N); break;
+        case 2: gguf_iq4_xs_local32_residual_gemv_kernel<2>
+            <<<grid, 64, 0, s>>>(xp, wp, rp, op, K, N); break;
+        case 4: gguf_iq4_xs_local32_residual_gemv_kernel<4>
+            <<<grid, 128, 0, s>>>(xp, wp, rp, op, K, N); break;
+        case 8: gguf_iq4_xs_local32_residual_gemv_kernel<8>
+            <<<grid, 256, 0, s>>>(xp, wp, rp, op, K, N); break;
+        default: return int(hipErrorInvalidValue);
+    }
+    return int(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq4_nl_local32_gemv_residual(const void* x,
+    const void* w, const void* residual, void* out, int64_t rows, int64_t K,
+    int64_t N, int waves, void* stream) {
+    if (!x || !w || !residual || !out || rows != 1 || K <= 0 || K % 256
+        || N <= 0 || N % 8)
+        return int(hipErrorInvalidValue);
+    const dim3 grid(unsigned((N + GGUF_IQ_LOCAL32_COLS - 1) / GGUF_IQ_LOCAL32_COLS));
+    const hipStream_t s = (hipStream_t)stream;
+    const uint16_t* xp = (const uint16_t*)x;
+    const uint8_t* wp = (const uint8_t*)w;
+    const uint16_t* rp = (const uint16_t*)residual;
+    uint16_t* op = (uint16_t*)out;
+    switch (waves) {
+        case 1: gguf_iq4_nl_local32_residual_gemv_kernel<1>
+            <<<grid, 32, 0, s>>>(xp, wp, rp, op, K, N); break;
+        case 2: gguf_iq4_nl_local32_residual_gemv_kernel<2>
+            <<<grid, 64, 0, s>>>(xp, wp, rp, op, K, N); break;
+        case 4: gguf_iq4_nl_local32_residual_gemv_kernel<4>
+            <<<grid, 128, 0, s>>>(xp, wp, rp, op, K, N); break;
+        default: return int(hipErrorInvalidValue);
+    }
+    return int(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq_dense_residual(const void* x, const void* w,
+    const void* residual, void* out, int64_t rows, int64_t K, int64_t N,
+    int quant, void* stream) {
+    if (rows != 1) return int(hipErrorInvalidValue);
+    const dim3 grid(unsigned((N + 8 - 1) / 8), 1u);
+    const hipStream_t s = (hipStream_t)stream;
+    const uint16_t* xp = (const uint16_t*)x;
+    const uint8_t* wp = (const uint8_t*)w;
+    const uint16_t* rp = (const uint16_t*)residual;
+    uint16_t* op = (uint16_t*)out;
+    switch (quant) {
+        case 0: gguf_iq_dense_strict_residual_kernel<0><<<grid, 128, 0, s>>>(xp, wp, rp, op, K, N, rows); break;
+        case 1: gguf_iq_dense_strict_residual_kernel<1><<<grid, 128, 0, s>>>(xp, wp, rp, op, K, N, rows); break;
+        case 2: gguf_iq_dense_strict_residual_kernel<2><<<grid, 128, 0, s>>>(xp, wp, rp, op, K, N, rows); break;
+        case 3: gguf_iq_dense_strict_residual_kernel<3><<<grid, 128, 0, s>>>(xp, wp, rp, op, K, N, rows); break;
+        case 4: gguf_iq_dense_strict_residual_kernel<4><<<grid, 128, 0, s>>>(xp, wp, rp, op, K, N, rows); break;
+        case 5: gguf_iq_dense_strict_residual_kernel<5><<<grid, 128, 0, s>>>(xp, wp, rp, op, K, N, rows); break;
+        case 6: gguf_iq_dense_strict_residual_kernel<6><<<grid, 128, 0, s>>>(xp, wp, rp, op, K, N, rows); break;
+        default: return int(hipErrorInvalidValue);
+    }
+    return int(hipGetLastError());
+}
