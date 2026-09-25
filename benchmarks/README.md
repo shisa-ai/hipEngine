@@ -937,14 +937,19 @@ That gate compares the bulk prefill candidate against its own serial control
 **within the TP2 route**, which is what qualifies it for promotion. It is not a
 statement that the TP2 route as a whole is numerically qualified: the separate
 cross-route check, which scores the TP2 prefill against a single-card reference,
-does **not** pass, and `scripts/tp2_bulk_prefill_diagnostic.py` reports that
-honestly as `all_passed: false`. The two gates differ in both comparator and
+still shows a gap, and `scripts/tp2_bulk_prefill_diagnostic.py` reports that
+honestly as `all_passed: false`. The two checks differ in both comparator and
 horizon - a within-route arm-vs-control comparison over 831 rows versus a
 cross-route reference comparison on a handful of prompts - so a passing
-arm-vs-control gate and a failing route gate are consistent, and the route gate
-is the unresolved blocker. Bulk prefill remains **opt-in** (`bulk_prefill=False`
-by default) for the separate reason below. The per-tensor kernel mix behind this
-route, and the largest known gap in it, are recorded in
+arm-vs-control gate and a failing cross-route diagnostic are consistent. Per
+[`docs/EXECUTION-PROFILES.md`](../docs/EXECUTION-PROFILES.md) the arm-vs-control
+comparison is the promotion bar and the cross-route reading is a diagnostic that
+describes the remaining bit-exactness gap; it is not the bar. Bulk prefill stays
+**opt-in** (`bulk_prefill=False` by default) because chunked prefill is not
+implemented, and because the 2026-09-18 pass above predates the device-side MLP
+reduction and the head-sharded attention default, so the gate is being re-run on
+the configuration that would ship. The per-tensor kernel mix behind this route,
+and the largest known gap in it, are recorded in
 [`docs/REFACTOR.md`](../docs/REFACTOR.md).
 
 **Matched llama.cpp comparison, measured 2026-09-25.** Same host, same model
@@ -963,10 +968,13 @@ repetitions, prefill and decode measured separately, all arms in one window:
 
 So prefill is **20.0% behind** llama.cpp's tensor split - about **96 ms** to
 remove from a 480 ms prefill - and decode is **level** (41.64 against 40.68, well
-inside llama.cpp's own ± 1.77 spread). The prefill figure is if anything
-understated: llama-bench's `pp512` projects the prompt's output rows where this
-route uses `logits_rows=1`, which is worth a few percent of a 384 ms prefill in
-llama.cpp's favour.
+inside llama.cpp's own ± 1.77 spread). The two engines request the same output
+projection work here: llama-bench's prompt test calls
+`llama_decode(ctx, llama_batch_get_one(...))` without a logits mask and never
+sets `logits_all`, so only the last token's output is computed - the same
+`logits_rows=1` shape this route uses. An earlier revision of this section
+claimed llama.cpp projected every prompt row and that the deficit was therefore
+understated; that claim was wrong and is withdrawn.
 
 Two results from llama.cpp's other multi-GPU modes are worth stating, because
 they are what a llama.cpp user on this pair would actually run. Its **pipeline

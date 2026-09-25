@@ -121,9 +121,11 @@ repetitions, every arm measured in one window:
 
 Prefill is **20.0% behind** the fork's tensor split (95.8 ms of a 480 ms
 prefill, against 28.3% at the 2026-09-20 recording) and decode is **level**
-(41.64 against 40.68, inside llama.cpp's own ±1.77 spread). The prefill deficit
-is if anything understated, because llama-bench's `pp512` projects the prompt's
-output rows where this route uses `logits_rows=1`. llama.cpp's pipeline split
+(41.64 against 40.68, inside llama.cpp's own ±1.77 spread). Both engines request
+the same output projection here: llama-bench's prompt test passes no logits mask
+and never sets `logits_all`, so only the last token's output is computed - the
+same `logits_rows=1` shape this route uses. An earlier revision of this section
+claimed otherwise and withdrew it. llama.cpp's pipeline split
 loses to a single card on both axes, and its row split does not load this model
 at all. The second card buys llama.cpp 1.26x prefill and 1.10x decode over its
 own best single card, and hipEngine 1.08x prefill and 1.19x decode over ours.
