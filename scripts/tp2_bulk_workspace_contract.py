@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import json
 import platform
+import shlex
 import statistics
 import subprocess
 import sys
@@ -253,6 +254,15 @@ def run_variant(
             # of the contract's answers, not a harness failure.
             pinned_ceiling = pinned if pinned is not None else capacity
             if int(length) > int(pinned_ceiling):
+                # A refusal must be a pure rejection: the workspace allocation
+                # and the session's health must be identical before and after.
+                entry["workspace_rows_before"] = int(getattr(session, "_bulk_rows", -1))
+                entry["workspace_allocation_before"] = _workspace_allocation_signature(
+                    session, devices
+                )
+                entry["session_poisoned_before"] = bool(
+                    getattr(session, "_poisoned", False)
+                )
                 refusal = _probe_capacity_refusal(
                     session, prompt, int(length), int(pinned_ceiling)
                 )
@@ -260,6 +270,9 @@ def run_variant(
                 entry["workspace_rows_after_first"] = int(getattr(session, "_bulk_rows", -1))
                 entry["workspace_allocation_after"] = _workspace_allocation_signature(
                     session, devices
+                )
+                entry["session_poisoned_after"] = bool(
+                    getattr(session, "_poisoned", False)
                 )
                 record["lengths"].append(entry)
                 print(
@@ -286,7 +299,11 @@ def run_variant(
             entry["last_row_argmax_diagnostic"] = facts["last_row_argmax_diagnostic"]
             steady: list[float] = []
             repeat_outputs: list[dict[str, Any]] = []
-            for _ in range(max(1, repeats - 1)):
+            # ``repeats`` counts the total measured calls: the first call plus
+            # ``repeats - 1`` steady-state repeats. ``--repeats 1`` therefore
+            # measures only the first call and records no repeats, matching
+            # ``evaluate_variant_checks``.
+            for _ in range(max(0, repeats - 1)):
                 started = time.perf_counter()
                 logits = session.bulk_prefill(prompt, logits_rows=1)
                 steady.append(time.perf_counter() - started)
@@ -416,6 +433,22 @@ def evaluate_variant_checks(
             and bool(r["refused_over_pinned_capacity"].get("capacity_refusal"))
             for r in refusals
         ),
+        "refusals_preserve_workspace_rows": all(
+            r.get("workspace_rows_before") is not None
+            and int(r["workspace_rows_before"]) == int(r["workspace_rows_after_first"])
+            for r in refusals
+        ),
+        "refusals_preserve_workspace_allocation": all(
+            bool(r.get("workspace_allocation_before"))
+            and r.get("workspace_allocation_before")
+            == r.get("workspace_allocation_after")
+            for r in refusals
+        ),
+        "refusals_leave_session_healthy": all(
+            r.get("session_poisoned_before") is False
+            and r.get("session_poisoned_after") is False
+            for r in refusals
+        ),
         "refused_lengths_match_expected": refused_lengths == expected_refusal_lengths,
         "refused_lengths": refused_lengths,
         "lengths_run": [int(e["length"]) for e in entries],
@@ -468,6 +501,17 @@ def _git_source_state() -> dict[str, Any]:
     }
 
 
+def _exact_command(argv: list[str] | None) -> str:
+    """Shell-safe invocation, honoring an explicit ``main(argv)``.
+
+    ``main`` can be called with a supplied argument list (tests do), so the
+    recorded command must come from that list rather than ``sys.argv``.
+    """
+
+    raw = list(argv) if argv is not None else sys.argv[1:]
+    return shlex.join([sys.executable, str(Path(__file__).resolve()), *raw])
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
@@ -479,7 +523,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--devices", default="0,1")
     parser.add_argument("--decode-tokens", type=int, default=2)
-    parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument(
+        "--repeats",
+        type=int,
+        default=3,
+        help="total measured calls per length: first call plus repeats-1 steady-state repeats",
+    )
     parser.add_argument("--token-id", type=int, default=DEFAULT_TOKEN_ID)
     parser.add_argument(
         "--variants",
@@ -514,7 +563,7 @@ def main(argv: list[str] | None = None) -> int:
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "host": platform.node(),
         "model": str(args.model),
-        "exact_command": " ".join(sys.argv),
+        "exact_command": _exact_command(argv),
         "oracle_scope": ORACLE_SCOPE,
         "devices": list(devices),
         "lengths": list(args.lengths),

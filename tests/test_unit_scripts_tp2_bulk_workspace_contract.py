@@ -139,9 +139,32 @@ def _valid_prompt_sized(*, repeats: int = 3, decode_tokens: int = 2) -> dict:
     }
 
 
-def _refusal(length: int, capacity: int, *, raised: bool = True, capacity_refusal: bool = True) -> dict:
+def _refusal(
+    length: int,
+    capacity: int,
+    *,
+    raised: bool = True,
+    capacity_refusal: bool = True,
+    rows_before: int | None = None,
+    rows_after: int | None = None,
+    alloc_before: dict | None = None,
+    alloc_after: dict | None = None,
+    poisoned_before: bool = False,
+    poisoned_after: bool = False,
+) -> dict:
+    if rows_before is None:
+        rows_before = capacity
+    if rows_after is None:
+        rows_after = rows_before
+    if alloc_before is None:
+        alloc_before = _alloc(1)
+    if alloc_after is None:
+        alloc_after = alloc_before
     return {
         "length": length,
+        "workspace_rows_before": rows_before,
+        "workspace_allocation_before": alloc_before,
+        "session_poisoned_before": poisoned_before,
         "refused_over_pinned_capacity": {
             "raised": raised,
             "type": "ValueError",
@@ -153,8 +176,9 @@ def _refusal(length: int, capacity: int, *, raised: bool = True, capacity_refusa
             "expected_capacity": capacity,
             "capacity_refusal": capacity_refusal,
         },
-        "workspace_rows_after_first": capacity,
-        "workspace_allocation_after": _alloc(1),
+        "workspace_rows_after_first": rows_after,
+        "workspace_allocation_after": alloc_after,
+        "session_poisoned_after": poisoned_after,
     }
 
 
@@ -392,6 +416,43 @@ def test_wrong_refusal_message_fails() -> None:
     assert _all_passed(record) is False
 
 
+def test_refusal_that_grew_workspace_fails() -> None:
+    record = _valid_pinned_512()
+    record["lengths"][4]["workspace_rows_after_first"] = 2048
+    checks = _checks(record)
+    assert checks["refusals_preserve_workspace_rows"] is False
+    assert _all_passed(record) is False
+
+
+def test_refusal_that_reallocated_workspace_fails() -> None:
+    record = _valid_pinned_512()
+    record["lengths"][4]["workspace_allocation_after"] = _alloc(99)
+    checks = _checks(record)
+    assert checks["refusals_preserve_workspace_allocation"] is False
+    assert _all_passed(record) is False
+
+
+def test_refusal_that_poisoned_session_fails() -> None:
+    record = _valid_pinned_512()
+    record["lengths"][5]["session_poisoned_after"] = True
+    checks = _checks(record)
+    assert checks["refusals_leave_session_healthy"] is False
+    assert _all_passed(record) is False
+
+
+def test_refusal_missing_state_evidence_fails_closed() -> None:
+    record = _valid_pinned_512()
+    refusal = record["lengths"][4]
+    del refusal["workspace_rows_before"]
+    del refusal["workspace_allocation_before"]
+    del refusal["session_poisoned_before"]
+    checks = _checks(record)
+    assert checks["refusals_preserve_workspace_rows"] is False
+    assert checks["refusals_preserve_workspace_allocation"] is False
+    assert checks["refusals_leave_session_healthy"] is False
+    assert _all_passed(record) is False
+
+
 def test_missing_expected_refusal_fails() -> None:
     record = _valid_pinned_512()
     # The 1024 prompt should have been refused; recording it as a successful
@@ -460,8 +521,190 @@ def test_argmax_is_not_a_correctness_check() -> None:
     assert "no numerical" in contract.ORACLE_SCOPE
 
 
+def test_exact_command_uses_supplied_argv() -> None:
+    import shlex
+
+    command = contract._exact_command(["--repeats", "1", "--variants", "prompt-sized"])
+    assert shlex.split(command) == [
+        sys.executable,
+        str(SCRIPT.resolve()),
+        "--repeats",
+        "1",
+        "--variants",
+        "prompt-sized",
+    ]
+
+
+def test_main_records_the_supplied_argv() -> None:
+    source = SCRIPT.read_text()
+    assert "_exact_command(argv)" in source
+
+
 def test_capacity_refusal_handler_does_not_catch_bare_exception() -> None:
     source = SCRIPT.read_text()
     body = source.split("def _probe_capacity_refusal", 1)[1].split("\ndef ", 1)[0]
     assert "except ValueError" in body
     assert "except Exception" not in body
+
+
+# -- fake-session integration over run_variant --------------------------------
+
+
+class _FakeGeneration:
+    def __init__(self, decode_tokens: int) -> None:
+        from types import SimpleNamespace
+
+        self.step_traces = [SimpleNamespace(kind="prefill", total_s=0.001)]
+        for _ in range(decode_tokens):
+            self.step_traces.append(SimpleNamespace(kind="decode", total_s=0.001))
+        self.token_ids = tuple(range(1, decode_tokens + 1))
+
+
+class _RecordingSession:
+    """Minimal bulk-prefill session good enough to drive ``run_variant``.
+
+    It models the one behaviour the harness cares about: the workspace grows to
+    the largest prompt seen and is otherwise left alone, and an over-capacity
+    prompt raises the exact ``ValueError`` without touching it.
+    """
+
+    instances: list["_RecordingSession"] = []
+
+    def __init__(
+        self,
+        model,
+        *,
+        devices=(0, 1),
+        mode="tp2",
+        max_sequence_length=0,
+        bulk_prefill=True,
+        bulk_prefill_rows=None,
+    ) -> None:
+        self.devices = tuple(devices)
+        self.capacity = (
+            int(bulk_prefill_rows)
+            if bulk_prefill_rows is not None
+            else int(max_sequence_length)
+        )
+        self._bulk_rows = 0
+        self._bulk_hidden: dict = {}
+        self._bulk_logits_buf: dict = {}
+        self._poisoned = False
+        self.calls = 0
+        self.closed = False
+        _RecordingSession.instances.append(self)
+
+    def _allocate(self, rows: int) -> None:
+        from types import SimpleNamespace
+
+        for device in self.devices:
+            self._bulk_hidden[device] = (1000 + rows, 2000 + rows)
+            self._bulk_logits_buf[device] = SimpleNamespace(ptr=3000 + rows)
+        self._bulk_rows = rows
+
+    def bulk_prefill(self, token_ids, *, logits_rows=1):
+        self.calls += 1
+        rows = len(token_ids)
+        if rows > self.capacity:
+            raise ValueError(
+                f"prompt of {rows} tokens exceeds the bulk prefill capacity "
+                f"{self.capacity}; chunked bulk prefill is not implemented"
+            )
+        if self._bulk_rows < rows:
+            self._allocate(rows)
+        return [[0.0] * 8 for _ in range(int(logits_rows or 1))]
+
+    def generate(self, prompt_token_ids, *, max_new_tokens=32):
+        return _FakeGeneration(int(max_new_tokens))
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _null_scoped(*args, **kwargs):
+    from contextlib import nullcontext
+
+    return nullcontext()
+
+
+def _fake_runtime():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(mem_get_info=lambda: (0, 1))
+
+
+@pytest.fixture(autouse=True)
+def _reset_fake_sessions():
+    _RecordingSession.instances.clear()
+    yield
+    _RecordingSession.instances.clear()
+
+
+def _patch_session(monkeypatch):
+    import hipengine.distributed.tp2_generate as tp2_generate
+
+    monkeypatch.setattr(tp2_generate, "MlpTP2GenerationSession", _RecordingSession)
+
+
+def test_run_variant_repeats_one_measures_only_the_first_call(monkeypatch) -> None:
+    """``--repeats 1`` must record zero repeats, not one extra measured call."""
+
+    _patch_session(monkeypatch)
+    record = contract.run_variant(
+        model=Path("unused.gguf"),
+        devices=(0, 1),
+        lengths=[4],
+        decode_tokens=2,
+        repeats=1,
+        token_id=1,
+        variant="prompt-sized",
+        capacity=16,
+        scoped=_null_scoped,
+        runtime=_fake_runtime(),
+    )
+    # One warmup plus the first call and the revisit; no repeat call.
+    assert _RecordingSession.instances[-1].calls == 3
+    entry = record["lengths"][0]
+    assert entry["repeat_outputs"] == []
+    assert entry["steady_samples_s"] == []
+    assert entry["steady_median_s"] is None
+    checks = contract.evaluate_variant_checks(
+        record, decode_tokens=2, repeats=1, capacity=16
+    )
+    assert checks["every_repeat_output_finite_and_shaped"] is True
+    assert all(value for value in checks.values() if isinstance(value, bool))
+
+
+def test_run_variant_refusal_preserves_allocation_and_health(monkeypatch) -> None:
+    """An over-pinned prompt must leave rows, pointers, and health unchanged."""
+
+    _patch_session(monkeypatch)
+    record = contract.run_variant(
+        model=Path("unused.gguf"),
+        devices=(0, 1),
+        lengths=[4, 600],
+        decode_tokens=2,
+        repeats=2,
+        token_id=1,
+        variant="pinned-512",
+        capacity=1024,
+        scoped=_null_scoped,
+        runtime=_fake_runtime(),
+    )
+    session = _RecordingSession.instances[-1]
+    assert session._poisoned is False
+    refusal = next(
+        e for e in record["lengths"] if "refused_over_pinned_capacity" in e
+    )
+    assert refusal["refused_over_pinned_capacity"]["capacity_refusal"] is True
+    assert refusal["workspace_rows_before"] == refusal["workspace_rows_after_first"]
+    assert (
+        refusal["workspace_allocation_before"]
+        == refusal["workspace_allocation_after"]
+    )
+    assert refusal["session_poisoned_before"] is False
+    assert refusal["session_poisoned_after"] is False
+    checks = contract.evaluate_variant_checks(
+        record, decode_tokens=2, repeats=2, capacity=1024
+    )
+    assert all(value for value in checks.values() if isinstance(value, bool))
