@@ -62,18 +62,37 @@ class ShardWeightAllocation:
         self.nbytes = int(payload.nbytes)
         self._device = int(device)
         self._runtime = runtime
+        self._freed = False
         with scoped_current_device(runtime, device):
             self.buffer = int(runtime.malloc(self.nbytes))
-        self._host = np.ascontiguousarray(payload)
-        copy_host_to_device(
-            _DeviceBufferProxy(self.buffer, self.nbytes, device),
-            self._host.ctypes.data,
-            self.nbytes,
-            runtime=runtime,
-        )
+        try:
+            self._host = np.ascontiguousarray(payload)
+            copy_host_to_device(
+                _DeviceBufferProxy(self.buffer, self.nbytes, device),
+                self._host.ctypes.data,
+                self.nbytes,
+                runtime=runtime,
+            )
+        except BaseException:
+            # The buffer was acquired before the copy; a failed upload must not
+            # strand it. ``free`` marks the allocation released so the caller's
+            # own cleanup cannot free it a second time.
+            self.free()
+            raise
         self.tensor = _TensorProxy(self.buffer, payload.shape)
 
     def free(self) -> None:
+        """Release this allocation once, on the device that owns it.
+
+        Idempotent: the same allocation can be reached through both the
+        resident weight map's free traversal and the session's explicit
+        uploaded-shard cleanup, and exactly one of those must actually call
+        ``free``.
+        """
+
+        if self._freed:
+            return
+        self._freed = True
         with scoped_current_device(self._runtime, self._device):
             self._runtime.free(self.buffer)
 
@@ -105,6 +124,21 @@ class ShardWeight:
         if name is not None and name != self._allocation.name:
             raise KeyError(f"shard weight has allocation {self._allocation.name!r}, not {name!r}")
         return self._allocation
+
+    def free(self, *, runtime: Any | None = None) -> None:
+        """Release this shard's allocation, exactly once.
+
+        The resident weight map's ``free`` traversal calls ``weight.free`` on
+        every weight it holds, and a head-sharded rank's map holds these
+        stand-ins. Without this method that traversal raised ``AttributeError``
+        partway through, which ``MlpTP2GenerationSession.close`` swallowed and
+        which left every weight after the failing one unreleased. The method is
+        idempotent at the allocation, so the session's own uploaded-shard
+        cleanup can also reach the same weight without a double free.
+        """
+
+        del runtime  # the allocation owns its device scope
+        self._allocation.free()
 
 
 def upload_shard_weight(
