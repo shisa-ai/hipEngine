@@ -1494,6 +1494,57 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 83: the MMQ d4x3 chain is bit-identical and 1.5-2.25x on this
+  model's dense shapes.** Iteration 82 found the dp4a owners registered but
+  unadmitted; this measures the admission contract's ``min_rows`` crossover and
+  tests the exactness claim instead of assuming it.
+
+  **The dense line's real shapes.** Wrapping ``gemma4_project`` for a 1024-token
+  prefill gives the shape census. Prefill runs in 512-row chunks with a 64-row
+  tail, every dense projection is ``gguf_q8_0``, and seven shapes carry about
+  88% of the line: (2816, 2112) 130.2 ms, (2816, 2048) 101.9, (4096, 2816)
+  98.8, (2816, 4096) 98.6, (2112, 2816) 67.6, (8192, 2816) 38.7, (2816, 8192)
+  38.3. That is the target list, and it is why the Qwen policy's
+  ``max_out_features=8192`` fits here too.
+
+  **Crossover, measured with the full chain timed (quantize, MMQ, sparse
+  correction) against the exact tile16x4 owner, and bit-compared:**
+
+  | shape | rows | exact ms | chain ms | speedup | differing elements |
+  | --- | ---: | ---: | ---: | ---: | ---: |
+  | 4096, 2816 | 512 | 2.026 | 0.990 | **2.05x** | 18 |
+  | 2816, 4096 | 512 | 2.135 | 1.228 | **1.74x** | 0 |
+  | 8192, 2816 | 512 | 4.051 | 1.800 | **2.25x** | 162 |
+  | 2816, 4096 | 64 | 0.272 | 0.498 | 0.55x | 0 |
+  | 8192, 2816 | 64 | 0.552 | 1.225 | 0.45x | 19 |
+
+  (the 1e-5 rows above; at ``risk_threshold=1e-4`` every row repairs and the
+  differing count is 0 at 1.47x-2.00x.)
+
+  **``risk_threshold`` is the exactness knob, and that is the finding.** The
+  guard estimates each row's drift and queues the ones it thinks will exceed the
+  threshold; the sparse correction then recomputes exactly those rows. At
+  ``1e-5`` the estimate misses a few rows -- 18 to 162 elements of 1.4 million
+  differ from the exact owner -- and at ``1e-4`` it misses none. So the chain is
+  exact at 1e-4 and merely close at 1e-5, which is a different claim than "d4x3
+  is the exact chain": it is exact *at a threshold*, and the threshold is
+  per-model data, not a constant to inherit. An earlier run in this iteration
+  passed ``inf`` and measured 0.13x, because flagging every row turns the
+  "sparse" correction into a full recompute -- the guard's cost is only
+  meaningful against a realistic threshold.
+
+  **Eligibility.** ``2112`` is not a multiple of 128, so ``(2112, 2816)`` -- 10%
+  of the dense line, 67.6 ms -- cannot use this path at all. That is a capability
+  miss in the d4 packing, not an admission gate, and it needs either a 32-wide
+  variant or a retained exact owner for that shape.
+
+  **Shape of the win.** The eligible shapes at 512 rows carry about 507 ms of
+  the dense line; at 1.7x that is roughly 200 ms, about 11% of prefill, and it
+  is bit-identical rather than reassociated. The MMQ owners are registered at
+  layer ``linear`` only, so the MoE grouped owners (49% of prefill) have no
+  dp4a route today and are the larger prize if the same chain can be built for
+  ``moe_grouped_dual``.
+
   **Iteration 82: the arithmetic route is already in the tree, unwired for
   this model.** Iteration 81 concluded the dense Q8_0 line is limited by
   instruction throughput -- a dequant step per weight on top of the FMA that
