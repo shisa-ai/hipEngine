@@ -17,18 +17,30 @@ an expert's whole weight matrix once per row. Every other prefill cost is under
 
 Projecting those rows through a grouped family that reads each expert's weight
 row once and reuses it across the expert's rows is **bit-exact** where the quant
-key registers such a family, and takes 2048-prompt prefill from 39.82 to 48.57
-tok/s (+22.0%) with decode and the generated tokens unchanged. The `Q4_K`
-gate/up is the larger half of the budget and has no bit-exact grouped family, so
-it keeps the per-row pass; routing it through the row-batched WMMA prefill
-reaches 111.43 tok/s (2.807x) but fails the binding production `kl_max` limit at
-0.167959 on 2 of 1023 teacher-forced rows. Both outcomes are recorded:
-`benchmarks/results/2026-09-27-gemma4-moe-prefill-grouped-accepted.json` and
-`.../2026-09-27-gemma4-moe-prefill-wmma-rowslice-rejected.json`. The named
-follow-up is a single-output weight-reusing `Q4_K` expert prefill kernel whose
-per-row reduction reproduces `gguf_q4_k_selected_prefill_out_kernel`'s
-`reduce_block_sum()` association, which would move the remaining 53.4% onto the
-same free footing.
+key registers such a family: the grouped kernel reproduces the selected path's
+own per-row association, so the route moves launch geometry and nothing else.
+Both halves of the budget now have one — `Q5_1` down first (2048-prompt prefill
+39.82 to 48.57 tok/s, +22.0%) and then `Q4_K` gate/up, whose selected prefill
+reduces 128 lanes with `reduce_block_sum()` and is therefore reproduced at the
+same 128-thread k-stride. Paired on one tree in one session with the kernel
+files the only difference between arms, the second unit takes 512/128 prefill
+from 55.34 to 92.57 tok/s (+67.3%, public wall 15.340 to 11.597 s) and 2048/8
+from 48.84 to 75.17 tok/s (+53.9%, public wall 42.418 to 27.684 s), with decode
+and the generated tokens unchanged in every arm. Against the campaign's pre-loop
+prefill on this host the two units together are 1.89x at 2048/8 and 2.10x at
+512/128.
+
+58 of the 60 expert projections per prefill block now take the grouped route.
+The two that do not are layer 29's `Q5_K` gate/up and `Q8_0` down, which have no
+grouped family with a bf16-activation ABI in this tree. Routing the `Q4_K`
+gate/up through the row-batched WMMA prefill instead reaches 111.43 tok/s
+(2.807x) but fails the binding production `kl_max` limit at 0.167959 on 2 of
+1023 teacher-forced rows, so that path is rejected and removed. All three
+outcomes are recorded:
+`benchmarks/results/2026-09-27-gemma4-moe-prefill-grouped-accepted.json`,
+`.../2026-09-27-gemma4-moe-prefill-q4k-grouped-accepted.json` and
+`.../2026-09-27-gemma4-moe-prefill-wmma-rowslice-rejected.json`. Decode is now
+the larger half of this shape's wall time (6.02 s of 11.60 s at 512/128).
 
 This is a gfx1151 measurement and does not qualify or change any gfx1100 row;
 the two backends share the gfx11 source lineage, so the attribution is expected

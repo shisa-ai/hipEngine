@@ -358,6 +358,97 @@ __global__ void gguf_q4_k_selected_prefill_out_kernel(
   }
 }
 
+// Grouped variant of gguf_q4_k_selected_prefill_out_kernel: one block per
+// (expert, out_col) instead of one per (out_col, row).
+//
+// The per-row kernel launches out_features * rows blocks, and a prefill block's
+// compact rows are spread over a handful of experts, so each expert's weight
+// row is re-dequantized once per row that selected it. This kernel walks the
+// expert's own compact rows in batches of ROW_BATCH, dequantizing each weight
+// element once per column and reusing it across the batch's rows; activations
+// stay in L1/L2. That is the same reuse the Q5_1 grouped family does for the
+// down projection, applied to the Q4_K gate/up.
+//
+// Numerics: each row's k-iteration order (k = threadIdx.x, threadIdx.x +
+// blockDim.x, ...) and its within-wave shfl reduction are the per-row kernel's,
+// and the cross-wave sum walks waves 0..waves-1 in the same order, so every
+// output is bit-identical to gguf_q4_k_selected_prefill_out_kernel at the same
+// block size. The k-stride is the block size, so the launcher must pass the
+// block size the selected path uses.
+template <int ROW_BATCH>
+__launch_bounds__(128, 2)
+__global__ void gguf_q4_k_selected_grouped_prefill_out_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int compact_rows,
+    int num_experts,
+    int in_features,
+    int out_features) {
+  const int out_col = blockIdx.x;
+  const int expert = blockIdx.y;
+  if (out_col >= out_features || expert >= num_experts) return;
+
+  const int start = static_cast<int>(expert_start[expert]);
+  const int end = static_cast<int>(expert_start[expert + 1]);
+  if (start < 0 || end > compact_rows || start >= end) return;
+
+  const int row_bytes = (in_features / QK_K) * Q4_K_BLOCK_BYTES;
+  const uint8_t* __restrict__ weight_row =
+      qweight + (static_cast<int64_t>(expert) * out_features + out_col) * row_bytes;
+  const int lane = threadIdx.x & 31;
+  const int wave = threadIdx.x >> 5;
+  const int waves = blockDim.x >> 5;
+  __shared__ float wave_sums[8][ROW_BATCH];
+
+  for (int base = start; base < end; base += ROW_BATCH) {
+    float value[ROW_BATCH];
+#pragma unroll
+    for (int r = 0; r < ROW_BATCH; ++r) {
+      value[r] = 0.0f;
+    }
+    for (int k = threadIdx.x; k < in_features; k += blockDim.x) {
+      const float wv = gguf_q4_k_weight(weight_row, k);
+#pragma unroll
+      for (int r = 0; r < ROW_BATCH; ++r) {
+        const int row = base + r;
+        if (row < end) {
+          value[r] += scalar_to_float<uint16_t>(
+              x[static_cast<int64_t>(row) * in_features + k]) * wv;
+        }
+      }
+    }
+#pragma unroll
+    for (int r = 0; r < ROW_BATCH; ++r) {
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        value[r] += __shfl_down(value[r], offset);
+      }
+    }
+    if (lane == 0) {
+#pragma unroll
+      for (int r = 0; r < ROW_BATCH; ++r) {
+        wave_sums[wave][r] = value[r];
+      }
+    }
+    __syncthreads();
+    if (threadIdx.x == 0) {
+#pragma unroll
+      for (int r = 0; r < ROW_BATCH; ++r) {
+        const int row = base + r;
+        if (row >= end) continue;
+        float total = 0.0f;
+        for (int i = 0; i < waves; ++i) {
+          total += wave_sums[i][r];
+        }
+        store_output<uint16_t>(
+            out, static_cast<int64_t>(row) * out_features + out_col, total);
+      }
+    }
+    __syncthreads();
+  }
+}
+
 template <typename scalar_t, typename out_t, bool FUSE_SILU = false>
 __launch_bounds__(256, 2)
 __global__ void gguf_q4_k_selected_dual_prefill_out_kernel(
@@ -2379,6 +2470,48 @@ extern "C" int hipengine_gguf_q4_k_selected_gemv_bf16_bf16_out(
     hipStream_t stream) {
   return launch_gguf_q4_k_selected_gemv_out<uint16_t, uint16_t>(
       x, selected, qweight, out, x_rows, rows, num_experts, in_features, out_features, threads, stream);
+}
+
+// One launch covers every expert: block (out_col, expert) walks that expert's
+// compact rows in batches of eight, so each weight element is dequantized once
+// per column instead of once per row. The block size is the per-row kernel's,
+// because it is also the k-stride, and matching it is what keeps the output
+// bit-identical.
+extern "C" int hipengine_gguf_q4_k_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
+    const void* x,
+    const void* expert_start,
+    const void* qweight,
+    void* out,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || expert_start == nullptr || qweight == nullptr || out == nullptr ||
+      compact_rows <= 0 || num_experts <= 0 || in_features <= 0 ||
+      (in_features % QK_K) != 0 || out_features <= 0 ||
+      compact_rows > INT32_MAX || num_experts > INT32_MAX ||
+      in_features > INT32_MAX || out_features > INT32_MAX) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 128;
+  constexpr int row_batch = 8;
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(
+      static_cast<unsigned int>(out_features),
+      static_cast<unsigned int>(num_experts));
+  hipLaunchKernelGGL(
+      (gguf_q4_k_selected_grouped_prefill_out_kernel<row_batch>),
+      grid, block, 0, stream,
+      static_cast<const uint16_t*>(x),
+      static_cast<const int64_t*>(expert_start),
+      static_cast<const uint8_t*>(qweight),
+      static_cast<uint16_t*>(out),
+      static_cast<int>(compact_rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
 }
 
 extern "C" int hipengine_gguf_q4_k_selected_dual_gemv_bf16_bf16_out(

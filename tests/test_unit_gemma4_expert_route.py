@@ -31,7 +31,8 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
     gemma4_project_experts_rows,
 )
 from hipengine.kernels.registry import KernelKey, is_registered, register
-from tests._gguf_synthetic_weights import make_q5_1_weight
+from hipengine.quant.gguf import GGMLQuantizationType
+from tests._gguf_synthetic_weights import make_q4_k_weight, make_q5_1_weight
 from tests._rocm_guard import hip_runtime_available
 
 _needs_hip = pytest.mark.skipif(
@@ -99,9 +100,8 @@ class _ResidentWeight:
         return SimpleNamespace(buffer=SimpleNamespace(ptr=self.ptr))
 
 
-@pytest.fixture
-def q5_1_backend() -> str:
-    """Resolve this host's backend with the Q5_1 grouped family registered.
+def _grouped_backend(quant: str) -> str:
+    """Resolve this host's backend with one quant's grouped family registered.
 
     The session restores a collection-time registry snapshot after every test,
     which drops lazily registered quant families. Re-loading the backend
@@ -112,14 +112,48 @@ def q5_1_backend() -> str:
     """
 
     from hipengine.kernels.backends import load_backend_kernel_package, resolve_backend
-    from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
-        register_qwen4_exp_q5_1_kernels,
-    )
 
+    if quant == "gguf_q5_1":
+        from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
+            register_qwen4_exp_q5_1_kernels,
+        )
+
+        register_qwen4_exp_q5_1_kernels(replace=True)
+    else:
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+            register_gguf_q4_k_gemv_kernels,
+        )
+
+        register_gguf_q4_k_gemv_kernels(replace=True)
     backend = resolve_backend("auto")
-    register_qwen4_exp_q5_1_kernels(replace=True)
     load_backend_kernel_package(backend)
     return backend
+
+
+_WEIGHT_MAKERS = {"gguf_q5_1": make_q5_1_weight, "gguf_q4_k": make_q4_k_weight}
+_GGML_TYPES = {
+    "gguf_q5_1": GGMLQuantizationType.Q5_1,
+    "gguf_q4_k": GGMLQuantizationType.Q4_K,
+}
+
+# Both quants are exercised because they are separate kernels against separate
+# incumbent reductions: the Q5_1 grouped family reduces with a 256-wide shared
+# tree at 256 threads, and the Q4_K one has to reproduce ``reduce_block_sum`` at
+# the selected path's 128 threads, which is also its k-stride. The geometries
+# are per quant because Q4_K's block is 256 wide, so it cannot represent an
+# in_features that Q5_1 can.
+_GROUPED_GEOMETRIES = {
+    "gguf_q5_1": [(2816, 704), (1408, 2816), (64, 128), (37, 96), (16, 32)],
+    "gguf_q4_k": [(1408, 2816), (2816, 2816), (64, 256), (37, 512), (16, 256)],
+}
+
+_GROUPED_CASES = [
+    (quant, out_features, in_features)
+    for quant, geometry in _GROUPED_GEOMETRIES.items()
+    for out_features, in_features in geometry
+]
+
+_REFERENCE_GEOMETRY = {"gguf_q5_1": (64, 128), "gguf_q4_k": (64, 256)}
 
 
 @pytest.mark.parametrize(
@@ -293,8 +327,9 @@ def test_rows_keeps_the_selected_gemv_below_one_lane_per_expert() -> None:
 
 
 @_needs_hip
-def test_grouped_prefill_matches_a_dequantized_reference(q5_1_backend) -> None:
-    """The grouped kernel reproduces an empty-expert-aware Q5_1 reference.
+@pytest.mark.parametrize("quant", tuple(_REFERENCE_GEOMETRY))
+def test_grouped_prefill_matches_a_dequantized_reference(quant) -> None:
+    """The grouped kernel reproduces an empty-expert-aware quantized reference.
 
     The kernel walks ``expert_start`` itself, so this covers three things a
     shape-only check would miss: that expert *e*'s rows read expert *e*'s
@@ -309,9 +344,11 @@ def test_grouped_prefill_matches_a_dequantized_reference(q5_1_backend) -> None:
         free,
         malloc,
     )
-    from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
+    from hipengine.quant.gguf import dequantize_gguf_data
 
-    num_experts, out_features, in_features = 4, 64, 128
+    backend = _grouped_backend(quant)
+    num_experts = 4
+    out_features, in_features = _REFERENCE_GEOMETRY[quant]
     counts = np.asarray([3, 0, 5, 2], dtype=np.int64)
     rows = int(counts.sum())
 
@@ -319,7 +356,7 @@ def test_grouped_prefill_matches_a_dequantized_reference(q5_1_backend) -> None:
     hidden = rng.standard_normal((rows, in_features)).astype(np.float32)
     hidden_bits = _to_bf16_bits(hidden)
     raw = np.concatenate(
-        [make_q5_1_weight(out_features, in_features) for _ in range(num_experts)], axis=0
+        [_WEIGHT_MAKERS[quant](out_features, in_features) for _ in range(num_experts)], axis=0
     )
 
     # The kernel reads bf16 activations, so the reference must read the rounded
@@ -332,7 +369,7 @@ def test_grouped_prefill_matches_a_dequantized_reference(q5_1_backend) -> None:
             continue
         block = raw[expert * out_features : (expert + 1) * out_features]
         weights = np.asarray(
-            dequantize_gguf_data(block, GGMLQuantizationType.Q5_1), dtype=np.float32
+            dequantize_gguf_data(block, _GGML_TYPES[quant]), dtype=np.float32
         )
         expected[start : start + count] = rounded[start : start + count] @ weights.T
         start += int(count)
@@ -351,8 +388,8 @@ def test_grouped_prefill_matches_a_dequantized_reference(q5_1_backend) -> None:
         copy_host_array_to_device(starts_buf, starts)
 
         weight = _ResidentWeight(
-            backend=q5_1_backend,
-            quant_key="gguf_q5_1",
+            backend=backend,
+            quant_key=quant,
             ptr=weights_buf.ptr,
         )
         served = gemma4_project_experts_grouped_prefill(
@@ -365,7 +402,7 @@ def test_grouped_prefill_matches_a_dequantized_reference(q5_1_backend) -> None:
             in_features,
             out_features,
         )
-        assert served is True, "the Q5_1 grouped family did not resolve on this backend"
+        assert served is True, f"the {quant} grouped family did not resolve on this backend"
 
         got = np.empty((rows, out_features), dtype=np.uint16)
         copy_device_to_host(
@@ -404,29 +441,18 @@ def _from_bf16_bits(bits: np.ndarray) -> np.ndarray:
 
 
 @_needs_hip
-@pytest.mark.parametrize(
-    "out_features, in_features",
-    [
-        # The artifact's own expert geometry: out=2816, in=704 for the down
-        # projection, where 704 is not a multiple of the 256-wide reduction.
-        (2816, 704),
-        (1408, 2816),
-        (64, 128),
-        (37, 96),
-        (16, 32),
-    ],
-)
+@pytest.mark.parametrize("quant, out_features, in_features", _GROUPED_CASES)
 def test_grouped_prefill_is_bit_exact_against_the_selected_gemv(
-    q5_1_backend, out_features, in_features
+    quant, out_features, in_features
 ) -> None:
     """Weight reuse must not cost a single bit against the per-lane GEMV.
 
     The selected family launches one block per (out_col, lane) and the grouped
     family launches one block per (expert, out_col) that walks the expert's
-    rows. Both accumulate a row as ``column = t, t + 256, ...`` over 256 logical
-    threads and reduce with the same strict 256-wide binary tree, so the two are
-    expected to agree exactly rather than approximately. A grouped kernel with a
-    different association would still pass a tolerance check while changing
+    rows. Each row accumulates as ``column = t, t + blockDim.x, ...`` and
+    reduces through the same tree the selected path uses, so the two are
+    expected to agree exactly rather than approximately. A grouped kernel with
+    a different association would still pass a tolerance check while changing
     every prefill logit in the model, so the comparison here is on bits.
     """
 
@@ -444,10 +470,11 @@ def test_grouped_prefill_is_bit_exact_against_the_selected_gemv(
     num_experts = 4
     counts = np.asarray([3, 0, 5, 2], dtype=np.int64)
     rows = int(counts.sum())
+    backend = _grouped_backend(quant)
     rng = np.random.default_rng(20260928)
     hidden_bits = _to_bf16_bits(rng.standard_normal((rows, in_features)).astype(np.float32))
     raw = np.concatenate(
-        [make_q5_1_weight(out_features, in_features) for _ in range(num_experts)], axis=0
+        [_WEIGHT_MAKERS[quant](out_features, in_features) for _ in range(num_experts)], axis=0
     )
     selected = np.repeat(np.arange(num_experts, dtype=np.int64), counts)
     starts = np.zeros(num_experts + 1, dtype=np.int64)
@@ -466,8 +493,8 @@ def test_grouped_prefill_is_bit_exact_against_the_selected_gemv(
         copy_host_array_to_device(selected_buf, selected)
 
         weight = _ResidentWeight(
-            backend=q5_1_backend,
-            quant_key="gguf_q5_1",
+            backend=backend,
+            quant_key=quant,
             ptr=weights_buf.ptr,
         )
         assert gemma4_project_experts_grouped_prefill(
