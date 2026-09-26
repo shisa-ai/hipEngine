@@ -1494,6 +1494,46 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 77: the two outlier layers, settled by the registry rather than by
+  inference.** The 205 ms those two layers cost (10.6% of the default path) had
+  been attributed twice by reasoning about which owners "should" exist. The
+  registry says it directly, and the earlier reasoning was wrong in both
+  directions.
+
+  What is registered at ``moe_linear``:
+
+  | quant | owners | grouped/rowbatch/fold forms |
+  | --- | ---: | --- |
+  | ``gguf_q4_k`` | 37 | all of them |
+  | ``gguf_q5_1`` | 22 | all of them |
+  | ``gguf_q5_k`` | 13 | **none** |
+  | ``gguf_q8_0`` | 0 | **none** |
+
+  So the two layers fall back to the selected GEMV for a real reason: the grouped
+  owners exist for the two quants that serve the other 58 layers and for neither
+  of these. At layer ``linear``, ``gguf_q5_k`` registers 101 variants and
+  ``gguf_q8_0`` 68, but the grouped ones among them
+  (``selected_grouped_row4_gemv``, ``selected_grouped_gemv``) are the
+  column-per-CTA shape already measured at 2.6-2.8x *slower* than the incumbent
+  in iteration 75 -- they re-read the activation row batch once per output column.
+  The owner that would win is the ``out4_amortized`` shape, which exists only for
+  q4_k/q5_1 and binds a quant-specific symbol in its own module
+  (``qwen4_exp_q5_1_...``, ``gguf_q4_k_selected_prefill``), so serving these two
+  layers means porting that loop nest to Q5_K/Q8_0's block decode -- new kernel
+  work, not a registration or an adapter. Whether the ported owner would be
+  bit-identical to the selected GEMV is also open: the grouped owners are
+  documented as bit-identical to *each other*, not to the selected path.
+
+  **A method error worth recording.** The first pass at this question tested each
+  variant with ``try: _ensure_linear_kernel_registered(key)`` and read "no
+  exception" as "registered". It is not: that helper does not raise for a key it
+  cannot serve, so every variant looked served for every quant and the answer came
+  out inverted -- "the owners exist, the probe is rejecting them". The
+  ``resolve()`` call in the isolated probe is what exposed it, returning
+  ``MissingKernelError`` for a key the earlier test had just "passed". Any future
+  check of this kind has to read ``registered_keys()`` after the ensure, which is
+  what the table above does.
+
   **Iteration 76: the WMMA arm re-measured, and a correction to how it was being
   described.** The arm's number had been quoted from a pre-session measurement for
   several iterations. Re-measured on the XTX with the same bench, the same 1024
