@@ -470,6 +470,12 @@ not by backend-branched runtime code.
 | `HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS` | true | Exact C8 R32 with the exact two-active-wave fused gate/up owner; `0` retains padded R36 plus row48. |
 | `HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120` | true | Fixed-5120 rounded-norm residual decode sibling (rows 2-8); `0` restores the generic rounded-norm tree. |
 
+### Gemma 4 MoE prefill routes
+
+| Variable | Default | Values / notes |
+| --- | --- | --- |
+| `HIPENGINE_GEMMA4_MOE_PREFILL` | `auto` | Pins the prefill owner for the Gemma 4 MoE expert projections. `auto` runs the exact routes only: the grouped rowbatch8 owner where a quant registers one and the selected GEMV otherwise; both measured bit-identical to the strict teacher-forced reference. `wmma` selects the compensated WMMA owners (each dequantised weight carried as an fp16 high part plus an fp16 residual, two WMMA ops per k-tile); they are 2.7x faster on a 1024-token prefill but breach the campaign's absolute `kl_max` bar on 1 of 1023 rows, so the arm stays off the default path pending the lead ruling recorded in `docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md`. `wmma_plain` is the uncompensated form, kept as the diagnostic that isolates the fp16 weight-rounding term. `grouped` and `selected` pin the exact arms. Unrecognised values fall back to `auto`. |
+
 ## Shared paged-attention decode variables
 
 These affect both PARO and GGUF decode paths where applicable.

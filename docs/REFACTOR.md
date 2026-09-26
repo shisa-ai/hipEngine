@@ -8905,3 +8905,24 @@ Remove this once a failed `_construct_shared_session` in
 ladder with a width the box cannot hold, then assert a full-context session plus the
 chat smoke still allocate. If the failed attempt does not roll back completely, fix
 the rollback instead of weakening the probe.
+
+## `HIPENGINE_GEMMA4_MOE_PREFILL` selects a prefill route that fails an absolute bar (open 2026-09-26)
+
+The Gemma 4 prefill MoE has two WMMA owner variants per projection that are 2.7x
+faster than the exact routes: a compensated form (fp16 high part plus fp16 residual
+per weight, two WMMA ops per k-tile) and the plain uncompensated form kept only as
+the diagnostic that isolates the fp16 weight-rounding term. `auto` runs neither.
+The compensated form passes every aggregate logits bar with 10-200x margin and
+leaves top-1 unchanged on all 1023 scored rows, but breaches the campaign's absolute
+`kl_max` bar at 0.060867 against 0.05 on 1 of 1023 rows. The breach is reduction
+association, not a defect; a two-way accumulator split moved it to 0.081599 rather
+than reducing it. See the iteration-59 diagnostic in
+`docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md`.
+
+Remove this once the lead rules on whether an absolute `kl_max` applies to a
+reordering-class change. If it does not apply, delete `_PREFILL_MODE_ENV`,
+`_prefill_mode`, `_prefill_route_flags` and the exact-route default, make the
+compensated variants the prefill route unconditionally, and delete the plain
+variants and the diagnostic modes with them. If it does apply, delete the Gemma
+wiring for both WMMA owner variants and their `compensated` plumbing instead, and
+keep the kernels registered for callers that only need their own parity contract.

@@ -1296,6 +1296,79 @@ close the tranche with its measurements; do not manufacture progress. A hung
 GPU, external ownership conflict, or broken oracle is a blocker to repair and
 record, not permission to reset unrelated work or weaken correctness.
 
+  *Diagnostic 2026-09-26 (iteration 59): the prefill expert projections, and the
+  same open bar decision at 3.4x the stake.* The prefill bottleneck was not
+  attention after all. Routing Gemma's MoE prefill through the repo's existing
+  compact WMMA owners - the ones the Qwen35 MoE production path already uses -
+  moved a 1024-token prefill from 8.523 s to 2.544 s. Three things were needed:
+  a fused-stride argument on the dual owner (a fused `gate_up` tensor stores both
+  halves in one allocation, so the expert stride is `out_features_a +
+  out_features_b` while each half still indexes from its own origin), and two new
+  compensated owner variants described below.
+
+  Measured on the W7900 lane, same artifact, greedy, bf16 KV, 1024 prompt
+  tokens, 60 layer calls, via `scripts/gemma4_prefill_census.py`:
+
+  | expert route | prefill s | tok/s | vs baseline | teacher-forced gate |
+  | --- | ---: | ---: | ---: | --- |
+  | selected GEMV (incumbent) | 8.523 | 120.1 | - | kl_max 0.000000, pass |
+  | grouped rowbatch8 (default) | 6.982 | 146.7 | +22% | kl_max 0.000000, pass |
+  | compensated WMMA | 2.544 | 402.5 | +235% | kl_max 0.060867, **fail** |
+  | plain WMMA | 2.236 | 458.0 | +281% | kl_max 0.182137, **fail** |
+
+  - **The grouped owner is exact, and that is what ships.** The Q5_1 down
+    projection is 17.8% of the incumbent prefill (1238 ms over 58 calls) and the
+    grouped rowbatch8 owner serves it in the same time as the selected GEMV
+    *bit-for-bit*: the gate reports kl_max 0.000000, not merely below the bar.
+    Its gate_up counterpart is unchanged because no grouped owner is registered
+    for raw Q4_K, so `auto` keeps the selected GEMV there. This arm is the
+    default and is worth +22% prefill at zero numerical cost.
+  - **The WMMA breach is fp16 weight rounding, and compensating it is cheap.**
+    The plain owners convert each dequantised weight straight to fp16 (~2^-11
+    relative). A compensated form carries `hi = fp16(w)` plus
+    `lo = fp16(w - hi)` and issues a second WMMA per k-tile, which represents the
+    weight to ~2^-22. That moved kl_max from 0.182137 to 0.060867 for 14% more
+    time (2.236 -> 2.544 s). The activation operand needs no compensation: bf16
+    is a subset of fp16, so the conversion is exact.
+  - **Both projections contribute, so no exact subset exists.** Pinning only the
+    fused gate+up to WMMA gives kl_max 0.174212; pinning only the down projection
+    gives 0.162814; both plain gives 0.182137. Each alone is nearly as bad as the
+    pair.
+  - **The residual 0.060867 is reduction association, and it is irreducible.**
+    Splitting the K accumulation across two independent f32 accumulators moved
+    kl_max to 0.081599 - same class, different draw, not an improvement. The
+    grouped owner measures exactly 0.0 because it reproduces the strict
+    reduction order, which is a property of that kernel, not of the arithmetic.
+  - **Everything except the absolute bar passes with large margin.** At kl_max
+    0.060867 the arm reports kl_mean 8.58e-05 against 1e-3 (12x), kl_p95 and
+    kl_p99 9.89e-05 against 5e-3 and 2e-2 (50x and 200x), and top-1 rate 1.0
+    with zero flips on all 1023 scored rows.
+
+  This is the decision already recorded above for the key-slice attention split,
+  at a much larger stake: 0.0556 kl_max blocked a 1.1x attention win, 0.0609
+  kl_max blocks a 3.4x prefill win. The mechanism is the same - a reordering-class
+  arithmetic change that passes every aggregate bar and never moves a decision,
+  failing only an absolute `kl_max` order statistic on 1 of 1023 rows of a peaked
+  reference. The campaign does not take that decision here. The WMMA arms are
+  reachable through `HIPENGINE_GEMMA4_MOE_PREFILL=wmma` (compensated) or
+  `wmma_plain` (diagnostic), `auto` keeps the exact routes, and the clearing
+  command is a lead ruling that an absolute `kl_max` does not apply to
+  reordering-class changes - at which point `wmma` becomes the default.
+
+  Evidence: `/tmp/gemma4-gate-{selected,grouped,wmma,wmma_gate,wmma_down,comp}.json`
+  and `/tmp/gemma4-census-{comp,grouped}.json` from this iteration; the census
+  family split is in the worklog entry. Kernel-level parity for the compensated
+  owners is in `tests/test_gpu_gguf_q4_k_selected_wmma_prefill.py` and
+  `tests/test_gpu_qwen4_exp_q5_1_selected.py`, which assert the compensated arm
+  is strictly closer to the strict reference than the plain one.
+
+  What this leaves as the next prefill target, at the compensated-WMMA rate:
+  attention prefill 959 ms (37.9%), dense Q8_0 625 ms (24.7%), fused gate+up
+  577 ms (22.8%), layer-29 MoE 204 ms (8.1%), down 82 ms (3.2%). llama.cpp's
+  HIP prefill on the same file is 3910 tok/s, so the MoE routing closes part of
+  an 8.5x gap; attention and the dense Q8_0 linears are the larger remaining
+  share and neither has been routed through a WMMA owner yet.
+
 ## Commands available now
 
 The G0 harness exists: `scripts/gemma4_campaign_bench.py` separates prefill,

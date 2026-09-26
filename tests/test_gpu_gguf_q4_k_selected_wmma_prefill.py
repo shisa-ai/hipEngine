@@ -50,6 +50,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out,
     gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out,
+    gguf_q4_k_selected_dual_wmma_prefill_compact_comp_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_fp16_fp16_out,
@@ -621,6 +622,7 @@ def _run_selected_dual_gpu(
     hot_fulltile: bool = False,
     hot_threshold: int = 64,
     sidemeta: bool = False,
+    compensated: bool = False,
 ) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
@@ -631,7 +633,10 @@ def _run_selected_dual_gpu(
         (fixture.compact_rows, fixture.out_features_a + fixture.out_features_b),
         dtype=out_dtype,
     )
-    if sidemeta:
+    if compensated:
+        assert dtype == "bf16", "compensated path is only exported for bf16"
+        wrapper = gguf_q4_k_selected_dual_wmma_prefill_compact_comp_bf16_bf16_out
+    elif sidemeta:
         wrapper = (
             gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out
             if dtype == "bf16"
@@ -766,6 +771,43 @@ def test_gguf_q4_k_selected_wmma_bf16_matches_cpu_selected_reference(
     )
     actual = _run_selected_dual_gpu(fixture, "bf16")
     np.testing.assert_allclose(actual, fixture.reference, **_TOLERANCE_BF16)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("counts", "in_features", "out_features_a", "out_features_b"), _SELECTED_CASES
+)
+def test_gguf_q4_k_selected_wmma_compensated_beats_plain_against_reference(
+    counts: list[int], in_features: int, out_features_a: int, out_features_b: int
+) -> None:
+    """The compensated path must track the strict f32 reference far more closely.
+
+    The plain kernel rounds every dequantised weight to fp16 (~2^-11 relative).
+    The compensated kernel carries an fp16 high part plus an fp16 residual, so it
+    should agree with the strict CPU reference to roughly fp16*fp16, and must be
+    strictly closer than the plain kernel on the same fixture. That ordering is
+    the kernel-level statement behind the end-to-end ``kl_max`` measurement
+    (0.182 plain against 0.061 compensated on 1024 prompt tokens).
+    """
+
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=in_features,
+        out_features_a=out_features_a,
+        out_features_b=out_features_b,
+        dtype="bf16",
+    )
+    plain = _run_selected_dual_gpu(fixture, "bf16")
+    compensated = _run_selected_dual_gpu(fixture, "bf16", compensated=True)
+    reference = fixture.reference.astype(np.float32)
+
+    plain_err = np.abs(plain.astype(np.float32) - reference).max()
+    comp_err = np.abs(compensated.astype(np.float32) - reference).max()
+    assert comp_err <= plain_err, (comp_err, plain_err)
+
+    # bf16 output quantisation dominates the residual, so compare against the
+    # exact f32 accumulator through the same bf16 rounding the kernel applies.
+    np.testing.assert_allclose(compensated, fixture.reference, rtol=2.0e-3, atol=1.0e-1)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

@@ -135,6 +135,64 @@ def qwen4_exp_gather_bf16_lanes(
         runtime.check(int(error))
 
 
+def qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out(
+    input_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    weights_ptr: int,
+    output_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the compensated compact grouped Q5_1 down projection through WMMA.
+
+    Same contract as
+    :func:`qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out`,
+    but each dequantised weight is split into an fp16 high part plus an fp16
+    residual so the represented weight is accurate to ~2^-22 rather than
+    ~2^-11.
+    """
+
+    if compact_rows <= 0 or num_experts <= 0 or wmma_total_rows <= 0:
+        raise ValueError("compact_rows, num_experts, and wmma_total_rows must be positive")
+    if wmma_total_rows % 16:
+        raise ValueError("wmma_total_rows must be divisible by 16")
+    if in_features <= 0 or in_features % 32 or out_features <= 0:
+        raise ValueError("Q5_1 grouped WMMA projection has invalid feature geometry")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out",
+        _ARGS_GROUPED_WMMA,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        weights_ptr,
+        output_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        wmma_total_rows,
+        ctypes.c_void_p(stream),
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
 def qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
     input_ptr: int,
     expert_start_compact_ptr: int,
@@ -910,6 +968,16 @@ def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:
             "selected_grouped_wmma_prefill_compact_bf16_bf16_out",
         ),
         qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_1",
+            "selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out",
+        ),
+        qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out,
         replace=replace,
     )
     register(

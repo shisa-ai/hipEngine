@@ -593,7 +593,17 @@ __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_legacy_kernel(
 // TILE_N=32 can combine two neighbouring WMMA row tiles but still handles the
 // case where those row tiles belong to different experts by resolving expert
 // metadata per TN tile.
-template <typename scalar_t, int AWQ_TILE_M, int AWQ_TILE_N>
+//
+// ``COMP`` selects the compensated weight path. The plain path rounds each
+// dequantised weight straight to fp16, which costs ~2^-11 relative accuracy on
+// every weight and leaves a measurable tail divergence against the strict f32
+// dequant. COMP splits the weight into ``hi = fp16(w)`` and
+// ``lo = fp16(w - hi)`` and issues a second WMMA per k-tile, so the
+// represented weight is accurate to ~2^-22 while the activation operand stays
+// exact (bf16 is a subset of fp16). The two halves share one activation
+// fragment, so the extra cost is one WMMA and three ALU ops per weight; the
+// kernels run far below WMMA issue rate, so the second op is close to free.
+template <typename scalar_t, int AWQ_TILE_M, int AWQ_TILE_N, bool COMP = false>
 __launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_kernel(
     const scalar_t* __restrict__ x,
@@ -608,7 +618,8 @@ __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_kernel(
     int64_t out_features_a,
     int64_t out_features_b,
     int64_t num_experts,
-    int64_t wmma_total_rows) {
+    int64_t wmma_total_rows,
+    int64_t expert_stride_rows) {
   constexpr int TM = AWQ_TILE_M / 16;
   constexpr int TN = AWQ_TILE_N / 16;
   const int col_tile = blockIdx.x;
@@ -697,7 +708,14 @@ __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_kernel(
 #pragma unroll
           for (int tn = 0; tn < TN; ++tn) {
             const bool valid_col = col_in_bounds && valid_expert[tn];
-            const int64_t expert_bytes = local_out_features * row_bytes;
+            // ``expert_stride_rows`` is zero for the two-tensor layout, where
+            // each side is its own allocation and the expert stride is that
+            // side's own width. A fused ``gate_up`` tensor stores both sides in
+            // one allocation, so its stride is the sum of the two widths while
+            // each side still indexes from its own half.
+            const int64_t expert_rows =
+                expert_stride_rows > 0 ? expert_stride_rows : local_out_features;
+            const int64_t expert_bytes = expert_rows * row_bytes;
             const uint8_t* __restrict__ expert_base =
                 valid_col ? (qweight + expert_id[tn] * expert_bytes) : qweight;
             const uint8_t* __restrict__ block_ptr =
@@ -709,19 +727,32 @@ __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_kernel(
             const float scale_f = valid_col ? d_f * static_cast<float>(gguf_q4_k_scale(scales, sb)) : 0.0f;
             const float min_f = valid_col ? dmin_f * static_cast<float>(gguf_q4_k_min(scales, sb)) : 0.0f;
             half16_t b_reg;
+            half16_t b_lo;
             if (valid_col) {
 #pragma unroll
               for (int kk = 0; kk < 16; ++kk) {
                 const int lane32 = kt * K_TILE + kk;
                 const uint8_t q = gguf_q4_k_quant(qs, sb, lane32);
-                b_reg[kk] = static_cast<half_t>(scale_f * static_cast<float>(q) - min_f);
+                const float w = scale_f * static_cast<float>(q) - min_f;
+                const half_t hi = static_cast<half_t>(w);
+                b_reg[kk] = hi;
+                if (COMP) {
+                  b_lo[kk] = static_cast<half_t>(w - static_cast<float>(hi));
+                }
               }
             } else {
 #pragma unroll
-              for (int kk = 0; kk < 16; ++kk) b_reg[kk] = static_cast<half_t>(0.0f);
+              for (int kk = 0; kk < 16; ++kk) {
+                b_reg[kk] = static_cast<half_t>(0.0f);
+                b_lo[kk] = static_cast<half_t>(0.0f);
+              }
             }
             acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
                 a_reg[tn], b_reg, acc[tm][tn]);
+            if (COMP) {
+              acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                  a_reg[tn], b_lo, acc[tm][tn]);
+            }
           }
         }
       }
@@ -1410,7 +1441,7 @@ bool valid_selected_dual_common(
       (tile_n == 16 || tile_n == 32);
 }
 
-template <typename scalar_t>
+template <typename scalar_t, bool COMP = false>
 int launch_selected_dual(
     const scalar_t* x,
     const int64_t* expert_start_compact,
@@ -1425,6 +1456,7 @@ int launch_selected_dual(
     int64_t out_features_b,
     int64_t num_experts,
     int64_t wmma_total_rows,
+    int64_t expert_stride_rows,
     int64_t tile_m,
     int64_t tile_n,
     hipStream_t stream) {
@@ -1456,7 +1488,7 @@ int launch_selected_dual(
 
 #define HIPENGINE_LAUNCH_Q4K_SELECTED_DUAL(TM, TN) \
   hipLaunchKernelGGL( \
-      (gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<scalar_t, TM, TN>), \
+      (gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<scalar_t, TM, TN, COMP>), \
       grid, \
       block, \
       0, \
@@ -1473,10 +1505,13 @@ int launch_selected_dual(
       out_features_a, \
       out_features_b, \
       num_experts, \
-      wmma_total_rows); \
+      wmma_total_rows, \
+      expert_stride_rows); \
   return static_cast<int>(hipGetLastError())
 
-  if (tile_m == 16 && tile_n == 16) {
+  // The legacy one-tile kernel has no compensated path; COMP falls through to
+  // the multi-tile kernel, which covers the same 16x16 tile.
+  if (!COMP && tile_m == 16 && tile_n == 16) {
     hipLaunchKernelGGL(
         (gguf_q4_k_selected_dual_wmma_prefill_compact_legacy_kernel<scalar_t>),
         grid,
@@ -1497,6 +1532,7 @@ int launch_selected_dual(
         num_experts);
     return static_cast<int>(hipGetLastError());
   }
+  if (tile_m == 16 && tile_n == 16) { HIPENGINE_LAUNCH_Q4K_SELECTED_DUAL(16, 16); }
   if (tile_m == 32 && tile_n == 16) { HIPENGINE_LAUNCH_Q4K_SELECTED_DUAL(32, 16); }
   if (tile_m == 16 && tile_n == 32) { HIPENGINE_LAUNCH_Q4K_SELECTED_DUAL(16, 32); }
   if (tile_m == 32 && tile_n == 32) { HIPENGINE_LAUNCH_Q4K_SELECTED_DUAL(32, 32); }
@@ -2509,6 +2545,7 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_
     int64_t out_features_b,
     int64_t num_experts,
     int64_t wmma_total_rows,
+    int64_t expert_stride_rows,
     int64_t tile_m,
     int64_t tile_n,
     hipStream_t stream) {
@@ -2526,6 +2563,45 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_
       out_features_b,
       num_experts,
       wmma_total_rows,
+      expert_stride_rows,
+      tile_m,
+      tile_n,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_comp_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    int64_t expert_stride_rows,
+    int64_t tile_m,
+    int64_t tile_n,
+    hipStream_t stream) {
+  return launch_selected_dual<uint16_t, true>(
+      x,
+      expert_start_compact,
+      expert_start_wmma,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      wmma_total_rows,
+      expert_stride_rows,
       tile_m,
       tile_n,
       stream);
@@ -2545,6 +2621,7 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_
     int64_t out_features_b,
     int64_t num_experts,
     int64_t wmma_total_rows,
+    int64_t expert_stride_rows,
     int64_t tile_m,
     int64_t tile_n,
     hipStream_t stream) {
@@ -2562,6 +2639,7 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_
       out_features_b,
       num_experts,
       wmma_total_rows,
+      expert_stride_rows,
       tile_m,
       tile_n,
       stream);

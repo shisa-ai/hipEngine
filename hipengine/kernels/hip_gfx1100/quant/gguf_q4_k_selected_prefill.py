@@ -39,6 +39,9 @@ _SYMBOL_GROUPED_ROW8_OUT4_EXPERTGRID64_M1_BF16 = (
     "hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_m1_bf16_bf16_out"
 )
 _SYMBOL_DUAL_BF16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out"
+_SYMBOL_DUAL_COMP_BF16 = (
+    "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_comp_bf16_bf16_out"
+)
 _SYMBOL_IU8_BF16 = "hipengine_gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out"
 _SYMBOL_IU8_RISK_BF16 = (
     "hipengine_gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"
@@ -376,13 +379,19 @@ def gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
     num_experts: int,
     wmma_total_rows: int,
     *,
+    expert_stride_rows: int = 0,
     tile_m: int | None = None,
     tile_n: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch BF16 selected compact raw-Q4_K dual gate+up WMMA prefill."""
+    """Launch BF16 selected compact raw-Q4_K dual gate+up WMMA prefill.
+
+    ``expert_stride_rows`` is zero for two separate tensors, where each half's
+    expert stride is its own width, and ``2 * out_features_a`` for a fused
+    ``gate_up`` tensor whose two halves share one allocation.
+    """
 
     _launch_dual(
         _SYMBOL_DUAL_BF16,
@@ -399,6 +408,63 @@ def gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
         out_features_b,
         num_experts,
         wmma_total_rows,
+        expert_stride_rows=expert_stride_rows,
+        tile_m=tile_m,
+        tile_n=tile_n,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_selected_dual_wmma_prefill_compact_comp_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    expert_stride_rows: int = 0,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the compensated BF16 selected compact raw-Q4_K dual WMMA prefill.
+
+    Same contract as
+    :func:`gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out`, but each
+    dequantised weight is carried as an fp16 high part plus an fp16 residual and
+    applied with two WMMA ops per k-tile. The represented weight is then
+    accurate to ~2^-22 instead of ~2^-11, which is what the strict f32 dequant
+    reference requires for a tail-free logits comparison.
+    """
+
+    _launch_dual(
+        _SYMBOL_DUAL_COMP_BF16,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+        expert_stride_rows=expert_stride_rows,
         tile_m=tile_m,
         tile_n=tile_n,
         stream=stream,
@@ -851,6 +917,7 @@ def _launch_dual(
     num_experts: int,
     wmma_total_rows: int,
     *,
+    expert_stride_rows: int = 0,
     tile_m: int | None,
     tile_n: int | None,
     stream: int,
@@ -885,6 +952,7 @@ def _launch_dual(
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
+        ctypes.c_int64,
         ctypes.c_void_p,
     ]
     fn.restype = ctypes.c_int
@@ -902,6 +970,7 @@ def _launch_dual(
         ctypes.c_int64(out_features_b),
         ctypes.c_int64(num_experts),
         ctypes.c_int64(wmma_total_rows),
+        ctypes.c_int64(expert_stride_rows),
         ctypes.c_int64(tile_m),
         ctypes.c_int64(tile_n),
         ctypes.c_void_p(stream),
@@ -1406,6 +1475,16 @@ def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None
             "hip_gfx1100",
             "moe_linear",
             "gguf_q4_k",
+            "selected_dual_wmma_prefill_compact_comp_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_wmma_prefill_compact_comp_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
             "selected_dual_wmma_iu8_prefill_bf16_bf16_out",
         ),
         gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out,
@@ -1531,6 +1610,7 @@ __all__ = [
     "gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out",
     "gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_m1_bf16_bf16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_wmma_prefill_compact_comp_bf16_bf16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_fp16_fp16_out",
