@@ -10239,19 +10239,19 @@
         "default": "off",
         "sites_by_root": {
           "benchmarks": 16,
-          "hipengine": 10,
+          "hipengine": 11,
           "scripts": 185,
-          "tests": 61
+          "tests": 62
         },
         "runtime_sites": [
           "hipengine/benchmark/provenance.py:38",
           "hipengine/benchmark/provenance.py:336",
           "hipengine/core/build.py:17",
           "hipengine/core/build.py:225",
+          "hipengine/generation/gemma4_gguf.py:303",
           "hipengine/kernels/backends.py:24",
           "hipengine/kernels/backends.py:289",
-          "hipengine/kernels/hip_gfx1151/__init__.py:5",
-          "hipengine/kernels/hip_gfx1100/attention/dms_compact.py:40"
+          "hipengine/kernels/hip_gfx1151/__init__.py:5"
         ],
         "in_refactor_ledger": false,
         "in_envs_doc": true
@@ -10259,7 +10259,7 @@
       "signals": [
         "reads as default-off",
         "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-        "read at 10 runtime sites \u2014 branching is spread out"
+        "read at 11 runtime sites \u2014 branching is spread out"
       ],
       "hints": {
         "anchor": "env",
@@ -10273,7 +10273,7 @@
         ]
       },
       "id": "flag/HIPENGINE_HIP_ARCH",
-      "evidence_hash": "3e8f7e13bd3a"
+      "evidence_hash": "e05a382b9b22"
     },
     {
       "kind": "flag",

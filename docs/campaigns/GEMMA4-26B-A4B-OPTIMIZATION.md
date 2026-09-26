@@ -4,6 +4,37 @@ owns: Gemma 4 26B-A4B gfx1100 single-request optimization plan, measurement cont
 ---
 # Gemma 4 26B-A4B optimization campaign
 
+## Current prefill status — 2026-09-27, gfx1151
+
+The campaign's prefill rows were never attributed. One was, on a Strix Halo
+(Radeon 8060S, gfx1151) host: over a 512-token prefill the two routed-expert
+projections are **84.8% of prefill kernel time** — `Q4_K` gate/up 53.40% and
+`Q5_1` down 31.40% of 23.37 s across 2581 dispatches — and they are the only
+prefill cost that scales with (rows x weight bytes) rather than with weight
+bytes, because the incumbent launches one block per (out_col, row) and re-reads
+an expert's whole weight matrix once per row. Every other prefill cost is under
+7% (`Q8_0` exact prefill 6.01%, attention 5.79%).
+
+Projecting those rows through a grouped family that reads each expert's weight
+row once and reuses it across the expert's rows is **bit-exact** where the quant
+key registers such a family, and takes 2048-prompt prefill from 39.82 to 48.57
+tok/s (+22.0%) with decode and the generated tokens unchanged. The `Q4_K`
+gate/up is the larger half of the budget and has no bit-exact grouped family, so
+it keeps the per-row pass; routing it through the row-batched WMMA prefill
+reaches 111.43 tok/s (2.807x) but fails the binding production `kl_max` limit at
+0.167959 on 2 of 1023 teacher-forced rows. Both outcomes are recorded:
+`benchmarks/results/2026-09-27-gemma4-moe-prefill-grouped-accepted.json` and
+`.../2026-09-27-gemma4-moe-prefill-wmma-rowslice-rejected.json`. The named
+follow-up is a single-output weight-reusing `Q4_K` expert prefill kernel whose
+per-row reduction reproduces `gguf_q4_k_selected_prefill_out_kernel`'s
+`reduce_block_sum()` association, which would move the remaining 53.4% onto the
+same free footing.
+
+This is a gfx1151 measurement and does not qualify or change any gfx1100 row;
+the two backends share the gfx11 source lineage, so the attribution is expected
+to transfer, but the gfx1100 prefill rows remain unmeasured and this campaign's
+RX 7900 XTX status is unchanged.
+
 ## Current correctness status — 2026-09-26
 
 The key-slice attention implementation failed the corrected teacher-forced

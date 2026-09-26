@@ -18,7 +18,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 10 runtime sites \u2014 branching is spread out"
+          "read at 11 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -41,7 +41,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/benchmark/provenance.py:336:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "df87f2c6c2f3"
+      "evidence_hash": "c1f2e2d67387"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -56,7 +56,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 10 runtime sites \u2014 branching is spread out"
+          "read at 11 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -79,7 +79,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/benchmark/provenance.py:38:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "fa9279f78d69"
+      "evidence_hash": "72c5fc58feff"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -94,7 +94,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 10 runtime sites \u2014 branching is spread out"
+          "read at 11 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -117,7 +117,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/core/build.py:17:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "1a1835a3cb3f"
+      "evidence_hash": "37c608647efc"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -132,7 +132,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 10 runtime sites \u2014 branching is spread out"
+          "read at 11 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -155,7 +155,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/core/build.py:225:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "424467e6d8b3"
+      "evidence_hash": "0a553f71f737"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -344,6 +344,44 @@
     },
     {
       "kind": "ungoverned-flag-branch",
+      "key": "hipengine/generation/gemma4_gguf.py:303:HIPENGINE_HIP_ARCH",
+      "title": "runtime branch on HIPENGINE_HIP_ARCH: default-off with no removal condition recorded",
+      "location": "hipengine/generation/gemma4_gguf.py:303",
+      "evidence": {
+        "fix": "Decide the flag's fate: promote HIPENGINE_HIP_ARCH to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_HIP_ARCH`.",
+        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
+        "flag": "HIPENGINE_HIP_ARCH",
+        "default": "off",
+        "flag_signals": [
+          "reads as default-off",
+          "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
+          "read at 11 runtime sites \u2014 branching is spread out"
+        ]
+      },
+      "signals": [
+        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
+      ],
+      "hints": {
+        "anchor": "hipengine/generation/gemma4_gguf.py",
+        "refs": [
+          "hipengine/generation/gemma4_gguf.py:303:HIPENGINE_HIP_ARCH"
+        ],
+        "tokens": [
+          "branch",
+          "condition",
+          "default",
+          "hipengine_hip_arch",
+          "off",
+          "recorded",
+          "removal",
+          "runtime"
+        ]
+      },
+      "id": "ungoverned-flag-branch/hipengine/generation/gemma4_gguf.py:303:HIPENGINE_HIP_ARCH",
+      "evidence_hash": "8d11900b1ec4"
+    },
+    {
+      "kind": "ungoverned-flag-branch",
       "key": "hipengine/generation/qwen35_gguf_mtp2.py:2272:HIPENGINE_DEBUG_SAMPLED_QUALIFY",
       "title": "runtime branch on HIPENGINE_DEBUG_SAMPLED_QUALIFY: default-off with no removal condition recorded",
       "location": "hipengine/generation/qwen35_gguf_mtp2.py:2272",
@@ -429,7 +467,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 10 runtime sites \u2014 branching is spread out"
+          "read at 11 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -452,7 +490,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/kernels/backends.py:24:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "3fda74c641b3"
+      "evidence_hash": "e9ed639ea3be"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -467,7 +505,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 10 runtime sites \u2014 branching is spread out"
+          "read at 11 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -490,7 +528,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/kernels/backends.py:289:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "7e6bb3e6aadf"
+      "evidence_hash": "f1c75307164e"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -505,7 +543,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 10 runtime sites \u2014 branching is spread out"
+          "read at 11 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -528,7 +566,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/kernels/hip_gfx1100/attention/dms_compact.py:40:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "2e6a09d9c0e5"
+      "evidence_hash": "5092872bcaf0"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -543,7 +581,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 10 runtime sites \u2014 branching is spread out"
+          "read at 11 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -566,7 +604,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/kernels/hip_gfx1100/quant/gguf_iq_wmma_prefill.py:62:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "743b2c24de12"
+      "evidence_hash": "532c559878a4"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -581,7 +619,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 10 runtime sites \u2014 branching is spread out"
+          "read at 11 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -604,7 +642,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/kernels/hip_gfx1100/quant/gguf_iq_wmma_prefill.py:66:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "16726f18c3e9"
+      "evidence_hash": "d43c1300ceb3"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -730,7 +768,7 @@
         "flag_signals": [
           "reads as default-off",
           "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 10 runtime sites \u2014 branching is spread out"
+          "read at 11 runtime sites \u2014 branching is spread out"
         ]
       },
       "signals": [
@@ -753,7 +791,7 @@
         ]
       },
       "id": "ungoverned-flag-branch/hipengine/kernels/hip_gfx1151/__init__.py:5:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "8e73592245ec"
+      "evidence_hash": "094ba065ce43"
     },
     {
       "kind": "ungoverned-flag-branch",

@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10890,
-    "current": 3658,
+    "entries": 10892,
+    "current": 3660,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1162,
+    "rows": 1163,
     "by_rule": {
       "dependency": 37,
       "legacy-next": 109,
-      "status": 1016
+      "status": 1017
     }
   },
   "rows": [
@@ -43754,6 +43754,44 @@
       },
       "id": "worklog/20260926T134138.139771Z-main-dms-matched-attention-befd69",
       "evidence_hash": "d273c67c52cd"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260926T191119.793388Z-lhl-gemma4-gfx1151-bringup-fa2693",
+      "title": "Bring the Gemma 4 26B-A4B path up on gfx1151",
+      "location": "worklog/entries/20260926T191119.793388Z-lhl-gemma4-gfx1151-bringup-fa2693.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-gfx1151-bringup",
+        "written": "2026-09-26",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "Measure the gfx1151 baseline before tuning: run\n`scripts/gemma4_campaign_bench.py` against the real\n`gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf` (downloading to\n`/models/gguf/gemma-4-26B-A4B-it-GGUF/`), and run same-artifact\n`llama-bench`/`llama-server` from `~/llama.cpp/llama.cpp-hip/build-hip` as the\ncomparator. The gfx1100 campaign's prefill attribution (MoE selected-GEMV\nlaunches re-reading each expert's weights once per lane) is the first hypothesis\nto test on this host; the campaign itself only ever tuned decode.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260926T191119.793388Z-lhl-gemma4-gfx1151-bringup-fa2693.md",
+        "refs": [
+          "scripts/gemma4_campaign_bench.py"
+        ],
+        "tokens": [
+          "26b",
+          "a4b",
+          "bring",
+          "gemma",
+          "gfx1151",
+          "path"
+        ]
+      },
+      "id": "worklog/20260926T191119.793388Z-lhl-gemma4-gfx1151-bringup-fa2693",
+      "evidence_hash": "15ba929a3964"
     }
   ]
 }

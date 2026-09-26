@@ -1,0 +1,72 @@
+{
+  "kind": "gemma4_campaign_candidate",
+  "verdict": "accepted",
+  "recorded": "2026-09-27, gfx1151 Strix Halo (zbook) prefill attribution",
+  "candidate": "routed-expert prefill takes a registered grouped-prefill family when the weight's quant key declares one: one launch per (expert, out_col) reads that expert's weight row once and reuses it across the expert's rows, instead of one launch per (out_col, lane) re-reading the whole expert weight matrix once per lane (hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py)",
+  "reason": "the incumbent prefill re-reads every expert's weights once per lane, and on this artifact the two expert projections are 84.8% of the 512-token prefill kernel time. Reusing each expert's weights across its own rows removes that re-read, and for Q5_1 it is free: the grouped kernel's column walk and strict 256-wide reduction tree are the same association as the selected GEMV's, so the route is bit-exact and consumes no numerical budget. Where a quant registers no grouped family the projection keeps the per-lane GEMV unchanged, so the change is a cost decision the quant key already declares rather than a model-level switch.",
+  "mechanism": {
+    "attribution": {
+      "method": "rocprofv3 --kernel-trace over one 512-token prefill on the strict tree (scripts/gemma4_campaign_bench.py --prompt 512 --output 1 --samples 1 --warmup 0), kernel time summed by kernel name",
+      "kernel_time_s": 23.37,
+      "dispatches": 2581,
+      "shares": {
+        "gguf_q4_k_selected_prefill_out_kernel (expert gate/up, 58 launches)": "53.40%",
+        "q5_1_selected_gemv_bf16_bf16_kernel (expert down, 58 launches)": "31.40%",
+        "gguf_q8_0_exact_prefill_tiled_out_kernel (410 launches)": "6.01%",
+        "gemma4_attention_prefill_kernel (60 launches)": "5.79%",
+        "gguf_k_selected_prefill_out_kernel (layer 29 gate/up, 4 launches)": "2.76%",
+        "all other kernels": "under 0.2% each"
+      },
+      "reading": "the two expert projections are 84.8% of prefill kernel time and are the only prefill cost that scales with (lanes x weight bytes) rather than with weight bytes"
+    },
+    "route": "gemma4_project_experts_rows() tries, in order: the grouped family when the block has at least one compact row per expert and the quant key registers one, then the per-row selected GEMV, then the per-expert offset path. The route that ran is recorded in gemma4_moe_expert_route_counts().",
+    "bit_exactness": "both kernels accumulate a row as `column = t, t + 256, ...` over 256 logical threads and reduce with the same strict 256-wide binary tree, so the grouped route is bit-identical to the selected GEMV rather than merely close",
+    "artifact_mix": "the UD-Q4_K_XL file is not one quant: 29 of 30 layers are (gate/up Q4_K, down Q5_1) and layer 29 is (gate/up Q5_K, down Q8_0). Only the Q5_1 down projection has a registered grouped family with this ABI, so 29 of the 60 expert projections per prefill block move to the grouped route and the other 31 keep the per-lane GEMV."
+  },
+  "correctness": {
+    "gate": "scripts/gemma4_teacher_forced_gate.py gate --baseline /tmp/gemma4-gate-strict-gfx1151.npz, 1023 teacher-forced rows at keys 1025-2047 with the decode split engaged (30690 split launches): kl_mean 0.0, kl_p95 0.0, kl_p99 0.0, kl_max 0.0, top-1 rate 1.0 with zero flips, passed true, failed []",
+    "baseline": "the frozen baseline was captured on the strict tree before the change; the incumbent's own promoted decode split is bit-exact against the single-kernel path on this chain (a --slices 1 arm gates at KL exactly 0.0 against it), so a zero-KL candidate here is a zero-KL candidate against the shipped arithmetic",
+    "bit_exactness_test": "tests/test_unit_gemma4_expert_route.py asserts bit-identical bf16 outputs between the grouped route and the selected GEMV at (out, in) = (2816, 704), (1408, 2816), (64, 128), (37, 96) and (16, 32); (2816, 704) is the artifact's own down-projection geometry and 704 is not a multiple of the 256-wide reduction",
+    "kernel_test": "the same file checks the grouped kernel against a dequantized Q5_1 reference with an empty expert in the middle of the expert list, so a kernel that shifted rows after an empty expert or ignored the compact row order fails",
+    "intended_path": "confirmed on the public surface, not inferred from timings: hipengine.LLM.generate_detailed() on a 413-token prompt reports gemma4_moe_expert_route_counts() == {\"selected_gemv\": 151, \"grouped_prefill\": 29}. That is exactly the expected split for one prefill block plus two decode steps: 29 grouped = the Q5_1 down of the 29 Q4_K/Q5_1 layers, and 151 per-lane = 30 gate/up + 1 Q8_0 down for the prefill block plus 30 x 2 x 2 for the two decode steps.",
+    "generation_parity": "all three arms emit the identical 8-token greedy continuation [79290, 26527, 30016, 5387, 2101, 506, 13401, 236793] and report public_path_parity true"
+  },
+  "performance": {
+    "platform": "zbook, Strix Halo, Radeon 8060S Graphics, gfx1151, 125 GiB unified memory, HIPENGINE_HIP_ARCH=gfx1151; artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf (17010980576 bytes)",
+    "protocol": "scripts/gemma4_campaign_bench.py --prompt 2048 --output 8 --samples 3 --warmup 1 --context 8192, greedy, fixed length; prefill_s is forward(prompt) plus an explicit device synchronize. Both arms ran on the final tree, back to back in one session on one device, with the only difference between them the file under test: the incumbent arm is the same tree with hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py at HEAD, and the harness's own provenance records that file as dirty in the candidate arm and clean in the incumbent arm.",
+    "primary": {
+      "row": "2048 prompt / 8 output",
+      "prefill_s_incumbent": [51.281, 51.529, 51.478],
+      "prefill_s_candidate": [41.916, 41.918, 42.657],
+      "prefill_tok_s_incumbent": 39.82,
+      "prefill_tok_s_candidate": 48.57,
+      "prefill_delta": "+22.0% (1.220x)",
+      "public_wall_s": "51.957 -> 43.503",
+      "decode_tok_s": "19.632 -> 19.530 (unchanged within run-to-run spread; the route only engages above one lane per expert)",
+      "generation_parity": "both arms emit the identical 8-token greedy continuation [79290, 26527, 30016, 5387, 2101, 506, 13401, 236793] with public_path_parity true"
+    },
+    "consistency": "a second pair, taken before the final refactor of the same change, measured 39.69 -> 48.99 prefill tok/s (+23.4%) and 52.026 -> 42.304 s public wall. The two pairs agree to within the candidate arm's own sample spread (41.92-42.66 s), and the incumbent arm's spread across both is 39.69-39.82 tok/s.",
+    "limits": "the win is bounded by which projections declare a grouped family: 29 of 60 expert projections per prefill block, so the remaining 31 keep the per-lane GEMV. The Q4_K gate/up is 53.4% of prefill kernel time and has no single-output grouped family with a bf16-activation ABI in this tree.",
+    "rejected_companion": "routing the Q4_K gate/up through the per-expert WMMA row-slice prefill as well measures 111.43 prefill tok/s (2.807x) but breaches the production kl_max bar; see benchmarks/results/2026-09-27-gemma4-moe-prefill-wmma-rowslice-rejected.json",
+    "not_measured": "no 512-token or 4096-token prompt row, no llama.cpp comparator on this host for this arm, and no multi-request or served-path row"
+  },
+  "scope": {
+    "gfx1151": "measured on gfx1151 only. The gfx1100 campaign's prefill rows were never attributed, so no gfx1100 claim is made here.",
+    "no_flag": "the route is unconditional on the default path; there is no environment variable, no default-off switch, and no model-name or artifact-path condition anywhere in the change"
+  },
+  "changes": [
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py: gemma4_project_experts_grouped_prefill() resolves a grouped family by quant key; gemma4_project_experts_rows() applies the preference order for one projection and returns the route that ran; gemma4_moe_prefill_route_enabled() holds the one-lane-per-expert crossover; gemma4_moe_expert_route_counts() is the route diagnostic",
+    "tests/test_unit_gemma4_expert_route.py: route selection, fallback order, route diagnostic, grouped-kernel reference parity and grouped-versus-selected bit-exactness",
+    "scripts/gemma4_kl_row_report.py: per-row KL with the two distributions at each breaching row, added because the gate reports the distribution but not the rows"
+  ],
+  "provenance": {
+    "commit": "8ff1b66733894e76c9e8f50a56a5208537b00887",
+    "worktree": "hipEngine-gemma4, branch gemma4",
+    "gates": {
+      "route_unit": "pytest tests/test_unit_gemma4_expert_route.py -q: 23 passed",
+      "bench_artifacts": "/tmp/bench-incumbent-head.json, /tmp/bench-final-grouped.json (the paired rows above), plus /tmp/bench-strict-prefill.json, /tmp/bench-grouped-prefill.json and /tmp/bench-rowreuse-prefill.json from the earlier pair and the rejected companion; raw logs not committed",
+      "gate_verdict": "/tmp/gemma4-gate-grouped-verdict.json",
+      "profile_trace": "/tmp/gemma4-prefill-profile/zbook/1282969_kernel_trace.csv (raw trace not committed)"
+    }
+  }
+}
