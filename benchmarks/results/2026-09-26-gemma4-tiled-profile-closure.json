@@ -1,0 +1,284 @@
+{
+  "status": "diagnostic_tranche_closure_not_goal_completion",
+  "profile_protocol_reference": "2026-09-26-gemma4-full-grid-profile.json",
+  "candidate_reference": "2026-09-26-gemma4-dimension-tiled-rejected.json",
+  "cache_key_prefix": "eeff7b213cd40855",
+  "binary_sha256": "53384262392e2fdffa19e056169a12057176c0ea8b42026764b50ca2aac28609",
+  "rows": [
+    {
+      "keys": 1024,
+      "dim": 256,
+      "kernel_median_us": [
+        279.717,
+        115.893,
+        256.546
+      ],
+      "value_vgpr": 24,
+      "value_scratch_bytes": 0
+    },
+    {
+      "keys": 1024,
+      "dim": 512,
+      "kernel_median_us": [
+        292.603,
+        118.841,
+        266.442
+      ],
+      "value_vgpr": 24,
+      "value_scratch_bytes": 0
+    },
+    {
+      "keys": 1152,
+      "dim": 256,
+      "kernel_median_us": [
+        312.043,
+        128.241,
+        288.402
+      ],
+      "value_vgpr": 24,
+      "value_scratch_bytes": 0
+    },
+    {
+      "keys": 1152,
+      "dim": 512,
+      "kernel_median_us": [
+        330.323,
+        133.521,
+        299.202
+      ],
+      "value_vgpr": 24,
+      "value_scratch_bytes": 0
+    },
+    {
+      "keys": 4096,
+      "dim": 256,
+      "kernel_median_us": [
+        1089.329,
+        437.044,
+        1021.849
+      ],
+      "value_vgpr": 24,
+      "value_scratch_bytes": 0
+    },
+    {
+      "keys": 4096,
+      "dim": 512,
+      "kernel_median_us": [
+        998.608,
+        366.483,
+        862.888
+      ],
+      "value_vgpr": 24,
+      "value_scratch_bytes": 0
+    }
+  ],
+  "kernel_order": [
+    "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+    "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+    "void (anonymous namespace)::gemma4_attention_decode_dimension_kernel<unsigned short>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long)"
+  ],
+  "incumbent_benchmark": {
+    "label": "campaign",
+    "created_at": "2026-09-26T11:48:26.647565+00:00",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 1024 --output 128 --samples 3 --out /tmp/gemma4-iter58-bench.json",
+    "workload": {
+      "prompt_tokens": 1024,
+      "output_tokens": 128,
+      "samples": 3,
+      "warmups": 1,
+      "context": 8192,
+      "decode_forwards_per_sample": 127,
+      "eos": "ignored (fixed-length row)"
+    },
+    "prompt_ids_sha256": "9730ebf884a19ea6f10c23dcc84061702b7663d53f092f8a75832667b472e211",
+    "provenance": {
+      "git_commit": "131af23723238223054f913bedd7caf45fb8d3e5",
+      "git_dirty": true,
+      "git_dirty_files": [
+        "M audit/findings/stub.json",
+        " M audit/findings/ungoverned-flag-branch.json",
+        " M audit/inventory/flags.json",
+        " M audit/inventory/kernels.json",
+        " M audit/inventory/meta.json",
+        " M audit/inventory/worklog.json",
+        " M audit/triage/stub.jsonl"
+      ],
+      "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+      "artifact": {
+        "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "bytes": 17010980576,
+        "mtime": "2026-09-22T10:30:20.793299+00:00",
+        "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+      },
+      "env": {
+        "HIP_INCLUDE_PATH": "/opt/rocm/include",
+        "HIP_LIB_PATH": "/opt/rocm/lib",
+        "HIP_PATH": "/opt/rocm",
+        "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+        "ROCR_VISIBLE_DEVICES": "1"
+      },
+      "hipcc": [
+        "HIP version: 7.2.53211-3d9ef42",
+        "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+      ],
+      "rocm_smi_clock_power": [
+        "============================ ROCm System Management Interface ============================",
+        "====================================== Temperature =======================================",
+        "GPU[0]\t\t: Temperature (Sensor edge) (C): 31.0",
+        "GPU[0]\t\t: Temperature (Sensor junction) (C): 38.0",
+        "GPU[0]\t\t: Temperature (Sensor memory) (C): 42.0",
+        "GPU[1]\t\t: Temperature (Sensor edge) (C): 38.0",
+        "GPU[1]\t\t: Temperature (Sensor junction) (C): 47.0",
+        "GPU[1]\t\t: Temperature (Sensor memory) (C): 58.0",
+        "==========================================================================================",
+        "=============================== Current clock frequencies ================================",
+        "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[1]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[1]\t\t: mclk clock level: 1: (456Mhz)",
+        "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[1]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "==========================================================================================",
+        "=================================== Power Consumption ====================================",
+        "GPU[0]\t\t: Average Graphics Package Power (W): 12.0",
+        "GPU[1]\t\t: Average Graphics Package Power (W): 33.0",
+        "==========================================================================================",
+        "================================== End of ROCm SMI Log ==================================="
+      ],
+      "python": "3.11.11",
+      "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44"
+    },
+    "loading": {
+      "resolve_s": 0.8781940890476108,
+      "load_s": 6.698663789778948,
+      "internal_load_s": 6.698659310117364,
+      "resolution": {
+        "_resolved_backend": "hip_gfx1100",
+        "_resolved_quant": "gguf_q4_k_m",
+        "_resolved_execution_profile": null,
+        "generator_type": "SubmitPollTextGenerator"
+      },
+      "context_length": 8192,
+      "runner_capacity": 8192,
+      "max_block": 512
+    },
+    "memory": {
+      "total_bytes": 25753026560,
+      "used_bytes": {
+        "before_load": 37748736,
+        "after_load": 19209912320,
+        "after_runs": 23119003648
+      },
+      "peak_used_bytes": 23119003648,
+      "labels": [
+        "before_load",
+        "after_load",
+        "after_runs"
+      ]
+    },
+    "warmups": [
+      {
+        "prompt_tokens": 1024,
+        "generated_tokens": 128,
+        "decode_forwards": 127,
+        "prefill_s": 8.050640289671719,
+        "first_sample_s": 6.016157567501068e-05,
+        "first_token_s": 8.050700451247394,
+        "decode_s": 2.770807810127735,
+        "wall_s": 10.821578565053642,
+        "syncs": 129,
+        "finish_reason": "length",
+        "eos_ignored": true,
+        "role": "warmup",
+        "index": 0,
+        "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+      }
+    ],
+    "samples": [
+      {
+        "prompt_tokens": 1024,
+        "generated_tokens": 128,
+        "decode_forwards": 127,
+        "prefill_s": 7.9318212401121855,
+        "first_sample_s": 3.5820528864860535e-05,
+        "first_token_s": 7.93185706064105,
+        "decode_s": 2.7700203210115433,
+        "wall_s": 10.70194603689015,
+        "syncs": 129,
+        "finish_reason": "length",
+        "eos_ignored": true,
+        "role": "sample",
+        "index": 0,
+        "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+      },
+      {
+        "prompt_tokens": 1024,
+        "generated_tokens": 128,
+        "decode_forwards": 127,
+        "prefill_s": 7.938345869071782,
+        "first_sample_s": 3.898050636053085e-05,
+        "first_token_s": 7.938384849578142,
+        "decode_s": 2.777334712445736,
+        "wall_s": 10.715792997740209,
+        "syncs": 129,
+        "finish_reason": "length",
+        "eos_ignored": true,
+        "role": "sample",
+        "index": 1,
+        "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+      },
+      {
+        "prompt_tokens": 1024,
+        "generated_tokens": 128,
+        "decode_forwards": 127,
+        "prefill_s": 7.976349992677569,
+        "first_sample_s": 4.392024129629135e-05,
+        "first_token_s": 7.976393912918866,
+        "decode_s": 2.7756509156897664,
+        "wall_s": 10.752111152745783,
+        "syncs": 129,
+        "finish_reason": "length",
+        "eos_ignored": true,
+        "role": "sample",
+        "index": 2,
+        "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+      }
+    ],
+    "stats": {
+      "samples": 3,
+      "decode_tps": 45.75503327241701,
+      "decode_tps_min": 45.727293664278264,
+      "decode_tps_max": 45.848039105223144,
+      "decode_tps_p95": 45.848039105223144,
+      "decode_tps_stdev": 0.06324427813990682,
+      "prefill_s": 7.938345869071782,
+      "prefill_tps": 128.9941276040338,
+      "first_token_s": 7.938384849578142,
+      "first_sample_s": 3.898050636053085e-05,
+      "decode_s": 2.7756509156897664,
+      "wall_s": 10.715792997740209,
+      "prompt_tokens": 1024,
+      "generated_tokens": 128,
+      "decode_forwards_per_sample": 127
+    },
+    "public": {
+      "public_wall_s": 10.759205964393914,
+      "public_tps": 11.896788705746324,
+      "generated_tokens": 128,
+      "finish_reason": "length",
+      "sampler_mode": "greedy",
+      "public_path_parity": true,
+      "public_path_first_divergence": null,
+      "public_generated_equals_expected": true,
+      "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+    }
+  },
+  "guard": "440 tests passed",
+  "decision": "Close value-pass tuning tranche after three rejected candidates and re-profile; no measured candidate meets both speed improvement and numerical gates. Default numerical defect, full implementation, G4/G5 and goal remain incomplete."
+}
