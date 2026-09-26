@@ -65,6 +65,36 @@ def test_rate_does_not_divide_by_zero_on_an_empty_wall() -> None:
     assert rate["tok_per_s"] == 0.0
 
 
+def test_benchmark_preserves_session_bulk_default(monkeypatch) -> None:
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    import hipengine.core.device as device
+    import hipengine.core.hip as hip
+    import hipengine.distributed.tp2_generate as generate
+
+    monkeypatch.setattr(hip, "get_hip_runtime", lambda: SimpleNamespace(
+        mem_get_info=lambda: (1024, 2048)))
+    monkeypatch.setattr(device, "scoped_current_device", lambda *args: nullcontext())
+    calls = []
+
+    class ConstructionReached(Exception):
+        pass
+
+    def construct(*args, **kwargs):
+        calls.append(kwargs)
+        raise ConstructionReached
+
+    monkeypatch.setattr(generate, "MlpTP2GenerationSession", construct)
+    for flags, expected in (([], None), (["--bulk-prefill"], True),
+                            (["--no-bulk-prefill"], False)):
+        with pytest.raises(ConstructionReached):
+            bench.main(["--mode", "tp2", *flags])
+        assert calls[-1]["bulk_prefill"] is expected
+    with pytest.raises(ConstructionReached):
+        bench.main(["--mode", "tp1"])
+    assert calls[-1]["bulk_prefill"] is False
+
+
 def test_fractions_parse_two_shares() -> None:
     assert bench._parse_fractions("0.44/0.56") == pytest.approx((0.44, 0.56))
 

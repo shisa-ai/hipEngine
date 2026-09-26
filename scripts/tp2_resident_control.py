@@ -201,7 +201,7 @@ def resolved_scope_manifest(session):
     group = getattr(session, '_shard_group', None)
     manifest = {'kind': 'measured_tp_ar_scope', 'ranks': ranks,
                 'capacity': session.max_sequence_length, 'schedule': session.schedule,
-                'prefill_schedule': 'bulk' if resident else 'token-serial',
+                'prefill_schedule': session.prefill_schedule,
                 'mode': session.mode, 'reduce_mode': session.reduce_mode,
                 'head_shard': session.head_shard,
                 'mlp_shard_variant': None if group is None else group.mlp_decode_variant,
@@ -355,7 +355,7 @@ class NativeARAdapter:
         self.owner.close()
 
 
-def create_native_adapter(model, arm, *, capacity=200, bulk_prefill=False, attention_shard=None):
+def create_native_adapter(model, arm, *, capacity=200, bulk_prefill=None, attention_shard=None):
     if arm != 'tp2':
         if bulk_prefill:
             raise ValueError('bulk_prefill selects the TP2 rank-local candidate; the TP1 arm is already bulk')
@@ -369,8 +369,9 @@ def create_native_adapter(model, arm, *, capacity=200, bulk_prefill=False, atten
     extra = {} if attention_shard is None else {'attention_shard': bool(attention_shard)}
     # ``bulk_prefill=None`` keeps the session's own default rather than pinning
     # one, so a harness that does not name the schedule measures the schedule
-    # the engine ships. Pinning it also pins the workspace to the capacity.
+    # the engine ships. Selecting the schedule does not change workspace sizing:
+    # both explicit True and the default grow the workspace to the prompt.
     return NativeARAdapter(MlpTP2GenerationSession(model, devices=(0, 1), mode='tp2',
         max_sequence_length=capacity,
         bulk_prefill=(None if bulk_prefill is None else bool(bulk_prefill)),
-        bulk_prefill_rows=(capacity if bulk_prefill else None), **extra), resident=False)
+        bulk_prefill_rows=None, **extra), resident=False)

@@ -118,6 +118,34 @@ def test_adapter_reports_the_tp2_bulk_candidate_schedule():
         create_native_adapter('unused.gguf','tp1-d0',bulk_prefill=True)
 
 
+@pytest.mark.parametrize('selection', [None, True, False])
+def test_native_factory_preserves_bulk_selection(monkeypatch, selection):
+    import hipengine.distributed.tp2_generate as generate
+    from scripts.tp2_resident_control import create_native_adapter
+    calls = []
+    def construct(*args, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(runtime=SimpleNamespace(), vocab_size=7,
+                               bulk_prefill_enabled=kwargs['bulk_prefill'] is not False)
+    monkeypatch.setattr(generate, 'MlpTP2GenerationSession', construct)
+    kwargs = {} if selection is None else {'bulk_prefill': selection}
+    create_native_adapter('unused.gguf', 'tp2', **kwargs)
+    assert calls[-1]['bulk_prefill'] is selection
+    assert calls[-1]['bulk_prefill_rows'] is None
+
+
+@pytest.mark.parametrize('schedule', ['bulk-tp2', 'token-serial'])
+def test_scope_manifest_reports_actual_tp2_prefill_schedule(schedule):
+    from scripts.tp2_resident_control import resolved_scope_manifest
+    runner = SimpleNamespace(backend='hip_gfx1100', hidden_size=4, vocab_size=7,
+                             ffn_size=8, fp16_recurrent_state=False)
+    session = SimpleNamespace(_runners={0: runner, 1: runner},
+        max_sequence_length=200, schedule='graphed', prefill_schedule=schedule,
+        mode='tp2', reduce_mode='device', head_shard=True)
+    manifest = resolved_scope_manifest(session)['manifest']
+    assert manifest['prefill_schedule'] == schedule
+
+
 def test_resident_prefill_schedule_switch_is_passed_through():
     from scripts.tp2_resident_control import NativeARAdapter
     calls=[]
