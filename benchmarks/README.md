@@ -1862,6 +1862,37 @@ numeric 128K row is carried forward. Evidence:
 [September 20 C1 refresh](results/2026-09-20-gfx1151-v060-headline-refresh.json);
 [`SH14-C1 completion gate`](results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json).
 
+### Radeon 8060S: Gemma 4 26B-A4B `UD-Q4_K_XL`
+
+Prefill projects the routed experts' rows by reading each expert's weight row
+once and reusing it across that expert's rows, instead of re-reading the whole
+expert weight matrix once per row. The two expert projections are **84.8% of
+prefill kernel time** on this artifact (`Q4_K` gate/up 53.40%, `Q5_1` down
+31.40%), which is what makes that reuse the whole prefill budget. The reuse is
+bit-exact — it is a different launch geometry over the same per-row reduction —
+so prefill rises with no change to the arithmetic, the decoded tokens, or the
+decode rate.
+
+| Workload | Prefill | Decode | Public wall |
+| --- | ---: | ---: | ---: |
+| 2048/8 | **48.57 tok/s** (39.82 per-row) | 19.53 tok/s (19.63) | **43.503 s** (51.957) |
+
+Both rows of that pair ran on the same tree in one session, with the file under
+test as the only difference between the arms; an earlier pair taken before the
+change's final refactor agrees at 39.69 against 48.99 tok/s.
+
+This file mixes quants — 29 layers are `Q4_K` gate/up with `Q5_1` down and
+layer 29 is `Q5_K` with `Q8_0` — so 29 of the 60 expert projections per prefill
+block take the reusing route and the rest keep the per-row pass. The `Q4_K`
+gate/up is the larger half of the budget at 53.4% of prefill kernel time and has
+no bit-exact grouped family, so it still reads per row. Routing it through the
+row-batched WMMA prefill as well reaches **111.43 tok/s** but exceeds the
+production `kl_max` limit at 0.167959 on 2 of 1023 teacher-forced rows (both rows
+keep their top-1 token; the divergence is a compressed tail), so it is not
+shipped. Evidence:
+[expert weight reuse](results/2026-09-27-gemma4-moe-prefill-grouped-accepted.json);
+[`WMMA row-slice rejection`](results/2026-09-27-gemma4-moe-prefill-wmma-rowslice-rejected.json).
+
 ### Laguna S 2.1
 
 | Platform / format | Workload | Prefill | Decode | Evidence |

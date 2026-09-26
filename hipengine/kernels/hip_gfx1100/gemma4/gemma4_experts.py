@@ -19,8 +19,16 @@ prefix is read back in one copy (``num_experts + 1`` int64 values) rather than
 read per expert. A device-resident dispatch would remove the sync but is a
 separate optimisation; this path is correctness-first.
 
-Weights are BF16 here. Quantised GGUF expert weights go through the separate
-``gguf_expert_pack8_gemv`` path and are not wired into this function yet.
+Quantised GGUF expert weights resolve a kernel from the registry by quant key.
+Decode and small lane counts use the selected-GEMV family, which launches one
+block per (out_col, lane). A prefill block has enough compact rows per expert
+that re-reading the expert's weight matrix once per lane dominates: measured at
+84.8% of the 512-token prefill device time on gfx1151 (Q4_K gate/up 53.4%,
+Q5_1 down 31.4%). Above one lane per expert the projection therefore prefers a
+grouped-prefill family, where one launch per (expert, out_col) reads that
+expert's weight row once and reuses it across the expert's rows. That is a
+capability the quant key either declares or does not: where no grouped family is
+registered the projection keeps the arithmetic it had before.
 """
 
 from __future__ import annotations
@@ -46,6 +54,50 @@ _BF16_BYTES = 2
 _I32_BYTES = 4
 _I64_BYTES = 8
 _F32_BYTES = 4
+
+# Grouped-prefill family: one launch covers every expert, reading each expert's
+# weight matrix once and reusing it across that expert's contiguous row slice.
+# The ABI is (input, expert_start, weights, out, compact_rows, num_experts,
+# in_features, out_features), and the registry decides by quant key which quants
+# ship it; a quant without one falls through to the per-expert row-slice route.
+_GROUPED_PREFILL_VARIANT = "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
+
+# Prefill prefers a grouped family once there is at least one compact lane per
+# expert. Below that most experts are empty, so a grouped launch's per-expert
+# grid would spend its blocks on nothing and the selected GEMV's per-lane grid
+# is cheaper.
+_PREFILL_MIN_LANES_PER_EXPERT = 1
+
+# Diagnostic: how many expert projections ran through each route since import.
+# Tests and probes read this to confirm the intended path ran rather than
+# inferring it from a timing.
+_MOE_ROUTE_COUNTS: dict[str, int] = {}
+
+
+def gemma4_moe_expert_route_counts() -> dict[str, int]:
+    """Return how many expert projections used each dispatch route."""
+
+    return dict(_MOE_ROUTE_COUNTS)
+
+
+def _record_moe_route(route: str) -> None:
+    _MOE_ROUTE_COUNTS[route] = _MOE_ROUTE_COUNTS.get(route, 0) + 1
+
+
+def gemma4_moe_prefill_route_enabled(*, lanes: int, num_experts: int) -> bool:
+    """Whether an expert projection should take the row-reusing prefill route.
+
+    The selected-GEMV family launches one block per (out_col, lane), so a block
+    with many lanes per expert re-reads each expert's weight matrix once per
+    lane. The row-reusing route reads each weight element once per expert and
+    reuses it across that expert's rows. The crossover is one lane per expert:
+    below it most experts are empty, so a grouped launch's per-expert grid would
+    spend its blocks on nothing and the per-lane GEMV grid is cheaper.
+    """
+
+    if int(num_experts) <= 0:
+        raise ValueError("num_experts must be positive")
+    return int(lanes) >= _PREFILL_MIN_LANES_PER_EXPERT * int(num_experts)
 
 
 @dataclass
@@ -232,53 +284,37 @@ def gemma4_experts_forward_bf16(
     # 3. One gate_up projection for every compact row, then GeGLU over the whole
     #    compact buffer in a single launch.
     fused = 2 * intermediate
-    if not gemma4_project_experts_selected(
-        gate_up_proj,
-        packed_hidden.ptr,
-        sorted_experts.ptr,
-        gate_up_out.ptr,
-        lanes,
-        lanes,
-        num_experts,
-        hidden_size,
-        fused,
-        **kwargs,
-    ):
-        gemma4_project_experts_by_offset(
+    _record_moe_route(
+        gemma4_project_experts_rows(
             gate_up_proj,
             packed_hidden.ptr,
             gate_up_out.ptr,
             expert_start,
+            sorted_experts.ptr,
+            lanes,
             num_experts,
             hidden_size,
             fused,
             **kwargs,
         )
+    )
     gemma4_gelu_tanh_mul_bf16(gate_up_out.ptr, activated.ptr, lanes, intermediate, **kwargs)
 
     # 4. The down projection, over the same compact rows.
-    if not gemma4_project_experts_selected(
-        down_proj,
-        activated.ptr,
-        sorted_experts.ptr,
-        expert_out.ptr,
-        lanes,
-        lanes,
-        num_experts,
-        intermediate,
-        hidden_size,
-        **kwargs,
-    ):
-        gemma4_project_experts_by_offset(
+    _record_moe_route(
+        gemma4_project_experts_rows(
             down_proj,
             activated.ptr,
             expert_out.ptr,
             expert_start,
+            sorted_experts.ptr,
+            lanes,
             num_experts,
             intermediate,
             hidden_size,
             **kwargs,
         )
+    )
 
     # 5. Accumulate the compacted expert outputs back onto their tokens.
     gemma4_moe_lane_to_row_i32(sorted_lanes.ptr, lane_to_row.ptr, lanes, **kwargs)
@@ -451,6 +487,128 @@ def gemma4_project_experts_by_offset(
             out_features,
             stream=stream,
         )
+
+
+def gemma4_project_experts_grouped_prefill(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    expert_start_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+) -> bool:
+    """Run one grouped launch that reuses each expert's weights across its rows.
+
+    Returns ``False`` when this weight has no registered grouped-prefill family,
+    which is a property of the quant key, not of a model or an artifact.
+    """
+
+    if isinstance(weight, int):
+        return False
+    from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
+    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+    key = KernelKey(
+        weight.backend, "moe_linear", weight.spec.quant_key, _GROUPED_PREFILL_VARIANT
+    )
+    _ensure_linear_kernel_registered(key)
+    try:
+        fn = resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+    except MissingKernelError:
+        return False
+    fn(
+        x_ptr,
+        expert_start_ptr,
+        weight.allocation("raw").buffer.ptr,
+        out_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+    )
+    return True
+
+
+def gemma4_project_experts_rows(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    out_ptr: int,
+    expert_start,
+    selected_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+) -> str:
+    """Project one block of compact rows and report the route that ran.
+
+    Preference order, highest first:
+
+    1. ``grouped_prefill`` -- one launch per (expert, out_col) that reads the
+       expert's weight row once and reuses it across that expert's rows. Only
+       when the block has at least one row per expert *and* the weight's quant
+       key registers a grouped family.
+    2. ``selected_gemv`` -- one block per (out_col, lane), one weight read per
+       lane.
+    3. ``per_expert_offset`` -- the fallback for a weight with no selected
+       kernel, which costs a device-to-host read of the row counts.
+
+    Routes 1 and 2 are bit-exact against each other wherever both are
+    registered (pinned by ``tests/test_unit_gemma4_expert_route.py``), so the
+    choice between them is a cost decision and not an arithmetic one. Route 3 is
+    reached only where route 2 is absent, which is the bf16 case.
+    """
+
+    if gemma4_moe_prefill_route_enabled(
+        lanes=compact_rows, num_experts=num_experts
+    ) and gemma4_project_experts_grouped_prefill(
+        weight,
+        x_ptr,
+        expert_start.ptr,
+        out_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+    ):
+        return "grouped_prefill"
+    if gemma4_project_experts_selected(
+        weight,
+        x_ptr,
+        selected_ptr,
+        out_ptr,
+        compact_rows,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+    ):
+        return "selected_gemv"
+    gemma4_project_experts_by_offset(
+        weight,
+        x_ptr,
+        out_ptr,
+        expert_start,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+    )
+    return "per_expert_offset"
 
 
 def _zero(buffer: DeviceBuffer, **kwargs: object) -> None:
