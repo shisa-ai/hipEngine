@@ -2,13 +2,13 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10900,
-    "current": 3668,
+    "entries": 10901,
+    "current": 3669,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1168,
+    "rows": 1169,
     "by_rule": {
-      "dependency": 37,
+      "dependency": 38,
       "legacy-next": 109,
       "status": 1022
     }
@@ -43988,6 +43988,47 @@
       },
       "id": "worklog/20260926T214525.943067Z-lhl-gemma4-gate-up-mmq-spike-94edc9",
       "evidence_hash": "ac79357ef861"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260926T231216.332180Z-lhl-gemma4-q5-1-staged-grouped-prefill-d6a2a9",
+      "title": "Gemma 4 Q5_1 expert down projection: staged grouped prefill, bit-exact 1.91x",
+      "location": "worklog/entries/20260926T231216.332180Z-lhl-gemma4-q5-1-staged-grouped-prefill-d6a2a9.md:75",
+      "evidence": {
+        "status": "completed",
+        "worker": "lhl",
+        "topic": "gemma4-q5-1-staged-grouped-prefill",
+        "written": "2026-09-26",
+        "age_days": 1,
+        "open_by": "dependency",
+        "continuation_entries": 0,
+        "open_text": "- With the down projection no longer the largest item, the Q4_K gate/up\n  projection (~28% of prefill) is: its fastest route is the gated MMQ path\n  recorded in `20260926T222203.094525Z-lhl-gemma4-moe-gate-up-mmq-5b1878.md`,\n  which is still waiting on the lead's `kl_max` applicability call. The staged\n  Q5_1 kernel's own remaining cost is latency rather than bandwidth (3.5 GB in\n  20.2 ms is 173 GB/s), so occupancy - not traffic - is what a further pass on it\n  would have to buy.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "Next names a dependency: 'waiting on'",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260926T231216.332180Z-lhl-gemma4-q5-1-staged-grouped-prefill-d6a2a9.md",
+        "refs": [],
+        "tokens": [
+          "91x",
+          "bit",
+          "down",
+          "exact",
+          "expert",
+          "gemma",
+          "grouped",
+          "prefill",
+          "projection",
+          "q5_1",
+          "staged"
+        ]
+      },
+      "id": "worklog/20260926T231216.332180Z-lhl-gemma4-q5-1-staged-grouped-prefill-d6a2a9",
+      "evidence_hash": "fec61433afe6"
     }
   ]
 }

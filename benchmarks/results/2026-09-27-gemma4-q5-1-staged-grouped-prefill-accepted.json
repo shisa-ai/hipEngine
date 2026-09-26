@@ -1,0 +1,58 @@
+{
+ "kind": "gemma4_campaign_candidate",
+ "verdict": "accepted and promoted (bit-exact, default path)",
+ "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B Q5_1 expert down-projection grouped prefill",
+ "candidate": "add a staged variant to the Q5_1 grouped prefill family and prefer it for MoE expert projections. The incumbent launches one block per (expert, out_col) and reloads the expert's whole activation block from L2 once per output column; the staged kernel gives each block a four-column output tile and holds the activation elements a thread needs for the current k-chunk in registers, so one element feeds four outputs. The contraction order is untouched: slot t still accumulates columns t, t + 256, t + 512, ... in increasing order and the tree is still the incumbent's 256-wide stride-128 -> 1 tree, whose first level becomes register-local because a thread owns both slot t and slot t + 128.",
+ "reason": "the change is bit-exact, so it needs no numerical gate: 0 of 11,534,336 bf16 outputs differ from the incumbent at the model's own down geometry, the route test pins the same 0-difference result at five geometries for Q5_1, and the public path emits 128 of 128 identical greedy token ids. It is therefore promoted to the default path rather than held behind a flag. It is 1.91x on the kernel and 1.161x on the 512/128 prefill row, which makes the down projection no longer the largest remaining prefill cost.",
+ "mechanism": {
+  "structure": "one block covers OUT_TILE=4 output columns of one expert with ROW_BATCH=4 and K_TILE=256; the tile shape is the measured optimum of a sweep (row_batch/out_tile of 8/4, 4/4, 4/8, 8/8, 2/4, 2/8, 4/6 at 256, and 4/8 at 512).",
+  "arithmetic": "identical association, not merely close: the k-stride is 256, each slot's column sequence is unchanged, and the reduction is the incumbent's 256-slot tree with its stride-128 level folded into the register pair (value0 + value1) it is equivalent to.",
+  "refuted_alternative": "a wider output tile alone does not help, which is what the existing out8 variant shows: it measures 30.32 ms against the incumbent's 30.99 ms because its inner loop still reloads each activation element once per output column. The columns have to be held across the tile. The K_TILE=512 shape of the same kernel is 17.28 ms but is not bit-exact (11,506,914 of 11,534,336 outputs differ), because a slot's column sequence depends on K_TILE = 256; it was dropped rather than shipped.",
+  "profile": "the incumbent is bandwidth-bound, not instruction-bound: at this geometry it moves ~17 GB in 38.5 ms, 441 GB/s, of which the weight bytes are only 0.3 GB. The staged kernel moves ~3.5 GB in 20.2 ms."
+ },
+ "correctness": {
+  "gate": "not applicable - no arithmetic change, so no execution-profile gate is required",
+  "kernel_level": "0 of 11,534,336 bf16 outputs differ from the incumbent Q5_1 grouped route at in 704 / out 2816 / 128 experts / 4096 compact rows, and 0 of 11,534,336 differ at Qwen4Exp's in 2816 / out 1408 shape.",
+  "unit_test": "tests/test_unit_gemma4_expert_route.py::test_grouped_prefill_is_bit_exact_against_the_selected_gemv checks every variant named in _GROUPED_PREFILL_VARIANTS[1:] against the selected GEMV, so the staged variant is covered at (2816, 704), (1408, 2816), (64, 128), (37, 96) and (16, 32). 36 tests pass.",
+  "generation_parity": "through LLM.generate() at 512 prompt / 128 output, both arms emit 128 of 128 identical greedy token ids from an identical prompt (sha256 fba226ff8653b8b1).",
+  "route_ran": "confirmed rather than inferred: gemma4_moe_grouped_variant_counts() reports the Q5_1 down projection resolving to the staged variant 29 times per 29-layer pass, alongside Q4_K's own staged_out8 29 times, with 58 grouped_prefill projections in total."
+ },
+ "performance": {
+  "platform": "gfx1151 Strix Halo (Radeon 8060S), ROCm, single request, greedy",
+  "protocol": "scripts/gemma4_campaign_bench.py at 512/128 with 3 samples and 1 full-shape warm-up, both arms on one tree with the only difference being which kernel the grouped variant name resolves to (registry swap in-process, no code edit between arms).",
+  "primary": {
+   "row": "512 prompt / 128 output",
+   "prefill_s_incumbent": [
+    4.239,
+    4.239,
+    4.25
+   ],
+   "prefill_s_candidate": [
+    3.632,
+    3.652,
+    3.653
+   ],
+   "prefill_tok_s_incumbent": 120.78,
+   "prefill_tok_s_candidate": 140.19,
+   "prefill_delta": "+16.1% (1.161x)",
+   "public_wall_s": "10.271 -> 9.678",
+   "decode_tok_s": "21.06 -> 21.06 (unchanged)"
+  },
+  "kernel_level": {
+   "geometry": "in 704, out 2816, 128 experts, 4096 compact rows (Gemma 4's down projection)",
+   "incumbent_ms": 38.71,
+   "staged_out4_ms": 20.23,
+   "delta": "1.91x at the leaf, bit-exact",
+   "second_geometry": "in 2816, out 1408 (Qwen4Exp's): 58.70 -> 37.81 ms, 1.55x, bit-exact - the family serves more than one model, so both real shapes were measured before changing a shared preference order."
+  },
+  "limits": "gfx1151 measurement; it does not qualify or change any gfx1100 row, though the two backends share the gfx11 source lineage. The tile shape was tuned on this backend only.",
+  "secondary": {
+   "row": "2048 prompt / 128 output - not measured for this change",
+   "why": "the change is bit-exact and decode never takes this route, so a second public row would restate the primary rather than test anything new; the leaf was measured at both real geometries instead. The sibling accepted row for the Q4_K staged rewrite was scoped the same way."
+  }
+ },
+ "selection": {
+  "flag": "none - the staged variant is first in _GROUPED_PREFILL_VARIANTS, so it selects by default",
+  "fallback": "the incumbent rowbatch8 variant stays registered and is still reached by any quant that has no staged variant, which is the family's existing design."
+ }
+}

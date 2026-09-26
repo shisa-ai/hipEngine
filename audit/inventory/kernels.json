@@ -3609,7 +3609,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 836,
+        "lines": 854,
         "referrers": 8,
         "runtime_referrers": [],
         "test_referrers": [
@@ -3636,7 +3636,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_experts.py",
-      "evidence_hash": "6641f45439e0"
+      "evidence_hash": "d5b477e53525"
     },
     {
       "kind": "kernel",
@@ -8719,7 +8719,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".hip",
-        "lines": 2057,
+        "lines": 2282,
         "referrers": 18,
         "runtime_referrers": [
           "hipengine/loading/gguf_selected_contract.py",
@@ -8748,7 +8748,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/qwen4_exp_q5_1.hip",
-      "evidence_hash": "417040f19b25"
+      "evidence_hash": "8479d0160481"
     },
     {
       "kind": "kernel",
@@ -8758,7 +8758,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 1034,
+        "lines": 1127,
         "referrers": 18,
         "runtime_referrers": [
           "hipengine/loading/gguf_selected_contract.py",
@@ -8786,7 +8786,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/qwen4_exp_q5_1.py",
-      "evidence_hash": "946884a83c85"
+      "evidence_hash": "28c42c3d0422"
     },
     {
       "kind": "kernel",
