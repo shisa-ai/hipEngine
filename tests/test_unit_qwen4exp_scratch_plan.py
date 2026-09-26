@@ -42,7 +42,10 @@ def test_context_admission_preserves_old_floor_and_reserve_but_accounts_large_ch
     assert before == small
     required = sum(qwen4_exp_scratch_breakdown(
         cfg, context_tokens=4352, prefill_chunk_size=4096).values())
-    assert large.scratch_bytes == 2 * required
+    from hipengine.loading.qwen4_exp_scratch import qwen4_exp_wide_f16_activation_nbytes
+    staging = qwen4_exp_wide_f16_activation_nbytes(
+        cfg, context_tokens=4352, prefill_chunk_size=4096)
+    assert large.scratch_bytes == 2 * (required + staging)
     assert large.scratch_bytes > before.scratch_bytes
     assert large.reserve_bytes == before.reserve_bytes == 4 << 30
     kwargs["available_device_bytes"] = before.required_bytes

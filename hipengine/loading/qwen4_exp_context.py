@@ -6,7 +6,10 @@ from hipengine.loading.qwen4_exp_materialize import (
     Qwen4ExpResidencyPlan,
     plan_qwen4_exp_memory_admission,
 )
-from hipengine.loading.qwen4_exp_scratch import qwen4_exp_scratch_breakdown
+from hipengine.loading.qwen4_exp_scratch import (
+    qwen4_exp_scratch_breakdown,
+    qwen4_exp_wide_f16_activation_nbytes,
+)
 
 
 def resolve_qwen4_exp_context(
@@ -32,7 +35,11 @@ def resolve_qwen4_exp_context(
             mandatory = sum(qwen4_exp_scratch_breakdown(
                 residency.config, context_tokens=context,
                 prefill_chunk_size=prefill_chunk_size).values())
-            scratch = max(scratch, mandatory)
+            # Reserve the lazy cast owner even when a later profile disables it.
+            staging = qwen4_exp_wide_f16_activation_nbytes(
+                residency.config, context_tokens=context,
+                prefill_chunk_size=prefill_chunk_size)
+            scratch = max(scratch, mandatory + staging)
         plan = plan_qwen4_exp_memory_admission(
             residency,available_device_bytes=available_device_bytes,
             context_tokens=context,resident_capacity=resident_capacity,

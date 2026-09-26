@@ -6,6 +6,22 @@ Optional MMQ, graph, verification and transaction resources are not included.
 """
 
 
+def qwen4_exp_wide_f16_activation_nbytes(config, *, context_tokens: int, prefill_chunk_size: int):
+    """Bound the optional per-runner cast owner for dense projection inputs."""
+    rows = min(int(context_tokens), int(prefill_chunk_size))
+    if rows <= 0:
+        raise ValueError("wide F16 activation capacity must be positive")
+    width = max(
+        config.residual_branch_count * config.hidden_size,
+        config.hidden_size,
+        config.residual_low_rank,
+        config.gdn_inner_size,
+        config.attention_head_count * config.attention_key_length,
+        config.expert_feed_forward_length,
+    )
+    return 2 * rows * width
+
+
 def qwen4_exp_scratch_breakdown(config, *, context_tokens: int, prefill_chunk_size: int):
     context, chunk = int(context_tokens), int(prefill_chunk_size)
     if not config.qsa_compression_ratio <= context <= config.context_length or chunk <= 0:

@@ -163,6 +163,9 @@ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple import (
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_F32,
+    _q8_dense_wide_enabled,
+    wide_f16_activation_enabled,
+    wide_f16_activation_session,
     raw_k_prefill_rowbatch_session,
     raw_k_prefill_variant_session,
     wmma_prefill_session,
@@ -188,6 +191,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen4_exp_materialize import Qwen4ExpResidentWeights
 from hipengine.loading.qwen4_exp_gguf import Qwen4ExpGGUFConfig
+from hipengine.loading.qwen4_exp_scratch import qwen4_exp_wide_f16_activation_nbytes
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 from hipengine.runtime.moe_graph import MoeGraphCache
 
@@ -6447,6 +6451,29 @@ class Qwen4ExpGGUFResidentModelRunner:
         self._configure_q8_mmq_prefill_resources()
         self._configure_q8_mmq_weight_sidecars()
 
+    def _wide_f16_activation_context(self):
+        """Bind stable runner-owned staging only during chunked prefill.
+
+        All consumers enqueue on the prefill stream. Each launch overwrites
+        the scratch only after the previous consumer, so no input cache or
+        cross-request invalidation is needed. The original workspace capacity
+        bounds the allocation even while a smaller prefill owner is selected.
+        """
+        self._require_open()
+        # Explicit opt-in until the integrated model gate and A/B qualify it.
+        if not _q8_dense_wide_enabled() or not wide_f16_activation_enabled(False):
+            return wide_f16_activation_session(False)
+        buffer = getattr(self, "_wide_f16_activation_buffer", None)
+        if buffer is None:
+            nbytes = qwen4_exp_wide_f16_activation_nbytes(
+                self.config, context_tokens=self.max_sequence_length,
+                prefill_chunk_size=self._prefill_workspaces[0].prefill_chunk_size)
+            buffer = malloc(nbytes, runtime=self.runtime)
+            self._buffers.append(buffer)
+            self._wide_f16_activation_buffer = buffer
+        return wide_f16_activation_session(
+            workspace_ptr=buffer.ptr, workspace_nbytes=buffer.nbytes)
+
     def _allocate_extra_prefill_workspace(self, chunk_size):
         """Prepare an inactive owner; callers must admit its additional memory."""
         self._require_open()
@@ -7591,6 +7618,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 q8_wmma_weight_filter if q8_wmma_layers else None
             ),
             self._q8_mmq_prefill_context(),
+            self._wide_f16_activation_context(),
         ):
             for start in range(0, len(values), self.prefill_chunk_size):
                 last_residual_ptr, hidden_rows = self._prefill_chunk(
@@ -7722,6 +7750,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         for buffer in reversed(self._buffers):
             free(buffer, runtime=self.runtime)
         self._buffers = []
+        self._wide_f16_activation_buffer = None
         for state in reversed(self.index_states):
             state.close()
         self.index_states = ()

@@ -499,23 +499,23 @@
 - Do not repeat unchanged bank/scale loop reorderings. Production
   raw-vector schedule remains; larger architectural work still open.
 
-## Qwen4Exp wide-F16 activation hoist: wired but inert on the model lane
+## Qwen4Exp wide-F16 activation hoist: opt-in runner integration
 
-- The launch-time hoist (`_launch_dense_wide_f16_staged` plus
-  `wide_f16_activation_session`, env opt-out
-  `HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT=0`) has exactly one production binder,
-  `hipengine/runtime/qwen35_gguf_runner.py:19338-19344`. The Qwen3.8-Flash-Next
-  lane (`hipengine/runtime/qwen4_exp_runner.py`) never binds a workspace, so
-  `_wide_f16_activation_stage_ptr` (`hipengine/runtime/gguf_linear.py:508-515`)
-  returns zero on every wide launch and the f32-input owner runs. The
-  `wide_f16_activation_for` profile default cannot change this: the workspace
-  is the binding gate, not the flag.
-- State 2026-09-26: no census has been observed to switch to the f16-input
-  sibling on this lane, and the 553.9 ms estimate is unrealized. Bind and size
-  a bounded, runner-owned owner in the qwen4exp prefill path, sized for its
-  admitted chunk capacity, and confirm with the scripted census before
-  measuring an A/B. The 1024-row bound belongs to the existing Qwen3.5/3.6
-  owner; Qwen4Exp does not yet have one.
+- `qwen4_exp_runner.py` now binds a lazy, runner-owned staging buffer during
+  chunked prefill when the wide route is selected and
+  `HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT=1`. The default remains the F32-input
+  owner until integrated GPU correctness, census and same-host A/B checks pass.
+- The buffer is bounded by the original chunk capacity, clamped to context,
+  and a conservative maximum dense input width from model configuration.
+  It is reused across resets, not resized for a selected smaller workspace,
+  and freed with the runner. Per-launch size checks still preserve the F32
+  fallback. Public context admission reserves the optional owner per runner
+  before profile binding; default/off paths allocate no additional buffer.
+- The 553.9 ms estimate is not measured engine recovery. Validation is blocked
+  by a concurrent DMS GPU job in `/home/lhl/hipEngine-main` observed on
+  2026-09-26; do not measure alongside it or stop another worker's process.
+  Once the GPU is available, run the integrated gate and A/B, then enable the
+  default only for a correct, non-regressive result.
 - Keep the shared helpers and opt-out while other model lanes use them.
   Removing the flag requires passing integrated correctness and a same-host
   non-regressive A/B, plus review of all consumers. If the Qwen4Exp binding
