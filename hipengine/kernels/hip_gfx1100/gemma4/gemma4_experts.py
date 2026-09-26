@@ -283,6 +283,20 @@ def gemma4_experts_forward_bf16(
         runtime=runtime,
     ):
         pass
+    elif mode != "selected" and gemma4_project_experts_grouped_dual(
+        gate_up_proj,
+        packed_hidden.ptr,
+        expert_start.ptr,
+        gate_up_out.ptr,
+        lanes,
+        num_experts,
+        hidden_size,
+        intermediate,
+        fused,
+        stream=stream,
+        runtime=runtime,
+    ):
+        pass
     elif mode != "selected" and gemma4_project_experts_grouped(
         gate_up_proj,
         packed_hidden.ptr,
@@ -457,6 +471,13 @@ _SELECTED_VARIANT = "selected_gemv_bf16_bf16_out"
 # ``_SELECTED_VARIANT``. The variant name is the ABI, not the quant: a quant that
 # registers it is served, and one that does not keeps the selected path.
 _GROUPED_PREFILL_VARIANT = "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
+
+# The fused-``gate_up`` form of the same owner. It takes the fused expert stride
+# and writes both halves into one row, which is why the single-output variant
+# above cannot serve Gemma's fused tensor.
+_GROUPED_DUAL_PREFILL_VARIANT = (
+    "selected_dual_grouped_rowbatch8_bf16_bf16_out"
+)
 
 # Lanes, not rows: a compact row is one (token, top-k) pair, and the grouped
 # grid is ``out_features * num_experts`` CTAs however few rows are live. Below
@@ -696,6 +717,80 @@ def _build_wmma_tile_plan(
     )
     return upper_rows
 
+
+def gemma4_project_experts_grouped_dual(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    expert_start_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    fused_width: int,
+    *,
+    stream: int = 0,
+    runtime: object | None = None,
+) -> bool:
+    """Run a fused ``gate_up`` projection through a grouped dual owner.
+
+    The owner keeps one CTA per (expert, output column) and walks that expert's
+    compact rows in batches, so each weight row is loaded once per batch instead
+    of once per row. It writes both halves of the fused row: gate columns at
+    ``[0, out_features)`` and up columns at ``[out_features, fused_width)``.
+
+    ``fused_width`` is the fused row width (``2 * out_features`` for Gemma's
+    ``gate_up``). Both the weight expert stride and the output row stride are
+    that width, because both halves live in one allocation while each still
+    indexes from its own origin.
+
+    Returns ``False`` when no grouped dual owner serves this weight, which
+    leaves the selected GEMV as the only path for quants without one.
+    """
+
+    if isinstance(weight, int):
+        return False
+    if compact_rows < _GROUPED_PREFILL_MIN_LANES_PER_EXPERT * num_experts:
+        return False
+    from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
+    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+    key = KernelKey(
+        weight.backend, "moe_linear", weight.spec.quant_key, _GROUPED_DUAL_PREFILL_VARIANT
+    )
+    _ensure_linear_kernel_registered(key)
+    try:
+        fn = resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+    except MissingKernelError:
+        return False
+    base_ptr = weight.allocation("raw").buffer.ptr
+    # One half's byte length, not a row stride: a Q4_K row is a whole number of
+    # 256-value blocks, so the half boundary lands on a block boundary too. The
+    # owner indexes each side from its own origin while striding experts by the
+    # fused width, so the up half starts one half into the allocation.
+    half_bytes = weight.expert_stride_bytes // 2
+    fn(
+        x_ptr,
+        expert_start_ptr,
+        base_ptr,
+        base_ptr + half_bytes,
+        out_ptr,
+        out_ptr + out_features * 2,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        output_row_stride=fused_width,
+        expert_stride_rows=fused_width,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
 
 def gemma4_project_experts_grouped(
     weight: Gemma4Projection,

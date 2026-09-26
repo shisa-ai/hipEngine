@@ -615,6 +615,123 @@ def test_grouped_rowbatch8_matches_strict_selected_dual_bits() -> None:
             free(device, runtime=runtime)
 
 
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_grouped_rowbatch8_fused_stride_matches_the_two_tensor_form_bits() -> None:
+    """A fused ``gate_up`` allocation must reproduce the two-tensor form's bits.
+
+    Gemma's ``gate_up`` is one allocation holding both halves, so the grouped
+    owner has to take the fused expert stride (``out_features_a +
+    out_features_b``) and write both halves into one output row. Either stride
+    being wrong reads a neighbouring expert's rows or interleaves the halves,
+    and neither fails loudly, so this asserts bit-equality against the
+    two-tensor form that ``test_grouped_rowbatch8_matches_strict_selected_dual_bits``
+    already pins to the strict selected dual.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+
+    fixture = _build_compact_fixture(
+        counts=[9, 0, 17, 3] + [0] * 63 + [5],
+        in_features=256,
+        out_features_a=32,
+        out_features_b=32,
+        dtype="bf16",
+        seed=23,
+    )
+    assert fixture.out_features_a == fixture.out_features_b
+    fused_width = 2 * fixture.out_features_a
+    # One allocation per expert holding both halves, which is the layout Gemma's
+    # gate_up tensor uses.
+    fused_weights = np.ascontiguousarray(
+        np.concatenate([fixture.qweight_a, fixture.qweight_b], axis=1)
+    )
+    assert fused_weights.shape == (
+        fixture.num_experts,
+        fused_width,
+        fixture.qweight_a.shape[-1],
+    )
+
+    runtime = get_hip_runtime()
+    devices = []
+    outputs = []
+    try:
+        # The two-tensor form strides experts by one half's width, so it needs
+        # each half in its own allocation; the fused form needs the fused
+        # allocation. Both are uploaded so the two runs read the same weights.
+        two_tensor_a = np.ascontiguousarray(fixture.qweight_a)
+        two_tensor_b = np.ascontiguousarray(fixture.qweight_b)
+        for host in (
+            fixture.x_host,
+            fixture.expert_start_compact,
+            two_tensor_a,
+            two_tensor_b,
+            fused_weights,
+        ):
+            device = malloc(host.nbytes, runtime=runtime)
+            copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
+            devices.append(device)
+        # The two-tensor form writes one half-width buffer per side; the fused
+        # form writes both halves into one full-width buffer.
+        for width in (fixture.out_features_a, fixture.out_features_a, fused_width):
+            outputs.append(
+                malloc(
+                    fixture.compact_rows * width * np.dtype(np.uint16).itemsize,
+                    runtime=runtime,
+                )
+            )
+        # Two-tensor form: separate outputs, each side's own row stride.
+        gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out(
+            devices[0].ptr,
+            devices[1].ptr,
+            devices[2].ptr,
+            devices[3].ptr,
+            outputs[0].ptr,
+            outputs[1].ptr,
+            fixture.compact_rows,
+            fixture.num_experts,
+            fixture.in_features,
+            fixture.out_features_a,
+            runtime=runtime,
+        )
+        # Fused form: one output, both strides the fused width, up origin one
+        # gate width into the row, and the up half's weights one half into the
+        # fused weight allocation.
+        row_bytes = (fixture.in_features // 256) * 144
+        gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out(
+            devices[0].ptr,
+            devices[1].ptr,
+            devices[4].ptr,
+            devices[4].ptr + fixture.out_features_a * row_bytes,
+            outputs[2].ptr,
+            outputs[2].ptr + fixture.out_features_a * np.dtype(np.uint16).itemsize,
+            fixture.compact_rows,
+            fixture.num_experts,
+            fixture.in_features,
+            fixture.out_features_a,
+            output_row_stride=fused_width,
+            expert_stride_rows=fused_width,
+            runtime=runtime,
+        )
+        got = []
+        for output, width in zip(
+            outputs,
+            (fixture.out_features_a, fixture.out_features_a, fused_width),
+            strict=True,
+        ):
+            host = np.empty((fixture.compact_rows, width), dtype=np.uint16)
+            copy_device_to_host(
+                host_array_ptr(host), output, host.nbytes, runtime=runtime
+            )
+            got.append(host)
+        np.testing.assert_array_equal(got[2][:, : fixture.out_features_a], got[0])
+        np.testing.assert_array_equal(got[2][:, fixture.out_features_a :], got[1])
+    finally:
+        for output in reversed(outputs):
+            free(output, runtime=runtime)
+        for device in reversed(devices):
+            free(device, runtime=runtime)
+
+
 def _run_selected_dual_gpu(
     fixture: CompactFixture,
     dtype: str,

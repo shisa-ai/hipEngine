@@ -399,23 +399,23 @@ differs.
 | Engine | Prefill 1024 | Decode at 1024/128 |
 | --- | ---: | ---: |
 | llama.cpp HIP `8cfc315`, same GGUF | **3910** | **68.92** |
-| hipEngine | 154.0 | 43.83 |
+| hipEngine | 253.0 | 43.84 |
 
-Prefill now serves the MoE down projection from a grouped expert owner instead
-of one CTA per output column. The owner reuses each loaded weight row across
-eight compact rows, and it reproduces the strict reduction order rather than
-approximating it: the 1023-row teacher-forced comparison reports zero KL and
-100% top-1 agreement, so prefill rises from 128.5 to 154.0 tok/s at 1024 tokens
-at no numerical cost. Decode is unchanged by this work, since a decode step is
-too narrow to reuse a weight row.
+Prefill now serves both MoE expert projections from grouped expert owners
+instead of one CTA per output column. The owners reuse each loaded weight row
+across eight compact rows, and they reproduce the strict reduction order rather
+than approximating it: the 1023-row teacher-forced comparison reports zero KL
+and 100% top-1 agreement for both, so prefill rises from 128.5 to 253.0 tok/s at
+1024 tokens at no numerical cost. Decode is unchanged by this work, since a
+decode step is too narrow to reuse a weight row.
 
 hipEngine's own shape matrix at 128 outputs: decode 52.28 tok/s at a 128-token
 prompt, 48.12 at 512, 43.74 at 1024, 40.02 at 4096; prefill 140.2 / 135.7 /
 128.5 / 108.6 tok/s at the same shapes. The 128/512/4096 rows are one sample
 each; the 1024/128 row is three. The matrix's prefill figures were taken before
-the expert-projection routing below; the current 1024-token prefill is the 154.0
-tok/s in the table. First-token latency at 1024 is 6.66 s and
-public request wall time is 9.58 s including prefill. Decode is close to flat
+the expert-projection routing below; the current 1024-token prefill is the 253.0
+tok/s in the table. First-token latency at 1024 is 4.05 s and
+public request wall time is 6.96 s including prefill. Decode is close to flat
 across context length - 52.28 down to 40.02 - because the sliding layers, 25 of
 the model's 30, read only the keys inside their 1024-token window instead of
 walking the whole cached context and masking the difference away.
@@ -424,7 +424,8 @@ For product context on the same GPU and workload, Qwen3.6-35B-A3B
 different model and tokenizer, used as a speed reference only.
 
 [Dimension-partitioned decode attention and its correctness repair](results/2026-09-26-gemma4-dimension-partition-correctness-repair.json);
-[MoE prefill expert-projection routing](results/2026-09-26-gemma4-moe-prefill-grouped-xtx.json);
+[MoE prefill expert-projection routing](results/2026-09-26-gemma4-moe-prefill-grouped-xtx.json),
+[grouped gate+up projection](results/2026-09-26-gemma4-moe-prefill-grouped-dual-xtx.json);
 [read range and slice policy](results/2026-09-26-gemma4-26b-a4b-sliding-read-range-accepted.json);
 [two-phase decode split and its production-profile gate](results/2026-09-26-gemma4-26b-a4b-two-phase-split-accepted.json);
 [decode attention kernel](results/2026-09-25-gemma4-26b-a4b-key-class-decode-accepted.json);
