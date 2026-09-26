@@ -1494,6 +1494,48 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 76: the WMMA arm re-measured, and a correction to how it was being
+  described.** The arm's number had been quoted from a pre-session measurement for
+  several iterations. Re-measured on the XTX with the same bench, the same 1024
+  prompt and the same artifact as the exact path:
+
+  | config | prefill tok/s | vs exact | ``kl_max`` (bar 0.05) |
+  | --- | ---: | ---: | ---: |
+  | exact, current | **525.06** | 1.00x | 0.0, passes |
+  | MoE-only (``GEMMA4_MOE_PREFILL=wmma``) | 562.25 | 1.07x | 0.0609 |
+  | MoE+dense (``+GGUF_WMMA_PREFILL=1``) | **757.60** | 1.44x | 0.161 |
+  | llama.cpp HIP 8cfc315 | 3910 | 7.4x | -- |
+
+  Two things this settles. First, the arm is worth **1.44x**, not the
+  campaign-changing factor it had been described as: promoted in full it lands at
+  758 against llama.cpp's 3910, still 5.2x short. Earlier iterations in this
+  campaign framed the arm as *the* route to the objective's target; that framing
+  was wrong and this table is the correction. Second, the two opt-ins are
+  complementary and must be quoted together -- the 736.84 figure came from
+  ``MoE+dense``, so a re-measurement with the MoE opt-in alone reads 562.25 and
+  looks like a 24% regression that did not happen. The arm's own progress across
+  this session is 736.84 -> 757.60, which is the attention tile skip (1.21x on a
+  kernel both paths share), not a change to any WMMA owner.
+
+  The gate status is unchanged and still applies: the arm's captures were taken
+  before this session's two changes, but both are bit-identical (the teacher-forced
+  gate returns ``kl_max`` 0.0 for them), so the baseline the arm was scored
+  against has not moved. ``gate-pf-moe-only`` fails only ``kl_max``, at 0.0609 --
+  1.22x over -- with ``kl_mean`` 8.58e-05 against a 0.001 bar, ``kl_p95`` 7.70e-06
+  against 0.005, ``kl_p99`` 9.89e-05 against 0.02, and zero top-1 flips in 1023
+  rows. ``gate-pf-dense-only`` is 0.180 and ``gate-pf-full`` 0.161.
+
+  What follows from the table is that the decision space is not "exact versus
+  WMMA". Neither side reaches llama.cpp: the exact path passes every threshold at
+  525, the arm buys 1.44x at 758 and fails one threshold by 3.2x. The 3910 figure
+  comes from int8 dp4a MMQ with quantized activations -- a 4x-per-instruction
+  inner loop that no bf16 arrangement reproduces. That family is in-tree
+  (``mmq128_prefill_q8_1_*``, ``q8_1_dp4a_grouped_*``) but is entered by the
+  Qwen35 GGUF runner through a workspace and risk-count session rather than a
+  flag, and quantizing activations is a larger arithmetic step than the WMMA arm
+  already failing the bar. Reaching the objective's target is an integration and
+  numerical-policy decision, not a remaining scheduling one.
+
   **Iteration 75: the row4 GEMV is the wrong tool for the two outlier layers, and
   the dense tile ceiling is real.** Two closed questions, both now measured.
 
