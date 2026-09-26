@@ -551,8 +551,9 @@ flags because a configuration has not been benchmarked.
   remaining loss is 5 of 30 layers at 9.6 us each - about 48 us per step, or
   +0.2% end-to-end - against the cost of plumbing head_dim into the selection
   policy. That plumbing was done in iteration 30 for the narrow head only, after
-  the read range made it load-bearing (see below); the wide geometry still runs
-  this rule. The clean-device pass also puts every other cell 4-10% above its
+  the read range made it load-bearing (see below); iteration 36 then retired the
+  wide-geometry rule as well, having measured it to be wrong in the same
+direction. The clean-device pass also puts every other cell 4-10% above its
   contended reading: sliding/1024 -14%, sliding/2048 -24%, sliding/8192 -24%,
   full/8192 -19%. The same A/B answers iteration 27's open
   question - the weighted layer mix predicts ~0.9 ms saved against the 0.72 ms
@@ -605,6 +606,55 @@ flags because a configuration has not been benchmarked.
   `2026-09-26-gemma4-26b-a4b-sliding-read-range-accepted.json`; the campaign's
   rollup for the three acceptances since 2026-09-24 was owed and is now in
   `benchmarks/CHANGELOG.md` and `benchmarks/README.md`.
+  *Accepted 2026-09-26 (iteration 36): the 4-slice cap was never measured, and
+  raising it to 16 is worth +5.3%.* The policy above says more slices is better
+  until the cap and never justified the cap; it was an argument, not a
+  measurement, and the argument was wrong by 4x. Paired interleaved arms, one
+  pass per arm per run, us per launch:
+
+  ===========  ======  ======  ======  ======  ======
+  geometry     keys       4       8      16      32
+  ===========  ======  ======  ======  ======  ======
+  sliding       1024   192.0   168.0   159.3   165.6
+  sliding       2048   322.5   288.5   264.3   265.7
+  sliding       8192   865.9   708.6   617.4   632.0
+  full          1024   227.9   189.8   197.6   197.8
+  full          2048   357.4   297.9   292.4   290.6
+  full          8192  1043.4   667.5   658.7   609.9
+  ===========  ======  ======  ======  ======  ======
+
+  16 is optimal or within 4% at every point but the full geometry at 8192 keys,
+  where 32 is 8% better. The table is recorded rather than turned into a
+  per-geometry rule, because a microbenchmark establishes a direction and not an
+  end-to-end win - iteration 35 had just been reverted for exactly that error -
+  and one number is one thing to justify. So both geometries now take 16 slices
+  above the 1024-key entry, the doubling rule is retired (it returned 2 slices at
+  exactly 1024 keys, where the table shows 64 keys per slice to be the fastest
+  configuration measured), and `decode_slices` no longer takes `head_dim`, since
+  nothing above the threshold depends on it.
+  Final rows, incumbent -> candidate: **1024p 45.8427 -> 48.2630 (+5.3%)**,
+  4096p 42.7662 -> **45.9349 (+7.4%)**, 512p 47.9667 -> 48.0076 and 128p
+  51.7789 -> 52.0185 flat. The two flat rows are below the entry threshold, so
+  they take the single kernel unchanged - the same structural reason as
+  iteration 30's untouched rows. Correctness: the GPU parity suite runs the split
+  at these shapes, so it now exercises 16 slices rather than 4 and passes (f32
+  within 1e-4, bf16 within one ulp); the 410-test Gemma 4 guard passes; and 128
+  greedy positions produce **identical token ids** at 4 and 16 slices, so the
+  reordered f32 sum does not move the argmax on this workload.
+  **The teacher-forced gate does not cover the split, and did not cover it
+  before this change either.** The gate's chain feeds the prompt one token at a
+  time from an empty cache (`capture_chain`: `runner.forward([ids[position]])`),
+  so key counts run 1, 2, 3, ... 1023 - one token below the 1024-key entry
+  threshold, so `decode_slices` returns 1 for every row and the split never
+  runs. That is why the gate reports `kl_max 0.0` exactly, and it means the
+  2026-09-25 split gate (kl_max 0.0067) measured the sliding read range, not the
+  split. A 600-token prefill followed by single-token steps does engage it
+  (verified: keys 601, 602, ...), so the fix is to prefill the chain and
+  re-capture the baseline at >= 1024 keys - a change to the frozen evaluator,
+  owed as its own unit rather than bolted onto this one. Until then the split's
+  production-profile status rests on kernel-level parity and on the identical
+  greedy tokens above, not on the KL gate. Evidence row
+  `2026-09-26-gemma4-26b-a4b-split-16-slices-accepted.json`.
   *Diagnostic 2026-09-26 (iteration 31): the MoE decode linears are now the
   largest single item in the step and the achieved-bandwidth baseline did not
   exist.* With attention down to roughly 8.5 ms and the host gap cut by 6.4 ms,
