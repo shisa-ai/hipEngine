@@ -1494,6 +1494,32 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 73: the row4 GEMV adapter for the two outlier layers does not
+  reduce to an argument reorder.** The two Q5_K/Q8_0 layers (205 ms, 9.4%) have no
+  grouped owner at ``moe_linear``, but ``gguf_k_gemv`` registers
+  ``selected_grouped_row4_gemv_bf16_bf16_out`` for both quants at layer
+  ``linear``, which is the expert-grouped form with four-row weight reuse. Its
+  signature differs from the grouped probe's by one argument
+  (``lane_to_row_ptr``) and by passing ``x_rows`` and ``rows`` separately, so the
+  adapter looked like a reorder: the Gemma grouped path has ``expert_start``
+  already, and the selected path it would replace passes ``x_rows = rows = lanes``
+  (``gemma4_experts.py`` line 368), so identity was the obvious mapping.
+
+  It is not. Driving the kernel in isolation at the Q5_K ``gate_up`` shape
+  (8192 compact rows, 128 experts, in 2816, out 1408, 285 MB of Q5_K blocks) with
+  ``lane_to_row = NULL`` and ``x_rows = rows = 8192`` **faults** with a GPU memory
+  access fault. ``lane_to_row`` itself is not the cause: ``gguf_k_gemv.hip`` line
+  1405 guards it and substitutes the identity when it is null. So the mismatch is
+  in the row-mapping semantics -- what the kernel derives from ``x_rows``,
+  ``rows`` and the expert offsets when the compact activation is already gathered
+  and there is no dense source row to map back to.
+
+  That makes this job a kernel-semantics investigation rather than the small
+  adapter the last iteration recorded, so it stops here rather than being wired in
+  on a guess. The other exact job -- several query rows per attention CTA sharing
+  one K/V pass, 295 ms at 13.5%, bit-identical because each row keeps its own
+  logit tree and its own pass-3 order -- remains open and is new kernel work.
+
   **Iteration 72: the Qwen35 dual forms, reached and rejected; and the exact path's
   three limits.** Iteration 71 could not call the Qwen35-era dual owners because
   they reject the fused-stride keywords the Gemma probe passes. They accept a
