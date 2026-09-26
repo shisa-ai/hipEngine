@@ -972,6 +972,38 @@ direction. The clean-device pass also puts every other cell 4-10% above its
     family serves the weight at all. That is the next candidate and it is a
     product change with a measurable A/B and a guard, not another diagnostic.
     Diagnostic only here: no product path changed, no row moved.
+
+  *Measured 2026-09-26 (iteration 42): both registered gguf_q5_1 decode variants
+  are about twice as slow, and the variant-reuse line is closed for the MoE.* The
+  A/B the previous entry called for was run, and it lost decisively.
+
+  - **Arm A**, `selected_gemv_logical256_t128_bf16_bf16_out` on the down
+    projection only: **24.7049 tok/s, -46.2%.**
+  - **Arm B**, `selected_gemv_wave64_bf16_bf16_out` on the down projection only:
+    **24.3347 tok/s, -47.0%.**
+  - **Control**, the incumbent: **45.9396 tok/s.**
+  - Both arms land at the same ~24.5, which points at the exact-logical-256 path
+    being untuned for this shape rather than at a difference between the two
+    variants.
+  - **The isolation was proven, not assumed.** The switch was a variant
+    preference list resolved per candidate through `is_registered`, so each quant
+    takes the first variant it declares support for with no quant-name branch.
+    With the incumbent first the dispatch probe's table is byte-identical to
+    iteration 40's; with a q5_1 variant first, `gguf_q5_1` resolves to the new
+    variant while `gguf_q4_k`, `gguf_q5_k` and `gguf_q8_0` all still resolve to
+    the incumbent, checked with the same loop production runs.
+  - **The machinery was reverted.** With the variants refuted it had no effect,
+    and `gemma4_experts.py` is byte-identical to HEAD (empty `git diff`), so this
+    iteration's product change is zero.
+  - **The MoE's cheap-candidate space is now exhausted.** Fused megakernel
+    (iteration 31), launch structure (32), routing (33) and registered-variant
+    reuse (33 for q4_k, 42 for q5_1) are all refuted by measurement, which
+    satisfies the three-failed-candidates rule, and the re-profile it calls for
+    has been done (iteration 40). What remains is either authoring a new selected
+    GEMV for these quants - a G4/G5 kernel job - or closing the MoE line. That is
+    a lead-level investment decision, and it now sits alongside the split's
+    pending accept-or-return decision. Evidence row
+    `2026-09-26-gemma4-26b-a4b-q5_1-variant-ab-rejected.json`.
   *Diagnostic 2026-09-26 (iteration 33): the routing hypothesis is closed, and
   the campaign's three-cheap-candidates rule is now in play.* A resolve-level
   probe over a real 1024-token `LLM.generate()` - spying on
