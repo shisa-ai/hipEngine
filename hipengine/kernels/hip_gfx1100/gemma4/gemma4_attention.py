@@ -30,6 +30,7 @@ from pathlib import Path
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.ctypes_cache import signed_kernel_fn
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.core.memory import DeviceBuffer, malloc, free
 from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gemma4_attention.hip")
@@ -63,13 +64,54 @@ _ARGTYPES_DECODE = _ARGTYPES_PREFILL + (ctypes.c_void_p, ctypes.c_int)
 _DECODE_SYMBOLS = (_SYMBOL_DECODE_BF16, _SYMBOL_DECODE_F32)
 _SYMBOL_SPLIT_WORKSPACE_BYTES = "hipengine_gemma4_decode_split_workspace_bytes"
 _SYMBOL_DECODE_SELECTION = "hipengine_gemma4_decode_selection"
-# Split scratch, grown and reused rather than freed per launch: freeing under an
-# in-flight stream is a use-after-free and a fresh hipMalloc would become a
-# per-launch cost, the same convention the runtime's staging buffers use. Keyed
-# by stream, because two streams sharing one buffer would interleave phase 1 of
-# one launch with phase 2 of another. The owner objects are held so the arena
-# cannot collect them.
-_SPLIT_WORKSPACES: dict = {}
+class Gemma4AttentionScratch:
+    """Split workspace owned by one caller on one runtime/device.
+
+    Streams have separate buffers. Growth doubles capacity and retains old
+    allocations until close synchronizes every used stream, so queued kernels
+    keep valid pointers. Construction is host-only.
+    """
+
+    def __init__(self) -> None:
+        self._runtime: HipRuntime | None = None
+        self._device: int | None = None
+        self._current: dict[int, DeviceBuffer] = {}
+        self._owned: list[DeviceBuffer] = []
+        self._closed = False
+
+    def buffer(self, nbytes: int, *, stream: int, runtime: HipRuntime) -> DeviceBuffer:
+        if self._closed:
+            raise RuntimeError("attention scratch is closed")
+        if nbytes <= 0:
+            raise ValueError("attention scratch size must be positive")
+        if self._runtime is not None and runtime is not self._runtime:
+            raise ValueError("attention scratch cannot change runtime")
+        device = runtime.current_device()
+        if self._device is not None and device != self._device:
+            raise ValueError("attention scratch cannot change device")
+        previous = self._current.get(stream)
+        if previous is not None and previous.nbytes >= nbytes:
+            return previous
+        capacity = max(nbytes, 2 * previous.nbytes) if previous else nbytes
+        buffer = malloc(capacity, runtime=runtime)
+        self._runtime, self._device = runtime, device
+        self._owned.append(buffer)
+        self._current[stream] = buffer
+        return buffer
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        if self._runtime is not None:
+            if self._runtime.current_device() != self._device:
+                raise ValueError("attention scratch must close on its owning device")
+            for stream in self._current:
+                self._runtime.stream_synchronize(stream)
+            while self._owned:
+                free(self._owned[-1], runtime=self._runtime)
+                self._owned.pop()
+        self._current.clear()
+        self._closed = True
 
 
 def decode_slices(keys: int, head_dim: int) -> int:
@@ -147,19 +189,6 @@ def split_workspace_bytes(
         ctypes.c_size_t,
     )
     return int(fn(int(tokens), int(num_heads), int(head_dim), int(keys), int(slices)))
-
-
-def _split_workspace_ptr(nbytes: int, stream: int) -> int:
-    """Return a scratch pointer of at least ``nbytes`` for this stream."""
-
-    entry = _SPLIT_WORKSPACES.get(stream)
-    if entry is not None and entry[1] >= nbytes:
-        return entry[0].ptr
-    from hipengine.core.memory import malloc
-
-    buffer = malloc(int(nbytes))
-    _SPLIT_WORKSPACES[stream] = (buffer, int(nbytes))
-    return buffer.ptr
 
 
 def plan_gemma4_attention_build(
@@ -288,6 +317,7 @@ def _launch_prefill(
     stream: int,
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
+    scratch: Gemma4AttentionScratch | None = None,
 ) -> None:
     _check_prefill_shape(tokens, num_heads, num_kv_heads, head_dim)
     key_count = tokens if keys is None else int(keys)
@@ -304,31 +334,39 @@ def _launch_prefill(
         # (grid = tokens * num_heads is 16 blocks on a 96-CU GPU).
         slices = decode_slices(key_count, head_dim)
         workspace = 0
-        if slices > 1:
-            workspace = _split_workspace_ptr(
-                split_workspace_bytes(
-                    tokens, num_heads, head_dim, key_count, slices, library=library
-                ),
+        temporary = Gemma4AttentionScratch() if slices > 1 and scratch is None else None
+        owner = scratch if scratch is not None else temporary
+        try:
+            if slices > 1:
+                workspace = owner.buffer(
+                    split_workspace_bytes(
+                        tokens, num_heads, head_dim, key_count, slices, library=library
+                    ),
+                    stream=stream, runtime=runtime,
+                ).ptr
+            fn = signed_kernel_fn(library, symbol, _ARGTYPES_DECODE, ctypes.c_int)
+            err = fn(
+                query_ptr,
+                key_ptr,
+                value_ptr,
+                keep_mask_ptr,
+                out_ptr,
+                tokens,
+                num_heads,
+                num_kv_heads,
+                head_dim,
+                ctypes.c_float(scale),
                 stream,
+                key_count,
+                ctypes.c_void_p(workspace),
+                ctypes.c_int(slices),
             )
-        fn = signed_kernel_fn(library, symbol, _ARGTYPES_DECODE, ctypes.c_int)
-        err = fn(
-            query_ptr,
-            key_ptr,
-            value_ptr,
-            keep_mask_ptr,
-            out_ptr,
-            tokens,
-            num_heads,
-            num_kv_heads,
-            head_dim,
-            ctypes.c_float(scale),
-            stream,
-            key_count,
-            ctypes.c_void_p(workspace),
-            ctypes.c_int(slices),
-        )
-        _check_launch(runtime, err)
+            _check_launch(runtime, err)
+        finally:
+            # Convenience callers without reusable ownership release only after
+            # the stream is quiescent, including a partial launch failure.
+            if temporary is not None:
+                temporary.close()
         return
     fn = signed_kernel_fn(library, symbol, _ARGTYPES_PREFILL, ctypes.c_int)
     err = fn(
@@ -364,6 +402,7 @@ def gemma4_attention_prefill_bf16(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    scratch: Gemma4AttentionScratch | None = None,
 ) -> None:
     """Masked, ungated prefill attention over ``tokens`` queries.
 
@@ -396,6 +435,7 @@ def gemma4_attention_prefill_bf16(
         stream=stream,
         library=library,
         runtime=runtime,
+        scratch=scratch,
     )
 
 
@@ -415,6 +455,7 @@ def gemma4_attention_prefill_f32(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    scratch: Gemma4AttentionScratch | None = None,
 ) -> None:
     """F32 entry point, for validating against the f32 CPU reference.
 
@@ -439,6 +480,7 @@ def gemma4_attention_prefill_f32(
         stream=stream,
         library=library,
         runtime=runtime,
+        scratch=scratch,
     )
 
 
