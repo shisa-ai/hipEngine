@@ -96,11 +96,11 @@ def test_dms_reconfigure_for_recreated_session_preserves_owned_snapshot():
     runner.capacity = 1
     config = SimpleNamespace(prefix_cache="radix")
     runner._engine_loop_config = config
-    snapshot = runner._dms_prompt_snapshot = object()
+    snapshot = runner._dms_prefix_cache = object()
     runner.configure_engine_loop(config)
-    assert runner._dms_prompt_snapshot is snapshot
+    assert runner._dms_prefix_cache is snapshot
     runner.configure_engine_loop(SimpleNamespace(prefix_cache="off"))
-    assert runner._dms_prompt_snapshot is None
+    assert runner._dms_prefix_cache is None
 
 
 def test_dms_ar_cache_hit_restores_state_instead_of_calling_prefill(monkeypatch):
@@ -108,13 +108,13 @@ def test_dms_ar_cache_hit_restores_state_instead_of_calling_prefill(monkeypatch)
     from hipengine.runtime import dms_prefix
 
     session = SimpleNamespace(prefill=lambda *a, **k: pytest.fail("cache hit ran prefill"))
-    snapshot = SimpleNamespace(matches=lambda *a: True, nbytes=123)
+    snapshot = SimpleNamespace(matches=lambda *a: True, nbytes=123, tokens=(1, 2, 3))
     restored = []
     monkeypatch.setattr(dms_prefix, "restore_prompt",
                         lambda s, p: restored.append((s, p)) or SimpleNamespace(token_id=42))
     runner = Qwen35GGUFResidentModelRunner.__new__(Qwen35GGUFResidentModelRunner)
     runner._prefix_cache_mode = "radix"
-    runner._dms_prompt_snapshot = snapshot
+    runner._dms_prefix_cache = SimpleNamespace(lookup=lambda *a: snapshot)
     runner._acquire_lease = lambda: SimpleNamespace(session=session)
     runner._begin_mtp2_prompt_streaming = lambda rows: (None,)
     runner._finish_mtp2_prompt_streaming = lambda *a, **k: None
@@ -133,6 +133,7 @@ def test_dms_explicit_mtp_cannot_silently_prefill_without_provider():
     from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
 
     runner = Qwen35GGUFResidentModelRunner.__new__(Qwen35GGUFResidentModelRunner)
+    runner._prefix_cache_mode = "off"
     runner._acquire_lease = lambda: SimpleNamespace(session=SimpleNamespace())
     runner._begin_mtp2_prompt_streaming = lambda rows: (None,)
     row = SimpleNamespace(lease=None, request=SimpleNamespace(max_tokens=10, deadline_at=None),

@@ -103,6 +103,12 @@ class PrefixCheckpointStore:
     def capacity(self) -> int:
         return self._capacity
 
+    @property
+    def nbytes(self) -> int:
+        """Device checkpoint bytes reported by payloads that expose their size."""
+        return sum(int(getattr(entry.payload, "nbytes", 0))
+                   for entry in self._entries.values() if not entry.released)
+
     def __len__(self) -> int:
         return len(self._entries)
 

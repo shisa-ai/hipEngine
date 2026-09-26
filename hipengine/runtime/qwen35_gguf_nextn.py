@@ -123,6 +123,14 @@ class Qwen35GGUFNextNPrefixCheckpoint:
     context_length: int
     released: bool = False
 
+    @property
+    def nbytes(self) -> int:
+        if self.released:
+            return 0
+        return sum(buffer.nbytes for buffer in (*self.key_buffers, *self.value_buffers,
+                                                *self.state_backups, self.boundary_hidden)
+                   if buffer is not None)
+
 
 @dataclass(frozen=True, slots=True)
 class Qwen35GGUFNextNDeviceProposal:

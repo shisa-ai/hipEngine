@@ -1963,7 +1963,9 @@ class Qwen35GGUFMTP2Adapter:
                 target._last_target_hidden_ptr = int(state.root_hidden_buffer.ptr)
                 self._states[request_id] = state
                 row.mtp2_prompt_streaming = True
-                row.mtp2_prompt_prime_rows = len(row.prompt_ids)
+                row.mtp2_prompt_prime_rows = int(getattr(
+                    self._prompt_streaming_sinks[request_id], "total_rows", len(row.prompt_ids)
+                ))
                 row.mtp2_prompt_carried_bytes = int(state.root_hidden_buffer.nbytes)
                 row.mtp2_prompt_fallback_reason = None
                 self._prompt_hidden_rows.pop(request_id, None)

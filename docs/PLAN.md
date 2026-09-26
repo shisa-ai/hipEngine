@@ -1459,6 +1459,19 @@ bundle and consume `KVLiveSpans` plus stable storage-plane views. Execution rows
 batch only when their complete compatibility keys match. The kernel registry
 naturally routes without engine-wide format branches.
 
+**Native DMS prefix reuse** separates decode snapshots from cold prefill state.
+Complete-prompt hits restore independently owned compact KV and recurrence.
+Extensions and branches restore host-owned pre-compaction BF16 KV, predictor
+scores, and recurrence at a cached boundary; only the suffix runs, and retention
+is selected again over the combined prompt. A byte-bounded LRU owns prompt and
+selected natural block boundaries without changing target chunk partitioning.
+NextN checkpoints follow those boundaries; cached
+trunk hidden rows can prime a missing draft checkpoint without target replay.
+Cold host cache bytes and provider checkpoint device bytes are reported
+separately from live compact target storage. This is private restored ownership,
+not mutable cross-request compact-page sharing. See [API.md](API.md) for the
+public cache controls and telemetry.
+
 #### Why this shape avoids the vLLM-DMS and v1-INT8 pain
 
 FastDMS identifies memory pool, prefill, decode, attention, admission, prefix,

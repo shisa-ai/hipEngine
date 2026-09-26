@@ -6931,7 +6931,7 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("cannot configure GGUF device KV pool while requests are active")
         self._clear_prefix_snapshots()
         if config != getattr(self, "_engine_loop_config", None):
-            self._dms_prompt_snapshot = None
+            self._dms_prefix_cache = None
         self._engine_loop_config = config
         self._prefix_cache_mode = resolve_prefix_cache_mode(
             getattr(config, "prefix_cache", "off")
@@ -7874,12 +7874,15 @@ class Qwen35GGUFResidentModelRunner:
             else len(row.kv_allocation.reused_block_ids)
         )
         residency = self._prefix_cache_observability()
-        dms_cache = getattr(self, "_dms_prompt_snapshot", None)
+        dms_cache = getattr(self, "_dms_prefix_cache", None)
         is_dms = getattr(self.generator, "dms_metadata_path", None) is not None
+        provider_store = getattr(getattr(self, "_mtp2_adapter", None),
+                                 "_prefix_checkpoint_store_instance", None)
+        provider_bytes = 0 if provider_store is None else provider_store.nbytes
         if is_dms:
-            residency = {**residency, "snapshot_entries": int(dms_cache is not None),
+            residency = {**residency, "snapshot_entries": 0 if dms_cache is None else len(dms_cache.entries),
                          "retained_kv_pages": 0,
-                         "resident_bytes": 0 if dms_cache is None else dms_cache.nbytes}
+                         "resident_bytes": (0 if dms_cache is None else dms_cache.nbytes) + provider_bytes}
         mode = getattr(self, "_prefix_cache_mode", "off")
         fallback_reason = row.prefix_fallback_reason
         if fallback_reason is None and mode == "off":
@@ -7887,7 +7890,9 @@ class Qwen35GGUFResidentModelRunner:
         return {
             "mode": mode,
             "block_size_tokens": 1 if is_dms else 256,
-            **({"reuse_scope": "complete_prompt"} if is_dms else {}),
+            **({"reuse_scope": "prompt_prefix",
+                "cache_host_bytes": 0 if dms_cache is None else dms_cache.nbytes,
+                "cache_provider_device_bytes": provider_bytes} if is_dms else {}),
             "eligible": bool(row.prefix_eligible),
             "lookup": bool(row.prefix_lookup),
             "hit": bool(row.prefix_reused_tokens),
@@ -7926,7 +7931,7 @@ class Qwen35GGUFResidentModelRunner:
         if dms_backend is not None:
             diagnostics["dms"] = dms_backend.observability_snapshot()
             diagnostics["dms"]["backend"]["prefix_mode"] = (
-                "owned_full_prompt" if self._prefix_cache_mode != "off" else "off"
+                "owned_prompt_prefix" if self._prefix_cache_mode != "off" else "off"
             )
         audit = (
             None
@@ -8323,7 +8328,10 @@ class Qwen35GGUFResidentModelRunner:
             if getattr(self, "_prefix_cache_mode", "off") != "off" else 0
         )
         adapter.prefix_checkpoint_capacity = capacity
-        adapter.prefix_checkpoint_block_size = int(_GGUF_PREFIX_CACHE_BLOCK_TOKENS)
+        adapter.prefix_checkpoint_block_size = (
+            1 if getattr(getattr(self, "generator", None), "dms_metadata_path", None) is not None
+            else int(_GGUF_PREFIX_CACHE_BLOCK_TOKENS)
+        )
         adapter.prefix_checkpoint_key = (
             self._prefix_checkpoint_block_ids if capacity > 0 else None
         )
@@ -8353,6 +8361,14 @@ class Qwen35GGUFResidentModelRunner:
         row = self._row(int(request_id))
         if row is None:
             return None
+        if getattr(getattr(self, "generator", None), "dms_metadata_path", None) is not None:
+            if row.lease is None:
+                return None
+            session = row.lease.session
+            cached = getattr(session, "_dms_prefill_reuse", None)
+            if cached is not None and len(cached.tokens) == int(prefix_len):
+                return cached.checkpoint_key
+            return (getattr(session, "_dms_cache_identity", id(session)), int(prefix_len))
         allocation = getattr(row, "kv_allocation", None)
         block_ids = getattr(allocation, "block_ids", None)
         if not block_ids:
@@ -9572,7 +9588,7 @@ class Qwen35GGUFResidentModelRunner:
                 self._outputs.clear()
                 self._completed_metadata.clear()
                 self._clear_prefix_snapshots()
-                self._dms_prompt_snapshot = None
+                self._dms_prefix_cache = None
                 if self._kv_pool is not None:
                     # The owner's packed workspace holds a private-workspace
                     # reservation in the pool, and `close()` rejects one that
@@ -9959,27 +9975,57 @@ class Qwen35GGUFResidentModelRunner:
         session.dms_max_new_tokens = max(1, int(row.request.max_tokens)) + max(1, row.mtp2_candidate_budget) + 1
         if row.native_sampled:
             self._prepare_sampled_prefill(row)
-        sinks = self._begin_mtp2_prompt_streaming((row,))
-        sink = sinks[0]
-        if row.mtp2_candidate_budget > 0 and sink is None:
-            raise NotImplementedError("DMS MTP requires the native NextN prompt streaming provider")
         start = time.perf_counter()
         cache_enabled = self._prefix_cache_mode != "off"
-        # NextN's streaming prompt state is separate from target Conv/GDN/KV.
-        # Until it has an owned snapshot, MTP runs its complete prompt normally.
-        cache_eligible = cache_enabled and sink is None and row.mtp2_candidate_budget <= 0
+        cache_eligible = cache_enabled
         row.prefix_eligible = cache_eligible
         row.prefix_lookup = cache_eligible
-        snapshot = getattr(self, "_dms_prompt_snapshot", None)
+        self._dms_cache_sequence = getattr(self, "_dms_cache_sequence", 0) + 1
+        session._dms_cache_identity = self._dms_cache_sequence
+        cache = getattr(self, "_dms_prefix_cache", None)
+        if cache is None:
+            from hipengine.runtime.dms_prefix import DMSPrefixCache
+            cache = self._dms_prefix_cache = DMSPrefixCache(
+                _gguf_prefix_retained_state_bytes_limit(), _PREFIX_RETAINED_SNAPSHOTS_WIDE
+            )
+        snapshot = cache.lookup(session, row.prompt_ids, bool(row.native_sampled)) if cache_eligible else None
         hit = cache_eligible and snapshot is not None and snapshot.matches(
             session, row.prompt_ids, bool(row.native_sampled)
         )
+        partial = (cache_eligible and snapshot is not None and not hit
+                   and snapshot.compatible(session) and snapshot.cold is not None
+                   and snapshot.cold.reused_tokens(row.prompt_ids) > 0)
+        session._dms_prefill_reuse = snapshot if hit or partial else None
+        if hit or partial:
+            row.prefix_matched_tokens = row.prefix_reused_tokens = len(snapshot.tokens)
+        prime_from_cached_hidden = False
+        if (hit or partial) and row.mtp2_candidate_budget > 0:
+            adapter = self._resolved_mtp2_adapter()
+            prime_from_cached_hidden = row.request_id not in adapter.restorable_prefix_rows((row,))
+            if prime_from_cached_hidden:
+                # An AR cache source has target state but no NextN checkpoint.
+                # Prime the draft from owned trunk rows, not a second target prefill.
+                row.prefix_reused_tokens = 0
+        sinks = self._begin_mtp2_prompt_streaming((row,))
+        if hit or partial:
+            row.prefix_reused_tokens = len(snapshot.tokens)
+        sink = sinks[0]
+        if sink is not None and cache_eligible:
+            from hipengine.runtime.dms_prefill_cache import cache_boundary_points
+            session._dms_cache_capture_tokens = tuple(row.prompt_ids)
+            session._dms_cache_byte_budget = cache.max_bytes
+            sink.capture_boundaries = (*cache_boundary_points(session), len(row.prompt_ids))
+        if row.mtp2_candidate_budget > 0 and sink is None:
+            raise NotImplementedError("DMS MTP requires the native NextN prompt streaming provider")
         row.prefix_fallback_reason = (
-            None if hit else "cache_off" if not cache_enabled else
-            "mtp_prompt_state_not_snapshotted" if not cache_eligible else
-            "dms_full_prompt_miss"
+            None if hit or partial else "cache_off" if not cache_enabled else
+            "dms_prefix_miss"
         )
+        captured = None
         try:
+            if prime_from_cached_hidden:
+                from hipengine.runtime.dms_prefill_cache import prime_cached_hidden
+                prime_cached_hidden(session, snapshot, sink, row.request_id)
             if hit:
                 from hipengine.runtime.dms_prefix import restore_prompt
                 result = restore_prompt(session, snapshot)
@@ -9988,6 +10034,14 @@ class Qwen35GGUFResidentModelRunner:
                 row.prefix_source_kind = "dms_owned_prompt"
                 row.prefix_state_clone_bytes = snapshot.nbytes
             else:
+                session._dms_cache_capture_tokens = tuple(row.prompt_ids) if cache_eligible else None
+                session._dms_cache_byte_budget = cache.max_bytes
+                session._dms_prefill_reuse = snapshot if partial else None
+                if partial:
+                    row.prefix_matched_tokens = row.prefix_reused_tokens = len(snapshot.tokens)
+                    row.prefix_snapshot_hit = True
+                    row.prefix_source_kind = "dms_cold_prefill"
+                    row.prefix_state_clone_bytes = snapshot.nbytes
                 result = session.prefill(
                     row.prompt_ids, use_bulk=True, bulk_attention_mode="bulk",
                     return_logits=bool(row.native_sampled),
@@ -9996,13 +10050,28 @@ class Qwen35GGUFResidentModelRunner:
                 )
                 if cache_eligible:
                     from hipengine.runtime.dms_prefix import capture_prompt
-                    self._dms_prompt_snapshot = capture_prompt(
+                    captured = capture_prompt(
                         session, row.prompt_ids, result, sampled=bool(row.native_sampled)
                     )
         except BaseException:
             self._finish_mtp2_prompt_streaming((row,), sinks, success=False)
             raise
         self._finish_mtp2_prompt_streaming((row,), sinks, success=True)
+        if captured is not None:
+            evicted = cache.put(captured)
+            adapter = getattr(self, "_mtp2_adapter", None)
+            if adapter is not None:
+                for old in evicted:
+                    boundaries = (*(() if old.cold is None else old.cold.boundaries), len(old.tokens))
+                    for end in boundaries:
+                        prefix = old.tokens[:end]
+                        still_owned = any(
+                            prefix == kept.tokens[:end] and
+                            (end == len(kept.tokens) or end in kept.cold.boundaries)
+                            for kept in cache.entries.values()
+                        )
+                        if not still_owned:
+                            adapter.discard_prefix_checkpoint(prefix)
         row.prefill_ms += _timing_ms_since(start)
         row.prefill_chunk_count += int(not hit)
         if row.native_sampled:
@@ -12043,6 +12112,9 @@ class Qwen35GGUFResidentModelRunner:
                     ),
                     "specdec2_mtp2_prompt_prime_rows": float(
                         row.mtp2_prompt_prime_rows
+                    ),
+                    "specdec2_mtp2_prompt_reused_rows": float(
+                        len(row.prompt_ids) - row.mtp2_prompt_prime_rows
                     ),
                     "specdec2_mtp2_prompt_carried_bytes": float(
                         row.mtp2_prompt_carried_bytes

@@ -250,21 +250,43 @@ payloads. Compact INT8 uses FP32 per-token/head scales. Dense INT8 policy
 records do not select the compact codec.
 
 DMS defaults to one resident request; wider residency fails because packed
-ownership is not implemented. With the default `radix` cache, autoregressive
-requests reuse the most recently cached **complete prompt**. The cache owns one
-host snapshot of compact KV, INT8 scales, token positions, eviction flags, and
-Conv/GDN state. A hit restores that state into a fresh private session; it does
-not reuse generated output. Set `--prefix-cache off` to disable this cache.
+ownership is not implemented. The default `radix` cache supports complete-prompt
+hits, extensions, and branches that share a cached block boundary, for both
+compact codecs and NextN MTP. Complete hits restore compact KV, INT8 scales,
+token positions, eviction flags, and Conv/GDN state into a fresh private session;
+they do not reuse generated output. Set `--prefix-cache off` to disable caching.
 
-A changed or extended prompt runs full prefill. Reusing its shorter pruned prefix
-would change full-prompt selection and attention semantics. MTP also runs full
-prefill because NextN prompt-streaming state has no cache snapshot yet; telemetry
-reports `mtp_prompt_state_not_snapshotted`. Native NextN MTP still streams prompt
-hidden states and verifies through the serial transactional route rather than
-dense target graphs. Uncached prefill uses a transient dense BF16 source and
-releases it after compaction. Completed requests release their private sessions.
-Prefix telemetry reports `reuse_scope="complete_prompt"`, reused tokens, and
-host snapshot bytes; these bytes are separate from live device KV storage.
+Extensions and branches restore cold pre-compaction BF16 KV and recurrent state,
+compute only the uncached suffix, then reselect retention over the combined
+prompt. The cache retains raw predictor scores so exact-budget selection uses
+the new prompt length rather than the previous prompt's eviction mask. These
+host copies preserve dense prompt-attention semantics without keeping a dense
+device decode shadow. They consume more host memory than compact snapshots alone.
+
+The target cache retains up to 16 prompt entries within the existing
+`HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES` host budget (1 GiB by default).
+It captures complete-prompt boundaries and a memory-bounded selection of
+256-token-aligned recurrent-state boundaries that the prefill's existing chunks
+reach in every recurrent layer. Cache capture does not split target chunks.
+Lookup chooses the longest available
+compatible prefix; eviction or absence of a suitable boundary causes a cache
+miss, not a feature refusal. An extension resumes the cached computation rather
+than recomputing its prefix at the longer prompt's chunk widths. Width-dependent
+arithmetic can therefore produce different tokens from a fresh whole-prompt
+prefill; exact cache hits do not have this partition difference.
+
+NextN checkpoints restore draft KV and the carried hidden row at the same
+boundary. If the source request was autoregressive or its draft checkpoint was
+evicted, cached target hidden rows prime NextN without replaying target prefill.
+MTP continues through the serial transactional verifier rather than dense target
+graphs. Completed requests release their private sessions; owned cache entries
+survive until eviction, reconfiguration, or engine close.
+
+Prefix telemetry reports `reuse_scope="prompt_prefix"`, reused and executed
+prefill tokens, `cache_host_bytes`, and `cache_provider_device_bytes`.
+`cache_resident_bytes` includes both cache tiers, separate from live target KV.
+MTP timing fields `specdec2_mtp2_prompt_prime_rows` and
+`specdec2_mtp2_prompt_reused_rows` distinguish draft work from restored state.
 
 After a session has been prepared, `/ready.dms.policy` reports the loaded
 window, target compression, prefill selection mode, decision source and compact
