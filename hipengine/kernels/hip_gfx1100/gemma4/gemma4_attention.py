@@ -115,39 +115,13 @@ class Gemma4AttentionScratch:
 
 
 def decode_slices(keys: int, head_dim: int) -> int:
-    """Key slices the two-phase decode split uses at this context length.
+    """Return the legacy split-policy value used by the launch ABI.
 
-    Two measured effects, and they point in different directions.
-
-    *Whether* to split at all is decided by the split's fixed cost - a weights
-    round trip through global memory, two extra kernel launches and a combine -
-    which needs a long enough context to be paid back. Paired interleaved runs
-    put a 512-key context 3.0% *slower* than the single kernel (46.57 vs 48.01
-    tok/s, two pairs each), while 1024 keys is 17% faster per launch. So the
-    entry threshold is 1024 keys.
-
-    *How many* slices, once splitting, is a pure parallelism question, and the
-    answer depends on the head width, because the key tile the kernel stages
-    holds half as many keys when ``head_dim`` is 512 as when it is 256:
-
-    - ``head_dim`` 256 (Gemma 4's sliding layers): 4 slices as soon as the split
-      is entered. At 1024 keys, 4 slices measure 192.2 us against 244.4 for 2
-      (paired, two passes per arm) - 21% faster. The 512-keys-per-slice floor
-      the wide geometry needs is the wrong rule here: a narrow head leaves each
-      slice short of work long before the key count is short.
-    - ``head_dim`` 512 (the ``attention_k_eq_v`` layers): the doubling rule
-      below, which keeps more than 512 keys per slice. At a 1024-token prompt
-      the row measures 45.33 tok/s with 4 slices over keys 1025-1151 against
-      41.79 with 2.
-
-    The narrow-head case became load-bearing when the caller began handing a
-    sliding layer only the keys its window can keep: those layers now pass
-    exactly 1024 keys where they used to pass the whole live context, and the
-    difference between 2 and 4 slices at that length is the whole 1.3 ms per
-    step the read range wins back.
-
-    Its execution-profile gate passed on 2026-09-25 - kl_max 0.0067 against the
-    0.05 bar with zero top-1 flips over 1023 teacher-forced rows.
+    One selects the single kernel; values greater than one select separate
+    weight and value passes. The value pass partitions output dimensions, not
+    keys, and preserves ascending-key accumulation. The exact value above one
+    no longer controls its grid. Keep the existing selection policy while
+    callers migrate away from the key-slice terminology.
     """
 
     if keys < 1024:
@@ -232,15 +206,14 @@ def build_gemma4_attention(
 def gemma4_attention_decode_variant(library: ctypes.CDLL | None = None) -> str:
     """Which decode kernel the launcher last selected.
 
-    ``"class"`` is the key-class shuffle-tree kernel (``head_dim`` 256 or 512),
-    ``"block"`` is the original 256-thread block kernel. Introspection only: the
-    two paths are bit-identical, so this is how callers and tests confirm which
-    one ran rather than inferring it from timings.
+    ``"class"`` is the single key-class kernel, ``"split"`` separates its
+    weights and dimension-partitioned value passes, and ``"block"`` is the
+    original block kernel. Introspection only; selection is not a quality gate.
     """
 
     library = library or build_gemma4_attention(load=True)
     fn = signed_kernel_fn(library, _SYMBOL_DECODE_VARIANT, [], ctypes.c_int)
-    return "class" if int(fn()) == 1 else "block"
+    return {0: "block", 1: "class", 2: "split"}[int(fn())]
 
 
 def gemma4_attention_shared_bytes(*, head_dim: int, keys: int) -> int:

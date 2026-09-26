@@ -391,6 +391,26 @@ def _split_ab(library, *, dtype, num_heads, num_kv_heads, head_dim, keys, mask_m
             free(buffer)
 
 
+@pytest.mark.parametrize("head_dim", [256, 512])
+@pytest.mark.parametrize("slices", [2, 4, 32])
+def test_dimension_workspace_has_no_key_slice_partials(attention_library, head_dim, slices):
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import split_workspace_bytes
+    assert split_workspace_bytes(1, 4, head_dim, 1057, slices, library=attention_library) == 4 * (1057 + 2) * 4
+
+
+@pytest.mark.parametrize("head_dim,keys,slices", [(256, 1057, 4), (512, 2055, 8), (256, 17, 32), (256, 1023, 2), (512, 1025, 4), (512, 777, 2)])
+@pytest.mark.parametrize("dtype", ["f32", "bf16"])
+def test_dimension_partition_preserves_single_accumulation(attention_library, head_dim, keys, slices, dtype):
+    reference, candidate, _ = _split_ab(
+        attention_library, dtype=dtype, num_heads=4, num_kv_heads=2,
+        head_dim=head_dim, keys=keys, mask_mode="holes", split_slices=slices,
+        poison=True,
+    )
+    np.testing.assert_array_equal(candidate, reference)
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import gemma4_attention_decode_variant
+    assert gemma4_attention_decode_variant(attention_library) == "split"
+
+
 @pytest.mark.parametrize("num_heads,num_kv_heads,head_dim,keys", _SPLIT_SHAPES)
 def test_split_matches_single_kernel_within_float_precision(
     attention_library, num_heads, num_kv_heads, head_dim, keys
@@ -409,10 +429,10 @@ def test_split_matches_single_kernel_within_float_precision(
 
 
 @pytest.mark.parametrize("num_heads,num_kv_heads,head_dim,keys", _SPLIT_SHAPES)
-def test_split_bf16_matches_single_kernel_within_one_ulp(
+def test_split_bf16_matches_single_kernel_exactly(
     attention_library, num_heads, num_kv_heads, head_dim, keys
 ):
-    """The shipped dtype: agreement within a bf16 ulp, not bit-equality."""
+    """Dimension partitioning preserves the single-kernel accumulation order."""
 
     reference, candidate, _ = _split_ab(
         attention_library,
@@ -423,13 +443,13 @@ def test_split_bf16_matches_single_kernel_within_one_ulp(
         keys=keys,
         mask_mode="keep",
     )
-    np.testing.assert_allclose(candidate, reference, rtol=1e-2, atol=1e-3, equal_nan=True)
+    np.testing.assert_array_equal(candidate, reference)
 
 
 @pytest.mark.parametrize("dtype", ["f32", "bf16"])
 @pytest.mark.parametrize("head_dim", [256, 512])
 @pytest.mark.parametrize("keys,slices", [(1, 4), (5, 4), (17, 8)])
-def test_empty_split_slices_overwrite_poison(attention_library, dtype, head_dim, keys, slices):
+def test_short_dimension_pass_ignores_poisoned_workspace(attention_library, dtype, head_dim, keys, slices):
     reference, candidate, _ = _split_ab(
         attention_library, dtype=dtype, num_heads=2, num_kv_heads=1,
         head_dim=head_dim, keys=keys, mask_mode="keep",

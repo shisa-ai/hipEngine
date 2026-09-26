@@ -411,7 +411,7 @@ __global__ void gemma4_attention_decode_class_kernel(
     float scale,
     int64_t tokens,
     int64_t keys,
-    // Split phase 1 (see gemma4_attention_decode_slice_kernel): when
+    // Split phase 1 (see gemma4_attention_decode_dimension_kernel): when
     // ``split_weights`` is non-null this kernel stops after pass 2 and writes the
     // precomputed weights plus the (denominator, row max) header instead of
     // running pass 3. The incumbent single-kernel path passes nullptr and is
@@ -536,11 +536,8 @@ __global__ void gemma4_attention_decode_class_kernel(
   const float denominator = partial[0];
 
   if (split_weights != nullptr) {
-    // Split phase 1: hand pass 3 to gemma4_attention_decode_slice_kernel. The
-    // weights written here are the ones pass 3 would have read from LDS, and
-    // the header carries the row max the slice weights were built against, so
-    // every slice's summands are bit-identical to the incumbent path's and the
-    // combine is a plain sum rather than a per-slice rescale.
+    // Export the single-kernel weights and denominator. Phase 2 partitions
+    // dimensions, preserving each output's full ascending-key sum.
     for (int64_t j = tid; j < keys; j += threads) {
       split_weights[head_index * keys + j] = logits_s[j];
     }
@@ -608,115 +605,29 @@ __device__ inline float gemma4_decode_tree1(
   return partial[0];
 }
 
-// Split phase 2: one block per (token, head, slice) accumulates the weighted V
-// sum over its slice of the key range, reading the weights phase 1 wrote.
-//
-// This is the only changed arithmetic in the two-phase split: the incumbent
-// accumulates one ascending-j chain over every key, and this accumulates
-// ascending j within a slice and then sums the slices in ascending order. Every
-// summand's weight is the same f32 value the incumbent path uses - there is no
-// per-slice max and no second expf - so the perturbation is the association
-// order of an f32 sum, not a rescale.
-//
-// The slicing exists because the kernel's parallelism is structurally low:
-// grid = tokens * num_heads puts 16 blocks on a 96-CU GPU, and
-// scripts/gemma4_attention_scale_probe.py measures per-head time improving 6.9x
-// from 16 to 64 blocks.
-template <typename scalar_t, int kDimsPerLane, int kPrefetch>
-__global__ void gemma4_attention_decode_slice_kernel(
-    const float* __restrict__ weights,
-    const scalar_t* __restrict__ value,
-    float* __restrict__ slice_out,
-    int64_t num_heads,
-    int64_t num_kv_heads,
-    int64_t head_dim,
-    int64_t keys,
-    int64_t slices) {
-  const unsigned int threads = blockDim.x;
-  const unsigned int tid = threadIdx.x;
-  const int64_t linear = static_cast<int64_t>(blockIdx.x);
-  const int64_t token = linear / (num_heads * slices);
-  const int64_t head = (linear / slices) % num_heads;
-  const int64_t slice = linear % slices;
-  const int64_t kv_head = head / (num_heads / num_kv_heads);
-  const int64_t head_index = token * num_heads + head;
-
-  // Ceil-divided slices, with the last one clamped: the same range phase 1 and
-  // the combine must agree on.
-  const int64_t slice_len = (keys + slices - 1) / slices;
-  const int64_t j_begin = slice * slice_len;
-  int64_t j_end = j_begin + slice_len;
-  if (j_end > keys) {
-    j_end = keys;
-  }
-  // Empty slices still write zeros below: combine reads every slice, and
-  // scratch may contain values from a previous request.
-
-  const float* w_row = weights + head_index * keys;
-  const scalar_t* v_base = value + kv_head * head_dim;
-  const int64_t v_row_stride = num_kv_heads * head_dim;
-  float* out_row = slice_out + (head_index * slices + slice) * head_dim;
-
-  const int64_t step = static_cast<int64_t>(threads) * kDimsPerLane;
-  for (int64_t d0 = static_cast<int64_t>(tid) * kDimsPerLane; d0 < head_dim; d0 += step) {
-    gemma4_pair2<scalar_t> pipe[kPrefetch];
-#pragma unroll
-    for (int n = 0; n < kPrefetch; ++n) {
-      const int64_t jn = j_begin + n;
-      pipe[n] = jn < j_end
-          ? gemma4_load_v<kDimsPerLane>(v_base + jn * v_row_stride + d0)
-          : gemma4_pair2<scalar_t>{static_cast<scalar_t>(0), static_cast<scalar_t>(0)};
-    }
-    float acc_lo = 0.0f;
-    float acc_hi = 0.0f;
-    for (int64_t j = j_begin; j < j_end; ++j) {
-      const gemma4_pair2<scalar_t> v_cur = pipe[0];
-#pragma unroll
-      for (int n = 0; n < kPrefetch - 1; ++n) {
-        pipe[n] = pipe[n + 1];
-      }
-      const int64_t jn = j + kPrefetch;
-      pipe[kPrefetch - 1] = jn < j_end
-          ? gemma4_load_v<kDimsPerLane>(v_base + jn * v_row_stride + d0)
-          : gemma4_pair2<scalar_t>{static_cast<scalar_t>(0), static_cast<scalar_t>(0)};
-      const float weight = w_row[j];
-      if (weight == 0.0f) {
-        continue;
-      }
-      acc_lo += weight * gemma4_attn_to_float(v_cur.lo);
-      if (kDimsPerLane == 2) {
-        acc_hi += weight * gemma4_attn_to_float(v_cur.hi);
-      }
-    }
-    out_row[d0] = acc_lo;
-    if (kDimsPerLane == 2 && d0 + 1 < head_dim) {
-      out_row[d0 + 1] = acc_hi;
-    }
-  }
-}
-
-// Split phase 3: sum the slice partials in ascending slice order and divide by
-// phase 1's denominator. One block per (token, head); each lane owns its own d
-// stride and reads the same few slice values, so no synchronisation is needed.
+// Each block owns one wave of output dimensions. Keys remain in strict
+// ascending order, while disjoint dimensions execute in independent blocks.
 template <typename scalar_t>
-__global__ void gemma4_attention_decode_combine_kernel(
-    const float* __restrict__ slice_out,
+__global__ void gemma4_attention_decode_dimension_kernel(
+    const float* __restrict__ weights,
     const float* __restrict__ header,
+    const scalar_t* __restrict__ value,
     scalar_t* __restrict__ out,
-    int64_t num_heads,
-    int64_t head_dim,
-    int64_t slices) {
-  const int64_t head_index = static_cast<int64_t>(blockIdx.x);
-  const float denominator = header[head_index * 2];
-  const float* slices_base = slice_out + head_index * slices * head_dim;
-  scalar_t* out_row = out + head_index * head_dim;
-  for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
-    float acc = 0.0f;
-    for (int64_t s = 0; s < slices; ++s) {
-      acc += slices_base[s * head_dim + d];
-    }
-    out_row[d] = gemma4_attn_to_scalar<scalar_t>(acc / denominator);
+    int64_t num_heads, int64_t num_kv_heads, int64_t head_dim,
+    int64_t keys, int64_t dimension_blocks) {
+  const int64_t head_index = blockIdx.x / dimension_blocks;
+  const int64_t partition = blockIdx.x % dimension_blocks;
+  const int64_t head = head_index % num_heads;
+  const int64_t kv_head = head / (num_heads / num_kv_heads);
+  extern __shared__ float weights_s[];
+  for (int64_t j = threadIdx.x; j < keys; j += blockDim.x) {
+    weights_s[j] = weights[head_index * keys + j];
   }
+  __syncthreads();
+  gemma4_decode_pass3<1, 4>(
+      weights_s, value + kv_head * head_dim, out + head_index * head_dim,
+      num_kv_heads * head_dim, head_dim, keys, header[head_index * 2],
+      blockDim.x * dimension_blocks, partition * blockDim.x + threadIdx.x);
 }
 
 template <typename scalar_t, int kTile>
@@ -905,19 +816,15 @@ int gemma4_decode_class_launch(
   return static_cast<int>(hipGetLastError());
 }
 
-// Which decode kernel the launcher last selected: 1 = key-class (head_dim 256
-// or 512), 0 = block kernel. Introspection only - it changes no behaviour, and
-// it is what the routing test asserts instead of inferring the path from
-// timings.
+// Last decode selection: 0 = block, 1 = single key-class, 2 = two-phase
+// dimension partition. Introspection only; this does not change dispatch.
 inline int& gemma4_decode_selection() {
   static int selection = 0;
   return selection;
 }
 
-// Bytes of workspace the split needs for one launch: the weights phase 1 hands
-// to phase 2 (tokens * num_heads * keys floats), the (denominator, row max)
-// header per (token, head), and the f32 slice partials
-// (tokens * num_heads * slices * head_dim floats).
+// Workspace contains phase-one weights and a (denominator, row max) header.
+// head_dim and slices remain in the sizing ABI for existing callers.
 size_t gemma4_decode_split_workspace_bytes(
     int64_t tokens,
     int64_t num_heads,
@@ -926,12 +833,10 @@ size_t gemma4_decode_split_workspace_bytes(
     int slices) {
   const size_t weights = static_cast<size_t>(tokens) * num_heads * keys;
   const size_t header = static_cast<size_t>(tokens) * num_heads * 2;
-  const size_t partials =
-      static_cast<size_t>(tokens) * num_heads * slices * head_dim;
-  return (weights + header + partials) * sizeof(float);
+  return (weights + header) * sizeof(float);
 }
 
-template <typename scalar_t, int kHalves, int kDimsPerLane>
+template <typename scalar_t, int kHalves>
 int gemma4_decode_split_launch(
     const scalar_t* query,
     const scalar_t* key,
@@ -949,7 +854,6 @@ int gemma4_decode_split_launch(
     int slices) {
   constexpr int kKeysPerTile = 2;
   constexpr unsigned int kThreads = 512;
-  constexpr int kPrefetch = 4;
   const size_t shared_bytes =
       (static_cast<size_t>(keys) + 256 * (kThreads / kGemma4ReduceThreads) +
        kThreads / 32) * sizeof(float);
@@ -958,7 +862,6 @@ int gemma4_decode_split_launch(
   }
   float* weights = workspace;
   float* header = weights + static_cast<size_t>(tokens) * num_heads * keys;
-  float* partials = header + static_cast<size_t>(tokens) * num_heads * 2;
 
   const unsigned int head_grid = static_cast<unsigned int>(tokens * num_heads);
   gemma4_attention_decode_class_kernel<scalar_t, kHalves, kKeysPerTile>
@@ -970,25 +873,11 @@ int gemma4_decode_split_launch(
     return rc;
   }
 
-  const unsigned int slice_grid =
-      static_cast<unsigned int>(tokens * num_heads * slices);
-  if (head_dim >= 2 * static_cast<int64_t>(kThreads)) {
-    gemma4_attention_decode_slice_kernel<scalar_t, 2, kPrefetch>
-        <<<dim3(slice_grid), dim3(kThreads), 0, stream>>>(
-            weights, value, partials, num_heads, num_kv_heads, head_dim, keys, slices);
-  } else {
-    gemma4_attention_decode_slice_kernel<scalar_t, 1, kPrefetch>
-        <<<dim3(slice_grid), dim3(kThreads), 0, stream>>>(
-            weights, value, partials, num_heads, num_kv_heads, head_dim, keys, slices);
-  }
-  rc = static_cast<int>(hipGetLastError());
-  if (rc != 0) {
-    return rc;
-  }
-
-  gemma4_attention_decode_combine_kernel<scalar_t>
-      <<<dim3(head_grid), dim3(kThreads), 0, stream>>>(
-          partials, header, out, num_heads, head_dim, slices);
+  const int dimension_blocks = static_cast<int>((head_dim + 31) / 32);
+  gemma4_attention_decode_dimension_kernel<scalar_t>
+      <<<dim3(head_grid * dimension_blocks), dim3(32), keys * sizeof(float), stream>>>(
+          weights, header, value, out, num_heads, num_kv_heads, head_dim,
+          keys, dimension_blocks);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -1027,10 +916,10 @@ int launch_gemma4_attention_decode(
   if (head_dim == 256 || head_dim == 512) {
     if (split_slices > 1 && split_workspace != nullptr) {
       const int split_rc = head_dim == 256
-          ? gemma4_decode_split_launch<scalar_t, 1, 1>(query, key, value, keep_mask, out, num_heads,
+          ? gemma4_decode_split_launch<scalar_t, 1>(query, key, value, keep_mask, out, num_heads,
                 num_kv_heads, head_dim, scale, tokens, keys, stream, split_workspace,
                 split_slices)
-          : gemma4_decode_split_launch<scalar_t, 2, 2>(query, key, value, keep_mask, out, num_heads,
+          : gemma4_decode_split_launch<scalar_t, 2>(query, key, value, keep_mask, out, num_heads,
                 num_kv_heads, head_dim, scale, tokens, keys, stream, split_workspace,
                 split_slices);
       if (split_rc >= 0) {
@@ -1091,8 +980,8 @@ int launch_gemma4_attention_decode(
 
 }  // namespace
 
-// Returns 1 when the last decode launch used the key-class kernel, 0 when it
-// used the block kernel. Test/introspection surface for the routing contract.
+// Returns 0 for block, 1 for single key-class, or 2 for dimension partition.
+// Test/introspection surface for the routing contract.
 extern "C" int hipengine_gemma4_attention_decode_variant(void) {
   return gemma4_decode_selection();
 }
