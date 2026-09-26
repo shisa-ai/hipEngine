@@ -1,0 +1,395 @@
+{
+  "status": "rejected_speed_regression",
+  "candidate_patch": "diff --git a/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip b/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip\nindex 63885aa88..38653a333 100644\n--- a/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip\n+++ b/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip\n@@ -695,6 +695,31 @@ __global__ void gemma4_attention_decode_slice_kernel(\n   }\n }\n \n+// Each block owns one wave of output dimensions. Keys remain in strict\n+// ascending order, while disjoint dimensions execute in independent blocks.\n+template <typename scalar_t>\n+__global__ void gemma4_attention_decode_dimension_kernel(\n+    const float* __restrict__ weights,\n+    const float* __restrict__ header,\n+    const scalar_t* __restrict__ value,\n+    scalar_t* __restrict__ out,\n+    int64_t num_heads, int64_t num_kv_heads, int64_t head_dim,\n+    int64_t keys, int64_t dimension_blocks) {\n+  const int64_t head_index = blockIdx.x / dimension_blocks;\n+  const int64_t partition = blockIdx.x % dimension_blocks;\n+  const int64_t head = head_index % num_heads;\n+  const int64_t kv_head = head / (num_heads / num_kv_heads);\n+  extern __shared__ float weights_s[];\n+  for (int64_t j = threadIdx.x; j < keys; j += blockDim.x) {\n+    weights_s[j] = weights[head_index * keys + j];\n+  }\n+  __syncthreads();\n+  gemma4_decode_pass3<1, 4>(\n+      weights_s, value + kv_head * head_dim, out + head_index * head_dim,\n+      num_kv_heads * head_dim, head_dim, keys, header[head_index * 2],\n+      blockDim.x * dimension_blocks, partition * blockDim.x + threadIdx.x);\n+}\n+\n // Split phase 3: sum the slice partials in ascending slice order and divide by\n // phase 1's denominator. One block per (token, head); each lane owns its own d\n // stride and reads the same few slice values, so no synchronisation is needed.\n@@ -970,25 +995,11 @@ int gemma4_decode_split_launch(\n     return rc;\n   }\n \n-  const unsigned int slice_grid =\n-      static_cast<unsigned int>(tokens * num_heads * slices);\n-  if (head_dim >= 2 * static_cast<int64_t>(kThreads)) {\n-    gemma4_attention_decode_slice_kernel<scalar_t, 2, kPrefetch>\n-        <<<dim3(slice_grid), dim3(kThreads), 0, stream>>>(\n-            weights, value, partials, num_heads, num_kv_heads, head_dim, keys, slices);\n-  } else {\n-    gemma4_attention_decode_slice_kernel<scalar_t, 1, kPrefetch>\n-        <<<dim3(slice_grid), dim3(kThreads), 0, stream>>>(\n-            weights, value, partials, num_heads, num_kv_heads, head_dim, keys, slices);\n-  }\n-  rc = static_cast<int>(hipGetLastError());\n-  if (rc != 0) {\n-    return rc;\n-  }\n-\n-  gemma4_attention_decode_combine_kernel<scalar_t>\n-      <<<dim3(head_grid), dim3(kThreads), 0, stream>>>(\n-          partials, header, out, num_heads, head_dim, slices);\n+  const int dimension_blocks = static_cast<int>((head_dim + 31) / 32);\n+  gemma4_attention_decode_dimension_kernel<scalar_t>\n+      <<<dim3(head_grid * dimension_blocks), dim3(32), keys * sizeof(float), stream>>>(\n+          weights, header, value, out, num_heads, num_kv_heads, head_dim,\n+          keys, dimension_blocks);\n   return static_cast<int>(hipGetLastError());\n }\n \ndiff --git a/tests/test_gpu_gemma4_attention_decode_parity.py b/tests/test_gpu_gemma4_attention_decode_parity.py\nindex b0749a9f6..4411b87cf 100644\n--- a/tests/test_gpu_gemma4_attention_decode_parity.py\n+++ b/tests/test_gpu_gemma4_attention_decode_parity.py\n@@ -391,6 +391,17 @@ def _split_ab(library, *, dtype, num_heads, num_kv_heads, head_dim, keys, mask_m\n             free(buffer)\n \n \n+@pytest.mark.parametrize(\"head_dim,keys,slices\", [(256, 1057, 4), (512, 2055, 8), (256, 17, 32)])\n+@pytest.mark.parametrize(\"dtype\", [\"f32\", \"bf16\"])\n+def test_dimension_partition_preserves_single_accumulation(attention_library, head_dim, keys, slices, dtype):\n+    reference, candidate, _ = _split_ab(\n+        attention_library, dtype=dtype, num_heads=4, num_kv_heads=2,\n+        head_dim=head_dim, keys=keys, mask_mode=\"holes\", split_slices=slices,\n+        poison=True,\n+    )\n+    np.testing.assert_array_equal(candidate, reference)\n+\n+\n @pytest.mark.parametrize(\"num_heads,num_kv_heads,head_dim,keys\", _SPLIT_SHAPES)\n def test_split_matches_single_kernel_within_float_precision(\n     attention_library, num_heads, num_kv_heads, head_dim, keys\n",
+  "gate": {
+    "baseline_forced_slices": 1,
+    "baseline_path": "/mnt/nvme1/gemma4-eval/teacher-forced-prefilled-strict-001c4fec3.npz",
+    "baseline_provenance": {
+      "artifact": {
+        "bytes": 17010980576,
+        "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+        "mtime": "2026-09-22T10:30:20.793299+00:00",
+        "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+      },
+      "context_length": 8192,
+      "env": {
+        "HIP_INCLUDE_PATH": "/opt/rocm/include",
+        "HIP_LIB_PATH": "/opt/rocm/lib",
+        "HIP_PATH": "/opt/rocm",
+        "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+        "HSA_SCRATCH_SINGLE_LIMIT": "8388608",
+        "ROCR_VISIBLE_DEVICES": "1"
+      },
+      "forced_slices": 1,
+      "git_commit": "001c4fec3084e7648c74b0f7e480be168ba8666e",
+      "git_dirty": true,
+      "git_dirty_files": [
+        "M scripts/gemma4_teacher_forced_gate.py",
+        " M tests/test_unit_gemma4_teacher_forced_gate.py"
+      ],
+      "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+      "hipcc": [
+        "HIP version: 7.2.53211-3d9ef42",
+        "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+      ],
+      "max_block": 512,
+      "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+      "prefill": 1024,
+      "python": "3.11.11",
+      "rocm_smi_clock_power": [
+        "============================ ROCm System Management Interface ============================",
+        "====================================== Temperature =======================================",
+        "GPU[0]\t\t: Temperature (Sensor edge) (C): 34.0",
+        "GPU[0]\t\t: Temperature (Sensor junction) (C): 41.0",
+        "GPU[0]\t\t: Temperature (Sensor memory) (C): 46.0",
+        "GPU[1]\t\t: Temperature (Sensor edge) (C): 44.0",
+        "GPU[1]\t\t: Temperature (Sensor junction) (C): 54.0",
+        "GPU[1]\t\t: Temperature (Sensor memory) (C): 72.0",
+        "==========================================================================================",
+        "=============================== Current clock frequencies ================================",
+        "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[1]\t\t: fclk clock level: 2: (1200Mhz)",
+        "GPU[1]\t\t: mclk clock level: 2: (772Mhz)",
+        "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[1]\t\t: socclk clock level: 1: (750Mhz)",
+        "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "==========================================================================================",
+        "=================================== Power Consumption ====================================",
+        "GPU[0]\t\t: Average Graphics Package Power (W): 7.0",
+        "GPU[1]\t\t: Average Graphics Package Power (W): 48.0",
+        "==========================================================================================",
+        "================================== End of ROCm SMI Log ==================================="
+      ]
+    },
+    "baseline_sha256": "240067741b33e702eefa20cf6a69f26a88bcd1fde7d7c3eb7302b1d668858056",
+    "candidate_forced_slices": null,
+    "candidate_provenance": {
+      "artifact": {
+        "bytes": 17010980576,
+        "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+        "mtime": "2026-09-22T10:30:20.793299+00:00",
+        "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+      },
+      "attention_source_sha256": {
+        "hip": "94269750fcf60022c84a917c9fd23e159651cbdee3efa83c9dcf87f5fb4344fa",
+        "py": "3fe9631a870d244e87fb5ce35ac5fe53405bee18f3a2623e8f624936db2af83d"
+      },
+      "context_length": 8192,
+      "env": {
+        "HIP_INCLUDE_PATH": "/opt/rocm/include",
+        "HIP_LIB_PATH": "/opt/rocm/lib",
+        "HIP_PATH": "/opt/rocm",
+        "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+        "HSA_SCRATCH_SINGLE_LIMIT": "8388608",
+        "ROCR_VISIBLE_DEVICES": "1"
+      },
+      "evaluator_source_sha256": "dad9df1e93e349d3d75e3c427de61d6a3d0342faeb8a5ed4e8512319ffe4ca1f",
+      "git_commit": "1cf01fb3ecb37192189e1bcd80cd775a77b19f89",
+      "git_dirty": true,
+      "git_dirty_files": [
+        "M audit/findings/stub.json",
+        " M audit/findings/ungoverned-flag-branch.json",
+        " M audit/inventory/flags.json",
+        " M audit/inventory/kernels.json",
+        " M audit/inventory/meta.json",
+        " M audit/inventory/worklog.json",
+        " M audit/triage/stub.jsonl",
+        " M hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip",
+        " M tests/test_gpu_gemma4_attention_decode_parity.py"
+      ],
+      "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+      "hipcc": [
+        "HIP version: 7.2.53211-3d9ef42",
+        "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+      ],
+      "max_block": 512,
+      "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+      "python": "3.11.11",
+      "rocm_smi_clock_power": [
+        "============================ ROCm System Management Interface ============================",
+        "====================================== Temperature =======================================",
+        "GPU[0]\t\t: Temperature (Sensor edge) (C): 30.0",
+        "GPU[0]\t\t: Temperature (Sensor junction) (C): 37.0",
+        "GPU[0]\t\t: Temperature (Sensor memory) (C): 42.0",
+        "GPU[1]\t\t: Temperature (Sensor edge) (C): 40.0",
+        "GPU[1]\t\t: Temperature (Sensor junction) (C): 48.0",
+        "GPU[1]\t\t: Temperature (Sensor memory) (C): 58.0",
+        "==========================================================================================",
+        "=============================== Current clock frequencies ================================",
+        "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[1]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[1]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[1]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "==========================================================================================",
+        "=================================== Power Consumption ====================================",
+        "GPU[0]\t\t: Average Graphics Package Power (W): 8.0",
+        "GPU[1]\t\t: Average Graphics Package Power (W): 6.0",
+        "==========================================================================================",
+        "================================== End of ROCm SMI Log ==================================="
+      ]
+    },
+    "chain_sha256": "b8c28ab5066a519b3acc1e09293382f2cca1e084ac554e422788006341542d43",
+    "direction": "kl(baseline || candidate)",
+    "evidence_level": "numerical_rows",
+    "failed": [],
+    "kl_max": 0.0,
+    "kl_mean": 0.0,
+    "kl_p95": 0.0,
+    "kl_p99": 0.0,
+    "observed_routes": {
+      "decode_launches": 30690,
+      "head_dims": [
+        256,
+        512
+      ],
+      "selections": [
+        2
+      ],
+      "split_key_range": [
+        1024,
+        2047
+      ],
+      "split_launches": 30690
+    },
+    "passed": true,
+    "percentile_method": "nearest-rank",
+    "prefill": 1024,
+    "promotion_qualified": false,
+    "rows": 1023,
+    "scored_key_range": [
+      1025,
+      2047
+    ],
+    "thresholds": {
+      "kl_max": 0.05,
+      "kl_mean": 0.001,
+      "kl_p95": 0.005,
+      "kl_p99": 0.02,
+      "top1_rate": 0.99
+    },
+    "top1_flip_rows": [],
+    "top1_flips": 0,
+    "top1_rate": 1.0,
+    "vocab": 262144
+  },
+  "benchmark": {
+    "label": "campaign",
+    "created_at": "2026-09-26T11:13:20.800489+00:00",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 1024 --output 128 --samples 3 --out /tmp/gemma4-iter54-bench.json",
+    "workload": {
+      "prompt_tokens": 1024,
+      "output_tokens": 128,
+      "samples": 3,
+      "warmups": 1,
+      "context": 8192,
+      "decode_forwards_per_sample": 127,
+      "eos": "ignored (fixed-length row)"
+    },
+    "prompt_ids_sha256": "9730ebf884a19ea6f10c23dcc84061702b7663d53f092f8a75832667b472e211",
+    "provenance": {
+      "git_commit": "1cf01fb3ecb37192189e1bcd80cd775a77b19f89",
+      "git_dirty": true,
+      "git_dirty_files": [
+        "M audit/findings/stub.json",
+        " M audit/findings/ungoverned-flag-branch.json",
+        " M audit/inventory/flags.json",
+        " M audit/inventory/kernels.json",
+        " M audit/inventory/meta.json",
+        " M audit/inventory/worklog.json",
+        " M audit/triage/stub.jsonl",
+        " M hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip",
+        " M tests/test_gpu_gemma4_attention_decode_parity.py"
+      ],
+      "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+      "artifact": {
+        "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "bytes": 17010980576,
+        "mtime": "2026-09-22T10:30:20.793299+00:00",
+        "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+      },
+      "env": {
+        "HIP_INCLUDE_PATH": "/opt/rocm/include",
+        "HIP_LIB_PATH": "/opt/rocm/lib",
+        "HIP_PATH": "/opt/rocm",
+        "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+        "ROCR_VISIBLE_DEVICES": "1"
+      },
+      "hipcc": [
+        "HIP version: 7.2.53211-3d9ef42",
+        "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+      ],
+      "rocm_smi_clock_power": [
+        "============================ ROCm System Management Interface ============================",
+        "====================================== Temperature =======================================",
+        "GPU[0]\t\t: Temperature (Sensor edge) (C): 30.0",
+        "GPU[0]\t\t: Temperature (Sensor junction) (C): 37.0",
+        "GPU[0]\t\t: Temperature (Sensor memory) (C): 42.0",
+        "GPU[1]\t\t: Temperature (Sensor edge) (C): 40.0",
+        "GPU[1]\t\t: Temperature (Sensor junction) (C): 48.0",
+        "GPU[1]\t\t: Temperature (Sensor memory) (C): 58.0",
+        "==========================================================================================",
+        "=============================== Current clock frequencies ================================",
+        "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[1]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[1]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[1]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "==========================================================================================",
+        "=================================== Power Consumption ====================================",
+        "GPU[0]\t\t: Average Graphics Package Power (W): 10.0",
+        "GPU[1]\t\t: Average Graphics Package Power (W): 9.0",
+        "==========================================================================================",
+        "================================== End of ROCm SMI Log ==================================="
+      ],
+      "python": "3.11.11",
+      "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44"
+    },
+    "loading": {
+      "resolve_s": 0.886435141786933,
+      "load_s": 7.0145473619923,
+      "internal_load_s": 7.014543152414262,
+      "resolution": {
+        "_resolved_backend": "hip_gfx1100",
+        "_resolved_quant": "gguf_q4_k_m",
+        "_resolved_execution_profile": null,
+        "generator_type": "SubmitPollTextGenerator"
+      },
+      "context_length": 8192,
+      "runner_capacity": 8192,
+      "max_block": 512
+    },
+    "memory": {
+      "total_bytes": 25753026560,
+      "used_bytes": {
+        "before_load": 37748736,
+        "after_load": 19209912320,
+        "after_runs": 23119003648
+      },
+      "peak_used_bytes": 23119003648,
+      "labels": [
+        "before_load",
+        "after_load",
+        "after_runs"
+      ]
+    },
+    "warmups": [
+      {
+        "prompt_tokens": 1024,
+        "generated_tokens": 128,
+        "decode_forwards": 127,
+        "prefill_s": 8.077812105417252,
+        "first_sample_s": 5.467049777507782e-05,
+        "first_token_s": 8.077866775915027,
+        "decode_s": 2.9019753569737077,
+        "wall_s": 10.979915237054229,
+        "syncs": 129,
+        "finish_reason": "length",
+        "eos_ignored": true,
+        "role": "warmup",
+        "index": 0,
+        "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+      }
+    ],
+    "samples": [
+      {
+        "prompt_tokens": 1024,
+        "generated_tokens": 128,
+        "decode_forwards": 127,
+        "prefill_s": 7.955170369707048,
+        "first_sample_s": 3.56500968337059e-05,
+        "first_token_s": 7.955206019803882,
+        "decode_s": 2.90446257032454,
+        "wall_s": 10.859740221872926,
+        "syncs": 129,
+        "finish_reason": "length",
+        "eos_ignored": true,
+        "role": "sample",
+        "index": 0,
+        "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+      },
+      {
+        "prompt_tokens": 1024,
+        "generated_tokens": 128,
+        "decode_forwards": 127,
+        "prefill_s": 7.991247882135212,
+        "first_sample_s": 3.345124423503876e-05,
+        "first_token_s": 7.9912813333794475,
+        "decode_s": 2.907924357801676,
+        "wall_s": 10.899272188544273,
+        "syncs": 129,
+        "finish_reason": "length",
+        "eos_ignored": true,
+        "role": "sample",
+        "index": 1,
+        "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+      },
+      {
+        "prompt_tokens": 1024,
+        "generated_tokens": 128,
+        "decode_forwards": 127,
+        "prefill_s": 7.969996877014637,
+        "first_sample_s": 3.0689872801303864e-05,
+        "first_token_s": 7.970027566887438,
+        "decode_s": 2.9027135837823153,
+        "wall_s": 10.872805175371468,
+        "syncs": 129,
+        "finish_reason": "length",
+        "eos_ignored": true,
+        "role": "sample",
+        "index": 2,
+        "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+      }
+    ],
+    "stats": {
+      "samples": 3,
+      "decode_tps": 43.72581740167139,
+      "decode_tps_min": 43.67376326666526,
+      "decode_tps_max": 43.75216373725565,
+      "decode_tps_p95": 43.75216373725565,
+      "decode_tps_stdev": 0.03989652482516309,
+      "prefill_s": 7.969996877014637,
+      "prefill_tps": 128.48185712007017,
+      "first_token_s": 7.970027566887438,
+      "first_sample_s": 3.345124423503876e-05,
+      "decode_s": 2.90446257032454,
+      "wall_s": 10.872805175371468,
+      "prompt_tokens": 1024,
+      "generated_tokens": 128,
+      "decode_forwards_per_sample": 127
+    },
+    "public": {
+      "public_wall_s": 10.86778253596276,
+      "public_tps": 11.777931659603334,
+      "generated_tokens": 128,
+      "finish_reason": "length",
+      "sampler_mode": "greedy",
+      "public_path_parity": true,
+      "public_path_first_divergence": null,
+      "public_generated_equals_expected": true,
+      "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+    }
+  },
+  "guard": "446 tests passed",
+  "baseline_artifact": "2026-09-26-gemma4-dimension-profile.json"
+}
