@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import builtins
 import json
 from pathlib import Path
 
@@ -58,12 +59,28 @@ def _register(
     return output.with_suffix(".manifest.json")
 
 
-def test_paro_transformers_depthwise_fallback_matches_conv1d() -> None:
+@pytest.mark.parametrize("activation", [None, "silu"])
+def test_paro_transformers_depthwise_fallback_matches_conv1d(monkeypatch, activation) -> None:
+    from types import SimpleNamespace
+    # CPU tensors only: absence of HIP must not skip this numerical oracle.
     try:
         import torch
         import torch.nn.functional as F
     except (ImportError, OSError) as exc:
         pytest.skip(f"optional torch runtime is unavailable: {exc}")
+
+    real_import = builtins.__import__
+    activation_imports = []
+
+    def controlled_import(name, *args, **kwargs):
+        if name == "transformers.activations":
+            activation_imports.append(name)
+            if activation is None:
+                raise AssertionError("no activation must not require transformers")
+            return SimpleNamespace(ACT2FN={"silu": F.silu})
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", controlled_import)
 
     from scripts.quant_quality.qwen36_teacher import _torch_depthwise_causal_conv1d
 
@@ -79,8 +96,11 @@ def test_paro_transformers_depthwise_fallback_matches_conv1d() -> None:
         groups=hidden_states.shape[1],
     )[:, :, : hidden_states.shape[-1]]
 
-    actual = _torch_depthwise_causal_conv1d(hidden_states, weight, bias)
+    if activation is not None:
+        expected = F.silu(expected)
+    actual = _torch_depthwise_causal_conv1d(hidden_states, weight, bias, activation)
 
+    assert len(activation_imports) == int(activation is not None)
     assert actual.shape == hidden_states.shape
     assert torch.allclose(actual, expected, rtol=1e-6, atol=1e-6)
 
