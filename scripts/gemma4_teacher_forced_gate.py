@@ -58,6 +58,10 @@ THRESHOLDS: dict[str, float] = {
     "top1_rate": 0.99,
 }
 
+# The shipped decode_slices, captured on first use by force_slices so an
+# override can be undone inside one process.
+_ORIGINAL_DECODE_SLICES: Any = None
+
 
 def row_kl_divergence(baseline_row: np.ndarray, candidate_row: np.ndarray) -> float:
     """KL(baseline || candidate) for one full-vocabulary row, in float64."""
@@ -137,23 +141,69 @@ def evaluate(baseline_logits: np.ndarray, candidate_logits: np.ndarray) -> dict[
     return verdict
 
 
-def capture_chain(runner: Any, prompt_ids: Sequence[int]) -> np.ndarray:
-    """Teacher-force ``prompt_ids`` and return the (rows-1, vocab) chain.
+def capture_chain(
+    runner: Any, prompt_ids: Sequence[int], prefill: int = 0
+) -> np.ndarray:
+    """Teacher-force ``prompt_ids`` and return the scored (rows, vocab) chain.
 
-    Row ``t`` is the distribution after consuming ``prompt_ids[t]`` and
-    predicting ``prompt_ids[t + 1]``; the runner contract is last-row logits,
-    so one forward per forced token produces one paired row.
+    Row ``t`` is the distribution after consuming ``prompt_ids[prefill + t]``
+    and predicting the next id; the runner contract is last-row logits, so one
+    forward per forced token produces one paired row.
+
+    ``prefill`` ids are pushed through the cache in a single forward before
+    scoring starts and are not themselves scored. That is what makes the chain
+    exercise the decode path the model actually serves. Without it every row
+    runs at key counts ``1..len(ids)-1``, which at a 1024-token prompt stops one
+    key below the decode split's 1024-key entry threshold: the split never runs,
+    and the gate reports ``kl_max`` of exactly 0.0 because it is comparing the
+    single-kernel path with itself. Measured directly - 30 ``decode_slices``
+    calls per forward, one per layer, keys ``[1]`` at position 0 through ``[5]``
+    at position 4, all returning 1 slice - and the 2026-09-25 split gate result
+    was this artifact. With a prefill, scoring starts at key count
+    ``prefill + 1`` and every row above the threshold engages the split.
     """
 
     ids = [int(t) for t in prompt_ids]
     if len(ids) < 2:
         raise ValueError(f"prompt must carry at least 2 ids, got {len(ids)}")
+    if not 0 <= prefill < len(ids) - 1:
+        raise ValueError(
+            f"prefill must leave at least one scored row, got {prefill} of "
+            f"{len(ids)} ids"
+        )
     runner.reset()
+    if prefill:
+        runner.forward(ids[:prefill])
     rows: list[np.ndarray] = []
-    for position in range(len(ids) - 1):
+    for position in range(prefill, len(ids) - 1):
         logits = runner.forward([ids[position]])
         rows.append(np.asarray(logits, dtype=np.float32).reshape(-1))
     return np.stack(rows)
+
+
+def force_slices(slices: int | None) -> None:
+    """Pin the decode split's slice count for one capture or gate arm.
+
+    A harness override, not a product control: nothing in the engine reads it.
+    It exists so a baseline can be frozen at the slice count it actually shipped
+    with, and so the strict arm - 1, which selects the single-kernel path - can
+    be captured on the same tree as the split arms. An arm captured this way
+    records the value in its manifest, and ``gate`` refuses to compare two arms
+    whose chain geometry differs.
+
+    ``None`` restores the shipped policy, so the override is reversible within
+    one process rather than only per-invocation.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention
+
+    global _ORIGINAL_DECODE_SLICES
+    if _ORIGINAL_DECODE_SLICES is None:
+        _ORIGINAL_DECODE_SLICES = gemma4_attention.decode_slices
+    if slices is None:
+        gemma4_attention.decode_slices = _ORIGINAL_DECODE_SLICES
+        return
+    gemma4_attention.decode_slices = lambda keys: 1 if slices <= 1 else int(slices)
 
 
 def sha256_file(path: Path, chunk: int = 1 << 22) -> str:
@@ -200,10 +250,11 @@ def load_capture(path: Path) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
             provenance = json.loads(bytes(np.array(data["provenance"]).tobytes()))
     if logits.ndim != 2:
         raise ValueError(f"logits must be 2-D, got shape {logits.shape}")
-    if logits.shape[0] != len(prompt_ids) - 1:
+    prefill = int(provenance.get("prefill", 0))
+    if logits.shape[0] != len(prompt_ids) - 1 - prefill:
         raise ValueError(
             f"capture rows {logits.shape[0]} does not match chain length "
-            f"{len(prompt_ids)} - 1"
+            f"{len(prompt_ids)} - 1 - {prefill} prefill"
         )
     if not np.isfinite(logits).all():
         raise ValueError("capture logits are not finite")
@@ -238,6 +289,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         p.add_argument("--artifact", type=Path, default=DEFAULT_ARTIFACT)
         p.add_argument("--prompt", type=int, default=1024)
         p.add_argument("--context", type=int, default=DEFAULT_CONTEXT)
+        p.add_argument(
+            "--prefill",
+            type=int,
+            default=0,
+            help="ids pushed through the cache before scoring; the chain must "
+            "clear the decode split's 1024-key entry threshold to exercise it",
+        )
+        p.add_argument(
+            "--slices",
+            type=int,
+            default=None,
+            help="pin decode_slices for this arm (1 = strict single-kernel path)",
+        )
 
     capture = sub.add_parser("capture", help="freeze the incumbent chain")
     common(capture)
@@ -253,9 +317,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "capture":
         started = time.time()
+        force_slices(args.slices)
         runner, prompt_ids, loading = _load_chain(args.artifact, args.prompt, args.context)
-        logits = capture_chain(runner, prompt_ids)
+        logits = capture_chain(runner, prompt_ids, args.prefill)
         provenance = _provenance(args.artifact, loading)
+        provenance["prefill"] = int(args.prefill)
+        provenance["forced_slices"] = None if args.slices is None else int(args.slices)
         save_capture(args.out, logits, prompt_ids, provenance)
         elapsed = time.time() - started
         digest = sha256_file(args.out)
@@ -268,6 +335,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "rows": int(logits.shape[0]),
             "vocab": int(logits.shape[1]),
             "prompt_tokens": len(prompt_ids),
+            "prefill": int(args.prefill),
+            "forced_slices": None if args.slices is None else int(args.slices),
+            "scored_key_range": [int(args.prefill) + 1, len(prompt_ids) - 1],
             "chain_sha256": chain_sha256(prompt_ids),
             "thresholds": dict(THRESHOLDS),
             "threshold_source": "docs/EXECUTION-PROFILES.md production table "
@@ -282,15 +352,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.manifest.write_text(json.dumps(record, indent=1, sort_keys=True) + "\n")
         return 0
 
-    baseline, base_ids, _ = load_capture(args.baseline)
+    baseline, base_ids, base_provenance = load_capture(args.baseline)
+    force_slices(args.slices)
     runner, prompt_ids, _ = _load_chain(args.artifact, args.prompt, args.context)
     if [int(x) for x in base_ids] != [int(x) for x in prompt_ids]:
         raise SystemExit(
             "chain mismatch: the candidate chain differs from the frozen "
             "baseline's prompt ids; both arms must teacher-force the same ids"
         )
-    candidate = capture_chain(runner, prompt_ids)
+    if int(base_provenance.get("prefill", 0)) != int(args.prefill):
+        raise SystemExit(
+            "prefill mismatch: the baseline scored a different key range "
+            f"(baseline {base_provenance.get('prefill', 0)}, candidate "
+            f"{args.prefill}); the comparison would not be paired"
+        )
+    candidate = capture_chain(runner, prompt_ids, args.prefill)
     verdict = evaluate(baseline, candidate)
+    verdict["prefill"] = int(args.prefill)
+    verdict["scored_key_range"] = [int(args.prefill) + 1, len(prompt_ids) - 1]
+    verdict["baseline_forced_slices"] = base_provenance.get("forced_slices")
+    verdict["candidate_forced_slices"] = None if args.slices is None else int(args.slices)
     verdict["baseline_path"] = str(args.baseline)
     verdict["baseline_sha256"] = sha256_file(args.baseline)
     verdict["chain_sha256"] = chain_sha256(prompt_ids)
