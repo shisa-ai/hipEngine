@@ -1494,6 +1494,48 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 72: the Qwen35 dual forms, reached and rejected; and the exact path's
+  three limits.** Iteration 71 could not call the Qwen35-era dual owners because
+  they reject the fused-stride keywords the Gemma probe passes. They accept a
+  simpler call, so they were swept that way:
+
+  | owner | ms | bits |
+  | --- | ---: | --- |
+  | ``rowbatch8_out4_amortized`` (incumbent) | 38.24 | ref |
+  | ``pair2`` | 43.63 | **differs (5,761,400 elements)** |
+  | ``expertgrid64`` | 46.90 | **differs (5,761,401)** |
+  | ``expertgrid64_bundle`` | 43.54 | **differs (5,761,400)** |
+  | ``rowbatch8`` (one output column) | 123.38 | identical |
+
+  Slower *and* different: the Qwen35 dual forms are neither a schedule upgrade
+  nor the same arithmetic at this layout, so the fused ``gate_up`` keeps its
+  incumbent. Unlike the Q5_1 down -- where the Qwen35-era ``pair2_fold128`` was
+  both 1.84x faster and bit-identical -- nothing transfers here.
+
+  With that, all three large exact lines have a measured limit rather than an
+  assumed one:
+
+  - **Grouped Q5_1 down** (497 ms): taken to ``pair2_fold128``, 1.80x. The
+    incumbent family's own ladder is exhausted and the remaining cost is the
+    chronology-pinned LDS tree.
+  - **Fused Q4_K gate_up** (492 ms): incumbent wins every comparable sweep, the
+    Qwen35 dual forms are slower and inexact, and the one-output-column form is
+    3.2x slower. Input reuse is worth more here than anywhere else because the
+    half width is 704 against a 2816 input.
+  - **Dense Q8_0** (605 ms, the largest single item): the tiled owner's design is
+    capped at 64 accumulators per thread by a ``static_assert``, so ``16x4`` *is*
+    the ceiling and all three ladder points (8x2, 8x4, 16x4) were already
+    measured into the selection thresholds. The ``rowtile`` family is a rows<=8
+    decode domain, and every faster route for this shape (``wmma_prefill``,
+    ``mmq128``, ``iu8_wmma``) changes arithmetic.
+
+  What is left on the exact path is two specific jobs, both needing new code
+  rather than a selection change: the two Q5_K/Q8_0 layers (205 ms, 9.4%) need a
+  grouped owner or an adapter for the existing ``linear``-layer row4 GEMV, and
+  attention (295 ms, 13.5%) is bandwidth-shaped and wants several query rows per
+  CTA sharing one K/V pass, which is bit-identical because each row keeps its own
+  logit tree and its own pass-3 order.
+
   **Iteration 71: the same sweep on the fused `gate_up`, and why it does not
   transfer.** Iteration 70's win came from a Qwen35-era owner the probe never
   tried, so the fused Q4_K `gate_up` -- the second-largest item -- was swept the
