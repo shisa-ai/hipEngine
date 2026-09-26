@@ -1931,6 +1931,20 @@ class MlpTP2GenerationSession:
         # rows, launcher workspaces) and JIT build, so nothing allocates or
         # compiles inside a capture.
         self._forward_token_eager(0, 0, kind="prefill")
+        # Observe the warmup before the first step clears the flags. The eager
+        # body submits this exchange's attention reductions and never waits for
+        # them - its consumers are stream-ordered behind them - so without this
+        # the first ``step_begin`` would be refused by the unobserved-work rule,
+        # and before that rule existed it would have silently erased a warmup
+        # timeout (the spin kernel writes nothing on timeout, so the stale row
+        # would pass as a result). One host sync at build time, on the path that
+        # already synchronizes for JIT and allocation warmup.
+        if (
+            self.reduce_mode == "device"
+            and self._device_exchange is not None
+            and self._device_exchange.has_unobserved_work
+        ):
+            self._device_exchange.wait()
         group = self._shard_group
         assert group is not None
         group.reset_exchange_walls()

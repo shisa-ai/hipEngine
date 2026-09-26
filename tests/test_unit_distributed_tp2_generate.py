@@ -313,25 +313,64 @@ class FakeShardGroup:
         self.closed += 1
 
 
-class FakeDeviceExchange:
-    def __init__(self) -> None:
-        self.step_begins = 0
-        self.enqueues: list[tuple[int, int, int]] = []
-        self.waits = 0
-        self.closed = 0
+class FakeExchangeDriver:
+    """The compiled driver's entry points without hipcc or a GPU.
 
-    def step_begin(self) -> None:
-        self.step_begins += 1
+    ``capturing`` is the shared capture flag the fixture's stream-capture fakes
+    toggle, so ``enqueue_rank`` answers the way the native driver does: an
+    enqueue-only success (``1``) while the stream is recording, an ordinary
+    success (``0``) when the work was actually submitted. The wrapper's
+    unobserved-work rule depends on that distinction, so a double that always
+    answered ``0`` could not model it.
+    """
 
-    def enqueue_rank(self, rank, own_partial, slot, out_payload):
-        self.enqueues.append((int(rank), int(slot), int(own_partial)))
-        return int(out_payload)
+    def __init__(self, capturing: dict) -> None:
+        self.capturing = capturing
+        self.calls: list[str] = []
+        self._message = b""
 
-    def wait(self) -> None:
-        self.waits += 1
+        def create(devices, world, streams, num_layers, hidden, max_spins, error_code):
+            self.calls.append("create")
+            return 0x1234
 
-    def close(self) -> None:
-        self.closed += 1
+        def step_begin(handle):
+            self.calls.append("step_begin")
+            return 0
+
+        def reset_timeouts(handle):
+            self.calls.append("reset_timeouts")
+            return 0
+
+        def bump(handle):
+            self.calls.append("bump")
+            return 0
+
+        def enqueue_rank(handle, rank, own_partial, slot, out_payload):
+            self.calls.append(f"enqueue:{int(rank)}:{int(slot)}")
+            return 1 if self.capturing["active"] else 0
+
+        def wait(handle):
+            self.calls.append("wait")
+            return 0
+
+        def last_error(handle):
+            return self._message
+
+        def destroy(handle) -> None:
+            self.calls.append("destroy")
+
+        def live_allocations():
+            return 0
+
+        self.tp2_dev_exchange_create = create
+        self.tp2_dev_exchange_step_begin = step_begin
+        self.tp2_dev_exchange_reset_timeouts = reset_timeouts
+        self.tp2_dev_exchange_bump = bump
+        self.tp2_dev_exchange_enqueue_rank = enqueue_rank
+        self.tp2_dev_exchange_wait = wait
+        self.tp2_dev_exchange_last_error = last_error
+        self.tp2_dev_exchange_destroy = destroy
+        self.tp2_dev_exchange_live_allocations = live_allocations
 
 
 @pytest.fixture()
@@ -348,23 +387,30 @@ def env(monkeypatch):
 
     rt.stream_create = fake_stream_create
     rt.stream_destroy = lambda handle: destroyed_streams.append(int(handle))
-    device_exchanges: list[FakeDeviceExchange] = []
+    device_exchanges: list[Any] = []
+    capturing = {"active": False}
+    real_exchange = tg.CompiledDeviceExchange
 
-    class FakeDeviceExchangeFactory(FakeDeviceExchange):
+    class FakeDeviceExchange(real_exchange):
+        """The real wrapper over a fake driver, not a hand-rolled double.
+
+        The wrapper owns the rule that a timeout clear must be preceded by a
+        wait that observed the earlier step, and that rule is what the schedule
+        has to satisfy. A double without the rule accepts a schedule that
+        submits work and never observes it - which is exactly how the graphed
+        build's warmup broke the shipped route on hardware while every CPU test
+        passed.
+        """
+
         def __init__(self, runtime, **kwargs):
-            super().__init__()
+            super().__init__(runtime, library=FakeExchangeDriver(capturing), **kwargs)
+            self.closed = 0
+            self.driver = self._library
             device_exchanges.append(self)
 
-    monkeypatch.setattr(tg, "CompiledDeviceExchange", FakeDeviceExchangeFactory)
-    graph_counter = [0]
-
-    def fake_begin_capture(stream, mode=2):
-        rt.calls.append(("begin_capture", int(stream)))
-
-    def fake_end_capture(stream):
-        rt.calls.append(("end_capture", int(stream)))
-        graph_counter[0] += 1
-        return 0x9000 + graph_counter[0]
+        def close(self) -> None:
+            self.closed += 1
+            super().close()
 
     def fake_instantiate(graph):
         return 0xA000 + int(graph)
@@ -377,6 +423,19 @@ def env(monkeypatch):
 
     def fake_exec_destroy(graph_exec):
         rt.calls.append(("graph_exec_destroy", int(graph_exec)))
+
+    monkeypatch.setattr(tg, "CompiledDeviceExchange", FakeDeviceExchange)
+    graph_counter = [0]
+
+    def fake_begin_capture(stream, mode=2):
+        rt.calls.append(("begin_capture", int(stream)))
+        capturing["active"] = True
+
+    def fake_end_capture(stream):
+        rt.calls.append(("end_capture", int(stream)))
+        capturing["active"] = False
+        graph_counter[0] += 1
+        return 0x9000 + graph_counter[0]
 
     rt.stream_begin_capture = fake_begin_capture
     rt.stream_end_capture = fake_end_capture
@@ -1145,6 +1204,33 @@ def test_graphed_schedule_captures_one_graph_per_layer_rank(env) -> None:
     # the runner once per layer (3 more); every replayed step launches graphs
     # instead, so exactly 6 eager attention calls per rank.
     assert len(warmup_attn) == 6
+    session.close()
+
+
+def test_graphed_build_observes_the_warmup_before_the_first_clear(env) -> None:
+    """The build's eager warmup must be observed before any step clears.
+
+    ``_build_graph_schedule`` runs one eager warmup token, and with head
+    sharding that token's attention reductions are submitted on the session's
+    device exchange while nothing waits for them. The next clear - the first
+    step's ``step_begin``, which wipes both ranks' spin-timeout flags - would
+    then erase a warmup timeout that no wait reported, and because the spin
+    kernel writes nothing on timeout the stale row would pass as a result. The
+    wrapper refuses that clear, so the build has to observe the warmup itself.
+    """
+
+    env["queue_logits"]([0, 1, 2, 3])
+    session = _graphed_session(env, attention_shard=True)
+    session.generate([2], max_new_tokens=1, eos_token_id=None)
+    exchange = env["device_exchanges"][0]
+    assert exchange.driver.calls.count("wait") >= 1, (
+        "the warmup's eager reductions were never observed"
+    )
+    assert exchange.driver.calls.index("wait") < exchange.driver.calls.index(
+        "step_begin"
+    ), "the first step cleared the flags before any wait observed the warmup"
+    assert exchange.has_unobserved_work is False
+    exchange.step_begin()  # legal: every earlier submission has been observed
     session.close()
 
 
