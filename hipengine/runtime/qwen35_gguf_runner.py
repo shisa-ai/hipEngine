@@ -6,7 +6,7 @@ import os
 import threading
 from copy import copy
 import time
-from contextlib import contextmanager, nullcontext
+from contextlib import closing, contextmanager, nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from functools import partial
 from pathlib import Path
@@ -17479,6 +17479,11 @@ class Qwen35GGUFResidentSession:
         source = self._dms_source
         if source is None or self.scratch is None:
             raise RuntimeError("external DMS prefill owner is unavailable")
+        if getattr(self, "_dms_cache_capture_tokens", None) is not None:
+            from hipengine.runtime.dms_prefill_cache import capture_cold_prefill
+            self._dms_cold_prefill = capture_cold_prefill(
+                self, collector, self._dms_cache_capture_tokens
+            )
         # The bulk prefill workspace (bulk scratch, prefill hidden/token
         # buffers) is dead once prefill compute has completed. Release it
         # before the compact pack so it does not coexist with the dense
@@ -17674,6 +17679,12 @@ class Qwen35GGUFResidentSession:
             tokens=int(tokens),
             stream=int(stream),
         )
+        if getattr(self, "_dms_cache_capture_tokens", None) is not None:
+            from hipengine.runtime.dms_prefill_cache import read_prefix
+            nbytes = int(tokens) * source.config.num_kv_heads * source.config.head_dim * 2
+            self._dms_cache_layers[int(physical_layer)] = tuple(
+                read_prefix(buffer, nbytes) for buffer in (key_cache, value_cache)
+            )
 
     def _prefill_layer_outer_dms(
         self,
@@ -17683,6 +17694,8 @@ class Qwen35GGUFResidentSession:
         bulk_attention_mode: str,
         return_logits: bool,
         record_gpu_stage_timings: bool,
+        target_hidden_chunk_sink=None,
+        target_hidden_request_id=None,
     ) -> Qwen35GGUFNextTokenProbeResult | None:
         """Two-pass layer-outer DMS prefill without a dense BF16 pool.
 
@@ -17752,12 +17765,15 @@ class Qwen35GGUFResidentSession:
             backend.reserve(claims)
             try:
                 self._dms_layer_outer_pack = (backend, dms_capture, tokens)
+                self._dms_cache_layers = {}
                 try:
                     result = self._run_bulk_prefill_and_sample(
                         token_ids,
                         bulk_attention_mode=bulk_attention_mode,
                         return_logits=return_logits,
                         dms_pack_sink=self,
+                        target_hidden_chunk_sink=target_hidden_chunk_sink,
+                        target_hidden_request_id=target_hidden_request_id,
                         record_gpu_stage_timings=record_gpu_stage_timings,
                     )
                 finally:
@@ -17765,6 +17781,10 @@ class Qwen35GGUFResidentSession:
                 backend.finalize_device_streaming_pack(
                     0, eviction=decisions, tokens=tokens
                 )
+                if getattr(self, "_dms_cache_capture_tokens", None) is not None:
+                    from hipengine.runtime.dms_prefill_cache import capture_cold_prefill
+                    self._dms_cold_prefill = capture_cold_prefill(self, dms_capture, token_ids)
+                self._dms_cache_layers = {}
             except BaseException:
                 # Partial compact-store construction must not leak the
                 # partially built backend; the dense route is not involved.
@@ -21535,8 +21555,10 @@ class Qwen35GGUFResidentSession:
                 raise ValueError("target hidden chunk sink request owner does not match")
             if int(target_hidden_chunk_sink.hidden_size) != int(self.runner.hidden_size):
                 raise ValueError("target hidden chunk sink hidden_size does not match the runner")
-            if int(target_hidden_chunk_sink.total_rows) != len(token_ids):
-                raise ValueError("target hidden chunk sink row count does not match the prompt")
+            reuse = getattr(self, "_dms_prefill_reuse", None)
+            sink_rows = len(token_ids) - (0 if reuse is None else len(reuse.tokens))
+            if int(target_hidden_chunk_sink.total_rows) not in {sink_rows, len(token_ids)}:
+                raise ValueError("target hidden chunk sink row count does not match the uncached prompt")
         min_bulk_tokens = int(self.runner.weights.config.ssm_conv_kernel)
         selected_bulk_attention_mode = (
             getattr(self, "default_bulk_attention_mode", "bulk")
@@ -21583,6 +21605,14 @@ class Qwen35GGUFResidentSession:
                 diagnostic_injection=diagnostic,
             )
             internal_dms_capture = True
+            reuse = getattr(self, "_dms_prefill_reuse", None)
+            if reuse is not None:
+                from hipengine.runtime.dms_prefill_cache import seed_collector
+                try:
+                    seed_collector(dms_capture, reuse.cold)
+                except BaseException:
+                    dms_capture.close()
+                    raise
         if dms_capture is not None:
             if not return_logits and bool(
                 getattr(dms_capture, "requires_teacher_logits", True)
@@ -21596,6 +21626,7 @@ class Qwen35GGUFResidentSession:
                     f"GGUF bulk prefill requires at least {min_bulk_tokens} tokens; got {len(token_ids)}"
                 )
             with (
+                closing(dms_capture) if internal_dms_capture else nullcontext(),
                 q8_t16_two_wave_prefill_session(
                     _gguf_q8_t16_two_wave_prefill_applies(
                         getattr(self.runner, "backend", "hip_gfx1100"),
@@ -21654,6 +21685,8 @@ class Qwen35GGUFResidentSession:
                         bulk_attention_mode=selected_bulk_attention_mode,
                         return_logits=return_logits,
                         record_gpu_stage_timings=record_gpu_stage_timings,
+                        target_hidden_chunk_sink=target_hidden_chunk_sink,
+                        target_hidden_request_id=target_hidden_request_id,
                     )
                 result = self._run_bulk_prefill_and_sample(
                     token_ids,
@@ -21814,8 +21847,10 @@ class Qwen35GGUFResidentSession:
                 raise ValueError("target hidden chunk sink request owner does not match")
             if int(target_hidden_chunk_sink.hidden_size) != int(self.runner.hidden_size):
                 raise ValueError("target hidden chunk sink hidden_size does not match the runner")
-            if int(target_hidden_chunk_sink.total_rows) != rows:
-                raise ValueError("target hidden chunk sink row count does not match the prompt")
+            reuse = getattr(self, "_dms_prefill_reuse", None)
+            sink_rows = rows - (0 if reuse is None else len(reuse.tokens))
+            if int(target_hidden_chunk_sink.total_rows) not in {sink_rows, rows}:
+                raise ValueError("target hidden chunk sink row count does not match the uncached prompt")
         if dflash2_capture is not None:
             if int(dflash2_capture.rows) < rows:
                 raise ValueError(
@@ -21868,6 +21903,17 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
             )
         self.reset(stream=stream)
+        dms_reuse = getattr(self, "_dms_prefill_reuse", None)
+        prefix_start = 0 if dms_reuse is None else len(dms_reuse.tokens)
+        if dms_reuse is not None:
+            from hipengine.runtime.dms_prefix import restore_recurrent_prefix
+            from hipengine.runtime.dms_prefill_cache import write_prefix
+            restore_recurrent_prefix(self, dms_reuse)
+            if self.dms_prefill_mode != "layer_outer":
+                for layer, planes in zip(self._dms_source.config.physical_layer_ids,
+                                         dms_reuse.cold.layers, strict=True):
+                    for buffer, data in zip(self.scratch.full_cache(layer), planes, strict=True):
+                        write_prefix(buffer, data)
         gpu_stage_recorder.mark("prefill_reset")
         if recorder is not None:
             recorder.complete(reset_sequence, stream=stream)
@@ -21898,7 +21944,9 @@ class Qwen35GGUFResidentSession:
                     self._prefill_scratch_rows(rows),
                     int(self._bulk_prefill_scratch.rows),
                 )
-                ranges = _chunk_ranges(rows, chunk_size, min_chunk_size=linear_min_rows)
+                ranges = tuple((start + prefix_start, end + prefix_start)
+                               for start, end in _chunk_ranges(rows - prefix_start, chunk_size,
+                                                               min_chunk_size=linear_min_rows))
                 last_src_ptr = 0
                 last_bulk_scratch = None
                 for chunk_start, chunk_end in ranges:
@@ -22009,6 +22057,9 @@ class Qwen35GGUFResidentSession:
                             )
                         else:
                             raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                        if layer_type == LINEAR_ATTENTION and getattr(self, "_dms_cache_capture_tokens", None) is not None:
+                            from hipengine.runtime.dms_prefill_cache import capture_recurrent_boundary
+                            capture_recurrent_boundary(self, layer_id, chunk_end)
                         if recorder is not None and recorder.should_complete_layers:
                             recorder.complete(layer_sequence, stream=stream)
                         self._drain_prefill_queue(
@@ -22048,6 +22099,9 @@ class Qwen35GGUFResidentSession:
                         runtime=runtime,
                         stream=stream,
                     )
+                    if getattr(self, "_dms_cache_capture_tokens", None) is not None:
+                        from hipengine.runtime.dms_prefill_cache import capture_hidden_chunk
+                        capture_hidden_chunk(self, src.ptr, chunk_start, chunk_rows, rows)
                     if capture_target_hidden_rows is not None:
                         runtime.memcpy_async(
                             capture_target_hidden_rows.ptr
@@ -22060,7 +22114,8 @@ class Qwen35GGUFResidentSession:
                     elif target_hidden_chunk_sink is not None:
                         target_hidden_chunk_sink.consume(
                             request_id=int(target_hidden_request_id),
-                            chunk_start=chunk_start,
+                            chunk_start=(chunk_start if target_hidden_chunk_sink.total_rows == rows
+                                         else chunk_start - prefix_start),
                             hidden_ptr=src.ptr,
                             rows=chunk_rows,
                             stream=stream,
@@ -22117,10 +22172,19 @@ class Qwen35GGUFResidentSession:
                     try:
                         if layer_type == LINEAR_ATTENTION:
                             layer_chunk_size = self._linear_prefill_layer_chunk_size(rows)
-                            layer_ranges = _chunk_ranges(rows, layer_chunk_size, min_chunk_size=linear_min_rows)
+                            layer_ranges = tuple((a + prefix_start, b + prefix_start) for a, b in
+                                                 _chunk_ranges(rows - prefix_start, layer_chunk_size,
+                                                               min_chunk_size=linear_min_rows))
                         elif layer_type == FULL_ATTENTION:
+                            if dms_reuse is not None and self.dms_prefill_mode == "layer_outer":
+                                index = self._dms_source.compact_layer_index(layer_id)
+                                for buffer, data in zip(self._dms_layer_outer_oracle_pair(),
+                                                        dms_reuse.cold.layers[index], strict=True):
+                                    write_prefix(buffer, data)
                             layer_chunk_size = self._full_attention_prefill_layer_chunk_size(rows)
-                            layer_ranges = _chunk_ranges(rows, layer_chunk_size, min_chunk_size=2)
+                            layer_ranges = tuple((a + prefix_start, b + prefix_start) for a, b in
+                                                 _chunk_ranges(rows - prefix_start, layer_chunk_size,
+                                                               min_chunk_size=2))
                         else:
                             raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                         for start, end in layer_ranges:
@@ -22200,6 +22264,9 @@ class Qwen35GGUFResidentSession:
                                 )
                             else:
                                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                            if layer_type == LINEAR_ATTENTION and getattr(self, "_dms_cache_capture_tokens", None) is not None:
+                                from hipengine.runtime.dms_prefill_cache import capture_recurrent_boundary
+                                capture_recurrent_boundary(self, layer_id, end)
                             if recorder is not None and recorder.should_complete_layers:
                                 recorder.complete(layer_sequence, stream=stream)
                         self._drain_prefill_queue(
@@ -22249,6 +22316,10 @@ class Qwen35GGUFResidentSession:
                     runtime=runtime,
                     stream=stream,
                 )
+                if getattr(self, "_dms_cache_capture_tokens", None) is not None:
+                    from hipengine.runtime.dms_prefill_cache import capture_hidden_chunk
+                    capture_hidden_chunk(self, src.ptr + prefix_start * target_hidden_row_nbytes,
+                                         prefix_start, rows - prefix_start, rows)
                 if capture_target_hidden_rows is not None:
                     runtime.memcpy_async(
                         capture_target_hidden_rows.ptr,
@@ -22260,9 +22331,9 @@ class Qwen35GGUFResidentSession:
                 elif target_hidden_chunk_sink is not None:
                     target_hidden_chunk_sink.consume(
                         request_id=int(target_hidden_request_id),
-                        chunk_start=0,
-                        hidden_ptr=src.ptr,
-                        rows=rows,
+                        chunk_start=prefix_start if target_hidden_chunk_sink.total_rows == rows else 0,
+                        hidden_ptr=src.ptr + prefix_start * target_hidden_row_nbytes,
+                        rows=rows - prefix_start,
                         stream=stream,
                     )
                 last_bulk_scratch = active_bulk_scratch

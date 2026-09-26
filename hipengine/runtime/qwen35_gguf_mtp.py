@@ -166,8 +166,8 @@ class _StreamingNextNPromptSink:
         capture_boundary: int = 0,
     ) -> None:
         tokens = tuple(int(token) for token in prompt_tokens)
-        if not tokens:
-            raise ValueError("streaming NextN prompt sink requires prompt tokens")
+        if not tokens and not (int(start_position) > 0 and initial_hidden is not None):
+            raise ValueError("streaming NextN prompt sink requires prompt tokens or a restored boundary")
         if int(request_id) < 0:
             raise ValueError("streaming NextN prompt sink request_id must be non-negative")
         if int(hidden_size) <= 0:
@@ -218,6 +218,7 @@ class _StreamingNextNPromptSink:
         # Absolute prefix length to capture at, in the same coordinates as
         # ``start_position``; 0 means no capture for this sink.
         self.capture_boundary = int(capture_boundary)
+        self.capture_boundaries: tuple[int, ...] = ()
         self._capture_failed = False
         self._capture_missed = False
         self._captured = False
@@ -294,6 +295,20 @@ class _StreamingNextNPromptSink:
             self._stream = stream
         elif stream != self._stream:
             raise RuntimeError("streaming NextN prompt chunks must use one stream")
+        if self.capture_boundaries:
+            absolute_start = self.start_position + start
+            absolute_end = absolute_start + count
+            cuts = [point for point in self.capture_boundaries if absolute_start < point < absolute_end]
+            if cuts:
+                points = [absolute_start, *cuts, absolute_end]
+                for a, b in zip(points, points[1:]):
+                    self.consume(request_id=request_id, chunk_start=a - self.start_position,
+                                 hidden_ptr=int(hidden_ptr) + (a - absolute_start) * self.hidden_nbytes,
+                                 rows=b - a, stream=stream)
+                return
+            if absolute_end in self.capture_boundaries:
+                self.capture_boundary = absolute_end
+                self._captured = False
         if self.checkpoint is not None:
             self.checkpoint()
 

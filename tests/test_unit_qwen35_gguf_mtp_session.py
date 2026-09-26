@@ -1136,6 +1136,25 @@ def test_streaming_prompt_sink_transfers_final_carried_row_ownership(
         sink.take_final_pending_buffer()
 
 
+def test_streaming_prompt_sink_splits_multiple_cache_boundaries(monkeypatch):
+    monkeypatch.setattr(mtp_module, "malloc", lambda n, **kw: DeviceBuffer(0x1000, n))
+    monkeypatch.setattr(mtp_module, "free", lambda *args, **kw: None)
+    runtime = SimpleNamespace(memset=lambda *a: None, memcpy_async=lambda *a: None)
+    calls, captured = [], []
+    executor = SimpleNamespace(enqueue_prompt_rows=lambda *a, **kw: calls.append((a, kw)))
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=7, prompt_tokens=(10, 20, 30, 40, 50), hidden_size=4,
+        executor=executor, runtime=runtime, checkpoint=None,
+        prefix_capture=lambda boundary, ptr: captured.append((boundary, ptr)), capture_boundary=5,
+    )
+    sink.capture_boundaries = (2, 4, 5)
+    sink.consume(request_id=7, chunk_start=0, hidden_ptr=0x5000, rows=5, stream=0)
+    sink.finish(request_id=7, total_rows=5, stream=0)
+    assert captured == [(2, 0x5008), (4, 0x5018), (5, 0x5020)]
+    assert [kw["position_start"] for _, kw in calls] == [0, 1, 2, 3, 4]
+    sink.close()
+
+
 def test_mtp_prompt_admission_preserves_target_default_bulk_selector(monkeypatch) -> None:
     allocations = iter((DeviceBuffer(0x1000, 8), DeviceBuffer(0x2000, 8)))
     monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: next(allocations))
