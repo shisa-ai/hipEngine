@@ -1,0 +1,49 @@
+{
+  "id": "2026-09-26-gemma4-26b-a4b-moe-repack-eligibility",
+  "date": "2026-09-26",
+  "kind": "diagnostic",
+  "campaign": "GEMMA4-26B-A4B-OPTIMIZATION",
+  "iteration": 39,
+  "status": "diagnostic",
+  "subject": "MoE repack eligibility at the real artifact's quants: gate_up yes, down structurally impossible",
+  "artifact": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "method": "GGUF metadata scan (scan_gguf) of the 30 expert layers, then the repack registry's own GGUFRepackShape.validate constraints applied per tensor",
+  "findings": {
+    "ffn_gate_up_exps.weight": {
+      "ggml_shape": [
+        2816,
+        1408,
+        128
+      ],
+      "quant_types": {
+        "Q4_K": 29,
+        "Q5_K": 1
+      },
+      "t16_eligible": true,
+      "why": "rank 3, out_features 1408 divisible by 16, in_features 2816 divisible by 256 so bytes_per_row 1584 is a multiple of the Q4_K block (144)",
+      "nbytes_total": 8627700000
+    },
+    "ffn_down_exps.weight": {
+      "ggml_shape": [
+        704,
+        2816,
+        128
+      ],
+      "quant_types": {
+        "Q5_1": 29,
+        "Q8_0": 1
+      },
+      "t16_eligible": false,
+      "why": "no t16 repack shape is registered for Q5_1 at all; the single Q8_0 layer's shape is rank 2 (dense) and in_features 704 is not divisible by 256",
+      "nbytes_total": 5788800000
+    }
+  },
+  "structural_conclusion": "Q4_K's block is 256 elements, so a 704-element row cannot be Q4_K at all; the down projection is Q5_1 (block 32) because that is what can represent it. The t16 Q4_K decode route can therefore never cover ffn_down_exps. The repack's ceiling is ffn_gate_up_exps: 59.8% of the MoE's 14.42 GB of expert weights.",
+  "corrections_to_campaign_record": [
+    "Iteration 31's microbench measured a Q4_K chain at ffn 768 (a 9%-wider substitute for gate_up's 1408) and a Q4_K down arm, but the production down projection is Q5_1. The down projection - 40% of the MoE's expert bytes - has no production-shaped bandwidth measurement.",
+    "The campaign treats 'the MoE' as one quant. It is two: ffn_gate_up_exps Q4_K and ffn_down_exps Q5_1."
+  ],
+  "next_step": "The t16 measurement stays the next candidate, scoped to gate_up's real shape (hidden 2816, ffn 1408). The down projection is already on the fastest registered decode path (gguf_q5_1 resolves to selected_gemv_bf16_bf16_out per iteration 33), so its remaining headroom is a Q5_1-specific question, not a repack one.",
+  "product_path_changed": false,
+  "rows_moved": false
+}
