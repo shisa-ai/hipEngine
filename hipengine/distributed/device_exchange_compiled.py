@@ -197,6 +197,17 @@ class CompiledDeviceExchange:
     def poisoned(self) -> bool:
         return self._poisoned
 
+    @property
+    def has_unobserved_work(self) -> bool:
+        """True while submitted work has not been observed by a wait.
+
+        A caller that is about to clear the timeout flags must first observe
+        whatever it submitted: the spin kernel writes nothing on timeout, so a
+        clear erases the only evidence that a stale row was produced.
+        """
+
+        return self._unobserved_steps > 0
+
     def _require_live(self) -> None:
         if self._poisoned:
             raise TransportStateError("device exchange is poisoned by an earlier failure")
