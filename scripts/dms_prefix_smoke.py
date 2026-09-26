@@ -1,8 +1,28 @@
-"""Check DMS exact, extended, and branching cache reuse through public requests."""
+"""Check public DMS cache reuse against uncached, matched-partition execution.
+
+Fresh whole-prompt output is a diagnostic, not the restoration oracle: changing
+prefill chunk widths can change arithmetic. The matched arm replays the actual
+per-layer-kind partitions recorded by the cached arm without restoring state.
+"""
 import argparse
 import dataclasses
 import json
 from pathlib import Path
+from unittest.mock import patch
+
+
+def compose_partition(prefix, reused, suffix, total):
+    """Join a restored prefix and computed suffix without duplicating layers."""
+    result = [tuple(span) for span in prefix if span[1] <= reused]
+    result.extend((a + reused, b + reused) for a, b in suffix)
+    cursor = 0
+    for start, end in result:
+        if start != cursor or end <= start:
+            raise ValueError(f"non-contiguous partition: {result}")
+        cursor = end
+    if cursor != total:
+        raise ValueError(f"partition covers {cursor}, expected {total}")
+    return tuple(result)
 
 
 def main():
@@ -22,64 +42,102 @@ def main():
         parser.error("sampled requests use --mode ar")
     from hipengine import LLM, SamplingParams
     from hipengine.core.memory import memory_stats
+    from hipengine.runtime import qwen35_gguf_runner as runtime
     lengths = sorted(set(int(n) for n in args.lengths.split(",")))
-    rows = []
+    rows, plans, prompt_ids = [], {}, {}
     result = {"completed": False, "rows": rows, "configuration": vars(args)}
+    original_ranges = runtime._chunk_ranges
+    cache, name, ids, observed = "", "", (), {}
+
+    def ranges(total, chunk_size, *, min_chunk_size=1):
+        if cache == "matched":
+            partition = plans[name][min_chunk_size]
+            assert total == len(ids), (total, len(ids))
+            assert all(b - a <= chunk_size for a, b in partition), (partition, chunk_size)
+            return partition
+        spans = original_ranges(total, chunk_size, min_chunk_size=min_chunk_size)
+        if cache == "radix":
+            record = (len(ids) - total, spans)
+            # Each recurrent/attention layer repeats its kind's partition.
+            assert min_chunk_size not in observed or observed[min_chunk_size] == record
+            observed[min_chunk_size] = record
+        return spans
+
     try:
-        for cache in ("off", "radix"):
-            llm = LLM(args.model, backend=args.backend, execution_profile="production",
-                      max_sequence_length=max(lengths) + 32, max_active_requests=1,
-                      prefix_cache=cache, kv_storage=args.codec, kv_scale_dtype="fp32",
-                      dms_metadata_path=args.metadata, engine_command_timeout_seconds=1800)
-            try:
-                source = llm.tokenize(args.prompt * (max(lengths) + 1))[:max(lengths)]
-                scenarios = []
-                previous = 0
-                for length in lengths:
-                    assert len(source[:length]) == length
-                    scenarios.extend(((f"extend-{length}", source[:length], previous, 8),
-                                      (f"repeat-{length}", source[:length], length, 12)))
-                    previous = length
-                if max(lengths) >= args.branch_at + 30:
-                    branch = source[:args.branch_at] + llm.tokenize("Explain compiler intermediate representations. " * 20)[:30]
-                    shared = max([0, *(length for length in lengths if length <= args.branch_at)])
-                    scenarios.append(("branch", branch, shared, 12))
-                    scenarios.append(("return-source", source, len(source), 12))
-                for index, (name, ids, reused, count) in enumerate(scenarios):
-                    mtp = args.mode == "mtp" or args.mode == "transition" and index > 0
-                    params = SamplingParams(max_tokens=count, temperature=args.temperature,
-                                            seed=42, ignore_eos=not mtp)
-                    method = llm.generate_speculative_mtp_detailed if mtp else llm.generate_detailed
-                    out = method([ids], params)[0]
-                    telemetry = dataclasses.asdict(out.telemetry)
-                    prefix = telemetry["diagnostics"]["prefix_cache"]
-                    expected = reused if cache == "radix" else 0
-                    if name == "branch" and cache == "radix":
-                        # Only natural prefill boundaries are snapshotted; an
-                        # extension can skip 256 while reusing an earlier end.
-                        allowed = {*range(256, args.branch_at + 1, 256),
-                                   *(length for length in lengths if length <= args.branch_at)}
-                        assert prefix["reused_tokens"] in allowed, (name, prefix)
-                        expected = prefix["reused_tokens"]
-                    else:
-                        assert prefix["reused_tokens"] == expected, (name, prefix)
-                    if expected == len(ids):
-                        assert telemetry["timing"]["prefill_chunk_count"] == 0
-                        assert telemetry["diagnostics"]["dms"]["operations"]["streaming_pack_calls"] == 0
-                    if mtp:
-                        assert telemetry["timing"].get("mtp_cycles_count", 0) > 0, telemetry
-                    row = {"cache": cache, "scenario": name, "length": len(ids), "mtp": mtp,
-                           "max_tokens": count, "ids": list(out.generated_token_ids), "telemetry": telemetry}
-                    rows.append(row)
-                    print(json.dumps({key: row[key] for key in ("cache", "scenario", "mtp", "ids")}
-                                     | {"reused_tokens": prefix["reused_tokens"]}), flush=True)
-                    if cache == "radix":
-                        baseline = next(r for r in rows if r["cache"] == "off" and r["scenario"] == name)
-                        assert row["ids"] == baseline["ids"], (name, row["ids"], baseline["ids"])
-            finally:
-                llm.close()
-                result[f"memory_after_{cache}_close"] = memory_stats()
-            assert memory_stats()["current_allocated_bytes"] == 0, memory_stats()
+        with patch.object(runtime, "_chunk_ranges", ranges):
+            for cache in ("off", "radix", "matched"):
+                llm = LLM(args.model, backend=args.backend, execution_profile="production",
+                          max_sequence_length=max(lengths) + 32, max_active_requests=1,
+                          prefix_cache="off" if cache == "matched" else cache,
+                          kv_storage=args.codec, kv_scale_dtype="fp32",
+                          dms_metadata_path=args.metadata, engine_command_timeout_seconds=1800)
+                try:
+                    source = llm.tokenize(args.prompt * (max(lengths) + 1))[:max(lengths)]
+                    scenarios, previous = [], 0
+                    for length in lengths:
+                        assert len(source[:length]) == length
+                        scenarios.extend(((f"extend-{length}", source[:length], previous, 8),
+                                          (f"repeat-{length}", source[:length], length, 12)))
+                        previous = length
+                    if max(lengths) >= args.branch_at + 30:
+                        branch = source[:args.branch_at] + llm.tokenize("Explain compiler intermediate representations. " * 20)[:30]
+                        scenarios.extend((("branch", branch, 0, 12),
+                                          ("return-source", source, len(source), 12)))
+                    for index, (name, ids, reused, count) in enumerate(scenarios):
+                        observed = {}
+                        mtp = args.mode == "mtp" or args.mode == "transition" and index > 0
+                        params = SamplingParams(max_tokens=count, temperature=args.temperature,
+                                                seed=42, ignore_eos=not mtp)
+                        method = llm.generate_speculative_mtp_detailed if mtp else llm.generate_detailed
+                        out = method([ids], params)[0]
+                        telemetry = dataclasses.asdict(out.telemetry)
+                        prefix = telemetry["diagnostics"]["prefix_cache"]
+                        expected = reused if cache == "radix" else 0
+                        if name == "branch" and cache == "radix":
+                            allowed = {*range(256, args.branch_at + 1, 256),
+                                       *(length for length in lengths if length <= args.branch_at)}
+                            assert prefix["reused_tokens"] in allowed, (name, prefix)
+                            expected = prefix["reused_tokens"]
+                        else:
+                            assert prefix["reused_tokens"] == expected, (name, prefix)
+                        if expected == len(ids):
+                            assert telemetry["timing"]["prefill_chunk_count"] == 0
+                            assert telemetry["diagnostics"]["dms"]["operations"]["streaming_pack_calls"] == 0
+                        if mtp:
+                            assert telemetry["timing"].get("mtp_cycles_count", 0) > 0, telemetry
+                        if cache == "radix":
+                            parent = next((key for key, tokens in reversed(list(prompt_ids.items()))
+                                           if expected and len(tokens) >= expected
+                                           and tuple(tokens[:expected]) == tuple(ids[:expected])
+                                           and all(expected in [b for a, b in plan]
+                                                   for plan in plans[key].values())), None)
+                            assert not expected or parent is not None, (name, expected)
+                            inherited = plans[parent] if parent is not None else {}
+                            kinds = set(inherited) | set(observed)
+                            plans[name] = {}
+                            for kind in kinds:
+                                offset, suffix = observed.get(kind, (len(ids), ()))
+                                assert offset == expected, (name, offset, expected)
+                                plans[name][kind] = compose_partition(inherited.get(kind, ()), expected, suffix, len(ids))
+                            assert plans[name], name
+                            prompt_ids[name] = tuple(ids)
+                        row = {"cache": cache, "scenario": name, "length": len(ids), "mtp": mtp,
+                               "max_tokens": count, "ids": list(out.generated_token_ids), "telemetry": telemetry}
+                        rows.append(row)
+                        if cache == "radix":
+                            baseline = next(r for r in rows if r["cache"] == "off" and r["scenario"] == name)
+                            row["natural_ids_equal"] = row["ids"] == baseline["ids"]
+                            row["partitions"] = plans[name]
+                        if cache == "matched":
+                            cached = next(r for r in rows if r["cache"] == "radix" and r["scenario"] == name)
+                            assert row["ids"] == cached["ids"], (name, row["ids"], cached["ids"])
+                            row["matched_partition_exact"] = True
+                        print(json.dumps({key: row[key] for key in ("cache", "scenario", "mtp", "ids")}
+                                         | {"reused_tokens": prefix["reused_tokens"]}), flush=True)
+                finally:
+                    llm.close()
+                    result[f"memory_after_{cache}_close"] = memory_stats()
+                assert memory_stats()["current_allocated_bytes"] == 0, memory_stats()
         result["completed"] = True
     finally:
         args.output.parent.mkdir(parents=True, exist_ok=True)
