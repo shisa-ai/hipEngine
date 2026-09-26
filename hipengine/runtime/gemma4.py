@@ -24,8 +24,9 @@ whose tensors they cannot fails inside the dispatch that could not serve it.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 import numpy as np
 
@@ -410,6 +411,35 @@ def _bf16_bits(values: np.ndarray) -> np.ndarray:
     return ((bits + rounding) >> 16).astype(np.uint16)
 
 
+# The dense Q8_0 projections, admitted to the guarded d4x3 MMQ chain per shape.
+#
+# risk_threshold governs how much of the matrix the sparse correction repairs,
+# and the guard queues *more* as the threshold rises: measured on this model's
+# real Q8_0 weights at 512 rows, 1e-8 queues 0.0% (and leaves 271-985 elements
+# wrong), 1e-6 queues 0.2-0.3%, 1e-5 queues 1.5-2.5% and is bit-identical to the
+# exact owner on every shape tried, 1e-4 queues 10-16%, and 1e-2 queues 100%.
+# So 1e-5 is the setting where the chain is both exact and cheap; the same value
+# the Qwen policies use. Repairing 10-16% of the elements at in_features MACs
+# each costs about what the GEMM itself costs, which is why 1e-4 measured slower
+# than the exact owner rather than faster.
+#
+# min_rows is per shape because the chain loses below 512 rows (0.45x-0.55x),
+# so the 64-row tail keeps the exact owner. (2112, 2816) is absent
+# deliberately: 2112 is not a multiple of 128, so the d4 packing cannot serve it
+# and that shape keeps its exact owner too.
+GEMMA4_Q8_MMQ_MIN_ROWS: dict[tuple[int, int], int] = {
+    (2816, 2112): 512,
+    (2816, 2048): 512,
+    (4096, 2816): 512,
+    (2816, 4096): 512,
+    (8192, 2816): 512,
+    (2816, 8192): 512,
+}
+GEMMA4_Q8_MMQ_MAX_ROWS = 4096
+GEMMA4_Q8_MMQ_RISK_THRESHOLD = 1.0e-5
+GEMMA4_Q8_MMQ_MAX_OUT_FEATURES = 8192
+
+
 @dataclass
 class Gemma4Runner:
     """Runs the Gemma 4 decoder forward pass over a KV cache.
@@ -430,6 +460,11 @@ class Gemma4Runner:
     _staging: dict[str, tuple[DeviceBuffer, int]] = field(default_factory=dict, repr=False)
     _position: int = field(default=0, repr=False)
     _closed: bool = field(default=False, repr=False)
+    _q8_mmq_policy: Any = field(default=None, repr=False)
+    _q8_mmq_library: Any = field(default=None, repr=False)
+    _q8_mmq_workspace: Any = field(default=None, repr=False)
+    _q8_mmq_risk_count: Any = field(default=None, repr=False)
+    _q8_mmq_risk_indices: Any = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         config = self.weights.config
@@ -627,10 +662,71 @@ class Gemma4Runner:
         assert logits is not None
         return logits
 
+    @contextmanager
+    def _q8_mmq_prefill_session(self) -> Iterator[None]:
+        """Admit this block's dense Q8_0 projections to the guarded MMQ chain.
+
+        The owners and the guard live in the shared linear dispatch, which reads
+        the policy off the session rather than re-resolving one from the
+        registry. So a model carries its own crossover map and its own
+        threshold without colliding with another model that shares its file
+        type, and a shape the map does not name keeps its exact owner.
+        """
+
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
+            Q8MMQPrefillPolicy,
+            build_gguf_q8_0_mmq_prefill,
+            q8_mmq_d4x3_nbytes,
+        )
+        from hipengine.runtime.gguf_linear import q8_mmq_prefill_session
+
+        if self._q8_mmq_policy is None:
+            self._q8_mmq_policy = Q8MMQPrefillPolicy(
+                min_rows=GEMMA4_Q8_MMQ_MIN_ROWS,
+                max_rows=GEMMA4_Q8_MMQ_MAX_ROWS,
+                risk_threshold=GEMMA4_Q8_MMQ_RISK_THRESHOLD,
+                max_out_features=GEMMA4_Q8_MMQ_MAX_OUT_FEATURES,
+            )
+        if self._q8_mmq_library is None:
+            self._q8_mmq_library = build_gguf_q8_0_mmq_prefill(load=True)
+        if self._q8_mmq_workspace is None:
+            # Sized from the policy's own shapes, not from the block: the policy
+            # is what bounds which shapes reach the chain, so its widest entry
+            # is the widest activation the workspace can ever be asked to hold.
+            rows = min(
+                int(self.max_block or 0) or GEMMA4_Q8_MMQ_MAX_ROWS,
+                GEMMA4_Q8_MMQ_MAX_ROWS,
+            )
+            hidden = int(self.weights.config.hidden_size)
+            widest_in = max([key[0] for key in GEMMA4_Q8_MMQ_MIN_ROWS] + [hidden])
+            widest_out = max([key[1] for key in GEMMA4_Q8_MMQ_MIN_ROWS] + [hidden])
+            self._q8_mmq_workspace = self._alloc(q8_mmq_d4x3_nbytes(rows, widest_in))
+            self._q8_mmq_risk_count = self._alloc(4)
+            self._q8_mmq_risk_indices = self._alloc(rows * widest_out * 4)
+        with q8_mmq_prefill_session(
+            workspace_ptr=self._q8_mmq_workspace.ptr,
+            workspace_nbytes=self._q8_mmq_workspace.nbytes,
+            risk_count_ptr=self._q8_mmq_risk_count.ptr,
+            risk_count_nbytes=self._q8_mmq_risk_count.nbytes,
+            risk_indices_ptr=self._q8_mmq_risk_indices.ptr,
+            risk_indices_nbytes=self._q8_mmq_risk_indices.nbytes,
+            policy=self._q8_mmq_policy,
+            library=self._q8_mmq_library,
+        ):
+            yield
+
     def _forward_block(
         self, tokens: Sequence[int], *, apply_softcap: bool = True
     ) -> np.ndarray:
         """Run one block of at most ``max_block`` tokens; see :meth:`forward`."""
+
+        with self._q8_mmq_prefill_session():
+            return self._forward_block_inner(tokens, apply_softcap=apply_softcap)
+
+    def _forward_block_inner(
+        self, tokens: Sequence[int], *, apply_softcap: bool = True
+    ) -> np.ndarray:
+        """The block body, run under whatever session :meth:`_forward_block` set."""
 
         config = self.weights.config
         rows = len(tokens)

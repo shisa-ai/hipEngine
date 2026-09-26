@@ -1494,6 +1494,63 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 85: the MMQ dense line lands, +14.4% prefill, and it is the
+  campaign's first non-exact win.** Iteration 84 wired the guarded d4x3 chain
+  and measured a regression, then reverted. The regression was not the chain: it
+  was the threshold, and the measurement that settles it is the guard's queue
+  rate on real weights.
+
+  **The guard's queue rate, real GGUF Q8_0 weights, 512 rows:**
+
+  | threshold | queued | differing from the exact owner |
+  | --- | ---: | ---: |
+  | 1e-8 | 0.0% | 271-985 |
+  | 1e-7 | 0.0% | 118-484 |
+  | 1e-6 | 0.2-0.3% | 0-12 |
+  | **1e-5** | **1.5-2.5%** | **0** |
+  | 3e-5 | 3.8-6.2% | 0 |
+  | 1e-4 | 10-16% | 0 |
+  | 1e-2 | 100% | 0 |
+  | 1.0 | 100% | 0 |
+
+  Two things this settles. The guard queues *more* as the threshold rises, which
+  is the opposite of what the name suggests and is why iteration 84's
+  ``threshold=1.0`` run queued everything and measured 211 tok/s -- the "sparse"
+  correction became a full exact recompute. And 1e-5 is the setting where the
+  chain is both exact and cheap: repairing 1.5-2.5% of the elements at
+  ``in_features`` MACs each costs about 2% of the GEMM, while repairing 10-16%
+  costs about what the GEMM costs. **The Qwen policies already used 1e-5.** I
+  changed it to 1e-4 without evidence, and that one number was the whole
+  regression.
+
+  **Measured on the XTX census, same script and artifact:**
+
+  | | before | after |
+  | --- | ---: | ---: |
+  | ``dense:gguf_q8_0`` | 548.9 ms | **389.4 ms** (1.41x) |
+  | ``layer_total`` | 1781.6 ms | **1553.7 ms** |
+  | prefill | 571.42 | **653.68 tok/s** (+14.4%) |
+
+  W7900, same script: ``dense`` 605 -> 424.8 ms, prefill 522.5 -> 598.9 tok/s
+  (+14.6%). In the shape census every admitted shape improved 1.2x-1.8x --
+  (4096,2816)@512 1976 -> 1109 us, (8192,2816)@512 3873 -> 2307 us -- and
+  (2112,2816), which the ``min_rows`` map excludes because 2112 is not a
+  multiple of 128, is untouched at 1071 -> 1089 us.
+
+  **This is the first change in this campaign that is not bit-identical, and
+  that is the honest headline.** The teacher-forced gate returns ``passed:
+  true``, ``failed: []``, with ``kl_max`` 0.0064 against a 0.05 bar (7.8x
+  margin), ``kl_mean`` 1.6e-05 against 0.001 (62x), ``kl_p99`` 8.1e-05, and zero
+  top-1 flips over 1023 x 262144 logits. It is not 0.0, which every previous
+  landing in this campaign was. The isolated per-element comparison showed 0
+  differing at 1e-5 because it used synthetic activations; the model's real
+  activations drift slightly and the guard does not queue every drifting
+  element. So the arithmetic requirement is met by the execution-profile gate
+  and by nothing else: this path is a bounded-deviation production candidate,
+  not an exact one, and the gate's own ``promotion_qualified`` is ``False``
+  because the category, task and isolation gates are separate and have not been
+  run.
+
   **Iteration 84: the MMQ chain is wired end to end and is a measured
   regression on this model. Reverted.** Iteration 83's crossover said 1.5-2.25x.
   That number did not survive contact with the real weights, and this records
