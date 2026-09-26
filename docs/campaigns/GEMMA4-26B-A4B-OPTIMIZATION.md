@@ -721,6 +721,50 @@ direction. The clean-device pass also puts every other cell 4-10% above its
   strict path returns as the default. The `kl_mean`, `kl_p95`, `kl_p99` and
   top-1 bars - the ones a greedy workload actually depends on - pass in every
   arm with room to spare.
+
+  *Diagnostic 2026-09-26 (iteration 38): the mechanism, and it is not a defect.*
+  The split's divergence is a pure association reordering of the weighted-V sum,
+  which is what the acceptance record claims it is. Established by reading the
+  kernel and by one discriminating measurement.
+
+  - **Phase 1 is faithful.** `gemma4_attention.hip` pass 2 computes
+    `weight = expf(logits_s[j] - row_max)`, writes it back into `logits_s[j]`,
+    and reduces the denominator with the tree pinned to
+    `kGemma4ReduceThreads` (256) so its order matches the block kernel's. The
+    split then stores exactly those weights (`split_weights[head_index * keys + j]
+    = logits_s[j]`) and a header of `(denominator, row_max)`. Every slice's
+    summands are therefore the incumbent path's own f32 values, as designed.
+  - **It is not a precision round-trip.** The workspace is `float` throughout
+    (`float* __restrict__ split_weights`, and the sizing function multiplies by
+    `sizeof(float)`).
+  - **It is not the slice count.** Measured against the same strict baseline:
+    2 slices kl_max 0.1765 with 2 rows over the bar, 4 slices 0.0556 with 1,
+    8 slices 0.0559 with 2, 16 slices 0.1508 with 2; median `max|delta logit|`
+    is 1.03-1.15 in *every* arm including 2; and the per-row KL correlates
+    0.790/0.987/0.821 between 2/8/16 slices and 4. Row 864 sits at
+    0.056-0.060 in all four. A 2-slice combine can differ from the single
+    kernel's chain by one rounding step, so a shared one-logit difference at 2
+    slices localises the source to the split's existence rather than its width.
+  - **What is left is the association order, and it cannot be removed.**
+    Pass 3 is a strictly sequential f32 chain over ascending keys; any split of
+    that range computes partial sums in parallel and combines them, which
+    reassociates the sum by construction. A slice cannot reproduce a sequential
+    dependency chain over the whole prefix without giving up the parallelism
+    that is the split's entire purpose, and a higher-precision accumulator would
+    still not be bit-identical to the strict f32 chain. So the split's arithmetic
+    difference from strict is irreducible, and the only lever is how much it
+    matters.
+  - **How much it matters:** p50 row KL 2.592e-08, p90 1.040e-06, p99 3.955e-05
+    against bars of 1e-3, 5e-3 and 2e-2; top-1 rate 1.0 with zero flips on all
+    1023 rows; 2 rows over 1e-3 and 1 over the 0.05 max bar. The one-logit
+    median difference is real but sits in the tail of a peaked distribution, and
+    on the breaching rows the model's decision does not move at all.
+
+  So the campaign's choice is between accepting the split under the aggregate
+  bars plus top-1 and treating an absolute `kl_max` as inapplicable to a
+  reordering-class change, and returning to the strict path. That is a lead
+  decision, recorded here with the mechanism rather than taken. Making phase 2
+  bit-identical is not available; that option is closed with the reason above.
   *Diagnostic 2026-09-26 (iteration 31): the MoE decode linears are now the
   largest single item in the step and the achieved-bandwidth baseline did not
   exist.* With attention down to roughly 8.5 ms and the host gap cut by 6.4 ms,

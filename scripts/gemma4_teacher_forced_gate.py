@@ -203,7 +203,9 @@ def force_slices(slices: int | None) -> None:
     if slices is None:
         gemma4_attention.decode_slices = _ORIGINAL_DECODE_SLICES
         return
-    gemma4_attention.decode_slices = lambda keys: 1 if slices <= 1 else int(slices)
+    gemma4_attention.decode_slices = (
+        lambda keys, head_dim: 1 if slices <= 1 else int(slices)
+    )
 
 
 def sha256_file(path: Path, chunk: int = 1 << 22) -> str:
