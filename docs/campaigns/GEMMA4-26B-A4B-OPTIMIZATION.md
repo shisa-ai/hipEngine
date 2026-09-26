@@ -1494,6 +1494,28 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 68: the tuning-guide review, as a checklist against measured state.**
+  The campaign goal asks for ``docs/LESSONS-LEARNED.md`` and
+  ``docs/RDNA3-TUNING-GUIDE.md`` to be reviewed before the prefill work. The
+  guide had not been cited anywhere in this document, so the relevant rules are
+  recorded here against what was actually measured, in the guide's own section
+  numbers:
+
+  | guide rule | state in this campaign |
+  | --- | --- |
+  | 5.2 Amortize weights across rows | Applied. The MoE owners run row-batch 8 across 4 output columns (iterations 4-6), and the dual ``gate_up`` shares its input slab. The rule's own tradeoff -- accumulator state against occupancy -- is what the ``out4``/``out8`` variant ladder exists to explore. |
+  | 5.6 Use the cheapest correct reduction | Applied where the chronology allows it. Attention moved to the decode family's intra-warp shuffle tree in iteration 64, bit-identically, for 2.8x. The grouped Q5_1 down cannot: its 256-leaf butterfly is the published association, so the shuffle route is a gate candidate, not an exact edit. |
+  | 5.7 Make LDS earn every barrier | **Measured, and it fails the guide's filter.** The down owner stores a 32 KB FP32 accumulator plane per row batch -- exactly the "holds complete FP32 partials while reducing output parallelism" failure the section names -- and spends about 96 LDS operations per 96 FMAs, four times the FMA cost. The section permits LDS for "a reduction that cannot remain wave-local", which is what pins it here, so the design is guide-compliant and the 2.1 TFLOPS is the price of the chronology rather than a scheduling mistake. Iteration 65's rejected wave-sync change is the measurement behind that sentence. |
+  | 5.8 Choose WMMA by useful tile occupancy | Measured as an arm, not adopted: 611.4 tok/s against 382.2 on the same lane. Blocked on the promotion gate, iteration 67. |
+  | 5.9 Treat integer dot/MMQ as a layout decision | Not applied to this model. ``q8_1_dp4a_grouped`` and the ``mmq128_*`` families exist but are scoped to model-plugin workspace sessions, and for Gemma they would quantize activations to Q8_1 -- a larger arithmetic change than the WMMA arm that is already failing the gate. |
+  | 6.4 Prefill attention and linear layers | Attention is done (iteration 64). The linear layers are the item the campaign is still on. |
+  | 6.5 MoE execution | Applied: grouped owners replace per-expert sequences, routing stays device-resident, and ``gate_up`` is fused with a strict fallback. The remaining gap is the two quants with no grouped owner at all, iteration 66. |
+  | 4.x Evidence discipline | Iteration 67 found the gate harness scoring every row with a single-token forward, which had made a prefill arm look numerically free. The guide's 4.7 "confirm that work volume held constant" is the rule that caught it. |
+
+  The guide's 5.3 "optimize resident waves, not block count" and 5.11 "make cache
+  policy follow reuse distance" have not been exercised for this model and are
+  the two rules with the least coverage in the table above.
+
   **Iteration 67: the promotion gate, measured per arm, and the shape of the breach.**
   Two harness facts had to be fixed before any prefill arm could be judged, and the
   first one invalidates the way the arm was screened earlier in this campaign.
