@@ -402,8 +402,14 @@ flags because a configuration has not been benchmarked.
   which is now comparable to the whole attention kernel (8.5 ms of a 22.9 ms
   step). Two candidate directions, in order of expected size: (1) capture the
   decode step as a HIP graph - `hipengine/core/hip.py` already exposes
-  `stream_begin_capture`, graph instantiation and `hipGraphLaunch`, and nothing
-  calls them, so the machinery exists and is unexercised; (2) fuse the
+  `stream_begin_capture`, graph instantiation and `hipGraphLaunch`. **Correction
+  (iteration 45):** the claim that "nothing calls them" is stale -
+  `hipengine/core/pm4/transport.py:528` calls `graph_instantiate`, the `hipgraph`
+  transport is an implemented submission path, and `docs/REFACTOR.md` records its
+  measured result (+0.81%/+0.68% at 64 tokens, +1.36%/+1.40% at 32). The
+  machinery exists and is exercised; what remains unmeasured is only its value at
+  this campaign's rows, which the paragraph below correctly scopes to the
+  short-prompt ones; (2) fuse the
   per-layer elementwise chains. **Correction (iteration 27):**
   `HIPENGINE_FUSED_RMSNORM_ROTATE` is not a Gemma 4 lever at all - it belongs to
   the Qwen3.5/PARO MTP verifier path (`hipengine/runtime/qwen35_paro.py`) - and
@@ -1065,6 +1071,37 @@ direction. The clean-device pass also puts every other cell 4-10% above its
     behaviour is provably unchanged and the slice table was re-verified across
     keys 512-8192 at both head dims. Evidence row
     `2026-09-26-gemma4-26b-a4b-split-is-default-banked.json`.
+
+  *Analysis 2026-09-26 (iteration 45): the profile is closed, and the last slice
+  is launch latency with no cheap fix.* The re-profile the three-failed-candidates
+  rule requires is now complete: every part of the 21.8 ms decode step is
+  attributed.
+
+  - **The elementwise chain is not a bandwidth problem.** The 14 elementwise
+    launches per layer (iteration 26's census) each read and write the 2816-wide
+    bf16 hidden row, so the whole chain moves about **4.7 MB per token** -
+    **0.005 ms** at the roofline.
+  - **The 3.2 ms unattributed slice is GPU-side launch latency.** 420 launches at
+    5-8 us of gap each is **2.10-3.36 ms**, which closes the profile:
+    18.6 + 3.2 = 21.8 ms. Iteration 25 already established host cost is hidden at
+    this row, so these are inter-kernel GPU gaps, not launcher cost.
+  - **Fusing it is refuted twice, and the composite that exists is Qwen's.**
+    `docs/REFACTOR.md` records two bit-exact, launch-reducing fusions that lost on
+    wall time: the Qwen rmsnorm+rotate (13.41 -> 14.09 ms/pass, because the
+    one-block-per-row RMSNorm reduction serialises the per-group rotate) and
+    `HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED` (932 -> 922 calls/pass, 26.925 ->
+    27.010 ms/cycle). The registered
+    `split_qgate+head_rmsnorm+partial_rotary` composite is `gguf_qwen35_*`, keyed
+    to a `qwen35_position_f32` variant, so it is not reusable here.
+  - **Graphs are already implemented, measured, and scoped elsewhere.** The
+    `hipgraph` transport is live and `docs/REFACTOR.md` records +0.68% to +1.40%,
+    and line 450 above already scopes it to the short-prompt rows where host is
+    exposed. The stale "nothing calls them" claim in the iteration-26 entry is
+    corrected in place.
+  - **So reducing this slice needs new engineering, not a candidate off the
+    shelf**: fusion that does not serialise a reduction before a dependent
+    transform, or a graph that helps where host is already hidden. Evidence row
+    `2026-09-26-gemma4-26b-a4b-profile-gap-closed-launch-bubbles.json`.
   *Diagnostic 2026-09-26 (iteration 33): the routing hypothesis is closed, and
   the campaign's three-cheap-candidates rule is now in play.* A resolve-level
   probe over a real 1024-token `LLM.generate()` - spying on
