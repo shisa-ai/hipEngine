@@ -1494,6 +1494,50 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 82: the arithmetic route is already in the tree, unwired for
+  this model.** Iteration 81 concluded the dense Q8_0 line is limited by
+  instruction throughput -- a dequant step per weight on top of the FMA that
+  consumes it -- and that the fix is an integer dot-product path. That path
+  exists.
+
+  ``gguf_q8_0_mmq_prefill.py`` registers 44 MMQ owners, including, at layer
+  ``linear`` for quant ``gguf_q8_0``,
+  ``mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out`` -- the same bf16-in,
+  bf16-out ABI the dense line already uses. What is missing is the policy:
+  ``resolve_q8_mmq_prefill_policy("gguf_q8_0")`` returns ``None``, because
+  policies are registered per model quant and only the Qwen quants
+  (``gguf_ud_q3_k_m``, ``gguf_ud_q4_k_xl``) have one.
+
+  ``Q8MMQPrefillPolicy`` is the admission contract: a per-shape ``min_rows``
+  crossover map keyed by ``(hidden, out_features)``, ``max_rows``,
+  ``risk_threshold``, ``max_out_features``, and ``planes``. The chain is
+  guarded: the session carries a bounded risk counter and index queue, so rows
+  whose arithmetic would drift are detected and repaired rather than silently
+  wrong. Its own docstring distinguishes the chains -- ``planes=2`` (d4x2) is
+  the +1.4x candidate with "quantization-level drift pending envelope
+  qualification", while "the default stays the retained three-plane d4x3 exact
+  chain".
+
+  **That distinction matters more than the speed.** If d4x3 is exact by
+  construction and by gate, then enabling it is not a changed-arithmetic
+  promotion at all -- it is a faster path to the same numbers, and the
+  promotion rule for reassociating candidates does not apply. That is a
+  question for measurement, not for argument.
+
+  Why it is worth the integration: on this artifact llama.cpp's 3910 tok/s
+  over a 1024-token prompt at ~4B active parameters is about 31 TFLOPS, ~25%
+  of the XTX's bf16 peak. The exact path's 571 tok/s is 4.6 TFLOPS, ~3.7%. The
+  gap is arithmetic efficiency, and llama.cpp closes it with dp4a.
+
+  The work, in order: measure the MMQ-versus-exact crossover per Gemma dense
+  shape to fill ``min_rows`` (the policy comment records that narrow and short
+  shapes lose once boundary repair is included, so the map is not uniform);
+  register the policy for this model's quants; establish the session in the
+  Gemma runner with a workspace and the risk buffers; then measure both lanes
+  and run the teacher-forced gate. Every piece of this is already built and
+  measured on another model -- what is missing is the wiring and this model's
+  crossover numbers.
+
   **Iteration 81: the dense Q8_0 line is instruction-bound, not traffic-bound.**
   A diagnostic iteration, recorded because it closes off a whole direction that
   looked promising on paper.
