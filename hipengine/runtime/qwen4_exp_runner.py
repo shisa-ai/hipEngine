@@ -6460,8 +6460,8 @@ class Qwen4ExpGGUFResidentModelRunner:
         bounds the allocation even while a smaller prefill owner is selected.
         """
         self._require_open()
-        # Explicit opt-in until the integrated model gate and A/B qualify it.
-        if not _q8_dense_wide_enabled() or not wide_f16_activation_enabled(False):
+        # Qualified against the production F32-input owner; retain an opt-out.
+        if not _q8_dense_wide_enabled() or not wide_f16_activation_enabled(True):
             return wide_f16_activation_session(False)
         buffer = getattr(self, "_wide_f16_activation_buffer", None)
         if buffer is None:

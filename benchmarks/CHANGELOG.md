@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-26 UTC**: Qwen3.8 Flash Next F16 activation staging enabled by default on the existing wide route. Same-host gfx1151 UD-Q4_K_XL, BF16 KV, warm PLE, chunk1024 prefill: 512/1024/4096-token category means **235.5→243.5 / 250.3→259.2 / 241.5→249.7 tok/s** (**+3.39% / +3.57% / +3.40%**). All 12 cases improve; final logits and 60 production-parent state/decode trajectories match. [Evidence and limits](results/2026-09-26-qwen4exp-f16-integration/README.md).
+
 - **2026-09-22 UTC**: A 32-row M tile for the routed-MoE main kernels is
   **rejected**: it cuts the modeled expert-weight reads 1.67-1.82x (857 -> 512
   tiles at 20 rows/expert) but real DRAM read traffic falls only **6.3%**
