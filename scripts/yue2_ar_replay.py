@@ -313,17 +313,25 @@ def _host_identity() -> dict:
         completed = subprocess.run(
             ["rocminfo"], capture_output=True, text=True, timeout=60, check=False
         )
-        # rocminfo lists the CPU agent with a "Marketing Name" too, and on this
-        # host that line also contains "Radeon"; the GPU agent's line ends in
-        # "Graphics", so prefer it over the first match.
-        candidates = [
-            line.split(":", 1)[1].strip()
-            for line in completed.stdout.splitlines()
-            if line.strip().startswith("Marketing Name:")
+        # CPU marketing names can contain "Radeon Graphics". Select by
+        # rocminfo's device type, never by a brand substring. Ignore nested
+        # pool/ISA fields so they cannot overwrite the agent's own name.
+        agents = []
+        agent = None
+        for line in completed.stdout.splitlines() if completed.returncode == 0 else ():
+            stripped = line.strip()
+            if stripped.startswith("Agent ") and stripped[6:].isdigit():
+                agent = {}
+                agents.append(agent)
+            elif agent is not None and ":" in stripped:
+                key, value = stripped.split(":", 1)
+                if key in ("Name", "Marketing Name", "Device Type"):
+                    agent.setdefault(key, value.strip())
+        gpu_names = [
+            agent.get("Marketing Name") or agent.get("Name", "")
+            for agent in agents if agent.get("Device Type") == "GPU"
         ]
-        radeon = [value for value in candidates if "Radeon" in value]
-        graphics = [value for value in radeon if "Graphics" in value]
-        gpu = (graphics or radeon or candidates or [""])[0]
+        gpu = next((value for value in gpu_names if value), "")
     except (OSError, subprocess.SubprocessError):
         pass
     return {"name": name, "cpu": cpu, "gpu": gpu}
