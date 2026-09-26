@@ -1494,6 +1494,49 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 67: the promotion gate, measured per arm, and the shape of the breach.**
+  Two harness facts had to be fixed before any prefill arm could be judged, and the
+  first one invalidates the way the arm was screened earlier in this campaign.
+
+  *The teacher-forced chain scores every row with a single-token forward.*
+  ``_run_chain`` pushes ``prefill`` ids through one multi-token ``runner.forward``
+  and then calls ``runner.forward([ids[position]])`` once per scored row. A gate
+  run without ``--prefill`` therefore never executes a multi-token prefill at all:
+  the KL it reports is the *decode* path's, and an arm that only changes prefill
+  kernels gates at ``kl_max`` exactly 0.0 while saying nothing. That is why
+  ``HIPENGINE_GGUF_WMMA_PREFILL=1`` looked numerically free at 63 rows. Every
+  prefill claim needs ``--prefill`` large enough to exercise the multi-token
+  kernels; ``--prompt 2048 --prefill 1024`` gives 1023 scored rows at keys
+  1025..2047, which also clears the decode split's 1024-key entry threshold and
+  retires the ``split_not_exercised`` failure.
+
+  *Arms, measured against one frozen default-path capture on the same tree*
+  (``/mnt/nvme1/lhl/gemma4-captures/base-pf1024.npz``, 1023 rows, prompt 2048,
+  prefill 1024; bars are max 0.05, mean 1e-3, p95 5e-3, p99 2e-2, top-1 0.99):
+
+  | arm | kl_max | kl_mean | kl_p95 | kl_p99 | top-1 flips | verdict |
+  | --- | ---: | ---: | ---: | ---: | ---: | --- |
+  | dense only (`GGUF_WMMA_PREFILL`) | 0.18002 | 2.29e-4 | 1.38e-5 | -- | 0 | fail on max |
+  | MoE only (`GEMMA4_MOE_PREFILL=wmma`) | 0.06087 | 8.58e-5 | 7.70e-6 | -- | 0 | fail on max |
+  | both | 0.16108 | 2.11e-4 | 9.70e-6 | 6.32e-5 | 0 | fail on max |
+
+  The MoE-only row reproduces this campaign's earlier 0.060867 to six digits, so
+  the two measurements are the same arm and the earlier one was taken with
+  ``--prefill``. The dense Q8_0 WMMA route is the *larger* offender, not the MoE
+  route: 0.180 against 0.061.
+
+  **The breach is two rows, not a distribution.** Recomputing per-row KL from a
+  matched capture of the full arm: the 1023 rows have max 0.16108, mean 2.11e-4,
+  p95 9.70e-6, p99 6.32e-5, and **exactly two rows exceed 0.05** (row 602 at
+  0.16108, row 864 at 0.05191). The third-worst row is 0.00023 -- a factor of 700
+  below the second -- and no row anywhere in the chain flips its top-1 token.
+  Every threshold but the absolute maximum passes, and passes by two to three
+  orders of magnitude: the mean is 4.7x under its bar, p95 515x, p99 316x, top-1
+  100% against a 99% floor. So there is no promotable *subset* of the arm to
+  carve out -- each piece fails the same absolute bar on the same kind of
+  outlier -- and the decision the arm waits on is a single threshold's
+  interpretation, not a missing kernel or a missing measurement.
+
   **Iteration 66: where the remaining prefill headroom actually lives, and what the
   WMMA arm is worth today.** With attention fixed, the exact path's remaining
   items were re-derived from the 2568 ms census. Every one of them is either
