@@ -901,6 +901,46 @@ direction. The clean-device pass also puts every other cell 4-10% above its
   Q5_1 has no t16 shape, so the down projection's answer has to come from a
   Q5_1-shaped kernel measurement rather than from a repack. New campaign-scoped
   script `scripts/gemma4_moe_q5_1_bandwidth.py` is the work item.
+
+  *Diagnostic 2026-09-26 (iteration 40): the production dispatch table, and the
+  MoE issues two launches per layer rather than sixteen.* A probe on a real
+  `LLM.generate()` (`scripts/gemma4_moe_dispatch_probe.py`) records what the
+  expert path actually runs. It also corrects the method the campaign has been
+  using to ask: the experts resolve through `registry.resolve` with
+  `_SELECTED_VARIANT` inside `gemma4_project_experts_selected`, **not** through
+  `resolve_gguf_linear_dispatch` - so a probe patching the GGUF linear dispatch
+  alone reports dense projections and **zero experts**, which is how this was
+  found.
+
+  - **Both expert projections are served by the selected family.** gate_up is
+    `gguf_q4_k` at (2816 -> 1408, 128 experts) and down is **`gguf_q5_1` at
+    (704 -> 2816, 128 experts)**, both at **rows = 8**. Iteration 33's 783
+    `gguf_q4_k` and 783 `gguf_q5_1` resolutions were therefore the *expert*
+    tensors, not the dense projections they were attributed to.
+  - **rows = 8 is one token's top_k, and the selected family batches all 8 into
+    a single launch.** Per decode step the MoE issues **2 selected GEMVs per
+    layer**, not the 16 that iteration 32's record assumes. Measured: 87
+    launches of each across 30 layers, the excess over 60 coming from the single
+    layer whose experts are Q5_K/Q8_0. Iteration 32's *conclusion* - that the
+    cost is the kernel's memory access pattern rather than the orchestration -
+    survives, and this is its production-side confirmation.
+  - **The bandwidth arithmetic, on production shapes.** gate_up stores 287 MB per
+    layer and down 193 MB, 480 MB stored; one token reads 8/128 of it, **30.0 MB
+    per layer, 0.90 GB per token**. At the 960 GB/s roofline that is **0.94
+    ms/token**. Production spends 0.207 ms per layer (iteration 19's profile),
+    which is **145 GB/s - 15% of peak, 6.5x off the roofline.**
+  - **Iteration 31's microbench was a fair proxy after all.** Its fixture
+    measured 31.35 MB against a real per-token read of 30.0 MB, and its 104 GB/s
+    sits *below* production's 145 GB/s. The synthetic stand-in was right-sized.
+  - **The remaining question is kernel-internal, and it is now the only one
+    left.** Launch overhead, routing and fusion are all refuted by measurement,
+    and the Q5_1 down projection is confirmed to take the same kernel. So why
+    does `selected_gemv_bf16_bf16_out` reach 15% of peak with 8 batched expert
+    rows and one launch per projection? The remaining candidates are
+    vectorization and occupancy over Q4_K's 144-byte and Q5_1's 24-byte blocks -
+    a G4/G5 kernel-quality job, not a repack and not a flag. Diagnostic only: no
+    product path changed, no row moved. Evidence row
+    `2026-09-26-gemma4-26b-a4b-moe-dispatch-table.json`.
   *Diagnostic 2026-09-26 (iteration 33): the routing hypothesis is closed, and
   the campaign's three-cheap-candidates rule is now in play.* A resolve-level
   probe over a real 1024-token `LLM.generate()` - spying on
