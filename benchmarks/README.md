@@ -2,6 +2,28 @@
 
 Last updated: **2026-09-26**
 
+### Public DMS sidecar diagnostic
+
+On physical host **gfx1151 / Radeon 8060S**, Qwen3.8-27B Q4_K_M,
+production profile and INT8 KV, both W256 and W8192 sidecars complete the
+public-library comparison but are slower end-to-end than dense KV.
+At 12,288 input tokens and 32 greedy output tokens:
+
+| Policy | Mean public wall (s) | Mean backend prefill (s) | Post-prefill inclusive tok/s | Achieved logical/live KV ratio |
+| --- | ---: | ---: | ---: | ---: |
+| Dense INT8 | 35.751 | 32.741 | 10.810 | 1.000x |
+| Local W256 / historical target 2x | 58.005 | 42.188 | 10.847 | 1.954x |
+| Published W8192 / historical target 2x | 58.146 | 42.038 | 10.642 | 1.199x |
+
+Four category prompts, one warmup and two measured repeats each; singleton,
+MTP/prefix cache off, FP32 scales. Post-prefill rates use 31 tokens over
+backend request-minus-prefill, not public wall time. All arms also complete
+128- and 2,048-token inputs with exact same-arm repeatability. Both sidecars
+pass the bounded dense-teacher numerical diagnostic (100% top-1 across tested
+categories); repeated background and short outputs do not certify realistic
+long-context task quality. Policies differ in weights and thresholds as well
+as window size. [Commands, provenance, memory and category results](results/2026-09-26-gfx1151-dms-public-sidecars.json).
+
 Latest results (2026-09-26). **Halo-box Vulkan MTP** (`strix-llama.cpp@03895887abe6`) completes the
 Qwen3.6 Q4_K_M 140-turn replay on Radeon 8060S in **643.08 s** (mean **4.593 s**) and passes
 **77/96** frozen BFCL diagnostic cases; saved hipEngine/llama.cpp HIP MTP times are 793.15/827.10 s
