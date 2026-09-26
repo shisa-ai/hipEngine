@@ -564,7 +564,14 @@ __global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(
   }
 }
 
-template <int TILE_M, int TILE_N>
+// ``COMP`` selects the compensated weight path: each dequantised weight is
+// carried as an fp16 high part plus an fp16 residual and applied with a second
+// WMMA per k-tile. The plain path rounds every weight to fp16 (~2^-11 relative),
+// which is visible as a tail divergence against the strict f32 dequant
+// reference; the compensated pair represents the weight to ~2^-22 while the
+// activation operand stays exact. See the matching note on the Q4_K dual
+// compact kernel in gguf_q4_k_selected_prefill.hip.
+template <int TILE_M, int TILE_N, bool COMP = false>
 __launch_bounds__(32, 8)
 __global__ void q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel(
     const uint16_t* __restrict__ input,
@@ -639,15 +646,24 @@ __global__ void q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel(
 #pragma unroll
       for (int tm = 0; tm < TM; ++tm) {
         half16_t weight;
+        half16_t weight_lo;
 #pragma unroll
         for (int kk = 0; kk < 16; ++kk) {
-          weight[kk] = static_cast<half_t>(
-              dequant_q5_1(block_ptr[tm], kt * 16 + kk));
+          const float w = dequant_q5_1(block_ptr[tm], kt * 16 + kk);
+          const half_t hi = static_cast<half_t>(w);
+          weight[kk] = hi;
+          if (COMP) {
+            weight_lo[kk] = static_cast<half_t>(w - static_cast<float>(hi));
+          }
         }
 #pragma unroll
         for (int tn = 0; tn < TN; ++tn) {
           acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
               weight, activation[tn], acc[tm][tn]);
+          if (COMP) {
+            acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                weight_lo, activation[tn], acc[tm][tn]);
+          }
         }
       }
     }
@@ -1674,6 +1690,42 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf
   const int64_t row_bytes = (in_features / 32) * 24;
   hipLaunchKernelGGL(
       (q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel<tile_m, tile_n>),
+      dim3(static_cast<uint32_t>((out_features + tile_m - 1) / tile_m),
+           static_cast<uint32_t>(wmma_total_rows / tile_n)),
+      dim3(32), 0, stream,
+      static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(expert_start_compact),
+      static_cast<const int64_t*>(expert_start_wmma),
+      static_cast<const int64_t*>(tile_expert),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      compact_rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out(
+    const void* input,
+    const void* expert_start_compact,
+    const void* expert_start_wmma,
+    const void* tile_expert,
+    const void* weights,
+    void* output,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  if (!input || !expert_start_compact || !expert_start_wmma || !tile_expert ||
+      !weights || !output || compact_rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || (in_features % 32) || out_features <= 0 ||
+      wmma_total_rows <= 0 || (wmma_total_rows % 16)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int tile_m = 32;
+  constexpr int tile_n = 16;
+  const int64_t row_bytes = (in_features / 32) * 24;
+  hipLaunchKernelGGL(
+      (q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel<tile_m, tile_n, true>),
       dim3(static_cast<uint32_t>((out_features + tile_m - 1) / tile_m),
            static_cast<uint32_t>(wmma_total_rows / tile_n)),
       dim3(32), 0, stream,

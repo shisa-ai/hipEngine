@@ -48,6 +48,18 @@ _I64_BYTES = 8
 _F32_BYTES = 4
 
 
+# WMMA prefill owners address padded 16-row tiles rather than compact rows, so
+# they need a routing-independent upper bound to size their plan from shape
+# alone. Assigning one row to each potentially active expert costs one tile per
+# expert, and every further tile needs 16 more rows; unused tiles are written as
+# expert -1 and rejected by the kernels. Same bound as
+# ``_compact_wmma_static_upper_bound`` in the Qwen35 runner.
+def _wmma_tile_upper_bound(selected_rows: int, num_experts: int) -> tuple[int, int]:
+    active_experts = min(int(selected_rows), int(num_experts))
+    upper_tiles = active_experts + (int(selected_rows) - active_experts) // 16
+    return upper_tiles * 16, upper_tiles
+
+
 @dataclass
 class Gemma4ExpertScratch:
     """Reusable device scratch for one expert-forward shape.
@@ -117,6 +129,15 @@ class Gemma4ExpertScratch:
             "gate_up_out": lanes * 2 * self.intermediate * _BF16_BYTES,
             "activated": lanes * self.intermediate * _BF16_BYTES,
             "expert_out": lanes * self.hidden_size * _BF16_BYTES,
+            # WMMA prefill tile plan. ``expert_start`` counts compact rows; the
+            # WMMA owners address padded 16-row tiles instead, so they need
+            # their own per-expert start, one expert id per tile, and the total
+            # padded row count. Sizes come from the routing-independent upper
+            # bound in ``_wmma_tile_upper_bound``, which is why they can be
+            # allocated once from shape alone.
+            "wmma_expert_start": (self.num_experts + 1) * _I64_BYTES,
+            "wmma_tile_expert": _wmma_tile_upper_bound(lanes, self.num_experts)[1] * _I64_BYTES,
+            "wmma_total": _I64_BYTES,
         }
         try:
             return sizes[name]
@@ -230,9 +251,52 @@ def gemma4_experts_forward_bf16(
     )
 
     # 3. One gate_up projection for every compact row, then GeGLU over the whole
-    #    compact buffer in a single launch.
+    #    compact buffer in a single launch. The WMMA owners need a padded tile
+    #    plan, so it is built once per call and only when a projection will
+    #    actually use it.
     fused = 2 * intermediate
-    if not gemma4_project_experts_selected(
+    mode = _prefill_mode()
+    gate_up_wmma, compensated = _prefill_route_flags(mode)
+    down_wmma = gate_up_wmma
+    wmma_rows = 0
+    if (
+        (gate_up_wmma or down_wmma)
+        and lanes >= _WMMA_PREFILL_MIN_LANES_PER_EXPERT * num_experts
+    ):
+        wmma_rows = _build_wmma_tile_plan(
+            scratch, expert_start.ptr, lanes, stream=stream, runtime=runtime
+        )
+    if gate_up_wmma and wmma_rows and gemma4_project_experts_wmma_dual(
+        gate_up_proj,
+        packed_hidden.ptr,
+        expert_start.ptr,
+        scratch.buffer("wmma_expert_start").ptr,
+        scratch.buffer("wmma_tile_expert").ptr,
+        gate_up_out.ptr,
+        lanes,
+        num_experts,
+        hidden_size,
+        intermediate,
+        wmma_rows,
+        compensated=compensated,
+        stream=stream,
+        runtime=runtime,
+    ):
+        pass
+    elif mode != "selected" and gemma4_project_experts_grouped(
+        gate_up_proj,
+        packed_hidden.ptr,
+        expert_start.ptr,
+        gate_up_out.ptr,
+        lanes,
+        num_experts,
+        hidden_size,
+        fused,
+        stream=stream,
+        runtime=runtime,
+    ):
+        pass
+    elif not gemma4_project_experts_selected(
         gate_up_proj,
         packed_hidden.ptr,
         sorted_experts.ptr,
@@ -257,7 +321,37 @@ def gemma4_experts_forward_bf16(
     gemma4_gelu_tanh_mul_bf16(gate_up_out.ptr, activated.ptr, lanes, intermediate, **kwargs)
 
     # 4. The down projection, over the same compact rows.
-    if not gemma4_project_experts_selected(
+    if down_wmma and wmma_rows and gemma4_project_experts_wmma(
+        down_proj,
+        activated.ptr,
+        expert_start.ptr,
+        scratch.buffer("wmma_expert_start").ptr,
+        scratch.buffer("wmma_tile_expert").ptr,
+        expert_out.ptr,
+        lanes,
+        num_experts,
+        intermediate,
+        hidden_size,
+        wmma_rows,
+        compensated=compensated,
+        stream=stream,
+        runtime=runtime,
+    ):
+        pass
+    elif mode != "selected" and gemma4_project_experts_grouped(
+        down_proj,
+        activated.ptr,
+        expert_start.ptr,
+        expert_out.ptr,
+        lanes,
+        num_experts,
+        intermediate,
+        hidden_size,
+        stream=stream,
+        runtime=runtime,
+    ):
+        pass
+    elif not gemma4_project_experts_selected(
         down_proj,
         activated.ptr,
         sorted_experts.ptr,
@@ -355,6 +449,313 @@ def gemma4_project_expert(
 # this one variant name, so the expert forward resolves it from the registry by
 # quant key rather than branching on the type.
 _SELECTED_VARIANT = "selected_gemv_bf16_bf16_out"
+
+# Grouped prefill owners that keep one CTA per (expert, output column) and reuse
+# each loaded weight row across ``row_batch`` compact rows, instead of the
+# selected GEMV's one CTA per (row, output column). Not every quant registers
+# one, so this is a probe the caller falls back from, exactly like
+# ``_SELECTED_VARIANT``. The variant name is the ABI, not the quant: a quant that
+# registers it is served, and one that does not keeps the selected path.
+_GROUPED_PREFILL_VARIANT = "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
+
+# Lanes, not rows: a compact row is one (token, top-k) pair, and the grouped
+# grid is ``out_features * num_experts`` CTAs however few rows are live. Below
+# this many lanes the selected GEMV's smaller grid wins, because most grouped
+# CTAs would find their expert empty. ``num_experts`` divides out at four rows
+# per expert on average, which is where weight reuse starts to pay for the
+# wider grid.
+_GROUPED_PREFILL_MIN_LANES_PER_EXPERT = 4
+
+# WMMA prefill owners keep the whole tile in registers and read each weight
+# block once per 16-row tile, so they need more live rows than the grouped GEMV
+# before the wider grid pays. Same reasoning as the grouped gate, higher bar.
+_WMMA_PREFILL_VARIANT = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
+_WMMA_PREFILL_MIN_LANES_PER_EXPERT = 16
+
+# Compensated twins of the two WMMA owners. The plain owners round every
+# dequantised weight to fp16 (~2^-11 relative), which is accurate enough for the
+# kernels' own parity contract but leaves a measurable tail divergence against
+# the strict f32 dequant baseline. The compensated owners carry each weight as
+# an fp16 high part plus an fp16 residual and issue a second WMMA per k-tile,
+# which costs one extra op per weight on a path that runs far below WMMA issue
+# rate. Both are registered per quant and probed exactly like the plain ones.
+_WMMA_PREFILL_COMP_VARIANT = (
+    "selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out"
+)
+
+# A fused ``gate_up`` expert tensor stores both halves in one allocation, so the
+# dual WMMA owner needs the fused stride rather than each half's own width. The
+# variant name is the ABI for the fused form; the two-tensor form registers
+# under the same name without the stride.
+_WMMA_DUAL_PREFILL_VARIANT = "selected_dual_wmma_prefill_compact_bf16_bf16_out"
+_WMMA_DUAL_PREFILL_COMP_VARIANT = (
+    "selected_dual_wmma_prefill_compact_comp_bf16_bf16_out"
+)
+
+# Prefill expert-route selector. ``auto`` runs the exact routes only: the
+# grouped owner where a quant registers one and the selected GEMV otherwise.
+# Both measured bit-identical to the strict reference, which is what the
+# campaign's logits gate requires.
+#
+# ``wmma`` selects the compensated WMMA owners instead. They are 2.7x faster on
+# a 1024-token prefill but breach the campaign's absolute ``kl_max`` bar on 1 of
+# 1023 rows (0.0609 against 0.05) while passing every aggregate bar with 10-200x
+# margin and leaving top-1 unchanged on all 1023 rows. The breach is reduction
+# association, not a defect: compensating the fp16 weight rounding moves it from
+# 0.182 to 0.061, and a two-way accumulator split moves it to 0.082. Treating an
+# absolute ``kl_max`` as inapplicable to a reordering-class change is an open
+# lead decision recorded in docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md, so the
+# arm stays off the default path until that is ruled on.
+#
+# ``wmma_plain`` is the uncompensated form, kept as the diagnostic that isolates
+# the fp16 weight-rounding term. ``grouped`` and ``selected`` pin the exact arms.
+_PREFILL_MODE_ENV = "HIPENGINE_GEMMA4_MOE_PREFILL"
+_PREFILL_MODES = frozenset({"auto", "wmma", "wmma_plain", "grouped", "selected"})
+
+
+def _prefill_mode() -> str:
+    """Return the pinned prefill route, or ``auto`` for the production policy."""
+
+    import os
+
+    raw = os.environ.get(_PREFILL_MODE_ENV, "").strip().lower()
+    return raw if raw in _PREFILL_MODES else "auto"
+
+
+def _prefill_route_flags(mode: str) -> tuple[bool, bool]:
+    """Return ``(use_wmma, compensated)`` for a prefill route selector.
+
+    ``auto``, ``grouped`` and ``selected`` keep the exact routes, so the WMMA
+    owners are not probed at all. ``wmma`` probes them in their compensated
+    form and ``wmma_plain`` in their uncompensated form.
+    """
+
+    if mode == "wmma":
+        return True, True
+    if mode == "wmma_plain":
+        return True, False
+    return False, False
+
+
+def gemma4_project_experts_wmma_dual(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    expert_start_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    runtime: object | None = None,
+    compensated: bool = False,
+) -> bool:
+    """Run a fused gate+up projection through the dual WMMA prefill owner.
+
+    ``out_features`` is one half's width: the weight tensor holds ``2 *
+    out_features`` rows per expert with the gate first, and the output row is
+    ``2 * out_features`` wide with the gate in the first half. The owner indexes
+    each half from its own start, so the up half is the same allocation offset
+    by one half's bytes and the expert stride is the full ``2 * out_features``.
+
+    Returns ``False`` when no dual owner serves this weight.
+    """
+
+    if isinstance(weight, int):
+        return False
+    from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
+    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+    variant = (
+        _WMMA_DUAL_PREFILL_COMP_VARIANT if compensated else _WMMA_DUAL_PREFILL_VARIANT
+    )
+    key = KernelKey(weight.backend, "moe_linear", weight.spec.quant_key, variant)
+    _ensure_linear_kernel_registered(key)
+    try:
+        fn = resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+    except MissingKernelError:
+        return False
+    base = weight.allocation("raw").buffer.ptr
+    # One half's byte length, not a row stride: a Q4_K row is a whole number of
+    # 256-value blocks, so the half boundary lands on a block boundary too.
+    half_bytes = weight.expert_stride_bytes // 2
+    fn(
+        x_ptr,
+        expert_start_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        base,
+        base + half_bytes,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features,
+        out_features,
+        num_experts,
+        wmma_total_rows,
+        expert_stride_rows=2 * out_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
+def gemma4_project_experts_wmma(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    expert_start_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    runtime: object | None = None,
+    compensated: bool = False,
+) -> bool:
+    """Run one compact-row projection through a WMMA prefill owner.
+
+    ``expert_start_wmma_ptr`` and ``tile_expert_ptr`` are the padded tile plan
+    built by :func:`qwen35_moe_wmma_tile_map`; ``wmma_total_rows`` is its row
+    count, which the caller takes from the same upper bound the plan was built
+    against so no device-to-host read is needed to size the grid.
+
+    Returns ``False`` when no WMMA owner serves this weight.
+    """
+
+    if isinstance(weight, int):
+        return False
+    from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
+    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+    variant = _WMMA_PREFILL_COMP_VARIANT if compensated else _WMMA_PREFILL_VARIANT
+    key = KernelKey(weight.backend, "moe_linear", weight.spec.quant_key, variant)
+    _ensure_linear_kernel_registered(key)
+    try:
+        fn = resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+    except MissingKernelError:
+        return False
+    fn(
+        x_ptr,
+        expert_start_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        weight.allocation("raw").buffer.ptr,
+        out_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        wmma_total_rows,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
+def _build_wmma_tile_plan(
+    scratch: Gemma4ExpertScratch,
+    expert_start_ptr: int,
+    lanes: int,
+    *,
+    stream: int,
+    runtime: object | None,
+) -> int:
+    """Fill ``scratch``'s WMMA tile plan and return its padded row count."""
+
+    from hipengine.kernels.hip_gfx1100.moe.group_scatter import qwen35_moe_wmma_tile_map
+
+    upper_rows, upper_tiles = _wmma_tile_upper_bound(lanes, scratch.num_experts)
+    qwen35_moe_wmma_tile_map(
+        expert_start_ptr,
+        scratch.buffer("wmma_expert_start").ptr,
+        scratch.buffer("wmma_tile_expert").ptr,
+        scratch.buffer("wmma_total").ptr,
+        scratch.num_experts,
+        tile_capacity=upper_tiles,
+        stream=stream,
+        runtime=runtime,
+    )
+    return upper_rows
+
+
+def gemma4_project_experts_grouped(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    expert_start_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    runtime: object | None = None,
+) -> bool:
+    """Run one grouped projection over the compact expert rows.
+
+    ``expert_start_ptr`` is ``int64`` with ``num_experts + 1`` ascending row
+    offsets -- the inclusive-end convention the expert scratch already builds.
+    Each CTA owns one output column of one expert and walks that expert's
+    compact rows in batches, so a weight row is loaded once per batch instead of
+    once per row.
+
+    Returns ``False`` when no grouped owner serves this weight, which leaves the
+    selected GEMV as the only path for quants without a prefill owner.
+    """
+
+    if isinstance(weight, int):
+        return False
+    if compact_rows < _GROUPED_PREFILL_MIN_LANES_PER_EXPERT * num_experts:
+        return False
+    # Same registration caveat as the selected path: a lazily imported family can
+    # be missing because a registry test cleared global registrations, so the
+    # lookup goes through the dispatch's own ensure helper.
+    from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
+    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+    key = KernelKey(weight.backend, "moe_linear", weight.spec.quant_key, _GROUPED_PREFILL_VARIANT)
+    _ensure_linear_kernel_registered(key)
+    try:
+        fn = resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+    except MissingKernelError:
+        return False
+    fn(
+        x_ptr,
+        expert_start_ptr,
+        weight.allocation("raw").buffer.ptr,
+        out_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
 
 
 def gemma4_project_experts_selected(

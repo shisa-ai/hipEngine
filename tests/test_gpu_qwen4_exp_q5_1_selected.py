@@ -40,6 +40,7 @@ def test_qwen4_exp_q5_1_selected_build_and_registry_contract() -> None:
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out,
         register_qwen4_exp_q5_1_kernels,
     )
     from hipengine.kernels.registry import resolve
@@ -178,6 +179,7 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out,
     )
 
     runtime = get_hip_runtime()
@@ -255,6 +257,9 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
         d_expert_start_wmma = _upload(expert_start_wmma, runtime, allocations)
         d_tile_expert = _upload(tile_expert, runtime, allocations)
         d_wmma_output = _alloc(
+            grouped_expected_bits.shape, np.uint16, runtime, allocations
+        )
+        d_wmma_comp_output = _alloc(
             grouped_expected_bits.shape, np.uint16, runtime, allocations
         )
         qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
@@ -381,6 +386,21 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
             library=library,
             runtime=runtime,
         )
+        qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out(
+            d_grouped_x.ptr,
+            d_expert_start.ptr,
+            d_expert_start_wmma.ptr,
+            d_tile_expert.ptr,
+            d_weight.ptr,
+            d_wmma_comp_output.ptr,
+            rows,
+            experts,
+            in_features,
+            out_features,
+            int(expert_start_wmma[-1]),
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         actual = _download(d_output, expected_bits.shape, np.uint16, runtime)
         exact128_actual = _download(
@@ -408,6 +428,9 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
         wmma_actual = _download(
             d_wmma_output, grouped_expected_bits.shape, np.uint16, runtime
         )
+        wmma_comp_actual = _download(
+            d_wmma_comp_output, grouped_expected_bits.shape, np.uint16, runtime
+        )
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
@@ -427,6 +450,22 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
         bf16_to_float32(grouped_expected_bits),
         rtol=2e-2,
         atol=2e-2,
+    )
+    # The compensated arm must track the exact grouped output more closely than
+    # the plain WMMA arm: the plain one rounds each dequantised Q5_1 weight to
+    # fp16 (~2^-11 relative), the compensated one adds an fp16 residual.
+    plain_err = np.abs(
+        bf16_to_float32(wmma_actual) - bf16_to_float32(grouped_expected_bits)
+    ).max()
+    comp_err = np.abs(
+        bf16_to_float32(wmma_comp_actual) - bf16_to_float32(grouped_expected_bits)
+    ).max()
+    assert comp_err <= plain_err, (comp_err, plain_err)
+    np.testing.assert_allclose(
+        bf16_to_float32(wmma_comp_actual),
+        bf16_to_float32(grouped_expected_bits),
+        rtol=3e-3,
+        atol=3e-3,
     )
 
 
