@@ -499,6 +499,32 @@ __global__ void gemma4_attention_decode_class_kernel(
       const bool in_range = j < keys;
       active[t] = in_range && mask_row[in_range ? j : 0] != 0;
     }
+    // Skip a tile whose keys are all masked out for this row. A masked key's
+    // logit is -INFINITY whether or not its dot is computed, so dropping the
+    // dot, the warp tree and the K loads moves no surviving term: pass 2 still
+    // reads -INFINITY at these positions and adds expf(-INFINITY - row_max) = 0
+    // at the same ascending-j step. This is the multi-row counterpart of
+    // ``key_begin`` in gemma4_layer, which can only shorten the key range for a
+    // one-row block -- and it is what makes a causal prefill block pay for the
+    // lower triangle instead of the whole square. A fully causal mask over
+    // tokens == keys leaves half the tiles of the average row dead.
+    bool any_active = false;
+#pragma unroll
+    for (int t = 0; t < kKeysPerTile; ++t) {
+      any_active = any_active || active[t];
+    }
+    if (!any_active) {
+      if (lane == 0) {
+#pragma unroll
+        for (int t = 0; t < kKeysPerTile; ++t) {
+          const int64_t j = j0 + static_cast<int64_t>(t) * warps;
+          if (j < keys) {
+            logits_s[j] = -INFINITY;
+          }
+        }
+      }
+      continue;
+    }
 #pragma unroll
     for (int t = 0; t < kKeysPerTile; ++t) {
       const int64_t j = j0 + static_cast<int64_t>(t) * warps;
