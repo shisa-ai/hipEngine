@@ -1494,6 +1494,54 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 79: the Q5_K grouped dual owner lands, 6.3x on the two outlier
+  layers.** Iteration 78 established that the port was worth writing and exact in
+  principle; this is it, built and measured.
+
+  Q5_K and Q4_K share a superblock prefix -- d, dmin, and the same 12-byte 6-bit
+  scale packing -- and the same nibble order in ``qs``. Q5_K adds a 32-byte
+  ``qh`` slab holding each weight's fifth bit, at bit ``subblock`` of
+  ``qh[lane]``, with ``qh`` not advanced between subblocks. So the port is one
+  helper plus a ``Q5K`` template parameter on the decode, the row stride and the
+  metadata slab: ``gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel`` is now
+  instantiated ``<8, 4, true, true, true, true>`` and exposed as
+  ``hipengine_gguf_q5_k_selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out``.
+
+  **One real bug caught by reading rather than by a failing test.** The kernel
+  hardcodes ``Q4_K_BLOCK_BYTES`` in three places -- the row stride and both sides
+  of the metadata slab build. For Q5_K those read the wrong offsets, so the slab
+  would have been filled with another block's scales and mins: wrong numbers, no
+  fault, and a bit-comparison against the selected GEMV is the only thing that
+  would have caught it after the fact. All three are now quant-aware. A first
+  pass also templated a call site inside ``gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel``,
+  a different and untemplated kernel, and was reverted.
+
+  Measured on the W7900 census, same script and artifact:
+
+  | family | before | after |
+  | --- | ---: | ---: |
+  | ``moe_selected:gguf_q5_k`` | 155.9 | **0.0** |
+  | ``moe_grouped_dual:gguf_q5_k`` | -- | **24.9** |
+  | ``layer_total`` | 2121.0 | **1982.4** (-138.6) |
+  | prefill | 480.3 | **513.4 tok/s** |
+
+  The two layers' ``gate_up`` went from 155.9 ms to 24.9 ms, 6.3x, and the
+  selected family for that quant is empty. The other families are unmoved
+  (``moe_grouped_dual:gguf_q4_k`` 488.5 -> 484.9, ``moe_selected:gguf_q8_0``
+  49.1 -> 47.5).
+
+  **Exactness, end to end:** the teacher-forced gate against the pre-change
+  ``fold128`` capture returns ``kl_max`` 0.0 over 1023 x 262144 float32 logits
+  with ``failed: []`` and ``passed: true``. That is stronger than the isolated
+  bit-comparison in iteration 78 -- it is the whole model's next-token
+  distribution, unchanged.
+
+  A note on the estimate, since it moved twice. The projection from the census
+  was ~139 ms; the isolated harness then said 1.55x and 55 ms, which was wrong
+  because its synthetic expert layout is not the model's; the census measured
+  138.6 ms after all. The isolated probe is the right tool for *exactness* and a
+  poor one for *throughput* when the weight layout differs from the real one.
+
   **Iteration 78: the port to serve the two outlier layers is exact and is
   mechanical.** Iteration 77 left one open question that decided whether writing
   a grouped owner for Q5_K/Q8_0 was worth anything: the grouped owners are
