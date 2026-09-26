@@ -209,32 +209,18 @@ int8-KV artifacts under `benchmarks/results/` record the pre-change id
 (`4b0e936f…` for the gfx1100 direct-c4 contract); they are frozen measurements
 and are not rewritten.
 
-## The packed workspace lease still reserves one full session context per slot (found 2026-09-18)
+## Packed workspace eager reservation is bounded — RESOLVED
 
-`hipengine/generation/qwen35_gguf.py` sizes the eager packed-execution workspace
-lease as `workspace_slots * workspace_pages_per_slot`, where the per-slot term is
-`max(ceil(session_scratch.max_positions / 256), 4)` pages. The slot term now
-follows the serving capacity (see
-`worklog/entries/20260918T205735.370215Z-lhl-packed-workspace-lease-capacity-be3814.md`),
-but the per-slot term is still priced from the session's **physical** context,
-not from the longest context a request can actually be admitted at. Measured on
-gfx1151 with an auto-resolved 262144-token session: the C1 lease is 1024 pages
-(16 GiB) while the largest realized union across a 5,469-token prefill and two
-short prompts (one carrying an explicit `speculative_mtp` request, which the
-production plan did not admit) was 5469 tokens (22 pages), and the 8192-token
-pinned configuration reserves 32 pages per slot where that same run's largest
-realized union was also 5469 tokens. This is a reservation, not a leak (every
-page is accounted and pinned at pool creation), so it is a memory-footprint debt
-rather than a correctness bug.
+`packed_verify_workspace_lease_pages` reserves four 256-token pages per serving
+slot, matching the existing 1,024-token packed context floor. Longer realized
+contexts or wider physical layouts use private KV charged against the same pool
+budget. They never overwrite the pinned lease or another request's pages.
 
-Removal trigger: size the per-slot term from the loop's admission ceiling (the
-context the scheduler will actually admit, `min(session max, server
-max_context_tokens)`), or make the workspace lease grow with the realized union
-the way the global pool already grows against its budget. Either way the change
-must preserve ownership: an under-sized lease must use budgeted private KV
-or refuse rather than overwrite a neighbour's pages. It also needs its own
-C1/C4 measurement, because shrinking this term raises the context the
-auto-context resolver selects on the same hardware.
+The capacity estimator reports `private_workspace_bytes` separately and prices
+both the eager lease and the full private fallback when the requested context
+exceeds the floor. Bounding startup reservation therefore does not assume that
+long-context workspace is free. Private buffers and their budget charges follow
+the packed state's existing growth and close lifecycle.
 
 ## Capacity estimates include serving-capacity workspace leases — RESOLVED
 
@@ -246,8 +232,7 @@ so a single-request selection cannot be reused for a wider pinned lease.
 
 Regression coverage compares estimator pages with the allocator's lease helper
 at capacities 1, 4, and 8 and contexts below, above, and unrelated to the packed
-context floor. The per-slot full-context reservation remains separate debt in
-the preceding entry.
+context floor. Private growth and eager reservation are priced separately.
 
 ## Wide MTP groups run without a prompt provider, and the over-width demotion is inert (found 2026-09-19) — RESOLVED
 

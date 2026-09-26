@@ -997,16 +997,7 @@ def test_union_geometry_never_exceeds_the_lease_slot_ceiling() -> None:
 
 
 def test_lease_pages_helper_covers_every_capacity_bounded_geometry() -> None:
-    """The lease helper must never under-size what the union geometry demands.
-
-    This is the anti-drift contract. `packed_verify_workspace_lease_pages` and
-    `_packed_verify_union_geometry` are two expressions of one geometry; when
-    they were written separately they disagreed, and the disagreement only
-    surfaced at prefill time as "packed workspace lease holds N pages but the
-    workspace needs M". Sweeping the capacity/context grid here keeps them
-    pinned together for every request the serving loop can raise within its
-    own capacity.
-    """
+    """The eager floor is bounded; larger union geometry uses private backing."""
 
     for capacity in (1, 2, 4, 8):
         for max_positions in (256, 512, 1024, 2048, 8192):
@@ -1032,10 +1023,8 @@ def test_lease_pages_helper_covers_every_capacity_bounded_geometry() -> None:
                     )
                 )
                 needed = union_slots * ((union_max_seq + 255) // 256)
-                assert leased >= needed, (
-                    f"capacity={capacity} positions={max_positions} "
-                    f"slots={slot_count}: leased {leased} < needed {needed}"
-                )
+                assert leased == capacity * 4
+                assert (leased >= needed) == (max_positions <= 1024)
 
 
 def test_lease_pages_helper_applies_the_context_floor_and_capacity_term() -> None:
@@ -1044,10 +1033,10 @@ def test_lease_pages_helper_applies_the_context_floor_and_capacity_term() -> Non
     # 1024-token per-slot floor: a short request context does not shrink below it.
     assert gguf_runner.packed_verify_workspace_lease_pages(1, 256) == 4
     assert gguf_runner.packed_verify_workspace_lease_pages(1, 1024) == 4
-    # Context above the floor scales pages per slot.
-    assert gguf_runner.packed_verify_workspace_lease_pages(1, 2048) == 8
+    # Longer admission ceilings do not increase eager reservation.
+    assert gguf_runner.packed_verify_workspace_lease_pages(1, 2048) == 4
     # Capacity scales slots.
-    assert gguf_runner.packed_verify_workspace_lease_pages(4, 2048) == 32
+    assert gguf_runner.packed_verify_workspace_lease_pages(4, 2048) == 16
     # An unusable capacity falls back to the historical floor rather than 0.
     assert gguf_runner.packed_verify_workspace_lease_pages(None, 1024) == (
         gguf_runner._PACKED_VERIFY_DEFAULT_SLOT_CAPACITY * 4

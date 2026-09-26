@@ -66,6 +66,37 @@ def test_public_generation_capacity_cancel_refill(hip_test_target_arch, capacity
         assert after["workspace_lease_pages"] == initial["workspace_lease_pages"]
         assert after["refcounted_pages"] == initial["refcounted_pages"]
         assert llm.engine_service_health()["status"] == "ok"
+        if capacity > 1 and context > 1024:
+            # Exercise real private growth after public generation, then reuse
+            # the service. The pinned floor cannot hold this context.
+            owner = runner._resident_batch_owner
+            state, _ = owner._ensure_packed_verify_workspace(
+                slot_count=capacity, rows=capacity,
+                max_sequence_length=context, runtime=owner.runtime,
+            )
+            assert state.kv_backing_kind == "private"
+            assert runner._kv_pool.private_workspace_bytes > 0
+            assert _pool_summary(runner)["workspace_lease_pages"] == capacity * 4
+            assert llm.generate(["Say hello."] * capacity, sampling) == outputs
+        from fastapi.testclient import TestClient
+        from hipengine.server.api import ServerConfig, create_app
+
+        app = create_app(ServerConfig(
+            model=str(model), backend=HIP_TARGET_ARCH_BACKEND[hip_test_target_arch],
+            served_model_name="capacity-test", max_context_tokens=context,
+            max_active_requests=capacity, speculative_mtp_serving="off",
+            prefix_cache="off", shutdown_grace_seconds=5.0,
+        ), llm=llm)
+        with TestClient(app) as client:
+            ready = client.get("/ready")
+            assert ready.status_code == 200, ready.text
+            response = client.post("/v1/completions", json={
+                "model": "capacity-test", "prompt": "Say hello.",
+                "max_tokens": 4, "temperature": 0,
+            })
+            assert response.status_code == 200, response.text
+            assert response.json()["choices"]
+            assert client.get("/ready").status_code == 200
         print({"capacity": capacity, "context": context, "before": initial, "after": after})
     finally:
         llm.close()

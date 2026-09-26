@@ -489,7 +489,7 @@ def test_gguf_capacity_excludes_deferred_kv_from_scratch() -> None:
     assert resident.scratch_bytes - deferred.scratch_bytes == resident.kv_pool_bytes
 
 
-def test_gguf_capacity_workspace_lease_mirrors_the_declared_context() -> None:
+def test_gguf_capacity_workspace_lease_is_bounded_and_growth_is_priced() -> None:
     plain = gguf_runner.qwen35_gguf_resident_breakdown(
         _real_qwen38_27b_cfg(),
         context_tokens=16_384,
@@ -506,11 +506,15 @@ def test_gguf_capacity_workspace_lease_mirrors_the_declared_context() -> None:
         kv_scale_dtype="fp32",
         workspace_lease_needed=True,
     )
-    # 16,384 tokens is 64 pages, which is above the 1,024-token packed floor.
+    # Reserve only the packed floor eagerly; full private fallback is priced
+    # separately because the pinned arena remains live during growth.
     assert plain.workspace_lease_pages == 0
-    assert leased.workspace_lease_pages == 64
-    assert leased.workspace_lease_bytes == 64 * leased.page_bytes
-    assert leased.total_bytes - plain.total_bytes == leased.workspace_lease_bytes
+    assert leased.workspace_lease_pages == 4
+    assert leased.workspace_lease_bytes == 4 * leased.page_bytes
+    assert leased.private_workspace_bytes == 64 * leased.page_bytes
+    assert leased.total_bytes - plain.total_bytes == (
+        leased.workspace_lease_bytes + leased.private_workspace_bytes
+    )
 
 
 @pytest.mark.parametrize("context", [511, 1025, 5379])
@@ -531,7 +535,7 @@ def test_workspace_slots_are_independent_of_request_kv(context, capacity):
     assert concurrent.kv_pool_bytes == single.kv_pool_bytes
     assert concurrent.scratch_bytes == single.scratch_bytes
     assert concurrent.total_bytes - single.total_bytes == (
-        (capacity - 1) * single.workspace_lease_bytes
+        (capacity - 1) * (single.workspace_lease_bytes + single.private_workspace_bytes)
     )
 
 
