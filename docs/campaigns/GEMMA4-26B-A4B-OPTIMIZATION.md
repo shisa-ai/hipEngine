@@ -1494,6 +1494,40 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 65: the Q5_1 down owner is LDS-throughput-bound, not barrier-bound;
+  the wave-sync change was rejected.** With attention fixed, the grouped Q5_1 down
+  is the largest item (894 ms of 2568 ms, 34.8%) and the least efficient: at
+  Gemma's real geometry -- 8192 compact rows, in_features 704, out_features 2816
+  -- it sustains about 2.1 TFLOPS against the fused Q4_K ``gate_up`` owner's 7.9
+  at in_features 2816, out_features 1408. Its inner loop is a 256-lane in-place
+  LDS tree per (output column, row) pair: OUT_BATCH x ROW_BATCH = 32 trees per
+  row batch, each publishing 256 partials and running eight barrier-separated
+  strides. That is about 96 LDS operations per 96 FMAs, and the tree's slots are
+  pinned by the bit-exactness contract -- the published association is the
+  256-leaf butterfly, so the reduction cannot be re-laid-out into warp shuffles
+  without becoming a changed-arithmetic candidate.
+
+  Hypothesis tested: the eight block-wide barriers per tree batch are the cost,
+  so strides below 32 -- which only pair lanes inside warp 0, one stride after
+  that same wave wrote the slots -- can use a wave-level sync instead.
+  ``q5_1_tree_sync`` was added and applied to both tree sites, with the trailing
+  barrier kept workgroup-wide to separate the readers from the next publish.
+
+  Result: **rejected.** Q5_1 down 893.8 -> 923.3 ms (+3.3%), layer total 2568 ->
+  2606 ms, prefill 397.0 -> 391.3 tok/s. The change was bit-exact -- a
+  teacher-forced capture of 63 x 262144 float32 logits against the pre-change
+  kernel is byte-identical -- so this is a clean performance verdict, not a
+  correctness one. The kernel is limited by LDS issue throughput rather than
+  barrier latency: at 32 floats per cycle per CU the tree's ~96 LDS operations
+  per thread per row batch cost roughly four times the 96 FMAs it accompanies,
+  which is where the 2.1 TFLOPS comes from. Reverted; the file is byte-identical
+  to its committed state.
+
+  Consequence for the next attempt: the down owner's headroom needs a different
+  reduction layout (32 partials per output reduced inside a wave, which removes
+  the LDS traffic entirely), and that changes the association, so it is a
+  production-profile candidate judged by the gate rather than an exact edit.
+
   **Iteration 64: multi-token prefill now runs the decode family's batched-barrier
   kernels, bit-identically.** Iteration 63 identified attention prefill as the
   largest remaining item and assumed it needed a new kernel. It did not: the
