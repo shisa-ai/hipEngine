@@ -1038,7 +1038,8 @@ __global__ void gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_kernel(
 // routed-row residue. Each lane therefore keeps eight FP32 accumulators instead
 // of the 16 required by a literal two-wave mapping. WMITER remains one,
 // matching Vulkan's K-quant pressure control.
-template <int WEIGHT_LAYOUT, int ACTIVATION_PASSES, bool COLLECT_RISKS>
+template <int WEIGHT_LAYOUT, int ACTIVATION_PASSES, bool COLLECT_RISKS,
+          bool FUSED_EXPERT_LAYOUT = false>
 __device__ __forceinline__ void
 gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
     const block_q8_1_mmq_ds4* __restrict__ x_q8,
@@ -1062,12 +1063,12 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
     float risk_threshold,
     q4_k_mmq32_cache* __restrict__ weight_tile,
     q8_1_mmq32_cache* __restrict__ activation_tile) {
-  constexpr int MMQ_M = 32;
   constexpr int MMQ_N = 32;
   constexpr int MMQ_K = 32;
   constexpr int THREADS = 128;
   constexpr int TM = 1;
   constexpr int WNITER = 8;
+  constexpr int MMQ_M = 32;
 
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
@@ -1102,7 +1103,14 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
   const int64_t q8_blocks_per_row = in_features / Q8_1_MMQ_BLOCK;
   const int64_t weight_row_bytes =
       blocks_per_weight_row * Q4_K_BLOCK_BYTES;
-  const int64_t expert_bytes = local_out_features * weight_row_bytes;
+  // FUSED_EXPERT_LAYOUT: the two weight halves are the gate and up slices of one
+  // per-expert fused row block (Gemma 4's ``ffn_gate_up_exps`` is
+  // ``(num_experts, 2 * intermediate, hidden)`` with the gate first), so an
+  // expert's stride is the full fused width rather than one half's width.
+  const int64_t expert_stride_rows = FUSED_EXPERT_LAYOUT
+      ? (out_features_a + out_features_b)
+      : local_out_features;
+  const int64_t expert_bytes = expert_stride_rows * weight_row_bytes;
   const uint8_t* __restrict__ expert_base =
       qweight + expert_id * expert_bytes;
 
@@ -1343,6 +1351,54 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
       }
     }
   }
+}
+
+// Fused-layout twin of the kernel below: the two weight pointers are the gate and
+// up slices of one per-expert row block, so an expert's stride is the full fused
+// width. Gemma 4's ``ffn_gate_up_exps`` is stored this way (gate first, then up,
+// per expert), which is the layout its gelu-tanh-mul consumer already expects.
+__launch_bounds__(128, 2)
+__global__ void
+gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel(
+    const block_q8_1_mmq_ds4* __restrict__ x_q8,
+    const int64_t* __restrict__ compact_to_source,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ expert_start_mmq32,
+    const int64_t* __restrict__ tile_expert,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    uint16_t* __restrict__ out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows) {
+  __shared__ q4_k_mmq32_cache weight_tile[32];
+  __shared__ q8_1_mmq32_cache activation_tile[32];
+  gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body<
+      Q4_K_LAYOUT_RAW, 1, false, true>(
+      x_q8,
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      nullptr,
+      nullptr,
+      0,
+      0.0f,
+      weight_tile,
+      activation_tile);
 }
 
 __launch_bounds__(128, 2)
@@ -4837,7 +4893,8 @@ int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
 template <
     int WEIGHT_LAYOUT,
     int ACTIVATION_PASSES = 1,
-    bool COLLECT_RISKS = false>
+    bool COLLECT_RISKS = false,
+    bool FUSED_EXPERT_LAYOUT = false>
 int launch_selected_dual_q8_1_ds4_mmq32_compact32(
     const block_q8_1_mmq_ds4* x_q8,
     const int64_t* compact_to_source,
@@ -4934,6 +4991,27 @@ int launch_selected_dual_q8_1_ds4_mmq32_compact32(
         risk_tiles,
         max_risks,
         risk_threshold);
+  } else if constexpr (FUSED_EXPERT_LAYOUT) {
+    hipLaunchKernelGGL(
+        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel,
+        grid,
+        block,
+        0,
+        stream,
+        x_q8,
+        compact_to_source,
+        expert_start_compact,
+        expert_start_mmq32,
+        tile_expert,
+        qweight_a,
+        qweight_b,
+        out,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows);
   } else {
     hipLaunchKernelGGL(
         gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel,
@@ -6733,6 +6811,43 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf1
       out_features_b,
       num_experts,
       wmma_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_q8_1_ds4_mmq32_compact32<
+      Q4_K_LAYOUT_RAW, 1, false, true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
       stream);
 }
 

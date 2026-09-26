@@ -83,6 +83,38 @@ _PREFILL_MIN_LANES_PER_EXPERT = 1
 # inferring it from a timing.
 _MOE_ROUTE_COUNTS: dict[str, int] = {}
 
+# The fused MMQ gate/up route is implemented, registered, and measured at 1.27x on
+# the 512/128 prefill, but it does not select by default, for one recorded reason:
+# against the strict arm it measures kl_max 0.0651 on 2 of 1022 rows, above the
+# binding 0.05 bar in ``docs/EXECUTION-PROFILES.md`` (kl_mean 1.44e-4, kl_p95
+# 1.3e-5, kl_p99 1.5e-4 and top-1 100% all pass with margin). The two rows are
+# near-certain repeated-context rows, and the shipped 4-slice attention split
+# breaches the same bar on the same chain at the same rows (0.055589, 1 row) -
+# that applicability question is an open lead decision recorded in
+# ``docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md``, not a defect this route
+# introduces. Clearing condition: re-run ``scripts/gemma4_teacher_forced_gate.py
+# gate`` against the campaign's frozen evaluator once that decision lands, then
+# make this the default. See ``docs/REFACTOR.md``.
+_GEMMA4_MOE_GATE_UP_MMQ_ENV = "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ"
+
+
+def gemma4_moe_gate_up_mmq_enabled() -> bool:
+    """Whether the fused MMQ gate/up route may be selected.
+
+    Off unless ``HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ`` is set to a truthy value, so
+    the default path keeps the fp32 grouped route until the numerical decision
+    above clears.
+    """
+
+    import os
+
+    return os.environ.get(_GEMMA4_MOE_GATE_UP_MMQ_ENV, "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
 
 def gemma4_moe_expert_route_counts() -> dict[str, int]:
     """Return how many expert projections used each dispatch route."""
@@ -126,6 +158,9 @@ class Gemma4ExpertScratch:
     num_experts: int
     _buffers: list[DeviceBuffer] = field(default_factory=list, repr=False)
     _by_name: dict[str, DeviceBuffer] = field(default_factory=dict, repr=False)
+    # The MMQ tile walk's compact-to-source map is the identity over the scratch
+    # capacity, so it is written once per scratch object rather than per layer.
+    mmq_identity_ready: bool = False
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -179,6 +214,16 @@ class Gemma4ExpertScratch:
             "gate_up_out": lanes * 2 * self.intermediate * _BF16_BYTES,
             "activated": lanes * self.intermediate * _BF16_BYTES,
             "expert_out": lanes * self.hidden_size * _BF16_BYTES,
+            # DS4 Q8_1 activation planes: one 144-byte block per 128 input
+            # elements per row, the size the single-plane pack kernel writes.
+            "mmq_workspace": lanes * (self.hidden_size // 128) * 144,
+            "mmq_identity": lanes * _I64_BYTES,
+            # One 32-row tile per entry; a tile-per-expert bound is exact when
+            # every expert has at least one row, and adding the leftover rows
+            # covers the fragmented case.
+            "mmq_expert_start": (lanes // 32 + self.num_experts + 1) * _I64_BYTES,
+            "mmq_tile_expert": (lanes // 32 + self.num_experts + 1) * _I64_BYTES,
+            "mmq_total": _I64_BYTES,
         }
         try:
             return sizes[name]
@@ -292,22 +337,42 @@ def gemma4_experts_forward_bf16(
     )
 
     # 3. One gate_up projection for every compact row, then GeGLU over the whole
-    #    compact buffer in a single launch.
+    #    compact buffer in a single launch. The int8-dp4a MMQ route produces both
+    #    halves in one launch and returns False when the weight or the geometry
+    #    does not qualify, in which case the fp32 grouped route runs instead.
     fused = 2 * intermediate
-    _record_moe_route(
-        gemma4_project_experts_rows(
+    if not (
+        gemma4_moe_gate_up_mmq_enabled()
+        and gemma4_moe_prefill_route_enabled(lanes=lanes, num_experts=num_experts)
+        and gemma4_project_experts_gate_up_mmq(
             gate_up_proj,
             packed_hidden.ptr,
             gate_up_out.ptr,
             expert_start,
-            sorted_experts.ptr,
             lanes,
             num_experts,
             hidden_size,
-            fused,
+            intermediate,
+            scratch=scratch,
             **kwargs,
         )
-    )
+    ):
+        _record_moe_route(
+            gemma4_project_experts_rows(
+                gate_up_proj,
+                packed_hidden.ptr,
+                gate_up_out.ptr,
+                expert_start,
+                sorted_experts.ptr,
+                lanes,
+                num_experts,
+                hidden_size,
+                fused,
+                **kwargs,
+            )
+        )
+    else:
+        _record_moe_route("gate_up_mmq32")
     gemma4_gelu_tanh_mul_bf16(gate_up_out.ptr, activated.ptr, lanes, intermediate, **kwargs)
 
     # 4. The down projection, over the same compact rows.
@@ -547,6 +612,128 @@ def gemma4_project_experts_grouped_prefill(
         )
         return True
     return False
+
+
+def gemma4_project_experts_gate_up_mmq(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    out_ptr: int,
+    expert_start,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    intermediate: int,
+    *,
+    scratch: Gemma4ExpertScratch,
+    stream: int = 0,
+    runtime: object | None = None,
+) -> bool:
+    """Run the int8-dp4a MMQ gate+up route over the fused expert weight.
+
+    ``weight`` holds Gemma 4's fused ``ffn_gate_up_exps`` layout - per expert the
+    gate rows then the up rows - so one launch produces both halves and the
+    output is already the ``gate | up`` row block that
+    :func:`gemma4_gelu_tanh_mul_bf16` consumes. Returns ``False`` when the weight
+    or the geometry does not qualify, which is a property of the quant key and
+    the shapes rather than of a model or an artifact; the caller then falls back
+    to the fp32 grouped route.
+
+    This route quantizes the block's activations to DS4 Q8_1, so its arithmetic
+    differs from the fp32 route: the error is bounded by the activation
+    quantization step, not by reassociation, and is measured against the strict
+    owner in ``tests/test_unit_gemma4_expert_route.py``.
+    """
+
+    if isinstance(weight, int):
+        return False
+    if getattr(weight.spec, "quant_key", None) != "gguf_q4_k":
+        return False
+    if in_features % 128 or (2 * intermediate) % 32 or intermediate % 32:
+        return False
+    if compact_rows <= 0 or num_experts <= 0:
+        return False
+
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        copy_host_array_to_device,
+        host_array_ptr,
+    )
+    from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
+        qwen35_moe_mmq32_tile_map,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+        build_gguf_q4_k_q8_1_selected_prefill,
+        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out as mmq_gate_up,
+        gguf_q8_1_mmq_ds4_pack_bf16 as pack_activations,
+    )
+
+    import numpy as np
+
+    workspace = scratch.buffer("mmq_workspace")
+    identity = scratch.buffer("mmq_identity")
+    if not scratch.mmq_identity_ready:
+        # The pack reads compact rows in compact order, so the tile walk's
+        # compact-to-source map is the identity over the scratch capacity. It is
+        # written once per scratch object, not once per layer.
+        arange = np.ascontiguousarray(np.arange(scratch.total_lanes, dtype=np.int64))
+        copy_host_array_to_device(identity, arange, runtime=runtime)
+        scratch.mmq_identity_ready = True
+    mmq_starts = scratch.buffer("mmq_expert_start")
+    tile_expert = scratch.buffer("mmq_tile_expert")
+    mmq_total = scratch.buffer("mmq_total")
+
+    library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    kwargs = {"stream": stream}
+    if runtime is not None:
+        kwargs["runtime"] = runtime
+    pack_activations(
+        x_ptr, workspace.ptr, compact_rows, in_features, library=library, **kwargs
+    )
+    tile_capacity = scratch.buffer("mmq_tile_expert").nbytes // 8
+    qwen35_moe_mmq32_tile_map(
+        expert_start.ptr,
+        mmq_starts.ptr,
+        tile_expert.ptr,
+        mmq_total.ptr,
+        num_experts,
+        tile_capacity=tile_capacity,
+        **kwargs,
+    )
+    total_host = np.empty(1, dtype=np.int64)
+    copy_device_to_host(
+        host_array_ptr(total_host),
+        DeviceBuffer(ptr=mmq_total.ptr, nbytes=8),
+        8,
+        runtime=runtime,
+    )
+    total_rows = int(total_host[0])
+    if total_rows <= 0 or total_rows > tile_capacity * 32:
+        raise RuntimeError(
+            f"gemma4 MMQ gate/up tile row count {total_rows} is outside "
+            f"capacity {tile_capacity * 32}"
+        )
+    weight_ptr = weight.allocation("raw").buffer.ptr
+    row_bytes = (in_features // 256) * 144
+    mmq_gate_up(
+        workspace.ptr,
+        identity.ptr,
+        expert_start.ptr,
+        mmq_starts.ptr,
+        tile_expert.ptr,
+        weight_ptr,
+        weight_ptr + intermediate * row_bytes,
+        out_ptr,
+        compact_rows,
+        in_features,
+        intermediate,
+        intermediate,
+        num_experts,
+        total_rows,
+        library=library,
+        **kwargs,
+    )
+    return True
 
 
 def gemma4_project_experts_rows(

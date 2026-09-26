@@ -25,8 +25,10 @@ import pytest
 
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
     _GROUPED_PREFILL_VARIANTS,
+    Gemma4ExpertScratch,
     gemma4_moe_expert_route_counts,
     gemma4_moe_prefill_route_enabled,
+    gemma4_project_experts_gate_up_mmq,
     gemma4_project_experts_grouped_prefill,
     gemma4_project_experts_rows,
 )
@@ -626,3 +628,222 @@ def test_grouped_prefill_is_bit_exact_against_the_selected_gemv(
         f"{grouped.size} bf16 outputs; max abs diff "
         f"{np.abs(_from_bf16_bits(grouped) - _from_bf16_bits(selected_bits)).max():.4g}"
     )
+
+
+@_needs_hip
+def test_fused_gate_up_mmq_route_matches_a_dequantized_reference() -> None:
+    """The MMQ gate_up route reproduces the fused layout's dequantized reference.
+
+    Gemma 4 stores ``ffn_gate_up_exps`` as ``(num_experts, 2 * intermediate,
+    hidden)`` with the gate rows first *per expert*, so an expert's stride is the
+    fused width rather than one half's width. The route reads both halves from
+    that one buffer and emits the fused ``gate | up`` row block the GeGLU
+    consumer expects. This pins three things a shape-only check would miss: that
+    expert *e*'s two halves are addressed with the fused stride, that the output
+    halves land where that consumer reads them, and that quantizing the block's
+    activations to DS4 Q8_1 keeps the result inside the family's
+    production-variant envelope.
+    """
+
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        copy_host_array_to_device,
+        free,
+        malloc,
+    )
+    from hipengine.quant.gguf import dequantize_gguf_data
+
+    backend = _grouped_backend("gguf_q4_k")
+    num_experts = 4
+    in_features = 256
+    intermediate = 64
+    fused_width = 2 * intermediate
+    counts = np.asarray([3, 0, 5, 2], dtype=np.int64)
+    rows = int(counts.sum())
+
+    rng = np.random.default_rng(20260927)
+    hidden = rng.standard_normal((rows, in_features)).astype(np.float32)
+    hidden_bits = _to_bf16_bits(hidden)
+    gate_raw = np.concatenate(
+        [make_q4_k_weight(intermediate, in_features) for _ in range(num_experts)],
+        axis=0,
+    )
+    up_raw = np.concatenate(
+        [make_q4_k_weight(intermediate, in_features) for _ in range(num_experts)],
+        axis=0,
+    )
+    # The synthetic fixture is deterministic, so gate and up would otherwise be
+    # byte-identical and a fused-stride error would read the right *values* from
+    # the wrong half. Flipping the up half's scale exponents makes the two halves
+    # distinguishable while keeping both legal Q4_K.
+    up_raw = up_raw.copy()
+    up_raw[:, 1::2] ^= np.uint8(0x04)
+    # (num_experts, 2 * intermediate, hidden) with the gate first, per expert.
+    fused_raw = np.concatenate(
+        [
+            gate_raw.reshape(num_experts, intermediate, -1),
+            up_raw.reshape(num_experts, intermediate, -1),
+        ],
+        axis=1,
+    ).reshape(num_experts * fused_width, -1)
+
+    # The route reads bf16 activations, so the reference reads the rounded values.
+    rounded = _from_bf16_bits(hidden_bits)
+    expected = np.zeros((rows, fused_width), dtype=np.float32)
+    start = 0
+    for expert, count in enumerate(counts):
+        if count == 0:
+            continue
+        gate = np.asarray(
+            dequantize_gguf_data(
+                gate_raw[expert * intermediate : (expert + 1) * intermediate],
+                GGMLQuantizationType.Q4_K,
+            ),
+            dtype=np.float32,
+        )
+        up = np.asarray(
+            dequantize_gguf_data(
+                up_raw[expert * intermediate : (expert + 1) * intermediate],
+                GGMLQuantizationType.Q4_K,
+            ),
+            dtype=np.float32,
+        )
+        block = rounded[start : start + count]
+        expected[start : start + count, :intermediate] = block @ gate.T
+        expected[start : start + count, intermediate:] = block @ up.T
+        start += int(count)
+    assert start == rows
+
+    starts = np.zeros(num_experts + 1, dtype=np.int64)
+    starts[1:] = np.cumsum(counts)
+
+    hidden_buf = malloc(hidden_bits.nbytes)
+    weights_buf = malloc(fused_raw.nbytes)
+    starts_buf = malloc(starts.nbytes)
+    out_buf = malloc(rows * fused_width * 2)
+    scratch = None
+    try:
+        copy_host_array_to_device(hidden_buf, hidden_bits)
+        copy_host_array_to_device(weights_buf, fused_raw)
+        copy_host_array_to_device(starts_buf, starts)
+
+        weight = _ResidentWeight(
+            backend=backend, quant_key="gguf_q4_k", ptr=weights_buf.ptr
+        )
+        scratch = Gemma4ExpertScratch(
+            tokens=rows,
+            top_k=1,
+            hidden_size=in_features,
+            intermediate=intermediate,
+            num_experts=num_experts,
+        )
+        served = gemma4_project_experts_gate_up_mmq(
+            weight,
+            hidden_buf.ptr,
+            out_buf.ptr,
+            SimpleNamespace(ptr=starts_buf.ptr),
+            rows,
+            num_experts,
+            in_features,
+            intermediate,
+            scratch=scratch,
+        )
+        assert served is True, "the fused MMQ gate_up route declined a Q4_K weight"
+
+        got = np.empty((rows, fused_width), dtype=np.uint16)
+        copy_device_to_host(
+            int(got.ctypes.data),
+            DeviceBuffer(ptr=out_buf.ptr, nbytes=got.nbytes),
+            got.nbytes,
+        )
+        got = _from_bf16_bits(got)
+    finally:
+        if scratch is not None:
+            scratch.free()
+        for buffer in (hidden_buf, weights_buf, starts_buf, out_buf):
+            free(buffer)
+
+    scale = float(np.abs(expected).max())
+    assert scale > 0
+    difference = np.abs(got - expected)
+    # DS4 Q8_1 activation quantization is a changed-arithmetic path, so the
+    # bound is the envelope the MMQ family already asserts against its strict
+    # owner rather than bit equality with the fp32 grouped route.
+    assert float(difference.max()) < 2e-2 * scale, (
+        f"fused MMQ gate_up exceeded the envelope: normalized max "
+        f"{float(difference.max()) / scale:.4g} against scale {scale:.4g}"
+    )
+    assert float(difference.mean()) < 2e-3 * scale, (
+        f"fused MMQ gate_up exceeded the envelope: normalized mean "
+        f"{float(difference.mean()) / scale:.4g} against scale {scale:.4g}"
+    )
+    # The two halves are separate reads of one buffer, so a wrong fused stride
+    # would show up as the up half carrying the gate half's expert.
+    assert not np.allclose(got[:, :intermediate], got[:, intermediate:]), (
+        "the gate and up halves matched, so the second half read the first"
+    )
+
+
+@pytest.mark.parametrize(
+    "quant_key, in_features, intermediate",
+    [
+        # The DS4 pack reads 128-element groups and the tile walk reads 32-wide
+        # output columns, so a geometry that does not divide declines rather
+        # than launching a kernel that would read past its rows.
+        ("gguf_q4_k", 96, 64),
+        ("gguf_q4_k", 256, 48),
+        # Only the Q4_K family has a DS4 MMQ32 leaf; another quant key declines
+        # so the caller keeps its fp32 grouped route.
+        ("gguf_q5_1", 256, 64),
+    ],
+)
+def test_fused_gate_up_mmq_route_declines_what_it_cannot_execute(
+    quant_key: str, in_features: int, intermediate: int
+) -> None:
+    """The route's capability test is the geometry and the quant key, not a name.
+
+    Only declining geometries are listed: a qualifying weight would launch the
+    real leaf against these placeholder pointers, and the positive case is
+    covered by the dequantized-reference test above.
+    """
+
+    weight = _ResidentWeight(backend="hip_gfx1100", quant_key=quant_key)
+    scratch = Gemma4ExpertScratch(
+        tokens=8,
+        top_k=1,
+        hidden_size=in_features,
+        intermediate=intermediate,
+        num_experts=4,
+    )
+    try:
+        served = gemma4_project_experts_gate_up_mmq(
+            weight,
+            0x1000,
+            0x2000,
+            SimpleNamespace(ptr=0x3000),
+            8,
+            4,
+            in_features,
+            intermediate,
+            scratch=scratch,
+        )
+    finally:
+        scratch.free()
+    assert served is False
+
+
+def test_fused_gate_up_mmq_route_declines_a_bf16_weight() -> None:
+    """A bf16 expert weight has no quantized bytes to read, so the route declines."""
+
+    scratch = Gemma4ExpertScratch(
+        tokens=8, top_k=1, hidden_size=256, intermediate=64, num_experts=4
+    )
+    try:
+        served = gemma4_project_experts_gate_up_mmq(
+            0x5A0000, 0x1000, 0x2000, SimpleNamespace(ptr=0x3000), 8, 4, 256, 64,
+            scratch=scratch,
+        )
+    finally:
+        scratch.free()
+    assert served is False

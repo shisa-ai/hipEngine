@@ -9141,3 +9141,29 @@ Remove this once the graph accept can consume a per-row override, which needs
 the device sampler to take a row's forced token as an input the way the host
 path does. The evidence that would justify it is the same gate with the refusal
 removed and the execution path reporting the captured-graph accept.
+
+## Gemma 4 fused MMQ gate/up prefill is selectable but not default (open 2026-09-27)
+
+`HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ` selects a fused int8-dp4a MMQ32 route for
+Gemma 4's `Q4_K` expert gate/up prefill. It replaces two fp32 grouped launches
+plus a fused-stride read with one pack, one tile map, and one MMQ launch that
+reads Gemma 4's per-expert `gate | up` row block directly, and it measures
+**4.23 s -> 3.33 s on the 512/128 prefill (1.27x)** with path parity intact.
+
+It does not select by default for a recorded numerical reason. Against the strict
+single-kernel arm, 1022 paired rows at keys 1025-2047: `kl_mean` 1.44e-4,
+`kl_p95` 1.3e-5, `kl_p99` 1.5e-4, top-1 100% with zero flips - all inside their
+bars - but `kl_max` 0.0651 on 2 rows against the binding 0.05 bar. Both rows are
+near-certain repeated-context rows where the decision does not move, and the
+already-shipped 4-slice attention split breaches the same bar on the same chain
+at the same rows (`kl_max` 0.055589, 1 row, recorded in
+`docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md`). That document records the
+applicability of an absolute `kl_max` to a peaked reference on a greedy workload
+as an open lead decision, and this route lands in the same class: raising the
+activation precision cannot clear it, because the split breaches at 2, 4, 8, and
+16 slices alike.
+
+Remove this flag - and make the route the default - once that decision lands, by
+re-running `scripts/gemma4_teacher_forced_gate.py gate` against the campaign's
+frozen evaluator and recording the verdict. The implementation, its registered
+launch path, and its correctness test stay in place until then.
