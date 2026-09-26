@@ -1334,6 +1334,52 @@ record, not permission to reset unrelated work or weaken correctness.
     fused gate+up to WMMA gives kl_max 0.174212; pinning only the down projection
     gives 0.162814; both plain gives 0.182137. Each alone is nearly as bad as the
     pair.
+  *Diagnostic 2026-09-26 (iteration 60): the fused `gate_up` joins the default
+  route, bit-for-bit.* Iteration 59's grouped owner served only the down
+  projection; the fused Q4_K `gate_up` stayed on the selected GEMV and was the
+  largest single item in the default prefill (3951 ms of 6982 ms, 56.7%, 68.1 ms
+  per call) because the selected dual GEMV runs one CTA per (row, output column)
+  and re-reads every weight row once per compact row. The repository already had
+  a grouped rowbatch8 *dual* owner for Q4_K, with a test pinning it bit-for-bit
+  to the strict selected dual, but Gemma could not reach it for two reasons: the
+  probe used the single-output grouped variant name, and the dual owner takes two
+  weight tensors and two output buffers while Gemma's `gate_up` is one allocation
+  holding both halves.
+
+  Threading `output_row_stride` and `expert_stride_rows` through the grouped dual
+  owner (both defaulting to zero, which is the two-tensor convention, so every
+  existing variant's arithmetic and layout is untouched) made the fused form
+  reachable. A fused `gate_up` passes the fused width for both strides, offsets
+  the up half's output pointer one gate width into the fused row, and offsets the
+  up half's weight pointer one half into the fused allocation - the last of which
+  is the convention `gemma4_project_experts_wmma_dual` already used and is
+  required, because the owner strides experts by the fused width while indexing
+  each side from its own origin.
+
+  | default-route family | before ms | after ms |
+  | --- | ---: | ---: |
+  | fused `gate_up` | 3951 (selected GEMV) | 1452 (grouped dual) |
+  | Q5_1 down (grouped) | 1238 | 1101 |
+  | attention prefill | 917 | 901 |
+  | dense Q8_0 | 570 | 575 |
+  | layer-29 MoE | 205 | 201 |
+  | **layer total** | **6982** | **4242** |
+
+  Prefill 6.982 -> 4.242 s on the W7900 lane (146.7 -> 241.4 tok/s) and 154.0 ->
+  253.0 tok/s on the RX 7900 XTX lane; first-token latency 6.66 -> 4.05 s, decode
+  flat at 43.8357. **The route is bit-identical, not approximate**: the gate
+  reports `kl_max` of exactly 0.000000 over 1023 rows with top-1 rate 1.0 and
+  zero flips, so the prefill win carries no numerical cost and owes no promotion
+  gate. The grouped dual owner measures 25.0 ms per call against the selected
+  dual's 68.1 (2.7x). Cumulative for the campaign's prefill column, 128.5 ->
+  253.0 tok/s (+97%).
+
+  This does not touch iteration 59's open decision. The WMMA arm is still the
+  faster route (402.5 tok/s against 253.0) and still breaches the absolute
+  `kl_max` bar on 1 of 1023 rows; `auto` now gets a larger exact share of the
+  gap, which reduces what that decision is worth in absolute terms but does not
+  resolve it.
+
   - **The residual 0.060867 is reduction association, and it is irreducible.**
     Splitting the K accumulation across two independent f32 accumulators moved
     kl_max to 0.081599 - same class, different draw, not an improvement. The

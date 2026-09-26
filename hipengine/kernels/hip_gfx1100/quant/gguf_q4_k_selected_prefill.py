@@ -162,11 +162,20 @@ def gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out(
     in_features: int,
     out_features: int,
     *,
+    output_row_stride: int = 0,
+    expert_stride_rows: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch the exact grouped row-batched BF16 Q4_K gate+up kernel."""
+    """Launch the exact grouped row-batched BF16 Q4_K gate+up kernel.
+
+    ``output_row_stride`` and ``expert_stride_rows`` are both zero for the
+    two-tensor layout, where each half is its own allocation and its row stride
+    is its own width. A fused ``gate_up`` tensor stores both halves in one
+    allocation, so it passes the fused width (``2 * out_features``) for both
+    while each half still indexes from its own origin.
+    """
 
     for value, name in (
         (compact_rows, "compact_rows"),
@@ -175,12 +184,18 @@ def gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out(
         (out_features, "out_features"),
     ):
         _check_positive(value, name)
+    for value, name in (
+        (output_row_stride, "output_row_stride"),
+        (expert_stride_rows, "expert_stride_rows"),
+    ):
+        if value < 0:
+            raise ValueError(f"{name} must not be negative")
     if in_features % _Q4_K_BLOCK:
         raise ValueError("in_features must be divisible by GGUF Q4_K block size 256")
     library = library or build_gguf_q4_k_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_GROUPED_ROW8_BF16)
-    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 6 + [ctypes.c_void_p]
     fn.restype = ctypes.c_int
     err = fn(
         x_ptr,
@@ -193,6 +208,8 @@ def gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out(
         num_experts,
         in_features,
         out_features,
+        output_row_stride,
+        expert_stride_rows,
         stream,
     )
     if int(err) != HIP_SUCCESS:
