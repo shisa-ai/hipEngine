@@ -1494,6 +1494,56 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 84: the MMQ chain is wired end to end and is a measured
+  regression on this model. Reverted.** Iteration 83's crossover said 1.5-2.25x.
+  That number did not survive contact with the real weights, and this records
+  both the wiring that works and why the estimate was wrong.
+
+  **The wiring, which is the reusable part.** The shared linear dispatch reads
+  the policy *off the session* (``session.policy(rows, in, out)`` and
+  ``session.policy.risk_threshold``) rather than re-resolving one from the
+  registry, so a model can supply its own ``Q8MMQPrefillPolicy`` and keep its
+  own crossover map and threshold. That matters here because this GGUF is
+  ``UD-Q4_K_XL`` -- the same file type as the Qwen4Exp model that already owns
+  the ``gguf_ud_q4_k_xl`` registry key, so registering a Gemma policy under it
+  would have collided. The session is established by wrapping
+  ``Gemma4Runner._forward_block`` (split into a thin wrapper over
+  ``_forward_block_inner`` so the layer loop needed no re-indentation), with a
+  workspace sized from the policy's own widest shape rather than from the block,
+  plus a 4-byte risk counter and a ``rows * widest_out`` index queue, all
+  allocated through ``_alloc`` so they are freed with the runner. That wiring
+  works: the dispatch did select the MMQ owners, as the timings below show.
+
+  **The measurement, on the same instrumented prefill as iteration 83's shape
+  census (559.5 tok/s, dense 654.8 ms at baseline):**
+
+  | config | tok/s | dense ms | (2816,2112) @512 | (2816,8192) @512 |
+  | --- | ---: | ---: | ---: | ---: |
+  | exact (baseline) | 559.5 | 654.8 | 1084.7 us | 3830.3 us |
+  | MMQ, ``risk_threshold=1e-4`` | 516.3 | 854.6 | 2087.1 us | 5960.8 us |
+  | MMQ, ``risk_threshold=1.0`` | 211.3 | 3699.7 | 7201.8 us | 29539.5 us |
+
+  Every admitted shape got slower, and raising the threshold made it far worse
+  rather than better -- the opposite of what the guard's design implies. Why is
+  not established; the cost is not simply "how many rows the correction
+  repairs", which is what iteration 83 assumed.
+
+  **Why the crossover estimate failed, which is the transferable lesson.** The
+  isolated harness used ``make_q8_0_weight`` synthetic weights; the model uses
+  the GGUF's own. The guard's repair rate is a function of the weight values --
+  it estimates each row's drift and queues the rows it expects to exceed the
+  threshold -- so synthetic weights with a benign drift pattern measure a chain
+  that never fires its expensive half. Iteration 83 even saw the symptom and
+  dismissed it: passing ``inf`` measured 0.13x, which was written up as "the
+  pathological case" instead of as the first evidence that the correction's cost
+  is the whole story. A crossover measurement for a *guarded* path has to use
+  the real weights, because the guard's cost is data-dependent by construction.
+
+  Reverted; the exact tile16x4 owner stays on the dense line. The arithmetic
+  route is still the right direction -- llama.cpp's 25%-of-peak is the existence
+  proof -- but not through this chain as it stands, and not on the strength of a
+  synthetic-weight crossover.
+
   **Iteration 83: the MMQ d4x3 chain is bit-identical and 1.5-2.25x on this
   model's dense shapes.** Iteration 82 found the dp4a owners registered but
   unadmitted; this measures the admission contract's ``min_rows`` crossover and
