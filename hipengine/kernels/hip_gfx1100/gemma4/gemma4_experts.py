@@ -472,6 +472,22 @@ _SELECTED_VARIANT = "selected_gemv_bf16_bf16_out"
 # registers it is served, and one that does not keeps the selected path.
 _GROUPED_PREFILL_VARIANT = "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
 
+# The Qwen35-era paired/folded owner, preferred ahead of both row-batch variants
+# where it registers. It is the same arithmetic -- same thread-to-column map,
+# same 256-thread tree per output -- and measured bit-identical to the amortized
+# owner on Gemma's down geometry (8192 compact rows, 128 experts, in 704, out
+# 2816), where it is also 1.84x faster: 21.8 ms against 40.2 ms, with the
+# plain pair2 form at 28.6 and the two row-batch forms at 45.0 and 51.2. Only
+# Q5_1 registers it, and only for in_features at or below its fold limit, so a
+# quant or width it does not serve falls through to the variants below.
+_GROUPED_FOLD128_PREFILL_VARIANT = (
+    "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
+)
+
+# The paired Q5_1 forms reject wider inputs outright rather than declining, so
+# the probe only offers them inside the width their wrapper accepts.
+_GROUPED_FOLD128_MAX_IN_FEATURES = 4096
+
 # The same owner with the loop nest swapped so one CTA covers four output
 # columns and reuses the input row batch across them. Only quants that register
 # it are served by it; the probe prefers it and falls back to the row-batch
@@ -863,6 +879,8 @@ def gemma4_project_experts_grouped(
         _GROUPED_AMORTIZED_PREFILL_VARIANT,
         _GROUPED_PREFILL_VARIANT,
     ]
+    if in_features <= _GROUPED_FOLD128_MAX_IN_FEATURES:
+        variants.insert(0, _GROUPED_FOLD128_PREFILL_VARIANT)
     fn = None
     for variant in variants:
         key = KernelKey(weight.backend, "moe_linear", weight.spec.quant_key, variant)
