@@ -1,0 +1,119 @@
+{
+ "schema": 1,
+ "kind": "tp2_llamacpp_prefill_recheck",
+ "status": "performance_claim",
+ "performance_claim": true,
+ "date": "2026-09-26",
+ "host": "epyc",
+ "hardware": {
+  "device0": "AMD Radeon Pro W7900 (gfx1100, 46064 MiB)",
+  "device1": "AMD Radeon RX 7900 XTX (gfx1100, 24560 MiB)",
+  "p2p": "hipDeviceCanAccessPeer is 0 both ways on this pair"
+ },
+ "why": "The 2026-09-25 three-way measured hipEngine TP2 prefill at 1066.3 tok/s and a 20.0% deficit against llama.cpp's tensor split. The device exchange's flag-polling grid was then bounded, which moved the hipEngine leg, so both arms of that comparison were re-measured back to back in one window rather than dividing a new hipEngine number by an old llama.cpp one.",
+ "matched": {
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+  "prompt_tokens": 512,
+  "decode_tokens": 128,
+  "concurrency": 1,
+  "kv_cache": "f16/f16 both engines",
+  "repetitions": 3,
+  "measured_in_one_window": true,
+  "window_note": "both legs run back to back in one command on this host; the hipEngine leg reported generated_at 2026-09-26T19:33:15Z and the llama.cpp leg followed immediately in the same task",
+  "llamacpp_command": "/home/lhl/llama.cpp/llama.cpp-rdna3-opt/build-rocm-gfx1100/bin/llama-bench -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -p 512 -n 128 -r 3 -ngl 999 -ctk f16 -ctv f16 -fa auto -sm tensor -ts 1/1",
+  "llamacpp_build": "15995a1 (llama.cpp-rdna3-opt/build-rocm-gfx1100)",
+  "hipengine_command": "uv run python scripts/tp2_c1_bench.py --mode tp2 --bulk-prefill --prompt-length 512 --decode-tokens 128 --repeats 3",
+  "hipengine_revision": "8c4a5a040",
+  "timing_boundary": "llama-bench pp512/tg128 mean and sd of 3; hipEngine per-generation wall including its own synchronize, median of 3 after one unmeasured prefill"
+ },
+ "llamacpp_tp2_tensor": {
+  "flags": "-sm tensor -ts 1/1",
+  "prefill_tok_s": 1302.82,
+  "prefill_sd": 20.16,
+  "decode_tok_s": 41.07,
+  "decode_sd": 0.5,
+  "previous_window_prefill_tok_s": 1332.14,
+  "previous_window_prefill_sd": 11.84
+ },
+ "hipengine_tp2_bulk_shard": {
+  "prefill_tok_s": 1213.6630855201547,
+  "prefill_tok_s_median": 1214.8472718625198,
+  "prefill_runs_tok_s": [
+   1219.76556553002,
+   1214.8472718625198,
+   1213.6630855201547
+  ],
+  "decode_tok_s": 41.575019042874025,
+  "decode_tok_s_median": 41.65857068443539,
+  "decode_runs_tok_s": [
+   41.68689651312443,
+   41.65857068443539,
+   41.575019042874025
+  ],
+  "prefill_p50_ms": 421.8633705750108,
+  "decode_p50_ms": 24.054753128439188,
+  "resolved": {
+   "schedule": "graphed",
+   "prefill_schedule": "bulk-tp2",
+   "driver": "compiled",
+   "reduce_mode": "device",
+   "decode_partial_dtype": "bf16",
+   "head_shard": true,
+   "attention_shard": true,
+   "per_rank_ffn": {
+    "0": 8704,
+    "1": 8704
+   },
+   "per_rank_variants": {
+    "0": "dense_dual_local32_bf16_bf16_out",
+    "1": "dense_dual_local32_bf16_bf16_out"
+   }
+  },
+  "generated_tokens": [
+   9707,
+   9707,
+   9707,
+   9707,
+   9707,
+   9707,
+   9707,
+   9707
+  ]
+ },
+ "ratios": {
+  "hipengine_tp2_prefill_over_llamacpp_tp2": 0.9324751476508804,
+  "hipengine_tp2_decode_over_llamacpp_tp2": 1.014330915131127,
+  "prefill_deficit_ms": 28.458494498444054,
+  "llamacpp_prefill_over_its_xtx": 1.2315734745001654,
+  "llamacpp_prefill_over_its_w7900": 1.3889190946791612,
+  "llamacpp_decode_over_its_xtx": 1.105815831987076,
+  "llamacpp_decode_over_its_w7900": 1.352321369772802,
+  "hipengine_prefill_over_xtx_control": 1.2294735868865325,
+  "hipengine_prefill_over_w7900_control": 1.3829850588845547,
+  "hipengine_decode_over_xtx_control": 1.1783021125192044,
+  "hipengine_decode_over_w7900_control": 1.408579125710006
+ },
+ "unchanged_arms": {
+  "source": "results/2026-09-25-w7900-tp2-tp1-llamacpp-three-way.json",
+  "note": "llama.cpp -sm layer 978.7/29.22, llama.cpp TP=1 XTX 1057.9/37.14, llama.cpp TP=1 W7900 938.0/30.37, hipEngine TP1 XTX 36.57/34.90, hipEngine TP1 W7900 30.07/28.78 are from the 2026-09-25 window and are not re-measured here: nothing on those arms changed, and only the two arms this comparison turns on were re-run in this window."
+ },
+ "single_card_controls": {
+  "source": [
+   "results/2026-09-14-rx7900xtx-qwen38-q4km-int8-512-128-matched-tp1.json",
+   "results/2026-09-14-w7900-qwen38-q4km-int8-512-128-matched-tp1.json"
+  ],
+  "xtx_prefill_tok_s_median": 988.1035955712952,
+  "xtx_decode_tok_s_median": 35.35474496890238,
+  "w7900_prefill_tok_s_median": 878.4240032515996,
+  "w7900_decode_tok_s_median": 29.574888569669127,
+  "note": "resident single-card prefill controls from an earlier revision",
+  "llamacpp_tp1": {
+   "source": "results/2026-09-25-w7900-tp2-tp1-llamacpp-three-way.json",
+   "xtx_prefill_tok_s": 1057.85,
+   "xtx_decode_tok_s": 37.14,
+   "w7900_prefill_tok_s": 938.01,
+   "w7900_decode_tok_s": 30.37
+  }
+ }
+}
