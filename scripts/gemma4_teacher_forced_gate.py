@@ -7,9 +7,9 @@ G0 baseline (see ``docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md``):
 ``capture``
     Teacher-force the frozen campaign prompt chain on the current default
     path and store every position's full-vocabulary next-token distribution
-    as float32. This is the *strict* arm: run it on the incumbent tree
-    before any changed-arithmetic candidate lands, keep the ``.npz`` outside
-    the repository at a pinned path, and record its sha256 in a manifest.
+    as float32. Use ``--slices 1`` to capture the strict single-kernel arm;
+    without that override, capture uses the ordinary shipping policy. Keep the
+    ``.npz`` outside the repository and record its sha256 in a manifest.
 
 ``gate``
     Recompute the same chain with the candidate path and compare against a
@@ -24,8 +24,11 @@ run twice on the same tree must gate at KL == 0 and 100% top-1; that self-gate
 is the smoke for the capture path.
 
 The row-count standard applies: a ~60-row screening probe only passes with
-zero top-1 flips, while promotion evidence needs 500-1000 paired rows. The
-default chain (1023 rows from the 1024-token prompt) is inside that band.
+zero top-1 flips, while promotion evidence needs 500-1000 paired rows plus
+category, isolation and task gates not supplied by this single-chain evaluator.
+Gate requires observed split launches unless ``--slices 1`` explicitly requests
+single-kernel evaluation. The default 1024-token chain never reaches the split:
+use, for example, ``--prompt 2048 --prefill 1024`` to score 1023 decode rows.
 
 Example (freeze, on the incumbent tree)::
 
@@ -37,6 +40,7 @@ Example (freeze, on the incumbent tree)::
 
 from __future__ import annotations
 
+from contextlib import contextmanager, nullcontext
 import argparse
 import hashlib
 import json
@@ -107,6 +111,8 @@ def evaluate(baseline_logits: np.ndarray, candidate_logits: np.ndarray) -> dict[
         raise ValueError("logits must be finite; a non-finite value was found")
 
     rows = baseline.shape[0]
+    if rows == 0 or baseline.shape[1] == 0:
+        raise ValueError("logits must have nonempty rows and vocabulary")
     kl = np.empty(rows, dtype=np.float64)
     flips: list[int] = []
     base_top1 = np.argmax(baseline, axis=1)
@@ -136,13 +142,63 @@ def evaluate(baseline_logits: np.ndarray, candidate_logits: np.ndarray) -> dict[
         for key, limit in THRESHOLDS.items()
         if (verdict[key] > limit if key != "top1_rate" else verdict[key] < limit)
     ]
+    verdict["evidence_level"] = "screen" if rows < 500 else "numerical_rows"
+    verdict["promotion_qualified"] = False  # Category/task/isolation gates are separate.
+    if rows < 500 and flips:
+        failed.append("screen_top1_flips")
     verdict["failed"] = failed
     verdict["passed"] = not failed
     return verdict
 
 
+@contextmanager
+def observe_decode_routes(routes: list[dict[str, int]]):
+    """Record actual launcher selections, not merely the requested slice policy."""
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as attention
+
+    original = attention._launch_prefill
+
+    def observed(*args, **kwargs):
+        result = original(*args, **kwargs)
+        if kwargs["tokens"] == 1:
+            routes.append({
+                "keys": int(kwargs["keys"] or 1),
+                "head_dim": int(kwargs["head_dim"]),
+                "selection": int(attention.decode_selection(kwargs.get("library"))),
+            })
+        return result
+
+    attention._launch_prefill = observed
+    try:
+        yield
+    finally:
+        attention._launch_prefill = original
+
+
+def route_summary(routes: list[dict[str, int]]) -> dict[str, Any]:
+    split = [row for row in routes if row["selection"] == 2]
+    return {
+        "decode_launches": len(routes),
+        "split_launches": len(split),
+        "selections": sorted({row["selection"] for row in routes}),
+        "split_key_range": [min(row["keys"] for row in split),
+                            max(row["keys"] for row in split)] if split else None,
+        "head_dims": sorted({row["head_dim"] for row in routes}),
+    }
+
+
+def require_candidate_route(verdict: dict[str, Any], routes: dict[str, Any],
+                            forced_slices: int | None) -> None:
+    if not routes["decode_launches"]:
+        verdict["failed"].append("no_decode_launches_observed")
+    elif forced_slices != 1 and not routes["split_launches"]:
+        verdict["failed"].append("split_not_exercised")
+    verdict["passed"] = not verdict["failed"]
+
+
 def capture_chain(
-    runner: Any, prompt_ids: Sequence[int], prefill: int = 0
+    runner: Any, prompt_ids: Sequence[int], prefill: int = 0,
+    routes: list[dict[str, int]] | None = None,
 ) -> np.ndarray:
     """Teacher-force ``prompt_ids`` and return the scored (rows, vocab) chain.
 
@@ -175,9 +231,10 @@ def capture_chain(
     if prefill:
         runner.forward(ids[:prefill])
     rows: list[np.ndarray] = []
-    for position in range(prefill, len(ids) - 1):
-        logits = runner.forward([ids[position]])
-        rows.append(np.asarray(logits, dtype=np.float32).reshape(-1))
+    with observe_decode_routes(routes) if routes is not None else nullcontext():
+        for position in range(prefill, len(ids) - 1):
+            logits = runner.forward([ids[position]])
+            rows.append(np.array(logits, dtype=np.float32, copy=True).reshape(-1))
     return np.stack(rows)
 
 
@@ -278,6 +335,13 @@ def _provenance(artifact: Path, loading: dict[str, Any]) -> dict[str, Any]:
     provenance = harness_provenance(artifact)
     provenance["context_length"] = loading.get("context_length")
     provenance["max_block"] = loading.get("max_block")
+    root = Path(__file__).resolve().parents[1]
+    provenance["evaluator_source_sha256"] = sha256_file(Path(__file__))
+    provenance["attention_source_sha256"] = {
+        suffix: sha256_file(root / "hipengine/kernels/hip_gfx1100/gemma4" /
+                            f"gemma4_attention.{suffix}")
+        for suffix in ("hip", "py")
+    }
     return provenance
 
 
@@ -316,13 +380,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     gate.add_argument("--out", type=Path, help="verdict JSON to write")
 
     args = parser.parse_args(argv)
+    if args.slices is not None and args.slices < 1:
+        parser.error("--slices must be positive")
+    if not 0 <= args.prefill < args.prompt - 1 or args.prompt > args.context:
+        parser.error("require 0 <= prefill < prompt - 1 and prompt <= context")
 
     if args.command == "capture":
         started = time.time()
         force_slices(args.slices)
         runner, prompt_ids, loading = _load_chain(args.artifact, args.prompt, args.context)
-        logits = capture_chain(runner, prompt_ids, args.prefill)
+        routes = []
+        try:
+            logits = capture_chain(runner, prompt_ids, args.prefill, routes=routes)
+        finally:
+            runner.close()
+            force_slices(None)
         provenance = _provenance(args.artifact, loading)
+        provenance["observed_routes"] = route_summary(routes)
         provenance["prefill"] = int(args.prefill)
         provenance["forced_slices"] = None if args.slices is None else int(args.slices)
         save_capture(args.out, logits, prompt_ids, provenance)
@@ -356,20 +430,33 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     baseline, base_ids, base_provenance = load_capture(args.baseline)
     force_slices(args.slices)
-    runner, prompt_ids, _ = _load_chain(args.artifact, args.prompt, args.context)
+    runner, prompt_ids, loading = _load_chain(args.artifact, args.prompt, args.context)
     if [int(x) for x in base_ids] != [int(x) for x in prompt_ids]:
+        runner.close()
+        force_slices(None)
         raise SystemExit(
             "chain mismatch: the candidate chain differs from the frozen "
             "baseline's prompt ids; both arms must teacher-force the same ids"
         )
     if int(base_provenance.get("prefill", 0)) != int(args.prefill):
+        runner.close()
+        force_slices(None)
         raise SystemExit(
             "prefill mismatch: the baseline scored a different key range "
             f"(baseline {base_provenance.get('prefill', 0)}, candidate "
             f"{args.prefill}); the comparison would not be paired"
         )
-    candidate = capture_chain(runner, prompt_ids, args.prefill)
+    routes = []
+    try:
+        candidate = capture_chain(runner, prompt_ids, args.prefill, routes=routes)
+    finally:
+        runner.close()
+        force_slices(None)
     verdict = evaluate(baseline, candidate)
+    verdict["candidate_provenance"] = _provenance(args.artifact, loading)
+    verdict["baseline_provenance"] = base_provenance
+    verdict["observed_routes"] = route_summary(routes)
+    require_candidate_route(verdict, verdict["observed_routes"], args.slices)
     verdict["prefill"] = int(args.prefill)
     verdict["scored_key_range"] = [int(args.prefill) + 1, len(prompt_ids) - 1]
     verdict["baseline_forced_slices"] = base_provenance.get("forced_slices")
