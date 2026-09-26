@@ -12,6 +12,7 @@ from hipengine.kvcache import (
     PREFIX_CACHE_DEFAULT,
     resolve_prefix_cache_mode,
 )
+from hipengine.kvcache.dms_config import DMSConfig
 from hipengine.server.api import ServerConfig, create_app
 from hipengine.server.log_style import COLOR_MODES, build_log_config
 
@@ -192,6 +193,8 @@ def build_parser() -> argparse.ArgumentParser:
             "(env HIPENGINE_CHAT_DEFAULT_MAX_TOKENS; default: 4096)"
         ),
     )
+    parser.add_argument("--dms-metadata", help="External DMS sidecar metadata for single-request compact BF16 KV")
+    parser.add_argument("--dms-prefill-mode", choices=("dense_pool", "layer_outer"), default="dense_pool")
     parser.add_argument(
         "--kv-storage",
         default=os.environ.get("HIPENGINE_KV_STORAGE", "bf16"),
@@ -450,6 +453,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         startup_min_free_mib=args.startup_min_free_mib,
         max_context_tokens=args.max_context_tokens,
         chat_default_max_tokens=args.chat_default_max_tokens,
+        dms=(DMSConfig(
+            args.dms_metadata, prefill_mode=args.dms_prefill_mode
+        ) if args.dms_metadata else None),
         kv_storage=args.kv_storage,
         kv_scale_dtype=args.kv_scale_dtype,
         kv_scale_granularity=args.kv_scale_granularity,
