@@ -244,6 +244,57 @@ def qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
         runtime.check(int(error))
 
 
+def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out4_amortized_bf16_bf16_out(
+    input_ptr: int,
+    expert_start_ptr: int,
+    weights_ptr: int,
+    output_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the grouped Q5_1 prefill kernel with amortized input reads.
+
+    Same arithmetic as
+    :func:`qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out`,
+    but each CTA covers four output columns of one expert and reuses the input
+    row batch across them instead of re-reading it once per column. The
+    reduction is the same 256-thread tree per output, so the published bits are
+    unchanged.
+    """
+
+    if compact_rows <= 0 or num_experts <= 0:
+        raise ValueError("compact_rows and num_experts must be positive")
+    if in_features <= 0 or in_features % 32 or out_features <= 0:
+        raise ValueError("Q5_1 grouped projection has invalid feature geometry")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        "hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out4_amortized_bf16_bf16_out",
+    )
+    fn.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        input_ptr,
+        expert_start_ptr,
+        weights_ptr,
+        output_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
     input_ptr: int,
     expert_start_ptr: int,
@@ -988,6 +1039,16 @@ def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:
             "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
         ),
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_1",
+            "selected_grouped_prefill_compact_rowbatch8_out4_amortized_bf16_bf16_out",
+        ),
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out4_amortized_bf16_bf16_out,
         replace=replace,
     )
     register(
