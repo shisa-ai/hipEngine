@@ -64,6 +64,7 @@ from hipengine.distributed.shard_weights import (
     SHARD_FAMILIES,
     attention_sharded_config,
     family_slot_names,
+    free_uploaded_shard_weights,
     materialize_attention_shards,
     materialize_mlp_shards,
     resolve_mlp_shard_context,
@@ -813,81 +814,99 @@ class MlpTP2GenerationSession:
         them. Every bulk buffer is device-scoped to its own rank and tracked in
         ``_bulk_buffers`` so growing or closing the session frees each exactly
         once - the workspace is sized to the prompt, so it is not a build-time
-        allocation.
+        allocation. A failure part-way through frees the partial workspace
+        before re-raising, so a rank that completed cannot leak behind one that
+        did not.
         """
 
         rows = int(rows)
         assert rows > 0
-        for device in self.devices:
-            runner = self._runners[device]
-            with scoped_current_device(self.runtime, device):
-                scratch = _GGUFFullAttentionPrefillScratch.allocate(
-                    runner,
-                    rows=rows,
-                    capacity=rows,
-                    allocate_kv_cache=False,
-                    runtime=self.runtime,
-                )
-                hidden_a = malloc(rows * runner.hidden_size * 2, runtime=self.runtime)
-                hidden_b = malloc(rows * runner.hidden_size * 2, runtime=self.runtime)
-                token_buf = malloc(rows * np.int64().nbytes, runtime=self.runtime)
-                # The reduced attention output, when the attention phase produces
-                # a per-rank partial. It is a separate buffer rather than an
-                # in-place update of ``scratch.attn_out``: the spin-add kernel
-                # declares both its input and its output ``__restrict__``, and
-                # handing it the same pointer would make that contract false for
-                # a read-modify-write it does not need to perform.
-                attn_reduced = (
-                    malloc(rows * runner.hidden_size * 2, runtime=self.runtime)
-                    if self.attention_shard
-                    else None
-                )
-                if self.head_shard:
-                    logits_buf = malloc(
-                        rows * int(self._head_plan.rows_per_rank) * 4,
+        try:
+            for device in self.devices:
+                runner = self._runners[device]
+                with scoped_current_device(self.runtime, device):
+                    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+                        runner,
+                        rows=rows,
+                        capacity=rows,
+                        allocate_kv_cache=False,
                         runtime=self.runtime,
                     )
-                elif device == self.control_device:
-                    logits_buf = malloc(
-                        rows * runner.vocab_size * 4, runtime=self.runtime
+                    # Register the scratch and its owner buffers before the
+                    # next allocation: a failure part-way through this rank's
+                    # build must leave every acquired buffer reachable by
+                    # ``_release_bulk_prefill_workspace``. The scratch's own
+                    # ``allocate`` already frees its partial set internally.
+                    self._bulk_scratch[device] = scratch
+                    self._bulk_buffers[device].extend(scratch.buffers)
+                    hidden_a = malloc(rows * runner.hidden_size * 2, runtime=self.runtime)
+                    self._bulk_buffers[device].append(hidden_a)
+                    hidden_b = malloc(rows * runner.hidden_size * 2, runtime=self.runtime)
+                    self._bulk_buffers[device].append(hidden_b)
+                    token_buf = malloc(rows * np.int64().nbytes, runtime=self.runtime)
+                    self._bulk_buffers[device].append(token_buf)
+                    # The reduced attention output, when the attention phase
+                    # produces a per-rank partial. It is a separate buffer rather
+                    # than an in-place update of ``scratch.attn_out``: the
+                    # spin-add kernel declares both its input and its output
+                    # ``__restrict__``, and handing it the same pointer would
+                    # make that contract false for a read-modify-write it does
+                    # not need to perform.
+                    attn_reduced = (
+                        malloc(rows * runner.hidden_size * 2, runtime=self.runtime)
+                        if self.attention_shard
+                        else None
                     )
-                else:
-                    logits_buf = None
-            self._bulk_scratch[device] = scratch
-            self._bulk_hidden[device] = (hidden_a.ptr, hidden_b.ptr)
-            self._bulk_token_buf[device] = token_buf
-            if attn_reduced is not None:
-                self._bulk_attn_reduced[device] = int(attn_reduced.ptr)
-                self._bulk_buffers[device].append(attn_reduced)
-            if logits_buf is not None:
-                self._bulk_logits_buf[device] = logits_buf
-            self._bulk_buffers[device].extend([hidden_a, hidden_b, token_buf])
-            if logits_buf is not None:
-                self._bulk_buffers[device].append(logits_buf)
-            self._bulk_buffers[device].extend(scratch.buffers)
+                    if attn_reduced is not None:
+                        self._bulk_buffers[device].append(attn_reduced)
+                    if self.head_shard:
+                        logits_buf = malloc(
+                            rows * int(self._head_plan.rows_per_rank) * 4,
+                            runtime=self.runtime,
+                        )
+                    elif device == self.control_device:
+                        logits_buf = malloc(
+                            rows * runner.vocab_size * 4, runtime=self.runtime
+                        )
+                    else:
+                        logits_buf = None
+                    if logits_buf is not None:
+                        self._bulk_buffers[device].append(logits_buf)
+                self._bulk_hidden[device] = (hidden_a.ptr, hidden_b.ptr)
+                self._bulk_token_buf[device] = token_buf
+                if attn_reduced is not None:
+                    self._bulk_attn_reduced[device] = int(attn_reduced.ptr)
+                if logits_buf is not None:
+                    self._bulk_logits_buf[device] = logits_buf
+            self._bulk_host_tokens = np.empty(rows, dtype=np.int64)
+            self._bulk_shard_group = MlpShardGroup(
+                self.runtime,
+                devices=self.devices,
+                streams={device: self._rank_stream(device) for device in self.devices},
+                hidden=self.hidden_size,
+                per_rank_ffn=self._per_rank_ffn,
+                weights=self._uploaded_shard_weights,
+                staging_dtype="bf16",
+                driver=self.driver,
+                mlp_decode_variant=self._fused_shard_variant,
+                slot_sets=2,
+                rows=rows,
+                owns_weights=False,
+                reduce_mode=self.reduce_mode,
+                # Head sharding reduces twice per layer: the attention-output
+                # partial before the post-attention norm, then the MLP down
+                # partial. Each needs its own staging slot, because the peer's
+                # spin exits as soon as its flag reaches the step and could
+                # otherwise overwrite the staging under this rank's reader.
+                reductions_per_layer=2 if self.attention_shard else 1,
+            )
+        except BaseException:
+            # Partial workspace: free everything acquired for the ranks that
+            # already completed, then re-raise. ``_bulk_rows`` is deliberately
+            # still unset here, so cleanup cannot depend on it.
+            self._release_bulk_prefill_workspace()
+            raise
         self._bulk_rows = rows
-        self._bulk_host_tokens = np.empty(rows, dtype=np.int64)
-        self._bulk_shard_group = MlpShardGroup(
-            self.runtime,
-            devices=self.devices,
-            streams={device: self._rank_stream(device) for device in self.devices},
-            hidden=self.hidden_size,
-            per_rank_ffn=self._per_rank_ffn,
-            weights=self._uploaded_shard_weights,
-            staging_dtype="bf16",
-            driver=self.driver,
-            mlp_decode_variant=self._fused_shard_variant,
-            slot_sets=2,
-            rows=rows,
-            owns_weights=False,
-            reduce_mode=self.reduce_mode,
-            # Head sharding reduces twice per layer: the attention-output partial
-            # before the post-attention norm, then the MLP down partial. Each
-            # needs its own staging slot, because the peer's spin exits as soon
-            # as its flag reaches the step and could otherwise overwrite the
-            # staging under this rank's reader.
-            reductions_per_layer=2 if self.attention_shard else 1,
-        )
 
     def _release_bulk_prefill_workspace(self) -> None:
         """Free the bulk prefill scratch, group and buffers, exactly once.
@@ -2401,7 +2420,7 @@ class MlpTP2GenerationSession:
             except Exception:  # noqa: BLE001 - teardown continues
                 pass
             self._device_exchange = None
-        if self._bulk_shard_group is not None or self._bulk_rows:
+        if self._bulk_shard_group is not None or self._bulk_rows or self._bulk_scratch:
             self._release_rank_f16_rocblas_planes()
             self._release_bulk_prefill_workspace()
         if self._shard_group is not None:
@@ -2416,6 +2435,16 @@ class MlpTP2GenerationSession:
         self._head_weights.clear()
         self._head_logits_bufs.clear()
         self._head_plan = None
+        # The attention shard weights are also reachable through each runner's
+        # substituted resident layer map. Freeing them here covers the case
+        # where a build failed before a rank's substitution landed; the
+        # allocation's own idempotence makes the resident traversal's later
+        # ``ShardWeight.free`` a no-op rather than a double free.
+        if self._attention_shard_weights:
+            free_uploaded_shard_weights(
+                self._attention_shard_weights, runtime=self.runtime
+            )
+            self._attention_shard_weights = {}
         for device, buffers in self._extra_buffers.items():
             for buffer in buffers:
                 try:
@@ -2425,6 +2454,24 @@ class MlpTP2GenerationSession:
                     pass
         self._extra_buffers.clear()
         self._step_buffers.clear()
+        # The decode scratch is allocated by ``_build_rank`` and owned by the
+        # session, not by the runner, so the runner's weight free does not
+        # reach it. Free its buffers under each rank's device scope before the
+        # map is cleared; the demand-driven split-K growth buffers are tracked
+        # outside ``buffers`` and must be freed too.
+        for device, scratch in self._scratches.items():
+            with scoped_current_device(self.runtime, device):
+                for buffer in reversed(
+                    tuple(
+                        getattr(scratch, "full_attn_split_growth_buffers", ()) or ()
+                    )
+                    + tuple(getattr(scratch, "buffers", ()) or ())
+                ):
+                    try:
+                        free(buffer, runtime=self.runtime)
+                    except Exception:  # noqa: BLE001 - teardown continues
+                        pass
+        self._scratches.clear()
         for device, runner in self._runners.items():
             weights = runner.weights
             runner.weights = None
@@ -2435,7 +2482,6 @@ class MlpTP2GenerationSession:
                 except Exception:  # noqa: BLE001 - teardown continues
                     pass
         self._runners.clear()
-        self._scratches.clear()
 
     def __enter__(self) -> "MlpTP2GenerationSession":
         return self

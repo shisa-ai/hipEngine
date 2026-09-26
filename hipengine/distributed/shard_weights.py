@@ -622,6 +622,28 @@ def shard_bytes(shards: Mapping[int, MlpShardLayer], *, rank: int) -> int:
     return total
 
 
+def free_uploaded_shard_weights(
+    uploaded: Mapping[int, Mapping[int, Mapping[str, Any]]],
+    *,
+    runtime: Any | None = None,
+) -> None:
+    """Release every uploaded shard weight exactly once.
+
+    The weights are also reachable through the resident layer map after the
+    attention substitution, so the session may free them from either side;
+    ``ShardWeightAllocation.free`` is idempotent, which is what makes this
+    safe. Failures are contained so one weight cannot strand the rest.
+    """
+
+    for per_device in uploaded.values():
+        for weights in per_device.values():
+            for weight in weights.values():
+                try:
+                    weight.free(runtime=runtime)
+                except Exception:  # noqa: BLE001 - teardown continues
+                    pass
+
+
 def upload_shard_weights(
     runtime: Any,
     shards: Mapping[int, MlpShardLayer],
@@ -635,29 +657,45 @@ def upload_shard_weights(
     ABI operand name (``hipengine.loading.qwen35_gguf_consumer_surface``
     ``LINEAR_WEIGHT_OPERANDS``): t16 resident layouts resolve their pointer as
     ``tiles``, raw/dense as ``raw``.
+
+    Allocation-failure cleanup: every weight this call successfully creates is
+    tracked as it is made, so a failure part-way through frees the whole set
+    before re-raising rather than leaking the already-uploaded ranks, layers or
+    roles. The failed upload's own allocation is released by
+    :class:`~hipengine.distributed.shard_exec.ShardWeightAllocation`.
     """
 
     from hipengine.distributed.shard_exec import upload_shard_weight
 
     device_list = [int(device) for device in devices]
     uploaded: dict[int, dict[int, dict[str, Any]]] = {}
-    for layer_id, layer in shards.items():
-        per_device: dict[int, dict[str, Any]] = {}
-        for device in device_list:
-            payloads = layer.rank_payloads(device)
-            weights = {
-                role: upload_shard_weight(
-                    runtime,
-                    device=device,
-                    name="tiles" if "t16" in payload.layout else "raw",
-                    layout=payload.layout,
-                    quant_key=payload.quant_key,
-                    payload=payload.payload,
-                )
-                for role, payload in payloads.items()
-            }
-            per_device[device] = weights
-        uploaded[layer_id] = per_device
+    created: list[Any] = []
+    try:
+        for layer_id, layer in shards.items():
+            per_device: dict[int, dict[str, Any]] = {}
+            for device in device_list:
+                payloads = layer.rank_payloads(device)
+                weights: dict[str, Any] = {}
+                for role, payload in payloads.items():
+                    weight = upload_shard_weight(
+                        runtime,
+                        device=device,
+                        name="tiles" if "t16" in payload.layout else "raw",
+                        layout=payload.layout,
+                        quant_key=payload.quant_key,
+                        payload=payload.payload,
+                    )
+                    weights[role] = weight
+                    created.append(weight)
+                per_device[device] = weights
+            uploaded[layer_id] = per_device
+    except BaseException:
+        for weight in reversed(created):
+            try:
+                weight.free(runtime=runtime)
+            except Exception:  # noqa: BLE001 - teardown continues
+                pass
+        raise
     return uploaded
 
 

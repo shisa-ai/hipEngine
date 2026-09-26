@@ -476,6 +476,18 @@ def env(monkeypatch):
     head_uploads: list[tuple[int, str, str]] = []
     head_freed: list[int] = []
     attention_plans: list[int] = []
+    attention_shard_weights_created: list[Any] = []
+
+    class FakeAttentionShardWeight:
+        """The uploaded head slice: records each free so double-frees show."""
+
+        def __init__(self, device):
+            self.device = int(device)
+            self.freed = 0
+            attention_shard_weights_created.append(self)
+
+        def free(self, *, runtime=None):
+            self.freed += 1
 
     def fake_materialize_attention(model_path, *, world_size, layer_ids=None,
                                    backend="hip_gfx1100"):
@@ -490,7 +502,10 @@ def env(monkeypatch):
         # own head slice replaces the full-width slot, and the session reads
         # the resulting layer map.
         return {
-            layer_id: {int(device): {"attn_q": FakeHeadWeight(device)} for device in devices}
+            layer_id: {
+                int(device): {"attn_q": FakeAttentionShardWeight(device)}
+                for device in devices
+            }
             for layer_id in shards
         }
 
@@ -641,6 +656,7 @@ def env(monkeypatch):
         "device_exchanges": device_exchanges,
         "head_plans": head_plans,
         "attention_plans": attention_plans,
+        "attention_shard_weights_created": attention_shard_weights_created,
         "head_uploads": head_uploads,
         "head_freed": head_freed,
         "injected_rows": injected_rows,
@@ -2107,3 +2123,115 @@ def test_single_row_decode_does_not_enter_the_bulk_dispatch_context(env) -> None
         runner.prefill_dispatch_context for runner in env["runners"]
     )
     session.close()
+
+
+# ---------------------------------------------------------------------------
+# Resource ownership and allocation-failure cleanup
+# ---------------------------------------------------------------------------
+
+
+def test_close_frees_attention_shard_weights_exactly_once(env) -> None:
+    """The uploaded head slices must be released, and only once each.
+
+    The attention shards are uploaded before the rank loop and merged into each
+    runner's resident layer map. They are session-owned allocations: close must
+    release them, and the resident map's own free traversal (which also reaches
+    them) must not release them a second time.
+    """
+
+    session = _graphed_session(env, attention_shard=True)
+    created = list(env["attention_shard_weights_created"])
+    assert created, "the attention route uploaded shard weights"
+    assert session._attention_shard_weights
+    session.close()
+    session.close()
+    assert [weight.freed for weight in created] == [1] * len(created)
+
+
+def test_close_frees_the_decode_scratch_buffers(env, monkeypatch) -> None:
+    """The decode scratch is session-owned, not runner-owned, so close frees it."""
+
+    session = _session(env)
+    scratch = session._scratches[0]
+    buffer = FakeBuffer(0xCAFE, 64)
+    scratch.buffers = (buffer,)
+    freed = []
+    real_free = tg.free
+
+    def tracking_free(candidate, **kwargs):
+        freed.append(candidate)
+        return real_free(candidate, **kwargs)
+
+    monkeypatch.setattr(tg, "free", tracking_free)
+    session.close()
+    assert freed.count(buffer) == 1
+
+
+def test_bulk_workspace_partial_allocation_failure_frees_acquired_buffers(
+    env, monkeypatch
+) -> None:
+    """A rank that completes must not leak when a later allocation fails.
+
+    The workspace build acquires the scratch, hidden planes, token buffer and
+    optional reduced-attention/logits buffers. Registering them only after a
+    rank finished left a mid-rank failure's buffers unreachable.
+    """
+
+    session = MlpTP2GenerationSession(
+        "fake.gguf", devices=(0, 1), mode="tp2", max_sequence_length=64,
+        schedule="eager", bulk_prefill=True,
+    )
+    assert session._bulk_rows == 0, "the workspace is deferred until use"
+    freed = []
+    real_free = tg.free
+    real_malloc = tg.malloc
+    calls = {"n": 0}
+
+    def failing_malloc(nbytes, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise RuntimeError("simulated allocation failure")
+        return real_malloc(nbytes, **kwargs)
+
+    def tracking_free(candidate, **kwargs):
+        freed.append(candidate)
+        return real_free(candidate, **kwargs)
+
+    monkeypatch.setattr(tg, "malloc", failing_malloc)
+    monkeypatch.setattr(tg, "free", tracking_free)
+    with pytest.raises(RuntimeError, match="simulated allocation failure"):
+        session._ensure_bulk_prefill_workspace(4)
+    # hidden_a and hidden_b were acquired before the third malloc failed.
+    assert len(freed) == 2
+    session.close()
+
+
+def test_close_frees_a_partial_bulk_workspace_without_a_group_or_rows(
+    env, monkeypatch
+) -> None:
+    """Close cannot gate workspace cleanup on the group or the row stamp.
+
+    A build that fails before constructing the group never stamps ``_bulk_rows``,
+    so the old ``group or rows`` guard skipped cleanup entirely.
+    """
+
+    session = MlpTP2GenerationSession(
+        "fake.gguf", devices=(0, 1), mode="tp2", max_sequence_length=64,
+        schedule="eager", bulk_prefill=True,
+    )
+    buffer = FakeBuffer(0xDEAD, 64)
+    session._bulk_buffers[0].append(buffer)
+    session._bulk_scratch[0] = SimpleNamespace(
+        buffers=(buffer,), full_attn_split_growth_buffers=()
+    )
+    assert session._bulk_rows == 0 and session._bulk_shard_group is None
+    freed = []
+    real_free = tg.free
+
+    def tracking_free(candidate, **kwargs):
+        freed.append(candidate)
+        return real_free(candidate, **kwargs)
+
+    monkeypatch.setattr(tg, "free", tracking_free)
+    session.close()
+    assert freed.count(buffer) == 1

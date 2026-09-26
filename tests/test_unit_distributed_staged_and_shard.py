@@ -412,3 +412,49 @@ def test_close_frees_activations_and_weights_once(launchers) -> None:
     frees = [c for c in rt.calls if c[0] == "free"]
     assert len(frees) == 8, "5 activations + 3 weights, freed exactly once"
     assert {c[1] for c in frees} == {1}
+
+
+def test_shard_weight_free_is_device_scoped_and_idempotent() -> None:
+    """A ``ShardWeight`` must free its allocation once, on its own device.
+
+    The resident weight map's free traversal calls ``weight.free`` on every
+    entry, and a head-sharded rank's map holds these stand-ins. Without the
+    method the traversal raised part-way through, so ``session.close`` swallowed
+    the error and left every weight after the failing one unreleased. The same
+    allocation is also reachable from the session's uploaded-shard cleanup, so
+    the free must be idempotent.
+    """
+
+    rt = FakeHipRuntime()
+    weight = shard_exec.upload_shard_weight(
+        rt,
+        device=1,
+        name="tiles",
+        layout="gguf_q4_k_t16_v1",
+        quant_key="gguf_q4_k",
+        payload=np.zeros(16, dtype=np.uint8),
+    )
+    weight.free()
+    weight.free()
+    frees = [c for c in rt.calls if c[0] == "free"]
+    assert len(frees) == 1, "the allocation is freed exactly once"
+    assert frees[0][1] == 1, "the free runs under the owning device"
+
+
+def test_shard_weight_allocation_frees_buffer_when_upload_copy_fails(monkeypatch) -> None:
+    """An H2D failure must not strand the buffer acquired before the copy."""
+
+    rt = FakeHipRuntime()
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated upload copy failure")
+
+    monkeypatch.setattr(shard_exec, "copy_host_to_device", boom)
+    with pytest.raises(RuntimeError, match="simulated upload copy failure"):
+        shard_exec.ShardWeightAllocation(
+            "tiles", rt, 1, np.zeros(16, dtype=np.uint8)
+        )
+    mallocs = [c for c in rt.calls if c[0] == "malloc"]
+    frees = [c for c in rt.calls if c[0] == "free"]
+    assert len(mallocs) == 1 and len(frees) == 1, "acquired then released"
+    assert frees[0][1] == 1

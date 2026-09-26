@@ -22,12 +22,15 @@ from hipengine.distributed.shard_weights import (
     MLP_ROLES,
     MLPShardError,
     MlpShardLayer,
+    MlpShardPayload,
     _t16_repack_for_layout,
     attention_sharded_config,
     family_slot_names,
+    free_uploaded_shard_weights,
     materialize_mlp_shards,
     resolve_mlp_shard_context,
     shard_bytes,
+    upload_shard_weights,
 )
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -1061,3 +1064,83 @@ def test_an_ssm_a_payload_that_is_not_f32_is_refused_rather_than_passed_through(
         materialize_payload_slice(
             "blk.0.ssm_a", source, plan.slice_for(0), ggml_type_name="Q4_K"
         )
+
+
+# ---------------------------------------------------------------------------
+# Allocation-failure cleanup (no model, no ROCm)
+# ---------------------------------------------------------------------------
+
+
+def _synthetic_upload_layer(layer_id: int, roles=("ffn_gate", "ffn_up", "ffn_down")):
+    """One synthetic layer whose ranks each carry the given roles."""
+
+    return MlpShardLayer(
+        layer_id=int(layer_id),
+        ranks={
+            rank: {
+                role: MlpShardPayload(
+                    role=role,
+                    layout="gguf_q4_k_t16_v1",
+                    quant_key="gguf_q4_k",
+                    payload=np.zeros(16, dtype=np.uint8),
+                    local_shape=(1, 16),
+                )
+                for role in roles
+            }
+            for rank in (0, 1)
+        },
+    )
+
+
+def test_upload_shard_weights_frees_every_acquired_buffer_on_failure(monkeypatch) -> None:
+    """A partial upload must release the ranks, layers and roles it already took.
+
+    ``upload_shard_weights`` builds a nested dict of device allocations. Before
+    the fix a failure part-way through dropped the partial dict, so every buffer
+    already uploaded leaked. The failed upload's own buffer is released by
+    ``ShardWeightAllocation``; the rest are released by the tracking list here.
+    """
+
+    from hipengine.distributed import shard_exec
+    from tests.test_unit_distributed_staged_and_shard import FakeHipRuntime
+
+    rt = FakeHipRuntime()
+    shards = {
+        layer_id: _synthetic_upload_layer(layer_id) for layer_id in (0, 1)
+    }
+    real_copy = shard_exec.copy_host_to_device
+    calls = {"n": 0}
+
+    def failing_copy(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 5:
+            raise RuntimeError("simulated upload failure")
+        return real_copy(*args, **kwargs)
+
+    monkeypatch.setattr(shard_exec, "copy_host_to_device", failing_copy)
+    with pytest.raises(RuntimeError, match="simulated upload failure"):
+        upload_shard_weights(rt, shards, devices=(0, 1))
+
+    mallocs = [c for c in rt.calls if c[0] == "malloc"]
+    frees = [c for c in rt.calls if c[0] == "free"]
+    # Four uploads completed and the fifth acquired its buffer before the copy
+    # failed, so every acquired buffer must have been released exactly once.
+    assert len(mallocs) == 5
+    assert len(frees) == len(mallocs)
+    assert len({c[2] for c in frees}) == len(frees), "no duplicate frees"
+
+
+def test_free_uploaded_shard_weights_is_idempotent() -> None:
+    """The resident map and the uploaded registry can both reach one weight."""
+
+    from tests.test_unit_distributed_staged_and_shard import FakeHipRuntime
+
+    rt = FakeHipRuntime()
+    uploaded = upload_shard_weights(
+        rt, {0: _synthetic_upload_layer(0, roles=("ffn_gate",))}, devices=(0,)
+    )
+    free_uploaded_shard_weights(uploaded)
+    free_uploaded_shard_weights(uploaded)
+    frees = [c for c in rt.calls if c[0] == "free"]
+    assert len(frees) == 1
+    assert frees[0][1] == 0
