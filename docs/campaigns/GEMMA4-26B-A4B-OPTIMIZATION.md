@@ -1457,6 +1457,41 @@ record, not permission to reset unrelated work or weaken correctness.
   first, so the amortized owner resolved but was never reached, which showed up
   as "1.29x in isolation, no change in situ" until the list order was fixed.
 
+  *Diagnostic 2026-09-26 (iteration 63): attention prefill, and why it is not a
+  loop swap.* Attention prefill is the largest item left (923 ms of 3130 ms,
+  29.5%, 15.4 ms per layer) at roughly 190 GFLOPS. It is not structurally the
+  same problem as the MoE owners, so the amortization that paid there does not
+  apply directly.
+
+  `gemma4_attention_prefill_kernel` runs one CTA per (token, head) -- 11264 CTAs
+  at 1024 tokens and 11 heads -- and pass 1 walks all `keys` one at a time, each
+  key costing a 256-thread `gemma4_attn_block_sum`: a store, a barrier, eight
+  barrier-separated tree rounds, and one more barrier after the call, so about
+  ten barriers per key and about 10^4 barriers per CTA. Each thread issues one
+  useful FMA per key against roughly thirty instructions of reduction and loop
+  overhead, which is what 190 GFLOPS looks like.
+
+  Two bit-identical fixes are available and neither is a nest swap:
+
+  - Batch the key reductions. Compute a tile of `KEY_TILE` key partials into
+    registers, store them into a `KEY_TILE x blockDim` slab, and run the tree
+    for the whole tile at once. The per-key tree keeps its exact 256 leaves and
+    pairing, so the published bits do not move, and the barrier count falls by
+    `KEY_TILE`. The blocker is shared memory, not arithmetic: `logits_s` is
+    `keys` floats, which is 62 KB at the 15616-key geometry
+    `tests/test_gpu_gemma4_attention_geometry.py` exercises at `head_dim` 512, so
+    the extra slab has to be sized against the geometry rather than fixed, and
+    `gemma4_attention_shared_bytes` has to agree with the launcher.
+  - Replace the last five tree rounds (strides 16, 8, 4, 2, 1) with
+    `__shfl_down` over the lanes that the LDS tree would have paired. Same
+    pairing, same order, so also bit-identical, and it removes half the barriers
+    in pass 1 without any shared-memory cost. The first three rounds (strides
+    128, 64, 32) cross warps and have to stay in LDS.
+
+  Neither is a candidate that can be judged by the isolated A/B used for the
+  MoE owners: attention has no bit-equality test against a slower owner, so the
+  evidence has to be the parity suite plus the teacher-forced gate.
+
   - **The residual 0.060867 is reduction association, and it is irreducible.**
     Splitting the K accumulation across two independent f32 accumulators moved
     kl_max to 0.081599 - same class, different draw, not an improvement. The
