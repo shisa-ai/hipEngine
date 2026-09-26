@@ -1380,6 +1380,51 @@ record, not permission to reset unrelated work or weaken correctness.
   gap, which reduces what that decision is worth in absolute terms but does not
   resolve it.
 
+  *Diagnostic 2026-09-26 (iteration 61): the grouped owner was input-bound, and
+  the loop nest was the reason.* Iteration 60 left the fused gate+up owner at
+  22.2 ms per call. A scaling probe of that owner on the real artifact settled
+  what it was bound by: device time is linear in compact rows (1.90x / 3.64x /
+  7.09x / 15.86x for 2x / 4x / 8x / 16x the rows), which is the signature of a
+  kernel that re-walks the input once per output column. The arithmetic agrees -
+  `out_features * rows * in_features * 2` bytes is 65 GB for one call against
+  2.8 GB of weight traffic, about 1.5 TB/s of L2 reads and roughly one 2-byte
+  input load per FMA, at 5% of fp32 peak.
+
+  The per-output association is a fixed 128-thread tree over each thread's
+  ascending column partials, and `ROW_BATCH` does not appear in it, so the loop
+  nest could be swapped to load the input row batch once per k-block and reuse it
+  across `OUT_BATCH` output columns without changing any output's summation
+  order. That is a bit-identical change, and it measures as one.
+
+  | shape | ms per call | VGPRs | waves/SIMD |
+  | --- | ---: | ---: | ---: |
+  | row-batch `<8, 1>` | 44.3 | 66 | 8 |
+  | amortized `<8, 4>` | **15.8** | 173 | 8 |
+  | amortized `<4, 8>` | 21.8 | 230 | 6 |
+
+  `<4, 8>` halves the input traffic again but doubles the weight passes and drops
+  occupancy, so it loses. Register pressure is what stops the shape going wider:
+  the accumulator array is `2 * OUT_BATCH * ROW_BATCH` f32.
+
+  | default-route family | iteration 60 ms | iteration 61 ms |
+  | --- | ---: | ---: |
+  | fused `gate_up` (grouped dual) | 1452 | 471 |
+  | Q5_1 down (grouped) | 1101 | 1130 |
+  | attention prefill | 901 | 905 |
+  | dense Q8_0 | 575 | 552 |
+  | **layer total** | **4242** | **3348** |
+
+  Prefill 4.242 -> 3.360 s on the W7900 lane (241.4 -> 304.8 tok/s) and 253.0 ->
+  319.0 tok/s on the RX 7900 XTX lane; first-token latency 4.05 -> 3.21 s, decode
+  flat at 43.9149. The gate reports `kl_max` of exactly 0.000000 over 1023 rows
+  with top-1 rate 1.0, so no promotion gate applies. Cumulative for the
+  campaign's prefill column, 128.5 -> 319.0 tok/s (+148%).
+
+  The same probe now points at the Q5_1 down owner (1130 ms, 33.7%, the largest
+  single item): it has the identical nest, with the differences noted in the
+  worklog entry. The WMMA arm's 402.5 tok/s is no longer ahead of the exact route
+  and its open `kl_max` decision is correspondingly worth less.
+
   - **The residual 0.060867 is reduction association, and it is irreducible.**
     Splitting the K accumulation across two independent f32 accumulators moved
     kl_max to 0.081599 - same class, different draw, not an improvement. The

@@ -29,6 +29,9 @@ _OUTPUT_NAME = "gguf_q4_k_selected_prefill.so"
 _SYMBOL_GROUPED_ROW8_BF16 = (
     "hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out"
 )
+_SYMBOL_GROUPED_ROW8_OUT4_AMORTIZED_BF16 = (
+    "hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_amortized_bundle_bf16_bf16_out"
+)
 _SYMBOL_GROUPED_ROW8_OUT4_BF16 = (
     "hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out"
 )
@@ -195,6 +198,75 @@ def gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out(
     library = library or build_gguf_q4_k_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_GROUPED_ROW8_BF16)
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 6 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        x_ptr,
+        expert_start_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        output_a_ptr,
+        output_b_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        output_row_stride,
+        expert_stride_rows,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    output_a_ptr: int,
+    output_b_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    output_row_stride: int = 0,
+    expert_stride_rows: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact grouped Q4_K gate+up kernel with amortized input reads.
+
+    Same arithmetic and same arguments as
+    :func:`gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out`, but each
+    CTA covers four output columns of one expert and reuses the input row batch
+    across them instead of re-reading it once per column. The stride arguments
+    carry the same meaning. ``in_features`` must not exceed 4096, the largest
+    width whose block metadata fits the kernel's shared slab.
+    """
+
+    for value, name in (
+        (compact_rows, "compact_rows"),
+        (num_experts, "num_experts"),
+        (in_features, "in_features"),
+        (out_features, "out_features"),
+    ):
+        _check_positive(value, name)
+    for value, name in (
+        (output_row_stride, "output_row_stride"),
+        (expert_stride_rows, "expert_stride_rows"),
+    ):
+        if value < 0:
+            raise ValueError(f"{name} must not be negative")
+    if in_features % _Q4_K_BLOCK:
+        raise ValueError("in_features must be divisible by GGUF Q4_K block size 256")
+    if in_features > 4096:
+        raise ValueError("in_features must not exceed 4096")
+    library = library or build_gguf_q4_k_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GROUPED_ROW8_OUT4_AMORTIZED_BF16)
     fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 6 + [ctypes.c_void_p]
     fn.restype = ctypes.c_int
     err = fn(
@@ -1432,6 +1504,16 @@ def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None
             "selected_dual_grouped_rowbatch8_bf16_bf16_out",
         ),
         gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out,
         replace=replace,
     )
     register(

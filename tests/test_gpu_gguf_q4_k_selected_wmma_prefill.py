@@ -59,6 +59,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     q4_k_predecode_scale_min_sidemeta,
     plan_gguf_q4_k_selected_prefill_build,
     selected_dual_wmma_prefill_compact_default_tiles,
+    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
@@ -671,8 +672,14 @@ def test_grouped_rowbatch8_fused_stride_matches_the_two_tensor_form_bits() -> No
             copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
             devices.append(device)
         # The two-tensor form writes one half-width buffer per side; the fused
-        # form writes both halves into one full-width buffer.
-        for width in (fixture.out_features_a, fixture.out_features_a, fused_width):
+        # form writes both halves into one full-width buffer. The amortized
+        # owner gets its own fused buffer so its bits can be compared.
+        for width in (
+            fixture.out_features_a,
+            fixture.out_features_a,
+            fused_width,
+            fused_width,
+        ):
             outputs.append(
                 malloc(
                     fixture.compact_rows * width * np.dtype(np.uint16).itemsize,
@@ -712,10 +719,33 @@ def test_grouped_rowbatch8_fused_stride_matches_the_two_tensor_form_bits() -> No
             expert_stride_rows=fused_width,
             runtime=runtime,
         )
+        # Amortized form: same fused layout, but each CTA covers four output
+        # columns and reuses the input row batch across them. The loop nest is
+        # the only difference, so the bits must match the row-batch owner's.
+        gguf_q4_k_selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out(
+            devices[0].ptr,
+            devices[1].ptr,
+            devices[4].ptr,
+            devices[4].ptr + fixture.out_features_a * row_bytes,
+            outputs[3].ptr,
+            outputs[3].ptr + fixture.out_features_a * np.dtype(np.uint16).itemsize,
+            fixture.compact_rows,
+            fixture.num_experts,
+            fixture.in_features,
+            fixture.out_features_a,
+            output_row_stride=fused_width,
+            expert_stride_rows=fused_width,
+            runtime=runtime,
+        )
         got = []
         for output, width in zip(
             outputs,
-            (fixture.out_features_a, fixture.out_features_a, fused_width),
+            (
+                fixture.out_features_a,
+                fixture.out_features_a,
+                fused_width,
+                fused_width,
+            ),
             strict=True,
         ):
             host = np.empty((fixture.compact_rows, width), dtype=np.uint16)
@@ -725,6 +755,7 @@ def test_grouped_rowbatch8_fused_stride_matches_the_two_tensor_form_bits() -> No
             got.append(host)
         np.testing.assert_array_equal(got[2][:, : fixture.out_features_a], got[0])
         np.testing.assert_array_equal(got[2][:, fixture.out_features_a :], got[1])
+        np.testing.assert_array_equal(got[3], got[2])
     finally:
         for output in reversed(outputs):
             free(output, runtime=runtime)
