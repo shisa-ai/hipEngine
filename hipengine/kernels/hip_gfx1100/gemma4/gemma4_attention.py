@@ -117,13 +117,6 @@ def decode_slices(keys: int, head_dim: int) -> int:
         slices <<= 1
     return slices
 
-    if keys < 512:
-        return 1
-    slices = 1
-    while slices < 4 and keys > slices * 512:
-        slices <<= 1
-    return slices
-
 
 def decode_selection(library: ctypes.CDLL | None = None) -> int:
     """Which decode kernel the launcher last selected.

@@ -1036,6 +1036,35 @@ direction. The clean-device pass also puts every other cell 4-10% above its
     Reaching 80.2 would require beating llama.cpp on attention and the dense
     projections as well. Evidence row
     `2026-09-26-gemma4-26b-a4b-target-gap-arithmetic.json`.
+
+  *Correction 2026-09-26 (iteration 44): the split is already the default, so its
+  gain is banked and the open decision is keep-or-rollback.* The campaign has
+  been describing the split as unrealized - "if the split is accepted, the
+  reverted slice table is worth +5.3% at the metric row" - and that framing is
+  wrong. Checking the runtime rather than the narrative:
+
+  - **It is on, unconditionally.** `gemma4_attention.py:312` calls
+    `slices = decode_slices(key_count, head_dim)` with no guard, and the file
+    contains no `HIPENGINE_*` environment gate. The slice table is
+    `keys < 1024 -> 1`, `head_dim <= 256 -> 4`, and otherwise 2 up to 1024 keys
+    and 4 from 2048.
+  - **The metric already contains it.** `decode_slices`' own docstring records
+    "the row measures 45.33 tok/s with 4 slices over keys 1025-1151", which
+    matches this campaign's measured 45.06-45.94 range on this tree. The current
+    45.9 tok/s **is** a split number, not a pre-split one.
+  - **So the decision is keep-or-rollback, not promote-or-not.** Rolling it back
+    would cost roughly 5% of the metric. Iterations 36-38 established that it
+    breaches the absolute `kl_max` bar (2 of 1023 rows above 1e-3) through
+    irreducible association reordering, while the aggregate bars pass with room
+    (p50 row KL 2.592e-08, p99 3.955e-05) and top-1 is 1.0 with zero flips. The
+    question for the lead is whether an absolute `kl_max` applies to a
+    reordering-class change at all, and the cost of saying no is now correctly
+    stated as a rollback cost rather than a foregone gain.
+  - **One defect fixed while checking.** `decode_slices` carried an unreachable
+    second copy of its slice logic after an unconditional `return`. Removed;
+    behaviour is provably unchanged and the slice table was re-verified across
+    keys 512-8192 at both head dims. Evidence row
+    `2026-09-26-gemma4-26b-a4b-split-is-default-banked.json`.
   *Diagnostic 2026-09-26 (iteration 33): the routing hypothesis is closed, and
   the campaign's three-cheap-candidates rule is now in play.* A resolve-level
   probe over a real 1024-token `LLM.generate()` - spying on
