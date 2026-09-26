@@ -44,7 +44,7 @@ except ImportError:  # pragma: no cover - Pydantic v1 compatibility
 
 from starlette.concurrency import run_in_threadpool
 
-from hipengine import LLM, SamplingParams
+from hipengine import DMSConfig, LLM, SamplingParams
 from hipengine.generation import (
     DecodeState,
     EngineCommandTimeout,
@@ -409,6 +409,7 @@ class ServerConfig:
     startup_min_free_mib: int | None = None
     max_context_tokens: int | None = None
     chat_default_max_tokens: int | None = 4096
+    dms: "DMSConfig | None" = None
     kv_storage: str = "auto"
     kv_scale_dtype: str = "fp16"
     kv_scale_granularity: str = "per_token_head"
@@ -447,6 +448,19 @@ class ServerConfig:
     def __post_init__(self) -> None:
         from hipengine.execution_profiles import resolve_requested_execution_profile
 
+        if self.dms is not None:
+            if not isinstance(self.dms, DMSConfig):
+                raise TypeError("dms must be a DMSConfig")
+            if self.max_active_requests not in (None, 1):
+                raise ValueError("DMS compact serving requires max_active_requests=1")
+            if self.prefix_cache != "off":
+                raise ValueError("DMS compact KV has no radix prefix-cache adapter; set prefix_cache='off'")
+            if self.speculative_mtp_serving != "off" or self.speculative_provider is not None:
+                raise ValueError("DMS compact KV has no speculative serving adapter; set speculative_mtp_serving='off'")
+            if self.kv_storage not in ("auto", "bf16"):
+                raise ValueError("DMS public serving implements BF16 compact storage only")
+            object.__setattr__(self, "max_active_requests", 1)
+            object.__setattr__(self, "kv_storage", "bf16")
         profile = resolve_requested_execution_profile(self.execution_profile)
         object.__setattr__(
             self,
@@ -5243,6 +5257,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 execution_profile=config.execution_profile,
                 max_active_requests=config.max_active_requests,
                 max_sequence_length=config.max_context_tokens,
+                **({"dms": config.dms} if config.dms is not None else {}),
                 prefix_cache=prefix_cache_mode,
                 speculative_mtp_serving=config.speculative_mtp_serving,
                 speculative_provider=config.speculative_provider,

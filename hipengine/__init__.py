@@ -18,9 +18,10 @@ chain all behave exactly as they did when the imports were eager.
 
 from hipengine.execution_profiles import ExecutionProfile
 
-_LAZY_EXPORT_MODULES = {"LLM": "hipengine.llm", "SamplingParams": "hipengine.llm"}
+_LAZY_EXPORT_MODULES = {"LLM": "hipengine.llm", "SamplingParams": "hipengine.llm",
+                        "DMSConfig": "hipengine.kvcache.dms_config"}
 
-__all__ = ["ExecutionProfile", "LLM", "SamplingParams"]
+__all__ = ["ExecutionProfile", "LLM", "SamplingParams", "DMSConfig"]
 
 
 def __getattr__(name: str):

@@ -14,6 +14,7 @@ from numbers import Integral
 from pathlib import Path
 from typing import Any
 
+from hipengine.kvcache.dms_config import DMSConfig
 from hipengine.speculative.registry import DEFAULT_PROVIDER_CANDIDATE_BUDGET
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 
@@ -319,8 +320,23 @@ class LLM:
         kv_scale_dtype: str | None = None,
         kv_scale_granularity: str | None = None,
         vision_model: str | None = None,
+        dms: "DMSConfig | None" = None,
         engine_command_timeout_seconds: float | None = None,
     ) -> None:
+        if dms is not None:
+            if not isinstance(dms, DMSConfig):
+                raise TypeError("dms must be a DMSConfig")
+            if max_active_requests not in (None, 1):
+                raise ValueError("DMS compact serving requires max_active_requests=1")
+            if kv_storage not in (None, "auto", "bf16"):
+                raise ValueError("DMS public serving currently implements BF16 compact storage only")
+            if prefix_cache not in (None, "off"):
+                raise ValueError("DMS compact KV has no radix prefix-cache adapter")
+            if speculative_mtp_serving not in (None, "off") or speculative_provider is not None:
+                raise ValueError("DMS compact KV has no speculative serving adapter")
+            max_active_requests, kv_storage = 1, "bf16"
+            prefix_cache, speculative_mtp_serving = "off", "off"
+        self.dms = dms
         if max_active_requests is not None and int(max_active_requests) <= 0:
             raise ValueError("max_active_requests must be positive when set")
         if max_sequence_length is not None and int(max_sequence_length) <= 0:
@@ -1328,6 +1344,11 @@ class LLM:
         # The loaded resident model owns staged MTP candidate depth. Publish the
         # public LLM setting on that owner before its cold adapter is resolved;
         # model-plugin evidence still decides whether the resulting key admits.
+        if self.dms is not None:
+            configure_dms = getattr(generator, "configure_dms", None)
+            if not callable(configure_dms):
+                raise ValueError("this model generator has no compact DMS serving adapter")
+            configure_dms(self.dms)
         self._publish_candidate_budget(generator)
         if self.speculative_provider is not None:
             from hipengine.speculative.registry import (

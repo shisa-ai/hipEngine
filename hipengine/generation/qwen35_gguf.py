@@ -2001,6 +2001,9 @@ class Qwen35GGUFBringupGenerator:
         result["packed_mtp_verify_prompt_lengths"] = sorted(set(result["packed_mtp_verify_prompt_lengths"]))
         return result
 
+    def configure_dms(self, config) -> None:
+        self.dms_config = config
+
     @_target_arch_scoped
     def create_resident_model_runner(
         self,
@@ -2009,6 +2012,13 @@ class Qwen35GGUFBringupGenerator:
     ) -> "Qwen35GGUFResidentModelRunner":
         """Create the single scheduler-facing GGUF model owner for this generator."""
 
+        if getattr(self, "dms_config", None) is not None:
+            if capacity not in (None, 1):
+                raise ValueError("DMS compact serving requires max_active_requests=1")
+            from hipengine.generation.qwen35_gguf_dms import Qwen35GGUFDMSModelRunner
+            runner = Qwen35GGUFDMSModelRunner(self, capacity=1)
+            self._resident_model_runner = runner
+            return runner
         runner = Qwen35GGUFResidentModelRunner(
             self,
             capacity=(
@@ -2789,6 +2799,8 @@ class Qwen35GGUFBringupGenerator:
     def supports_speculative_mtp(self) -> bool:
         """Whether this GGUF inventory has the NextN tensors required for MTP."""
 
+        if getattr(self, "dms_config", None) is not None:
+            return False
         return _gguf_info_has_mtp_tensors(self.weight_index)
 
     def _speculative_mtp_serving_key(
