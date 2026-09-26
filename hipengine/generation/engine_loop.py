@@ -565,9 +565,13 @@ class SubmitPollTextGenerator:
     def supports_speculative_mtp(self) -> bool:
         """Whether staged or legacy speculative MTP is available."""
 
+        supports = getattr(self._inner, "supports_speculative_mtp", None)
+        # Staged hooks describe runner mechanics, not the loaded artifact's
+        # tensors. Respect an explicit model capability miss before routing.
+        if supports is not None and not bool(supports):
+            return False
         if self._supports_staged_speculative_mtp:
             return True
-        supports = getattr(self._inner, "supports_speculative_mtp", None)
         return bool(supports) and callable(
             getattr(self._inner, "generate_speculative_mtp_detailed", None)
         )
@@ -2731,7 +2735,16 @@ class ResidentEngineLoop:
         if not callable(resolve_width):
             return None
         max_requests = int(resolve_width(work))
-        if max_requests <= 0 or len(work.request_ids) <= max_requests:
+        if max_requests <= 0:
+            # RF-M5 (docs/REFACTOR.md): a zero bound is the partition owner's
+            # instruction that this group must not run MTP sub-groups -- it is
+            # over-width, ineligible, or disabled -- so serve the whole item as
+            # one autoregressive batch. Falling through to the speculative
+            # cycle here was the 2026-09-19 width-8 fail-open: the cycle ran
+            # whole-item draft cycles on a group the partition owner had
+            # routed to AR.
+            return tuple(self._run_ar_decode(work))
+        if len(work.request_ids) <= max_requests:
             return None
         events: list[EngineLoopEvent] = []
         for start in range(0, len(work.request_ids), max_requests):

@@ -780,6 +780,7 @@ class Qwen35GGUFModel:
         # inherits.
         SpeculativeMTPServingImplementation(
             name="gguf_dense_bf16_gfx1100_c1_native_chain",
+            sampling_modes=("greedy_fast", "sampled"),
             kv_storage="bf16",
             backends=(("hip_gfx1100", "gfx1100"),),
             max_candidate_count=7,
@@ -789,6 +790,7 @@ class Qwen35GGUFModel:
         ),
         SpeculativeMTPServingImplementation(
             name="gguf_dense_bf16_gfx1100_group_native_chain",
+            sampling_modes=("greedy_fast", "sampled"),
             kv_storage="bf16",
             backends=(("hip_gfx1100", "gfx1100"),),
             max_candidate_count=3,
@@ -798,6 +800,7 @@ class Qwen35GGUFModel:
         ),
         SpeculativeMTPServingImplementation(
             name="gguf_dense_bf16_gfx1151_c1_native_chain",
+            sampling_modes=("greedy_fast", "sampled"),
             kv_storage="bf16",
             backends=(("hip_gfx1151", "gfx1151"),),
             max_candidate_count=7,
@@ -807,6 +810,7 @@ class Qwen35GGUFModel:
         ),
         SpeculativeMTPServingImplementation(
             name="gguf_dense_bf16_gfx1151_group_native_chain",
+            sampling_modes=("greedy_fast", "sampled"),
             kv_storage="bf16",
             backends=(("hip_gfx1151", "gfx1151"),),
             max_candidate_count=3,
@@ -868,6 +872,32 @@ class Qwen35GGUFModel:
             key=key,
         )
 
+    def _widest_automatic_group_rows(self, key: SpeculativeMTPServingKey) -> int:
+        """Widest due group an automatic-eligible declaration offers this storage.
+
+        A request's static width bound is the width of the due group it may be a
+        member of, and the resident planner forms that group from concurrent
+        requests rather than from the width this request realizes alone.  The
+        declaration selected for the realized width therefore does not bound it.
+        INT8 KV is where the two diverge: the C1 declaration offers the deepest
+        draft at one row while the packed group declaration offers four, so
+        reading the bound off the C1 declaration refused a listed width-2 cell
+        the kernels execute.  Depth is not widened here -- it stays with the
+        declaration the realized width selects -- so a wider cell whose depth the
+        package does not list still fails closed at the resident owner.
+        """
+
+        return max(
+            (
+                int(declaration.max_group_rows)
+                for declaration in self.speculative_mtp_serving_implementations
+                if declaration.kv_storage == key.kv_storage
+                and (key.backend, key.target_arch) in declaration.backends
+                and declaration.automatic_eligible
+            ),
+            default=0,
+        )
+
     def resolve_speculative_mtp_serving_plan(
         self,
         *,
@@ -892,7 +922,15 @@ class Qwen35GGUFModel:
             return evidence_decision
         implementation = self._speculative_mtp_serving_implementation(key)
         if implementation is not None:
-            return implementation.resolve(key, request_mode=request_mode)
+            decision = implementation.resolve(key, request_mode=request_mode)
+            widest = self._widest_automatic_group_rows(key)
+            if decision.admitted and widest > int(
+                decision.static_max_realized_group_rows or 0
+            ):
+                return replace(
+                    decision, static_max_realized_group_rows=widest
+                )
+            return decision
         return unsupported_contract(evidence_decision)
 
     def max_qualified_candidate_budget(

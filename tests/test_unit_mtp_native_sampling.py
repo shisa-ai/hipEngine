@@ -191,10 +191,118 @@ def test_eager_native_accept_reads_device_logits_without_uploading_or_advancing_
         target_logits_device=DeviceBuffer(4096, batch.rows * 8 * 4),
     )
     adapter = Qwen35GGUFMTP2Adapter.__new__(Qwen35GGUFMTP2Adapter)
-    summary = adapter._sampled_accept_summary(
+    # The double carries the shape the method reads: no tokenizer,
+    # so the walk builds no text observer and the native report stands.
+    adapter.generator = SimpleNamespace(tokenizer=None)
+    summary, row_metadata, forced_ids = adapter._sampled_accept_summary(
         row, prepared, batch, transaction_id=5, remaining_decode=3,
     )
+    # This row asked for no logprobs, so the native per-row report is not kept.
+    assert row_metadata is None
     assert summary.accepted_counts == (1,)
     assert summary.next_tokens == (7,)
     assert observed == [(4096, (2,)), (4128, (2, 3)), (4160, (2, 3, 4))]
     assert tuple(state.generated_tokens) == (2,)
+
+
+def test_native_row_keeps_the_samplers_own_logprob_report():
+    """A logprobs request reports the native sampler's value, not a rebuild.
+
+    The autoregressive route for a native-sampler row reports the value the
+    native sampler returned, so the speculative route has to keep that same
+    report rather than recompute the distribution from the logits rows -- a host
+    rebuild is a different implementation of the same law and is not what the
+    request would have been served on the autoregressive path.
+    """
+
+    from hipengine.core.memory import DeviceBuffer
+    from hipengine.generation.sampling import RowSamplingState
+    from hipengine.llm import SamplingParams
+    from tests.test_unit_mtp_sampled_accept import _chain_batch
+
+    batch = _chain_batch((3, 4))
+    state = RowSamplingState(seed=17, generated_tokens=(2,))
+    draws = iter((3, 7, 2))
+    reported = {
+        0: (0.25, ((3, 0.25), (4, 0.75))),
+        1: (0.5, ((7, 0.5),)),
+        2: (0.75, ((2, 0.75),)),
+    }
+
+    index = iter(range(3))
+
+    def sample_indexed(ptr, params, prefix):
+        position = next(index)
+        token = next(draws)
+        prefix.observe(token)
+        logprob, top = reported[position]
+        return SimpleNamespace(token_id=token, logprob=logprob, top_logprobs=top)
+
+    workspace = SimpleNamespace(vocab_size=8, sample=sample_indexed)
+    row = SimpleNamespace(
+        sampling_state=state,
+        sampling_request=SamplingParams(temperature=0.7, top_k=8, logprobs=True, top_logprobs=1),
+        native_sampler=True,
+        lease=SimpleNamespace(session=SimpleNamespace(_native_sampler=lambda: workspace)),
+    )
+    prepared = SimpleNamespace(
+        target_logits=np.empty((0, 0), dtype=np.float32),
+        target_logits_device=DeviceBuffer(4096, batch.rows * 8 * 4),
+    )
+    adapter = Qwen35GGUFMTP2Adapter.__new__(Qwen35GGUFMTP2Adapter)
+    # The double carries the shape the method reads: no tokenizer,
+    # so the walk builds no text observer and the native report stands.
+    adapter.generator = SimpleNamespace(tokenizer=None)
+    _, row_metadata, forced_ids = adapter._sampled_accept_summary(
+        row, prepared, batch, transaction_id=5, remaining_decode=3,
+    )
+    # The native path resolves no forced overrides: a request that carries one is
+    # refused by ``supports_native_gpu_sampling`` before it can reach this shape.
+    assert forced_ids is None
+    assert row_metadata == (
+        (0.25, ((3, 0.25), (4, 0.75))),
+        (0.5, ((7, 0.5),)),
+        (0.75, ((2, 0.75),)),
+    )
+
+
+def test_host_sampled_accept_resolves_forced_overrides_without_consuming_them():
+    """The host path must resolve overrides from module scope, not a local import.
+
+    A function-local import of the walk helper binds that name for the whole
+    function, so the host path -- which shares the function with the native
+    branch -- raised ``UnboundLocalError`` and fell back to autoregressive
+    decoding. The gate caught it live; this pins it without a model load.
+    """
+
+    from hipengine.generation.sampling import RowSamplingState
+    from hipengine.llm import SamplingParams
+    from tests.test_unit_mtp_sampled_accept import _chain_batch
+
+    batch = _chain_batch((2,))
+    logits = np.full((2, 8), -8.0, dtype=np.float32)
+    logits[:, 2] = 0.0
+    state = RowSamplingState(
+        seed=17, generated_tokens=(1,), forced_tokens_pending=(5,)
+    )
+    row = SimpleNamespace(
+        sampling_state=state,
+        sampling_request=SamplingParams(temperature=0.7, top_k=8),
+        native_sampler=False,
+    )
+    adapter = Qwen35GGUFMTP2Adapter.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.generator = SimpleNamespace(tokenizer=None)
+    summary, row_metadata, forced_ids = adapter._sampled_accept_summary(
+        row,
+        SimpleNamespace(target_logits=logits),
+        batch,
+        transaction_id=5,
+        remaining_decode=3,
+    )
+    assert forced_ids == (5, None)
+    # The draft said 2 and the request forces 5, so the cycle corrects to 5.
+    assert summary.accepted_counts == (0,)
+    assert summary.next_tokens == (5,)
+    assert row_metadata is None
+    # Resolving the walk must not consume the live queue: only the commit does.
+    assert state.forced_tokens == (5,)

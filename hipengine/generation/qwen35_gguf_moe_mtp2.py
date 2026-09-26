@@ -188,6 +188,10 @@ class Qwen35GGUFMoEMTP2Adapter:
             int,
             tuple[Any, DeviceBuffer, DeviceBuffer],
         ] = {}
+        # Admission charges for the slabs above, keyed by target. The slabs are
+        # priced through the KV pool budget before they are allocated and the
+        # charge is released with the buffers, so the budget sees them.
+        self._resident_charge_tokens: dict[int, list[object]] = {}
         self._disabled_requests: set[int] = set()
         self._transaction_sequence = 0
         self._assets: Any | None = None
@@ -255,21 +259,33 @@ class Qwen35GGUFMoEMTP2Adapter:
                 slab = self._target_hidden_slabs.get(target_key)
                 if slab is None:
                     slab_rows = 95
-                    slab = (
-                        target,
-                        malloc(
-                            slab_rows * hidden_size * DType.BF16.itemsize,
-                            runtime=target.runtime,
-                        ),
-                        malloc(
-                            slab_rows * hidden_size * DType.FP32.itemsize,
-                            runtime=target.runtime,
-                        ),
-                        malloc(
-                            hidden_size * DType.BF16.itemsize,
-                            runtime=target.runtime,
-                        ),
+                    # Priced before the three mallocs below.
+                    self._charge_resident_slab(
+                        target_key,
+                        "target_hidden_slab",
+                        slab_rows * hidden_size * DType.BF16.itemsize
+                        + slab_rows * hidden_size * DType.FP32.itemsize
+                        + hidden_size * DType.BF16.itemsize,
                     )
+                    try:
+                        slab = (
+                            target,
+                            malloc(
+                                slab_rows * hidden_size * DType.BF16.itemsize,
+                                runtime=target.runtime,
+                            ),
+                            malloc(
+                                slab_rows * hidden_size * DType.FP32.itemsize,
+                                runtime=target.runtime,
+                            ),
+                            malloc(
+                                hidden_size * DType.BF16.itemsize,
+                                runtime=target.runtime,
+                            ),
+                        )
+                    except BaseException:
+                        self._release_resident_slab_charges(target_key)
+                        raise
                     self._target_hidden_slabs[target_key] = slab
                 if rows > int(slab[1].nbytes) // (
                     hidden_size * DType.BF16.itemsize
@@ -343,6 +359,7 @@ class Qwen35GGUFMoEMTP2Adapter:
             raise RuntimeError("MoE MTP2 prefill target-hidden sink is incomplete")
         from hipengine.generation.qwen35_gguf import (
             _allocate_mtp_dense_kv,
+            _mtp_dense_kv_nbytes,
             _new_mtp_context,
         )
 
@@ -357,12 +374,28 @@ class Qwen35GGUFMoEMTP2Adapter:
         target_key = id(target)
         kv_slab = self._draft_kv_slabs.get(target_key)
         if kv_slab is None:
-            key_cache, value_cache, _buffers = _allocate_mtp_dense_kv(
-                runtime=target.runtime,
-                capacity=min(1024, int(target.target_layout.max_sequence_length)),
-                qk_head_dim=int(draft.qk_head_dim),
-                kv_heads=int(draft.num_kv_heads),
+            capacity = min(1024, int(target.target_layout.max_sequence_length))
+            # Priced before the allocation, so an overload is refused by name
+            # here rather than surfacing as a HIP OOM from the dense-KV malloc.
+            self._charge_resident_slab(
+                target_key,
+                "draft_kv",
+                _mtp_dense_kv_nbytes(
+                    capacity=capacity,
+                    qk_head_dim=int(draft.qk_head_dim),
+                    kv_heads=int(draft.num_kv_heads),
+                ),
             )
+            try:
+                key_cache, value_cache, _buffers = _allocate_mtp_dense_kv(
+                    runtime=target.runtime,
+                    capacity=capacity,
+                    qk_head_dim=int(draft.qk_head_dim),
+                    kv_heads=int(draft.num_kv_heads),
+                )
+            except BaseException:
+                self._release_resident_slab_charges(target_key)
+                raise
             kv_slab = (target, key_cache, value_cache)
             self._draft_kv_slabs[target_key] = kv_slab
         key_cache, value_cache = kv_slab[1], kv_slab[2]
@@ -1441,6 +1474,43 @@ class Qwen35GGUFMoEMTP2Adapter:
         self._intents.pop(rid, None)
         self._disabled_requests.discard(rid)
 
+    def _resident_charge_pool(self) -> Any | None:
+        """The KV pool whose budget these slabs are priced against, if any."""
+
+        pool = getattr(self.owner, "_kv_pool", None)
+        reserve = getattr(pool, "reserve_resident_bytes", None)
+        return pool if callable(reserve) else None
+
+    def _charge_resident_slab(self, target_key: int, name: str, nbytes: int) -> None:
+        """Price a resident slab through the pool budget before allocating it.
+
+        Raises the pool's named refusal when the slab does not fit, so the
+        caller never reaches the malloc. A pool without the ledger is charged
+        nothing.
+        """
+
+        pool = self._resident_charge_pool()
+        if pool is None or int(nbytes) <= 0:
+            return
+        token = pool.reserve_resident_bytes(str(name), int(nbytes))
+        self._resident_charge_tokens.setdefault(int(target_key), []).append(token)
+
+    def _release_resident_slab_charges(self, target_key: int | None = None) -> None:
+        """Release the charges for one target, or for every target when omitted."""
+
+        pool = getattr(self.owner, "_kv_pool", None)
+        release = getattr(pool, "release_private_workspace", None)
+        if target_key is None:
+            keys = tuple(self._resident_charge_tokens)
+        else:
+            keys = (int(target_key),) if int(target_key) in self._resident_charge_tokens else ()
+        for key in keys:
+            tokens = self._resident_charge_tokens.pop(key, [])
+            if not callable(release):
+                continue
+            for token in tokens:
+                release(token)
+
     def close(self) -> None:
         for request_id in tuple(set(self._states) | set(self._prompt_sinks)):
             self.release_request(request_id)
@@ -1474,6 +1544,7 @@ class Qwen35GGUFMoEMTP2Adapter:
             free(value_cache, runtime=target.runtime)
             free(key_cache, runtime=target.runtime)
         self._draft_kv_slabs.clear()
+        self._release_resident_slab_charges()
 
 
 def create_qwen35_gguf_moe_mtp2_adapter(

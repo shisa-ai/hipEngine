@@ -76,12 +76,12 @@ def _cached_upload(name: str, data: "np.ndarray", *, runtime=None) -> "DeviceBuf
     The cache is keyed by the weight name (e.g. 'blk.40.attn_q.weight').
     """
     from hipengine.core.hip import get_hip_runtime
-    from hipengine.core.memory import malloc, copy_host_to_device, host_array_ptr
+    from hipengine.core.memory import malloc, copy_host_array_to_device
     runtime = runtime or get_hip_runtime()
     if name in _WEIGHT_CACHE:
         return _WEIGHT_CACHE[name]
     buf = malloc(data.nbytes, runtime=runtime)
-    copy_host_to_device(buf, host_array_ptr(np.ascontiguousarray(data)), runtime=runtime)
+    copy_host_array_to_device(buf, np.ascontiguousarray(data), runtime=runtime)
     _WEIGHT_CACHE[name] = buf
     return buf
 

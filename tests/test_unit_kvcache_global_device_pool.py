@@ -4,6 +4,10 @@ import pytest
 
 from hipengine.kvcache.device_global import GlobalDeviceKVPool
 from hipengine.kvcache.pool import DeviceKVContiguityError
+from hipengine.runtime.memory_admission import (
+    ADMISSION_REFUSAL_CODE,
+    MemoryAdmissionRefused,
+)
 
 
 def _pool(*, pages: int = 6):
@@ -431,5 +435,135 @@ def test_private_workspace_counts_allocated_arena_not_only_live_pages() -> None:
     assert pool.stats.free_pages == 2
     with pytest.raises(MemoryError, match="budget"):
         pool.reserve_private_workspace(128)
+    assert pool.private_workspace_bytes == 0
+    pool.close()
+
+
+# --- one budget over every named resident consumer (task #15) -----------------
+
+#: The consumers the admission budget has to price. The pool's own arena covers
+#: the target KV and its scale planes; the rest are charged by name.
+_NAMED_CONSUMERS = (
+    "target_kv_scales",
+    "draft_kv",
+    "verifier_scratch",
+    "captured_graphs",
+    "retained_prefix",
+)
+
+
+def _budgeted_pool(pages: int = 2, max_pages: int = 4):
+    pool, closed = _pool(pages=pages)
+    pool._max_pages = max_pages
+    return pool, closed
+
+
+def test_resident_consumers_report_arena_first_then_charges_in_order() -> None:
+    pool, _ = _budgeted_pool()
+    first = pool.reserve_resident_bytes("verifier_scratch", 64)
+    second = pool.reserve_resident_bytes("captured_graphs", 32)
+    assert [item.name for item in pool.resident_consumers] == [
+        "kv_arena",
+        "verifier_scratch",
+        "captured_graphs",
+    ]
+    assert pool.resident_consumers[0].bytes == pool.current_pages * pool.page_bytes
+    assert pool.accounted_bytes == 256 + 96
+    pool.release_private_workspace(first)
+    pool.release_private_workspace(second)
+    assert [item.name for item in pool.resident_consumers] == ["kv_arena"]
+    assert pool.accounted_bytes == 256
+    pool.close()
+
+
+def test_private_workspace_charge_can_be_named() -> None:
+    """The KV-payload charge is one named consumer among the others."""
+
+    pool, _ = _budgeted_pool()
+    token = pool.reserve_private_workspace(64, "packed_verify_kv")
+    assert [item.name for item in pool.resident_consumers] == [
+        "kv_arena",
+        "packed_verify_kv",
+    ]
+    assert pool.private_workspace_bytes == 64
+    pool.release_private_workspace(token)
+    assert pool.private_workspace_bytes == 0
+    pool.close()
+
+
+def test_exact_boundary_charge_is_admitted_and_one_byte_more_is_refused() -> None:
+    """A consumer that fits exactly at the boundary succeeds."""
+
+    pool, _ = _budgeted_pool()
+    arena = pool.current_pages * pool.page_bytes
+    remaining = pool.budget_bytes - arena
+    assert remaining == 256
+    token = pool.reserve_resident_bytes("verifier_scratch", remaining)
+    assert pool.accounted_bytes == pool.budget_bytes
+    with pytest.raises(MemoryAdmissionRefused) as caught:
+        pool.reserve_resident_bytes("captured_graphs", 1)
+    assert caught.value.refused_consumer == "captured_graphs"
+    # The refused attempt charged nothing, so the caller allocated nothing.
+    assert pool.accounted_bytes == pool.budget_bytes
+    pool.release_private_workspace(token)
+    pool.close()
+
+
+@pytest.mark.parametrize("name", _NAMED_CONSUMERS)
+def test_each_named_consumer_is_the_refusal_reason_at_its_own_edge(name: str) -> None:
+    """Push each consumer to its budget edge and assert the refusal names it.
+
+    An unrelated consumer takes half the headroom first, so the refusal can only
+    be attributed to the consumer under test rather than to the arena.
+    """
+
+    pool, _ = _budgeted_pool()
+    arena = pool.current_pages * pool.page_bytes
+    remaining = pool.budget_bytes - arena
+    prior = remaining // 2
+    filler = pool.reserve_resident_bytes("unrelated_consumer", prior)
+
+    # The admitted side of this consumer's edge.
+    edge = pool.reserve_resident_bytes(name, remaining - prior)
+    assert pool.accounted_bytes == pool.budget_bytes
+    pool.release_private_workspace(edge)
+
+    before = pool.accounted_bytes
+    with pytest.raises(MemoryAdmissionRefused) as caught:
+        pool.reserve_resident_bytes(name, remaining - prior + 1)
+    refusal = caught.value
+    assert refusal.refused_consumer == name, (name, refusal.refused_consumer)
+    assert name in str(refusal)
+    assert refusal.code == ADMISSION_REFUSAL_CODE
+    assert isinstance(refusal, MemoryError)
+    assert pool.accounted_bytes == before
+    pool.release_private_workspace(filler)
+    pool.close()
+
+
+def test_unrelated_charge_value_behaves_the_same_on_both_sides() -> None:
+    """A byte count unrelated to any threshold is priced like any other."""
+
+    pool, _ = _budgeted_pool()
+    arena = pool.current_pages * pool.page_bytes
+    remaining = pool.budget_bytes - arena
+    odd = 77
+    filler = pool.reserve_resident_bytes("captured_graphs", remaining - odd)
+    edge = pool.reserve_resident_bytes("verifier_scratch", odd)
+    assert pool.accounted_bytes == pool.budget_bytes
+    pool.release_private_workspace(edge)
+    with pytest.raises(MemoryAdmissionRefused) as caught:
+        pool.reserve_resident_bytes("verifier_scratch", odd + 1)
+    assert caught.value.refused_consumer == "verifier_scratch"
+    pool.release_private_workspace(filler)
+    pool.close()
+
+
+def test_resident_charge_requires_a_name_and_positive_bytes() -> None:
+    pool, _ = _budgeted_pool()
+    with pytest.raises(ValueError):
+        pool.reserve_resident_bytes("   ", 8)
+    with pytest.raises(ValueError):
+        pool.reserve_resident_bytes("verifier_scratch", 0)
     assert pool.private_workspace_bytes == 0
     pool.close()

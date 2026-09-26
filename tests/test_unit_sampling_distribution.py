@@ -214,3 +214,50 @@ def test_distribution_requires_a_positive_temperature_for_support() -> None:
             _params(temperature=0.0),
             temperature=0.0,
         )
+
+
+def test_forced_override_turns_the_row_into_a_point_mass() -> None:
+    """The speculative accept couples against the law the AR route draws from.
+
+    A pending forced token is emitted without a draw, so the law for that row is
+    a point mass on it: a draft that agrees is accepted and a draft that does not
+    is corrected to it, which is what the autoregressive route would have
+    emitted for the same history.
+    """
+
+    params = _params(temperature=1.0)
+    token_ids, probabilities = processed_distribution(
+        _ROWS["peaked"], params, forced_token_id=3
+    )
+    assert token_ids == (3,)
+    assert probabilities.tolist() == [1.0]
+
+
+def test_forced_override_outside_the_vocabulary_is_refused() -> None:
+    with pytest.raises(ValueError, match="outside vocab size"):
+        processed_distribution(_ROWS["peaked"], _params(temperature=1.0), forced_token_id=64)
+
+
+def test_forced_override_keeps_the_ar_constraint_check() -> None:
+    """A forced token the request's own constraint rejects is still an error."""
+
+    from hipengine.generation.constraints import ToolCallConstraintSpec
+
+    spec = ToolCallConstraintSpec(tool_names=("read",), mode="required")
+    state = RowSamplingState(seed=1, tool_call_constraint=spec)
+    with pytest.raises(ValueError, match="violates tool_call_constraint"):
+        processed_distribution(
+            _ROWS["peaked"],
+            _params(temperature=1.0, tool_call_constraint=spec),
+            state,
+            token_text_for_id={0: "plain", 1: "<tool_call>"}.__getitem__,
+            forced_token_id=0,
+        )
+
+
+def test_forced_override_is_opt_in_for_the_distribution_helper() -> None:
+    """Without the override the helper still reports the row's own sampling law."""
+
+    params = _params(temperature=1.0, forced_tokens_pending=(3,))
+    token_ids, _ = processed_distribution(_ROWS["peaked"], params)
+    assert token_ids != (3,)

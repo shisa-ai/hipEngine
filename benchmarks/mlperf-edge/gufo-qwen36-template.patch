@@ -1,0 +1,17 @@
+diff --git a/src/models/qwen/chat_template.cpp b/src/models/qwen/chat_template.cpp
+index cf9e626..6fddd9e 100644
+--- a/src/models/qwen/chat_template.cpp
++++ b/src/models/qwen/chat_template.cpp
+@@ -76,9 +76,9 @@ bool IsQwen38Artifact(const core::GgufReader& reader) {
+   if (name.has_value() && name->find("Qwen3.8") != std::string_view::npos) {
+     return true;
+   }
+-  const auto config = reader.ExtractModelConfig();
+-  return config.has_value() && config->num_layers == 64 &&
+-         config->hidden_size == 5120 && config->vocab_size == 248320;
++  // Qwen3.6-27B shares these tensor dimensions with Qwen3.8-27B.
++  // Shape alone cannot select a version-specific chat-template contract.
++  return false;
+ }
+ 
+ std::string_view Trim(std::string_view value) {

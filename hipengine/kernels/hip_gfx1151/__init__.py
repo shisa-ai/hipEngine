@@ -1217,7 +1217,19 @@ GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES = frozenset(
 # residual limits remain unchanged for their quant families.
 GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
     "gguf_q4_k_t16_v1": 4,
+    "gguf_q5_k_t16_v1": 1,
     "gguf_q6_k_t16_qmicro_planar_v1": 3,
+    # E6c-2: the raw dense-IQ residual siblings are rows-1 decode
+    # composites (their parents are rows-1 owners too); the verifier
+    # rows 2-4 local32/strict owners have no residual variant, so cap
+    # these quants before the rows 2-4 residual path could try one.
+    "gguf_iq4_xs": 1,
+    "gguf_iq4_nl": 1,
+    "gguf_iq3_s": 1,
+    "gguf_q3_k": 1,
+    "gguf_iq3_xxs": 1,
+    "gguf_iq2_s": 1,
+    "gguf_iq2_xs": 1,
     "bf16": 512,
 }
 # The attention-RMSNorm source range is statically bounded from resident F32
@@ -1696,6 +1708,20 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
     },
+    # 2026-09-24, UD-GFX1151-OPTIMIZE2 E2c: a bound UD admission preset
+    # extends the policy identity to (geometry, file_type, preset), so the
+    # plain rows above never apply to a UD artifact that merely shares the
+    # stamp (see _gguf_policy_identity). Without this explicit row the
+    # rows==1 pair launcher was never entered for the UD artifact: gate/up
+    # pairs ran as two projections plus the separate SiLU, and the registered
+    # IQ4_XS local32 dual owner - measured bit-exact with the
+    # single/single/silu chain on the real blk.1 pair (E2b') - could not
+    # fire. The value mirrors the plain Q4_K_M row so shared-quant pairs take
+    # the same qualified owner in both arms; the IQ4_XS dual branch selects
+    # its own key and does not read this value.
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): {
+        (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
+    },
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
         (1, 5_120, 17_408): (
             "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
@@ -1704,6 +1730,12 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
 }
 GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        (1, 5_120, 17_408): "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
+    },
+    # 2026-09-24, E2c: native-session mirror of the explicit UD row in the
+    # serial table above, so the UD stamp resolves the same qualified owner
+    # regardless of which capability table is consulted first.
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): {
         (1, 5_120, 17_408): "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
     },
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
@@ -1769,6 +1801,20 @@ GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES = {
         (1, 17_408, 5_120): True,
     },
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
+        (1, 17_408, 5_120): True,
+    },
+    # E6c down-residual fold, unqualified-manifest lane (kept for unpinned
+    # Q4_K_M-stamped H5120 artifacts) and the certificate-bound UD preset
+    # lane the resident Qwen3.8-27B UD-Q4_K_M artifact resolves to at
+    # runtime. Both rows are capability-shaped: dense H5120 geometry +
+    # plain-lane stamp + rows-1 down shape. Kernels resolve per quant -
+    # registered exact siblings (Q5T16/Q4T16/planar Q6) fold, raw-IQ down
+    # owners fall back to the unfused chain because they have no residual
+    # sibling or raw-ABI launcher yet.
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf-unqualified-manifest"): {
+        (1, 17_408, 5_120): True,
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): {
         (1, 17_408, 5_120): True,
     },
 }
@@ -2098,6 +2144,58 @@ GGUF_IQ_DENSE_PREFILL_POLICY = {
 # 162-row production-referenced gate on this backend's prompts is owed as
 # the confirming measurement.
 
+# Dense raw-IQ decode and verifier owners (2026-09-21). register_gfx1151_kernels
+# aliases the whole gfx1100 key space into this backend, so local32_gemv and its
+# rows sibling below are the *same kernel objects* gfx1100 routes - the
+# arithmetic is identical by construction, not merely similar. The routing
+# tables are not aliased, and this package declared only the prefill policy, so
+# every dense raw-IQ projection on gfx1151 kept the strict per-row GEMV: a zbook
+# kernel census measured 61.64 ms/token, 53.42% of UD-Q4_K_M's 115.39 ms pure
+# decode, in gguf_iq_dense_strict_kernel at 130.78 launches/token and
+# 442.1 us/launch on the dominant template, against zero launches for plain
+# Q4_K_M (benchmarks/results/
+# 2026-09-21-zbook-ud-vs-plain-q4km-decode-attribution.json).
+#
+# These two tables mirror gfx1100's exactly, and
+# tests/test_unit_gfx1151_iq_dense_policy_parity.py holds them there. The pins
+# below are not an optimization knob: they are the per-artifact admission
+# gfx1100's tokenized category suite required, and because the owner kernels are
+# shared the requirement transfers by construction. Do not drop a pin to gain a
+# route.
+GGUF_IQ_DENSE_DECODE_POLICY = {
+    quant: {"variant": "local32_gemv_bf16_bf16_out"}
+    for quant in ("gguf_iq4_xs", "gguf_iq4_nl", "gguf_iq3_s", "gguf_iq3_xxs",
+                  "gguf_iq2_s", "gguf_iq2_xs")
+}
+# Verifier sibling at rows 2-4. Each row's output is bit-identical to the
+# rows==1 owner's output for that row, so it adds no arithmetic of its own; it
+# keeps the same per-slot strict pin as the decode policy below.
+GGUF_IQ_DENSE_VERIFY_POLICY = {
+    quant: {
+        "min_rows": 2,
+        "max_rows": 4,
+        "variant": "local32_rows_gemv_bf16_bf16_out",
+    }
+    for quant in ("gguf_iq4_xs", "gguf_iq4_nl", "gguf_iq3_s", "gguf_iq3_xxs",
+                  "gguf_iq2_s", "gguf_iq2_xs")
+}
+# Per-artifact strict pins, keyed by (file_type, artifact preset). UD-Q4_K_M's
+# layers.0.ffn_up is its only Q3_K ffn_up, and it is the slot whose W4A16 hi+lo
+# split reached a 5.3e-2 max-row KL against the incumbent on natural tokenized
+# prompts (one position of the 18-prompt category suite) - above the 5e-2
+# pooled ceiling - so it keeps the strict per-row GEMV in prefill. The decode
+# pins keep the same artifact's IQ3_S population (0.82 ms/token, 4 launches) on
+# the strict owner: unpinned the family's accumulation-order tail measured
+# 5.19e-2 max, and with three of the four slots pinned, 1.785e-1.
+GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS = {
+    ("MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): ("layers.0.ffn_up",),
+}
+GGUF_IQ_DENSE_DECODE_STRICT_SLOTS = {
+    ("MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): (
+        "layers.11.ffn_gate", "layers.14.ffn_down", "layers.15.ffn_down",
+        "layers.17.ffn_down"),
+}
+
 GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY = {
     "gguf_q6_k_t16_qmicro_planar_v1": {
         "min_rows": 17,
@@ -2214,8 +2312,18 @@ GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE = {
     "gguf_q4_k_t16_v1": {
         (5_120, 1_024): "dense_single_col4_bf16_bf16_out",
     },
+    # E4a (UD-GFX1151-OPTIMIZE2): rows=1 Q5_T16 decode shapes routed to the
+    # tile8 owner. Per-shape screen (bit-exact vs direct and the gguf_quant_gemv
+    # reference at rows=1): ffn_up 1.16x, ffn_down 1.28x, attn_gate 1.36x,
+    # attn_qkv 1.39x, attn_q 1.18x, ssm_out 1.56x. attn_v (5_120, 1_024) is
+    # deliberately absent: 0.99x, no win over the direct owner.
     "gguf_q5_k_t16_v1": {
+        (5_120, 6_144): "t16_gemv_decode_tile8_bf16_bf16_out",
+        (5_120, 10_240): "t16_gemv_decode_tile8_bf16_bf16_out",
+        (5_120, 12_288): "t16_gemv_decode_tile8_bf16_bf16_out",
+        (5_120, 17_408): "t16_gemv_decode_tile8_bf16_bf16_out",
         (6_144, 5_120): "t16_gemv_decode_tile8_bf16_bf16_out",
+        (17_408, 5_120): "t16_gemv_decode_tile8_bf16_bf16_out",
     },
 }
 # Qwen3.8-27B P2: use byte-neutral planar-qmicro Q6 where architecture-local
@@ -3608,6 +3716,10 @@ __all__ = [
     "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS",
     "GGUF_IQ_DENSE_PREFILL_POLICY",
+    "GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS",
+    "GGUF_IQ_DENSE_DECODE_POLICY",
+    "GGUF_IQ_DENSE_DECODE_STRICT_SLOTS",
+    "GGUF_IQ_DENSE_VERIFY_POLICY",
     "GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY",
     "GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",

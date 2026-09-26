@@ -2,12 +2,25 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import pytest
 
 _BASELINE_KERNELS: dict[Any, Any] | None = None
 _BASELINE_RUNTIME_PROFILE_PLANS: dict[Any, Any] | None = None
+_BASELINE_PROFILE_ENV: dict[str, str | None] | None = None
+
+
+def _profile_env_names() -> tuple[str, ...]:
+    """Environment selectors written process-globally by profile binders."""
+    from hipengine.generation import qwen36_gguf_gfx1100_profiles as profiles
+
+    return tuple(dict.fromkeys(getattr(profiles, name) for name in (
+        "FP16_RECURRENT_STATE_ENV", "Q4_FUSED_R28_ENV", "Q6_DP4A_GROUPED_ENV",
+        "VERIFY_CAPTURE_PREFILL_GDN_ENV", "VERIFY_F32_POST_NORM_ENV",
+        "VERIFY_F32_RESIDUAL_ENV",
+    )))
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -77,9 +90,10 @@ def pytest_collection_finish(session: pytest.Session) -> None:  # pragma: no cov
     from hipengine import execution_profiles
     from hipengine.kernels import registry
 
-    global _BASELINE_KERNELS, _BASELINE_RUNTIME_PROFILE_PLANS
+    global _BASELINE_KERNELS, _BASELINE_RUNTIME_PROFILE_PLANS, _BASELINE_PROFILE_ENV
     _BASELINE_KERNELS = dict(registry._KERNELS)
     _BASELINE_RUNTIME_PROFILE_PLANS = dict(execution_profiles._RUNTIME_PROFILE_PLANS)
+    _BASELINE_PROFILE_ENV = {name: os.environ.get(name) for name in _profile_env_names()}
 
 
 @pytest.hookimpl(trylast=True)
@@ -95,3 +109,11 @@ def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> 
         execution_profiles.restore_runtime_profile_registry_for_tests(
             _BASELINE_RUNTIME_PROFILE_PLANS
         )
+    # Bindings persist for a serving process, but must not select another
+    # test's arithmetic or scratch layout. Preserve explicit caller settings.
+    if _BASELINE_PROFILE_ENV is not None:
+        for name, baseline in _BASELINE_PROFILE_ENV.items():
+            if baseline is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = baseline

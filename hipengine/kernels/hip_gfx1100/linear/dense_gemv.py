@@ -50,6 +50,7 @@ _SOURCE = Path(__file__).with_name("dense_gemv.hip")
 _OUTPUT_NAME = "dense_gemv.so"
 _SYMBOL_BF16_OUT = "hipengine_dense_gemv_out_bf16"
 _SYMBOL_BF16_F32_OUT = "hipengine_dense_gemv_bf16_f32_out"
+_SYMBOL_BF16_F32_OUT_ROWTILE2 = "hipengine_dense_gemv_bf16_f32_out_rowtile2"
 _SYMBOL_BF16_RESIDUAL_OUT = "hipengine_dense_gemv_out_bf16_residual_bf16_out"
 _SYMBOL_BF16_VIRTUAL256_OUT = "hipengine_dense_gemv_virtual256_out_bf16"
 _SYMBOL_BF16_VIRTUAL256_ROWTILE_OUT = "hipengine_dense_gemv_virtual256_rowtile_out_bf16"
@@ -480,6 +481,42 @@ def dense_gemv_bf16_f32_out(
     fn = signed_kernel_fn(
         library,
         _SYMBOL_BF16_F32_OUT,
+        _ARGTYPES_DENSE_GEMV_SINGLE,
+        ctypes.c_int,
+    )
+    err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dense_gemv_bf16_f32_out_rowtile2(
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Multiply BF16 activations and weights into an unrounded FP32 output, two rows
+    per block.
+
+    The weight stream is issued once for both rows, so two branches cost one weight
+    read instead of two. Each row's reduction order matches
+    :func:`dense_gemv_bf16_f32_out`, so a row's result is bit-identical to the
+    single-row kernel's.
+    """
+
+    _check_shape(rows, in_features, out_features, threads)
+    library = library or _dense_gemv_library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_BF16_F32_OUT_ROWTILE2,
         _ARGTYPES_DENSE_GEMV_SINGLE,
         ctypes.c_int,
     )

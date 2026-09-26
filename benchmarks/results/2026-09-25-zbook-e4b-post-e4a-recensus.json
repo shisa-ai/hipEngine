@@ -1,0 +1,220 @@
+{
+ "date": "2026-09-25",
+ "git": "de186707f7528e803b507837028d8c1d26f939db",
+ "host": {
+  "gpu": "zbook Radeon 8060S (gfx1151)",
+  "compiler_pin": "HIP version: 7.15.26333-0000000"
+ },
+ "performance_claim": false,
+ "limitations": [
+  "census is attribution, not the paired adjudicator (campaign 5.1 windows own A/B decisions)",
+  "one 32-step window per arm; per-kernel deltas under 0.5% are inside run-to-run noise",
+  "us/launch ratios across different kernels or different shape mixes bound owner efficiency but do not by themselves prove an owner rewrite wins"
+ ],
+ "protocol": {
+  "driver": "scripts/gguf_decode_graph_rocprof_driver.py mode=graph steps=32 prefill=512 msl=1024, 0.5s idle gap, trailing-window slice",
+  "script": "~/ud-e1-census/run_e4b_recensus.sh (log alongside); summaries regenerated from *_kernel_trace.csv after the script's agent_info glob mis-pick (same latent mis-pick as iteration 7's script run)",
+  "trace": "rocprofv3 --kernel-trace CSV per arm; summarized by scripts/gguf_decode_census_summary.py --steps 32"
+ },
+ "e4a_effect": {
+  "committed": "de186707f (five Q5_T16 decode shapes routed to tile8)",
+  "ud_direct_gemv_top12": "gone (was #1 at 20472.73 us/tok @ 242.9 us/launch)",
+  "ud_tile8_us_per_tok_before_after": {
+   "before": 4752.6,
+   "after": 24018.52
+  },
+  "ud_q5_family_us_per_tok_before_after": {
+   "before": 25225.3,
+   "after": 24018.52
+  },
+  "ud_q5_launches_per_tok_before_after": {
+   "before": 126.9,
+   "after": 116.2
+  },
+  "ud_pure_us_per_tok_before_after": {
+   "e4": 85527.5,
+   "e4b": 84828.84
+  },
+  "plain_pure_us_per_tok": {
+   "e4": 79814.0,
+   "e4b": 79814.01
+  },
+  "note": "pure delta -698.7 us/tok (-0.82%); plain control arm identical (571.59 launches/tok both windows)"
+ },
+ "top12": {
+  "ud": [
+   {
+    "kernel": "void (anonymous namespace)::q5_k_t16_dense_tile8_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "us_per_tok": 24018.52,
+    "launches_per_tok": 116.25,
+    "us_per_launch": 206.6
+   },
+   {
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "us_per_tok": 14083.21,
+    "launches_per_tok": 89.12,
+    "us_per_launch": 158.0
+   },
+   {
+    "kernel": "void gguf_iq4_xs_local32_dual_silu_kernel<2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+    "us_per_tok": 9796.78,
+    "launches_per_tok": 19.38,
+    "us_per_launch": 505.5
+   },
+   {
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "us_per_tok": 7505.22,
+    "launches_per_tok": 33.91,
+    "us_per_launch": 221.3
+   },
+   {
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "us_per_tok": 6937.78,
+    "launches_per_tok": 40.69,
+    "us_per_launch": 170.5
+   },
+   {
+    "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+    "us_per_tok": 4519.42,
+    "launches_per_tok": 0.97,
+    "us_per_launch": 4659.2
+   },
+   {
+    "kernel": "void (anonymous namespace)::gguf_iq_dense_strict_kernel<3, true, 8, 1>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+    "us_per_tok": 3508.52,
+    "launches_per_tok": 6.78,
+    "us_per_launch": 517.5
+   },
+   {
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_local32_silu_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+    "us_per_tok": 2525.12,
+    "launches_per_tok": 4.84,
+    "us_per_launch": 521.7
+   },
+   {
+    "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+    "us_per_tok": 2103.49,
+    "launches_per_tok": 22.28,
+    "us_per_launch": 94.4
+   },
+   {
+    "kernel": "void (anonymous namespace)::gguf_iq_dense_strict_kernel<2, true, 8, 1>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+    "us_per_tok": 1891.24,
+    "launches_per_tok": 3.88,
+    "us_per_launch": 487.4
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+    "us_per_tok": 1273.2,
+    "launches_per_tok": 15.5,
+    "us_per_launch": 82.1
+   },
+   {
+    "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+    "us_per_tok": 974.82,
+    "launches_per_tok": 62.0,
+    "us_per_launch": 15.7
+   }
+  ],
+  "plain": [
+   {
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_local32_silu_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+    "us_per_tok": 32380.89,
+    "launches_per_tok": 62.0,
+    "us_per_launch": 522.3
+   },
+   {
+    "kernel": "(anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_residual_kernel(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+    "us_per_tok": 10381.91,
+    "launches_per_tok": 31.0,
+    "us_per_launch": 334.9
+   },
+   {
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "us_per_tok": 9263.22,
+    "launches_per_tok": 77.5,
+    "us_per_launch": 119.5
+   },
+   {
+    "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_residual_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+    "us_per_tok": 7207.4,
+    "launches_per_tok": 31.0,
+    "us_per_launch": 232.5
+   },
+   {
+    "kernel": "(anonymous namespace)::q6_q4_t16_mixed_grid_pair_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long)",
+    "us_per_tok": 6698.64,
+    "launches_per_tok": 23.25,
+    "us_per_launch": 288.1
+   },
+   {
+    "kernel": "void (anonymous namespace)::q5_k_t16_dense_tile8_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "us_per_tok": 5179.71,
+    "launches_per_tok": 46.5,
+    "us_per_launch": 111.4
+   },
+   {
+    "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+    "us_per_tok": 4518.31,
+    "launches_per_tok": 0.97,
+    "us_per_launch": 4658.1
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+    "us_per_tok": 1245.45,
+    "launches_per_tok": 15.5,
+    "us_per_launch": 80.4
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, true, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)",
+    "us_per_tok": 1190.17,
+    "launches_per_tok": 46.5,
+    "us_per_launch": 25.6
+   },
+   {
+    "kernel": "void (anonymous namespace)::qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<1, false>(unsigned short const*, float const*, float const*, unsigned short*, unsigned short*, unsigned short const*, float const*, float*, float*, float const*, float*, long, long, long, long, long)",
+    "us_per_tok": 657.22,
+    "launches_per_tok": 46.5,
+    "us_per_launch": 14.1
+   },
+   {
+    "kernel": "(anonymous namespace)::q4_q6_t16_narrow_col4_planar_pair_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long)",
+    "us_per_tok": 333.13,
+    "launches_per_tok": 7.75,
+    "us_per_launch": 43.0
+   },
+   {
+    "kernel": "(anonymous namespace)::q4_q4_t16_narrow_col4_pair_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long)",
+    "us_per_tok": 239.61,
+    "launches_per_tok": 7.75,
+    "us_per_launch": 30.9
+   }
+  ]
+ },
+ "totals": {
+  "ud": {
+   "window_kernels": 25855,
+   "launches_per_token": 807.97,
+   "pure_us_per_token": 84828.84
+  },
+  "plain": {
+   "window_kernels": 18291,
+   "launches_per_token": 571.59,
+   "pure_us_per_token": 79814.01
+  }
+ },
+ "e4b_adjudication": {
+  "item2": "NEGATIVE \u2014 composition, not an owner defect",
+  "evidence": [
+   "identical kernel symbol both arms: q4_k_t16_dense_single_local32_gemv; same-kernel+same-shape speed is arm-identical (Q5 tile8 precedent: 111.2 plain vs 111.5 us/launch)",
+   "per-block ffn quant map: plain 65/65 layers (Q4_K,Q4_K) pairable -> 62 dual-SiLU launches/tok; UD only 5 (Q4_K,Q4_K), 20 (IQ4_XS,IQ4_XS) via the IQ dual (19.4/tok in-window), 9 (Q5_K,Q5_K), 13 mixed-quant gate/up layers unpairable under every same-quant rule -> 26 singleton launches",
+   "role/shape skew: UD's remaining Q4 singles are big shapes (attn_qkv (10240,5120)x29, attn_gate (6144,5120)x24, ffn (17408,5120)x14/14, down x10); plain's singles skew small",
+   "caveat: fixing the 13 mixed layers would require re-planning the artifact's per-tensor quants \u2014 a bytes/ARITHMETIC change under the execution-profile gate, not a code-route lever; campaign rule: composition-driven bytes are not an owner bug"
+  ]
+ },
+ "rerank": [
+  "1. q5_k_t16_dense_tile8 (now owns all Q5): 24.02 ms/tok @ 116.2/tok \u2014 post-E4a state, no plain counterpart at this composition",
+  "2. q4_k_t16_dense_single_local32: 14.08 ms/tok \u2014 adjudicated composition (above), closed as owner candidate",
+  "3. IQ4_XS local32 family: 24.25 ms/tok (dual_silu 9.80 + gemv<2,1> 7.51 + gemv<4,1> 6.94) \u2014 UD-only quants, no plain counterpart; within-UD variant/shape question, E9-adjacent"
+ ]
+}

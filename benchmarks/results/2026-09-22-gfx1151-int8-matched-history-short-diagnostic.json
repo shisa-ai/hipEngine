@@ -1,0 +1,351 @@
+{
+  "schema": 2,
+  "kind": "qwen38_int8_row_batched_decode_correctness",
+  "timestamp": "2026-09-22T11:32:04.630515+00:00",
+  "status": "passed",
+  "performance_claim": false,
+  "host": "gfx1151",
+  "environment": {
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-int8-mtp-hipcc-version.txt",
+    "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED": "1",
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+    "HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS": "0",
+    "HIPENGINE_HIP_ARCH": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "content_verified": true,
+    "error": null
+  },
+  "backend": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "hip_visible_devices": null,
+    "observed_device": "AMD Radeon 8060S Graphics",
+    "expected_device": "AMD Radeon 8060S Graphics"
+  },
+  "capability": {
+    "capability_id": "22c71484da2499afe8765e1674cf21532b0103b3cc5e3211994998b7aaf8cf28",
+    "admitted_max_direct_rows": 0,
+    "executed_direct_rows": 4,
+    "diagnostic_width_override": true,
+    "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans"
+  },
+  "workload": {
+    "rows": 4,
+    "prompt_lengths": [
+      31,
+      127,
+      257,
+      513
+    ],
+    "decode_steps": 4,
+    "max_sequence_length": 9216,
+    "comparison": "scalar_history_teacher_forced",
+    "prompts": [
+      {
+        "id": "code_merge_intervals",
+        "category": "code",
+        "source_text_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+        "tokens": 31,
+        "token_ids_sha256": "f91b1b7714e9e65f665e782f1fc38d3ddc7d59824f53acaa723485ad7914ea3a"
+      },
+      {
+        "id": "general_en_plan",
+        "category": "general_en",
+        "source_text_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+        "tokens": 127,
+        "token_ids_sha256": "b529b9706da87f0654313946e1439096e68b74f64be43b99ee6f0af26541d07b"
+      },
+      {
+        "id": "general_ja_plan",
+        "category": "general_ja",
+        "source_text_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+        "tokens": 257,
+        "token_ids_sha256": "04dc3fa5b57ddecdb07ffc54d084a015b69135ace7c4bd05ff83cadde229d583"
+      },
+      {
+        "id": "mixed_ja_en_translate",
+        "category": "mixed_ja_en",
+        "source_text_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+        "tokens": 513,
+        "token_ids_sha256": "eacb68555255e62fa02a15cdf72d45a2c41a1018e154f1ea40a532131f555a57"
+      }
+    ]
+  },
+  "correctness": {
+    "passed": true,
+    "token_exact": true,
+    "reference_trajectories": [
+      [
+        248046,
+        198,
+        248045,
+        248068,
+        198
+      ],
+      [
+        248046,
+        198,
+        248045,
+        248046,
+        198
+      ],
+      [
+        248046,
+        198,
+        248045,
+        248068,
+        198
+      ],
+      [
+        248046,
+        198,
+        248045,
+        248045,
+        248046
+      ]
+    ],
+    "batch_trajectories": [
+      [
+        248046,
+        198,
+        248045,
+        248068,
+        198
+      ],
+      [
+        248046,
+        198,
+        248045,
+        248046,
+        198
+      ],
+      [
+        248046,
+        198,
+        248045,
+        248068,
+        198
+      ],
+      [
+        248046,
+        198,
+        248045,
+        248045,
+        248046
+      ]
+    ],
+    "max_kl": 0.0,
+    "top1_agreement": 1.0,
+    "max_logit_abs": 0.0,
+    "logit_metrics": [
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 0,
+        "step": 0
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 0,
+        "step": 1
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 0,
+        "step": 2
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 0,
+        "step": 3
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 0,
+        "step": 4
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 1,
+        "step": 0
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 1,
+        "step": 1
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 1,
+        "step": 2
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 1,
+        "step": 3
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 1,
+        "step": 4
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 2,
+        "step": 0
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 2,
+        "step": 1
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 2,
+        "step": 2
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 2,
+        "step": 3
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 2,
+        "step": 4
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 3,
+        "step": 0
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 3,
+        "step": 1
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 3,
+        "step": 2
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 3,
+        "step": 3
+      },
+      {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "kl": 0.0,
+        "top1_match": true,
+        "row": 3,
+        "step": 4
+      }
+    ],
+    "hidden_mismatches": [],
+    "state_kv_scale_mismatches": []
+  },
+  "execution": {
+    "kv_layouts": [
+      {
+        "source": "resident_scratch",
+        "persistent_int8_payload_bytes": 1207959552,
+        "persistent_bf16_payload_bytes": 0,
+        "persistent_bf16_mirror_bytes": 0
+      },
+      {
+        "source": "resident_scratch",
+        "persistent_int8_payload_bytes": 1207959552,
+        "persistent_bf16_payload_bytes": 0,
+        "persistent_bf16_mirror_bytes": 0
+      },
+      {
+        "source": "resident_scratch",
+        "persistent_int8_payload_bytes": 1207959552,
+        "persistent_bf16_payload_bytes": 0,
+        "persistent_bf16_mirror_bytes": 0
+      },
+      {
+        "source": "resident_scratch",
+        "persistent_int8_payload_bytes": 1207959552,
+        "persistent_bf16_payload_bytes": 0,
+        "persistent_bf16_mirror_bytes": 0
+      }
+    ],
+    "route_ok": true,
+    "full_attention_decode_paths": [
+      "kv_live_spans_int8_batch"
+    ],
+    "physical_rows": [
+      4
+    ],
+    "host_model_row_iterations": [
+      0
+    ],
+    "decode_steps_observed": 4
+  },
+  "command": "/home/lhl/hipEngine-main/.venv/bin/python scripts/qwen38_int8_batch_decode_gate.py --backend hip_gfx1151 --allow-rejected-artifact --diagnostic-direct-rows 4 --prompt-lengths 31,127,257,513 --max-sequence-length 9216 --require-mirror-free --decode-steps 4 --compiler-version-file /tmp/hipengine-int8-mtp-hipcc-version.txt --json /tmp/qwen38-gfx1151-int8-matched-history-short.json",
+  "elapsed_seconds": 104.90221477579325
+}
