@@ -1494,6 +1494,31 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 81: the dense Q8_0 line is instruction-bound, not traffic-bound.**
+  A diagnostic iteration, recorded because it closes off a whole direction that
+  looked promising on paper.
+
+  ``dense:gguf_q8_0`` is 548.9 ms of the XTX prefill (30.8%) over 410 calls at a
+  1338 us mean, and the census attributes it by wrapping the Python launch site
+  (``census.wrap(gemma4_layer, "gemma4_project", dense_label)``), so those are
+  ``gemma4_project`` calls carrying a q8_0 weight rather than a trace family.
+
+  Pricing one representative shape -- [1024, 2816] x [2816, 2816], 8.1 GFLOP in
+  1.34 ms -- gives 6.0 TFLOPS, about 10% of the XTX's bf16 peak and 20% of fp32.
+  Its unique bytes are 8.4 MB of weights plus 5.8 MB of activations, which is
+  15 us at HBM speed against 1340 us measured: 90x off the memory floor. So the
+  re-read of a weight tile by every row group is *not* what limits this line,
+  even though the amplification ratio (about 88x) makes it look like the
+  obvious target. L2 absorbs those re-reads.
+
+  What limits it is instruction throughput: every weight needs a dequant step
+  (scale multiply, int8 to float convert) on top of the fp32 FMA that consumes
+  it, roughly doubling the instruction count per MAC. That is a vectorisation
+  and datatype problem, not a tiling one, and the fix that addresses it is an
+  integer dot-product path (dp4a/MMQ, llama.cpp's own arithmetic) rather than a
+  larger register tile. Chasing the tile would have cost a kernel rewrite to
+  recover something L2 was already hiding.
+
   **Iteration 80: pass 3 is bounded by the mask's last kept key.** The kernel
   already contained the argument this generalises: ``key_begin``'s docstring
   shortens the key range of a one-row block because a dropped key contributes
