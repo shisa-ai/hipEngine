@@ -882,6 +882,25 @@ direction. The clean-device pass also puts every other cell 4-10% above its
   scoped to gate_up's real shape. Diagnostic only: no product path changed, no
   row moved. Evidence row
   `2026-09-26-gemma4-26b-a4b-moe-repack-eligibility.json`.
+
+  *Refinement 2026-09-26 (after iteration 39): the down projection is measurable
+  at its real shape, and it is the larger unmeasured prize.* Iteration 31's
+  harness refused `ffn_len` 704 and substituted 768, and recorded that as "a
+  fixture limit, not a kernel one". The scan above explains *why* the fixture
+  refused it and why the substitute was the wrong shape to reach for: that
+  harness packs **Q4_K**, whose block is 256 elements, so a 704-element row
+  cannot be represented - the same reason the artifact's own down projection is
+  **Q5_1**, whose block is 32, and 704 = 22 x 32 exactly. So a Q5_1 arm measures
+  the production tensor at its true shape with no substitute, and it is worth
+  measuring first: `ffn_down_exps` is 5.79 GB against gate_up's 8.63 GB, so at
+  top_k 8 of 128 experts it is **362 MB/token** against gate_up's 539 MB/token,
+  40% of the MoE's expert bytes. At the roofline that is 0.377 ms/token against
+  the ~2.5 ms the campaign's 6.2 ms/step MoE budget implies for it, so the same
+  6-7x headroom is likely present and has never been confirmed. The t16 question
+  and the Q5_1 question are independent: t16 can only ever address gate_up, and
+  Q5_1 has no t16 shape, so the down projection's answer has to come from a
+  Q5_1-shaped kernel measurement rather than from a repack. New campaign-scoped
+  script `scripts/gemma4_moe_q5_1_bandwidth.py` is the work item.
   *Diagnostic 2026-09-26 (iteration 33): the routing hypothesis is closed, and
   the campaign's three-cheap-candidates rule is now in play.* A resolve-level
   probe over a real 1024-token `LLM.generate()` - spying on
