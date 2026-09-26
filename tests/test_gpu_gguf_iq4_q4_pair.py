@@ -23,6 +23,7 @@ except OSError:
 from hipengine.core.hip import get_hip_runtime  # noqa: E402
 from hipengine.core.memory import (  # noqa: E402
     copy_device_to_host,
+    copy_host_array_to_device,
     copy_host_to_device,
     free,
     host_array_ptr,
@@ -135,9 +136,9 @@ def test_iq4_q4_mixed_pair_silu_is_bit_exact_with_singles_and_silu_mul() -> None
         ref_b = malloc(n * 2, runtime=runtime); bufs.append(ref_b)
         got_b = malloc(n * 2, runtime=runtime); bufs.append(got_b)
         for b in (ga_b, ub_b, ref_b, got_b):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 b,
-                host_array_ptr(np.zeros(n, dtype=np.uint16)),
+                np.zeros(n, dtype=np.uint16),
                 n * 2,
                 runtime=runtime,
             )
@@ -251,9 +252,9 @@ def test_q4_iq4_mirror_pair_silu_is_bit_exact_with_singles_and_silu_mul() -> Non
         ref_b = malloc(n * 2, runtime=runtime); bufs.append(ref_b)
         got_b = malloc(n * 2, runtime=runtime); bufs.append(got_b)
         for b in (ga_b, ub_b, ref_b, got_b):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 b,
-                host_array_ptr(np.zeros(n, dtype=np.uint16)),
+                np.zeros(n, dtype=np.uint16),
                 n * 2,
                 runtime=runtime,
             )
@@ -369,9 +370,9 @@ def test_iq4_q5_pair_silu_is_bit_exact_with_singles_and_silu_mul() -> None:
         ref_b = malloc(n * 2, runtime=runtime); bufs.append(ref_b)
         got_b = malloc(n * 2, runtime=runtime); bufs.append(got_b)
         for b in (ga_b, ub_b, ref_b, got_b):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 b,
-                host_array_ptr(np.zeros(n, dtype=np.uint16)),
+                np.zeros(n, dtype=np.uint16),
                 n * 2,
                 runtime=runtime,
             )
@@ -487,9 +488,9 @@ def test_q4_q5_pair_silu_is_bit_exact_with_singles_and_silu_mul() -> None:
         ref_b = malloc(n * 2, runtime=runtime); bufs.append(ref_b)
         got_b = malloc(n * 2, runtime=runtime); bufs.append(got_b)
         for b in (ga_b, ub_b, ref_b, got_b):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 b,
-                host_array_ptr(np.zeros(n, dtype=np.uint16)),
+                np.zeros(n, dtype=np.uint16),
                 n * 2,
                 runtime=runtime,
             )
@@ -606,9 +607,9 @@ def test_q3_iq4_pair_silu_is_bit_exact_with_singles_and_silu_mul() -> None:
         ref_b = malloc(n * 2, runtime=runtime); bufs.append(ref_b)
         got_b = malloc(n * 2, runtime=runtime); bufs.append(got_b)
         for b in (ga_b, ub_b, ref_b, got_b):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 b,
-                host_array_ptr(np.zeros(n, dtype=np.uint16)),
+                np.zeros(n, dtype=np.uint16),
                 n * 2,
                 runtime=runtime,
             )
@@ -728,9 +729,9 @@ def test_q5_q4_pair_silu_is_bit_exact_with_singles_and_silu_mul() -> None:
         ref_b = malloc(n * 2, runtime=runtime); bufs.append(ref_b)
         got_b = malloc(n * 2, runtime=runtime); bufs.append(got_b)
         for b in (ga_b, ub_b, ref_b, got_b):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 b,
-                host_array_ptr(np.zeros(n, dtype=np.uint16)),
+                np.zeros(n, dtype=np.uint16),
                 n * 2,
                 runtime=runtime,
             )
@@ -846,9 +847,9 @@ def test_iq4_q3_pair_silu_is_bit_exact_with_singles_and_silu_mul() -> None:
         ref_b = malloc(n * 2, runtime=runtime); bufs.append(ref_b)
         got_b = malloc(n * 2, runtime=runtime); bufs.append(got_b)
         for b in (ga_b, ub_b, ref_b, got_b):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 b,
-                host_array_ptr(np.zeros(n, dtype=np.uint16)),
+                np.zeros(n, dtype=np.uint16),
                 n * 2,
                 runtime=runtime,
             )
@@ -982,9 +983,9 @@ def test_iq3s_iq4_pair_silu_is_bit_exact_with_singles_and_silu_mul() -> None:
         ref_b = malloc(n * 2, runtime=runtime); bufs.append(ref_b)
         got_b = malloc(n * 2, runtime=runtime); bufs.append(got_b)
         for b in (ga_b, ub_b, ref_b, got_b):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 b,
-                host_array_ptr(np.zeros(n, dtype=np.uint16)),
+                np.zeros(n, dtype=np.uint16),
                 n * 2,
                 runtime=runtime,
             )
@@ -1102,9 +1103,9 @@ def test_iq4nl_q5_pair_silu_is_bit_exact_with_singles_and_silu_mul() -> None:
         ref_b = malloc(n * 2, runtime=runtime); bufs.append(ref_b)
         got_b = malloc(n * 2, runtime=runtime); bufs.append(got_b)
         for b in (ga_b, ub_b, ref_b, got_b):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 b,
-                host_array_ptr(np.zeros(n, dtype=np.uint16)),
+                np.zeros(n, dtype=np.uint16),
                 n * 2,
                 runtime=runtime,
             )
@@ -1222,9 +1223,9 @@ def test_q5_q6_pair_silu_is_bit_exact_with_singles_and_silu_mul() -> None:
         ref_b = malloc(n * 2, runtime=runtime); bufs.append(ref_b)
         got_b = malloc(n * 2, runtime=runtime); bufs.append(got_b)
         for b in (ga_b, ub_b, ref_b, got_b):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 b,
-                host_array_ptr(np.zeros(n, dtype=np.uint16)),
+                np.zeros(n, dtype=np.uint16),
                 n * 2,
                 runtime=runtime,
             )
@@ -1344,9 +1345,9 @@ def test_iq4nl_nl_pair_silu_is_bit_exact_with_singles_and_silu_mul() -> None:
         ref_b = malloc(n * 2, runtime=runtime); bufs.append(ref_b)
         got_b = malloc(n * 2, runtime=runtime); bufs.append(got_b)
         for b in (ga_b, ub_b, ref_b, got_b):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 b,
-                host_array_ptr(np.zeros(n, dtype=np.uint16)),
+                np.zeros(n, dtype=np.uint16),
                 n * 2,
                 runtime=runtime,
             )
