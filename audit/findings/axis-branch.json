@@ -270,9 +270,9 @@
     },
     {
       "kind": "axis-branch",
-      "key": "hipengine/kernels/vibevoice.py:36",
+      "key": "hipengine/kernels/vibevoice.py:37",
       "title": "branches on a registry axis: if quant=='q4_k_m':",
-      "location": "hipengine/kernels/vibevoice.py:36",
+      "location": "hipengine/kernels/vibevoice.py:37",
       "evidence": {
         "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
         "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
@@ -283,7 +283,7 @@
       "hints": {
         "anchor": "hipengine/kernels/vibevoice.py",
         "refs": [
-          "hipengine/kernels/vibevoice.py:36"
+          "hipengine/kernels/vibevoice.py:37"
         ],
         "tokens": [
           "axis",
@@ -293,14 +293,14 @@
           "registry"
         ]
       },
-      "id": "axis-branch/hipengine/kernels/vibevoice.py:36",
-      "evidence_hash": "cdae62ac3a2f"
+      "id": "axis-branch/hipengine/kernels/vibevoice.py:37",
+      "evidence_hash": "c6b3c162e1fe"
     },
     {
       "kind": "axis-branch",
-      "key": "hipengine/kernels/vibevoice.py:44",
+      "key": "hipengine/kernels/vibevoice.py:45",
       "title": "branches on a registry axis: if quant=='q4_k_m' and name in linear_q4:",
-      "location": "hipengine/kernels/vibevoice.py:44",
+      "location": "hipengine/kernels/vibevoice.py:45",
       "evidence": {
         "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
         "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
@@ -311,7 +311,7 @@
       "hints": {
         "anchor": "hipengine/kernels/vibevoice.py",
         "refs": [
-          "hipengine/kernels/vibevoice.py:44"
+          "hipengine/kernels/vibevoice.py:45"
         ],
         "tokens": [
           "axis",
@@ -323,14 +323,14 @@
           "registry"
         ]
       },
-      "id": "axis-branch/hipengine/kernels/vibevoice.py:44",
-      "evidence_hash": "57d43d7a1520"
+      "id": "axis-branch/hipengine/kernels/vibevoice.py:45",
+      "evidence_hash": "cd017e453c9a"
     },
     {
       "kind": "axis-branch",
-      "key": "hipengine/kernels/vibevoice.py:58",
+      "key": "hipengine/kernels/vibevoice.py:59",
       "title": "branches on a registry axis: if quant=='q4_k_m':",
-      "location": "hipengine/kernels/vibevoice.py:58",
+      "location": "hipengine/kernels/vibevoice.py:59",
       "evidence": {
         "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
         "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
@@ -341,7 +341,7 @@
       "hints": {
         "anchor": "hipengine/kernels/vibevoice.py",
         "refs": [
-          "hipengine/kernels/vibevoice.py:58"
+          "hipengine/kernels/vibevoice.py:59"
         ],
         "tokens": [
           "axis",
@@ -351,8 +351,8 @@
           "registry"
         ]
       },
-      "id": "axis-branch/hipengine/kernels/vibevoice.py:58",
-      "evidence_hash": "ec67199ab1cb"
+      "id": "axis-branch/hipengine/kernels/vibevoice.py:59",
+      "evidence_hash": "68b62b2d6626"
     },
     {
       "kind": "axis-branch",
@@ -418,9 +418,9 @@
     },
     {
       "kind": "axis-branch",
-      "key": "hipengine/server/api.py:565",
+      "key": "hipengine/server/api.py:609",
       "title": "branches on a registry axis: if quant != \"auto\":",
-      "location": "hipengine/server/api.py:565",
+      "location": "hipengine/server/api.py:609",
       "evidence": {
         "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
         "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
@@ -431,7 +431,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:565"
+          "hipengine/server/api.py:609"
         ],
         "tokens": [
           "auto",
@@ -441,8 +441,8 @@
           "registry"
         ]
       },
-      "id": "axis-branch/hipengine/server/api.py:565",
-      "evidence_hash": "4f5997b9a30a"
+      "id": "axis-branch/hipengine/server/api.py:609",
+      "evidence_hash": "c4780ba03bbb"
     }
   ]
 }

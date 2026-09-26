@@ -38,9 +38,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/engine_loop.py:1305",
+      "key": "hipengine/generation/engine_loop.py:1309",
       "title": "unimplemented: raise NotImplementedError(\"multi-row streaming is not supported by this generator\")",
-      "location": "hipengine/generation/engine_loop.py:1305",
+      "location": "hipengine/generation/engine_loop.py:1309",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -51,7 +51,7 @@
       "hints": {
         "anchor": "hipengine/generation/engine_loop.py",
         "refs": [
-          "hipengine/generation/engine_loop.py:1305"
+          "hipengine/generation/engine_loop.py:1309"
         ],
         "tokens": [
           "generator",
@@ -64,14 +64,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/engine_loop.py:1305",
-      "evidence_hash": "5a6a2f5e8baf"
+      "id": "stub/hipengine/generation/engine_loop.py:1309",
+      "evidence_hash": "8d41eb42bf4b"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/engine_loop.py:595",
+      "key": "hipengine/generation/engine_loop.py:599",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/generation/engine_loop.py:595",
+      "location": "hipengine/generation/engine_loop.py:599",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -82,7 +82,7 @@
       "hints": {
         "anchor": "hipengine/generation/engine_loop.py",
         "refs": [
-          "hipengine/generation/engine_loop.py:595"
+          "hipengine/generation/engine_loop.py:599"
         ],
         "tokens": [
           "notimplementederror",
@@ -90,14 +90,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/engine_loop.py:595",
-      "evidence_hash": "5b66a8c34099"
+      "id": "stub/hipengine/generation/engine_loop.py:599",
+      "evidence_hash": "2394613029c7"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/engine_loop.py:610",
+      "key": "hipengine/generation/engine_loop.py:614",
       "title": "unimplemented: raise NotImplementedError(\"grammar-constrained speculative decoding is not supported\")",
-      "location": "hipengine/generation/engine_loop.py:610",
+      "location": "hipengine/generation/engine_loop.py:614",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -108,7 +108,7 @@
       "hints": {
         "anchor": "hipengine/generation/engine_loop.py",
         "refs": [
-          "hipengine/generation/engine_loop.py:610"
+          "hipengine/generation/engine_loop.py:614"
         ],
         "tokens": [
           "constrained",
@@ -121,14 +121,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/engine_loop.py:610",
-      "evidence_hash": "8e5b26184d3c"
+      "id": "stub/hipengine/generation/engine_loop.py:614",
+      "evidence_hash": "8e151d70edc9"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/engine_loop.py:612",
+      "key": "hipengine/generation/engine_loop.py:616",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/generation/engine_loop.py:612",
+      "location": "hipengine/generation/engine_loop.py:616",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -139,7 +139,7 @@
       "hints": {
         "anchor": "hipengine/generation/engine_loop.py",
         "refs": [
-          "hipengine/generation/engine_loop.py:612"
+          "hipengine/generation/engine_loop.py:616"
         ],
         "tokens": [
           "notimplementederror",
@@ -147,14 +147,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/engine_loop.py:612",
-      "evidence_hash": "b27212d4d8f5"
+      "id": "stub/hipengine/generation/engine_loop.py:616",
+      "evidence_hash": "5422e4fd92e2"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/engine_loop.py:711",
+      "key": "hipengine/generation/engine_loop.py:715",
       "title": "unimplemented: raise NotImplementedError(\"grammar-constrained speculative decoding is not supported\")",
-      "location": "hipengine/generation/engine_loop.py:711",
+      "location": "hipengine/generation/engine_loop.py:715",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -165,7 +165,7 @@
       "hints": {
         "anchor": "hipengine/generation/engine_loop.py",
         "refs": [
-          "hipengine/generation/engine_loop.py:711"
+          "hipengine/generation/engine_loop.py:715"
         ],
         "tokens": [
           "constrained",
@@ -178,14 +178,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/engine_loop.py:711",
-      "evidence_hash": "d4e8b6579797"
+      "id": "stub/hipengine/generation/engine_loop.py:715",
+      "evidence_hash": "16b5e0a2c284"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/engine_loop.py:713",
+      "key": "hipengine/generation/engine_loop.py:717",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/generation/engine_loop.py:713",
+      "location": "hipengine/generation/engine_loop.py:717",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -196,7 +196,7 @@
       "hints": {
         "anchor": "hipengine/generation/engine_loop.py",
         "refs": [
-          "hipengine/generation/engine_loop.py:713"
+          "hipengine/generation/engine_loop.py:717"
         ],
         "tokens": [
           "notimplementederror",
@@ -204,14 +204,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/engine_loop.py:713",
-      "evidence_hash": "be9f4dc819bc"
+      "id": "stub/hipengine/generation/engine_loop.py:717",
+      "evidence_hash": "28d61fb017b9"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/engine_loop.py:926",
+      "key": "hipengine/generation/engine_loop.py:930",
       "title": "unimplemented: raise NotImplementedError(\"this model does not implement token grammar masking\")",
-      "location": "hipengine/generation/engine_loop.py:926",
+      "location": "hipengine/generation/engine_loop.py:930",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -222,7 +222,7 @@
       "hints": {
         "anchor": "hipengine/generation/engine_loop.py",
         "refs": [
-          "hipengine/generation/engine_loop.py:926"
+          "hipengine/generation/engine_loop.py:930"
         ],
         "tokens": [
           "does",
@@ -236,8 +236,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/engine_loop.py:926",
-      "evidence_hash": "53635e0fde14"
+      "id": "stub/hipengine/generation/engine_loop.py:930",
+      "evidence_hash": "acc1c4db27f2"
     },
     {
       "kind": "stub",
@@ -514,9 +514,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf.py:1851",
+      "key": "hipengine/generation/qwen35_gguf.py:1941",
       "title": "unimplemented: raise NotImplementedError(\"packed MTP prefill warmup returned no results\")",
-      "location": "hipengine/generation/qwen35_gguf.py:1851",
+      "location": "hipengine/generation/qwen35_gguf.py:1941",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -527,7 +527,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf.py:1851"
+          "hipengine/generation/qwen35_gguf.py:1941"
         ],
         "tokens": [
           "mtp",
@@ -541,14 +541,14 @@
           "warmup"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf.py:1851",
-      "evidence_hash": "349904152f83"
+      "id": "stub/hipengine/generation/qwen35_gguf.py:1941",
+      "evidence_hash": "4a4ad20d00d7"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf.py:1876",
+      "key": "hipengine/generation/qwen35_gguf.py:1966",
       "title": "unimplemented: raise NotImplementedError(\"packed MTP verifier warmup returned no results\")",
-      "location": "hipengine/generation/qwen35_gguf.py:1876",
+      "location": "hipengine/generation/qwen35_gguf.py:1966",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -559,7 +559,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf.py:1876"
+          "hipengine/generation/qwen35_gguf.py:1966"
         ],
         "tokens": [
           "mtp",
@@ -573,14 +573,14 @@
           "warmup"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf.py:1876",
-      "evidence_hash": "0f1dda65d223"
+      "id": "stub/hipengine/generation/qwen35_gguf.py:1966",
+      "evidence_hash": "f9707d6361ea"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf.py:3326",
+      "key": "hipengine/generation/qwen35_gguf.py:3416",
       "title": "unimplemented: raise NotImplementedError(\"GGUF AR packed prefill returned no results\")",
-      "location": "hipengine/generation/qwen35_gguf.py:3326",
+      "location": "hipengine/generation/qwen35_gguf.py:3416",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -591,7 +591,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf.py:3326"
+          "hipengine/generation/qwen35_gguf.py:3416"
         ],
         "tokens": [
           "gguf",
@@ -604,14 +604,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf.py:3326",
-      "evidence_hash": "ca3ff2c95e56"
+      "id": "stub/hipengine/generation/qwen35_gguf.py:3416",
+      "evidence_hash": "00028a0df307"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf.py:3832",
+      "key": "hipengine/generation/qwen35_gguf.py:3922",
       "title": "unimplemented: raise NotImplementedError(\"GGUF speculative MTP requires Qwen NextN tensors\")",
-      "location": "hipengine/generation/qwen35_gguf.py:3832",
+      "location": "hipengine/generation/qwen35_gguf.py:3922",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -622,7 +622,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf.py:3832"
+          "hipengine/generation/qwen35_gguf.py:3922"
         ],
         "tokens": [
           "gguf",
@@ -637,14 +637,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf.py:3832",
-      "evidence_hash": "67d0d5d57b5d"
+      "id": "stub/hipengine/generation/qwen35_gguf.py:3922",
+      "evidence_hash": "6c68ce3eba5a"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf.py:3836",
+      "key": "hipengine/generation/qwen35_gguf.py:3926",
       "title": "unimplemented: raise NotImplementedError(\"GGUF speculative MTP currently supports only greedy-fast sampling\")",
-      "location": "hipengine/generation/qwen35_gguf.py:3836",
+      "location": "hipengine/generation/qwen35_gguf.py:3926",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -655,7 +655,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf.py:3836"
+          "hipengine/generation/qwen35_gguf.py:3926"
         ],
         "tokens": [
           "currently",
@@ -671,14 +671,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf.py:3836",
-      "evidence_hash": "df2357f7ab82"
+      "id": "stub/hipengine/generation/qwen35_gguf.py:3926",
+      "evidence_hash": "fe214d7ffe5d"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf.py:4087",
+      "key": "hipengine/generation/qwen35_gguf.py:4177",
       "title": "unimplemented: raise NotImplementedError(str(exc)) from exc",
-      "location": "hipengine/generation/qwen35_gguf.py:4087",
+      "location": "hipengine/generation/qwen35_gguf.py:4177",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -689,7 +689,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf.py:4087"
+          "hipengine/generation/qwen35_gguf.py:4177"
         ],
         "tokens": [
           "exc",
@@ -699,14 +699,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf.py:4087",
-      "evidence_hash": "246989c9edc6"
+      "id": "stub/hipengine/generation/qwen35_gguf.py:4177",
+      "evidence_hash": "015924a137ad"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf.py:4099",
+      "key": "hipengine/generation/qwen35_gguf.py:4189",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/generation/qwen35_gguf.py:4099",
+      "location": "hipengine/generation/qwen35_gguf.py:4189",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -717,7 +717,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf.py:4099"
+          "hipengine/generation/qwen35_gguf.py:4189"
         ],
         "tokens": [
           "notimplementederror",
@@ -725,14 +725,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf.py:4099",
-      "evidence_hash": "cf885088fe44"
+      "id": "stub/hipengine/generation/qwen35_gguf.py:4189",
+      "evidence_hash": "2285c48306c9"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf.py:4249",
+      "key": "hipengine/generation/qwen35_gguf.py:4339",
       "title": "unimplemented: raise NotImplementedError(\"resident session has no packed prefill entry point\")",
-      "location": "hipengine/generation/qwen35_gguf.py:4249",
+      "location": "hipengine/generation/qwen35_gguf.py:4339",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -743,7 +743,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf.py:4249"
+          "hipengine/generation/qwen35_gguf.py:4339"
         ],
         "tokens": [
           "entry",
@@ -758,14 +758,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf.py:4249",
-      "evidence_hash": "578ca8ae4794"
+      "id": "stub/hipengine/generation/qwen35_gguf.py:4339",
+      "evidence_hash": "3e7b20a5e4ae"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf.py:4263",
+      "key": "hipengine/generation/qwen35_gguf.py:4353",
       "title": "unimplemented: raise NotImplementedError(\"resident session has no packed prefill entry point\")",
-      "location": "hipengine/generation/qwen35_gguf.py:4263",
+      "location": "hipengine/generation/qwen35_gguf.py:4353",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -776,7 +776,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf.py:4263"
+          "hipengine/generation/qwen35_gguf.py:4353"
         ],
         "tokens": [
           "entry",
@@ -791,14 +791,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf.py:4263",
-      "evidence_hash": "70eb7233d65d"
+      "id": "stub/hipengine/generation/qwen35_gguf.py:4353",
+      "evidence_hash": "ed77be220fe8"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf.py:4275",
+      "key": "hipengine/generation/qwen35_gguf.py:4365",
       "title": "unimplemented: raise NotImplementedError(\"packed MTP prefill returned no results\")",
-      "location": "hipengine/generation/qwen35_gguf.py:4275",
+      "location": "hipengine/generation/qwen35_gguf.py:4365",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -809,7 +809,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf.py:4275"
+          "hipengine/generation/qwen35_gguf.py:4365"
         ],
         "tokens": [
           "mtp",
@@ -822,14 +822,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf.py:4275",
-      "evidence_hash": "96f2bbb0aa73"
+      "id": "stub/hipengine/generation/qwen35_gguf.py:4365",
+      "evidence_hash": "cc82fda403f4"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf.py:8140",
+      "key": "hipengine/generation/qwen35_gguf.py:8230",
       "title": "unimplemented: raise NotImplementedError(\"GGUF MTP2 adapter has no bounded complete cycle\")",
-      "location": "hipengine/generation/qwen35_gguf.py:8140",
+      "location": "hipengine/generation/qwen35_gguf.py:8230",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -840,7 +840,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf.py:8140"
+          "hipengine/generation/qwen35_gguf.py:8230"
         ],
         "tokens": [
           "adapter",
@@ -855,14 +855,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf.py:8140",
-      "evidence_hash": "9215c86d862b"
+      "id": "stub/hipengine/generation/qwen35_gguf.py:8230",
+      "evidence_hash": "bca0781aba92"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf_moe_mtp2.py:1243",
+      "key": "hipengine/generation/qwen35_gguf_moe_mtp2.py:1276",
       "title": "unimplemented: raise NotImplementedError(\"MoE MTP2 complete cycle is C1-only\")",
-      "location": "hipengine/generation/qwen35_gguf_moe_mtp2.py:1243",
+      "location": "hipengine/generation/qwen35_gguf_moe_mtp2.py:1276",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -873,7 +873,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf_moe_mtp2.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf_moe_mtp2.py:1243"
+          "hipengine/generation/qwen35_gguf_moe_mtp2.py:1276"
         ],
         "tokens": [
           "complete",
@@ -885,14 +885,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf_moe_mtp2.py:1243",
-      "evidence_hash": "1e56370f95d1"
+      "id": "stub/hipengine/generation/qwen35_gguf_moe_mtp2.py:1276",
+      "evidence_hash": "972090c58513"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf_moe_mtp2.py:573",
+      "key": "hipengine/generation/qwen35_gguf_moe_mtp2.py:606",
       "title": "unimplemented: raise NotImplementedError(\"MoE staged proposal currently requires C2\")",
-      "location": "hipengine/generation/qwen35_gguf_moe_mtp2.py:573",
+      "location": "hipengine/generation/qwen35_gguf_moe_mtp2.py:606",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -903,7 +903,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf_moe_mtp2.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf_moe_mtp2.py:573"
+          "hipengine/generation/qwen35_gguf_moe_mtp2.py:606"
         ],
         "tokens": [
           "currently",
@@ -916,14 +916,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf_moe_mtp2.py:573",
-      "evidence_hash": "6daeda502b99"
+      "id": "stub/hipengine/generation/qwen35_gguf_moe_mtp2.py:606",
+      "evidence_hash": "60ce418ec63f"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf_moe_mtp2.py:961",
+      "key": "hipengine/generation/qwen35_gguf_moe_mtp2.py:994",
       "title": "unimplemented: raise NotImplementedError(\"MoE staged target currently requires physical C2\")",
-      "location": "hipengine/generation/qwen35_gguf_moe_mtp2.py:961",
+      "location": "hipengine/generation/qwen35_gguf_moe_mtp2.py:994",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -934,7 +934,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf_moe_mtp2.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf_moe_mtp2.py:961"
+          "hipengine/generation/qwen35_gguf_moe_mtp2.py:994"
         ],
         "tokens": [
           "currently",
@@ -948,14 +948,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf_moe_mtp2.py:961",
-      "evidence_hash": "10c183e4165c"
+      "id": "stub/hipengine/generation/qwen35_gguf_moe_mtp2.py:994",
+      "evidence_hash": "3c909d8be9c5"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf_mtp2.py:3574",
+      "key": "hipengine/generation/qwen35_gguf_mtp2.py:3582",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/generation/qwen35_gguf_mtp2.py:3574",
+      "location": "hipengine/generation/qwen35_gguf_mtp2.py:3582",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -966,7 +966,7 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf_mtp2.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf_mtp2.py:3574"
+          "hipengine/generation/qwen35_gguf_mtp2.py:3582"
         ],
         "tokens": [
           "notimplementederror",
@@ -974,45 +974,13 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf_mtp2.py:3574",
-      "evidence_hash": "f413831768fa"
-    },
-    {
-      "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf_mtp2.py:3884",
-      "title": "unimplemented: raise NotImplementedError(\"GGUF MTP2 target has no speculative rows\")",
-      "location": "hipengine/generation/qwen35_gguf_mtp2.py:3884",
-      "evidence": {
-        "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
-        "why": "NotImplementedError in runtime code"
-      },
-      "signals": [
-        "NotImplementedError in runtime code"
-      ],
-      "hints": {
-        "anchor": "hipengine/generation/qwen35_gguf_mtp2.py",
-        "refs": [
-          "hipengine/generation/qwen35_gguf_mtp2.py:3884"
-        ],
-        "tokens": [
-          "gguf",
-          "has",
-          "mtp2",
-          "notimplementederror",
-          "raise",
-          "rows",
-          "speculative",
-          "target",
-          "unimplemented"
-        ]
-      },
-      "id": "stub/hipengine/generation/qwen35_gguf_mtp2.py:3884",
-      "evidence_hash": "2674880237fb"
+      "id": "stub/hipengine/generation/qwen35_gguf_mtp2.py:3582",
+      "evidence_hash": "0ba50d220576"
     },
     {
       "kind": "stub",
       "key": "hipengine/generation/qwen35_gguf_mtp2.py:3892",
-      "title": "unimplemented: raise NotImplementedError(",
+      "title": "unimplemented: raise NotImplementedError(\"GGUF MTP2 target has no speculative rows\")",
       "location": "hipengine/generation/qwen35_gguf_mtp2.py:3892",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
@@ -1027,8 +995,14 @@
           "hipengine/generation/qwen35_gguf_mtp2.py:3892"
         ],
         "tokens": [
+          "gguf",
+          "has",
+          "mtp2",
           "notimplementederror",
           "raise",
+          "rows",
+          "speculative",
+          "target",
           "unimplemented"
         ]
       },
@@ -1037,9 +1011,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/qwen35_gguf_mtp2.py:3948",
-      "title": "unimplemented: raise NotImplementedError(\"GGUF MTP2 requires a host or device chain\")",
-      "location": "hipengine/generation/qwen35_gguf_mtp2.py:3948",
+      "key": "hipengine/generation/qwen35_gguf_mtp2.py:3900",
+      "title": "unimplemented: raise NotImplementedError(",
+      "location": "hipengine/generation/qwen35_gguf_mtp2.py:3900",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -1050,7 +1024,33 @@
       "hints": {
         "anchor": "hipengine/generation/qwen35_gguf_mtp2.py",
         "refs": [
-          "hipengine/generation/qwen35_gguf_mtp2.py:3948"
+          "hipengine/generation/qwen35_gguf_mtp2.py:3900"
+        ],
+        "tokens": [
+          "notimplementederror",
+          "raise",
+          "unimplemented"
+        ]
+      },
+      "id": "stub/hipengine/generation/qwen35_gguf_mtp2.py:3900",
+      "evidence_hash": "3d144af4bf29"
+    },
+    {
+      "kind": "stub",
+      "key": "hipengine/generation/qwen35_gguf_mtp2.py:3956",
+      "title": "unimplemented: raise NotImplementedError(\"GGUF MTP2 requires a host or device chain\")",
+      "location": "hipengine/generation/qwen35_gguf_mtp2.py:3956",
+      "evidence": {
+        "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
+        "why": "NotImplementedError in runtime code"
+      },
+      "signals": [
+        "NotImplementedError in runtime code"
+      ],
+      "hints": {
+        "anchor": "hipengine/generation/qwen35_gguf_mtp2.py",
+        "refs": [
+          "hipengine/generation/qwen35_gguf_mtp2.py:3956"
         ],
         "tokens": [
           "chain",
@@ -1064,8 +1064,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/qwen35_gguf_mtp2.py:3948",
-      "evidence_hash": "af55354c2962"
+      "id": "stub/hipengine/generation/qwen35_gguf_mtp2.py:3956",
+      "evidence_hash": "4b4303c3b41d"
     },
     {
       "kind": "stub",
@@ -1796,9 +1796,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/llm.py:1124",
+      "key": "hipengine/llm.py:1133",
       "title": "unimplemented: raise NotImplementedError(\"multi-row streaming is not supported by this generator\")",
-      "location": "hipengine/llm.py:1124",
+      "location": "hipengine/llm.py:1133",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -1809,7 +1809,7 @@
       "hints": {
         "anchor": "hipengine/llm.py",
         "refs": [
-          "hipengine/llm.py:1124"
+          "hipengine/llm.py:1133"
         ],
         "tokens": [
           "generator",
@@ -1822,43 +1822,13 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/llm.py:1124",
-      "evidence_hash": "79b3da3c58b7"
-    },
-    {
-      "kind": "stub",
-      "key": "hipengine/llm.py:1239",
-      "title": "unimplemented: raise NotImplementedError(\"token counting is not supported by this generator\")",
-      "location": "hipengine/llm.py:1239",
-      "evidence": {
-        "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
-        "why": "NotImplementedError in runtime code"
-      },
-      "signals": [
-        "NotImplementedError in runtime code"
-      ],
-      "hints": {
-        "anchor": "hipengine/llm.py",
-        "refs": [
-          "hipengine/llm.py:1239"
-        ],
-        "tokens": [
-          "counting",
-          "generator",
-          "notimplementederror",
-          "raise",
-          "supported",
-          "token",
-          "unimplemented"
-        ]
-      },
-      "id": "stub/hipengine/llm.py:1239",
-      "evidence_hash": "d5aab6da8dda"
+      "id": "stub/hipengine/llm.py:1133",
+      "evidence_hash": "0f40314cdd7b"
     },
     {
       "kind": "stub",
       "key": "hipengine/llm.py:1248",
-      "title": "unimplemented: raise NotImplementedError(\"tokenization is not supported by this generator\")",
+      "title": "unimplemented: raise NotImplementedError(\"token counting is not supported by this generator\")",
       "location": "hipengine/llm.py:1248",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
@@ -1873,11 +1843,12 @@
           "hipengine/llm.py:1248"
         ],
         "tokens": [
+          "counting",
           "generator",
           "notimplementederror",
           "raise",
           "supported",
-          "tokenization",
+          "token",
           "unimplemented"
         ]
       },
@@ -1886,9 +1857,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/llm.py:1269",
-      "title": "unimplemented: raise NotImplementedError(\"detokenization is not supported by this generator\")",
-      "location": "hipengine/llm.py:1269",
+      "key": "hipengine/llm.py:1257",
+      "title": "unimplemented: raise NotImplementedError(\"tokenization is not supported by this generator\")",
+      "location": "hipengine/llm.py:1257",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -1899,7 +1870,36 @@
       "hints": {
         "anchor": "hipengine/llm.py",
         "refs": [
-          "hipengine/llm.py:1269"
+          "hipengine/llm.py:1257"
+        ],
+        "tokens": [
+          "generator",
+          "notimplementederror",
+          "raise",
+          "supported",
+          "tokenization",
+          "unimplemented"
+        ]
+      },
+      "id": "stub/hipengine/llm.py:1257",
+      "evidence_hash": "f4de68c80373"
+    },
+    {
+      "kind": "stub",
+      "key": "hipengine/llm.py:1278",
+      "title": "unimplemented: raise NotImplementedError(\"detokenization is not supported by this generator\")",
+      "location": "hipengine/llm.py:1278",
+      "evidence": {
+        "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
+        "why": "NotImplementedError in runtime code"
+      },
+      "signals": [
+        "NotImplementedError in runtime code"
+      ],
+      "hints": {
+        "anchor": "hipengine/llm.py",
+        "refs": [
+          "hipengine/llm.py:1278"
         ],
         "tokens": [
           "detokenization",
@@ -1910,8 +1910,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/llm.py:1269",
-      "evidence_hash": "324254016866"
+      "id": "stub/hipengine/llm.py:1278",
+      "evidence_hash": "a8186a71f392"
     },
     {
       "kind": "stub",
@@ -2176,9 +2176,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/llm.py:895",
+      "key": "hipengine/llm.py:904",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/llm.py:895",
+      "location": "hipengine/llm.py:904",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2189,7 +2189,7 @@
       "hints": {
         "anchor": "hipengine/llm.py",
         "refs": [
-          "hipengine/llm.py:895"
+          "hipengine/llm.py:904"
         ],
         "tokens": [
           "notimplementederror",
@@ -2197,14 +2197,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/llm.py:895",
-      "evidence_hash": "0a75903cf503"
+      "id": "stub/hipengine/llm.py:904",
+      "evidence_hash": "a50c1bfd3d19"
     },
     {
       "kind": "stub",
-      "key": "hipengine/llm.py:899",
+      "key": "hipengine/llm.py:908",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/llm.py:899",
+      "location": "hipengine/llm.py:908",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2215,7 +2215,7 @@
       "hints": {
         "anchor": "hipengine/llm.py",
         "refs": [
-          "hipengine/llm.py:899"
+          "hipengine/llm.py:908"
         ],
         "tokens": [
           "notimplementederror",
@@ -2223,14 +2223,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/llm.py:899",
-      "evidence_hash": "dd3270f67270"
+      "id": "stub/hipengine/llm.py:908",
+      "evidence_hash": "70db3f79850a"
     },
     {
       "kind": "stub",
-      "key": "hipengine/llm.py:933",
+      "key": "hipengine/llm.py:942",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/llm.py:933",
+      "location": "hipengine/llm.py:942",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2241,7 +2241,7 @@
       "hints": {
         "anchor": "hipengine/llm.py",
         "refs": [
-          "hipengine/llm.py:933"
+          "hipengine/llm.py:942"
         ],
         "tokens": [
           "notimplementederror",
@@ -2249,14 +2249,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/llm.py:933",
-      "evidence_hash": "14178dbdec76"
+      "id": "stub/hipengine/llm.py:942",
+      "evidence_hash": "66523aa32caa"
     },
     {
       "kind": "stub",
-      "key": "hipengine/llm.py:937",
+      "key": "hipengine/llm.py:946",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/llm.py:937",
+      "location": "hipengine/llm.py:946",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2267,7 +2267,7 @@
       "hints": {
         "anchor": "hipengine/llm.py",
         "refs": [
-          "hipengine/llm.py:937"
+          "hipengine/llm.py:946"
         ],
         "tokens": [
           "notimplementederror",
@@ -2275,8 +2275,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/llm.py:937",
-      "evidence_hash": "15bae9a840f6"
+      "id": "stub/hipengine/llm.py:946",
+      "evidence_hash": "978b4e190c12"
     },
     {
       "kind": "stub",
@@ -2627,9 +2627,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:15321",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:15350",
       "title": "unimplemented: raise NotImplementedError(\"retained prefix prefill requires INT8 K and V\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:15321",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:15350",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2640,7 +2640,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:15321"
+          "hipengine/runtime/qwen35_gguf_runner.py:15350"
         ],
         "tokens": [
           "int8",
@@ -2653,14 +2653,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:15321",
-      "evidence_hash": "32a39d6bf279"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:15350",
+      "evidence_hash": "e18b8a37550b"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:15323",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:15352",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:15323",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:15352",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2671,7 +2671,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:15323"
+          "hipengine/runtime/qwen35_gguf_runner.py:15352"
         ],
         "tokens": [
           "notimplementederror",
@@ -2679,14 +2679,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:15323",
-      "evidence_hash": "16f7d350cc25"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:15352",
+      "evidence_hash": "f569a638b560"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:20122",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:20213",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:20122",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:20213",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2697,7 +2697,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:20122"
+          "hipengine/runtime/qwen35_gguf_runner.py:20213"
         ],
         "tokens": [
           "notimplementederror",
@@ -2705,14 +2705,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:20122",
-      "evidence_hash": "03fa9259e8b1"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:20213",
+      "evidence_hash": "2553268bec63"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21723",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21841",
       "title": "unimplemented: raise NotImplementedError(\"packed target verifier requires at least one job\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21723",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21841",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2723,7 +2723,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21723"
+          "hipengine/runtime/qwen35_gguf_runner.py:21841"
         ],
         "tokens": [
           "job",
@@ -2738,14 +2738,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21723",
-      "evidence_hash": "9cd60920ac1e"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21841",
+      "evidence_hash": "19b67db6ea1f"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21731",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21849",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21731",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21849",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2756,7 +2756,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21731"
+          "hipengine/runtime/qwen35_gguf_runner.py:21849"
         ],
         "tokens": [
           "notimplementederror",
@@ -2764,14 +2764,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21731",
-      "evidence_hash": "05cfffec9d20"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21849",
+      "evidence_hash": "95cc16145fad"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21735",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21853",
       "title": "unimplemented: raise NotImplementedError(\"packed target verifier does not support expert sidecars yet\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21735",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21853",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2782,7 +2782,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21735"
+          "hipengine/runtime/qwen35_gguf_runner.py:21853"
         ],
         "tokens": [
           "does",
@@ -2798,14 +2798,14 @@
           "yet"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21735",
-      "evidence_hash": "29cfa3527831"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21853",
+      "evidence_hash": "979967985121"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21737",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21855",
       "title": "unimplemented: raise NotImplementedError(\"packed target verifier does not support F32 residual diagnostics\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21737",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21855",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2816,7 +2816,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21737"
+          "hipengine/runtime/qwen35_gguf_runner.py:21855"
         ],
         "tokens": [
           "diagnostics",
@@ -2832,14 +2832,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21737",
-      "evidence_hash": "81b77ff022d2"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21855",
+      "evidence_hash": "c53cd03d7d44"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21739",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21857",
       "title": "unimplemented: raise NotImplementedError(\"packed target verifier requires prefill-GDN no-copy capture\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21739",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21857",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2850,7 +2850,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21739"
+          "hipengine/runtime/qwen35_gguf_runner.py:21857"
         ],
         "tokens": [
           "capture",
@@ -2866,14 +2866,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21739",
-      "evidence_hash": "1b296e077125"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21857",
+      "evidence_hash": "006c9b2515a3"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21745",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21863",
       "title": "unimplemented: raise NotImplementedError(\"packed target verifier captured-row mode requires deferred linear-state c",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21745",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21863",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2884,7 +2884,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21745"
+          "hipengine/runtime/qwen35_gguf_runner.py:21863"
         ],
         "tokens": [
           "captured",
@@ -2902,14 +2902,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21745",
-      "evidence_hash": "7f4754a1b83d"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21863",
+      "evidence_hash": "9e0a667cf0db"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21747",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21865",
       "title": "unimplemented: raise NotImplementedError(\"packed target verifier cannot defer uncaptured linear-state commit\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21747",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21865",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2920,7 +2920,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21747"
+          "hipengine/runtime/qwen35_gguf_runner.py:21865"
         ],
         "tokens": [
           "cannot",
@@ -2937,14 +2937,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21747",
-      "evidence_hash": "c8b0576a051a"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21865",
+      "evidence_hash": "45ef3a8c9138"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21749",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21867",
       "title": "unimplemented: raise NotImplementedError(\"packed target verifier can defer scatter only for captured/deferred rows\"",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21749",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21867",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2955,7 +2955,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21749"
+          "hipengine/runtime/qwen35_gguf_runner.py:21867"
         ],
         "tokens": [
           "captured",
@@ -2971,14 +2971,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21749",
-      "evidence_hash": "23975a1dada0"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21867",
+      "evidence_hash": "a3b2d4d82ad0"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21757",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21875",
       "title": "unimplemented: raise NotImplementedError(\"packed target verifier requires resident GGUF sessions\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21757",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21875",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -2989,7 +2989,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21757"
+          "hipengine/runtime/qwen35_gguf_runner.py:21875"
         ],
         "tokens": [
           "gguf",
@@ -3004,14 +3004,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21757",
-      "evidence_hash": "d1e347a3df17"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21875",
+      "evidence_hash": "fe120d9b2a4a"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21759",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21877",
       "title": "unimplemented: raise NotImplementedError(\"packed target verifier requires shared runner sessions\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21759",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21877",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3022,7 +3022,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21759"
+          "hipengine/runtime/qwen35_gguf_runner.py:21877"
         ],
         "tokens": [
           "notimplementederror",
@@ -3037,14 +3037,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21759",
-      "evidence_hash": "491051a42245"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21877",
+      "evidence_hash": "c99886e922e2"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21763",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21881",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21763",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21881",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3055,7 +3055,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21763"
+          "hipengine/runtime/qwen35_gguf_runner.py:21881"
         ],
         "tokens": [
           "notimplementederror",
@@ -3063,14 +3063,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21763",
-      "evidence_hash": "da36670e8197"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21881",
+      "evidence_hash": "17af747c3e47"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21767",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21885",
       "title": "unimplemented: raise NotImplementedError(\"packed target verifier supports bulk attention mode only\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21767",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21885",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3081,7 +3081,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21767"
+          "hipengine/runtime/qwen35_gguf_runner.py:21885"
         ],
         "tokens": [
           "attention",
@@ -3096,14 +3096,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21767",
-      "evidence_hash": "88ad43a61d91"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21885",
+      "evidence_hash": "d2b919003293"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21769",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21887",
       "title": "unimplemented: raise NotImplementedError(\"packed target verifier requires uniform linear-state capture mode\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21769",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21887",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3114,7 +3114,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21769"
+          "hipengine/runtime/qwen35_gguf_runner.py:21887"
         ],
         "tokens": [
           "capture",
@@ -3131,14 +3131,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21769",
-      "evidence_hash": "a6a5c158a644"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21887",
+      "evidence_hash": "6e8d8782a50c"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21771",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21889",
       "title": "unimplemented: raise NotImplementedError(\"packed target verifier requires uniform linear-state commit mode\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21771",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21889",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3149,7 +3149,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21771"
+          "hipengine/runtime/qwen35_gguf_runner.py:21889"
         ],
         "tokens": [
           "commit",
@@ -3166,14 +3166,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21771",
-      "evidence_hash": "21ff5bd7ed51"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21889",
+      "evidence_hash": "b389b8c361ab"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21773",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21891",
       "title": "unimplemented: raise NotImplementedError(\"packed target verifier requires uniform state-scatter mode\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21773",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21891",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3184,7 +3184,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21773"
+          "hipengine/runtime/qwen35_gguf_runner.py:21891"
         ],
         "tokens": [
           "mode",
@@ -3200,14 +3200,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21773",
-      "evidence_hash": "ac7311699ebc"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21891",
+      "evidence_hash": "a54de8203587"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21826",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21944",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21826",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21944",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3218,7 +3218,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21826"
+          "hipengine/runtime/qwen35_gguf_runner.py:21944"
         ],
         "tokens": [
           "notimplementederror",
@@ -3226,14 +3226,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21826",
-      "evidence_hash": "c291a6839826"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21944",
+      "evidence_hash": "806bdc5d9af6"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:21844",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:21962",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:21844",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:21962",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3244,7 +3244,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:21844"
+          "hipengine/runtime/qwen35_gguf_runner.py:21962"
         ],
         "tokens": [
           "notimplementederror",
@@ -3252,14 +3252,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21844",
-      "evidence_hash": "86509480acde"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:21962",
+      "evidence_hash": "b0e71a5eb510"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:23186",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:23304",
       "title": "unimplemented: raise NotImplementedError(\"native GGUF slot prefill currently requires BF16 KV\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:23186",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:23304",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3270,7 +3270,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:23186"
+          "hipengine/runtime/qwen35_gguf_runner.py:23304"
         ],
         "tokens": [
           "bf16",
@@ -3285,14 +3285,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:23186",
-      "evidence_hash": "f98eabce4961"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:23304",
+      "evidence_hash": "0dd9c57b184d"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:23488",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:23606",
       "title": "unimplemented: raise NotImplementedError(\"native GGUF target execution currently requires compact physical slots\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:23488",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:23606",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3303,7 +3303,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:23488"
+          "hipengine/runtime/qwen35_gguf_runner.py:23606"
         ],
         "tokens": [
           "compact",
@@ -3320,14 +3320,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:23488",
-      "evidence_hash": "1a435720845d"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:23606",
+      "evidence_hash": "895b2df810b4"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:23815",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:23933",
       "title": "unimplemented: raise NotImplementedError(\"GGUF target-row fallback currently supports verify_chain only\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:23815",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:23933",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3338,7 +3338,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:23815"
+          "hipengine/runtime/qwen35_gguf_runner.py:23933"
         ],
         "tokens": [
           "currently",
@@ -3353,14 +3353,14 @@
           "verify_chain"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:23815",
-      "evidence_hash": "b78a3ff4e8d8"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:23933",
+      "evidence_hash": "3715defb9544"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:23819",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:23937",
       "title": "unimplemented: raise NotImplementedError(\"inactive target verify rows are not supported by the fallback\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:23819",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:23937",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3371,7 +3371,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:23819"
+          "hipengine/runtime/qwen35_gguf_runner.py:23937"
         ],
         "tokens": [
           "fallback",
@@ -3385,14 +3385,14 @@
           "verify"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:23819",
-      "evidence_hash": "0d474e02711b"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:23937",
+      "evidence_hash": "3f1deea5fce0"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:23839",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:23957",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:23839",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:23957",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3403,7 +3403,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:23839"
+          "hipengine/runtime/qwen35_gguf_runner.py:23957"
         ],
         "tokens": [
           "notimplementederror",
@@ -3411,14 +3411,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:23839",
-      "evidence_hash": "66cc8dd93bf3"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:23957",
+      "evidence_hash": "4dfa7731f892"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:23992",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:24110",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:23992",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:24110",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3429,7 +3429,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:23992"
+          "hipengine/runtime/qwen35_gguf_runner.py:24110"
         ],
         "tokens": [
           "notimplementederror",
@@ -3437,14 +3437,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:23992",
-      "evidence_hash": "59a77f1f0ea9"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24110",
+      "evidence_hash": "f922ae02b946"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:24032",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:24150",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:24032",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:24150",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3455,7 +3455,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:24032"
+          "hipengine/runtime/qwen35_gguf_runner.py:24150"
         ],
         "tokens": [
           "notimplementederror",
@@ -3463,14 +3463,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24032",
-      "evidence_hash": "6a3e1170a82e"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24150",
+      "evidence_hash": "924bff46e953"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:24037",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:24155",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:24037",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:24155",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3481,7 +3481,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:24037"
+          "hipengine/runtime/qwen35_gguf_runner.py:24155"
         ],
         "tokens": [
           "notimplementederror",
@@ -3489,14 +3489,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24037",
-      "evidence_hash": "3322120685eb"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24155",
+      "evidence_hash": "998a7836c819"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:24282",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:24400",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:24282",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:24400",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3507,7 +3507,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:24282"
+          "hipengine/runtime/qwen35_gguf_runner.py:24400"
         ],
         "tokens": [
           "notimplementederror",
@@ -3515,14 +3515,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24282",
-      "evidence_hash": "4e417af6333b"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24400",
+      "evidence_hash": "70bf835c07ea"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:24730",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:24848",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:24730",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:24848",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3533,7 +3533,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:24730"
+          "hipengine/runtime/qwen35_gguf_runner.py:24848"
         ],
         "tokens": [
           "notimplementederror",
@@ -3541,14 +3541,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24730",
-      "evidence_hash": "c4b2dc498114"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24848",
+      "evidence_hash": "10162b6d84a8"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:24736",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:24854",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:24736",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:24854",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3559,7 +3559,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:24736"
+          "hipengine/runtime/qwen35_gguf_runner.py:24854"
         ],
         "tokens": [
           "notimplementederror",
@@ -3567,14 +3567,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24736",
-      "evidence_hash": "f33c2037329f"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24854",
+      "evidence_hash": "e0af0560e2a0"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:24740",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:24858",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:24740",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:24858",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3585,7 +3585,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:24740"
+          "hipengine/runtime/qwen35_gguf_runner.py:24858"
         ],
         "tokens": [
           "notimplementederror",
@@ -3593,14 +3593,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24740",
-      "evidence_hash": "21952adfcf80"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24858",
+      "evidence_hash": "347a66d366cb"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:24750",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:24868",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:24750",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:24868",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3611,7 +3611,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:24750"
+          "hipengine/runtime/qwen35_gguf_runner.py:24868"
         ],
         "tokens": [
           "notimplementederror",
@@ -3619,14 +3619,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24750",
-      "evidence_hash": "9138c525c7ca"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24868",
+      "evidence_hash": "f1fe1393da6b"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:24757",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:24875",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:24757",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:24875",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3637,7 +3637,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:24757"
+          "hipengine/runtime/qwen35_gguf_runner.py:24875"
         ],
         "tokens": [
           "notimplementederror",
@@ -3645,14 +3645,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24757",
-      "evidence_hash": "ed391bacbc70"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:24875",
+      "evidence_hash": "1835e18105b3"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:25346",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:25464",
       "title": "unimplemented: raise NotImplementedError(\"packed AR prefill does not support expert sidecars yet\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:25346",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:25464",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3663,7 +3663,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:25346"
+          "hipengine/runtime/qwen35_gguf_runner.py:25464"
         ],
         "tokens": [
           "does",
@@ -3678,14 +3678,14 @@
           "yet"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:25346",
-      "evidence_hash": "587da7bf3ffd"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:25464",
+      "evidence_hash": "1195d418924b"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:25364",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:25482",
       "title": "unimplemented: raise NotImplementedError(\"packed AR prefill requires resident GGUF sessions\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:25364",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:25482",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3696,7 +3696,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:25364"
+          "hipengine/runtime/qwen35_gguf_runner.py:25482"
         ],
         "tokens": [
           "gguf",
@@ -3710,14 +3710,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:25364",
-      "evidence_hash": "5343f3e9ac60"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:25482",
+      "evidence_hash": "568ffee1a060"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:25366",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:25484",
       "title": "unimplemented: raise NotImplementedError(\"packed AR prefill requires shared runner sessions\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:25366",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:25484",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3728,7 +3728,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:25366"
+          "hipengine/runtime/qwen35_gguf_runner.py:25484"
         ],
         "tokens": [
           "notimplementederror",
@@ -3742,14 +3742,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:25366",
-      "evidence_hash": "e2bfe9ddc936"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:25484",
+      "evidence_hash": "031037d9dc91"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:25489",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:25607",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:25489",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:25607",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3760,7 +3760,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:25489"
+          "hipengine/runtime/qwen35_gguf_runner.py:25607"
         ],
         "tokens": [
           "notimplementederror",
@@ -3768,14 +3768,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:25489",
-      "evidence_hash": "915ff641f86b"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:25607",
+      "evidence_hash": "db49efc515cc"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:26172",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:26290",
       "title": "unimplemented: raise NotImplementedError(\"prompt KV sequence requires a shared live session\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:26172",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:26290",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3786,7 +3786,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:26172"
+          "hipengine/runtime/qwen35_gguf_runner.py:26290"
         ],
         "tokens": [
           "live",
@@ -3800,14 +3800,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26172",
-      "evidence_hash": "4176748eeb0f"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26290",
+      "evidence_hash": "2316143d1be7"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:26176",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:26294",
       "title": "unimplemented: raise NotImplementedError(\"prompt KV sequence requires one NextN attention block\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:26176",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:26294",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3818,7 +3818,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:26176"
+          "hipengine/runtime/qwen35_gguf_runner.py:26294"
         ],
         "tokens": [
           "attention",
@@ -3833,14 +3833,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26176",
-      "evidence_hash": "9b3d7d0e69ab"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26294",
+      "evidence_hash": "69b8fac9618b"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:26297",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:26415",
       "title": "unimplemented: raise NotImplementedError(\"hidden batch requires shared live sessions\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:26297",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:26415",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3851,7 +3851,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:26297"
+          "hipengine/runtime/qwen35_gguf_runner.py:26415"
         ],
         "tokens": [
           "batch",
@@ -3865,14 +3865,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26297",
-      "evidence_hash": "18fe7de5f29e"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26415",
+      "evidence_hash": "0a184d629342"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:26353",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:26471",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:26353",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:26471",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3883,7 +3883,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:26353"
+          "hipengine/runtime/qwen35_gguf_runner.py:26471"
         ],
         "tokens": [
           "notimplementederror",
@@ -3891,14 +3891,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26353",
-      "evidence_hash": "85aa05f4d843"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26471",
+      "evidence_hash": "83f3165d36e6"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:26479",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:26597",
       "title": "unimplemented: raise NotImplementedError(\"packed AR decode does not support expert sidecars yet\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:26479",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:26597",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3909,7 +3909,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:26479"
+          "hipengine/runtime/qwen35_gguf_runner.py:26597"
         ],
         "tokens": [
           "decode",
@@ -3924,14 +3924,14 @@
           "yet"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26479",
-      "evidence_hash": "603bdfd84383"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26597",
+      "evidence_hash": "f1d2447ee96b"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:26496",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:26614",
       "title": "unimplemented: raise NotImplementedError(\"packed AR decode requires resident GGUF sessions\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:26496",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:26614",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3942,7 +3942,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:26496"
+          "hipengine/runtime/qwen35_gguf_runner.py:26614"
         ],
         "tokens": [
           "decode",
@@ -3956,14 +3956,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26496",
-      "evidence_hash": "1525e1ae5cea"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26614",
+      "evidence_hash": "2174c263270b"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:26498",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:26616",
       "title": "unimplemented: raise NotImplementedError(\"packed AR decode requires shared runner sessions\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:26498",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:26616",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -3974,7 +3974,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:26498"
+          "hipengine/runtime/qwen35_gguf_runner.py:26616"
         ],
         "tokens": [
           "decode",
@@ -3988,14 +3988,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26498",
-      "evidence_hash": "2023ce1e4e5e"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26616",
+      "evidence_hash": "c8c2c0be8ee6"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:26576",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:26694",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:26576",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:26694",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -4006,7 +4006,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:26576"
+          "hipengine/runtime/qwen35_gguf_runner.py:26694"
         ],
         "tokens": [
           "notimplementederror",
@@ -4014,14 +4014,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26576",
-      "evidence_hash": "fdf8ea9f3890"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:26694",
+      "evidence_hash": "a35121720ee0"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:28391",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:28513",
       "title": "unimplemented: raise NotImplementedError(\"packed verifier requires resident GGUF sessions\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:28391",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:28513",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -4032,7 +4032,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:28391"
+          "hipengine/runtime/qwen35_gguf_runner.py:28513"
         ],
         "tokens": [
           "gguf",
@@ -4046,14 +4046,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:28391",
-      "evidence_hash": "dd351bcee9b5"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:28513",
+      "evidence_hash": "493d9bbae6fe"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:28393",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:28515",
       "title": "unimplemented: raise NotImplementedError(\"packed verifier requires shared runner sessions\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:28393",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:28515",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -4064,7 +4064,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:28393"
+          "hipengine/runtime/qwen35_gguf_runner.py:28515"
         ],
         "tokens": [
           "notimplementederror",
@@ -4078,14 +4078,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:28393",
-      "evidence_hash": "46cb624aee64"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:28515",
+      "evidence_hash": "456bfeff431b"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:28396",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:28518",
       "title": "unimplemented: raise NotImplementedError(\"packed verifier job start does not match session position\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:28396",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:28518",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -4096,7 +4096,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:28396"
+          "hipengine/runtime/qwen35_gguf_runner.py:28518"
         ],
         "tokens": [
           "does",
@@ -4112,14 +4112,14 @@
           "verifier"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:28396",
-      "evidence_hash": "8d25a96b3936"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:28518",
+      "evidence_hash": "c04e75ce5e78"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:28717",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:28839",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:28717",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:28839",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -4130,7 +4130,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:28717"
+          "hipengine/runtime/qwen35_gguf_runner.py:28839"
         ],
         "tokens": [
           "notimplementederror",
@@ -4138,14 +4138,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:28717",
-      "evidence_hash": "f473d349ea7e"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:28839",
+      "evidence_hash": "e870383a6724"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:30990",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:31112",
       "title": "unimplemented: raise NotImplementedError(\"packed native sampler rows must be contiguous\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:30990",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:31112",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -4156,7 +4156,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:30990"
+          "hipengine/runtime/qwen35_gguf_runner.py:31112"
         ],
         "tokens": [
           "contiguous",
@@ -4169,14 +4169,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:30990",
-      "evidence_hash": "7bf087b96c6f"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:31112",
+      "evidence_hash": "1fa82cf9f629"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:5833",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:5862",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:5833",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:5862",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -4187,7 +4187,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:5833"
+          "hipengine/runtime/qwen35_gguf_runner.py:5862"
         ],
         "tokens": [
           "notimplementederror",
@@ -4195,14 +4195,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:5833",
-      "evidence_hash": "417fd4093795"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:5862",
+      "evidence_hash": "9d7be17ecae8"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:5907",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:5936",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:5907",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:5936",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -4213,7 +4213,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:5907"
+          "hipengine/runtime/qwen35_gguf_runner.py:5936"
         ],
         "tokens": [
           "notimplementederror",
@@ -4221,14 +4221,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:5907",
-      "evidence_hash": "2cb7b9ac629a"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:5936",
+      "evidence_hash": "bc3f34eb5bdf"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:5912",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:5941",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:5912",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:5941",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -4239,7 +4239,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:5912"
+          "hipengine/runtime/qwen35_gguf_runner.py:5941"
         ],
         "tokens": [
           "notimplementederror",
@@ -4247,14 +4247,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:5912",
-      "evidence_hash": "e26631e1c399"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:5941",
+      "evidence_hash": "c7b4c190fd01"
     },
     {
       "kind": "stub",
-      "key": "hipengine/runtime/qwen35_gguf_runner.py:7691",
+      "key": "hipengine/runtime/qwen35_gguf_runner.py:7720",
       "title": "unimplemented: raise NotImplementedError(\"native GGUF target rows currently require BF16 KV\")",
-      "location": "hipengine/runtime/qwen35_gguf_runner.py:7691",
+      "location": "hipengine/runtime/qwen35_gguf_runner.py:7720",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -4265,7 +4265,7 @@
       "hints": {
         "anchor": "hipengine/runtime/qwen35_gguf_runner.py",
         "refs": [
-          "hipengine/runtime/qwen35_gguf_runner.py:7691"
+          "hipengine/runtime/qwen35_gguf_runner.py:7720"
         ],
         "tokens": [
           "bf16",
@@ -4280,8 +4280,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:7691",
-      "evidence_hash": "49efd5394b11"
+      "id": "stub/hipengine/runtime/qwen35_gguf_runner.py:7720",
+      "evidence_hash": "36bfb5ca7acc"
     },
     {
       "kind": "stub",
@@ -5571,9 +5571,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/server/api.py:12672",
+      "key": "hipengine/server/api.py:12816",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/server/api.py:12672",
+      "location": "hipengine/server/api.py:12816",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -5584,7 +5584,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:12672"
+          "hipengine/server/api.py:12816"
         ],
         "tokens": [
           "notimplementederror",
@@ -5592,14 +5592,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/server/api.py:12672",
-      "evidence_hash": "9a22e4f3ded2"
+      "id": "stub/hipengine/server/api.py:12816",
+      "evidence_hash": "9273d8fb9e54"
     },
     {
       "kind": "stub",
-      "key": "hipengine/server/api.py:12685",
+      "key": "hipengine/server/api.py:12829",
       "title": "unimplemented: raise NotImplementedError(\"speculative MTP serving is not supported by this engine\")",
-      "location": "hipengine/server/api.py:12685",
+      "location": "hipengine/server/api.py:12829",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -5610,7 +5610,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:12685"
+          "hipengine/server/api.py:12829"
         ],
         "tokens": [
           "engine",
@@ -5623,14 +5623,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/server/api.py:12685",
-      "evidence_hash": "41c182ec80bb"
+      "id": "stub/hipengine/server/api.py:12829",
+      "evidence_hash": "9565d8599aa2"
     },
     {
       "kind": "stub",
-      "key": "hipengine/server/api.py:3907",
+      "key": "hipengine/server/api.py:3951",
       "title": "unimplemented: raise NotImplementedError(\"controlled multi-row streaming is not supported by this generator\")",
-      "location": "hipengine/server/api.py:3907",
+      "location": "hipengine/server/api.py:3951",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -5641,7 +5641,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:3907"
+          "hipengine/server/api.py:3951"
         ],
         "tokens": [
           "controlled",
@@ -5655,14 +5655,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/server/api.py:3907",
-      "evidence_hash": "981d55b86e85"
+      "id": "stub/hipengine/server/api.py:3951",
+      "evidence_hash": "8fe07060300c"
     },
     {
       "kind": "stub",
-      "key": "hipengine/server/api.py:4311",
+      "key": "hipengine/server/api.py:4355",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/server/api.py:4311",
+      "location": "hipengine/server/api.py:4355",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -5673,7 +5673,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:4311"
+          "hipengine/server/api.py:4355"
         ],
         "tokens": [
           "notimplementederror",
@@ -5681,14 +5681,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/server/api.py:4311",
-      "evidence_hash": "5809f542ba35"
+      "id": "stub/hipengine/server/api.py:4355",
+      "evidence_hash": "394d4fab9484"
     },
     {
       "kind": "stub",
-      "key": "hipengine/server/api.py:4321",
+      "key": "hipengine/server/api.py:4365",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/server/api.py:4321",
+      "location": "hipengine/server/api.py:4365",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -5699,7 +5699,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:4321"
+          "hipengine/server/api.py:4365"
         ],
         "tokens": [
           "notimplementederror",
@@ -5707,14 +5707,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/server/api.py:4321",
-      "evidence_hash": "83dfa549102a"
+      "id": "stub/hipengine/server/api.py:4365",
+      "evidence_hash": "aabbc2e72788"
     },
     {
       "kind": "stub",
-      "key": "hipengine/server/api.py:4370",
+      "key": "hipengine/server/api.py:4414",
       "title": "unimplemented: raise NotImplementedError(\"multi-row streaming is not supported by this generator\")",
-      "location": "hipengine/server/api.py:4370",
+      "location": "hipengine/server/api.py:4414",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -5725,7 +5725,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:4370"
+          "hipengine/server/api.py:4414"
         ],
         "tokens": [
           "generator",
@@ -5738,8 +5738,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/server/api.py:4370",
-      "evidence_hash": "d92994a21fdd"
+      "id": "stub/hipengine/server/api.py:4414",
+      "evidence_hash": "3ce8fdd459b3"
     },
     {
       "kind": "stub",
