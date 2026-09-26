@@ -1037,36 +1037,31 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   wrong and was corrected in
   `worklog/entries/20260912T000826.517239Z-lhl-p3-c1-graph-floor-correction-5a1217.md`.
 
-## H2D uploads should retain the source instead of taking a bare address
+## Host-to-device source ownership
 
-- `copy_host_to_device(buffer, host_ptr, nbytes)` takes an `int`, so every call
-  site has to keep its own array alive. That is the whole defect class: the
-  inline form (`copy(buf, host_array_ptr(np.zeros_like(x)))`) frees the array
-  before the copy is entered, and no amount of care at the call site makes the
-  next author safe. The durable fix is an upload API that owns the reference,
-  e.g. `upload_host_array(buffer, array, nbytes=None)` doing the
-  `np.ascontiguousarray` + `host_array_ptr` + `memcpy` internally, with
-  `copy_host_to_device` kept only for callers that genuinely hold a raw address.
-  Measured mechanism and the tests that pin it: `tests/test_gpu_h2d_source_lifetime.py`.
-- Two residues are outside the AST guard in `tests/test_gpu_device_memory_hygiene.py`
-  (which is documented as partial, with its gaps pinned by
-  `test_the_lint_is_documented_as_partial_and_its_gaps_are_pinned`):
-  - `host_array_ptr(np.ascontiguousarray(x))` with a non-contiguous `x` copies,
-    so the temporary is the only reference and is freed before the copy is
-    entered. On a contiguous `x` it is a no-op and safe, which is why the guard
-    does not flag it; the ~100 existing call sites are safe as written, so this
-    is only worth closing with the upload API above.
-  - an allocation reached through a factory or a view, e.g.
-    `host_array_ptr(_fresh())` or `host_array_ptr(np.zeros(8).reshape(2, -1))`,
-    which a source-level lint cannot see. The first form is demonstrated in
-    `tests/test_gpu_h2d_source_lifetime.py`.
-- `_copy_array_to_tensor`-style helpers (e.g.
-  `hipengine/runtime/gguf_native_spec_cycle.py`) do bind the source to a local,
-  which is sufficient on its own -- the transfer is complete when the copy
-  returns (`tests/test_gpu_h2d_source_lifetime.py::test_transfer_is_complete_when_the_copy_returns`).
-  Their per-call `device_synchronize()` is defensive only and is the part worth
-  removing; a persistent pinned staging buffer is the alternative if a future
-  async copy path needs one.
+- `copy_host_array_to_device(buffer, array, nbytes=None)` retains a contiguous
+  source through the synchronous copy and checks both source and destination
+  bounds. Its default byte count is the source size. Use this API for arrays,
+  including temporary results of `np.ascontiguousarray`; noncontiguous inputs
+  must be made contiguous by the caller. The helper does not import NumPy or
+  add device-wide synchronization.
+- The reviewed temporary-array uploads in the GGUF, PARO, Moonshine, Evie,
+  TimesFM, and MTP runners use the owning API. Ownership and strided-input
+  regressions live in `tests/test_unit_host_array_upload.py`; real copies and
+  source reuse are covered by `tests/test_gpu_host_array_upload.py` and
+  `tests/test_gpu_h2d_source_lifetime.py`.
+- Remaining cleanup: named-local array uploads still use the raw-address
+  `copy_host_to_device` API in other paths. Named locals are safe through a
+  synchronous copy, but future edits must not replace them with temporary
+  pointer expressions. The AST guards are partial, not a proof of arbitrary
+  pointer lifetimes. Migrate array callers when touching those paths; retain
+  the pointer API for callers that genuinely manage a raw address. Remove this
+  ledger entry when array upload callers consistently use the owning API.
+- `_copy_array_to_tensor`-style helpers may also carry defensive per-copy
+  `device_synchronize()` calls. A synchronous copy retains no dependency on
+  the host source after return; removing synchronization still requires checking
+  each helper's device ordering contract. A future asynchronous upload API must
+  define a separate source-lifetime contract.
 
 ## Qwen4Exp Q8 expanded F32 cache: removed
 
