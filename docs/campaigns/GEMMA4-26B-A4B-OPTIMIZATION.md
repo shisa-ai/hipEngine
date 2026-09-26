@@ -818,6 +818,36 @@ direction. The clean-device pass also puts every other cell 4-10% above its
   GGUF dispatch, which selects on row count, so rows == 1 already takes the
   decode branch. Their 3.9 ms is kernel quality too, and the same repack applies.
   Diagnostic only: no product path changed, no row moved.
+
+  *Next candidate 2026-09-26 (after iteration 38): measure the t16 decode GEMV
+  before spending a loader project on it.* Iteration 31 named the repacked t16
+  route as the MoE's fix and scoped it as a loader-side repack plus a routing
+  change, and the campaign has been treating that as the next real lever. The
+  assumption underneath it has never been tested: **the t16 decode kernels have
+  never been measured at Gemma 4's shapes.** Iteration 31 measured the production
+  unfused chain (0.3002 ms/layer, ~104 GB/s) and iteration 32 measured the
+  selected form (3 launches, the same ~104 GB/s); the t16 family's speed is
+  inferred from the Qwen3.5/3.8 lanes it was built for, not measured here.
+
+  That matters because the repack is a multi-iteration loader job. The decode
+  family is `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.py` -
+  `gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out` and its natural, tile8,
+  parallel and pairreuse variants - and it is registered under
+  `gguf_q4_k_t16_v1`, but it reads a repacked weight layout and is reached today
+  only through the Qwen profiles (`qwen36_gguf_gfx1100_profiles`,
+  `qwen38_gguf_profiles`). Reaching it for Gemma 4 means building a Gemma 4
+  repack path, which is exactly the kind of work that should not be started on an
+  assumed number.
+
+  The measurement is cheap and decisive: a synthetic t16-layout fixture at the
+  MoE decode shapes (hidden 2816, ffn 704/1408, top_k 8, 128 experts), run
+  against the same harness iteration 31 used, compared to the production
+  selected GEMV's 104 GB/s. If t16 is substantially faster the repack is
+  justified and should be planned as its own unit; if it is also ~104 GB/s the
+  repack is refuted before it is built, and the MoE needs a different answer.
+  `scripts/gguf_q4_k_moe_ffn_fused_microbench.py` has no t16 arm today, so the
+  fixture is the work item. Recorded rather than started here: it is a new unit,
+  and the two diagnostics above closed this one.
   *Diagnostic 2026-09-26 (iteration 33): the routing hypothesis is closed, and
   the campaign's three-cheap-candidates rule is now in play.* A resolve-level
   probe over a real 1024-token `LLM.generate()` - spying on
