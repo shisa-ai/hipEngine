@@ -30,6 +30,21 @@ and the generated tokens unchanged in every arm. Against the campaign's pre-loop
 prefill on this host the two units together are 1.89x at 2048/8 and 2.10x at
 512/128.
 
+Reuse alone was not the end of it. Re-attributing after both units left the two
+expert projections at **68% of prefill kernel time** (gate/up 45.1%, down 23.0%)
+while moving only ~4 GB/s of weight bytes, which is the signature of a fetch
+problem rather than a bandwidth one. Isolating the shipped Q4_K grouped kernel's
+parts at the artifact's own geometry put 30 ms of 49 ms in the dequant and 21 ms
+in the activation-side multiply: it re-read every activation element from L2 once
+per output column and re-extracted a scale/min pair per weight element. Staging
+the expert's activation rows in shared memory (read once per eight output
+columns) and hoisting each column's `d*scale` / `dmin*min` pairs into shared per
+32-element sub-block is an exact rewrite of the same expressions, so it is
+**2.07x on that kernel with 0 of 5,767,168 bf16 outputs differing** and takes
+512/128 prefill from 92.28 to 121.90 tok/s (+32.1%, public wall 11.629 to
+10.240 s). Three units in, this host's 512/128 prefill is 11.617 -> 4.200 s,
+**2.77x**.
+
 58 of the 60 expert projections per prefill block now take the grouped route.
 The two that do not are layer 29's `Q5_K` gate/up and `Q8_0` down, which have no
 grouped family with a bf16-activation ABI in this tree. Routing the `Q4_K`

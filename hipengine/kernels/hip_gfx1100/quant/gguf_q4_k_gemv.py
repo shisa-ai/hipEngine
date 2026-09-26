@@ -25,6 +25,9 @@ _SYMBOL_SELECTED_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_gemv_bf16_bf16_ou
 _SYMBOL_SELECTED_GROUPED_PREFILL_BF16_BF16_OUT = (
     "hipengine_gguf_q4_k_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
 )
+_SYMBOL_SELECTED_GROUPED_PREFILL_STAGED_OUT8_BF16_BF16_OUT = (
+    "hipengine_gguf_q4_k_selected_grouped_prefill_staged_out8_bf16_bf16_out"
+)
 _SYMBOL_SELECTED_DUAL_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_dual_gemv_bf16_bf16_out"
 _SYMBOL_SELECTED_DUAL_SILU_BF16_BF16_OUT = (
     "hipengine_gguf_q4_k_selected_dual_silu_gemv_bf16_bf16_out"
@@ -605,6 +608,16 @@ def register_gguf_q4_k_gemv_kernels(*, replace: bool = True) -> None:
             "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
         ),
         gguf_q4_k_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_grouped_prefill_staged_out8_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_grouped_prefill_staged_out8_bf16_bf16_out,
         replace=replace,
     )
 
@@ -1437,7 +1450,59 @@ def gguf_q4_k_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
-gguf_q4_k_selected_pack8_gemv_bf16_bf16_out = _make_selected_wrapper(_SYMBOL_SELECTED_PACK8_BF16_BF16_OUT)
+
+def gguf_q4_k_selected_grouped_prefill_staged_out8_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Project one block's compact rows with staged activations and hoisted metadata.
+
+    Same ABI, same reduction and therefore the same bits as
+    ``gguf_q4_k_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out``; it
+    differs in how the bytes are fetched. The block's expert rows are staged in
+    shared memory so they are read from L2 once per eight output columns instead
+    of once per column, and each column's ``d * scale`` / ``dmin * min`` pairs are
+    hoisted into shared memory per 32-element sub-block so the inner loop does one
+    byte load and two flops instead of re-extracting the metadata per element.
+    """
+
+    if compact_rows <= 0 or num_experts <= 0:
+        raise ValueError("compact_rows and num_experts must be positive")
+    if in_features <= 0 or in_features % 256 or out_features <= 0:
+        raise ValueError("Q4_K grouped projection has invalid feature geometry")
+    library = library or build_gguf_q4_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SELECTED_GROUPED_PREFILL_STAGED_OUT8_BF16_BF16_OUT)
+    fn.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(expert_start_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+gguf_q4_k_selected_pack8_gemv_bf16_bf16_out = _make_selected_wrapper(
+    _SYMBOL_SELECTED_PACK8_BF16_BF16_OUT
+)
 gguf_q4_k_gemv_f32_fp16_out = _make_raw_wrapper(_SYMBOL_F32_FP16_OUT)
 gguf_q4_k_gemv_fp16_fp16_out = _make_raw_wrapper(_SYMBOL_FP16_FP16_OUT)
 gguf_q4_k_gemv_bf16_fp16_out = _make_raw_wrapper(_SYMBOL_BF16_FP16_OUT)
