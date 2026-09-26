@@ -1494,6 +1494,29 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 71: the same sweep on the fused `gate_up`, and why it does not
+  transfer.** Iteration 70's win came from a Qwen35-era owner the probe never
+  tried, so the fused Q4_K `gate_up` -- the second-largest item -- was swept the
+  same way at its real geometry (8192 compact rows, 128 experts, in 2816, half
+  width 704, fused width 1408), with the same bit-equality check:
+
+  | owner | ms | bits |
+  | --- | ---: | --- |
+  | ``rowbatch8_out4_amortized`` (incumbent) | 38.25 | ref |
+  | ``rowbatch8`` (one output column) | 124.22 | identical |
+  | ``pair2``, ``expertgrid64``, ``expertgrid64_bundle`` | -- | rejected on ABI |
+
+  The incumbent wins here, and by a wide margin over the one-output-column form:
+  the fused tensor's half width is 704 against an input of 2816, so the amortized
+  owner's input reuse is worth far more than it is on the down projection, whose
+  input is only 704 wide. The Qwen35-era dual forms are *not* drop-in: all seven
+  ``moe_linear`` dual variants have wrappers, but the pair2/expertgrid64/bundle
+  family rejects the fused-stride keywords the Gemma probe passes
+  (``output_row_stride``, ``expert_stride_rows``), so they take a different
+  calling convention rather than being a schedule flag. Reaching them needs an
+  adapter or a signature-preserving wrapper, not a probe reorder, which is why
+  this iteration ends without a change.
+
   **Iteration 70: the Qwen35 paired/folded Q5_1 owner, and the largest exact win of
   the campaign (1.80x on the biggest item).** The campaign goal asks for the
   Qwen35 kernel tuning to be used where it helps. The Gemma probe only ever tried
