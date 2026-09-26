@@ -1494,6 +1494,61 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 74: the key-class attention kernel paid for the whole square on a
+  causal block. 1.21x on attention, bit-identical.** The prefill launcher already
+  routes multi-token blocks to the decode-class family (measured 421 us against
+  the block kernel's 652-700 at keys 1024, head_dim 256), so attention was not
+  running the older schedule. The waste was inside that kernel: pass 1 computed
+  every key's dot product and *then* discarded the masked ones
+  (``active[t] ? reduced * scale : -INFINITY``). The block kernel it replaced
+  guards the dot with ``if (mask_row[j] != 0)``, so the key-class kernel was
+  strictly worse at exactly the geometry prefill uses.
+
+  The caller hands the layer a ``(rows, keys)`` keep mask -- causal on full
+  layers, windowed on sliding ones -- so the dead keys are knowable per row, but
+  the existing shortcut cannot use them: ``key_begin`` shortens the key range by
+  moving the K/V/mask pointers forward, which is only valid for a one-row block
+  because a multi-row block has a different bound per row. The kernel therefore
+  needed a per-row tile skip. A warp's tile covers ``j0 + t * warps``, so for a
+  causal mask every tile with ``j0 > token`` is entirely dead, which is half the
+  tiles of the average row when tokens == keys.
+
+  The skipped tiles still write ``-INFINITY`` into their ``logits_s`` slots: pass
+  2 reads that array for every key, so the write is what keeps the change
+  arithmetic-free rather than merely approximately so. ``running_max`` is
+  untouched because ``fmaxf(x, -INFINITY)`` is a no-op, and pass 2 adds
+  ``expf(-INFINITY - row_max) = 0`` at the same ascending-j step, so no surviving
+  term moves. This is the same principle ``key_begin``'s docstring already
+  states -- a masked key contributes zero to both reductions.
+
+  Measured on the W7900 census (same script, same artifact, back to back):
+
+  | family | before | after | delta |
+  | --- | ---: | ---: | ---: |
+  | ``attention_prefill`` | 294.9 | 244.5 | **-50.4** |
+  | ``layer_total`` | 2177.0 | 2121.0 | -56.0 |
+  | ``dense:gguf_q8_0`` | 605.2 | 604.4 | -0.8 |
+  | ``moe_grouped:gguf_q5_1`` | 497.0 | 496.1 | -0.9 |
+  | ``moe_grouped_dual:gguf_q4_k`` | 491.8 | 488.5 | -3.3 |
+  | ``moe_selected:gguf_q5_k`` | 155.9 | 155.9 | 0.0 |
+
+  Every other family is flat within 3 ms, so the 50 ms is the attention kernel
+  and not a clock excursion. Attention is 244.5 ms against 4.9 ms per call
+  before, 4.07 ms after.
+
+  **Exactness:** the teacher-forced gate against the pre-change ``fold128``
+  capture returns ``kl_max`` 0.0 over 1023 x 262144 float32 logits, ``passed``
+  true, zero top-1 flips -- with the baseline recording attention ``.hip`` sha
+  ``df40ebd7...`` against the candidate's ``9e5dbd00...``, so the gate is
+  certifying a changed source as exactly equivalent rather than re-scoring an
+  unchanged one.
+
+  What the skip does not reach is the rest of the kernel: pass 2 still walks
+  every key with ``expf``, and pass 3 still walks every key with the V loads
+  (its ``weight == 0`` guard stops the loads but not the walk). Both are O(keys)
+  without a dot, which is why the win is 1.21x and not the 2x the dead half of
+  the triangle would allow.
+
   **Iteration 73: the row4 GEMV adapter for the two outlier layers does not
   reduce to an argument reorder.** The two Q5_K/Q8_0 layers (205 ms, 9.4%) have no
   grouped owner at ``moe_linear``, but ``gguf_k_gemv`` registers
