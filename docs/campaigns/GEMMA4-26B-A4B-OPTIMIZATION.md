@@ -1494,6 +1494,50 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 75: the row4 GEMV is the wrong tool for the two outlier layers, and
+  the dense tile ceiling is real.** Two closed questions, both now measured.
+
+  *Row4 GEMV.* The earlier iteration recorded a GPU fault when driving
+  ``selected_grouped_row4_gemv_bf16_bf16_out`` at the Q5_K ``gate_up`` shape and
+  stopped rather than wire it in on a guess. The fault was in the *probe*: it
+  sized Q5_K rows at 144 bytes, which is Q4_K's superblock, so the kernel walked
+  past the end of a buffer that should have been 176 bytes per 256 weights. The
+  kernel's own row derivation is ``x_row[r] = row[r] / (rows / x_rows)``, which
+  the identity mapping satisfies, and the call is legal. It is also the wrong
+  kernel: 205.5 ms for the Q5_K shape against the incumbent selected GEMV's 78.0,
+  and 70.0 against 24.8 for Q8_0. Its grid is one CTA per (output column, expert)
+  with the rows walked inside, so every one of the 1408 column-CTAs re-reads the
+  same activation rows -- 65 GB of x traffic per call at 316 GB/s. It is a
+  decode-shaped kernel, and the two layers still need a new row-batched grouped
+  owner for q5_k/q8_0 rather than an adapter.
+
+  *Dense tile ceiling.* The tiled exact owner's ``static_assert`` capped
+  COL_TILE x ROW_TILE at 64 accumulators. Traffic there is
+  ``(rows / ROW_TILE) * W + (out / COL_TILE) * X``, so at the dense 2112x2816
+  shape the incumbent 16x4 moves 2.38 GB (1.62 GB of it weights re-read once per
+  row tile) and a 16x8 shape would move 1.57 GB at the same weight traffic and
+  half the x. That is a 34% traffic cut, so the cap was worth testing directly.
+  16x8 was instantiated, and it is **bit-identical to 16x4** -- confirming the
+  tile shape does not touch the association, since the reduction tree depends on
+  the 128-thread block, not on the tile.
+
+  It is also slower. Achieved bandwidth falls from ~930 GB/s to ~490-565 GB/s
+  across the three dense shapes, so the traffic model is not the binding
+  constraint at that point: 128 fp32 accumulators plus the weight and x register
+  sets put the kernel past the occupancy knee, and the lost memory-level
+  parallelism costs more than the traffic saved. 16x4 holds the three dense
+  shapes at 2.53-2.57 ms and 4.7-4.8 TFLOPS. The 64-accumulator bound is a
+  measured ceiling, not a stale guess, and the 16x8 instantiation was reverted
+  rather than left registered as an unselected candidate.
+
+  Both of these say the same thing about the remaining exact path: every large
+  family is now bounded by something that is not a scheduling mistake -- dense by
+  occupancy against traffic, q5_1 down by the chronology-pinned LDS tree, gate_up
+  by input reuse that the dual owners already capture, attention by passes 2 and
+  3 walking every key. The gap to llama.cpp's 3910 tok/s is the arithmetic route
+  (int8 dp4a with quantized activations), which no amount of exact scheduling
+  closes.
+
   **Iteration 74: the key-class attention kernel paid for the whole square on a
   causal block. 1.21x on attention, bit-identical.** The prefill launcher already
   routes multi-token blocks to the decode-class family (measured 421 us against
