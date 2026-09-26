@@ -513,6 +513,28 @@ def test_gguf_capacity_workspace_lease_mirrors_the_declared_context() -> None:
     assert leased.total_bytes - plain.total_bytes == leased.workspace_lease_bytes
 
 
+@pytest.mark.parametrize("context", [511, 1025, 5379])
+@pytest.mark.parametrize("capacity", [1, 4, 8])
+def test_workspace_slots_are_independent_of_request_kv(context, capacity):
+    kwargs = dict(
+        context_tokens=context, **_QWEN38_27B_GEOMETRY,
+        kv_storage_dtype="bf16", workspace_lease_needed=True,
+        max_batch_size=1,
+    )
+    single = gguf_runner.qwen35_gguf_resident_breakdown(_real_qwen38_27b_cfg(), **kwargs)
+    concurrent = gguf_runner.qwen35_gguf_resident_breakdown(
+        _real_qwen38_27b_cfg(), workspace_lease_slots=capacity, **kwargs,
+    )
+    assert concurrent.workspace_lease_pages == gguf_runner.packed_verify_workspace_lease_pages(
+        capacity, concurrent.max_positions,
+    )
+    assert concurrent.kv_pool_bytes == single.kv_pool_bytes
+    assert concurrent.scratch_bytes == single.scratch_bytes
+    assert concurrent.total_bytes - single.total_bytes == (
+        (capacity - 1) * single.workspace_lease_bytes
+    )
+
+
 def test_gguf_capacity_reserve_and_transient_overrides_are_respected() -> None:
     generous = _estimate_27b(8.0, transient_bytes_per_token=0, transient_fixed_bytes=0)
     conservative = _estimate_27b(8.0, transient_bytes_per_token=128 * 1024, transient_fixed_bytes=2**31)
@@ -658,8 +680,8 @@ def test_auto_context_honours_explicit_pool_memory_budget(monkeypatch) -> None:
     assert generator._auto_context_estimate.usable_bytes <= 4096 * 1024**2
 
 
-def test_auto_context_is_independent_of_batch_size(monkeypatch) -> None:
-    """Scheduler concurrency does not shrink the per-request context ceiling."""
+def test_auto_context_prices_serving_workspace_capacity(monkeypatch) -> None:
+    """Concurrency changes the pinned lease, not per-request elastic KV."""
 
     monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB", raising=False)
@@ -673,8 +695,11 @@ def test_auto_context_is_independent_of_batch_size(monkeypatch) -> None:
         runner, max_batch_size=8, defer_kv_allocation=True
     )
 
-    assert single is not None and batched == single
-    assert generator._auto_resolved_max_sequence_length == single
+    assert single is not None and batched is not None and batched < single
+    assert generator._auto_resolved_max_sequence_length == batched
+    assert generator._auto_context_estimate.workspace_lease_pages == (
+        gguf_runner.packed_verify_workspace_lease_pages(8, batched)
+    )
 
 
 def test_auto_context_honours_the_disable_flag(monkeypatch) -> None:
