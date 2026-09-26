@@ -1494,6 +1494,46 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 66: where the remaining prefill headroom actually lives, and what the
+  WMMA arm is worth today.** With attention fixed, the exact path's remaining
+  items were re-derived from the 2568 ms census. Every one of them is either
+  already at the best schedule its association allows, or has no exact owner at
+  all:
+
+  | item | ms | share | exact-path state |
+  | --- | ---: | ---: | --- |
+  | grouped Q5_1 down | 894 | 34.8% | LDS-issue-bound at the pinned 256-leaf tree; ~2.1 TFLOPS |
+  | dense Q8_0 | 581 | 22.6% | already `exact_prefill_tile16x4`; ~11.4 TFLOPS |
+  | fused grouped Q4_K `gate_up` | 475 | 18.5% | already the amortized out4 owner; ~7.9 TFLOPS |
+  | attention prefill | 331 | 12.9% | fixed in iteration 64 |
+  | two Q5_K/Q8_0 layers | 203 | 7.9% | **no grouped owner is registered for either quant** |
+
+  The last row is the sharp one: `moe_linear` has 7 grouped variants for
+  `gguf_q4_k` and 12 for `gguf_q5_1`, and **zero for `gguf_q5_k` and
+  `gguf_q8_0`**. The two layers whose experts use those quants therefore run the
+  selected per-row GEMV, which re-reads each expert's weight once per compact
+  row: 0.85 TFLOPS on the Q5_K `gate_up` (76.7 ms for 64.9 GFLOP) against the
+  grouped Q4_K owner's 7.9. That is a real, exact win of roughly 150 ms, but it
+  is a new kernel family -- one grouped owner per missing quant -- not a routing
+  change.
+
+  **The WMMA arm, re-measured on the same lane and the same day:**
+
+  | 1024 prompt / 128 output, W7900 lane | prefill | first token | decode |
+  | --- | ---: | ---: | ---: |
+  | default (exact) path | 2.68 s (382.2 tok/s) | 2.68 s | 39.49 tok/s |
+  | `HIPENGINE_GGUF_WMMA_PREFILL=1` + `HIPENGINE_GEMMA4_MOE_PREFILL=wmma` | **1.68 s (611.4 tok/s)** | 1.68 s | 39.41 tok/s |
+
+  The arm is now worth **1.6x** rather than the 1.3x it was before iteration 64,
+  because the attention fix lifts both arms while the arm's own kernels were
+  never the binding constraint on that line. Its numerical status is unchanged:
+  the earlier 1023-row measurement put `kl_max` at 0.060867 against the absolute
+  0.05 bar, and a 63-row screen re-run today returns `kl_max` 0.0 with 0 top-1
+  flips but does not exercise the arm at all -- the gate reports
+  `split_not_exercised`, and at 63 rows the WMMA routes do not engage, so that
+  screen says nothing about the arm either way. Promotion still needs a
+  long-chain capture against the arm.
+
   **Iteration 65: the Q5_1 down owner is LDS-throughput-bound, not barrier-bound;
   the wave-sync change was rejected.** With attention fixed, the grouped Q5_1 down
   is the largest item (894 ms of 2568 ms, 34.8%) and the least efficient: at
