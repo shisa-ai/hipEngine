@@ -64,13 +64,15 @@ def test_capacity_clamps_to_context(enabled):
             assert runtime.live[owner.ptr] == owner.nbytes
 
 
-def test_default_does_not_allocate_before_model_qualification(enabled, monkeypatch):
+def test_default_allocates_qualified_workspace(enabled, monkeypatch):
     monkeypatch.delenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT")
     with simulated_runner(config(), context=256, chunk=16) as (runner, runtime):
         before = dict(runtime.live)
         with runner._wide_f16_activation_context():
-            assert wide_f16_activation_workspace() is None
-        assert runtime.live == before
+            owner = wide_f16_activation_workspace()
+            assert owner is not None
+            assert runtime.live[owner.ptr] == 2 * 16 * 10_240
+        assert len(runtime.live) == len(before) + 1
 
 
 def test_allocation_failure_does_not_publish_owner(enabled, monkeypatch):

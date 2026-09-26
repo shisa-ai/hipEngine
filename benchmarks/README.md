@@ -1,9 +1,28 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-22 JST (2026-09-21 UTC)**
+Last updated: **2026-09-26 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
+
+## Qwen3.8 Flash Next F16-input prefill comparison
+
+Measured on physical host `gfx1151` (`55ea6c509d0b49eea8de7094a1023668`),
+AMD gfx1151, UD-Q4_K_XL, BF16 KV, warm PLE, 1024-token chunks. Each value is
+the mean of four category-specific median rates from three interleaved repeats.
+F16 input is the default; F32 input is its same-session rollback baseline.
+
+| Prompt tokens | F32 input (tok/s) | F16 input (tok/s) | Change |
+| --- | ---: | ---: | ---: |
+| 512 | 235.5 | 243.5 | +3.39% |
+| 1024 | 250.3 | 259.2 | +3.57% |
+| 4096 | 241.5 | 249.7 | +3.40% |
+
+All 12 final-logit hashes match. A separate 60-trajectory check matches logits,
+tokens and recurrent/KV/index state through 64 decode steps, with zero live
+allocations after close. This comparison does not qualify the underlying
+production arithmetic against strict or establish decode/MTP speedups.
+[Protocol and artifacts](results/2026-09-26-qwen4exp-f16-integration/README.md).
 
 ## Root README performance summary
 
