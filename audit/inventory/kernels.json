@@ -8719,7 +8719,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".hip",
-        "lines": 2282,
+        "lines": 2284,
         "referrers": 18,
         "runtime_referrers": [
           "hipengine/loading/gguf_selected_contract.py",
@@ -8748,7 +8748,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/qwen4_exp_q5_1.hip",
-      "evidence_hash": "8479d0160481"
+      "evidence_hash": "9f5022c71974"
     },
     {
       "kind": "kernel",
