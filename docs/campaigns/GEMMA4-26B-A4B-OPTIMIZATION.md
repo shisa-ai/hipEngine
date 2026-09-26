@@ -606,11 +606,11 @@ direction. The clean-device pass also puts every other cell 4-10% above its
   `2026-09-26-gemma4-26b-a4b-sliding-read-range-accepted.json`; the campaign's
   rollup for the three acceptances since 2026-09-24 was owed and is now in
   `benchmarks/CHANGELOG.md` and `benchmarks/README.md`.
-  *Accepted 2026-09-26 (iteration 36): the 4-slice cap was never measured, and
-  raising it to 16 is worth +5.3%.* The policy above says more slices is better
-  until the cap and never justified the cap; it was an argument, not a
-  measurement, and the argument was wrong by 4x. Paired interleaved arms, one
-  pass per arm per run, us per launch:
+  *Rejected 2026-09-26 (iteration 36): the 4-slice cap was never measured and 16
+  is much better, but the change makes a binding correctness metric worse.* The
+  policy above says more slices is better until the cap and never justified the
+  cap; it was an argument, not a measurement. Paired interleaved arms, one pass
+  per arm per run, us per launch:
 
   ===========  ======  ======  ======  ======  ======
   geometry     keys       4       8      16      32
@@ -624,37 +624,47 @@ direction. The clean-device pass also puts every other cell 4-10% above its
   ===========  ======  ======  ======  ======  ======
 
   16 is optimal or within 4% at every point but the full geometry at 8192 keys,
-  where 32 is 8% better. The table is recorded rather than turned into a
-  per-geometry rule, because a microbenchmark establishes a direction and not an
-  end-to-end win - iteration 35 had just been reverted for exactly that error -
-  and one number is one thing to justify. So both geometries now take 16 slices
-  above the 1024-key entry, the doubling rule is retired (it returned 2 slices at
-  exactly 1024 keys, where the table shows 64 keys per slice to be the fastest
-  configuration measured), and `decode_slices` no longer takes `head_dim`, since
-  nothing above the threshold depends on it.
-  Final rows, incumbent -> candidate: **1024p 45.8427 -> 48.2630 (+5.3%)**,
-  4096p 42.7662 -> **45.9349 (+7.4%)**, 512p 47.9667 -> 48.0076 and 128p
-  51.7789 -> 52.0185 flat. The two flat rows are below the entry threshold, so
-  they take the single kernel unchanged - the same structural reason as
-  iteration 30's untouched rows. Correctness: the GPU parity suite runs the split
-  at these shapes, so it now exercises 16 slices rather than 4 and passes (f32
-  within 1e-4, bf16 within one ulp); the 410-test Gemma 4 guard passes; and 128
-  greedy positions produce **identical token ids** at 4 and 16 slices, so the
-  reordered f32 sum does not move the argmax on this workload.
-  **The teacher-forced gate does not cover the split, and did not cover it
-  before this change either.** The gate's chain feeds the prompt one token at a
-  time from an empty cache (`capture_chain`: `runner.forward([ids[position]])`),
-  so key counts run 1, 2, 3, ... 1023 - one token below the 1024-key entry
-  threshold, so `decode_slices` returns 1 for every row and the split never
-  runs. That is why the gate reports `kl_max 0.0` exactly, and it means the
-  2026-09-25 split gate (kl_max 0.0067) measured the sliding read range, not the
-  split. A 600-token prefill followed by single-token steps does engage it
-  (verified: keys 601, 602, ...), so the fix is to prefill the chain and
-  re-capture the baseline at >= 1024 keys - a change to the frozen evaluator,
-  owed as its own unit rather than bolted onto this one. Until then the split's
-  production-profile status rests on kernel-level parity and on the identical
-  greedy tokens above, not on the KL gate. Evidence row
-  `2026-09-26-gemma4-26b-a4b-split-16-slices-accepted.json`.
+  where 32 is 8% better; the doubling rule this function also carried kept more
+  than 512 keys per slice and returned 2 slices at exactly 1024 keys, where 64
+  keys per slice is the fastest configuration measured. The speed is real:
+  **1024p 45.8427 -> 48.2630 (+5.3%)**, 4096p 42.7662 -> 45.9349 (+7.4%), 512p
+  and 128p flat, and it passes the production gate against its own incumbent
+  (kl_max 0.005212 against the 0.05 bar, zero top-1 flips).
+
+  It is rejected anyway, because it amplifies a correctness failure that this
+  iteration's evaluator fix exposed. The two-phase split **as shipped, at 4
+  slices, already fails the production kl_max bar against the strict path**:
+  kl_max 0.055589 against 0.05, on 1 of 1023 rows. At 16 slices the breach grows
+  to 2 rows and kl_max 0.150817. Every other limit passes in every arm
+  (kl_mean 9.2e-05 / 2.1e-04 against 0.001, kl_p95 4.0e-06 / 3.5e-06 against
+  0.005, kl_p99 4.1e-05 / 3.8e-05 against 0.02, top-1 rate 1.0 with zero flips
+  against 0.99). On the outlier rows the teacher is near-deterministic and the
+  decision never moves - row 864: top-1 6605 -> 6605, teacher p_top1 0.995465
+  against the split's 0.999999; row 602: top-1 6605 -> 6605, teacher p_top1
+  0.988141 against 0.999995 - so the divergence is in the tail, and KL from a
+  0.995-peaked distribution to a slightly sharper one is dominated by the
+  residual spread over the remaining 262143 tokens. The max|delta logit| on
+  those rows is 18-20, which is far above f32 association error and is the thing
+  to understand next.
+
+  The slice table is kept because the +5.3% is recoverable as soon as that tail
+  behaviour is resolved; the policy itself is reverted to the pre-change rule
+  (4 slices for a 256-wide head, the doubling rule capped at 4 for a 512-wide
+  head). Evidence row
+  `2026-09-26-gemma4-26b-a4b-split-16-slices-rejected.json`.
+
+  **The gate itself was broken, and this iteration fixed it.** `capture_chain`
+  fed the prompt one token at a time from an empty cache, so key counts ran 1,
+  2, 3, ... 1023 - one token below the split's 1024-key entry threshold - and
+  `decode_slices` returned 1 for every row: the gate compared the single-kernel
+  path with itself and reported `kl_max` of exactly 0.0. The 2026-09-25 split
+  gate result (kl_max 0.006746) therefore measured the sliding read range, not
+  the split, and the split was promoted to the default path on a gate that could
+  not see it. The evaluator now takes `--prefill` (ids pushed through the cache
+  in one forward before scoring) and `--slices` (pin the split for one arm; 1
+  selects the strict path), records both in the baseline, and refuses to compare
+  arms whose scored key range differs. The three arms above are the first real
+  gate verdicts this path has had.
   *Diagnostic 2026-09-26 (iteration 31): the MoE decode linears are now the
   largest single item in the step and the achieved-bandwidth baseline did not
   exist.* With attention down to roughly 8.5 ms and the host gap cut by 6.4 ms,

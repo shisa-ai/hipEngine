@@ -16,6 +16,7 @@ import pytest
 from scripts.gemma4_teacher_forced_gate import (
     THRESHOLDS,
     capture_chain,
+    force_slices,
     evaluate,
     row_kl_divergence,
 )
@@ -143,3 +144,42 @@ class TestCaptureChain:
         got = capture_chain(runner, [1, 2, 3, 4])
         assert got.dtype == np.float32
         assert np.allclose(got[0], [0.5, -0.5])
+
+    def test_prefill_primes_the_cache_in_one_forward_and_scores_the_rest(self) -> None:
+        """The chain must reach the key counts the split engages at.
+
+        Without a prefill every row runs at key counts 1..len(prompt)-1, which
+        at a 1024-token prompt stops one key below the decode split's entry
+        threshold - so the gate silently compared the single-kernel path with
+        itself and reported kl_max of exactly 0.0. Priming the cache in one
+        forward is what makes the scored rows sit above the threshold.
+        """
+
+        prompt = [9, 8, 7, 6, 5, 4]
+        rows = [np.zeros(3, dtype=np.float32) for _ in range(3)]
+        runner = _FakeRunner(rows)
+        got = capture_chain(runner, prompt, prefill=3)
+        assert runner.reset_calls == 1
+        # One priming forward, then one forward per scored position: 3 and 4.
+        assert runner.calls == [[9, 8, 7], [6], [5]]
+        assert got.shape == (len(prompt) - 1 - 3, 3)
+
+    def test_prefill_must_leave_at_least_one_scored_row(self) -> None:
+        runner = _FakeRunner([])
+        for bad in (-1, 3):
+            with pytest.raises(ValueError, match="prefill"):
+                capture_chain(runner, [1, 2, 3, 4], prefill=bad)
+
+    def test_force_slices_pins_the_policy_and_one_selects_the_strict_path(self) -> None:
+        from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention
+
+        original = gemma4_attention.decode_slices
+        try:
+            force_slices(1)
+            assert gemma4_attention.decode_slices(8192) == 1
+            force_slices(4)
+            assert gemma4_attention.decode_slices(8192) == 4
+            force_slices(None)
+            assert gemma4_attention.decode_slices is original
+        finally:
+            gemma4_attention.decode_slices = original

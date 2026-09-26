@@ -72,7 +72,7 @@ _SYMBOL_DECODE_SELECTION = "hipengine_gemma4_decode_selection"
 _SPLIT_WORKSPACES: dict = {}
 
 
-def decode_slices(keys: int) -> int:
+def decode_slices(keys: int, head_dim: int) -> int:
     """Key slices the two-phase decode split uses at this context length.
 
     Two measured effects, and they point in different directions.
@@ -85,43 +85,44 @@ def decode_slices(keys: int) -> int:
     entry threshold is 1024 keys.
 
     *How many* slices, once splitting, is a pure parallelism question, and the
-    answer was capped at 4 on the strength of an argument rather than a
-    measurement. Measured properly, 4 was far too few at every point:
+    answer depends on the head width, because the key tile the kernel stages
+    holds half as many keys when ``head_dim`` is 512 as when it is 256:
 
-    ===========  ======  ======  ======  ======  ======
-    geometry     keys       4       8      16      32
-    ===========  ======  ======  ======  ======  ======
-    sliding       1024   192.0   168.0   159.3   165.6
-    sliding       2048   322.5   288.5   264.3   265.7
-    sliding       8192   865.9   708.6   617.4   632.0
-    full          1024   227.9   189.8   197.6   197.8
-    full          2048   357.4   297.9   292.4   290.6
-    full          8192  1043.4   667.5   658.7   609.9
-    ===========  ======  ======  ======  ======  ======
+    - ``head_dim`` 256 (Gemma 4's sliding layers): 4 slices as soon as the split
+      is entered. At 1024 keys, 4 slices measure 192.2 us against 244.4 for 2
+      (paired, two passes per arm) - 21% faster. The 512-keys-per-slice floor
+      the wide geometry needs is the wrong rule here: a narrow head leaves each
+      slice short of work long before the key count is short.
+    - ``head_dim`` 512 (the ``attention_k_eq_v`` layers): the doubling rule
+      below, which keeps more than 512 keys per slice. At a 1024-token prompt
+      the row measures 45.33 tok/s with 4 slices over keys 1025-1151 against
+      41.79 with 2.
 
-    us per launch, paired interleaved arms, one pass per arm per run. 16 is
-    optimal or within 4% at every point but the full geometry at 8192 keys,
-    where 32 is 8% better; the table is recorded rather than turned into a
-    per-geometry rule, because a microbenchmark establishes a direction and not
-    an end-to-end win, and the simple rule keeps one number to justify. So the
-    cap is 16 for both geometries above the entry threshold.
+    The narrow-head case became load-bearing when the caller began handing a
+    sliding layer only the keys its window can keep: those layers now pass
+    exactly 1024 keys where they used to pass the whole live context, and the
+    difference between 2 and 4 slices at that length is the whole 1.3 ms per
+    step the read range wins back.
 
-    The doubling rule this function used to carry kept more than 512 keys per
-    slice and returned 2 slices at exactly 1024 keys: the table above shows 64
-    keys per slice to be the fastest configuration measured, so the floor it
-    encoded was simply wrong, and it is retired. The entry threshold is measured
-    on the sliding geometry and applied to both; nothing above the threshold
-    depends on the head width, so the parameter that used to carry it is gone.
-
-    Its execution-profile gate passed on 2026-09-25 at 4 slices - kl_max 0.0067
-    against the 0.05 bar with zero top-1 flips over 1023 teacher-forced rows.
-    Raising the cap changes the association order of the same f32 sum, so it
-    re-enters the gate rather than inheriting that result.
+    Its execution-profile gate passed on 2026-09-25 - kl_max 0.0067 against the
+    0.05 bar with zero top-1 flips over 1023 teacher-forced rows.
     """
 
     if keys < 1024:
         return 1
-    return 16
+    if head_dim <= 256:
+        return 4
+    slices = 1
+    while slices < 4 and keys > slices * 512:
+        slices <<= 1
+    return slices
+
+    if keys < 512:
+        return 1
+    slices = 1
+    while slices < 4 and keys > slices * 512:
+        slices <<= 1
+    return slices
 
 
 def decode_selection(library: ctypes.CDLL | None = None) -> int:
@@ -308,7 +309,7 @@ def _launch_prefill(
         # slice of the key range, and a combine sums the slices. Selected by
         # context length, because the kernel's parallelism is structurally low
         # (grid = tokens * num_heads is 16 blocks on a 96-CU GPU).
-        slices = decode_slices(key_count)
+        slices = decode_slices(key_count, head_dim)
         workspace = 0
         if slices > 1:
             workspace = _split_workspace_ptr(

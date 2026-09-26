@@ -381,22 +381,25 @@ token-id sequence; decode tok/s is the 127 single-token forwards of a
 public `LLM.generate()` path, whose output token ids match the instrumented
 timing loop at every position on every row. Greedy output is unchanged across
 these changes: the ones that alter arithmetic record zero top-1 flips over 1023
-teacher-forced rows where the gate covers them, and identical greedy token ids
-over 128 positions where it does not. The teacher-forced gate does not exercise
-the decode split - its chain feeds one token at a time from an empty cache, so
-key counts stop one below the split's entry threshold - and that gap is
-recorded in the campaign and owed a fix.
+teacher-forced rows, and identical greedy token ids over 128 positions. One
+measured exception is recorded rather than hidden: the two-phase decode split
+breaches the production `kl_max` bar on 1-2 of 1023 rows against the strict path,
+with top-1 unchanged on every row. Its gate did not previously exercise the split
+at all - the chain fed one token at a time from an empty cache, so key counts
+stopped one below the split's entry threshold - and that defect is fixed in
+`scripts/gemma4_teacher_forced_gate.py`; the breach and what to do about it are
+in the campaign document.
 
 | Engine | Prefill 1024 | Decode at 1024/128 |
 | --- | ---: | ---: |
 | llama.cpp HIP `8cfc315`, same GGUF | **3910** | **68.92** |
-| hipEngine | 128.5 | 48.26 |
+| hipEngine | 128.5 | 45.84 |
 
-hipEngine's own shape matrix at 128 outputs: decode 52.02 tok/s at a 128-token
-prompt, 48.01 at 512, 48.26 at 1024, 45.93 at 4096; prefill 138.9 / 134.4 /
+hipEngine's own shape matrix at 128 outputs: decode 51.78 tok/s at a 128-token
+prompt, 47.97 at 512, 45.84 at 1024, 42.77 at 4096; prefill 138.9 / 134.4 /
 128.5 / 108.3 tok/s at the same shapes. First-token latency at 1024 is 7.97 s
-and public request wall time is 10.63 s including prefill. Decode is now close
-to flat across context length - 52.02 down to 45.93 - because the sliding
+and public request wall time is 10.74 s including prefill. Decode is now close
+to flat across context length - 51.78 down to 42.77 - because the sliding
 layers, 25 of the model's 30, read only the keys inside their 1024-token window
 instead of walking the whole cached context and masking the difference away.
 For product context on the same GPU and workload, Qwen3.6-35B-A3B
