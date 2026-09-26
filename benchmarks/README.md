@@ -977,8 +977,8 @@ row's argmax is recorded (9707 at every length) but is not compared against a
 reference. Numerical correctness for this route comes from the teacher-forced
 gate cited above, not from this ladder. Two limits are real and stated rather
 than blocking: **the workspace never shrinks**, so a short prompt after a long
-one costs the long workspace's time (0.517 s against 0.171 s for a 52-token
-prompt on a fresh 52-row workspace, still ~2.3x faster than the token-serial
+one costs the long workspace's time (0.347 s against 0.162 s for a 52-token
+prompt on a fresh 52-row workspace, still ~3.4x faster than the token-serial
 rollback), and **chunked prefill is not implemented**, so a prompt above the
 session capacity is refused exactly as the token-serial route refuses it. The
 deferred-allocation slowdown recorded on 2026-09-18 **does not reproduce**: a
@@ -998,14 +998,20 @@ one and did not check refusal state, which is why the contract was re-recorded
 rather than amended.
 
 **Prefill rate on the shipped route, measured 2026-09-26.** At a 512-token
-prompt the bulk route measures 1028 tok/s (prompt-sized workspace) and 1038
-tok/s (pinned-512) in the retained ladder, 1051 tok/s at 768 and 1100 tok/s at
-1024, against 43.99 tok/s for the token-serial rollback: **~23-25x**. Earlier
-runs of the same route on this host measured 1057-1085 tok/s at 512 tokens, so
-treat the 512-token rate as ~1030-1085 tok/s rather than a single number. At 52
-tokens it measures 0.171 s with a 52-row workspace against roughly 1.18 s
-inferred for token-serial at its measured 22.7 ms/token, so the shipping route
-is faster at short prompts as well.
+prompt the bulk route measures **1216-1227 tok/s** across three protocols on the
+same host: 1215.8 tok/s in the retained ladder (prompt-sized workspace), 1216.5
+tok/s in the phase attribution, and 1216.95 tok/s in the matched c=1 cell. The
+ladder also measures 1226 tok/s at 768 tokens and 1278 tok/s at 1024, with
+1200 tok/s at 512 tokens under the pinned-512 policy and 1013 under
+pinned-capacity. Against 43.99 tok/s for the token-serial rollback that is
+**~28x**. At 52 tokens it measures 0.162 s with a 52-row workspace against
+roughly 1.18 s inferred for token-serial at its measured 22.7 ms/token, so the
+shipping route is faster at short prompts as well.
+
+The 512-token rate improved from 1028-1038 tok/s on 2026-09-26 by bounding the
+device exchange's flag-polling grid; the measurement, its evidence and the
+remaining transport floor are recorded in
+[`results/2026-09-26-w7900-tp2-exchange-poll-flood-ab.json`](results/2026-09-26-w7900-tp2-exchange-poll-flood-ab.json).
 
 **Matched llama.cpp comparison, measured 2026-09-25.** Same host, same model
 bytes, 512-token prompt, 128 decode tokens, f16 KV on both engines, c=1, three

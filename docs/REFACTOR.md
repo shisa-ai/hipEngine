@@ -1,3 +1,26 @@
+## TP2 device-exchange payload pipelining (open, 2026-09-26)
+
+- The host-staged exchange is now at its transport floor: both per-layer
+  reductions cost 0.806 and 0.805 ms per layer against 0.786 ms measured for the
+  same 5.24 MB round trip with no flag protocol at all, after the spin-add's
+  polling grid was bounded (see
+  `worklog/entries/20260926T184341.436682Z-lhl-tp2-exchange-poll-flood-a0a900.md`).
+- What remains is 0.79 ms per reduction, i.e. ~101 ms of the 420.9 ms 512-token
+  prefill, and it is a serial `copy then read` pair: the local rank stages its
+  partial into its own pinned arena (0.376 ms) and the peer reads that arena
+  (0.393 ms). The read cannot start before the peer's copy finishes, because a
+  payload still being written would be read stale, which is what the flag is for.
+- **Open lever: per-chunk flags.** Splitting the payload into chunks with a flag
+  per chunk lets chunk `k` be read while chunk `k+1` is still being written, so
+  the pair becomes roughly `max(copy, read)` (~0.45 ms) instead of their sum,
+  worth up to ~45 ms per 512-token prefill. Not attempted: it multiplies the
+  flag state per slot, and the timeout/unobserved-work containment added on
+  2026-09-25/26 is built on one flag per slot, so the containment argument would
+  have to be re-derived for a chunked protocol before it can be trusted.
+- Also open and smaller: the 256-block bound is the flat part of a measured
+  trade (64/256/1024 pollers -> 0.875/0.901/0.935 ms), not a derived optimum. If
+  the payload shape grows much beyond 512 rows the bound should be re-measured.
+
 ## TP2 uneven MLP shard split (2026-09-18)
 
 - `MlpTP2GenerationSession(uneven_split=...)` gives the MLP projections an

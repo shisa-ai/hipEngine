@@ -166,6 +166,19 @@ __device__ inline unsigned short bf16_bits_to_float_round(float value) {
   return static_cast<unsigned short>(in.u32 >> 16);
 }
 
+// How many blocks the spin-add may use.
+//
+// Each block's lead thread polls the peer's flag, and the flag lives in host
+// memory, so one poll is a full 64-byte PCIe transaction on the same link the
+// payload read uses. The payload's own block count at a 512-row prefill is
+// 10,240, and that many pollers flooding the link made the reduction cost
+// 1.488 ms against a 0.895 ms no-wait bound for identical work. Bounding the
+// grid and giving the payload a grid-stride pass brings it to the bound:
+// 64/256/1024 pollers measured 0.875/0.901/0.935 ms at the same shape. 256
+// keeps parallelism for the local read and write without re-flooding the link.
+// Decode's own grid (20 blocks at one row) is below this either way.
+constexpr int kSpinAddMaxBlocks = 256;
+
 __global__ void tp2_dev_spin_add_bf16(
     const unsigned short* __restrict__ own_partial,
     const unsigned short* __restrict__ remote_staged,
@@ -200,8 +213,9 @@ __global__ void tp2_dev_spin_add_bf16(
     return;
   }
   __threadfence();
-  const int i = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (i < n) {
+  const int stride = static_cast<int>(gridDim.x) * static_cast<int>(blockDim.x);
+  for (int i = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x; i < n;
+       i += stride) {
     const float va = bf16_bits_to_float_value(own_partial[i]);
     const float vb = bf16_bits_to_float_value(remote_staged[i]);
     out[i] = bf16_bits_to_float_round(va + vb);
@@ -519,8 +533,11 @@ int32_t tp2_dev_exchange_enqueue_rank(
     (void)hipSetDevice(previous_device);
     return set_hip_error(ex, code, "publish launch");
   }
+  const int spin_blocks = blocks_of(ex->hidden);
   hipLaunchKernelGGL(
-      tp2_dev_spin_add_bf16, dim3(blocks_of(ex->hidden)), dim3(256), 0,
+      tp2_dev_spin_add_bf16,
+      dim3(spin_blocks < kSpinAddMaxBlocks ? spin_blocks : kSpinAddMaxBlocks),
+      dim3(256), 0,
       ex->streams[rank],
       reinterpret_cast<const unsigned short*>(own_partial),
       remote_staged,

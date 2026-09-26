@@ -1,0 +1,146 @@
+{
+ "artifacts": {
+  "after": "/tmp/tp2-phase-512-bounded.json",
+  "before": "/tmp/tp2-phase-512-shard.json"
+ },
+ "backend": "hip_gfx1100",
+ "date": "2026-09-26",
+ "findings": [
+  "The two per-layer device reductions cost 191.6 ms of the 492.8 ms 512-token prefill wall (39%), 1.5 ms each against a 0.79 ms two-rank transport floor for the same bytes.",
+  "The gap is the flag protocol, not the payload: every one of 10,240 spin-add blocks polled the peer's flag in host memory, and each poll is a full 64-byte PCIe transaction competing with the payload read on the same link.",
+  "Bounding the spin-add grid to 256 blocks with a grid-stride payload pass removes it: 1.440 -> 0.906 ms per reduction in isolation, against a 0.895 ms no-wait bound for identical work.",
+  "End to end the reductions halve (attn_reduce 96.0 -> 51.6 ms, mlp_exchange 95.6 -> 51.5 ms) and the wall drops 492.8 -> 420.9 ms, 1038.9 -> 1216.5 tok/s (+17.1%).",
+  "The access-pattern change is numerically free: every output element is the same widen/add/round of the same two inputs, and the exchange payload bytes are identical to the shipped kernel on both ranks at 1 and 512 rows.",
+  "Both reductions now sit at the host-staged transport floor (0.806 and 0.805 ms per layer against 0.786 ms measured for the same round trip with no flag protocol), so what remains is the PCIe round trip itself, not polling."
+ ],
+ "hardware": "Radeon Pro W7900 (gfx1100, device 0) + Radeon RX 7900 XTX (gfx1100, device 1)",
+ "headline": {
+  "delta_percent": 17.095551431519617,
+  "prefill_tok_per_s_after": 1216.501,
+  "prefill_tok_per_s_before": 1038.896,
+  "wall_delta_ms": -71.95149999999995,
+  "wall_ms_after": 420.8792,
+  "wall_ms_before": 492.8307
+ },
+ "host": "epyc",
+ "isolated_kernel_ab": {
+  "bounded_grid_ms": 0.906,
+  "grid_stride_1024_pollers_ms": 0.935,
+  "grid_stride_256_pollers_ms": 0.901,
+  "grid_stride_64_pollers_ms": 0.875,
+  "no_wait_upper_bound_ms": 0.895,
+  "payload_bytes_identical": {
+   "rows_1": true,
+   "rows_512": true
+  },
+  "rows_1_ms": {
+   "bounded_grid": 0.121,
+   "shipped": 0.127
+  },
+  "shape": "512 rows x 5120 hidden bf16 partial (5.24 MB), two ranks, CompiledDeviceExchange",
+  "shipped_ms": 1.44
+ },
+ "kind": "tp2_exchange_poll_flood_ab",
+ "limits": [
+  "A payload that is still written while it is read would be stale, so the read cannot overlap the peer's staging copy; chunked flags would pipeline the two, which is a separate change.",
+  "The 10.5 ms the mlp_chain phase gained back is a redistribution inside the mlp phase (chain 171.6 -> 182.1, exchange 95.6 -> 51.5) and is recorded as measured rather than explained."
+ ],
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "performance_claim": true,
+ "phase_deltas_ms": {
+  "0": {
+   "attention": 4.546800000000005,
+   "attn_reduce": -44.455200000000005,
+   "mlp": -33.5232,
+   "mlp_cast": 0.006699999999999984,
+   "mlp_chain": 10.486500000000007,
+   "mlp_exchange": -44.0744,
+   "mlp_residual": 0.04289999999999994,
+   "norm_residual": 0.025700000000000056,
+   "tail": 1.1519
+  },
+  "1": {
+   "attention": -1.3631000000000029,
+   "attn_reduce": -38.549499999999995,
+   "mlp": -33.41,
+   "mlp_cast": -9.999999999998899e-05,
+   "mlp_chain": 4.688199999999995,
+   "mlp_exchange": -38.0831,
+   "mlp_residual": -0.02950000000000008,
+   "norm_residual": 0.07210000000000005,
+   "tail": 1.2005000000000001
+  }
+ },
+ "phases_ms": {
+  "after": {
+   "0": {
+    "attention": 126.7602,
+    "attn_reduce": 51.5727,
+    "mlp": 236.1326,
+    "mlp_cast": 0.3084,
+    "mlp_chain": 182.0573,
+    "mlp_exchange": 51.4778,
+    "mlp_residual": 1.984,
+    "norm_residual": 2.3776,
+    "tail": 2.3891
+   },
+   "1": {
+    "attention": 114.6685,
+    "attn_reduce": 64.0647,
+    "mlp": 236.1349,
+    "mlp_cast": 0.249,
+    "mlp_chain": 162.628,
+    "mlp_exchange": 71.2971,
+    "mlp_residual": 1.6995,
+    "norm_residual": 2.0171,
+    "tail": 2.3809
+   }
+  },
+  "before": {
+   "0": {
+    "attention": 122.2134,
+    "attn_reduce": 96.0279,
+    "mlp": 269.6558,
+    "mlp_cast": 0.3017,
+    "mlp_chain": 171.5708,
+    "mlp_exchange": 95.5522,
+    "mlp_residual": 1.9411,
+    "norm_residual": 2.3519,
+    "tail": 1.2372
+   },
+   "1": {
+    "attention": 116.0316,
+    "attn_reduce": 102.6142,
+    "mlp": 269.5449,
+    "mlp_cast": 0.2491,
+    "mlp_chain": 157.9398,
+    "mlp_exchange": 109.3802,
+    "mlp_residual": 1.729,
+    "norm_residual": 1.945,
+    "tail": 1.1804
+   }
+  }
+ },
+ "protocol": {
+  "attention_shard": true,
+  "commands": [
+   "uv run python scripts/tp2_prefill_phase_attribution.py --prompt-tokens 512 --repeats 3 --attention-shard --json <out>.json"
+  ],
+  "logits_rows": 1,
+  "prompt_tokens": 512,
+  "reduce_mode": "device",
+  "repeats": 3,
+  "route": "rank-local bulk prefill, graphed schedule, device reduce, head-sharded attention",
+  "tool": "scripts/tp2_prefill_phase_attribution.py"
+ },
+ "quant": "Q4_K_M",
+ "schema": 1,
+ "status": "retained",
+ "transport_floor": {
+  "copy_engine_h2d_mb_per_s": 13980,
+  "copy_engine_round_trip_ms": 0.751,
+  "device_load_read_pattern_mb_per_s": 13325,
+  "peer_access": "hipDeviceCanAccessPeer 0 in both directions; ACS redirect bits set on both GPU bridges, so the exchange must stage through host memory",
+  "two_rank_concurrent_staging_ms": 0.786
+ }
+}
