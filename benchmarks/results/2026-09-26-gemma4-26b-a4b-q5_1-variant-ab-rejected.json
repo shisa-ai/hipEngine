@@ -1,0 +1,47 @@
+{
+  "id": "2026-09-26-gemma4-26b-a4b-q5_1-variant-ab-rejected",
+  "date": "2026-09-26",
+  "kind": "benchmark",
+  "status": "rejected",
+  "campaign": "GEMMA4-26B-A4B-OPTIMIZATION",
+  "iteration": 42,
+  "subject": "Both registered gguf_q5_1 decode variants are ~2x slower than the incumbent, closing the variant-reuse line for the MoE",
+  "workload": {
+    "prompt_tokens": 1024,
+    "output_tokens": 128,
+    "samples": 3,
+    "gpu": "RX 7900 XTX physical GPU1",
+    "context": 8192,
+    "sampling": "greedy",
+    "kv": "bf16"
+  },
+  "arms": [
+    {
+      "arm": "control (incumbent)",
+      "q5_1_variant": "selected_gemv_bf16_bf16_out",
+      "decode_tps": 45.9396
+    },
+    {
+      "arm": "A",
+      "q5_1_variant": "selected_gemv_logical256_t128_bf16_bf16_out",
+      "decode_tps": 24.7049,
+      "delta_pct": -46.2
+    },
+    {
+      "arm": "B",
+      "q5_1_variant": "selected_gemv_wave64_bf16_bf16_out",
+      "decode_tps": 24.3347,
+      "delta_pct": -47.0
+    }
+  ],
+  "isolation": {
+    "mechanism": "A variant preference list in gemma4_project_experts_selected, resolved per candidate through is_registered, so each quant takes the first variant it declares support for. No quant-name branch anywhere.",
+    "proven_no_op": "With the incumbent first the resolved route is identical for all four quants and the dispatch probe's table is byte-identical to iteration 40's (same quants, shapes and 87/87/29/29/3/3 counts).",
+    "proven_isolation": "With a q5_1 variant first, the resolved route is gguf_q5_1 -> the new variant while gguf_q4_k, gguf_q5_k and gguf_q8_0 all resolve to the incumbent, checked with the same loop production runs. Only the down projection changed route in each arm."
+  },
+  "conclusion": "No registered gguf_q5_1 decode variant beats the incumbent, and both alternatives land at the same ~24.5 tok/s, which points at the exact-logical-256 path being untuned for this shape rather than at a per-variant difference. Together with iteration 33's equivalent result for gguf_q4_k, the variant-reuse line is closed for the MoE: fused megakernel, launch structure, routing and registered-variant reuse are now all refuted by measurement.",
+  "campaign_state": "The three-failed-candidates re-profile/close rule is satisfied and the re-profile has been done (iteration 40: 2 selected launches per layer, 145 GB/s, 15% of peak, 6.5x off the roofline). What remains is either authoring a new selected GEMV for these quants - a G4/G5 kernel job - or closing the MoE line. That is a lead-level investment decision, and it sits alongside the split's pending accept-or-return decision.",
+  "product_path_changed": false,
+  "code_reverted": "The preference machinery was reverted; gemma4_experts.py is byte-identical to HEAD (empty git diff), so this iteration's product change is zero and iteration 40's guard result applies to the identical file.",
+  "rows_moved": false
+}
