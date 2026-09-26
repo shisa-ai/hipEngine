@@ -1494,6 +1494,48 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 70: the Qwen35 paired/folded Q5_1 owner, and the largest exact win of
+  the campaign (1.80x on the biggest item).** The campaign goal asks for the
+  Qwen35 kernel tuning to be used where it helps. The Gemma probe only ever tried
+  the amortized and row-batch variants, so the Qwen35-era ``pair2`` family -- five
+  registered Q5_1 owners with the same call ABI -- had never been measured at
+  Gemma's geometry. It was measured here, in isolation, on the real shape (8192
+  compact rows, 128 experts, in 704, out 2816, nine reps, median of the middle
+  five):
+
+  | owner | ms | bits vs incumbent |
+  | --- | ---: | --- |
+  | ``rowbatch8_out4_amortized`` (incumbent) | 40.16 | ref |
+  | ``rowbatch8`` (one output column) | 51.22 | identical |
+  | ``rowbatch8_out8`` | 45.02 | identical |
+  | ``rowbatch8_out8_expertgrid64`` | 50.56 | identical |
+  | ``pair2`` | 28.56 | identical |
+  | **``pair2_fold128``** | **21.83** | identical |
+  | ``pair2_fold128_pair`` | 25.83 | identical |
+
+  All seven are bit-identical to each other on real Q5_1 blocks, so this is a
+  schedule choice with no numerical exposure -- the probe now prefers
+  ``pair2_fold128`` ahead of both row-batch variants when the width is inside the
+  paired form's 4096-feature fold limit, and falls through for anything else.
+
+  Measured through the model, W7900 lane:
+
+  | | before | after |
+  | --- | ---: | ---: |
+  | grouped Q5_1 down | 893.8 ms | **497.0 ms** (1.80x) |
+  | layer total | 2568 ms | **2177 ms** |
+  | prefill | 397.0 tok/s | **468.0 tok/s** |
+  | prefill, campaign bench | 2.68 s (382.2) | **2.29 s (448.0)** |
+
+  XTX lane, campaign bench: 2.45 s (417.8) -> **2.03 s (504.1)**. Decode is
+  unchanged on both lanes (XTX 43.87 against 43.91).
+
+  Exactness: a teacher-forced capture of the new path against the pre-change
+  default capture (``base-pf1024.npz``, 1023 rows, prompt 2048, prefill 1024) is
+  **bitwise identical over 1023 x 262144 float32 logits**. 171 GPU tests in the
+  ``grouped``/``q5_1`` selection pass. The down owner's share of the layer falls
+  from 34.8% to 22.8%.
+
   **Iteration 69: both lanes, measured, so the llama.cpp gap has a current basis.**
   The campaign's prefill column is the XTX lane and the llama.cpp HIP reference of
   3910 tok/s was taken there, while iterations 64-67 were measured on the W7900
