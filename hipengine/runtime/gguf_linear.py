@@ -9103,11 +9103,28 @@ def _launch_wmma_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features
     )
 
 
+# Generation at which the full repair sweep below last ran. Production registers
+# every family at import, so a key that is missing at dispatch time is normally
+# an unregistered *optional* candidate - the Gemma 4 grouped route probes a
+# variant preference list and falls through when a variant is not built - rather
+# than evidence that the registry is incomplete. Re-running the sweep for each
+# such probe costs ~650 registrations; a 29-layer MoE prefill probed one per
+# layer, which cProfile showed as 0.70 s of host CPU. Wall time did not move:
+# the prefill is GPU-bound, so this is waste removal, not a measured speedup.
+# Memoizing on the registry generation keeps the repair semantics - any
+# mutation, including the test-only clear/restore, re-arms the sweep - while
+# making a missing key cost one dict lookup.
+_REGISTRATION_SWEEP_GENERATION: int = -1
+
+
 def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     # Registry plan tests clear global registrations; keep GGUF runtime dispatch
     # independent of previous test/import order without overwriting tests that
     # deliberately replace one dispatch key with a fixture kernel.
     if is_registered(key):
+        return
+    global _REGISTRATION_SWEEP_GENERATION
+    if _REGISTRATION_SWEEP_GENERATION == generation():
         return
     register_dense_gemv_kernels()
     register_gguf_k_gemv_kernels()
@@ -9129,6 +9146,9 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_t16_selected_gemv_kernels()
     register_laguna_launch_batch_kernels()
     load_backend_kernel_package(key.backend)
+    # Registered families bump the generation, so record it after the sweep:
+    # the next missing key in this generation returns at the check above.
+    _REGISTRATION_SWEEP_GENERATION = generation()
 
 
 _LAUNCH_RESIDUAL_ABI = {
