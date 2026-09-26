@@ -45,6 +45,30 @@ columns) and hoisting each column's `d*scale` / `dmin*min` pairs into shared per
 10.240 s). Three units in, this host's 512/128 prefill is 11.617 -> 4.200 s,
 **2.77x**.
 
+The same fetch problem was still in the `Q5_1` down projection, which the
+staging rewrite had not covered: it launches one block per (expert, out_col) and
+reloads the expert's activation block from L2 once per output column, so at this
+geometry it moves ~17 GB in 38.5 ms (441 GB/s) of which the weight bytes are
+0.3 GB. Giving each block a four-column output tile and holding the activation
+elements a thread needs for the current k-chunk in registers takes that kernel
+from 38.71 to 20.23 ms (**1.91x**) with 0 of 11,534,336 bf16 outputs differing,
+and Qwen4Exp's own shape from 58.70 to 37.81 ms (1.55x) with the same zero
+difference - the family serves both models, so both shapes were measured before
+a shared preference order changed. The contraction is the incumbent's, not a
+reassociation: slot *t* still accumulates columns *t*, *t* + 256, ... in
+increasing order and the tree is still the 256-wide stride-128 tree, whose first
+level becomes register-local because a thread owns both slot *t* and *t* + 128.
+Because it is bit-exact it ships on the default path with no flag and no
+execution-profile gate, and it is the first prefill change in this campaign that
+needed neither. 512/128 prefill goes 4.239 to 3.652 s (**1.161x**, 120.78 to
+140.19 tok/s), decode is unchanged at 21.06 tok/s, and the public path emits 128
+of 128 identical greedy token ids. A wider output tile on its own does nothing
+(the existing `out8` variant measures 30.32 ms against 30.99 ms) because the
+incumbent's inner loop reloads each element per column regardless; and the
+same kernel's `K_TILE=512` shape reaches 17.28 ms but is **not** bit-exact, so it
+was dropped rather than shipped. Recorded in
+`benchmarks/results/2026-09-27-gemma4-q5-1-staged-grouped-prefill-accepted.json`.
+
 58 of the 60 expert projections per prefill block now take the grouped route.
 The two that do not are layer 29's `Q5_K` gate/up and `Q8_0` down, which have no
 grouped family with a bf16-activation ABI in this tree. Routing the `Q4_K`

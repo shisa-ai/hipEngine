@@ -68,6 +68,7 @@ _F32_BYTES = 4
 # decision, not an accuracy one. A quant that registers only the first name
 # still runs; the list is a preference, not a requirement.
 _GROUPED_PREFILL_VARIANTS = (
+    "selected_grouped_prefill_staged_out4_bf16_bf16_out",
     "selected_grouped_prefill_staged_out8_bf16_bf16_out",
     "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
 )
@@ -82,6 +83,11 @@ _PREFILL_MIN_LANES_PER_EXPERT = 1
 # Tests and probes read this to confirm the intended path ran rather than
 # inferring it from a timing.
 _MOE_ROUTE_COUNTS: dict[str, int] = {}
+
+# Diagnostic: how many grouped projections resolved to each registered variant.
+# The route name alone cannot show which of the grouped family's fetch strategies
+# ran, and they differ in cost rather than in output.
+_GROUPED_VARIANT_COUNTS: dict[str, int] = {}
 
 # The fused MMQ gate/up route is implemented, registered, and measured at 1.27x on
 # the 512/128 prefill, but it does not select by default, for one recorded reason:
@@ -120,6 +126,17 @@ def gemma4_moe_expert_route_counts() -> dict[str, int]:
     """Return how many expert projections used each dispatch route."""
 
     return dict(_MOE_ROUTE_COUNTS)
+
+
+def gemma4_moe_grouped_variant_counts() -> dict[str, int]:
+    """Return how many grouped projections resolved to each registered variant.
+
+    The route name reports the family, and every variant in that family produces
+    the same bits; this reports which fetch strategy actually ran, which is what
+    a cost change needs to confirm.
+    """
+
+    return dict(_GROUPED_VARIANT_COUNTS)
 
 
 def _record_moe_route(route: str) -> None:
@@ -599,6 +616,7 @@ def gemma4_project_experts_grouped_prefill(
             )
         except MissingKernelError:
             continue
+        _GROUPED_VARIANT_COUNTS[variant] = _GROUPED_VARIANT_COUNTS.get(variant, 0) + 1
         fn(
             x_ptr,
             expert_start_ptr,

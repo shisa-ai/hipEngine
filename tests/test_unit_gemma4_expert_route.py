@@ -27,6 +27,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
     _GROUPED_PREFILL_VARIANTS,
     Gemma4ExpertScratch,
     gemma4_moe_expert_route_counts,
+    gemma4_moe_grouped_variant_counts,
     gemma4_moe_prefill_route_enabled,
     gemma4_project_experts_gate_up_mmq,
     gemma4_project_experts_grouped_prefill,
@@ -281,6 +282,48 @@ def test_route_counts_hand_back_a_snapshot() -> None:
     snapshot = gemma4_moe_expert_route_counts()
     snapshot["grouped_prefill"] = 10**9
     assert gemma4_moe_expert_route_counts().get("grouped_prefill", 0) != 10**9
+
+
+def test_variant_counts_hand_back_a_snapshot() -> None:
+    """The variant diagnostic is a snapshot too."""
+
+    snapshot = gemma4_moe_grouped_variant_counts()
+    snapshot["selected_grouped_prefill_staged_out4_bf16_bf16_out"] = 10**9
+    assert (
+        gemma4_moe_grouped_variant_counts().get(
+            "selected_grouped_prefill_staged_out4_bf16_bf16_out", 0
+        )
+        != 10**9
+    )
+
+
+def test_grouped_prefill_records_the_variant_it_resolved() -> None:
+    """The route reports the family; this reports which fetch strategy ran.
+
+    Every variant in the family is bit-exact, so a cost change is only confirmed
+    by naming the one that actually launched. The recorded name has to be the one
+    the preference order selected, not merely a registered one.
+    """
+
+    preferred = _GROUPED_PREFILL_VARIANTS[0]
+    register(_GROUPED_KEY, lambda *args, **kwargs: None, replace=True)
+    register(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1", preferred),
+        lambda *args, **kwargs: None,
+        replace=True,
+    )
+    before = gemma4_moe_grouped_variant_counts().get(preferred, 0)
+    assert gemma4_project_experts_grouped_prefill(
+        _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1"),
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+    )
+    assert gemma4_moe_grouped_variant_counts().get(preferred, 0) == before + 1
 
 
 def test_rows_prefers_the_grouped_family_over_the_selected_gemv() -> None:
