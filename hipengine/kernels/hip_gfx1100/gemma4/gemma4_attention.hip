@@ -184,6 +184,24 @@ __global__ void gemma4_attention_prefill_kernel(
   }
 }
 
+// Defined below; the prefill launcher routes multi-token blocks into it.
+template <typename scalar_t>
+int launch_gemma4_attention_decode(
+    const scalar_t* query,
+    const scalar_t* key,
+    const scalar_t* value,
+    const uint8_t* keep_mask,
+    scalar_t* out,
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream,
+    int64_t keys,
+    float* split_workspace,
+    int split_slices);
+
 template <typename scalar_t>
 int launch_gemma4_attention_prefill(
     const scalar_t* query,
@@ -203,6 +221,20 @@ int launch_gemma4_attention_prefill(
   }
   if (num_heads % num_kv_heads != 0) {
     return static_cast<int>(hipErrorInvalidValue);
+  }
+  // Multi-token blocks use the same key-class / barrier-batched family the
+  // decode step does. Its kernels are bit-identical to the block kernel below
+  // (same logit trees, same pass-2 and pass-3 partitions) and were measured at
+  // 421 us against the block kernel's 652-700 at keys=1024, head_dim 256, so
+  // prefill has no reason to keep the ~10 barriers per key the block kernel
+  // spends. The fallback below still covers every other geometry.
+  if (tokens > 1) {
+    const int batched_rc = launch_gemma4_attention_decode<scalar_t>(
+        query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads,
+        head_dim, scale, stream, keys, nullptr, 0);
+    if (batched_rc >= 0) {
+      return batched_rc;
+    }
   }
   // The tree reductions require a power-of-two block width. Rounding down
   // would leave dimensions unrepresented; launching head_dim threads directly

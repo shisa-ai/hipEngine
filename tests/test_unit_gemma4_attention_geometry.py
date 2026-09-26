@@ -27,7 +27,14 @@ def test_oversized_attention_is_rejected_before_build_or_launch(monkeypatch):
 def test_reduction_workspace_uses_power_of_two_threads():
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import gemma4_attention_shared_bytes
 
-    assert gemma4_attention_shared_bytes(head_dim=6, keys=3) == (6 + 3 + 8) * 4
+    # The reported requirement covers whichever route a launch may take. At a
+    # narrow head the batched route's floor dominates: the key-class kernel holds
+    # the logits plus a 256-lane partial per 256-thread group plus one max slot
+    # per warp, so keys + 512 + 16 floats, independent of head_dim.
+    assert gemma4_attention_shared_bytes(head_dim=6, keys=3) == (3 + 256 * 2 + 16) * 4
+    # At a wide head the block kernel's own requirement dominates instead, with
+    # its thread count rounded up to a power of two.
+    assert gemma4_attention_shared_bytes(head_dim=512, keys=3) == (512 + 3 + 256) * 4
 
 
 def test_runner_names_unsupported_context_before_allocating(monkeypatch):
