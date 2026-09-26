@@ -1,0 +1,153 @@
+{
+  "chunks": [
+    {
+      "ar_tokens": 545,
+      "condition_seconds": 0.9877067130291834,
+      "frames": 32,
+      "index": 0,
+      "latents": {
+        "bf16_exact": 0.21533203125,
+        "cosine": 0.9999618274497738,
+        "max_abs": 0.0625,
+        "mean_abs": 0.01066996157169342,
+        "produced_norm": 74.22058925661085,
+        "reference_norm": 74.12044288528539,
+        "relative_l2": 0.008847248472511842,
+        "relative_to_scale": 0.000843222133757552
+      },
+      "nar_cond_end": 128,
+      "nar_rows": 34,
+      "passed": true,
+      "solve_seconds": 0.6255064540309832,
+      "steps_report": [
+        {
+          "raw_mid": 1.9459101490553132,
+          "raw_t": 20.0,
+          "state": {
+            "bf16_exact": 1.0,
+            "cosine": 1.0000000000000002,
+            "max_abs": 0.0,
+            "mean_abs": 0.0,
+            "produced_norm": 46.732211558634624,
+            "reference_norm": 46.732211558634624,
+            "relative_l2": 0.0,
+            "relative_to_scale": 0.0
+          },
+          "step": 0,
+          "velocity": {
+            "bf16_exact": 0.158203125,
+            "cosine": 0.9999400278796046,
+            "max_abs": 0.046875,
+            "mean_abs": 0.010020011104643345,
+            "produced_norm": 53.89699557805353,
+            "reference_norm": 53.935693877736696,
+            "relative_l2": 0.010971461770343657,
+            "relative_to_scale": 0.000632416600318164
+          }
+        },
+        {
+          "raw_mid": 0.5108256237659907,
+          "raw_t": 1.0986122886681098,
+          "state": {
+            "bf16_exact": 1.0,
+            "cosine": 1.0000000000000002,
+            "max_abs": 0.0,
+            "mean_abs": 0.0,
+            "produced_norm": 40.694454356164485,
+            "reference_norm": 40.694454356164485,
+            "relative_l2": 0.0,
+            "relative_to_scale": 0.0
+          },
+          "step": 1,
+          "velocity": {
+            "bf16_exact": 0.12353515625,
+            "cosine": 0.9998959464090691,
+            "max_abs": 0.078125,
+            "mean_abs": 0.014040433670743369,
+            "produced_norm": 55.739361949631814,
+            "reference_norm": 55.742317680269025,
+            "relative_l2": 0.014425635467449996,
+            "relative_to_scale": 0.00105402766719694
+          }
+        },
+        {
+          "raw_mid": -0.5108256237659907,
+          "raw_t": 0.0,
+          "state": {
+            "bf16_exact": 1.0,
+            "cosine": 1.0,
+            "max_abs": 0.0,
+            "mean_abs": 0.0,
+            "produced_norm": 45.91791397799921,
+            "reference_norm": 45.91791397799921,
+            "relative_l2": 0.0,
+            "relative_to_scale": 0.0
+          },
+          "step": 2,
+          "velocity": {
+            "bf16_exact": 0.154296875,
+            "cosine": 0.999925013300112,
+            "max_abs": 0.07421875,
+            "mean_abs": 0.012069146148860455,
+            "produced_norm": 57.87198617585355,
+            "reference_norm": 57.849423105455884,
+            "relative_l2": 0.012254958925482085,
+            "relative_to_scale": 0.001001326283837093
+          }
+        },
+        {
+          "raw_mid": -1.9459101490553135,
+          "raw_t": -1.0986122886681098,
+          "state": {
+            "bf16_exact": 1.0,
+            "cosine": 1.0,
+            "max_abs": 0.0,
+            "mean_abs": 0.0,
+            "produced_norm": 58.60076726503409,
+            "reference_norm": 58.60076726503409,
+            "relative_l2": 0.0,
+            "relative_to_scale": 0.0
+          },
+          "step": 3,
+          "velocity": {
+            "bf16_exact": 0.19921875,
+            "cosine": 0.9999580874292813,
+            "max_abs": 0.0546875,
+            "mean_abs": 0.00968126580119133,
+            "produced_norm": 63.56671937398929,
+            "reference_norm": 63.552732711917,
+            "relative_l2": 0.009159258959564955,
+            "relative_to_scale": 0.000737819367037858
+          }
+        }
+      ],
+      "teacher_forced_seconds": 0.31755955901462585,
+      "worst_velocity_relative_l2": 0.014425635467449996
+    }
+  ],
+  "context": 24576,
+  "passed": true,
+  "provenance": {
+    "command_line": "scripts/yue2_nar_gate.py --fixture tests/fixtures/yue2/nar-condend --json benchmarks/results/yue2_nar_gate_condend_20260916.json",
+    "fixture_dir": "tests/fixtures/yue2/nar-condend",
+    "host": {
+      "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+      "gpu": "gfx1151",
+      "hostname": "zbook",
+      "platform": "linux"
+    },
+    "model_dir": "/home/lhl/.cache/huggingface/hub/models--m-a-p--YuE2-3B/snapshots/14fc6c6f146441b1dd6363fcb2e01e82a6914cb7",
+    "protocol": "yue2-nar-fixture-gate-v1",
+    "revision": "d6ce67eae7d78b2635fab9e9c5f5236ec4aa2728"
+  },
+  "recorded_chunks": 1,
+  "seed": 1234,
+  "steps": 4,
+  "thresholds": {
+    "max_relative_l2": 0.05,
+    "min_cosine": 0.999
+  },
+  "worst_latent_cosine": 0.9999618274497738,
+  "worst_latent_relative_l2": 0.008847248472511842,
+  "worst_velocity_relative_l2": 0.014425635467449996
+}

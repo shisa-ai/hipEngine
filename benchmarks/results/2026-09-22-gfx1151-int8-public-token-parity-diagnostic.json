@@ -1,0 +1,3261 @@
+{
+  "schema_version": 1,
+  "scope": "Diagnostic token parity only; no performance or KV-quality claim",
+  "commit": "566bbf1d53673a0732e3b8e020f7d30132f9c5af",
+  "host": "gfx1151",
+  "backend": "hip_gfx1151",
+  "server_port": 18198,
+  "max_context_tokens": 9216,
+  "execution_profile": "production",
+  "candidate_budget": 3,
+  "prefix_cache": "off",
+  "environment": {
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED": "1",
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+    "HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS": "0"
+  },
+  "category_gate": {
+    "command": [
+      "scripts/int8_mtp_server_gate.py",
+      "--base-url",
+      "http://127.0.0.1:18198",
+      "--model",
+      "int8-lru-diag-20260922",
+      "--allow-kv-diagnostic-override",
+      "--json",
+      "/tmp/int8-lru-category-reproduction-20260922.json"
+    ],
+    "scope": "http_correctness",
+    "performance_claim": false,
+    "complete_prompt_suite": true,
+    "determinism_required": true,
+    "compact_required": true,
+    "rows": [
+      {
+        "id": "code_merge_intervals",
+        "category": "code",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654,
+          709,
+          421,
+          78161,
+          48142,
+          7629,
+          7308,
+          26126,
+          11,
+          5346,
+          264,
+          26864,
+          10970,
+          1228,
+          2424,
+          13,
+          2302
+        ],
+        "usage": {
+          "prompt_tokens": 28,
+          "completion_tokens": 24,
+          "total_tokens": 52,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "code_merge_intervals",
+        "category": "code",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          71093,
+          12305,
+          198,
+          727,
+          10562,
+          87682,
+          1494,
+          40798,
+          1590,
+          198,
+          262,
+          413,
+          524,
+          26126,
+          25,
+          198,
+          285,
+          460,
+          2958,
+          198,
+          262,
+          10300,
+          87682,
+          283
+        ],
+        "usage": {
+          "prompt_tokens": 63,
+          "completion_tokens": 24,
+          "total_tokens": 87,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 6,
+        "stream_mtp_cycles": 6
+      },
+      {
+        "id": "code_topological_sort",
+        "category": "code",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654,
+          709,
+          364,
+          1844,
+          5551,
+          27355,
+          421,
+          25,
+          198,
+          16,
+          13,
+          36363,
+          7552,
+          321,
+          12454,
+          430,
+          4868
+        ],
+        "usage": {
+          "prompt_tokens": 38,
+          "completion_tokens": 24,
+          "total_tokens": 62,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "code_topological_sort",
+        "category": "code",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          71093,
+          12305,
+          198,
+          727,
+          70058,
+          17885,
+          37423,
+          11,
+          12454,
+          1590,
+          198,
+          262,
+          4071,
+          198,
+          262,
+          24209,
+          1844,
+          5551,
+          3269,
+          383,
+          264,
+          15083,
+          4618,
+          13
+        ],
+        "usage": {
+          "prompt_tokens": 73,
+          "completion_tokens": 24,
+          "total_tokens": 97,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "code_lru_cache",
+        "category": "code",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654,
+          436,
+          34810,
+          18887,
+          523,
+          440,
+          496,
+          7,
+          16,
+          8,
+          615,
+          321,
+          2113,
+          7289,
+          11,
+          5346,
+          2250
+        ],
+        "usage": {
+          "prompt_tokens": 35,
+          "completion_tokens": 24,
+          "total_tokens": 59,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "code_lru_cache",
+        "category": "code",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          71093,
+          12305,
+          198,
+          1005,
+          43072,
+          5287,
+          1714,
+          25,
+          198,
+          262,
+          523,
+          5829,
+          25,
+          198,
+          285,
+          1259,
+          48093,
+          548,
+          283,
+          4178,
+          767,
+          504,
+          359,
+          927
+        ],
+        "usage": {
+          "prompt_tokens": 70,
+          "completion_tokens": 24,
+          "total_tokens": 94,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "code_markdown_table",
+        "category": "code",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654,
+          709,
+          421,
+          31637,
+          264,
+          1103,
+          314,
+          55588,
+          1083,
+          264,
+          31038,
+          11925,
+          72815,
+          48794,
+          1898,
+          13,
+          6558
+        ],
+        "usage": {
+          "prompt_tokens": 40,
+          "completion_tokens": 24,
+          "total_tokens": 64,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "code_markdown_table",
+        "category": "code",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          71093,
+          12305,
+          198,
+          727,
+          48794,
+          5070,
+          30863,
+          1590,
+          198,
+          262,
+          4071,
+          198,
+          262,
+          6943,
+          264,
+          1103,
+          314,
+          55588,
+          310,
+          264,
+          31038,
+          11925,
+          72815,
+          48794
+        ],
+        "usage": {
+          "prompt_tokens": 75,
+          "completion_tokens": 24,
+          "total_tokens": 99,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 6,
+        "stream_mtp_cycles": 6
+      },
+      {
+        "id": "general_en_plan",
+        "category": "general_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          14542,
+          11567,
+          3019,
+          364,
+          6992,
+          264,
+          2526,
+          27258,
+          878,
+          494,
+          27413,
+          310,
+          71100,
+          13,
+          2302,
+          1318,
+          424
+        ],
+        "usage": {
+          "prompt_tokens": 27,
+          "completion_tokens": 24,
+          "total_tokens": 51,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "general_en_plan",
+        "category": "general_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          8160,
+          369,
+          264,
+          61446,
+          11,
+          14542,
+          11567,
+          3019,
+          364,
+          6992,
+          264,
+          2526,
+          27258,
+          3638,
+          494,
+          27413,
+          310,
+          71100,
+          13,
+          271,
+          13962,
+          220,
+          16,
+          13
+        ],
+        "usage": {
+          "prompt_tokens": 62,
+          "completion_tokens": 24,
+          "total_tokens": 86,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "general_en_explain",
+        "category": "general_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          10597,
+          15673,
+          314,
+          3069,
+          41163,
+          42903,
+          369,
+          4779,
+          65393,
+          2998,
+          6973,
+          383,
+          2136,
+          68022,
+          13,
+          2302,
+          1318
+        ],
+        "usage": {
+          "prompt_tokens": 28,
+          "completion_tokens": 24,
+          "total_tokens": 52,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "general_en_explain",
+        "category": "general_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          44812,
+          42903,
+          369,
+          4779,
+          65393,
+          2998,
+          6973,
+          1521,
+          279,
+          33633,
+          19987,
+          318,
+          37,
+          1537,
+          19797,
+          791,
+          4763,
+          314,
+          4779,
+          23975,
+          8,
+          314,
+          279,
+          23681
+        ],
+        "usage": {
+          "prompt_tokens": 63,
+          "completion_tokens": 24,
+          "total_tokens": 87,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 10,
+        "stream_mtp_cycles": 10
+      },
+      {
+        "id": "general_ja_plan",
+        "category": "general_ja",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          176034,
+          14876,
+          95872,
+          113652,
+          24950,
+          247818,
+          29292,
+          185865,
+          28452,
+          114149,
+          104119,
+          153059,
+          247864,
+          192949,
+          247503,
+          170508,
+          247243,
+          28452,
+          247359,
+          196220,
+          95873
+        ],
+        "usage": {
+          "prompt_tokens": 31,
+          "completion_tokens": 24,
+          "total_tokens": 55,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "general_ja_plan",
+        "category": "general_ja",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          95872,
+          113652,
+          24950,
+          247818,
+          29292,
+          185865,
+          28452,
+          114149,
+          104119,
+          153059,
+          247864,
+          52020,
+          99720,
+          5205,
+          180367,
+          96588,
+          211352,
+          12512,
+          247208,
+          104119,
+          18602,
+          95879,
+          98227,
+          104119
+        ],
+        "usage": {
+          "prompt_tokens": 66,
+          "completion_tokens": 24,
+          "total_tokens": 90,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 9,
+        "stream_mtp_cycles": 9
+      },
+      {
+        "id": "general_ja_explain",
+        "category": "general_ja",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          369,
+          9859,
+          364,
+          264,
+          10597,
+          321,
+          3050,
+          15673,
+          303,
+          10452,
+          883,
+          3069,
+          436,
+          10673,
+          42903,
+          4478,
+          383,
+          2136,
+          68022
+        ],
+        "usage": {
+          "prompt_tokens": 31,
+          "completion_tokens": 24,
+          "total_tokens": 55,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "general_ja_explain",
+        "category": "general_ja",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          150110,
+          174267,
+          48213,
+          15685,
+          3950,
+          44,
+          15303,
+          96307,
+          98096,
+          98630,
+          27279,
+          241456,
+          246822,
+          96833,
+          9616,
+          10327,
+          16439,
+          2998,
+          7313,
+          19054,
+          96026,
+          98222,
+          170605,
+          217087
+        ],
+        "usage": {
+          "prompt_tokens": 66,
+          "completion_tokens": 24,
+          "total_tokens": 90,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "mixed_ja_en_translate",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          728,
+          310,
+          25,
+          198,
+          16,
+          13,
+          7860,
+          5437,
+          537,
+          279,
+          10452,
+          5020,
+          303,
+          6163,
+          198,
+          17,
+          13,
+          38256
+        ],
+        "usage": {
+          "prompt_tokens": 52,
+          "completion_tokens": 24,
+          "total_tokens": 76,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 9,
+        "stream_mtp_cycles": 9
+      },
+      {
+        "id": "mixed_ja_en_translate",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          332,
+          21874,
+          20858,
+          64700,
+          198,
+          2381,
+          1727,
+          1936,
+          579,
+          4722,
+          11,
+          279,
+          5077,
+          668,
+          381,
+          383,
+          66532,
+          279,
+          4203,
+          310,
+          1433,
+          2468,
+          35358,
+          11
+        ],
+        "usage": {
+          "prompt_tokens": 87,
+          "completion_tokens": 24,
+          "total_tokens": 111,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "mixed_ja_en_review",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          728,
+          310,
+          3286,
+          264,
+          87183,
+          4722,
+          5020,
+          364,
+          30246,
+          13,
+          2302,
+          1318,
+          821,
+          1965,
+          303,
+          6163,
+          31969,
+          11
+        ],
+        "usage": {
+          "prompt_tokens": 59,
+          "completion_tokens": 24,
+          "total_tokens": 83,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "mixed_ja_en_review",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          9,
+          256,
+          2972,
+          4904,
+          10432,
+          64700,
+          561,
+          11316,
+          369,
+          2708,
+          321,
+          70561,
+          31838,
+          11,
+          13057,
+          30506,
+          279,
+          8495,
+          318,
+          19755,
+          8,
+          7854,
+          539,
+          279
+        ],
+        "usage": {
+          "prompt_tokens": 94,
+          "completion_tokens": 24,
+          "total_tokens": 118,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 10,
+        "stream_mtp_cycles": 10
+      },
+      {
+        "id": "heldout_code_rate_limiter",
+        "category": "code",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654,
+          6638,
+          6369,
+          4127,
+          11231,
+          43,
+          17174,
+          440,
+          25,
+          198,
+          16,
+          13,
+          1510,
+          6957,
+          4702,
+          11,
+          11112
+        ],
+        "usage": {
+          "prompt_tokens": 43,
+          "completion_tokens": 24,
+          "total_tokens": 67,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "heldout_code_rate_limiter",
+        "category": "code",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          71093,
+          12305,
+          198,
+          464,
+          854,
+          198,
+          1445,
+          14856,
+          1120,
+          41489,
+          11,
+          40565,
+          1358,
+          1005,
+          6638,
+          6369,
+          4127,
+          11231,
+          43,
+          17174,
+          25,
+          198,
+          262,
+          4071
+        ],
+        "usage": {
+          "prompt_tokens": 78,
+          "completion_tokens": 24,
+          "total_tokens": 102,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 6,
+        "stream_mtp_cycles": 6
+      },
+      {
+        "id": "heldout_code_interval_schedule",
+        "category": "code",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654,
+          709,
+          421,
+          13325,
+          264,
+          6966,
+          6948,
+          25162,
+          314,
+          2397,
+          27335,
+          87502,
+          4139,
+          24868,
+          26126,
+          13,
+          6558
+        ],
+        "usage": {
+          "prompt_tokens": 40,
+          "completion_tokens": 24,
+          "total_tokens": 64,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "heldout_code_interval_schedule",
+        "category": "code",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          71093,
+          12305,
+          198,
+          727,
+          1866,
+          20974,
+          14980,
+          87502,
+          1494,
+          40798,
+          1590,
+          198,
+          262,
+          4071,
+          198,
+          262,
+          3301,
+          264,
+          6966,
+          6948,
+          25162,
+          314,
+          4139,
+          24868
+        ],
+        "usage": {
+          "prompt_tokens": 75,
+          "completion_tokens": 24,
+          "total_tokens": 99,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 6,
+        "stream_mtp_cycles": 6
+      },
+      {
+        "id": "heldout_general_en_incident",
+        "category": "general_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          61446,
+          10142,
+          56495,
+          50802,
+          364,
+          264,
+          3050,
+          14611,
+          25,
+          5492,
+          5165,
+          280,
+          24,
+          24,
+          37972,
+          33472,
+          1238
+        ],
+        "usage": {
+          "prompt_tokens": 33,
+          "completion_tokens": 24,
+          "total_tokens": 57,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "heldout_general_en_incident",
+        "category": "general_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          13962,
+          23288,
+          5165,
+          66413,
+          5764,
+          91690,
+          25,
+          280,
+          24,
+          24,
+          9632,
+          2179,
+          58219,
+          271,
+          332,
+          16,
+          13,
+          2025,
+          70147,
+          318,
+          50959,
+          21095,
+          17394,
+          31230
+        ],
+        "usage": {
+          "prompt_tokens": 68,
+          "completion_tokens": 24,
+          "total_tokens": 92,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 9,
+        "stream_mtp_cycles": 9
+      },
+      {
+        "id": "heldout_general_en_quant",
+        "category": "general_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          271,
+          248069,
+          271,
+          1206,
+          3418,
+          279,
+          6355,
+          31410,
+          1881,
+          2972,
+          19278,
+          16,
+          21,
+          93868,
+          2972,
+          54,
+          23,
+          32,
+          23,
+          8948,
+          23,
+          93868
+        ],
+        "usage": {
+          "prompt_tokens": 44,
+          "completion_tokens": 24,
+          "total_tokens": 68,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 10,
+        "stream_mtp_cycles": 10
+      },
+      {
+        "id": "heldout_general_en_quant",
+        "category": "general_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          1206,
+          3418,
+          279,
+          6355,
+          31410,
+          1881,
+          48804,
+          16,
+          21,
+          11,
+          457,
+          23,
+          32,
+          23,
+          8948,
+          23,
+          11,
+          321,
+          16030,
+          12,
+          7081,
+          8948,
+          19,
+          42903
+        ],
+        "usage": {
+          "prompt_tokens": 79,
+          "completion_tokens": 24,
+          "total_tokens": 103,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "heldout_general_ja_migration",
+        "category": "general_ja",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          369,
+          9859,
+          728,
+          310,
+          1791,
+          264,
+          61446,
+          3019,
+          303,
+          10452,
+          364,
+          81611,
+          449,
+          5138,
+          24609,
+          5165,
+          494,
+          63723,
+          8427
+        ],
+        "usage": {
+          "prompt_tokens": 41,
+          "completion_tokens": 24,
+          "total_tokens": 65,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "heldout_general_ja_migration",
+        "category": "general_ja",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          97155,
+          14876,
+          5205,
+          96163,
+          123572,
+          72945,
+          37037,
+          5165,
+          28452,
+          99681,
+          247264,
+          52122,
+          96365,
+          99681,
+          175517,
+          50040,
+          96760,
+          153059,
+          247864,
+          52020,
+          228379,
+          247243,
+          96252,
+          36298
+        ],
+        "usage": {
+          "prompt_tokens": 76,
+          "completion_tokens": 24,
+          "total_tokens": 100,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 9,
+        "stream_mtp_cycles": 9
+      },
+      {
+        "id": "heldout_general_ja_speculative",
+        "category": "general_ja",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          369,
+          9859,
+          728,
+          310,
+          10033,
+          303,
+          10452,
+          11,
+          30515,
+          11,
+          3069,
+          63520,
+          45543,
+          3070,
+          914,
+          2590,
+          2895,
+          310,
+          4478
+        ],
+        "usage": {
+          "prompt_tokens": 33,
+          "completion_tokens": 24,
+          "total_tokens": 57,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "heldout_general_ja_speculative",
+        "category": "general_ja",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          96259,
+          133437,
+          65037,
+          178498,
+          9616,
+          8068,
+          21473,
+          3588,
+          3574,
+          7313,
+          27279,
+          172510,
+          99158,
+          95909,
+          247981,
+          191040,
+          217087,
+          203830,
+          5205,
+          332,
+          12512,
+          112389,
+          174635,
+          9616
+        ],
+        "usage": {
+          "prompt_tokens": 68,
+          "completion_tokens": 24,
+          "total_tokens": 92,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 12,
+        "stream_mtp_cycles": 12
+      },
+      {
+        "id": "heldout_mixed_summary",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          728,
+          310,
+          25,
+          198,
+          16,
+          13,
+          7860,
+          5437,
+          537,
+          449,
+          6163,
+          7289,
+          5020,
+          303,
+          10452,
+          198,
+          17,
+          13
+        ],
+        "usage": {
+          "prompt_tokens": 40,
+          "completion_tokens": 24,
+          "total_tokens": 64,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "heldout_mixed_summary",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          332,
+          247359,
+          57750,
+          65377,
+          148638,
+          64700,
+          198,
+          148638,
+          213105,
+          192485,
+          159656,
+          19054,
+          247252,
+          104322,
+          28452,
+          96818,
+          95999,
+          148344,
+          104424,
+          5205,
+          239228,
+          220373,
+          217014,
+          105880
+        ],
+        "usage": {
+          "prompt_tokens": 75,
+          "completion_tokens": 24,
+          "total_tokens": 99,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 9,
+        "stream_mtp_cycles": 9
+      },
+      {
+        "id": "heldout_mixed_review",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          8160,
+          513,
+          279,
+          30246,
+          3286,
+          3387,
+          364,
+          279,
+          87183,
+          4953,
+          25,
+          271,
+          9,
+          256,
+          2972,
+          52486,
+          3855,
+          7065,
+          45522,
+          92217,
+          561,
+          4953,
+          5533
+        ],
+        "usage": {
+          "prompt_tokens": 44,
+          "completion_tokens": 24,
+          "total_tokens": 68,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 10,
+        "stream_mtp_cycles": 10
+      },
+      {
+        "id": "heldout_mixed_review",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          9,
+          256,
+          280,
+          24,
+          24,
+          37972,
+          181509,
+          96485,
+          122,
+          246826,
+          163400,
+          198808,
+          198,
+          9,
+          256,
+          1412,
+          4238,
+          181509,
+          247499,
+          155085,
+          198,
+          9,
+          256,
+          204015
+        ],
+        "usage": {
+          "prompt_tokens": 79,
+          "completion_tokens": 24,
+          "total_tokens": 103,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      }
+    ],
+    "passed": true,
+    "kv_capability": {
+      "schema_version": 1,
+      "capability_id": "22c71484da2499afe8765e1674cf21532b0103b3cc5e3211994998b7aaf8cf28",
+      "status": "rejected",
+      "runtime_action": "diagnostic_override",
+      "promotion_eligible": false,
+      "max_direct_rows": 0,
+      "max_serial_resident_rows": 0,
+      "persistent_bf16_mirror": false,
+      "decode_batch_variant": null,
+      "declaration": {
+        "backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "weight_quant": null,
+        "kv_storage": "int8_per_token_head",
+        "storage_layout": "uniform",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head",
+        "max_direct_rows": 4,
+        "max_serial_resident_rows": 4,
+        "persistent_bf16_mirror": false,
+        "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+        "reason": "registered int8 per-token-head paged decode chain; the row-batched producer and its strided reducer are implemented to physical c4"
+      },
+      "diagnostic_override": true,
+      "requested": {
+        "artifact_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+        "artifact_size_bytes": 17106775008,
+        "artifact_execution_fingerprint": "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa",
+        "backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "weight_quant": "gguf_q4_k_m",
+        "kv_storage": "int8_per_token_head",
+        "storage_layout": "uniform",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head"
+      },
+      "effective_kv_storage": "int8_per_token_head",
+      "artifact": {
+        "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "size_bytes": 17106775008,
+        "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+        "content_verified": true,
+        "error": null
+      },
+      "evidence": {
+        "decision": "rejected",
+        "scope": "native_no_mirror_quality",
+        "quality_artifact": "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json",
+        "reason": "complete 1K/8 transfer rejected: minimum-prompt top-1 agreement 0.7778 is below the 0.90 gate",
+        "max_direct_rows": 0,
+        "max_serial_resident_rows": 0,
+        "persistent_bf16_mirror": false,
+        "decode_batch_variant": null
+      },
+      "reason": "complete 1K/8 transfer rejected: minimum-prompt top-1 agreement 0.7778 is below the 0.90 gate; explicit unverified INT8 KV diagnostic override is enabled",
+      "max_packed_rows": 4
+    },
+    "startup": {
+      "eager_load": true,
+      "warmup_complete": true,
+      "last_timings_s": {
+        "engine_create_s": 0.001828,
+        "resident_prepare_s": 63.586355,
+        "warmup_s": 0.529115,
+        "scratch_probe_s": 3.4e-05,
+        "chat_smoke_s": null,
+        "mtp_smoke_s": null,
+        "startup_total_s": 64.177352
+      },
+      "checks": {
+        "raw_warmup": {
+          "status": "passed",
+          "max_tokens": 1
+        },
+        "scratch_probe": {
+          "enabled": false,
+          "status": "disabled"
+        },
+        "chat_smoke": {
+          "enabled": false,
+          "status": "disabled"
+        },
+        "mtp_smoke": {
+          "enabled": false,
+          "status": "disabled"
+        }
+      },
+      "memory": {
+        "startup_begin": {
+          "free_bytes": 91629514752,
+          "total_bytes": 128849018880,
+          "used_bytes": 37219504128,
+          "free_gib": 85.336636,
+          "used_gib": 34.663364
+        },
+        "after_resident_prepare": {
+          "free_bytes": 67545743360,
+          "total_bytes": 128849018880,
+          "used_bytes": 61303275520,
+          "free_gib": 62.906876,
+          "used_gib": 57.093124
+        },
+        "after_raw_warmup": {
+          "free_bytes": 63579398144,
+          "total_bytes": 128849018880,
+          "used_bytes": 65269620736,
+          "free_gib": 59.212929,
+          "used_gib": 60.787071
+        },
+        "after_scratch_probe": {
+          "free_bytes": 63579398144,
+          "total_bytes": 128849018880,
+          "used_bytes": 65269620736,
+          "free_gib": 59.212929,
+          "used_gib": 60.787071
+        },
+        "guard": {
+          "free_bytes": 63579398144,
+          "total_bytes": 128849018880,
+          "used_bytes": 65269620736,
+          "free_gib": 59.212929,
+          "used_gib": 60.787071
+        }
+      },
+      "error": null
+    },
+    "determinism": {
+      "skipped": false,
+      "repeatability_rows": 18,
+      "repeatability_endpoint": "/v1/completions",
+      "second_schedule": "reversed",
+      "isolation": {
+        "id": "code_merge_intervals",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654,
+          709,
+          421,
+          78161,
+          48142,
+          7629,
+          7308,
+          26126,
+          11,
+          5346,
+          264,
+          26864,
+          10970,
+          1228,
+          2424,
+          13,
+          2302
+        ],
+        "neighbour_id": "heldout_mixed_review",
+        "neighbour_ids": [
+          271,
+          8160,
+          513,
+          279,
+          30246,
+          3286,
+          3387,
+          364,
+          279,
+          87183,
+          4953,
+          25,
+          271,
+          9,
+          256,
+          2972,
+          52486,
+          3855,
+          7065,
+          45522,
+          92217,
+          561,
+          4953,
+          5533
+        ]
+      }
+    },
+    "final_queue": {
+      "depth": 0,
+      "max_depth": null,
+      "worker_active": false,
+      "active_requests": 0,
+      "max_active_requests": 4,
+      "scheduler_fairness": {
+        "policy": "fifo_compatible_sampling_key",
+        "compatible_sampling_coalescing": true,
+        "continuous_decode": true,
+        "preemptive_fairness": false
+      },
+      "batch_window_ms": 0.0
+    }
+  },
+  "lru_requests": {
+    "ready": {
+      "object": "hipengine.readiness",
+      "status": "ready",
+      "ready": true,
+      "diagnostics": [],
+      "engine_service": {
+        "object": "hipengine.engine_service.health",
+        "status": "ok",
+        "serving": true,
+        "unhealthy": null
+      },
+      "model": {
+        "id": "int8-lru-diag-20260922",
+        "backend": "hip_gfx1151",
+        "quant": "gguf_q4_k_m",
+        "loaded": true,
+        "loaded_model_count": 1,
+        "kv_capability": {
+          "schema_version": 1,
+          "capability_id": "22c71484da2499afe8765e1674cf21532b0103b3cc5e3211994998b7aaf8cf28",
+          "status": "rejected",
+          "runtime_action": "diagnostic_override",
+          "promotion_eligible": false,
+          "max_direct_rows": 0,
+          "max_serial_resident_rows": 0,
+          "persistent_bf16_mirror": false,
+          "decode_batch_variant": null,
+          "declaration": {
+            "backend": "hip_gfx1151",
+            "target_arch": "gfx1151",
+            "weight_quant": null,
+            "kv_storage": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "max_direct_rows": 4,
+            "max_serial_resident_rows": 4,
+            "persistent_bf16_mirror": false,
+            "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+            "reason": "registered int8 per-token-head paged decode chain; the row-batched producer and its strided reducer are implemented to physical c4"
+          },
+          "diagnostic_override": true,
+          "requested": {
+            "artifact_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+            "artifact_size_bytes": 17106775008,
+            "artifact_execution_fingerprint": "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa",
+            "backend": "hip_gfx1151",
+            "target_arch": "gfx1151",
+            "weight_quant": "gguf_q4_k_m",
+            "kv_storage": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head"
+          },
+          "effective_kv_storage": "int8_per_token_head",
+          "artifact": {
+            "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+            "size_bytes": 17106775008,
+            "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+            "content_verified": true,
+            "error": null
+          },
+          "evidence": {
+            "decision": "rejected",
+            "scope": "native_no_mirror_quality",
+            "quality_artifact": "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json",
+            "reason": "complete 1K/8 transfer rejected: minimum-prompt top-1 agreement 0.7778 is below the 0.90 gate",
+            "max_direct_rows": 0,
+            "max_serial_resident_rows": 0,
+            "persistent_bf16_mirror": false,
+            "decode_batch_variant": null
+          },
+          "reason": "complete 1K/8 transfer rejected: minimum-prompt top-1 agreement 0.7778 is below the 0.90 gate; explicit unverified INT8 KV diagnostic override is enabled",
+          "max_packed_rows": 4
+        }
+      },
+      "startup": {
+        "eager_load": true,
+        "warmup_complete": true,
+        "last_timings_s": {
+          "engine_create_s": 0.001828,
+          "resident_prepare_s": 63.586355,
+          "warmup_s": 0.529115,
+          "scratch_probe_s": 3.4e-05,
+          "chat_smoke_s": null,
+          "mtp_smoke_s": null,
+          "startup_total_s": 64.177352
+        },
+        "checks": {
+          "raw_warmup": {
+            "status": "passed",
+            "max_tokens": 1
+          },
+          "scratch_probe": {
+            "enabled": false,
+            "status": "disabled"
+          },
+          "chat_smoke": {
+            "enabled": false,
+            "status": "disabled"
+          },
+          "mtp_smoke": {
+            "enabled": false,
+            "status": "disabled"
+          }
+        },
+        "memory": {
+          "startup_begin": {
+            "free_bytes": 91629514752,
+            "total_bytes": 128849018880,
+            "used_bytes": 37219504128,
+            "free_gib": 85.336636,
+            "used_gib": 34.663364
+          },
+          "after_resident_prepare": {
+            "free_bytes": 67545743360,
+            "total_bytes": 128849018880,
+            "used_bytes": 61303275520,
+            "free_gib": 62.906876,
+            "used_gib": 57.093124
+          },
+          "after_raw_warmup": {
+            "free_bytes": 63579398144,
+            "total_bytes": 128849018880,
+            "used_bytes": 65269620736,
+            "free_gib": 59.212929,
+            "used_gib": 60.787071
+          },
+          "after_scratch_probe": {
+            "free_bytes": 63579398144,
+            "total_bytes": 128849018880,
+            "used_bytes": 65269620736,
+            "free_gib": 59.212929,
+            "used_gib": 60.787071
+          },
+          "guard": {
+            "free_bytes": 63579398144,
+            "total_bytes": 128849018880,
+            "used_bytes": 65269620736,
+            "free_gib": 59.212929,
+            "used_gib": 60.787071
+          }
+        },
+        "error": null
+      },
+      "context": {
+        "configured_max_context_tokens": 9216,
+        "effective_max_context_tokens": 9216,
+        "chat_default_max_tokens": 4096
+      },
+      "kv_capacity": {
+        "storage": "int8_per_token_head",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head",
+        "estimate": {
+          "requested_context_tokens": 9216,
+          "model_max_context_tokens": 262144,
+          "allocatable_context_tokens": 262144,
+          "max_batch_size": 1,
+          "requested_kv_bytes": 306708480,
+          "bytes_per_token": 142944,
+          "usable_bytes": 66673328128,
+          "reserve_bytes": 3221225472,
+          "fits_model_max": true,
+          "kv_storage_dtype": "int8_per_token_head",
+          "kv_scale_dtype": "fp32"
+        },
+        "pool": {
+          "current_bytes": 2317352960.0,
+          "high_water_observed_bytes": 1235353600.0,
+          "current_pages": 272.0,
+          "high_water_observed_pages": 145.0,
+          "grow_events": 0.0,
+          "grow_failures": 0.0,
+          "shrink_events": 0.0,
+          "free_pages": 128.0,
+          "refcounted_pages": 144.0,
+          "pinned_pages": 144.0,
+          "max_pages": 7825.0,
+          "budget_bytes": 66666496000.0,
+          "retired_pages": 0.0,
+          "retired_bytes": 0.0
+        }
+      },
+      "prefix_cache": {
+        "mode": "off",
+        "block_size_tokens": 256,
+        "stats": null,
+        "usable_hits": 0,
+        "unusable_hits": 0,
+        "contiguous_admissions": 0,
+        "gapped_admissions": 0,
+        "admission_fallbacks": 0,
+        "fallback_reasons": {
+          "cache_off": 1
+        },
+        "reused_tokens": 0,
+        "state_clone_bytes": 0,
+        "snapshot_entries": 0,
+        "snapshot_limit": 4,
+        "retained_snapshot_limit": 4,
+        "retained_snapshot_state_limit_bytes": 1073741824,
+        "retained_snapshot_state_bytes": 0,
+        "retained_snapshot_evictions_by_reason": {},
+        "snapshot_promotions": 0,
+        "retained_snapshot_entries": 0,
+        "snapshot_hits": 0,
+        "snapshot_evictions": 0,
+        "snapshot_captures": 0,
+        "snapshot_capture_bytes": 0,
+        "phase_ms": {
+          "admission_lookup": 0.006,
+          "admission_pool": 0.247
+        },
+        "phase_calls": {
+          "admission_lookup": 1,
+          "admission_pool": 1
+        },
+        "snapshot_bytes": 0,
+        "retained_kv_pages": 0,
+        "retained_kv_bytes": 0,
+        "resident_bytes": 0,
+        "resident_limit_bytes": 66666496000
+      },
+      "graph_cache": {
+        "entries": 0.0,
+        "hits": 0.0,
+        "misses": 0.0,
+        "replay_hit_rate": 0.0
+      },
+      "device": {
+        "backend": "hip_gfx1151",
+        "hip_visible_devices": null,
+        "rocr_visible_devices": null,
+        "visible_devices": [],
+        "selected_visible_device": null,
+        "selection_source": null
+      },
+      "queue": {
+        "depth": 0,
+        "max_depth": null,
+        "worker_active": false,
+        "active_requests": 0,
+        "max_active_requests": 4,
+        "scheduler_fairness": {
+          "policy": "fifo_compatible_sampling_key",
+          "compatible_sampling_coalescing": true,
+          "continuous_decode": true,
+          "preemptive_fairness": false
+        },
+        "batch_window_ms": 0.0
+      },
+      "sessions": {
+        "resident_context": true,
+        "active": 0,
+        "pending_creations": 0,
+        "max_active": null,
+        "storage": "app_local_transcript",
+        "resident_state_reuse": false,
+        "total_messages": 0,
+        "continuations": {
+          "active": 0,
+          "ttl_seconds": 900
+        }
+      }
+    },
+    "requests": [
+      {
+        "endpoint": "/v1/completions",
+        "payload": {
+          "model": "int8-lru-diag-20260922",
+          "max_tokens": 24,
+          "temperature": 0,
+          "speculative_mtp": false,
+          "stream": false,
+          "prompt": "Implement a small LRUCache class in Python with get(key) and put(key, value), using O(1) operations. Include three focused tests. Return only code."
+        },
+        "response": {
+          "id": "cmpl-af2878af6ede445c88d82d4cc064f633",
+          "object": "text_completion",
+          "created": 1790077166,
+          "model": "int8-lru-diag-20260922",
+          "choices": [
+            {
+              "text": "\n\n<think>\nThe user wants a Python LRU Cache class with O(1) get and put operations, plus three",
+              "index": 0,
+              "logprobs": null,
+              "finish_reason": "length",
+              "finish_details": {
+                "reason": "length",
+                "length_limit": 24,
+                "sampler_mode": "greedy_fast",
+                "cache_action": "append_none",
+                "continuation_eligible": true,
+                "continuation_id": "gen_25b0d9bc46d3496bad27546085292c46"
+              },
+              "continuation_id": "gen_25b0d9bc46d3496bad27546085292c46",
+              "hipengine": {
+                "decode_state": {
+                  "row_index": 0,
+                  "step_index": 24,
+                  "prompt_tokens": 35,
+                  "generated_tokens": 24,
+                  "phase": "done",
+                  "continuation_eligible": true,
+                  "request_id": "1",
+                  "sampler_mode": "greedy_fast",
+                  "execution_path": "gguf_packed_ar_server_decode",
+                  "native_compact_prefill": true,
+                  "native_caware_decode": false,
+                  "serial_decode_fallback": false,
+                  "native_sampler_rows": false
+                },
+                "timing": {
+                  "tokenize_ms": 3.2895333133637905,
+                  "prompt_encode_ms": 3.2895333133637905,
+                  "render_ms": 0.0,
+                  "admission_prepare_ms": 0.11987471953034401,
+                  "prefill_ms": 244.605,
+                  "prefill_chunk_count": 1.0,
+                  "request_total_ms": 2151.216
+                },
+                "timing_scope": "choice",
+                "group_rows": 1,
+                "timing_owner": true,
+                "diagnostics": {
+                  "prefix_cache": {
+                    "mode": "off",
+                    "block_size_tokens": 256,
+                    "eligible": false,
+                    "lookup": false,
+                    "hit": false,
+                    "source": null,
+                    "matched_tokens": 0,
+                    "reused_tokens": 0,
+                    "avoided_prefill_tokens": 0,
+                    "executed_prefill_tokens": 35,
+                    "reused_pages": 0,
+                    "reused_page_bytes": 0,
+                    "state_clone_bytes": 0,
+                    "snapshot_hit": false,
+                    "admission_fallback": false,
+                    "fallback_reason": "cache_off",
+                    "cache_resident_entries": 0,
+                    "cache_resident_pages": 0,
+                    "cache_resident_bytes": 0
+                  },
+                  "kv_layout": {
+                    "pool_contract": "global_generation2",
+                    "pool_storage_layout": "global-arbitrary-pages:g2",
+                    "storage_dtype": "int8_per_token_head",
+                    "storage_layout": "uniform",
+                    "scale_dtype": "fp32",
+                    "scale_granularity": "per_token_head",
+                    "kv_attention_source": "int8_direct",
+                    "request_pages": 1,
+                    "request_capacity_tokens": 256,
+                    "request_block_ids": [
+                      144
+                    ],
+                    "one_backing_chunk": true,
+                    "contiguous_in_backing": true,
+                    "persistent_int8_payload_bytes": 8388608,
+                    "persistent_bf16_payload_bytes": 0,
+                    "persistent_scale_bytes": 131072,
+                    "persistent_bf16_mirror_bytes": 0,
+                    "persistent_total_bytes": 8519680
+                  }
+                },
+                "generated_token_ids": [
+                  271,
+                  248068,
+                  198,
+                  760,
+                  1156,
+                  6587,
+                  264,
+                  12654,
+                  436,
+                  34810,
+                  18887,
+                  523,
+                  440,
+                  496,
+                  7,
+                  16,
+                  8,
+                  615,
+                  321,
+                  2113,
+                  7289,
+                  11,
+                  5346,
+                  2250
+                ],
+                "generated_tokens": 24,
+                "finish_details": {
+                  "reason": "length",
+                  "length_limit": 24,
+                  "sampler_mode": "greedy_fast",
+                  "cache_action": "append_none",
+                  "continuation_eligible": true,
+                  "continuation_id": "gen_25b0d9bc46d3496bad27546085292c46"
+                }
+              }
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 35,
+            "completion_tokens": 24,
+            "total_tokens": 59,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "hipengine": {
+            "routing": {
+              "requested_model": "int8-lru-diag-20260922",
+              "served_model": "int8-lru-diag-20260922",
+              "fallback_used": false,
+              "policy": "single_model_exact",
+              "loaded_model_count": 1,
+              "multiple_models": false
+            },
+            "token_accounting": {
+              "choice_generated_token_ids": [
+                [
+                  271,
+                  248068,
+                  198,
+                  760,
+                  1156,
+                  6587,
+                  264,
+                  12654,
+                  436,
+                  34810,
+                  18887,
+                  523,
+                  440,
+                  496,
+                  7,
+                  16,
+                  8,
+                  615,
+                  321,
+                  2113,
+                  7289,
+                  11,
+                  5346,
+                  2250
+                ]
+              ],
+              "choice_generated_tokens": [
+                24
+              ],
+              "total_generated_tokens": 24,
+              "retokenized_visible_tokens": 24
+            },
+            "generation_shape": {
+              "schema_version": 1,
+              "route": "default",
+              "route_cap": {
+                "scope": "queue_requests",
+                "value": 4,
+                "applied": true
+              },
+              "queue_group": {
+                "id": "queue-7a8b01281c9440e1b075113daf969fbd",
+                "request_count": 1,
+                "prompt_rows": 1,
+                "item_index": 0,
+                "item_prompt_offset": 0,
+                "item_prompt_rows": 1
+              },
+              "backend_groups": [
+                {
+                  "id": "backend-8b03951e96a9439e8a1f312c7dbd3a22",
+                  "call_index": 0,
+                  "prompt_offset": 0,
+                  "input_rows": 1,
+                  "actual_group_rows": [
+                    1
+                  ],
+                  "max_actual_group_rows": 1,
+                  "verifier_rows": 0
+                }
+              ],
+              "verifier_rows": 0
+            },
+            "speculative_mtp": {
+              "effective_route": "default",
+              "used": false,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "rejected_draft_tokens": 0,
+              "acceptance_rate": null,
+              "draft_cycles": 0
+            }
+          }
+        }
+      },
+      {
+        "endpoint": "/v1/completions",
+        "payload": {
+          "model": "int8-lru-diag-20260922",
+          "max_tokens": 24,
+          "temperature": 0,
+          "speculative_mtp": true,
+          "stream": false,
+          "prompt": "Implement a small LRUCache class in Python with get(key) and put(key, value), using O(1) operations. Include three focused tests. Return only code."
+        },
+        "response": {
+          "id": "cmpl-1dc292f2bcd3412c8612a4acf5c0e875",
+          "object": "text_completion",
+          "created": 1790077171,
+          "model": "int8-lru-diag-20260922",
+          "choices": [
+            {
+              "text": "\n\n<think>\nThe user wants a Python LRU Cache class with O(1) get and put operations, plus three",
+              "index": 0,
+              "logprobs": null,
+              "finish_reason": "length",
+              "finish_details": {
+                "reason": "length",
+                "length_limit": 24,
+                "sampler_mode": "greedy_fast",
+                "cache_action": "append_none",
+                "continuation_eligible": true,
+                "continuation_id": "gen_cc8b8342d82d49479d9d76f6f03e493f"
+              },
+              "continuation_id": "gen_cc8b8342d82d49479d9d76f6f03e493f",
+              "hipengine": {
+                "decode_state": {
+                  "row_index": 0,
+                  "step_index": 24,
+                  "prompt_tokens": 35,
+                  "generated_tokens": 24,
+                  "phase": "done",
+                  "continuation_eligible": true,
+                  "request_id": "2",
+                  "sampler_mode": "greedy_fast",
+                  "execution_path": "gguf_specdec2_mtp2",
+                  "native_compact_prefill": true,
+                  "native_caware_decode": true,
+                  "serial_decode_fallback": false,
+                  "native_sampler_rows": false
+                },
+                "timing": {
+                  "tokenize_ms": 0.24951808154582977,
+                  "prompt_encode_ms": 0.24951808154582977,
+                  "render_ms": 0.0,
+                  "admission_prepare_ms": 1.2047099880874157,
+                  "prefill_ms": 4636.114,
+                  "prefill_chunk_count": 1.0,
+                  "request_total_ms": 5588.016,
+                  "specdec2_mtp2_prompt_streaming": 1.0,
+                  "specdec2_mtp2_prompt_prime_rows": 35.0,
+                  "specdec2_mtp2_prompt_carried_bytes": 10240.0,
+                  "mtp_cycles_count": 8.0,
+                  "mtp_generated_draft_tokens": 22.0,
+                  "mtp_accepted_draft_tokens": 15.0,
+                  "mtp_visible_output_tokens": 23.0,
+                  "mtp_ar_output_tokens": 1.0,
+                  "mtp_accept_per_draft": 0.6818181818181818,
+                  "specdec2_mtp2_cycles": 8.0,
+                  "specdec2_mtp2_proposal_ms": 46.380991116166115,
+                  "specdec2_mtp2_target_ms": 855.625667,
+                  "specdec2_mtp2_provider_update_ms": 16.523930709809065,
+                  "specdec2_mtp2_accept_ms": 0.0,
+                  "specdec2_mtp2_target_readback_ms": 0.0,
+                  "specdec2_mtp2_accept_upload_ms": 0.0,
+                  "specdec2_mtp2_accept_tail_ms": 0.0,
+                  "specdec2_mtp2_accept_enqueue_ms": 0.0,
+                  "specdec2_mtp2_selected_commit_ms": 0.0,
+                  "specdec2_mtp2_candidate_readback_ms": 0.0,
+                  "specdec2_mtp2_k0_catchups": 0.0,
+                  "specdec2_mtp2_ngram_lookup_calls": 0.0,
+                  "specdec2_mtp2_ngram_lookup_hits": 0.0,
+                  "specdec2_mtp2_ngram_cycles": 0.0,
+                  "specdec2_mtp2_ngram_probed_tokens": 0.0,
+                  "specdec2_mtp2_ngram_accepted_tokens": 0.0,
+                  "specdec2_mtp2_recoverable_failures": 0.0
+                },
+                "timing_scope": "choice",
+                "group_rows": 1,
+                "timing_owner": true,
+                "diagnostics": {
+                  "prefix_cache": {
+                    "mode": "off",
+                    "block_size_tokens": 256,
+                    "eligible": false,
+                    "lookup": false,
+                    "hit": false,
+                    "source": null,
+                    "matched_tokens": 0,
+                    "reused_tokens": 0,
+                    "avoided_prefill_tokens": 0,
+                    "executed_prefill_tokens": 35,
+                    "reused_pages": 0,
+                    "reused_page_bytes": 0,
+                    "state_clone_bytes": 0,
+                    "snapshot_hit": false,
+                    "admission_fallback": false,
+                    "fallback_reason": "cache_off",
+                    "cache_resident_entries": 0,
+                    "cache_resident_pages": 0,
+                    "cache_resident_bytes": 0
+                  },
+                  "specdec2_mtp2": {
+                    "requested_budget": 3,
+                    "candidate_budget": 3,
+                    "prompt_streaming": true,
+                    "prompt_fallback_reason": null,
+                    "activation_reason": null,
+                    "provider_readiness": "ready",
+                    "provider_decline_reason": null,
+                    "provider_state_present": true,
+                    "plan_group_rows": 1,
+                    "plan_ar_only": false,
+                    "plan_reason": "speculative_qualified",
+                    "cycles": 8,
+                    "generated_draft_tokens": 22,
+                    "accepted_draft_tokens": 15,
+                    "selected_depth_histogram": {
+                      "1": 1,
+                      "3": 7
+                    },
+                    "mtp_output_tokens": 23,
+                    "ar_output_tokens_in_cycles": 1,
+                    "first_fallback_position": null,
+                    "ar_step_reason_counts": {
+                      "no_provider": 1
+                    },
+                    "recoverable_failures": 0,
+                    "failure_reason_counts": {},
+                    "k0_catchups": 0,
+                    "cycle_timing_ms": {
+                      "proposal": 46.380991116166115,
+                      "target": 855.625667,
+                      "provider_update": 16.523930709809065,
+                      "accept": 0.0,
+                      "candidate_readback": 0.0,
+                      "target_readback": 0.0,
+                      "accept_upload": 0.0,
+                      "accept_tail": 0.0,
+                      "accept_enqueue": 0.0,
+                      "selected_commit": 0.0
+                    }
+                  },
+                  "kv_layout": {
+                    "pool_contract": "global_generation2",
+                    "pool_storage_layout": "global-arbitrary-pages:g2",
+                    "storage_dtype": "int8_per_token_head",
+                    "storage_layout": "uniform",
+                    "scale_dtype": "fp32",
+                    "scale_granularity": "per_token_head",
+                    "kv_attention_source": "int8_direct",
+                    "request_pages": 1,
+                    "request_capacity_tokens": 256,
+                    "request_block_ids": [
+                      144
+                    ],
+                    "one_backing_chunk": true,
+                    "contiguous_in_backing": true,
+                    "persistent_int8_payload_bytes": 8388608,
+                    "persistent_bf16_payload_bytes": 0,
+                    "persistent_scale_bytes": 131072,
+                    "persistent_bf16_mirror_bytes": 0,
+                    "persistent_total_bytes": 8519680
+                  }
+                },
+                "generated_token_ids": [
+                  271,
+                  248068,
+                  198,
+                  760,
+                  1156,
+                  6587,
+                  264,
+                  12654,
+                  436,
+                  34810,
+                  18887,
+                  523,
+                  440,
+                  496,
+                  7,
+                  16,
+                  8,
+                  615,
+                  321,
+                  2113,
+                  7289,
+                  11,
+                  5346,
+                  2250
+                ],
+                "generated_tokens": 24,
+                "finish_details": {
+                  "reason": "length",
+                  "length_limit": 24,
+                  "sampler_mode": "greedy_fast",
+                  "cache_action": "append_none",
+                  "continuation_eligible": true,
+                  "continuation_id": "gen_cc8b8342d82d49479d9d76f6f03e493f"
+                }
+              }
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 35,
+            "completion_tokens": 24,
+            "total_tokens": 59,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 15,
+              "rejected_prediction_tokens": 7
+            },
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "hipengine": {
+            "routing": {
+              "requested_model": "int8-lru-diag-20260922",
+              "served_model": "int8-lru-diag-20260922",
+              "fallback_used": false,
+              "policy": "single_model_exact",
+              "loaded_model_count": 1,
+              "multiple_models": false
+            },
+            "token_accounting": {
+              "choice_generated_token_ids": [
+                [
+                  271,
+                  248068,
+                  198,
+                  760,
+                  1156,
+                  6587,
+                  264,
+                  12654,
+                  436,
+                  34810,
+                  18887,
+                  523,
+                  440,
+                  496,
+                  7,
+                  16,
+                  8,
+                  615,
+                  321,
+                  2113,
+                  7289,
+                  11,
+                  5346,
+                  2250
+                ]
+              ],
+              "choice_generated_tokens": [
+                24
+              ],
+              "total_generated_tokens": 24,
+              "retokenized_visible_tokens": 24
+            },
+            "generation_shape": {
+              "schema_version": 1,
+              "route": "speculative_mtp",
+              "route_cap": {
+                "scope": "queue_requests",
+                "value": 4,
+                "applied": true
+              },
+              "queue_group": {
+                "id": "queue-4955870e640a4104b6881dec801bb080",
+                "request_count": 1,
+                "prompt_rows": 1,
+                "item_index": 0,
+                "item_prompt_offset": 0,
+                "item_prompt_rows": 1
+              },
+              "backend_groups": [
+                {
+                  "id": "backend-4a4e669ac4bd4a45839e30013b398d62",
+                  "call_index": 0,
+                  "prompt_offset": 0,
+                  "input_rows": 1,
+                  "actual_group_rows": [
+                    1
+                  ],
+                  "max_actual_group_rows": 1,
+                  "verifier_rows": 0
+                }
+              ],
+              "verifier_rows": 0,
+              "route_decision": {
+                "requested_route": "speculative_mtp",
+                "selected_route": "speculative_mtp",
+                "reason": "implemented_gguf_dense_int8_native_chain",
+                "k0_class": "not_k0",
+                "static_eligibility": {
+                  "state": "speculative_capable",
+                  "eligible": true,
+                  "reason": "implemented_gguf_dense_int8_native_chain",
+                  "packed_c1_target": false,
+                  "max_candidate_count": 3,
+                  "max_realized_group_rows": 1,
+                  "automatic_eligible": true,
+                  "strict_fallback_key": "gguf_target_ar",
+                  "evidence_key": null,
+                  "evidence_fingerprint": null,
+                  "evidence_artifacts": [],
+                  "implementation_key": "gguf_dense_int8_native_chain"
+                },
+                "static_eligibility_fingerprint": "sha256:7a8d44a70062f6d0d2e2b77b82d838a79bf872c23376237f68d9a354ccff8c0a",
+                "static_intent_allowed": true,
+                "policy_cell": "gguf_dense_int8_native_chain",
+                "admission_basis": "implementation",
+                "implementation_key": "gguf_dense_int8_native_chain",
+                "effective_kv_storage": "int8_per_token_head",
+                "kv_layout": "uniform",
+                "kv_scale_dtype": "fp32",
+                "kv_scale_granularity": "per_token_head",
+                "selected_candidate_count": 3,
+                "policy_reason": "implemented_gguf_dense_int8_native_chain",
+                "policy_fingerprint": "sha256:10bb489da82d0e3674ffa8804c4766bdd7eda08dc2921dd494eb36e019bcde8f",
+                "realized_group_rows": 1,
+                "output_horizon_tokens": 24,
+                "exact_default_required": true,
+                "automatic_eligible": true,
+                "evidence": "model_plugin_speculative_mtp_serving_plan"
+              }
+            },
+            "speculative_mtp": {
+              "effective_route": "speculative_mtp",
+              "used": true,
+              "draft_tokens": 22,
+              "accepted_draft_tokens": 15,
+              "rejected_draft_tokens": 7,
+              "acceptance_rate": 0.6818181818181818,
+              "draft_cycles": 8,
+              "mtp_output_tokens": 23,
+              "ar_output_tokens": 1,
+              "output_accounting": {
+                "completion_tokens": 24,
+                "mtp_output_tokens": 23,
+                "ar_output_tokens": 1,
+                "ar_output_tokens_in_cycles": 1,
+                "mtp_coverage": 0.9583333333333334,
+                "mtp_output_tokens_explained_by_cycles": 23,
+                "unexplained_mtp_output_tokens": 0,
+                "speculative_cycles": 8,
+                "reconciled": true,
+                "reconciled_reasons": []
+              },
+              "selected_depth_histogram": {
+                "1": 1,
+                "3": 7
+              },
+              "fallback_event_counts": {
+                "no_provider": 1
+              },
+              "fallback_event_total": 1,
+              "execution": {
+                "activation_reason": null,
+                "provider_readiness": "ready",
+                "provider_state_present": true,
+                "provider_decline_reason": null,
+                "plan_group_rows": 1,
+                "plan_ar_only": false,
+                "plan_reason": "speculative_qualified"
+              },
+              "cycle_timing_ms": {
+                "proposal": 46.380991116166115,
+                "target": 855.625667,
+                "provider_update": 16.523930709809065,
+                "accept": 0.0,
+                "candidate_readback": 0.0,
+                "target_readback": 0.0,
+                "accept_upload": 0.0,
+                "accept_tail": 0.0,
+                "accept_enqueue": 0.0,
+                "selected_commit": 0.0
+              },
+              "fallback_reason": "no_provider",
+              "first_fallback_position": null,
+              "requested_route": "speculative_mtp",
+              "decision_reason": "implemented_gguf_dense_int8_native_chain",
+              "thinking_policy": "hint",
+              "thinking_controls": "prompt_hint_only"
+            }
+          }
+        }
+      },
+      {
+        "endpoint": "/v1/chat/completions",
+        "payload": {
+          "model": "int8-lru-diag-20260922",
+          "max_tokens": 24,
+          "temperature": 0,
+          "speculative_mtp": false,
+          "stream": false,
+          "messages": [
+            {
+              "role": "user",
+              "content": "Implement a small LRUCache class in Python with get(key) and put(key, value), using O(1) operations. Include three focused tests. Return only code."
+            }
+          ],
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "response": {
+          "id": "chatcmpl-2b3a976bcc82444d9b90be7dbcd687ce",
+          "object": "chat.completion",
+          "created": 1790077174,
+          "model": "int8-lru-diag-20260922",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "```python\nclass LRUCache:\n    class Node:\n        __slots__ = ('key', 'value"
+              },
+              "finish_reason": "length",
+              "finish_details": {
+                "reason": "length",
+                "length_limit": 24,
+                "sampler_mode": "greedy_fast",
+                "cache_action": "append_none",
+                "phase": "answer",
+                "continuation_eligible": false
+              },
+              "hipengine": {
+                "decode_state": {
+                  "row_index": 0,
+                  "step_index": 24,
+                  "prompt_tokens": 70,
+                  "generated_tokens": 24,
+                  "phase": "done",
+                  "continuation_eligible": false,
+                  "request_id": "3",
+                  "sampler_mode": "greedy_fast",
+                  "execution_path": "gguf_packed_ar_server_decode",
+                  "native_compact_prefill": true,
+                  "native_caware_decode": false,
+                  "serial_decode_fallback": false,
+                  "native_sampler_rows": false
+                },
+                "timing": {
+                  "tokenize_ms": 1.7031258903443813,
+                  "prompt_encode_ms": 1.7031258903443813,
+                  "render_ms": 0.1462940126657486,
+                  "admission_prepare_ms": 0.07108412683010101,
+                  "prefill_ms": 380.601,
+                  "prefill_chunk_count": 1.0,
+                  "request_total_ms": 2281.37
+                },
+                "timing_scope": "choice",
+                "group_rows": 1,
+                "timing_owner": true,
+                "diagnostics": {
+                  "prefix_cache": {
+                    "mode": "off",
+                    "block_size_tokens": 256,
+                    "eligible": false,
+                    "lookup": false,
+                    "hit": false,
+                    "source": null,
+                    "matched_tokens": 0,
+                    "reused_tokens": 0,
+                    "avoided_prefill_tokens": 0,
+                    "executed_prefill_tokens": 70,
+                    "reused_pages": 0,
+                    "reused_page_bytes": 0,
+                    "state_clone_bytes": 0,
+                    "snapshot_hit": false,
+                    "admission_fallback": false,
+                    "fallback_reason": "cache_off",
+                    "cache_resident_entries": 0,
+                    "cache_resident_pages": 0,
+                    "cache_resident_bytes": 0
+                  },
+                  "kv_layout": {
+                    "pool_contract": "global_generation2",
+                    "pool_storage_layout": "global-arbitrary-pages:g2",
+                    "storage_dtype": "int8_per_token_head",
+                    "storage_layout": "uniform",
+                    "scale_dtype": "fp32",
+                    "scale_granularity": "per_token_head",
+                    "kv_attention_source": "int8_direct",
+                    "request_pages": 1,
+                    "request_capacity_tokens": 256,
+                    "request_block_ids": [
+                      144
+                    ],
+                    "one_backing_chunk": true,
+                    "contiguous_in_backing": true,
+                    "persistent_int8_payload_bytes": 8388608,
+                    "persistent_bf16_payload_bytes": 0,
+                    "persistent_scale_bytes": 131072,
+                    "persistent_bf16_mirror_bytes": 0,
+                    "persistent_total_bytes": 8519680
+                  }
+                },
+                "generated_token_ids": [
+                  71093,
+                  12305,
+                  198,
+                  1005,
+                  43072,
+                  5287,
+                  1714,
+                  25,
+                  198,
+                  262,
+                  523,
+                  5829,
+                  25,
+                  198,
+                  285,
+                  1259,
+                  48093,
+                  548,
+                  283,
+                  4178,
+                  767,
+                  504,
+                  359,
+                  927
+                ],
+                "generated_tokens": 24,
+                "finish_details": {
+                  "reason": "length",
+                  "length_limit": 24,
+                  "sampler_mode": "greedy_fast",
+                  "cache_action": "append_none",
+                  "phase": "answer",
+                  "continuation_eligible": false
+                }
+              }
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 70,
+            "completion_tokens": 24,
+            "total_tokens": 94,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "hipengine": {
+            "routing": {
+              "requested_model": "int8-lru-diag-20260922",
+              "served_model": "int8-lru-diag-20260922",
+              "fallback_used": false,
+              "policy": "single_model_exact",
+              "loaded_model_count": 1,
+              "multiple_models": false
+            },
+            "token_accounting": {
+              "choice_generated_token_ids": [
+                [
+                  71093,
+                  12305,
+                  198,
+                  1005,
+                  43072,
+                  5287,
+                  1714,
+                  25,
+                  198,
+                  262,
+                  523,
+                  5829,
+                  25,
+                  198,
+                  285,
+                  1259,
+                  48093,
+                  548,
+                  283,
+                  4178,
+                  767,
+                  504,
+                  359,
+                  927
+                ]
+              ],
+              "choice_generated_tokens": [
+                24
+              ],
+              "total_generated_tokens": 24,
+              "retokenized_visible_tokens": 24
+            },
+            "generation_shape": {
+              "schema_version": 1,
+              "route": "default",
+              "route_cap": {
+                "scope": "queue_requests",
+                "value": 4,
+                "applied": true
+              },
+              "queue_group": {
+                "id": "queue-6f88437d5f2d4737a8d439848e5e7ed2",
+                "request_count": 1,
+                "prompt_rows": 1,
+                "item_index": 0,
+                "item_prompt_offset": 0,
+                "item_prompt_rows": 1
+              },
+              "backend_groups": [
+                {
+                  "id": "backend-004cfabff0e14004abb8acb4cc432e01",
+                  "call_index": 0,
+                  "prompt_offset": 0,
+                  "input_rows": 1,
+                  "actual_group_rows": [
+                    1
+                  ],
+                  "max_actual_group_rows": 1,
+                  "verifier_rows": 0
+                }
+              ],
+              "verifier_rows": 0
+            },
+            "speculative_mtp": {
+              "effective_route": "default",
+              "used": false,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "rejected_draft_tokens": 0,
+              "acceptance_rate": null,
+              "draft_cycles": 0
+            }
+          }
+        }
+      },
+      {
+        "endpoint": "/v1/chat/completions",
+        "payload": {
+          "model": "int8-lru-diag-20260922",
+          "max_tokens": 24,
+          "temperature": 0,
+          "speculative_mtp": true,
+          "stream": false,
+          "messages": [
+            {
+              "role": "user",
+              "content": "Implement a small LRUCache class in Python with get(key) and put(key, value), using O(1) operations. Include three focused tests. Return only code."
+            }
+          ],
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        },
+        "response": {
+          "id": "chatcmpl-5ec50c94c0824cae9dfffaeac8ca0c03",
+          "object": "chat.completion",
+          "created": 1790077175,
+          "model": "int8-lru-diag-20260922",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "```python\nclass LRUCache:\n    class Node:\n        __slots__ = ('key', 'value"
+              },
+              "finish_reason": "length",
+              "finish_details": {
+                "reason": "length",
+                "length_limit": 24,
+                "sampler_mode": "greedy_fast",
+                "cache_action": "append_none",
+                "phase": "answer",
+                "continuation_eligible": false
+              },
+              "hipengine": {
+                "decode_state": {
+                  "row_index": 0,
+                  "step_index": 24,
+                  "prompt_tokens": 70,
+                  "generated_tokens": 24,
+                  "phase": "done",
+                  "continuation_eligible": false,
+                  "request_id": "4",
+                  "sampler_mode": "greedy_fast",
+                  "execution_path": "gguf_specdec2_mtp2",
+                  "native_compact_prefill": true,
+                  "native_caware_decode": true,
+                  "serial_decode_fallback": false,
+                  "native_sampler_rows": false
+                },
+                "timing": {
+                  "tokenize_ms": 0.48216478899121284,
+                  "prompt_encode_ms": 0.48216478899121284,
+                  "render_ms": 0.0810716301202774,
+                  "admission_prepare_ms": 1.5792539343237877,
+                  "prefill_ms": 469.969,
+                  "prefill_chunk_count": 1.0,
+                  "request_total_ms": 1400.71,
+                  "specdec2_mtp2_prompt_streaming": 1.0,
+                  "specdec2_mtp2_prompt_prime_rows": 70.0,
+                  "specdec2_mtp2_prompt_carried_bytes": 10240.0,
+                  "mtp_cycles_count": 8.0,
+                  "mtp_generated_draft_tokens": 22.0,
+                  "mtp_accepted_draft_tokens": 15.0,
+                  "mtp_visible_output_tokens": 23.0,
+                  "mtp_ar_output_tokens": 1.0,
+                  "mtp_accept_per_draft": 0.6818181818181818,
+                  "specdec2_mtp2_cycles": 8.0,
+                  "specdec2_mtp2_proposal_ms": 21.686297841370106,
+                  "specdec2_mtp2_target_ms": 854.6424430000001,
+                  "specdec2_mtp2_provider_update_ms": 19.12950910627842,
+                  "specdec2_mtp2_accept_ms": 0.0,
+                  "specdec2_mtp2_target_readback_ms": 0.0,
+                  "specdec2_mtp2_accept_upload_ms": 0.0,
+                  "specdec2_mtp2_accept_tail_ms": 0.0,
+                  "specdec2_mtp2_accept_enqueue_ms": 0.0,
+                  "specdec2_mtp2_selected_commit_ms": 0.0,
+                  "specdec2_mtp2_candidate_readback_ms": 0.0,
+                  "specdec2_mtp2_k0_catchups": 0.0,
+                  "specdec2_mtp2_ngram_lookup_calls": 0.0,
+                  "specdec2_mtp2_ngram_lookup_hits": 0.0,
+                  "specdec2_mtp2_ngram_cycles": 0.0,
+                  "specdec2_mtp2_ngram_probed_tokens": 0.0,
+                  "specdec2_mtp2_ngram_accepted_tokens": 0.0,
+                  "specdec2_mtp2_recoverable_failures": 0.0
+                },
+                "timing_scope": "choice",
+                "group_rows": 1,
+                "timing_owner": true,
+                "diagnostics": {
+                  "prefix_cache": {
+                    "mode": "off",
+                    "block_size_tokens": 256,
+                    "eligible": false,
+                    "lookup": false,
+                    "hit": false,
+                    "source": null,
+                    "matched_tokens": 0,
+                    "reused_tokens": 0,
+                    "avoided_prefill_tokens": 0,
+                    "executed_prefill_tokens": 70,
+                    "reused_pages": 0,
+                    "reused_page_bytes": 0,
+                    "state_clone_bytes": 0,
+                    "snapshot_hit": false,
+                    "admission_fallback": false,
+                    "fallback_reason": "cache_off",
+                    "cache_resident_entries": 0,
+                    "cache_resident_pages": 0,
+                    "cache_resident_bytes": 0
+                  },
+                  "specdec2_mtp2": {
+                    "requested_budget": 3,
+                    "candidate_budget": 3,
+                    "prompt_streaming": true,
+                    "prompt_fallback_reason": null,
+                    "activation_reason": null,
+                    "provider_readiness": "ready",
+                    "provider_decline_reason": null,
+                    "provider_state_present": true,
+                    "plan_group_rows": 1,
+                    "plan_ar_only": false,
+                    "plan_reason": "speculative_qualified",
+                    "cycles": 8,
+                    "generated_draft_tokens": 22,
+                    "accepted_draft_tokens": 15,
+                    "selected_depth_histogram": {
+                      "1": 1,
+                      "3": 7
+                    },
+                    "mtp_output_tokens": 23,
+                    "ar_output_tokens_in_cycles": 1,
+                    "first_fallback_position": null,
+                    "ar_step_reason_counts": {
+                      "no_provider": 1
+                    },
+                    "recoverable_failures": 0,
+                    "failure_reason_counts": {},
+                    "k0_catchups": 0,
+                    "cycle_timing_ms": {
+                      "proposal": 21.686297841370106,
+                      "target": 854.6424430000001,
+                      "provider_update": 19.12950910627842,
+                      "accept": 0.0,
+                      "candidate_readback": 0.0,
+                      "target_readback": 0.0,
+                      "accept_upload": 0.0,
+                      "accept_tail": 0.0,
+                      "accept_enqueue": 0.0,
+                      "selected_commit": 0.0
+                    }
+                  },
+                  "kv_layout": {
+                    "pool_contract": "global_generation2",
+                    "pool_storage_layout": "global-arbitrary-pages:g2",
+                    "storage_dtype": "int8_per_token_head",
+                    "storage_layout": "uniform",
+                    "scale_dtype": "fp32",
+                    "scale_granularity": "per_token_head",
+                    "kv_attention_source": "int8_direct",
+                    "request_pages": 1,
+                    "request_capacity_tokens": 256,
+                    "request_block_ids": [
+                      144
+                    ],
+                    "one_backing_chunk": true,
+                    "contiguous_in_backing": true,
+                    "persistent_int8_payload_bytes": 8388608,
+                    "persistent_bf16_payload_bytes": 0,
+                    "persistent_scale_bytes": 131072,
+                    "persistent_bf16_mirror_bytes": 0,
+                    "persistent_total_bytes": 8519680
+                  }
+                },
+                "generated_token_ids": [
+                  71093,
+                  12305,
+                  198,
+                  1005,
+                  43072,
+                  5287,
+                  1714,
+                  25,
+                  198,
+                  262,
+                  523,
+                  5829,
+                  25,
+                  198,
+                  285,
+                  1259,
+                  48093,
+                  548,
+                  283,
+                  4178,
+                  767,
+                  504,
+                  359,
+                  927
+                ],
+                "generated_tokens": 24,
+                "finish_details": {
+                  "reason": "length",
+                  "length_limit": 24,
+                  "sampler_mode": "greedy_fast",
+                  "cache_action": "append_none",
+                  "phase": "answer",
+                  "continuation_eligible": false
+                }
+              }
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 70,
+            "completion_tokens": 24,
+            "total_tokens": 94,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 15,
+              "rejected_prediction_tokens": 7
+            },
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "hipengine": {
+            "routing": {
+              "requested_model": "int8-lru-diag-20260922",
+              "served_model": "int8-lru-diag-20260922",
+              "fallback_used": false,
+              "policy": "single_model_exact",
+              "loaded_model_count": 1,
+              "multiple_models": false
+            },
+            "token_accounting": {
+              "choice_generated_token_ids": [
+                [
+                  71093,
+                  12305,
+                  198,
+                  1005,
+                  43072,
+                  5287,
+                  1714,
+                  25,
+                  198,
+                  262,
+                  523,
+                  5829,
+                  25,
+                  198,
+                  285,
+                  1259,
+                  48093,
+                  548,
+                  283,
+                  4178,
+                  767,
+                  504,
+                  359,
+                  927
+                ]
+              ],
+              "choice_generated_tokens": [
+                24
+              ],
+              "total_generated_tokens": 24,
+              "retokenized_visible_tokens": 24
+            },
+            "generation_shape": {
+              "schema_version": 1,
+              "route": "speculative_mtp",
+              "route_cap": {
+                "scope": "queue_requests",
+                "value": 4,
+                "applied": true
+              },
+              "queue_group": {
+                "id": "queue-b62188807cf7400e81ac7b776e874e43",
+                "request_count": 1,
+                "prompt_rows": 1,
+                "item_index": 0,
+                "item_prompt_offset": 0,
+                "item_prompt_rows": 1
+              },
+              "backend_groups": [
+                {
+                  "id": "backend-74d791d5b55e490e80b331fc065a43bb",
+                  "call_index": 0,
+                  "prompt_offset": 0,
+                  "input_rows": 1,
+                  "actual_group_rows": [
+                    1
+                  ],
+                  "max_actual_group_rows": 1,
+                  "verifier_rows": 0
+                }
+              ],
+              "verifier_rows": 0,
+              "route_decision": {
+                "requested_route": "speculative_mtp",
+                "selected_route": "speculative_mtp",
+                "reason": "implemented_gguf_dense_int8_native_chain",
+                "k0_class": "not_k0",
+                "static_eligibility": {
+                  "state": "speculative_capable",
+                  "eligible": true,
+                  "reason": "implemented_gguf_dense_int8_native_chain",
+                  "packed_c1_target": false,
+                  "max_candidate_count": 3,
+                  "max_realized_group_rows": 1,
+                  "automatic_eligible": true,
+                  "strict_fallback_key": "gguf_target_ar",
+                  "evidence_key": null,
+                  "evidence_fingerprint": null,
+                  "evidence_artifacts": [],
+                  "implementation_key": "gguf_dense_int8_native_chain"
+                },
+                "static_eligibility_fingerprint": "sha256:7a8d44a70062f6d0d2e2b77b82d838a79bf872c23376237f68d9a354ccff8c0a",
+                "static_intent_allowed": true,
+                "policy_cell": "gguf_dense_int8_native_chain",
+                "admission_basis": "implementation",
+                "implementation_key": "gguf_dense_int8_native_chain",
+                "effective_kv_storage": "int8_per_token_head",
+                "kv_layout": "uniform",
+                "kv_scale_dtype": "fp32",
+                "kv_scale_granularity": "per_token_head",
+                "selected_candidate_count": 3,
+                "policy_reason": "implemented_gguf_dense_int8_native_chain",
+                "policy_fingerprint": "sha256:10bb489da82d0e3674ffa8804c4766bdd7eda08dc2921dd494eb36e019bcde8f",
+                "realized_group_rows": 1,
+                "output_horizon_tokens": 24,
+                "exact_default_required": true,
+                "automatic_eligible": true,
+                "evidence": "model_plugin_speculative_mtp_serving_plan"
+              }
+            },
+            "speculative_mtp": {
+              "effective_route": "speculative_mtp",
+              "used": true,
+              "draft_tokens": 22,
+              "accepted_draft_tokens": 15,
+              "rejected_draft_tokens": 7,
+              "acceptance_rate": 0.6818181818181818,
+              "draft_cycles": 8,
+              "mtp_output_tokens": 23,
+              "ar_output_tokens": 1,
+              "output_accounting": {
+                "completion_tokens": 24,
+                "mtp_output_tokens": 23,
+                "ar_output_tokens": 1,
+                "ar_output_tokens_in_cycles": 1,
+                "mtp_coverage": 0.9583333333333334,
+                "mtp_output_tokens_explained_by_cycles": 23,
+                "unexplained_mtp_output_tokens": 0,
+                "speculative_cycles": 8,
+                "reconciled": true,
+                "reconciled_reasons": []
+              },
+              "selected_depth_histogram": {
+                "1": 1,
+                "3": 7
+              },
+              "fallback_event_counts": {
+                "no_provider": 1
+              },
+              "fallback_event_total": 1,
+              "execution": {
+                "activation_reason": null,
+                "provider_readiness": "ready",
+                "provider_state_present": true,
+                "provider_decline_reason": null,
+                "plan_group_rows": 1,
+                "plan_ar_only": false,
+                "plan_reason": "speculative_qualified"
+              },
+              "cycle_timing_ms": {
+                "proposal": 21.686297841370106,
+                "target": 854.6424430000001,
+                "provider_update": 19.12950910627842,
+                "accept": 0.0,
+                "candidate_readback": 0.0,
+                "target_readback": 0.0,
+                "accept_upload": 0.0,
+                "accept_tail": 0.0,
+                "accept_enqueue": 0.0,
+                "selected_commit": 0.0
+              },
+              "fallback_reason": "no_provider",
+              "first_fallback_position": null,
+              "requested_route": "speculative_mtp",
+              "decision_reason": "implemented_gguf_dense_int8_native_chain",
+              "thinking_policy": "hint",
+              "thinking_controls": "prompt_hint_only"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

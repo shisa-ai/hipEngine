@@ -259,6 +259,24 @@ class RowSamplingState:
     def has_token_text_constraint(self) -> bool:
         return self._json_object_constraint is not None or self._tool_call_constraint is not None
 
+    @property
+    def token_text_constraint_invalid(self) -> bool:
+        """Whether a text-keyed constraint can no longer accept any text.
+
+        A speculative cycle advances a row by the *draft's* token, and a draft may
+        violate a constraint that the autoregressive route would never have let it
+        emit. Such a row is unreachable rather than broken: the row before it is
+        masked against the same DFA and excludes that token, so the accept walk
+        corrects there and never publishes a later row. It has no admissible
+        support, which is what a caller building that row's law needs to know.
+        """
+
+        json_constraint = self._json_object_constraint
+        if json_constraint is not None and json_constraint.invalid:
+            return True
+        tool_constraint = self._tool_call_constraint
+        return tool_constraint is not None and tool_constraint.invalid
+
     def token_text_constraints_allow_eos(self) -> bool:
         if self.thinking_budget is not None and self.thinking_budget.phase != "answer":
             return False
@@ -338,8 +356,19 @@ class RowSamplingState:
         *,
         remaining_tokens: int,
         encode_text: Callable[[str], Iterable[int]],
+        drafted: bool = False,
     ) -> None:
-        """Advance tokenizer-aware constraints and queue a safe budget close."""
+        """Advance tokenizer-aware constraints and queue a safe budget close.
+
+        ``drafted=True`` marks a speculative cycle's walk, which advances a row's
+        state by the token the *draft* proposed for the row before it. A draft
+        that violates a constraint is expected there rather than a defect: the
+        masked law of that row excludes it, so the accept walk corrects at the
+        row and never publishes a later row. The constraint is marked invalid
+        instead of raising, which masks the unreachable rows. The commit path
+        keeps the strict check, because a *published* token that violates the
+        constraint is a defect.
+        """
 
         if self._skip_next_selected_token_text:
             self._skip_next_selected_token_text = False
@@ -348,11 +377,11 @@ class RowSamplingState:
             return
         token_text = str(text)
         if self._json_object_constraint is not None:
-            if not self._json_object_constraint.accepts_text(token_text):
+            if not drafted and not self._json_object_constraint.accepts_text(token_text):
                 raise ValueError("selected token violates json_object constraint")
             self._json_object_constraint.observe_text(token_text)
         if self._tool_call_constraint is not None:
-            if not self._tool_call_constraint.accepts_text(token_text):
+            if not drafted and not self._tool_call_constraint.accepts_text(token_text):
                 raise ValueError("selected token violates tool_call_constraint")
             self._tool_call_constraint.observe_text(token_text)
         if self.forced_tokens_pending:
@@ -754,6 +783,23 @@ def supports_native_gpu_sampling(params: Any) -> bool:
     return True
 
 
+def logprobs_requested(params: Any) -> bool:
+    """Return whether the request asked for logprob metadata on its tokens.
+
+    ``logprobs=false`` with a positive ``top_logprobs`` still asks for metadata:
+    the OpenAI schema reports the alternatives even when the selected token's own
+    logprob is withheld, and both fields are declared sampler fast-path blockers,
+    so the two are read together everywhere the route decides whether it must
+    produce a report.
+    """
+
+    if params is None:
+        return False
+    return bool(getattr(params, "logprobs", False)) or int(
+        getattr(params, "top_logprobs", 0) or 0
+    ) > 0
+
+
 def plan_sampler(
     params: Any,
     *,
@@ -767,7 +813,7 @@ def plan_sampler(
     processors = active_processor_names(params)
     fast_path_blockers = sampler_fast_path_blockers(params)
     temperature = float(getattr(params, "temperature", 0.0))
-    needs_logits = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
+    needs_logits = logprobs_requested(params)
     if temperature <= 0.0:
         if processors or needs_logits:
             return SamplerPlan(
@@ -831,8 +877,17 @@ SAMPLED_MTP_SERVABLE_BLOCKERS: tuple[str, ...] = (
     "eos_token_id",
     "stop_token_ids",
     "stop_token_sequences",
+    "logprobs",
+    "top_logprobs",
+    "forced_tokens_pending",
+    "post_thinking_forced_tokens_pending",
+    "force_sequence_completion_token_sequences",
+    "json_object_close_forcing",
+    "tool_call_constraint",
+    "thinking_budget",
 )
-"""MTP blockers the sampled route serves exactly: the sampling law.
+"""MTP blockers the sampled route serves exactly: the sampling law and the
+forced-token queue.
 
 ``hipengine/speculative/sampling.py`` requires the caller to apply the request's
 sampler pipeline (bias, penalties, suppression, temperature, top-k, top-p,
@@ -843,40 +898,74 @@ reproduces the selection. ``ignore_eos`` is a finish-rule relaxation the cycle
 commit already honors: a row that ignores EOS cannot finish on EOS on either
 route.
 
-This set is the sampling law and nothing else. Every field that changes
-*post-accept finish behavior* is served by the cycle commit's finish rule
-(``limit_chain_accept_finish`` in ``hipengine/speculative/streaming.py``), which
-applies EOS, stop token ids, multi-token stop sequences, and the min-token EOS
-floor to the whole verified chain and selects its terminal prefix.
+This set is the sampling law plus the two metadata families the route now
+produces. Every field that changes *post-accept finish behavior* is served by the
+cycle commit's finish rule (``limit_chain_accept_finish`` in
+``hipengine/speculative/streaming.py``), which applies EOS, stop token ids,
+multi-token stop sequences, and the min-token EOS floor to the whole verified
+chain and selects its terminal prefix. ``logprobs`` and ``top_logprobs`` are
+served by ``reported_logprob``, which applies the same per-branch rule
+``select_token`` uses to the logits row that predicted each published token, so
+the reported value is the autoregressive route's value rather than a
+reconstruction of it.
+
+The three forced-token fields are one mechanism, because the queue is the same
+queue. The autoregressive route emits a pending forced token instead of drawing,
+so the law of the row that predicts that position is a point mass on it:
+``processed_distribution`` is given the override and the accept walk then accepts
+a draft that agrees and corrects to the forced token when it does not, which is
+what the autoregressive route publishes for the same history. The overrides are
+resolved per row from that row's own cloned state, so a chain consumes the queue
+in order, and the live request's queue is popped only for the tokens a cycle
+actually published (``observe_published_tokens``).
+``post_thinking_forced_tokens_pending`` and
+``force_sequence_completion_token_sequences`` feed that same queue: the first
+becomes pending when a row's observed token ends the thinking phase, and the
+second queues the remainder of a partially matched sequence inside ``observe``,
+which the row walk already runs per row.
+
+``json_object_close_forcing`` and ``tool_call_constraint`` are the text-keyed
+pair. Their hook reads the decoded text of the token the request emitted, so a
+cycle has to decode each row's token and observe it into that row's cloned state
+before the next row is processed; the closing suffix a constrained row queues is
+then the same suffix the autoregressive route would queue at that position. The
+per-row remaining-token budget the hook compares against comes from the same
+decode budget the accept walk uses.
 """
 
-SAMPLED_MTP_UNSERVABLE_BLOCKERS: tuple[str, ...] = (
-    "logprobs",
-    "top_logprobs",
-    "forced_tokens_pending",
-    "post_thinking_forced_tokens_pending",
-    "force_sequence_completion_token_sequences",
-    "json_object_close_forcing",
-    "tool_call_constraint",
-    "thinking_budget",
-)
-"""MTP blockers the sampled route deliberately refuses.
+SAMPLED_MTP_UNSERVABLE_BLOCKERS: tuple[str, ...] = ()
+"""MTP blockers the sampled route refuses. Empty: every field is served.
 
-One family: fields that need something the coupled accept cannot supply. They
-need response metadata (``logprobs``), a caller-level override outside the
-sampling law (forced tokens, forced sequence completion), or per-token hooks
-that consume sampler queues or tokenizer text (JSON-object close forcing,
-tool-call constraints, the host thinking budget). A request carrying one of them
-stays on the autoregressive route rather than being served by a route that would
-report the wrong metadata.
+The last field, ``thinking_budget``, moved here when the walk began preparing each
+row's selection. ``prepare_for_selection`` is what turns a reached hard cap into
+the queued close sequence, and the walk now calls it exactly where the
+autoregressive route does, so a cycle's rows see the same close override and the
+commit consumes it for the position it governs. The phase machine, EOS
+suppression, and soft-close bias already ran per row inside
+``processed_distribution``.
 
-The finish-rule fields (``min_tokens``, ``eos_token_id``, ``stop_token_ids``,
-``stop_token_sequences``) used to be refused here as well, because the cycle
-commit implemented only EOS on the last visible token of a greedy chain. The
-commit now applies the autoregressive finish rule to the whole verified chain
-through ``hipengine/speculative/streaming.py`` ``limit_chain_accept_finish``,
-which selects the terminal prefix and reports ``eos`` or ``stop``, so they are
-servable and no longer appear above.
+This tuple is the set that keeps a request off the *sampled* route; the
+raw-argmax route's own refusal of these fields is unchanged in
+``speculative_mtp_sampling_blockers``, which the greedy fast path checks. A
+greedy thinking request therefore still falls back to the autoregressive route,
+and the server's ``hard`` thinking policy now serves a sampled thinking request
+on this route instead of refusing it (``docs/API.md`` "MTP + thinking").
+
+Every other field that used to be refused here has moved above. The finish-rule
+fields (``min_tokens``, ``eos_token_id``, ``stop_token_ids``,
+``stop_token_sequences``) moved when the cycle commit began applying the
+autoregressive finish rule to the whole verified chain through
+``hipengine/speculative/streaming.py`` ``limit_chain_accept_finish``, which
+selects the terminal prefix and reports ``eos`` or ``stop``. ``logprobs`` and
+``top_logprobs`` moved when the route began reporting them from the verified
+rows. The forced-token fields moved when the queue became a per-row point mass
+with a publish-time pop. ``json_object_close_forcing`` and
+``tool_call_constraint`` moved when the row walk began observing each row's
+decoded token text, so a cycle's later rows are masked by a DFA state that has
+seen the earlier rows' tokens -- the state ``_process_row`` would see at that
+point of an autoregressive decode. The live request's DFA and its queued closing
+suffix are advanced at commit time by the published tokens only, the same rule
+the forced queue follows.
 """
 
 
@@ -1078,7 +1167,7 @@ def _process_row(
     if json_eos_suppressed:
         active_processors = _append_unique(active_processors, "json_object_close_forcing")
         fast_path_blockers = _append_unique(fast_path_blockers, "json_object_close_forcing")
-    requested_logprobs = bool(getattr(params, "logprobs", False)) or int(getattr(params, "top_logprobs", 0)) > 0
+    requested_logprobs = logprobs_requested(params)
     requested_top_logprobs = int(getattr(params, "top_logprobs", 0))
     temperature = float(getattr(params, "temperature", 0.0))
     tool_constraint_active = row_state.tool_call_constraint_state is not None
@@ -1172,6 +1261,7 @@ def processed_distribution(
     state: RowSamplingState | None = None,
     *,
     token_text_for_id: Callable[[int], str] | None = None,
+    forced_token_id: int | None = None,
 ) -> tuple[tuple[int, ...], np.ndarray]:
     """Return the support and weights the autoregressive sampler would draw from.
 
@@ -1181,11 +1271,35 @@ def processed_distribution(
     A greedy row (``temperature <= 0``) returns a one-point support holding the
     argmax, which is the decision the autoregressive route makes. The caller's
     ``state`` is never observed into and never drawn from.
+
+    ``forced_token_id`` is the pending forced-token override the caller resolved
+    for this row. The autoregressive route emits that token without drawing, so
+    the law for the row is a point mass on it: a speculative draft that agrees is
+    accepted, and one that does not is corrected to it. The override is opt-in
+    because only the speculative caller resolves it per row; the queue itself is
+    left untouched here, so the caller decides which pops a published token
+    earned. The override keeps ``select_token``'s checks -- a token outside the
+    vocabulary, or one the request's own tokenizer constraint rejects, is an
+    error rather than a silently published token.
     """
 
     validate_sampling_params(params)
     row_state = state if state is not None else _default_row_state(params)
     row = _process_row(logits, params, row_state, token_text_for_id)
+    if forced_token_id is not None:
+        token_id = int(forced_token_id)
+        if token_id < 0 or token_id >= row.processed.size:
+            raise ValueError(
+                f"forced token id {token_id} is outside vocab size {row.processed.size}"
+            )
+        if not row.token_allowed(token_id):
+            constraint_name = (
+                "tool_call_constraint"
+                if row_state.tool_call_constraint_state is not None
+                else "json_object constraint"
+            )
+            raise ValueError(f"forced token id {token_id} violates {constraint_name}")
+        return (token_id,), np.asarray([1.0], dtype=np.float64)
     if row.temperature <= 0.0:
         if row.constraint_active:
             constrained_ids = _constraint_candidate_ids(row.processed, row.token_allowed, limit=1)
@@ -1202,6 +1316,57 @@ def processed_distribution(
         token_allowed=row.token_allowed if row.constraint_active else None,
     )
     return tuple(int(token_id) for token_id in retained_ids), retained_probs
+
+
+def reported_logprob(
+    logits: np.ndarray | Sequence[float],
+    params: Any,
+    state: RowSamplingState | None,
+    token_id: int,
+    *,
+    token_text_for_id: Callable[[int], str] | None = None,
+) -> tuple[float | None, tuple[tuple[int, float], ...]]:
+    """Return the metadata ``select_token`` would report for ``token_id``.
+
+    ``select_token`` reports logprobs differently by branch, and a speculative
+    route that reports a single shape is wrong in one of them. A greedy row
+    (``temperature <= 0``) reports the full-support softmax of the processed
+    logits, so the value is the model's own probability. A sampling row reports
+    the retained support's probability for the token it drew, because that is the
+    distribution the draw came from. Reproducing the branch is what makes a
+    speculative route's metadata equal to the autoregressive route's rather than
+    merely close to it.
+
+    The caller's ``state`` is never observed into and never drawn from.
+    """
+
+    validate_sampling_params(params)
+    row_state = state if state is not None else _default_row_state(params)
+    row = _process_row(logits, params, row_state, token_text_for_id)
+    if row.temperature <= 0.0:
+        processed = (
+            _constraint_logits_view(row.processed, row.token_allowed)
+            if row.constraint_active
+            else row.processed
+        )
+        if not np.isfinite(processed[int(token_id)]):
+            return None, ()
+        return _logprob_summary(processed, int(token_id), row.requested_top_logprobs)
+    retained_ids, retained_probs = processed_support(
+        row.processed,
+        params,
+        temperature=row.temperature,
+        token_allowed=row.token_allowed if row.constraint_active else None,
+    )
+    positions = np.flatnonzero(retained_ids == int(token_id))
+    logprob = (
+        None
+        if positions.size == 0
+        else float(math.log(float(retained_probs[int(positions[0])])))
+    )
+    return logprob, _top_logprob_pairs(
+        retained_ids, retained_probs, row.requested_top_logprobs
+    )
 
 
 def select_token(
@@ -1312,6 +1477,25 @@ def select_token(
         top_logprobs=top_logprobs,
         active_processors=active_processors,
         fast_path_blockers=fast_path_blockers,
+    )
+
+
+def constraint_skips_token_text(params: Any, state: Any, token_id: int) -> bool:
+    """Whether the text observation skips this token for a constrained request.
+
+    An EOS token is not part of the constrained document, so the autoregressive
+    route observes no text for it. The speculative route has to apply the same
+    rule at commit time, where the selection that set the skip flag happened on a
+    private clone; both read this one predicate so they cannot drift.
+    """
+
+    return _constraint_active_for(state) and _is_eos_token(params, token_id)
+
+
+def _constraint_active_for(state: Any) -> bool:
+    return (
+        getattr(state, "_json_object_constraint", None) is not None
+        or getattr(state, "tool_call_constraint_state", None) is not None
     )
 
 

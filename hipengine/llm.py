@@ -14,10 +14,29 @@ from numbers import Integral
 from pathlib import Path
 from typing import Any
 
+from hipengine.kvcache.dms_config import DMSConfig
 from hipengine.speculative.registry import DEFAULT_PROVIDER_CANDIDATE_BUDGET
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 
 AUTO_QUANT = "auto"
+
+
+def _declare_serving_context(generator: Any, max_sequence_length: int | None) -> None:
+    """Publish the serving context this LLM was constructed with.
+
+    ``max_sequence_length`` is a declaration about the resident session, and
+    resident sizing reads the generator's own pin. Without this the declaration
+    was dropped on the floor: the session was sized by automatic selection, which
+    takes the largest context that fits, and the caller's stated bound was
+    silently replaced by something larger. Generators without the hook are
+    unaffected.
+    """
+
+    if max_sequence_length is None:
+        return
+    declare = getattr(generator, "declare_max_sequence_length", None)
+    if callable(declare):
+        declare(int(max_sequence_length))
 
 
 def _factory_capacity_kwargs(factory, *, max_sequence_length, resident_capacity, vision_max_scratch_bytes=None, prefill_max_scratch_bytes=None, vision_max_seconds=None):
@@ -301,8 +320,23 @@ class LLM:
         kv_scale_dtype: str | None = None,
         kv_scale_granularity: str | None = None,
         vision_model: str | None = None,
+        dms: "DMSConfig | None" = None,
         engine_command_timeout_seconds: float | None = None,
     ) -> None:
+        if dms is not None:
+            if not isinstance(dms, DMSConfig):
+                raise TypeError("dms must be a DMSConfig")
+            if max_active_requests not in (None, 1):
+                raise ValueError("DMS compact serving requires max_active_requests=1")
+            if kv_storage not in (None, "auto", "bf16"):
+                raise ValueError("DMS public serving currently implements BF16 compact storage only")
+            if prefix_cache not in (None, "off"):
+                raise ValueError("DMS compact KV has no radix prefix-cache adapter")
+            if speculative_mtp_serving not in (None, "off") or speculative_provider is not None:
+                raise ValueError("DMS compact KV has no speculative serving adapter")
+            max_active_requests, kv_storage = 1, "bf16"
+            prefix_cache, speculative_mtp_serving = "off", "off"
+        self.dms = dms
         if max_active_requests is not None and int(max_active_requests) <= 0:
             raise ValueError("max_active_requests must be positive when set")
         if max_sequence_length is not None and int(max_sequence_length) <= 0:
@@ -803,29 +837,38 @@ class LLM:
 
     @property
     def speculative_mtp_sampling_modes(self) -> tuple[str, ...]:
-        """Return the sampling modes this artifact's evidence rows admit.
+        """Return implemented sampling modes admitted by the serving resolver.
 
-        ``speculative_mtp_serving_capability`` resolves one mode (the rows' own
-        first mode), which cannot answer whether a *sampled* request is admitted.
-        The serving layer needs that answer before it decides whether a request
-        keeps typed speculative intent or falls to K0, so each mode a row
-        declares is resolved against that row's own physical scope.
+        Evidence may describe additional scopes, but its absence must not hide
+        a mode the model plugin declares. Resolve each candidate against the
+        loaded engine before advertising it; declarations do not bypass the
+        request's backend, storage, depth or resource checks.
         """
 
         _weight_index, model_plugin = self._load_model_metadata()
         evidence = tuple(
             getattr(model_plugin, "speculative_mtp_serving_evidence", ()) or ()
         )
+        scopes = [
+            (row.sampling_modes, int(row.realized_group_rows), str(row.kv_storage))
+            for row in evidence
+        ]
+        scopes.extend(
+            (declaration.sampling_modes, 1, str(self.kv_storage or declaration.kv_storage))
+            for declaration in tuple(
+                getattr(model_plugin, "speculative_mtp_serving_implementations", ()) or ()
+            )
+        )
         admitted: list[str] = []
-        for row in evidence:
-            for mode in tuple(getattr(row, "sampling_modes", ()) or ()):
+        for modes, group_rows, storage in scopes:
+            for mode in modes:
                 mode = str(mode)
                 if mode in admitted:
                     continue
                 decision = self.resolve_speculative_mtp_serving_plan(
-                    realized_group_rows=int(row.realized_group_rows),
+                    realized_group_rows=group_rows,
                     sampling_mode=mode,
-                    kv_storage=str(row.kv_storage),
+                    kv_storage=storage,
                     memory_fit=True,
                 )
                 if decision is not None and bool(getattr(decision, "admitted", False)):
@@ -1297,9 +1340,15 @@ class LLM:
             if profile_resolution is None
             else profile_resolution.construct_generator(factory, **factory_kwargs)
         )
+        _declare_serving_context(generator, self.max_sequence_length)
         # The loaded resident model owns staged MTP candidate depth. Publish the
         # public LLM setting on that owner before its cold adapter is resolved;
         # model-plugin evidence still decides whether the resulting key admits.
+        if self.dms is not None:
+            configure_dms = getattr(generator, "configure_dms", None)
+            if not callable(configure_dms):
+                raise ValueError("this model generator has no compact DMS serving adapter")
+            configure_dms(self.dms)
         self._publish_candidate_budget(generator)
         if self.speculative_provider is not None:
             from hipengine.speculative.registry import (

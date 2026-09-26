@@ -26,6 +26,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _gguf_int8_kv_prompt_write_fn,
     _gguf_int8_kv_scale_granularity,
     _gguf_int8_kv_value_bf16_enabled,
+    _gguf_packed_decode_max_rows,
     _plan_gguf_int8_prefill_lifetime,
     _plan_gguf_int8_prefill_lifetime_for_session,
     _validate_gguf_int8_kv_context,
@@ -309,6 +310,57 @@ def test_layer_local_oracle_plan_keeps_distinct_pairs(monkeypatch) -> None:
     assert first != second
     assert len(allocations) == 4
     assert len(session._int8_prefill_oracle_buffers) == 2
+
+
+def _retained_kernel() -> None:
+    """Stand-in for the bound retained INT8 decode leaf."""
+
+
+def test_gguf_packed_decode_width_caps_a_hybrid_layer_layout() -> None:
+    """A hybrid INT8/BF16 stack cannot share one packed batch.
+
+    The INT8 layers take the retained direct leaf and the BF16 layers take the
+    standard batch leaf, so the packed decode's single-route manifest contract
+    cannot describe the batch. Cap the width at one row so the session refuses
+    the packed step and the caller serializes, instead of building a batch that
+    the packed decode rejects.
+    """
+
+    assert _gguf_packed_decode_max_rows(
+        direct_rows=4,
+        retained_decode_kernel=_retained_kernel,
+        bf16_full_attention_layer_indices=(0, 1, 2, 3, 4, 5, 6, 7),
+    ) == 1
+
+
+def test_gguf_packed_decode_width_caps_a_single_bf16_layer() -> None:
+    """One BF16 layer in the stack is enough to split the batch."""
+
+    assert _gguf_packed_decode_max_rows(
+        direct_rows=4,
+        retained_decode_kernel=_retained_kernel,
+        bf16_full_attention_layer_indices=(0,),
+    ) == 1
+
+
+def test_gguf_packed_decode_width_keeps_the_declared_width_when_uniform() -> None:
+    """A uniform INT8 stack keeps the width the declaration qualifies."""
+
+    assert _gguf_packed_decode_max_rows(
+        direct_rows=4,
+        retained_decode_kernel=_retained_kernel,
+        bf16_full_attention_layer_indices=(),
+    ) == 4
+
+
+def test_gguf_packed_decode_width_is_one_without_the_retained_leaf() -> None:
+    """Without the retained direct leaf there is no packed INT8 batch at all."""
+
+    assert _gguf_packed_decode_max_rows(
+        direct_rows=4,
+        retained_decode_kernel=None,
+        bf16_full_attention_layer_indices=(),
+    ) == 1
 
 
 def test_gguf_full_attention_prefill_scratch_retains_bf16_cache_by_default() -> None:

@@ -1,0 +1,308 @@
+{
+ "commands": [
+  "HIPENGINE_UD_REPACK_ELIGIBILITY=model-wide python3 scripts/gguf_quant_route_audit.py <ud> <plain> --json <prefix>  # reproduces the pre-E3 record",
+  "python3 scripts/gguf_quant_route_audit.py <ud> <plain> --json <postfix>  # shipped default policy"
+ ],
+ "date": "2026-09-25",
+ "files": [
+  {
+   "backends": [
+    {
+     "accepted_planned_bytes_postfix": 17022887936,
+     "accepted_planned_bytes_prefix": 17265371136,
+     "backend": "hip_gfx1100",
+     "decode_repack_enabled_postfix": true,
+     "decode_repack_enabled_prefix": false,
+     "decode_repack_requested": true,
+     "differing_scalars": {
+      "allocation.accepted_planned_bytes": {
+       "postfix": 17022887936,
+       "prefix": 17265371136
+      },
+      "allocation.accepted_planned_gib": {
+       "postfix": 15.8538,
+       "prefix": 16.07963
+      },
+      "allocation.bf16_refusal_scenario_bytes": {
+       "postfix": 17022887936,
+       "prefix": 17265371136
+      },
+      "allocation.bf16_refusal_scenario_gib": {
+       "postfix": 15.8538,
+       "prefix": 16.07963
+      },
+      "allocation.native_refusal_lower_bound_bytes": {
+       "postfix": 17022887936,
+       "prefix": 17265371136
+      },
+      "allocation.native_refusal_lower_bound_gib": {
+       "postfix": 15.8538,
+       "prefix": 16.07963
+      },
+      "allocation.residents_by_layout.gguf_q4_k_t16_v1.count": {
+       "postfix": 103,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.gguf_q4_k_t16_v1.planned_bytes": {
+       "postfix": 3585720320,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.gguf_q5_k_t16_v1.count": {
+       "postfix": 131,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.gguf_q5_k_t16_v1.planned_bytes": {
+       "postfix": 5657149440,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.gguf_q6_k_t16_qmicro_planar_v1.count": {
+       "postfix": 24,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.gguf_q6_k_t16_qmicro_planar_v1.planned_bytes": {
+       "postfix": 1473024000,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.gguf_q8_0_t16_v1.count": {
+       "postfix": 104,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.gguf_q8_0_t16_v1.planned_bytes": {
+       "postfix": 69632000,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.q4_k_pack8.count": {
+       "postfix": null,
+       "prefix": 103
+      },
+      "allocation.residents_by_layout.q4_k_pack8.planned_bytes": {
+       "postfix": null,
+       "prefix": 4651745280
+      },
+      "allocation.residents_by_layout.raw_gguf.count": {
+       "postfix": 136,
+       "prefix": 395
+      },
+      "allocation.residents_by_layout.raw_gguf.planned_bytes": {
+       "postfix": 6226780160,
+       "prefix": 12603043840
+      },
+      "allocation.sidecars.raw.count": {
+       "postfix": 33,
+       "prefix": null
+      },
+      "allocation.sidecars.raw.planned_bytes": {
+       "postfix": 713687040,
+       "prefix": null
+      },
+      "allocation.sidecars.raw.reason": {
+       "postfix": "raw GGUF sidecar (raw-MMQ/verification consumers)",
+       "prefix": null
+      },
+      "decode_repack_enabled": {
+       "postfix": true,
+       "prefix": false
+      },
+      "routes.Q4_K.kernel:gguf_q4_k": {
+       "postfix": null,
+       "prefix": 103
+      },
+      "routes.Q4_K.kernel:gguf_q4_k_t16_v1": {
+       "postfix": 103,
+       "prefix": null
+      },
+      "routes.Q5_K.kernel:gguf_q5_k_t16_v1": {
+       "postfix": 131,
+       "prefix": null
+      },
+      "routes.Q5_K.raw-gguf-kernel": {
+       "postfix": null,
+       "prefix": 131
+      },
+      "routes.Q6_K.kernel:gguf_q6_k_t16_qmicro_planar_v1": {
+       "postfix": 24,
+       "prefix": null
+      },
+      "routes.Q6_K.raw-gguf-kernel": {
+       "postfix": null,
+       "prefix": 24
+      },
+      "routes.Q8_0.kernel:gguf_q8_0_t16_v1": {
+       "postfix": 104,
+       "prefix": null
+      },
+      "routes.Q8_0.raw-gguf-kernel": {
+       "postfix": null,
+       "prefix": 104
+      }
+     },
+     "raw_gguf_bytes_postfix": 6226780160,
+     "raw_gguf_bytes_prefix": 12603043840,
+     "raw_gguf_count_postfix": 136,
+     "raw_gguf_count_prefix": 395
+    },
+    {
+     "accepted_planned_bytes_postfix": 16309200896,
+     "accepted_planned_bytes_prefix": 17265371136,
+     "backend": "hip_gfx1151",
+     "decode_repack_enabled_postfix": true,
+     "decode_repack_enabled_prefix": false,
+     "decode_repack_requested": true,
+     "differing_scalars": {
+      "allocation.accepted_planned_bytes": {
+       "postfix": 16309200896,
+       "prefix": 17265371136
+      },
+      "allocation.accepted_planned_gib": {
+       "postfix": 15.189127,
+       "prefix": 16.07963
+      },
+      "allocation.bf16_refusal_scenario_bytes": {
+       "postfix": 16309200896,
+       "prefix": 17265371136
+      },
+      "allocation.bf16_refusal_scenario_gib": {
+       "postfix": 15.189127,
+       "prefix": 16.07963
+      },
+      "allocation.native_refusal_lower_bound_bytes": {
+       "postfix": 16309200896,
+       "prefix": 17265371136
+      },
+      "allocation.native_refusal_lower_bound_gib": {
+       "postfix": 15.189127,
+       "prefix": 16.07963
+      },
+      "allocation.residents_by_layout.gguf_q4_k_t16_v1.count": {
+       "postfix": 103,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.gguf_q4_k_t16_v1.planned_bytes": {
+       "postfix": 3585720320,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.gguf_q5_k_t16_v1.count": {
+       "postfix": 131,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.gguf_q5_k_t16_v1.planned_bytes": {
+       "postfix": 4943462400,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.gguf_q6_k_t16_qmicro_planar_v1.count": {
+       "postfix": 24,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.gguf_q6_k_t16_qmicro_planar_v1.planned_bytes": {
+       "postfix": 1473024000,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.gguf_q8_0_t16_v1.count": {
+       "postfix": 104,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.gguf_q8_0_t16_v1.planned_bytes": {
+       "postfix": 69632000,
+       "prefix": null
+      },
+      "allocation.residents_by_layout.q4_k_pack8.count": {
+       "postfix": null,
+       "prefix": 103
+      },
+      "allocation.residents_by_layout.q4_k_pack8.planned_bytes": {
+       "postfix": null,
+       "prefix": 4651745280
+      },
+      "allocation.residents_by_layout.raw_gguf.count": {
+       "postfix": 136,
+       "prefix": 395
+      },
+      "allocation.residents_by_layout.raw_gguf.planned_bytes": {
+       "postfix": 6226780160,
+       "prefix": 12603043840
+      },
+      "decode_repack_enabled": {
+       "postfix": true,
+       "prefix": false
+      },
+      "routes.Q4_K.kernel:gguf_q4_k": {
+       "postfix": null,
+       "prefix": 103
+      },
+      "routes.Q4_K.kernel:gguf_q4_k_t16_v1": {
+       "postfix": 103,
+       "prefix": null
+      },
+      "routes.Q5_K.kernel:gguf_q5_k_t16_v1": {
+       "postfix": 131,
+       "prefix": null
+      },
+      "routes.Q5_K.raw-gguf-kernel": {
+       "postfix": null,
+       "prefix": 131
+      },
+      "routes.Q6_K.kernel:gguf_q6_k_t16_qmicro_planar_v1": {
+       "postfix": 24,
+       "prefix": null
+      },
+      "routes.Q6_K.raw-gguf-kernel": {
+       "postfix": null,
+       "prefix": 24
+      },
+      "routes.Q8_0.kernel:gguf_q8_0_t16_v1": {
+       "postfix": 104,
+       "prefix": null
+      },
+      "routes.Q8_0.raw-gguf-kernel": {
+       "postfix": null,
+       "prefix": 104
+      }
+     },
+     "raw_gguf_bytes_postfix": 6226780160,
+     "raw_gguf_bytes_prefix": 12603043840,
+     "raw_gguf_count_postfix": 136,
+     "raw_gguf_count_prefix": 395
+    }
+   ],
+   "file": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf"
+  },
+  {
+   "backends": [
+    {
+     "accepted_planned_bytes_postfix": 18159568896,
+     "accepted_planned_bytes_prefix": 18159568896,
+     "backend": "hip_gfx1100",
+     "decode_repack_enabled_postfix": true,
+     "decode_repack_enabled_prefix": true,
+     "decode_repack_requested": true,
+     "differing_scalars": {},
+     "raw_gguf_bytes_postfix": 715161600,
+     "raw_gguf_bytes_prefix": 715161600,
+     "raw_gguf_count_postfix": 1,
+     "raw_gguf_count_prefix": 1
+    },
+    {
+     "accepted_planned_bytes_postfix": 17121478656,
+     "accepted_planned_bytes_prefix": 17121478656,
+     "backend": "hip_gfx1151",
+     "decode_repack_enabled_postfix": true,
+     "decode_repack_enabled_prefix": true,
+     "decode_repack_requested": true,
+     "differing_scalars": {},
+     "raw_gguf_bytes_postfix": 715161600,
+     "raw_gguf_bytes_prefix": 715161600,
+     "raw_gguf_count_postfix": 1,
+     "raw_gguf_count_prefix": 1
+    }
+   ],
+   "file": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"
+  }
+ ],
+ "host": {
+  "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "gpu": "zbook Radeon 8060S (gfx1151)"
+ },
+ "interpretation": "The production planner already resolved decode_repack=None to the env default and applied per-tensor eligibility: runtime allocation is byte-identical before/after this change (the plan path was untouched). The prefix run documents the previously recorded report view (model-wide raw-IQ veto). The plain arm is a 0-differing-scalar control on both backends.",
+ "schema_version": 1,
+ "title": "E3 route-audit prefix/postfix diff: admission+audit report surfaces now mirror the per-tensor planner"
+}

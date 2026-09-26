@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+"""YuE2 NAR gate: native flow-matching solver vs the recorded reference fixture.
+
+The fixture in ``tests/fixtures/yue2/nar/`` was recorded from the pinned upstream
+``yue2`` package (``CachedNAR``) and holds, for one chunk of a fixed song, the
+per-step state and first velocity of the 4-step midpoint solve plus the final
+latents. This gate drives :class:`hipengine.runtime.yue2_nar.Yue2NarRuntime`
+through the same schedule on the same noise and compares both traces.
+
+The comparison is a numerical one, not a token-agreement one: the acoustic
+latents are continuous, so the report carries the error relative to the recorded
+latent norm, the cosine similarity, and the fraction of BF16 entries that match
+exactly. The BF16 exact-match fraction is a *diagnostic*: the AR conditioning
+cache and the BF16 projection chain differ from the reference by design in the
+last bit, and one BF16 ulp in the velocity is amplified by the solver's 4 steps.
+
+Usage:
+    python3 scripts/yue2_nar_gate.py [--fixture PATH] [--steps 4] [--json OUT]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
+
+from hipengine.loading.yue2 import load_yue2_weights  # noqa: E402
+from hipengine.runtime.yue2_ar import Yue2ArRuntime, bf16_bits_to_f32  # noqa: E402
+from hipengine.runtime.yue2_nar import (  # noqa: E402
+    Yue2NarRuntime,
+    solver_schedule,
+    song_chunks,
+    to_bf16_bits,
+)
+
+FIXTURE = REPO / "tests/fixtures/yue2/nar/chunk0.npz"
+PROTOCOL = "yue2-nar-fixture-gate-v1"
+
+
+def _host_identity() -> dict:
+    name = ""
+    try:
+        name = Path("/etc/hostname").read_text().strip()
+    except OSError:
+        pass
+    cpu = ""
+    try:
+        for line in Path("/proc/cpuinfo").read_text().splitlines():
+            if line.lower().startswith("model name"):
+                cpu = line.split(":", 1)[1].strip()
+                break
+    except OSError:
+        pass
+    gpu = ""
+    try:
+        completed = subprocess.run(
+            ["rocminfo"], capture_output=True, text=True, timeout=60, check=False
+        )
+        for line in completed.stdout.splitlines():
+            if line.strip().startswith("Name:") and "gfx" in line:
+                gpu = line.split(":", 1)[1].strip()
+                break
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return {"hostname": name, "cpu": cpu, "gpu": gpu, "platform": sys.platform}
+
+
+def _revision() -> str:
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True, timeout=30, check=False
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def _cached_model_dir() -> str:
+    cache = Path.home() / ".cache/huggingface/hub"
+    for directory in sorted(cache.glob("models--m-a-p--YuE2-3B/snapshots/*")):
+        if (directory / "model.safetensors").is_file():
+            return str(directory)
+    raise SystemExit("YuE2-3B checkpoint not found; set --model-dir or YUE2_MODEL_DIR")
+
+
+def _compare(reference: np.ndarray, produced: np.ndarray, *, scale: float) -> dict:
+    """Error metrics between an FP32 reference tensor and BF16 produced bits."""
+
+    reference = np.asarray(reference, dtype=np.float64)
+    got = bf16_bits_to_f32(np.asarray(produced, dtype=np.uint16)).astype(np.float64)
+    if reference.shape != got.shape:
+        raise SystemExit(f"shape mismatch: reference {reference.shape} vs produced {got.shape}")
+    delta = got - reference
+    reference_norm = float(np.linalg.norm(reference))
+    got_norm = float(np.linalg.norm(got))
+    exact = int(
+        (np.asarray(produced, dtype=np.uint16) == to_bf16_bits(np.asarray(reference, dtype=np.float32))).sum()
+    )
+    denominator = reference_norm * got_norm
+    return {
+        "max_abs": float(np.abs(delta).max()),
+        "mean_abs": float(np.abs(delta).mean()),
+        "relative_l2": float(np.linalg.norm(delta) / reference_norm) if reference_norm else 0.0,
+        "relative_to_scale": float(np.abs(delta).max() / scale) if scale else 0.0,
+        "cosine": float((reference * got).sum() / denominator) if denominator else 1.0,
+        "bf16_exact": exact / reference.size,
+        "reference_norm": reference_norm,
+        "produced_norm": got_norm,
+    }
+
+
+def _run_chunk(runtime, chunk, arrays, steps: int, scale: float) -> dict:
+    """Teacher-forced attribution plus the native solver's own trajectory."""
+
+    report: dict = {"frames": chunk.frames, "ar_tokens": len(chunk.ar_tokens), "nar_rows": chunk.nar_length}
+    started = time.perf_counter()
+    runtime.condition(chunk)
+    report["condition_seconds"] = time.perf_counter() - started
+
+    recorded_velocities = arrays["velocities"]
+    recorded_states = arrays["states"]
+    steps_report = []
+    # Teacher-forced attribution: evaluate the native velocity at each *recorded*
+    # state, so a velocity defect is separated from the solver's own trajectory.
+    started = time.perf_counter()
+    for index, (raw, raw_mid) in enumerate(solver_schedule(steps)):
+        runtime.load_state(recorded_states[index])
+        steps_report.append(
+            {
+                "step": index,
+                "raw_t": raw,
+                "raw_mid": raw_mid,
+                "state": _compare(recorded_states[index], runtime.state_bits(), scale=scale),
+                "velocity": _compare(
+                    recorded_velocities[index], runtime.velocity_bits(raw), scale=scale
+                ),
+            }
+        )
+    report["steps_report"] = steps_report
+    report["teacher_forced_seconds"] = time.perf_counter() - started
+    # End-to-end: the native solver's own trajectory from the recorded noise.
+    started = time.perf_counter()
+    runtime.load_state(np.asarray(recorded_states[0], dtype=np.float32))
+    latents = runtime.solve(steps)
+    report["solve_seconds"] = time.perf_counter() - started
+    report["latents"] = _compare(arrays["latents"], to_bf16_bits(latents), scale=scale)
+    report["worst_velocity_relative_l2"] = max(
+        (entry["velocity"]["relative_l2"] for entry in steps_report), default=0.0
+    )
+    return report
+
+
+def _print_chunk(index: int, report: dict, steps: int) -> None:
+    print(
+        f"[nar-gate] chunk {index}: frames={report['frames']} ar={report['ar_tokens']} "
+        f"rows={report['nar_rows']}"
+    )
+    for entry in report["steps_report"]:
+        state = entry["state"]
+        velocity = entry["velocity"]
+        print(
+            f"[nar-gate]   step {entry['step']} raw={entry['raw_t']:+.6f} "
+            f"state rel_l2={state['relative_l2']:.5f} max={state['max_abs']:.4f} "
+            f"exact={state['bf16_exact']:.3f} | velocity rel_l2={velocity['relative_l2']:.5f} "
+            f"max={velocity['max_abs']:.4f} exact={velocity['bf16_exact']:.3f} "
+            f"cos={velocity['cosine']:.6f}"
+        )
+    latents = report["latents"]
+    print(
+        f"[nar-gate]   latents rel_l2={latents['relative_l2']:.5f} max={latents['max_abs']:.4f} "
+        f"cosine={latents['cosine']:.6f} exact={latents['bf16_exact']:.3f} | "
+        f"reference norm={latents['reference_norm']:.3f} produced={latents['produced_norm']:.3f}"
+    )
+    print(
+        f"[nar-gate]   condition={report['condition_seconds']:.2f}s "
+        f"solve={report['solve_seconds']:.2f}s"
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--fixture", default=str(FIXTURE))
+    parser.add_argument("--model-dir", default="")
+    parser.add_argument("--steps", type=int, default=4, help="must match the recorded fixture")
+    parser.add_argument("--max-relative-l2", type=float, default=0.05)
+    parser.add_argument("--min-cosine", type=float, default=0.999)
+    parser.add_argument("--json", default="")
+    args = parser.parse_args()
+
+    fixture = Path(args.fixture)
+    # ``--fixture`` may be the fixture directory or one recorded chunk; the
+    # directory form is how a multi-chunk (crossing a real chunk boundary) case
+    # is checked, and every recorded chunk must pass.
+    directory = fixture if fixture.is_dir() else fixture.parent
+    chunks_paths = sorted(directory.glob("chunk*.npz"))
+    if not chunks_paths:
+        raise SystemExit(f"no chunk*.npz fixtures under {directory}")
+    manifest_path = directory / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+    steps = int(args.steps)
+    seed = int(manifest.get("seed", 1234))
+    context = int(manifest.get("context", 0) or 24576)
+
+    model_dir = args.model_dir or _cached_model_dir()
+    weights = load_yue2_weights(model_dir)
+    ar = Yue2ArRuntime(weights, branches=1)
+    runtime = Yue2NarRuntime(weights, ar)
+
+    report: dict = {
+        "provenance": {
+            "command_line": " ".join(sys.argv),
+            "host": _host_identity(),
+            "revision": _revision(),
+            "model_dir": model_dir,
+            "fixture_dir": str(directory),
+            "protocol": PROTOCOL,
+        },
+        "steps": steps,
+        "seed": seed,
+        "context": context,
+        "recorded_chunks": len(chunks_paths),
+        "thresholds": {"max_relative_l2": args.max_relative_l2, "min_cosine": args.min_cosine},
+        "chunks": [],
+    }
+
+    all_passed = True
+    for path in chunks_paths:
+        arrays = np.load(path)
+        if steps != int(arrays["velocities"].shape[0]):
+            raise SystemExit(
+                f"{path.name}: --steps {steps} does not match the recorded "
+                f"{arrays['velocities'].shape[0]} steps"
+            )
+        prefix = [int(v) for v in arrays["prefix"]]
+        codec = [int(v) for v in arrays["codec"]]
+        # ``song_noise`` is the whole-song draw the chunk views come from; older
+        # single-chunk fixtures stored the chunk slice itself.
+        key = "song_noise" if "song_noise" in arrays.files else "noise"
+        noise = np.asarray(arrays[key], dtype=np.float32)
+        cond_end = int(arrays["nar_cond_end"]) if "nar_cond_end" in arrays.files else 0
+        chunks = song_chunks(prefix, codec, seed, context=context, noise=noise, nar_cond_end=cond_end)
+        index = int(path.stem.removeprefix("chunk"))
+        if index >= len(chunks):
+            raise SystemExit(f"{path.name}: the recorded chunking yields only {len(chunks)} chunks")
+        chunk = chunks[index]
+        scale = float(np.linalg.norm(arrays["latents"]))
+        chunk_report = _run_chunk(runtime, chunk, arrays, steps, scale)
+        chunk_report["index"] = index
+        chunk_report["nar_cond_end"] = cond_end
+        chunk_report["passed"] = bool(
+            chunk_report["latents"]["relative_l2"] <= args.max_relative_l2
+            and chunk_report["latents"]["cosine"] >= args.min_cosine
+            and chunk_report["worst_velocity_relative_l2"] <= args.max_relative_l2
+        )
+        all_passed = all_passed and chunk_report["passed"]
+        report["chunks"].append(chunk_report)
+        _print_chunk(index, chunk_report, steps)
+
+    report["passed"] = all_passed
+    report["worst_velocity_relative_l2"] = max(
+        (entry["worst_velocity_relative_l2"] for entry in report["chunks"]), default=0.0
+    )
+    report["worst_latent_relative_l2"] = max(
+        (entry["latents"]["relative_l2"] for entry in report["chunks"]), default=0.0
+    )
+    report["worst_latent_cosine"] = min(
+        (entry["latents"]["cosine"] for entry in report["chunks"]), default=1.0
+    )
+    print(
+        f"[nar-gate] {len(report['chunks'])} chunk(s): worst velocity rel_l2="
+        f"{report['worst_velocity_relative_l2']:.5f} worst latents rel_l2="
+        f"{report['worst_latent_relative_l2']:.5f} cosine={report['worst_latent_cosine']:.6f} "
+        f"-> {'PASS' if report['passed'] else 'FAIL'}"
+    )
+
+    if args.json:
+        out = Path(args.json)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        print(f"[nar-gate] wrote {out}")
+    return 0 if report["passed"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
