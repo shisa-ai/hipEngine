@@ -1119,7 +1119,11 @@ class _DMSStoreJournal:
     def _lease_row(self) -> Any:
         if self._request_id is None:
             raise RuntimeError("compact DMS journal has no bound request")
-        state = self.backend.state_for_request(self._request_id)
+        # The engine's request ID is not the private store's row ID. A
+        # singleton resident session owns row zero even after the engine has
+        # served earlier requests; the binding above still guards engine identity.
+        store_request_id = getattr(self.target, "dms_store_request_id", self._request_id)
+        state = self.backend.state_for_request(int(store_request_id))
         return SimpleNamespace(lease=state.lease)
 
     def _snapshot(self) -> Any:

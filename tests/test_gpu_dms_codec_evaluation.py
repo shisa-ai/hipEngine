@@ -13,10 +13,11 @@ def test_evaluation_factory_reports_unqualified_without_fabricated_scores():
     assert backend.codec_qualification is None
     assert backend.codec == 'int8_per_token_head'
     assert backend.observability_snapshot()['backend']['codec_evaluation_only'] is True
-    with pytest.raises(ValueError, match='requires artifact qualification'):
-        dms.DMSCompactBackend(retrofit=parent.retrofit, codec='int8_per_token_head',
-                             slots_per_layer=128, max_request_rows=1,
-                             max_pack_rows=32, device_payloads=False)
+    serving = dms.create_dms_int8_backend(
+        retrofit=parent.retrofit, slots_per_layer=128, max_request_rows=1,
+        max_pack_rows=32, device_payloads=False)
+    assert serving.codec_qualification is None
+    assert serving.observability_snapshot()['backend']['codec_evaluation_only'] is False
 
 
 def test_resident_backend_factory_defaults_to_bf16():

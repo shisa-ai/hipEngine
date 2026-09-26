@@ -270,6 +270,8 @@ def _target_verify_mode_for_context(
     end_position: int,
     target: Any | None = None,
 ) -> str:
+    if target is not None and getattr(target, "_dms_backend", None) is not None:
+        return "serial_exact"
     selected = str(requested)
     if selected != "native":
         return selected
@@ -1193,7 +1195,7 @@ class Qwen35GGUFMTP2Adapter:
 
     @staticmethod
     def _target_graph_supported(target: Any) -> bool:
-        return not bool(
+        return getattr(target, "_dms_backend", None) is None and not bool(
             getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
         )
 
@@ -1239,6 +1241,8 @@ class Qwen35GGUFMTP2Adapter:
         Existing Qwen3.6 and gfx1151 evidence retains the legacy singleton.
         """
 
+        if getattr(getattr(self, "generator", None), "dms_metadata_path", None) is not None:
+            return False
         if not self._physical_c1_enabled():
             return False
         eligibility = self._static_eligibility(request_id)
