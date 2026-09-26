@@ -60,8 +60,9 @@
   45.39 + 27.31 ms per layer against the projected 57.7 ms. Packet-consistent
   saving is 0.95-1.07 s, so the lever is about 1.3 s with the measured 325 ms
   dense half, not 1.7-1.9 s. Re-measure on the current composition before
-  ranking it, and do not add it to the activation-hoist saving: both reduce
-  f32-activation staging traffic in the same K loop.
+  ranking it. The chunk and activation-hoist estimates may overlap; measure
+  the combined path rather than assuming either independence or complete
+  overlap.
 
 ## Non-GR Q8 Diagnostic Scope
 
@@ -511,15 +512,15 @@
   is the binding gate, not the flag.
 - State 2026-09-26: no census has been observed to switch to the f16-input
   sibling on this lane, and the 553.9 ms estimate is unrealized. Bind and size
-  a bounded, runner-owned owner in the qwen4exp prefill path (note the owner is
-  currently sized for 1024 rows, so any chunk of 2048 or more needs a larger
-  one) and confirm with the scripted census before measuring an A/B.
-- Removal condition for the env flag: once the owner is bound, the census
-  shows the f16-input sibling, and an interleaved A/B passes bit-identical
-  output, delete the opt-out and keep the hoist unconditional. If the bound
-  path is rejected, delete the flag, the session helpers and the f16-input
-  dispatch branch together rather than leaving an enabled flag that nothing
-  binds.
+  a bounded, runner-owned owner in the qwen4exp prefill path, sized for its
+  admitted chunk capacity, and confirm with the scripted census before
+  measuring an A/B. The 1024-row bound belongs to the existing Qwen3.5/3.6
+  owner; Qwen4Exp does not yet have one.
+- Keep the shared helpers and opt-out while other model lanes use them.
+  Removing the flag requires passing integrated correctness and a same-host
+  non-regressive A/B, plus review of all consumers. If the Qwen4Exp binding
+  is rejected, remove only that lane's unused integration; do not delete the
+  Qwen3.5/3.6 workspace or shared dispatch helpers.
 
 ## Qwen4Exp MMQ output-scale hoist: removed
 
