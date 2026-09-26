@@ -479,6 +479,18 @@ _GROUPED_DUAL_PREFILL_VARIANT = (
     "selected_dual_grouped_rowbatch8_bf16_bf16_out"
 )
 
+# The same owner with the loop nest swapped so one CTA covers four output
+# columns and reuses the input row batch across them. The association of every
+# output is unchanged -- same thread-to-column map, same 128-thread tree -- so
+# this is the bit-identical route and is preferred whenever the width fits.
+_GROUPED_DUAL_AMORTIZED_PREFILL_VARIANT = (
+    "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
+)
+
+# The amortized owner's block metadata lives in one shared slab sized for 16
+# Q4_K blocks, so a wider input has no slab and keeps the row-batch owner.
+_GROUPED_DUAL_AMORTIZED_MAX_IN_FEATURES = 4096
+
 # Lanes, not rows: a compact row is one (token, top-k) pair, and the grouped
 # grid is ``out_features * num_experts`` CTAs however few rows are live. Below
 # this many lanes the selected GEMV's smaller grid wins, because most grouped
@@ -734,6 +746,10 @@ def gemma4_project_experts_grouped_dual(
 ) -> bool:
     """Run a fused ``gate_up`` projection through a grouped dual owner.
 
+    Prefers the amortized owner when ``in_features`` fits its metadata slab,
+    which is the same arithmetic with the input row batch reused across four
+    output columns instead of re-read once per column.
+
     The owner keeps one CTA per (expert, output column) and walks that expert's
     compact rows in batches, so each weight row is loaded once per batch instead
     of once per row. It writes both halves of the fused row: gate columns at
@@ -755,18 +771,24 @@ def gemma4_project_experts_grouped_dual(
     from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
     from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
 
-    key = KernelKey(
-        weight.backend, "moe_linear", weight.spec.quant_key, _GROUPED_DUAL_PREFILL_VARIANT
-    )
-    _ensure_linear_kernel_registered(key)
-    try:
-        fn = resolve(
-            backend=key.backend,
-            layer=key.layer,
-            quant=key.quant,
-            variant=key.variant,
-        )
-    except MissingKernelError:
+    variants = [_GROUPED_DUAL_PREFILL_VARIANT]
+    if in_features <= _GROUPED_DUAL_AMORTIZED_MAX_IN_FEATURES:
+        variants.insert(0, _GROUPED_DUAL_AMORTIZED_PREFILL_VARIANT)
+    fn = None
+    for variant in variants:
+        key = KernelKey(weight.backend, "moe_linear", weight.spec.quant_key, variant)
+        _ensure_linear_kernel_registered(key)
+        try:
+            fn = resolve(
+                backend=key.backend,
+                layer=key.layer,
+                quant=key.quant,
+                variant=key.variant,
+            )
+            break
+        except MissingKernelError:
+            continue
+    if fn is None:
         return False
     base_ptr = weight.allocation("raw").buffer.ptr
     # One half's byte length, not a row stride: a Q4_K row is a whole number of
