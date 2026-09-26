@@ -54,6 +54,14 @@
   detailed/deferred c2 gates pass. Its matched4K PP/TG improves3.94%/1.11%,
   but short complete-request changes include-0.31%; it is explicit, not the
   global default. Do not claim a direct2048/4096 comparison from separate runs.
+- The lever's MoE half is model-only and was over-projected: the recorded
+  1.0 s + 0.6 s scaled the engine's four-launch per-layer times by the tile
+  ratio 2801/4480, but the packet measures the 40960-row launch directly at
+  45.39 + 27.31 ms per layer against the projected 57.7 ms. Packet-consistent
+  saving is 0.95-1.07 s, so the lever is about 1.3 s with the measured 325 ms
+  dense half, not 1.7-1.9 s. Re-measure on the current composition before
+  ranking it, and do not add it to the activation-hoist saving: both reduce
+  f32-activation staging traffic in the same K loop.
 
 ## Non-GR Q8 Diagnostic Scope
 
@@ -489,6 +497,29 @@
   positive1024 medians. VGPR184->192,scratch0;candidate removed.
 - Do not repeat unchanged bank/scale loop reorderings. Production
   raw-vector schedule remains; larger architectural work still open.
+
+## Qwen4Exp wide-F16 activation hoist: wired but inert on the model lane
+
+- The launch-time hoist (`_launch_dense_wide_f16_staged` plus
+  `wide_f16_activation_session`, env opt-out
+  `HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT=0`) has exactly one production binder,
+  `hipengine/runtime/qwen35_gguf_runner.py:19338-19344`. The Qwen3.8-Flash-Next
+  lane (`hipengine/runtime/qwen4_exp_runner.py`) never binds a workspace, so
+  `_wide_f16_activation_stage_ptr` (`hipengine/runtime/gguf_linear.py:508-515`)
+  returns zero on every wide launch and the f32-input owner runs. The
+  `wide_f16_activation_for` profile default cannot change this: the workspace
+  is the binding gate, not the flag.
+- State 2026-09-26: no census has been observed to switch to the f16-input
+  sibling on this lane, and the 553.9 ms estimate is unrealized. Bind and size
+  a bounded, runner-owned owner in the qwen4exp prefill path (note the owner is
+  currently sized for 1024 rows, so any chunk of 2048 or more needs a larger
+  one) and confirm with the scripted census before measuring an A/B.
+- Removal condition for the env flag: once the owner is bound, the census
+  shows the f16-input sibling, and an interleaved A/B passes bit-identical
+  output, delete the opt-out and keep the hoist unconditional. If the bound
+  path is rejected, delete the flag, the session helpers and the f16-input
+  dispatch branch together rather than leaving an enabled flag that nothing
+  binds.
 
 ## Qwen4Exp MMQ output-scale hoist: removed
 

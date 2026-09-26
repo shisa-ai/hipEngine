@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next (Qwen4Exp) Optimization Status
 
-- **Status date:** 2026-09-17
+- **Status date:** 2026-09-26
 - **Model / quant:** unsloth `Qwen3.8-Flash-Next` `UD-Q4_K_XL`, fingerprint
   `fb1f2fbf73d588c9…`, 111.3 GB, four shards
 - **Host:** Framework `gfx1151`, Radeon 8060S / Strix Halo, machine
@@ -618,11 +618,21 @@ what must be closed before claiming full qualification or extending admission.
 
 ### Measurement and qualification prerequisites
 
-1. **Close the qualification accounting.** Keep the passing local gate and
-   promotion facts, but identify the applicable full-stack strict-teacher,
-   heldout/task, BF16-relative and ownership/isolation evidence (§4). Missing
-   evidence is not evidence of failure, nor is a local pass a complete
-   certificate. The separate
+1. **Close the qualification accounting, and make the claim coverage-aware.**
+   `scripts/execution_profile_q8_wmma_prefill_layers_gate.py:426` sets
+   `profile_qualification_claim = quality_passed and deterministic` with no
+   coverage term, while `:481/:482/:497/:498` expose `--case-id`, `--limit`,
+   `--decode-steps` (default 24) and `--repeat-runs`, so a reduced run can
+   claim full-profile qualification. The promoted 16-47 artifact is full
+   coverage (12 cases, 128 decode steps, 3 repeats, 1548 rows, mean KL
+   3.7955e-4, p95 1.762e-3, p99 5.424e-3, max 1.5304e-2, top-1 1538/1548, zero
+   rows over the 2e-2 review boundary), so this is prevention rather than
+   repair. The gate script's `--prefill-chunk-size` also defaults to 1024, so a
+   chunk promotion needs the gate re-run at the new chunk.
+2. **Keep the passing local gate and promotion facts**, but identify the
+   applicable full-stack strict-teacher, heldout/task, BF16-relative and
+   ownership/isolation evidence (§4). Missing evidence is not evidence of
+   failure, nor is a local pass a complete certificate. The separate
    [recalibration proposal](PRODUCTION-ACCURACY-RECALIBRATION-PROPOSAL-2026-09-16.md)
    does not change the current admission policy.
 
@@ -642,13 +652,23 @@ The main family table is the pre-unroll `42ce71156` capture; §1.4 records the
 post-unroll costs. Comparator differences remain opportunity indicators, not
 achievable speedups or quality-equivalent targets.
 
+The order below was re-reviewed on 2026-09-26 against the tree, the retained
+packets and the primary upstream sources; the corrections that moved it are in
+[`20260926T130638`](../worklog/entries/20260926T130638.338457Z-lhl-qwen4exp-campaign-re-review-09eb84.md).
+Three findings changed rows 1, 2, 3, 4 and added row 6: the activation hoist is
+inert on this lane rather than merely unverified, the chunk lever is about
+1.3 s rather than 1.7-1.9 s and its engine A/B already exists, and the MoE
+route-tile successor's binding constraint is the per-lane risk state rather
+than the tile height.
+
 | Priority | Opportunity | Evidence and limit | First bounded experiment |
 | --- | --- | --- | --- |
-| 1 | **Integrate the real F16 activation composite** | Real conversion and F16-input kernels exist. The packet's **590.6 ms is a census-weighted estimate** from standalone medians plus assumed sharing, not measured engine recovery. Summing the measured unshared composites gives **553.9 ms** estimated recovery instead | Start with per-call conversion into reusable, runner-owned scratch on the consumer stream. Verify lifetime, tails, real activations, reset/graph behavior and applicable quality gates; measure an interleaved end-to-end A/B. Add shared-input reuse only if it pays |
-| 2 | **Routed MoE main kernels and repair** | Pre-unroll gate/up + down: 5.785 s. Post-unroll capture: **5.607 s**, with 1.240 s repair included. Down is **2229.8 ms**, not the older 2382.3 ms. Gate/up remains larger at 3377.1 ms | Test expert-population-aware tiles and a routed Q5_1/Q8_0 down candidate on actual skew/tails. Include packing, maps, repair and reduction. Do not require exact parity for a distinct production-arithmetic candidate, but apply the complete profile gate. First close the changed Q8_0 repair's focused correctness coverage |
-| 3 | **Hyper-connection** | About 2.5 s in the captures; historical comparator difference about 2.19 s. Old GR-up/down overrides fail mean and p95 KL and do not measure today's combined saving | Locate the first numerical divergence at projection/sigmoid/mean/publication boundaries before another correction. Consider tiling and producer/consumer fusion; avoid repeating the rejected P4/compensated variants unchanged |
-| 4 | **QSA prefill** | About 1.4 s, versus 0.156 s in the comparator bucket; 9.01x is not itself a realizable speedup | Match selected-position work and complete boundaries, then screen D=256 tiling/occupancy with exact ownership and the applicable arithmetic gate |
+| 1 | **Bind the real F16 activation composite in this lane** | The composite is built and tested, but **inert here**: `wide_f16_activation_session` is bound only in `qwen35_gguf_runner.py:19338-19344`, and `qwen4_exp_runner.py` never binds it, so `_wide_f16_activation_stage_ptr` (`gguf_linear.py:508-515`) returns zero on every wide launch and the f32-input owner runs. That is a second, independent cause of the recorded census (792 `dense_wide256_f32_f32_out`, zero siblings) beyond the fixed registry-population bug. The packet's **590.6 ms is a census-weighted estimate**; the measured unshared composites give **553.9 ms** estimated recovery, currently 0 ms realized | Bind a bounded, runner-owned owner in the qwen4exp prefill path and size it for the intended chunk, then re-run the scripted census expecting the f16-input sibling, then the interleaved A/B. The existing GPU test already proves the two casts produce identical half bytes, so require bit-identical output. Add shared-input reuse only if it pays |
+| 2 | **Routed MoE route-tile successor and repair** | Pre-unroll gate/up + down: 5.785 s. Post-unroll capture: **5.607 s**, with 1.240 s repair included. Down is **2229.8 ms**, not the older 2382.3 ms. Gate/up remains larger at 3377.1 ms. The 32-row M tile is **rejected** (1.67-1.82x fewer tiles but only 6.3% less DRAM read, 1.3-2.2x slower), and the successor's real constraint is now identified: our at-risk flags are already in LDS (`qwen4_exp_q5_1.hip:1069`), so the 492 B/thread spill came from the **per-lane fp32 accumulation across the widened route tile**, which the R9V comparator does not carry because it has no repair contract at all | Attack the per-lane risk state or share the weight read without widening the route tile; a taller tile alone is measured not to work. Test expert-population-aware tiles and a routed Q5_1/Q8_0 down candidate on actual skew/tails. Include packing, maps, repair and reduction. Do not require exact parity for a distinct production-arithmetic candidate, but apply the complete profile gate. First close the changed Q8_0 repair's focused correctness coverage |
+| 3 | **Hyper-connection** | About 2.5 s in the captures; historical comparator difference about 2.19 s. Drift is now **localized**: the Q8_0 projection boundary and nothing else, 1.12-3.69e-7 relative L2, and the gate outcome is a *cliff* at about 5e-9 prefill-boundary KL rather than a gradient. Wilkin's finished-stack ablation independently prices the two matching mechanisms at 1.19x (gate GEMM + mix round-tripping through memory) and 1.08x (bf16 streams end to end) | Screen with `scripts/qwen4exp_gr_iu8_logits_probe.py` targeting below about 5e-9 before any 780-row gate. Land the three no-arithmetic-risk levers first, starting with the unconsumed 168 MB/layer GR gate write. Avoid repeating the rejected P4/compensated variants unchanged |
+| 4 | **QSA prefill** | About 1.4 s, versus 0.156 s in the comparator bucket; the 9.01x is **recoverable cost, not a bucket artifact** - both engines select the same 2051 positions by the same formula, and the difference is a scalar-FMA kernel against tensor cores, worth 1246.8 ms of the 12.97 s gap | Ranked: (1) K/V reuse and LDS staging toward the 24 query heads sharing each KV head, which is bit-exact per row and needs no numerical gate; (2) tensor cores, which changes arithmetic and needs the production gate plus a strict fallback; (3) an occupancy sweep as a microbenchmark. Resolve the open grid/`head_count` observation first (traced grid (192,1021,1) at block 32 implies `query_heads` 768 against metadata `head_count` 24) |
 | 5 | **MoE map/reduction fusion** | About 0.76 s, overlapping the complete-MoE work above | Attribute maps, scatter/gather and reductions before fusing; do not count the same saving twice |
+| 6 | **Prefill chunk size** | Revised to about **1.3 s**, not the recorded 1.7-1.9 s: the dense half is 325 ms measured, and the MoE half is **0.95-1.07 s** from the packet's own measured 40960-row launch, where the recorded 1.0 + 0.6 s applied the tile ratio to the engine's four-launch times and never measured the candidate. The engine A/B that the lever entry lists as not run **was run on 2026-09-15** (4K PP +3.94%, 0.88 s of 22.37 s, 780/780 exact, full boundary/active-task/c2 gates) and did move the MoE chunk, but on a composition 32% slower than today's | Re-measure 2048 and 4096 against today's default on this host, capture real per-expert populations at each setting rather than a balanced model, and reconcile against the 0.88 s result before ranking the lever again. Note the hoist and this lever are **not additive** (same f32-activation staging traffic), and a chunk of 2048 or more needs a correspondingly larger activation owner |
 | Deferred | **Dense scope selection or new arithmetic** | 12-47 and 8-47 fail; 16-47 passes its local gate. Untested selective scopes are not excluded, and ~2.5 s is an inadmissible full-extension estimate | Revisit only with cost-weighted layer/role sensitivity evidence or a promising arithmetic packet. No blind full-gate sweep, but no claim that scope work is mathematically closed |
 
 The activation harness's `aggregate()` uses `f16in_ms + cast_share * cast_ms`,
