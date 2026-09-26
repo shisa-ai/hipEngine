@@ -1869,28 +1869,28 @@ once and reusing it across that expert's rows, instead of re-reading the whole
 expert weight matrix once per row. The two expert projections are **84.8% of
 prefill kernel time** on this artifact (`Q4_K` gate/up 53.40%, `Q5_1` down
 31.40%), which is what makes that reuse the whole prefill budget. The reuse is
-bit-exact — it is a different launch geometry over the same per-row reduction —
-so prefill rises with no change to the arithmetic, the decoded tokens, or the
-decode rate.
+bit-exact — it is a different launch geometry over the selected path's own
+per-row reduction — so prefill rises with no change to the arithmetic, the
+decoded tokens, or the decode rate.
 
 | Workload | Prefill | Decode | Public wall |
 | --- | ---: | ---: | ---: |
-| 2048/8 | **48.57 tok/s** (39.82 per-row) | 19.53 tok/s (19.63) | **43.503 s** (51.957) |
+| 2048/8 | **75.17 tok/s** (48.84 per-row) | 19.61 tok/s (19.63) | **27.684 s** (42.418) |
+| 512/128 | **92.57 tok/s** (55.34 per-row) | 21.11 tok/s (21.08) | **11.597 s** (15.340) |
 
-Both rows of that pair ran on the same tree in one session, with the file under
-test as the only difference between the arms; an earlier pair taken before the
-change's final refactor agrees at 39.69 against 48.99 tok/s.
+Both rows of each pair ran on the same tree in one session, with the kernel
+files under test as the only difference between the arms.
 
 This file mixes quants — 29 layers are `Q4_K` gate/up with `Q5_1` down and
-layer 29 is `Q5_K` with `Q8_0` — so 29 of the 60 expert projections per prefill
-block take the reusing route and the rest keep the per-row pass. The `Q4_K`
-gate/up is the larger half of the budget at 53.4% of prefill kernel time and has
-no bit-exact grouped family, so it still reads per row. Routing it through the
-row-batched WMMA prefill as well reaches **111.43 tok/s** but exceeds the
-production `kl_max` limit at 0.167959 on 2 of 1023 teacher-forced rows (both rows
-keep their top-1 token; the divergence is a compressed tail), so it is not
-shipped. Evidence:
-[expert weight reuse](results/2026-09-27-gemma4-moe-prefill-grouped-accepted.json);
+layer 29 is `Q5_K` with `Q8_0` — so 58 of the 60 expert projections per prefill
+block take the reusing route and the remaining two keep the per-row pass, since
+no grouped family is registered for `Q5_K` or `Q8_0` with this ABI. Routing the
+`Q4_K` gate/up through the row-batched WMMA prefill instead reaches **111.43
+tok/s** but exceeds the production `kl_max` limit at 0.167959 on 2 of 1023
+teacher-forced rows (both rows keep their top-1 token; the divergence is a
+compressed tail), so it is not shipped. Evidence:
+[`Q5_1` down reuse](results/2026-09-27-gemma4-moe-prefill-grouped-accepted.json);
+[`Q4_K` gate/up reuse](results/2026-09-27-gemma4-moe-prefill-q4k-grouped-accepted.json);
 [`WMMA row-slice rejection`](results/2026-09-27-gemma4-moe-prefill-wmma-rowslice-rejected.json).
 
 ### Laguna S 2.1
