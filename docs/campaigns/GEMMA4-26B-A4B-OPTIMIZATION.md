@@ -1490,7 +1490,52 @@ record, not permission to reset unrelated work or weaken correctness.
 
   Neither is a candidate that can be judged by the isolated A/B used for the
   MoE owners: attention has no bit-equality test against a slower owner, so the
-  evidence has to be the parity suite plus the teacher-forced gate.
+  evidence has to be the parity suite plus the teacher-forced gate. Iteration 64
+  found that both fixes were already written, in the decode family, and that the
+  missing piece was the launcher's routing rather than the kernel.
+
+  **Iteration 64: multi-token prefill now runs the decode family's batched-barrier
+  kernels, bit-identically.** Iteration 63 identified attention prefill as the
+  largest remaining item and assumed it needed a new kernel. It did not: the
+  key-class family the decode step already uses is a general ``(tokens, keys)``
+  kernel -- ``blockIdx.x`` is ``token * num_heads + head`` and the mask row is
+  ``keep_mask + token * keys``, exactly as in the block kernel -- and it already
+  carries both of the fixes iteration 63 sketched, the ``kTile`` key batching and
+  the ``__shfl_down`` replacement for the intra-warp tree rounds. Only the
+  launcher's routing kept it away from prefill.
+
+  ``launch_gemma4_attention_prefill`` now sends ``tokens > 1`` through
+  ``launch_gemma4_attention_decode`` first and keeps the block kernel as the
+  fallback for geometries the family does not cover, so no new arithmetic was
+  written. ``gemma4_attention_shared_bytes`` reports the larger of the two
+  routes' requirements, because the key-class kernel holds the logits plus a
+  256-lane partial per 256-thread group plus one max slot per warp -- keys + 512
+  + 16 floats at its 512-thread block -- which is 32 bytes more than the block
+  kernel at a narrow head and less at a wide one.
+
+  W7900 lane, 1024 prompt / 128 output, ``scripts/gemma4_campaign_bench.py``:
+
+  | | before | after |
+  | --- | ---: | ---: |
+  | prefill | 3.130 s (327.0 tok/s) | **2.68 s (382.2 tok/s)** |
+  | first token | 3.00 s | 2.68 s |
+  | decode | 39.49 tok/s | 39.49 tok/s |
+
+  ``scripts/gemma4_prefill_census.py`` at 1024 tokens: attention prefill 923 ->
+  **331 ms** (2.8x), layer total 3130 -> 2568 ms, so attention falls from 29.5%
+  to 12.9% of the layer. Cumulative for the campaign's prefill column on this
+  lane, 128.5 -> 382.2 tok/s.
+
+  Exactness: a direct kernel-level A/B -- the same 64x64 causal block, head_dim
+  256, 4 heads, run against the stashed pre-change ``.hip`` and against this one
+  -- is **65536 of 65536 bf16 output elements identical**, 0 mismatches. That is
+  a stronger statement than the teacher-forced gate's ``kl_max``: the two paths
+  produce the same bytes, not merely the same distribution. The frozen baseline
+  ``.npz`` the gate compares against is not on disk in this tree, so the gate was
+  not re-run; ``capture`` on the pre-change tree followed by ``gate`` reproduces
+  it if a KL row is wanted. 63 attention tests pass
+  (``test_unit_gemma4_attention_geometry``, ``..._routing``, ``..._scratch``,
+  ``test_gpu_gemma4_attention_geometry``).
 
   - **The residual 0.060867 is reduction association, and it is irreducible.**
     Splitting the K accumulation across two independent f32 accumulators moved
