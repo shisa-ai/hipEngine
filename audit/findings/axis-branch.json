@@ -478,9 +478,9 @@
     },
     {
       "kind": "axis-branch",
-      "key": "hipengine/server/api.py:609",
+      "key": "hipengine/server/api.py:623",
       "title": "branches on a registry axis: if quant != \"auto\":",
-      "location": "hipengine/server/api.py:609",
+      "location": "hipengine/server/api.py:623",
       "evidence": {
         "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
         "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
@@ -491,7 +491,7 @@
       "hints": {
         "anchor": "hipengine/server/api.py",
         "refs": [
-          "hipengine/server/api.py:609"
+          "hipengine/server/api.py:623"
         ],
         "tokens": [
           "auto",
@@ -501,8 +501,8 @@
           "registry"
         ]
       },
-      "id": "axis-branch/hipengine/server/api.py:609",
-      "evidence_hash": "c4780ba03bbb"
+      "id": "axis-branch/hipengine/server/api.py:623",
+      "evidence_hash": "1ea11da049df"
     }
   ]
 }

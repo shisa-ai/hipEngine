@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10797,
-    "current": 3565,
+    "entries": 10808,
+    "current": 3576,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1145,
+    "rows": 1149,
     "by_rule": {
       "dependency": 37,
       "legacy-next": 109,
-      "status": 999
+      "status": 1003
     }
   },
   "rows": [
@@ -43093,6 +43093,153 @@
       },
       "id": "worklog/20260925T220940.373769Z-lhl-profile-env-restore-aborts-the-all-suite-latent-bcb9d2",
       "evidence_hash": "9586dbfb025e"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260926T090108.626081Z-main-zbook-capacity-lifecycle-bde5a0",
+      "title": "Exercise GGUF public capacity cancellation and refill ownership",
+      "location": "worklog/entries/20260926T090108.626081Z-main-zbook-capacity-lifecycle-bde5a0.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "main",
+        "topic": "zbook-capacity-lifecycle",
+        "written": "2026-09-26",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Reduce the eager full-context reservation without removing budget accounting\n  for private fallback. Server `get_llm()` already forwards its configured\n  context limit into `LLM`; adding another admission-context knob is unnecessary.\n- Allocator `_GGUFPackedTargetState.allocate()` already falls back to budgeted\n  private storage for a short lease. Merely shrinking the lease does not bound\n  the active packed state: callers can still request full session geometry.\n  Trace that geometry before changing the policy or auto-context estimate.\n- Add HTTP startup/readiness coverage for the revised p",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260926T090108.626081Z-main-zbook-capacity-lifecycle-bde5a0.md",
+        "refs": [],
+        "tokens": [
+          "cancellation",
+          "capacity",
+          "exercise",
+          "gguf",
+          "ownership",
+          "public",
+          "refill"
+        ]
+      },
+      "id": "worklog/20260926T090108.626081Z-main-zbook-capacity-lifecycle-bde5a0",
+      "evidence_hash": "82d32737e609"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260926T092605.380370Z-main-profile-env-isolation-replay-29489e",
+      "title": "Restore profile environment isolation after clean prefix replay",
+      "location": "worklog/entries/20260926T092605.380370Z-main-profile-env-isolation-replay-29489e.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "main",
+        "topic": "profile-env-isolation-replay",
+        "written": "2026-09-26",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Task 3 remains open for attribution of the historical abort. A passing current\n  prefix cannot establish an independent memory repair. Compare the historical\n  revision/environment if investigation continues; do not call missing\n  reproduction proof of an upload-related cause.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260926T092605.380370Z-main-profile-env-isolation-replay-29489e.md",
+        "refs": [],
+        "tokens": [
+          "clean",
+          "environment",
+          "isolation",
+          "prefix",
+          "profile",
+          "replay",
+          "restore"
+        ]
+      },
+      "id": "worklog/20260926T092605.380370Z-main-profile-env-isolation-replay-29489e",
+      "evidence_hash": "b4449eca85db"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260926T110005.482027Z-main-historical-profile-abort-abfaa3",
+      "title": "Historical profile-isolation abort did not reproduce",
+      "location": "worklog/entries/20260926T110005.482027Z-main-historical-profile-abort-abfaa3.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "main",
+        "topic": "historical-profile-abort",
+        "written": "2026-09-26",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Keep historical abort attribution open. Both candidate trees completed the\n  reported prefix under this environment, so repeating the same replay is not\n  a useful next test. A future reproduction needs a differentiating historical\n  environment, test order or process trace before subset isolation can proceed.\n- Continue public DMS integration and the remaining approved serving and\n  documentation tasks independently. Do not reinstate environment leakage.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260926T110005.482027Z-main-historical-profile-abort-abfaa3.md",
+        "refs": [],
+        "tokens": [
+          "abort",
+          "did",
+          "historical",
+          "isolation",
+          "profile",
+          "reproduce"
+        ]
+      },
+      "id": "worklog/20260926T110005.482027Z-main-historical-profile-abort-abfaa3",
+      "evidence_hash": "3ec36cea3c87"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260926T134138.139771Z-main-dms-matched-attention-befd69",
+      "title": "Compare compact no-evict and dense attention on identical inputs",
+      "location": "worklog/entries/20260926T134138.139771Z-main-dms-matched-attention-befd69.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "main",
+        "topic": "dms-matched-attention",
+        "written": "2026-09-26",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Capture identical Q/K/V and post-attention states from the historical failing\n  model case; synthetic primitive agreement cannot clear the full-model G0\n  mismatch. The reducer shared-memory reuse candidate remains unproven.\n- Public DMS lifecycle is independently validated in a7985b976; no-evict output\n  quality and selector training remain separate from that ownership contract.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260926T134138.139771Z-main-dms-matched-attention-befd69.md",
+        "refs": [],
+        "tokens": [
+          "attention",
+          "compact",
+          "compare",
+          "dense",
+          "evict",
+          "identical",
+          "inputs"
+        ]
+      },
+      "id": "worklog/20260926T134138.139771Z-main-dms-matched-attention-befd69",
+      "evidence_hash": "6ca6073d9a76"
     }
   ]
 }

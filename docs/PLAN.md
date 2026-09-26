@@ -554,21 +554,24 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 - **Graph capture buckets include shape, not just batch size.** Buckets are keyed by active `C`, context/page bucket, prefill/decode/verify mode, draft length or tree shape, active-mask density, top-k/experts, and graph-steps-per-replay.
 - **Dispatch remains plugin-based.** c-aware, KV-format-aware, or specdec-aware behavior registers new backend/model/speculative/layer/kernel variants; engine code must not grow `if backend == ...`, `if quant == ...`, `if kv_dtype == ...`, or one-off `if spec_method == ...` hot-path branches.
 
-#### Next campaign: artifact-scoped compact INT8 KV continuous batching
+#### Compact INT8 KV continuous batching
 
-Dense INT8 MTP now has implementation-based C1 admission, separate from
-benchmark evidence and approximate-KV quality decisions. The normal server
-owner uses the native request-local verifier under wider resident capacities;
-multi-request INT8 MTP currently selects a named pre-mutation AR fallback.
-Effective prepared storage/layout/scales determine admission. Public endpoint,
-SSE and lifecycle progress, along with prefix-on and compact-DMS work, is
-tracked in [INT8 MTP server readiness](reference/INT8-MTP-SERVER-READINESS.md).
+Dense INT8 MTP has implementation-based admission for single-request and packed
+multi-request verification, separate from benchmark evidence and approximate-KV
+quality decisions. Packed verification requires an admitted uniform retained-INT8
+layout and obeys its physical row bound. Effective prepared storage/layout/scales
+determine admission; resident capacity alone does not imply verifier width.
+Public endpoint, SSE, prefix and lifecycle behavior is tracked in
+[INT8 MTP server readiness](reference/INT8-MTP-SERVER-READINESS.md).
+Public BF16 compact-DMS AR uses its own single-request contract in
+[DMS serving](reference/DMS-SERVING.md).
 
-The approved next INT8 KV campaign is
-[`QWEN38-INT8-KV-CONTINUOUS.md`](campaigns/QWEN38-INT8-KV-CONTINUOUS.md). It starts by
-integrating the divergent gfx1100/gfx1151 Qwen3.8 evidence and locking runtime
-admission to immutable artifact identity, backend, weight quant, KV layout, and
-scale policy. It then adds a temporary no-mirror serial c>N correctness route,
+The historical INT8 KV campaign
+[`QWEN38-INT8-KV-CONTINUOUS.md`](campaigns/QWEN38-INT8-KV-CONTINUOUS.md) records
+the gfx1100/gfx1151 Qwen3.8 evidence and its original artifact-scoped plan.
+Artifact identity is provenance, not current admission policy: runtime selection
+uses backend, weight quant, KV layout and scale capabilities. The campaign
+planned a temporary no-mirror serial c>N correctness route,
 a true row-batched INT8 split-K producer/reducer, shared prefill ownership,
 complete admission accounting, and cancellation/grow/shrink/overload gates.
 

@@ -4,13 +4,19 @@ owns: OpenAI-compatible server usage, endpoint support, request/response semanti
 ---
 # OpenAI-Compatible Server API
 
-Last updated: 2026-09-21
+Last updated: 2026-09-26
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
 installed by default. HTTP requests route through the in-process generation
 batcher; compatible queued prompts can coalesce into one engine call, while the
 remaining async lock is limited to short model/session preparation mutations.
+
+The model plugin owns chat formatting, reasoning parsing, tool parsing and
+grammar capabilities. Qwen-style XML is one protocol, not a universal prompt
+format: Qwen4Exp uses its declared protocol. Query
+`/v1/hipengine/capabilities` rather than inferring grammar or tool support from
+a model name.
 
 ## Install
 
@@ -210,8 +216,14 @@ non-streaming MTP requests can coalesce into one backend call within supported
 physical width/depth cells. Queue coalescing is not proof of physical verifier
 concurrency. Capabilities report the Generation-2 frontier ceiling separately
 from the admitted plan's `resident_capacity` and `realized_group_rows`.
-Dense uniform INT8 KV MTP supports a single-request verifier, including inside
-a wider resident server; packed INT8 and compact-DMS MTP are not implemented.
+Dense uniform INT8 KV MTP supports both single-request and packed multi-request
+verification when the admitted storage layout supplies retained INT8 payload
+and scale planes for every required attention layer. The effective physical
+width is bounded by the resolved capability; a wider resident capacity does not
+by itself prove a wider verifier. Public compact-DMS serving currently uses AR
+and rejects explicit MTP requests. See
+[INT8 MTP serving](reference/INT8-MTP-SERVER-READINESS.md) and
+[DMS serving](reference/DMS-SERVING.md) for their separate contracts.
 Explicit requests for missing implementation capabilities return HTTP 501 with
 the reason; automatic requests can use AR. MTP context is bounded by the
 target's allocated capacity, with no fixed 1,023-token admission cap.
@@ -1198,8 +1210,9 @@ unique deterministic envelope/structural suffix exactly fits the remaining
 budget, that suffix is queued through the same forced-token path. Every forced
 token is revalidated against the grammar; token decode failures, empty token
 text, and an empty constrained candidate set fail closed. Tool constraints block
-native GPU sampling and raw-target MTP, so this is a host processed-logits
-correctness route rather than native-sampler parity. Full JSON Schema argument
+native GPU sampling and raw-target MTP. They use host processed logits, and can
+use MTP when the model plugin implements processed acceptance for the request's
+constraint contract. This is not native-sampler parity. Full JSON Schema argument
 constraints remain post-generation.
 
 The current post-generation schema subset covers `type`, `enum`, `const`,

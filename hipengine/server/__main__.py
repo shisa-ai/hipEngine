@@ -372,11 +372,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("HIPENGINE_METRICS", "off"),
         help="Metrics endpoint mode (env HIPENGINE_METRICS; default: off)",
     )
-    # The HTTP surface takes the engine loop's default (radix). The gfx1100
-    # numerical gate is still open and tracked in docs/REFACTOR.md; the path
-    # fails closed per request with a recorded reason, so an unqualified row
-    # prefills privately. HIPENGINE_PREFIX_CACHE stays an override of this flag
-    # rather than a second default.
+    # HTTP uses the engine loop's radix default. HIPENGINE_PREFIX_CACHE is an
+    # explicit override; request-level capability decisions remain in the owner.
     parser.add_argument(
         "--prefix-cache",
         choices=PREFIX_CACHE_CHOICES,
