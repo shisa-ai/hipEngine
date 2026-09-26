@@ -308,6 +308,18 @@ struct alignas(2 * sizeof(scalar_t)) gemma4_pair2 {
   scalar_t hi;
 };
 
+// Scalar lanes must not form an aligned pair lvalue: odd scalar offsets are
+// not pair-aligned, and the final scalar has no second element to read.
+template <int kDimsPerLane, typename scalar_t>
+__device__ __forceinline__ gemma4_pair2<scalar_t> gemma4_load_v(const scalar_t* ptr) {
+  static_assert(kDimsPerLane == 1 || kDimsPerLane == 2, "invalid load width");
+  if constexpr (kDimsPerLane == 2) {
+    return *reinterpret_cast<const gemma4_pair2<scalar_t>*>(ptr);
+  } else {
+    return {ptr[0], static_cast<scalar_t>(0)};
+  }
+}
+
 __device__ inline float gemma4_decode_tree1(
     float* partial, float value, unsigned int threads, unsigned int tid);
 
@@ -343,8 +355,7 @@ __device__ __forceinline__ void gemma4_decode_pass3(
     for (int n = 0; n < kPrefetch; ++n) {
       const int64_t jn = n;
       pipe[n] = jn < keys
-          ? *reinterpret_cast<const gemma4_pair2<scalar_t>*>(
-                v_base + jn * v_row_stride + d0)
+          ? gemma4_load_v<kDimsPerLane>(v_base + jn * v_row_stride + d0)
           : gemma4_pair2<scalar_t>{static_cast<scalar_t>(0), static_cast<scalar_t>(0)};
     }
     float acc_lo = 0.0f;
@@ -357,8 +368,7 @@ __device__ __forceinline__ void gemma4_decode_pass3(
       }
       const int64_t jn = j + kPrefetch;
       pipe[kPrefetch - 1] = jn < keys
-          ? *reinterpret_cast<const gemma4_pair2<scalar_t>*>(
-                v_base + jn * v_row_stride + d0)
+          ? gemma4_load_v<kDimsPerLane>(v_base + jn * v_row_stride + d0)
           : gemma4_pair2<scalar_t>{static_cast<scalar_t>(0), static_cast<scalar_t>(0)};
       const float weight = logits_s[j];
       if (weight == 0.0f) {
@@ -639,9 +649,8 @@ __global__ void gemma4_attention_decode_slice_kernel(
   if (j_end > keys) {
     j_end = keys;
   }
-  if (j_begin >= j_end) {
-    return;
-  }
+  // Empty slices still write zeros below: combine reads every slice, and
+  // scratch may contain values from a previous request.
 
   const float* w_row = weights + head_index * keys;
   const scalar_t* v_base = value + kv_head * head_dim;
@@ -655,8 +664,7 @@ __global__ void gemma4_attention_decode_slice_kernel(
     for (int n = 0; n < kPrefetch; ++n) {
       const int64_t jn = j_begin + n;
       pipe[n] = jn < j_end
-          ? *reinterpret_cast<const gemma4_pair2<scalar_t>*>(
-                v_base + jn * v_row_stride + d0)
+          ? gemma4_load_v<kDimsPerLane>(v_base + jn * v_row_stride + d0)
           : gemma4_pair2<scalar_t>{static_cast<scalar_t>(0), static_cast<scalar_t>(0)};
     }
     float acc_lo = 0.0f;
@@ -669,8 +677,7 @@ __global__ void gemma4_attention_decode_slice_kernel(
       }
       const int64_t jn = j + kPrefetch;
       pipe[kPrefetch - 1] = jn < j_end
-          ? *reinterpret_cast<const gemma4_pair2<scalar_t>*>(
-                v_base + jn * v_row_stride + d0)
+          ? gemma4_load_v<kDimsPerLane>(v_base + jn * v_row_stride + d0)
           : gemma4_pair2<scalar_t>{static_cast<scalar_t>(0), static_cast<scalar_t>(0)};
       const float weight = w_row[j];
       if (weight == 0.0f) {

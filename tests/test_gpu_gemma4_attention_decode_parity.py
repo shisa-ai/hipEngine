@@ -300,7 +300,7 @@ def test_decode_variant_selection_is_by_geometry(attention_library, head_dim, ex
 
 
 def _split_ab(library, *, dtype, num_heads, num_kv_heads, head_dim, keys, mask_mode,
-              seed=20260925):
+              seed=20260925, split_slices=None, poison=False):
     """Run the incumbent single-kernel path and the split on identical inputs."""
 
     from hipengine.core.memory import (
@@ -317,7 +317,7 @@ def _split_ab(library, *, dtype, num_heads, num_kv_heads, head_dim, keys, mask_m
         split_workspace_bytes,
     )
 
-    slices = decode_slices(keys, head_dim)
+    slices = decode_slices(keys, head_dim) if split_slices is None else split_slices
     assert slices > 1, "shape is below the split's context threshold"
 
     rng = np.random.default_rng(seed)
@@ -365,6 +365,9 @@ def _split_ab(library, *, dtype, num_heads, num_kv_heads, head_dim, keys, mask_m
         workspace = malloc(
             split_workspace_bytes(1, num_heads, head_dim, keys, slices, library=library)
         )
+        if poison:
+            sentinel = np.full(workspace.nbytes // 4, np.nan, dtype=np.float32)
+            copy_host_to_device(workspace, host_array_ptr(sentinel), sentinel.nbytes)
         _raw_launch(
             library,
             symbol,
@@ -421,6 +424,19 @@ def test_split_bf16_matches_single_kernel_within_one_ulp(
         mask_mode="keep",
     )
     np.testing.assert_allclose(candidate, reference, rtol=1e-2, atol=1e-3, equal_nan=True)
+
+
+@pytest.mark.parametrize("dtype", ["f32", "bf16"])
+@pytest.mark.parametrize("head_dim", [256, 512])
+@pytest.mark.parametrize("keys,slices", [(1, 4), (5, 4), (17, 8)])
+def test_empty_split_slices_overwrite_poison(attention_library, dtype, head_dim, keys, slices):
+    reference, candidate, _ = _split_ab(
+        attention_library, dtype=dtype, num_heads=2, num_kv_heads=1,
+        head_dim=head_dim, keys=keys, mask_mode="keep",
+        split_slices=slices, poison=True,
+    )
+    assert np.isfinite(candidate).all()
+    np.testing.assert_allclose(candidate, reference, rtol=1e-2, atol=1e-3)
 
 
 def decode_slices_for(keys, head_dim):
