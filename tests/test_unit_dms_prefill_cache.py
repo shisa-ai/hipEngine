@@ -85,6 +85,65 @@ def test_branch_uses_boundary_recurrence_and_sliced_cold_kv():
     assert cache.lookup(session, tokens, False) is None
 
 
+@pytest.mark.parametrize("budget,expected", [(6000, 256), (10000, 512), (100, None)])
+def test_oversized_snapshot_retains_owned_boundary_within_budget(budget, expected):
+    from hipengine.runtime.dms_prefix import DMSPrefixCache, DMSPromptSnapshot
+    tokens = tuple(range(900))
+    keys = np.arange(1800, dtype=np.uint8)
+    cold = DMSColdPrefill(tokens, ((keys, keys.copy()),),
+                          np.zeros((1, 900, 1), np.float32),
+                          np.zeros((1, 900, 1), np.uint8),
+                          np.zeros((900, 8), np.uint8),
+                          {256: (np.ones(20, np.uint8),),
+                           512: (np.ones(20, np.uint8),)})
+    runner = object()
+    session = SimpleNamespace(runner=runner, dms_backend_factory=None,
+                              _dms_source=SimpleNamespace(config=SimpleNamespace(fingerprint="policy")))
+    source = DMSPromptSnapshot(runner, None, "policy", tokens, False,
+                               SimpleNamespace(nbytes=1000), (np.zeros(20, np.uint8),),
+                               None, cold, (1234, 900))
+    cache = DMSPrefixCache(budget)
+    assert cache.put(source) == (source,)
+    assert cache.nbytes <= budget
+    prefix = cache.lookup(session, (*tokens, 9999), False)
+    if expected is None:
+        assert prefix is None
+        return
+    assert len(prefix.tokens) == expected
+    assert not prefix.complete and prefix.compact is None and prefix.result is None
+    assert prefix.checkpoint_key == (1234, expected)
+    exact = cache.lookup(session, prefix.tokens, False)
+    assert exact is None or (not exact.complete and len(exact.tokens) < expected)
+    pairs = [(prefix.cold.layers[0][0], keys),
+             (prefix.cold.hidden, cold.hidden),
+             (prefix.cold.predictor_logits, cold.predictor_logits),
+             (prefix.cold.predictor_decisions, cold.predictor_decisions)]
+    for retained, original in pairs:
+        assert not np.shares_memory(retained, original)
+        assert retained.base is None
+        assert not retained.flags.writeable
+    if expected == 512:
+        branch = cache.lookup(session, (*tokens[:300], -1), False)
+        assert len(branch.tokens) == 256
+
+
+@pytest.mark.parametrize("chunk_outer", [False, True])
+def test_cache_boundaries_follow_natural_recurrent_chunks(chunk_outer):
+    from hipengine.runtime.dms_prefill_cache import cache_boundary_points
+    session = SimpleNamespace(
+        _dms_cache_capture_tokens=tuple(range(12001)),
+        _dms_cache_byte_budget=1000,
+        scratch=SimpleNamespace(layer_conv_states=[SimpleNamespace(nbytes=150)],
+                                layer_recurrent_states=[None]),
+        _linear_prefill_layer_chunk_size=lambda total: 256 if chunk_outer else 4096,
+        _prefill_scratch_rows=lambda total: 4096,
+        _prefill_hidden_a=SimpleNamespace(nbytes=(4096 if chunk_outer else 12001) * 16),
+        _bulk_prefill_scratch=SimpleNamespace(rows=4096),
+        runner=SimpleNamespace(hidden_size=8, weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))))
+    assert {4096, 8192} <= set(cache_boundary_points(session))
+    assert len(cache_boundary_points(session)) <= 3
+
+
 def test_completed_boundaries_require_every_recurrent_layer():
     from hipengine.runtime.dms_prefill_cache import completed_boundaries
     a, b = np.array([1], np.uint8), np.array([2], np.uint8)

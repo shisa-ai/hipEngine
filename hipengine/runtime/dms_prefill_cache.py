@@ -75,7 +75,27 @@ def cache_boundary_points(session):
     budget = int(getattr(session, "_dms_cache_byte_budget", 1 << 30)) // 2
     count = min(4, budget // max(1, state_bytes))
     blocks = (len(tokens) - 1) // 256
-    return tuple((np.linspace(1, blocks, min(count, blocks), dtype=int) * 256).tolist())
+    fallback = (np.linspace(1, blocks, min(count, blocks), dtype=int) * 256).tolist()
+    # Layer-outer prefill captures recurrence only at natural chunk ends.
+    # Arbitrary block-grid points otherwise produce no restorable state at all.
+    chunk_size = session._linear_prefill_layer_chunk_size(len(tokens))
+    hidden = getattr(session, "_prefill_hidden_a", None)
+    if hidden is not None and hidden.nbytes // (session.runner.hidden_size * 2) < len(tokens):
+        # Chunk-outer execution uses the shared scratch width, not the
+        # layer-outer linear chunk setting (these can differ substantially).
+        chunk_size = min(session._prefill_scratch_rows(len(tokens)),
+                         int(session._bulk_prefill_scratch.rows))
+    reuse = getattr(session, "_dms_prefill_reuse", None)
+    start = 0 if reuse is None else len(reuse.tokens)
+    minimum = int(session.runner.weights.config.ssm_conv_kernel)
+    natural = list(range(start + chunk_size, len(tokens), chunk_size))
+    natural = [end for end in natural if len(tokens) - end >= minimum]
+    if reuse is not None:
+        natural = sorted({*natural, start, *reuse.cold.boundaries})
+    selected = [natural[i] for i in np.linspace(0, len(natural) - 1,
+                                               min(count, len(natural)), dtype=int)]
+    selected.extend(end for end in fallback if end not in selected)
+    return tuple(sorted(selected[:count]))
 
 
 def capture_recurrent_boundary(session, layer, end):

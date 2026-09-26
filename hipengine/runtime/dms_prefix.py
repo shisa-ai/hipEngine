@@ -71,13 +71,57 @@ class DMSPrefixCache:
         previous = self.entries.pop(snapshot.tokens, None)
         if previous is not None:
             evicted.append(previous)
-        if snapshot.nbytes <= self.max_bytes:
-            self.entries[snapshot.tokens] = snapshot
-        else:
+        if snapshot.nbytes > self.max_bytes:
             evicted.append(snapshot)
+            snapshot = _fitting_prefix(snapshot, self.max_bytes)
+        if snapshot is not None:
+            previous = self.entries.pop(snapshot.tokens, None)
+            if previous is not None:
+                evicted.append(previous)
+            self.entries[snapshot.tokens] = snapshot
         while self.entries and (self.nbytes > self.max_bytes or len(self.entries) > self.max_entries):
             evicted.append(self.entries.popitem(last=False)[1])
         return tuple(evicted)
+
+
+def _fitting_prefix(source, budget):
+    """Own a restorable boundary when the complete prompt exceeds the budget.
+
+    Views are useful for sizing candidates but cannot be retained: their bases
+    would keep the entire oversized prompt alive while underreporting its bytes.
+    Keep earlier boundaries too, so sibling requests can still share a prefix.
+    """
+    if source.cold is None:
+        return None
+    for end in sorted(source.cold.boundaries, reverse=True):
+        cold = source.cold
+        layers = tuple(tuple(a[:end * (a.size // len(source.tokens))] for a in pair)
+                       for pair in cold.layers)
+        candidate = replace(
+            cold, tokens=source.tokens[:end], layers=layers,
+            predictor_logits=None if cold.predictor_logits is None else cold.predictor_logits[:, :end],
+            predictor_decisions=cold.predictor_decisions[:, :end], hidden=cold.hidden[:end],
+            boundaries={n: arrays for n, arrays in cold.boundaries.items() if n < end},
+        )
+        recurrent = cold.boundaries[end]
+        if candidate.nbytes + sum(a.nbytes for a in recurrent) > budget:
+            continue
+
+        def own(array):
+            result = array.copy()
+            result.flags.writeable = False
+            return result
+
+        candidate = replace(
+            candidate, layers=tuple(tuple(own(a) for a in pair) for pair in candidate.layers),
+            predictor_logits=None if candidate.predictor_logits is None else own(candidate.predictor_logits),
+            predictor_decisions=own(candidate.predictor_decisions), hidden=own(candidate.hidden),
+            boundaries={n: tuple(own(a) for a in arrays) for n, arrays in candidate.boundaries.items()},
+        )
+        return replace(source, tokens=candidate.tokens, compact=None, result=None,
+                       recurrent_and_logits=tuple(own(a) for a in recurrent), cold=candidate,
+                       complete=False, checkpoint_key=(source.checkpoint_key[0], end))
+    return None
 
 
 def _buffers(session, include_logits):
