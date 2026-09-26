@@ -1494,6 +1494,42 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 78: the port to serve the two outlier layers is exact and is
+  mechanical.** Iteration 77 left one open question that decided whether writing
+  a grouped owner for Q5_K/Q8_0 was worth anything: the grouped owners are
+  documented bit-identical to *each other*, never to the selected GEMV they would
+  replace, so a ported owner might have been unpromotable no matter how fast.
+
+  Measured directly. Q8_0 at Gemma's down geometry (8192 compact rows, 128
+  experts, in 704, out 2816), ``selected_gemv_bf16_bf16_out`` against
+  ``selected_grouped_gemv_bf16_bf16_out``:
+
+  ```
+  differing: 0 / 23068672        BIT-IDENTICAL
+  ```
+
+  So the two families do share one arithmetic -- same thread-to-column map, same
+  256-thread tree per output -- and a ported ``out4_amortized`` owner inherits
+  that, which is what makes it promotable to the exact default rather than another
+  numerical candidate.
+
+  The port itself is mechanical rather than a rewrite. The Q4_K dual kernel
+  (``gguf_q4_k_selected_prefill.hip`` line 191,
+  ``gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel``) decodes through small
+  helpers -- ``gguf_q4_k_scale``, ``_min``, ``_quant``, ``_weight``, and a paired
+  ``q4_k_weight_pair128`` -- and Q5_K differs from Q4_K in exactly one place: the
+  32-byte ``qh`` slab carrying each weight's fifth bit, on the same superblock
+  layout and the same 6-bit scale packing. A ``gguf_q5_k_*`` set of the same
+  helpers plus an instantiation is the whole change.
+
+  Worth doing for the ``gate_up`` and not for the ``down``. The 58 layers run the
+  dual amortized owner at this geometry in 488.5 ms, about 8.4 ms per layer, while
+  the two outlier layers' Q5_K ``gate_up`` costs 77.97 ms per call -- so a ported
+  owner is worth roughly 139 ms, 7.2% of the 1939 ms default path. Their Q8_0
+  ``down`` is a different story: at in 704 the selected GEMV is already 24.75 ms
+  per call, against 40.2 ms for the q5_1 amortized owner at the same geometry, so
+  there the incumbent is the faster shape and a port would lose.
+
   **Iteration 77: the two outlier layers, settled by the registry rather than by
   inference.** The 205 ms those two layers cost (10.6% of the default path) had
   been attributed twice by reasoning about which owners "should" exist. The
