@@ -1004,6 +1004,38 @@ direction. The clean-device pass also puts every other cell 4-10% above its
     a lead-level investment decision, and it now sits alongside the split's
     pending accept-or-return decision. Evidence row
     `2026-09-26-gemma4-26b-a4b-q5_1-variant-ab-rejected.json`.
+
+  *Analysis 2026-09-26 (iteration 43): where the target actually sits, and the
+  sliding-window line closed.* Two things were settled, one negative and one
+  arithmetic.
+
+  - **The sliding window is already honored, so there is no lever and no bug.**
+    The artifact carries `sliding_window = 1024` with 25 of 30 layers sliding,
+    and the sliding layers also use a *different* RoPE (`dimension_count_swa`
+    256 against 512, `freq_base_swa` 10000 against 1000000). `runtime/gemma4.py`
+    honors all of it: `key_length_swa` and `swa_rope` are selected per layer
+    type, `sliding_window` is passed to the attention, and `_sliding_read_range`
+    computes `max(0, live - window)` for decode so the kernel does not walk keys
+    outside the window. A windowed read that is arithmetic-preserving was the
+    last unblocked idea on attention; it is already implemented.
+  - **The campaign target sits above the reference implementation.** The target
+    is 70% of Qwen3.6-35B-A3B's 114.57, i.e. **80.2 tok/s**. The doc also records
+    llama.cpp at **68.92 tok/s on this same artifact and hardware**, so the target
+    is **16.4% above** what the reference implementation achieves, and the
+    comparison is not like-for-like: Qwen3.6-35B-A3B has fewer active parameters
+    (A3B against A4B).
+  - **The reachable envelope from the work already identified.** Current 45.94
+    (step 21.77 ms, 66.7% of llama.cpp). Taking the MoE from its production 6.2 ms
+    to its measured 0.94 ms roofline saves 5.26 ms -> 60.58 tok/s (87.9%). Adding
+    the split's measured +5.3% -> **63.79 tok/s, 92.6% of llama.cpp**, step 15.68
+    ms. That is an *upper bound* on that path, because it assumes a MoE kernel
+    that does not exist yet; the split half is measured.
+  - **Recommendation, presented not taken:** re-base the campaign target on the
+    same-artifact llama.cpp reference, where 92.6% is a near-term goal from work
+    already identified, rather than on 70% of a different model's throughput.
+    Reaching 80.2 would require beating llama.cpp on attention and the dense
+    projections as well. Evidence row
+    `2026-09-26-gemma4-26b-a4b-target-gap-arithmetic.json`.
   *Diagnostic 2026-09-26 (iteration 33): the routing hypothesis is closed, and
   the campaign's three-cheap-candidates rule is now in play.* A resolve-level
   probe over a real 1024-token `LLM.generate()` - spying on

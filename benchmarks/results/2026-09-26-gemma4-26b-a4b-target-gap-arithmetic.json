@@ -1,0 +1,58 @@
+{
+  "id": "2026-09-26-gemma4-26b-a4b-target-gap-arithmetic",
+  "date": "2026-09-26",
+  "kind": "analysis",
+  "status": "diagnostic",
+  "campaign": "GEMMA4-26B-A4B-OPTIMIZATION",
+  "iteration": 43,
+  "subject": "The campaign target sits 16% above llama.cpp's own result on the same artifact; the two pending decisions land at 92.6% of llama.cpp",
+  "inputs": {
+    "current_decode_tps_1024p128o": 45.9396,
+    "step_ms": 21.77,
+    "moe_production_ms": 6.2,
+    "moe_roofline_ms": 0.94,
+    "split_measured_gain": 1.053,
+    "llama_cpp_same_artifact_tps": 68.92,
+    "qwen36_35b_a3b_reference_tps": 114.57,
+    "campaign_target_tps": 80.2
+  },
+  "arithmetic": [
+    {
+      "state": "current",
+      "tps": 45.94,
+      "pct_of_llama_cpp": 66.7
+    },
+    {
+      "state": "MoE to roofline",
+      "tps": 60.58,
+      "pct_of_llama_cpp": 87.9,
+      "saves_ms": 5.26
+    },
+    {
+      "state": "MoE to roofline + split",
+      "tps": 63.79,
+      "pct_of_llama_cpp": 92.6,
+      "step_ms": 15.68
+    },
+    {
+      "state": "llama.cpp same artifact",
+      "tps": 68.92,
+      "pct_of_llama_cpp": 100.0
+    },
+    {
+      "state": "campaign target (70% of Qwen)",
+      "tps": 80.2,
+      "pct_of_llama_cpp": 116.4
+    }
+  ],
+  "findings": [
+    "The campaign's target of 80.2 tok/s is 16.4% above llama.cpp's 68.92 on the same artifact and hardware, so it requires beating the reference implementation, not merely matching it.",
+    "The comparison basis is not like-for-like: the target is 70% of Qwen3.6-35B-A3B's 114.57, a different model with fewer active parameters (A3B vs A4B). The same-artifact llama.cpp figure is the reference that isolates engine quality.",
+    "The two pending lead decisions - accepting the decode attention split (+5.3%, measured) and authoring a selected GEMV that reaches the MoE's 0.94 ms roofline - land at 63.79 tok/s, 92.6% of llama.cpp. That is the reachable envelope from the work already identified.",
+    "The 63.79 figure is an upper bound on that path: it assumes the MoE kernel reaches its roofline, and that kernel does not exist yet. The split half of it is measured.",
+    "Reaching 80.2 would additionally require beating llama.cpp on attention and the dense projections, on top of both decisions above."
+  ],
+  "recommendation": "Re-base the campaign's target on the same-artifact llama.cpp reference (68.92 tok/s), where 92.6% is a near-term, measurable goal from work already identified, rather than on 70% of a different model's throughput. Presented as arithmetic for the lead to decide, not taken.",
+  "product_path_changed": false,
+  "rows_moved": false
+}
