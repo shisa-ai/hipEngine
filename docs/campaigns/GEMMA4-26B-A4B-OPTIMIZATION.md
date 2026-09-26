@@ -1494,6 +1494,41 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 80: pass 3 is bounded by the mask's last kept key.** The kernel
+  already contained the argument this generalises: ``key_begin``'s docstring
+  shortens the key range of a one-row block because a dropped key contributes
+  exactly zero to both reductions and the surviving terms keep their ascending
+  order. That argument is per row, not per block, so the kernel can read the
+  bound out of the caller's own mask rather than assuming a shape.
+
+  Pass 3 walks every key for each of the row's dimensions, and the tail past the
+  last kept key is dead for that row and contributes weight 0 to every one of
+  them -- 0.0 * v is 0.0 and adding 0.0 to a float is identity, so skipping those
+  terms is exact. ``last_active`` is a block max-reduce over ``mask_row``,
+  reusing ``max_s`` after ``row_max`` was reduced from it and pass 2's tree
+  barriers had retired the reads. Because the bound is read from the mask rather
+  than assumed causal, it holds for the windowed sliding layers as well as the
+  full causal ones; pass 3 takes the bound as its ``keys`` argument, so the
+  change is at the call site plus the reduction.
+
+  Measured, W7900 census, same script and artifact: ``attention_prefill`` 227.1
+  -> 214.7 ms (-12.5, -5.5%), prefill 513.4 -> 522.5 tok/s (+1.8%). Exactness:
+  the teacher-forced gate returns ``kl_max`` 0.0 with ``passed: true`` and
+  ``failed: []`` over 1023 x 262144 float32 logits.
+
+  **The estimate was 57 ms and the measurement is 12.5 ms.** I priced pass 3 by
+  its iteration count -- half a causal row's walk -- but the prefetch pipeline
+  had already made that walk latency-tolerant and the existing ``weight == 0``
+  skip was already suppressing the V loads. What was left to save was loop
+  overhead, not memory traffic. The same mistake as the Q5_K probe in iteration
+  79, in the opposite direction: a count of iterations is not a cost when a
+  pipeline or a skip has already hidden most of them.
+
+  A note on the gate script: its output flag is ``--out``, not ``--json``. The
+  first invocation of this arm died on argument parsing and wrote nothing, while
+  exiting 0 and being reported as a success. A background task's exit status is
+  not evidence that its command was valid.
+
   **Iteration 79: the Q5_K grouped dual owner lands, 6.3x on the two outlier
   layers.** Iteration 78 established that the port was worth writing and exact in
   principle; this is it, built and measured.

@@ -621,11 +621,40 @@ __global__ void gemma4_attention_decode_class_kernel(
   const int64_t v_row_stride = num_kv_heads * head_dim;
   const scalar_t* v_base = value + kv_head * head_dim;
   scalar_t* out_row = out + head_index * head_dim;
+  // Pass 3 walks every key for each of this row's dimensions, but the tail past
+  // the last key the mask keeps contributes weight 0 to every one of them -- the
+  // same argument key_begin's docstring makes for shortening the range of a
+  // one-row block. The mask is the caller's, causal on the full layers and
+  // windowed on the sliding ones, so the bound is read out of it rather than
+  // assumed. max_s is free here: row_max was reduced from it before pass 2, and
+  // pass 2's tree barriers have retired every read of it.
+  int local_last = -1;
+  for (int64_t j = static_cast<int64_t>(tid); j < keys; j += threads) {
+    if (mask_row[j] != 0) {
+      local_last = static_cast<int>(j);
+    }
+  }
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    const int other = __shfl_down(local_last, offset);
+    local_last = other > local_last ? other : local_last;
+  }
+  if ((tid & 31u) == 0u) {
+    max_s[tid >> 5] = static_cast<float>(local_last);
+  }
+  __syncthreads();
+  int last_active = -1;
+  for (unsigned int w = 0; w < (threads >> 5); ++w) {
+    const int per_warp = static_cast<int>(max_s[w]);
+    last_active = per_warp > last_active ? per_warp : last_active;
+  }
+  const int64_t pass3_keys =
+      static_cast<int64_t>(last_active) + 1 < keys ? static_cast<int64_t>(last_active) + 1 : keys;
   if (head_dim >= 2 * static_cast<int64_t>(threads)) {
-    gemma4_decode_pass3<2, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, keys,
+    gemma4_decode_pass3<2, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, pass3_keys,
                               denominator, threads, tid);
   } else {
-    gemma4_decode_pass3<1, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, keys,
+    gemma4_decode_pass3<1, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, pass3_keys,
                               denominator, threads, tid);
   }
 }
