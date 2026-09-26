@@ -139,23 +139,77 @@ __global__ void gemma4_attention_prefill_kernel(
 
   // Pass 1: logits and their running maximum. A masked-out key is -inf so it
   // contributes nothing to either the denominator or the numerator.
+  //
+  // At head_dim == 256 with a full block, thread *t* holds exactly one product,
+  // so the block-wide tree sums 256 values a single warp can hold. Doing that
+  // per key costs eight __syncthreads rounds per key, which is the whole cost of
+  // this kernel (measured 147 GFLOP/s and ~5.3 us per key at 512 tokens,
+  // invariant to the work inside the key iteration). One warp per key runs the
+  // same tree in registers instead: lane *l* holds logical threads l + 32k, so
+  // the 128/64/32 stages and the final stride-1 stage are intra-lane, and
+  // strides 16..1 are warp shuffles. Every pair added is the pair the block tree
+  // adds, in the same order, so the logits are bit-identical.
   float running_max = -INFINITY;
-  for (int64_t j = 0; j < keys; ++j) {
-    float logit = -INFINITY;
-    if (mask_row[j] != 0) {
-      const scalar_t* k_row = key + (j * num_kv_heads + kv_head) * head_dim;
-      float dot = 0.0f;
-      for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
-        dot += q_s[d] * gemma4_attn_to_float(k_row[d]);
+  if (head_dim == 256 && blockDim.x == 256) {
+    const int lane = static_cast<int>(threadIdx.x) & 31;
+    for (int64_t j = threadIdx.x >> 5; j < keys; j += 8) {
+      float logit = -INFINITY;
+      if (mask_row[j] != 0) {
+        const scalar_t* k_row = key + (j * num_kv_heads + kv_head) * head_dim;
+        float p[8];
+        {
+          // Contraction off for the leaves. The tree this replaces stored each
+          // product in shared memory before adding it, so every leaf was a
+          // single rounded multiply; letting the compiler fuse a leaf into the
+          // first tree add (fma(q, k, p[4])) rounds once instead of twice and
+          // the logits stop being bit-identical.
+#pragma clang fp contract(off)
+#pragma unroll
+          for (int k = 0; k < 8; ++k) {
+            const int d = lane + 32 * k;
+            p[k] = q_s[d] * gemma4_attn_to_float(k_row[d]);
+          }
+        }
+#pragma unroll
+        for (int k = 0; k < 4; ++k) {
+          p[k] += p[k + 4];
+        }
+#pragma unroll
+        for (int k = 0; k < 2; ++k) {
+          p[k] += p[k + 2];
+        }
+        p[0] += p[1];
+#pragma unroll
+        for (int offset = 16; offset > 0; offset >>= 1) {
+          p[0] += __shfl_down(p[0], offset);
+        }
+        logit = __shfl_sync(0xffffffffull, p[0], 0) * scale;
+        if (lane == 0) {
+          logits_s[j] = logit;
+        }
+      } else if (lane == 0) {
+        logits_s[j] = logit;
       }
-      logit = gemma4_attn_block_sum(partial, dot) * scale;
+      running_max = fmaxf(running_max, logit);
+    }
+  } else {
+    for (int64_t j = 0; j < keys; ++j) {
+      float logit = -INFINITY;
+      if (mask_row[j] != 0) {
+        const scalar_t* k_row = key + (j * num_kv_heads + kv_head) * head_dim;
+        float dot = 0.0f;
+        for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
+          dot += q_s[d] * gemma4_attn_to_float(k_row[d]);
+        }
+        logit = gemma4_attn_block_sum(partial, dot) * scale;
+        __syncthreads();
+      }
+      if (threadIdx.x == 0) {
+        logits_s[j] = logit;
+      }
+      running_max = fmaxf(running_max, logit);
       __syncthreads();
     }
-    if (threadIdx.x == 0) {
-      logits_s[j] = logit;
-    }
-    running_max = fmaxf(running_max, logit);
-    __syncthreads();
   }
   const float row_max = gemma4_attn_block_max(partial, running_max);
   __syncthreads();
