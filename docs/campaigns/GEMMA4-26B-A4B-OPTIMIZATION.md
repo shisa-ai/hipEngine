@@ -665,6 +665,62 @@ direction. The clean-device pass also puts every other cell 4-10% above its
   selects the strict path), records both in the baseline, and refuses to compare
   arms whose scored key range differs. The three arms above are the first real
   gate verdicts this path has had.
+
+  *Diagnostic 2026-09-26 (iteration 37): what the breach actually is.* The
+  rejected candidate's row-level record said `max|delta logit|` was 18-20 on the
+  outlier rows, which reads as a large arithmetic difference. It is not, and
+  neither is the breach a near-tie effect. Against the same frozen strict
+  baseline, 1023 paired rows at keys 1025-2047, the shipped 4-slice split gives:
+
+  ==================  =========  =========  =========  =========  =========
+  statistic              p50        p90        p99      p99.9        max
+  ==================  =========  =========  =========  =========  =========
+  row KL              2.592e-08  1.040e-06  3.955e-05  3.611e-02  5.559e-02
+  max|delta logit|        1.085      2.797      7.803     22.586     22.586
+  ==================  =========  =========  =========  =========  =========
+
+  A one-logit difference is the **median**, not the exception: 571 of 1023 rows
+  exceed 1 and 37 exceed 5. It is almost always invisible in KL, because it sits
+  in the tail of a peaked distribution - the row with the largest difference of
+  all (row 863, 22.586) has KL 0.0000, and `corr(kl, max|delta logit|)` is only
+  0.288. The two are largely independent, so the earlier reading of that figure
+  as the explanation for the breach was wrong. What the breach actually is:
+
+  - **Two rows of 1023 exceed 1e-3 KL, and one exceeds the 0.05 bar.** The
+    distribution is not a broad drift: p50 2.592e-08 and p99 3.955e-05 sit two
+    to four orders of magnitude inside their bars, and only the 99.9th
+    percentile and the maximum cross any line.
+  - **Top-1 never flips on any row.** The candidate comes out *sharper* on the
+    outlier rows (p_top1 0.995465 -> 0.999999), so its top logits differ from
+    strict's by 5-15, which is far above f32 association error and is what makes
+    the tail collapse.
+  - **The KL is carried by mid-rank tokens, not the decision.** On row 864 the
+    largest single contribution is at rank 7220 of 262144; the top-1 token
+    contributes a *negative* 8% of the total.
+  - **The divergence is shared across slice counts.** 4 slices and 16 slices
+    differ from strict by comparable amounts and in the same direction, and the
+    difference between the two split arms is small (kl_max 0.0556 against
+    0.1508). A difference that is largely identical at 4 and 16 slices must come
+    from the code the two share, not from how the key range is divided: either
+    phase 1 - which the design claims is the incumbent kernel's own passes 1 and
+    2, and which nothing has verified bit-for-bit - or the combine's division by
+    phase 1's denominator.
+  - **The prompt is cycled prose.** `exact_prompt_ids` repeats a six-sentence
+    corpus to reach 2048 tokens, so the rows that breach are repeated-context
+    rows where the model is legitimately near-certain. `kl_max` is a single
+    order statistic, and on a peaked reference it is dominated by the residual
+    tail: a candidate whose tail is a few orders of magnitude smaller scores a
+    large KL while agreeing on every token.
+
+  What that leaves for the campaign is a decision rather than a measurement, and
+  it is recorded here rather than taken: either phase 1 is made bit-identical to
+  the single kernel's pass 2 (a kernel-level test, and the next experiment -
+  compare the split's phase-1 weights against the single kernel's, rather than
+  comparing end-to-end logits), or the applicability of an absolute `kl_max` bar
+  to a peaked reference on a greedy workload is re-derived with the lead, or the
+  strict path returns as the default. The `kl_mean`, `kl_p95`, `kl_p99` and
+  top-1 bars - the ones a greedy workload actually depends on - pass in every
+  arm with room to spare.
   *Diagnostic 2026-09-26 (iteration 31): the MoE decode linears are now the
   largest single item in the step and the achieved-bandwidth baseline did not
   exist.* With attention down to roughly 8.5 ms and the host gap cut by 6.4 ms,
