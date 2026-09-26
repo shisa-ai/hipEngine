@@ -1494,6 +1494,58 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
+  already most of the way to it.** The dense win in iteration 85 leaves the two
+  grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
+  (q5_1, 450.3 ms) and ``moe_grouped_dual`` (q4_k, 443.1 ms) are 57% of the
+  remaining prefill -- and the MoE dispatch consults the MMQ session zero times.
+
+  **The owners exist, and their names mislead.** ``moe_linear`` carries dp4a
+  owners for exactly these quants. The one that matters is
+  ``gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out``:
+  despite the ``selected_`` prefix it takes ``expert_start_compact_ptr`` -- the
+  compacted, grouped expert layout -- and it is a *dual* owner writing both
+  halves of the fused gate_up row, which is the same shape as the
+  ``moe_grouped_dual`` owner it would replace. The prefix is legacy naming, not
+  a statement about the layout.
+
+  **Feasibility is checked, not assumed.** ``_check_mmq32_common`` requires
+  ``in_features % 256 == 0`` and ``out_features % 32 == 0``; Gemma's expert
+  gate_up is 2816 in (11 x 256) by 704 per half (22 x 32), and
+  ``mmq_total_rows % 32`` holds by construction from the tile plan. Every
+  constraint is satisfied.
+
+  **The Gemma MoE path already has the hard parts.** ``Gemma4ExpertScratch``
+  carries ``expert_start``, ``wmma_expert_start``, ``wmma_tile_expert`` and
+  ``wmma_total``, and ``gemma4_experts_forward_bf16`` already builds the tile
+  plan from them (lines 272-274) and already has ``packed_hidden``, the
+  compacted activation batch. What is missing is the DS4-Q8_1 activation
+  workspace and the routing.
+
+  The reference wiring is ``qwen4_exp_runner.py:3794``, and it is three calls:
+  ``gguf_q4_k_q8_1_mmq_ds4_pack_bf16`` to quantize the compacted activations
+  into the ds4 workspace, ``qwen35_moe_wmma_tile_map`` to build the plan (with
+  ``wmma_total_rows`` read back from the device and validated against the tile
+  capacity), then the owner itself. The routing belongs in
+  ``gemma4_experts_forward_bf16`` rather than in
+  ``gemma4_project_experts_grouped_dual``, because that function receives
+  ``expert_start_ptr`` but not the scratch the plan lives in.
+
+  **Why this is worth doing: the MoE line is dequant-bound, like the dense line
+  was.** Its expert weights are about 850 MB per layer, all 128 experts being
+  active across a 1024-token batch, so a prefill reads roughly 49 GB of expert
+  weights against a 51 ms floor at 960 GB/s -- and it takes 893 ms. It is at 6%
+  of its memory floor and near 10% of peak, which is the same
+  instruction-throughput wall iteration 81 diagnosed on the dense line, and the
+  same fix applies.
+
+  Two things are not established and should not be assumed. The q5_1 *down*
+  projection (450.3 ms, the other half of the MoE line) has only a
+  ``selected_`` dp4a owner in the registry, not a ``compact32`` one, so it may
+  not be applicable to the grouped path at all. And per iteration 85's lesson,
+  the only measurement that counts here is the model's own census: an isolated
+  crossover with constructed activations is what produced a wrong answer twice.
+
   **Iteration 85: the MMQ dense line lands, +14.4% prefill, and it is the
   campaign's first non-exact win.** Iteration 84 wired the guarded d4x3 chain
   and measured a regression, then reverted. The regression was not the chain: it
