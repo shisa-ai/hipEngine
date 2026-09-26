@@ -196,6 +196,7 @@ qwen35moe fast-path safety gate.
 | `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` | unset | none | Resolves the MTP2 context window used by the dense speculative route; unset takes the model's retained window. Benchmark harnesses export it through `scripts/bench_env_preflight.py` to catch wrappers that silently drop it. |
 | `HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES` | `4` | none | Bounded provider KV/state checkpoints for MTP restoration after a target radix-cache hit. Capture is disabled when target prefix caching is off. Set `0` for the memory/bisection rollback; prefix hits without a provider checkpoint cannot restore MTP provider state. |
 | `HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS` | `4` | none | Server cap on concurrently active MTP2 (dense speculative) requests. |
+| `HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ` | unset (off) | none | Selects the fused int8-dp4a MMQ32 route for Gemma 4's `Q4_K` expert gate/up prefill, measured at 1.27x on the 512/128 prefill. Off by default: against the strict arm it measures `kl_max` 0.0651 on 2 of 1022 rows against the binding 0.05 bar, while `kl_mean`, `kl_p95`, `kl_p99` and top-1 pass with margin. Set to `1` to select it; see `docs/REFACTOR.md` for the removal condition. |
 
 ## Vision (multimodal server input) variables
 

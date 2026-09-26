@@ -1181,6 +1181,58 @@ direction. The clean-device pass also puts every other cell 4-10% above its
     shelf**: fusion that does not serialise a reduction before a dependent
     transform, or a graph that helps where host is already hidden. Evidence row
     `2026-09-26-gemma4-26b-a4b-profile-gap-closed-launch-bubbles.json`.
+  *Measured 2026-09-27 (iteration 46): the expert gate/up prefill takes the MMQ
+  route the Qwen4 experts already use, and it is 1.27x - but it lands in the
+  kl_max decision rather than settling it.* The route reads the artifact's
+  per-expert fused `gate | up` row block directly through the int8-dp4a MMQ32
+  leaf (`gguf_q4_k_selected_dual_q8_1_ds4_mmq32_...`), replacing the two fp32
+  grouped launches per layer. The leaf's expert stride assumed two expert-major
+  weight tensors; a fused-layout template flag makes it
+  `out_features_a + out_features_b`, defaults to false, and leaves every
+  existing instantiation untouched. 512/128 prefill **4.200 -> 3.313 s**
+  (121.9 -> 154.3 tok/s, **+26.5%**, 1.265x), 2048/128 **21.836 -> 18.268 s**
+  (93.85 -> 112.06 tok/s, 1.195x), public path parity true, decode unchanged. At the
+  leaf's own geometry the two fp32 grouped launches take 36.94 ms against the
+  fused MMQ route's pack + tile map + one launch at 6.56 ms.
+  *The gate verdict is the iteration-37/38 situation again, with better
+  aggregates.* Against the same strict baseline, 1022 rows: kl_mean 1.438e-04,
+  kl_p95 1.329e-05, kl_p99 1.489e-04, top-1 rate 1.0 with zero flips - all well
+  inside their bars - and kl_max 6.510e-02 on 2 rows against the 0.05 bar. The
+  shipped 4-slice split breaches that bar on this chain at 1 row (0.055589) and
+  **row 863 is the same row** (teacher p_top1 0.995465, top-1 unchanged). The
+  two breaching rows here are near-certain repeated-context rows where the
+  decision does not move, 1019 of 1022 rows sit below 1e-3 KL at a median of
+  1.5e-07, and max|delta logit| is 2.49 at the median across both the quiet rows
+  and the whole set, so the perturbation is not the discriminator. Raising the
+  activation precision cannot clear the bar: this leaf's `ACTIVATION_PASSES` is
+  unused in its body (a three-plane pack returned byte-identical output for +8%
+  cost, and was removed), and iteration 38 already measured the split breaching
+  at 2, 4, 8 and 16 slices alike.
+  *Decision-stability probes, and an evaluator gap they expose.* Three ad-hoc
+  single-run probes through the public runner, recorded as diagnostics rather
+  than a row. A natural English paragraph agrees **exactly** over 16 greedy
+  tokens. A Python snippet agrees for two tokens, then the route takes 236772
+  where the incumbent takes 20470 and emits that token fourteen times in a row
+  while the incumbent continues with varied tokens. A 60-fold repeated sentence
+  flips the first greedy token (108 against 107) at a position where the
+  incumbent's own top-1 is 0.2532 (top four 0.2532/0.1775/0.1665/0.1328) and the
+  route's is 0.5877, with the top logit moving 1.005 -> 14.029. Pinning the
+  attention split to one slice changes none of it, since a 721-key context never
+  engages the split. Two things follow: the route changes decisions at
+  low-margin positions, and **the frozen 1022-row chain cannot see that class** -
+  its rows are near-one-hot repeated prose, so it reports zero top-1 flips while
+  these probes flip at the first low-margin position they meet. Any future
+  promotion of a changed-arithmetic route on this model needs a probe suite that
+  contains low-margin positions; the current evaluator's top-1 bar is nearly
+  blind there.
+  So the route is implemented, registered, tested and measured, but it does
+  **not** become the default path: `HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=1` selects
+  it, `docs/REFACTOR.md` carries the flag with its removal condition, and the
+  promotion call is the same lead decision iteration 38 recorded for the split -
+  whether an absolute `kl_max` applies to a change whose divergence is a
+  reordering-class tail effect. Evidence row
+  `2026-09-27-gemma4-moe-gate-up-mmq-measured-not-promoted.json`. The measured
+  1.27x is live the moment that decision lands.
   *Diagnostic 2026-09-26 (iteration 33): the routing hypothesis is closed, and
   the campaign's three-cheap-candidates rule is now in play.* A resolve-level
   probe over a real 1024-token `LLM.generate()` - spying on

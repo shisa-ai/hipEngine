@@ -23,6 +23,9 @@ _SYMBOL_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf
 _SYMBOL_DS4_MMQ32_BF16 = (
     "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 )
+_SYMBOL_FUSED_DS4_MMQ32_BF16 = (
+    "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out"
+)
 _SYMBOL_X8_DS4_MMQ32_BF16 = (
     "hipengine_gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 )
@@ -1736,6 +1739,59 @@ def gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
+
+
+def gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    compact_to_source_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq32_ptr: int,
+    mmq_tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the MMQ32 leaf for a per-expert fused gate | up weight block.
+
+    Same arithmetic and layout as
+    :func:`gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out`,
+    but the two weight pointers address the gate and up slices of one per-expert
+    row block, so an expert's stride is ``out_features_a + out_features_b``
+    rather than one half's width. Gemma 4's ``ffn_gate_up_exps`` is stored this
+    way, and the fused ``gate | up`` row output is exactly what its gelu-tanh-mul
+    consumer reads.
+    """
+
+    gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+        x_q8_ptr,
+        compact_to_source_ptr,
+        expert_start_compact_ptr,
+        expert_start_mmq32_ptr,
+        mmq_tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        _symbol=_SYMBOL_FUSED_DS4_MMQ32_BF16,
+    )
 
 
 def gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(

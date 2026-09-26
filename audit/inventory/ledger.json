@@ -2,7 +2,7 @@
   "kind": "ledger",
   "meta": {
     "source": "docs/REFACTOR.md",
-    "headings": 410
+    "headings": 411
   },
   "rows": [
     {
@@ -4704,6 +4704,46 @@
       },
       "id": "ledger/gdn-full-layer-diagnostic-graph-cache-edaf67cc157e",
       "evidence_hash": "60efa6795e48"
+    },
+    {
+      "kind": "ledger",
+      "key": "gemma-4-fused-mmq-gate-up-prefill-is-selectable-bu-23f888b0e3ce",
+      "title": "Gemma 4 fused MMQ gate/up prefill is selectable but not default (open 2026-09-27)",
+      "location": "docs/REFACTOR.md:9145",
+      "evidence": {
+        "paths_named": [
+          "docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md"
+        ],
+        "paths_missing": [],
+        "flags_named": [
+          "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ"
+        ],
+        "flags_unread": [],
+        "age_days": 0,
+        "body_chars": 1553
+      },
+      "signals": [],
+      "hints": {
+        "anchor": "docs/REFACTOR.md",
+        "refs": [
+          "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ",
+          "docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md"
+        ],
+        "tokens": [
+          "2026",
+          "but",
+          "default",
+          "fused",
+          "gate",
+          "gemma",
+          "mmq",
+          "open",
+          "prefill",
+          "selectable"
+        ]
+      },
+      "id": "ledger/gemma-4-fused-mmq-gate-up-prefill-is-selectable-bu-23f888b0e3ce",
+      "evidence_hash": "5951dc47418a"
     },
     {
       "kind": "ledger",

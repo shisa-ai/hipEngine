@@ -1,7 +1,7 @@
 {
   "kind": "flags",
   "meta": {
-    "names": 752,
+    "names": 753,
     "roots": "hipengine, scripts, tests, benchmarks"
   },
   "rows": [
@@ -2471,6 +2471,40 @@
       },
       "id": "flag/HIPENGINE_GDN_TLOOP_C1_EXACT",
       "evidence_hash": "43450df6f6eb"
+    },
+    {
+      "kind": "flag",
+      "key": "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ",
+      "title": "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ",
+      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:98",
+      "evidence": {
+        "default": "unknown",
+        "sites_by_root": {
+          "hipengine": 2
+        },
+        "runtime_sites": [
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:98",
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:104"
+        ],
+        "in_refactor_ledger": true,
+        "in_envs_doc": true
+      },
+      "signals": [],
+      "hints": {
+        "anchor": "env",
+        "refs": [
+          "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ"
+        ],
+        "tokens": [
+          "gate",
+          "gemma4",
+          "hipengine",
+          "mmq",
+          "moe"
+        ]
+      },
+      "id": "flag/HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ",
+      "evidence_hash": "e2def520ce10"
     },
     {
       "kind": "flag",
@@ -17014,16 +17048,16 @@
       "kind": "flag",
       "key": "HIPENGINE_Q4_PACK8_EXACT_PREFILL_EXPORT",
       "title": "HIPENGINE_Q4_PACK8_EXACT_PREFILL_EXPORT",
-      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip:2802",
+      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip:3134",
       "evidence": {
         "default": "unknown",
         "sites_by_root": {
           "hipengine": 3
         },
         "runtime_sites": [
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip:2802",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip:2820",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip:2822"
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip:3134",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip:3152",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip:3154"
         ],
         "in_refactor_ledger": false,
         "in_envs_doc": false
@@ -17046,7 +17080,7 @@
         ]
       },
       "id": "flag/HIPENGINE_Q4_PACK8_EXACT_PREFILL_EXPORT",
-      "evidence_hash": "1c3092ad821a"
+      "evidence_hash": "eb90abfcfa85"
     },
     {
       "kind": "flag",
