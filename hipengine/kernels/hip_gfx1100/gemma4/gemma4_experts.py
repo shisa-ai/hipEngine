@@ -472,6 +472,14 @@ _SELECTED_VARIANT = "selected_gemv_bf16_bf16_out"
 # registers it is served, and one that does not keeps the selected path.
 _GROUPED_PREFILL_VARIANT = "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
 
+# The same owner with the loop nest swapped so one CTA covers four output
+# columns and reuses the input row batch across them. Only quants that register
+# it are served by it; the probe prefers it and falls back to the row-batch
+# variant above, which is why both are listed in that order.
+_GROUPED_AMORTIZED_PREFILL_VARIANT = (
+    "selected_grouped_prefill_compact_rowbatch8_out4_amortized_bf16_bf16_out"
+)
+
 # The fused-``gate_up`` form of the same owner. It takes the fused expert stride
 # and writes both halves into one row, which is why the single-output variant
 # above cannot serve Gemma's fused tensor.
@@ -833,7 +841,9 @@ def gemma4_project_experts_grouped(
     offsets -- the inclusive-end convention the expert scratch already builds.
     Each CTA owns one output column of one expert and walks that expert's
     compact rows in batches, so a weight row is loaded once per batch instead of
-    once per row.
+    once per row. Where the quant registers one, the amortized owner is preferred:
+    it is the same arithmetic with the input row batch reused across four output
+    columns instead of re-read once per column.
 
     Returns ``False`` when no grouped owner serves this weight, which leaves the
     selected GEMV as the only path for quants without a prefill owner.
@@ -849,16 +859,25 @@ def gemma4_project_experts_grouped(
     from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
     from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
 
-    key = KernelKey(weight.backend, "moe_linear", weight.spec.quant_key, _GROUPED_PREFILL_VARIANT)
-    _ensure_linear_kernel_registered(key)
-    try:
-        fn = resolve(
-            backend=key.backend,
-            layer=key.layer,
-            quant=key.quant,
-            variant=key.variant,
-        )
-    except MissingKernelError:
+    variants = [
+        _GROUPED_AMORTIZED_PREFILL_VARIANT,
+        _GROUPED_PREFILL_VARIANT,
+    ]
+    fn = None
+    for variant in variants:
+        key = KernelKey(weight.backend, "moe_linear", weight.spec.quant_key, variant)
+        _ensure_linear_kernel_registered(key)
+        try:
+            fn = resolve(
+                backend=key.backend,
+                layer=key.layer,
+                quant=key.quant,
+                variant=key.variant,
+            )
+            break
+        except MissingKernelError:
+            continue
+    if fn is None:
         return False
     fn(
         x_ptr,

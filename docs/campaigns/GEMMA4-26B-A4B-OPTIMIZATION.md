@@ -1425,6 +1425,38 @@ record, not permission to reset unrelated work or weaken correctness.
   worklog entry. The WMMA arm's 402.5 tok/s is no longer ahead of the exact route
   and its open `kl_max` decision is correspondingly worth less.
 
+  *Diagnostic 2026-09-26 (iteration 62): the down projection is metadata-bound,
+  not input-bound.* Iteration 61's swap applied to the Q5_1 down owner (1130 ms,
+  33.7%, the largest item left) but bought only 51.3 -> 49.8 ms on its own. The
+  owner is bound by `dequant_q5_1` re-reading each weight block's `d`, `m` and
+  `qh` words from global for every (thread, column) pair: four loads per eight
+  FMAs, with all 32 lanes that share a block re-reading the same header.
+  Preloading those words into shared memory once per block is the lever, and it
+  only pays with the amortized nest because the slab then serves four output
+  columns. Both together:
+
+  | default-route family | iteration 61 ms | iteration 62 ms |
+  | --- | ---: | ---: |
+  | attention prefill | 905 | 923 |
+  | Q5_1 down (grouped) | 1130 | 890 |
+  | dense Q8_0 | 552 | 560 |
+  | fused `gate_up` (grouped dual) | 471 | 469 |
+  | **layer total** | **3348** | **3130** |
+
+  Prefill 3.360 -> 3.130 s on the W7900 lane (304.8 -> 327.0 tok/s) and 319.0 ->
+  341.0 tok/s on the RX 7900 XTX lane; first-token latency 3.21 -> 3.00 s, decode
+  flat at 43.8715. `kl_max` is exactly 0.000000 over 1023 rows, and a direct A/B
+  of the two owners shows 0 of 23,068,672 output elements differing. Cumulative
+  for the campaign's prefill column, 128.5 -> 341.0 tok/s (+165%).
+
+  Two process notes worth keeping. Shape selection needs interleaved medians:
+  back-to-back passes of the *same* configuration drifted 45% on this machine, so
+  the first, non-interleaved sweep concluded a 1.42x win that did not exist and
+  the interleaved one found the real 1.32x. And the census caught a probe-order
+  bug the isolated A/B could not: the Gemma probe listed the row-batch variant
+  first, so the amortized owner resolved but was never reached, which showed up
+  as "1.29x in isolation, no change in situ" until the list order was fixed.
+
   - **The residual 0.060867 is reduction association, and it is irreducible.**
     Splitting the K accumulation across two independent f32 accumulators moved
     kl_max to 0.081599 - same class, different draw, not an improvement. The
