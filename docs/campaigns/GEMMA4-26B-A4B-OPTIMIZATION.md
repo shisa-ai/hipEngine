@@ -848,6 +848,40 @@ direction. The clean-device pass also puts every other cell 4-10% above its
   `scripts/gguf_q4_k_moe_ffn_fused_microbench.py` has no t16 arm today, so the
   fixture is the work item. Recorded rather than started here: it is a new unit,
   and the two diagnostics above closed this one.
+
+  *Diagnostic 2026-09-26 (iteration 39): the MoE is two different quants, and the
+  repack can only ever cover one of them.* A metadata scan of the real artifact
+  (`scan_gguf`, no GPU) settles the eligibility question before any fixture work,
+  and the answer is not what the campaign's record assumes.
+
+  - **`ffn_gate_up_exps.weight`, ggml_shape (2816, 1408, 128): Q4_K in 29 of 30
+    layers, Q5_K in one.** The campaign's Q4_K description of the MoE is correct
+    *for this tensor*. It is **t16-eligible**: the repack shape is rank 3,
+    `out_features` 1408 is divisible by 16, and `in_features` 2816 is divisible
+    by 256, so `bytes_per_row` 1584 is a multiple of the Q4_K block.
+  - **`ffn_down_exps.weight`, ggml_shape (704, 2816, 128): Q5_1 in 29 of 30
+    layers, Q8_0 in one.** It is **not t16-eligible, and cannot be**: no t16
+    repack shape is registered for Q5_1 at all, and the single Q8_0 layer's
+    registered shape is rank 2 (dense), while 704 is not divisible by 256.
+  - **The reason is structural, not policy.** Q4_K's block is 256 elements, so a
+    704-element row cannot be Q4_K at all; the down projection is Q5_1 (block 32)
+    because that is what can represent it. No amount of repack work makes the
+    Q4_K t16 route cover `ffn_down_exps`.
+  - **So the repack's ceiling is `ffn_gate_up_exps`: 59.8% of the MoE's 14.42 GB
+    of expert weights**, not all of it. That is still a large prize, but the
+    campaign should hold the number it is actually chasing.
+
+  It also corrects the measurement baseline underneath iteration 31. That
+  microbench ran a Q4_K chain at **ffn 768** - a 9%-wider substitute for
+  gate_up's real 1408 - and gave the *down* arm Q4_K weights, but the production
+  down projection is Q5_1. So the down projection, 40% of the MoE's expert bytes,
+  **has no production-shaped bandwidth measurement at all**. Its headroom is a
+  Q5_1-specific question rather than a repack one, and iteration 33 already
+  showed it resolving to `selected_gemv_bf16_bf16_out`, the same kernel the
+  104 GB/s figure came from. The t16 measurement stays the next candidate, now
+  scoped to gate_up's real shape. Diagnostic only: no product path changed, no
+  row moved. Evidence row
+  `2026-09-26-gemma4-26b-a4b-moe-repack-eligibility.json`.
   *Diagnostic 2026-09-26 (iteration 33): the routing hypothesis is closed, and
   the campaign's three-cheap-candidates rule is now in play.* A resolve-level
   probe over a real 1024-token `LLM.generate()` - spying on
