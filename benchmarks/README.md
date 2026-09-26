@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-25**
+Last updated: **2026-09-26**
 
 Surya OCR 2 fp32 on **zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)**,
 12 pages covering layout/markup, Japanese and mixed script, dense text, tables,
@@ -961,29 +961,51 @@ same revision reproduces it to the last digit
 and the largest known gap in it, are recorded in
 [`docs/REFACTOR.md`](../docs/REFACTOR.md).
 
-**The bulk workspace contract, measured 2026-09-25.** A ladder harness
+**The bulk workspace contract, measured 2026-09-26.** A ladder harness
 (`scripts/tp2_bulk_workspace_contract.py`) walks one session from 52 to 1024
-tokens and back under three workspace policies. Every length produced finite
-logits with the correct argmax and also ran prefill-then-decode in one call; the
-workspace grows on demand and is reused afterwards; and a pinned workspace
-refuses an over-capacity prompt with the documented message rather than
-mishandling it. Two limits are real and stated rather than blocking: **the
-workspace never shrinks**, so a short prompt after a long one costs the long
-workspace's time (0.508 s against 0.170 s for a 52-token prompt, still ~2.4x
-faster than the token-serial rollback), and **chunked prefill is not
-implemented**, so a prompt above the session capacity is refused exactly as the
-token-serial route refuses it. The deferred-allocation slowdown recorded on
-2026-09-18 **does not reproduce**: a lazily built workspace measured 0.889 s for
-a 1024-token prefill against 0.938 s for one allocated at construction, so that
-claim is retired. Artifact:
-[`results/2026-09-25-w7900-tp2-bulk-workspace-contract.json`](results/2026-09-25-w7900-tp2-bulk-workspace-contract.json).
+tokens and back under three workspace policies. Every length returned logits of
+the expected shape, every generation completed, and prefill-then-decode ran in
+one call; the workspace grows on demand and is reused afterwards; a pinned
+workspace refuses an over-capacity prompt with the documented message, and a
+refusal leaves the session's workspace rows, allocation and health unchanged so
+the next prompt still runs; and repeating a length after the ladder returns the
+same workspace and the same allocation. The artifact states its own scope
+plainly - `oracle_scope: finiteness and completion counts only; no
+numerical/KL/top-1/argmax oracle` - so it is a memory and state contract, not
+numerical evidence: logits are checked for shape and finiteness and the last
+row's argmax is recorded (9707 at every length) but is not compared against a
+reference. Numerical correctness for this route comes from the teacher-forced
+gate cited above, not from this ladder. Two limits are real and stated rather
+than blocking: **the workspace never shrinks**, so a short prompt after a long
+one costs the long workspace's time (0.517 s against 0.171 s for a 52-token
+prompt on a fresh 52-row workspace, still ~2.3x faster than the token-serial
+rollback), and **chunked prefill is not implemented**, so a prompt above the
+session capacity is refused exactly as the token-serial route refuses it. The
+deferred-allocation slowdown recorded on 2026-09-18 **does not reproduce**: a
+lazily built workspace measured 0.889 s for a 1024-token prefill against
+0.938 s for one allocated at construction, so that claim is retired. Artifact:
+[`results/2026-09-26-w7900-tp2-bulk-workspace-contract.json`](results/2026-09-26-w7900-tp2-bulk-workspace-contract.json).
 
-**Prefill rate on the shipped route, measured 2026-09-25.** At a 512-token
-prompt the bulk route measures 1057-1085 tok/s in the ladder and 1066 tok/s in
-the matched c=1 cell, against 43.99 tok/s for the token-serial rollback on the
-same day: **~24x**. At 52 tokens it measures 0.170 s with a 52-row workspace
-against roughly 1.18 s inferred for token-serial at its measured 22.7 ms/token,
-so the shipping route is faster at short prompts as well.
+That artifact supersedes
+[`results/2026-09-25-w7900-tp2-bulk-workspace-contract.json`](results/2026-09-25-w7900-tp2-bulk-workspace-contract.json),
+which was produced by an earlier harness revision and records
+`all_checks_passed: false` with `finite: false` and `argmax: null` at 52 tokens.
+Re-measuring the same configuration with explicit logits instrumentation
+reports every length finite with argmax 9707 and no non-finite element in
+248,320, so the earlier reading was a harness artifact rather than a property of
+the route; the earlier harness also measured an extra repetition when asked for
+one and did not check refusal state, which is why the contract was re-recorded
+rather than amended.
+
+**Prefill rate on the shipped route, measured 2026-09-26.** At a 512-token
+prompt the bulk route measures 1028 tok/s (prompt-sized workspace) and 1038
+tok/s (pinned-512) in the retained ladder, 1051 tok/s at 768 and 1100 tok/s at
+1024, against 43.99 tok/s for the token-serial rollback: **~23-25x**. Earlier
+runs of the same route on this host measured 1057-1085 tok/s at 512 tokens, so
+treat the 512-token rate as ~1030-1085 tok/s rather than a single number. At 52
+tokens it measures 0.171 s with a 52-row workspace against roughly 1.18 s
+inferred for token-serial at its measured 22.7 ms/token, so the shipping route
+is faster at short prompts as well.
 
 **Matched llama.cpp comparison, measured 2026-09-25.** Same host, same model
 bytes, 512-token prompt, 128 decode tokens, f16 KV on both engines, c=1, three
