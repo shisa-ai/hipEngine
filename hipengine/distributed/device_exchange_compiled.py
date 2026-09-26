@@ -27,6 +27,7 @@ from hipengine.distributed.transport import TransportStateError
 _SOURCE = Path(__file__).with_name("device_exchange_host.cpp")
 
 _OK = 0
+_CAPTURED = 1  # enqueue-only success; no work submitted for execution
 
 
 def build_tp2_device_exchange(
@@ -157,10 +158,10 @@ class CompiledDeviceExchange:
         # flags, so a clear that lands while an earlier step is unobserved can
         # erase a spin timeout no one has seen - and because the spin kernel
         # writes nothing on timeout, the erased failure would leave a stale
-        # output row passing as a result. Only submissions that execute count:
-        # the counter bumps and flag clears, not the enqueues a graph capture
-        # records (nothing has run, so no flag can be set), which is why
-        # ``enqueue_rank`` is deliberately not counted here.
+        # output row passing as a result. Eager enqueues also count, including
+        # enqueues after a completed wait without a new bump. The native
+        # driver distinguishes them from graph recording via stream status.
+        # Capture-only enqueues have not executed and do not count.
         self._unobserved_steps = 0
 
         if library is None:
@@ -310,13 +311,18 @@ class CompiledDeviceExchange:
             int(slot),
             ctypes.c_uint64(int(out_payload)),
         )
-        if code != _OK:
+        # Native enqueue returns 1 only for an active stream capture. All
+        # other nonzero results are failures; an eager success is unobserved
+        # work even when the caller did not start a new counter step.
+        if code not in (_OK, _CAPTURED):
             self._poisoned = True
             detail = self._library.tp2_dev_exchange_last_error(
                 ctypes.c_void_p(self._handle)
             )
             message = detail.decode(errors="replace") if detail else "unknown error"
             raise TransportStateError(f"device exchange enqueue failed: {message}")
+        if code == _OK:
+            self._unobserved_steps = max(1, self._unobserved_steps)
         self.enqueues.append((int(rank), int(slot), int(own_partial)))
         return int(out_payload)
 

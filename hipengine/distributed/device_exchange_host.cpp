@@ -38,6 +38,8 @@ namespace {
 inline int blocks_of(int n) { return (n + 255) / 256; }
 
 constexpr int32_t kOk = 0;
+// enqueue_rank only: success recorded in a graph, not submitted for execution.
+constexpr int32_t kCaptured = 1;
 constexpr int32_t kErrArg = -1;
 constexpr int32_t kErrHip = -2;
 
@@ -479,6 +481,12 @@ int32_t tp2_dev_exchange_enqueue_rank(
     (void)hipSetDevice(previous_device);
     return set_hip_error(ex, hipGetLastError(), "hipSetDevice enqueue_rank");
   }
+  hipStreamCaptureStatus capture_status = hipStreamCaptureStatusNone;
+  hipError_t capture_code = hipStreamIsCapturing(ex->streams[rank], &capture_status);
+  if (capture_code != hipSuccess) {
+    (void)hipSetDevice(previous_device);
+    return set_hip_error(ex, capture_code, "enqueue capture status");
+  }
   const int other = 1 - rank;
   unsigned char* slot_staging =
       ex->staging_views[rank][rank] +
@@ -528,7 +536,7 @@ int32_t tp2_dev_exchange_enqueue_rank(
     return set_hip_error(ex, code, "spin-add launch");
   }
   (void)hipSetDevice(previous_device);
-  return kOk;
+  return capture_status == hipStreamCaptureStatusActive ? kCaptured : kOk;
 }
 
 // Host-side wait for one slot's exchange: both ranks' spin-sums are

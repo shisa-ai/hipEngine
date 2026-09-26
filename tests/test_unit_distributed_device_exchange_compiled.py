@@ -39,6 +39,7 @@ class FakeDeviceExchangeDriver:
         self.creates: list[tuple] = []
         self.destroyed: list[int] = []
         self.waits = 0
+        self.capturing = False
         self.fail_wait_at = fail_wait_at
         # What the driver would report as owned; the real one counts its device
         # and mapped allocations, and the lifecycle tests assert it returns to
@@ -74,7 +75,7 @@ class FakeDeviceExchangeDriver:
 
         def enqueue_rank(handle, rank, own_partial, slot, out_payload):
             self.calls.append(f"enqueue:{int(rank)}:{int(slot)}")
-            return 0
+            return 1 if self.capturing else 0
 
         def wait(handle):
             self.calls.append("wait")
@@ -220,11 +221,31 @@ def test_capture_time_enqueues_do_not_block_a_later_clear() -> None:
 
     library = FakeDeviceExchangeDriver()
     exchange = _exchange(library)
+    library.capturing = True
     for layer in range(2):
         exchange.enqueue_rank(0, 0x1000 + layer, layer, 0x2000 + layer)
         exchange.enqueue_rank(1, 0x3000 + layer, layer, 0x4000 + layer)
+    library.capturing = False
     exchange.step_begin()
     exchange.wait()
+    exchange.close()
+
+
+@pytest.mark.parametrize('clear', ['reset_timeouts', 'step_begin'])
+@pytest.mark.parametrize('previous_wait', [False, True])
+def test_eager_enqueue_alone_blocks_clear(clear, previous_wait):
+    library = FakeDeviceExchangeDriver()
+    exchange = _exchange(library)
+    if previous_wait:
+        exchange.step_begin()
+        exchange.wait()
+    exchange.enqueue_rank(0, 0x1000, 0, 0x2000)
+    before = list(library.calls)
+    with pytest.raises(TransportStateError, match='not waited'):
+        getattr(exchange, clear)()
+    assert library.calls == before
+    exchange.wait()
+    getattr(exchange, clear)()
     exchange.close()
 
 
