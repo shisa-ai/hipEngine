@@ -87,16 +87,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fractions", type=_parse_fractions, default=None)
     parser.add_argument(
         "--bulk-prefill",
-        action="store_true",
-        help="tp2 only: drive prefill through the rank-local bulk prefill "
-        "candidate instead of the committed token-serial route",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="tp2 only: enable bulk prefill or select the token-serial rollback "
+        "with --no-bulk-prefill; omitted, use the session default",
     )
     parser.add_argument(
         "--bulk-prefill-rows",
         type=int,
         default=None,
-        help="tp2 only: bulk prefill workspace rows (default: the session's "
-        "max sequence length, which is what dominates its resident memory)",
+        help="tp2 only: fixed bulk prefill workspace capacity; omitted, grow "
+        "the workspace to the largest prompt seen",
     )
     parser.add_argument(
         "--attention-shard",
@@ -165,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
             mode=args.mode,
             max_sequence_length=context,
             uneven_split=(args.fractions if args.mode == "tp2" else None),
-            bulk_prefill=bool(args.bulk_prefill) and args.mode == "tp2",
+            bulk_prefill=args.bulk_prefill if args.mode == "tp2" else False,
             bulk_prefill_rows=(
                 int(args.bulk_prefill_rows)
                 if args.bulk_prefill_rows is not None and args.mode == "tp2"
