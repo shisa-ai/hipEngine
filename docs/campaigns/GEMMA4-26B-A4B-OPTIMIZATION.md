@@ -1494,6 +1494,25 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 69: both lanes, measured, so the llama.cpp gap has a current basis.**
+  The campaign's prefill column is the XTX lane and the llama.cpp HIP reference of
+  3910 tok/s was taken there, while iterations 64-67 were measured on the W7900
+  lane. Both lanes now, same artifact, same 1024/128 shape, three samples with
+  one warmup:
+
+  | lane | path | prefill | first token | decode |
+  | --- | --- | ---: | ---: | ---: |
+  | RX 7900 XTX | default (exact) | 2.45 s (417.8 tok/s) | 2.45 s | 43.91 tok/s |
+  | RX 7900 XTX | WMMA arm | 1.39 s (736.9 tok/s) | 1.39 s | 43.87 tok/s |
+  | W7900 | default (exact) | 2.68 s (382.2 tok/s) | 2.68 s | 39.49 tok/s |
+  | W7900 | WMMA arm | 1.68 s (611.4 tok/s) | 1.68 s | 39.41 tok/s |
+
+  Against the campaign's starting point the exact path is 128.5 -> 417.8 tok/s on
+  the XTX lane (3.25x). Against llama.cpp's 3910 tok/s on that lane the exact path
+  is 9.4x away and the WMMA arm 5.3x, which is the number the goal's "no problem
+  to beat llama.cpp" has to be read against: no exact-path increment reaches it,
+  and the arm that halves the distance is the one blocked on the promotion gate.
+
   **Iteration 68: the tuning-guide review, as a checklist against measured state.**
   The campaign goal asks for ``docs/LESSONS-LEARNED.md`` and
   ``docs/RDNA3-TUNING-GUIDE.md`` to be reviewed before the prefill work. The
