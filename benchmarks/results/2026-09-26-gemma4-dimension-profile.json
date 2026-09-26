@@ -1,0 +1,469 @@
+{
+  "incumbent": {
+    "(1024, 256)": {
+      "kernel_median_us": [
+        280.746,
+        114.71,
+        90.161,
+        3.547
+      ],
+      "kernels": [
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_slice_kernel<unsigned short, 1, 4>(float const*, unsigned short const*, float*, long, long, long, long, long)",
+        "void (anonymous namespace)::gemma4_attention_decode_combine_kernel<unsigned short>(float const*, float const*, unsigned short*, long, long, long)"
+      ],
+      "vgpr": [
+        "56",
+        "56",
+        "16",
+        "16"
+      ]
+    },
+    "(1024, 512)": {
+      "kernel_median_us": [
+        300.123,
+        121.681,
+        190.642,
+        3.2
+      ],
+      "kernels": [
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 2, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 2, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_slice_kernel<unsigned short, 1, 4>(float const*, unsigned short const*, float*, long, long, long, long, long)",
+        "void (anonymous namespace)::gemma4_attention_decode_combine_kernel<unsigned short>(float const*, float const*, unsigned short*, long, long, long)"
+      ],
+      "vgpr": [
+        "64",
+        "64",
+        "16",
+        "16"
+      ]
+    },
+    "(1152, 256)": {
+      "kernel_median_us": [
+        312.683,
+        127.921,
+        100.961,
+        3.36
+      ],
+      "kernels": [
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_slice_kernel<unsigned short, 1, 4>(float const*, unsigned short const*, float*, long, long, long, long, long)",
+        "void (anonymous namespace)::gemma4_attention_decode_combine_kernel<unsigned short>(float const*, float const*, unsigned short*, long, long, long)"
+      ],
+      "vgpr": [
+        "56",
+        "56",
+        "16",
+        "16"
+      ]
+    },
+    "(1152, 512)": {
+      "kernel_median_us": [
+        335.363,
+        135.881,
+        110.76,
+        3.6
+      ],
+      "kernels": [
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 2, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 2, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_slice_kernel<unsigned short, 1, 4>(float const*, unsigned short const*, float*, long, long, long, long, long)",
+        "void (anonymous namespace)::gemma4_attention_decode_combine_kernel<unsigned short>(float const*, float const*, unsigned short*, long, long, long)"
+      ],
+      "vgpr": [
+        "64",
+        "64",
+        "16",
+        "16"
+      ]
+    },
+    "(4096, 256)": {
+      "kernel_median_us": [
+        1090.969,
+        436.243,
+        349.363,
+        3.4
+      ],
+      "kernels": [
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_slice_kernel<unsigned short, 1, 4>(float const*, unsigned short const*, float*, long, long, long, long, long)",
+        "void (anonymous namespace)::gemma4_attention_decode_combine_kernel<unsigned short>(float const*, float const*, unsigned short*, long, long, long)"
+      ],
+      "vgpr": [
+        "56",
+        "56",
+        "16",
+        "16"
+      ]
+    },
+    "(4096, 512)": {
+      "kernel_median_us": [
+        1034.808,
+        374.443,
+        325.283,
+        3.16
+      ],
+      "kernels": [
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 2, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 2, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_slice_kernel<unsigned short, 1, 4>(float const*, unsigned short const*, float*, long, long, long, long, long)",
+        "void (anonymous namespace)::gemma4_attention_decode_combine_kernel<unsigned short>(float const*, float const*, unsigned short*, long, long, long)"
+      ],
+      "vgpr": [
+        "64",
+        "64",
+        "16",
+        "16"
+      ]
+    }
+  },
+  "dimension": {
+    "(1024, 256)": {
+      "kernel_median_us": [
+        280.16,
+        115.944,
+        344.05
+      ],
+      "kernels": [
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_dimension_kernel<unsigned short>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long)"
+      ],
+      "vgpr": [
+        "56",
+        "56",
+        "40"
+      ]
+    },
+    "(1024, 512)": {
+      "kernel_median_us": [
+        300.562,
+        121.921,
+        1391.571
+      ],
+      "kernels": [
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 2, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 2, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_dimension_kernel<unsigned short>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long)"
+      ],
+      "vgpr": [
+        "64",
+        "64",
+        "40"
+      ]
+    },
+    "(1152, 256)": {
+      "kernel_median_us": [
+        313.603,
+        130.001,
+        387.323
+      ],
+      "kernels": [
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_dimension_kernel<unsigned short>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long)"
+      ],
+      "vgpr": [
+        "56",
+        "56",
+        "40"
+      ]
+    },
+    "(1152, 512)": {
+      "kernel_median_us": [
+        336.723,
+        135.842,
+        789.767
+      ],
+      "kernels": [
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 2, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 2, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_dimension_kernel<unsigned short>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long)"
+      ],
+      "vgpr": [
+        "64",
+        "64",
+        "40"
+      ]
+    },
+    "(4096, 256)": {
+      "kernel_median_us": [
+        1090.969,
+        436.963,
+        1363.49
+      ],
+      "kernels": [
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_dimension_kernel<unsigned short>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long)"
+      ],
+      "vgpr": [
+        "56",
+        "56",
+        "40"
+      ]
+    },
+    "(4096, 512)": {
+      "kernel_median_us": [
+        1057.088,
+        397.163,
+        2276.538
+      ],
+      "kernels": [
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 2, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 2, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+        "void (anonymous namespace)::gemma4_attention_decode_dimension_kernel<unsigned short>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long)"
+      ],
+      "vgpr": [
+        "64",
+        "64",
+        "40"
+      ]
+    }
+  },
+  "protocol": {
+    "host": "epyc",
+    "physical_gpu": 1,
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "dtype": "BF16",
+    "num_heads": 16,
+    "head_dim_kv_heads": [
+      [
+        256,
+        2
+      ],
+      [
+        512,
+        8
+      ]
+    ],
+    "keys": [
+      1024,
+      1152,
+      4096
+    ],
+    "invocations_per_shape": 8,
+    "reduction": "median dispatch duration of last 7 per shape; sorted by Dispatch_Id",
+    "scope": "isolated attention diagnostic, not model throughput; allocations and transfers occur between invocations",
+    "driver_source": "\"\"\"Profile cached attention binaries without invoking the JIT/compiler.\"\"\"\nimport ctypes\nimport sys\nfrom tests.test_gpu_gemma4_attention_decode_parity import _split_ab\nlibrary = ctypes.CDLL(sys.argv[1])\nfor keys in (1024, 1152, 4096):\n    for dim, kv in ((256, 2), (512, 8)):\n        for repeat in range(8):\n            _split_ab(library, dtype='bf16', num_heads=16, num_kv_heads=kv,\n                      head_dim=dim, keys=keys, mask_mode='keep')\nprint('cached attention profile complete')\n",
+    "command_template": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/gemma4-iter53-{variant} -- .venv/bin/python /tmp/gemma4_iter53_profile.py {library}"
+  },
+  "binaries": {
+    "incumbent": {
+      "path": "/home/lhl/.cache/hipengine/build/gemma4_attention-c27bc1e0d71092bb/gemma4_attention.so",
+      "sha256": "79a2c9ffa1d6a005db7f514509a97ebb9a02ec8ef15e6af5c95d583635cd8b41",
+      "manifest": "family=gemma4_attention\nprofile=decode\nwavefront=32\ncache_key=c27bc1e0d71092bb836922115c8a1731ccea7c8a4898c6732147a9720525aa10\ncompiler=hipcc\ntarget_arch=\ncompiler_version<<EOF\nHIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\nEOF\ncommand=hipcc -shared -fPIC -O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode /home/lhl/hipEngine-gemma4/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip -o /home/lhl/.cache/hipengine/build/gemma4_attention-c27bc1e0d71092bb/gemma4_attention.so\nsources=/home/lhl/hipEngine-gemma4/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip\n"
+    },
+    "dimension": {
+      "path": "/home/lhl/.cache/hipengine/build/gemma4_attention-ed19410c3dec3eb0/gemma4_attention.so",
+      "sha256": "dc58828872c06577fc3462bd7302d66bd6372289ab3ea52969e1a6d1beeb906d",
+      "manifest": "family=gemma4_attention\nprofile=decode\nwavefront=32\ncache_key=ed19410c3dec3eb0d6c6e04f5df34e100da65e06903637e6552b589ae1a9bf21\ncompiler=hipcc\ntarget_arch=\ncompiler_version<<EOF\nHIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\nEOF\ncommand=hipcc -shared -fPIC -O3 -mllvm -amdgpu-unroll-threshold-local=600 -mcumode /home/lhl/hipEngine-gemma4/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip -o /home/lhl/.cache/hipengine/build/gemma4_attention-ed19410c3dec3eb0/gemma4_attention.so\nsources=/home/lhl/hipEngine-gemma4/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip\n"
+    }
+  },
+  "unchanged_incumbent_benchmark": {
+    "label": "campaign",
+    "created_at": "2026-09-26T10:59:38.083808+00:00",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 1024 --output 128 --samples 3 --out /tmp/gemma4-iter53-bench.json",
+    "workload": {
+      "prompt_tokens": 1024,
+      "output_tokens": 128,
+      "samples": 3,
+      "warmups": 1,
+      "context": 8192,
+      "decode_forwards_per_sample": 127,
+      "eos": "ignored (fixed-length row)"
+    },
+    "prompt_ids_sha256": "9730ebf884a19ea6f10c23dcc84061702b7663d53f092f8a75832667b472e211",
+    "provenance": {
+      "git_commit": "d853fb98cb0993e64cf447b353fd2c4293ccc43f",
+      "git_dirty": true,
+      "git_dirty_files": [
+        "M audit/findings/stub.json",
+        " M audit/findings/ungoverned-flag-branch.json",
+        " M audit/inventory/flags.json",
+        " M audit/inventory/kernels.json",
+        " M audit/inventory/meta.json",
+        " M audit/inventory/worklog.json",
+        " M audit/triage/stub.jsonl"
+      ],
+      "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+      "artifact": {
+        "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "bytes": 17010980576,
+        "mtime": "2026-09-22T10:30:20.793299+00:00",
+        "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+      },
+      "env": {
+        "HIP_INCLUDE_PATH": "/opt/rocm/include",
+        "HIP_LIB_PATH": "/opt/rocm/lib",
+        "HIP_PATH": "/opt/rocm",
+        "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+        "ROCR_VISIBLE_DEVICES": "1"
+      },
+      "hipcc": [
+        "HIP version: 7.2.53211-3d9ef42",
+        "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+      ],
+      "rocm_smi_clock_power": [
+        "============================ ROCm System Management Interface ============================",
+        "====================================== Temperature =======================================",
+        "GPU[0]\t\t: Temperature (Sensor edge) (C): 30.0",
+        "GPU[0]\t\t: Temperature (Sensor junction) (C): 37.0",
+        "GPU[0]\t\t: Temperature (Sensor memory) (C): 42.0",
+        "GPU[1]\t\t: Temperature (Sensor edge) (C): 36.0",
+        "GPU[1]\t\t: Temperature (Sensor junction) (C): 44.0",
+        "GPU[1]\t\t: Temperature (Sensor memory) (C): 50.0",
+        "==========================================================================================",
+        "=============================== Current clock frequencies ================================",
+        "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[1]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[1]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[1]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "==========================================================================================",
+        "=================================== Power Consumption ====================================",
+        "GPU[0]\t\t: Average Graphics Package Power (W): 8.0",
+        "GPU[1]\t\t: Average Graphics Package Power (W): 7.0",
+        "==========================================================================================",
+        "================================== End of ROCm SMI Log ==================================="
+      ],
+      "python": "3.11.11",
+      "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44"
+    },
+    "loading": {
+      "resolve_s": 0.9051252538338304,
+      "load_s": 3.1494145542383194,
+      "internal_load_s": 3.1494108326733112,
+      "resolution": {
+        "_resolved_backend": "hip_gfx1100",
+        "_resolved_quant": "gguf_q4_k_m",
+        "_resolved_execution_profile": null,
+        "generator_type": "SubmitPollTextGenerator"
+      },
+      "context_length": 8192,
+      "runner_capacity": 8192,
+      "max_block": 512
+    },
+    "memory": {
+      "total_bytes": 25753026560,
+      "used_bytes": {
+        "before_load": 37748736,
+        "after_load": 19209912320,
+        "after_runs": 23119003648
+      },
+      "peak_used_bytes": 23119003648,
+      "labels": [
+        "before_load",
+        "after_load",
+        "after_runs"
+      ]
+    },
+    "warmups": [
+      {
+        "prompt_tokens": 1024,
+        "generated_tokens": 128,
+        "decode_forwards": 127,
+        "prefill_s": 8.0300442148,
+        "first_sample_s": 4.830025136470795e-05,
+        "first_token_s": 8.030092515051365,
+        "decode_s": 2.778121765702963,
+        "wall_s": 10.808284387923777,
+        "syncs": 129,
+        "finish_reason": "length",
+        "eos_ignored": true,
+        "role": "warmup",
+        "index": 0,
+        "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+      }
+    ],
+    "samples": [
+      {
+        "prompt_tokens": 1024,
+        "generated_tokens": 128,
+        "decode_forwards": 127,
+        "prefill_s": 7.963616699911654,
+        "first_sample_s": 3.32612544298172e-05,
+        "first_token_s": 7.963649961166084,
+        "decode_s": 2.769611326046288,
+        "wall_s": 10.733324509114027,
+        "syncs": 129,
+        "finish_reason": "length",
+        "eos_ignored": true,
+        "role": "sample",
+        "index": 0,
+        "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+      },
+      {
+        "prompt_tokens": 1024,
+        "generated_tokens": 128,
+        "decode_forwards": 127,
+        "prefill_s": 7.975068198516965,
+        "first_sample_s": 4.4129788875579834e-05,
+        "first_token_s": 7.9751123283058405,
+        "decode_s": 2.776113713160157,
+        "wall_s": 10.751295736990869,
+        "syncs": 129,
+        "finish_reason": "length",
+        "eos_ignored": true,
+        "role": "sample",
+        "index": 1,
+        "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+      },
+      {
+        "prompt_tokens": 1024,
+        "generated_tokens": 128,
+        "decode_forwards": 127,
+        "prefill_s": 7.990659859031439,
+        "first_sample_s": 5.0681643187999725e-05,
+        "first_token_s": 7.990710540674627,
+        "decode_s": 2.779752230271697,
+        "wall_s": 10.770531202666461,
+        "syncs": 129,
+        "finish_reason": "length",
+        "eos_ignored": true,
+        "role": "sample",
+        "index": 2,
+        "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+      }
+    ],
+    "stats": {
+      "samples": 3,
+      "decode_tps": 45.747405590036514,
+      "decode_tps_min": 45.68752517471201,
+      "decode_tps_max": 45.854809592108616,
+      "decode_tps_p95": 45.854809592108616,
+      "decode_tps_stdev": 0.08475981762630029,
+      "prefill_s": 7.975068198516965,
+      "prefill_tps": 128.40015589966015,
+      "first_token_s": 7.9751123283058405,
+      "first_sample_s": 4.4129788875579834e-05,
+      "decode_s": 2.776113713160157,
+      "wall_s": 10.751295736990869,
+      "prompt_tokens": 1024,
+      "generated_tokens": 128,
+      "decode_forwards_per_sample": 127
+    },
+    "public": {
+      "public_wall_s": 10.724233167245984,
+      "public_tps": 11.935585323800899,
+      "generated_tokens": 128,
+      "finish_reason": "length",
+      "sampler_mode": "greedy",
+      "public_path_parity": true,
+      "public_path_first_divergence": null,
+      "public_generated_equals_expected": true,
+      "generated_ids_sha256_json": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+    }
+  }
+}
