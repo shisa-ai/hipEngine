@@ -6930,6 +6930,8 @@ class Qwen35GGUFResidentModelRunner:
         if self._rows:
             raise RuntimeError("cannot configure GGUF device KV pool while requests are active")
         self._clear_prefix_snapshots()
+        if config != getattr(self, "_engine_loop_config", None):
+            self._dms_prompt_snapshot = None
         self._engine_loop_config = config
         self._prefix_cache_mode = resolve_prefix_cache_mode(
             getattr(config, "prefix_cache", "off")
@@ -6940,8 +6942,8 @@ class Qwen35GGUFResidentModelRunner:
             else None
         )
         if getattr(self.generator, "dms_metadata_path", None) is not None:
-            if self.capacity != 1 or self._prefix_cache is not None:
-                raise NotImplementedError("DMS requires singleton ownership without prefix snapshots")
+            if self.capacity != 1:
+                raise NotImplementedError("DMS requires singleton ownership")
             # The session owns its transient prefill pool and compact backend.
             # Binding a dense global allocation here would replace that owner.
             return
@@ -7872,13 +7874,20 @@ class Qwen35GGUFResidentModelRunner:
             else len(row.kv_allocation.reused_block_ids)
         )
         residency = self._prefix_cache_observability()
+        dms_cache = getattr(self, "_dms_prompt_snapshot", None)
+        is_dms = getattr(self.generator, "dms_metadata_path", None) is not None
+        if is_dms:
+            residency = {**residency, "snapshot_entries": int(dms_cache is not None),
+                         "retained_kv_pages": 0,
+                         "resident_bytes": 0 if dms_cache is None else dms_cache.nbytes}
         mode = getattr(self, "_prefix_cache_mode", "off")
         fallback_reason = row.prefix_fallback_reason
         if fallback_reason is None and mode == "off":
             fallback_reason = "cache_off"
         return {
             "mode": mode,
-            "block_size_tokens": 256,
+            "block_size_tokens": 1 if is_dms else 256,
+            **({"reuse_scope": "complete_prompt"} if is_dms else {}),
             "eligible": bool(row.prefix_eligible),
             "lookup": bool(row.prefix_lookup),
             "hit": bool(row.prefix_reused_tokens),
@@ -7916,6 +7925,9 @@ class Qwen35GGUFResidentModelRunner:
         dms_backend = None if slot is None else getattr(slot.session, "_dms_backend", None)
         if dms_backend is not None:
             diagnostics["dms"] = dms_backend.observability_snapshot()
+            diagnostics["dms"]["backend"]["prefix_mode"] = (
+                "owned_full_prompt" if self._prefix_cache_mode != "off" else "off"
+            )
         audit = (
             None
             if slot is None
@@ -9560,6 +9572,7 @@ class Qwen35GGUFResidentModelRunner:
                 self._outputs.clear()
                 self._completed_metadata.clear()
                 self._clear_prefix_snapshots()
+                self._dms_prompt_snapshot = None
                 if self._kv_pool is not None:
                     # The owner's packed workspace holds a private-workspace
                     # reservation in the pool, and `close()` rejects one that
@@ -9951,19 +9964,47 @@ class Qwen35GGUFResidentModelRunner:
         if row.mtp2_candidate_budget > 0 and sink is None:
             raise NotImplementedError("DMS MTP requires the native NextN prompt streaming provider")
         start = time.perf_counter()
+        cache_enabled = self._prefix_cache_mode != "off"
+        # NextN's streaming prompt state is separate from target Conv/GDN/KV.
+        # Until it has an owned snapshot, MTP runs its complete prompt normally.
+        cache_eligible = cache_enabled and sink is None and row.mtp2_candidate_budget <= 0
+        row.prefix_eligible = cache_eligible
+        row.prefix_lookup = cache_eligible
+        snapshot = getattr(self, "_dms_prompt_snapshot", None)
+        hit = cache_eligible and snapshot is not None and snapshot.matches(
+            session, row.prompt_ids, bool(row.native_sampled)
+        )
+        row.prefix_fallback_reason = (
+            None if hit else "cache_off" if not cache_enabled else
+            "mtp_prompt_state_not_snapshotted" if not cache_eligible else
+            "dms_full_prompt_miss"
+        )
         try:
-            result = session.prefill(
-                row.prompt_ids, use_bulk=True, bulk_attention_mode="bulk",
-                return_logits=bool(row.native_sampled),
-                **({"target_hidden_chunk_sink": sink,
-                    "target_hidden_request_id": row.request_id} if sink is not None else {}),
-            )
+            if hit:
+                from hipengine.runtime.dms_prefix import restore_prompt
+                result = restore_prompt(session, snapshot)
+                row.prefix_matched_tokens = row.prefix_reused_tokens = len(row.prompt_ids)
+                row.prefix_snapshot_hit = True
+                row.prefix_source_kind = "dms_owned_prompt"
+                row.prefix_state_clone_bytes = snapshot.nbytes
+            else:
+                result = session.prefill(
+                    row.prompt_ids, use_bulk=True, bulk_attention_mode="bulk",
+                    return_logits=bool(row.native_sampled),
+                    **({"target_hidden_chunk_sink": sink,
+                        "target_hidden_request_id": row.request_id} if sink is not None else {}),
+                )
+                if cache_eligible:
+                    from hipengine.runtime.dms_prefix import capture_prompt
+                    self._dms_prompt_snapshot = capture_prompt(
+                        session, row.prompt_ids, result, sampled=bool(row.native_sampled)
+                    )
         except BaseException:
             self._finish_mtp2_prompt_streaming((row,), sinks, success=False)
             raise
         self._finish_mtp2_prompt_streaming((row,), sinks, success=True)
         row.prefill_ms += _timing_ms_since(start)
-        row.prefill_chunk_count += 1
+        row.prefill_chunk_count += int(not hit)
         if row.native_sampled:
             sample = (
                 session.sample_native_from_last_logits(row.sampling_request, row.sampling_state)

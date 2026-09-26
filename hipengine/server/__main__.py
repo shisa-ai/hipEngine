@@ -208,7 +208,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--dms-metadata-path",
-        help="DMS sidecar metadata for online eviction; uses one resident request and no prefix cache",
+        help="DMS sidecar metadata for online eviction; uses one resident request and complete-prompt caching",
     )
     parser.add_argument(
         "--kv-scale-dtype",
@@ -388,7 +388,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("HIPENGINE_PREFIX_CACHE"),
         help=(
             f"Prefix-cache mode (env HIPENGINE_PREFIX_CACHE; default: "
-            f"{PREFIX_CACHE_DEFAULT}, or off with DMS; DMS prefix snapshots are not implemented)"
+            f"{PREFIX_CACHE_DEFAULT}; DMS reuses complete prompts, not partial prefixes)"
         ),
     )
     parser.add_argument(

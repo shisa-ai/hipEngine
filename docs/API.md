@@ -249,14 +249,22 @@ to `hipengine.LLM`. The metadata selects the retention policy; `--kv-storage`
 payloads. Compact INT8 uses FP32 per-token/head scales. Dense INT8 policy
 records do not select the compact codec.
 
-DMS defaults to one resident request and prefix caching off. Explicitly
-requesting wider residency or prefix snapshots fails because those ownership
-contracts are not implemented. Prefill captures the complete prompt from a
-transient dense BF16 source, then releases that source after compaction. Native
-NextN MTP streams prompt hidden states and verifies through the serial
-transactional route rather than dense target graphs. Completed requests release
-their private sessions; subsequent requests share model weights but construct
-fresh cache state.
+DMS defaults to one resident request; wider residency fails because packed
+ownership is not implemented. With the default `radix` cache, autoregressive
+requests reuse the most recently cached **complete prompt**. The cache owns one
+host snapshot of compact KV, INT8 scales, token positions, eviction flags, and
+Conv/GDN state. A hit restores that state into a fresh private session; it does
+not reuse generated output. Set `--prefix-cache off` to disable this cache.
+
+A changed or extended prompt runs full prefill. Reusing its shorter pruned prefix
+would change full-prompt selection and attention semantics. MTP also runs full
+prefill because NextN prompt-streaming state has no cache snapshot yet; telemetry
+reports `mtp_prompt_state_not_snapshotted`. Native NextN MTP still streams prompt
+hidden states and verifies through the serial transactional route rather than
+dense target graphs. Uncached prefill uses a transient dense BF16 source and
+releases it after compaction. Completed requests release their private sessions.
+Prefix telemetry reports `reuse_scope="complete_prompt"`, reused tokens, and
+host snapshot bytes; these bytes are separate from live device KV storage.
 
 After a session has been prepared, `/ready.dms.policy` reports the loaded
 window, target compression, prefill selection mode, decision source and compact
