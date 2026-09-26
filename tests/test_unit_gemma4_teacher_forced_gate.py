@@ -74,6 +74,19 @@ class TestEvaluate:
         base = rng.normal(size=(n_rows, vocab)).astype(np.float32)
         return base, base.copy()
 
+    def test_empty_logits_are_rejected(self):
+        with pytest.raises(ValueError, match="nonempty"):
+            evaluate(np.empty((0, 4)), np.empty((0, 4)))
+
+    def test_screen_requires_zero_flips_even_with_99_percent_agreement(self):
+        base = np.tile([0.0, 0.00001], (100, 1))
+        candidate = base.copy()
+        candidate[0] = candidate[0, ::-1]
+        verdict = evaluate(base, candidate)
+        assert verdict["top1_rate"] == 0.99
+        assert not verdict["passed"]
+        assert "screen_top1_flips" in verdict["failed"]
+
     def test_identical_capture_passes_every_threshold(self) -> None:
         base, same = self._pair()
         verdict = evaluate(base, same)
@@ -123,6 +136,18 @@ class TestEvaluate:
 
 
 class TestCaptureChain:
+    def test_rows_are_snapshots_of_reused_runner_storage(self):
+        class ReusingRunner:
+            def reset(self):
+                self.row = np.zeros(2, dtype=np.float32)
+
+            def forward(self, tokens):
+                self.row[:] = tokens[0]
+                return self.row
+
+        got = capture_chain(ReusingRunner(), [1, 2, 3, 4])
+        np.testing.assert_array_equal(got[:, 0], [1, 2, 3])
+
     def test_chain_teacher_forces_the_prompt_ids_in_order(self) -> None:
         prompt = [9, 8, 7, 6]
         rows = [np.zeros(4, dtype=np.float32) for _ in range(len(prompt) - 1)]
