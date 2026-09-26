@@ -13,7 +13,6 @@ no-ROCm runners.
 from __future__ import annotations
 
 import hashlib
-import os
 
 import numpy as np
 import pytest
@@ -67,7 +66,9 @@ def test_dms_compact_attn_decode_registers_and_build_plan() -> None:
     gfx1100 = plan_dms_compact_build(
         compiler_version="dms-test-version", target_arch="gfx1100"
     )
-    assert "-DHIPENGINE_DMS_ENABLE_WAVE_GROUP6=1" in gfx1151.flags
+    # gfx1151 uses the generic producer: the wave producer fails the full-model
+    # no-evict G0 control even though primitive attention tolerances pass.
+    assert "-DHIPENGINE_DMS_ENABLE_WAVE_GROUP6=1" not in gfx1151.flags
     # gfx1100 measured 2026-09-08 on the W7900: the wave-group6 producer is
     # 4.35x faster than the generic grouped producer at the 24q/4kv/256d
     # geometry (0.344 -> 0.079 ms at live 8192) with identical output, so the
@@ -433,16 +434,9 @@ def test_dms_compact_attn_decode_splitk_group6_production_digest_and_gate() -> N
     kl, top1 = _kl_top1(want, got)
     assert kl <= 0.05
     assert top1 >= 0.9
-    target_arch = (
-        os.environ.get("HIPENGINE_HIP_ARCH")
-        or os.environ.get("HIP_OFFLOAD_ARCH")
-        or "gfx1100"
-    ).strip().lower().split(":", 1)[0]
-    expected_digest = (
-        "baf26fe9f59a19a3be1d92c9a88b027caeee508f0d635e84895a297c8972964d"
-        if target_arch == "gfx1151"
-        else "61378947cd7451b4d4912e98f767bffe7bf1961a13b09f84a04d606ae4f5f923"
-    )
+    # Generic gfx1151 now shares this fixture result with gfx1100. Full-model
+    # G0, not this digest, motivated the gfx1151 producer rollback.
+    expected_digest = "61378947cd7451b4d4912e98f767bffe7bf1961a13b09f84a04d606ae4f5f923"
     assert hashlib.sha256(got.tobytes()).hexdigest() == expected_digest
     np.testing.assert_array_equal(got, repeat)
 
