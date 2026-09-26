@@ -17370,6 +17370,11 @@ class Qwen35GGUFResidentSession:
                 self.runtime or get_hip_runtime()
             )
 
+    @property
+    def dms_store_request_id(self) -> int:
+        """The private compact store row, independent of engine request IDs."""
+        return 0
+
     def _initialize_external_dms_serving(self, runtime: HipRuntime) -> None:
         from hipengine.kvcache.dms import load_dms_retrofit_config
         from hipengine.kvcache.dms_device import DMSExternalLinearDeviceProjector

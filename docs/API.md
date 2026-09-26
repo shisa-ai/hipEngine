@@ -220,8 +220,9 @@ Dense uniform INT8 KV MTP supports both single-request and packed multi-request
 verification when the admitted storage layout supplies retained INT8 payload
 and scale planes for every required attention layer. The effective physical
 width is bounded by the resolved capability; a wider resident capacity does not
-by itself prove a wider verifier. Public compact-DMS serving currently uses AR
-and rejects explicit MTP requests. See
+by itself prove a wider verifier. Compact-DMS serving supports singleton native
+NextN verification with transactional rollback; it does not support packed DMS
+ownership. See
 [INT8 MTP serving](reference/INT8-MTP-SERVER-READINESS.md) and
 [DMS serving](reference/DMS-SERVING.md) for their separate contracts.
 Explicit requests for missing implementation capabilities return HTTP 501 with
@@ -240,6 +241,31 @@ scope. The response reports the substitution instead of hiding it:
 (`mtp_circuit_breaker_open` or `mtp_operator_rollback`) with the breaker
 snapshot, and `speculative_mtp.effective_route="default"` plus the matching
 `speculative_mtp.decision_reason`.
+
+**DMS sidecars.** Pass `--dms-metadata-path /path/to/dms_metadata.json`
+when starting the server, or `dms_metadata_path="/path/to/dms_metadata.json"`
+to `hipengine.LLM`. The metadata selects the retention policy; `--kv-storage`
+(or the library's `kv_storage`) selects `bf16` or `int8_per_token_head` compact
+payloads. Compact INT8 uses FP32 per-token/head scales. Dense INT8 policy
+records do not select the compact codec.
+
+DMS defaults to one resident request and prefix caching off. Explicitly
+requesting wider residency or prefix snapshots fails because those ownership
+contracts are not implemented. Prefill captures the complete prompt from a
+transient dense BF16 source, then releases that source after compaction. Native
+NextN MTP streams prompt hidden states and verifies through the serial
+transactional route rather than dense target graphs. Completed requests release
+their private sessions; subsequent requests share model weights but construct
+fresh cache state.
+
+After a session has been prepared, `/ready.dms.policy` reports the loaded
+window, target compression, prefill selection mode, decision source and compact
+storage. Non-streaming choice telemetry exposes `hipengine.diagnostics.dms`,
+including actual compression, live rows, device bytes and eviction counters.
+Target compression is a policy setting, not a promise of achieved compression:
+the protected recent window and generated tokens affect the retained size.
+A local W256/2× sidecar is a different policy from a published W8192 sidecar;
+use the loaded metadata rather than the sidecar's name to identify it.
 
 **MTP + thinking (reasoning effort).** The raw-argmax MTP proposer/verifier is
 exact only for the greedy fast path, so host-sampler thinking-budget enforcement

@@ -1607,6 +1607,18 @@ class Qwen35GGUFBringupGenerator:
             ),
         )
         resolved = requested
+        if getattr(self, "dms_metadata_path", None) is not None:
+            # Compact retention has its own codec and transactions. Dense KV
+            # evidence and dense retained-decode leaves do not describe it.
+            if requested.storage_layout != "uniform":
+                raise NotImplementedError("DMS supports uniform per-token/head codec scales only")
+            if requested.storage_dtype.value == "int8_per_token_head":
+                requested = replace(requested, scale_dtype=DType.FP32)
+            self._kv_capability_resolution = None
+            return requested.create_policy(), requested.scale_dtype.value, (
+                requested.storage_dtype.value, requested.storage_layout,
+                requested.scale_dtype.value, requested.scale_granularity,
+            )
         if requested.storage_dtype.value == "int8_per_token_head":
             requested_dtype = str(requested.scale_dtype.value)
             declared_dtype = declared_int8_scale_dtype(
@@ -1664,6 +1676,12 @@ class Qwen35GGUFBringupGenerator:
         )
         return resolved.create_policy(), resolved.scale_dtype.value, signature
 
+    def configure_dms(self, metadata_path: str) -> None:
+        """Bind an explicit sidecar before any resident session is prepared."""
+        if getattr(self, "_prepared_kv_signature", None) is not None:
+            raise RuntimeError("DMS must be configured before resident preparation")
+        self.dms_metadata_path = str(metadata_path)
+
     def _prepare_kv_policy(self, params: Any | None) -> None:
         current = getattr(self, "_prepared_kv_signature", None)
         requested_storage = getattr(params, "kv_storage", "auto") or "auto"
@@ -1698,6 +1716,15 @@ class Qwen35GGUFBringupGenerator:
 
     def _prepared_session_kv_kwargs(self) -> dict[str, Any]:
         signature = getattr(self, "_prepared_kv_signature", None)
+        if getattr(self, "dms_metadata_path", None) is not None:
+            from hipengine.kvcache.dms import create_dms_bf16_backend, create_dms_int8_backend
+
+            factories = {"bf16": create_dms_bf16_backend, "int8_per_token_head": create_dms_int8_backend}
+            storage = "bf16" if signature is None else signature[0]
+            if storage not in factories:
+                raise NotImplementedError(f"DMS has no compact codec for {storage}")
+            return {"dms_metadata_path": self.dms_metadata_path,
+                    "dms_backend_factory": factories[storage]}
         if signature in {None, ("bf16", "uniform", "fp16", "per_token_head")}:
             return {}
         return {
@@ -2166,6 +2193,11 @@ class Qwen35GGUFBringupGenerator:
             "fp16",
             "per_token_head",
         )
+        dms_requested = getattr(self, "dms_metadata_path", None) is not None
+        if dms_requested:
+            # The prefill peak includes a transient dense BF16 source even
+            # when the retained compact payload is INT8.
+            signature = ("bf16", "uniform", "fp16", "per_token_head")
         storage, storage_layout, scale_dtype, granularity = (str(part) for part in signature)
         configured_budget_mib = getattr(self, "_kv_pool_memory_budget_mib", None)
         if configured_budget_mib is not None:
@@ -2213,8 +2245,8 @@ class Qwen35GGUFBringupGenerator:
                 kv_scale_granularity=granularity,
                 int8_kv_no_mirror_qualified=qualified,
                 int8_bf16_layer_indices_resolver=_layer_indices,
-                allocate_kv_cache=not bool(defer_kv_allocation),
-                workspace_lease_needed=self._packed_workspace_lease_needed(
+                allocate_kv_cache=dms_requested or not bool(defer_kv_allocation),
+                workspace_lease_needed=not dms_requested and self._packed_workspace_lease_needed(
                     max_batch_size=int(max_batch_size)
                 ),
                 reserve_bytes=_gguf_auto_context_reserve_bytes(),
@@ -2442,6 +2474,21 @@ class Qwen35GGUFBringupGenerator:
                 )
                 context = next_context
             else:
+                dms_source = getattr(session, "_dms_source", None)
+                if dms_source is not None:
+                    config = dms_source.config
+                    self._dms_serving_policy = {
+                        "metadata_path": self.dms_metadata_path,
+                        "decision_source": config.decision_source,
+                        "decision_mode": session.dms_decision_mode,
+                        "window_size": config.window_size,
+                        "target_compression_ratio": config.target_compression_ratio,
+                        "prefill_selection_mode": config.prefill_selection_mode,
+                        "storage": self._prepared_kv_signature[0],
+                        "prefill_mode": session.dms_prefill_mode,
+                        "max_active_requests": 1,
+                        "prefix_cache": "off",
+                    }
                 self._attach_capacity_estimate(
                     session,
                     shared_runner,
@@ -6646,6 +6693,7 @@ class Qwen35GGUFResidentModelRunner:
         ]
         return {
             "model_runner": {
+                "dms": copy.deepcopy(getattr(self.generator, "_dms_serving_policy", None)),
                 "capacity": int(self.capacity),
                 "max_active_requests": int(self.capacity),
                 "max_context_tokens": getattr(
@@ -6891,6 +6939,12 @@ class Qwen35GGUFResidentModelRunner:
             if self._prefix_cache_mode == "radix"
             else None
         )
+        if getattr(self.generator, "dms_metadata_path", None) is not None:
+            if self.capacity != 1 or self._prefix_cache is not None:
+                raise NotImplementedError("DMS requires singleton ownership without prefix snapshots")
+            # The session owns its transient prefill pool and compact backend.
+            # Binding a dense global allocation here would replace that owner.
+            return
         factory_session = self._available[-1].session if self._available else None
         create_global_pool = getattr(
             factory_session,
@@ -7859,12 +7913,24 @@ class Qwen35GGUFResidentModelRunner:
         if accounting is not None:
             diagnostics["specdec2_mtp2"] = accounting
         slot = row.slot
+        dms_backend = None if slot is None else getattr(slot.session, "_dms_backend", None)
+        if dms_backend is not None:
+            diagnostics["dms"] = dms_backend.observability_snapshot()
         audit = (
             None
             if slot is None
             else getattr(slot.session, "device_kv_layout_audit", None)
         )
-        if include_kv_layout and callable(audit):
+        if include_kv_layout and dms_backend is not None:
+            snapshot = diagnostics["dms"]
+            diagnostics["kv_layout"] = {
+                "topology": "dms_compact", "storage_dtype": dms_backend.codec,
+                "storage_layout": "per_head_compact", "scale_dtype": "fp32" if dms_backend.codec == "int8_per_token_head" else None,
+                "kv_attention_source": "dms_compact",
+                "persistent_total_bytes": snapshot["capacity"]["device_resident_bytes"],
+                "persistent_bf16_mirror_bytes": 0,
+            }
+        elif include_kv_layout and callable(audit):
             payload = audit()
             if isinstance(payload, Mapping):
                 diagnostics["kv_layout"] = copy.deepcopy(dict(payload))
@@ -9140,6 +9206,20 @@ class Qwen35GGUFResidentModelRunner:
         if not commit:
             raise ValueError("GGUF resident prefill requires commit=True")
         with hip_target_arch_environment(self.generator.target_arch):
+            if getattr(self.generator, "dms_metadata_path", None) is not None:
+                # Compact capture owns a complete prompt. Scheduler chunks still
+                # advance their normal accounting; compute runs at the last one.
+                for request_id, token_row in zip(work.request_ids, work.token_rows, strict=True):
+                    row = self._row(request_id)
+                    start = row.prefill_tokens_seen
+                    chunk = tuple(int(token) for token in token_row)
+                    if chunk != row.prompt_ids[start:start + len(chunk)]:
+                        raise RuntimeError("DMS prefill chunk does not match the registered prompt")
+                    row.prefill_tokens_seen += len(chunk)
+                    if row.prefill_tokens_seen == len(row.prompt_ids):
+                        self._mark_execution_stepped((request_id,))
+                        self._prefill_dms_row(row)
+                return
             handled = self._try_prefill_native_work_batch(work)
             self._execution_mutation_window = "unknown"
             for request_id, token_row in zip(work.request_ids, work.token_rows, strict=True):
@@ -9604,6 +9684,14 @@ class Qwen35GGUFResidentModelRunner:
             return
         session = lease.session
         self._close_c1_decode_graph(row)
+        if getattr(self.generator, "dms_metadata_path", None) is not None:
+            # Dense prefill planes were freed by compaction. A reset cannot
+            # recreate those planes or erase the compact allocator's history.
+            session.close()
+            self._resident_batch_owner = None
+            self._resident_batch_owner_pool_key = None
+            row.lease = None
+            return
         graph_handles = tuple(
             handle
             for handle in self._graph_handles_for_sessions((session,))
@@ -9850,6 +9938,41 @@ class Qwen35GGUFResidentModelRunner:
         if adapter is None:
             raise RuntimeError("GGUF MTP2 streaming prompt adapter disappeared")
         adapter.finish_prompt_streaming(ids, success=bool(success), stream=int(stream))
+
+    def _prefill_dms_row(self, row: _GGUFResidentLoopRow) -> None:
+        raise_if_generation_deadline_expired(row.request)
+        row.lease = row.lease or self._acquire_lease()
+        session = row.lease.session
+        session.dms_max_new_tokens = max(1, int(row.request.max_tokens)) + max(1, row.mtp2_candidate_budget) + 1
+        if row.native_sampled:
+            self._prepare_sampled_prefill(row)
+        sinks = self._begin_mtp2_prompt_streaming((row,))
+        sink = sinks[0]
+        if row.mtp2_candidate_budget > 0 and sink is None:
+            raise NotImplementedError("DMS MTP requires the native NextN prompt streaming provider")
+        start = time.perf_counter()
+        try:
+            result = session.prefill(
+                row.prompt_ids, use_bulk=True, bulk_attention_mode="bulk",
+                return_logits=bool(row.native_sampled),
+                **({"target_hidden_chunk_sink": sink,
+                    "target_hidden_request_id": row.request_id} if sink is not None else {}),
+            )
+        except BaseException:
+            self._finish_mtp2_prompt_streaming((row,), sinks, success=False)
+            raise
+        self._finish_mtp2_prompt_streaming((row,), sinks, success=True)
+        row.prefill_ms += _timing_ms_since(start)
+        row.prefill_chunk_count += 1
+        if row.native_sampled:
+            sample = (
+                session.sample_native_from_last_logits(row.sampling_request, row.sampling_state)
+                if row.native_sampler else None
+            )
+            self._finish_sampled_prefill(row, result, native_compact_prefill=False, native_sample=sample)
+        else:
+            self._finish_native_prefill(row, result, native_compact_prefill=False)
+        raise_if_generation_deadline_expired(row.request)
 
     def _prefill_native_row(self, row: _GGUFResidentLoopRow) -> None:
         if row.slot is not None:
@@ -11471,6 +11594,8 @@ class Qwen35GGUFResidentModelRunner:
         slot = row.slot
         if slot is None:
             raise RuntimeError("GGUF resident c1 decode row is missing its session slot")
+        if getattr(slot.session, "_dms_backend", None) is not None:
+            return slot.session.step(int(slot.prev_token), return_logits=False)
         if len(getattr(self, "_rows", {})) > 1:
             # Slot views deliberately share the batch owner's execution buffers.
             # A scalar graph captured for the c1 edge of a wider logical round

@@ -1141,8 +1141,6 @@ class DMSCompactBackend:
         if evaluation_only and (codec != "int8_per_token_head" or codec_qualification is not None):
             raise ValueError("codec evaluation cannot carry qualification")
         if codec == "int8_per_token_head":
-            if codec_qualification is None and not evaluation_only:
-                raise ValueError("compact INT8 DMS requires artifact qualification")
             if codec_qualification is not None and codec_qualification.artifact_fingerprint != retrofit.artifact_fingerprint:
                 raise ValueError("compact INT8 qualification artifact mismatch")
         elif codec_qualification is not None:
@@ -2092,6 +2090,8 @@ class DMSCompactBackend:
                 "artifact_fingerprint": self.retrofit.artifact_fingerprint,
                 "retrofit_fingerprint": self.retrofit.fingerprint,
                 "decision_source": self.retrofit.decision_source,
+                "window_size": self.retrofit.window_size,
+                "prefill_selection_mode": self.retrofit.prefill_selection_mode,
                 "physical_layer_ids": list(self.retrofit.physical_layer_ids),
                 "prefix_mode": "off",
                 "no_dense_shadow": True,
@@ -2340,7 +2340,7 @@ def create_dms_bf16_backend(**kwargs: Any) -> DMSCompactBackend:
 
 def create_dms_int8_backend(
     *,
-    codec_qualification: DMSCodecQualification,
+    codec_qualification: DMSCodecQualification | None = None,
     **kwargs: Any,
 ) -> DMSCompactBackend:
     return DMSCompactBackend(

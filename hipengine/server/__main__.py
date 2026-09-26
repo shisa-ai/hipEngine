@@ -199,24 +199,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--kv-storage",
         default=os.environ.get("HIPENGINE_KV_STORAGE", "bf16"),
         help=(
-            "Server-wide KV storage policy: auto, bf16, or int8_per_token_head "
-            "(default: bf16). BF16 is the higher-precision baseline and is the "
-            "only KV storage the speculative (MTP) route has retained evidence "
-            "for. int8_per_token_head stores roughly half the per-token KV bytes "
-            "at lower KV precision, and is used only when the loaded artifact is "
-            "qualified for it; an unqualified int8 request falls back to BF16 "
-            "and records the reason in /ready and the KVCache summary. Pass "
-            "int8_per_token_head to opt into the compressed policy."
+            "Server-wide KV storage: auto, bf16, or int8_per_token_head "
+            "(default: bf16). With --dms-metadata-path, selects the compact DMS "
+            "codec; otherwise selects dense KV storage. BF16 uses higher-precision "
+            "payloads. INT8 uses per-token/head scales; requested and effective "
+            "storage are reported in diagnostics."
         ),
+    )
+    parser.add_argument(
+        "--dms-metadata-path",
+        help="DMS sidecar metadata for online eviction; uses one resident request and no prefix cache",
     )
     parser.add_argument(
         "--kv-scale-dtype",
         default=os.environ.get("HIPENGINE_KV_SCALE_DTYPE", "fp32"),
         help=(
-            "INT8 KV scale dtype: fp16 or fp32 (default: fp32). The retained "
-            "INT8 KV qualification evidence for the supported dense GGUF "
-            "artifacts is keyed on fp32 scales; fp16 scales resolve to no "
-            "matching contract and therefore fail closed to BF16."
+            "INT8 KV scale dtype: fp16 or fp32 (default: fp32). "
+            "The selected implementation resolves the effective dtype; compact "
+            "DMS INT8 uses fp32 scales."
         ),
     )
     parser.add_argument(
@@ -385,10 +385,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--prefix-cache",
         choices=PREFIX_CACHE_CHOICES,
-        default=resolve_prefix_cache_mode(os.environ.get("HIPENGINE_PREFIX_CACHE")),
+        default=os.environ.get("HIPENGINE_PREFIX_CACHE"),
         help=(
             f"Prefix-cache mode (env HIPENGINE_PREFIX_CACHE; default: "
-            f"{PREFIX_CACHE_DEFAULT})"
+            f"{PREFIX_CACHE_DEFAULT}, or off with DMS; DMS prefix snapshots are not implemented)"
         ),
     )
     parser.add_argument(
@@ -462,6 +462,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.dms_metadata, prefill_mode=args.dms_prefill_mode
         ) if args.dms_metadata else None),
         kv_storage=args.kv_storage,
+        dms_metadata_path=args.dms_metadata_path,
         kv_scale_dtype=args.kv_scale_dtype,
         kv_scale_granularity=args.kv_scale_granularity,
         generation_batch_window_ms=args.generation_batch_window_ms,
