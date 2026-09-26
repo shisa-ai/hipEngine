@@ -1,0 +1,50 @@
+{
+ "kind": "gemma4_campaign_candidate",
+ "verdict": "accepted and promoted (bit-exact, default path)",
+ "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B prefill attention at head_dim 256",
+ "candidate": "run the prefill attention logit reduction with one warp per key and the block tree in registers, instead of one block-wide shared-memory tree per key. The incumbent is one block per (token, head) that walks keys serially and calls a 256-lane block reduction for every key, so it pays eight __syncthreads rounds per key: 5120 barriers per block at a 512-token prompt, against one multiply per thread of actual work. Measured 147 GFLOP/s and ~5.3 us per key at 512 tokens, invariant to the work inside the key iteration.",
+ "reason": "the change is bit-exact, so it needs no numerical gate. The register tree adds the same pairs in the same order as the block tree: lane l holds logical threads l + 32k, which makes the 128/64/32 stages and the final stride-1 stage intra-lane and strides 16..1 warp shuffles. Verified two ways: a standalone device kernel running both trees over the same 256 leaves agrees on 64 of 64 random rounds, and the attention outputs are pinned bit-for-bit against tensors captured from the kernel that already implemented this association.",
+ "mechanism": {
+  "structure": "pass 1 of gemma4_attention_prefill_kernel: `if (head_dim == 256 && blockDim.x == 256)` selects a warp-per-key loop with the tree in registers. Every other shape keeps the original loop unchanged.",
+  "arithmetic": "unchanged. Each output's k-set, shuffle tree and four-wave sum are the same operations on the same values.",
+  "refuted_alternative": "FP contraction. The first version let the compiler fuse a leaf multiply into the first tree add (fma(q, k, p[4])), which rounds once where the shared-memory tree rounds twice, and 48% of the f32 outputs moved by one ulp. `#pragma clang fp contract(off)` on the leaf block restores the double rounding; without it the rewrite is not bit-exact.",
+  "profile": "one warp per key, 8 warps, no barriers in the key loop; 8 registers per lane for the leaves and the intra-lane stages."
+ },
+ "correctness": {
+  "gate": "not applicable - no arithmetic change, so no execution-profile gate is required",
+  "kernel_level": "the register tree and the block tree agree on 64 of 64 random 256-leaf rounds in a standalone device kernel; the prefill outputs at head_dim 256 match tensors captured from the pre-change kernel exactly (np.testing.assert_array_equal), f32 and bf16, at 12 tokens x 4 heads x 256 dim with a causal mask plus masked-out recent keys.",
+  "unit_test": "tests/test_unit_gemma4_gpu_kernels.py::test_attention_prefill_head_dim_256_is_bit_identical_to_recorded_outputs pins the bits against tests/fixtures/gemma4/attention_prefill_head_dim_256_{f32,bf16}.npy; test_attention_prefill_head_dim_256_follows_its_reduction_association pins the association itself in readable form at one fp32 ulp of the device expf. 62 tests pass in that file; 501 pass in the gemma4 bundle.",
+  "generation_parity": "through LLM.generate() at 512 prompt / 128 output, 128 of 128 greedy token ids identical to the incumbent arm.",
+  "route_ran": "the fast path is taken at the model's own geometry: head_dim 256 (attn_q 4096 = 16 heads x 256) with the launcher's next_pow2(head_dim) = 256 threads."
+ },
+ "performance": {
+  "platform": "gfx1151 Strix Halo (Radeon 8060S, zbook), ROCm, bf16 KV",
+  "protocol": "scripts/gemma4_campaign_bench.py, 512 prompt / 128 output, 3 samples, 1 warm-up, two arms on one tree with the only difference being gemma4_attention.hip",
+  "primary": {
+   "row": "512 prompt / 128 output",
+   "prefill_s_incumbent": 3.637,
+   "prefill_s_candidate": 3.309,
+   "prefill_tok_s_incumbent": 140.76,
+   "prefill_tok_s_candidate": 154.75,
+   "prefill_delta": "1.099x",
+   "public_wall_s": "9.656 -> 9.358 (1.032x)",
+   "decode_tok_s": "21.063 -> 21.048 (unchanged)"
+  },
+  "kernel_level": {
+   "geometry": "512 tokens, 16 heads, 8 kv heads, head_dim 256, all keys live",
+   "incumbent_ms": 28.627,
+   "candidate_ms": 9.288,
+   "delta": "3.08x (150.0 -> 462.4 GFLOP/s)",
+   "second_geometry": "2048 tokens: 468.054 -> 133.017 ms (3.52x, 146.8 -> 516.6 GFLOP/s)"
+  },
+  "limits": "the public row moves less than the kernel row because the model's causal mask leaves on average half the keys live, and the barrier cost was only paid for live keys. The 3.08x is the component; the row delta is -0.328 s of a 3.637 s prefill.",
+  "secondary": {
+   "row": "2048 prompt / 128 output - not measured for this change",
+   "why": "the kernel-level sweep already covers 2048 tokens (3.52x), and the change is bit-exact with decode untouched, so a second public row would restate the primary rather than test anything new."
+  }
+ },
+ "selection": {
+  "flag": "none - the fast path is selected inside the kernel by its own shape contract",
+  "fallback": "every head_dim other than 256, or any block width other than 256, keeps the original block-tree loop."
+ }
+}

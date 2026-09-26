@@ -86,6 +86,42 @@ the two backends share the gfx11 source lineage, so the attribution is expected
 to transfer, but the gfx1100 prefill rows remain unmeasured and this campaign's
 RX 7900 XTX status is unchanged.
 
+## Current prefill status — 2026-09-27, gfx1151 (route attribution)
+
+Route-level attribution of the default path at 512 tokens, by wrapping every
+registered kernel in the four-axis registry with a HIP event pair (attention
+launches outside the registry and was measured separately):
+
+| route | ms | launches | share |
+| --- | ---: | ---: | ---: |
+| `Q4_K` gate/up staged grouped prefill | 1156.1 | 29 | 41.0% |
+| `Q8_0` dense exact prefill (`tile16x4`) | 694.2 | 205 | 24.6% |
+| `Q5_1` down staged grouped prefill | 650.5 | 29 | 23.1% |
+| `Q5_K` selected GEMV (layer 29) | 245.8 | 1 | 8.7% |
+| `Q8_0` selected GEMV | 69.0 | 1 | 2.4% |
+| **prefill attention** (measured separately) | ~1000 | 35 | — |
+
+**Prefill attention ran at 147 GFLOP/s** — one block per (token, head) walking
+keys serially with a 256-lane block reduction per key, eight `__syncthreads`
+rounds per key, 5120 barriers per block at 512 tokens. One warp per key with the
+tree in registers takes the kernel **28.63 -> 9.29 ms (3.08x)** at 512 tokens and
+**468.05 -> 133.02 ms (3.52x)** at 2048, and **512/128 prefill 3.637 -> 3.309 s
+(1.099x)**. It is bit-exact and ships with no flag and no gate. The one
+non-obvious requirement: FP contraction must be off for the leaves, because
+fusing a leaf multiply into the first tree add rounds once where the
+shared-memory tree rounds twice. Recorded in
+`benchmarks/results/2026-09-27-gemma4-attention-prefill-register-tree-accepted.json`.
+
+Two refuted candidates are worth carrying forward. Halving the `Q8_0` dense
+route's traffic does **not** help: a row-grouped variant moves 4.56 GB instead of
+9.30 GB over the six dense shapes but takes 21.23 ms against 22.13 ms, because
+achieved bandwidth falls from 428 to 220 GB/s — the kernel is limited by 1-byte
+weight load transactions, not by DRAM, and the lever is fewer and wider loads
+(which needs a different association) rather than less traffic. And the same
+kernel's `tile8x4` shape moves *more* traffic (3.05 GB against 2.31 GB for
+attn_q) while running faster (5.95 ms against 5.47 ms) because it sustains
+higher bandwidth, which is why the dispatcher's `tile16x4` preference is right.
+
 ## Current correctness status — 2026-09-26
 
 The key-slice attention implementation failed the corrected teacher-forced
