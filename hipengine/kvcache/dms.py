@@ -7,6 +7,7 @@ import json
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from math import ceil, prod
 from pathlib import Path
 from types import SimpleNamespace
@@ -62,6 +63,30 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _model_file_version(path: Path) -> tuple[int, ...]:
+    stat = path.stat()
+    return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+
+
+@lru_cache(maxsize=16)
+def _model_digest_for_version(path: Path, version: tuple[int, ...]) -> str:
+    digest = _sha256_file(path)
+    if _model_file_version(path) != version:
+        raise ValueError("DMS model file changed during SHA-256 verification")
+    return digest
+
+
+def _model_sha256_file(path: Path) -> str:
+    """Reuse model verification only while its filesystem version is unchanged.
+
+    Process-local and bounded: replacements, writes (even with restored mtime),
+    and truncation invalidate the entry. Sidecar files are still read and hashed
+    on every load. Model artifacts must not be modified while inference runs.
+    """
+    resolved = path.resolve(strict=True)
+    return _model_digest_for_version(resolved, _model_file_version(resolved))
 
 
 @dataclass(frozen=True, slots=True)
@@ -596,7 +621,7 @@ def load_dms_retrofit_config(
         # geometry fits the model runs on it.  A mismatch means the trained
         # quality evidence describes a different file, so record it and warn
         # rather than refusing a sidecar the caller explicitly passed.
-        if model.is_file() and _sha256_file(model) != config.artifact_fingerprint:
+        if model.is_file() and _model_sha256_file(model) != config.artifact_fingerprint:
             config = replace(config, artifact_fingerprint_verified=False)
             warnings.warn(
                 "DMS sidecar was trained against a different model artifact "
