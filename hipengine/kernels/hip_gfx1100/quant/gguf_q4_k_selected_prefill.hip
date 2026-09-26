@@ -36,6 +36,13 @@ constexpr int Q4_K_SCALE_BYTES = 12;
 constexpr int Q4_K_QS_OFFSET = 2 + 2 + Q4_K_SCALE_BYTES;
 constexpr int Q4_K_SUBBLOCK = 32;
 constexpr int Q4_K_SUBBLOCKS = QK_K / Q4_K_SUBBLOCK;          // == 8
+// Q5_K shares Q4_K's superblock prefix -- d, dmin, and the same 12-byte 6-bit
+// scale packing -- and the same 4-bit nibble order in ``qs``. It adds a 32-byte
+// ``qh`` slab, one high bit per weight, between the scales and ``qs``, so both
+// quants decode through one path selected by the kernel's Q5K parameter.
+constexpr int Q5_K_BLOCK_BYTES = 176;
+constexpr int Q5_K_QH_OFFSET = 2 + 2 + Q4_K_SCALE_BYTES;
+constexpr int Q5_K_QS_OFFSET = Q5_K_QH_OFFSET + 32;
 constexpr int K_TILE = 16;                                    // WMMA K
 constexpr int K_TILES_PER_SUBBLOCK = Q4_K_SUBBLOCK / K_TILE;  // == 2
 
@@ -115,6 +122,16 @@ __device__ inline uint8_t gguf_q4_k_quant(
   return (subblock & 1) ? (packed >> 4) : (packed & 0x0Fu);
 }
 
+// Q5_K's fifth bit for weight ``lane`` of subblock ``s`` is bit ``s`` of
+// ``qh[lane]``; ``qh`` is not advanced between subblocks.
+__device__ inline uint8_t gguf_q5_k_high_bit(
+    const uint8_t* __restrict__ qh,
+    int subblock,
+    int lane) {
+  return static_cast<uint8_t>(((qh[lane] >> subblock) & 1u) << 4);
+}
+
+template <bool Q5K = false>
 __device__ inline float gguf_q4_k_weight(
     const uint8_t* __restrict__ row,
     int64_t column) {
@@ -122,11 +139,17 @@ __device__ inline float gguf_q4_k_weight(
   const int within = static_cast<int>(column % QK_K);
   const int subblock = within >> 5;
   const int lane = within & 31;
-  const uint8_t* block = row + block_index * Q4_K_BLOCK_BYTES;
+  const uint8_t* block =
+      row + block_index * (Q5K ? Q5_K_BLOCK_BYTES : Q4_K_BLOCK_BYTES);
   const float d = fp16_bytes_to_float(block);
   const float dmin = fp16_bytes_to_float(block + 2);
   const uint8_t* scales = block + 4;
-  const uint8_t q = gguf_q4_k_quant(block + Q4_K_QS_OFFSET, subblock, lane);
+  const uint8_t* qs = block + (Q5K ? Q5_K_QS_OFFSET : Q4_K_QS_OFFSET);
+  uint8_t q = gguf_q4_k_quant(qs, subblock, lane);
+  if constexpr (Q5K) {
+    q = static_cast<uint8_t>(
+        q | gguf_q5_k_high_bit(block + Q5_K_QH_OFFSET, subblock, lane));
+  }
   return d * static_cast<float>(gguf_q4_k_scale(scales, subblock))
       * static_cast<float>(q)
       - dmin * static_cast<float>(gguf_q4_k_min(scales, subblock));
@@ -137,6 +160,7 @@ struct q4_k_weight_pair {
   float second;
 };
 
+template <bool Q5K = false>
 __device__ inline q4_k_weight_pair gguf_q4_k_weight_pair128(
     const uint8_t* __restrict__ row,
     int64_t block_index,
@@ -145,10 +169,17 @@ __device__ inline q4_k_weight_pair gguf_q4_k_weight_pair128(
     const float* __restrict__ dmin_mins) {
   const int subblock = lane128 >> 5;
   const int lane = lane128 & 31;
-  const uint8_t* qs = row + block_index * Q4_K_BLOCK_BYTES + Q4_K_QS_OFFSET;
+  const uint8_t* block =
+      row + block_index * (Q5K ? Q5_K_BLOCK_BYTES : Q4_K_BLOCK_BYTES);
+  const uint8_t* qs = block + (Q5K ? Q5_K_QS_OFFSET : Q4_K_QS_OFFSET);
   const int paired_subblock = subblock + 4;
-  const uint8_t q0 = gguf_q4_k_quant(qs, subblock, lane);
-  const uint8_t q1 = gguf_q4_k_quant(qs, paired_subblock, lane);
+  uint8_t q0 = gguf_q4_k_quant(qs, subblock, lane);
+  uint8_t q1 = gguf_q4_k_quant(qs, paired_subblock, lane);
+  if constexpr (Q5K) {
+    const uint8_t* qh = block + Q5_K_QH_OFFSET;
+    q0 = static_cast<uint8_t>(q0 | gguf_q5_k_high_bit(qh, subblock, lane));
+    q1 = static_cast<uint8_t>(q1 | gguf_q5_k_high_bit(qh, paired_subblock, lane));
+  }
   const int meta_base = static_cast<int>(block_index) * Q4_K_SUBBLOCKS;
   return {
       d_scales[meta_base + subblock] * static_cast<float>(q0)
@@ -189,7 +220,8 @@ __device__ inline float reduce_block_sum_strict(float value, float* wave_sums) {
 // order and the reduction tree is still the same 128-thread one per output, so
 // every output's summation order is unchanged.
 template <int ROW_BATCH, int OUT_BATCH, bool PAIR_BLOCK_WEIGHTS = false,
-          bool BUNDLED_PUBLICATION = false, bool AMORTIZE_INPUT = false>
+          bool BUNDLED_PUBLICATION = false, bool AMORTIZE_INPUT = false,
+          bool Q5K = false>
 __global__ __launch_bounds__(128, 2)
 void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
     const uint16_t* __restrict__ input,
@@ -217,7 +249,8 @@ void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
   if (q4_blocks > MAX_Q4_BLOCKS) return;
   const int64_t out_base = blockIdx.x * OUT_BATCH;
   if (out_base >= out_features) return;
-  const int64_t row_bytes = (in_features / QK_K) * Q4_K_BLOCK_BYTES;
+  const int64_t row_bytes =
+      (in_features / QK_K) * (Q5K ? Q5_K_BLOCK_BYTES : Q4_K_BLOCK_BYTES);
   // A fused ``gate_up`` tensor stores both halves in one allocation, so the
   // expert stride is the sum of the two widths while each half still indexes
   // from its own origin, and both halves write into one row of the fused
@@ -255,9 +288,11 @@ void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
           const int64_t block_index = local / Q4_K_SUBBLOCKS;
           const int subblock = static_cast<int>(local % Q4_K_SUBBLOCKS);
           const uint8_t* block_a =
-              weight_a[out_offset] + block_index * Q4_K_BLOCK_BYTES;
+              weight_a[out_offset] +
+              block_index * (Q5K ? Q5_K_BLOCK_BYTES : Q4_K_BLOCK_BYTES);
           const uint8_t* block_b =
-              weight_b[out_offset] + block_index * Q4_K_BLOCK_BYTES;
+              weight_b[out_offset] +
+              block_index * (Q5K ? Q5_K_BLOCK_BYTES : Q4_K_BLOCK_BYTES);
           const float d_a = fp16_bytes_to_float(block_a);
           const float dmin_a = fp16_bytes_to_float(block_a + 2);
           const float d_b = fp16_bytes_to_float(block_b);
@@ -299,11 +334,11 @@ void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
 #pragma unroll
           for (int out_offset = 0; out_offset < OUT_BATCH; ++out_offset) {
             if (out_offset < out_count) {
-              const q4_k_weight_pair wa = gguf_q4_k_weight_pair128(
+              const q4_k_weight_pair wa = gguf_q4_k_weight_pair128<Q5K>(
                   weight_a[out_offset], block_index, threadIdx.x,
                   d_scales_a + out_offset * META_STRIDE,
                   dmin_mins_a + out_offset * META_STRIDE);
-              const q4_k_weight_pair wb = gguf_q4_k_weight_pair128(
+              const q4_k_weight_pair wb = gguf_q4_k_weight_pair128<Q5K>(
                   weight_b[out_offset], block_index, threadIdx.x,
                   d_scales_b + out_offset * META_STRIDE,
                   dmin_mins_b + out_offset * META_STRIDE);
@@ -409,9 +444,9 @@ void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
                ++block_index) {
             const int64_t column0 = block_index * QK_K + threadIdx.x;
             const int64_t column1 = column0 + 128;
-            const q4_k_weight_pair wa = gguf_q4_k_weight_pair128(
+            const q4_k_weight_pair wa = gguf_q4_k_weight_pair128<Q5K>(
                 weight_a, block_index, threadIdx.x, d_scales_a, dmin_mins_a);
-            const q4_k_weight_pair wb = gguf_q4_k_weight_pair128(
+            const q4_k_weight_pair wb = gguf_q4_k_weight_pair128<Q5K>(
                 weight_b, block_index, threadIdx.x, d_scales_b, dmin_mins_b);
 #pragma unroll
             for (int row = 0; row < ROW_BATCH; ++row) {
@@ -431,8 +466,8 @@ void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
         } else {
           for (int64_t column = threadIdx.x; column < in_features;
                column += blockDim.x) {
-            const float wa = gguf_q4_k_weight(weight_a, column);
-            const float wb = gguf_q4_k_weight(weight_b, column);
+            const float wa = gguf_q4_k_weight<Q5K>(weight_a, column);
+            const float wb = gguf_q4_k_weight<Q5K>(weight_b, column);
 #pragma unroll
             for (int row = 0; row < ROW_BATCH; ++row) {
               const int64_t compact_row = base + row;
@@ -2633,6 +2668,36 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgr
       static_cast<const int64_t*>(expert_start), static_cast<const uint8_t*>(qweight_a),
       static_cast<const uint8_t*>(qweight_b), static_cast<uint16_t*>(output_a),
       static_cast<uint16_t*>(output_b), compact_rows, num_experts, in_features, out_features, 0, 0);
+  return static_cast<int>(hipGetLastError());
+}
+
+// Q5_K's amortized dual owner: the same kernel and the same 128-thread tree per
+// output, with each weight's fifth bit taken from the block's ``qh`` slab and the
+// 176-byte superblock stride in place of Q4_K's 144. The grouped and selected
+// families were measured bit-identical for Q8_0 at Gemma's down geometry (0 of
+// 23068672 elements differ), so this is an exact owner for the two layers whose
+// Q5_K experts otherwise fall back to the per-row selected GEMV.
+extern "C" int hipengine_gguf_q5_k_selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out(
+    const void* input, const void* expert_start,
+    const void* qweight_a, const void* qweight_b, void* output_a, void* output_b,
+    int64_t compact_rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, int64_t output_row_stride, int64_t expert_stride_rows,
+    hipStream_t stream) {
+  if (!input || !expert_start || !qweight_a || !qweight_b || !output_a ||
+      !output_b || compact_rows <= 0 || num_experts <= 0 || in_features <= 0 ||
+      in_features % QK_K || in_features > 4096 || out_features <= 0 ||
+      output_row_stride < 0 || expert_stride_rows < 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<8, 4, true, true, true, true>),
+      dim3(static_cast<uint32_t>((out_features + 3) / 4),
+           static_cast<uint32_t>(num_experts)),
+      dim3(128), 0, stream, static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(expert_start), static_cast<const uint8_t*>(qweight_a),
+      static_cast<const uint8_t*>(qweight_b), static_cast<uint16_t*>(output_a),
+      static_cast<uint16_t*>(output_b), compact_rows, num_experts, in_features,
+      out_features, output_row_stride, expert_stride_rows);
   return static_cast<int>(hipGetLastError());
 }
 
