@@ -289,14 +289,22 @@ class Gemma4GGUFGenerator:
             raise RuntimeError("Gemma 4 generator is closed")
 
 
-def make_gemma4_generator_gfx1100(
+def make_gemma4_generator(
     *,
+    backend: str,
     model_path: str | Path,
     weight_index: WeightIndex,
     model_plugin: Any,
     max_sequence_length: int | None = None,
 ) -> Gemma4GGUFGenerator:
-    """Create the gfx1100 Gemma 4 generator.
+    """Create the Gemma 4 generator for one concrete HIP backend.
+
+    The runner drives arch-native kernels: the build takes its ``--offload-arch``
+    from ``HIPENGINE_HIP_ARCH`` or the host device, and the backend key only
+    selects the registry keys the weight materializer and the selected-expert
+    dispatch resolve. gfx1100 and gfx1151 share the same gfx11 source lineage,
+    so one factory serves both and the backend decides which registrations are
+    looked up.
 
     ``max_sequence_length`` is the public ``LLM`` context limit and sizes the
     runner's KV cache. Prefill scratch is bounded separately by its block size.
@@ -310,20 +318,66 @@ def make_gemma4_generator_gfx1100(
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,
-        backend="hip_gfx1100",
+        backend=backend,
         context_length=context_length,
     )
 
 
-register_text_generator(
-    model="gemma4_gguf",
-    backend="hip_gfx1100",
-    quant=_GEMMA4_QUANT,
-    factory=make_gemma4_generator_gfx1100,
-)
+def make_gemma4_generator_gfx1100(
+    *,
+    model_path: str | Path,
+    weight_index: WeightIndex,
+    model_plugin: Any,
+    max_sequence_length: int | None = None,
+) -> Gemma4GGUFGenerator:
+    """Create the gfx1100 Gemma 4 generator."""
+
+    return make_gemma4_generator(
+        backend="hip_gfx1100",
+        model_path=model_path,
+        weight_index=weight_index,
+        model_plugin=model_plugin,
+        max_sequence_length=max_sequence_length,
+    )
+
+
+def make_gemma4_generator_gfx1151(
+    *,
+    model_path: str | Path,
+    weight_index: WeightIndex,
+    model_plugin: Any,
+    max_sequence_length: int | None = None,
+) -> Gemma4GGUFGenerator:
+    """Create the gfx1151 (Strix Halo) Gemma 4 generator.
+
+    The gfx1151 kernel package aliases the proven gfx1100 gfx11 bodies and
+    compiles them for gfx1151, so the same runner runs on Strix Halo.
+    """
+
+    return make_gemma4_generator(
+        backend="hip_gfx1151",
+        model_path=model_path,
+        weight_index=weight_index,
+        model_plugin=model_plugin,
+        max_sequence_length=max_sequence_length,
+    )
+
+
+for _backend, _factory in (
+    ("hip_gfx1100", make_gemma4_generator_gfx1100),
+    ("hip_gfx1151", make_gemma4_generator_gfx1151),
+):
+    register_text_generator(
+        model="gemma4_gguf",
+        backend=_backend,
+        quant=_GEMMA4_QUANT,
+        factory=_factory,
+    )
 
 
 __all__ = [
     "Gemma4GGUFGenerator",
+    "make_gemma4_generator",
     "make_gemma4_generator_gfx1100",
+    "make_gemma4_generator_gfx1151",
 ]
