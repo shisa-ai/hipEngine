@@ -1,0 +1,97 @@
+{
+  "id": "2026-09-26-gemma4-26b-a4b-moe-dispatch-table",
+  "date": "2026-09-26",
+  "kind": "diagnostic",
+  "campaign": "GEMMA4-26B-A4B-OPTIMIZATION",
+  "iteration": 40,
+  "status": "diagnostic",
+  "subject": "Production MoE expert dispatch: 2 selected launches per layer at rows=8, and the achieved-bandwidth arithmetic that follows",
+  "method": "scripts/gemma4_moe_dispatch_probe.py - patches the expert entry points (gemma4_project_experts_selected, gemma4_project_expert) and records quant key, shape, expert count, rows and whether the selected kernel served, across a real LLM.generate() on physical GPU1",
+  "dispatch_table": [
+    {
+      "path": "selected",
+      "quant_key": "gguf_q4_k",
+      "in_features": 2816,
+      "out_features": 1408,
+      "num_experts": 128,
+      "rows": 8,
+      "launches": 87,
+      "served": true
+    },
+    {
+      "path": "selected",
+      "quant_key": "gguf_q5_1",
+      "in_features": 704,
+      "out_features": 2816,
+      "num_experts": 128,
+      "rows": 8,
+      "launches": 87,
+      "served": true
+    },
+    {
+      "path": "selected",
+      "quant_key": "gguf_q4_k",
+      "in_features": 2816,
+      "out_features": 1408,
+      "num_experts": 128,
+      "rows": 40,
+      "launches": 29,
+      "served": true
+    },
+    {
+      "path": "selected",
+      "quant_key": "gguf_q5_1",
+      "in_features": 704,
+      "out_features": 2816,
+      "num_experts": 128,
+      "rows": 40,
+      "launches": 29,
+      "served": true
+    },
+    {
+      "path": "selected",
+      "quant_key": "gguf_q5_k",
+      "in_features": 2816,
+      "out_features": 1408,
+      "num_experts": 128,
+      "rows": 8,
+      "launches": 3,
+      "served": true
+    },
+    {
+      "path": "selected",
+      "quant_key": "gguf_q8_0",
+      "in_features": 704,
+      "out_features": 2816,
+      "num_experts": 128,
+      "rows": 8,
+      "launches": 3,
+      "served": true
+    }
+  ],
+  "findings": {
+    "dispatch_route": "The expert path resolves through registry.resolve with _SELECTED_VARIANT inside gemma4_project_experts_selected, NOT through resolve_gguf_linear_dispatch. A probe patching the GGUF linear dispatch alone therefore reports dense projections and zero experts - which is how this was found.",
+    "experts_are_batched": "rows=8 is one token's top_k 8 experts, and the selected family takes all 8 in a single launch per projection. Per decode step the MoE issues 2 selected GEMVs per layer, not the 16 that iteration 32's record assumes (8 gate_up + 8 down). Measured: 87 launches of each over 30 layers, the excess over 60 coming from the one layer whose experts are Q5_K/Q8_0.",
+    "both_quants_served": "gguf_q4_k (gate_up, 2816x1408) and gguf_q5_1 (down, 704x2816) are both served by the selected family, so iteration 33's 783 gguf_q4_k and 783 gguf_q5_1 resolutions were the expert tensors, not the dense projections.",
+    "byte_arithmetic": {
+      "gate_up_per_layer_MB": 287,
+      "down_per_layer_MB": 193,
+      "stored_per_layer_MB": 480,
+      "read_per_token_per_layer_MB": 30.0,
+      "read_per_token_total_GB": 0.9,
+      "roofline_ms_per_token_at_960GBs": 0.94,
+      "production_ms_per_layer": 0.207,
+      "achieved_GBs": 145,
+      "percent_of_peak": 15,
+      "off_roofline": 6.5
+    },
+    "microbench_is_a_fair_proxy": "Iteration 31's fixture measured 31.35 MB against a 30.0 MB real per-token read, and its 104 GB/s is below production's 145 GB/s. The synthetic stand-in was right-sized; production is slightly faster than the microbench, not slower."
+  },
+  "corrections_to_campaign_record": [
+    "Iteration 32 states the MoE issues 8 gate_up and 8 down GEMVs per layer. It issues 2, because the selected family batches all 8 selected experts into one launch. Its conclusion - that the cost is the kernel's memory access pattern rather than orchestration - survives, and this measurement is the production-side confirmation of it.",
+    "The MoE's achieved bandwidth is ~145 GB/s, 15% of peak and 6.5x off the roofline, measured on production shapes rather than inferred from a Q4_K substitute."
+  ],
+  "next_question": "Why does selected_gemv_bf16_bf16_out reach only 15% of peak when it already has 8 batched expert rows, a single launch per projection and no routing waste? Launch overhead, routing and fusion are all now refuted by measurement, so the remaining candidate is kernel-internal: vectorization and occupancy over Q4_K's 144-byte and Q5_1's 24-byte blocks. That is a G4/G5 kernel-quality job, not a repack or a flag.",
+  "product_path_changed": false,
+  "rows_moved": false
+}
