@@ -422,13 +422,17 @@ def test_build_hip_fast_path_honours_environment_changes(
     source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
     root_a = tmp_path / "cache-a"
     root_b = tmp_path / "cache-b"
+    # Clear the arch overrides before the fake artifacts are planned: they are
+    # part of the cache key, and a developer shell that exports
+    # HIPENGINE_HIP_ARCH for a non-native target would otherwise key the
+    # fixtures differently from the build call this test makes below.
+    monkeypatch.delenv("HIPENGINE_HIP_ARCH", raising=False)
+    monkeypatch.delenv("HIPENGINE_HIP_OFFLOAD_ARCH", raising=False)
     path_a = _write_fake_cached_artifact(tmp_path, source, cache_root=root_a)
     path_b = _write_fake_cached_artifact(tmp_path, source, cache_root=root_b)
     monkeypatch.setattr(build_module, "_LOADED_LIB_CACHE", {})
     monkeypatch.setattr(build_module, "_FAST_PATH_CACHE", {})
     monkeypatch.setattr(build_module.ctypes, "CDLL", lambda path: Path(path))
-    monkeypatch.delenv("HIPENGINE_HIP_ARCH", raising=False)
-    monkeypatch.delenv("HIPENGINE_HIP_OFFLOAD_ARCH", raising=False)
 
     def load() -> object:
         return build_hip(
