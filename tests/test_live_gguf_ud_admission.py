@@ -583,9 +583,12 @@ def test_small_plain_q8_0_control_passes_default_operations():
 
 @pytest.mark.skipif(not UD_Q4_K_M.exists(), reason=f"pinned artifact missing: {UD_Q4_K_M}")
 def test_native_multirow_alpha_beta_requires_a_bf16_pointer_owner():
-    # UD stores alpha/beta as Q8_0; with the repack veto they stay raw GGUF
-    # bytes.  The native multirow owner passes allocation("raw") straight to
-    # dense_gemv_out_bf16 (uint16_t* weight ABI), so raw Q8_0 must be refused.
+    # UD stores alpha/beta as Q8_0. Under the shipped per-tensor eligibility
+    # (E3: admission now mirrors the planner) they repack to Q8_0 T16 — the
+    # runtime always planned them that way; only the admission report used to
+    # record the stale model-wide-veto view. The native multirow owner passes
+    # allocation("raw") to dense_gemv_out_bf16 (uint16_t* weight ABI), so
+    # either resident form must still be refused for that owner.
     report = _preflight_real(
         UD_Q4_K_M, "hip_gfx1100", operations=(QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS,)
     )
@@ -603,8 +606,23 @@ def test_native_multirow_alpha_beta_requires_a_bf16_pointer_owner():
         for layer in linear_layers
         for slot in ("ssm_alpha", "ssm_beta")
     }
-    assert all(u.resident_layout == LAYOUT_RAW_GGUF for u in alpha_refusals)
+    assert all(u.resident_layout == LAYOUT_GGUF_Q8_0_T16 for u in alpha_refusals)
     assert "BF16" in alpha_refusals[0].reason
+
+
+@pytest.mark.skipif(not UD_Q4_K_M.exists(), reason=f"pinned artifact missing: {UD_Q4_K_M}")
+def test_e3_ud_file_default_policy_plans_repack_on():
+    """E3 route-table gate: the real UD file must not plan repack=OFF under
+    the shipped default policy (per-tensor eligibility).
+
+    C2's recorded state had the admission/report surfaces record
+    ``decode_repack=False`` for this file while the runtime planned T16
+    routes; admission now mirrors the planner, so this assertion fails
+    whenever the report drifts back to the model-wide-veto view.
+    """
+
+    report = _preflight_real(UD_Q4_K_M, "hip_gfx1100")
+    assert report.plan_contract.decode_repack is True
 
 
 @pytest.mark.skipif(not SMALL_Q8_0.exists(), reason=f"pinned artifact missing: {SMALL_Q8_0}")

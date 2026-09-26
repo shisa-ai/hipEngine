@@ -993,16 +993,19 @@ condition. Reachability is stated against the two in-scope artifacts: Qwen3.8-27
 | `GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS` | `()` | no exact-rowtile target rows | declined |
 | `GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES` | `()` | gfx1151's own `GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT` / `_GRAPH_MAX_CONTEXT = 65544`, already the cache capacity | N/A |
 | `GGUF_IQ4_XS_ADMITTED_PREFILL_PAIR_VARIANT` | `None` | no gfx1100 cooperative IQ pair substitution | declined; requires gfx1151 pair qualification |
-| `GGUF_IQ_DENSE_DECODE_STRICT_SLOTS` | `{}` | gfx1151 has no local32 decode policy to override | N/A; re-evaluate with any decode promotion |
-| `GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS` | `{}` | gfx1151's independently selected prefill policy | no transfer of artifact/slot-specific gfx1100 evidence; qualify locally before adding |
-| `GGUF_IQ_DENSE_VERIFY_POLICY` | `{}` | strict raw-IQ verifier fallback | declined; requires gfx1151 verifier gate |
 | `GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT` | `{}` | existing gfx1151 T16 verifier owners | declined; requires gfx1151 numerical/economics gate |
 | `GGUF_T16_SELECTED_C1_VARIANTS_BY_QUANT_SHAPE` | `{}` | existing selected T16 decode owner | declined; requires gfx1151 selected-shape gate |
 | `GGUF_Q8_T16_DUAL_SPLIT_THREADS_BY_SHAPE` | `{}` | reference 128-thread split owner | declined; the gfx1100 SSM rows1-4 gate does not qualify gfx1151 |
 
 The September 13 UD integration adds seven names above, bringing the
-gfx1100-only live-read inventory to 25. Main's raw-Q5/Q6 rowbatch and coltile
-declines remain unchanged on gfx1151; the independent Qwen4Exp raw-Q8 F32
+gfx1100-only live-read inventory to 25. **Update, 2026-09-24 (campaign
+`UD-GFX1151-OPTIMIZE2` E2a):** gfx1151 now declares
+`GGUF_IQ_DENSE_DECODE_STRICT_SLOTS`, `GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS`
+and `GGUF_IQ_DENSE_VERIFY_POLICY` alongside its `GGUF_IQ_DENSE_DECODE_POLICY`,
+so those three rows left this gfx1100-only ledger (their old verdicts are
+superseded by the declaration recorded in the campaign document and held by
+`tests/test_unit_gfx1151_iq_dense_policy_parity.py`) and the inventory is 22.
+Main's raw-Q5/Q6 rowbatch and coltile declines remain unchanged on gfx1151; the independent Qwen4Exp raw-Q8 F32
 capabilities are preserved. GPU1/XTX validation cannot promote a gfx1151 route.
 
 Three properties make the declined rows safe rather than gaps:

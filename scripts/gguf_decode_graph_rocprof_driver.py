@@ -10,6 +10,13 @@ Decode kernel-profile driver, single-window modes.
 mode=graph: prefill, warm, capture, warm-replay, [0.5s GPU idle gap],
 ``--steps``-step measured graph replay, exit.
 mode=eager: prefill, warm, [0.5s GPU idle gap], ``--steps`` eager steps, exit.
+mode=prefill: one resident session throughout, mirroring the sweep's own
+methodology (`_run_existing_session_once` + `reset()`): a warm-up prefill plus
+a few eager steps, then ``reset()`` (resident weights and scratch retained),
+[0.5s GPU idle gap], one measured fresh ``--prefill-tokens`` prefill, exit --
+so the trailing window is exactly one matched-shape prefill with warm weights
+and pools, like the paired baseline's measured prefill (campaign
+UD-GFX1151-OPTIMIZE2 E1).
 
 The gap makes the measured window the trailing kernel burst after the last
 long GPU idle interval, so no markers are needed to slice the trace.
@@ -75,12 +82,17 @@ def _compiler_version(explicit: Path | None) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model", type=Path)
-    parser.add_argument("mode", choices=("graph", "eager"))
+    parser.add_argument("mode", choices=("graph", "eager", "prefill"))
     parser.add_argument("--steps", type=int, default=32,
                         help="measured decode steps (default 32, the published decode protocol)")
     parser.add_argument("--prefill-tokens", type=int, default=512)
     parser.add_argument("--max-sequence-length", type=int, default=1024)
     parser.add_argument("--compiler-version-file", type=Path, default=None)
+    parser.add_argument("--gap-s", type=float, default=0.5,
+                        help="idle gap before the measured prefill in mode=prefill "
+                             "(default 0.5; the window slicer needs a gap >= the "
+                             "summary tool's 0.4 s cut, but idle lets device clocks "
+                             "downshift before a single measured call)")
     parser.add_argument("--allow-build", action="store_true",
                         help="permit JIT compilation; only for the unprofiled warm build")
     parser.add_argument("--output", type=Path, default=None,
@@ -90,14 +102,57 @@ def main() -> int:
     compiler_version = _compiler_version(args.compiler_version_file)
     steps = int(args.steps)
 
-    with Qwen35GGUFResidentSession(
-        args.model,
-        compiler_version=compiler_version,
-        require_cached_build=not args.allow_build,
-        max_sequence_length=args.max_sequence_length,
-        use_wmma_prefill=True,
-        use_gemv_decode=True,
-    ) as session:
+    def _session() -> Qwen35GGUFResidentSession:
+        return Qwen35GGUFResidentSession(
+            args.model,
+            compiler_version=compiler_version,
+            require_cached_build=not args.allow_build,
+            max_sequence_length=args.max_sequence_length,
+            use_wmma_prefill=True,
+            use_gemv_decode=True,
+        )
+
+    if args.mode == "prefill":
+        # One session, sweep-matched: warm-up prefill (and a few eager steps,
+        # as the sweep's warmup runs do) warms weights/pools, reset() zeroes
+        # resident state WITHOUT freeing weights or scratch, then after the
+        # gap the measured prefill runs fresh-shaped on the warm session.
+        # Everything before the gap (construction copies, warm-up kernels,
+        # reset memsets) is excluded from the trailing-burst window.
+        with _session() as session:
+            warm_ids = list(np.random.default_rng(7).integers(1000, 50000, args.prefill_tokens))
+            cur = session.prefill(warm_ids, use_bulk=True, bulk_attention_mode="bulk")
+            for _ in range(4):
+                cur = session.step(int(cur.token_id))
+            session.runner.runtime.stream_synchronize(0)
+            session.reset()
+            session.runner.runtime.stream_synchronize(0)
+            time.sleep(args.gap_s)
+            ids = list(np.random.default_rng(7).integers(1000, 50000, args.prefill_tokens))
+            t0 = time.perf_counter()
+            session.prefill(ids, use_bulk=True, bulk_attention_mode="bulk")
+            session.runner.runtime.stream_synchronize(0)
+            wall = time.perf_counter() - t0
+            position = int(session.position)
+        record = {
+            "model": str(args.model),
+            "model_name": args.model.name,
+            "mode": args.mode,
+            "prefill_tokens": int(args.prefill_tokens),
+            "max_sequence_length": int(args.max_sequence_length),
+            "require_cached_build": not args.allow_build,
+            "wall_s": wall,
+            "ms_per_token": 1000.0 * wall / args.prefill_tokens,
+            "tok_s": args.prefill_tokens / wall,
+            "position_after": position,
+        }
+        text = json.dumps(record, indent=2, allow_nan=False) + "\n"
+        if args.output is not None:
+            args.output.write_text(text)
+        print(text, end="")
+        return 0
+
+    with _session() as session:
         rng = np.random.default_rng(7)
         ids = list(rng.integers(1000, 50000, args.prefill_tokens))
         cur = session.prefill(ids, use_bulk=True, bulk_attention_mode="bulk")

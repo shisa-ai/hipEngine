@@ -1,0 +1,1083 @@
+{
+  "schema_version": 1,
+  "kind": "zbook_qwen38_ud_vs_plain_q4km_prefill_kernel_attribution",
+  "created_at": "2026-09-24T18:50:00+09:00",
+  "status": "measured_diagnostic",
+  "performance_claim": false,
+  "claim_limitation": "E1 attribution census for campaign UD-GFX1151-OPTIMIZE2. It ranks where UD-Q4_K_M prefill time goes against plain Q4_K_M at the matched 512-token shape and verifies that both arms' census owners are reached through hipengine.LLM.generate(). No routing policy, kernel, or default changed to produce it, so no post-change rate is claimed and no lever is promoted from this artifact alone.",
+  "question": "Where does UD-Q4_K_M prefill time go versus plain Q4_K_M on zbook/gfx1151 at 512 tokens, which hypotheses does that adjudicate, and does the shipped surface reach the same owners?",
+  "host": {
+    "host_name": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "rocprofv3_version": "1.3.5 (git_revision 6b0e43f341195e203754e08f850e437ff2fc09f9)",
+    "hipcc_installed_dir": "/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "lane_note": "zbook lane, not the desktop gfx1151 lane. Same-GPU-architecture peers are independent lanes (docs/OPTIMIZATION.md section 2)."
+  },
+  "provenance": {
+    "git_commit": "60809471e1b8463280eba74ee8f0b18bea436633",
+    "git_dirty_files_at_run": 15,
+    "compiler_version_file": "~/ud-e1-census/hipcc-version.txt",
+    "run_script": "~/ud-e1-census/run_e1.sh",
+    "run_log": "~/ud-e1-census/run_e1.log",
+    "chain_completed_at": "2026-09-24T18:39:54+09:00",
+    "env_incident": "A first identical census ran 2026-09-23T16:12-16:34+09:00 from /tmp/ud-prefill-census; the host was rebooted 2026-09-24T18:12+09:00 and /tmp (a separate mount) was wiped with it, destroying those traces, rank tables and logs. This artifact records the post-reboot re-run from durable storage. The pre-reboot readout, preserved only in the executing session's transcript, matched this run's tables to within about 1 percent on every ranked share (plain window 1847.8 -> 1687.9 ms, UD 2865.8 -> 2640.3 ms, window ratio 1.551 -> 1.564), so the census is treated as reproduced rather than as a first observation; the pre-reboot files themselves are not recoverable."
+  },
+  "protocol": {
+    "driver": "scripts/gguf_decode_graph_rocprof_driver.py",
+    "driver_mode": "prefill (new in this unit)",
+    "shape": "one resident session: warm-up prefill of --prefill-tokens plus 4 eager steps, reset() with weights and scratch retained, 0.5 s GPU idle gap, one measured fresh 512-token bulk prefill",
+    "windowing": "every KERNEL_DISPATCH after the last >=0.4 s inter-kernel gap, i.e. the trailing burst after the idle gap (same trailing-burst logic the decode census uses, no marker trace)",
+    "summary_tool": "scripts/gguf_prefill_census_summary.py (new in this unit)",
+    "jit_policy": "warm build outside the profiler against the pinned HIPENGINE_COMPILER_VERSION_FILE, then the profiled run sets require_cached_build=1 so the profiled process spawns no hipcc/clang (docs/OPTIMIZATION.md section 7)",
+    "rocprofv3": "rocprofv3 --kernel-trace --output-format csv -d OUT -o NAME -- python3 scripts/gguf_decode_graph_rocprof_driver.py MODEL prefill --max-sequence-length 8192",
+    "env": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2",
+    "unprofiled_ladder": "256 / 512 (repro) / 768 / 2048 / 4096 tokens, both arms",
+    "profiled_overhead": "profiled run is 2.1 percent (plain) and 1.2 percent (UD) below the unprofiled repro of the same driver",
+    "harness_agreement": "the unprofiled repro measures 306.144 tok/s plain and 195.253 UD (ratio 0.6378); the committed 2026-09-23 paired sweep medians at 512/128 are 296.433 and 187.780 (ratio 0.6335). Driver absolutes run 3-4 percent above the sweep (isolated single prefill on an idle cool host versus the sweep's interleaved window); the ratio, which is what attribution uses, reproduces within 0.7 percent."
+  },
+  "arms": {
+    "plain": {
+      "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "model_fingerprint": {
+        "algorithm": "sha256-sampled-v1",
+        "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+        "size_bytes": 17106775008,
+        "sampled_bytes": 3145728,
+        "sample_offsets": [
+          0,
+          8552863216,
+          17105726432
+        ]
+      },
+      "window": {
+        "kernel_time_ms": 1687.943194,
+        "span_ms": 1702.071047,
+        "dispatches": 1740,
+        "dispatches_total_trace": 6240,
+        "distinct_kernels": 33
+      },
+      "unprofiled_repro_tok_s": 306.144,
+      "profiled_tok_s": 299.634,
+      "profiled_vs_repro": 0.9787,
+      "unprofiled_ladder_tok_s": {
+        "256": 297.25,
+        "768": 307.31,
+        "2048": 296.6,
+        "4096": 291.82
+      },
+      "trace": "~/ud-e1-census/trace-plain/plain_kernel_trace.csv",
+      "trace_sha256": "ccd1ced6f2a58d7de17ed04f3fd3aee3664a4b4a94633477f93e427314b2690a",
+      "rank_table": "~/ud-e1-census/rank-plain.json",
+      "rank_table_sha256": "30b55b922f238ea313fcbddffc962f073873d00bf0c57ed7a5e4623b236481ad",
+      "ranked_top20": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 4, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)",
+          "count": 64,
+          "total_ms": 547.446263,
+          "mean_us": 8553.847859375,
+          "share": 0.3243274210565643,
+          "grid_first": [
+            69632,
+            2,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 248,
+          "sgpr_first": 128,
+          "lds_first": 32768,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4, unsigned short, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "count": 160,
+          "total_ms": 424.095717,
+          "mean_us": 2650.59823125,
+          "share": 0.25124999378385476,
+          "grid_first": [
+            16384,
+            2,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 248,
+          "sgpr_first": 128,
+          "lds_first": 26112,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<4, 6, 2, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "count": 40,
+          "total_ms": 293.378582,
+          "mean_us": 7334.46455,
+          "share": 0.17380832663258453,
+          "grid_first": [
+            20480,
+            2,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 200,
+          "sgpr_first": 128,
+          "lds_first": 16384,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::q6_k_t16_wmma_prefill_shared_bf16_kernel<8, 3, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "count": 24,
+          "total_ms": 109.335451,
+          "mean_us": 4555.643791666667,
+          "share": 0.06477436645299806,
+          "grid_first": [
+            81920,
+            2,
+            1
+          ],
+          "workgroup_first": [
+            256,
+            1,
+            1
+          ],
+          "vgpr_first": 96,
+          "sgpr_first": 128,
+          "lds_first": 16384,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+          "count": 48,
+          "total_ms": 91.006021,
+          "mean_us": 1895.9587708333333,
+          "share": 0.05391533395406433,
+          "grid_first": [
+            128,
+            48,
+            32
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 40,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "Cijk_Alik_Bljk_HB_MT128x128x32_MI16x16x16x1_SN_1LDSB0_AMAS3_BL1_BS1_EPS1_GLVWA8_GLVWB8_GRVW8_GSU1_GSUASB_ISA1151_IU1_K1_KLA_LBSPPA128_LBSPPB128_LPA8_LPB8_LRVW16_MIAV1_MMFGLC_NLCA1_NLCB1_PGR1_PLR0_SIA1_SS1_SU0_SUS0_SVW2_TT4_64_TLDS1_UMLDSA1_UMLDSB1_USFGROn1_VAW2_VSn1_VW2_VWB2_WSGRA1_WSGRB1_WS32_WG32_4_1_WGM1",
+          "count": 192,
+          "total_ms": 46.94424,
+          "mean_us": 244.50125,
+          "share": 0.02781150465659569,
+          "grid_first": [
+            1280,
+            4,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 256,
+          "sgpr_first": 128,
+          "lds_first": 51200,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_compact_peer_normalized_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
+          "count": 48,
+          "total_ms": 41.667919,
+          "mean_us": 868.0816458333334,
+          "share": 0.024685616878644793,
+          "grid_first": [
+            65536,
+            48,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 16,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "count": 96,
+          "total_ms": 37.695502,
+          "mean_us": 392.6614791666667,
+          "share": 0.022332210073178566,
+          "grid_first": [
+            12288,
+            512,
+            1
+          ],
+          "workgroup_first": [
+            256,
+            1,
+            1
+          ],
+          "vgpr_first": 24,
+          "sgpr_first": 128,
+          "lds_first": 1024,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(float const*, unsigned short const*, float const*, unsigned short*, float, long, long, long)",
+          "count": 48,
+          "total_ms": 27.672227,
+          "mean_us": 576.5047291666666,
+          "share": 0.01639405111402108,
+          "grid_first": [
+            65536,
+            48,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 24,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "attn_fwd",
+          "count": 16,
+          "total_ms": 11.397453,
+          "mean_us": 712.3408125,
+          "share": 0.0067522728492958985,
+          "grid_first": [
+            2048,
+            24,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 256,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 992
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_tile32x128_kernel(float const*, float const*, float const*, float*, long, long)",
+          "count": 48,
+          "total_ms": 11.054725,
+          "mean_us": 230.30677083333333,
+          "share": 0.006549228101570817,
+          "grid_first": [
+            10240,
+            16,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 224,
+          "sgpr_first": 128,
+          "lds_first": 17920,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "(anonymous namespace)::gguf_q5_k_t16_dequantize_f16_tile_octet_kernel(unsigned char const*, _Float16*, long, long)",
+          "count": 192,
+          "total_ms": 9.370602,
+          "mean_us": 48.80521875,
+          "share": 0.005551491325839014,
+          "grid_first": [
+            983040,
+            1,
+            1
+          ],
+          "workgroup_first": [
+            256,
+            1,
+            1
+          ],
+          "vgpr_first": 48,
+          "sgpr_first": 128,
+          "lds_first": 512,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "count": 64,
+          "total_ms": 7.387282,
+          "mean_us": 115.42628125,
+          "share": 0.004376499177376938,
+          "grid_first": [
+            131072,
+            1,
+            1
+          ],
+          "workgroup_first": [
+            256,
+            1,
+            1
+          ],
+          "vgpr_first": 24,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "count": 1,
+          "total_ms": 4.706282,
+          "mean_us": 4706.282,
+          "share": 0.0027881755835913514,
+          "grid_first": [
+            1986560,
+            1,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 80,
+          "sgpr_first": 128,
+          "lds_first": 512,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "count": 64,
+          "total_ms": 4.660518,
+          "mean_us": 72.82059375,
+          "share": 0.0027610632967782207,
+          "grid_first": [
+            5242880,
+            1,
+            1
+          ],
+          "workgroup_first": [
+            256,
+            1,
+            1
+          ],
+          "vgpr_first": 8,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "count": 64,
+          "total_ms": 4.218926,
+          "mean_us": 65.92071875,
+          "share": 0.0024994478576036722,
+          "grid_first": [
+            2621440,
+            1,
+            1
+          ],
+          "workgroup_first": [
+            256,
+            1,
+            1
+          ],
+          "vgpr_first": 16,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+          "count": 16,
+          "total_ms": 2.924975,
+          "mean_us": 182.8109375,
+          "share": 0.0017328634105680692,
+          "grid_first": [
+            7168,
+            512,
+            1
+          ],
+          "workgroup_first": [
+            256,
+            1,
+            1
+          ],
+          "vgpr_first": 16,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "count": 65,
+          "total_ms": 2.810919,
+          "mean_us": 43.24490769230769,
+          "share": 0.0016652924162328178,
+          "grid_first": [
+            131072,
+            1,
+            1
+          ],
+          "workgroup_first": [
+            256,
+            1,
+            1
+          ],
+          "vgpr_first": 16,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "(anonymous namespace)::fp16_to_bf16_strided_rows_kernel(_Float16 const*, unsigned short*, long, long, long, long)",
+          "count": 192,
+          "total_ms": 2.337995,
+          "mean_us": 12.177057291666666,
+          "share": 0.0013851147410118352,
+          "grid_first": [
+            655360,
+            1,
+            1
+          ],
+          "workgroup_first": [
+            256,
+            1,
+            1
+          ],
+          "vgpr_first": 16,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "(anonymous namespace)::bf16_to_fp16_kernel(unsigned short const*, _Float16*, long)",
+          "count": 48,
+          "total_ms": 2.092649,
+          "mean_us": 43.59685416666667,
+          "share": 0.0012397626931039956,
+          "grid_first": [
+            3145728,
+            1,
+            1
+          ],
+          "workgroup_first": [
+            256,
+            1,
+            1
+          ],
+          "vgpr_first": 8,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        }
+      ]
+    },
+    "ud": {
+      "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "model_fingerprint": {
+        "algorithm": "sha256-sampled-v1",
+        "value": "f343914a95e38d8f9f56886d10de4248738ad94aabb0fa0af8fd1b00c4e82f97",
+        "size_bytes": 16464440224,
+        "sampled_bytes": 3145728,
+        "sample_offsets": [
+          0,
+          8231695824,
+          16463391648
+        ]
+      },
+      "window": {
+        "kernel_time_ms": 2640.339498,
+        "span_ms": 2652.301439,
+        "dispatches": 1264,
+        "dispatches_total_trace": 6464,
+        "distinct_kernels": 37
+      },
+      "unprofiled_repro_tok_s": 195.253,
+      "profiled_tok_s": 192.898,
+      "profiled_vs_repro": 0.9879,
+      "unprofiled_ladder_tok_s": {
+        "256": 191.24,
+        "768": 190.96,
+        "2048": 179.3,
+        "4096": 173.91
+      },
+      "trace": "~/ud-e1-census/trace-ud/ud_kernel_trace.csv",
+      "trace_sha256": "dad02e3f6d6a5a1061197f76e39e686a87479103ba7b3284888f9e7c514d7a28",
+      "rank_table": "~/ud-e1-census/rank-ud.json",
+      "rank_table_sha256": "897c4c6c00dc82210bd0550f0a5a12914a02c3e2f0335ac29e16c7fcf2368120",
+      "ranked_top20": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_iq_prefill_wmma_kernel<0, unsigned short, unsigned short, 16, 128>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "count": 117,
+          "total_ms": 1020.129734,
+          "mean_us": 8719.057555555555,
+          "share": 0.3863630926146907,
+          "grid_first": [
+            34816,
+            4,
+            1
+          ],
+          "workgroup_first": [
+            32,
+            1,
+            1
+          ],
+          "vgpr_first": 144,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "count": 113,
+          "total_ms": 562.390693,
+          "mean_us": 4976.90878761062,
+          "share": 0.21299938641451177,
+          "grid_first": [
+            10240,
+            8,
+            1
+          ],
+          "workgroup_first": [
+            32,
+            1,
+            1
+          ],
+          "vgpr_first": 200,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4, unsigned short, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "count": 93,
+          "total_ms": 304.549321,
+          "mean_us": 3274.72388172043,
+          "share": 0.11534475821411963,
+          "grid_first": [
+            27392,
+            2,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 248,
+          "sgpr_first": 128,
+          "lds_first": 26112,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_iq_prefill_wmma_kernel<3, unsigned short, unsigned short, 16, 128>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "count": 7,
+          "total_ms": 109.121885,
+          "mean_us": 15588.840714285714,
+          "share": 0.041328732567405616,
+          "grid_first": [
+            34816,
+            4,
+            1
+          ],
+          "workgroup_first": [
+            32,
+            1,
+            1
+          ],
+          "vgpr_first": 184,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16_kernel<2, 8, 256>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)",
+          "count": 9,
+          "total_ms": 92.601253,
+          "mean_us": 10289.028111111113,
+          "share": 0.035071722053222114,
+          "grid_first": [
+            139264,
+            2,
+            1
+          ],
+          "workgroup_first": [
+            256,
+            1,
+            1
+          ],
+          "vgpr_first": 208,
+          "sgpr_first": 128,
+          "lds_first": 32768,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+          "count": 48,
+          "total_ms": 92.105039,
+          "mean_us": 1918.8549791666667,
+          "share": 0.034883786372838635,
+          "grid_first": [
+            128,
+            48,
+            32
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 40,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_iq_prefill_wmma_kernel<1, unsigned short, unsigned short, 16, 128>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "count": 7,
+          "total_ms": 86.726853,
+          "mean_us": 12389.550428571429,
+          "share": 0.032846856650704845,
+          "grid_first": [
+            10240,
+            4,
+            1
+          ],
+          "workgroup_first": [
+            32,
+            1,
+            1
+          ],
+          "vgpr_first": 144,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_iq_prefill_wmma_kernel<2, unsigned short, unsigned short, 16, 128>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "count": 4,
+          "total_ms": 56.162553,
+          "mean_us": 14040.63825,
+          "share": 0.02127095892120764,
+          "grid_first": [
+            34816,
+            4,
+            1
+          ],
+          "workgroup_first": [
+            32,
+            1,
+            1
+          ],
+          "vgpr_first": 152,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<2, 1, 2, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "count": 10,
+          "total_ms": 49.960341,
+          "mean_us": 4996.0341,
+          "share": 0.018921938272651633,
+          "grid_first": [
+            10240,
+            16,
+            1
+          ],
+          "workgroup_first": [
+            64,
+            1,
+            1
+          ],
+          "vgpr_first": 176,
+          "sgpr_first": 128,
+          "lds_first": 16384,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q8_0_t16_prefill_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "count": 96,
+          "total_ms": 45.211659,
+          "mean_us": 470.95478125,
+          "share": 0.017123426375375915,
+          "grid_first": [
+            96,
+            16,
+            1
+          ],
+          "workgroup_first": [
+            32,
+            1,
+            1
+          ],
+          "vgpr_first": 64,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_compact_peer_normalized_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
+          "count": 48,
+          "total_ms": 44.753318,
+          "mean_us": 932.3607916666666,
+          "share": 0.01694983468372142,
+          "grid_first": [
+            65536,
+            48,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 16,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 4, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)",
+          "count": 5,
+          "total_ms": 42.373769,
+          "mean_us": 8474.7538,
+          "share": 0.016048606261466456,
+          "grid_first": [
+            69632,
+            2,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 248,
+          "sgpr_first": 128,
+          "lds_first": 32768,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(float const*, unsigned short const*, float const*, unsigned short*, float, long, long, long)",
+          "count": 48,
+          "total_ms": 26.9437,
+          "mean_us": 561.3270833333333,
+          "share": 0.010204634676869875,
+          "grid_first": [
+            65536,
+            48,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 24,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::q8_0_t16_rowtile_gemv_kernel<unsigned short, unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "count": 8,
+          "total_ms": 26.294079,
+          "mean_us": 3286.759875,
+          "share": 0.009958597756052658,
+          "grid_first": [
+            8192,
+            128,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 136,
+          "sgpr_first": 128,
+          "lds_first": 1024,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<4, 6, 2, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "count": 13,
+          "total_ms": 16.791747,
+          "mean_us": 1291.6728461538462,
+          "share": 0.006359692385285826,
+          "grid_first": [
+            4096,
+            2,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 200,
+          "sgpr_first": 128,
+          "lds_first": 16384,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "attn_fwd",
+          "count": 16,
+          "total_ms": 11.333372,
+          "mean_us": 708.33575,
+          "share": 0.004292391947544921,
+          "grid_first": [
+            2048,
+            24,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 256,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 992
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_tile32x128_kernel(float const*, float const*, float const*, float*, long, long)",
+          "count": 48,
+          "total_ms": 11.223605,
+          "mean_us": 233.82510416666665,
+          "share": 0.004250818884655416,
+          "grid_first": [
+            10240,
+            16,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 224,
+          "sgpr_first": 128,
+          "lds_first": 17920,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          "count": 50,
+          "total_ms": 10.392444,
+          "mean_us": 207.84888,
+          "share": 0.003936025654228197,
+          "grid_first": [
+            8912896,
+            1,
+            1
+          ],
+          "workgroup_first": [
+            256,
+            1,
+            1
+          ],
+          "vgpr_first": 16,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "count": 64,
+          "total_ms": 5.922013,
+          "mean_us": 92.531453125,
+          "share": 0.00224289831079897,
+          "grid_first": [
+            131072,
+            1,
+            1
+          ],
+          "workgroup_first": [
+            256,
+            1,
+            1
+          ],
+          "vgpr_first": 24,
+          "sgpr_first": 128,
+          "lds_first": 0,
+          "scratch_first": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "count": 1,
+          "total_ms": 4.704358,
+          "mean_us": 4704.358,
+          "share": 0.0017817246621366113,
+          "grid_first": [
+            1986560,
+            1,
+            1
+          ],
+          "workgroup_first": [
+            128,
+            1,
+            1
+          ],
+          "vgpr_first": 80,
+          "sgpr_first": 128,
+          "lds_first": 512,
+          "scratch_first": 0
+        }
+      ]
+    }
+  },
+  "window_comparison": {
+    "plain_over_ud_kernel_time_ratio": 0.6393,
+    "delta_kernel_time_ms": 952.396,
+    "note": "0.6393 here is plain kernel time over UD kernel time for the same 512-token prefill, the census-side counterpart of the paired prefill throughput ratio (0.6335-0.6470 across harness windows); the census is not itself the paired A/B and cannot adjudicate the campaign metric."
+  },
+  "family_attribution_512_prefill": [
+    {
+      "family": "iq_w4a16 one-wave (gguf_iq_prefill_wmma, 4 templates)",
+      "plain_ms": 0.0,
+      "ud_ms": 1272.142,
+      "delta_ms": 1272.142,
+      "ud_window_share_pct": 48.18
+    },
+    {
+      "family": "q5_t16 dense/dual wmma",
+      "plain_ms": 0.0,
+      "ud_ms": 654.992,
+      "delta_ms": 654.992,
+      "ud_window_share_pct": 24.81
+    },
+    {
+      "family": "q4_t16 dense wmma (shared + dual)",
+      "plain_ms": 971.542,
+      "ud_ms": 346.923,
+      "delta_ms": -624.619,
+      "ud_window_share_pct": 13.14
+    },
+    {
+      "family": "q6_t16 wmma (qmicro_planar + t16)",
+      "plain_ms": 402.714,
+      "ud_ms": 66.752,
+      "delta_ms": -335.962,
+      "ud_window_share_pct": 2.53
+    },
+    {
+      "family": "q8_0_t16 prefill wmma + rowtile gemv",
+      "plain_ms": 0.0,
+      "ud_ms": 71.506,
+      "delta_ms": 71.506,
+      "ud_window_share_pct": 2.71
+    },
+    {
+      "family": "gdn / linear-attn family",
+      "plain_ms": 171.401,
+      "ud_ms": 175.026,
+      "delta_ms": 3.625,
+      "ud_window_share_pct": 6.63
+    },
+    {
+      "family": "tensile gemm (Cijk)",
+      "plain_ms": 46.944,
+      "ud_ms": 0.0,
+      "delta_ms": -46.944,
+      "ud_window_share_pct": 0.0
+    },
+    {
+      "family": "misc gemv",
+      "plain_ms": 42.4,
+      "ud_ms": 4.7,
+      "delta_ms": -37.7,
+      "ud_window_share_pct": 0.18
+    },
+    {
+      "family": "norms / silu / type-casts",
+      "plain_ms": 30.7,
+      "ud_ms": 35.5,
+      "delta_ms": 4.8,
+      "ud_window_share_pct": 1.34
+    },
+    {
+      "family": "attn_fwd",
+      "plain_ms": 11.397,
+      "ud_ms": 11.333,
+      "delta_ms": -0.064,
+      "ud_window_share_pct": 0.43
+    },
+    {
+      "family": "other",
+      "plain_ms": 10.6,
+      "ud_ms": 1.3,
+      "delta_ms": -9.3,
+      "ud_window_share_pct": 0.05
+    }
+  ],
+  "route_probe": {
+    "question": "Does each arm reach its census owner through the normal hipengine.LLM.generate() path? (campaign section 5.2)",
+    "script": "~/ud-e1-census/verify_llm_prefill_route.py",
+    "script_sha256": "28f65358c10a251ae15a1ff00d452fdd135f640065df7e737e088a6b8164739b",
+    "method": "one process per arm; a resolve() spy records every (quant, variant) selected while generating 8 greedy tokens from a ~450-500-token prompt (the census's prefill row band)",
+    "plain": {
+      "result": "PASS",
+      "observed_t16_prefill_resolves": 574,
+      "note": "Q4_K/Q5_K/Q6_K resolve T16/dual WMMA prefill owners"
+    },
+    "ud": {
+      "result": "PASS",
+      "dense_iq_variant": "dense_wmma_w4a16_prefill_bf16_bf16_out",
+      "dense_iq_resolves": {
+        "gguf_iq4_xs": 234,
+        "gguf_iq4_nl": 14,
+        "gguf_q3_k": 14,
+        "gguf_iq3_s": 8
+      },
+      "other_layouts": "Q4_K/Q5_K/Q6_K/Q8_0 resolve T16/dual WMMA prefill owners (gguf_q4_k_t16_v1, gguf_q5_k_t16_v1, gguf_q6_k_t16_qmicro_planar_v1, gguf_q8_0_t16_v1)",
+      "symbol_link": "variant dense_wmma_w4a16_prefill_bf16_bf16_out is registered by hipengine/kernels/hip_gfx1100/quant/gguf_iq_wmma_prefill.py, whose gguf_iq_wmma_prefill.hip defines __global__ gguf_iq_prefill_wmma_kernel - the census symbol and the resolved variant are one owner"
+    },
+    "correction_note": "A first probe run reported FAIL for UD because its check matched the kernel symbol text 'iq_prefill_wmma' against the registry VARIANT name; the ownership chain above shows they are the same owner, the assertion was corrected to match the variant, and the re-run passed. Both raw logs are kept.",
+    "logs": {
+      "plain": "~/ud-e1-census/routeprobe-plain.log",
+      "ud": "~/ud-e1-census/routeprobe-ud.log"
+    }
+  },
+  "hypothesis_verdicts": {
+    "H1": "REFUTED as stated. The prefill gap is not raw-layout tensors running GEMV-shaped owners: both arms run WMMA prefill families throughout, and misc GEMV is 0.2 percent of the UD window (2.2 percent of plain). The census instead ranks the dense-IQ one-wave W4A16 owner at 48.18 percent of the UD window (1272.1 ms, 135 launches across 4 templates, IQ4_XS alone 1020.1 ms at 8719 us/launch) and the Q5_T16 WMMA family at 24.81 percent (655.0 ms) as the two pots that explain the +952.4 ms window delta.",
+    "H12_E9": "CONFIRMED as the largest single prefill lever and now sized: the 48.18 percent sitting in gguf_iq_prefill_wmma is exactly the one-wave owner that E9's coop/coop64 overrides target. Mechanism arithmetic only (gfx1100 record, not a gfx1151 rate): a 1.5x leaf improvement on that family moves the window ratio 0.6393 -> about 0.76, a 2x -> about 0.84; parity still requires the Q5_T16 pot as well.",
+    "H3_H5_prefill_layout": "LIVE FACT FOR E3a: the shipped LLM.generate() path resolves T16 layout keys (gguf_q4_k_t16_v1, gguf_q5_k_t16_v1, gguf_q6_k_t16_qmicro_planar_v1, gguf_q8_0_t16_v1) for the UD file while the committed route audit records repack=OFF with those families on raw-gguf-kernel. Either the audit describes a different surface than materialization, or the admission chain changed behavior; E3a must locate the divergence before any layout change is written. E1 does not resolve which side is stale.",
+    "H7": "RANKED LOW for prefill: Q8_0 T16 prefill wmma + rowtile gemv total 71.5 ms (2.7 percent) and Q6 families total 66.8 ms (2.5 percent) on UD; they are behind the IQ and Q5 pots in this census.",
+    "H8": "NO THRESHOLD ARTIFACT OBSERVED at the census shape: the unprofiled ladder moves monotonically for both arms (plain 297.3/306.1/307.3/296.6/291.8 and UD 191.2/195.3/191.0/179.3/173.9 tok/s at 256/512/768/2048/4096), with the UD/plain ratio drifting smoothly 0.643 -> 0.596 as rows grow. The widening gap at long prompts is a real row-scaling effect, not a cusp at 512; owner-band sweeps below/above unrelated values remain E3/E9 work."
+  },
+  "limitations": [
+    "performance_claim false: no paired A/B, no quality gate, no lever changed.",
+    "rocprofv3 --kernel-trace exposes timing and launch geometry only; no memory-throughput or occupancy counters were collected, so bytes/s per family (campaign section 1.1) is not measured here.",
+    "The prefill window is weight-read-tensor with compute-bound leaves: summed dense-IQ family time reads roughly 5.5 GB of weights in 1272 ms (about 4 GB/s), i.e. far below the 186 GB/s streaming roof, consistent with WMMA compute/occupancy limits rather than bandwidth - an inference from byte counts and window time, not a hardware counter measurement.",
+    "One shape (512 tokens) is census-profiled; 256/768/2048/4096 are unprofiled wall-clock only.",
+    "Family deltas compare two different weight compositions (campaign section 1.1): plain streams Q4_K-heavy weights, UD Q5_K/IQ4_XS-heavy weights, so per-family deltas are attribution, not like-for-like leaf benchmarks."
+  ]
+}

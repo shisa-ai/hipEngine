@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10770,
-    "current": 3538,
+    "entries": 10797,
+    "current": 3565,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1141,
+    "rows": 1145,
     "by_rule": {
-      "dependency": 36,
+      "dependency": 37,
       "legacy-next": 109,
-      "status": 996
+      "status": 999
     }
   },
   "rows": [
@@ -37201,14 +37201,14 @@
         "written": "2026-09-15",
         "age_days": 11,
         "open_by": "status",
-        "continuation_entries": 61,
+        "continuation_entries": 62,
         "open_text": "- Write `scripts/vibevoice_tts_oracle_torch.py` against this environment. It\n  should carry the pins in its header, seed the global RNG explicitly, record\n  the initial noise and per-step diffusion predictions, and emit the fixture\n  set under `tests/fixtures/vibevoice_tts/`.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "61 later entries by the same worker share this topic prefix"
+        "62 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260915T025539.131560Z-lhl-vibevoice-tts-oracle-env-9fbede.md",
@@ -37225,7 +37225,7 @@
         ]
       },
       "id": "worklog/20260915T025539.131560Z-lhl-vibevoice-tts-oracle-env-9fbede",
-      "evidence_hash": "50ccb0623fbc"
+      "evidence_hash": "e7ac6ce436db"
     },
     {
       "kind": "worklog",
@@ -37277,14 +37277,14 @@
         "written": "2026-09-15",
         "age_days": 11,
         "open_by": "dependency",
-        "continuation_entries": 50,
+        "continuation_entries": 51,
         "open_text": "- The reference tail frame is gated by a strict xfail: the port zero-pads the\n  waveform to a 3200 multiple while the fork appends per-layer stride padding,\n  so frame 69 is built from a different input extent (measured relative error\n  0.39 against the 0.045 interior gate). This is a semantic gap, not numerical\n  drift, and the fix flips that xfail to a plain assertion.\n- `docs/REFACTOR.md` does not need an entry: no flag or fallback path was added.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "Next names a dependency: 'gated by'",
-        "50 later entries by the same worker share this topic prefix"
+        "51 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260915T080558.944162Z-lhl-vibevoice-tts-session-unassisted-negative-2788e7.md",
@@ -37305,7 +37305,7 @@
         ]
       },
       "id": "worklog/20260915T080558.944162Z-lhl-vibevoice-tts-session-unassisted-negative-2788e7",
-      "evidence_hash": "4082a976fdef"
+      "evidence_hash": "664dc7e5e76e"
     },
     {
       "kind": "worklog",
@@ -37319,14 +37319,14 @@
         "written": "2026-09-16",
         "age_days": 10,
         "open_by": "status",
-        "continuation_entries": 7,
+        "continuation_entries": 8,
         "open_text": "Wiring the kernel onto the default path is a separate, larger unit and is\nunmeasured.\n\n`VibevoiceTTSDiffusionHeadGPU.forward()` takes host `x_bf16_u16` and uploads\nit with `copy_host_array_to_device`. Fusing only the solver step while leaving\n`forward` host-facing would remove the host arithmetic but reintroduce a D2H\nof the post-step latent every step, so the win would be small. The useful\nchange is to give the head a device-input/device-output entry point and run\nthe CFG combine (`vv_diff_cfg_combine_bf16`, already registered and bit-exact)\nplus the solver step entirely on device, leaving on",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "7 later entries by the same worker share this topic prefix"
+        "8 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260916T030320.308624Z-lhl-vibevoice-tts-fused-dpm-step-dba36d.md",
@@ -37346,7 +37346,7 @@
         ]
       },
       "id": "worklog/20260916T030320.308624Z-lhl-vibevoice-tts-fused-dpm-step-dba36d",
-      "evidence_hash": "1cefb3a323cd"
+      "evidence_hash": "0f7fd75c064c"
     },
     {
       "kind": "worklog",
@@ -37360,14 +37360,14 @@
         "written": "2026-09-16",
         "age_days": 10,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 4,
         "open_text": "- Finish integration validation, then publish the rebased branch with an explicit\n  force-with-lease and fast-forward main. No main publication is claimed here.\n- On desktop gfx1151, establish paired torch/HIP measurements on that physical\n  host. Do not compare its absolute rates directly against zbook as speedups.\n- Broader quality qualification remains pending: held-out voices, listening,\n  Chinese, longer turns, and serving cases named in MODEL-VIBEVOICE-TTS.md.\n- A bounded LM-only quantization experiment is a possible next campaign, not\n  part of this integration or an established quality",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as handoff \u2014 the entry says the work was handed to another worker",
-        "3 later entries by the same worker share this topic prefix"
+        "4 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260916T094641.265207Z-lhl-vibevoice-tts-main-integration-c5c207.md",
@@ -37382,7 +37382,7 @@
         ]
       },
       "id": "worklog/20260916T094641.265207Z-lhl-vibevoice-tts-main-integration-c5c207",
-      "evidence_hash": "f0486969bde3"
+      "evidence_hash": "17b820dfadd3"
     },
     {
       "kind": "worklog",
@@ -37396,14 +37396,14 @@
         "written": "2026-09-16",
         "age_days": 10,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 3,
         "open_text": "- Finish the focused runtime checks and publish the authorized integration only\n  if they pass. Full repository milestone validation remains outstanding due to\n  the capacity issue above, separate from this implementation-phase handoff.\n- Desktop gfx1151 needs independent same-host timing and broader task-quality\n  qualification; neither is implied by these integration checks.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "3 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260916T101306.322412Z-lhl-vibevoice-tts-integration-validation-57883d.md",
@@ -37420,7 +37420,7 @@
         ]
       },
       "id": "worklog/20260916T101306.322412Z-lhl-vibevoice-tts-integration-validation-57883d",
-      "evidence_hash": "aa857345e6f1"
+      "evidence_hash": "7ab84af89b23"
     },
     {
       "kind": "worklog",
@@ -37434,14 +37434,14 @@
         "written": "2026-09-16",
         "age_days": 10,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "- Reconcile the two-speaker trajectory gate with the production numerical/task\n  contract before merging main. The controlled 256-thread result localizes the\n  discrepancy to diffusion reduction arithmetic; it does not on its own prove\n  an audible defect or justify reverting the 64-thread production default.\n- After resolution, rerun the failing node, its affected test file, and any\n  relevant numerical/task gates. Preserve the completed integration results;\n  do not repeat the whole GPU repository run blindly.\n- Main stays at ff5744926. The authorized final merge and origin/main push remain\n",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as blocked \u2014 the entry says the unit is blocked",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260916T102934.887157Z-lhl-vibevoice-tts-merge-gate-98bae6.md",
@@ -37458,7 +37458,7 @@
         ]
       },
       "id": "worklog/20260916T102934.887157Z-lhl-vibevoice-tts-merge-gate-98bae6",
-      "evidence_hash": "11f6ea07b392"
+      "evidence_hash": "0dfc12afeab9"
     },
     {
       "kind": "worklog",
@@ -42637,6 +42637,44 @@
     },
     {
       "kind": "worklog",
+      "key": "20260924T104549.980115Z-lhl-ud-gfx1151-optimize2-e2-e45215",
+      "title": "UD gfx1151 E2: dense-IQ decode policy declaration, leaf timing, and gates",
+      "location": "worklog/entries/20260924T104549.980115Z-lhl-ud-gfx1151-optimize2-e2-e45215.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "ud-gfx1151-optimize2-e2",
+        "written": "2026-09-24",
+        "age_days": 2,
+        "open_by": "status",
+        "continuation_entries": 14,
+        "open_text": "- 162-row gate adjudication (E2c), then `hipengine.LLM.generate()` route\n  probe for the pair owner (prompt-verifier requirement), E2d paired A/B\n  (`gguf_iq_dense_decode_ab.py`) + decode census family shares, E2e same-window\n  standalone re-run, parity metric + guard chain, campaign scoreboard row,\n  commit.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "14 later entries by the same worker share this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260924T104549.980115Z-lhl-ud-gfx1151-optimize2-e2-e45215.md",
+        "refs": [],
+        "tokens": [
+          "declaration",
+          "decode",
+          "dense",
+          "gates",
+          "gfx1151",
+          "leaf",
+          "policy",
+          "timing"
+        ]
+      },
+      "id": "worklog/20260924T104549.980115Z-lhl-ud-gfx1151-optimize2-e2-e45215",
+      "evidence_hash": "1ea1c69e3fac"
+    },
+    {
+      "kind": "worklog",
       "key": "20260924T113402.012124Z-lhl-int8-kv-declared-scale-dtype-dc2a34",
       "title": "INT8 KV binds the declared scale dtype, not the fp16 request default",
       "location": "worklog/entries/20260924T113402.012124Z-lhl-int8-kv-declared-scale-dtype-dc2a34.md:8",
@@ -42789,6 +42827,88 @@
     },
     {
       "kind": "worklog",
+      "key": "20260924T183923.324102Z-lhl-ud-gfx1151-optimize2-e2-metric-pending-5ed2f9",
+      "title": "E2 parity metric set pending per lead directive; iteration 5 logged",
+      "location": "worklog/entries/20260924T183923.324102Z-lhl-ud-gfx1151-optimize2-e2-metric-pending-5ed2f9.md:54",
+      "evidence": {
+        "status": "decision",
+        "worker": "lhl",
+        "topic": "ud-gfx1151-optimize2-e2-metric-pending",
+        "written": "2026-09-24",
+        "age_days": 2,
+        "open_by": "dependency",
+        "continuation_entries": 13,
+        "open_text": "- Measure `ud_plain_parity` in a later iteration under confirmable\n  conditions (the 04:48-class window), then adjudicate E2 keep/revert with\n  the metric in hand.\n- Loop proceeds to iteration 6 (campaign E3, production per-tensor repack)\n  without waiting on the pending metric.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "Next names a dependency: 'waiting on'",
+        "13 later entries by the same worker share this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260924T183923.324102Z-lhl-ud-gfx1151-optimize2-e2-metric-pending-5ed2f9.md",
+        "refs": [],
+        "tokens": [
+          "directive",
+          "iteration",
+          "lead",
+          "logged",
+          "metric",
+          "parity",
+          "pending",
+          "per",
+          "set"
+        ]
+      },
+      "id": "worklog/20260924T183923.324102Z-lhl-ud-gfx1151-optimize2-e2-metric-pending-5ed2f9",
+      "evidence_hash": "49ff02a38bac"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260924T220051.652019Z-lhl-ud-gfx1151-optimize2-e4a-tile8-route-d6d954",
+      "title": "UD gfx1151 optimize2 E4a: route five Q5_T16 decode shapes to tile8 owner; parity metric pending",
+      "location": "worklog/entries/20260924T220051.652019Z-lhl-ud-gfx1151-optimize2-e4a-tile8-route-d6d954.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "ud-gfx1151-optimize2-e4a-tile8-route",
+        "written": "2026-09-24",
+        "age_days": 2,
+        "open_by": "status",
+        "continuation_entries": 10,
+        "open_text": "- Per lead directive (set pending and move on): `ud_plain_parity` stays **pending** on its\n  recorded baseline 0.6438; no further blind window retries. Re-measure when the procedure's\n  visit check can pass (the 04:48-class steady-state window) or if the lead changes the\n  procedure \u2014 then record the E4a A/B row.\n- E4 remains open for item 2 (Q4_K single local32 owner: 157.9 vs plain 119.5 \u00b5s/launch, same\n  T16 layout) behind its own route-table test + paired A/B; then E6, E7, E8, E9.\n- Re-rank the census after each retained route (E4 rule): the direct GEMV's 20.47 ms/tok pot\n  should now be l",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "10 later entries by the same worker share this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260924T220051.652019Z-lhl-ud-gfx1151-optimize2-e4a-tile8-route-d6d954.md",
+        "refs": [],
+        "tokens": [
+          "decode",
+          "e4a",
+          "five",
+          "gfx1151",
+          "metric",
+          "optimize2",
+          "owner",
+          "parity",
+          "pending",
+          "q5_t16",
+          "route",
+          "shapes",
+          "tile8"
+        ]
+      },
+      "id": "worklog/20260924T220051.652019Z-lhl-ud-gfx1151-optimize2-e4a-tile8-route-d6d954",
+      "evidence_hash": "83c4dd1efea6"
+    },
+    {
+      "kind": "worklog",
       "key": "20260925T131432.066109Z-lhl-gufo-edge-screen-55564b",
       "title": "Evaluate gufo on the frozen Edge Agentic workload",
       "location": "worklog/entries/20260925T131432.066109Z-lhl-gufo-edge-screen-55564b.md:8",
@@ -42932,6 +43052,47 @@
       },
       "id": "worklog/20260925T162059.223458Z-lhl-edge-speculative-screens-3d3f65",
       "evidence_hash": "156c480ca313"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260925T220940.373769Z-lhl-profile-env-restore-aborts-the-all-suite-latent-bcb9d2",
+      "title": "profile-env restore aborts the all suite: latent order-dependent GPU corruption",
+      "location": "worklog/entries/20260925T220940.373769Z-lhl-profile-env-restore-aborts-the-all-suite-latent-bcb9d2.md:8",
+      "evidence": {
+        "status": "blocked",
+        "worker": "lhl",
+        "topic": "profile-env-restore-aborts-the-all-suite-latent",
+        "written": "2026-09-25",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Own unit: find the corrupting test by bisecting the 4267-node prefix, then\n  fix the underlying memory defect. The candidate set is the tests in the\n  prefix that read the six env names (`FP16_RECURRENT_STATE_ENV`,\n  `Q4_FUSED_R28_ENV`, `Q6_DP4A_GROUPED_ENV`, `VERIFY_CAPTURE_PREFILL_GDN_ENV`,\n  `VERIFY_F32_POST_NORM_ENV`, `VERIFY_F32_RESIDUAL_ENV`) and therefore change\n  kernel selection when the leak is removed.\n- Until then, five order-dependent failures remain in `--suite all` (all pass\n  in isolation): `test_unit_qwen35_gguf_verify_f32_attn_out.py` x2,\n  `test_unit_qwen35_gguf_verify_f32",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as blocked \u2014 the entry says the unit is blocked",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260925T220940.373769Z-lhl-profile-env-restore-aborts-the-all-suite-latent-bcb9d2.md",
+        "refs": [],
+        "tokens": [
+          "aborts",
+          "all",
+          "corruption",
+          "dependent",
+          "env",
+          "gpu",
+          "latent",
+          "order",
+          "profile",
+          "restore",
+          "suite"
+        ]
+      },
+      "id": "worklog/20260925T220940.373769Z-lhl-profile-env-restore-aborts-the-all-suite-latent-bcb9d2",
+      "evidence_hash": "9586dbfb025e"
     }
   ]
 }

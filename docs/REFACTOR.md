@@ -4,6 +4,109 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## Dormant (Q3_K gate, IQ4_XS up), (IQ4_XS gate, Q3_K up), (IQ3_S gate, IQ4_XS up), and (Q5_K gate, Q6_K planar up) fused pair registrations (2026-09-25) — AWAITING A CLEARING SCREEN
+
+E6b-5 built the fused pair+SiLU owner for the 3-layer (Q3_K, IQ4_XS)
+family: `B_KIND=2` in `gguf_iq4_q4_pair.hip` (side B = the strict
+per-row Q3_K GEMV's exact 128-thread tile emulated across the pair's
+waves), the `hipengine_gguf_q3_iq4_pair_silu` entry point, its Python
+wrapper, and the registered key `gguf_q3_k+gguf_iq4_xs`. It is
+bit-exact against `q3 strict single + iq4 local32 single + silu_mul`
+at K=5120 (GPU test) and at (5120, 17408) rows=1 (screen), but the
+production screen measured **0.92-0.99x across five runs - never the
+required >= 1.00** - so the route block ships dormant: no dispatch
+path selects this key, and production behavior is unchanged by
+construction.
+
+**E6b-7 added the reverse direction the same day (iteration 18):**
+(IQ4_XS gate, Q3_K up), 1 layer (blk.0), under a second instantiation
+`<W, GATE_IS_Q4=false, B_KIND=2, A_IS_CHAIN=false>` and its own
+extern-C `hipengine_gguf_iq4_q3_pair_silu` + wrapper
+`gguf_iq4_q3_pair_silu_bf16_bf16_out` + registration key
+`gguf_iq4_xs+gguf_q3_k` (route order == C geometry, no reorder; the
+epilogue takes the gate from side A's IQ4 chain). Bit-exact at K=5120
+(GPU suite) and at (5120, 17408) rows=1, but five production screens
+measured **0.95 / 0.97 / 1.03 / 0.96 / 0.95 - mean 0.972, four of five
+below the >= 1.00 gate** (the lone 1.03 inside the historical screen
+spread), so its route block was also removed and production stayed
+byte-identical by construction (LLM probe: pair7 = 0 dispatches, all
+five shipped families intact). The structural cause is the same one
+recorded for the first direction: sides keep identical arithmetic, so
+the direction swap cannot change the wall picture.
+
+**E6 closeout added two more dormant directions the same day
+(iteration 21):** (IQ3_S gate, IQ4_XS up), 1 layer (layer 11), under
+instantiation `<W, GATE_IS_Q4=true, B_KIND=3, A_KIND=0>` + extern-C
+`hipengine_gguf_iq3s_iq4_pair_silu` + wrapper
+`gguf_iq3s_iq4_pair_silu_bf16_bf16_out` + key
+`gguf_iq3_s+gguf_iq4_xs` (B_KIND=3 is the IQ3_S local32 decode
+owner's Q==2 split-K path verbatim - both sides of layer 11 take the
+session's local32 owner, no ffn_gate pin; the wrapper reorders the
+gate-first route args to C geometry). Bit-exact at K=5120 (GPU test)
+and at (5120, 17408) rows=1 (screen), but four production screens
+measured **0.99 / 0.99 / 0.98 / 0.97 - never the required >= 1.00**.
+And (Q5_K gate, Q6_K planar up), 1 layer (layer 63), under
+`<W, GATE_IS_Q4=true, B_KIND=1, A_KIND=3>` + extern-C
+`hipengine_gguf_q5_q6_pair_silu` + wrapper
+`gguf_q5_q6_pair_silu_bf16_bf16_out` + key
+`gguf_q5_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1` (A_KIND=3 emulates
+the planar single's exact 4-wave chain across the block's waves; the
+wrapper reorders gate-first args so side A runs the planar chain).
+Bit-exact everywhere, but four production screens measured
+**0.60-0.61x** - the chain emulation across block waves costs far more
+than the launch it saves. Both route blocks were removed with the unit;
+production behavior is byte-identical by construction. The third
+closeout direction, (IQ4_NL gate, Q5_K up) at 1.03-1.04x, passed its
+gate and shipped (it is not part of this entry).
+
+**E6 same-quant closeout recorded a capability gap (iteration 22):**
+(Q3_K gate, Q3_K up), 1 layer (layer 14), has no expressible entry -
+side A has no strict-Q3 instantiation (only `B_KIND=2` runs the strict
+Q3 tile, on side B), and every strict-emulation screen to date lands
+0.60-0.99x (E6b-5, E6b-7, E6 closeout), so a predicted-failing body
+was not built. Nothing ships and production is unchanged by
+construction; any artifact carrying this ordered pair hits the same
+gap. The same unit adjudicated (Q4_K, Q4_K) as **already fused** by
+the pre-existing dense-dual route (5 layers, 4.84 launches/token - no
+entry needed, admission test only) and shipped (IQ4_NL gate, IQ4_NL
+up) at 1.04x with `B_KIND=4`; neither belongs to this entry.
+
+Clearing command (Q3_K/Q3_K gap): port the strict per-row Q3_K tile
+into the pair's side A (mirror of `B_KIND==2`, e.g. `A_KIND=4`),
+instantiate `<W, GATE_IS_Q4=false, B_KIND=2, A_KIND=4>` +
+`hipengine_gguf_q3_q3_pair_silu` + wrapper + registration key
+`gguf_q3_k+gguf_q3_k`, prove bit-exact vs `q3 strict + q3 strict +
+silu_mul` at K=5120 and at (5120, 17408) rows=1, then screen
+`~/ud-e1-census/e6_closeout_screen.py` (or successor): only at
+>= 1.00x add the route block in `hipengine/runtime/gguf_linear.py`
+keyed on both sides' raw strict `gemv_bf16_bf16_out` owners at
+rows==1.
+
+Clearing command: re-run `~/ud-e1-census/e6b5_screen.py`,
+`~/ud-e1-census/e6b7_screen.py`, and
+`~/ud-e1-census/e6_closeout_screen.py` (or successors) after a
+structural change to the pair (e.g. overlapping side A and side B
+phases, a lower-overhead strict emulation, or a wave-scheduled planar
+chain that runs each single-wave on its own hardware wave); if any
+direction measures >= 1.00x bit-exact, add that direction's route
+block back in `hipengine/runtime/gguf_linear.py` keyed on its ordered
+pair (`gguf_q3_k+gguf_iq4_xs` or `gguf_iq4_xs+gguf_q3_k` gate-first,
+`gguf_iq3_s+gguf_iq4_xs`, `gguf_q5_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1`)
+with the matching predicates (raw-IQ side = session-qualified decode
+owner with the spec's slot_path - Q3/IQ3_S parents keep
+`gemv_bf16_bf16_out` without a policy entry or under a pin, IQ4 sides
+the local32 owner; Q5 side = E4a tile8 c1 owner; Q6 side = direct
+planar decode key; both sides' ABIs as the shipped wrappers read them)
+and delete this entry.
+
+Removal condition: if the fused pair family is redesigned or those
+layers change quant, delete `B_KIND==2`, `B_KIND==3`, `A_KIND==3`, all
+four dormant extern-C wrappers, their Python wrappers/registrations
+(all four ordered keys), and their GPU/route tests together - dead
+code with no route does not accumulate a second life.
+Evidence: `docs/campaigns/UD-GFX1151-OPTIMIZE2.md` E6b-5 row;
+`worklog/entries/20260925T011636.401265Z-lhl-ud-gfx1151-optimize2-e6b5-q3-iq4-negative-c7f21a.md` (this unit's entry).
+
 ## Dense27B prefix oracle disagreement after prefix/MTP integration (2026-09-20) — RESOLVED
 
 The merge qualification at p1024+s200 on Qwen3.8-27B Q4_K_M / gfx1151
@@ -8958,6 +9061,33 @@ ladder with a width the box cannot hold, then assert a full-context session plus
 chat smoke still allocate. If the failed attempt does not roll back completely, fix
 the rollback instead of weakening the probe.
 
+## Dormant Q5_T16 rows==1 dual block with poisoned variant inheritance (open 2026-09-25)
+
+`launch_gguf_linear_pair_silu`'s Q5 block (`hipengine/runtime/gguf_linear.py`, the
+`q5_t16_pair_variant = registered_decode_variant or "q5_dense_dual_silu..."` path) is
+dormant on `hip_gfx1151` for three stacked reasons found in E6a (UD-GFX1151-OPTIMIZE2
+iteration 11): the identity policy row hands back the **Q4** variant name
+`dense_dual_local32_bf16_bf16_out` (the row mirrors plain by design; the IQ4 branch
+selects its own key and ignores the value, the Q5 block inherits it blindly, and the
+resulting key is unregistered under `gguf_q5_k_t16_v1`); post-E4a both sides dispatch
+`t16_gemv_decode_tile8_bf16_bf16_out` while the rule demands the direct key; and the
+earlier `_q5_t16_dense_pair_silu_variant(rows)` branch at the `dense_pair_quant ==
+"gguf_q5_k_t16_v1"` test is dead code (`dense_pair_quant` only ever holds quants in
+`_Q4_T16_DENSE_QUANTS`, which excludes Q5).
+
+E6a's gate says leave it dormant: at the production shape (5120, 17408) rows=1 the
+dual is bit-exact against the 2× tile8 + `silu_mul_separate_out_bf16` chain but
+**loses** it — 705.6 vs 653.6 µs/layer (0.93×, allocate-once timing, 200 launches,
+`~/ud-e1-census/e6a_screen.py`) — because the dual kernel mirrors the direct
+owner's schedule while the singles now run on the faster tile8 owner.
+
+Clearing command: re-screen `dual vs 2×tile8 chain` at rows=1 before any change
+here; only if the dual wins at the current dispatched singles does it make sense to
+fix the variant selection (Q5 branch selects its own key, mirroring the IQ4
+precedent), extend the dispatch predicate to the tile8 key, and update the block's
+stale comment (it still describes the direct-only rows==1 condition). Until that
+screen passes, the dormancy is load-bearing and the dead branch plus the stale
+comment should be cleaned up instead.
 ## Logprobs requests skip the captured-graph sampled accept (open 2026-09-23)
 
 `_device_sampled_accept_plan` in `hipengine/generation/qwen35_gguf_mtp2.py`

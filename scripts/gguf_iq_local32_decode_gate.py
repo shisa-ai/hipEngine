@@ -40,13 +40,21 @@ def main() -> None:
         default="gguf_iq3_s,gguf_iq3_xxs,gguf_iq2_s,gguf_iq2_xs",
         help="quants under test: the candidate is the shipped policy, the "
              "incumbent is the shipped policy minus these")
+    ap.add_argument(
+        "--backend", type=str, default="hip_gfx1100",
+        help="backend package whose decode policy is gated. The default keeps "
+             "the original gfx1100 arm pair; pass hip_gfx1151 to gate that "
+             "backend's declaration against its own all-strict incumbent.")
     args = ap.parse_args()
     if args.compiler_version_file is not None:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
 
     from hipengine.benchmark.correctness import evaluate_logits
+    from hipengine.runtime import gguf_linear as gl
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
-    import hipengine.kernels.hip_gfx1100 as be
+
+    backend = args.backend
+    be = __import__(f"hipengine.kernels.{backend}", fromlist=["_"])
 
     compiler_version = (Path(args.compiler_version_file).read_text()
                         if args.compiler_version_file else None)
@@ -72,7 +80,7 @@ def main() -> None:
             args.model, compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
             max_sequence_length=args.prompt_tokens + args.decode_tokens + 64,
-            use_wmma_prefill=True, use_gemv_decode=True,
+            use_wmma_prefill=True, use_gemv_decode=True, backend=backend,
         ) as gen:
             seed_ids = [int(t) for t in rng.integers(1000, 50000, size=8)]
             cur = gen.prefill(seed_ids, use_bulk=True, bulk_attention_mode="bulk",
@@ -100,13 +108,13 @@ def main() -> None:
         from hipengine.runtime.gguf_linear import (
             GGUFLinearDispatch, _iq_dense_decode_dispatch)
         from hipengine.kernels.registry import KernelKey
-        load_backend_kernel_package("hip_gfx1100")
+        load_backend_kernel_package(backend)
         with iq_mmq.iq_dense_mmq_session(True):
             saved = dict(be.GGUF_IQ_DENSE_DECODE_POLICY)
             try:
                 for gated in ap_gated:
                     base = GGUFLinearDispatch(
-                        KernelKey("hip_gfx1100", "linear", gated,
+                        KernelKey(backend, "linear", gated,
                                  "gemv_bf16_bf16_out"), "raw")
                     be.GGUF_IQ_DENSE_DECODE_POLICY = base_policy
                     incumbent_owner = _iq_dense_decode_dispatch(
@@ -125,20 +133,39 @@ def main() -> None:
     _assert_owners_differ()
 
     def run(local32: bool, forced_tokens=None):
+        # Flipping the policy table changes a resolution input the dispatch
+        # memo does not key on (it is an import-time constant in production),
+        # so the memo must be dropped or the second arm reuses the first
+        # arm's owner and the two arms measure the same kernels. The spy below
+        # then proves at the real launch site that they did not.
         be.GGUF_IQ_DENSE_DECODE_POLICY = candidate_policy if local32 else base_policy
+        gl.clear_gguf_linear_dispatch_cache()
+        resolved: set[str] = set()
+        real_resolve = gl.resolve
+
+        def _spy(*, backend, layer, quant, variant):
+            if str(quant).startswith("gguf_iq"):
+                resolved.add(str(variant))
+            return real_resolve(backend=backend, layer=layer, quant=quant,
+                                variant=variant)
+
+        gl.resolve = _spy
         logits_rows = []
         tokens = []
-        first = session.prefill(prompt, use_bulk=True, bulk_attention_mode="bulk",
-                                 return_logits=True)
-        logits_rows.append(np.asarray(first.logits, dtype=np.float32).reshape(-1))
-        tokens.append(int(first.token_id))
-        cur = first
-        for i in range(n):
-            feed = int(cur.token_id) if forced_tokens is None else int(forced_tokens[i])
-            cur = session.step(feed, return_logits=True)
-            logits_rows.append(np.asarray(cur.logits, dtype=np.float32).reshape(-1))
-            tokens.append(int(cur.token_id))
-        return np.vstack(logits_rows), tokens
+        try:
+            first = session.prefill(prompt, use_bulk=True, bulk_attention_mode="bulk",
+                                     return_logits=True)
+            logits_rows.append(np.asarray(first.logits, dtype=np.float32).reshape(-1))
+            tokens.append(int(first.token_id))
+            cur = first
+            for i in range(n):
+                feed = int(cur.token_id) if forced_tokens is None else int(forced_tokens[i])
+                cur = session.step(feed, return_logits=True)
+                logits_rows.append(np.asarray(cur.logits, dtype=np.float32).reshape(-1))
+                tokens.append(int(cur.token_id))
+        finally:
+            gl.resolve = real_resolve
+        return np.vstack(logits_rows), tokens, frozenset(resolved)
 
     try:
         with Qwen35GGUFResidentSession(
@@ -148,14 +175,30 @@ def main() -> None:
             max_sequence_length=len(prompt) + n + 2,
             use_wmma_prefill=True,
             use_gemv_decode=True,
+            backend=backend,
         ) as session:
             # Incumbent: local32 disabled, eager -> fixes the trajectory.
-            ref_logits, ref_tokens = run(local32=False)
+            ref_logits, ref_tokens, incumbent_owners = run(local32=False)
             session.reset()
             # Candidate: local32 enabled, teacher-forced on the same tokens.
-            cand_logits, _ = run(local32=True, forced_tokens=ref_tokens[:-1])
+            cand_logits, _, candidate_owners = run(
+                local32=True, forced_tokens=ref_tokens[:-1])
     finally:
         be.GGUF_IQ_DENSE_DECODE_POLICY = base_policy
+        gl.clear_gguf_linear_dispatch_cache()
+
+    # The arms must have launched different kernels. Without this the probe
+    # reports a clean PASS whenever a dispatch-memo hit collapses the two arms
+    # into one, which is exactly what an un-cleared cache does.
+    if incumbent_owners == candidate_owners:
+        raise SystemExit(
+            "gate arms launched the same dense-IQ owners "
+            f"({sorted(candidate_owners)}); the probe measured one arm twice")
+    expected = {"local32_gemv_bf16_bf16_out"}
+    if not expected <= candidate_owners:
+        raise SystemExit(
+            f"candidate arm did not launch {sorted(expected)}; it launched "
+            f"{sorted(candidate_owners)}")
 
     ref_dec, cand_dec = ref_logits[1:], cand_logits[1:]
     metrics = evaluate_logits(ref_dec, cand_dec)
@@ -163,6 +206,10 @@ def main() -> None:
     finite = bool(np.all(np.isfinite(cand_logits)))
     pre = evaluate_logits(ref_logits[:1], cand_logits[:1])
     print(f"teacher-forced decode positions: {ref_dec.shape[0]}  (prompt={len(prompt)})")
+    print(f"incumbent dense-IQ owners: {sorted(incumbent_owners)}")
+    print(f"candidate dense-IQ owners: {sorted(candidate_owners)}")
+    print(f"decode logits bit-identical across arms: "
+          f"{bool(np.array_equal(ref_dec, cand_dec))}")
     print(f"prefill position KL (route-independent sanity): {pre.kl_mean:.3e}")
     print(f"DECODE per-position KL:  mean={metrics.kl_mean:.4e}  max={metrics.kl_max:.4e}")
     print(f"DECODE per-position top1 agreement: {top1:.4f}")
@@ -186,6 +233,11 @@ def main() -> None:
     )
     if args.json is not None:
         args.json.write_text(json.dumps({
+            "backend": backend,
+            "gate_quants": ap_gated,
+            "incumbent_owners": sorted(incumbent_owners),
+            "candidate_owners": sorted(candidate_owners),
+            "decode_logits_bit_identical": bool(np.array_equal(ref_dec, cand_dec)),
             "decode_positions": int(ref_dec.shape[0]),
             "prompt_tokens": len(prompt),
             "kl_mean": metrics.kl_mean, "kl_max": metrics.kl_max,
