@@ -4,6 +4,32 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## Gemma attention legacy slice-count ABI (2026-09-26)
+
+The default two-pass decode attention in
+`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip` now partitions
+output dimensions and preserves the single-kernel key accumulation order. The
+`decode_slices` helper in
+`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py` and the native
+`split_slices` argument of `launch_gemma4_attention_decode` keep their existing
+values for compatibility with callers and diagnostic scripts: one selects the
+single kernel, and values above one select the dimension pass. The value above
+one no longer sizes a key-slice grid, and the key-slice and combine kernels are
+gone. `gemma4_decode_split_workspace_bytes` still accepts `head_dim` and
+`slices` that no longer affect its result.
+
+Remove `decode_slices`, the `split_slices` argument, and the unused
+`gemma4_decode_split_workspace_bytes` parameters when no caller or diagnostic
+script passes a slice count: `scripts/gemma4_teacher_forced_gate.py`
+(`force_slices`, `--slices`),
+`tests/test_gpu_gemma4_attention_decode_parity.py`, and
+`tests/test_unit_gemma4_attention_scratch.py` are the current callers to
+migrate to an explicit two-pass selection API. Remove it once the slice count is gone from the launch ABI and the Gemma
+unit/GPU guard plus one public `LLM.generate()` request pass. Clearing condition:
+the launch ABI carries an explicit two-pass selection instead of a slice count,
+keeping the existing split entry threshold and the strict single-kernel oracle
+route.
+
 ## Dense27B prefix oracle disagreement after prefix/MTP integration (2026-09-20) — RESOLVED
 
 The merge qualification at p1024+s200 on Qwen3.8-27B Q4_K_M / gfx1151

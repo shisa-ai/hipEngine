@@ -4,6 +4,28 @@ owns: Gemma 4 26B-A4B gfx1100 single-request optimization plan, measurement cont
 ---
 # Gemma 4 26B-A4B optimization campaign
 
+## Current correctness status — 2026-09-26
+
+The key-slice attention implementation failed the corrected teacher-forced
+numerical gate. Earlier entries below claiming that its 1023-row comparison
+qualified the default are historical and invalid as promotion evidence: that
+comparison did not engage split decode. The repaired evaluator records actual
+route selection and distinguishes numerical rows from complete promotion.
+See `benchmarks/results/2026-09-26-gemma4-split-layer-cache-trace.json`.
+
+The correctness repair replaces key-slice partial sums with dimension
+partitioning, preserving the single-kernel ascending-key accumulation order.
+The recorded 1023-row strict comparison has zero KL and 100% top-1 agreement;
+public-generation parity also passes. This is a correctness fix, not a speed
+win over the numerically failing implementation. The depth4 candidate measured
+43.74 decode tok/s at 1024 prompt / 128 output on the lane specified below.
+The complete repair evidence and validation limitations belong in its worklog
+entry; these checks do not close G4/G5 or establish task quality.
+
+The measured optimization loop stopped after iteration 58 under the
+three-failed-candidates/re-profile rule. Its closure is recorded in
+`worklog/entries/20260926T114943.870421Z-lhl-gemma4-dimension-tranche-close-31c043.md`.
+
 ## Objective and scope
 
 Improve real Gemma 4 26B-A4B GGUF text-inference latency and throughput without
@@ -12,10 +34,9 @@ regressing output correctness or request ownership. Start with the working
 is host `epyc`, physical GPU1, RX 7900 XTX, `hip_gfx1100`, the existing
 `gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf` artifact, greedy decoding, and BF16 KV.
 
-The user requested this campaign after the text-inference review. This document
-creates the plan; no tuning run or autonomous loop has started. The first
-execution milestone is a validated measurement harness and baseline. Kernel
-changes follow measured attribution, not the hypotheses listed below.
+The user requested this campaign after the text-inference review. The milestone
+notes below record its execution history; the current status above takes
+precedence over historical acceptance claims.
 
 Success means lower public request latency and improved prefill/decode costs,
 with the selected default path verified through `LLM.generate()` and

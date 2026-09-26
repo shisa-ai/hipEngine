@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-24**
+Last updated: **2026-09-26**
 
 Qwen3.8-27B Q4_K_M sampling on **zbook / Radeon 8060S (gfx1151)**:
 full-vocabulary GPU sampling achieves **11.61 decode tok/s and 9.63 engine
@@ -379,34 +379,42 @@ samples per row. hipEngine and llama.cpp run the identical frozen prompt
 token-id sequence; decode tok/s is the 127 single-token forwards of a
 128-output row divided by their measured time. hipEngine rates come from the
 public `LLM.generate()` path, whose output token ids match the instrumented
-timing loop at every position on every row. Greedy output is unchanged across
-these changes: the ones that alter arithmetic record zero top-1 flips over 1023
-teacher-forced rows, and identical greedy token ids over 128 positions. One
-measured exception is recorded rather than hidden: the two-phase decode split
-breaches the production `kl_max` bar on 1-2 of 1023 rows against the strict path,
-with top-1 unchanged on every row. Its gate did not previously exercise the split
-at all - the chain fed one token at a time from an empty cache, so key counts
-stopped one below the split's entry threshold - and that defect is fixed in
-`scripts/gemma4_teacher_forced_gate.py`; the breach and what to do about it are
-in the campaign document.
+timing loop at every position on every row.
+
+The two-phase decode split previously accumulated each key slice separately and
+summed the partials, which breached the production `kl_max` bar on 1 of 1023
+teacher-forced rows. Its replacement partitions output dimensions instead, so
+every output keeps the single-kernel path's full ascending-key accumulation
+chain: the 1023-row comparison now reports zero KL and 100% top-1 agreement,
+strict and default logits are bit-identical on eight category prompts with
+repeats, and greedy public output is unchanged. The repair costs decode speed
+against the implementation it replaces - 43.74 tok/s against 45.75 at
+1024/128 - and is recorded as a correctness fix rather than a speed win. An
+earlier gate did not exercise the split at all, because the chain fed one token
+at a time from an empty cache and stopped one key below the split's entry
+threshold; `scripts/gemma4_teacher_forced_gate.py` now takes a prefill, records
+the route each row used, and refuses to compare arms whose scored key range
+differs.
 
 | Engine | Prefill 1024 | Decode at 1024/128 |
 | --- | ---: | ---: |
 | llama.cpp HIP `8cfc315`, same GGUF | **3910** | **68.92** |
-| hipEngine | 128.5 | 45.84 |
+| hipEngine | 128.5 | 43.74 |
 
-hipEngine's own shape matrix at 128 outputs: decode 51.78 tok/s at a 128-token
-prompt, 47.97 at 512, 45.84 at 1024, 42.77 at 4096; prefill 138.9 / 134.4 /
-128.5 / 108.3 tok/s at the same shapes. First-token latency at 1024 is 7.97 s
-and public request wall time is 10.74 s including prefill. Decode is now close
-to flat across context length - 51.78 down to 42.77 - because the sliding
-layers, 25 of the model's 30, read only the keys inside their 1024-token window
-instead of walking the whole cached context and masking the difference away.
+hipEngine's own shape matrix at 128 outputs: decode 52.28 tok/s at a 128-token
+prompt, 48.12 at 512, 43.74 at 1024, 40.02 at 4096; prefill 140.2 / 135.7 /
+128.5 / 108.6 tok/s at the same shapes. The 128/512/4096 rows are one sample
+each; the 1024/128 row is three. First-token latency at 1024 is 7.97 s and
+public request wall time is 10.72 s including prefill. Decode is close to flat
+across context length - 52.28 down to 40.02 - because the sliding layers, 25 of
+the model's 30, read only the keys inside their 1024-token window instead of
+walking the whole cached context and masking the difference away.
 For product context on the same GPU and workload, Qwen3.6-35B-A3B
 `UD-Q4_K_M` in hipEngine measures 3281 prefill and 114.57 decode tok/s — a
 different model and tokenizer, used as a speed reference only.
 
-[Read range and slice policy](results/2026-09-26-gemma4-26b-a4b-sliding-read-range-accepted.json);
+[Dimension-partitioned decode attention and its correctness repair](results/2026-09-26-gemma4-dimension-partition-correctness-repair.json);
+[read range and slice policy](results/2026-09-26-gemma4-26b-a4b-sliding-read-range-accepted.json);
 [two-phase decode split and its production-profile gate](results/2026-09-26-gemma4-26b-a4b-two-phase-split-accepted.json);
 [decode attention kernel](results/2026-09-25-gemma4-26b-a4b-key-class-decode-accepted.json);
 [baseline matrix, comparators and boundary rows](results/2026-09-24-gemma4-26b-a4b-g0-baseline.json).
