@@ -416,9 +416,9 @@
     },
     {
       "kind": "axis-branch",
-      "key": "hipengine/runtime/gguf_linear.py:2638",
+      "key": "hipengine/runtime/gguf_linear.py:2645",
       "title": "branches on a registry axis: if dispatch.key.quant == \"gguf_q8_0\"",
-      "location": "hipengine/runtime/gguf_linear.py:2638",
+      "location": "hipengine/runtime/gguf_linear.py:2645",
       "evidence": {
         "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
         "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
@@ -429,7 +429,7 @@
       "hints": {
         "anchor": "hipengine/runtime/gguf_linear.py",
         "refs": [
-          "hipengine/runtime/gguf_linear.py:2638"
+          "hipengine/runtime/gguf_linear.py:2645"
         ],
         "tokens": [
           "axis",
@@ -441,14 +441,14 @@
           "registry"
         ]
       },
-      "id": "axis-branch/hipengine/runtime/gguf_linear.py:2638",
-      "evidence_hash": "b9abed09e480"
+      "id": "axis-branch/hipengine/runtime/gguf_linear.py:2645",
+      "evidence_hash": "a2fc49516c45"
     },
     {
       "kind": "axis-branch",
-      "key": "hipengine/runtime/gguf_linear.py:2652",
+      "key": "hipengine/runtime/gguf_linear.py:2659",
       "title": "branches on a registry axis: % (32 if dispatch.key.quant == \"gguf_q8_0\" else 256)",
-      "location": "hipengine/runtime/gguf_linear.py:2652",
+      "location": "hipengine/runtime/gguf_linear.py:2659",
       "evidence": {
         "fix": "Register the behaviour against a `(backend, layer, quant, variant)` key and resolve it, instead of branching on the axis value here.",
         "why": "AGENTS.md 'Four-axis plugin registry' forbids axis branches in dispatch/engine/model code"
@@ -459,7 +459,7 @@
       "hints": {
         "anchor": "hipengine/runtime/gguf_linear.py",
         "refs": [
-          "hipengine/runtime/gguf_linear.py:2652"
+          "hipengine/runtime/gguf_linear.py:2659"
         ],
         "tokens": [
           "256",
@@ -473,8 +473,8 @@
           "registry"
         ]
       },
-      "id": "axis-branch/hipengine/runtime/gguf_linear.py:2652",
-      "evidence_hash": "7e9cfa0ddaae"
+      "id": "axis-branch/hipengine/runtime/gguf_linear.py:2659",
+      "evidence_hash": "30325c1a34d4"
     },
     {
       "kind": "axis-branch",

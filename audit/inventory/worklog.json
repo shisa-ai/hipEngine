@@ -2,13 +2,13 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10901,
-    "current": 3669,
+    "entries": 10902,
+    "current": 3670,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1169,
+    "rows": 1170,
     "by_rule": {
-      "dependency": 38,
+      "dependency": 39,
       "legacy-next": 109,
       "status": 1022
     }
@@ -44029,6 +44029,48 @@
       },
       "id": "worklog/20260926T231216.332180Z-lhl-gemma4-q5-1-staged-grouped-prefill-d6a2a9",
       "evidence_hash": "fec61433afe6"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260926T235136.556498Z-lhl-gemma4-attention-prefill-register-tree-9b5a7b",
+      "title": "Gemma 4 prefill attention: one warp per key, register tree, bit-exact 3.08x",
+      "location": "worklog/entries/20260926T235136.556498Z-lhl-gemma4-attention-prefill-register-tree-9b5a7b.md:78",
+      "evidence": {
+        "status": "completed",
+        "worker": "lhl",
+        "topic": "gemma4-attention-prefill-register-tree",
+        "written": "2026-09-26",
+        "age_days": 1,
+        "open_by": "dependency",
+        "continuation_entries": 0,
+        "open_text": "- The remaining prefill budget at 512 tokens, measured by route: `Q4_K` gate/up\n  1156 ms (its fastest route is the gated MMQ path, waiting on the lead's\n  `kl_max` call), `Q8_0` dense 694 ms, `Q5_1` down 651 ms, layer 29's `Q5_K`\n  246 ms, attention ~330 ms after this unit.\n- **Do not chase the `Q8_0` dense route with less traffic.** A row-grouped\n  variant that moves 4.56 GB instead of 9.30 GB is not faster (21.23 ms against\n  22.13 ms): achieved bandwidth falls from 428 to 220 GB/s, so the kernel is\n  limited by 1-byte weight load transactions rather than by DRAM. The lever is\n  fewer, wide",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "Next names a dependency: 'waiting on'",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260926T235136.556498Z-lhl-gemma4-attention-prefill-register-tree-9b5a7b.md",
+        "refs": [],
+        "tokens": [
+          "08x",
+          "attention",
+          "bit",
+          "exact",
+          "gemma",
+          "key",
+          "one",
+          "per",
+          "prefill",
+          "register",
+          "tree",
+          "warp"
+        ]
+      },
+      "id": "worklog/20260926T235136.556498Z-lhl-gemma4-attention-prefill-register-tree-9b5a7b",
+      "evidence_hash": "86a6065af517"
     }
   ]
 }
