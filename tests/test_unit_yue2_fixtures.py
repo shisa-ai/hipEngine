@@ -17,6 +17,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tests._torch_absence import run_in_clean_interpreter
+
 REPO = Path(__file__).resolve().parents[1]
 FIXTURES = REPO / "tests/fixtures/yue2"
 STABLE_FAMILIES = (
@@ -58,7 +60,9 @@ def stable_tree(tmp_path_factory):
     return root
 
 
-def test_oracle_tooling_imports_no_torch(oracle):
+def test_oracle_tooling_imports_no_torch(oracle, request):
+    if not run_in_clean_interpreter(request.node.nodeid):
+        return
     assert "torch" not in sys.modules
 
 

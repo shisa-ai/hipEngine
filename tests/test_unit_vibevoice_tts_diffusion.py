@@ -11,14 +11,20 @@ milestone-1 oracle traces for both fixture requests:
 - the single-speaker request is additionally gated over the whole 20-step
   trajectory, and on the final latent and its ``latent / scale - bias`` scaled
   form, all against frozen thresholds;
-- the two-speaker request is **not** gated past step 5. Its ``call0`` trajectory
-  amplifies a one-bf16-ULP input change into a different trajectory -- 1.5 of
-  peak on one eps step, 3.3 on the final latent -- so agreement there measures
-  the fixture's conditioning, not this implementation.
-  ``test_trajectory_conditioning_is_diagnostic`` reports that band and asserts
-  that the reason for the missing gate still holds, but nothing it measures
-  feeds an acceptance threshold. What covers that request is generated-audio
-  quality, not a looser number here;
+- the two-speaker request is gated over steps 0-5 and, since 2026-09-23, over
+  the whole 20-step ``eps``/``speech`` envelope at the same frozen thresholds
+  as single. The late gate was restored because the frozen replay tracks the
+  oracle's ``call0`` end-to-end (late ``eps`` 0.0444 of peak, ``speech``
+  0.0175) -- exactly the "restore it" condition its own diagnostic asserted.
+  Under numpy 2.5.2 the same replay lands on the chaotic basin instead (late
+  ``eps`` 0.3655); that environment flip and the full version matrix are in
+  worklog entry
+  20260923T065521.980836Z-lhl-vibevoice-tts-restore-late-gate-88ec6c.md, and
+  the gate fails closed if that basin returns. The request's final latent,
+  pooled, and scaled forms stay single-speaker-only;
+  ``test_trajectory_conditioning_is_diagnostic`` still reports the ULP
+  perturbation band. What covers the request beyond these numbers is
+  generated-audio quality;
 - the schedule (linspace timesteps, order-2 first/second-order switching,
   zero final sigma) is asserted exactly.
 
@@ -62,6 +68,10 @@ _FROZEN_EPS_EARLY = 0.025
 _FROZEN_SPEECH_EARLY = 0.025
 # Single-speaker whole-trajectory envelope, carried from milestone 3: measured
 # eps 0.050 and speech 0.020 at the last step, pooled 0.006, latent 0.011.
+# Since 2026-09-23 the same 0.08/0.05 eps/speech envelope also gates the
+# two-speaker replay (restored per that diagnostic's own instruction;
+# provenance: worklog entry
+# 20260923T065521.980836Z-lhl-vibevoice-tts-restore-late-gate-88ec6c.md).
 _FROZEN_EPS_SINGLE = 0.08
 _FROZEN_SPEECH_SINGLE = 0.05
 _FROZEN_POOLED_SINGLE = 0.02
@@ -220,18 +230,18 @@ def test_diffusion_replay_matches_fixture_chain(chains, name):
     )
 
     if name != "single":
-        # Past the amplification onset the two-speaker replay is on a different
-        # trajectory than the oracle: 0.37 of peak on eps at step 19, 0.27
-        # relative on the final latent. No threshold on that comparison
-        # separates a defect from the fixture's conditioning, so none is
-        # asserted. The magnitude bounds are a smoke check that the head has not
-        # collapsed; the request itself is covered by the generated-audio
-        # quality suite rather than by a looser number here.
+        # Magnitude smoke bound: the head has not collapsed. Beyond it the
+        # two-speaker replay is gated on the same whole-trajectory envelope as
+        # single since 2026-09-23 (restored per the diagnostic below): measured
+        # late eps 0.0444 / speech 0.0175 of peak on the installed numpy
+        # versions 2.4.4 and 2.5.3. numpy 2.5.2 lands on the chaotic basin
+        # instead (eps 0.3655 of peak) and fails this gate; that flip is
+        # recorded in worklog entry
+        # 20260923T065521.980836Z-lhl-vibevoice-tts-restore-late-gate-88ec6c.md.
         assert np.abs(eps).max() <= 4 * np.abs(fx_eps).max(), f"{name}: eps magnitude blew up"
         assert np.abs(speech).max() <= 4 * np.abs(fx_speech).max(), (
             f"{name}: speech magnitude blew up"
         )
-        return
 
     assert eps_ratio.max() <= _FROZEN_EPS_SINGLE, (
         f"{name}: eps step {int(eps_ratio.argmax())} off by {eps_ratio.max():.4f} "
@@ -241,24 +251,26 @@ def test_diffusion_replay_matches_fixture_chain(chains, name):
         f"{name}: speech step {int(speech_ratio.argmax())} off by "
         f"{speech_ratio.max():.4f} of peak against {_FROZEN_SPEECH_SINGLE}"
     )
-    pooled = np.sqrt(((speech - fx_speech) ** 2).mean()) / np.sqrt((fx_speech**2).mean())
-    assert pooled < _FROZEN_POOLED_SINGLE, (
-        f"{name}: speech pooled RMS rel {pooled:.4f} vs {_FROZEN_POOLED_SINGLE}"
-    )
 
-    latent_rel = np.abs(final - data["call0_speech_latent"]).max() / max(
-        np.abs(data["call0_speech_latent"]).max(), 1e-9
-    )
-    assert latent_rel < _FROZEN_LATENT_SINGLE, (
-        f"{name}: final latent rel {latent_rel:.4f} vs {_FROZEN_LATENT_SINGLE}"
-    )
+    if name == "single":
+        pooled = np.sqrt(((speech - fx_speech) ** 2).mean()) / np.sqrt((fx_speech**2).mean())
+        assert pooled < _FROZEN_POOLED_SINGLE, (
+            f"{name}: speech pooled RMS rel {pooled:.4f} vs {_FROZEN_POOLED_SINGLE}"
+        )
 
-    scaled = scale_speech_latent(final, scale, bias)
-    fx_scaled = data["call0_scaled_latent"].reshape(-1)
-    scaled_rel = np.abs(scaled - fx_scaled).max() / max(np.abs(fx_scaled).max(), 1e-9)
-    assert scaled_rel < _FROZEN_LATENT_SINGLE, (
-        f"{name}: scaled latent rel {scaled_rel:.4f} vs {_FROZEN_LATENT_SINGLE}"
-    )
+        latent_rel = np.abs(final - data["call0_speech_latent"]).max() / max(
+            np.abs(data["call0_speech_latent"]).max(), 1e-9
+        )
+        assert latent_rel < _FROZEN_LATENT_SINGLE, (
+            f"{name}: final latent rel {latent_rel:.4f} vs {_FROZEN_LATENT_SINGLE}"
+        )
+
+        scaled = scale_speech_latent(final, scale, bias)
+        fx_scaled = data["call0_scaled_latent"].reshape(-1)
+        scaled_rel = np.abs(scaled - fx_scaled).max() / max(np.abs(fx_scaled).max(), 1e-9)
+        assert scaled_rel < _FROZEN_LATENT_SINGLE, (
+            f"{name}: scaled latent rel {scaled_rel:.4f} vs {_FROZEN_LATENT_SINGLE}"
+        )
 
 
 def test_scheduler_schedule_matches_frozen_timesteps(bundle):
@@ -324,19 +336,21 @@ def test_replay_is_deterministic(bundle):
 
 
 def test_trajectory_conditioning_is_diagnostic(chains):
-    """Reports why the two-speaker request carries no late-step gate.
+    """Reports the conditioning band behind the two-speaker replay gates.
 
-    Diagnostic only -- nothing measured here feeds an acceptance threshold. One
-    bf16 ULP is the smallest input difference the frozen trajectory can express,
-    so the deviation it produces is the floor below which no independent
-    implementation can be told apart from the oracle. The single-speaker
-    ``call0`` stays inside the nominal envelope under that perturbation; the
-    two-speaker one does not.
+    Diagnostic plus one acceptance leg. One bf16 ULP is the smallest input
+    difference the frozen trajectory can express, so the deviation it produces
+    is the floor below which no independent implementation can be told apart
+    from the oracle. The single-speaker ``call0`` stays inside the nominal
+    envelope under that perturbation; the two-speaker one stays chaotic (the
+    first four assertions), which is why *input perturbations* cannot be gated.
 
-    The assertions pin the *reason* the late gates are absent. If the fixtures
-    are regenerated and the two-speaker request becomes well-conditioned, this
-    fails and asks for the late-step gate to be restored, instead of leaving a
-    silent hole in coverage.
+    The replay against the *recorded* inputs is a separate question, and since
+    2026-09-23 it is gated: late steps measure 0.0444 of peak on the installed
+    numpy versions (2.4.4, 2.5.3) and the final assertion pins that agreement.
+    numpy 2.5.2 instead lands on the chaotic basin (0.3655); that environment
+    flip is recorded in worklog entry
+    20260923T065521.980836Z-lhl-vibevoice-tts-restore-late-gate-88ec6c.md.
     """
     single = chains["single"][1]
     two = chains["two"][1]
@@ -352,13 +366,16 @@ def test_trajectory_conditioning_is_diagnostic(chains):
         f"single latent band grew to {single.latent:.4f}"
     )
 
-    # ... and the two-speaker late steps still cannot be gated nominally.
+    # The two-speaker late replay is now gated: frozen inputs replay to
+    # agreement, and this pins it from the diagnostic side too.
     data, eps, _, _, _, _ = chains["two"][0]
     fx_eps = data["call0_eps"]
     late_ratio = (
         np.abs(eps - fx_eps).max(axis=(1, 2))
         / np.maximum(np.abs(fx_eps).max(axis=(1, 2)), 1e-9)
     )[_PRE_AMPLIFICATION_STEPS:]
-    assert late_ratio.max() > _FROZEN_EPS_SINGLE, (
-        "two late steps now fit the nominal gate; restore it"
+    assert late_ratio.max() <= _FROZEN_EPS_SINGLE, (
+        f"two late replay drifted to {late_ratio.max():.4f} of peak against "
+        f"{_FROZEN_EPS_SINGLE} (basin flip? provenance in worklog "
+        "20260923T065521.980836Z-lhl-vibevoice-tts-restore-late-gate-88ec6c.md)"
     )

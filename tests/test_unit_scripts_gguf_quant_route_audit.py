@@ -1474,10 +1474,27 @@ def test_raw_iq_contract_contracts_f32_slots_in_production_planner_mode():
     tensors = _replace_tensor(_fixture_tensors(), "blk.0.ssm_out.weight", _iq4_xs_tensor())
     maps = _mapped(tensors)
     report = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)
-    assert report["decode_repack_enabled"] is False  # raw-IQ veto surfaced
+    # Per-tensor default (E3): a raw-IQ carrier no longer trips a model-wide
+    # repack veto on the report surface — the model-wide F32 contraction
+    # asserted below is the part of the raw-IQ contract that stays model-wide.
+    assert report["decode_repack_enabled"] is True
     # 56 linear layers x (ssm_alpha, ssm_beta); blk.0.ssm_out itself became IQ4_XS.
     assert _count_f32_contracted(report) == 112
     assert report["routes"]["F32"] == {"f32-resident": 873 - 1 - 112, "bf16-expand": 112}
+
+
+def test_modelwide_eligibility_mode_vetoes_raw_iq_carrier_in_route_audit(
+    monkeypatch,
+):
+    # E3 rollback seam: HIPENGINE_UD_REPACK_ELIGIBILITY=model-wide is the
+    # only mode in which the audit may record decode_repack_enabled=False
+    # for a raw-IQ carrier (it reproduces the pre-E3 record byte-for-byte).
+    monkeypatch.setenv("HIPENGINE_UD_REPACK_ELIGIBILITY", "model-wide")
+    tensors = _replace_tensor(_fixture_tensors(), "blk.0.ssm_out.weight", _iq4_xs_tensor())
+    maps = _mapped(tensors)
+    report = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)
+    assert report["decode_repack_enabled"] is False
+    assert _count_f32_contracted(report) == 112
 
 
 def test_raw_iq_contract_contracts_f32_slots_in_per_slot_fallback_mode():

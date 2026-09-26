@@ -463,3 +463,80 @@ def test_q8_t16_threads_env_rejects_invalid_value(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_THREADS", "256")
     with pytest.raises(ValueError, match="HIPENGINE_GGUF_Q8_T16_THREADS must be one of 64 or 128"):
         gl._resolve_q8_t16_threads()
+
+
+def test_policy_reassignment_is_invisible_to_the_memo_until_it_is_cleared() -> None:
+    """A policy table is an import-time constant, so it is not in the memo key.
+
+    Reassigning ``GGUF_IQ_DENSE_DECODE_POLICY`` changes a dispatch-resolution
+    input, but the memo keys on the registry generation and the dense-IQ
+    session state rather than on the table. An already-memoized
+    (weight, shape, rows, slot) therefore keeps its old owner. That is
+    deliberate - the table cannot change in production - and it is why every
+    gate that flips a policy between arms must drop the memo: without the
+    clear, the second arm is a cache hit and the two arms measure the same
+    kernels, which reads as a bit-exact route rather than as a broken probe.
+
+    This pins both halves of the contract, so a future change to the key that
+    silently makes one of them false fails here rather than in a gate result.
+    """
+
+    from hipengine.kernels.hip_gfx1100.quant import (
+        gguf_iq_source_mmq_prefill as iq_mmq,
+    )
+    import hipengine.kernels.hip_gfx1100 as backend
+
+    gl.clear_gguf_linear_dispatch_cache()
+    weight = _fake_weight(
+        layout=LAYOUT_RAW_GGUF,
+        quant_key="gguf_iq4_xs",
+        slot_path="layers.3.ffn_gate",
+    )
+    fired: list[str] = []
+    saved_strict = resolve(
+        backend=_IQ_STRICT_KEY.backend, layer=_IQ_STRICT_KEY.layer,
+        quant=_IQ_STRICT_KEY.quant, variant=_IQ_STRICT_KEY.variant,
+        missing="none",
+    )
+    saved_local32 = resolve(
+        backend=_IQ_LOCAL32_KEY.backend, layer=_IQ_LOCAL32_KEY.layer,
+        quant=_IQ_LOCAL32_KEY.quant, variant=_IQ_LOCAL32_KEY.variant,
+        missing="none",
+    )
+    register(_IQ_STRICT_KEY, lambda *a, **k: fired.append("strict"), replace=True)
+    register(_IQ_LOCAL32_KEY, lambda *a, **k: fired.append("local32"), replace=True)
+    shipped = backend.GGUF_IQ_DENSE_DECODE_POLICY
+    try:
+        def launch() -> None:
+            with iq_mmq.iq_dense_mmq_session(True):
+                launch_gguf_linear(
+                    weight, x_ptr=1, out_ptr=2, rows=1,
+                    in_features=5120, out_features=17408, runtime="rt",
+                )
+
+        backend.GGUF_IQ_DENSE_DECODE_POLICY = {}
+        launch()
+        backend.GGUF_IQ_DENSE_DECODE_POLICY = {
+            "gguf_iq4_xs": {"variant": "local32_gemv_bf16_bf16_out"}}
+        launch()
+        assert fired == ["strict", "strict"], (
+            "the memo must not observe a policy reassignment; a memo hit here "
+            "is the documented contract, and a miss means the key changed"
+        )
+
+        gl.clear_gguf_linear_dispatch_cache()
+        launch()
+        assert fired == ["strict", "strict", "local32"], (
+            "clearing the memo must be sufficient to pick up the new policy"
+        )
+    finally:
+        backend.GGUF_IQ_DENSE_DECODE_POLICY = shipped
+        if saved_strict is None:
+            _KERNELS.pop(_IQ_STRICT_KEY, None)
+        else:
+            register(_IQ_STRICT_KEY, saved_strict, replace=True)
+        if saved_local32 is None:
+            _KERNELS.pop(_IQ_LOCAL32_KEY, None)
+        else:
+            register(_IQ_LOCAL32_KEY, saved_local32, replace=True)
+        gl.clear_gguf_linear_dispatch_cache()
