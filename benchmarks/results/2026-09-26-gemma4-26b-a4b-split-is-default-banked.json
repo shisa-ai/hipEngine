@@ -1,0 +1,28 @@
+{
+  "id": "2026-09-26-gemma4-26b-a4b-split-is-default-banked",
+  "date": "2026-09-26",
+  "kind": "analysis",
+  "status": "diagnostic",
+  "campaign": "GEMMA4-26B-A4B-OPTIMIZATION",
+  "iteration": 44,
+  "subject": "The decode attention split is already the unconditional default, so its gain is banked and the open decision is keep-or-rollback, not promotion",
+  "evidence": {
+    "call_site": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:312 calls slices = decode_slices(key_count, head_dim) with no guard, and the file contains no HIPENGINE_* environment gate, so the split is on the default path unconditionally.",
+    "slice_table": {
+      "keys<1024": 1,
+      "head_dim<=256": 4,
+      "1024_keys_head_dim_512": 2,
+      "2048_and_above": 4
+    },
+    "docstring_measurement": "decode_slices' own docstring records 'the row measures 45.33 tok/s with 4 slices over keys 1025-1151', which matches the campaign's measured 45.06-45.94 tok/s range on this tree. The current metric is therefore a split number.",
+    "gate_state": "Iterations 36-38 established that the split breaches the production-profile absolute kl_max bar (2 of 1023 rows above 1e-3) through irreducible association reordering, with aggregate bars passing (p50 row KL 2.592e-08, p99 3.955e-05) and top-1 rate 1.0 with zero flips."
+  },
+  "corrections_to_campaign_record": [
+    "The campaign has framed the split as unrealized: 'if the split is accepted, the reverted slice table is worth +5.3% at the metric row and +7.4% at 4096p'. That is wrong. The split is the default and the metric already contains its gain, so the +5.3% is banked, not pending.",
+    "The decision in front of the lead is therefore keep-or-rollback, not promote-or-not. Rolling it back would cost roughly 5% of the metric, and the current 45.9 tok/s is the with-split number."
+  ],
+  "defect_fixed": "decode_slices contained an unreachable second copy of the slice logic (an if/while/return block after an unconditional return). Removed; behaviour is provably unchanged and the slice table was re-verified across keys 512-8192 at head_dim 256 and 512.",
+  "product_path_changed": true,
+  "product_change_note": "The only product change is the removal of provably unreachable code; the slice table and therefore the arithmetic are identical.",
+  "rows_moved": false
+}
