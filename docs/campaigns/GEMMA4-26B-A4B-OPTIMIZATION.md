@@ -941,6 +941,37 @@ direction. The clean-device pass also puts every other cell 4-10% above its
     a G4/G5 kernel-quality job, not a repack and not a flag. Diagnostic only: no
     product path changed, no row moved. Evidence row
     `2026-09-26-gemma4-26b-a4b-moe-dispatch-table.json`.
+
+  *Diagnostic 2026-09-26 (iteration 41): the expert path has untested registered
+  variants, and one constant is why they are unreachable.* The MoE's remaining
+  candidate is kernel-internal, so the cheap question is whether a faster
+  *registered* variant already exists - the move that found a real 13% win for
+  the dense projections in iteration 34.
+
+  - **`gguf_q5_1` has three decode variants that have never been A/B'd**:
+    `selected_gemv_logical256_t128_bf16_bf16_out`,
+    `selected_gemv_logical256_t64_bf16_bf16_out` and
+    `selected_gemv_wave64_bf16_bf16_out`. This is the **down projection**, 40% of
+    the MoE's expert bytes, and their names describe tiling and wave-size
+    choices - which is exactly the "vectorization and occupancy" hypothesis.
+  - **`gguf_q4_k` has twelve**, including `selected_dual_gemv_bf16_bf16_out` and
+    `selected_pack8_gemv_bf16_bf16_out`.
+  - **None of them can be reached by the obvious edit.** Registration is
+    per-quant, and `selected_gemv_bf16_bf16_out` is the *only* variant registered
+    for all four quants the expert path uses (q4_k, q5_1, q5_k, q8_0). The q5_1
+    alternatives are q5_1-only; `selected_pack8_gemv_bf16_bf16_out` covers
+    q4_k/q5_k/q8_0 but not q5_1; `selected_dual_gemv_bf16_bf16_out` is q4_k only.
+    So `_SELECTED_VARIANT` is a single constant *because* it has to serve every
+    quant, and pointing it at a q5_1 variant would silently drop the q4_k path to
+    the per-expert offset fallback - a different route, not an isolated A/B.
+  - **The legal route is a registry-keyed preference, not a quant branch.** A
+    preference list resolved per candidate variant through `is_registered` picks
+    the best variant each quant *declares support for*, which is a check on
+    kernel capability rather than a quant-name test, and is the shape
+    `gemma4_project_experts_selected` already uses to decide whether the selected
+    family serves the weight at all. That is the next candidate and it is a
+    product change with a measurable A/B and a guard, not another diagnostic.
+    Diagnostic only here: no product path changed, no row moved.
   *Diagnostic 2026-09-26 (iteration 33): the routing hypothesis is closed, and
   the campaign's three-cheap-candidates rule is now in play.* A resolve-level
   probe over a real 1024-token `LLM.generate()` - spying on
