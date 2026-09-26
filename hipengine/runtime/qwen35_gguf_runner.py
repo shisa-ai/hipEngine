@@ -2086,21 +2086,16 @@ def packed_verify_workspace_lease_pages(
     max_batch_size: object | None,
     max_positions: object | None,
 ) -> int:
-    """Eager KV pages for capacity-bounded layouts and the context floor.
+    """Eager KV pages for the serving capacity at the packed context floor.
 
-    The union geometry may exceed this reservation in slots or context, or
-    retain a previously larger geometry. Allocation then falls back to private
-    KV charged against the same pool budget; a short lease alone is not fatal.
+    Longer contexts and wider physical layouts use private KV charged against
+    the same pool budget. Do not pin each slot's entire admitted context before
+    any request needs it.
     """
 
+    del max_positions
     slots = packed_verify_lease_slot_ceiling(max_batch_size)
-    try:
-        positions = int(max_positions)
-    except (TypeError, ValueError):
-        positions = _PACKED_VERIFY_MIN_MAX_SEQUENCE
-    positions = max(positions, _PACKED_VERIFY_MIN_MAX_SEQUENCE)
-    # Mirrors ``allocate``'s ``blocks_per_slot`` (block_size defaults to 256).
-    blocks_per_slot = (positions + 255) // 256
+    blocks_per_slot = (_PACKED_VERIFY_MIN_MAX_SEQUENCE + 255) // 256
     return slots * blocks_per_slot
 
 
@@ -34373,12 +34368,14 @@ class Qwen35GGUFResidentBreakdown:
     workspace_lease_bytes: int
     transient_fixed_bytes: int
     transient_context_bytes: int
+    private_workspace_bytes: int = 0
 
     @property
     def retained_bytes(self) -> int:
         """Retained bytes live for the whole session at this context."""
 
-        return self.scratch_bytes + self.kv_pool_bytes + self.workspace_lease_bytes
+        return (self.scratch_bytes + self.kv_pool_bytes + self.workspace_lease_bytes
+                + self.private_workspace_bytes)
 
     @property
     def transient_bytes(self) -> int:
@@ -34404,6 +34401,7 @@ class Qwen35GGUFResidentBreakdown:
             "scratch_context_bytes": self.scratch_context_bytes,
             "kv_pool_bytes": self.kv_pool_bytes,
             "workspace_lease_bytes": self.workspace_lease_bytes,
+            "private_workspace_bytes": self.private_workspace_bytes,
             "transient_fixed_bytes": self.transient_fixed_bytes,
             "transient_context_bytes": self.transient_context_bytes,
             "retained_bytes": self.retained_bytes,
@@ -34445,6 +34443,7 @@ class Qwen35GGUFKVCapacityEstimate:
     kv_scale_granularity: str
     int8_kv_no_mirror_qualified: bool
     workspace_lease_needed: bool
+    private_workspace_bytes: int = 0
 
     @property
     def fits_requested(self) -> bool:
@@ -34470,7 +34469,7 @@ class Qwen35GGUFKVCapacityEstimate:
 
     @property
     def requested_context_overhead_bytes(self) -> int:
-        return self.scratch_bytes + self.workspace_lease_bytes
+        return self.scratch_bytes + self.workspace_lease_bytes + self.private_workspace_bytes
 
     def to_json_dict(self) -> dict[str, object]:
         return {
@@ -34483,6 +34482,7 @@ class Qwen35GGUFKVCapacityEstimate:
             "usable_bytes": self.usable_bytes,
             "retained_bytes": self.retained_bytes,
             "transient_bytes": self.transient_bytes,
+            "private_workspace_bytes": self.private_workspace_bytes,
             "requested_total_bytes": self.requested_total_bytes,
             "marginal_bytes_per_token": self.marginal_bytes_per_token,
             "fixed_bytes": self.fixed_bytes,
@@ -34587,10 +34587,13 @@ def qwen35_gguf_resident_breakdown(
     pages_per_request = max(1, (plan.max_positions + block - 1) // block)
     kv_pool_pages = slots * pages_per_request
     lease_slots = slots if workspace_lease_slots is None else max(1, int(workspace_lease_slots))
-    workspace_lease_pages = (
-        lease_slots * max(pages_per_request, (_PACKED_VERIFY_MIN_MAX_SEQUENCE + block - 1) // block)
-        if workspace_lease_needed
-        else 0
+    floor_pages = (_PACKED_VERIFY_MIN_MAX_SEQUENCE + block - 1) // block
+    workspace_lease_pages = lease_slots * floor_pages if workspace_lease_needed else 0
+    # Private growth cannot reuse the undersized pinned lease. Price both
+    # holdings, rather than making auto-context optimistic after bounding it.
+    private_workspace_bytes = (
+        lease_slots * pages_per_request * page_bytes
+        if workspace_lease_needed and pages_per_request > floor_pages else 0
     )
     context = int(context_tokens)
     return Qwen35GGUFResidentBreakdown(
@@ -34606,6 +34609,7 @@ def qwen35_gguf_resident_breakdown(
         scratch_context_bytes=plan.context_scaled_bytes,
         kv_pool_bytes=kv_pool_pages * page_bytes,
         workspace_lease_bytes=workspace_lease_pages * page_bytes,
+        private_workspace_bytes=private_workspace_bytes,
         transient_fixed_bytes=max(0, int(transient_fixed_bytes)),
         transient_context_bytes=max(0, int(transient_bytes_per_token)) * context,
     )
@@ -34791,6 +34795,7 @@ def estimate_qwen35_gguf_kv_capacity(
         kv_scale_granularity=str(kv_scale_granularity),
         int8_kv_no_mirror_qualified=bool(int8_kv_no_mirror_qualified),
         workspace_lease_needed=bool(workspace_lease_needed),
+        private_workspace_bytes=requested_breakdown.private_workspace_bytes,
     )
 
 
