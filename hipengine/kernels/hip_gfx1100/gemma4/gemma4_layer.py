@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 
 from hipengine.core.memory import DeviceBuffer, free as hip_free, malloc
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+    Gemma4AttentionScratch,
     gemma4_attention_prefill_bf16,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
@@ -178,6 +179,7 @@ class Gemma4LayerScratch:
     _by_name: dict[str, DeviceBuffer] = field(default_factory=dict, repr=False)
     experts: Gemma4ExpertScratch | None = field(default=None, repr=False)
     router: Gemma4RouterScratch | None = field(default=None, repr=False)
+    attention: Gemma4AttentionScratch = field(default_factory=Gemma4AttentionScratch, repr=False)
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -228,6 +230,7 @@ class Gemma4LayerScratch:
         return buf
 
     def free(self) -> None:
+        self.attention.close()
         if self.experts is not None:
             self.experts.free()
         if self.router is not None:
@@ -454,6 +457,7 @@ def gemma4_layer_forward_bf16(
         buf("context"),
         tokens=rows,
         keys=None if kv is None else kv.write_offset + rows - key_begin,
+        scratch=scratch.attention,
         num_heads=num_heads,
         num_kv_heads=num_kv_heads,
         head_dim=head_dim,
