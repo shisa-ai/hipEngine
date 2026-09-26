@@ -1875,22 +1875,34 @@ decoded tokens, or the decode rate.
 
 | Workload | Prefill | Decode | Public wall |
 | --- | ---: | ---: | ---: |
-| 2048/8 | **75.17 tok/s** (48.84 per-row) | 19.61 tok/s (19.63) | **27.684 s** (42.418) |
-| 512/128 | **92.57 tok/s** (55.34 per-row) | 21.11 tok/s (21.08) | **11.597 s** (15.340) |
+| 512/128 | **121.90 tok/s** (92.28 per-row) | 21.14 tok/s (21.10) | **10.240 s** (11.629) |
 
-Both rows of each pair ran on the same tree in one session, with the kernel
+Both rows of that pair ran on the same tree in one session, with the kernel
 files under test as the only difference between the arms.
+
+The projection kernels are fetch-bound, not weight-bound: with the weight reuse
+in place the two expert projections were still 68% of prefill kernel time while
+moving only ~4 GB/s of weight bytes, and isolating the shipped kernel's parts put
+30 ms of 49 ms in the Q4_K dequant and 21 ms in the activation-side multiply.
+Staging the expert's activation rows in shared memory and hoisting each column's
+`d*scale` / `dmin*min` pairs into shared memory per 32-element sub-block is an
+exact rewrite of the same expressions, so it is **2.07x** on that kernel with 0
+of 5,767,168 bf16 outputs differing.
 
 This file mixes quants — 29 layers are `Q4_K` gate/up with `Q5_1` down and
 layer 29 is `Q5_K` with `Q8_0` — so 58 of the 60 expert projections per prefill
 block take the reusing route and the remaining two keep the per-row pass, since
-no grouped family is registered for `Q5_K` or `Q8_0` with this ABI. Routing the
+no grouped family is registered for `Q5_K` or `Q8_0` with this ABI. The `Q5_1`
+down projection has not yet had the staged treatment — it needs the 256-thread
+shared-tree reduction its route uses — and is 23.0% of prefill kernel time;
+Q8_0 dense projections (12.5%) and attention prefill (12.2%) follow. Routing the
 `Q4_K` gate/up through the row-batched WMMA prefill instead reaches **111.43
 tok/s** but exceeds the production `kl_max` limit at 0.167959 on 2 of 1023
 teacher-forced rows (both rows keep their top-1 token; the divergence is a
 compressed tail), so it is not shipped. Evidence:
 [`Q5_1` down reuse](results/2026-09-27-gemma4-moe-prefill-grouped-accepted.json);
 [`Q4_K` gate/up reuse](results/2026-09-27-gemma4-moe-prefill-q4k-grouped-accepted.json);
+[`Q4_K` staged fetch](results/2026-09-27-gemma4-moe-prefill-q4k-staged-accepted.json);
 [`WMMA row-slice rejection`](results/2026-09-27-gemma4-moe-prefill-wmma-rowslice-rejected.json).
 
 ### Laguna S 2.1

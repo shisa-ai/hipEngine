@@ -60,7 +60,17 @@ _F32_BYTES = 4
 # The ABI is (input, expert_start, weights, out, compact_rows, num_experts,
 # in_features, out_features), and the registry decides by quant key which quants
 # ship it; a quant without one falls through to the per-expert row-slice route.
-_GROUPED_PREFILL_VARIANT = "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
+#
+# These are the same reduction at different fetch strategies, in preference
+# order: every variant here produces bit-identical output to the selected GEMV
+# for the quant that registers it (asserted per quant in
+# tests/test_unit_gemma4_expert_route.py), so preferring the later ones is a cost
+# decision, not an accuracy one. A quant that registers only the first name
+# still runs; the list is a preference, not a requirement.
+_GROUPED_PREFILL_VARIANTS = (
+    "selected_grouped_prefill_staged_out8_bf16_bf16_out",
+    "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+)
 
 # Prefill prefers a grouped family once there is at least one compact lane per
 # expert. Below that most experts are empty, so a grouped launch's per-expert
@@ -512,31 +522,31 @@ def gemma4_project_experts_grouped_prefill(
     from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
     from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
 
-    key = KernelKey(
-        weight.backend, "moe_linear", weight.spec.quant_key, _GROUPED_PREFILL_VARIANT
-    )
-    _ensure_linear_kernel_registered(key)
-    try:
-        fn = resolve(
-            backend=key.backend,
-            layer=key.layer,
-            quant=key.quant,
-            variant=key.variant,
+    for variant in _GROUPED_PREFILL_VARIANTS:
+        key = KernelKey(weight.backend, "moe_linear", weight.spec.quant_key, variant)
+        _ensure_linear_kernel_registered(key)
+        try:
+            fn = resolve(
+                backend=key.backend,
+                layer=key.layer,
+                quant=key.quant,
+                variant=key.variant,
+            )
+        except MissingKernelError:
+            continue
+        fn(
+            x_ptr,
+            expert_start_ptr,
+            weight.allocation("raw").buffer.ptr,
+            out_ptr,
+            compact_rows,
+            num_experts,
+            in_features,
+            out_features,
+            stream=stream,
         )
-    except MissingKernelError:
-        return False
-    fn(
-        x_ptr,
-        expert_start_ptr,
-        weight.allocation("raw").buffer.ptr,
-        out_ptr,
-        compact_rows,
-        num_experts,
-        in_features,
-        out_features,
-        stream=stream,
-    )
-    return True
+        return True
+    return False
 
 
 def gemma4_project_experts_rows(

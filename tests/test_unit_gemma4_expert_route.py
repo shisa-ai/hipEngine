@@ -24,7 +24,7 @@ import numpy as np
 import pytest
 
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
-    _GROUPED_PREFILL_VARIANT,
+    _GROUPED_PREFILL_VARIANTS,
     gemma4_moe_expert_route_counts,
     gemma4_moe_prefill_route_enabled,
     gemma4_project_experts_grouped_prefill,
@@ -77,9 +77,12 @@ def _quant_without_a_grouped_family() -> str:
     from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
 
     for quant in _GROUPED_CANDIDATES:
-        key = KernelKey("hip_gfx1100", "moe_linear", quant, _GROUPED_PREFILL_VARIANT)
-        _ensure_linear_kernel_registered(key)
-        if not is_registered(key):
+        registered = False
+        for variant in _GROUPED_PREFILL_VARIANTS:
+            key = KernelKey("hip_gfx1100", "moe_linear", quant, variant)
+            _ensure_linear_kernel_registered(key)
+            registered = registered or is_registered(key)
+        if not registered:
             return quant
     raise AssertionError(
         "every candidate quant registers a grouped family; the fallback case "
@@ -227,6 +230,47 @@ def test_grouped_prefill_launches_the_registered_family() -> None:
             {"stream": 7},
         )
     ]
+
+
+def test_grouped_prefill_prefers_the_earlier_variant_in_the_order() -> None:
+    """When several grouped variants exist, the route takes the preferred one.
+
+    The variants are the same reduction with different fetch strategies, so the
+    order is a cost ranking and the route must follow it rather than whichever
+    key happens to resolve first.
+    """
+
+    preferred, fallback = _GROUPED_PREFILL_VARIANTS[0], _GROUPED_PREFILL_VARIANTS[1]
+    calls: list[str] = []
+    for variant, label in ((preferred, "preferred"), (fallback, "fallback")):
+        register(
+            KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1", variant),
+            (lambda *args, label=label, **kwargs: calls.append(label)),
+            replace=True,
+        )
+
+    weight = _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1")
+    assert gemma4_project_experts_grouped_prefill(weight, 1, 2, 3, 4, 5, 6, 7) is True
+    assert calls == ["preferred"]
+
+
+def test_grouped_prefill_falls_through_to_the_next_variant() -> None:
+    """A quant that registers only a later variant still runs it."""
+
+    preferred, fallback = _GROUPED_PREFILL_VARIANTS[0], _GROUPED_PREFILL_VARIANTS[1]
+    calls: list[str] = []
+    register(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1", fallback),
+        (lambda *args, **kwargs: calls.append("fallback")),
+        replace=True,
+    )
+    assert not is_registered(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1", preferred)
+    )
+
+    weight = _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1")
+    assert gemma4_project_experts_grouped_prefill(weight, 1, 2, 3, 4, 5, 6, 7) is True
+    assert calls == ["fallback"]
 
 
 def test_route_counts_hand_back_a_snapshot() -> None:
@@ -507,6 +551,35 @@ def test_grouped_prefill_is_bit_exact_against_the_selected_gemv(
             in_features,
             out_features,
         )
+        # Every grouped variant this quant registers has to agree, not just the
+        # one the route prefers: they are the same reduction with different
+        # fetch strategies, and the route picks between them on cost alone.
+        extra_outputs = []
+        for variant in _GROUPED_PREFILL_VARIANTS[1:]:
+            from hipengine.kernels.registry import resolve as resolve_kernel
+            from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+            key = KernelKey(backend, "moe_linear", quant, variant)
+            _ensure_linear_kernel_registered(key)
+            try:
+                fn = resolve_kernel(
+                    backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant
+                )
+            except Exception:
+                continue
+            buffer = malloc(rows * out_features * 2)
+            fn(
+                hidden_buf.ptr,
+                starts_buf.ptr,
+                weights_buf.ptr,
+                buffer.ptr,
+                rows,
+                num_experts,
+                in_features,
+                out_features,
+                stream=0,
+            )
+            extra_outputs.append((variant, buffer))
         assert gemma4_project_experts_selected(
             weight,
             hidden_buf.ptr,
@@ -530,6 +603,11 @@ def test_grouped_prefill_is_bit_exact_against_the_selected_gemv(
 
         grouped = read_bits(out_grouped)
         selected_bits = read_bits(out_selected)
+        for variant, buffer in extra_outputs:
+            other = read_bits(buffer)
+            assert int((other != selected_bits).sum()) == 0, (
+                f"the {quant} grouped variant {variant} differs from the selected GEMV"
+            )
     finally:
         for buffer in (
             hidden_buf,
@@ -538,6 +616,7 @@ def test_grouped_prefill_is_bit_exact_against_the_selected_gemv(
             selected_buf,
             out_grouped,
             out_selected,
+            *[buffer for _, buffer in extra_outputs],
         ):
             free(buffer)
 
