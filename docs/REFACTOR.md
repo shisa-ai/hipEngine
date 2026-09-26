@@ -236,23 +236,18 @@ or refuse rather than overwrite a neighbour's pages. It also needs its own
 C1/C4 measurement, because shrinking this term raises the context the
 auto-context resolver selects on the same hardware.
 
-## The capacity estimate prices a one-slot workspace lease while the pool leases the serving capacity (found 2026-09-18)
+## Capacity estimates include serving-capacity workspace leases — RESOLVED
 
-`qwen35_gguf_resident_breakdown` (`hipengine/runtime/qwen35_gguf_runner.py`)
-computes `workspace_lease_pages = slots * max(pages_per_request, 4)` from its own
-`max_batch_size` argument, and `_resident_capacity_estimate` calls it with
-`max_batch_size=1` because context admission is per request. The pool's lease,
-by contrast, now takes one slot per serving capacity. At C4 on a 262144-token
-session the estimate prices 1024 pages (16 GiB) where the pool leases 4096 pages
-(64 GiB), so the auto-context resolver and any capacity probe built on the same
-breakdown under-report the resident footprint by 48 GiB at that shape.
+`qwen35_gguf_resident_breakdown` and `estimate_qwen35_gguf_kv_capacity` accept
+`workspace_lease_slots`, independently of `max_batch_size`. The generator prices
+elastic request KV at one request and the eager workspace lease at serving
+capacity. Auto-context selections are cached by capacity and allocation mode,
+so a single-request selection cannot be reused for a wider pinned lease.
 
-Removal trigger: give the breakdown a separate `workspace_lease_slots` term
-(default: `max_batch_size`, so single-request pricing is unchanged) and have
-`_resident_capacity_estimate` pass the serving capacity for the lease while
-keeping `max_batch_size=1` for the per-request KV terms. This changes the
-resolved auto context, so it needs the same measurement protocol as the entry
-above before it becomes a default.
+Regression coverage compares estimator pages with the allocator's lease helper
+at capacities 1, 4, and 8 and contexts below, above, and unrelated to the packed
+context floor. The per-slot full-context reservation remains separate debt in
+the preceding entry.
 
 ## Wide MTP groups run without a prompt provider, and the over-width demotion is inert (found 2026-09-19) — RESOLVED
 

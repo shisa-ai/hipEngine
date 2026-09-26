@@ -34525,6 +34525,7 @@ def qwen35_gguf_resident_breakdown(
     int8_bf16_layer_indices_resolver: Callable[[int], Sequence[int]] | None = None,
     allocate_kv_cache: bool = False,
     workspace_lease_needed: bool = False,
+    workspace_lease_slots: int | None = None,
     transient_bytes_per_token: int = _GGUF_TRANSIENT_BYTES_PER_TOKEN_DEFAULT,
     transient_fixed_bytes: int = _GGUF_TRANSIENT_FIXED_BYTES_DEFAULT,
     block_size: int = 256,
@@ -34535,6 +34536,8 @@ def qwen35_gguf_resident_breakdown(
     this tracks KV policy, the INT8 mirror threshold, and per-layer BF16
     selection automatically. ``allocate_kv_cache`` must match the session: the
     server defers KV to the page pool and therefore plans scratch without it.
+    ``workspace_lease_slots`` prices the independently pinned serving workspace;
+    it defaults to ``max_batch_size`` for callers pricing a full batch.
 
     ``int8_bf16_layer_indices_resolver`` lets the caller resolve per-layer BF16
     selection from the *candidate* context, which is what the session does. It
@@ -34583,8 +34586,9 @@ def qwen35_gguf_resident_breakdown(
     slots = max(1, int(max_batch_size))
     pages_per_request = max(1, (plan.max_positions + block - 1) // block)
     kv_pool_pages = slots * pages_per_request
+    lease_slots = slots if workspace_lease_slots is None else max(1, int(workspace_lease_slots))
     workspace_lease_pages = (
-        slots * max(pages_per_request, _PACKED_VERIFY_MIN_MAX_SEQUENCE // block)
+        lease_slots * max(pages_per_request, (_PACKED_VERIFY_MIN_MAX_SEQUENCE + block - 1) // block)
         if workspace_lease_needed
         else 0
     )
@@ -34655,6 +34659,7 @@ def estimate_qwen35_gguf_kv_capacity(
     int8_bf16_layer_indices_resolver: Callable[[int], Sequence[int]] | None = None,
     allocate_kv_cache: bool = False,
     workspace_lease_needed: bool = False,
+    workspace_lease_slots: int | None = None,
     reserve_bytes: int = _GGUF_CAPACITY_RESERVE_MIB_DEFAULT * 1024**2,
     transient_bytes_per_token: int = _GGUF_TRANSIENT_BYTES_PER_TOKEN_DEFAULT,
     transient_fixed_bytes: int = _GGUF_TRANSIENT_FIXED_BYTES_DEFAULT,
@@ -34705,6 +34710,7 @@ def estimate_qwen35_gguf_kv_capacity(
             int8_bf16_layer_indices_resolver=int8_bf16_layer_indices_resolver,
             allocate_kv_cache=allocate_kv_cache,
             workspace_lease_needed=workspace_lease_needed,
+            workspace_lease_slots=workspace_lease_slots,
             transient_bytes_per_token=transient_bytes_per_token,
             transient_fixed_bytes=transient_fixed_bytes,
             block_size=block,

@@ -2193,10 +2193,10 @@ class Qwen35GGUFBringupGenerator:
                 kv_width=kv_width,
                 linear_qkv_width=linear_qkv_width,
                 fp16_recurrent_state=bool(getattr(shared_runner, "fp16_recurrent_state", False)),
-                # Context admission is per request.  The shared device pool
-                # grows against its memory budget, so scheduler concurrency
-                # must not multiply the resident KV footprint estimate.
+                # Elastic request KV is priced per request; the eager workspace
+                # is pinned for the entire serving capacity independently.
                 max_batch_size=1,
+                workspace_lease_slots=int(max_batch_size),
                 kv_storage_dtype=storage,
                 kv_storage_layout=storage_layout,
                 kv_scale_dtype=scale_dtype,
@@ -2218,8 +2218,7 @@ class Qwen35GGUFBringupGenerator:
     def _auto_context_cache_key(
         self, *, max_batch_size: int, defer_kv_allocation: bool
     ) -> tuple[int, bool]:
-        del max_batch_size
-        return (1, bool(defer_kv_allocation))
+        return (max(1, int(max_batch_size)), bool(defer_kv_allocation))
 
     def _record_auto_context_selection(
         self,
@@ -2231,9 +2230,8 @@ class Qwen35GGUFBringupGenerator:
     ) -> None:
         """Remember a resolved context and keep the reported value conservative.
 
-        The cache is keyed only by allocation mode. Scheduler concurrency does
-        not change the per-request context ceiling when KV pages come from the
-        shared elastic pool.
+        The cache includes serving capacity because its eager workspace lease
+        is pinned even when request KV pages come from the elastic pool.
         """
 
         key = self._auto_context_cache_key(
@@ -2259,9 +2257,8 @@ class Qwen35GGUFBringupGenerator:
     ) -> int | None:
         """Choose the resident context when the caller did not pin one.
 
-        The selection is cached per allocation mode. Every request shares the
-        same context ceiling; concurrency is enforced by the scheduler and does
-        not cause a second context calculation.
+        The selection is cached per serving capacity and allocation mode.
+        Requests within one serving configuration share the same ceiling.
         """
 
         cached = self._auto_resolved_max_sequence_lengths.get(
