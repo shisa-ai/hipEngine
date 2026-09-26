@@ -156,7 +156,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | `attention/paged_kv_write.hip` | Write and copy paged key/value caches. |
 | `attention/paged_attn_decode.hip` | Dense/paged attention for decode and prefill, including quantized caches. |
 | `attention/aotriton.py`, `attention/aotriton_wrap.py` | Adapt the optional AOTriton attention library. |
-| `attention/dms_compact.hip` | Select, pack, append, and attend over compact key/value caches. |
+| `attention/dms_compact.hip` | Select, pack, append, and attend over compact key/value caches. BF16 split attention uses the generic grouped producer on gfx1151 and the wave-group6 producer on gfx1100 at supported geometry. |
 | `attention/dms_compact_int8.hip` | Pack, append, and attend over compact INT8 key/value caches. |
 | `linear_attn/conv.hip` | Causal convolution with prefill, decode, and state snapshots. |
 | `linear_attn/gdn.hip` | Gated delta recurrence, output normalization, and state snapshots. |
