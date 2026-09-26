@@ -1659,11 +1659,10 @@ class Qwen35GGUFBringupGenerator:
                         ),
                     )
                 else:
-                    resolved = resolve_kv_policy("bf16")
-                    capability = capability.with_runtime_outcome(
-                        effective_kv_storage=resolved.storage_dtype.value,
-                        runtime_action="fallback_bf16",
-                        reason=f"{capability.reason}; failed closed to BF16",
+                    self._kv_capability_resolution = capability
+                    raise ValueError(
+                        "explicit kv_storage='int8_per_token_head' cannot run: "
+                        f"{capability.reason}; refusing to silently substitute BF16"
                     )
             self._kv_capability_resolution = capability
         else:
