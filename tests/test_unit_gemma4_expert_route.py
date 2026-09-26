@@ -33,7 +33,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
     gemma4_project_experts_grouped_prefill,
     gemma4_project_experts_rows,
 )
-from hipengine.kernels.registry import KernelKey, is_registered, register
+from hipengine.kernels.registry import KernelKey, is_registered, register, unregister
 from hipengine.quant.gguf import GGMLQuantizationType
 from tests._gguf_synthetic_weights import make_q4_k_weight, make_q5_1_weight
 from tests._rocm_guard import hip_runtime_available
@@ -43,15 +43,24 @@ _needs_hip = pytest.mark.skipif(
     reason="HIP runtime unavailable; skipping grouped-prefill parity test",
 )
 
-# The registry key the prefill route resolves against. Pinned as a literal, so
-# renaming the variant in the registry without updating the route fails here
-# instead of silently falling back.
+# The registry key the prefill route resolves against: the variant the
+# preference order tries first, pinned as a literal so renaming it in the
+# registry without updating the route fails here instead of silently falling
+# back. It has to track the order rather than a fixed variant, because the route
+# tries the variants in that order and a stub on a later one would never be
+# called - the real kernel would run against the test's fake pointers instead.
 _GROUPED_KEY = KernelKey(
     "hip_gfx1100",
     "moe_linear",
     "gguf_q5_1",
-    "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+    "selected_grouped_prefill_staged_out4_bf16_bf16_out",
 )
+
+
+def test_grouped_key_matches_the_preference_order() -> None:
+    """The stub key above must be the variant the route tries first."""
+
+    assert _GROUPED_KEY.variant == _GROUPED_PREFILL_VARIANTS[0]
 
 # The route the grouped family has to beat, and to be bit-exact against.
 _SELECTED_KEY = KernelKey(
@@ -203,14 +212,31 @@ def test_grouped_prefill_declines_a_quant_without_the_family() -> None:
 
 
 def test_grouped_prefill_launches_the_registered_family() -> None:
-    """The route resolves by quant key and passes the documented ABI."""
+    """The route resolves by quant key and passes the documented ABI.
+
+    The stub goes on every variant in the preference order, not just the first.
+    The route walks that order and calls the first one it resolves, so a stub on
+    a single variant would let the real kernel run against this test's fake
+    pointers the moment the order changes; stubbing all of them keeps the test
+    about the ABI instead of about which variant currently wins.
+    """
 
     calls: list[tuple[tuple, dict]] = []
 
     def stub(*args, **kwargs) -> None:
         calls.append((args, kwargs))
 
-    register(_GROUPED_KEY, stub, replace=True)
+    # Import the runtime module before stubbing. Its first import registers the
+    # real GGUF families, and the route's own import of it happens after the
+    # stubs would be installed, which would overwrite them.
+    from hipengine.runtime import gguf_linear as _gguf_linear  # noqa: F401
+
+    for variant in _GROUPED_PREFILL_VARIANTS:
+        register(
+            KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1", variant),
+            stub,
+            replace=True,
+        )
     assert is_registered(_GROUPED_KEY)
 
     weight = _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1")
@@ -267,9 +293,11 @@ def test_grouped_prefill_falls_through_to_the_next_variant() -> None:
         (lambda *args, **kwargs: calls.append("fallback")),
         replace=True,
     )
-    assert not is_registered(
-        KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1", preferred)
-    )
+    # This test is about a quant that registers *only* the later variant, so
+    # clear the preferred one rather than asserting it happens to be absent.
+    # Asserting would make the test depend on whether an earlier test or a lazy
+    # registration sweep already put the preferred variant in the registry.
+    unregister(KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1", preferred))
 
     weight = _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1")
     assert gemma4_project_experts_grouped_prefill(weight, 1, 2, 3, 4, 5, 6, 7) is True

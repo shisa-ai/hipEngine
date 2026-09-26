@@ -115,7 +115,14 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
 from hipengine.kernels.hip_gfx1100.runtime.laguna_launch_batch import (
     register_laguna_launch_batch_kernels,
 )
-from hipengine.kernels.registry import KernelKey, generation, is_registered, resolve
+from hipengine.kernels.registry import (
+    _KERNELS as _REGISTRY_KERNELS,
+    KernelKey,
+    generation,
+    is_registered,
+    register,
+    resolve,
+)
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
@@ -9126,6 +9133,11 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     global _REGISTRATION_SWEEP_GENERATION
     if _REGISTRATION_SWEEP_GENERATION == generation():
         return
+    # The families below register with replace=True, so the sweep would overwrite
+    # any entry a caller had deliberately replaced - the fixture kernels the
+    # comment above promises to keep. Snapshot first and put those entries back
+    # afterwards; the sweep still adds everything that was missing.
+    preserved = dict(_REGISTRY_KERNELS)
     register_dense_gemv_kernels()
     register_gguf_k_gemv_kernels()
     register_gguf_k_t16_selected_prefill_kernels()
@@ -9146,6 +9158,12 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_t16_selected_gemv_kernels()
     register_laguna_launch_batch_kernels()
     load_backend_kernel_package(key.backend)
+    for existing_key, existing_kernel in preserved.items():
+        if _REGISTRY_KERNELS.get(existing_key) is not existing_kernel:
+            # register() rather than a raw dict write: it invalidates the
+            # resolver memo, which is otherwise keyed on the kernel identity the
+            # sweep just replaced.
+            register(existing_key, existing_kernel, replace=True)
     # Registered families bump the generation, so record it after the sweep:
     # the next missing key in this generation returns at the check above.
     _REGISTRATION_SWEEP_GENERATION = generation()
