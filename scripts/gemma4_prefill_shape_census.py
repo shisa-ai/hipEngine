@@ -88,7 +88,42 @@ def main() -> int:
             shape_flops[key] = 2.0 * compact_rows * in_features * fused_width
         return key
 
+    def attention_label(
+        query_ptr: int,
+        key_ptr: int,
+        value_ptr: int,
+        keep_mask_ptr: int,
+        out_ptr: int,
+        **kw: Any,
+    ) -> str:
+        tokens = int(kw["tokens"])
+        num_heads = int(kw["num_heads"])
+        num_kv_heads = int(kw["num_kv_heads"])
+        head_dim = int(kw["head_dim"])
+        keys = tokens if kw.get("keys") is None else int(kw["keys"])
+        key = (
+            f"attention_prefill t={tokens} keys={keys} h={num_heads} "
+            f"kv={num_kv_heads} d={head_dim}"
+        )
+        # Irreducible bytes: Q read, K+V read once, the uint8 keep-mask, and the
+        # output write. The kernel launches one CTA per (query head, query row),
+        # so it re-reads K/V once per head and once per row and moves strictly
+        # more than this. The GB/s derived from these bytes is therefore an
+        # upper bound on achieved efficiency -- if it is already low, the kernel
+        # is leaving bandwidth on the table even under the most favourable
+        # accounting.
+        shape_bytes[key] = (
+            tokens * num_heads * head_dim * 2
+            + 2 * keys * num_kv_heads * head_dim * 2
+            + tokens * keys
+            + tokens * num_heads * head_dim * 2
+        )
+        # QK^T and P.V, each 2 * tokens * heads * keys * head_dim.
+        shape_flops[key] = 4.0 * tokens * num_heads * keys * head_dim
+        return key
+
     census.wrap(gemma4_layer, "gemma4_project", dense_label)
+    census.wrap(gemma4_layer, "gemma4_attention_prefill_bf16", attention_label)
     census.wrap(gemma4_experts, "gemma4_project_experts_grouped", grouped_label)
     census.wrap(
         gemma4_experts, "gemma4_project_experts_grouped_dual", grouped_dual_label
