@@ -1,0 +1,140 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_full_attn_decode_context_cost_attribution",
+ "performance_claim": false,
+ "created_at": "2026-09-27T17:20:00Z",
+ "candidate_promoted": false,
+ "subject": {
+  "kernel": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
+  "instantiation": "<true, 2> (PRECOMPUTE_TOKEN_OFFSETS=true, VALUE_VECTOR=2)",
+  "selected_by": "profile variant bf16_context_batch_paged_c1_exact_spans, symbol hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans",
+  "role": "qsa_prefill:layers.{3,7,...,47}.attn_q - the prefill attention path for the full-attention (non-QSA) layers",
+  "source": "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip:352 (kernel), :6503 (selected leaf)",
+  "host": {
+   "hostname": "gfx1151",
+   "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+   "gpu": "AMD Radeon 8060S (Strix Halo APU), per benchmarks/README.md",
+   "rocm_platform": "10.0.0"
+  },
+  "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "case": "code-p4096, prefill, 1024-token chunks, max_sequence_length 4097",
+  "measurement": {
+   "source": "benchmarks/results/2026-09-27-router-warp-reduce/trace-a_kernel_trace.csv",
+   "note": "raw CSV holds two prefill passes; all figures are 1x",
+   "ms_1x": 801.4,
+   "launches_1x": 36,
+   "layers": 12,
+   "launches_per_layer": 3,
+   "share_of_qsa_attention_family_pct": 56.4,
+   "family_total_ms_1x": 1419.9,
+   "share_of_prefill_kernel_total_pct": 5.0,
+   "prefill_kernel_total_ms_1x": 16189.5
+  }
+ },
+ "launch_split": {
+  "source": "measured durations, grouped by grid; context assignment inferred and cross-checked",
+  "launches": [
+   {"grid": [24, 1024], "rows": 1024, "context_inferred": 1024, "causal": true, "ms_per_launch": 12.140, "n_1x": 12, "total_ms_1x": 145.7, "share_of_kernel_pct": 18.2, "ns_per_pair": 23.16},
+   {"grid": [24, 1024], "rows": 1024, "context_inferred": 2048, "causal": false, "ms_per_launch": 54.300, "n_1x": 12, "total_ms_1x": 651.6, "share_of_kernel_pct": 81.3, "ns_per_pair": 25.89},
+   {"grid": [24, 3], "rows": 3, "context_inferred": 3072, "causal": false, "ms_per_launch": 0.346, "n_1x": 12, "total_ms_1x": 4.2, "share_of_kernel_pct": 0.5, "ns_per_pair": 37.54}
+  ],
+  "per_layer_ms": 66.79,
+  "cross_check": "The three launches agree at 23.2 / 25.9 / 37.5 ns per (row, context-token) pair, a 1.6x spread across a 3-row launch and two 1024-row launches. That uniformity is what supports the context assignment; the context lengths are not directly observable in the trace because context_len arrives as a device pointer.",
+  "grid_semantics": "rocprofv3 Grid_Size_X/Y are total work-items: 6144/256 = 24 = query heads, 1024/1 = 1024 = query rows.",
+  "correction": {
+   "task_description_claimed": "72 launches over 24 full-attention layers",
+   "measured": "36 launches over 12 full-attention layers",
+   "cause": "raw 2-pass CSV read as 1x, and the layer count taken as 48/2 instead of 48/4",
+   "authority": "role-analysis.json exact_role_kernels: 12 entries qsa_prefill:layers.{3,7,11,15,19,23,27,31,35,39,43,47}.attn_q, rows=3 each, 66.70-66.84 ms each",
+   "note": "full_attention_interval=4 gives 48/4 = 12 layers, matching compress_ratios having a nonzero every fourth position"
+  }
+ },
+ "roofline": {
+  "row_head_token_triples_per_layer": 63140000,
+  "flop_total": 775800000000,
+  "tflops_measured": 0.968,
+  "fp32_peak_tflops_est": 30.0,
+  "pct_of_fp32_peak": 3.2,
+  "kv_load_bytes_total": 776000000000,
+  "kv_load_rate_gb_s": 968,
+  "unique_kv_bytes_total": 100700000,
+  "reread_factor": 7707,
+  "kv_load_rate_after_gqa_sharing_gb_s": 81,
+  "verdict": "Not compute-bound (3.2% of FP32 peak) and not DRAM-bound. It demands ~968 GB/s of L1-level K/V load traffic against 100.7 MB of unique data, a 7707x re-read, because every (head, row) block rescans the whole context."
+ },
+ "structure": {
+  "decomposition": "one block per (query head, query row): grid (24, 1024), 256 threads, 8 warps",
+  "blocks_per_launch": 24576,
+  "qk_phase": "warp-per-token loop. Per token: 256 dims / 32 lanes = 8 FMA per lane, then a 5-step shuffle + 5 adds to reduce to ONE score, written to LDS by lane 0 only. 18 lane-instructions per 8 useful FMAs - 125% reduction overhead.",
+  "pv_phase": "value_groups == 1 because threads=256 < 512. Each of the 256 threads holds VALUE_VECTOR=2 output dims and serially scans ALL context_len tokens: one LDS read of scores[token], one coalesced global bf16 read, two FMA.",
+  "three_passes_over_context": "1) QK + running max, 2) exp + sum, 3) PV. The scores vector for the whole context lives in LDS between them.",
+  "no_cross_row_reuse": "row = blockIdx.y, so every query row rescans the context independently. No row tiling and no GQA blocking: the 12 query heads sharing a kv_head are separate blocks with no shared K/V read.",
+  "gqa_ratio": "num_q_heads / num_kv_heads = 24 / 2 = 12"
+ },
+ "occupancy": {
+  "shared_bytes_formula": "(max_context_len + num_warps + head_dim + value_groups*head_dim)*4 + 7 + max_context_len*8",
+  "note": "the trailing max_context_len*8 is the int64 token_offsets table, present only in the <true, N> leaves",
+  "table": [
+   {"max_context_len": 1024, "shared_kb": 14.04, "blocks_per_cu": 4, "warps_of_64": 32, "occupancy_pct": 50},
+   {"max_context_len": 2048, "shared_kb": 26.04, "blocks_per_cu": 2, "warps_of_64": 16, "occupancy_pct": 25},
+   {"max_context_len": 4097, "shared_kb": 50.05, "blocks_per_cu": 1, "warps_of_64": 8, "occupancy_pct": 12}
+  ],
+  "verdict": "LDS-limited, and the limit tightens with context length - the 54.30 ms launch (81% of the kernel) runs at 25% occupancy. The int64 token_offsets table is 16 KB of the 26 KB, i.e. 61% of the LDS at context 2048, and it is the single largest consumer.",
+  "max_offset_fits_int32": "physical_block*block_size + block_offset, times num_kv_heads*head_dim = 2*256 = 512. At a 4096-token context the largest offset is 4096*512 = 2.1e6; int32 holds any context up to ~4M tokens."
+ },
+ "levers": [
+  {
+   "rank": 1,
+   "lever": "narrow token_offsets from int64 to int32",
+   "arithmetic": "preserving (bit-exact)",
+   "why": "changes only an address table's width. The accumulation order, the shuffle tree, the wave reduction, and the softmax are untouched.",
+   "effect": "at context 2048: 26.04 -> 18.04 KB/block, 2 -> 3 blocks/CU, 25% -> 38% occupancy. At context 1024: 14.04 -> 10.04 KB, 4 -> 6 blocks/CU, 50% -> 75%.",
+   "cost": "a template parameter or a second entry point; the <true, N> leaf's shared_bytes formula changes",
+   "risk": "low. The <false, N> leaves must keep their existing allocation, since they do not declare the table.",
+   "estimated_prize_ms": null,
+   "estimated_prize_basis": "occupancy is the most likely limiter and this is the only occupancy lever with no arithmetic risk, but the occupancy-to-time mapping is not measured here"
+  },
+  {
+   "rank": 2,
+   "lever": "stop storing the whole scores vector in LDS (tile the context, flash-style)",
+   "arithmetic": "changing",
+   "why": "the scores array is max_context_len floats (8 KB at 2048) and forces three separate passes over the context with two __syncthreads each. Tiling the context so scores stay in registers removes the array entirely and collapses the three passes into one, which is the standard fix for exactly this shape.",
+   "cost": "a real rewrite of the leaf; the online-softmax rescaling changes the accumulation order",
+   "risk": "high - needs the production numerical gate and a registered strict fallback",
+   "estimated_prize_ms": null,
+   "estimated_prize_basis": "this is the lever that removes the occupancy ceiling rather than moving it; magnitude unmeasured"
+  },
+  {
+   "rank": 3,
+   "lever": "GQA blocking: process the 12 query heads of a kv_head in one block",
+   "arithmetic": "preserving if each head keeps its own 8-warp reduction set",
+   "why": "cuts K/V load traffic by up to 12x, from 776 GB to 64.7 GB. The heads are independent, so a per-head reduction that keeps its own warp set and token striding is bit-exact.",
+   "cost": "LDS scales with the head group: scores for 12 heads x 2048 context is 96 KB, which does not fit. A group of 2-4 heads is 16-32 KB on top of the current 26 KB, so this competes with lever 1 for the same LDS budget and probably needs lever 2 first.",
+   "risk": "medium - feasible only in combination with a smaller scores footprint",
+   "estimated_prize_ms": null
+  },
+  {
+   "rank": 4,
+   "lever": "row tiling: multiple query rows per block",
+   "arithmetic": "changing unless each row keeps its own warp set",
+   "why": "reuses the K/V scan and the token-offset table across rows. Bit-exact only if each row keeps 8 warps and the same token striding, which multiplies LDS by the row count.",
+   "cost": "same LDS budget conflict as lever 3",
+   "risk": "medium"
+  },
+  {
+   "rank": 5,
+   "lever": "fold inv_denom into the PV accumulation to drop the normalisation pass",
+   "arithmetic": "preserving (bit-exact)",
+   "why": "the value_groups==1 path runs a full pass over context_len where only lane 0 of each warp is active, doing scores[token] *= inv_denom. The value_groups>1 path already folds it as (scores[token] * inv_denom), which produces identical values in an identical order.",
+   "effect": "removes context_len/num_warps iterations of a 31/32-idle pass per block, plus one __syncthreads",
+   "cost": "small edit to the value_groups==1 path",
+   "risk": "low, but it is 0.5% of the kernel at most",
+   "estimated_prize_ms": null
+  }
+ ],
+ "not_established": [
+  "The precise hardware limiter is not isolated. Three candidates are each consistent with the measurements - LDS-limited occupancy at 25%, the 968 GB/s redundant K/V load stream, and the 125% shuffle-reduction overhead per score - and no counter in the trace separates them. Ranking the levers above rests on structural argument, not on a measured counter attribution.",
+  "The context lengths per launch are inferred from the ns-per-pair cross-check, not read from context_len_ptr, which is a device pointer.",
+  "The 54.30 ms launch has not been isolated in a standalone microbenchmark, so no per-lever prize is estimated."
+ ]
+}
