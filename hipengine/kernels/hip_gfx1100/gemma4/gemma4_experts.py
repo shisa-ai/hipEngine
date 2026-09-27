@@ -278,7 +278,12 @@ def gemma4_experts_forward_bf16(
     fused = 2 * intermediate
     mode = _prefill_mode()
     gate_up_wmma, compensated, use_mmq = _prefill_route_flags(mode)
-    down_wmma = gate_up_wmma
+    # The MMQ down leaf is ~8x slower than the WMMA owner at Gemma's down
+    # geometry -- profiled at 947 ms against 116 ms over the same 116 launches,
+    # 4.0 against 32.5 TFLOP/s -- and the MMQ gate_up already writes bf16, which
+    # is exactly what the WMMA down reads. So the down keeps the WMMA owner on
+    # this route and only the gate_up uses the int8 leaf.
+    down_wmma = gate_up_wmma or use_mmq
     mmq_rows = 0
     if use_mmq:
         # The grouped int8 MMQ leaf derives each expert's weight stride from its
@@ -304,8 +309,13 @@ def gemma4_experts_forward_bf16(
                 scratch, expert_start.ptr, lanes, stream=stream, runtime=runtime
             )
     wmma_rows = 0
+    # Only the WMMA gate_up needs the plan here. The down's plan is built later,
+    # just before the down itself, because on the MMQ route it has to come after
+    # the gate_up has finished with the 32-row plan that shares these buffers.
+    # Building it here under ``down_wmma`` alone would overwrite that plan before
+    # the gate_up ran and fault the MMQ leaf.
     if (
-        (gate_up_wmma or down_wmma)
+        gate_up_wmma
         and lanes >= _WMMA_PREFILL_MIN_LANES_PER_EXPERT * num_experts
     ):
         wmma_rows = _build_wmma_tile_plan(
@@ -396,21 +406,20 @@ def gemma4_experts_forward_bf16(
     gemma4_gelu_tanh_mul_bf16(gate_up_out.ptr, activated.ptr, lanes, intermediate, **kwargs)
 
     # 4. The down projection, over the same compact rows.
-    if use_mmq and gemma4_project_experts_mmq(
-        down_proj,
-        activated.ptr,
-        expert_start.ptr,
-        scratch,
-        expert_out.ptr,
-        lanes,
-        num_experts,
-        intermediate,
-        hidden_size,
-        stream=stream,
-        runtime=runtime,
+    #
+    # The gate_up consumed the 32-row MMQ plan and the WMMA owner tiles 16 rows,
+    # so the plan is rebuilt at the WMMA width here. Both plans share the same
+    # buffers, which is why this has to happen after the gate_up rather than
+    # alongside the MMQ plan above.
+    if (
+        use_mmq
+        and down_wmma
+        and lanes >= _WMMA_PREFILL_MIN_LANES_PER_EXPERT * num_experts
     ):
-        pass
-    elif down_wmma and wmma_rows and gemma4_project_experts_wmma(
+        wmma_rows = _build_wmma_tile_plan(
+            scratch, expert_start.ptr, lanes, stream=stream, runtime=runtime
+        )
+    if down_wmma and wmma_rows and gemma4_project_experts_wmma(
         down_proj,
         activated.ptr,
         expert_start.ptr,
@@ -423,6 +432,20 @@ def gemma4_experts_forward_bf16(
         hidden_size,
         wmma_rows,
         compensated=compensated,
+        stream=stream,
+        runtime=runtime,
+    ):
+        pass
+    elif use_mmq and gemma4_project_experts_mmq(
+        down_proj,
+        activated.ptr,
+        expert_start.ptr,
+        scratch,
+        expert_out.ptr,
+        lanes,
+        num_experts,
+        intermediate,
+        hidden_size,
         stream=stream,
         runtime=runtime,
     ):
