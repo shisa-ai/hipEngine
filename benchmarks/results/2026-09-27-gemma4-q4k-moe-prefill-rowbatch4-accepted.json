@@ -1,0 +1,51 @@
+{
+ "kind": "gemma4_campaign_candidate",
+ "verdict": "accepted and promoted (bit-exact, default path)",
+ "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B Q4_K expert gate projection",
+ "candidate": "change the Q4_K staged grouped prefill's row batch from 8 to 4. The tile shape had never been swept at this route's own geometry; it was carried at row_batch 8, out_tile 8.",
+ "reason": "the tile shape is a launch shape and not an arithmetic choice, so the change is bit-exact and needs no numerical gate. Every shape in the sweep produces identical output: 0 of 11,534,336 bf16 outputs differ from the row_batch 8 shape, and the committed grouped-prefill test still matches the per-row gather it is defined against.",
+ "mechanism": {
+  "structure": "grid.x covers OUT_TILE output columns per block and each pass covers ROW_BATCH of the expert's rows. THREADS and K_TILE are not free - the block size is also the k-stride - but the row batch and the output tile are.",
+  "arithmetic": "unchanged. The per-(column, row) warp shuffle tree and the wave-sum order are identical for every shape.",
+  "why_row_batch_4": "not weight traffic: row_batch 4 doubles the passes over the block's weight bytes and is still faster. It is the same shape of result as the Q5_1 route's closed tile space, in the opposite direction - for this kernel out_tile 8 is worth 1.44-1.57x over out_tile 4, while for the Q5_1 kernel out_tile 4 is the optimum. The two kernels stage different things (this one stages activations, Q5_1 stages weight metadata), so neither tile result transfers to the other."
+ },
+ "geometry": {
+  "source": "recorded from a live 512-token forward by wrapping the registered kernel: in 2816, out 1408, 128 experts, 4096 compact rows, row_bytes 1584, 285.5 MB of expert weights, grid 176 x 128, 567 passes at row_batch 8.",
+  "passes_at_row_batch_4": "about 1070, which is the doubled weight traffic the change accepts"
+ },
+ "sweep": {
+  "unit": "ms per launch at the route's geometry; x29 gives the route's contribution to a 512-token prefill",
+  "row_batch_4_out_tile_8": 32.52,
+  "row_batch_8_out_tile_8": 35.75,
+  "row_batch_4_out_tile_16": 36.44,
+  "row_batch_2_out_tile_8": 43.46,
+  "row_batch_4_out_tile_4": 51.12,
+  "row_batch_8_out_tile_4": 51.42,
+  "row_batch_16_out_tile_4": 73.3,
+  "row_batch_8_out_tile_2": 77.54,
+  "all_bit_exact": true
+ },
+ "performance": {
+  "platform": "gfx1151 Strix Halo (Radeon 8060S, zbook), ROCm",
+  "protocol": "kernel isolation at the route's geometry (six timed launches, minimum reported, both shapes in one process) plus the public path measured with the same timing script in two git worktrees, one warm-up and five timed 512-token forwards each.",
+  "primary": {
+   "row": "512 prompt prefill, public path",
+   "incumbent_s": 3.095,
+   "candidate_s": 3.002,
+   "delta": "-0.093 s (1.031x)",
+   "sample": "medians of five timed forwards per tree; minima 3.090 against 2.990 s"
+  },
+  "kernel_level": {
+   "incumbent_ms": 35.75,
+   "candidate_ms": 32.52,
+   "delta": "1.10x",
+   "route_x29_ms": "1036.7 -> 943.2"
+  },
+  "agreement": "the public delta (-93 ms) matches the predicted route delta (-93.5 ms), so the route change accounts for the whole measured public effect."
+ },
+ "selection": {
+  "flag": "none - this is the default shape of the existing kernel",
+  "fallback": "unchanged; the shape does not affect which route is selected, only the launch geometry of the route that already ran."
+ },
+ "leaves_open": "this route's projection is called once per layer with out_features 1408, so one launch covers the whole expert projection per layer. If the model's gated MLP projects a separate up half, that half is not in the registry route attribution and has not been accounted for."
+}

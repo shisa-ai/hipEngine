@@ -2674,6 +2674,22 @@ extern "C" int hipengine_gguf_q4_k_selected_grouped_prefill_compact_rowbatch8_bf
 // the tail block guards the columns past the end. The block size is the per-row
 // kernel's because it is also the k-stride, and matching it is what keeps the
 // output bit-identical.
+// Same contract as the plain grouped launcher, plus the staged activation tile:
+// grid.x covers OUT_TILE output columns per block so the block's staged rows are
+// reused across them. out_features does not have to be a multiple of OUT_TILE;
+// the tail block guards the columns past the end. The block size is the per-row
+// kernel's because it is also the k-stride, and matching it is what keeps the
+// output bit-identical.
+//
+// The tile shape is a launch shape and not an arithmetic choice: the
+// per-(column, row) shuffle tree and the wave-sum order are unchanged, so every
+// shape is bit-identical to every other. Measured 2026-09-27 at this route's own
+// geometry (in 2816, out 1408, 128 experts, 4096 rows, grid 176 x 128, 567
+// passes at row_batch 8): row_batch 4 with out_tile 8 is 32.52 ms against the
+// row_batch 8 shape's 35.75 ms, 1.10x, with 0 of 11,534,336 bf16 outputs
+// differing. The rest of the sweep is worse - out_tile 4 is 1.44-1.57x slower at
+// either row batch, row_batch 2 is 1.22x, out_tile 16 is 1.02x, row_batch 16 is
+// 2.05x, and out_tile 2 is 2.17x.
 extern "C" int hipengine_gguf_q4_k_selected_grouped_prefill_staged_out8_bf16_bf16_out(
     const void* x,
     const void* expert_start,
@@ -2692,7 +2708,7 @@ extern "C" int hipengine_gguf_q4_k_selected_grouped_prefill_staged_out8_bf16_bf1
     return static_cast<int>(hipErrorInvalidValue);
   }
   constexpr int threads = 128;
-  constexpr int row_batch = 8;
+  constexpr int row_batch = 4;
   constexpr int out_tile = 8;
   constexpr int k_tile = 256;
   const dim3 block(static_cast<unsigned int>(threads));

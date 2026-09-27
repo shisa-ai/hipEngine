@@ -69,6 +69,25 @@ same kernel's `K_TILE=512` shape reaches 17.28 ms but is **not** bit-exact, so i
 was dropped rather than shipped. Recorded in
 `benchmarks/results/2026-09-27-gemma4-q5-1-staged-grouped-prefill-accepted.json`.
 
+*Measured 2026-09-27 (iteration 48): the largest route's tile shape was never
+swept, and it was wrong.* The Q4_K gate projection is 38% of the prefill and its
+staged grouped prefill carried `row_batch` 8 at `out_tile` 8. At the route's own
+geometry - in 2816, out 1408, 128 experts, 4096 rows, row_bytes 1584, grid
+176 x 128, 567 passes at `row_batch` 8 - `row_batch` 4 is **32.52 against 35.75
+ms (1.10x)**, and the 512-token prefill is **3.095 -> 3.002 s (1.031x)** measured
+with the same timing script in two worktrees. The public delta matches the
+predicted route delta (-93 against -93.5 ms), so the route accounts for the whole
+effect. It is bit-exact (0 of 11,534,336 bf16 outputs differ, and the
+grouped-prefill test still matches the per-row gather), so it ships with no flag
+and no gate. The rest of the sweep: `out_tile` 16 is 1.02x, `row_batch` 2 is
+1.22x, `out_tile` 4 is 1.44-1.57x, `row_batch` 16 is 2.05x, `out_tile` 2 is
+2.17x. Note the direction: for this kernel a wider output tile is worth 1.4-1.6x
+while for the Q5_1 kernel `out_tile` 4 is the optimum - the two stage different
+things (this one stages activations, Q5_1 stages weight metadata), so neither
+result transfers. And as with Q5_1, it is not a weight-traffic win: `row_batch` 4
+doubles the passes over the block's weight bytes and is still faster. Evidence
+row `2026-09-27-gemma4-q4k-moe-prefill-rowbatch4-accepted.json`.
+
 *Measured 2026-09-27 (iteration 47): this route's tile space is closed, and it
 has no remaining bit-exact lever.* Six tile shapes and a shared-weight-staging
 rewrite were built and measured at the geometry the route is actually asked for
