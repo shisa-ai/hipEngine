@@ -2,13 +2,13 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10910,
-    "current": 3678,
+    "entries": 10911,
+    "current": 3679,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1170,
+    "rows": 1171,
     "by_rule": {
-      "dependency": 39,
+      "dependency": 40,
       "legacy-next": 109,
       "status": 1022
     }
@@ -42144,14 +42144,14 @@
         "written": "2026-09-23",
         "age_days": 4,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 4,
         "open_text": "1. Build the arena-with-guards experiment above, so the over-read faults at the\n   buffer that caused it.\n2. Fix the over-read, then re-run 20+ decode steps clean.\n3. Only then is the generation adapter's end-to-end path validated.\n4. Then the real artifact at\n   `/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf`.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as blocked \u2014 the entry says the unit is blocked",
-        "3 later entries by the same worker share this topic prefix"
+        "4 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260923T020151.588610Z-lhl-gemma4-decode-fault-b43475.md",
@@ -42168,7 +42168,7 @@
         ]
       },
       "id": "worklog/20260923T020151.588610Z-lhl-gemma4-decode-fault-b43475",
-      "evidence_hash": "e62a76473152"
+      "evidence_hash": "9a6fab33fef8"
     },
     {
       "kind": "worklog",
@@ -42182,14 +42182,14 @@
         "written": "2026-09-23",
         "age_days": 4,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 3,
         "open_text": "The experiment the blocker entry already named, now with a narrowed target:\nallocate the scratch buffers through one large arena with a guard region after\neach, so an over-read faults deterministically at the buffer that caused it.\n`Gemma4LayerScratch` takes its buffers from a list it owns, so the arena can be\nintroduced there without touching the kernels.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "3 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260923T021546.607698Z-lhl-gemma4-decode-fault-26eb39.md",
@@ -42209,7 +42209,7 @@
         ]
       },
       "id": "worklog/20260923T021546.607698Z-lhl-gemma4-decode-fault-26eb39",
-      "evidence_hash": "89fa964c49bd"
+      "evidence_hash": "73dc34bce636"
     },
     {
       "kind": "worklog",
@@ -42223,14 +42223,14 @@
         "written": "2026-09-23",
         "age_days": 4,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "- Call the router logits and router select kernels standalone on GGUF weights and\n  probe a memcpy afterwards. They are the only steps in\n  `gemma4_experts_forward_bf16` without individual coverage, and they are the\n  remaining suspects for the composition-level hang.\n- Until that lands, the Gemma 4 GPU path cannot complete a request: `LLM.generate()`\n  reaches the runner, and the first expert forward wedges the device.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260923T034607.312889Z-lhl-gemma4-decode-fault-78560a.md",
@@ -42248,7 +42248,7 @@
         ]
       },
       "id": "worklog/20260923T034607.312889Z-lhl-gemma4-decode-fault-78560a",
-      "evidence_hash": "a24e4fc94f56"
+      "evidence_hash": "badf92a2b8e3"
     },
     {
       "kind": "worklog",
@@ -44071,6 +44071,46 @@
       },
       "id": "worklog/20260926T235136.556498Z-lhl-gemma4-attention-prefill-register-tree-9b5a7b",
       "evidence_hash": "86a6065af517"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260927T022313.554398Z-lhl-gemma4-decode-mtp-capability-bb0ccf",
+      "title": "Gemma 4 decode: MTP is a model capability gap, and the attention barrier batch is at its budget",
+      "location": "worklog/entries/20260927T022313.554398Z-lhl-gemma4-decode-mtp-capability-bb0ccf.md:57",
+      "evidence": {
+        "status": "completed",
+        "worker": "lhl",
+        "topic": "gemma4-decode-mtp-capability",
+        "written": "2026-09-27",
+        "age_days": 0,
+        "open_by": "dependency",
+        "continuation_entries": 0,
+        "open_text": "- Decode throughput has to come from the single-token path. In measured order\n  the unblocked candidates are the q4_k decode re-route (blocked on a missing\n  Q5_1 compact down kernel, which is a kernel to write rather than a gate to\n  clear) and launch-count reduction on the dense route (410 launches per step).\n- The q4_k decode GEMV is 23% of decode at KV~129 and the campaign's routing\n  probe already showed the production path resolves to the kernel it measured,\n  so the remaining work there is the missing compact down kernel.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "Next names a dependency: 'blocked on'",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260927T022313.554398Z-lhl-gemma4-decode-mtp-capability-bb0ccf.md",
+        "refs": [],
+        "tokens": [
+          "attention",
+          "barrier",
+          "batch",
+          "budget",
+          "capability",
+          "decode",
+          "gap",
+          "gemma",
+          "model",
+          "mtp"
+        ]
+      },
+      "id": "worklog/20260927T022313.554398Z-lhl-gemma4-decode-mtp-capability-bb0ccf",
+      "evidence_hash": "e9ee4dabcb61"
     }
   ]
 }

@@ -22,17 +22,17 @@
     "source": "docs/REFACTOR.md",
     "headings": 411
   },
-  "generated": "2026-09-27T02:21:56+00:00",
-  "commit": "c6cd8bdb0",
+  "generated": "2026-09-27T02:25:41+00:00",
+  "commit": "6c3f9fbde",
   "worklog": {
     "source": "worklog/entries",
-    "entries": 10910,
-    "current": 3678,
+    "entries": 10911,
+    "current": 3679,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1170,
+    "rows": 1171,
     "by_rule": {
-      "dependency": 39,
+      "dependency": 40,
       "legacy-next": 109,
       "status": 1022
     }
