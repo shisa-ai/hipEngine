@@ -3288,6 +3288,56 @@ record, not permission to reset unrelated work or weaken correctness.
   ``:58``-``59`` (``dense_label`` and the ``shape_bytes`` side effect),
   ``:106``-``110`` (the report that consumes it).
 
+  **Iteration 121: attention measured at 0.4-1.1% of peak bandwidth. The
+  headroom is real, and it is the largest unblocked one on the default path.**
+
+  Iteration 120 specified an ``attention_label`` for the shape census; this
+  iteration added it. The label records irreducible bytes -- Q read, K/V read
+  once, the uint8 keep-mask, and the output write -- so the derived GB/s is an
+  **upper bound** on achieved efficiency: the kernel launches one CTA per (query
+  head, query row) and therefore moves strictly more than the accounting.
+
+      attention_prefill t=512 keys=1024 h=16 kv=8 d=256   25  118.8 ms  17.302 MB  3.6 GB/s  1.8 TF/s
+      attention_prefill t=512 keys=512  h=16 kv=8 d=256   25   44.4 ms  12.845 MB  7.2 GB/s  2.4 TF/s
+      attention_prefill t=512 keys=1024 h=16 kv=2 d=512    5   29.0 ms  21.496 MB  3.7 GB/s  3.0 TF/s
+      attention_prefill t=512 keys=512  h=16 kv=2 d=512    5   10.6 ms  19.137 MB  9.1 GB/s  4.1 TF/s
+      (device peak 864 GB/s)
+
+  **3.6-9.1 GB/s is 0.4-1.1% of the device peak, under the most favourable
+  accounting available.** 1.8-4.1 TF/s is single digits of the compute peak. Even
+  if the true moved bytes were ten times the irreducible figure, attention would
+  still be under 10% of peak. Total across the census's 60 calls is 202.8 ms,
+  matching the prefill census's 203-244 ms.
+
+  **The geometry is now on the record too**: Gemma 4 is h=16 query heads with
+  kv=8, d=256 on one layer class and kv=2, d=512 on another -- GQA ratios of 2:1
+  and 8:1. That is the shape LESSONS-LEARNED's grouped-GQA producer targets, and
+  the 8:1 class in particular gives a KV head eight query heads to amortise over.
+
+  **The super-linear key scaling is visible in the measurement.** At kv=8, d=256,
+  doubling keys from 512 to 1024 costs 1774 -> 4752 us, a factor of 2.68, while
+  the irreducible bytes rise only 1.35x. Time grows faster than traffic, which is
+  the O(rows x keys) re-read that one-CTA-per-(head, row) produces. Iteration 46
+  inferred this from the launch geometry; it is now measured.
+
+  **Why this is the most valuable result in the session.** Every other measured
+  lever is blocked: the dense WMMA prefill is live but breaches ``kl_max`` at
+  0.3078, the MoE compensated WMMA is reverted and breaches at 0.0609, and
+  ``wmma_plain`` is a genuine precision change. All three need the lead's ruling
+  on whether an absolute ``kl_max`` applies to a reordering-class change on a
+  peaked reference. **Attention needs no ruling**: the warp-per-(token, head)
+  restructure that removed the block kernel's LDS rounds and barriers was
+  already executed for decode in this repository and is documented as bit-exact
+  with "no production-profile gate", and GQA grouping is likewise a grid and
+  reuse transformation. So this is 19.2% of layer time, measured at ~1% of
+  bandwidth, with an exact fix path already demonstrated in the same file.
+
+  Caveat: the census runs a 512-token forward, so these are t=512 rows; the
+  default-path figure at 1024 rows remains the prefill census's 243.7 ms.
+
+  Evidence: ``scripts/gemma4_prefill_shape_census.py`` (``attention_label``);
+  the four rows above.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
