@@ -1,0 +1,89 @@
+{
+ "kind": "gemma4_numerical_evaluator_and_defect",
+ "performance_claim": false,
+ "recorded": "2026-09-28, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL, MMQ gate/up prefill divergence",
+ "summary": "The recorded MMQ prefill divergence reproduces exactly on the current tree, and the padded-tail-tile hypothesis is refuted by a direct dump of the count distribution. The dump does confirm the recorded lead concretely: the scratch tile capacity is a capacity, not a live size, and it is 3-30x the work the route actually runs.",
+ "reproduction": {
+  "tree": "7d58ce2cd",
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python scripts/gemma4_mmq_prefill_length_probe.py --lengths 16 24 32 48 64 96 128 192 256 --repeats 2",
+  "kl_by_length": {
+   "16": 0.305,
+   "24": 1.007,
+   "32": 0.1086,
+   "48": 0.135,
+   "64": 2.036,
+   "96": 1.656e-06,
+   "128": 0.1362,
+   "192": 0.003151,
+   "256": 0.1514
+  },
+  "result": "all nine values match the recorded artifact to four significant figures, 7 over the 5e-2 bar, top-1 flips at 24 and 64, deterministic across repeats, route launched 58 times at every length",
+  "environment_note": "the documented probe command fails on libamdhip64.so because it runs miniforge base without the ROCm SDK libraries on LD_LIBRARY_PATH. The host needs the docs/ENVS.md clean-process wrapper with the _rocm_sdk_core and _rocm_sdk_devel lib directories prepended. This is a documentation gap, not a route defect."
+ },
+ "distribution_dump": {
+  "method": "wrapped hipengine.kernels.hip_gfx1100.moe.group_scatter.qwen35_moe_mmq32_tile_map, which the route imports locally, and read back expert_start, mmq_expert_start and mmq_total after each real call; ran a single forward per length through the public path with HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=1",
+  "columns": "ids, compact_rows, total_padded (padded rows the leaf is launched over), experts_with_rows, experts_whose_count_is_not_a_multiple_of_32, tile_capacity",
+  "rows": [
+   {
+    "ids": 24,
+    "compact_rows": 192,
+    "total_padded": 1760,
+    "tiles": 55,
+    "experts_with_rows": 55,
+    "experts_with_partial_tile": 55,
+    "max_count": 23,
+    "kl": 1.007
+   },
+   {
+    "ids": 32,
+    "compact_rows": 256,
+    "total_padded": 1920,
+    "tiles": 60,
+    "experts_with_rows": 60,
+    "experts_with_partial_tile": 60,
+    "max_count": 31,
+    "kl": 0.1086
+   },
+   {
+    "ids": 64,
+    "compact_rows": 512,
+    "total_padded": 2688,
+    "tiles": 84,
+    "experts_with_rows": 82,
+    "experts_with_partial_tile": 82,
+    "max_count": 52,
+    "kl": 2.036
+   },
+   {
+    "ids": 96,
+    "compact_rows": 768,
+    "total_padded": 2976,
+    "tiles": 93,
+    "experts_with_rows": 90,
+    "experts_with_partial_tile": 89,
+    "max_count": 62,
+    "kl": 1.656e-06
+   }
+  ],
+  "tile_capacity_at_every_length": 257,
+  "tile_capacity_derivation": "scratch.buffer('mmq_tile_expert').nbytes // 8, sized from total_lanes = tokens * top_k for the widest block the scratch serves: 8192 / 32 + 1 = 257. The live work is 55 to 93 tiles, so the capacity is 2.8x to 4.7x the work at these lengths and larger still at shorter ones."
+ },
+ "refuted_this_pass": {
+  "hypothesis": "the padded tail tile per expert - each expert's last 32-row tile is partial unless its count is a multiple of 32, and which experts have a partial tile changes with N, which would be deterministic and non-monotonic in N.",
+  "refuted_by": "the dump. Every expert with rows has a partial tile at every length tested, including 96 ids which is exact at 1.66e-06. 82 of 82 at 64 ids, 89 of 90 at 96 ids. The property is present in both the diverging and the exact case, so it cannot be the trigger.",
+  "also_checked": "the tile map kernel qwen35_moe_wmma_tile_map_kernel in hipengine/kernels/hip_gfx1100/moe/group_scatter.hip is correct on inspection: a double-buffered Hillis-Steele inclusive scan with the read staged before a barrier, exclusive starts computed as prefix - padded, the total written at index num_experts, and every padded tile assigned to its expert. mmq_expert_start diffs match sum(ceil(count/32))*32 exactly at every length. The identity buffer in hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:899-905 is also correctly sized: total_lanes = tokens * top_k, the buffer is lanes * 8 bytes, and the arange is total_lanes int64."
+ },
+ "what_the_dump_leaves": [
+  "The discriminator is not any single structural property of the distribution. It correlates with raggedness: at 64 ids only 82 of 128 experts have rows and counts range 0 to 52, while the exact lengths 384, 512, 768 and 1024 have every expert populated and counts near the mean. But 96 ids is exact at 90 of 128 experts, which is still ragged, so raggedness alone is not it either.",
+  "tile_capacity being 257 against 84 to 93 live tiles is the one measured quantity that is wildly out of proportion, and it is exactly what the recorded lead said to check: whether the once-per-object map and the padded starts stay valid when the live lane count is far below the capacity. The dump establishes that the capacity is 2.8x to 4.7x the live work at these lengths; it does not yet establish that anything downstream misbehaves because of it.",
+  "The next concrete step is to read the leaf, gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out in hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.hip, and check what it does with tile_capacity, total_rows and the identity map when the live tile count is far below capacity - in particular whether any index is derived from the capacity rather than from total_rows."
+ ],
+ "limits": [
+  "Four lengths dumped, two diverging and one exact. The 16/48/128/192/256 lengths were reproduced but not dumped.",
+  "The dump reads the buffers after the launch returns, so it establishes the map's contents but not the leaf's consumption of it.",
+  "Single forward per length; the recorded determinism was confirmed by the probe's repeats, not re-measured here."
+ ],
+ "artifacts": {
+  "dump_script": "/tmp/mmq_dump.py (scratch, not committed)"
+ }
+}
