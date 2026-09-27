@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10904,
-    "current": 3672,
+    "entries": 10906,
+    "current": 3674,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1170,
@@ -44001,14 +44001,14 @@
         "written": "2026-09-26",
         "age_days": 1,
         "open_by": "dependency",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "- With the down projection no longer the largest item, the Q4_K gate/up\n  projection (~28% of prefill) is: its fastest route is the gated MMQ path\n  recorded in `20260926T222203.094525Z-lhl-gemma4-moe-gate-up-mmq-5b1878.md`,\n  which is still waiting on the lead's `kl_max` applicability call. The staged\n  Q5_1 kernel's own remaining cost is latency rather than bandwidth (3.5 GB in\n  20.2 ms is 173 GB/s), so occupancy - not traffic - is what a further pass on it\n  would have to buy.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "Next names a dependency: 'waiting on'",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260926T231216.332180Z-lhl-gemma4-q5-1-staged-grouped-prefill-d6a2a9.md",
@@ -44028,7 +44028,7 @@
         ]
       },
       "id": "worklog/20260926T231216.332180Z-lhl-gemma4-q5-1-staged-grouped-prefill-d6a2a9",
-      "evidence_hash": "97ec2d9d88d4"
+      "evidence_hash": "553ffacd67ff"
     },
     {
       "kind": "worklog",
