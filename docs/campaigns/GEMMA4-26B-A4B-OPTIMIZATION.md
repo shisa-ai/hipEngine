@@ -36,6 +36,10 @@ gate re-passes at the same `kl_max` the promotion recorded (0.001340791729108349
 owner is the largest remaining gap; the comparison section and iteration 151 carry
 the analysis.
 
+**2026-09-28.** The current per-family cost table against llama.cpp, and the
+prefill / decode / MTP candidate list, live in
+[GEMMA4-26B-A4B-PUNCHLIST.md](GEMMA4-26B-A4B-PUNCHLIST.md). Pick work from there.
+
 ## Objective and scope
 
 Improve real Gemma 4 26B-A4B GGUF text-inference latency and throughput without
