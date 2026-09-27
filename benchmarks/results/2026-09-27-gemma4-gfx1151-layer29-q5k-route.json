@@ -15,12 +15,31 @@
   "size_of_the_prize": {
     "layer_29_ms": 110.89,
     "prefill_s": 1.991,
-    "pct_of_prefill": 5.6,
-    "if_it_matched_a_q4_k_layer_ms": 6.53,
-    "reading": "If the Q5_K gate/up could run on the same order as the q4_k fused route, this is worth roughly 100 ms, about 5% of the prefill - the largest single remaining item in the profile, ahead of the attention work just landed."
+    "route_speedup_measured_elsewhere": "1.50-2.00x on the row4 parent",
+    "expected_layer_29_ms_after": "55-74 ms",
+    "expected_saving_ms": "37-56 ms",
+    "expected_pct_of_prefill": "1.9-2.8%",
+    "q4_k_layer_gate_up_ms": 6.53,
+    "unexplained": "Even after that speedup, layer 29's gate_up would sit an order of magnitude above a q4_k layer's 6.53 ms, and the 17x gap is not explained by the route difference alone. Either the 30 MoE layers do not share expert shapes, or the q4_k fused MMQ32 route is doing something the q5_k path has no equivalent of. That is a separate question and worth resolving before the port, because it decides whether the ceiling is 2% or much more.",
+    "supersedes": "An earlier revision of this artifact said the prize was about 100 ms and 5% of prefill by reading the 17x as what the fast route would recover. The measured iu8 speedup is 1.50-2.00x, so 5% is wrong and the correct figure is 1.9-2.8% unless the unexplained 17x gap has another cause."
   },
   "limits": [
     "The 17x comparison assumes the 30 MoE layers share expert shapes. The launch counts (29 plus 1) and Gemma 4 26B-A4B's uniform MoE design support that, but the expert shapes were not read from the artifact, so treat 17x as an indication of the gap rather than a measured per-shape ratio.",
     "This is a finding, not a change. Wiring the route is a changed-arithmetic path - the iu8 activation quantization and the sparse repair both move the arithmetic - so it needs its execution-profile gate before it can become a default, and it should land behind the same rollback lever the q4_k route uses."
-  ]
+  ],
+  "prior_art": {
+    "what": "The iu8-WMMA + Kahan-risk + sparse pair2-exact repair route this finding proposes to wire up was measured and promoted for Qwen in this repository.",
+    "source": "benchmarks/CHANGELOG.md",
+    "entries": [
+      "2026-09-07 candidate screen: iu8-WMMA + Kahan-risk + sparse pair2-exact repair is bit-identical to the exact pair2 parent in all 32 screen cases, and 1.50-2.00x operation-complete at m=1..8, floor misses below m=1.",
+      "2026-09-07 iu8-risk exact MoE promoted: full 12-case chunk1024 A/B, 72 exact trajectories, every prefill case improves, PP512/1024/4096 +7.602%/+8.842%/+8.361%."
+    ],
+    "why_it_matters": "Two things follow. The route is exact rather than approximate, so the gate it needs is bit-exactness against the strict row4 parent rather than a KL envelope, which makes it far cheaper to validate. And the size of the win is bounded by that 1.50-2.00x, not by the 17x the q4_k comparison suggests."
+  },
+  "prerequisites_for_the_port": {
+    "scratch": "Gemma4ExpertScratch has no risk buffers; qwen4_exp_runner calls scratch.ensure_group_risk_buffers(compact_rows=..., out_features_total=...) and then memsets risk_count to zero before each layer. The gemma4 dataclass has a clean buffer(name) accessor and a size map, so this is additive.",
+    "tile_map": "qwen35_moe_wmma_tile_map exists in hipengine/kernels/hip_gfx1100/moe/group_scatter.py and is reusable as is.",
+    "sequencing_reference": "hipengine/runtime/qwen4_exp_runner.py around line 3845: tile map, ensure risk buffers, memset the count, resolve the risk and repair variants by (backend, layer='moe_linear', quant=...), call the risk kernel, then the repair.",
+    "template_in_gemma4": "gemma4_project_experts_gate_up_mmq is the q4_k shape to mirror: gate on quant and shapes, reuse scratch buffers, build the tile map, read back total_rows and validate it against capacity, then one fused call."
+  }
 }
