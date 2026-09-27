@@ -145,8 +145,8 @@ def tokenizer_probe(llama_tokens: Sequence[int], prompt_ids: Sequence[int]) -> d
     }
 
 
-def _completion_body(prompt: Any, outputs: int) -> dict[str, Any]:
-    return dict(
+def _completion_body(prompt: Any, outputs: int, *, n_probs: int = 0) -> dict[str, Any]:
+    body = dict(
         prompt=prompt,
         n_predict=outputs,
         temperature=0,
@@ -157,6 +157,11 @@ def _completion_body(prompt: Any, outputs: int) -> dict[str, Any]:
         stream=False,
         return_tokens=True,
     )
+    if n_probs:
+        # Only asked for when the caller needs to know how sure the reference was,
+        # so the recorded benchmark rows keep their existing request shape.
+        body["n_probs"] = n_probs
+    return body
 
 
 def _wait_health(base: str, process: subprocess.Popen[bytes], log_path: Path, budget: float = 600.0) -> None:
