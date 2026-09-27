@@ -3791,6 +3791,54 @@ record, not permission to reset unrelated work or weaken correctness.
   ``roc-obj-ls`` and the ``/tmp`` volume are both unusable on this host, and the
   bundle must be parsed manually.
 
+  **Iteration 132: the compensated-WMMA ruling is MOOT -- it buys nothing -- and
+  the real lever is `wmma_plain` at +45.6%, whose cost is fp16 weight rounding.**
+
+  Measured all three prefill routes end-to-end at 1024 prompt / 128 output through
+  the documented selector ``HIPENGINE_GEMMA4_MOE_PREFILL``, three samples each::
+
+      mode          prefill tok/s          vs default
+      auto          687 / 685 / 684        --
+      wmma          689 / 687 / 686        +0.3%   (compensated, kl_max 0.0609)
+      wmma_plain    999 / 996 / 991       +45.6%   (uncompensated, fp16 weight rounding)
+
+  **The compensated WMMA arm delivers no speedup.** The arm whose ``kl_max``
+  breach (1 row of 1023 at 0.0609 against 0.05) has been recorded as "an open lead
+  decision" is worth **+0.3%**, which is noise. **The ruling is therefore moot**:
+  there is nothing to gain from enabling it, so it should stay off on merit rather
+  than on the strength of the bar. That removes it from the lead's queue.
+
+  **The speed is in `wmma_plain`**, which the selector's own comment describes as
+  "the uncompensated form, kept as the diagnostic that isolates the fp16
+  weight-rounding term". Its cost is therefore **genuine fp16 weight rounding**,
+  not reduction association -- which is exactly why compensating for that rounding
+  gives the entire gain back. At **686 -> 999 tok/s (+45.6%)** it is the largest
+  single measured prefill lever in this campaign.
+
+  **This changes what the lead is actually being asked.** The recorded question is
+  "is an absolute ``kl_max`` bar applicable to a reordering-class change?" -- but
+  the reordering-class arm is free of charge at +0.3%, so that question no longer
+  gates anything. The live question is **"do we accept fp16 weight rounding in the
+  MoE, as llama.cpp does?"** -- a quality decision with a **45.6%** price attached
+  to the conservative answer.
+
+  **A correction to the source comment.** ``gemma4_experts.py:564`` states the
+  WMMA owners "are 2.7x faster on a 1024-token prefill" without distinguishing the
+  two forms. Measured, the compensated form is **1.00x** and the plain form is
+  **1.46x**. The 2.7x figure is not reproduced by either at this shape.
+
+  **What the campaign still owes on `wmma_plain`**: its own logits gate. The
+  compensated form's numbers are recorded (kl_mean/kl_p95/kl_p99 pass with 10-200x
+  margin, top-1 unchanged on all 1023 rows); the plain form's are not, and the
+  campaign records it only as "genuine fp16 weight rounding" without a measurement.
+  That gate is a concrete, runnable action and it is the direct path to the
+  objective's "let's get it fast".
+
+  Evidence: the three-mode table above (``scripts/gemma4_campaign_bench.py
+  --prompt 1024 --output 128 --samples 3``, ``--expect-gpu W7900``);
+  ``gemma4_experts.py:558``-``:576`` (the route comment) and ``:589``
+  (``_prefill_route_flags``).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
