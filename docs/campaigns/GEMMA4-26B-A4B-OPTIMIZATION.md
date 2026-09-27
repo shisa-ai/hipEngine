@@ -3580,6 +3580,41 @@ record, not permission to reset unrelated work or weaken correctness.
   ``:457``/``:808`` (``_scratches`` as a field, read by index); the census table
   above; ``scripts/gemma4_prefill_shape_census.py --tokens/--prefill-block``.
 
+  **Iteration 127: the guide's section 5.6 lever is already applied in the MoE
+  kernel -- the dequant hypothesis is partly refuted by the source.**
+
+  Iteration 66's hypothesis was that the grouped MoE dequants per row-batch
+  where the dense path amortizes across a wider tile, which is the guide's
+  "widen the reduction tile (the q4_k winner)". Reading
+  ``gguf_q4_k_selected_prefill.hip`` before measuring it:
+
+  * ``:211``-``:212`` states the opposite of the hypothesis: "weight
+    dequantization is shared across up to eight rows of one expert.
+    ``AMORTIZE_INPUT`` swaps the loop nest so a CTA covers ``OUT_BATCH`` output
+    columns". The Gemma binding is
+    ``selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out``
+    (``gemma4_experts.py:496``), so the amortized nest is **on**.
+  * ``:164`` already defines ``gguf_q4_k_weight_pair128``, a paired wide dequant,
+    alongside the scalar ``gguf_q4_k_weight`` at ``:135``.
+
+  **So the named lever is already spent, and the ~2 us per routed row is not a
+  per-row-batch dequant.** This is the third consecutive hypothesis stopped by
+  reading the source rather than by measuring an adjacent quantity, and it is the
+  second this session that died on the source alone.
+
+  **What is now excluded** for the MoE's per-row cost: bandwidth (iteration 65:
+  3x fewer bytes in the same time), the weights (4x the reuse bought nothing),
+  call overhead (time scales linearly with rows inside a call), rows-per-expert
+  (refuted), and per-row-batch dequant (this iteration). The remaining candidates
+  are the per-row reduction tree, the compact-index addressing inside the inner
+  loop, and the q4_k unpack ALU cost itself -- and separating those needs the
+  projection kernels timed against a q8_0 control **at the same shape**, which
+  the census does not currently provide, since every dense line it measures is
+  q8_0 on a different geometry.
+
+  Evidence: ``gguf_q4_k_selected_prefill.hip:135``, ``:164``, ``:211``-``:212``,
+  ``:241``-``:243``; ``gemma4_experts.py:496`` (the amortized Gemma binding).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
