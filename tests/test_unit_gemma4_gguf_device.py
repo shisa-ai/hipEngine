@@ -15,6 +15,7 @@ import pytest
 
 from hipengine.loading.gemma4_gguf_device import (
     LAYOUT_DENSE_F32,
+    LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
     materialize_gemma4_gguf_device_weight,
     plan_gemma4_gguf_resident_specs,
@@ -60,10 +61,19 @@ def test_quant_keys_follow_the_artifact(reader: GGUFReader) -> None:
         if source.ggml_type == GGMLQuantizationType.F32:
             assert spec.layout == LAYOUT_DENSE_F32, name
             assert spec.quant_key == "f32", name
+        elif len(source.shape) == 3 and source.ggml_type == GGMLQuantizationType.Q4_K:
+            # A rank-3 Q4_K expert tensor carries the pack8 layout as well. The
+            # quant key still names the tensor's own type, so the route lookup
+            # is against gguf_q4_k and not a default.
+            assert spec.layout == LAYOUT_Q4_K_PACK8, name
+            assert spec.quant_key == f"gguf_{source.ggml_type_name.lower()}", name
         else:
             assert spec.layout == LAYOUT_RAW_GGUF, name
             assert spec.quant_key == f"gguf_{source.ggml_type_name.lower()}", name
-        assert spec.allocation_names == ("raw",), name
+        if spec.layout == LAYOUT_Q4_K_PACK8:
+            assert spec.allocation_names == ("raw", "qweight", "scales", "mins"), name
+        else:
+            assert spec.allocation_names == ("raw",), name
 
 
 def test_a_stacked_expert_tensor_stays_one_allocation(reader: GGUFReader) -> None:
@@ -82,21 +92,153 @@ def test_a_stacked_expert_tensor_stays_one_allocation(reader: GGUFReader) -> Non
     assert len(names) == len(set(names)), "a stacked expert tensor was planned more than once"
 
     for spec in stacked:
-        assert spec.allocation_names == ("raw",), spec.slot_path
         assert spec.source.shape[0] > 1, spec.slot_path
-        # One allocation holds all experts. If the planner had split per expert
-        # the resident total would be the same but the allocation count would be
-        # shape[0] times larger, so check the total against the whole tensor.
+        # The allocation count is fixed by the layout and does not carry the
+        # expert count. Splitting per expert would make it scale with
+        # shape[0], so assert the names outright rather than a bound that a
+        # small fixture could satisfy by coincidence.
+        expected = (
+            ("raw", "qweight", "scales", "mins")
+            if spec.layout == LAYOUT_Q4_K_PACK8
+            else ("raw",)
+        )
+        assert spec.allocation_names == expected, spec.slot_path
         per_expert = spec.source.nbytes / spec.source.shape[0]
         assert spec.source.nbytes == int(per_expert) * spec.source.shape[0], spec.slot_path
 
 
+def test_a_q4_k_expert_tensor_plans_the_pack8_layout(reader: GGUFReader) -> None:
+    """A rank-3 Q4_K expert tensor gains the pack8 GEMV layout.
+
+    The pack8 layout precomputes the per-32-value scale and min terms, so the
+    GEMV kernel does not re-decode raw Q4_K block metadata on every weight read.
+    The decode profile put this projection at 28.0% of decode time and 15% of
+    achievable bandwidth, which is where that decode cost binds.
+    """
+
+    specs = plan_gemma4_gguf_resident_specs(reader)
+    experts = [
+        spec
+        for spec in specs
+        if len(spec.source.shape) == 3
+        and GGMLQuantizationType(int(spec.source.ggml_type)) is GGMLQuantizationType.Q4_K
+    ]
+    assert experts, "fixture has no rank-3 Q4_K expert tensor to check"
+
+    for spec in experts:
+        assert spec.layout == LAYOUT_Q4_K_PACK8, spec.slot_path
+        # The raw copy stays: the grouped-prefill, grouped-row4 and
+        # per-expert-offset routes all read it, and dropping it would turn each
+        # of them into a missing-key error rather than a working fallback.
+        assert spec.allocation_names == ("raw", "qweight", "scales", "mins"), spec.slot_path
+        assert spec.quant_key == "gguf_q4_k", spec.slot_path
+
+
+def test_a_non_q4_k_expert_tensor_keeps_the_raw_layout(reader: GGUFReader) -> None:
+    """Only Q4_K gains the pack8 layout, and the reason is the kernel set.
+
+    The pack8 GEMV family registers q4_k, q5_k and q6_k, and this fixture's
+    expert tensors are Q4_K. A rank-3 tensor in a type with no pack8 kernel must
+    keep the raw layout rather than being planned into a route that cannot serve
+    it.
+    """
+
+    import dataclasses
+
+    from hipengine.loading.gemma4_gguf_device import _plan_one
+
+    specs = plan_gemma4_gguf_resident_specs(reader)
+    spec = next(s for s in specs if len(s.source.shape) == 3)
+    # Q8_0 is carried by the loader and has no pack8 expert GEMV registered.
+    forged = dataclasses.replace(
+        spec.source,
+        ggml_type=int(GGMLQuantizationType.Q8_0),
+        ggml_type_name="Q8_0",
+    )
+    replanned = _plan_one(spec.slot_path, forged)
+    assert replanned.layout == LAYOUT_RAW_GGUF
+    assert replanned.allocation_names == ("raw",)
+
+
+def test_pack8_packed_shapes_match_the_kernel_contract(reader: GGUFReader) -> None:
+    """The packed arrays are shaped as the expert pack8 GEMV declares them.
+
+    The kernel header states ``qweight_low [experts, out_features/8,
+    in_features]``. The repack produces one expert's packed array and rejects a
+    rank-3 input, so the loader repacks per expert and stacks -- and the stacked
+    shape is exactly what the kernel indexes.
+    """
+
+    from hipengine.quant.gguf_q4_k import GGUF_Q4_K_PACK, repack_gguf_q4_k_pack8
+
+    specs = plan_gemma4_gguf_resident_specs(reader)
+    spec = next(s for s in specs if s.layout == LAYOUT_Q4_K_PACK8)
+    experts, out_features, in_features = (int(v) for v in spec.source.shape)
+
+    raw = np.asarray(reader.tensor_data(spec.source.name), dtype=np.uint8)
+    assert raw.shape[0] == experts, "raw storage is not expert-major"
+
+    packed = [repack_gguf_q4_k_pack8(raw[e]) for e in range(experts)]
+    qweight = np.stack([p.qweight for p in packed])
+    scales = np.stack([p.scales for p in packed])
+    mins = np.stack([p.mins for p in packed])
+
+    assert qweight.shape == (experts, out_features // GGUF_Q4_K_PACK, in_features)
+    assert qweight.dtype == np.int32
+    assert scales.shape == mins.shape
+    assert scales.dtype == np.float32 and mins.dtype == np.float32
+    # One scale and min per 32-value group, for every expert and output column.
+    groups = (in_features // 256) * 8
+    assert scales.shape == (experts, groups, out_features)
+
+
+def test_resident_bytes_counts_the_pack8_expansion(reader: GGUFReader) -> None:
+    """Residency is the stored size plus whatever the pack8 layout adds.
+
+    The packed arrays sit alongside the raw blocks, so a pack8 weight is larger
+    than its stored bytes. Planning a total from the artifact size alone would
+    under-report the allocation by the expansion, which is the kind of error
+    that surfaces as an out-of-memory after the correctness gate has passed.
+    """
+
+    specs = plan_gemma4_gguf_resident_specs(reader)
+    stored = sum(
+        tensor.nbytes for tensor in reader.info.tensors if tensor.name != "rope_freqs.weight"
+    )
+    packed = [spec for spec in specs if spec.layout == LAYOUT_Q4_K_PACK8]
+    assert packed, "fixture has no pack8 expert tensor to check"
+
+    from hipengine.loading.gemma4_gguf_device import _pack8_nbytes
+
+    expansion = sum(
+        _pack8_nbytes(tuple(int(dim) for dim in spec.source.shape)) for spec in packed
+    )
+    assert expansion > 0
+    assert resident_bytes(specs) == stored + expansion
+    # The packed form is larger than the raw blocks it is built from, because
+    # it stores fp32 scale and min terms that the raw form keeps compressed.
+    raw_expert_bytes = sum(int(spec.source.nbytes) for spec in packed)
+    assert expansion > raw_expert_bytes
+
+
 def test_resident_bytes_is_the_artifact_bytes(reader: GGUFReader) -> None:
-    """Residency is the stored size, not a dequantized size."""
+    """Residency is the stored size plus the pack8 arrays, and nothing more.
+
+    The point is that residency is the stored representation and not a
+    dequantized one -- an f32 copy of this artifact would be several times
+    larger. The pack8 arrays are the one addition, and they are sized from the
+    source shape alone.
+    """
+
+    from hipengine.loading.gemma4_gguf_device import _pack8_nbytes
 
     specs = plan_gemma4_gguf_resident_specs(reader)
     expected = sum(
         tensor.nbytes for tensor in reader.info.tensors if tensor.name != "rope_freqs.weight"
+    ) + sum(
+        _pack8_nbytes(tuple(int(dim) for dim in spec.source.shape))
+        for spec in specs
+        if spec.layout == LAYOUT_Q4_K_PACK8
     )
     assert resident_bytes(specs) == expected
 
