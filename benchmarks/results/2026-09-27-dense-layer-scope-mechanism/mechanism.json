@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "kind": "dense_layer_scope_mechanism",
+  "status": "mechanism_account",
+  "performance_claim": false,
+  "promotion_claim": false,
+  "measured_dispatch_split": {
+    "command": "instrumented production-default prefill, 1024 tokens, one chunk",
+    "wide_claimed": 264,
+    "wide_declined_exact_chain": 134,
+    "total": 398,
+    "claimed_share": 0.663,
+    "scope_16_47_share": 0.667,
+    "variants": {
+      "layers_16_47": "coltile8_rowbatch4_wave_scale_f32_f32_out -> dense_wide256_f32_f32_out",
+      "layers_0_15": "coltile8_rowbatch4_wave_scale_f32_f32_out -> unchanged (exact chain)"
+    },
+    "wmma_route": "declined for every prefill_f32_f32_out dispatch; no f16 WMMA rewrite in this lane",
+    "q8_iu8_wmm": "0 in this production binding",
+    "conclusion": "the decline is the layer scope only; the roles and shapes are identical across the split"
+  },
+  "drift_budget": [
+    {
+      "scope": "32-47",
+      "wide_layers": 16,
+      "mean_kl": 5.81e-05,
+      "p95": 0.000175,
+      "max": 0.0136,
+      "top1": 0.99677,
+      "verdict": "pass"
+    },
+    {
+      "scope": "28-47",
+      "wide_layers": 20,
+      "mean_kl": 9.34e-05,
+      "p95": 0.000406,
+      "max": 0.00967,
+      "top1": 0.99742,
+      "verdict": "pass"
+    },
+    {
+      "scope": "20-47",
+      "wide_layers": 28,
+      "mean_kl": 0.000253,
+      "p95": 0.00119,
+      "max": 0.0199,
+      "top1": 0.99419,
+      "verdict": "pass"
+    },
+    {
+      "scope": "16-47",
+      "wide_layers": 32,
+      "mean_kl": 0.00038,
+      "p95": 0.00176,
+      "max": 0.0153,
+      "top1": 0.99354,
+      "verdict": "pass_promoted"
+    },
+    {
+      "scope": "12-47",
+      "wide_layers": 36,
+      "mean_kl": 0.000647,
+      "p95": 0.00361,
+      "max": 0.0225,
+      "top1": 0.99031,
+      "verdict": "fail"
+    },
+    {
+      "scope": "8-47",
+      "wide_layers": 40,
+      "mean_kl": 0.000844,
+      "p95": 0.00407,
+      "max": 0.073,
+      "top1": 0.98966,
+      "verdict": "fail"
+    },
+    {
+      "scope": "0-47",
+      "wide_layers": 48,
+      "mean_kl": 0.001099,
+      "p95": 0.005017,
+      "max": 0.03913,
+      "top1": 0.9922,
+      "verdict": "fail"
+    }
+  ],
+  "limits": {
+    "mean_kl": 0.001,
+    "p95": 0.005,
+    "p99": 0.02,
+    "max": 0.05,
+    "top1": 0.99
+  },
+  "per_layer_cost": {
+    "exact_chain_layers_0_15_ms": 3262.5,
+    "layers": 16,
+    "per_layer_ms": 43.9,
+    "wide_tile_layers_16_47_ms": 1404.2,
+    "wide_layers": 32,
+    "ratio": 4.65,
+    "extension_prize_ms": 2560.4
+  },
+  "arithmetic_identity": {
+    "claim": "dense_wide256 is a retiling of the f16 WMMA arithmetic, not a reassociation",
+    "evidence": "both emit candidate_logits_sha256 65370710c0b9c40f at 16-47",
+    "source": "benchmarks/results/2026-09-17-q8-dense-wide-12-47-gate/README.md"
+  },
+  "extension_path": {
+    "mechanism": "reduce per-layer operand rounding, not tile geometry",
+    "technique": "multi-term f16 operand split (hi + lo), 2-3 WMMA passes, same memory traffic",
+    "comparator_precedent": "LLAMA_MMB_F32SPLIT=2 in the PR #63 env capture",
+    "untested": true
+  }
+}
