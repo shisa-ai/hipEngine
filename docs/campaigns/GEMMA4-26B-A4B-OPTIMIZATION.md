@@ -4734,6 +4734,69 @@ record, not permission to reset unrelated work or weaken correctness.
   construction at 683, ``q8_mmq_prefill_session``); ``gguf_q8_0_mmq_prefill.py``
   (``Q8MMQPrefillPolicy``).
 
+  **Iteration 150: the dense Q8 MMQ path is dead, the reason is found, and the
+  reason turns out to be correct.**
+
+  The dense int8 MMQ route was configured for Gemma4 and never launched a kernel.
+  Iteration 148 established it was not the policy (``admitted=True`` on 680 of 824
+  calls with matching shapes) and not the tensor types, leaving an earlier stage of
+  the dispatch chain claiming the weights first. **That hypothesis is confirmed, and
+  the mechanism is exact.**
+
+  ``_wmma_prefill_dispatch`` runs at line 3410 and rewrites a raw Q8_0 dispatch to
+  ``abi="wmma_raw"`` / ``variant="wmma_prefill_bf16_bf16_out"``.
+  ``_q8_mmq_prefill_dispatch`` runs at line 3471 -- **second** -- and matches on
+
+      dispatch.abi == "raw"                              # actual: "wmma_raw"  no
+      dispatch.key.variant == "prefill_bf16_bf16_out"    # actual: "wmma_prefill_bf16_bf16_out"  no
+
+  so it falls through its variant whitelist and returns the dispatch unchanged.
+  Instrumenting the entry point showed the arriving keys directly:
+
+      680  abi='wmma_raw'  variant='wmma_prefill_bf16_bf16_out'  policy=True
+      140  abi='wmma_raw'  variant='wmma_prefill_bf16_bf16_out'  policy=False
+        4  abi='raw'       variant='pack8_gemv_bf16_f32_out'     policy=False
+
+  **All 680 admitted dispatches were rejected on a key mismatch, not on policy.** Both
+  ABIs read the same raw GGUF allocation -- ``wmma_raw`` names a launch family, not a
+  different weight layout -- so moving the MMQ dispatch ahead of the WMMA rewrite
+  makes it fire.
+
+  **And firing it is 29% slower.**
+
+      before the reorder   1373 / 1367 / 1367 tok/s
+      after the reorder    1054 / 1056 / 1053 tok/s
+
+  The gate passed with the reorder in place, and ``kl_max`` *improved* -- 0.000893
+  against 0.001341 for the WMMA route -- so the int8 kernel is correct, arguably more
+  accurate, and simply slower on Gemma4's dense projection shapes. The reorder is
+  reverted.
+
+  **This refutes the estimate it was meant to confirm.** The "about 3x headroom on
+  dense" figure came from comparing an MMQ TFLOP/s against the bf16 WMMA rate, and
+  the measurement does not support it: for these shapes the int8 MMQ dense kernel
+  loses to bf16 WMMA by 29%. That estimate should not be reused. Dense q/k/v/o is
+  about 19-23% of prefill and it is **not** a target -- the WMMA owner is already the
+  faster choice, and the only thing wrong with the dead path was that it looked
+  dead.
+
+  **The ordering is load-bearing, and that is the real finding.** What read as a
+  dispatch-order bug is what keeps a slower route off the default path. Nothing in
+  the code said so; the only way to learn it was to make the path fire and measure.
+  A reorder that "fixes" an unreachable branch should be measured before it is
+  believed, because unreachability can be the mechanism rather than the defect.
+
+  The dense branch of ``_q8_mmq_prefill_dispatch`` is now known-unreachable for
+  Gemma4: any shape its policy admits is rewritten to ``wmma_raw`` upstream, and the
+  rewrite is a speed win. Recorded in ``docs/REFACTOR.md`` rather than left as a
+  route that looks like it works.
+
+  Evidence: ``gguf_linear.py`` ``_wmma_prefill_dispatch`` (3410) and
+  ``_q8_mmq_prefill_dispatch`` (3471, 7685); the reorder measured then reverted;
+  ``scripts/gemma4_teacher_forced_gate.py gate`` against
+  ``$HOME/.cache/hipengine/tmp/gate_base_mmq.npz`` with the reorder in place
+  (passed, kl_max 0.000893).
+
   **Iteration 149: the production route is the default. Prefill 675 -> 1367 tok/s
   (+102%), and a latent two-reader bug is fixed.**
 
