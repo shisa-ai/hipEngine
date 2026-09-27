@@ -1,0 +1,44 @@
+{
+  "date": "2026-09-27",
+  "platform": "gfx1151",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "model": "gemma-4-26B-A4B-it UD-Q4_K_XL",
+  "status": "accepted",
+  "performance_claim": true,
+  "change": "gemma4_attention_prefill_kernel: the warp-per-key path now covers head_dim 512 as well as 256. The tree moved into a templated device function gemma4_warp_key_logit<scalar_t, kLeaves> with kLeaves = head_dim / 32, and the gate widened from head_dim == 256 to (head_dim == 256 || head_dim == 512). No new flag.",
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python scripts/gemma4_campaign_bench.py --prompt 512 --output 128 --samples 3 --out /tmp/bench_512_warp512.json --label warp512 --expect-gpu 8060S",
+  "result": {
+    "prefill_tps_before": 257.1,
+    "prefill_tps_after": [
+      268,
+      266,
+      266
+    ],
+    "prefill_delta_pct": 3.7,
+    "decode_tps": 21.03,
+    "path_parity": true
+  },
+  "kernel_attribution": {
+    "before_attention_total_ms": 301.09,
+    "after_attention_total_ms": 246.55,
+    "global_layer_ms_before": 23.5,
+    "global_layer_ms_after": 12.04,
+    "global_speedup": 1.95,
+    "sliding_layer_ms_before": 7.1,
+    "sliding_layer_ms_after": 7.45
+  },
+  "findings": [
+    "The global layers are 1.95x faster per layer, from 23.5 ms to 12.04 ms, and attention as a whole drops 54.5 ms, 18.1%. The prefill wall gain is 3.7%, close to the 2.7% the kernel saving alone would predict once the sliding path's 5% regression is netted off.",
+    "The parity test caught a real arithmetic error on the first attempt. The first version computed the second leaf as a rounded multiply and then added it, and test_decode_symbol_bit_matches_prefill_symbol failed at head_dim 512 with 54.6% of elements differing in the seventh digit. The block and decode kernels both leave contraction on, so at head_dim 512 with blockDim at the 256 thread cap the second leaf is a fused multiply-add into the first. At head_dim 256 there is one leaf per thread and fma(a, b, 0) is exact, which is why the 256 path had never revealed the distinction. This is exactly the case the kernel's own comment about rounding once instead of twice was warning about, and it is worth noting that the oracle found it rather than a review.",
+    "The sliding layers regress about 5%, 7.1 ms to 7.45 ms. The generated code for the 8-leaf instantiation should be identical, so the likely cause is register pressure or inlining from the shared body, and the global layers at 12.04 ms are still 1.6x the sliding ones despite identical total work. Both are worth a follow-up look but neither is close to overturning the net gain."
+  ],
+  "validation": {
+    "bit_exactness": "tests/test_gpu_gemma4_attention_decode_parity.py -q: exit 0. The 512-wide shape (2, 2, 512, 96) is in _SHAPES and compares the prefill symbol against the independently correct decode symbol.",
+    "other_gates": "tests/test_gpu_gemma4_attention_geometry.py, test_unit_gemma4_attention_geometry.py, test_unit_gemma4_attention_routing.py, test_unit_gemma4_attention_scratch.py and test_unit_gemma4_cpu_reference.py all pass, exit 0.",
+    "no_red_rationale": "No RED-first test was written because the behaviour change is arithmetic identity, not new behaviour: the existing parity test already covers it and fails on any deviation, which it did on the first attempt."
+  },
+  "limits": [
+    "One box, one artifact, one run per configuration; the 3.7% is a single bench invocation.",
+    "The per-layer figures come from separate rocprofv3 runs before and after, not a single paired run, so the 5% sliding regression is within the variation between two profiling sessions until re-measured."
+  ]
+}

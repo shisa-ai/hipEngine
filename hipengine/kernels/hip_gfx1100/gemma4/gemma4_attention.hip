@@ -99,6 +99,58 @@ __device__ inline float gemma4_attn_block_sum(float* partial, float value) {
   return partial[0];
 }
 
+// Warp-per-key logit for one key. kLeaves is head_dim / 32: 8 for a 256-wide
+// head, 16 for a 512-wide one. Lane l holds logical threads l + 32k, so the
+// kLeaves/2 down to 1 stages and the final stride-1 stage are intra-lane, and
+// strides 16..1 are warp shuffles. Every pair added is the pair
+// gemma4_attn_block_sum adds, in the same descending order, so the sum is
+// bit-identical to the block kernel's over the same values.
+//
+// The leaves reproduce the block and decode kernels' per-thread accumulation,
+//   dot = 0; for (d = tid; d < head_dim; d += threads) dot += q[d] * k[d];
+// which leaves contraction on. At head_dim 512 with blockDim at the 256 thread
+// cap that is two leaves per thread, and the second is a fused multiply-add
+// into the first; at head_dim 256 it is one leaf, and fma(a, b, 0) is exact, so
+// a single rounded multiply is already what the block kernel computes. Getting
+// this wrong costs the last few mantissa bits and the parity test catches it.
+template <typename scalar_t, int kLeaves>
+__device__ __forceinline__ float gemma4_warp_key_logit(
+    const float* q_s, const scalar_t* k_row, int lane) {
+  float p[kLeaves];
+  {
+    // Contraction off for the first-half leaves. Letting the compiler fuse a
+    // leaf into a tree add rounds once instead of twice and the logits stop
+    // being bit-identical.
+#pragma clang fp contract(off)
+#pragma unroll
+    for (int k = 0; k < 8; ++k) {
+      const int d = lane + 32 * k;
+      p[k] = q_s[d] * gemma4_attn_to_float(k_row[d]);
+    }
+  }
+  if (kLeaves == 16) {
+#pragma unroll
+    for (int k = 0; k < 8; ++k) {
+      const int d = lane + 32 * (k + 8);
+      p[k] = fmaf(q_s[d], gemma4_attn_to_float(k_row[d]), p[k]);
+    }
+  }
+#pragma unroll
+  for (int k = 0; k < 4; ++k) {
+    p[k] += p[k + 4];
+  }
+#pragma unroll
+  for (int k = 0; k < 2; ++k) {
+    p[k] += p[k + 2];
+  }
+  p[0] += p[1];
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    p[0] += __shfl_down(p[0], offset);
+  }
+  return __shfl_sync(0xffffffffull, p[0], 0);
+}
+
 // One block per (token, head). Shared layout:
 //   q_s      [head_dim]     the query row, loaded once
 //   logits_s [tokens]       per-key logits, written in pass 1 and reused
@@ -140,50 +192,27 @@ __global__ void gemma4_attention_prefill_kernel(
   // Pass 1: logits and their running maximum. A masked-out key is -inf so it
   // contributes nothing to either the denominator or the numerator.
   //
-  // At head_dim == 256 with a full block, thread *t* holds exactly one product,
-  // so the block-wide tree sums 256 values a single warp can hold. Doing that
-  // per key costs eight __syncthreads rounds per key, which is the whole cost of
-  // this kernel (measured 147 GFLOP/s and ~5.3 us per key at 512 tokens,
-  // invariant to the work inside the key iteration). One warp per key runs the
-  // same tree in registers instead: lane *l* holds logical threads l + 32k, so
-  // the 128/64/32 stages and the final stride-1 stage are intra-lane, and
-  // strides 16..1 are warp shuffles. Every pair added is the pair the block tree
-  // adds, in the same order, so the logits are bit-identical.
+  // At head_dim 256 or 512 with a full block, the block-wide tree sums at most
+  // 256 values, which a single warp can hold. Doing that per key costs eight
+  // __syncthreads rounds per key, which is the whole cost of this kernel
+  // (measured 147 GFLOP/s and ~5.3 us per key at 512 tokens, invariant to the
+  // work inside the key iteration). One warp per key runs the same tree in
+  // registers instead: lane *l* holds logical threads l + 32k, so the
+  // 128/64/32 stages and the final stride-1 stage are intra-lane, and strides
+  // 16..1 are warp shuffles. Every pair added is the pair the block tree adds,
+  // in the same order, so the logits are bit-identical. Both widths share the
+  // body; see gemma4_warp_key_logit for the one stage a 512-wide head adds.
   float running_max = -INFINITY;
-  if (head_dim == 256 && blockDim.x == 256) {
+  if ((head_dim == 256 || head_dim == 512) && blockDim.x == 256) {
     const int lane = static_cast<int>(threadIdx.x) & 31;
     for (int64_t j = threadIdx.x >> 5; j < keys; j += 8) {
       float logit = -INFINITY;
       if (mask_row[j] != 0) {
         const scalar_t* k_row = key + (j * num_kv_heads + kv_head) * head_dim;
-        float p[8];
-        {
-          // Contraction off for the leaves. The tree this replaces stored each
-          // product in shared memory before adding it, so every leaf was a
-          // single rounded multiply; letting the compiler fuse a leaf into the
-          // first tree add (fma(q, k, p[4])) rounds once instead of twice and
-          // the logits stop being bit-identical.
-#pragma clang fp contract(off)
-#pragma unroll
-          for (int k = 0; k < 8; ++k) {
-            const int d = lane + 32 * k;
-            p[k] = q_s[d] * gemma4_attn_to_float(k_row[d]);
-          }
-        }
-#pragma unroll
-        for (int k = 0; k < 4; ++k) {
-          p[k] += p[k + 4];
-        }
-#pragma unroll
-        for (int k = 0; k < 2; ++k) {
-          p[k] += p[k + 2];
-        }
-        p[0] += p[1];
-#pragma unroll
-        for (int offset = 16; offset > 0; offset >>= 1) {
-          p[0] += __shfl_down(p[0], offset);
-        }
-        logit = __shfl_sync(0xffffffffull, p[0], 0) * scale;
+        logit = (head_dim == 512)
+                    ? gemma4_warp_key_logit<scalar_t, 16>(q_s, k_row, lane)
+                    : gemma4_warp_key_logit<scalar_t, 8>(q_s, k_row, lane);
+        logit *= scale;
         if (lane == 0) {
           logits_s[j] = logit;
         }
