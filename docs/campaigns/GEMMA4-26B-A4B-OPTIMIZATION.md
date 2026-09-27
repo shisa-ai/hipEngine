@@ -4387,6 +4387,66 @@ record, not permission to reset unrelated work or weaken correctness.
   ``gemma4_experts.py`` (the ``down_wmma`` assignment, the plan-rebuild guard, and
   the down dispatch order).
 
+  **Iteration 143: the default path is 675 tok/s while 1393 is available. Every
+  fast route is off-default, and the execution-profile packet is the single unlock
+  for all of them.**
+
+  Measured the default path for the first time -- ``gemma4_campaign_bench.py`` with
+  no ``HIPENGINE_GEMMA4_MOE_PREFILL`` set, which is what ``hipengine.LLM.generate()``
+  and ``hipengine serve`` reach:
+
+      route           prefill tok/s
+      auto (default)      675
+      wmma_plain          990
+      mmq + wmma down    1393
+
+  **``_prefill_route_flags("auto")`` returns ``(False, False, False)``**, so the
+  default reaches none of the tuned owners at all; it falls through to the exact
+  grouped/selected routes. A user today gets **2.06x less** than the engine can
+  already do, and 5.5x less than the same-artifact llama.cpp comparator.
+
+  **Why the fast routes stay off.** All three sit behind the same gate. Per
+  ``EXECUTION-PROFILES.md`` section 2.9, a changed-arithmetic path cannot become the
+  default without its execution-profile gate, and that gate is the named clearing
+  command. The campaign logits gate is necessary but not sufficient, so a clean
+  ``kl_max`` does not lift this on its own.
+
+  **The packet does not exist for Gemma4.** ``scripts/execution_profile_gate.py`` is
+  artifact-driven and needs a variant manifest, a strict manifest, strict and
+  candidate captures, both expected-controls sets, repeat, isolation and
+  batch-invariant captures, comparison controls, task results and an arithmetic
+  class. ``docs/TESTING.md`` shows a Qwen3.6 packet built by adapting
+  ``scripts/quant_quality/qwen36_teacher.py`` through
+  ``scripts/qwen36_execution_profile_adapter.py``; **Gemma4 has no analogue.**
+  ``scripts/execution_profile_gguf_int8_direct_prefill_gate.py`` is *not* reusable
+  here -- it gates the Qwen3.6 attention/KV int8-read route
+  (``--candidate {int8_direct_prefill,slot_local_aotriton}``), not a grouped int8
+  MoE weight route.
+
+  **So promotion is a build, and it is the highest-value remaining work on this
+  campaign** -- larger in user-facing terms than any further kernel tuning, because
+  it converts an existing verified 1393 into the default 1393 rather than adding a
+  few percent on top of a route nobody reaches by default. A further kernel win
+  would land on the same off-default route and inherit the same blocker.
+
+  The build's shape, in order: a Gemma4 teacher fixture and capture adapter
+  analogous to the Qwen3.6 pair; the variant and strict manifests for the MoE
+  prefill owners; the strict and candidate captures at the campaign recipe
+  (``--prompt 2048 --prefill 1024``); repeat and isolation captures for
+  bit-stability and neighbor substitution; and the category task results. The
+  arithmetic class for an int8-weight bf16-activation MoE route is T2 by the
+  class definitions, and must be confirmed rather than assumed.
+
+  Nothing was promoted here. This entry records the measurement and the named
+  blocker, not a decision to bypass it.
+
+  Evidence: ``gemma4_campaign_bench.py --prompt 1024 --output 128 --samples 3
+  --warmup 1`` for all three routes (``path parity=True`` on each);
+  ``gemma4_experts.py::_prefill_route_flags``; ``scripts/execution_profile_gate.py
+  --help`` and ``docs/TESTING.md`` for the packet contents;
+  ``scripts/execution_profile_gguf_int8_direct_prefill_gate.py --help`` for the
+  route it actually gates.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
