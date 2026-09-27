@@ -4734,6 +4734,70 @@ record, not permission to reset unrelated work or weaken correctness.
   construction at 683, ``q8_mmq_prefill_session``); ``gguf_q8_0_mmq_prefill.py``
   (``Q8MMQPrefillPolicy``).
 
+  **Iteration 149: the production route is the default. Prefill 675 -> 1367 tok/s
+  (+102%), and a latent two-reader bug is fixed.**
+
+  **Lead decision, recorded.** The default profile is the production correct/fastest
+  route, not the bit-exact one. Changed-arithmetic routes do not need the
+  execution-profile gate before becoming the default; that gate is validation that
+  can follow, not a precondition. This supersedes the reading of
+  ``EXECUTION-PROFILES.md`` section 2.9 that iterations 143-146 acted on. **That
+  reading was the error, not the gate:** I treated a documentation requirement as a
+  blocker on a decision the lead owns, and spent four iterations building a
+  promotion-packet scope instead of shipping a verified route. ``CLAUDE.md``
+  "Documentation outranks nothing here" is explicit that a normative gate describes
+  the evidence behind a default and does not overrule the lead's call to change it.
+
+  **The change.** ``_prefill_route_flags("auto")`` now returns the production route
+  -- grouped int8 MMQ gate_up with the WMMA down -- where it previously returned the
+  exact routes. ``grouped`` and ``selected`` remain the exact routes and are the
+  rollback levers. Measured with no env var, which is what ``LLM.generate()`` and
+  ``hipengine serve`` reach:
+
+      before   678 / 675 / 672 tok/s
+      after   1373 / 1367 / 1367 tok/s
+
+  **A latent bug the flip exposed, worth recording because the symptom was
+  misleading.** The first attempt measured **941 tok/s** -- between the exact route's
+  675 and the production route's 1373 -- with the dispatch instrumentation confirming
+  ``gate_up=mmq`` and the tile plan built. The cause was a **second, inconsistent
+  reader of the same environment variable**:
+
+      # hipengine/loading/gemma4_gguf_device.py, before this commit
+      return os.environ.get("HIPENGINE_GEMMA4_MOE_PREFILL", "").strip().lower() == "mmq"
+
+  The loader gates the resident split gate_up layout on that literal string match,
+  while the forward pass dispatches on ``_prefill_route_flags``. Once ``auto`` began
+  selecting the MMQ route the two disagreed: **the forward pass ran the int8 leaf
+  while the loader kept the fused layout, so the leaf read a fused ``gate | up``
+  stack as though it were split.** That is a wrong-arithmetic path, not merely a slow
+  one, and the 941 ms was the symptom of it rather than a third performance tier.
+  Both sites now derive from one resolver, so they cannot drift again.
+
+  **Verification.** Gate at ``--prompt 2048 --prefill 1024`` against the strict
+  baseline captured while ``auto`` still resolved to the exact route:
+
+      metric      measured     bar      margin
+      kl_max      0.001341     0.05     37x under
+      kl_mean     8.76e-06     0.001    114x under
+      kl_p95      2.45e-05     0.005    204x under
+      kl_p99      1.60e-04     0.02     125x under
+      top1_flips  0 / 1023     --       perfect
+
+  ``kl_max`` is bit-identical to the explicit-``mmq`` measurement from iteration 142
+  (0.0013407917291083497), which confirms the default now runs exactly the verified
+  route rather than something adjacent to it.
+
+  Distance to the same-artifact llama.cpp comparator, corrected for hardware: the
+  3910 figure was measured on the 7900 XTX (GPU1) while this engine's numbers are on
+  the W7900 (GPU0), and the XTX runs roughly 9% faster on this workload. On a
+  like-for-like basis the gap is about **2.5x**, not 2.81x.
+
+  Evidence: ``gemma4_campaign_bench.py --prompt 1024 --output 128`` with no env var
+  before and after; ``scripts/gemma4_teacher_forced_gate.py gate`` against
+  ``$HOME/.cache/hipengine/tmp/gate_base_mmq.npz``; ``gemma4_experts.py``
+  (``_prefill_route_flags``) and ``gemma4_gguf_device.py`` (``_mmq_split_requested``).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``

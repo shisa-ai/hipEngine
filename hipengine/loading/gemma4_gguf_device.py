@@ -235,11 +235,21 @@ def _mmq_split_requested() -> bool:
     second copy of the largest expert tensor, so it is built only when the route
     that needs it is selected; every other route keeps reading the fused ``raw``
     allocation it has always read.
+
+    This resolves the route through the same function the forward pass dispatches
+    on, rather than re-reading the env var. Matching on the literal string
+    ``"mmq"`` silently disagreed with the dispatch once ``auto`` began selecting
+    the MMQ route: the forward pass ran the int8 leaf while the loader kept the
+    fused layout, so the leaf read a fused ``gate | up`` stack as if it were
+    split. Deriving both from one resolver is what keeps them from drifting.
     """
 
-    import os
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        _prefill_mode,
+        _prefill_route_flags,
+    )
 
-    return os.environ.get("HIPENGINE_GEMMA4_MOE_PREFILL", "").strip().lower() == "mmq"
+    return bool(_prefill_route_flags(_prefill_mode())[2])
 
 
 def _is_fused_expert_gate_up(spec_source, *, experts: int, fused_width: int) -> bool:
