@@ -236,5 +236,55 @@
   "finding_3_the_diagnosis": "The MMQ prefill route does not diverge at specific short lengths. It carries a large length-independent numerical error in the gate/up projection - mean absolute delta of order 0.8 to 1.0 and a maximum of 38.7 against bf16 outputs - at every length. The apparent length dependence is entirely a downstream decision-margin artifact of measuring a single forward's next-token KL, which is a threshold on how close the decision happens to be, not a measure of the route's error. 96 ids is not a length where the route is correct; it is a length where an unchanged 0.8-magnitude projection error happens to be nearly softmax-invariant.",
   "consequence_for_the_gate": "The named clearing condition is scripts/gemma4_mmq_prefill_length_probe.py exiting 0 at every length. That condition tests downstream margin, not the route's error. A route with a much smaller projection error could still fail at a length whose margin is tight, and the current route passes at lengths where the margin is loose. The condition should be restated against the gate/up projection error - for example the mean absolute delta measured here - rather than against a per-length KL threshold. This is a finding about the gate, and changing it is a separate decision from fixing the route.",
   "next": "Establish whether the 0.8-magnitude error is inherent to DS4 Q8_1 activation quantization at this geometry or is a defect, by comparing the fp32 arm against a high-precision reference on the same input, and by measuring the activation dynamic range the pack is quantizing. The same MMQ route is measured and promoted for Qwen35, so the question is what differs about Gemma4's activations - dynamic range and outlier structure are the candidates - rather than whether int8 can work at all."
+ },
+ "root_cause_is_the_quantization_budget_not_a_defect": {
+  "why": "Task 15 asked whether the ~0.8 mean absolute gate/up error is inherent to DS4 Q8_1 activation quantization or a defect in the leaf. This settles it by construction rather than by argument: run the FP32 arm on activations that have merely been quantized to DS4 and back, and compare that delta against the MMQ arm's delta. The fp32 arm has no MMQ leaf in it at all, so whatever error it shows on quantized activations is the quantization budget and nothing else.",
+  "method": "At one layer, one length, three runs on the same input: (A) fp32 arm on the real activations; (B) fp32 arm with packed_hidden replaced in place by its DS4 round-trip, computed in numpy exactly as the pack kernel does it - scale = max|v|/127 per 32-element sub-block, q = clamp(rint(v/scale), -127, 127), stored scale rounded to fp16, v_hat = q * fp16(scale); (C) the MMQ arm on the real activations. The pack's own arithmetic is read from gguf_q8_1_mmq_ds4_pack_bf16_kernel, so the simulation matches the kernel line for line.",
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python /tmp/mmq_quant.py",
+  "measured": {
+   "ids_64": {
+    "activation_rms": 0.2892,
+    "activation_max_abs": 3.36,
+    "subblock_outlier_ratio_max_over_median": 5.14,
+    "ds4_roundtrip_err_rms": 0.00207,
+    "ds4_roundtrip_rel_err": 0.00717,
+    "subblocks_with_scale_gt_0": 1.0,
+    "B_fp32_on_quantized_vs_A_fp32_real": {
+     "max": 38.75,
+     "mean": 0.8225
+    },
+    "C_mmq_vs_A_fp32_real": {
+     "max": 38.75,
+     "mean": 0.8226
+    },
+    "ratio_mmq_over_quantization": 1.0
+   },
+   "ids_96": {
+    "activation_rms": 0.2766,
+    "activation_max_abs": 3.36,
+    "subblock_outlier_ratio_max_over_median": 5.22,
+    "ds4_roundtrip_err_rms": 0.00198,
+    "ds4_roundtrip_rel_err": 0.00717,
+    "subblocks_with_scale_gt_0": 1.0,
+    "B_fp32_on_quantized_vs_A_fp32_real": {
+     "max": 38.5635,
+     "mean": 0.9905
+    },
+    "C_mmq_vs_A_fp32_real": {
+     "max": 38.5703,
+     "mean": 0.9904
+    },
+    "ratio_mmq_over_quantization": 1.0
+   }
+  },
+  "conclusion": "The MMQ route's entire gate/up error IS the DS4 activation quantization budget. The fp32 arm on activations that have only been quantized and dequantized reproduces the MMQ arm's error to four significant figures - max 38.7500 against 38.7500 and mean 0.8225 against 0.8226 at 64 ids, and 38.5635 against 38.5703 and 0.9905 against 0.9904 at 96 ids - at a ratio of 1.00x at both lengths. There is no leaf defect. The route implements DS4 Q8_1 activation quantization correctly, and the residual against the fp32 arm is exactly what quantizing the activation to int8 with a per-32 scale costs.",
+  "why_this_is_the_floor": "The activation dynamic range is modest, not pathological: the per-sub-block max over median ratio is 5.1 to 5.2, so the outlier structure the previous task named as a candidate is not the problem. The round-trip relative error is 0.717 percent rms, and with a max over median of about 5 that is at the practical floor for int8 with one scale per 32 elements - the step is max|v|/254, so the relative error is roughly the outlier ratio over 254. A better scale search, a different outlier handling or a wider sub-block would not move it much. Getting materially below this needs more than 8 bits per activation, not a repaired leaf.",
+  "consequence": "The route cannot be fixed by repairing the leaf, because the leaf is not wrong. The named clearing condition - the length probe exiting 0 - is testing the model's sensitivity to a 0.717 percent perturbation of the gate/up activation, and no amount of correctness work on the MMQ route changes that number. The route is therefore at its correctness ceiling for this activation format, and the choice is between accepting the perturbation, raising activation precision, and not using this route.",
+  "candidate_lever_not_yet_tested": "The pack kernel takes residual_passes as a template parameter and the leaf already indexes its activation planes by activation_pass, so multi-pass packing with error feedback - residual = residual - q * scale, which the pack already computes - is a supported shape that would cut the quantization error without changing the activation format. Whether the gate/up route is instantiated with more than one pass is not established here and is the cheapest next thing to check. It is named as a candidate, not a recommendation.",
+  "limits": [
+   "The comparison uses numpy to reproduce the pack arithmetic; it matched the kernel to four significant figures at both lengths, which is strong evidence the simulation is faithful, but it is a simulation of the pack rather than the pack itself.",
+   "Only one layer, the first, was compared. Nothing here says the error is uniform across layers.",
+   "The fp32 arm is treated as the reference. Task 14 established it is bit-identical to the strict single-kernel arm on both chains, so it is a sound reference, but it is not an independently-computed high-precision reference."
+  ]
  }
 }
