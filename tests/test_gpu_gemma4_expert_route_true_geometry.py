@@ -9,9 +9,14 @@ column tile is derived from a shape that the toy makes trivial: ``256`` input
 features is one Q4_K block per row and ``88`` is a full row of Q8_1 blocks, while
 the real row is eleven Q4_K blocks and 88 Q8_1 blocks with an odd block count.
 
-This pins the route at the shape it actually runs, against the same dequantized
-reference and the same production envelope the toy case uses, so a geometry-only
-failure is a RED here rather than a divergence discovered end to end.
+The route also quantizes activations to DS4 Q8_1, which derives one int8 scale per
+128-element group. A single large value inside a group therefore sets the scale for
+the whole group and crushes its neighbours toward zero. The unit tests use
+unit-variance gaussian rows, which have no such value; real hidden states do. So
+this file holds the route at the true shape under two activation profiles: the
+gaussian rows the rest of the coverage uses, and rows carrying the outlier
+channels and near-zero rows a real short prefill produces. A gap that opens only
+in the second profile is the quantization, not the kernel.
 """
 
 from __future__ import annotations
@@ -46,6 +51,10 @@ _SHORT_PREFILL = np.asarray(
     [0, 1, 2, 3, 5, 8, 13, 21, 2, 1, 4, 7, 11, 17, 31, 32] * 8, dtype=np.int64
 )
 
+# The envelope the MMQ family already asserts against its strict fp32 owner.
+_MAX_ENVELOPE = 2e-2
+_MEAN_ENVELOPE = 2e-3
+
 
 def _to_bf16_bits(array: np.ndarray) -> np.ndarray:
     return (array.astype(np.float32).view(np.uint32) >> 16).astype(np.uint16)
@@ -55,25 +64,36 @@ def _from_bf16_bits(bits: np.ndarray) -> np.ndarray:
     return (bits.astype(np.uint32) << 16).view(np.float32)
 
 
-@_needs_hip
-def test_fused_gate_up_mmq_route_holds_at_the_true_projection_geometry() -> None:
-    from hipengine.core.memory import (
-        DeviceBuffer,
-        copy_device_to_host,
-        copy_host_array_to_device,
-        free,
-        malloc,
-    )
-    from hipengine.quant.gguf import dequantize_gguf_data
+def _activations(profile: str, rows: int, seed: int) -> np.ndarray:
+    """Rows of the shape a real short prefill feeds the expert projection."""
 
-    assert len(_SHORT_PREFILL) == _NUM_EXPERTS
-    counts = _SHORT_PREFILL
-    rows = int(counts.sum())
-    fused_width = 2 * _INTERMEDIATE
-
-    rng = np.random.default_rng(20260927)
+    rng = np.random.default_rng(seed)
     hidden = rng.standard_normal((rows, _IN_FEATURES)).astype(np.float32)
-    hidden_bits = _to_bf16_bits(hidden)
+    if profile == "gaussian":
+        return hidden
+    if profile != "outlier":
+        raise ValueError(f"unknown activation profile {profile!r}")
+    # Persistent outlier channels: a handful of feature dimensions carry a value
+    # orders of magnitude above the row's median, which is the pattern Gemma's
+    # large activations are recorded as having. Each one sits inside a different
+    # 128-element Q8_1 group, so it sets that group's scale.
+    for offset, magnitude in ((0, 420.0), (17, 260.0), (64, 900.0), (191, 130.0)):
+        hidden[::3, offset] = magnitude * np.sign(hidden[::3, offset] + 1e-3)
+    # A few rows near the bottom of the range rather than centred on it, so the
+    # profile also exercises a group whose scale comes out very small.
+    hidden[-4:-1] *= 1e-3
+    return hidden
+
+
+@pytest.fixture(scope="module")
+def _weights() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """One fused ``(num_experts, 2 * intermediate, hidden)`` Q4_K block.
+
+    Module-scoped because building and dequantizing 285 MB of synthetic Q4_K is
+    the expensive part of this file, and both activation profiles read the same
+    weights.
+    """
+
     gate_raw = np.concatenate(
         [make_q4_k_weight(_INTERMEDIATE, _IN_FEATURES) for _ in range(_NUM_EXPERTS)],
         axis=0,
@@ -92,10 +112,20 @@ def test_fused_gate_up_mmq_route_holds_at_the_true_projection_geometry() -> None
             up_raw.reshape(_NUM_EXPERTS, _INTERMEDIATE, -1),
         ],
         axis=1,
-    ).reshape(_NUM_EXPERTS * fused_width, -1)
+    ).reshape(_NUM_EXPERTS * 2 * _INTERMEDIATE, -1)
+    return fused_raw, gate_raw, up_raw
+
+
+def _reference(
+    hidden_bits: np.ndarray,
+    gate_raw: np.ndarray,
+    up_raw: np.ndarray,
+    counts: np.ndarray,
+) -> np.ndarray:
+    from hipengine.quant.gguf import dequantize_gguf_data
 
     rounded = _from_bf16_bits(hidden_bits)
-    expected = np.zeros((rows, fused_width), dtype=np.float32)
+    expected = np.zeros((int(counts.sum()), 2 * _INTERMEDIATE), dtype=np.float32)
     start = 0
     for expert, count in enumerate(counts):
         if count == 0:
@@ -118,8 +148,34 @@ def test_fused_gate_up_mmq_route_holds_at_the_true_projection_geometry() -> None
         expected[start : start + count, :_INTERMEDIATE] = block @ gate.T
         expected[start : start + count, _INTERMEDIATE:] = block @ up.T
         start += int(count)
-    assert start == rows
+    assert start == int(counts.sum())
+    return expected
 
+
+def _run_route(
+    fused_raw: np.ndarray,
+    hidden_bits: np.ndarray,
+    counts: np.ndarray,
+    capacity_factor: int = 1,
+):
+    """Run the route with the live row count and a scratch of its own width.
+
+    ``capacity_factor`` sizes the scratch above the live lane count, which is the
+    documented way it is used: the caller sizes one scratch for the widest block
+    it will run and then runs narrower blocks through it. A factor of 1 makes
+    capacity and live width equal, which is what the rest of the coverage does.
+    """
+
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        copy_host_array_to_device,
+        free,
+        malloc,
+    )
+
+    rows = int(counts.sum())
+    fused_width = 2 * _INTERMEDIATE
     starts = np.zeros(_NUM_EXPERTS + 1, dtype=np.int64)
     starts[1:] = np.cumsum(counts)
 
@@ -140,7 +196,7 @@ def test_fused_gate_up_mmq_route_holds_at_the_true_projection_geometry() -> None
             ),
         )
         scratch = Gemma4ExpertScratch(
-            tokens=rows,
+            tokens=rows * capacity_factor,
             top_k=1,
             hidden_size=_IN_FEATURES,
             intermediate=_INTERMEDIATE,
@@ -165,24 +221,46 @@ def test_fused_gate_up_mmq_route_holds_at_the_true_projection_geometry() -> None
             DeviceBuffer(ptr=out_buf.ptr, nbytes=got.nbytes),
             got.nbytes,
         )
-        got = _from_bf16_bits(got)
+        return _from_bf16_bits(got)
     finally:
         if scratch is not None:
             scratch.free()
         for buffer in (hidden_buf, weights_buf, starts_buf, out_buf):
             free(buffer)
 
+
+@_needs_hip
+@pytest.mark.parametrize("profile", ["gaussian", "outlier"])
+@pytest.mark.parametrize("capacity_factor", [1, 8])
+def test_fused_gate_up_mmq_route_holds_at_the_true_projection_geometry(
+    _weights: tuple[np.ndarray, np.ndarray, np.ndarray],
+    profile: str,
+    capacity_factor: int,
+) -> None:
+    fused_raw, gate_raw, up_raw = _weights
+    counts = _SHORT_PREFILL
+    assert len(counts) == _NUM_EXPERTS
+    rows = int(counts.sum())
+
+    hidden_bits = _to_bf16_bits(_activations(profile, rows, 20260927))
+    expected = _reference(hidden_bits, gate_raw, up_raw, counts)
+    got = _run_route(fused_raw, hidden_bits, counts, capacity_factor)
+
     scale = float(np.abs(expected).max())
     assert scale > 0
     difference = np.abs(got - expected)
+    normalized_max = float(difference.max()) / scale
+    normalized_mean = float(difference.mean()) / scale
     worst_row = int(np.argmax(difference.max(axis=1)))
-    assert float(difference.max()) < 2e-2 * scale, (
-        f"fused MMQ gate_up exceeded the envelope at the true geometry: "
-        f"normalized max {float(difference.max()) / scale:.4g} at compact row "
-        f"{worst_row} against scale {scale:.4g}"
+    context = (
+        f"profile {profile!r} at the true geometry with capacity factor "
+        f"{capacity_factor} (live {rows} rows): normalized max "
+        f"{normalized_max:.4g} at compact row {worst_row}, normalized mean "
+        f"{normalized_mean:.4g}, against scale {scale:.4g}"
     )
-    assert float(difference.mean()) < 2e-3 * scale, (
-        f"fused MMQ gate_up exceeded the envelope at the true geometry: "
-        f"normalized mean {float(difference.mean()) / scale:.4g} against "
-        f"scale {scale:.4g}"
+    assert normalized_max < _MAX_ENVELOPE, (
+        f"fused MMQ gate_up exceeded the envelope ({context})"
+    )
+    assert normalized_mean < _MEAN_ENVELOPE, (
+        f"fused MMQ gate_up exceeded the envelope ({context})"
     )
