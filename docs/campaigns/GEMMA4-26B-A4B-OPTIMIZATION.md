@@ -121,9 +121,19 @@ paying roughly six times the grouped cost. The Q8_0 half is fixed: its grouped
 family existed but was registered only under the dense `linear` layer, so binding
 it under `moe_linear` and naming it last in the preference order takes the
 projection **68.13 -> 37.19 ms (1.83x, bit-exact)**. The Q5_K gate/up half
-(244.4 ms) has no exact grouped family at all — the only Q5_K prefill routes that
-exist are WMMA or MMQ, both of which change the association — so it needs either
-a new exact grouped kernel or the numerical gate.
+(244.4 ms) is still open, and the options are now enumerated. There is no Q5_K
+grouped *prefill* family: the only prefill routes that exist for it are
+`selected_wmma_prefill_compact` and the MMQ family, both of which change the
+association and therefore need the numerical gate. Two exact starting points
+remain untested. `gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out` is a
+grouped GEMV that reuses an expert's weights across four rows and is registered
+only under `linear`, so it can be bound under `moe_linear` and tried in the
+preference order the same way the Q8_0 family was — but it is not dual-aware, so
+the fused `gate | up` stride has to be handled before its numbers mean anything.
+The other is the Qwen35 dual gate/up prefill, which needs the compact scheduler
+ABI (`expert_start_compact`, `expert_start_wmma`, `tile_expert`) that the Gemma 4
+MoE path does not build. Either way the first step is the bit-exactness test at
+the fused geometry, not the timing.
 
 Two refuted candidates are worth carrying forward. Halving the `Q8_0` dense
 route's traffic does **not** help: a row-grouped variant moves 4.56 GB instead of
