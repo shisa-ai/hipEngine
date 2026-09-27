@@ -406,8 +406,10 @@ test a single-plane MMQ of llama.cpp's shape, which runs at an estimated
 4. Replace the MoE `compact_active` + gather scheduler with the Qwen scheduler.
 5. Longer term: single-plane int8 MMQ with llama.cpp-sized tiles for dense and
    MoE. This benefits Qwen equally. **The dense half does not transfer to
-   Gemma**: measured in iteration 154, the Q8_0 MMQ128 chain is 44% *slower*
-   than the bf16 WMMA owner at Gemma's dense shapes, and the MoE half is
+   Gemma**: the Q8_0 MMQ128 chain costs **+0.25 s per 1024-token prefill**
+   against the bf16 WMMA owner at Gemma's dense shapes (iteration 155, which
+   reconciles iteration 150's 29% and iteration 154's 44% as one change against
+   two denominators), and the MoE half is
    excluded by the 704-wide down. What did transfer is the tile: the WMMA
    owner's shape cascade was losing 1.2-1.9x on these shapes, and flattening it
    is worth 5.2-5.4% of prefill.
@@ -4962,6 +4964,54 @@ record, not permission to reset unrelated work or weaken correctness.
   ``hipengine/runtime/gemma4.py`` (``GEMMA4_Q8_MMQ_MIN_ROWS`` at line 430, the policy
   construction at 683, ``q8_mmq_prefill_session``); ``gguf_q8_0_mmq_prefill.py``
   (``Q8MMQPrefillPolicy``).
+
+  **Iteration 155: the dense Q8_0 MMQ penalty is +0.25 s per prefill, and the
+  29%/44% pair was one change measured against two different denominators.**
+
+  Iteration 150 recorded the dense Q8_0 MMQ chain as 29% slower and iteration
+  154 recorded it as 44% slower. Both are the same change: iteration 150 moved
+  ``_q8_mmq_prefill_dispatch`` ahead of the WMMA rewrite and iteration 154's
+  probe carries the same candidate gate, and both land on the identical target,
+  ``mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out`` under ``abi``
+  ``raw_mmq_d4x3``. Re-measured with the iteration-154 probe at both row counts,
+  one method, medians of three:
+
+      rows    WMMA owner    MMQ chain     ratio
+      512       246.0 ms      373.0 ms     1.516
+      1024      532.0 ms      778.5 ms     1.463
+
+  **The row count does not explain the gap.** The penalty is 1.46-1.52x at both
+  widths, so it is a property of the MMQ chain rather than of the shape it is
+  asked to serve. What moved is the base: iteration 150's comparison ran at
+  1024/1373 = **745.8 ms** of prefill, before the AOTriton attention change, and
+  the same prefill's forward is now **532.0 ms**. A fixed cost of about 0.25 s
+  against a base that shrank by 29% reads as a larger percentage without the
+  change having become worse.
+
+  **The absolute deltas agree across both methods.** At 1024 tokens the probe
+  adds **+246.5 ms** and iteration 150's campaign-bench run added **+225.7 ms**
+  (745.8 -> 971.5 ms), within 9%. The remainder is scope: the bench's
+  ``prefill_s`` carries the first-token and sampling step, which the probe's raw
+  ``runner.forward`` wall does not. Two independent harnesses, one change, one
+  cost.
+
+  **The candidate arm has not moved; the incumbent has.** Iteration 154 measured
+  the MMQ chain at 373.2 ms for 512 rows and it is 373.0 ms today, while the
+  WMMA owner fell 258.6 -> 246.0 ms. That 4.9% is iteration 154's own tile
+  change landing on the winning side of this comparison, and it is why the
+  relative penalty widened from 44% to 51.6% at 512 rows.
+
+  So both recorded numbers were right as measured, and neither should be quoted
+  without its basis. The decision the measurement supports is unchanged: the
+  dense Q8_0 route stays on the bf16 WMMA owner. The figure to carry forward is
+  the absolute one, **+0.25 s per 1024-token prefill**, which does not decay as
+  the rest of prefill gets faster.
+
+  Evidence: ``scripts/gemma4_dense_q8_route_probe.py --prompt 512|1024 --arm
+  both --repeats 3``, artifacts ``/tmp/gemma4_q8route_512.json`` and
+  ``/tmp/gemma4_q8route_1024.json``, on the W7900 with both GPUs idle;
+  ``_q8_mmq_prefill_dispatch`` (``gguf_linear.py`` 7685) confirming both arms
+  target one variant.
 
   **Iteration 154: the Q8_0 WMMA tile cascade was wrong on this GPU, and the
   dense projections were all on the losing side.**
