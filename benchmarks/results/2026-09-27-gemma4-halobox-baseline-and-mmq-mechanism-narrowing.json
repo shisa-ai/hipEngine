@@ -1,0 +1,39 @@
+{
+  "kind": "gemma4_external_baseline_and_defect_narrowing",
+  "performance_claim": false,
+  "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL",
+  "why": "Two open questions at once: whether the halo-box / strix-llama llama.cpp build is a better comparator than the plain-HIP build the campaign has been using, and what the MMQ expert gate/up route's unidentified mechanism is. The first is answered by measurement; the second is narrowed by eliminating its two most plausible mechanisms against the source.",
+  "halobox_comparator": {
+    "question": "Has the halo-box / strix-llama llama.cpp build ever been run against this model?",
+    "answer": "No. The campaign's comparator is a plain llama.cpp HIP build 17252c769 (10685). The halo-box tree at ~/halo-box-strix-llama/hb-pr11 was built 2026-09-02 and had never been benchmarked here.",
+    "build": "~/halo-box-strix-llama/hb-pr11/build-hip-patched, ROCm backend, one gfx1151 device",
+    "command": "llama-bench -m gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf -ngl 99 -fa on -ctk bf16 -ctv bf16 -p 512 -n 128 -d 0,4096 -r 3",
+    "measured": {
+      "pp512": 1075.94,
+      "pp512_stdev": 38.72,
+      "tg128": 40.43,
+      "tg128_stdev": 0.23,
+      "pp512_at_d4096": 893.67,
+      "tg128_at_d4096": 33.02
+    },
+    "recorded_comparator": {
+      "pp512": 1055.62,
+      "tg128": 41.11,
+      "source": "benchmarks/results/2026-09-27-gemma4-gfx1151-baseline.json"
+    },
+    "verdict": "parity, within 2% on both axes: pp512 +1.9%, tg128 -1.7%. The halo-box flash-attention and MoE-prefill fixes do not move this model at 512 or 4096 keys, so the campaign's existing comparator was already fair and no gap number needs revision.",
+    "why_no_movement": "The pack's headline wins are MUL_MAT_ID-heavy MoE shapes and hd128/hd256 flash attention at 16K+ depth. Gemma 4 A4B at these two shapes reaches neither regime.",
+    "not_run": "build-hip (the unpatched sibling) cannot run: libllama-bench-impl.so is missing from its bin/ directory. Only the patched build was measured."
+  },
+  "mmq_mechanism_narrowing": {
+    "route": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py gemma4_project_experts_gate_up_mmq",
+    "prior_state": "benchmarks/results/2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json records the route as deterministically wrong at most prefill lengths from 16 to 256 ids, with the mechanism explicitly not established.",
+    "hypothesis_1": "The tile walk addresses activations in padded row space while mmq_workspace and mmq_identity are sized for compact lanes, so the walk reads past both allocations by up to 31 * num_experts rows.",
+    "hypothesis_1_disproven": "qwen35_moe_wmma_tile_map_kernel writes mmq_expert_start as a padded row offset, but gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_kernel maps each padded tile back through expert_start_compact: compact_base = expert_start_compact[expert_id], local_row = tile_row_in_expert + row_lane, valid_row = local_row < expert_count, compact_row = valid_row ? compact_base + local_row : 0, and both the activation read and the output write are guarded on valid_row and compact_row < compact_rows. The row space is compact, the padded tail is masked, and the compact-lane sizing of mmq_workspace and mmq_identity is correct.",
+    "hypothesis_1_corroboration": "The workspace arithmetic agrees: 144 bytes per 128 input elements is exactly the qs plane (1.0 byte/element) plus the d and sum planes (0.0625 each), which is the 1.125 bytes per element the DS4 single-plane pack writes.",
+    "hypothesis_2": "The tile map's 32-row tiles and the kernel's 16-row row_tile disagree, so the kernel derives half the intended row start.",
+    "hypothesis_2_disproven": "The two exist as separate kernels rather than one kernel with two tile assumptions. The route launches gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out, whose name and compact32 suffix match the map's 32-row tiles; the 16-row row_tile read above belongs to the wmma variant.",
+    "what_remains": "The trigger is still unidentified. The narrowed search space is now the activation pack (gguf_q8_1_mmq_ds4_pack_bf16) and the mmq32 fused kernel's own reduction, not the tile map, not the row-space sizing, and not the padded-row masking.",
+    "clearing_condition": "unchanged: scripts/gemma4_mmq_prefill_length_probe.py exits 0, meaning the route is inside the kl_max bar at every length from 16 to 1024 ids."
+  }
+}

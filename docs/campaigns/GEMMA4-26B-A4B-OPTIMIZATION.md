@@ -396,6 +396,14 @@ of selecting the best run or repeating until a desired result appears.
    Record backend/KV-type differences where exact matching is unavailable.
    Pin its source/build and reproduce exact commands; do not assume the CPU
    first-token comparison script launches this engine.
+   The pinned build is plain llama.cpp HIP `17252c769` (10685). The halo-box
+   tree's patched HIP build (`~/halo-box-strix-llama/hb-pr11/build-hip-patched`,
+   built 2026-09-02) was measured against this artifact on 2026-09-27 and is
+   **parity**: pp512 1075.94 vs 1055.62, tg128 40.43 vs 41.11. Its
+   flash-attention and MoE-prefill fixes target `MUL_MAT_ID`-heavy MoE shapes
+   and hd128/hd256 attention at 16K+ depth, neither of which this model reaches
+   at the measured shapes, so the plain build remains the comparator.
+   Evidence: `benchmarks/results/2026-09-27-gemma4-halobox-baseline-and-mmq-mechanism-narrowing.json`.
 3. **Qwen3.6-35B-A3B GGUF UD-Q4_K_M:** same RX 7900 XTX, timing boundaries,
    workload sizes, greedy mode and BF16 KV where supported. It uses its own
    template/tokenizer and is a different-model latency reference. Probe capacity
