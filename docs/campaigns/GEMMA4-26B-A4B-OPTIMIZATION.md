@@ -2708,6 +2708,55 @@ record, not permission to reset unrelated work or weaken correctness.
   ``gemma4_experts.py:502``-``530`` (variant names, gates, tile constants);
   ``gemma4_experts.py:793`` (grouped gate), ``:757`` (dual launcher).
 
+  **Iteration 110: Gemma is already on the preferred MoE variant, and the
+  intensity says the limit is not FMA throughput.**
+
+  Iteration 109 left the question "why is a 4096-row prefill running an 8-row x
+  4-output tile", on the theory that a better-tiled owner might already exist.
+  It does not -- the selected variant is already the preferred one::
+
+      _GROUPED_DUAL_AMORTIZED_PREFILL_VARIANT = (
+          "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out")
+      # The same owner with the loop nest swapped so one CTA covers four output
+      # columns and reuses the input row batch across them. The association of
+      # every output is unchanged -- same thread-to-column map, same 128-thread
+      # tree -- so this is the bit-identical route and is preferred whenever the
+      # width fits.
+
+  ``_GROUPED_DUAL_AMORTIZED_MAX_IN_FEATURES = 4096`` and the Gemma MoE shapes
+  are k=704 and k=2816, so both take it. The row-batch owner it displaces is the
+  same kernel without the reuse; there is no wider-tile grouped owner waiting.
+  The only other owner is ``_WMMA_PREFILL_VARIANT =
+  "selected_grouped_wmma_prefill_compact_bf16_bf16_out"``, documented as reading
+  "each weight block once per 16-row tile" -- the prefill-shaped tile -- which
+  iteration 86 already measured at +11.6%.
+
+  **So the tile shape is not the bottleneck, and the arithmetic says why.** For
+  the q4_k dual owner: 4.1 TF/s sustained over 7.88 ms per call is 32.3 GFLOP
+  per call, against 320.078 MB moved -- an arithmetic intensity of **101
+  FLOP/byte**. At the device's 864 GB/s that intensity would demand 87 TF/s,
+  which is above the W7900's bf16 peak. **The kernel therefore cannot be
+  bandwidth-bound.** It is on the compute side, sustaining 4.1 TF/s, about 7% of
+  compute peak. (The q5_1 owner is the same story at 2.0 TF/s and 26.5 GB/s.)
+
+  **The contradiction is the finding.** A compute-side kernel sitting at ~7% of
+  peak, whose tensor-core variant buys only 11.6%, is not limited by FMA
+  throughput -- if it were, moving to WMMA would buy a multiple, not a tenth.
+  What is left is instruction issue, LDS traffic, or memory latency, which is
+  exactly the regime ``docs/RDNA3-TUNING-GUIDE.md`` exists to describe and which
+  the campaign has so far never consulted. That is the next read, and it is
+  cheap: it is a document, not a kernel.
+
+  Worth stating plainly, because it changes what to do next: **the MoE has
+  consumed five iterations of variant-hunting and the answer is that the
+  selection was already correct.** The remaining lever is inside the owner, not
+  above it. Before writing anything, the tuning guide should be read for what it
+  says about 128-thread trees and LDS pressure in exactly this shape.
+
+  Evidence: ``gemma4_experts.py:502``-``530`` (variant strings and their
+  comments), ``:793`` (grouped gate); iteration 86 (+11.6% WMMA);
+  ``scripts/gemma4_prefill_shape_census.py`` (MB/call and GB/s columns).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
