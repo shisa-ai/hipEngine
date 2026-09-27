@@ -1,0 +1,94 @@
+{
+  "date": "2026-09-27",
+  "platform": "gfx1151",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "model": "gemma-4-26B-A4B-it UD-Q4_K_XL",
+  "status": "measurement",
+  "performance_claim": false,
+  "shape": "128-token prompt, 64 decode steps, 21.0 tok/s = 47.6 ms per token",
+  "total_kernel_ms": 3067.92052,
+  "launches": 71868,
+  "distinct_kernels": 38,
+  "top_kernels": [
+    {
+      "kernel": "void (anonymous namespace)::gguf_q4_k_selected_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+      "ms": 860.487511,
+      "pct": 28.047907544879944,
+      "calls": 1827,
+      "per_decode_step": 28.546875
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+      "ms": 576.923545,
+      "pct": 18.805035568522484,
+      "calls": 12915,
+      "per_decode_step": 201.796875
+    },
+    {
+      "kernel": "(anonymous namespace)::q5_1_selected_gemv_bf16_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+      "ms": 530.482855,
+      "pct": 17.291284162733135,
+      "calls": 1827,
+      "per_decode_step": 28.546875
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 8>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+      "ms": 222.229431,
+      "pct": 7.243650203819492,
+      "calls": 64,
+      "per_decode_step": 1.0
+    },
+    {
+      "kernel": "void (anonymous namespace)::q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel<4, 4, 256>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+      "ms": 201.673006,
+      "pct": 6.573605955085172,
+      "calls": 29,
+      "per_decode_step": 0.453125
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 4, 16>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+      "ms": 151.52474,
+      "pct": 4.9390047431867625,
+      "calls": 205,
+      "per_decode_step": 3.203125
+    },
+    {
+      "kernel": "(anonymous namespace)::gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel((anonymous namespace)::block_q8_1_mmq_ds4 const*, long const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+      "ms": 86.529945,
+      "pct": 2.8204754469975644,
+      "calls": 29,
+      "per_decode_step": 0.453125
+    },
+    {
+      "kernel": "(anonymous namespace)::gguf_q5_k_selected_grouped_row4_bf16_kernel(unsigned short const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+      "ms": 78.245741,
+      "pct": 2.5504487645592593,
+      "calls": 64,
+      "per_decode_step": 1.0
+    },
+    {
+      "kernel": "void (anonymous namespace)::gemma4_rmsnorm_kernel<unsigned short>(unsigned short const*, float const*, unsigned short*, float, long)",
+      "ms": 62.764744,
+      "pct": 2.0458399619818053,
+      "calls": 9664,
+      "per_decode_step": 151.0
+    },
+    {
+      "kernel": "void (anonymous namespace)::gemma4_attention_decode_class_kernel<unsigned short, 1, 2>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long, float*, float*)",
+      "ms": 50.039651,
+      "pct": 1.6310608659444672,
+      "calls": 1575,
+      "per_decode_step": 24.609375
+    }
+  ],
+  "findings": [
+    "Decode is not attention-bound. gemma4_attention_decode_class_kernel is 50.04 ms, 1.6% of the 3067.9 ms total, so the 2X decode target has to come out of the expert matmuls and the activation packing, which together are about 71%.",
+    "The single largest line is the Q4_K MoE gate/up at 860.49 ms, 28.0%, in 1827 calls - 28.5 per decode step, one per layer. The Q5_1 expert down is next at 530.48 ms, 17.3%, also 1827 calls, and it runs a selected-GEMV kernel as expected for decode.",
+    "Activation packing is the surprise: gguf_k_pack8_prefill_out_kernel appears twice, at 576.92 ms in 12915 calls and 222.23 ms in 64 calls, together 26.0% of decode. The 12915 is 202 launches per decode step, which at 44.7 us per launch means decode is spending a quarter of its time in a large number of very small packing launches. Reducing the launch count is therefore a candidate lever in its own right, separate from making any single kernel faster.",
+    "The 'prefill' in those kernel names is historical, not a routing error. gemma4_moe_prefill_route_enabled requires lanes >= _PREFILL_MIN_LANES_PER_EXPERT * num_experts, and decode has lanes = 1 * top_k = 8 against 128 experts, so the row-reusing prefill route is correctly off and the selected/GEMV family is what runs. I checked this because 54% of decode time sits in kernels named prefill, and the names alone would have read as a mis-dispatch."
+  ],
+  "limits": [
+    "One prompt length, one output length, one box, one profiling run. Decode cost varies with context length - the earlier length curve showed decode falling from 21.91 to 19.57 tok/s between 128 and 2048 prompt tokens - so this profile describes a 128-token context.",
+    "Kernel time is not a promotion claim. This sizes the next unit."
+  ]
+}
