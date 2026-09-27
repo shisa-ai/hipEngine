@@ -46,12 +46,45 @@ def main() -> int:
         default=1024,
         help="prefill token count to census (default: %(default)s)",
     )
+    parser.add_argument(
+        "--prefill-block",
+        type=int,
+        default=None,
+        help=(
+            "override the runner's max_block, the prefill rows per forward block "
+            "(default: min(capacity, 512)). This is the knob that sets the "
+            "grouped MoE's compact-row count: compact_rows = block * top_k, so "
+            "rows per expert = block * top_k / num_experts."
+        ),
+    )
     args = parser.parse_args()
     runtime = get_hip_runtime()
     llm = hipengine.LLM(model=ARTIFACT)
     generator = llm._get_text_generator()
     generator.context_length = 8192
     runner = generator._ensure_runner()
+    if args.prefill_block is not None:
+        if args.prefill_block <= 0:
+            parser.error("--prefill-block must be positive")
+        if args.prefill_block > runner.capacity:
+            parser.error(
+                f"--prefill-block {args.prefill_block} exceeds capacity {runner.capacity}"
+            )
+        runner.max_block = int(args.prefill_block)
+        # __post_init__ sizes each layer's Gemma4LayerScratch from max_block
+        # (runtime/gemma4.py:499-507) but _scratches is a dataclass field, so a
+        # re-run appends rather than replaces and the per-layer call keeps using
+        # self._scratches[0]. Free and clear first, or the override is inert.
+        for _scratch in runner._scratches:
+            _scratch.free()
+        runner._scratches.clear()
+        runner.__post_init__()
+        print(
+            f"### prefill_block={runner.max_block} capacity={runner.capacity} "
+            f"scratches={len(runner._scratches)} "
+            f"scratch_tokens={getattr(runner._scratches[0], 'tokens', None)}",
+            flush=True,
+        )
 
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts, gemma4_layer
 
