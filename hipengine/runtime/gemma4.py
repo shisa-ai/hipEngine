@@ -428,6 +428,18 @@ def _bf16_bits(values: np.ndarray) -> np.ndarray:
 
 # The dense Q8_0 projections, admitted to the guarded d4x3 MMQ chain per shape.
 #
+# **Calibrated against the exact owner, and only reachable where that is the
+# incumbent.** Every value here compares the chain with the strict
+# `prefill_bf16_bf16_out` route, which is what a shape runs when WMMA prefill is
+# off. With WMMA prefill on -- the default -- `_wmma_prefill_dispatch` claims the
+# variant name first and the chain never sees the shape. That is the right
+# outcome rather than a gap: measured against the WMMA owner at 512 rows the
+# chain is **1.44x slower** (258.6 -> 373.2 ms for a 512-token prefill, campaign
+# iteration 154), so a reorder that let it outrank the WMMA rewrite would
+# regress the default prefill path by 44%. `tests/
+# test_unit_gguf_q8_mmq_prefill_ordering.py` is the guard that makes such a
+# reorder fail loudly instead of silently.
+#
 # risk_threshold governs how much of the matrix the sparse correction repairs,
 # and the guard queues *more* as the threshold rises: measured on this model's
 # real Q8_0 weights at 512 rows, 1e-8 queues 0.0% (and leaves 271-985 elements
@@ -438,10 +450,14 @@ def _bf16_bits(values: np.ndarray) -> np.ndarray:
 # each costs about what the GEMM itself costs, which is why 1e-4 measured slower
 # than the exact owner rather than faster.
 #
-# min_rows is per shape because the chain loses below 512 rows (0.45x-0.55x),
-# so the 64-row tail keeps the exact owner. (2112, 2816) is absent
+# min_rows is per shape because the chain loses below 512 rows (0.45x-0.55x)
+# against the exact owner, so the 64-row tail keeps it. (2112, 2816) is absent
 # deliberately: 2112 is not a multiple of 128, so the d4 packing cannot serve it
-# and that shape keeps its exact owner too.
+# and that shape keeps its exact owner too. The runner's block size is
+# `DEFAULT_PREFILL_BLOCK` = 512, so in the shipped configuration the only row
+# count a prefill block can present is 512 (or fewer, on a short tail) -- which
+# is exactly the crossover this table encodes. A raised block size would need a
+# fresh measurement before these values mean anything.
 GEMMA4_Q8_MMQ_MIN_ROWS: dict[tuple[int, int], int] = {
     (2816, 2112): 512,
     (2816, 2048): 512,
