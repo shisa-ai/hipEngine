@@ -456,77 +456,39 @@ test a single-plane MMQ of llama.cpp's shape, which runs at an estimated
 
 ### Recommended order
 
-Re-ranked by traced cost against the **current** base, not by the order the
-candidates were found. Base: **582 ms of prefill wall for 1024 tokens on the
-W7900**, measured 2026-09-27 (`gemma4_campaign_bench.py --prompt 1024 --output
-128 --samples 3`, artifact `/tmp/gemma4_bench_gpu0.json`), of which about 516 ms
-is device time.
+**The forward-looking list has moved to
+[GEMMA4-26B-A4B-PUNCHLIST.md](GEMMA4-26B-A4B-PUNCHLIST.md)**, which carries a
+per-family device-time scoreboard for prefill and decode at 1024 *and* 4096
+tokens against llama.cpp `a97cce8`, plus a candidate list with trace-derived
+estimates. That page is the working list. This section records what the campaign
+actually did, in order.
 
-**The bucket split below is not a fresh trace.** `rocprofv3` hangs on this box
--- confirmed again 2026-09-27, the instrumented process spun at 97% CPU for 16
-minutes with no output file -- so the split is the 2026-09-24 trace with the two
-measured deltas applied: AOTriton attention (216 -> 73 ms, iteration 153) and the
-Q8_0 tile flattening (5.2-5.4% of prefill, all of it in the dense route,
-iteration 154). Treat it as +/-5%. The ranking is robust to that; the individual
-figures are not precise to the digit.
+An earlier version of this section re-ranked the open work by adjusted trace
+arithmetic and put layer 29, the int8-tile work and the global-layer attention at
+the top. The punchlist's measured census agrees on the items and replaces the
+numbers; it also shows the one thing an adjusted 1024-token split could not see.
+**At 4096 tokens the two attention families are 2089 ms of a 3748 ms
+device-busy prefill -- 56% -- against llama.cpp's 170 ms.** Past the 1024-token
+window the sliding layers fall back to the exact class kernel, so the
+long-context case is an attention problem, not a matmul problem. The 1024-token
+ranking and the 4096-token ranking are different lists, and the punchlist orders
+by both.
 
-| Bucket | hipEngine now | llama.cpp (W7900-equiv) | Gap |
-| --- | ---: | ---: | ---: |
-| MoE expert matmuls | **253.1** (179.1 layers 0-28 + 74.0 layer 29) | 102.3 | **150.8** |
-| Dense projections (Q8_0) | **132.6** | 70.1 | **62.5** |
-| Attention (softmax) | 73.0 | 28.4 | **44.6** |
-| MoE routing, gather, combine | 42.0 | 11.5 | **30.5** |
-| Router logits / small BLAS | 15.1 | 6.6 | 8.5 |
-| **Total** | **515.8** | **218.9** | **296.9** |
+Landed, in order:
 
-llama.cpp's column is its XTX trace scaled by **1.140**, today's measured
-XTX/W7900 prefill ratio (4991.8 / 4377.0); the trace's own 9% figure is
-superseded. The ratio implied here is 2.36x against 2.49x measured end to end,
-so the scaling and the split are consistent with the throughput.
+1. **Additive gate/up split** -- replaced with a fused-stack stride read
+   (iteration 152). This was the XTX capacity defect.
+2. **Flash attention for the 25 sliding-window layers** -- AOTriton BF16
+   head_dim-256, whenever the window is not binding (iteration 153), +23.1%.
+3. **Q8_0 WMMA tile flattening** (iteration 154), 5.2-5.4%.
+4. **Dense Q8_0 MMQ route refuted** -- the guarded three-plane `d4x3` chain
+   costs +0.25 s per 1024-token prefill (iterations 150 and 155). The refutation
+   is scoped to that design; a single-plane llama.cpp-shaped MMQ is untested
+   (punchlist P5), and the chain's ~380 ms has never been decomposed.
 
-1. **Layer 29's MoE experts -- 74.0 ms.** Highest value per unit of work on the
-   list, and it splits in two. The **down** (Q8_0, 704-wide input) has a
-   registered prefill-shaped owner already:
-   `gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out`, whose only
-   guard is `in_features % 32` and 704 % 32 = 0. The **gate_up** (Q5_K, 2816-wide)
-   is 256-divisible and so fits the Q5_K superblock, but the only registered Q5_K
-   grouped owner is a `row4` **GEMV** (`gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out`),
-   which is decode-shaped: at 512 rows and 128 experts each expert holds ~32
-   compact rows. So expect the down half to be a routing change and the gate_up
-   half to need a prefill-shaped owner. **First task is to establish which**,
-   then measure; iteration 154's framing assumed neither owner existed.
-2. **MoE gate_up efficiency -- roughly 122 ms of the 253.1**, against llama.cpp's
-   *entire* MoE expert bucket at 102.3. The gate_up already runs int8 MMQ
-   (32-row tiles) and is the largest single kernel item in the prefill. The
-   TFLOP/s note below (16 against llama.cpp's 26-33) applies here and nowhere
-   more sharply. This was filed as "longer term" under item 5; the trace says it
-   is the second-largest gap, and it is **not** excluded by the 704-wide down --
-   that argument only covers the down.
-3. **Dense Q8_0 projections -- 132.6 ms, gap 62.5.** The route is bf16 WMMA and
-   the int8 chain loses (+0.25 s per prefill, iteration 155). What is unexplained
-   is the size: llama.cpp does this work in 70.1 ms with int8 MMQ, so hipEngine's
-   WMMA owner is 1.9x llama.cpp while its MMQ chain is 5.4x. Either the MMQ chain
-   has an implementation problem the WMMA comparison cannot see, or llama.cpp's
-   tile shapes are the whole story. The chain is four launches per projection
-   plus a guarded repair pass, and no one has decomposed where its ~380 ms goes.
-   One attribution run before writing this bucket off.
-4. **Tiled head_dim-512 attention for the 5 global layers -- 41.3 ms.** Still a
-   new kernel (llama.cpp's `flash_attn_tile<512>` analogue). Also what unblocks
-   prompts past the window width: 2048-token prompts are at 1228.9 tok/s today.
-5. **MoE scheduler -- 42.0 ms, gap 30.5**, of which ~25 ms is the trace estimate.
-   Replace `compact_active` + gather with the Qwen scheduler kernels.
-6. **Router logits / small BLAS -- 15.1 ms, gap 8.5.** Last.
-
-**Projection, both readings.** If items 1-5 each reach llama.cpp's per-bucket
-cost, the gaps they cover sum to 288 ms and the prefill falls from 582 ms to
-about 294 ms -- roughly 3490 tok/s, **79.7%** of llama.cpp on the W7900. That is
-a gap-closing ceiling and it assumes something only items 1 and 5 have a concrete
-route to. The conservative reading uses the item estimates that stand on their
-own -- layer 29, global attention, and the scheduler: 74 + 41 + 25 = 140 ms, so
-582 -> 442 ms, about **2317 tok/s and 53%** of llama.cpp.
-
-Items 1 and 2 are the same bucket and should be sequenced, not stacked: routing
-layer 29 onto an existing owner changes what the gate_up bucket contains.
+Open, in the punchlist's order: P1 (windowed AOTriton for sliding chunks past
+the window, ~1300 ms at 4096), P2 (head_dim-512 tiled attention), P3 (layer 29),
+P4-P5 (MMQ tiles), P6-P13, then D1-D8 for decode.
 
 Commands (hipEngine worktree `gemma4`; each preceded by an idle check on the
 target GPU):
