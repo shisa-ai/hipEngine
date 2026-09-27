@@ -1806,6 +1806,48 @@ record, not permission to reset unrelated work or weaken correctness.
   0.0% to ~100%. If it does not, the stride analysis is wrong and the route
   closes for good. That check is the next action.
 
+  **Iteration 93: the two-tensor diagnosis is validated in kind -- splitting the
+  fused weights drops the error to quantization scale, with a localized residual
+  left.** Iteration 33 read the owner's body and concluded it wants two
+  independently-addressed weight tensors. This iteration tested that by building
+  them: for each expert, copy the gate half and the up half out of Gemma's fused
+  tensor into two expert-major buffers (half = 1,115,136 bytes, expert =
+  2,230,272 bytes at these shapes) and re-run the same owner.
+
+  **The result, and it is progress rather than success.** Direct error falls from
+  3.91504 to 1.97070, with both halves improving equally (gate 1.92334, up
+  1.97070). On row 0 the best alignment is row-major (confirming the output is
+  not tile-major, as the 32-wide column-tile grid had suggested), and the
+  per-column-tile error profile is the informative part: **median 0.0415** against
+  a reference absmax of 2.125 -- about 2%, which is quantization scale for Q4_K
+  weights against Q8_1 activations -- with a few outlier tiles reaching 0.4658.
+  So the split is the right structural fix and most of the output is now correct.
+  ``rows_ok`` stays 0.0% only because the strict per-row 1e-2 bar is below the
+  residual outliers.
+
+  **The earlier 0.0%-including-expert-0 puzzle is settled by measurement.**
+  ``tile_expert[0] = 12``: output row 0 belongs to expert 12, not expert 0, so no
+  output row belongs to the one expert whose pointers happened to resolve
+  correctly under the fused layout. The assumption I flagged in iteration 33's
+  correction is now a measurement, and the stride diagnosis explains the original
+  0.0% without exception.
+
+  **What is left, and the probe that settles it.** A residual of ~2% median with
+  sparse 20% outliers is not the weight stride -- that is fixed -- and it is
+  larger than quantization noise should be, so a smaller addressing difference
+  remains. ``block_q8_1_mmq_ds4`` is four (scale, sum) half2 pairs followed by 128
+  int8 quants, i.e. four 32-feature sub-blocks, and the column tile is also 32
+  wide. If the residual is in the *activation* packing, the per-tile error pattern
+  will be the same across rows; if it is in the *weight* side, the pattern will
+  vary per row. Comparing the per-tile error profile across several rows
+  distinguishes the two in one run. That is the next action, and the fix is
+  expected to be a variant choice or an offset in the pack rather than a new
+  kernel.
+
+  Evidence: ``scripts/gemma4_moe_owner_oracle.py`` (now builds the split tensors
+  and prints ``tile_expert[0]``, the row-major/tile-major comparison, and the
+  per-tile error profile).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``

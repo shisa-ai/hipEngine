@@ -158,16 +158,22 @@ def main() -> int:
         copy_host_to_device(identity, host_array_ptr(arr), arr.nbytes, runtime=runtime)
 
     def run_mmq(
-        fn, total_rows: int, es_compact: int, es_plan: int, tile_ptr: int, swap: bool = False
+        fn,
+        total_rows: int,
+        es_compact: int,
+        es_plan: int,
+        tile_ptr: int,
+        weight_ptrs: tuple[int, int] | None = None,
     ) -> np.ndarray:
+        a_ptr, b_ptr = weight_ptrs or (base_ptr, base_ptr + half_bytes)
         fn(
             workspace.ptr,
             identity.ptr,
             es_compact,
             es_plan,
             tile_ptr,
-            base_ptr + half_bytes if swap else base_ptr,
-            base_ptr if swap else base_ptr + half_bytes,
+            a_ptr,
+            b_ptr,
             out_mmq.ptr,
             compact_rows,
             in_features,
@@ -195,34 +201,89 @@ def main() -> int:
     H = out_features
     total = build_plan(qwen35_moe_mmq32_tile_map, tile_capacity)
     print(f"mmq32-plan total_rows={total}")
+    first_tile = np.empty(1, dtype=np.int64)
+    read(first_tile, plan_tile_expert, 8, runtime)
+    print(f"tile_expert[0]={int(first_tile[0])}  (row 0 belongs to this expert)")
     fill_identity(compact_rows + 32 * num_experts)
-    # qwen4_exp_runner line 122 aliases the *generic* pack as
-    # gguf_q4_k_q8_1_mmq_ds4_pack_bf16 and calls that (line 3785) immediately
-    # before the dual mmq32 owner, so the generic single-plane pack is the one
-    # this owner expects. The line-123 alias (the d4x3 three-plane pack) feeds a
-    # different consumer.
     pack(gguf_q8_1_mmq_ds4_pack_bf16)
-    for layout, fn in (
-        ("RAW", gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out),
-        ("X8", gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out),
+
+    # The owner computes expert_bytes = local_out_features * weight_row_bytes, so
+    # qweight_a and qweight_b are independently addressed with an expert stride
+    # of one *half's* rows. Gemma's fused tensor has an expert stride of the full
+    # fused width, so build the two expert-major half tensors the owner expects
+    # and check whether the output matches the reference.
+    from hipengine.core.hip import HipMemcpyKind
+
+    blocks_per_row = in_features // 256
+    weight_row_bytes = blocks_per_row * 144
+    half_bytes = out_features * weight_row_bytes
+    expert_bytes = 2 * half_bytes
+    half_a = malloc(half_bytes * num_experts, runtime=runtime)
+    half_b = malloc(half_bytes * num_experts, runtime=runtime)
+    for e in range(num_experts):
+        base = base_ptr + e * expert_bytes
+        runtime.memcpy(
+            half_a.ptr + e * half_bytes, base, half_bytes, HipMemcpyKind.DEVICE_TO_DEVICE
+        )
+        runtime.memcpy(
+            half_b.ptr + e * half_bytes,
+            base + half_bytes,
+            half_bytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+        )
+    runtime.device_synchronize()
+    print(f"split tensors: half={half_bytes} expert={expert_bytes} bytes")
+
+    for label, a_ptr, b_ptr in (
+        ("fused ", base_ptr, base_ptr + half_bytes),
+        ("split ", half_a.ptr, half_b.ptr),
     ):
-        for swap in (False, True):
-            got = run_mmq(
-                fn, total, expert_start_ptr, plan_expert_start.ptr, plan_tile_expert.ptr, swap
+        got = run_mmq(
+            gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+            total,
+            expert_start_ptr,
+            plan_expert_start.ptr,
+            plan_tile_expert.ptr,
+            weight_ptrs=(a_ptr, b_ptr),
+        )
+        tag = f"weights={label}"
+        if not np.isfinite(got).all():
+            print(f"  {tag} NON-FINITE")
+            continue
+        g = got.reshape(compact_rows, 2 * H)
+        r = ref.reshape(compact_rows, 2 * H)
+        gate = np.abs(g[:, :H] - r[:, :H]).max()
+        up = np.abs(g[:, H:] - r[:, H:]).max()
+        rowerr = np.abs(g - r).max(axis=1)
+        good = float((rowerr < 1e-2).mean())
+        print(
+            f"  {tag} direct={np.abs(g - r).max():.5f} gate={gate:.5f} "
+            f"up={up:.5f} rows_ok={good:.1%}"
+        )
+        # The grid is (out_features_total/32, row_tiles): output columns are
+        # 32-wide tiles. If the weight rows are consumed in tile order rather
+        # than row order, the output columns are a tile-major permutation of the
+        # reference. Test that on one row per half before assuming anything.
+        tiles = H // 32
+        for half, sl in (("gate", slice(0, H)), ("up", slice(H, 2 * H))):
+            a = g[0, sl]
+            b = r[0, sl]
+            variants = {
+                "row-major": b,
+                "tile-major": b.reshape(tiles, 32).T.reshape(-1),
+                "tile-rev": b.reshape(tiles, 32)[::-1].reshape(-1),
+            }
+            best = min(
+                ((np.abs(a - v).max(), k) for k, v in variants.items()), key=lambda t: t[0]
             )
-            tag = f"layout={layout:4s} halves={'swapped' if swap else 'as-is '}"
-            if not np.isfinite(got).all():
-                print(f"  {tag} NON-FINITE")
-                continue
-            g = got.reshape(compact_rows, 2 * H)
-            r = ref.reshape(compact_rows, 2 * H)
-            gate = np.abs(g[:, :H] - r[:, :H]).max()
-            up = np.abs(g[:, H:] - r[:, H:]).max()
-            rowerr = np.abs(g - r).max(axis=1)
-            good = float((rowerr < 1e-2).mean())
+            print(f"    row0 {half}: best={best[1]} err={best[0]:.4f}")
+            # Which 32-wide column tiles are wrong? A residual that is confined
+            # to particular tiles localizes the remaining addressing difference.
+            per_tile = np.abs(a - b).reshape(tiles, 32).max(axis=1)
+            bad = [i for i, e in enumerate(per_tile) if e > 1e-2]
             print(
-                f"  {tag} direct={np.abs(g - r).max():.4f} gate={gate:.4f} "
-                f"up={up:.4f} rows_ok={good:.1%} got_absmax={np.abs(g).max():.4f}"
+                f"      tiles_bad={len(bad)}/{tiles} first={bad[:6]} "
+                f"worst={per_tile.max():.4f} median={np.median(per_tile):.4f}"
             )
 
     for label, builder in (
