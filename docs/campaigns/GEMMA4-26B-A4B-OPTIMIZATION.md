@@ -3881,6 +3881,59 @@ record, not permission to reset unrelated work or weaken correctness.
   ``HIPENGINE_GEMMA4_MOE_PREFILL=wmma_plain``; verdict at
   ``$HOME/.cache/hipengine/tmp/gate_verdict.json``.
 
+  **Iteration 134: the grouped int8 MMQ is 2.07x the bf16 WMMA owner at the Gemma4
+  MoE shape -- measured, not inferred. The MoE's structural gap is now identified.**
+
+  The dense q8_0 control reaches 21.7 TF/s through ``gguf_q8_0_mmq_prefill``, a
+  true int8xint8 MMQ. Gemma4's MoE registers **only** bf16-dequant prefill owners
+  (``selected_dual_grouped_rowbatch8_bf16_bf16_out``, ``selected_*_wmma_*_bf16_*``)
+  and imports **none** of the int8 MMQ kernels -- zero references. Meanwhile the
+  qwen4 runner already calls the grouped int8 MMQ path
+  (``gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out`` at
+  ``qwen4_exp_runner.py:4200``), and ``gguf_q4_k_q8_1_selected_prefill.hip`` exports
+  a whole family of grouped variants
+  (``..._ds4_mmq32_prefill_compact32_bf16_bf16_out``,
+  ``..._mmq64x32_...``, ``..._mmq64x64_rowvec_...``, plus x8/t16 siblings) that take
+  the same grouped ABI Gemma4's MoE already uses: ``(activations, expert_start,
+  weights, out, compact_rows, experts, in_features, out_features, planes)``.
+
+  Measured at the Gemma4 MoE shape with the existing harness
+  (``scripts/gguf_q4_k_t16_selected_prefill_microbench.py --hidden 2816
+  --out-features-a 1408 --out-features-b 1408 --experts 128 --rows-per-expert 32``,
+  i.e. compact=4096, k=2816, n=1408, e=128)::
+
+      mode                     logical TF/s   ms/call   vs current
+      selected-wmma (bf16)        8.06         8.06       --
+      q8-1-ds4-mmq32             16.66         3.90      2.07x
+      q8-1-ds4-mmq32-pack        16.12         4.03      2.00x
+      q8-1-ds4-wmma32-pack       11.97         5.43      1.49x
+
+  **The int8 MMQ32 is 2.07x the bf16 owner**, and **2.00x even when paying the
+  BF16->DS4 activation-packing cost** -- the pack is nearly free (0.13 ms of 4.03).
+  The integer-WMMA32 form is a real but smaller 1.49x.
+
+  **Correction to iteration 71's estimate.** I put the MoE's remaining headroom at
+  ~3.6x by comparing against the dense q8_0 control's 21.7 TF/s. That control has a
+  different ``n`` and shape. Measured against the bf16 owner at the MoE's **own**
+  shape, the available factor is **2.07x**.
+
+  **Projected end-to-end.** Within the MoE, gate_up is ~2/3 of the FLOPs
+  (2 x 2816 x 2816 per row) and down ~1/3 (2 x 1408 x 2816). Both quants have
+  grouped MMQ kernels. If both take ~2x, the MoE takes ~2x, and prefill
+  (0.27 dense + 0.73 MoE) becomes 0.27 + 0.365 = 0.635 -> **~1.57x overall**,
+  i.e. **999 -> ~1570 tok/s** at 1024p/128o.
+
+  **What the port requires**, in order: build ``gguf_q4_k_q8_1_selected_prefill``
+  and ``gguf_q5_1_mmq_selected_prefill`` in the Gemma4 runtime; pack activations
+  BF16->DS4 with the existing ``gguf_q8_1_mmq_ds4_pack_bf16`` GPU kernel; allocate
+  the ds4 workspace; call the grouped MMQ kernels. The ``expert_start``/compact-row
+  plumbing already exists because the current grouped owner uses it.
+
+  Evidence: the four-mode table above; ``gemma4_experts.py:503``-``:556`` (the
+  registered bf16-only variant set); ``gguf_q4_k_q8_1_selected_prefill.py:22``-``:99``
+  (the exported grouped symbol family); ``qwen4_exp_runner.py:4195``-``:4210`` (the
+  working qwen4 integration template).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
