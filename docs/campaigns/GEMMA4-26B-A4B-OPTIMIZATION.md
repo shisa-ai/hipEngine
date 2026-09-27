@@ -4678,6 +4678,62 @@ record, not permission to reset unrelated work or weaken correctness.
   narrowing and the single-row head launch); iteration 146's per-kernel table for
   the ``n = 4`` rows.
 
+  **Iteration 148: target 3 is real but gated off -- the Q8 MMQ dense plane is
+  configured for Gemma4 and never fires. My threshold hypothesis was wrong.**
+
+  Iteration 146 measured dense q/k/v/o at 6.0 TFLOP/s against the 21.7 TFLOP/s this
+  engine reaches on dense int8 MMQ, and named routing it through the int8 owner as
+  the cheapest of the three remaining targets. That was correct, and the route is
+  closer than expected:
+
+  * ``hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py`` implements the
+    plane, with ``Q8MMQPrefillPolicy`` and two named per-model policies.
+  * ``hipengine/runtime/gemma4.py:683`` already builds a Gemma4 policy and passes it
+    through ``q8_mmq_prefill_session`` to ``launch_gguf_linear``. The wiring exists.
+  * ``GEMMA4_Q8_MMQ_MIN_ROWS`` even lists six shapes at ``min_rows=512``, and the
+    dense projection widths are among them.
+
+  **It never runs.** Profiled at both prompt lengths and counted by kernel name:
+
+      prompt 1024:  dense-wmma 327 ms n=820   |  q8-mmq 0 ms n=0
+      prompt 2048:  dense-wmma 651 ms n=1640  |  q8-mmq 0 ms n=0
+
+  **The first hypothesis was that the 256-token prefill chunk fell below the
+  512-row ``min_rows`` threshold, so the plane could never fire.** Measuring at
+  2048 tokens -- where a chunk would exceed it under any chunking scheme -- refutes
+  that: ``n`` is still 0. So ``min_rows`` is not the blocker, or not the only one.
+  The remaining candidates are the ``risk_threshold=1.0e-5`` risk gate rejecting
+  every dispatch, an ``(in, out)`` key mismatch between the table and the real
+  projection shapes, or the plane being disabled upstream in
+  ``q8_mmq_prefill_session``. None was checked.
+
+  This is the third hypothesis in five iterations refuted by measurement rather
+  than confirmed, and the pattern is consistent: the profile says what is slow, and
+  only the code says why.
+
+  **New scaling data, which changes the priority order.** At 2048 tokens attention
+  is **1482 ms of 3455 ms -- 43%**, against 30.6% at 1024. Attention is superlinear
+  while everything else is linear, so the tiled attention owner (the second named
+  target) grows more valuable at longer prompts, and it is now the larger of the two
+  at the campaign's own ``--prompt 2048`` recipe.
+
+      prompt 2048, prefill 1.83 s (1118 tok/s)
+      attention      1482 ms  43%
+      dense wmma      651 ms  19%
+      MoE gate_up     503 ms  15%
+      MoE down        214 ms   6%
+
+  **Caveat carried forward.** Iteration 146's "fully accounted" claim is accurate as
+  a partition but not as an identification: ``gguf_k_selected_prefill_out_kernel``
+  (99 ms at 1024, 196 ms at 2048) is still unidentified after iteration 147 withdrew
+  the lm_head attribution. It is counted, not explained.
+
+  Evidence: ``rocprofv3 --kernel-trace`` at ``--prompt 1024 --output 1`` and
+  ``--prompt 2048 --output 1`` (``ROCR_VISIBLE_DEVICES=0``), counted by kernel name;
+  ``hipengine/runtime/gemma4.py`` (``GEMMA4_Q8_MMQ_MIN_ROWS`` at line 430, the policy
+  construction at 683, ``q8_mmq_prefill_session``); ``gguf_q8_0_mmq_prefill.py``
+  (``Q8MMQPrefillPolicy``).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
