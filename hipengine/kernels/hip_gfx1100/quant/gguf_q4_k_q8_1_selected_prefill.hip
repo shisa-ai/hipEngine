@@ -842,7 +842,8 @@ bool valid_q8_1_selected_dual_mmq32(
     int64_t out_features_a,
     int64_t out_features_b,
     int64_t num_experts,
-    int64_t mmq_total_rows) {
+    int64_t mmq_total_rows,
+    int64_t expert_stride_rows) {
   return compact_to_source != nullptr && valid_q8_1_selected_dual_common(
              x_q8,
              x_q8,
@@ -860,7 +861,12 @@ bool valid_q8_1_selected_dual_mmq32(
              num_experts,
              mmq_total_rows) &&
       (out_features_a % 32) == 0 && (out_features_b % 32) == 0 &&
-      (mmq_total_rows % 32) == 0;
+      (mmq_total_rows % 32) == 0 &&
+      // A fused stride must reach past both halves, or ``qweight_b`` would
+      // read into the next expert. Zero keeps the per-half default.
+      (expert_stride_rows == 0 ||
+       (expert_stride_rows >= out_features_a &&
+        expert_stride_rows >= out_features_b));
 }
 
 // One 256-thread block computes a scalar 16-row x 16-column output tile.  This
@@ -1056,6 +1062,7 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
     int64_t out_features_b,
     int64_t num_experts,
     int64_t mmq_total_rows,
+    int64_t expert_stride_rows,
     int* __restrict__ risk_count,
     int* __restrict__ risk_tiles,
     int64_t max_risks,
@@ -1102,7 +1109,16 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
   const int64_t q8_blocks_per_row = in_features / Q8_1_MMQ_BLOCK;
   const int64_t weight_row_bytes =
       blocks_per_weight_row * Q4_K_BLOCK_BYTES;
-  const int64_t expert_bytes = local_out_features * weight_row_bytes;
+  // ``expert_stride_rows`` is the distance between consecutive experts in the
+  // raw layout. Zero means the half is its own tensor and the stride is its
+  // output width, which is what a split-weight or repacked caller passes. A
+  // fused ``gate | up`` stack holds both halves of one expert contiguously
+  // instead, so it passes the fused width and points ``qweight_b`` at the up
+  // half; the leaf then reads both halves out of the one allocation. The
+  // repacked layouts carry their own indexing and ignore this value.
+  const int64_t expert_stride =
+      expert_stride_rows > 0 ? expert_stride_rows : local_out_features;
+  const int64_t expert_bytes = expert_stride * weight_row_bytes;
   const uint8_t* __restrict__ expert_base =
       qweight + expert_id * expert_bytes;
 
@@ -1360,7 +1376,8 @@ __global__ void gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel(
     int64_t out_features_a,
     int64_t out_features_b,
     int64_t num_experts,
-    int64_t mmq_total_rows) {
+    int64_t mmq_total_rows,
+    int64_t expert_stride_rows) {
   __shared__ q4_k_mmq32_cache weight_tile[32];
   __shared__ q8_1_mmq32_cache activation_tile[32];
   gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body<
@@ -1380,6 +1397,7 @@ __global__ void gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel(
       out_features_b,
       num_experts,
       mmq_total_rows,
+      expert_stride_rows,
       nullptr,
       nullptr,
       0,
@@ -1403,7 +1421,8 @@ __global__ void gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kern
     int64_t out_features_a,
     int64_t out_features_b,
     int64_t num_experts,
-    int64_t mmq_total_rows) {
+    int64_t mmq_total_rows,
+    int64_t expert_stride_rows) {
   __shared__ q4_k_mmq32_cache weight_tile[32];
   __shared__ q8_1_mmq32_cache activation_tile[32];
   gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body<
@@ -1423,6 +1442,7 @@ __global__ void gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kern
       out_features_b,
       num_experts,
       mmq_total_rows,
+      expert_stride_rows,
       nullptr,
       nullptr,
       0,
@@ -1449,6 +1469,7 @@ __global__ void gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_ker
     int64_t out_features_b,
     int64_t num_experts,
     int64_t mmq_total_rows,
+    int64_t expert_stride_rows,
     int* __restrict__ risk_count,
     int* __restrict__ risk_tiles,
     int64_t max_risks,
@@ -1472,6 +1493,7 @@ __global__ void gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_ker
       out_features_b,
       num_experts,
       mmq_total_rows,
+      expert_stride_rows,
       risk_count,
       risk_tiles,
       max_risks,
@@ -4855,6 +4877,7 @@ int launch_selected_dual_q8_1_ds4_mmq32_compact32(
     int64_t num_experts,
     int64_t mmq_total_rows,
     hipStream_t stream,
+    int64_t expert_stride_rows = 0,
     int* risk_count = nullptr,
     int* risk_tiles = nullptr,
     int64_t max_risks = 0,
@@ -4873,7 +4896,8 @@ int launch_selected_dual_q8_1_ds4_mmq32_compact32(
           out_features_a,
           out_features_b,
           num_experts,
-          mmq_total_rows) ||
+          mmq_total_rows,
+          expert_stride_rows) ||
       (COLLECT_RISKS &&
        (risk_count == nullptr || risk_tiles == nullptr ||
         max_risks <= 0 || max_risks > INT32_MAX ||
@@ -4906,7 +4930,8 @@ int launch_selected_dual_q8_1_ds4_mmq32_compact32(
         out_features_a,
         out_features_b,
         num_experts,
-        mmq_total_rows);
+        mmq_total_rows,
+        expert_stride_rows);
   } else if constexpr (WEIGHT_LAYOUT == Q4_K_LAYOUT_T16) {
     hipLaunchKernelGGL(
         (gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel<
@@ -4930,6 +4955,7 @@ int launch_selected_dual_q8_1_ds4_mmq32_compact32(
         out_features_b,
         num_experts,
         mmq_total_rows,
+        expert_stride_rows,
         risk_count,
         risk_tiles,
         max_risks,
@@ -4954,7 +4980,8 @@ int launch_selected_dual_q8_1_ds4_mmq32_compact32(
         out_features_a,
         out_features_b,
         num_experts,
-        mmq_total_rows);
+        mmq_total_rows,
+        expert_stride_rows);
   }
   return static_cast<int>(hipGetLastError());
 }
@@ -6751,6 +6778,7 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact3
     int64_t out_features_b,
     int64_t num_experts,
     int64_t mmq_total_rows,
+    int64_t expert_stride_rows,
     hipStream_t stream) {
   return launch_selected_dual_q8_1_ds4_mmq32_compact32<Q4_K_LAYOUT_RAW>(
       reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
@@ -6768,7 +6796,8 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact3
       out_features_b,
       num_experts,
       mmq_total_rows,
-      stream);
+      stream,
+      expert_stride_rows);
 }
 
 extern "C" int hipengine_gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
@@ -6786,6 +6815,7 @@ extern "C" int hipengine_gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compa
     int64_t out_features_b,
     int64_t num_experts,
     int64_t mmq_total_rows,
+    int64_t expert_stride_rows,
     hipStream_t stream) {
   return launch_selected_dual_q8_1_ds4_mmq32_compact32<Q4_K_LAYOUT_X8>(
       reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
@@ -6803,7 +6833,8 @@ extern "C" int hipengine_gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compa
       out_features_b,
       num_experts,
       mmq_total_rows,
-      stream);
+      stream,
+      expert_stride_rows);
 }
 
 extern "C" int hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
@@ -6821,6 +6852,7 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_comp
     int64_t out_features_b,
     int64_t num_experts,
     int64_t mmq_total_rows,
+    int64_t expert_stride_rows,
     hipStream_t stream) {
   return launch_selected_dual_q8_1_ds4_mmq32_compact32<Q4_K_LAYOUT_T16>(
       reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
@@ -6838,7 +6870,8 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_comp
       out_features_b,
       num_experts,
       mmq_total_rows,
-      stream);
+      stream,
+      expert_stride_rows);
 }
 
 extern "C" int hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out(
@@ -6875,7 +6908,8 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_co
       out_features_b,
       num_experts,
       mmq_total_rows,
-      stream);
+      stream,
+      0);
 }
 
 extern "C" int hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out(
@@ -6917,6 +6951,7 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4x3_guarded_mmq32_pr
       num_experts,
       mmq_total_rows,
       stream,
+      0,
       risk_count,
       risk_tiles,
       max_risks,

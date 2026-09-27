@@ -420,6 +420,14 @@ def test_gguf_q4_k_q8_1_selected_prefill_wrapper_validates_common_contract() -> 
         gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
             **{**mmq32_kwargs, "mmq_total_rows": 31}
         )
+    with pytest.raises(ValueError, match="expert_stride_rows must not be negative"):
+        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+            **{**mmq32_kwargs, "expert_stride_rows": -1}
+        )
+    with pytest.raises(ValueError, match="expert_stride_rows must span both halves"):
+        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+            **{**mmq32_kwargs, "expert_stride_rows": 16}
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1192,6 +1200,8 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
     source_remap: bool = False,
     layout: str = "raw",
     activation_passes: int = 1,
+    fused_stride: bool = False,
+    fused_stride_rows: int | None = None,
 ) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
@@ -1229,6 +1239,25 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
         raise ValueError(f"unsupported MMQ32 weight layout: {layout}")
     if activation_passes == 3 and layout != "t16":
         raise ValueError("residual DS4 MMQ32 is currently implemented for T16")
+    # ``fused_stride`` models the on-disk Gemma 4 layout: one allocation per
+    # expert holding its gate rows followed by its up rows, read through the
+    # leaf's explicit expert stride with the up half addressed one half in.
+    fused_up_offset = 0
+    fused_expert_stride = 0
+    if fused_stride:
+        if layout != "raw" or activation_passes != 1:
+            raise ValueError("fused_stride requires the raw single-pass layout")
+        row_bytes = int(qweight_a.shape[-1])
+        fused_up_offset = fixture.out_features_a * row_bytes
+        fused_expert_stride = (
+            fixture.out_features_a + fixture.out_features_b
+            if fused_stride_rows is None
+            else fused_stride_rows
+        )
+        qweight_a = np.ascontiguousarray(
+            np.concatenate([qweight_a, qweight_b], axis=1)
+        )
+        qweight_b = None
     expert_start_mmq32, tile_expert, mmq_total_rows = _mmq32_metadata(fixture)
 
     bufs = []
@@ -1240,10 +1269,13 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
         start_mmq32_dev = malloc(expert_start_mmq32.nbytes, runtime=runtime)
         tile_expert_dev = malloc(tile_expert.nbytes, runtime=runtime)
         qweight_a_dev = malloc(qweight_a.nbytes, runtime=runtime)
-        qweight_b_dev = malloc(qweight_b.nbytes, runtime=runtime)
+        qweight_b_dev = (
+            None if qweight_b is None else malloc(qweight_b.nbytes, runtime=runtime)
+        )
         out_dev = malloc(host_out.nbytes, runtime=runtime)
         bufs.extend(
-            (
+            buf
+            for buf in (
                 source_x_dev,
                 q8_ds4_dev,
                 compact_to_source_dev,
@@ -1254,6 +1286,7 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
                 qweight_b_dev,
                 out_dev,
             )
+            if buf is not None
         )
         for dev, arr in (
             (source_x_dev, source_x),
@@ -1264,6 +1297,8 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
             (qweight_a_dev, qweight_a),
             (qweight_b_dev, qweight_b),
         ):
+            if dev is None:
+                continue
             copy_host_to_device(
                 dev,
                 host_array_ptr(np.ascontiguousarray(arr)),
@@ -1292,7 +1327,11 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
             start_mmq32_dev.ptr,
             tile_expert_dev.ptr,
             qweight_a_dev.ptr,
-            qweight_b_dev.ptr,
+            (
+                qweight_a_dev.ptr + fused_up_offset
+                if qweight_b_dev is None
+                else qweight_b_dev.ptr
+            ),
             out_dev.ptr,
             fixture.compact_rows,
         ]
@@ -1309,6 +1348,9 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
         )
         launcher(
             *launch_args,
+            **(
+                {"expert_stride_rows": fused_expert_stride} if fused_stride else {}
+            ),
             library=library,
             runtime=runtime,
         )
@@ -1402,6 +1444,62 @@ def test_q4_k_q8_1_ds4_selected_prefill_bf16_matches_ds4_cpu_reference(
     actual = _run_q8_1_ds4_selected_dual_gpu(fixture)
     expected = _q8_1_ds4_selected_reference(fixture)
     np.testing.assert_allclose(actual, expected, **_TOLERANCE_BF16)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("counts", "in_features", "out_features_a", "out_features_b", "source_remap"),
+    [
+        pytest.param([4, 0, 5], 256, 32, 32, False, id="empty-middle-tail"),
+        pytest.param(
+            [0, 17, 31],
+            512,
+            32,
+            64,
+            True,
+            id="empty-first-multi-block-source-remap",
+        ),
+    ],
+)
+def test_q4_k_q8_1_ds4_mmq32_fused_stride_matches_split_tensors(
+    counts: list[int],
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    source_remap: bool,
+) -> None:
+    """A fused ``gate | up`` stack must read bit-identically to split halves.
+
+    This is the layout the Gemma 4 loader keeps resident: one allocation per
+    expert with the gate rows followed by the up rows. The leaf reaches the up
+    half through ``expert_stride_rows`` instead of a second copy, so the two
+    forms have to agree exactly -- the same bytes are read either way, and any
+    difference is an indexing bug rather than a rounding one.
+    """
+
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=in_features,
+        out_features_a=out_features_a,
+        out_features_b=out_features_b,
+        dtype="bf16",
+        seed=23,
+    )
+    split = _run_q8_1_ds4_mmq32_selected_dual_gpu(fixture, source_remap=source_remap)
+    fused = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture, source_remap=source_remap, fused_stride=True
+    )
+    np.testing.assert_array_equal(fused, split)
+    # A stride that stops at the first half is the bug this guards against: it
+    # must not reproduce the split result, or the comparison above would pass on
+    # an ignored stride. ``max`` still satisfies the wrapper's span check.
+    truncated = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture,
+        source_remap=source_remap,
+        fused_stride=True,
+        fused_stride_rows=max(out_features_a, out_features_b),
+    )
+    assert not np.array_equal(truncated, split)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

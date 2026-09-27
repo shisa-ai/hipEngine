@@ -26,6 +26,16 @@ The measured optimization loop stopped after iteration 58 under the
 three-failed-candidates/re-profile rule. Its closure is recorded in
 `worklog/entries/20260926T114943.870421Z-lhl-gemma4-dimension-tranche-close-31c043.md`.
 
+**2026-09-27.** The default prefill route is the int8 MMQ path (iteration 149), and
+the additive gate/up split that route required has been removed (iteration 152):
+the leaf reads the fused stack through an explicit expert stride. The teacher-forced
+gate re-passes at the same `kl_max` the promotion recorded (0.0013407917291083497,
+0 of 1023 top-1 flips), peak device use at `--prompt 1024` falls from 32.35 GB to
+23.58 GB, and Gemma 4 loads and runs on the 24 GB RX 7900 XTX again. Prefill is
+1397 tok/s on the W7900 at 1024 tokens against llama.cpp's 3761, and the attention
+owner is the largest remaining gap; the comparison section and iteration 151 carry
+the analysis.
+
 ## Objective and scope
 
 Improve real Gemma 4 26B-A4B GGUF text-inference latency and throughput without
@@ -361,7 +371,9 @@ test a single-plane MMQ of llama.cpp's shape, which runs at an estimated
   default route peaks at 32.35 GB and fails on the RX 7900 XTX, the campaign's
   primary GPU, with `HIP error 2: out of memory` while materializing a layer's
   expert tensors. Reproduce with `ROCR_VISIBLE_DEVICES=1 scripts/gemma4_campaign_bench.py
-  --prompt 1024 --output 8`.
+  --prompt 1024 --output 8`. **Fixed in iteration 152** by giving the MMQ32 leaf an
+  explicit expert stride, which removes the split copy; peak is 23.58 GB and the
+  XTX loads.
 - **The attention analysis drafted as iteration 151 (per-key barriers in
   `gemma4_attention_prefill_kernel`) targets a kernel that does not run
   during prefill.** The trace shows `gemma4_attention_decode_class_kernel<…,1,2>`
@@ -375,7 +387,8 @@ test a single-plane MMQ of llama.cpp's shape, which runs at an estimated
 
 1. Fix the additive gate/up split: replace, don't duplicate. This is a
    capacity defect on the primary GPU and a prerequisite for every XTX
-   measurement.
+   measurement. **Done in iteration 152** (fused stack read through an explicit
+   expert stride); items 2-5 remain open.
 2. Flash attention for the 25 sliding-window layers (AOTriton first, since it
    already ships for Qwen); then a tiled head_dim-512 kernel for the 5 global
    layers.
@@ -4236,7 +4249,9 @@ record, not permission to reset unrelated work or weaken correctness.
   **Clearing condition**: split ``ffn_gate_up_exps`` into per-expert gate and up
   allocations at load, then flip ``_MMQ_DUAL_WEIGHTS_ARE_SPLIT``. That is the only
   remaining step before the +30% (and, with the q5_1 down leaf, the projected
-  ~1.57x) is available.
+  ~1.57x) is available. **Resolved differently in iteration 152**: the leaf gained
+  an explicit ``expert_stride_rows`` and now reads the fused stack directly, so the
+  split was removed instead of completed and the second resident copy never lands.
 
   Evidence: the two mode tables and the gate verdict above;
   ``$HOME/.cache/hipengine/tmp/gate_mmq_verdict.json``;
@@ -4277,6 +4292,12 @@ record, not permission to reset unrelated work or weaken correctness.
   is not works" rule warns about. Gate and up are *additional* allocations, built
   only when ``HIPENGINE_GEMMA4_MOE_PREFILL=mmq`` selects the route that needs them,
   because they cost a second copy of the largest expert tensor.
+
+  **Iteration 152 removed this split and the additive copy with it.** The leaf now
+  takes ``expert_stride_rows`` and reads the fused stack directly, which is the same
+  arithmetic without the second resident copy. This paragraph is kept as the record
+  of why the additive form was chosen while the leaf had no stride parameter, and of
+  the ``KeyError`` that ruled out splitting unconditionally.
 
   The split is a host-side gather of the contiguous per-expert halves, matched on
   shape (rank-3, middle dim ``2 * expert_ff``) rather than on slot name so the raw
@@ -4926,6 +4947,109 @@ record, not permission to reset unrelated work or weaken correctness.
   ``hipengine/runtime/gemma4.py`` (``GEMMA4_Q8_MMQ_MIN_ROWS`` at line 430, the policy
   construction at 683, ``q8_mmq_prefill_session``); ``gguf_q8_0_mmq_prefill.py``
   (``Q8MMQPrefillPolicy``).
+
+  **Iteration 152: the split gate/up copy is gone -- the int8 MMQ leaf reads the
+  fused stack through an explicit expert stride.**
+
+  The comparison section's first defect is fixed, and it is fixed by removing the
+  need for the split rather than by completing it. The MMQ32 leaf derived each
+  expert's weight stride from its own output width, which is why the loader
+  materialized separate gate and up tensors; the leaf now takes an explicit
+  ``expert_stride_rows`` (0 = the old per-half behavior), so Gemma 4 passes the
+  fused width and addresses the up half one half into each expert's block. The
+  fused ``ffn_gate_up_exps`` allocation is the only copy again.
+
+  What was removed, all of it from the iteration-136/137 scaffold:
+  ``Gemma4GGUFWeightSpec.split_gate_up``, ``_mmq_split_requested``,
+  ``_is_fused_expert_gate_up``, the two extra allocations in
+  ``materialize_gemma4_gguf_device_weight``, and the
+  ``_MMQ_DUAL_WEIGHTS_ARE_SPLIT`` refusal in ``gemma4_experts_forward_bf16``.
+  The route itself is unchanged: same int8 MMQ gate_up leaf, same WMMA down, same
+  ``auto`` policy.
+
+  **Memory, which is what the defect was about.** Peak device use at ``--prompt
+  1024`` falls from the comparison section's **32.35 GB** to **23.58 GB** on the
+  W7900 -- the 8.04 GiB duplicate plus its allocator overhead -- against 19.21 GB
+  resident after load. The RX 7900 XTX, which failed to load with ``HIP error 2:
+  out of memory``, now loads and runs: 23.58 GB peak of 25.75 GB total, 91.6% of
+  the device, and 1436 tok/s prefill at 1024 tokens.
+
+  **Arithmetic is unchanged, and checked two ways.**
+
+  1. Leaf-level, on the real kernel: a new GPU test builds the same weights in
+     both layouts and asserts the fused-stride output is **bit-identical** to the
+     split-tensor output. It also runs a stride that stops at the first half and
+     asserts it does *not* reproduce the split result, so the comparison cannot
+     pass on an ignored stride.
+  2. End to end: ``gemma4_teacher_forced_gate.py gate --prompt 2048 --prefill 1024``
+     against ``$HOME/.cache/hipengine/tmp/gate_auto.npz`` gives ``kl_max``
+     **0.0013407917291083497** -- the same double iteration 149 recorded for the
+     promoted default route -- with ``kl_mean`` 8.76e-06, ``kl_p95`` 2.45e-05,
+     ``kl_p99`` 1.60e-04 and **0 of 1023** top-1 flips. ``passed: true``; the same
+     split-attention routes ran (``selections [2]``, 30690 split launches).
+
+  Prefill at ``--prompt 1024`` is 1399 / 1397 / 1388 tok/s on the W7900 against
+  the comparison section's 1394, so the fix costs nothing at the recipe it is
+  measured at. Decode is unchanged at 39.4 tok/s.
+
+  Evidence: ``$HOME/.cache/hipengine/tmp/gate_stride_verdict.json``;
+  ``tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py``
+  (``test_q4_k_q8_1_ds4_mmq32_fused_stride_matches_split_tensors``);
+  ``hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.hip``
+  (``expert_stride_rows`` in the MMQ32 body, launcher and RAW/X8/T16 entry points);
+  ``hipengine/loading/gemma4_gguf_device.py``; ``gemma4_experts.py``
+  (``gemma4_project_experts_mmq_dual``); ``/tmp/gemma4_w7900_stride_1024.json`` and
+  ``/tmp/gemma4_xtx_stride.json``.
+
+  **Iteration 151 (corrected): prefill attention runs the decode-class kernel, and
+  its cost is the absence of query tiling.**
+
+  Attention is 31% of prefill at 1024 tokens and 43% at 2048, superlinear. The
+  first draft of this iteration attributed that to per-key block reductions and two
+  ``__syncthreads()`` per key in ``gemma4_attention_prefill_kernel``. **That kernel
+  does not run during prefill.** The kernel trace under "Prefill gap analysis"
+  above shows ``gemma4_attention_decode_class_kernel<..., 1, 2>`` for the 25
+  ``head_dim``-256 sliding-window layers and ``<..., 2, 2>`` for the 5
+  ``head_dim``-512 global layers, one launch per layer per prefill, plus the
+  dimension-partition phase the split path adds above 1024 keys. The barrier
+  analysis is withdrawn; the cost share it was explaining is not.
+
+  What actually runs, from ``gemma4_attention.hip``:
+
+  - ``gemma4_decode_class_launch`` (line 877) puts **one 512-thread block on each
+    (token, head)** pair -- ``grid = tokens * num_heads`` -- and each of the 16
+    warps owns two of every 32 keys (``kKeysPerTile`` 2).
+  - Pass 1 computes each key's logit with an intra-warp shuffle tree over
+    ``kTreeLanes`` 256 logical lanes (``kOwn`` 8 per physical lane), stages the
+    logits in shared memory and keeps a per-warp running maximum.
+  - Pass 2 walks the keys again to build the denominator from the staged logits;
+    pass 3 walks them a third time to accumulate values.
+
+  Two structural costs follow, and neither is a tile-size question:
+
+  1. **There is no query tiling.** Each block reads the K and V rows for its own
+     key range, so a key range is re-read once per (token, head) pair instead of
+     once per tile of query rows. A flash kernel tiles queries as well as keys and
+     reuses each K/V tile across the whole query tile; that is where its arithmetic
+     intensity comes from. This is also the term that grows faster than the prompt,
+     since the reads scale with ``tokens * keys``.
+  2. **The per-key logit reduction is not amortized.** The shuffle tree that
+     produces one scalar logit costs a fixed number of steps per key, whether the
+     block is serving one query row or many, so the reduction cost stays linear in
+     keys.
+
+  The fix direction is unchanged and is a new kernel rather than a tuning change:
+  tile queries and keys, keep a per-row running maximum and denominator with a
+  rescaled accumulator (online softmax), and reduce once per tile. llama.cpp's
+  ``-fa on`` is that kernel; the 25 sliding-window layers (``head_dim`` 256) use
+  its WMMA FP16 path and the 5 global layers (``head_dim`` 512) use the tile path.
+
+  Evidence: ``gemma4_attention.hip`` (``gemma4_decode_class_launch`` line 877,
+  ``gemma4_attention_decode_class_kernel`` line 434,
+  ``launch_gemma4_attention_decode`` line 970); the kernel trace and cost share in
+  the comparison section above; ``gemma4.attention.head_count`` 16,
+  ``head_count_kv`` 8 and 2, ``key_length_swa`` 256, ``key_length`` 512,
+  ``sliding_window`` 1024 in the artifact.
 
   **Iteration 150: the dense Q8 MMQ path is dead, the reason is found, and the
   reason turns out to be correct.**
