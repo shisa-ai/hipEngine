@@ -2808,6 +2808,62 @@ record, not permission to reset unrelated work or weaken correctness.
 
   Evidence: ``docs/RDNA3-TUNING-GUIDE.md`` §3.3, §3.5, §5.2, §5.3.
 
+  **Iteration 112: the occupancy hypothesis is refuted, and the MoE WMMA route
+  measures +14.2%.**
+
+  Iteration 111 read ``docs/RDNA3-TUNING-GUIDE.md`` §5.3 and concluded the MoE
+  was VGR-starved: many blocks, small accumulator tile, 1-2 waves per SIMD, and
+  a tensor-core variant that could not help. The guide supplies a ladder and the
+  repository already exposes it as a compile-time knob --
+  ``HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS`` accepts ``{1, 2, 4, 8}`` and
+  feeds ``-DHIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS=N``, defaulting to the
+  compiled ``__launch_bounds__(32, 2)``. Running it::
+
+      HIPENGINE_GEMMA4_MOE_PREFILL   LAUNCH_BOUNDS   prefill_tps
+      auto                           (unset)             708.28
+      wmma                           2                   809.21   +14.2%
+      wmma                           4                   769.11    +8.6%
+      wmma                           8                   683.91    -3.4%
+
+  **The ladder is monotonically worse, and at 8 it is worse than not using WMMA
+  at all.** Forcing the compiler to fit more resident blocks -- which is exactly
+  what §5.3 recommends for a latency-bound kernel -- costs time at every step.
+  So this owner is not VGR-starved in the sense §5.3 describes: the accumulators
+  earn their registers, and the right reading of §5.2 here is that collapsing the
+  accumulator tile removes reuse rather than relieving occupancy. The hypothesis
+  is dead, and it was my own, formed from a normative document and killed by a
+  four-point measurement. Recording it as dead is the point of measuring.
+
+  **The positive result is the arm itself.** ``wmma`` mode at its default bound
+  measures **809.21 tok/s against 708.28**, +14.2% on the whole prefill, which
+  independently reproduces and slightly extends iteration 86's +11.6%. ``wmma``
+  selects the *compensated* twins (``wmma_plain`` is the uncompensated pair), so
+  this is the changed-arithmetic route with the correction applied, and it
+  therefore owes the execution-profile gate rather than a default flip. That gate
+  is ``scripts/gemma4_teacher_forced_gate.py``, the same evaluator iteration 107
+  used, and running it is the next step.
+
+  **Instrument note, because it nearly hid the result.** The shape census cannot
+  attribute the WMMA families: in ``wmma`` mode the MoE rows collapse to 2 calls
+  each (against 58 in ``auto``) because the family table does not know the WMMA
+  symbol names, and one row reports 5.4 us for 298 MB -- 54862 GB/s, above any
+  physical possibility. A naive read of that output would say the MoE stopped
+  running. ``gemma4_prefill_census.py``'s ``prefill_tps`` is attribution-free and
+  is the only instrument that can measure this arm; use it, not the shape census,
+  for any variant whose symbols the family table lacks.
+
+  **Environment note.** ``/tmp`` is a 32 GB tmpfs at 100% from another agent's
+  artifacts, and that broke ``hipcc`` outright -- ``LLVM ERROR: IO failure on
+  output stream: No space left on device`` -- so the first three attempts at this
+  ladder produced no output at all. The JIT cache lives in
+  ``~/.cache/hipengine/build``, not ``/tmp``, so the failure is the compiler's own
+  temporaries. ``TMPDIR=$HOME/.cache/hipengine/tmp`` fixes it. ``/home`` is at 99%
+  with ~52 GB free, so that workaround has room but not much.
+
+  Evidence: ``gguf_k_selected_prefill.py:38`` (env name), ``:91`` (accepted set);
+  ``gguf_k_selected_prefill.hip:20`` (default 2); ``gemma4_experts.py:569``
+  (mode env and its five values); the four ``prefill_tps`` measurements above.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
