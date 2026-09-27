@@ -2314,6 +2314,56 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``qwen4_exp_q5_1.hip:515`` (kernel), ``:590-612`` (the nest),
   ``:1798`` (launcher).
 
+  **Iteration 104: the down kernel's input re-read is real and measurable, but
+  worth ~4% -- not the 2x the traffic model predicted. Fourth falsification.**
+
+  Iteration 103 read the down kernel's nest and found the row-by-k traversal
+  inside the offset loop, giving 4 input passes per CTA and 1408 passes per
+  expert. This iteration built the fix: ``COLS`` (output columns per pass) as a
+  template parameter threaded through all 16 sites that hardcoded the 2-column
+  pair, with the fold128 entry instantiated at ``COLS=4``.
+
+  The design is a **clean controlled test**, unlike the earlier attempts: the CTA
+  count is unchanged at 352 x 64, the accumulator footprint is unchanged at
+  64 floats, the work per CTA is unchanged. Only the input passes per expert
+  change, 1408 -> 704, halving input traffic from 8.1 GB to 4.05 GB.
+
+  Measured, three samples with the unchanged gate_up as a run-level control::
+
+      arm        down us (3 samples)              gate_up us (control)
+      COLS=2     7827 7827 8073 8080 8116 8159 8165 8165   7742 7752 7757 7797
+      COLS=4     7719 7743 7764                            7708 7722 7739
+
+  All three COLS=4 samples fall below the COLS=2 minimum, and the control says
+  the box was ~1% fast in those runs, so the effect is real: **~4%, not 2x**.
+  Four percent of a 450 ms shape is ~1% of the prefill.
+
+  **The traffic model fails a fourth time, and this time cleanly.** Iterations
+  99/100 inferred it from a two-point fit; iteration 101 refuted it for the
+  gate_up; iteration 103 found a genuine code-level re-read and predicted 2x from
+  it; halving that re-read moves the time by 4%. Input traffic is not the binding
+  constraint in either MoE kernel, and the apparent-bandwidth agreement that
+  looked like corroboration three times running was coincidence.
+
+  **Reverted.** A ~1% overall gain does not justify an unmeasured change to a
+  kernel path shared with Qwen3.5, and ``git restore`` returns the file exactly to
+  HEAD. The measurement is recorded here so a later iteration can take it with
+  proper Qwen coverage; the template parameter is the whole change and it is
+  specified above.
+
+  **What four failures say together.** Across these two kernels, these levers are
+  now measured dead: wider out-block at two accumulator footprints (101), wider
+  expert grid (102), and the input re-read itself (104). Nothing that changes how
+  the work is *shaped* moves these kernels, and nothing that changes how much
+  traffic they move does either. Both sit at 2-4 TFLOPS against a device with
+  ~61 TFLOPS of fp32 and ~123 of WMMA fp16. The remaining explanation is the
+  inner loop's instruction mix and latency structure, which is where the next
+  effort has to look -- or a different compute path entirely, where the measured
+  prize is the ~12% from iteration 102 rather than the 2.7x the record claims.
+
+  Evidence: ``scripts/gemma4_amortized_ab.py`` (reused); reverted change described
+  above.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
