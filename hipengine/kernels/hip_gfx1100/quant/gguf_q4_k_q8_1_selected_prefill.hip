@@ -1357,6 +1357,11 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
 // up slices of one per-expert row block, so an expert's stride is the full fused
 // width. Gemma 4's ``ffn_gate_up_exps`` is stored this way (gate first, then up,
 // per expert), which is the layout its gelu-tanh-mul consumer already expects.
+//
+// ACTIVATION_PASSES is the number of DS4 Q8_1 activation planes the caller
+// packed. The pack uses the extra planes for error feedback, so this is the
+// accuracy knob as well as the buffer size; the body already consumes them.
+template <int ACTIVATION_PASSES>
 __launch_bounds__(128, 2)
 __global__ void
 gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel(
@@ -1377,7 +1382,7 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel(
   __shared__ q4_k_mmq32_cache weight_tile[32];
   __shared__ q8_1_mmq32_cache activation_tile[32];
   gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body<
-      Q4_K_LAYOUT_RAW, 1, false, true>(
+      Q4_K_LAYOUT_RAW, ACTIVATION_PASSES, false, true>(
       x_q8,
       compact_to_source,
       expert_start_compact,
@@ -4993,7 +4998,8 @@ int launch_selected_dual_q8_1_ds4_mmq32_compact32(
         risk_threshold);
   } else if constexpr (FUSED_EXPERT_LAYOUT) {
     hipLaunchKernelGGL(
-        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel,
+        (gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel<
+            ACTIVATION_PASSES>),
         grid,
         block,
         0,
@@ -6833,6 +6839,47 @@ hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf
     hipStream_t stream) {
   return launch_selected_dual_q8_1_ds4_mmq32_compact32<
       Q4_K_LAYOUT_RAW, 1, false, true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+// Three-plane twin of the fused instantiation above. The extra two activation
+// planes carry the pack's own error feedback, which cuts the DS4 activation
+// quantization error by about three orders of magnitude for three times the
+// activation bytes; the leaf already consumes them through ACTIVATION_PASSES.
+extern "C" int
+hipengine_gguf_q4_k_selected_dual_q8_1_ds4x3_fused_mmq32_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_q8_1_ds4_mmq32_compact32<
+      Q4_K_LAYOUT_RAW, 3, false, true>(
       reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
       compact_to_source,
       expert_start_compact,
