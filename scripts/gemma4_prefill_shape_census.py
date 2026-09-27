@@ -11,6 +11,7 @@ Usage: PYTHONPATH=. .venv/bin/python scripts/gemma4_prefill_shape_census.py
 
 from __future__ import annotations
 
+import argparse
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -38,6 +39,14 @@ def weight_bytes(weight) -> int:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--tokens",
+        type=int,
+        default=1024,
+        help="prefill token count to census (default: %(default)s)",
+    )
+    args = parser.parse_args()
     runtime = get_hip_runtime()
     llm = hipengine.LLM(model=ARTIFACT)
     generator = llm._get_text_generator()
@@ -133,9 +142,10 @@ def main() -> int:
     runner.forward([9707] * 64)
     census.records.clear()
     runner.reset()
-    runner.forward([9707] * 1024)
+    runner.forward([9707] * args.tokens)
     summary = census.summarize()
 
+    print(f"### tokens={args.tokens}")
     print(
         f"{'shape':62s} {'calls':>6s} {'tot ms':>8s} {'mean us':>8s} "
         f"{'MB/call':>8s} {'GB/s':>7s} {'TF/s':>6s}"
