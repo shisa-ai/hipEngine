@@ -20,9 +20,9 @@ _MODEL_REQUIRED = pytest.mark.skipif(
 )
 
 
-def test_gguf_chunk_ranges_merge_tiny_tail() -> None:
-    assert _chunk_ranges(4097, 4096, min_chunk_size=4) == ((0, 4097),)
-    assert _chunk_ranges(8193, 4096, min_chunk_size=4) == ((0, 4096), (4096, 8193))
+def test_gguf_chunk_ranges_redistribute_tiny_tail() -> None:
+    assert _chunk_ranges(4097, 4096, min_chunk_size=4) == ((0, 4093), (4093, 4097))
+    assert _chunk_ranges(8193, 4096, min_chunk_size=4) == ((0, 4096), (4096, 8189), (8189, 8193))
 
 
 def test_gguf_aotriton_prefill_mode_policy(monkeypatch: pytest.MonkeyPatch) -> None:

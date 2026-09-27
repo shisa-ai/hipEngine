@@ -142,6 +142,15 @@ def test_cache_boundaries_follow_natural_recurrent_chunks(chunk_outer):
         runner=SimpleNamespace(hidden_size=8, weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))))
     assert {4096, 8192} <= set(cache_boundary_points(session))
     assert len(cache_boundary_points(session)) <= 3
+    # A borrowed tail moves the actual capture boundary off the old grid.
+    session._dms_cache_capture_tokens = tuple(range(4097))
+    assert 4093 in cache_boundary_points(session)
+    # Exact prefix reuse has no new chunks, but retains reusable boundaries.
+    session._dms_prefill_reuse = SimpleNamespace(
+        tokens=session._dms_cache_capture_tokens,
+        cold=SimpleNamespace(boundaries={4093: ()}),
+    )
+    assert {4093, 4097} <= set(cache_boundary_points(session))
 
 
 def test_completed_boundaries_require_every_recurrent_layer():

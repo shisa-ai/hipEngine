@@ -88,8 +88,11 @@ def cache_boundary_points(session):
     reuse = getattr(session, "_dms_prefill_reuse", None)
     start = 0 if reuse is None else len(reuse.tokens)
     minimum = int(session.runner.weights.config.ssm_conv_kernel)
-    natural = list(range(start + chunk_size, len(tokens), chunk_size))
-    natural = [end for end in natural if len(tokens) - end >= minimum]
+    from hipengine.runtime.qwen35_gguf_runner import _chunk_ranges
+    remaining = len(tokens) - start
+    ranges = (_chunk_ranges(remaining, chunk_size, min_chunk_size=minimum)
+              if remaining > 0 else ())
+    natural = [start + end for _, end in ranges if start + end < len(tokens)]
     if reuse is not None:
         natural = sorted({*natural, start, *reuse.cold.boundaries})
     selected = [natural[i] for i in np.linspace(0, len(natural) - 1,
