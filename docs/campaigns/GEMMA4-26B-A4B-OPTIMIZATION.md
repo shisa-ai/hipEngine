@@ -3147,6 +3147,60 @@ record, not permission to reset unrelated work or weaken correctness.
   ``gemma4_experts.py`` (``_WMMA_PREFILL_COMP_VARIANT`` scope); campaign
   line ~745 (the association-reordering diagnostic).
 
+  **Iteration 118: LESSONS-LEARNED.md read at last, and it names the exact fix
+  for the attention family that every other remaining lever cannot be.**
+
+  The objective asked for ``docs/LESSONS-LEARNED.md`` and this campaign reached
+  iteration 58 without opening it. It contains the measured fix pattern for the
+  one family that is both large and unblocked.
+
+  **"Exploit GQA reuse before changing attention semantics."** Qwen3.5 has 16 Q
+  heads and 2 KV heads, so each KV head feeds eight Q heads. After address
+  hoisting, the exact-attention producer "still scanned the same K/V stream
+  separately for each Q head"; the grouped producer changed the grid to
+  ``(kv_head, split)``, loaded each K/V vector once, and computed the eight
+  Q-head streams sharing that KV head::
+
+      32K/128   92.071 -> 102.383 tok/s   1.112x
+      128K/128  51.086 ->  56.722 tok/s   1.110x
+
+  with the rule stated plainly: "in GQA/MQA models, audit whether the kernel
+  rereads K/V once per Q head. If it does, a grouped producer can be a
+  double-digit long-context win **without changing KV format or model
+  semantics**."
+
+  **Gemma's attention does exactly that.** Iteration 46 established that both
+  prefill kernels launch ``dim3(num_q_heads, rows)`` -- one CTA per (query head,
+  query row) -- so K/V is re-read once per query row. The same grid also re-reads
+  it once per **Q head**, and Gemma is a GQA model. Iteration 46 saw the row
+  dimension and missed the head dimension; this lesson names it and supplies the
+  measured pattern.
+
+  **Why this matters more than the other open levers.** Every other measured win
+  in this campaign is a changed-arithmetic route blocked on the open ``kl_max``
+  ruling: the dense WMMA prefill (live, breaching) and the MoE compensated WMMA
+  (reverted, breaching). GQA grouping **changes no arithmetic** -- it is a grid
+  and reuse transformation that preserves KV format and model semantics, which is
+  why the lesson reports it as an exact win. On a default path where the largest
+  remaining levers are all awaiting a ruling, this is the one that is not.
+
+  **The documented precursor is also here**: "Hoist repeated address work before
+  redesigning attention" -- on the Qwen3.5 context kernel, storing physical token
+  offsets once during the QK pass and reusing them in V accumulation, plus a
+  contiguous block-table fast path, gave 1.019x / 1.092x / 1.198x at
+  4K/32K/128K. The rule: "before moving to a larger FlashAttention-style rewrite,
+  inspect the producer kernel for repeated page-table, stride, and offset
+  calculations that can be computed once per token/tile."
+
+  **Caveats carried forward from the lesson itself**: both measurements are at
+  long context (32K-128K) where K/V traffic dominates, so the win at 1024 tokens
+  may be smaller; and the lesson insists such producers stay "shape-gated and
+  fallback-safe". Attention is 243.7 ms / 19.2% of layer time on the default path
+  and has **no measured traffic** -- the shape census models only dense and MoE
+  shapes -- so the first step is still to measure it, not to port.
+
+  Evidence: ``docs/LESSONS-LEARNED.md`` lines 636-690.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
