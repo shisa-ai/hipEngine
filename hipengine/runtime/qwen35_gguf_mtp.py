@@ -1083,7 +1083,9 @@ class _DMSStoreJournal:
     journal is used. That ordering is what lets a commit keep the accepted
     prefix: restoring the selected row's snapshot is exactly "state as of the
     accepted prefix", and the rejected rows' writes go with it. Restoring the
-    initial snapshot undoes the whole cycle.
+    initial snapshot undoes the whole cycle. The final row can instead remain
+    in place while the accept-summary kernel runs: no further target writes
+    occur before commit/rollback, so accepting it needs no KV restore.
     """
 
     def __init__(
@@ -1109,6 +1111,7 @@ class _DMSStoreJournal:
         self._request_id: int | None = None
         self._initial: Any | None = None
         self._rows: dict[int, Any] = {}
+        self._final_row: int | None = None
         self.closed = False
 
     # -- binding and delegation -------------------------------------------
@@ -1150,6 +1153,7 @@ class _DMSStoreJournal:
         self.backend.commit(self._initial, None)
         self._initial = None
         self._rows.clear()
+        self._final_row = None
 
     # -- journal interface -------------------------------------------------
 
@@ -1170,6 +1174,7 @@ class _DMSStoreJournal:
     ) -> None:
         self._initial = self._snapshot()
         self._rows.clear()
+        self._final_row = None
         self.resident.capture_initial(
             stream=stream,
             force_consumer_state=force_consumer_state,
@@ -1182,14 +1187,24 @@ class _DMSStoreJournal:
         self.resident.capture_hidden_rows(hidden_rows, stream=stream)
 
     def capture_row(self, row: int, *, stream: int = 0) -> None:
+        if self._final_row is not None:
+            raise RuntimeError("cannot capture another row after the final DMS row")
         self.resident.capture_row(row, stream=stream)
         self._rows[int(row)] = self._snapshot()
+
+    def capture_final_row(self, row: int, *, stream: int = 0) -> None:
+        """Keep final KV in place; accept-summary evaluation does not mutate it."""
+        if self._initial is None or self._final_row is not None:
+            raise RuntimeError("final DMS row requires an open unfinished cycle")
+        self.resident.capture_row(row, stream=stream)
+        self._final_row = int(row)
 
     def restore_initial(self, *, stream: int = 0) -> None:
         if self._initial is not None:
             self.backend.rollback(self._initial)
             self._initial = None
         self._rows.clear()
+        self._final_row = None
         self.resident.restore_initial(stream=stream)
 
     def restore_row(self, row: int, *, stream: int = 0) -> None:
@@ -1201,6 +1216,9 @@ class _DMSStoreJournal:
         self.resident.restore_native_row(row, position=position, stream=stream)
 
     def _restore_store_row(self, row: int) -> None:
+        if row == self._final_row:
+            self._retire_transaction()
+            return
         snapshot = self._rows.get(row)
         if snapshot is None:
             raise RuntimeError(
@@ -1723,7 +1741,10 @@ class Qwen35GGUFTransactionalVerifier:
                     top1.append(int(result.token_id))
                     if return_logits:
                         logits.append(result.logits)
-                    self.journal.capture_row(row, stream=stream)
+                    capture = self.journal.capture_row
+                    if row == batch.rows - 1:
+                        capture = getattr(self.journal, "capture_final_row", capture)
+                    capture(row, stream=stream)
 
             if gpu_summary is None:
                 buffers = graph_bucket.owner.bind(batch, transaction_id=int(transaction_id))
