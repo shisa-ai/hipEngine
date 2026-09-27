@@ -18,6 +18,13 @@ Two Gemma 4 specifics the caller must respect, both documented on the kernel:
   Sliding-window layers need ``key > query - window`` in addition to
   ``key <= query``, and which layers those are is a config decision.
 
+A third path serves the sliding layers on the default route:
+:func:`gemma4_attention_prefill_aotriton` runs the vendored AOTriton flash kernel
+when the keep-mask the exact kernel would read is *exactly causal* and the head
+dim has a vendored image. It is a different association (online softmax over
+tiles) and its own numerical contract, so callers opt in explicitly rather than
+having it inferred from the geometry.
+
 Importing this module registers ctypes launch wrappers but does not build or load
 ROCm until a wrapper is called.
 """
@@ -25,6 +32,7 @@ ROCm until a wrapper is called.
 from __future__ import annotations
 
 import ctypes
+from collections.abc import Callable
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -64,6 +72,100 @@ _ARGTYPES_DECODE = _ARGTYPES_PREFILL + (ctypes.c_void_p, ctypes.c_int)
 _DECODE_SYMBOLS = (_SYMBOL_DECODE_BF16, _SYMBOL_DECODE_F32)
 _SYMBOL_SPLIT_WORKSPACE_BYTES = "hipengine_gemma4_decode_split_workspace_bytes"
 _SYMBOL_DECODE_SELECTION = "hipengine_gemma4_decode_selection"
+
+# Head dims the committed AOTriton runtime carries images for. The vendored tree
+# is pruned to BF16 head_dim=256 gfx11xx forward-attention images, which is the
+# sliding-layer geometry; the head_dim=512 global layers have no image and stay
+# on the exact kernel.
+_AOTRITON_PREFILL_HEAD_DIMS = (256,)
+_AOTRITON_LIBRARY: ctypes.CDLL | None = None
+_AOTRITON_RUNTIME_AVAILABLE: bool | None = None
+
+
+def aotriton_prefill_head_dims() -> tuple[int, ...]:
+    """Head dims the vendored AOTriton flash-attention image set covers."""
+
+    return _AOTRITON_PREFILL_HEAD_DIMS
+
+
+def aotriton_prefill_available(head_dim: int) -> bool:
+    """True when the vendored AOTriton runtime can serve ``head_dim``.
+
+    Availability is a property of the runtime tree, not of the request, so it is
+    resolved once and remembered. A missing tree is a missing optional dependency
+    for this one path, and the caller's fallback is the exact kernel.
+    """
+
+    global _AOTRITON_RUNTIME_AVAILABLE
+    if int(head_dim) not in _AOTRITON_PREFILL_HEAD_DIMS:
+        return False
+    if _AOTRITON_RUNTIME_AVAILABLE is None:
+        from hipengine.kernels.hip_gfx1100.attention.aotriton import (
+            AotritonNotInstalledError,
+            aotriton_runtime_tree,
+        )
+
+        try:
+            aotriton_runtime_tree()
+        except AotritonNotInstalledError:
+            _AOTRITON_RUNTIME_AVAILABLE = False
+        else:
+            _AOTRITON_RUNTIME_AVAILABLE = True
+    return _AOTRITON_RUNTIME_AVAILABLE
+
+
+def aotriton_prefill_library() -> ctypes.CDLL:
+    """The loaded AOTriton C shim, built from the vendored tree on first use."""
+
+    global _AOTRITON_LIBRARY
+    if _AOTRITON_LIBRARY is None:
+        from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
+            build_aotriton_wrap,
+        )
+
+        _AOTRITON_LIBRARY = build_aotriton_wrap(load=True)
+    return _AOTRITON_LIBRARY
+
+
+def aotriton_prefill_admits(
+    *,
+    rows: int,
+    keys: int,
+    head_dim: int,
+    sliding_window: int | None,
+    mask_is_causal: bool,
+    available: Callable[[int], bool] | None = None,
+) -> bool:
+    """True when the flash path may stand in for the exact kernel here.
+
+    Four separate questions, and the answer is yes only when all four hold:
+
+    * **The mask is causal.** ``mask_is_causal`` is the caller's assertion about
+      the mask it built. Without it a window bound or an eviction mask would be
+      silently dropped, because the flash kernel reads no mask at all.
+    * **There is more than one query row.** A single row is a decode step, which
+      the decode kernel already serves; the flash path's per-call scratch and
+      persistent atomic counter are not worth paying for one row.
+    * **The window is not binding.** A sliding mask is exactly causal while the
+      attended range is no wider than the window, so the bound has to be
+      vacuous for the whole block -- ``keys <= sliding_window``.
+    * **The runtime has an image for this head dim.** The vendored set is BF16
+      head_dim 256 only.
+
+    ``available`` overrides the runtime probe, which is what lets the policy be
+    exercised without a GPU.
+    """
+
+    if not mask_is_causal:
+        return False
+    if int(rows) <= 1:
+        return False
+    if int(keys) < int(rows):
+        return False
+    if sliding_window is not None and int(keys) > int(sliding_window):
+        return False
+    probe = aotriton_prefill_available if available is None else available
+    return bool(probe(int(head_dim)))
 class Gemma4AttentionScratch:
     """Split workspace owned by one caller on one runtime/device.
 
@@ -76,6 +178,8 @@ class Gemma4AttentionScratch:
         self._runtime: HipRuntime | None = None
         self._device: int | None = None
         self._current: dict[int, DeviceBuffer] = {}
+        self._named: dict[tuple[int, str], DeviceBuffer] = {}
+        self._u32: dict[tuple[int, str], tuple[int, int]] = {}
         self._owned: list[DeviceBuffer] = []
         self._closed = False
 
@@ -99,6 +203,61 @@ class Gemma4AttentionScratch:
         self._current[stream] = buffer
         return buffer
 
+    def named_buffer(
+        self, name: str, nbytes: int, *, stream: int, runtime: HipRuntime
+    ) -> DeviceBuffer:
+        """A buffer for one named purpose on one stream, grown in place.
+
+        :meth:`buffer` hands out a single allocation per stream because the split
+        path reuses one workspace across a call. The AOTriton path needs several
+        live at once -- the log-sum-exp row, both cumulative-sequence tables, and
+        the persistent atomic counter -- so those are keyed by purpose instead.
+        """
+
+        if self._closed:
+            raise RuntimeError("attention scratch is closed")
+        if nbytes <= 0:
+            raise ValueError("attention scratch size must be positive")
+        if self._runtime is not None and runtime is not self._runtime:
+            raise ValueError("attention scratch cannot change runtime")
+        device = runtime.current_device()
+        if self._device is not None and device != self._device:
+            raise ValueError("attention scratch cannot change device")
+        key = (stream, name)
+        previous = self._named.get(key)
+        if previous is not None and previous.nbytes >= nbytes:
+            return previous
+        capacity = max(nbytes, 2 * previous.nbytes) if previous else nbytes
+        buffer = malloc(capacity, runtime=runtime)
+        self._runtime, self._device = runtime, device
+        self._owned.append(buffer)
+        self._named[key] = buffer
+        return buffer
+
+    def upload_u32_pair(
+        self, name: str, values: tuple[int, int], *, stream: int, runtime: HipRuntime
+    ) -> DeviceBuffer:
+        """Two int32 values in a named buffer, re-uploaded only when they change.
+
+        ``copy_host_to_device`` is a synchronous ``hipMemcpy``, and the flash
+        path needs the same two cumulative-sequence entries for every layer of a
+        block. Re-uploading them per layer would put a device sync inside the
+        layer loop, so the buffer remembers the pair it already holds. The
+        remembered value is per (stream, name), which is the same key the buffer
+        itself uses, so two streams never share an assumption.
+        """
+
+        from hipengine.core.memory import copy_host_to_device, host_buffer_ptr
+
+        key = (stream, name)
+        buffer = self.named_buffer(name, 2 * 4, stream=stream, runtime=runtime)
+        if self._u32.get(key) == values:
+            return buffer
+        payload = (ctypes.c_int32 * 2)(*values)
+        copy_host_to_device(buffer, host_buffer_ptr(payload), 8, runtime=runtime)
+        self._u32[key] = values
+        return buffer
+
     def close(self) -> None:
         if self._closed:
             return
@@ -107,10 +266,14 @@ class Gemma4AttentionScratch:
                 raise ValueError("attention scratch must close on its owning device")
             for stream in self._current:
                 self._runtime.stream_synchronize(stream)
+            for stream, _ in self._named:
+                self._runtime.stream_synchronize(stream)
             while self._owned:
                 free(self._owned[-1], runtime=self._runtime)
                 self._owned.pop()
         self._current.clear()
+        self._named.clear()
+        self._u32.clear()
         self._closed = True
 
 
@@ -462,6 +625,141 @@ def gemma4_attention_prefill_f32(
         runtime=runtime,
         scratch=scratch,
     )
+
+
+def gemma4_attention_prefill_aotriton(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    out_ptr: int,
+    *,
+    tokens: int,
+    num_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    keys: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    scratch: Gemma4AttentionScratch | None = None,
+) -> None:
+    """Causal prefill attention through the vendored AOTriton flash kernel.
+
+    The same tensors as :func:`gemma4_attention_prefill_bf16` except that there
+    is no ``keep_mask``: this path takes only the causal geometry. **The caller
+    is asserting that the mask the exact kernel would read is exactly
+    ``key <= query``.** A sliding-window mask is causal only while the window is
+    at least as wide as the attended range, which is why the layer computes that
+    condition rather than inferring it here.
+
+    The arithmetic is not the exact kernel's: AOTriton runs the standard flash
+    online softmax over key tiles, so the row maximum, the denominator and the
+    value accumulation are associated differently. It is a numerically
+    equivalent formulation, not a bit-identical one, and it carries its own
+    execution-profile gate.
+
+    ``query`` is ``(tokens, num_heads, head_dim)`` BF16, ``key``/``value`` are
+    ``(keys, num_kv_heads, head_dim)`` BF16, and ``out`` is
+    ``(tokens, num_heads, head_dim)`` BF16. ``scale`` is Gemma 4's
+    ``geometry.scale`` (1.0).
+    """
+
+    from hipengine.core.dtype import DType
+    from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
+        aotriton_attn_fwd_v3_compact_varlen,
+        tensor1,
+        tensor2,
+        tensor4,
+    )
+
+    _check_prefill_shape(tokens, num_heads, num_kv_heads, head_dim)
+    if int(head_dim) not in _AOTRITON_PREFILL_HEAD_DIMS:
+        raise ValueError(
+            f"AOTriton prefill has no vendored image for head_dim {head_dim}; "
+            f"available: {list(_AOTRITON_PREFILL_HEAD_DIMS)}"
+        )
+    if tokens <= 1:
+        raise ValueError("AOTriton prefill requires more than one query row")
+    key_count = tokens if keys is None else int(keys)
+    if key_count <= 0:
+        raise ValueError("keys must be positive")
+    if key_count < tokens:
+        raise ValueError("keys must cover the query rows")
+    runtime = runtime or get_hip_runtime()
+    library = library or aotriton_prefill_library()
+
+    temporary = Gemma4AttentionScratch() if scratch is None else None
+    owner = scratch if scratch is not None else temporary
+    try:
+        lse = owner.named_buffer(
+            "aotriton_lse", num_heads * tokens * 4, stream=stream, runtime=runtime
+        )
+        atomic = owner.named_buffer(
+            "aotriton_atomic", 4, stream=stream, runtime=runtime
+        )
+        cu_q = owner.upload_u32_pair(
+            "aotriton_cu_q", (0, tokens), stream=stream, runtime=runtime
+        )
+        cu_k = owner.upload_u32_pair(
+            "aotriton_cu_k", (0, key_count), stream=stream, runtime=runtime
+        )
+
+        # Q and out are both ``(tokens, heads, head_dim)`` contiguous, and K/V are
+        # ``(keys, kv_heads, head_dim)`` contiguous. AOTriton wants rank-4 views,
+        # so the leading batch axis is a size-1 axis over the same bytes.
+        q_tensor = tensor4(
+            query_ptr,
+            (1, num_heads, tokens, head_dim),
+            (num_heads * head_dim * tokens, head_dim, num_heads * head_dim, 1),
+            DType.BF16,
+        )
+        kv_strides = (
+            num_kv_heads * head_dim * key_count,
+            head_dim,
+            num_kv_heads * head_dim,
+            1,
+        )
+        k_tensor = tensor4(
+            key_ptr, (1, num_kv_heads, key_count, head_dim), kv_strides, DType.BF16
+        )
+        v_tensor = tensor4(
+            value_ptr, (1, num_kv_heads, key_count, head_dim), kv_strides, DType.BF16
+        )
+        out_tensor = tensor4(
+            out_ptr,
+            (1, num_heads, tokens, head_dim),
+            (num_heads * head_dim * tokens, head_dim, num_heads * head_dim, 1),
+            DType.BF16,
+        )
+        lse_tensor = tensor2(lse.ptr, (num_heads, tokens), (tokens, 1), DType.FP32)
+        cu_q_tensor = tensor1(cu_q.ptr, (2,), (1,), DType.INT32)
+        cu_k_tensor = tensor1(cu_k.ptr, (2,), (1,), DType.INT32)
+
+        # V3 is the wrapper that carries bottom-right-aligned causal semantics,
+        # which is what a query block that is a suffix of the attended range
+        # needs. The persistent atomic counter is zeroed by the shim before the
+        # launch.
+        aotriton_attn_fwd_v3_compact_varlen(
+            q_tensor,
+            k_tensor,
+            v_tensor,
+            cu_q_tensor,
+            cu_k_tensor,
+            lse_tensor,
+            out_tensor,
+            persistent_atomic_counter_ptr=atomic.ptr,
+            max_seqlen_q=tokens,
+            max_seqlen_k=key_count,
+            sm_scale=float(scale),
+            is_causal=True,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+    finally:
+        if temporary is not None:
+            temporary.close()
 
 
 def register_gemma4_attention_kernels(*, replace: bool = False) -> None:
