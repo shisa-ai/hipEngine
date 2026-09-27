@@ -2015,6 +2015,37 @@ record, not permission to reset unrelated work or weaken correctness.
 
   Evidence: ``scripts/gemma4_prefill_shape_census.py``.
 
+  **Iteration 98: the two MoE kernels holding 59% of prefill now have names; the
+  dense dispatch is still unidentified.** A probe wrapping
+  ``hipengine.kernels.registry.resolve`` during one 1024-token prefill records 126
+  resolutions total, and they name the MoE owners exactly::
+
+      58  moe_linear|gguf_q4_k|selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out
+      58  moe_linear|gguf_q5_1|selected_grouped_prefill_pair2_fold128_bf16_bf16_out
+
+  Those are the 451 ms gate_up and the 473 ms down shapes -- 59% of layer time --
+  so the largest target is now two named kernels rather than two families. The
+  names also correct a labelling habit: the census calls them ``moe_grouped_*``
+  because that is the wrapper it patches, but the registered variant is a
+  ``selected_*`` hybrid.
+
+  **The dense line does not resolve through this path at all.** Of 126
+  resolutions, only two are ``linear|gguf_q8_0`` (both ``selected_gemv``, a decode
+  variant); the 410 dense prefill calls resolve nothing. They use a cached
+  dispatch, so this probe cannot name their owner, and the question from iteration
+  97b -- MMQ or WMMA for the 512-row dense shapes -- remains open. It needs either
+  the cached dispatch instrumented or the selection code read directly. Stating it
+  as open is the point: the alternative is inferring an owner from a constant's
+  comment, which is how the kmajor76 sidecar conclusion went wrong.
+
+  **And the profiler route is closed.** The campaign already records that
+  ``rocprofv3`` began hanging on this box, so kernel attribution here has to come
+  from instrumentation. Worth remembering before proposing a profiling pass: the
+  documented tool does not run.
+
+  Evidence: ``/tmp/gemma4_variant_probe.py`` (probe, not committed -- the two
+  variant names above are the finding).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
