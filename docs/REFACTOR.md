@@ -194,9 +194,36 @@
   and the model-logit envelope together; a KL-only reading can miss it. This is
   the "confirmed router-flip mechanism" the GR section below asks for, applied
   to the router itself rather than to a GR projection.
-- Remove this switch once the candidate is promoted or rejected. On promotion,
-  make it the profile's default selection and delete the runner's env read; on
-  rejection, delete the switch and keep the kernel registered but unselected.
+- **The 450-row production gate rejected the route.** `measurement_valid: true`,
+  `candidate_dispatch_calls: 4320` (so it ran; this is not the `rows > 256`
+  silent no-op). Numerical FAILED, task FAILED, state/determinism and lifecycle
+  passed. Mean KL 5.714e-4, p95 2.322e-3, p99 6.228e-3, max 3.344e-2 - all four
+  KL gates pass, at 57% of the mean budget - while **top-1 is 98.67% against a
+  99% floor**. Scope failures: `category/mixed_ja_en` (mean KL 1.083e-3),
+  `shape/prefill_last` and `transition/prefill_to_c1` (mean KL 3.515e-3).
+- **The cause is the router's discrete selection, not drift.**
+  `flip_eligible_rows` 48, `top1_mismatches_flip_eligible` **6**,
+  `top1_mismatches_outside_flip_eligible` **0**, `max_abs_logit_delta` 1.673.
+  Every top-1 mismatch sits on a row whose strict margin is small enough for the
+  observed drift to explain it. The router logits feed `qwen35_router_select`, so
+  a 4.9e-7 difference flips which of 512 experts is selected and becomes an O(1)
+  model-logit change. A passing KL envelope alongside a failing top-1 is the
+  signature of a discrete amplification node.
+- **Tuning the router kernel cannot clear this gate.** Any reduction-order change
+  moves the logits by ~1 ulp and flips the same near-ties. This also explains why
+  the GR family below "is closed to arithmetic change": a router flip changes
+  which experts run, so every downstream GR route inherits the same saturation.
+  Treat the router selection as the amplification node for the whole model's
+  arithmetic-change design space.
+- **Reopening path, campaign-level.** Make the *selection* invariant instead of
+  the arithmetic: rank experts on a quantized logit with a deterministic
+  tie-break, so a 1-ulp difference cannot reorder them. That must apply to the
+  reference too, so it re-baselines strict and needs a campaign decision, not a
+  kernel change. Reopen this route only alongside that decision; do not spend
+  another kernel attempt on it before then.
+- Remove this switch once the candidate is rejected or promoted. Rejected: delete
+  the switch, keep the kernel registered but unselected, keep the tile4 parent as
+  the default. Evidence: `benchmarks/results/2026-09-27-router-warp-reduce/`.
 
 ## MoE Backend Refresh Cache
 
