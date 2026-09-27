@@ -1370,7 +1370,15 @@ derived per launch as the largest of 8, 4, 2, 1 whose partial rows fit the 64 KB
 LDS budget, and the dispatch switch already carries a `case 16` the search never
 selects, so it is already at the hardware budget maximum. Measured decode stands
 at 21.06 tok/s against the 16.09 baseline (1.31x) with public-path token-id
-parity. Evidence row `2026-09-27-gemma4-decode-mtp-capability.json`.
+parity. A fresh row on the current tree through the same public runner measures
+**20.03 tok/s** against that 21.06, about 5% lower, while prefill in the same
+process is within 1% of its own earlier measurement (6.021 s against 5.963 s at
+1024 tokens). That gap is recorded as unresolved rather than explained: the only
+kernel change this session made outside the prefill projection routes is the
+prefill attention reduction, a different kernel from the decode one, and its own
+A/B recorded decode unchanged at 21.048 against 21.063. Separating a host effect
+from a regression needs a re-run on a stashed tree at the commit that recorded
+21.06. Evidence row `2026-09-27-gemma4-decode-mtp-capability.json`.
 
 *Measured 2026-09-27 (iteration 51): the evaluator gap the iteration-46 entry
 recorded below is closed, and the first route it was pointed at is not what that

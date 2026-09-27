@@ -46,5 +46,25 @@
    "pack8 dense decode rewrite": "rejected: not bit-exact, and the measured mechanism is pinned by tests/test_gpu_gguf_q8_0_pack8_gemv_decode_parity.py.",
    "pack8 launch count": "410 launches per step is a real cost but the route is already selected; cutting the count means graph capture or a batched dense GEMV, and the campaign records graph capture as following stable pointer and state ownership rather than preceding it."
   }
+ },
+ "fresh_public_row": {
+  "why": "the decode figure cited above is the recorded campaign measurement. This re-measures it on the current tree through the same public runner, so that the acceptance's public-path parity claim is not resting on a number taken before this session's prefill units.",
+  "command": "run_instrumented from scripts/gemma4_campaign_bench.py, 1024 prompt / 128 output, one warm repeat and three timed repeats, capacity 8192",
+  "prefill_s": [
+   5.978,
+   6.03,
+   6.021
+  ],
+  "prefill_tok_s_median": 170.08,
+  "decode_s": [
+   6.339,
+   6.326,
+   6.349
+  ],
+  "decode_tok_s_median": 20.03,
+  "recorded_decode_tok_s": 21.06,
+  "repeat_token_id_parity": true,
+  "observation": "decode measures 20.03 against the recorded 21.06, about 5% lower, while prefill in the same process is within 1% of its own earlier measurement (6.021 s against 5.963 s at 1024 tokens). This is recorded as an unresolved observation, not explained away. The attribution evidence available is that the only kernel change this session made outside the prefill projection routes is the prefill attention reduction, which is a different kernel from the decode one and whose own A/B recorded decode unchanged at 21.048 against 21.063. Decode is the more launch-sensitive of the two phases, so a host difference would show there first, but no A/B across this session's commits was run to settle it.",
+  "next_check": "re-run this row on a stashed tree at the commit that recorded 21.06 to separate a host effect from a regression."
  }
 }
