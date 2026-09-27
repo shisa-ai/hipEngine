@@ -3201,6 +3201,59 @@ record, not permission to reset unrelated work or weaken correctness.
 
   Evidence: ``docs/LESSONS-LEARNED.md`` lines 636-690.
 
+  **Iteration 119: prefill attention is the correctness-first block kernel, and
+  its optimization path is already demonstrated next door.**
+
+  Iteration 118 found the GQA grouping lead in LESSONS-LEARNED and the caveat
+  that its 1.11x was measured at 32K-128K. Reading this campaign's own attention
+  record (lines 313-348) supplies the fact that matters more: the Gemma attention
+  module describes its multi-token kernel as "the original **correctness-first**
+  block kernel", and that is the kernel prefill runs. `attention_prefill` is
+  243.7 ms / 19.2% of layer time on the default path -- **the largest component
+  that was never tuned**, and the only large one whose fix is arithmetic-exact.
+
+  **Its decode sibling was tuned twice, in the same file, with the recipe
+  recorded.** Iterations 21-22 replaced the block kernel's eight-warp tree with a
+  warp-per-(token, head) kernel whose 256 tree lanes live inside one warp: tree
+  strides 128/64/32/16/8 become shuffle lane distances 16/8/4/2/1 and 4/2/1
+  become in-lane adds, "same pairs, same order, so it is **bit-exact**" and needs
+  "no production-profile gate". Measured 851-870 us against the block kernel's
+  1186 us at keys=1024, 1489 against 2210 at keys=2048, campaign metric +6.2%
+  with public-path parity true. So the prefill kernel's cost is a known,
+  already-diagnosed class of waste -- LDS partial rows, three tree rounds, a
+  publish/broadcast pair and a barrier sequence per key -- and the exact
+  restructure that removes it has been executed once already in this repository.
+
+  **One recorded diagnosis must NOT be transferred.** The same record says "the
+  machine is 16x idle and the block kernel's remaining cost is per-block latency",
+  from a grid-scaling run at ``--tokens`` 1/2/4/8/16. That was measured at
+  tokens=1, where the grid is ``num_q_heads``. Prefill's grid is
+  ``dim3(num_q_heads, rows)`` -- roughly a thousand times larger at 1024 rows --
+  so the under-occupancy finding does not carry over, and iteration 46's
+  "one CTA per (head, row) means no K/V reuse" remains the operative description
+  of the prefill kernel's structure. Noting this explicitly because the phrase
+  "16x idle" is exactly the kind of quoted diagnosis that gets reused past its
+  measurement conditions.
+
+  **What transfers, in the order the repository's own evidence supports it**:
+  (1) the warp-per-(token, head) restructure that removed the LDS rounds and
+  barriers from the decode path; (2) GQA grouping -- grid ``(kv_head, ...)``
+  loading each K/V vector once for the Q heads that share it, 1.11x at long
+  context per LESSONS-LEARNED; (3) hoisting repeated page-table, stride and
+  offset work out of the V loop, 1.019-1.198x by context. All three are exact.
+
+  **The measurement gap remains.** Attention still has no measured traffic: the
+  shape census models weight and activation bytes for projection launches only,
+  and its model does not describe K/V re-read behaviour, which is the quantity in
+  question. Iteration 118's caveat stands -- the long-context wins may be smaller
+  at 1024 tokens -- so the first step is still to measure, and the cheapest
+  instrument for that is a prefill-census family that models K/V bytes, not a
+  port.
+
+  Evidence: ``gemma4_attention.py:1`` (family docstring, "correctness-first");
+  campaign lines 313-348 (iterations 21-22, the decode restructure and its
+  bit-exactness); ``LESSONS-LEARNED.md`` 636-690.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
