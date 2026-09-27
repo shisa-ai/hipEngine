@@ -4,6 +4,28 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## Dense Q8 MMQ prefill branch is unreachable behind the WMMA rewrite (found 2026-09-26)
+
+The dense branch of `_q8_mmq_prefill_dispatch`
+(`hipengine/runtime/gguf_linear.py`) cannot fire for any shape whose policy admits
+it. `_wmma_prefill_dispatch` runs earlier in the chain and rewrites a raw Q8_0
+dispatch to `abi="wmma_raw"` / `variant="wmma_prefill_bf16_bf16_out"`, while the
+MMQ dispatch matches on `abi == "raw"` plus one of three unwrapped variant names,
+so it returns the dispatch unchanged. Instrumentation at the entry point confirmed
+680 admitted dispatches rejected on the key mismatch and none on policy.
+
+**This is not a bug to fix by reordering.** Making the branch fire was measured at
+29% slower (1054 against 1367 tok/s) although correct, and `kl_max` improved to
+0.000893 from 0.001341. The unreachability is the mechanism that keeps a slower
+route off the default path, so the ordering is load-bearing.
+
+What is left to clean up is the appearance: the branch reads as a working route.
+Either delete the dense branch and its policy entries, or add the note at the
+match site explaining that the `wmma_raw` rewrite precedes it by design. Decide when
+someone next touches the Q8 MMQ policy. Removal condition: any edit to
+`_q8_mmq_prefill_dispatch`'s dense branch or to the Gemma4 `Q8MMQPrefillPolicy`
+shape table.
+
 ## Gemma attention legacy slice-count ABI (2026-09-26)
 
 The default two-pass decode attention in
