@@ -1693,6 +1693,63 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``scripts/gemma4_moe_owner_oracle.py``; captures
   ``rows=4096 experts=128 in=2816 half=704 fused=1408``.
 
+  **Iteration 91: the MoE dp4a root cause is a missing weight_pack for Q4_K --
+  the route is a feature, not a wiring fix.** Iteration 90 built the oracle and
+  named the pack format as the likely cause. Testing that properly eliminated it
+  and every other wiring hypothesis, and landed on the weights.
+
+  **The evidence chain, in the order the oracle produced it.**
+
+  1. All eight combinations of identity fill (unpadded/padded) x expert-start
+     array (compact/plan) x plan builder (mmq32/wmma) give the *identical* wrong
+     answer, ``max_abs`` 3.91504 to five digits. The mapping is not the fault.
+  2. ``got_absmax`` is 2.24 (RAW) and 1.96 (X8) against the reference's 2.125:
+     the magnitudes are right. The apparent "16x scale error" from the
+     least-squares fit was an artifact -- a scale fitted to uncorrelated data is
+     meaningless, and I read it as a finding for one iteration. What actually
+     holds is: right magnitudes, uncorrelated values.
+  3. No row permutation: for a sample of output rows the nearest reference row is
+     1.85 away, 0/8 matched. The rows are not shuffled.
+  4. RAW vs X8 with a *valid* plan differ (3.915 vs 3.920), so the layout
+     template does matter -- but neither is right. The earlier "RAW equals X8"
+     reading was invalid: that comparison ran before ``build_plan``, so both
+     sides were reading an uninitialized tile map.
+  5. Halves as-is vs swapped: all four combinations ~3.9 with 0% rows correct.
+     The half order is not the fault.
+
+  Right magnitudes, uncorrelated values, insensitive to mapping, ordering,
+  template, and half order. That leaves the weights themselves.
+
+  **The root cause.** ``hipengine/runtime/gguf_q8_mmq_sidecars.py`` resolves a
+  ``weight_pack`` kernel at variant ``mmq_kmajor76`` per quant key: the MMQ
+  owners consume a K-major-packed *sidecar* tensor, not the raw GGUF blocks.
+  That variant is registered for exactly one quant -- ``gguf_q8_0`` -- and the
+  sidecar builder is imported by exactly one runner, ``qwen4_exp_runner``.
+  Gemma's runtime never builds sidecars, and no Q4_K ``mmq_kmajor76`` pack exists
+  to build. So every attempt fed raw Q4_K blocks to an owner expecting a packed
+  layout, which produces plausible-magnitude, uncorrelated output -- precisely
+  what was measured. The same registry explains why the *dense* Q8_0 MMQ path
+  works and is default-on: its pack exists.
+
+  **What that means for the route.** The MoE dp4a prize (~25% of prefill, the
+  MoE line sitting at 71% of prefill against ~6% of its memory floor) requires
+  writing a ``weight_pack``/``mmq_kmajor76`` kernel for ``gguf_q4_k`` and wiring
+  sidecar construction into Gemma's runtime -- a kernel-development task with a
+  load-time repack and its memory cost, not a dispatch fix. That is a materially
+  different decision from the one the earlier attempts implied, and it is the
+  decision the lead now has to make.
+
+  **Also real, and cheap to fix separately:** the oracle reproduced attempt 2's
+  end-to-end failure exactly by calling the owner before ``build_plan``. The
+  plan buffers are only built when ``gate_up_wmma or down_wmma`` is set, which is
+  false by default, so any future attempt that reaches for the plan without
+  building it gets an uninitialized tile map -- non-deterministic output that
+  looks like a correctness bug rather than a missing initialization.
+
+  Evidence: ``scripts/gemma4_moe_owner_oracle.py`` (updated with the layout,
+  half-order, and row-permutation probes and with the plan built before the
+  probes, which is what made them valid).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
