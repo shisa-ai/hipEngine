@@ -165,10 +165,28 @@ _GROUPED_VARIANT_COUNTS: dict[str, int] = {}
 # campaign's frozen evaluator has been recorded for this default, delete the flag.
 # See ``docs/REFACTOR.md``.
 _GEMMA4_MOE_GATE_UP_MMQ_ENV = "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ"
+_GEMMA4_MOE_DOWN_MMQ_ENV = "HIPENGINE_GEMMA4_MOE_DOWN_MMQ"
 
 # Values that turn the route off. Anything else, including unset, leaves it on, so
 # a typo cannot silently downgrade the default path.
 _MMQ_DISABLING_VALUES = frozenset(("0", "false", "no", "off", "disable", "disabled"))
+
+
+def gemma4_moe_down_mmq_enabled() -> bool:
+    """Whether the Q5_1 DS4 MMQ down-projection route may be selected.
+
+    On by default. The down projection is the largest single route in gfx1151
+    prefill and has no MMQ path without this one, so it runs the fp32 grouped
+    family at 8.6 GB/s where the Q4_K gate/up MMQ on the same layer runs at
+    67 GB/s. ``HIPENGINE_GEMMA4_MOE_DOWN_MMQ`` set to a falsy value is the
+    rollback lever and restores the grouped route.
+    """
+
+    import os
+
+    return os.environ.get(_GEMMA4_MOE_DOWN_MMQ_ENV, "").strip().lower() not in (
+        _MMQ_DISABLING_VALUES
+    )
 
 
 def gemma4_moe_gate_up_mmq_enabled() -> bool:
@@ -301,7 +319,10 @@ class Gemma4ExpertScratch:
             # The pack uses extra planes for error feedback, which is the whole
             # point of paying for them; _MMQ_ACTIVATION_PASSES records why that
             # count is 1 today and what would lift it.
-            "mmq_workspace": lanes * (self.hidden_size // 128) * 144 * _MMQ_ACTIVATION_PASSES,
+            "mmq_workspace": lanes
+            * (max(self.hidden_size, self.intermediate) // 128)
+            * 144
+            * _MMQ_ACTIVATION_PASSES,
             "mmq_identity": lanes * _I64_BYTES,
             # One 32-row tile per entry; a tile-per-expert bound is exact when
             # every expert has at least one row, and adding the leftover rows
@@ -471,21 +492,41 @@ def gemma4_experts_forward_bf16(
         _record_moe_route("gate_up_mmq32")
     gemma4_gelu_tanh_mul_bf16(gate_up_out.ptr, activated.ptr, lanes, intermediate, **kwargs)
 
-    # 4. The down projection, over the same compact rows.
-    _record_moe_route(
-        gemma4_project_experts_rows(
+    # 4. The down projection, over the same compact rows. The Q5_1 DS4 MMQ
+    # route runs first where the weight qualifies; the grouped family is the
+    # fallback, and it is also what every non-Q5_1 down weight takes.
+    if not (
+        gemma4_moe_down_mmq_enabled()
+        and gemma4_moe_prefill_route_enabled(lanes=lanes, num_experts=num_experts)
+        and gemma4_project_experts_down_mmq(
             down_proj,
             activated.ptr,
             expert_out.ptr,
             expert_start,
-            sorted_experts.ptr,
             lanes,
             num_experts,
             intermediate,
             hidden_size,
+            scratch=scratch,
             **kwargs,
         )
-    )
+    ):
+        _record_moe_route(
+            gemma4_project_experts_rows(
+                down_proj,
+                activated.ptr,
+                expert_out.ptr,
+                expert_start,
+                sorted_experts.ptr,
+                lanes,
+                num_experts,
+                intermediate,
+                hidden_size,
+                **kwargs,
+            )
+        )
+    else:
+        _record_moe_route("down_mmq32")
 
     # 5. Accumulate the compacted expert outputs back onto their tokens.
     gemma4_moe_lane_to_row_i32(sorted_lanes.ptr, lane_to_row.ptr, lanes, **kwargs)
@@ -835,6 +876,94 @@ def gemma4_project_experts_grouped_prefill(
         )
         return True
     return False
+
+
+def gemma4_project_experts_down_mmq(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    out_ptr: int,
+    expert_start,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    scratch: Gemma4ExpertScratch,
+    stream: int = 0,
+    runtime: object | None = None,
+) -> bool:
+    """Run the DS4 DP4A MMQ route over a Q5_1 expert down projection.
+
+    The down projection is the largest single route in gfx1151 prefill. Without
+    this route it has no MMQ path at all -- :func:`gemma4_project_experts_gate_up_mmq`
+    accepts only ``gguf_q4_k`` and ``gguf_q5_k`` -- so it runs the fp32 grouped
+    family at 8.6 GB/s where the Q4_K gate/up MMQ on the same layer runs at
+    67 GB/s, 11.8x per FLOP at this artifact's shapes.
+
+    Returns ``False`` when the weight or the geometry does not qualify, which is
+    a property of the quant key and the shapes rather than of a model or an
+    artifact; the caller then falls back to the grouped route.
+
+    This route quantizes the block's activations to DS4 Q8_1 over
+    ``_MMQ_ACTIVATION_PASSES`` activation planes, so its arithmetic differs from
+    the fp32 grouped route: the error is bounded by the activation quantization
+    step, not by reassociation. It is the same envelope the Q4_K gate/up route
+    already runs at, measured in ``tests/test_unit_gemma4_expert_route.py``.
+
+    The Q5_1 consumer tiles ``in_features`` in 128-wide DS4 blocks and reads one
+    Q5_1 block per 32 columns, so a width that is not a multiple of 128 is a
+    partial trailing block rather than a refusal -- which is what lets Gemma 4
+    26B-A4B's 704-wide expert down projection use this route at all.
+    """
+
+    if isinstance(weight, int):
+        return False
+    if getattr(weight.spec, "quant_key", None) != "gguf_q5_1":
+        return False
+    if in_features <= 0 or in_features % 32:
+        return False
+    if out_features <= 0 or compact_rows <= 0 or num_experts <= 0:
+        return False
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+        build_gguf_q4_k_q8_1_selected_prefill,
+        gguf_q8_1_mmq_ds4_pack_bf16 as pack_activations,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_mmq_selected_prefill import (
+        build_gguf_q5_1_mmq_selected_prefill,
+        gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out as mmq_down,
+    )
+
+    workspace = scratch.buffer("mmq_workspace")
+    needed = compact_rows * ((in_features + 127) // 128) * 144 * _MMQ_ACTIVATION_PASSES
+    if workspace.nbytes < needed:
+        return False
+
+    kwargs = {"stream": stream}
+    if runtime is not None:
+        kwargs["runtime"] = runtime
+    pack_activations(
+        x_ptr,
+        workspace.ptr,
+        compact_rows,
+        in_features,
+        library=build_gguf_q4_k_q8_1_selected_prefill(load=True),
+        **kwargs,
+    )
+    mmq_down(
+        workspace.ptr,
+        expert_start.ptr,
+        weight.allocation("raw").buffer.ptr,
+        out_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        _MMQ_ACTIVATION_PASSES,
+        library=build_gguf_q5_1_mmq_selected_prefill(load=True),
+        **kwargs,
+    )
+    return True
 
 
 def gemma4_project_experts_grouped_row4(

@@ -91,7 +91,10 @@ void q5_1_mmq_ds4_selected_prefill_kernel(
     int planes) {
   const int64_t out_col = static_cast<int64_t>(blockIdx.x) * 128 + threadIdx.x;
   if (out_col >= out_features) return;
-  const int64_t ds4_blocks = in_features / Q8_1_MMQ_BLOCK;
+  // Round up: a width that is not a multiple of the 128-wide DS4 block still
+  // needs its trailing block read, and flooring here is what silently dropped
+  // the last 64 of Gemma 4 26B-A4B's 704-wide expert down projection.
+  const int64_t ds4_blocks = (in_features + Q8_1_MMQ_BLOCK - 1) / Q8_1_MMQ_BLOCK;
   for (int64_t expert = blockIdx.y; expert < num_experts; expert += gridDim.y) {
     const int64_t start = expert_start[expert];
     const int64_t end = expert_start[expert + 1];
@@ -108,10 +111,23 @@ void q5_1_mmq_ds4_selected_prefill_kernel(
 #pragma unroll
       for (int r = 0; r < ROWS_PER_PASS; ++r) acc[r] = 0.0f;
       for (int64_t kb = 0; kb < ds4_blocks; ++kb) {
+        // Q5_1 blocks of real weight data in this 128-wide group. It is 4 for
+        // every group but a trailing partial one, and the row's byte layout
+        // holds exactly (in_features/32) of them, so reading a fifth would run
+        // past the row. Skipping is exact: the dropped sub-blocks multiply
+        // activation elements that do not exist, and the pack writes zeros
+        // there, so their contribution is zero either way. `full_group` keeps
+        // the guard off the common path so the four-way unroll survives.
+        const bool full_group = (kb + 1) * Q8_1_MMQ_BLOCK <= in_features;
+        const int64_t sub_blocks =
+            (in_features - kb * Q8_1_MMQ_BLOCK + QK5_1 - 1) / QK5_1;
         const uint8_t* w_base =
             weight_row + kb * (Q8_1_MMQ_BLOCK / QK5_1) * Q5_1_BLOCK_BYTES;
 #pragma unroll
         for (int sub = 0; sub < 4; ++sub) {
+          if (!full_group && sub >= sub_blocks) {
+            continue;
+          }
           const uint8_t* w_sub = w_base + sub * Q5_1_BLOCK_BYTES;
           const float d =
               fp16_bits_to_float(*reinterpret_cast<const uint16_t*>(w_sub));
@@ -180,7 +196,7 @@ extern "C" int hipengine_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
     hipStream_t stream) {
   if (x_ds4 == nullptr || expert_start == nullptr || qweight == nullptr ||
       out == nullptr || compact_rows <= 0 || num_experts <= 0 ||
-      in_features <= 0 || (in_features % Q8_1_MMQ_BLOCK) != 0 ||
+      in_features <= 0 || (in_features % QK5_1) != 0 ||
       out_features <= 0 || planes <= 0 || planes > 3) {
     return static_cast<int>(hipErrorInvalidValue);
   }

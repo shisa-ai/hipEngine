@@ -548,11 +548,16 @@ __global__ void gguf_q8_1_mmq_ds4_pack_bf16_kernel(
   const int tid = threadIdx.x;
   const int ds4_idx = tid >> 5;
   const int lane = tid & 31;
-  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  // Round up: a trailing block that holds fewer than 128 elements is still
+  // packed, so the MMQ consumer can read a whole block there. The elements past
+  // `hidden` are zero, which leaves this block's max_abs and its sum unchanged
+  // -- a zero cannot raise a maximum or move a sum -- so the scale the real
+  // elements get is the one they would have got without the padding.
+  const int64_t blocks_per_row = (hidden + Q8_1_MMQ_BLOCK - 1) / Q8_1_MMQ_BLOCK;
   if (row >= rows || q8_block >= blocks_per_row) return;
 
-  const int64_t in_idx = row * hidden + q8_block * Q8_1_MMQ_BLOCK + tid;
-  float residual = bf16_bits_to_float(x[in_idx]);
+  const int64_t column = q8_block * Q8_1_MMQ_BLOCK + tid;
+  float residual = column < hidden ? bf16_bits_to_float(x[row * hidden + column]) : 0.0f;
 
   __shared__ float scale_shared[4];
   __shared__ float sum_shared[4];
@@ -798,8 +803,11 @@ bool valid_q8_1_mmq_ds4_pack(
     const void* out,
     int64_t rows,
     int64_t hidden) {
+  // 32, not 128: a width that is not a multiple of the 128-wide DS4 block is
+  // packed with a partial trailing block, which the kernel writes from the
+  // elements that exist and zeroes for the rest.
   return x != nullptr && out != nullptr && rows > 0 && hidden > 0 &&
-      (hidden % Q8_1_MMQ_BLOCK) == 0;
+      (hidden % 32) == 0;
 }
 
 bool valid_q8_1_selected_dual_common(
@@ -2603,7 +2611,8 @@ int launch_q8_1_mmq_ds4_pack_bf16(
   if (!valid_q8_1_mmq_ds4_pack(x, out, rows, hidden)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  const int64_t blocks_per_row =
+      (hidden + Q8_1_MMQ_BLOCK - 1) / Q8_1_MMQ_BLOCK;
   hipLaunchKernelGGL(
       (gguf_q8_1_mmq_ds4_pack_bf16_kernel<residual_passes>),
       dim3(static_cast<unsigned int>(blocks_per_row), static_cast<unsigned int>(rows)),

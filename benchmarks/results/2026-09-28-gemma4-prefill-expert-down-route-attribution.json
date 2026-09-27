@@ -1,6 +1,6 @@
 {
   "kind": "gemma4_prefill_attribution",
-  "verdict": "recorded - the largest remaining prefill route has a measured mechanism and a named implementation path; no code change landed in this unit",
+  "verdict": "accepted and promoted (default path, rollback lever HIPENGINE_GEMMA4_MOE_DOWN_MMQ)",
   "recorded": "2026-09-28, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B, UD-Q4_K_XL, 2048-token prefill",
   "why": "the expert route is 43.4% of gfx1151 prefill and had no measured mechanism. It now does, and the mechanism names a specific kernel that already exists and is already wired for another model in this tree. This row exists so the next unit starts from the measurement instead of re-deriving it.",
   "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 PYTHONPATH=. python3 scripts/gemma4_prefill_route_ablation.py --prompt 2048 --repeats 2",
@@ -21,11 +21,41 @@
   "expert_breakdown_measured": {
     "method": "HIP events around each real launch, 2048-token prefill",
     "rows": [
-      {"route": "gate_up_mmq", "quant": "gguf_q4_k", "n": 120, "total_ms": 508.81, "per_launch_ms": 4.240},
-      {"route": "rows (outer, contains grouped_prefill)", "quant": null, "n": 124, "total_ms": 3091.91, "per_launch_ms": 24.935},
-      {"route": "grouped_prefill", "quant": "gguf_q5_1", "n": 116, "total_ms": 2432.37, "per_launch_ms": 20.969},
-      {"route": "grouped_prefill", "quant": "gguf_q8_0", "n": 4, "total_ms": 166.39, "per_launch_ms": 41.598},
-      {"route": "grouped_prefill", "quant": "gguf_q5_k", "n": 4, "total_ms": 13.06, "per_launch_ms": 3.266}
+      {
+        "route": "gate_up_mmq",
+        "quant": "gguf_q4_k",
+        "n": 120,
+        "total_ms": 508.81,
+        "per_launch_ms": 4.24
+      },
+      {
+        "route": "rows (outer, contains grouped_prefill)",
+        "quant": null,
+        "n": 124,
+        "total_ms": 3091.91,
+        "per_launch_ms": 24.935
+      },
+      {
+        "route": "grouped_prefill",
+        "quant": "gguf_q5_1",
+        "n": 116,
+        "total_ms": 2432.37,
+        "per_launch_ms": 20.969
+      },
+      {
+        "route": "grouped_prefill",
+        "quant": "gguf_q8_0",
+        "n": 4,
+        "total_ms": 166.39,
+        "per_launch_ms": 41.598
+      },
+      {
+        "route": "grouped_prefill",
+        "quant": "gguf_q5_k",
+        "n": 4,
+        "total_ms": 13.06,
+        "per_launch_ms": 3.266
+      }
     ],
     "note": "gate_up_mmq is the gate/up projection (120 launches, 4 chunks x 30 layers). The down projection is the rows/grouped_prefill pair. The 659.54 ms difference between rows and grouped_prefill is the selected-GEMV fallback for the rows the grouped route does not take."
   },
@@ -41,8 +71,20 @@
       "chunk_lanes": "512 tokens x 8 = 4096 compact rows"
     },
     "rates": {
-      "gate_up_q4_k_mmq": {"flop_per_launch": "4096 x 2816 x 1408 x 2 = 32.5 GFLOP", "ms": 4.240, "tflops": 7.66, "bytes_per_launch": "128 experts x 1408 x 2816 x 0.5625 = 285.5 MB", "gb_per_s": 67},
-      "down_q5_1_grouped": {"flop_per_launch": "4096 x 704 x 2816 x 2 = 16.2 GFLOP", "ms": 20.969, "tflops": 0.65, "bytes_per_launch": "128 experts x 2816 x 704 x 0.6875 = 174.4 MB", "gb_per_s": 8.6},
+      "gate_up_q4_k_mmq": {
+        "flop_per_launch": "4096 x 2816 x 1408 x 2 = 32.5 GFLOP",
+        "ms": 4.24,
+        "tflops": 7.66,
+        "bytes_per_launch": "128 experts x 1408 x 2816 x 0.5625 = 285.5 MB",
+        "gb_per_s": 67
+      },
+      "down_q5_1_grouped": {
+        "flop_per_launch": "4096 x 704 x 2816 x 2 = 16.2 GFLOP",
+        "ms": 20.969,
+        "tflops": 0.65,
+        "bytes_per_launch": "128 experts x 2816 x 704 x 0.6875 = 174.4 MB",
+        "gb_per_s": 8.6
+      },
       "ratio": "11.8x per FLOP, 7.8x per byte"
     },
     "root_cause": "Q5_1 has no MMQ route in the gemma4 expert dispatch. gemma4_project_experts_gate_up_mmq returns False for any quant_key other than gguf_q4_k and gguf_q5_k, so the Q5_1 down projection falls to the fp32 grouped family, whose best variant runs at 8.6 GB/s where the Q4_K MMQ runs at 67 GB/s.",
@@ -72,7 +114,36 @@
     "The 43.4% expert share is from the ablation's no_experts arm, which skips the launches and therefore produces wrong output. It is a diagnostic and only its timing is read.",
     "The probe's route rows nest, so gate_up_mmq + rows is the expert total and rows already contains grouped_prefill. Adding all five rows double-counts.",
     "The dense Q8_0 share of prefill remains unmeasured. The no_dense_q8 and no_all_gemv arms both report about -1%, which is impossible because skipping every GEMV cannot save less than skipping the experts alone at 43.4%. The arms hook funnels the prefill leaves do not use.",
-    "The 11.8x per-FLOP ratio compares two different quantizations at two different shapes. The per-byte ratio of 7.8x is the cleaner comparison and it is the one the root cause rests on."
+    "The 11.8x per-FLOP ratio compares two different quantizations at two different shapes. The per-byte ratio of 7.8x is the cleaner comparison and it is the one the root cause rests on.",
+    "The model does not generate coherent text on this branch. 'The capital of France is' -> ' it is it is it is...', 'Hello' -> 'HelloHelloHello...', and greedy token ids cycle 568, 609, 568, 609. This is pre-existing and identical with the down MMQ route on and off, so it is not a regression from this change, but it means the +38% prefill figure is a speed measurement on an implementation whose generation path is broken. It is reported here so the speed number is not read as more than it is."
   ],
-  "next": "Extend the Q5_1 MMQ kernel and its DS4 activation pack to a partial trailing group, then wire gemma4's down projection to it with an explicit route in gemma4_experts.py. That is the largest single lever left in gfx1151 prefill: about 43% of the step, behind a named kernel that already exists and already runs for another model in this tree."
+  "next": "Extend the Q5_1 MMQ kernel and its DS4 activation pack to a partial trailing group, then wire gemma4's down projection to it with an explicit route in gemma4_experts.py. That is the largest single lever left in gfx1151 prefill: about 43% of the step, behind a named kernel that already exists and already runs for another model in this tree.",
+  "executed": {
+    "what_landed": "the Q5_1 DS4 DP4A MMQ route is now reachable from gemma4's expert down projection",
+    "kernel_change": "the Q5_1 MMQ consumer and the DS4 Q8_1 activation pack both handle a partial trailing 128-wide block. The consumer rounds ds4_blocks up and skips the Q5_1 sub-blocks a trailing group does not have; the pack rounds blocks_per_row up and reads 0.0 past `hidden`.",
+    "why_padding_is_transparent": "the elements past `hidden` are zero, and a zero cannot raise a max_abs or move a sum, so the scale the real elements get is the one they would have got without the padding. The consumer's skipped sub-blocks multiply activation elements that do not exist, so their contribution is zero either way.",
+    "route_change": "gemma4_project_experts_down_mmq in hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py, tried before the grouped family at the down call site in gemma4_experts_forward_bf16. Gemma4ExpertScratch now sizes mmq_workspace for max(hidden_size, intermediate) so the down's own width cannot overflow the gate_up's buffer.",
+    "measured_effect": {
+      "before": {
+        "prefill_s": 7.191,
+        "prefill_tps": 284.8,
+        "expert_share": "3.087 s, 43.4%"
+      },
+      "after": {
+        "prefill_s": 5.213,
+        "prefill_tps": 392.9,
+        "expert_share": "0.573 s, 11.0%"
+      },
+      "saving": "1.978 s of prefill, +38.0% prefill throughput",
+      "route_counts": "down_mmq32 116 of 120 launches; the grouped family fell from 120 to 4 (the Q5_K and Q8_0 layers)"
+    },
+    "correctness": {
+      "kernel_at_the_real_geometry": "4096 compact rows, 128 experts, 704 -> 2816, one plane, against the fp32 grouped owner and against an exact dequant oracle: grouped vs oracle max 0.00789 / mean 0.000712 relative; MMQ vs oracle max 0.01297 / mean 0.001336; MMQ vs grouped max 0.01218 / mean 0.001110. That is the same envelope the Q4_K gate_up MMQ route already runs at.",
+      "model_level": "24 greedy steps from a 300-token prompt, route on vs route off: identical token ids [236795, 568, 609, 568, 609, ...], logits differing by 0.1-0.4 absolute with an unchanged argmax.",
+      "suite": "406 gemma4 tests: 405 passed, 1 failed. The failure is tests/test_unit_gemma4_runner.py::test_incremental_decode_matches_a_dense_prefill and it reports the identical max abs diff 4.417 with and without this change.",
+      "unit_test": "tests/test_gpu_gguf_q5_1_mmq_selected_prefill.py is now parametrized over in_features 640 (multiple of 128, the control) and 704 (the artifact's width). Both pass; 704 raised ValueError before this change."
+    },
+    "execution_profile_note": "the route quantizes activations to DS4 Q8_1 over _MMQ_ACTIVATION_PASSES = 1 plane, the same plane count and the same envelope as the Q4_K gate_up route. Raising the plane count changes a production default's arithmetic and still needs its own gate; that is unchanged and unaddressed here.",
+    "not_a_regression_check_that_matters": "the model generates degenerate text on this branch -- see the separate finding. Both route settings produce the same degenerate ids, so this change neither caused nor masked it."
+  }
 }
