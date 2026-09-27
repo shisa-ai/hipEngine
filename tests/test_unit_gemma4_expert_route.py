@@ -992,6 +992,186 @@ def test_fused_gate_up_mmq_route_matches_a_dequantized_reference() -> None:
 
 
 @_needs_hip
+def test_fused_gate_up_mmq_route_takes_its_min_correction_from_one_plane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Q4_K min-offset correction is a property of the activation, not a plane.
+
+    The leaf's correction is ``-dmin * xsum``, where ``xsum`` is the sum stored
+    beside the activation plane. For the Q4_K weight ``d*scale*q - dmin*min``
+    that term accounts for ``dmin * min * sum_k x[k]``, so it needs the
+    activation's own sum -- which is exactly what the *first* plane stores.
+    Later planes store their residuals' sums, so accumulating the term once per
+    plane over-counts it by about the size of the error the extra planes exist to
+    remove. That is why three planes measured 1.08x better than one rather than
+    22x on the model, and why the route's residual error looked like a
+    non-activation source at 0.61 percent relative.
+
+    The contract this pins is that the later planes' stored sums are not an
+    input. Two three-plane runs that differ only in those sums must agree
+    bit-for-bit.
+    """
+
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        copy_host_array_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts
+    from hipengine.kernels.hip_gfx1100.quant import (
+        gguf_q4_k_q8_1_selected_prefill as leaf_module,
+    )
+    from hipengine.quant.gguf import dequantize_gguf_data
+
+    backend = _grouped_backend("gguf_q4_k")
+    num_experts = 4
+    in_features = 256
+    intermediate = 64
+    fused_width = 2 * intermediate
+    counts = np.asarray([3, 0, 5, 2], dtype=np.int64)
+    rows = int(counts.sum())
+
+    rng = np.random.default_rng(20260928)
+    hidden = rng.standard_normal((rows, in_features)).astype(np.float32)
+    hidden_bits = _to_bf16_bits(hidden)
+    gate_raw = np.concatenate(
+        [make_q4_k_weight(intermediate, in_features) for _ in range(num_experts)],
+        axis=0,
+    )
+    up_raw = np.concatenate(
+        [make_q4_k_weight(intermediate, in_features) for _ in range(num_experts)],
+        axis=0,
+    )
+    up_raw = up_raw.copy()
+    up_raw[:, 1::2] ^= np.uint8(0x04)
+    fused_raw = np.concatenate(
+        [
+            gate_raw.reshape(num_experts, intermediate, -1),
+            up_raw.reshape(num_experts, intermediate, -1),
+        ],
+        axis=1,
+    ).reshape(num_experts * fused_width, -1)
+
+    rounded = _from_bf16_bits(hidden_bits)
+    expected = np.zeros((rows, fused_width), dtype=np.float32)
+    start = 0
+    for expert, count in enumerate(counts):
+        if count == 0:
+            continue
+        gate = np.asarray(
+            dequantize_gguf_data(
+                gate_raw[expert * intermediate : (expert + 1) * intermediate],
+                GGMLQuantizationType.Q4_K,
+            ),
+            dtype=np.float32,
+        )
+        up = np.asarray(
+            dequantize_gguf_data(
+                up_raw[expert * intermediate : (expert + 1) * intermediate],
+                GGMLQuantizationType.Q4_K,
+            ),
+            dtype=np.float32,
+        )
+        block = rounded[start : start + count]
+        expected[start : start + count, :intermediate] = block @ gate.T
+        expected[start : start + count, intermediate:] = block @ up.T
+        start += int(count)
+    assert start == rows
+
+    starts = np.zeros(num_experts + 1, dtype=np.int64)
+    starts[1:] = np.cumsum(counts)
+
+    real_pack = leaf_module.gguf_q8_1_mmq_ds4_pack_bf16_d4x3
+    block_bytes = 144
+
+    def pack_without_later_sums(
+        x_bf16_ptr: int, out_q8_ptr: int, n_rows: int, hidden_size: int, **kwargs
+    ) -> None:
+        """Pack three planes, then blank the stored sums of planes 1 and 2."""
+        real_pack(x_bf16_ptr, out_q8_ptr, n_rows, hidden_size, **kwargs)
+        per_plane = n_rows * (hidden_size // 128) * block_bytes
+        for plane in (1, 2):
+            view = np.empty(per_plane, dtype=np.uint8)
+            buffer = DeviceBuffer(ptr=out_q8_ptr + plane * per_plane, nbytes=per_plane)
+            copy_device_to_host(host_array_ptr(view), buffer, per_plane)
+            view = view.reshape(-1, block_bytes).copy()
+            view[:, :16].view(np.uint16).reshape(-1, 8)[:, 1::2] = 0
+            copy_host_array_to_device(buffer, view.reshape(-1))
+
+    def run(zero_later_sums: bool) -> np.ndarray:
+        monkeypatch.setattr(gemma4_experts, "_MMQ_ACTIVATION_PASSES", 3)
+        monkeypatch.setattr(
+            leaf_module, "gguf_q8_1_mmq_ds4_pack_bf16", real_pack
+        )
+        monkeypatch.setattr(
+            leaf_module,
+            "gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out",
+            leaf_module.gguf_q4_k_selected_dual_q8_1_ds4x3_fused_mmq32_prefill_compact32_bf16_bf16_out,
+        )
+        if zero_later_sums:
+            monkeypatch.setattr(
+                leaf_module, "gguf_q8_1_mmq_ds4_pack_bf16", pack_without_later_sums
+            )
+
+        hidden_buf = malloc(hidden_bits.nbytes)
+        weights_buf = malloc(fused_raw.nbytes)
+        starts_buf = malloc(starts.nbytes)
+        out_buf = malloc(rows * fused_width * 2)
+        scratch = None
+        try:
+            copy_host_array_to_device(hidden_buf, hidden_bits)
+            copy_host_array_to_device(weights_buf, fused_raw)
+            copy_host_array_to_device(starts_buf, starts)
+            weight = _ResidentWeight(
+                backend=backend, quant_key="gguf_q4_k", ptr=weights_buf.ptr
+            )
+            scratch = Gemma4ExpertScratch(
+                tokens=rows,
+                top_k=1,
+                hidden_size=in_features,
+                intermediate=intermediate,
+                num_experts=num_experts,
+            )
+            served = gemma4_project_experts_gate_up_mmq(
+                weight,
+                hidden_buf.ptr,
+                out_buf.ptr,
+                SimpleNamespace(ptr=starts_buf.ptr),
+                rows,
+                num_experts,
+                in_features,
+                intermediate,
+                scratch=scratch,
+            )
+            assert served is True, "the fused MMQ gate_up route declined a Q4_K weight"
+            got = np.empty((rows, fused_width), dtype=np.uint16)
+            copy_device_to_host(
+                int(got.ctypes.data),
+                DeviceBuffer(ptr=out_buf.ptr, nbytes=got.nbytes),
+                got.nbytes,
+            )
+        finally:
+            if scratch is not None:
+                scratch.free()
+            for buffer in (hidden_buf, weights_buf, starts_buf, out_buf):
+                free(buffer)
+        return got.copy()
+
+    natural = run(zero_later_sums=False)
+    blanked = run(zero_later_sums=True)
+    differing = int((natural != blanked).sum())
+    assert differing == 0, (
+        "the three-plane leaf read the later planes' stored sums, so its Q4_K "
+        "min-offset correction was applied once per plane: "
+        f"{differing} of {natural.size} output elements changed when those sums "
+        "were blanked"
+    )
+
+
+@_needs_hip
 def test_fused_gate_up_mmq_route_holds_at_the_model_geometry_and_every_fragmentation() -> None:
     """The route's own tile walk, over the count patterns a real router produces.
 
