@@ -82,7 +82,8 @@
   "Four lengths dumped, two diverging and one exact. The 16/48/128/192/256 lengths were reproduced but not dumped.",
   "The dump reads the buffers after the launch returns, so it establishes the map's contents but not the leaf's consumption of it.",
   "Single forward per length; the recorded determinism was confirmed by the probe's repeats, not re-measured here.",
-  "The fine-structure remeasurement used --repeats 1, so determinism was not re-confirmed at the new lengths; it was confirmed at the recorded lengths by the earlier probe run."
+  "The fine-structure remeasurement used --repeats 1, so determinism was not re-confirmed at the new lengths; it was confirmed at the recorded lengths by the earlier probe run.",
+  "The gate/up capture reads the shared gate_up_out buffer after the call, so it compares the two arms' projections on identical inputs but does not separate quantization error from any indexing defect inside the leaf. Distinguishing those needs a reference computed at higher precision on the same input."
  ],
  "artifacts": {
   "dump_script": "/tmp/mmq_dump.py (scratch, not committed)"
@@ -197,5 +198,43 @@
   "why_this_matters": "the question was 'why does the route break at 64 ids'. The measurement says the route is perturbing every length, and 96 ids is not a length where it works - it is a length where a 2.5-magnitude perturbation happens to be nearly softmax-invariant. That is a different defect with a different fix.",
   "the_lead_it_points_at": "a perturbation that is often softmax-invariant is a per-row constant offset, which is what a slightly wrong per-row sum or bias term produces. The DS4 pack stores one sum per 32-element sub-block in ds4[2*ds4_idx + 1] and the leaf reads it as activation_tile[...].ds[1], so a systematic error in how that sum is used is exactly the shape of a per-row constant. The recorded note that 'much of that is a softmax-invariant global shift' points the same way. This has not been tested and is the next thing to measure, not a conclusion.",
   "not_yet_established": "that the perturbation is in fact a constant offset, and that the offset comes from the stored sum. Both are hypotheses the next measurement should settle directly by comparing the MMQ and fp32 gate/up outputs at one layer for one length, rather than by reading more source."
+ },
+ "gate_up_error_is_length_independent": {
+  "why": "The reframing said the route perturbs logits everywhere and the KL swing is margin-driven. That predicts the gate/up projection error itself is the same at a diverging length and an exact one. This measures it directly instead of inferring it from downstream KL.",
+  "method": "Wrap both gate/up arms and copy the shared gate_up_out buffer after the call, so both arms are compared on the SAME layer, the SAME input and the SAME buffer at one length. Reshape to (lanes, 2*704) and compare per row.",
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python /tmp/mmq_offset.py",
+  "measured": {
+   "ids_64_kl_2.036_FAIL": {
+    "rows": 512,
+    "cols": 1408,
+    "abs_delta_max": 38.75,
+    "abs_delta_mean": 0.8226,
+    "row_mean_abs_median": 0.4643,
+    "row_mean_abs_max": 2.0153,
+    "row_std_median": 0.6036,
+    "row_std_max": 5.6649,
+    "ratio_mean_over_std": 0.3235,
+    "rows_with_abs_mean_gt_0.1": 368,
+    "within_row_range_median": 4.9688
+   },
+   "ids_96_kl_1.66e-06_PASS": {
+    "rows": 768,
+    "cols": 1408,
+    "abs_delta_max": 38.57,
+    "abs_delta_mean": 0.9904,
+    "row_mean_abs_median": 0.5393,
+    "row_mean_abs_max": 2.0663,
+    "row_std_median": 0.8406,
+    "row_std_max": 5.6047,
+    "ratio_mean_over_std": 0.3369,
+    "rows_with_abs_mean_gt_0.1": 552,
+    "within_row_range_median": 6.6456
+   }
+  },
+  "finding_1_constant_offset_refuted": "The perturbation is not a per-row constant. |row mean| / row std is 0.32 at both lengths rather than far above 1, the within-row range has a median of 5.0 and 6.6, and per-row std runs to 5.7. The stored-sum lead from the previous pass is dead: a per-row constant offset is not the shape of this error.",
+  "finding_2_the_error_is_length_independent": "The gate/up error at 64 ids and at 96 ids is statistically indistinguishable - abs max 38.75 vs 38.57, abs mean 0.82 vs 0.99, row-mean median 0.464 vs 0.539, row-std median 0.604 vs 0.841, ratio 0.324 vs 0.337. Same magnitude, same structure, same spread. Yet 64 ids reports KL 2.036 and 96 ids reports 1.66e-06.",
+  "finding_3_the_diagnosis": "The MMQ prefill route does not diverge at specific short lengths. It carries a large length-independent numerical error in the gate/up projection - mean absolute delta of order 0.8 to 1.0 and a maximum of 38.7 against bf16 outputs - at every length. The apparent length dependence is entirely a downstream decision-margin artifact of measuring a single forward's next-token KL, which is a threshold on how close the decision happens to be, not a measure of the route's error. 96 ids is not a length where the route is correct; it is a length where an unchanged 0.8-magnitude projection error happens to be nearly softmax-invariant.",
+  "consequence_for_the_gate": "The named clearing condition is scripts/gemma4_mmq_prefill_length_probe.py exiting 0 at every length. That condition tests downstream margin, not the route's error. A route with a much smaller projection error could still fail at a length whose margin is tight, and the current route passes at lengths where the margin is loose. The condition should be restated against the gate/up projection error - for example the mean absolute delta measured here - rather than against a per-length KL threshold. This is a finding about the gate, and changing it is a separate decision from fixing the route.",
+  "next": "Establish whether the 0.8-magnitude error is inherent to DS4 Q8_1 activation quantization at this geometry or is a defect, by comparing the fp32 arm against a high-precision reference on the same input, and by measuring the activation dynamic range the pack is quantizing. The same MMQ route is measured and promoted for Qwen35, so the question is what differs about Gemma4's activations - dynamic range and outlier structure are the candidates - rather than whether int8 can work at all."
  }
 }
