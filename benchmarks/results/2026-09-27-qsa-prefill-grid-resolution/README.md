@@ -56,21 +56,28 @@ grids, 24 launches each over 24 QSA layers.
 
 ## 2. Where the family's time is
 
-From the 48 QSA launches in the role trace:
+The `qsa_attention` family, at 1x, from the role trace:
 
 | kernel | ms | n | share |
 | --- | ---: | ---: | ---: |
-| **`qsa_sparse_attention_h256_wave_rows_f32_kernel`** | **910.8** | 48 | **73.6%** |
-| `qsa_score_f32_kernel` | 212.2 | 48 | 17.1% |
-| `qsa_split_norm_rope_rows_f32_kernel` | 46.5 | 96 | 3.8% |
-| `qsa_topk_expand_f32_i64_kernel` | 34.5 | 48 | 2.8% |
-| `qsa_gate_context_f32_kernel` | 28.4 | 96 | 2.3% |
-| `qsa_norm_rope_rows_f32_kernel` | 3.7 | 96 | 0.3% |
-| `qsa_pool_norm_rope_f32_kernel` | 0.6 | 48 | 0.1% |
-| `qsa_scatter_index_keys_f32_kernel` | 0.6 | 96 | 0.0% |
-| **total** | **1237.3** | | |
+| **`qwen35_paged_full_attn_decode_context_tensor_batch_kernel`** | **801.2** | 72 | **56.4%** |
+| **`qsa_sparse_attention_h256_wave_rows_f32_kernel`** | **455.4** | 48 | **32.1%** |
+| `qsa_score_f32_kernel` | 106.1 | 48 | 7.5% |
+| `qsa_split_norm_rope_rows_f32_kernel` | 23.3 | 96 | 1.6% |
+| `qsa_topk_expand_f32_i64_kernel` | 17.2 | 48 | 1.2% |
+| `qsa_gate_context_f32_kernel` | 14.2 | 96 | 1.0% |
+| `qsa_norm_rope_rows_f32_kernel` | 1.9 | 96 | 0.1% |
+| `qsa_pool_norm_rope_f32_kernel` | 0.3 | 48 | 0.0% |
+| `qsa_scatter_index_keys_f32_kernel` | 0.3 | 96 | 0.0% |
+| **total** | **1419.9** | | |
 
-The sparse attention kernel is **73.6%** of the family, at 18.98 ms per launch.
+The total reconciles with the shared taxonomy's 1402.5 ms, which is what makes
+this a complete family listing.
+
+**The sparse attention kernel is 32.1% of the family, not the majority.** The
+largest single piece is the **full-attention** decode-context kernel at 801.2 ms
+(56.4%), which the ranking below does not address at all - it was not examined in
+this sprint. The sparse kernel runs at 9.49 ms per launch.
 
 ## 3. The ranking
 
@@ -90,14 +97,15 @@ geometry (`--rows 1024 --stride 2051`), and the three variants are
 saturated: effective bandwidth *falls* from 1238.8 to 667.1 GB/s as the tile
 widens, which is the signature of a kernel that has stopped being traffic-limited
 and started being issue-limited. Extrapolating the last step, HEADS=12 would cut
-traffic to 0.33x for roughly 8% - on a 910.8 ms kernel, about 73 ms.
+traffic to 0.33x for roughly 8% - on a 455.4 ms kernel, about 36 ms.
 
-That gives the ranking the task asked for:
+That gives the ranking the task asked for, **scoped to the sparse kernel (32.1% of
+the family)**:
 
 | rank | lever | arithmetic | verdict |
 | ---: | --- | --- | --- |
 | **1** | **tensor cores** (WMMA `Q*K^T`, `P*V`) | **changing** | the only lever on the real bottleneck (instruction issue, not K/V bytes). Needs the production profile gate plus a registered strict fallback. |
-| 2 | K/V reuse, HEADS 4 -> 6 or 12 | preserving (bit-identical) | **measured dead.** Ceiling ~8% on 910.8 ms (~73 ms). |
+| 2 | K/V reuse, HEADS 4 -> 6 or 12 | preserving (bit-identical) | **measured dead.** Ceiling ~8% on 455.4 ms (~36 ms). |
 | 3 | LDS staging of the K/V tile | preserving | **dead for the same reason**, plus the block is a single 32-lane wave, so there is no intra-block cross-warp sharing to capture without a multi-wave restructure. |
 
 Ranks 2 and 3 are the same lever - reduce K/V traffic - and the measurement says
@@ -114,5 +122,13 @@ without writing one."
 - **One shape.** code-p4096, 1024-token chunks, one capture.
 - **HEADS=6 and HEADS=12 were not run** - only 1, 2, 4 are instantiated. The ~8%
   figure is extrapolation from the 2 -> 4 step, not a measurement.
-- **The 1237.3 ms family total is this trace**, against 1402.5 ms in the shared
-  taxonomy; different captures, not a comparison.
+- **The ranking covers only the sparse kernel.** The 801.2 ms full-attention
+  decode-context kernel is 56.4% of the family and was not examined; no statement
+  here applies to it.
+- **Correction (2026-09-27).** An earlier revision of this artifact read the
+  `rocprofv3` CSV raw and filtered kernel names on `qsa`, which both doubled
+  every figure (the trace is two repetitions) and dropped
+  `qwen35_paged_full_attn_decode_context_tensor_batch_kernel`, whose name
+  contains no `qsa`. The 910.8 ms / 73.6% / ~73 ms figures in that revision were
+  wrong and are superseded by the table above. The HEADS-saturation conclusion is
+  unaffected: it is a kernel-level microbenchmark at fixed geometry.

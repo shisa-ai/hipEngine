@@ -57,40 +57,54 @@
   "dense_rows_formula": "max(0, min(count, dense_equivalent_limit - start))"
  },
  "family_cost": {
-  "source": "2026-09-17-qwen4exp-per-role-cost role-trace, 48 QSA launches",
-  "total_ms": 1237.3,
+  "source": "2026-09-17-qwen4exp-per-role-cost role-trace, at 1x (the raw CSV is 2 repetitions)",
+  "total_ms": 1419.9,
+  "taxonomy_reference_ms": 1402.5,
   "kernels": {
+   "qwen35_paged_full_attn_decode_context_tensor_batch_kernel": {
+    "ms": 801.2,
+    "n": 72,
+    "share_pct": 56.4
+   },
    "qsa_sparse_attention_h256_wave_rows_f32_kernel": {
-    "ms": 910.8,
-    "n": 48
+    "ms": 455.4,
+    "n": 48,
+    "share_pct": 32.1
    },
    "qsa_score_f32_kernel": {
-    "ms": 212.2,
-    "n": 48
+    "ms": 106.1,
+    "n": 48,
+    "share_pct": 7.5
    },
    "qsa_split_norm_rope_rows_f32_kernel": {
-    "ms": 46.5,
-    "n": 96
+    "ms": 23.3,
+    "n": 96,
+    "share_pct": 1.6
    },
    "qsa_topk_expand_f32_i64_kernel": {
-    "ms": 34.5,
-    "n": 48
+    "ms": 17.2,
+    "n": 48,
+    "share_pct": 1.2
    },
    "qsa_gate_context_f32_kernel": {
-    "ms": 28.4,
-    "n": 96
+    "ms": 14.2,
+    "n": 96,
+    "share_pct": 1.0
    },
    "qsa_norm_rope_rows_f32_kernel": {
-    "ms": 3.7,
-    "n": 96
+    "ms": 1.9,
+    "n": 96,
+    "share_pct": 0.1
    },
    "qsa_pool_norm_rope_f32_kernel": {
-    "ms": 0.6,
-    "n": 48
+    "ms": 0.3,
+    "n": 48,
+    "share_pct": 0.0
    },
    "qsa_scatter_index_keys_f32_kernel": {
-    "ms": 0.6,
-    "n": 96
+    "ms": 0.3,
+    "n": 96,
+    "share_pct": 0.0
    }
   }
  },
@@ -152,7 +166,7 @@
    "lever": "K/V reuse via HEADS 4->6 or 12",
    "arithmetic": "preserving (bit-identical measured)",
    "why": "measured dead: 2->4 halves traffic for 1.08x, so 4->12 buys about 8% at best",
-   "prize_ceiling_ms": 72.9,
+   "prize_ceiling_ms": 36.4,
    "untested": false
   },
   {
@@ -162,5 +176,17 @@
    "why": "same constraint as rank 2 (K/V traffic), plus the block is one wave so there is no intra-block cross-warp sharing to capture",
    "untested": true
   }
- ]
+ ],
+ "correction": {
+  "date": "2026-09-27",
+  "superseded": {
+   "sparse_kernel_ms": 910.8,
+   "sparse_kernel_share_pct": 73.6,
+   "family_total_ms": 1237.3,
+   "heads12_prize_ms": 73.0
+  },
+  "cause": "the rocprofv3 CSV was read raw (it is 2 repetitions) and kernel names were filtered on 'qsa', which drops qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
+  "unaffected": "the HEADS-saturation conclusion, which is a kernel-level microbenchmark at fixed geometry",
+  "not_examined": "the 801.2 ms full-attention decode-context kernel, 56.4% of the family"
+ }
 }
