@@ -53,6 +53,11 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
 _BF16_BYTES = 2
 _I32_BYTES = 4
 _I64_BYTES = 8
+# Kahan-bound multiplier for the iu8 risk criterion. The screened floor on actual
+# weights is between 0.5 and 1 (below it, BF16 flips escape the repair); 4.0
+# keeps a >=4x margin and is the value the Qwen route measured at 1.50-1.82x
+# operation-complete.
+_IU8_RISK_MULTIPLIER = 4.0
 _F32_BYTES = 4
 
 # Grouped-prefill family: one launch covers every expert, reading each expert's
@@ -146,6 +151,26 @@ def gemma4_moe_gate_up_mmq_enabled() -> bool:
     return os.environ.get(_GEMMA4_MOE_GATE_UP_MMQ_ENV, "").strip().lower() not in (
         _MMQ_DISABLING_VALUES
     )
+
+
+def gemma4_moe_gate_up_q5k_iu8_enabled() -> bool:
+    """Whether the Q5_K iu8-WMMA gate/up route may be selected.
+
+    **Off by default, and the cause is a named observed failure, not missing
+    evidence.** With it enabled the first Q5_K layer raises HIP error 1
+    (``hipErrorInvalidValue``) out of ``_launch_wmma_iu8_risk``, so the kernel's
+    parameter contract and gemma4's geometry differ somewhere not yet identified.
+    The route is wired behind this lever so the failure can be worked from a
+    green tree.
+
+    Clearing command: ``HIPENGINE_GEMMA4_MOE_GATE_UP_Q5K_IU8=1`` once the launch
+    succeeds and the route shows bit-identical to the strict row4 owner. Remove
+    the flag and this function when that holds.
+    """
+
+    import os
+
+    return os.environ.get("HIPENGINE_GEMMA4_MOE_GATE_UP_Q5K_IU8", "").strip() == "1"
 
 
 def gemma4_moe_expert_route_counts() -> dict[str, int]:
@@ -267,6 +292,17 @@ class Gemma4ExpertScratch:
             "mmq_expert_start": (lanes // 32 + self.num_experts + 1) * _I64_BYTES,
             "mmq_tile_expert": (lanes // 32 + self.num_experts + 1) * _I64_BYTES,
             "mmq_total": _I64_BYTES,
+            # The iu8-WMMA risk route queues the compact-row and output indices
+            # whose activation quantization could move a result, then repairs
+            # exactly those. Capacity is the worst case - every output at risk -
+            # so the repair can never silently drop a queued index.
+            "mmq_risk_count": _I32_BYTES,
+            "mmq_risk_indices": lanes * 2 * self.intermediate * _I32_BYTES,
+            # The WMMA tile walk packs 16 rows per tile against the MMQ32 route's
+            # 32, so it needs its own buffers rather than the mmq_* pair above.
+            "wmma_expert_start": (self.num_experts + 1) * _I64_BYTES,
+            "wmma_tile_expert": (lanes // 16 + self.num_experts + 1) * _I64_BYTES,
+            "wmma_total": _I64_BYTES,
         }
         try:
             return sizes[name]
@@ -750,7 +786,24 @@ def gemma4_project_experts_gate_up_mmq(
 
     if isinstance(weight, int):
         return False
-    if getattr(weight.spec, "quant_key", None) != "gguf_q4_k":
+    quant_key = getattr(weight.spec, "quant_key", None)
+    if quant_key == "gguf_q5_k":
+        if not gemma4_moe_gate_up_q5k_iu8_enabled():
+            return False
+        return _gemma4_project_experts_gate_up_wmma_iu8(
+            weight,
+            x_ptr,
+            out_ptr,
+            expert_start,
+            compact_rows,
+            num_experts,
+            in_features,
+            intermediate,
+            scratch=scratch,
+            stream=stream,
+            runtime=runtime,
+        )
+    if quant_key != "gguf_q4_k":
         return False
     if in_features % 128 or (2 * intermediate) % 32 or intermediate % 32:
         return False
@@ -834,6 +887,141 @@ def gemma4_project_experts_gate_up_mmq(
         intermediate,
         num_experts,
         total_rows,
+        library=library,
+        **kwargs,
+    )
+    return True
+
+
+def _gemma4_project_experts_gate_up_wmma_iu8(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    out_ptr: int,
+    expert_start,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    intermediate: int,
+    *,
+    scratch: Gemma4ExpertScratch,
+    stream: int = 0,
+    runtime: object | None = None,
+) -> bool:
+    """Run the Q5_K iu8-WMMA risk+repair gate+up route.
+
+    Q5_K twin of the DS4 MMQ32 route above: same fused ``ffn_gate_up_exps``
+    layout, so one launch still produces both halves and the output is already
+    the ``gate | up`` row block that :func:`gemma4_gelu_tanh_mul_bf16` consumes.
+
+    Where the Q4_K route quantizes activations to DS4 Q8_1, this one uses a
+    3-plane residual int8 under the Kahan-bounded risk criterion, queues the
+    outputs whose rounding could move a result, and repairs exactly those
+    against the strict row4 owner. The repaired result is bit-identical to that
+    owner rather than merely close to it, which is the property
+    ``tests/test_unit_gemma4_expert_route.py`` checks.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        host_array_ptr,
+    )
+    from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
+        qwen35_moe_wmma_tile_map,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill import (
+        build_gguf_q5_k_q8_1_selected_prefill,
+        gguf_q5_k_selected_dual_sparse_exact_repair_bf16 as sparse_exact_repair,
+        gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out as iu8_risk_gate_up,
+    )
+
+    import numpy as np
+
+    wmma_starts = scratch.buffer("wmma_expert_start")
+    tile_expert = scratch.buffer("wmma_tile_expert")
+    wmma_total = scratch.buffer("wmma_total")
+    risk_count = scratch.buffer("mmq_risk_count")
+    risk_indices = scratch.buffer("mmq_risk_indices")
+
+    library = build_gguf_q5_k_q8_1_selected_prefill(load=True)
+    kwargs = {"stream": stream}
+    if runtime is not None:
+        kwargs["runtime"] = runtime
+
+    tile_capacity = tile_expert.nbytes // 8
+    qwen35_moe_wmma_tile_map(
+        expert_start.ptr,
+        wmma_starts.ptr,
+        tile_expert.ptr,
+        wmma_total.ptr,
+        num_experts,
+        tile_capacity=tile_capacity,
+        **kwargs,
+    )
+    total_host = np.empty(1, dtype=np.int64)
+    copy_device_to_host(
+        host_array_ptr(total_host),
+        DeviceBuffer(ptr=wmma_total.ptr, nbytes=8),
+        8,
+        runtime=runtime,
+    )
+    total_rows = int(total_host[0])
+    if total_rows <= 0 or total_rows > tile_capacity * 16:
+        raise RuntimeError(
+            f"gemma4 iu8 gate/up tile row count {total_rows} is outside "
+            f"capacity {tile_capacity * 16}"
+        )
+
+    risk_capacity = compact_rows * 2 * intermediate
+    if risk_indices.nbytes < risk_capacity * _I32_BYTES:
+        raise RuntimeError(
+            f"gemma4 iu8 risk queue holds {risk_indices.nbytes // _I32_BYTES} "
+            f"indices but {risk_capacity} are needed"
+        )
+    get_hip_runtime().memset(risk_count.ptr, 0, _I32_BYTES)
+
+    weight_ptr = weight.allocation("raw").buffer.ptr
+    # Q5_K stores 176 bytes per 256-element block against Q4_K's 144, so the up
+    # half starts at a different offset than in the route above.
+    row_bytes = (in_features // 256) * 176
+    qweight_a = weight_ptr
+    qweight_b = weight_ptr + intermediate * row_bytes
+    iu8_risk_gate_up(
+        x_ptr,
+        expert_start.ptr,
+        wmma_starts.ptr,
+        tile_expert.ptr,
+        qweight_a,
+        qweight_b,
+        out_ptr,
+        risk_count.ptr,
+        risk_indices.ptr,
+        risk_capacity,
+        _IU8_RISK_MULTIPLIER,
+        compact_rows,
+        in_features,
+        intermediate,
+        intermediate,
+        num_experts,
+        total_rows,
+        library=library,
+        **kwargs,
+    )
+    sparse_exact_repair(
+        x_ptr,
+        expert_start.ptr,
+        qweight_a,
+        qweight_b,
+        out_ptr,
+        risk_count.ptr,
+        risk_indices.ptr,
+        risk_capacity,
+        compact_rows,
+        in_features,
+        intermediate,
+        intermediate,
+        num_experts,
         library=library,
         **kwargs,
     )
