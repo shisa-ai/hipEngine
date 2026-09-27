@@ -20,6 +20,7 @@ than a prerequisite for running.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -39,6 +40,7 @@ __all__ = [
     "Gemma4GGUFWeightSpec",
     "materialize_gemma4_gguf_device_weight",
     "pack8_arrays",
+    "pack8_layout_enabled",
     "plan_gemma4_gguf_resident_specs",
     "resident_bytes",
 ]
@@ -55,6 +57,41 @@ LAYOUT_Q4_K_PACK8 = "q4_k_pack8"
 # them. ``qweight_high`` is not among them: the kernel requires it only for q5_k
 # and q6_k, and for q4_k it passes null.
 _PACK8_ALLOCATION_NAMES = ("qweight", "scales", "mins")
+
+
+def pack8_layout_enabled() -> bool:
+    """Whether the planner gives a Q4_K expert tensor the pack8 layout.
+
+    **Default off, with a measured cause.** On 2026-09-27 this box measured decode
+    at 21.03 tok/s before the layout and 7.64 tok/s after it, on the same
+    `--prompt 512 --output 128 --samples 3` run, with `pack8_selected` confirmed
+    as the route that ran (928 calls). The layout is correct -- the same-weight
+    parity gate in `tests/test_unit_gemma4_gguf_device.py` passes -- but it is
+    slower and it costs 19.2 GB.
+
+    The reason is a representation trade that loses on this projection. The
+    packed form replaces the raw Q4_K block metadata with precomputed fp32 scale
+    and min terms, which is 1.33x the raw bytes, and the projection is
+    bandwidth-bound rather than metadata-bound, so decoding less metadata means
+    reading more bytes. The kernel is also shaped for prefill
+    (`gguf_expert_pack8_selected_prefill_kernel`), and the ladder reaches it
+    exactly where rows are fewest: `grouped_prefill` takes every block with at
+    least one row per expert, so a packed weight is only selected below that
+    threshold, which is the decode case.
+
+    Clearing this needs a measurement showing the packed layout ahead at some
+    other row count, most plausibly a large-batch decode where `rows` exceeds the
+    expert count. Set the variable, bench, and record the row against the raw
+    route. Evidence:
+    `benchmarks/results/2026-09-27-gemma4-gfx1151-pack8-expert-route-measured.json`.
+    """
+
+    return os.environ.get("HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT", "0") not in {
+        "",
+        "0",
+        "false",
+        "False",
+    }
 
 # The quant types this artifact is built from, plus the f32 norms. This is the
 # set the *loader* can carry, not an admission list for a model: a Gemma 4 GGUF
@@ -196,12 +233,19 @@ def _plan_one(slot_path: str, source: GGUFTensorInfo) -> Gemma4GGUFWeightSpec:
             f"{slot_path}: {source.name} is rank {len(source.shape)}; raw GGUF "
             "residency needs rank-2 or rank-3 block storage"
         )
-    # A rank-3 Q4_K expert tensor also carries the pack8 GEMV layout, which
+    # A rank-3 Q4_K expert tensor can also carry the pack8 GEMV layout, which
     # precomputes the per-32-value scale and min terms so the kernel does not
     # re-decode raw block metadata on every weight read. Only Q4_K: the pack8
     # expert GEMV family registers q4_k, q5_k and q6_k, and this artifact's
     # expert tensors are Q4_K.
-    if len(source.shape) == 3 and qtype is GGMLQuantizationType.Q4_K:
+    #
+    # Off by default because it measured slower -- see ``pack8_layout_enabled``
+    # for the number, the reason, and what would clear it.
+    if (
+        len(source.shape) == 3
+        and qtype is GGMLQuantizationType.Q4_K
+        and pack8_layout_enabled()
+    ):
         return Gemma4GGUFWeightSpec(
             slot_path=slot_path,
             source=source,

@@ -18,6 +18,7 @@ from hipengine.loading.gemma4_gguf_device import (
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
     materialize_gemma4_gguf_device_weight,
+    pack8_layout_enabled,
     plan_gemma4_gguf_resident_specs,
     resident_bytes,
 )
@@ -61,10 +62,14 @@ def test_quant_keys_follow_the_artifact(reader: GGUFReader) -> None:
         if source.ggml_type == GGMLQuantizationType.F32:
             assert spec.layout == LAYOUT_DENSE_F32, name
             assert spec.quant_key == "f32", name
-        elif len(source.shape) == 3 and source.ggml_type == GGMLQuantizationType.Q4_K:
-            # A rank-3 Q4_K expert tensor carries the pack8 layout as well. The
-            # quant key still names the tensor's own type, so the route lookup
-            # is against gguf_q4_k and not a default.
+        elif (
+            len(source.shape) == 3
+            and source.ggml_type == GGMLQuantizationType.Q4_K
+            and pack8_layout_enabled()
+        ):
+            # A rank-3 Q4_K expert tensor carries the pack8 layout when it is
+            # asked for. The quant key still names the tensor's own type, so the
+            # route lookup is against gguf_q4_k and not a default.
             assert spec.layout == LAYOUT_Q4_K_PACK8, name
             assert spec.quant_key == f"gguf_{source.ggml_type_name.lower()}", name
         else:
@@ -107,15 +112,18 @@ def test_a_stacked_expert_tensor_stays_one_allocation(reader: GGUFReader) -> Non
         assert spec.source.nbytes == int(per_expert) * spec.source.shape[0], spec.slot_path
 
 
-def test_a_q4_k_expert_tensor_plans_the_pack8_layout(reader: GGUFReader) -> None:
-    """A rank-3 Q4_K expert tensor gains the pack8 GEMV layout.
+def test_a_q4_k_expert_tensor_plans_the_pack8_layout(
+    reader: GGUFReader, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rank-3 Q4_K expert tensor gains the pack8 GEMV layout when asked.
 
     The pack8 layout precomputes the per-32-value scale and min terms, so the
     GEMV kernel does not re-decode raw Q4_K block metadata on every weight read.
-    The decode profile put this projection at 28.0% of decode time and 15% of
-    achievable bandwidth, which is where that decode cost binds.
+    It is off by default because it measured slower -- see
+    ``test_the_pack8_layout_is_off_by_default``.
     """
 
+    monkeypatch.setenv("HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT", "1")
     specs = plan_gemma4_gguf_resident_specs(reader)
     experts = [
         spec
@@ -134,33 +142,62 @@ def test_a_q4_k_expert_tensor_plans_the_pack8_layout(reader: GGUFReader) -> None
         assert spec.quant_key == "gguf_q4_k", spec.slot_path
 
 
+def test_the_pack8_layout_is_off_by_default(reader: GGUFReader) -> None:
+    """The packed layout is not planned unless it is asked for.
+
+    It measured 21.03 tok/s before and 7.64 tok/s after on the same campaign run,
+    so the default is the raw layout. The default is asserted rather than assumed
+    because a silent flip back would reintroduce a 2.75x decode regression with
+    no other test noticing -- the packed layout is correct, just slower, so every
+    correctness test still passes either way.
+    """
+
+    specs = plan_gemma4_gguf_resident_specs(reader)
+    assert not [s for s in specs if s.layout == LAYOUT_Q4_K_PACK8]
+    for spec in specs:
+        assert spec.allocation_names == ("raw",), spec.slot_path
+
+
 def test_a_non_q4_k_expert_tensor_keeps_the_raw_layout(reader: GGUFReader) -> None:
     """Only Q4_K gains the pack8 layout, and the reason is the kernel set.
 
     The pack8 GEMV family registers q4_k, q5_k and q6_k, and this fixture's
     expert tensors are Q4_K. A rank-3 tensor in a type with no pack8 kernel must
     keep the raw layout rather than being planned into a route that cannot serve
-    it.
+    it, and that holds with the layout enabled.
     """
 
     import dataclasses
 
     from hipengine.loading.gemma4_gguf_device import _plan_one
 
-    specs = plan_gemma4_gguf_resident_specs(reader)
-    spec = next(s for s in specs if len(s.source.shape) == 3)
-    # Q8_0 is carried by the loader and has no pack8 expert GEMV registered.
-    forged = dataclasses.replace(
-        spec.source,
-        ggml_type=int(GGMLQuantizationType.Q8_0),
-        ggml_type_name="Q8_0",
-    )
-    replanned = _plan_one(spec.slot_path, forged)
+    monkeypatch_off = "HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT"
+    import os
+
+    previous = os.environ.get(monkeypatch_off)
+    os.environ[monkeypatch_off] = "1"
+    try:
+        specs = plan_gemma4_gguf_resident_specs(reader)
+        spec = next(s for s in specs if len(s.source.shape) == 3)
+        # Q8_0 is carried by the loader and has no pack8 expert GEMV registered.
+        forged = dataclasses.replace(
+            spec.source,
+            ggml_type=int(GGMLQuantizationType.Q8_0),
+            ggml_type_name="Q8_0",
+        )
+        replanned = _plan_one(spec.slot_path, forged)
+    finally:
+        if previous is None:
+            os.environ.pop(monkeypatch_off, None)
+        else:
+            os.environ[monkeypatch_off] = previous
     assert replanned.layout == LAYOUT_RAW_GGUF
     assert replanned.allocation_names == ("raw",)
 
 
-def test_pack8_packed_shapes_match_the_kernel_contract(reader: GGUFReader) -> None:
+def test_pack8_packed_shapes_match_the_kernel_contract(
+    reader: GGUFReader, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The packed arrays are shaped as the expert pack8 GEMV declares them.
 
     The kernel header states ``qweight_low [experts, out_features/8,
@@ -171,6 +208,7 @@ def test_pack8_packed_shapes_match_the_kernel_contract(reader: GGUFReader) -> No
 
     from hipengine.quant.gguf_q4_k import GGUF_Q4_K_PACK, repack_gguf_q4_k_pack8
 
+    monkeypatch.setenv("HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT", "1")
     specs = plan_gemma4_gguf_resident_specs(reader)
     spec = next(s for s in specs if s.layout == LAYOUT_Q4_K_PACK8)
     experts, out_features, in_features = (int(v) for v in spec.source.shape)
@@ -192,7 +230,9 @@ def test_pack8_packed_shapes_match_the_kernel_contract(reader: GGUFReader) -> No
     assert scales.shape == (experts, groups, out_features)
 
 
-def test_resident_bytes_counts_the_pack8_expansion(reader: GGUFReader) -> None:
+def test_resident_bytes_counts_the_pack8_expansion(
+    reader: GGUFReader, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Residency is the stored size plus whatever the pack8 layout adds.
 
     The packed arrays sit alongside the raw blocks, so a pack8 weight is larger
@@ -201,10 +241,11 @@ def test_resident_bytes_counts_the_pack8_expansion(reader: GGUFReader) -> None:
     that surfaces as an out-of-memory after the correctness gate has passed.
     """
 
-    specs = plan_gemma4_gguf_resident_specs(reader)
     stored = sum(
         tensor.nbytes for tensor in reader.info.tensors if tensor.name != "rope_freqs.weight"
     )
+    monkeypatch.setenv("HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT", "1")
+    specs = plan_gemma4_gguf_resident_specs(reader)
     packed = [spec for spec in specs if spec.layout == LAYOUT_Q4_K_PACK8]
     assert packed, "fixture has no pack8 expert tensor to check"
 
@@ -569,7 +610,9 @@ def test_selected_expert_dispatch_matches_the_bf16_offset_path(reader: GGUFReade
 @pytest.mark.skipif(
     not hip_runtime_available(), reason="HIP runtime unavailable; skipping pack8 route test"
 )
-def test_pack8_route_matches_the_raw_route_on_the_same_weight(reader: GGUFReader) -> None:
+def test_pack8_route_matches_the_raw_route_on_the_same_weight(
+    reader: GGUFReader, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The pack8 route and the raw selected route produce the same numbers.
 
     This is the correctness gate for the packed layout, and it is run on **one
@@ -593,6 +636,7 @@ def test_pack8_route_matches_the_raw_route_on_the_same_weight(reader: GGUFReader
         load_host_array_to_device_as_dtype,
     )
 
+    monkeypatch.setenv("HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT", "1")
     specs = plan_gemma4_gguf_resident_specs(reader)
     spec = next(s for s in specs if s.layout == LAYOUT_Q4_K_PACK8)
     num_experts, out_features, in_features = (int(d) for d in spec.source.shape)
@@ -678,7 +722,9 @@ def test_pack8_route_matches_the_raw_route_on_the_same_weight(reader: GGUFReader
 @pytest.mark.skipif(
     not hip_runtime_available(), reason="HIP runtime unavailable; skipping pack8 route test"
 )
-def test_the_route_ladder_prefers_pack8_for_a_packed_weight(reader: GGUFReader) -> None:
+def test_the_route_ladder_prefers_pack8_for_a_packed_weight(
+    reader: GGUFReader, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A packed weight takes the pack8 route rather than the raw selected one.
 
     Both would produce the same numbers, so this is a cost decision rather than
@@ -692,6 +738,7 @@ def test_the_route_ladder_prefers_pack8_for_a_packed_weight(reader: GGUFReader) 
         gemma4_project_experts_selected,
     )
 
+    monkeypatch.setenv("HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT", "1")
     specs = plan_gemma4_gguf_resident_specs(reader)
     spec = next(s for s in specs if s.layout == LAYOUT_Q4_K_PACK8)
     weight = materialize_gemma4_gguf_device_weight(reader, spec)
