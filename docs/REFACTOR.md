@@ -141,17 +141,29 @@
   3.9% of the gfx1151 FP32 peak, so the limiter is load issue on the K=320
   weight stream, not the epilogue or the reduction. Fusion is still worth 1.21x
   over the strict unfused chain.
-- Screen passes with room: prefill-boundary KL 5.17e-11 (code-p512) and
-  3.40e-10 (general_en-p512), 8.5-85x below the ~5e-9 cliff, deterministic in
-  both arms. The screen is not a qualification - the publication row's ~22-logit
-  argmax gap makes KL insensitive to the logits that did move (median absolute
-  drift 0.095, max 1.20).
-- **Remove this flag when** the 780-row production gate
-  (`qwen4exp_layer2_profile_gate.py --candidate production_gr_up_wide`) either
-  passes - then promote the route to default and delete the flag - or fails,
-  in which case delete the flag, the branch, and the gate candidate together
-  and record the measured mean KL against the cliff. Do not leave it
-  default-off indefinitely. Evidence:
+- Screen passed on the prefill-boundary KL and the 780-row production gate
+  **rejected the route**: mean KL 1.554e-3, p95 7.081e-3, max 7.349e-2, top-1
+  768/780, with all 12 mismatches flip-eligible. Determinism, state
+  repeatability, and lifecycle pass, so the failure is purely numerical.
+- **The prefill-boundary KL screen is not a predictor.** This route screened at
+  5.17e-11 - 285x *better* than the rejected iu8 route's 1.48e-8 - while
+  carrying 300x more projection drift (4.7e-5 against 1.1e-7 relative L2), and
+  failed at the same plateau. The publication row's ~22-logit argmax gap makes
+  the softmax one-hot, so KL is blind to logits that genuinely moved (median
+  absolute drift 0.095, max 1.20). Do not use this screen to admit or reject a
+  GR candidate; go straight to the canonical-fixture depth gate.
+- The gate's default prompt suite is 39-71 tokens, below these routes'
+  `rows > 256` admission. A candidate run against it never executes and scores
+  a perfect zero, which reads as a pass. Only the harness's independent
+  dispatch count exposes it. Use `qwen4exp_q8_repair_depth_gate.py`, not
+  `qwen4exp_layer2_profile_gate.py`'s default suite, for any GR or dense route.
+- **Keep this arithmetic off.** The GR family is closed to arithmetic change:
+  every measured route, including corrections more accurate than the
+  incumbent, saturates the gate at 1.3e-3 - 1.6e-3. Only a bit-exact change can
+  land, and the two equal-accumulator retiles were already measured (0.80x,
+  1.007x). Reopen only with a confirmed router-flip mechanism plus a way to
+  make the discrete selection robust, or with a bit-exact route that beats the
+  fused kernel without changing operand or accumulation order. Evidence:
   `benchmarks/results/2026-09-27-gr-up-wide-tile-screen/`.
 
 ## MoE Backend Refresh Cache
