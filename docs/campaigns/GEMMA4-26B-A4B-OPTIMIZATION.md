@@ -4102,6 +4102,44 @@ record, not permission to reset unrelated work or weaken correctness.
   ``gemma4_experts.py`` (``_MMQ_DUAL_WEIGHTS_ARE_SPLIT``, ``_build_mmq_tile_plan``,
   ``gemma4_project_experts_mmq_dual``).
 
+  **Iteration 138: the down projection cannot use this lever -- its k is not
+  DS4-block divisible. +29.2% is the ceiling for the int8 MMQ route.**
+
+  Added ``gemma4_project_experts_mmq`` for the Q5_1 down leaf and measured: **no
+  change** (888/884 tok/s against 886/885). The route is not running, and the
+  reason is a shape contract, not a bug.
+
+  The GGUF shapes are::
+
+      blk.0.ffn_gate_up_exps.weight  Q4_K  (128, 1408, 2816)   expert_ff = 704
+      blk.0.ffn_down_exps.weight     Q5_1  (128, 2816, 704)    in_features = 704
+
+  So the down's ``in_features`` is **704**, and the DS4 MMQ block is **128** values
+  -- ``704 % 128 = 64``. ``gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out``
+  requires ``in_features % 128 == 0``, so it **cannot serve this shape at all**.
+  The helper's shape guard returns ``False`` and the exact grouped owner serves the
+  down as before, which is why the output is unchanged and correct.
+
+  Verified rather than assumed: the gate re-run after adding the helper is
+  ``passed: true`` with ``kl_max`` bit-identical to the pre-change verdict
+  (0.005029002284065986), confirming the helper is a true no-op at this shape.
+
+  The only grouped Q5_1 prefill owners in the tree are this MMQ leaf and a
+  decode-oriented ``gguf_q5_1_selected_pack8_gemv``, so there is no alternative
+  grouped owner to reach for. **The +29.2% from gate_up is the whole of what the
+  int8 MMQ lever yields on Gemma4's MoE.**
+
+  **Where the remaining MoE headroom is.** With gate_up on the int8 MMQ leaf and
+  down on the exact grouped owner, the down is now the larger share of what is
+  left: it is ~1/3 of MoE FLOPs at a measured ~1.9 TF/s against gate_up's ~4.1
+  before the MMQ route and ~8.5 after. A down-specific lever would need either a
+  DS4-block-divisible activation layout for k=704 or a grouped prefill owner built
+  for a half-block tail -- neither exists today.
+
+  Evidence: the unchanged mode table; the GGUF tensor shapes above;
+  ``gate_mmq3_verdict.json`` (identical ``kl_max`` to ``gate_mmq2_verdict.json``);
+  ``gguf_q5_1_mmq_selected_prefill.py`` (the ``in_features % 128`` contract).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
