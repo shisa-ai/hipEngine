@@ -600,9 +600,10 @@ _WMMA_PREFILL_VARIANT = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
 # owners, which take BF16 activations and dequantize the weights.
 _MMQ_DUAL_QUANT_KEY = "gguf_q4_k"
 # The grouped int8 MMQ leaf needs gate and up in separate per-expert weight
-# allocations. Gemma4 loads them fused in one ``ffn_gate_up_exps`` tensor, and no
-# loader path splits it yet, so the route is unreachable until one does.
-_MMQ_DUAL_WEIGHTS_ARE_SPLIT = False
+# allocations, so the loader materializes the fused ``ffn_gate_up_exps`` stack as
+# two expert-strided tensors. Set once that split lands; the route refuses loudly
+# while it is unset rather than reading a fused stack as if it were split.
+_MMQ_DUAL_WEIGHTS_ARE_SPLIT = True
 _WMMA_PREFILL_MIN_LANES_PER_EXPERT = 16
 
 # Compensated twins of the two WMMA owners. The plain owners round every
@@ -926,6 +927,12 @@ def gemma4_project_experts_mmq_dual(
         return False
     if weight.spec.quant_key != _MMQ_DUAL_QUANT_KEY:
         return False
+    # The leaf strides each expert by that matrix's own output width, so gate and
+    # up must be separate resident tensors. A fused stack would make it read
+    # expert 0's up half as expert 1's gate, which is why this refuses rather
+    # than falling back to the raw allocation.
+    if not (weight.has_allocation("gate") and weight.has_allocation("up")):
+        return False
     if in_features % _DS4_BLOCK_VALUES or out_features % 32:
         return False
     if compact_rows < _GROUPED_PREFILL_MIN_LANES_PER_EXPERT * num_experts:
@@ -948,18 +955,16 @@ def gemma4_project_experts_mmq_dual(
         library=library,
         runtime=runtime,
     )
-    base_ptr = weight.allocation("raw").buffer.ptr
-    # Same half-split as the grouped dual owner: a Q4_K row is a whole number of
-    # 256-value blocks, so the fused half boundary is a block boundary too.
-    half_bytes = weight.expert_stride_bytes // 2
+    gate_ptr = weight.allocation("gate").buffer.ptr
+    up_ptr = weight.allocation("up").buffer.ptr
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
         ds4.ptr,
         scratch.buffer("compact_to_source").ptr,
         expert_start_ptr,
         scratch.buffer("wmma_expert_start").ptr,
         scratch.buffer("wmma_tile_expert").ptr,
-        base_ptr,
-        base_ptr + half_bytes,
+        gate_ptr,
+        up_ptr,
         out_ptr,
         compact_rows,
         in_features,
