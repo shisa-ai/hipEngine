@@ -76,6 +76,13 @@ EXCEPTIONS: dict[str, str] = {
         "2026-08-08 gfx1151 lane: maple_c1_bench.py dropped --comparison after the run; the row "
         "is a selector snapshot on hardware not present here. Owner to re-measure or annotate."
     ),
+    "2026-09-21-zbook-fast-cpu-gpu-sampling.json::SCRIPT-NOT-IN-REPO::"
+    "/home/lhl/hipEngine-main/scripts/gguf_native_sampler_gate.py": (
+        "2026-09-21 gfx1151 lane: the recorded command invoked a sampler gate script that lives "
+        "in the hipEngine-main worktree, not in this repo, so the row is not reproducible from "
+        "here. Not rewritten because a published row's provenance belongs to its author; the "
+        "owner should re-measure with a committed tool or relabel the row as a one-off probe."
+    ),
 }
 
 # The explicit-tier migration renamed every test module. Published artifacts recorded the paths
