@@ -507,6 +507,13 @@ _GROUPED_DUAL_PREFILL_VARIANT = (
 # columns and reuses the input row batch across them. The association of every
 # output is unchanged -- same thread-to-column map, same 128-thread tree -- so
 # this is the bit-identical route and is preferred whenever the width fits.
+#
+# The ``_bundle`` sibling was measured and rejected: it publishes all ROW_BATCH
+# rows after one barrier per output column instead of one barrier per row per
+# output half (8 barriers per row down to 1), but it also collapses the final
+# reduction onto 2 * ROW_BATCH = 16 of the 128 threads. On Gemma's fused gate_up
+# geometry it ran 21900 us against 7960 us, 1.5 TF/s against 4.1 -- 2.75x slower.
+# Barriers are not this kernel's bottleneck; parallelism in the reduction is.
 _GROUPED_DUAL_AMORTIZED_PREFILL_VARIANT = (
     "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
 )
