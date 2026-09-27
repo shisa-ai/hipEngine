@@ -81,7 +81,8 @@
  "limits": [
   "Four lengths dumped, two diverging and one exact. The 16/48/128/192/256 lengths were reproduced but not dumped.",
   "The dump reads the buffers after the launch returns, so it establishes the map's contents but not the leaf's consumption of it.",
-  "Single forward per length; the recorded determinism was confirmed by the probe's repeats, not re-measured here."
+  "Single forward per length; the recorded determinism was confirmed by the probe's repeats, not re-measured here.",
+  "The fine-structure remeasurement used --repeats 1, so determinism was not re-confirmed at the new lengths; it was confirmed at the recorded lengths by the earlier probe run."
  ],
  "artifacts": {
   "dump_script": "/tmp/mmq_dump.py (scratch, not committed)"
@@ -102,5 +103,99 @@
   "why_it_did_not_bite_here": "the scratch is sized for the widest block the route serves, 1024 tokens or 8192 lanes, giving 257 tiles, and the caller guards total_rows > tile_capacity * 32 before launching. At the dumped lengths 84 and 93 are both under 257, so the guard never fires and no tile is dropped.",
   "why_it_is_still_the_lead": "it is tight in the other direction. At 1024 ids the padded total is about 8192, which is 256 tiles against a capacity of 257, so a slightly more ragged distribution at the widest length would hit the guard rather than silently corrupt. A route whose capacity is 17 tiles at one length and 257 at another, sized by the widest, is exactly the 'scratch is a capacity, not an identity' shape the recorded artifact flagged, and the guard converts an overflow into a raise rather than a wrong answer - which is the right design but does not explain a wrong answer at 64 ids.",
   "next": "the trigger is still unidentified. What this pass adds is a cleared list: the tile map kernel, the identity buffer, the grid dimension, the row masking and the pack/leaf stride agreement are all correct, so the remaining surface is narrower than it was. The next step is to compare the leaf's actual per-tile inputs at 64 ids against 96 ids rather than reading more source."
+ },
+ "tile_map_verified_well_formed": {
+  "why": "The recorded lead pointed at the per-length count distribution, the padded starts, and whether they stay valid when the live lane count is far below the scratch capacity. I reconstructed exactly what the leaf computes per tile from the dumped tile_expert, expert_start_compact and expert_start_mmq32, at both a diverging and an exact length.",
+  "check": "for every tile: expert_id = tile_expert[t], compact_base = expert_start_compact[e], expert_count = expert_start_compact[e+1] - compact_base, padded_base = expert_start_mmq32[e], tile_row_in_expert = t*32 - padded_base, valid_rows = clamp(expert_count - tile_row_in_expert, 0, 32); then claim compact_base + tile_row_in_expert + i for i in range(valid_rows)",
+  "result": {
+   "columns": "ids, compact_rows, total_padded, tiles, tile_capacity, tiles_with_bad_expert_id, rows_claimed_twice, rows_out_of_range, rows_uncovered, experts_used",
+   "rows": [
+    [
+     64,
+     512,
+     2688,
+     84,
+     257,
+     0,
+     0,
+     0,
+     0,
+     82
+    ],
+    [
+     96,
+     768,
+     2976,
+     93,
+     257,
+     0,
+     0,
+     0,
+     0,
+     90
+    ],
+    [
+     24,
+     192,
+     1760,
+     55,
+     257,
+     0,
+     0,
+     0,
+     0,
+     55
+    ],
+    [
+     32,
+     256,
+     1920,
+     60,
+     257,
+     0,
+     0,
+     0,
+     0,
+     60
+    ],
+    [
+     128,
+     1024,
+     3392,
+     106,
+     257,
+     0,
+     0,
+     0,
+     0,
+     97
+    ]
+   ]
+  },
+  "reading": "the tile map is structurally perfect at every length tested, including the diverging ones. Every compact row is claimed exactly once, no tile carries a bad expert id, nothing is out of range and nothing is uncovered. This kills the whole count-distribution, padded-tile and padded-start family that the recorded lead pointed at. The capacity is still out of proportion to the live work, but nothing on this path misbehaves because of it."
+ },
+ "fine_structure_remeasured": {
+  "why": "The recorded summary said the route is wrong at most lengths from 16 to 256. The recorded over-the-bar set was 16, 24, 32, 48, 64, 128, 256 with 192 at 0.003151, which is INSIDE the 5e-2 bar. So the passing set is larger than the record implies and the boundary had never been resolved finely.",
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python /tmp/mmq_lens.py",
+  "measured": {
+   "80": 0.00484,
+   "88": 1.88e-06,
+   "96": 1.656e-06,
+   "104": 0.000827,
+   "112": 0.0005238,
+   "120": 0.001149,
+   "128": 0.1362,
+   "136": 0.1588,
+   "144": 0.001452,
+   "160": 0.211,
+   "176": 0.04759
+  },
+  "reading": "only three of eleven lengths in 80 to 176 exceed the bar: 128, 136 and 160. The other eight pass, most of them by four to five orders of magnitude. The divergence is not a property of short prefills as a class; it is specific lengths, and 176 passes at 0.04759 only just inside the bar. The full measured picture is now PASS at 80, 88, 96, 104, 112, 120, 144, 176, 192, 384, 512, 768, 1024 and FAIL at 16, 24, 32, 48, 64, 128, 136, 160, 256."
+ },
+ "reframing_the_question": {
+  "the_new_fact": "max|delta logit| has a median of 2.49 across ALL 1022 rows of the recorded 2048/1024 chain, including the 1019 rows whose KL is below 1e-3, with p95 6.61 and max 22.14 (benchmarks/results/2026-09-27-gemma4-moe-gate-up-mmq-measured-not-promoted.json, correctness.logit_perturbation). So the route perturbs logits by order 2.5 everywhere, always. The KL swing is then margin-driven: whether a 2.5-magnitude perturbation shows up as KL 1e-06 or as KL 2.036 depends on how close the decision is at that length, not on anything length-gated in the route.",
+  "why_this_matters": "the question was 'why does the route break at 64 ids'. The measurement says the route is perturbing every length, and 96 ids is not a length where it works - it is a length where a 2.5-magnitude perturbation happens to be nearly softmax-invariant. That is a different defect with a different fix.",
+  "the_lead_it_points_at": "a perturbation that is often softmax-invariant is a per-row constant offset, which is what a slightly wrong per-row sum or bias term produces. The DS4 pack stores one sum per 32-element sub-block in ds4[2*ds4_idx + 1] and the leaf reads it as activation_tile[...].ds[1], so a systematic error in how that sum is used is exactly the shape of a per-row constant. The recorded note that 'much of that is a softmax-invariant global shift' points the same way. This has not been tested and is the next thing to measure, not a conclusion.",
+  "not_yet_established": "that the perturbation is in fact a constant offset, and that the offset comes from the stored sum. Both are hypotheses the next measurement should settle directly by comparing the MMQ and fp32 gate/up outputs at one layer for one length, rather than by reading more source."
  }
 }
