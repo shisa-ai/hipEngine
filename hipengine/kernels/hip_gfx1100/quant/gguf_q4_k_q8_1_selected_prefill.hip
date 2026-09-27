@@ -1306,8 +1306,20 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
           const float dmin =
               fp16_bits_to_float(weight_cache[cr].dm[1]);
           acc[wsic * TM + cr] +=
-              xd * dscale * static_cast<float>(dot) -
-              dmin * xsum;
+              xd * dscale * static_cast<float>(dot);
+          // The Q4_K weight is ``d*scale*q - dmin*min``, so its min offset
+          // contributes ``-dmin*min*sum_k x[k]`` over the activation. That is a
+          // property of the activation, not of an activation plane: only the
+          // first plane stores the activation's own sum, and later planes store
+          // their residuals' sums. Applying the term once per plane over-counts
+          // it by about the size of the error the extra planes exist to remove,
+          // which is why three planes measured 1.08x better than one rather than
+          // 22x. Take it from the first plane only. With ACTIVATION_PASSES == 1
+          // this is the original expression, so the one-plane routes are
+          // unchanged.
+          if (activation_pass == 0) {
+            acc[wsic * TM + cr] -= dmin * xsum;
+          }
         }
       }
       __syncthreads();

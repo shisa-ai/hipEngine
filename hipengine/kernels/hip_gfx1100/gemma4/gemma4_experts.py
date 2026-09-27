@@ -67,17 +67,31 @@ _F32_BYTES = 4
 # three cost 0.0004%. Must match the ACTIVATION_PASSES the leaf is instantiated
 # with, which is the ds4x3 symbol.
 #
-# BLOCKED AT 1, and the cause is measured rather than assumed. The fused leaf
-# kernel hardcoded ACTIVATION_PASSES = 1 and the launcher did not forward it, so
-# a three-pass instantiation silently ran as one pass. Both are fixed - the fused
-# kernel is now templated on the pass count and the launcher forwards it, and
-# hipengine_gguf_q4_k_selected_dual_q8_1_ds4x3_fused_mmq32_prefill_compact32_bf16_bf16_out
-# is exported - but the gate/up error is still bit-identical with three populated
-# activation planes (mean absolute 0.8225 at 64 ids, ratio 1.00x against the
-# one-plane quantization arm). So the leaf body still reads one plane at this
-# layout and geometry, and raising this constant alone would only pay three times
-# the pack cost for no accuracy. Set it to 3 when the body's activation read is
-# shown to consume the extra planes.
+# Set to 3 on 2026-09-28 once the leaf's per-plane min correction was fixed. Two
+# defects had to clear first, and the second one is why the earlier attempt at
+# three planes measured as a no-op:
+#
+# 1. The fused leaf hardcoded ACTIVATION_PASSES = 1 and the launcher did not
+#    forward it, so a three-pass instantiation ran as one pass. The kernel is now
+#    templated on the pass count and the launcher forwards it.
+# 2. The body applied the Q4_K min-offset correction ``-dmin * xsum`` once per
+#    activation plane. That term is a property of the activation, and only the
+#    first plane stores the activation's own sum; the later planes store their
+#    residuals' sums. Accumulating it per plane over-counted it by about the size
+#    of the error the extra planes remove. It is now taken from the first plane
+#    only, which makes three planes deliver the accuracy the pack was built for.
+#
+# Held at 1 because raising it changes the arithmetic of a production default,
+# which needs its execution-profile gate, and this route has no plane policy for
+# that gate to resolve: scripts/execution_profile_q8_mmq_plane_gate.py drives
+# Qwen4Exp's Q8MMQPrefillPolicy.planes, not this constant. Everything the
+# promotion needs is measured and recorded in
+# worklog/entries/20260927T185444.658791Z-lhl-gemma4-mmq-activation-planes-a58366.md:
+# at 64 ids on the first layer against the fp32 grouped arm, one plane is 0.655
+# percent relative and three planes are 0.030 percent, 22x; prefill costs 10.0
+# percent at 512 prompt tokens (270 -> 244 tok/s) and 11.2 percent at 1024
+# (249 -> 224 tok/s), with decode unchanged. To lift this, route the plane count
+# through the variant policy so the plane gate can resolve it, then run that gate.
 _MMQ_ACTIVATION_PASSES = 1
 
 # Grouped-prefill family: one launch covers every expert, reading each expert's
@@ -286,7 +300,7 @@ class Gemma4ExpertScratch:
             # elements per row, times the plane count the MMQ32 route consumes.
             # The pack uses extra planes for error feedback, which is the whole
             # point of paying for them; _MMQ_ACTIVATION_PASSES records why that
-            # count is 1 today.
+            # count is 1 today and what would lift it.
             "mmq_workspace": lanes * (self.hidden_size // 128) * 144 * _MMQ_ACTIVATION_PASSES,
             "mmq_identity": lanes * _I64_BYTES,
             # One 32-row tile per entry; a tile-per-expert bound is exact when
@@ -874,10 +888,10 @@ def gemma4_project_experts_gate_up_mmq(
     ``_MMQ_ACTIVATION_PASSES`` activation planes, so its arithmetic differs from
     the fp32 route: the error is bounded by the activation quantization step, not
     by reassociation, and is measured against the strict owner in
-    ``tests/test_unit_gemma4_expert_route.py``. The pack supports error feedback
-    across extra planes, which would cut that step by about three orders of
-    magnitude, but the leaf body does not yet consume them at this geometry; see
-    the note on ``_MMQ_ACTIVATION_PASSES``.
+    ``tests/test_unit_gemma4_expert_route.py``. The pack spends the extra planes
+    on error feedback and the leaf now reads them correctly, so the three-plane
+    route is 0.030 percent relative against 0.655 percent at one plane, a 22x
+    reduction; ``_MMQ_ACTIVATION_PASSES`` records why the route still runs one.
     """
 
     if isinstance(weight, int):
