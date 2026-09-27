@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_gr_iu8_logits_probe",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "479be908ff8bb92da363bea6828ffc087288083b",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "It seems that tuned daemon is not running, preset profile is not activated.\nPreset profile: accelerator-performance",
+    "cpu_governors": {
+      "powersave": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_gr_iu8_logits_probe.py",
+    "--model-root",
+    "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--route",
+    "wide",
+    "--case-id",
+    "code-p512",
+    "--case-id",
+    "general_en-p512",
+    "--output",
+    "/tmp/qwen4exp-gr-screen/wide-probe.json"
+  ],
+  "arithmetic_class": "T1_production_candidate",
+  "flag": "HIPENGINE_QWEN4_EXP_GR_WIDE",
+  "runtime_default_changed": false,
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "manifest_sha256": "35e57360e648bcc8ce8f21d89bf5583a0b4217061b306ec96616b2607cc6e565",
+  "cases": [
+    {
+      "id": "code-p512",
+      "prompt_tokens": 512,
+      "incumbent_deterministic": true,
+      "candidate_deterministic": true,
+      "logits_shape": [
+        248320
+      ],
+      "max_abs": 1.204628586769104,
+      "p99_abs": 0.3840816020965576,
+      "median_abs": 0.0949048399925232,
+      "rel_p50": 0.09193697571754456,
+      "rel_p99": 5.899975776672363,
+      "rel_max": 55292.37890625,
+      "kl_vs_incumbent": 5.170527500145612e-11,
+      "top1_agreement": 1.0,
+      "argmax_gap": 23.226709365844727,
+      "argmax_drift": 0.4812278747558594
+    },
+    {
+      "id": "general_en-p512",
+      "prompt_tokens": 512,
+      "incumbent_deterministic": true,
+      "candidate_deterministic": true,
+      "logits_shape": [
+        248320
+      ],
+      "max_abs": 1.7647590637207031,
+      "p99_abs": 0.6423988938331604,
+      "median_abs": 0.15759068727493286,
+      "rel_p50": 0.15093646943569183,
+      "rel_p99": 9.710532188415527,
+      "rel_max": 367769.71875,
+      "kl_vs_incumbent": 3.400226023829337e-10,
+      "top1_agreement": 1.0,
+      "argmax_gap": 21.92456817626953,
+      "argmax_drift": 1.7647590637207031
+    }
+  ]
+}

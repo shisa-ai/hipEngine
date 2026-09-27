@@ -185,6 +185,9 @@ from hipengine.kernels.cpu_reference.qwen4_exp import (
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.kernels.registry import generation as _registry_generation
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import (
+    gguf_q8_0_dense_wide256_f32_f32_out,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q8_0_iu8_wmma_prefill_f32_f32,
 )
@@ -3025,7 +3028,42 @@ def run_qwen4_exp_gr_read(
         and is_registered(fused_up_key)
     )
     gr_iu8 = fused_up and _qwen4_exp_gr_iu8_enabled(rows)
-    if gr_iu8:
+    gr_wide = fused_up and not gr_iu8 and _qwen4_exp_gr_wide_enabled(rows, low_rank)
+    if gr_wide:
+        # Measured 4.38x faster than the fused exact kernel at rows=1024,
+        # K=320, N=10240 (1.4925 ms against 6.5379 ms, real weights). The
+        # projection is the same tile the dense route already ships, so the
+        # epilogue is the retained exact sigmoid plus gated-mean pair.
+        # Default-off: the GR numerical gate is a cliff at ~5e-9
+        # prefill-boundary KL, so this route has to cross that screen first.
+        gguf_q8_0_dense_wide256_f32_f32_out(
+            scratch.low_rank.ptr,
+            up_weight.allocation("raw").tensor.ptr,
+            scratch.gate.ptr,
+            rows,
+            low_rank,
+            residual_width,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        qwen4_exp_sigmoid_f32(
+            scratch.gate.ptr,
+            scratch.gate.ptr,
+            rows * residual_width,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        qwen4_exp_gated_mean_f32(
+            scratch.normalized.ptr,
+            scratch.gate.ptr,
+            scratch.mixed.ptr,
+            rows,
+            branches,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    elif gr_iu8:
         # T1 candidate: iu8-WMMA projection + separate sigmoid/gated-mean
         # epilogue (the unfused epilogue kernels are the retained exact ones).
         gguf_q8_0_iu8_wmma_prefill_f32_f32(
@@ -3250,6 +3288,23 @@ def _qwen4_exp_gr_iu8_down_enabled(rows: int) -> bool:
         os.environ.get("HIPENGINE_QWEN4_EXP_GR_IU8_DOWN", "0")
         not in {"", "0", "false", "False"}
         and rows > 256
+    )
+
+
+def _qwen4_exp_gr_wide_enabled(rows: int, low_rank: int) -> bool:
+    """Default-off wide-tile GR up route.
+
+    The fused exact kernel runs at 1.03 TFLOP/s (3.9% of the gfx1151 FP32
+    peak) at the production chunk shape; the dense wide tile reaches 4.50
+    TFLOP/s on identical operands. The route changes arithmetic (F16 operands,
+    F32 accumulate), so it stays off until it crosses the GR prefill-boundary
+    KL screen.
+    """
+    return (
+        rows > 256
+        and low_rank % 64 == 0
+        and os.environ.get("HIPENGINE_QWEN4_EXP_GR_WIDE", "0")
+        not in {"", "0", "false", "False"}
     )
 
 

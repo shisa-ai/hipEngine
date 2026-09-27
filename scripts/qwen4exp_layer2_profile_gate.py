@@ -76,7 +76,7 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
     "Q8_MMQ_PREFILL", "Q8_IU8_WMM", "GR_IU8", "GR_IU8_DOWN",
     "GDN_PEER_PREFILL", "GDN_COLWARPS_PREFILL", "Q4_DP4A64",
     "QSA_H256_WAVE_PREFILL", "QSA_HEAD_PAIR", "QSA_FLASH_PREFILL",
-    "QSA_ORDERED_DECODE", "QSA_ORDERED_DECODE_V2",
+    "QSA_ORDERED_DECODE", "QSA_ORDERED_DECODE_V2", "GR_WIDE",
 )
 
 CANDIDATES = {
@@ -313,6 +313,31 @@ CANDIDATES["production_gr_up_restore"] = CandidateSpec(
                             "gguf_q8_0_iu8_wmma_prefill_f32_f32"),
     direct_dispatch_reference=("hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv",
                                "gguf_q8_0_iu8_wmma_prefill_f32_f32"),
+    dispatch_shape_positions=(3, 4, 5),
+)
+CANDIDATES["production_gr_up_wide"] = CandidateSpec(
+    name="production_gr_up_wide", classification="T1",
+    mechanism=(
+        "GR-up wide-row 256-column tile (F16 operands, F32 accumulate) plus "
+        "the retained exact sigmoid/gated-mean epilogue; dense and GR-down off"
+    ),
+    environment={
+        "HIPENGINE_QWEN4_EXP_GR_WIDE": "1",
+        "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
+        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "0",
+        "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "0",
+        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+    },
+    base_profile="production", scenario_id="qwen4exp-gr-up-wide-tile",
+    candidate_key=("hip_gfx1151", "linear", "gguf_q8_0",
+                   "dense_wide256_f32_f32_out"),
+    fallback_key=("hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
+                  "coltile2_branch4_rowbatch4_f32_exact"),
+    direct_dispatch_target=("hipengine.runtime.qwen4_exp_runner",
+                            "gguf_q8_0_dense_wide256_f32_f32_out"),
+    direct_dispatch_reference=(
+        "hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide",
+        "gguf_q8_0_dense_wide256_f32_f32_out"),
     dispatch_shape_positions=(3, 4, 5),
 )
 CANDIDATES["production_gr_down_restore"] = replace(
