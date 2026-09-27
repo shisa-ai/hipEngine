@@ -324,6 +324,7 @@ def gemma4_layer_forward_bf16(
     eps: float = 1e-6,
     rotary_dim: int | None = None,
     key_begin: int = 0,
+    window: int = 0,
     stream: int = 0,
 ) -> int:
     """Run one Gemma 4 decoder layer over a block of tokens, in place.
@@ -342,6 +343,16 @@ def gemma4_layer_forward_bf16(
     row without the wrapper shifting it. It changes no arithmetic: a masked key
     contributes zero to both reductions, so the remaining terms keep their order
     and the result is bit-identical.
+
+    ``window`` extends that skip to a per-row bound. Row ``t`` of the block sits
+    at cache position ``kv.write_offset + t``, so with ``window > 0`` its walk
+    starts at column ``max(0, (kv.write_offset - key_begin) + t - window + 1)``.
+    ``key_begin`` drops the keys every row of the block masks; this drops the
+    rest of each row's own prefix, which only a multi-row block has. Sound under
+    the same condition as ``key_begin`` -- the mask must be zero below that
+    column, which the sliding causal mask above is and an arbitrary caller-built
+    mask need not be -- so it defaults to 0, meaning no promise and a walk from
+    column 0. Like ``key_begin`` it changes no arithmetic.
 
     Returns ``hidden_ptr`` so the call reads as a pipeline stage.
     """
@@ -459,6 +470,13 @@ def gemma4_layer_forward_bf16(
         buf("context"),
         tokens=rows,
         keys=None if kv is None else kv.write_offset + rows - key_begin,
+        # A sliding row's leading columns are all masked, so its walk can start
+        # at the first column it can keep. `key_begin` dropped the keys every
+        # row of the block masks; this drops the rest of each row's own prefix,
+        # which only a multi-row block has. Sound because the mask is
+        # `_keep_mask`'s sliding causal form, which is zero below that column.
+        window=window,
+        row_offset=(kv.write_offset if kv is not None else 0) - key_begin,
         scratch=scratch.attention,
         num_heads=num_heads,
         num_kv_heads=num_kv_heads,

@@ -42,7 +42,8 @@ _SYMBOL_DECODE_BF16 = "hipengine_gemma4_attention_decode_bf16"
 _SYMBOL_DECODE_F32 = "hipengine_gemma4_attention_decode_f32"
 _SYMBOL_DECODE_VARIANT = "hipengine_gemma4_attention_decode_variant"
 
-_ARGTYPES_PREFILL = (
+# The five buffers and the geometry scalars both prefill and decode share.
+_ARGTYPES_COMMON = (
     ctypes.c_void_p,
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -57,9 +58,11 @@ _ARGTYPES_PREFILL = (
     ctypes.c_int64,
 )
 
-# Decode adds the two-phase split's scratch pointer and slice count; the prefill
-# symbols keep the twelve-argument form.
-_ARGTYPES_DECODE = _ARGTYPES_PREFILL + (ctypes.c_void_p, ctypes.c_int)
+# Prefill adds the sliding walk's window and this block's start in the mask's
+# column frame; decode adds the two-phase split's scratch pointer and slice
+# count instead. The two tails are independent, so they cannot share one base.
+_ARGTYPES_PREFILL = _ARGTYPES_COMMON + (ctypes.c_int64, ctypes.c_int64)
+_ARGTYPES_DECODE = _ARGTYPES_COMMON + (ctypes.c_void_p, ctypes.c_int)
 
 _DECODE_SYMBOLS = (_SYMBOL_DECODE_BF16, _SYMBOL_DECODE_F32)
 _SYMBOL_SPLIT_WORKSPACE_BYTES = "hipengine_gemma4_decode_split_workspace_bytes"
@@ -291,6 +294,8 @@ def _launch_prefill(
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
     scratch: Gemma4AttentionScratch | None = None,
+    window: int = 0,
+    row_offset: int = 0,
 ) -> None:
     _check_prefill_shape(tokens, num_heads, num_kv_heads, head_dim)
     key_count = tokens if keys is None else int(keys)
@@ -355,6 +360,8 @@ def _launch_prefill(
         ctypes.c_float(scale),
         stream,
         key_count,
+        window,
+        row_offset,
     )
     _check_launch(runtime, err)
 
@@ -376,6 +383,8 @@ def gemma4_attention_prefill_bf16(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
     scratch: Gemma4AttentionScratch | None = None,
+    window: int = 0,
+    row_offset: int = 0,
 ) -> None:
     """Masked, ungated prefill attention over ``tokens`` queries.
 
@@ -390,6 +399,14 @@ def gemma4_attention_prefill_bf16(
     attending over the live context. At ``tokens == 1`` this routes to the
     decode kernel (:func:`attention_symbol`); its output is bit-identical to the
     block kernel's.
+
+    ``window`` and ``row_offset`` let a row skip its leading masked columns.
+    ``row_offset`` is the block's start in the mask's column frame, so row
+    ``t``'s own position is ``row_offset + t``; with ``window > 0`` the walk
+    starts at column ``max(0, row_offset + t - window + 1)``. That is only
+    sound when the mask is zero below that column, which a sliding causal mask
+    guarantees and an arbitrary caller-supplied mask does not -- so ``window``
+    defaults to 0, meaning no promise and a walk from column 0.
     """
 
     _launch_prefill(
@@ -409,6 +426,8 @@ def gemma4_attention_prefill_bf16(
         library=library,
         runtime=runtime,
         scratch=scratch,
+        window=window,
+        row_offset=row_offset,
     )
 
 
@@ -429,12 +448,15 @@ def gemma4_attention_prefill_f32(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
     scratch: Gemma4AttentionScratch | None = None,
+    window: int = 0,
+    row_offset: int = 0,
 ) -> None:
     """F32 entry point, for validating against the f32 CPU reference.
 
     The reference works in f32, so comparing through a BF16 round trip would
     measure the rounding rather than the kernel. Routed like the BF16 wrapper:
-    ``tokens == 1`` selects the decode kernel.
+    ``tokens == 1`` selects the decode kernel. ``window``/``row_offset`` carry
+    the same meaning as in :func:`gemma4_attention_prefill_bf16`.
     """
 
     _launch_prefill(
@@ -454,6 +476,8 @@ def gemma4_attention_prefill_f32(
         library=library,
         runtime=runtime,
         scratch=scratch,
+        window=window,
+        row_offset=row_offset,
     )
 
 

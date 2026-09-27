@@ -719,6 +719,13 @@ class Gemma4Runner:
                 rows=rows,
                 eps=config.rms_norm_eps,
                 key_begin=_sliding_read_range(attention, start, rows),
+                # The same window the mask above was built with, so a row may
+                # skip the rest of its own masked prefix and not just the keys
+                # every row of the block masks. Both are read from the one
+                # geometry, so they cannot drift apart.
+                window=0
+                if attention.sliding_window is None
+                else int(attention.sliding_window),
             )
 
         # --- final norm and lm head -----------------------------------------
