@@ -563,6 +563,13 @@ def gemma4_project_expert(
 # quant key rather than branching on the type.
 _SELECTED_VARIANT = "selected_gemv_bf16_bf16_out"
 
+# The same per-lane selected shape with eight output columns per block. It is a
+# bit-exact sibling of ``_SELECTED_VARIANT`` (see
+# ``gemma4_project_experts_selected``) and is preferred where it is registered,
+# because one block then reads the x row once and pays the block reduction once
+# for eight outputs instead of one.
+_SELECTED_PACK8_VARIANT = "selected_pack8_gemv_bf16_bf16_out"
+
 # The pack8 expert GEMV family. It is the same per-lane selected shape as
 # ``_SELECTED_VARIANT`` but reads a layout that has the per-32-value scale and min
 # terms already decoded, so the kernel does not re-decode raw Q4_K block metadata
@@ -684,19 +691,49 @@ def gemma4_project_experts_selected(
     # lazy import can be a no-op and a lookup for a kernel that exists can still
     # report it missing. `_ensure_linear_kernel_registered` is the repo's answer
     # to exactly that, and is what the GGUF runtime dispatch uses.
-    from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
+    from hipengine.kernels.registry import (
+        KernelKey,
+        MissingKernelError,
+        is_registered,
+        resolve,
+    )
     from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
 
-    key = KernelKey(weight.backend, "linear", weight.spec.quant_key, _SELECTED_VARIANT)
-    _ensure_linear_kernel_registered(key)
-    try:
-        fn = resolve(
-            backend=key.backend,
-            layer=key.layer,
-            quant=key.quant,
-            variant=key.variant,
-        )
-    except MissingKernelError:
+    def resolve_variant(variant: str):
+        key = KernelKey(weight.backend, "linear", weight.spec.quant_key, variant)
+        _ensure_linear_kernel_registered(key)
+        # The resolver broadens a miss to the variant-less key and then to the
+        # cpu_reference backend. That is right for dense dispatch, where a
+        # variant-less registration is a legitimate substitute, and wrong here:
+        # the CPU reference's ``linear`` takes array objects, not device
+        # pointers, so a broadened hit is a NumPy kernel called with ints. The
+        # selected family is a per-variant ABI, so require the exact key.
+        if not is_registered(key):
+            return None
+        try:
+            return resolve(
+                backend=key.backend,
+                layer=key.layer,
+                quant=key.quant,
+                variant=key.variant,
+            )
+        except MissingKernelError:
+            return None
+
+    # Eight output columns per block is the same arithmetic as one. The k walk
+    # (`k = tid; k += blockDim.x`), the per-element dequant and the reduction
+    # tree are properties of an output, not of the block, and the pack8 sibling
+    # reproduces all three per output -- same shuffle offsets, same per-warp
+    # partial published by lane 0, same sequential sum over warps. So this is a
+    # bit-exact sibling rather than a numerical candidate, and it is preferred
+    # where it is registered and the width admits it, because it reads the x row
+    # once per eight outputs and pays the block reduction once per eight outputs.
+    fn = None
+    if int(out_features) % 8 == 0:
+        fn = resolve_variant(_SELECTED_PACK8_VARIANT)
+    if fn is None:
+        fn = resolve_variant(_SELECTED_VARIANT)
+    if fn is None:
         return False
     fn(
         x_ptr,
