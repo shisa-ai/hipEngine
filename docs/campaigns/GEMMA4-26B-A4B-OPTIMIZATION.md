@@ -69,6 +69,28 @@ same kernel's `K_TILE=512` shape reaches 17.28 ms but is **not** bit-exact, so i
 was dropped rather than shipped. Recorded in
 `benchmarks/results/2026-09-27-gemma4-q5-1-staged-grouped-prefill-accepted.json`.
 
+*Measured 2026-09-27 (iteration 49): the prefill profile is closed, and there is
+no host-side work to remove.* The route attribution that drove this campaign
+wraps registered kernels, which misses attention and every launch the registry
+does not own; that left 435 ms of a 3.04 s prefill unexplained and made
+host-side work look like a target. A `rocprofv3` kernel trace settles it: across
+five timed 512-token prefills the union of all dispatches is 15.014 s of a
+15.089 s span, so the device is **99.5% busy** and the host gap is **15 ms per
+prefill (0.5%)**. Per-kernel GPU time is the union of each kernel's intervals,
+not the sum of durations - summing reports 3588 ms for a 3018 ms span because
+end stamps overlap the next dispatch - and the unions sum to **3002.8 ms against
+a 3003 ms prefill**, so the accounting is closed rather than approximately
+closed. The breakdown per prefill: Q4_K expert gate/up 1044.6, Q8_0 dense
+projections 717.2, Q5_1 expert down 681.0, attention 317.3, Q5_K row4 112.2,
+Q8_0 grouped 53.9, and everything else combined - router, expert grouping, lane
+compaction, hidden gather, all norms, GeGLU, rotary, weighted accumulate - is
+**73 ms (2.4%)**. Three routes are 81% of the prefill; the glue is not a target
+and attention, after its 3.08x rewrite, is no longer the first thing to reach
+for. The trace also records why isolated and in-context kernel numbers differ:
+the Q4_K route is 32.52 ms per launch isolated and 36.0 ms in context, because
+in context each layer's 285 MB of expert weights is cold. Evidence row
+`2026-09-27-gemma4-prefill-profile-closed.json`.
+
 *Measured 2026-09-27 (iteration 48): the largest route's tile shape was never
 swept, and it was wrong.* The Q4_K gate projection is 38% of the prefill and its
 staged grouped prefill carried `row_batch` 8 at `out_tile` 8. At the route's own
