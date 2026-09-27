@@ -102,7 +102,7 @@ def main() -> int:
     width = compact_rows * fused_width
     out_ref = malloc(width * 2, runtime=runtime)
     out_mmq = malloc(width * 2, runtime=runtime)
-    workspace = malloc(compact_rows * (in_features // 128) * 144, runtime=runtime)
+    workspace = malloc(compact_rows * (in_features // 128) * 144 * 3, runtime=runtime)
     identity = malloc((compact_rows + 32 * num_experts) * 8, runtime=runtime)
     plan_expert_start = malloc((num_experts + 1) * 8, runtime=runtime)
     plan_tile_expert = malloc(4096 * 8, runtime=runtime)
@@ -303,6 +303,50 @@ def main() -> int:
             f"      worst tile per row: {list(prof.argmax(axis=1))} "
             f"(identical index => row-independent)"
         )
+
+    # Both paths read the same raw Q4_K weights, so the only intended difference
+    # is bf16 activations becoming Q8_1. Try the pack variants against the split
+    # weights; the workspace is 3x so the three-plane form does not fault.
+    for pack_name, pack_fn in (
+        ("generic", gguf_q8_1_mmq_ds4_pack_bf16),
+        ("d4x3   ", gguf_q8_1_mmq_ds4_pack_bf16_d4x3),
+    ):
+        pack(pack_fn)
+        got = run_mmq(
+            gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+            total,
+            expert_start_ptr,
+            plan_expert_start.ptr,
+            plan_tile_expert.ptr,
+            weight_ptrs=(half_a.ptr, half_b.ptr),
+        )
+        if not np.isfinite(got).all():
+            print(f"  pack={pack_name} NON-FINITE")
+            continue
+        g = got.reshape(compact_rows, 2 * H)
+        r = ref.reshape(compact_rows, 2 * H)
+        rowerr = np.abs(g - r).max(axis=1)
+        good = float((rowerr < 1e-2).mean())
+        print(
+            f"  pack={pack_name} split-weights direct={np.abs(g - r).max():.5f} "
+            f"rows_ok={good:.1%} median_rowerr={np.median(rowerr):.5f}"
+        )
+        # A row needs both its activations and its expert's weights. If only some
+        # 32-row tiles are good, the tile->expert pairing or the compact row order
+        # disagrees between the compaction and the plan, rather than the
+        # arithmetic being wrong.
+        tile_err = rowerr.reshape(compact_rows // 32, 32).max(axis=1)
+        good_tiles = [i for i, e in enumerate(tile_err) if e < 1e-2]
+        print(
+            f"    good 32-row tiles: {len(good_tiles)}/{len(tile_err)} "
+            f"{good_tiles[:8]} worst_tile_err={tile_err.max():.4f}"
+        )
+        if good_tiles:
+            te = np.empty(compact_rows // 32, dtype=np.int64)
+            read(te, plan_tile_expert, te.nbytes, runtime)
+            print(
+                f"    experts of good tiles: {[int(te[i]) for i in good_tiles[:8]]}"
+            )
 
     for label, builder in (
         ("mmq32-plan", qwen35_moe_mmq32_tile_map),
