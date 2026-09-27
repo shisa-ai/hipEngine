@@ -1,0 +1,57 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_qsa_head_tile_microbench",
+ "performance_claim": false,
+ "question": "What is K/V amortization worth on the shipped QSA wave-row kernel? The three registered variants differ only in how many query heads share one selected K/V load.",
+ "geometry": {
+  "rows": 1024,
+  "selected_stride": 2051,
+  "selected_counts": 2050,
+  "query_heads": 24,
+  "kv_heads": 2,
+  "head_dim": 256,
+  "block_size": 256,
+  "query_heads_per_kv_head": 12,
+  "note": "Synthetic K/V contents; geometry, counts and access pattern are representative, the values are not."
+ },
+ "variants": {
+  "heads_1_page256": {
+   "heads": 1,
+   "head_group_blocks_per_row": 24,
+   "median_ms": 54.938034852966666,
+   "min_ms": 54.848570842295885,
+   "max_ms": 55.205902084708214,
+   "repetitions": 20,
+   "kv_read_gb_per_launch": 51.5899392,
+   "effective_kv_gb_per_s": 939.0568726761462,
+   "output_ptr": 139768226643968,
+   "speedup_vs_heads_4": 0.3519334617247715
+  },
+  "heads_2_head_pair": {
+   "heads": 2,
+   "head_group_blocks_per_row": 12,
+   "median_ms": 20.82327683456242,
+   "min_ms": 20.775762852281332,
+   "max_ms": 21.0249200463295,
+   "repetitions": 20,
+   "kv_read_gb_per_launch": 25.7949696,
+   "effective_kv_gb_per_s": 1238.756503356166,
+   "output_ptr": 139768199380992,
+   "speedup_vs_heads_4": 0.9285057745603852
+  },
+  "heads_4_head_quad": {
+   "heads": 4,
+   "head_group_blocks_per_row": 6,
+   "median_ms": 19.334532786160707,
+   "min_ms": 19.243116956204176,
+   "max_ms": 19.437151029706,
+   "repetitions": 20,
+   "kv_read_gb_per_launch": 12.8974848,
+   "effective_kv_gb_per_s": 667.0698972996014,
+   "output_ptr": 139768172118016,
+   "speedup_vs_heads_4": 1.0
+  }
+ },
+ "bit_identical_across_variants": true,
+ "reading": "A speedup at HEADS=1 or 2 over HEADS=4 means the kernel is K/V-traffic limited and the shipped quad tile is leaving reuse on the table; a flat result means the cost is the scalar FMA issue rate and only tensor cores or a different reduction structure can move it."
+}
