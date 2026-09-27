@@ -1881,6 +1881,49 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``scripts/gemma4_moe_owner_oracle.py`` (per-tile profile across eight
   rows, with the across-row variance and the worst-tile index per row).
 
+  **Iteration 96: the MoE route is close but not passing, and this is the point
+  to decide whether to keep spending on it.** Two more probes narrowed the
+  residual, and neither produced a gate-passing path.
+
+  **The activation pack variant is eliminated.** The generic single-plane pack and
+  the three-plane ``d4x3`` pack produce *bit-identical* output with the split
+  weights: direct 1.97070, median row error 1.84277, same to five digits. As with
+  the earlier RAW/X8 comparison, identical output from two different inputs means
+  the difference is not reaching the result. The pack form is not the residual.
+
+  **It is not a tile-to-expert pairing mismatch either.** Zero of 128 32-row tiles
+  land within 1e-2 of the reference. A pairing disagreement would leave the tiles
+  whose assignment happens to coincide correct, so 0/128 rules it out.
+
+  **What the residual actually looks like.** Row 0's per-column-tile error has
+  median 0.0415 -- about 2% of the reference absmax, quantization scale -- while
+  that same row's maximum is 1.84, and the median *row* maximum across the tensor
+  is 1.84277. So within each row most columns are already correct and a small
+  number are badly wrong, with the bad set varying from row to row. That is not
+  the signature of an addressing error, which would be uniform; it is the
+  signature of a small number of wrong *activation* contributions per row. The
+  strongest remaining candidate is the ``block_q8_1_mmq_ds4`` sub-block handling
+  -- four 32-feature (scale, sum) pairs -- for particular positions within a row.
+
+  **Status and the decision.** What is established: the owner needs two
+  independently-addressed weight tensors, and splitting the fused tensor takes the
+  error from 3.915 to 1.971 and puts the bulk of the output at quantization scale.
+  What is not: a path that passes the gate. ``rows_ok`` is 0.0% and no tile is
+  clean, so the split alone is necessary but not sufficient.
+
+  This route has now consumed eight iterations (iterations 28 through 35 plus the
+  oracle work) without moving the production metric, which remains 653.68 against
+  llama.cpp's 3910. The prize is real and the largest remaining one -- the MoE line
+  is 71% of prefill at roughly 6% of its memory floor -- but the remaining defect
+  is a small numerical one in activation packing rather than the structural
+  problem the earlier iterations were chasing, and further progress needs either
+  the specific sub-block fix or a working qwen4 Q4_K reference to diff against.
+  Whether to keep spending on it or redirect to another prefill target is the
+  lead's call, and this entry records it as a call rather than deciding it.
+
+  Evidence: ``scripts/gemma4_moe_owner_oracle.py`` (pack-variant comparison,
+  per-tile good/bad counts, expert ids of good tiles).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
