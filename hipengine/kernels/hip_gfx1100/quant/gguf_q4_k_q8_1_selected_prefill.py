@@ -1681,12 +1681,20 @@ def gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
     num_experts: int,
     mmq_total_rows: int,
     *,
+    expert_stride_rows: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
     _symbol: str = _SYMBOL_DS4_MMQ32_BF16,
 ) -> None:
-    """Launch the source-faithful 32x32 Q4_K x DS4-Q8_1 packed-dot MMQ leaf."""
+    """Launch the source-faithful 32x32 Q4_K x DS4-Q8_1 packed-dot MMQ leaf.
+
+    ``expert_stride_rows`` is the row distance between consecutive experts in
+    the raw weight layout. Zero means each half is its own tensor and the
+    stride is its output width. A fused ``gate | up`` stack instead passes the
+    fused width with ``qweight_b_ptr`` pointing at the up half, so both halves
+    are read out of one resident allocation.
+    """
 
     _check_mmq32_common(
         compact_rows,
@@ -1695,6 +1703,7 @@ def gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
         out_features_b,
         num_experts,
         mmq_total_rows,
+        expert_stride_rows,
     )
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
@@ -1708,6 +1717,7 @@ def gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
         ctypes.c_void_p,
         ctypes.c_void_p,
         ctypes.c_void_p,
+        ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
@@ -1732,6 +1742,7 @@ def gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
         ctypes.c_int64(out_features_b),
         ctypes.c_int64(num_experts),
         ctypes.c_int64(mmq_total_rows),
+        ctypes.c_int64(expert_stride_rows),
         ctypes.c_void_p(stream),
     )
     if int(err) != HIP_SUCCESS:
@@ -2167,6 +2178,7 @@ def _check_mmq32_common(
     out_features_b: int,
     num_experts: int,
     mmq_total_rows: int,
+    expert_stride_rows: int = 0,
 ) -> None:
     if mmq_total_rows % 32 != 0:
         raise ValueError("mmq_total_rows must be a multiple of 32")
@@ -2182,6 +2194,13 @@ def _check_mmq32_common(
         raise ValueError("out_features_a must be a multiple of 32")
     if out_features_b % 32 != 0:
         raise ValueError("out_features_b must be a multiple of 32")
+    if expert_stride_rows < 0:
+        raise ValueError("expert_stride_rows must not be negative")
+    if expert_stride_rows and expert_stride_rows < max(out_features_a, out_features_b):
+        raise ValueError(
+            "expert_stride_rows must span both halves when set: "
+            f"{expert_stride_rows} < {max(out_features_a, out_features_b)}"
+        )
 
 
 def _check_positive(value: int, name: str) -> None:

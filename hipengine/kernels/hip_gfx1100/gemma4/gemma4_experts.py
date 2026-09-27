@@ -286,24 +286,6 @@ def gemma4_experts_forward_bf16(
     down_wmma = gate_up_wmma or use_mmq
     mmq_rows = 0
     if use_mmq:
-        # The grouped int8 MMQ leaf derives each expert's weight stride from its
-        # output width, so it needs gate and up in separate per-expert
-        # allocations. Gemma4 stores them fused in one ``ffn_gate_up_exps``
-        # tensor -- a layout the grouped owners handle with an explicit
-        # ``expert_stride_rows``, which this leaf has no parameter for. Feeding
-        # it the fused layout reads expert 0's up half as expert 1's gate and
-        # produces wrong logits (measured kl_max 25.5 against a 0.05 bar, 125
-        # top-1 flips at 2048 prompt / 1024 prefill), so the route refuses until
-        # the loader splits the tensor rather than returning those numbers.
-        # Clearing condition: split ``ffn_gate_up_exps`` into per-expert gate and
-        # up allocations, then flip this to True.
-        if not _MMQ_DUAL_WEIGHTS_ARE_SPLIT:
-            raise NotImplementedError(
-                "HIPENGINE_GEMMA4_MOE_PREFILL=mmq requires the fused "
-                "ffn_gate_up_exps tensor split into separate per-expert gate and "
-                "up allocations; the grouped int8 MMQ leaf has no fused-stride "
-                "parameter. Use auto, grouped, selected, wmma or wmma_plain."
-            )
         if lanes >= _WMMA_PREFILL_MIN_LANES_PER_EXPERT * num_experts:
             mmq_rows = _build_mmq_tile_plan(
                 scratch, expert_start.ptr, lanes, stream=stream, runtime=runtime
@@ -638,11 +620,9 @@ _WMMA_PREFILL_VARIANT = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
 _MMQ_DUAL_QUANT_KEY = "gguf_q4_k"
 # The down projection is a single Q5_1 matrix, so its MMQ leaf needs no split.
 _MMQ_DOWN_QUANT_KEY = "gguf_q5_1"
-# The grouped int8 MMQ leaf needs gate and up in separate per-expert weight
-# allocations, so the loader materializes the fused ``ffn_gate_up_exps`` stack as
-# two expert-strided tensors. Set once that split lands; the route refuses loudly
-# while it is unset rather than reading a fused stack as if it were split.
-_MMQ_DUAL_WEIGHTS_ARE_SPLIT = True
+# The grouped int8 MMQ leaf reads the fused ``ffn_gate_up_exps`` stack directly
+# through an explicit expert stride, with the up half addressed one half into
+# each expert's block. No split layout is materialized.
 _WMMA_PREFILL_MIN_LANES_PER_EXPERT = 16
 
 # Compensated twins of the two WMMA owners. The plain owners round every
@@ -960,6 +940,11 @@ def gemma4_project_experts_mmq_dual(
     already held in ``scratch``. The leaf reads that plan's per-expert start and
     tile->expert map, which the WMMA owners' 16-row plan cannot substitute for.
 
+    ``fused_width`` is the resident tensor's row width per expert (``2 *
+    out_features`` for Gemma's ``gate | up`` stack). It is passed to the leaf as
+    its expert stride with ``up`` addressed one half into the same allocation,
+    which is how the fused layout is read without a second resident copy.
+
     Returns ``False`` when the weight is not a Q4_K expert stack or the shape is
     not one the leaf serves, which leaves the grouped and selected owners to
     handle it.
@@ -968,12 +953,6 @@ def gemma4_project_experts_mmq_dual(
     if isinstance(weight, int):
         return False
     if weight.spec.quant_key != _MMQ_DUAL_QUANT_KEY:
-        return False
-    # The leaf strides each expert by that matrix's own output width, so gate and
-    # up must be separate resident tensors. A fused stack would make it read
-    # expert 0's up half as expert 1's gate, which is why this refuses rather
-    # than falling back to the raw allocation.
-    if not (weight.has_allocation("gate") and weight.has_allocation("up")):
         return False
     if in_features % _DS4_BLOCK_VALUES or out_features % 32:
         return False
@@ -997,16 +976,21 @@ def gemma4_project_experts_mmq_dual(
         library=library,
         runtime=runtime,
     )
-    gate_ptr = weight.allocation("gate").buffer.ptr
-    up_ptr = weight.allocation("up").buffer.ptr
+    base_ptr = weight.allocation("raw").buffer.ptr
+    # One half's byte length, not a row stride: a Q4_K row is a whole number of
+    # 256-value blocks, so the half boundary lands on a block boundary too. The
+    # fused stack holds each expert's gate rows then its up rows, so the up half
+    # starts one half into that expert's block and the leaf strides experts by
+    # the fused width.
+    half_bytes = weight.expert_stride_bytes // 2
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
         ds4.ptr,
         scratch.buffer("compact_to_source").ptr,
         expert_start_ptr,
         scratch.buffer("wmma_expert_start").ptr,
         scratch.buffer("wmma_tile_expert").ptr,
-        gate_ptr,
-        up_ptr,
+        base_ptr,
+        base_ptr + half_bytes,
         out_ptr,
         compact_rows,
         in_features,
@@ -1014,6 +998,7 @@ def gemma4_project_experts_mmq_dual(
         out_features,
         num_experts,
         mmq_total_rows,
+        expert_stride_rows=fused_width,
         stream=stream,
         library=library,
         runtime=runtime,
