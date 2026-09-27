@@ -4140,6 +4140,63 @@ record, not permission to reset unrelated work or weaken correctness.
   ``gate_mmq3_verdict.json`` (identical ``kl_max`` to ``gate_mmq2_verdict.json``);
   ``gguf_q5_1_mmq_selected_prefill.py`` (the ``in_features % 128`` contract).
 
+  **Iteration 139: `wmma_plain` STRICTLY DOMINATES the grouped int8 MMQ route on
+  both axes -- the int8 route is retired as a candidate.**
+
+  Same-session comparison at 1024p/128o, three samples each::
+
+      route         prefill tok/s   kl_max    top1_flips
+      auto          670 - 677       --        --
+      wmma_plain    987 - 990       0.00104   0
+      mmq           870 - 872       0.00503   0
+
+  ``wmma_plain`` is **faster (990 vs 871) and more accurate (kl_max 0.00104 vs
+  0.00503)** than the int8 MMQ route. There is no axis on which the int8 route
+  wins, so it is not a candidate and should not be developed further.
+
+  **Why the microbench misled the decision.** Iteration 134 measured the int8
+  MMQ32 leaf at 2.07x the BF16 WMMA owner, and that measurement was correct -- for
+  the *kernel alone*, at the same shape, with metadata already resident. The route
+  as built adds costs the microbench did not have:
+
+  - ``_build_mmq_tile_plan`` does a **device->host copy plus a stream
+    synchronize on every call**, because the leaf sizes its grid from the actual
+    padded total. The WMMA owners pass the routing-independent upper bound and
+    never sync. Across ~60 layer-calls per 1024-token prefill that is the bulk of
+    the gap.
+  - Activation packing (BF16 -> DS4) runs per call, which the microbench's
+    ``-pack`` mode did model but only as 0.13 ms against a 4.03 ms kernel.
+  - The int8 path also quantizes activations, so its arithmetic differs more
+    (kl_max 5x worse) for a speed loss.
+
+  **The lesson is about the measurement, not the kernel**: a leaf that wins its
+  microbenchmark can still lose end-to-end once its real per-call metadata and
+  packing costs are included. Compare routes end-to-end before committing to one.
+
+  **What the int8 route would still need to be competitive**: the per-call sync
+  removed (cache the padded total, or establish that the leaf tolerates the upper
+  bound the way the WMMA owners do). Even then it would only tie ``wmma_plain`` on
+  speed while remaining 5x worse on ``kl_max``, so the fix is not worth pursuing
+  for this model.
+
+  **The winning route and what blocks it.** ``wmma_plain`` at **990 tok/s
+  (+45.6% over auto)** with ``kl_max`` 0.00104 and zero top-1 flips is the best
+  measured prefill configuration. It routes *both* projections through the WMMA
+  owners (``down_wmma = gate_up_wmma`` in ``gemma4_experts_forward_bf16``), which
+  is where its gain comes from. It remains opt-in because
+  ``promotion_qualified`` is false: per ``EXECUTION-PROFILES.md`` section 2.9,
+  "production arithmetic changes and published quality/performance claims still
+  require the applicable gates in this document". The campaign logits gate is
+  necessary but not sufficient; the execution-profile gate
+  (``scripts/execution_profile_gate.py``, artifact-driven: variant and strict
+  manifests, strict/candidate captures, controls, repeat/isolation/batch-invariant
+  captures, task results, and an arithmetic class) is the named clearing command.
+
+  Evidence: the three-route table above;
+  ``gate_mmq2_verdict.json`` and the ``wmma_plain`` verdict (iteration 133);
+  ``gemma4_experts.py`` (``_build_mmq_tile_plan`` for the per-call sync,
+  ``_prefill_route_flags`` for ``down_wmma = gate_up_wmma``).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
