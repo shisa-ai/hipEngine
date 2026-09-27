@@ -158,7 +158,7 @@ def main() -> int:
         copy_host_to_device(identity, host_array_ptr(arr), arr.nbytes, runtime=runtime)
 
     def run_mmq(
-        fn, total_rows: int, es_compact: int, es_plan: int, tile_ptr: int
+        fn, total_rows: int, es_compact: int, es_plan: int, tile_ptr: int, swap: bool = False
     ) -> np.ndarray:
         fn(
             workspace.ptr,
@@ -166,8 +166,8 @@ def main() -> int:
             es_compact,
             es_plan,
             tile_ptr,
-            base_ptr,
-            base_ptr + half_bytes,
+            base_ptr + half_bytes if swap else base_ptr,
+            base_ptr if swap else base_ptr + half_bytes,
             out_mmq.ptr,
             compact_rows,
             in_features,
@@ -196,31 +196,34 @@ def main() -> int:
     total = build_plan(qwen35_moe_mmq32_tile_map, tile_capacity)
     print(f"mmq32-plan total_rows={total}")
     fill_identity(compact_rows + 32 * num_experts)
-    for pack_name, pack_fn in (
-        ("generic", gguf_q8_1_mmq_ds4_pack_bf16),
-        ("d4x3", gguf_q8_1_mmq_ds4_pack_bf16_d4x3),
+    # qwen4_exp_runner line 122 aliases the *generic* pack as
+    # gguf_q4_k_q8_1_mmq_ds4_pack_bf16 and calls that (line 3785) immediately
+    # before the dual mmq32 owner, so the generic single-plane pack is the one
+    # this owner expects. The line-123 alias (the d4x3 three-plane pack) feeds a
+    # different consumer.
+    pack(gguf_q8_1_mmq_ds4_pack_bf16)
+    for layout, fn in (
+        ("RAW", gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out),
+        ("X8", gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out),
     ):
-        pack(pack_fn)
-        got = run_mmq(
-            gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
-            total,
-            expert_start_ptr,
-            plan_expert_start.ptr,
-            plan_tile_expert.ptr,
-        )
-        if not np.isfinite(got).all():
-            print(f"  pack={pack_name:8s} NON-FINITE")
-            continue
-        g = got.reshape(compact_rows, 2 * H)
-        r = ref.reshape(compact_rows, 2 * H)
-        same = np.abs(g - r).max()
-        k = float((g.ravel() @ r.ravel()) / max(g.ravel() @ g.ravel(), 1e-9))
-        rowerr = np.abs(g - r).max(axis=1)
-        good = float((rowerr < 1e-2).mean())
-        print(
-            f"  pack={pack_name:8s} direct={same:.5f} scale_k={k:.4f} "
-            f"rows_ok={good:.1%} got_absmax={np.abs(g).max():.4f}"
-        )
+        for swap in (False, True):
+            got = run_mmq(
+                fn, total, expert_start_ptr, plan_expert_start.ptr, plan_tile_expert.ptr, swap
+            )
+            tag = f"layout={layout:4s} halves={'swapped' if swap else 'as-is '}"
+            if not np.isfinite(got).all():
+                print(f"  {tag} NON-FINITE")
+                continue
+            g = got.reshape(compact_rows, 2 * H)
+            r = ref.reshape(compact_rows, 2 * H)
+            gate = np.abs(g[:, :H] - r[:, :H]).max()
+            up = np.abs(g[:, H:] - r[:, H:]).max()
+            rowerr = np.abs(g - r).max(axis=1)
+            good = float((rowerr < 1e-2).mean())
+            print(
+                f"  {tag} direct={np.abs(g - r).max():.4f} gate={gate:.4f} "
+                f"up={up:.4f} rows_ok={good:.1%} got_absmax={np.abs(g).max():.4f}"
+            )
 
     for label, builder in (
         ("mmq32-plan", qwen35_moe_mmq32_tile_map),
