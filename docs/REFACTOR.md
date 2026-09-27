@@ -139,13 +139,32 @@
   shape (1.4925 ms against 6.5379 ms at rows=1024, K=320, N=10240), worth
   1937 ms of the code-p4096 prefill. The limiter is weight traffic, checkable
   from source: the fused kernel's 4x2x4 block tile re-reads its weight rows once
-  per 4-row batch (3.565 GB, 1.88 FLOP/byte) where the wide tile stages a
-  dequantized 128x64 f16 LDS tile reused across 256 rows (13.9 MB, 483
-  FLOP/byte). Fusion still beats the strict unfused chain 1.21x, so the
-  epilogue is not the tail.
+  per 4-row batch, so the packed 3.48 MB weight tensor is read 256 times - **891
+  MB per launch**, 90% of the kernel's traffic, at 151 GB/s effective and 59% of
+  DRAM peak. **Traffic-basis correction (2026-09-27):** this entry previously
+  stated 3.565 GB and 1.88 FLOP/byte, which is the *f32-dequantized* weight size,
+  not the packed q8_0 tensor the kernel reads. The real operational intensity is
+  **7.53 FLOP/byte**. The "limiter is weight traffic" conclusion survives; the
+  magnitude was 4x high. The wide tile's "13.9 MB, 483 FLOP/byte" has the same
+  conflation - 13.9 MB is its f16 LDS staging, while its DRAM read is the same
+  3.48 MB packed tensor - so its win is amortizing **dequantization work** over
+  256 rows, not a 256x DRAM-traffic reduction. Attribution:
+  `benchmarks/results/2026-09-27-gr-up-cost-attribution/`. Fusion still beats the
+  strict unfused chain 1.21x, so the epilogue is not the tail.
+- **Bit-exact levers remain open and are the only actionable ones.** Three,
+  ranked, measured in `benchmarks/results/2026-09-27-gr-up-cost-attribution/`:
+  (1) `ROW_BATCH` 4 -> 8 at `HIDDEN_TILE=2` halves the re-read without touching
+  the per-output k-order, the shuffle tree, or the 4-wave LDS sum - estimated
+  ~900 ms; (2) drop the dead `gate` store, ~107 ms: in the `fused_up` path
+  `scratch.gate` is written and read by nothing, because the epilogue uses its
+  local `sigmoid_gate` and the follow-up sigmoid is guarded by `not fused_up` -
+  use a template parameter rather than deletion, since `gr_wide` and `gr_iu8` do
+  read it back; (3) `HIDDEN_TILE` 2 -> 4 improves FMAs per x load but not traffic.
 - The 2026-09-06 `RB8/HT1` retile halves the re-read and measured 0.80x. That
-  does not fit a pure-bandwidth story and is open; re-read that variant's source
-  before any further bit-exact attempt.
+  does not fit a pure-bandwidth story, and it is **not** evidence against lever
+  (1): it changed `ROW_BATCH` and `HIDDEN_TILE` together, and `HT1` halves the
+  FMAs per x load while doubling the block count, so it is confounded. Only a
+  `rowbatch4` kernel exists in-tree; no clean RB8/HT2 variant has been built here.
 - Screen passed on the prefill-boundary KL and the 780-row production gate
   **rejected the route**: mean KL 1.554e-3, p95 7.081e-3, max 7.349e-2, top-1
   768/780, with all 12 mismatches flip-eligible. Determinism, state
