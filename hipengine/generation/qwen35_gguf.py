@@ -355,6 +355,10 @@ _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
 # boundary must survive 13 intervening captures — and the byte budget bounds the
 # state the wide set pins.
 _PREFIX_RETAINED_STATE_BYTES_LIMIT = 1 << 30
+# DMS extension snapshots also own cold dense prompt KV, predictor planes and
+# trunk hidden rows. Give that host working set a separate, bounded budget;
+# allocations remain lazy and the existing explicit byte limit overrides both.
+_DMS_PREFIX_RETAINED_STATE_BYTES_LIMIT = 4 << 30
 _PREFIX_RETAINED_SNAPSHOTS_WIDE = 16
 _GGUF_PREFIX_RETAINED_SNAPSHOTS_ENV = "HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS"
 _GGUF_PREFIX_RETAINED_STATE_BYTES_ENV = "HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES"
@@ -369,12 +373,12 @@ def _gguf_prefix_retained_snapshot_limit(capacity: int) -> int:
     )
 
 
-def _gguf_prefix_retained_state_bytes_limit() -> int:
-    """State-byte ceiling for the retained snapshot working set."""
+def _gguf_prefix_retained_state_bytes_limit(*, dms: bool = False) -> int:
+    """Retention ceiling; DMS includes cold host prompt planes and recurrence."""
 
     return _gguf_auto_context_int_env(
         _GGUF_PREFIX_RETAINED_STATE_BYTES_ENV,
-        _PREFIX_RETAINED_STATE_BYTES_LIMIT,
+        _DMS_PREFIX_RETAINED_STATE_BYTES_LIMIT if dms else _PREFIX_RETAINED_STATE_BYTES_LIMIT,
         minimum=1 << 20,
     )
 
@@ -9985,7 +9989,7 @@ class Qwen35GGUFResidentModelRunner:
         if cache is None:
             from hipengine.runtime.dms_prefix import DMSPrefixCache
             cache = self._dms_prefix_cache = DMSPrefixCache(
-                _gguf_prefix_retained_state_bytes_limit(), _PREFIX_RETAINED_SNAPSHOTS_WIDE
+                _gguf_prefix_retained_state_bytes_limit(dms=True), _PREFIX_RETAINED_SNAPSHOTS_WIDE
             )
         snapshot = cache.lookup(session, row.prompt_ids, bool(row.native_sampled)) if cache_eligible else None
         hit = cache_eligible and snapshot is not None and snapshot.matches(
