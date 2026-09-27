@@ -32,12 +32,14 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
     gemma4_project_experts_gate_up_mmq,
     gemma4_project_experts_grouped_prefill,
     gemma4_project_experts_rows,
+    gemma4_project_experts_selected,
 )
 from hipengine.kernels.registry import KernelKey, is_registered, register, unregister
 from hipengine.quant.gguf import GGMLQuantizationType
 from tests._gguf_synthetic_weights import (
     make_q4_k_weight,
     make_q5_1_weight,
+    make_q5_k_weight,
     make_q8_0_weight,
 )
 from tests._rocm_guard import hip_runtime_available
@@ -557,6 +559,114 @@ def test_grouped_prefill_matches_a_dequantized_reference(quant) -> None:
     # The empty expert is load-bearing: expert 1 has no rows, so rows 3-7 must
     # carry expert 2's weights rather than a shifted copy of expert 1's.
     assert not np.allclose(got[3], got[0]), "row order did not follow expert_start"
+
+
+@_needs_hip
+@pytest.mark.parametrize("out_features, in_features", [(2816, 2816), (1408, 2816)])
+def test_grouped_row4_is_bit_exact_against_the_selected_gemv(
+    out_features, in_features
+) -> None:
+    """A quant with no grouped prefill family still gets weight reuse.
+
+    Q5_K is the case this artifact has: one MoE layer carries Q5_K expert
+    weights while the rest of the model is Q4_K. It has no grouped *prefill*
+    kernel, so the dispatcher falls past that family to the grouped row4 GEMV,
+    which reuses an expert's weight rows across four rows instead of one. The
+    geometry is the fused gate/up width, because that is what the caller asks
+    for: both halves are projected in one call.
+    """
+
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_array_to_device,
+        free,
+        malloc,
+    )
+
+    num_experts = 8
+    counts = np.asarray([100, 0, 90, 40, 0, 82, 100, 100], dtype=np.int64)
+    rows = int(counts.sum())
+    rng = np.random.default_rng(20260929)
+    hidden_bits = _to_bf16_bits(
+        rng.standard_normal((rows, in_features)).astype(np.float32)
+    )
+    raw = np.concatenate(
+        [
+            make_q5_k_weight(out_features, in_features)
+            for _ in range(num_experts)
+        ],
+        axis=0,
+    )
+    selected = np.repeat(np.arange(num_experts, dtype=np.int64), counts)
+    starts = np.zeros(num_experts + 1, dtype=np.int64)
+    starts[1:] = np.cumsum(counts)
+
+    hidden_buf = malloc(hidden_bits.nbytes)
+    weights_buf = malloc(raw.nbytes)
+    starts_buf = malloc(starts.nbytes)
+    selected_buf = malloc(selected.nbytes)
+    out_row4 = malloc(rows * out_features * 2)
+    out_selected = malloc(rows * out_features * 2)
+    try:
+        for buffer, array in (
+            (hidden_buf, hidden_bits),
+            (weights_buf, raw),
+            (starts_buf, starts),
+            (selected_buf, selected),
+        ):
+            copy_host_array_to_device(buffer, array)
+
+        weight = _ResidentWeight(
+            backend=_grouped_backend("gguf_q5_k"),
+            quant_key="gguf_q5_k",
+            ptr=weights_buf.ptr,
+        )
+        route = gemma4_project_experts_rows(
+            weight,
+            hidden_buf.ptr,
+            out_row4.ptr,
+            starts_buf,
+            selected_buf.ptr,
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+        )
+        assert route == "grouped_row4", route
+        assert gemma4_project_experts_selected(
+            weight,
+            hidden_buf.ptr,
+            selected_buf.ptr,
+            out_selected.ptr,
+            rows,
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+        )
+
+        row4_bits = np.empty(rows * out_features, dtype=np.uint16)
+        selected_bits = np.empty(rows * out_features, dtype=np.uint16)
+        copy_device_to_host(row4_bits.ctypes.data, out_row4, row4_bits.nbytes)
+        copy_device_to_host(
+            selected_bits.ctypes.data, out_selected, selected_bits.nbytes
+        )
+    finally:
+        for buffer in (
+            hidden_buf,
+            weights_buf,
+            starts_buf,
+            selected_buf,
+            out_row4,
+            out_selected,
+        ):
+            free(buffer)
+
+    differing = int((row4_bits != selected_bits).sum())
+    assert differing == 0, (
+        f"grouped row4 differs from the selected GEMV in {differing} of "
+        f"{row4_bits.size} bf16 outputs at out={out_features} in={in_features}"
+    )
 
 
 def _to_bf16_bits(array: np.ndarray) -> np.ndarray:

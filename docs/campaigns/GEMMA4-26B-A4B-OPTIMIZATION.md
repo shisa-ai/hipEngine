@@ -121,19 +121,24 @@ paying roughly six times the grouped cost. The Q8_0 half is fixed: its grouped
 family existed but was registered only under the dense `linear` layer, so binding
 it under `moe_linear` and naming it last in the preference order takes the
 projection **68.13 -> 37.19 ms (1.83x, bit-exact)**. The Q5_K gate/up half
-(244.4 ms) is still open, and the options are now enumerated. There is no Q5_K
+is fixed too, by a different route: **244.4 -> 111.7 ms (2.19x)**, worth 3.5% of the
+512-token prefill (3.238 -> 3.119 s). Q5_K has no grouped *prefill* family — the
+only Q5_K prefill kernels that exist are WMMA and MMQ, both of which change the
+association — but it has a grouped **GEMV** that reuses an expert's weight rows
+across four rows instead of one, and that kernel was registered only under the
+dense `linear` layer. In isolation it is 469.31 -> 154.08 ms (3.05x) at 128
+experts / 2816 -> 2816 fused / 4096 compact rows, and it is bit-exact (0 of
+1,441,792 bf16 outputs differ from the gather). It is a dispatch step rather than
+a preference-list entry because its launch ABI differs: it takes a lane map and
+separate source and destination row counts, and the compact layout makes that
+lane map the identity.
+
+The remaining options for this layer were enumerated and are now moot. There is no Q5_K
 grouped *prefill* family: the only prefill routes that exist for it are
 `selected_wmma_prefill_compact` and the MMQ family, both of which change the
-association and therefore need the numerical gate. Two exact starting points
-remain untested. `gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out` is a
-grouped GEMV that reuses an expert's weights across four rows and is registered
-only under `linear`, so it can be bound under `moe_linear` and tried in the
-preference order the same way the Q8_0 family was — but it is not dual-aware, so
-the fused `gate | up` stride has to be handled before its numbers mean anything.
-The other is the Qwen35 dual gate/up prefill, which needs the compact scheduler
-ABI (`expert_start_compact`, `expert_start_wmma`, `tile_expert`) that the Gemma 4
-MoE path does not build. Either way the first step is the bit-exactness test at
-the fused geometry, not the timing.
+association and therefore need the numerical gate. The Qwen35 dual gate/up prefill would still be faster if it were
+wired up, but it needs the compact scheduler ABI (`expert_start_compact`,
+`expert_start_wmma`, `tile_expert`) that the Gemma 4 MoE path does not build.
 
 Two refuted candidates are worth carrying forward. Halving the `Q8_0` dense
 route's traffic does **not** help: a row-grouped variant moves 4.56 GB instead of
