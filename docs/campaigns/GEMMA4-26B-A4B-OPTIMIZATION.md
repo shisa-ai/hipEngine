@@ -304,6 +304,52 @@ forward, the draft/verify loop and the adapter registration;
 complete forward specification, including the resolved KV binding, is
 [docs/reference/GEMMA4-ASSISTANT-MTP.md](../reference/GEMMA4-ASSISTANT-MTP.md).
 
+## Current prefill status — 2026-09-28, gfx1151 (route attribution)
+
+The sections above are gfx1100. The gfx1151 prefill has now been attributed the
+same way, and the answer is different enough to redirect the work. At 2048
+tokens over a 7.536 s / 271.8 tok/s baseline:
+
+| route | saves | share |
+| --- | ---: | ---: |
+| routed experts | 3.070 s | **40.7%** |
+| prefill attention | 2.295 s | **30.5%** |
+| router | -0.028 s | ~0 |
+| normalization + rotary | -0.001 s | ~0 |
+| MoE elementwise | -0.011 s | ~0 |
+
+**Two routes are the prefill.** The router, the normalization and rotary chain,
+and the MoE elementwise chain each save nothing measurable, so the levers the
+gfx1100 attribution spent its time on outside experts and attention are already
+free here.
+
+Attention is the better-scoped of the two and was isolated. At the artifact's own
+geometry — 16 query heads; 8 KV heads and head_dim 256 on the 25 sliding-window
+layers with window 1024; 2 KV heads and head_dim 512 on the 5 full layers —
+`gemma4_attention_prefill_bf16` takes **89.99 ms per launch and 2249.8 ms across
+the 25 sliding-window layers**, reproducing the ablation's 2295 ms and so
+confirming the arm measures the kernel rather than a wrapper. The rate is **286 to
+363 GFLOP/s**, under 1.3% of this part's fp32 FMA peak.
+
+The mechanism is in the launcher: the grid is `tokens * num_heads` — 32768 blocks
+at 2048 tokens and 16 heads — one block per query row, and each block walks the
+keys for its own row. **K and V are read once per query row instead of once per
+query tile.** The windowed K/V working set at 2048 tokens is about 16.8 MB, which
+fits this part's L2, so the re-reads are L2-bound rather than DRAM-bound and they
+still cost. That is the shape flash-attention tiling removes: one block per
+(query tile, head) reads a K/V tile once for the whole tile.
+
+The experts' 40.7% was measured as a share only; its mechanism is not yet
+measured and should not be assumed from the attention result. The dense share of
+prefill is **unmeasured, not zero**: the `no_dense_q8` and `no_all_gemv` arms
+both save about -1%, which cannot be right because skipping every GEMV cannot
+save less than skipping the experts alone at 40.7%. Both hook funnels the
+prefill leaves for the dense Q8_0 route and the grouped expert route do not use.
+
+Artifacts: `benchmarks/results/2026-09-28-gemma4-gfx1151-prefill-route-attribution.json`,
+`scripts/gemma4_prefill_route_ablation.py`,
+`scripts/gemma4_attention_prefill_bench.py`.
+
 ## Current correctness status — 2026-09-26
 
 The key-slice attention implementation failed the corrected teacher-forced
