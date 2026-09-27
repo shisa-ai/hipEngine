@@ -73,9 +73,10 @@ def main(argv: list[str] | None = None) -> int:
         ids = exact_prompt_ids(tokenize, longest)
 
     def arm(length: int, mmq: bool, repeats: int) -> list[np.ndarray]:
-        os.environ.pop("HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ", None)
-        if mmq:
-            os.environ["HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ"] = "1"
+        # The route is the default path now, so the fp32 arm is selected by the
+        # explicit rollback value. Popping the variable would leave the route on
+        # and compare it with itself.
+        os.environ["HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ"] = "1" if mmq else "0"
         outs: list[np.ndarray] = []
         for _ in range(repeats):
             runner.reset()
@@ -87,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{'ids':>5s} {'kl':>11s} {'flip':>5s} {'deterministic':>14s}  route")
     for length in args.lengths:
         length = int(length)
-        os.environ.pop("HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ", None)
+        os.environ["HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ"] = "0"
         before = dict(experts.gemma4_moe_expert_route_counts())
         base = arm(length, False, 1)[0]
         repeats = arm(length, True, max(1, int(args.repeats)))

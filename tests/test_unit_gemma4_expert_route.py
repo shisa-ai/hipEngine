@@ -27,6 +27,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
     _GROUPED_PREFILL_VARIANTS,
     Gemma4ExpertScratch,
     gemma4_moe_expert_route_counts,
+    gemma4_moe_gate_up_mmq_enabled,
     gemma4_moe_grouped_variant_counts,
     gemma4_moe_prefill_route_enabled,
     gemma4_project_experts_gate_up_mmq,
@@ -1212,3 +1213,31 @@ def test_fused_gate_up_mmq_route_declines_a_bf16_weight() -> None:
     finally:
         scratch.free()
     assert served is False
+
+
+def test_fused_gate_up_mmq_route_ships_on_and_the_variable_rolls_it_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The route is the default, and the variable that once enabled it now disables it.
+
+    The route is the measured faster path at 1.27x on the 512/128 prefill, and the
+    decision that held it back has cleared, so it ships on. Both halves are pinned
+    because the campaign's harnesses select their arms through this function: when
+    the sense of the variable changed, popping it stopped meaning "fp32" and would
+    have had the probes compare the route with itself while reporting agreement.
+    """
+
+    monkeypatch.delenv("HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ", raising=False)
+    assert gemma4_moe_gate_up_mmq_enabled() is True
+
+    for value in ("1", "true", "yes", "on", "  ON  "):
+        monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ", value)
+        assert gemma4_moe_gate_up_mmq_enabled() is True, value
+
+    for value in ("0", "false", "no", "off", "disable", "disabled", " 0 "):
+        monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ", value)
+        assert gemma4_moe_gate_up_mmq_enabled() is False, value
+
+    # An unrecognised value must not silently downgrade the default path.
+    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ", "banana")
+    assert gemma4_moe_gate_up_mmq_enabled() is True
