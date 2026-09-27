@@ -391,7 +391,11 @@ test a single-plane MMQ of llama.cpp's shape, which runs at an estimated
    expert stride); items 2-5 remain open.
 2. Flash attention for the 25 sliding-window layers (AOTriton first, since it
    already ships for Qwen); then a tiled head_dim-512 kernel for the 5 global
-   layers.
+   layers. **The sliding half is done in iteration 153**: the vendored AOTriton
+   BF16 head_dim-256 image serves them whenever the window is not binding, for
+   +23.1% prefill (1397 -> 1720 tok/s on the W7900 at 1024 tokens). The
+   head_dim-512 global layers and prompts past the window width still need the
+   tiled kernel.
 3. Route layer 29 through the existing fast owners.
 4. Replace the MoE `compact_active` + gather scheduler with the Qwen scheduler.
 5. Longer term: single-plane int8 MMQ with llama.cpp-sized tiles for dense and
@@ -4947,6 +4951,110 @@ record, not permission to reset unrelated work or weaken correctness.
   ``hipengine/runtime/gemma4.py`` (``GEMMA4_Q8_MMQ_MIN_ROWS`` at line 430, the policy
   construction at 683, ``q8_mmq_prefill_session``); ``gguf_q8_0_mmq_prefill.py``
   (``Q8MMQPrefillPolicy``).
+
+  **Iteration 153: the 25 sliding layers' prefill attention runs AOTriton's flash
+  kernel; attention falls from 216 to 73 ms per prefill.**
+
+  This closes the comparison section's defect 2 and recommended-order item 2 for
+  the sliding layers, and it starts from a kernel trace of the current default
+  rather than from the previous analysis.
+
+  **What the trace says.** One 1024-token prefill is 707 ms of kernel time, and
+  the attention share is two instantiations of
+  ``gemma4_attention_decode_class_kernel``: ``<uint16,1,2>`` (the 25 sliding
+  layers, ``head_dim`` 256) at 174.1 ms and ``<uint16,2,2>`` (the 5 global
+  layers, ``head_dim`` 512) at 42.3 ms. Per-launch durations inside those totals
+  expose the block structure: 1.85 ms for the first 512-token chunk
+  (``keys`` 512) and 5.10 ms for the second (``keys`` 1024) on the sliding
+  layers, 2.2 and 6.3 ms on the global ones. The dimension-partition kernel does
+  not appear, because the split's entry range is ``keys`` >= 1024 and a 512-row
+  block never reaches it.
+
+  **The kernel is ALU-bound, and the reduction is why.** Pass 1 gives each warp
+  lane 8 of a key's 256 dimensions: 8 FMAs, then 7 lane-local adds and 5 shuffle
+  steps to reduce the 256 lanes to one logit. That is 20 instructions for 8
+  useful multiply-accumulates, and 84M instructions per launch at the measured
+  rate of 24-27 Tops/s lands within 20% of the observed 3.5 ms. A tree
+  restructure cannot fix it -- the shuffle count is per key whatever the query
+  count -- so the only real answer is tensor cores, which is what llama.cpp's
+  ``-fa on`` uses.
+
+  **The vendored AOTriton runtime already has the image.**
+  ``aotriton_release.toml`` vendors 12 ``FONLY__*bf16@16_256_*`` gfx11xx
+  forward-attention images for the Qwen3.5/PARO prefill: BF16 at ``head_dim``
+  256, which is exactly the sliding-layer geometry. A fixture probe at
+  Gemma's head counts (16 query heads over 8 KV heads) agrees with the exact
+  kernel to ~2 BF16 ULP at rows=64/keys=64, and the timed comparison at the real
+  block shape is decisive:
+
+      rows 512, keys  512:  exact 1.888 ms  |  AOTriton v3 0.526 ms
+      rows 512, keys 1024:  exact 5.320 ms  |  AOTriton v3 0.947 ms
+
+  V3 is the wrapper that carries bottom-right-aligned causal semantics, which is
+  what a query block that is a suffix of the attended range needs.
+
+  **Admission is a mask-semantics question, not a geometry heuristic.** The
+  flash kernel reads no mask, so it may only stand in where the mask the exact
+  kernel would read is *exactly causal*. The runtime builds
+  ``causal AND (query - key < window)``, and the window term is vacuous for the
+  whole block while ``keys <= sliding_window``; past that the exact kernel keeps
+  the block. ``aotriton_prefill_admits`` states all four terms (mask asserted
+  causal, more than one query row, non-binding window, vendored image for the
+  head dim) and the caller opts in explicitly, because a mask carrying an
+  eviction bound would otherwise be silently dropped. The head_dim-512 global
+  layers are refused by the image check: there is no BF16 512 image in the
+  vendored tree.
+
+  **The path is on by default and it is not bit-identical.** AOTriton runs the
+  standard online softmax over key tiles, so the row maximum, the denominator
+  and the value accumulation associate differently from the staged-logit,
+  ascending-key form. That is a changed-arithmetic path, so it carries the
+  campaign gate: ``gemma4_teacher_forced_gate.py gate --prompt 2048 --prefill
+  1024`` against ``gate_auto.npz`` gives ``kl_max`` **0.000773** against the
+  0.05 bar (65x under), ``kl_mean`` 5.5e-06, ``kl_p95`` 1.5e-05, ``kl_p99``
+  1.4e-04, and **0 of 1023** top-1 flips -- *lower* than the 0.001341 the same
+  gate measured with the exact attention kernel, because both are rounding-level
+  perturbations of the same reference and the max over rows moves with them. The
+  same split-attention decode routes ran (``selections [2]``, 30690 launches).
+
+  **Measured result.** At ``--prompt 1024`` on the W7900, prefill **1394 ->
+  1702.8 tok/s (+22.1%)** with decode unchanged at 39.27; the traced kernel total
+  falls from 707 to 555 ms, with attention at 73 ms (``attn_fwd`` 31.7 + the
+  global layers' 41.3). Against llama.cpp's 3761 on the same GPU that is 37% ->
+  45.3%. The XTX lane, which could not run the model at all before the gate/up
+  split removal freed peak memory, now measures **1886.8 prefill and 43.87
+  decode** against llama.cpp's 4124 -- 45.8%.
+
+  **Two limitations carried forward, both measured rather than assumed.**
+
+  * The window binds past the window width, so a prompt longer than 1024 tokens
+    only gets the flash path on its first two chunks: at ``--prompt 2048`` the
+    third and fourth chunks (``keys`` 1536 and 2048) keep the exact kernel and
+    the row measures **1228.9 prefill tok/s**, roughly the half-benefit the
+    chunk arithmetic predicts.
+  * The 5 ``head_dim``-512 global layers still run the exact class kernel at
+    41.3 ms per prefill. Serving them needs a tiled kernel (llama.cpp's
+    ``flash_attn_tile<512>``); AOTriton's vendored images do not cover 512.
+
+  **One attribution in the comparison section is corrected.** Layer 29's expert
+  gate_up is 25.0 ms per prefill, not part of a scalar fallback: the trace shows
+  ``gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<8, 4, ...>`` at 50.08 ms
+  over 4 launches, which is the Q5_K amortized grouped owner registered for
+  ``gguf_q5_k`` under the Q4_K symbol. The remaining share of the 74 ms bucket is
+  that layer's Q8_0 down and its packing, which the trace cannot separate from
+  the dense Q8_0 bucket by kernel name. Layer 29 is still the slowest layer and
+  the reviewer's item 3 stands, but the cause is the absent Q5_K/Q8_0 fast
+  owners, not a scalar fallback.
+
+  Evidence: ``rocprofv3 --kernel-trace`` at ``--prompt 1024 --output 1`` on the
+  W7900 with the G1 recipe; ``hipengine/kernels/hip_gfx1100/gemma4/
+  gemma4_attention.py`` (``aotriton_prefill_admits``,
+  ``gemma4_attention_prefill_aotriton``); ``gemma4_layer.py`` (the dispatch and
+  ``attention_mask_is_causal``); ``hipengine/runtime/gemma4.py``;
+  ``tests/test_unit_gemma4_attention_flash_admission.py``;
+  ``tests/test_gpu_gemma4_attention_aotriton_parity.py``;
+  ``$HOME/.cache/hipengine/tmp/gate_flash_final_verdict.json``;
+  ``benchmarks/results/2026-09-27-gemma4-flash-attention-prefill-*.json``.
 
   **Iteration 152: the split gate/up copy is gone -- the int8 MMQ leaf reads the
   fused stack through an explicit expert stride.**

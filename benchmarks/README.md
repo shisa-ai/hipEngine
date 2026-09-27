@@ -399,26 +399,52 @@ differs.
 | Engine | Prefill 1024 | Decode at 1024/128 |
 | --- | ---: | ---: |
 | llama.cpp HIP `8cfc315`, same GGUF | **3910** | **68.92** |
-| hipEngine | 341.0 | 43.87 |
+| hipEngine | 1886.8 | 43.87 |
+
+On the same GPU and with llama.cpp rebuilt at build `8cfc315` for native HIP, a
+separately measured comparator row at `-fa on -b 4096 -ub 1024` reports 4124
+prefill tok/s; the table keeps the row recorded with this section's original
+flags rather than mixing protocols. On the W7900, hipEngine measures 1702.8
+prefill and 39.27 decode at the same shape, against 3761 prefill for llama.cpp.
 
 Prefill now serves both MoE expert projections from grouped expert owners
 instead of one CTA per output column. The owners reuse each loaded weight row
 across compact rows, reuse each loaded input row across four output columns --
 without which the fused gate+up kernel re-walked the expert's whole input slice
 once per column, at 23x the weight traffic -- and preload each weight row's
-block metadata once per CTA instead of once per column. All three owners
-reproduce the strict reduction order rather than approximating it: the 1023-row
-teacher-forced comparison reports zero KL and 100% top-1 agreement, so prefill
-rises from 128.5 to 341.0 tok/s at 1024 tokens at no numerical cost. Decode is
-unchanged by this work, since a decode step is too narrow to reuse a weight row.
+block metadata once per CTA instead of once per column. The expert gate+up and
+down projections then run int8 x int8 MMQ from the same grouped owners, which is
+the route llama.cpp takes. All of these owners reproduce the strict reduction
+order rather than approximating it: the 1023-row teacher-forced comparison
+reports zero KL and 100% top-1 agreement. Together they take prefill from 128.5
+to 1397 tok/s at 1024 tokens on the W7900 at no numerical cost.
+
+Prefill attention was the other half of the gap, at 216 ms of a 709 ms kernel
+budget. The 25 sliding-window layers now run the vendored AOTriton BF16
+flash-attention kernel at `head_dim` 256 instead of the engine's exact
+staged-logit kernel, which is ALU-bound on its per-key reduction. The swap is a
+changed-arithmetic path, so it carries the campaign gate: `kl_max` **0.000773**
+against the 0.05 bar, `kl_mean` 5.5e-06, `kl_p99` 1.4e-04, and 0 of 1023 top-1
+flips -- lower than the 0.001341 the same gate measures with the exact attention
+kernel, since both are rounding-level perturbations of the same reference. The
+flash kernel reads no mask, so it is admitted only where the mask the exact
+kernel would read is exactly causal, which for a sliding layer holds while the
+attention window does not bind; a prompt longer than 1024 tokens therefore keeps
+the exact kernel on its later blocks and measures 1228.9 prefill tok/s at 2048
+tokens. The five global layers use `head_dim` 512, which the vendored image set
+does not cover, and still run the exact kernel. Together the expert routing and
+the attention swap take the W7900 lane from 1394 to 1702.8 prefill tok/s, and
+the XTX lane - which could not run the model before the gate/up split removal
+freed peak memory - now measures 1886.8.
 
 hipEngine's own shape matrix at 128 outputs: decode 52.28 tok/s at a 128-token
-prompt, 48.12 at 512, 43.74 at 1024, 40.02 at 4096; prefill 140.2 / 135.7 /
+prompt, 48.12 at 512, 43.87 at 1024, 40.02 at 4096; prefill 140.2 / 135.7 /
 128.5 / 108.6 tok/s at the same shapes. The 128/512/4096 rows are one sample
 each; the 1024/128 row is three. The matrix's prefill figures were taken before
-the expert-projection routing below; the current 1024-token prefill is the 341.0
-tok/s in the table. First-token latency at 1024 is 3.00 s and
-public request wall time is 5.89 s including prefill. Decode is close to flat
+the expert-projection routing and the flash-attention path; the current
+1024-token prefill is the 1886.8 tok/s in the table, and the current 1024/128
+decode is unchanged at 43.87. First-token latency at 1024 is 0.54 s and
+public request wall time is 3.44 s including prefill. Decode is close to flat
 across context length - 52.28 down to 40.02 - because the sliding layers, 25 of
 the model's 30, read only the keys inside their 1024-token window instead of
 walking the whole cached context and masking the difference away.

@@ -40,6 +40,8 @@ from dataclasses import dataclass, field
 from hipengine.core.memory import DeviceBuffer, free as hip_free, malloc
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     Gemma4AttentionScratch,
+    aotriton_prefill_admits,
+    gemma4_attention_prefill_aotriton,
     gemma4_attention_prefill_bf16,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
@@ -168,6 +170,7 @@ class Gemma4LayerGeometry:
     head_dim: int
     scale: float = 1.0
     k_eq_v: bool = False
+    sliding_window: int | None = None
 
 
 @dataclass
@@ -334,6 +337,7 @@ def gemma4_layer_forward_bf16(
     eps: float = 1e-6,
     rotary_dim: int | None = None,
     key_begin: int = 0,
+    attention_mask_is_causal: bool = False,
     stream: int = 0,
 ) -> int:
     """Run one Gemma 4 decoder layer over a block of tokens, in place.
@@ -350,6 +354,13 @@ def gemma4_layer_forward_bf16(
     offset; the caller owns that restriction (see ``_sliding_read_range``). It
     changes no arithmetic: a masked key contributes zero to both reductions, so
     the remaining terms keep their order and the result is bit-identical.
+
+    ``attention_mask_is_causal`` asserts that ``keep_mask_ptr`` holds nothing but
+    ``key <= query``, which is what lets a sliding layer take the flash path: a
+    sliding-window mask is exactly causal while the window is at least as wide as
+    the attended range. It defaults to False because this function cannot verify
+    the assertion, and a mask carrying eviction or window bounds that the flash
+    kernel does not read would silently change the result.
 
     Returns ``hidden_ptr`` so the call reads as a pipeline stage.
     """
@@ -455,25 +466,52 @@ def gemma4_layer_forward_bf16(
     if key_begin and kv is None:
         raise ValueError("key_begin requires a cache to skip into")
 
-    gemma4_attention_prefill_bf16(
-        buf("q_rot"),
-        (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
-        if kv is not None
-        else buf("k_rot"),
-        (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
-        if kv is not None
-        else buf("v"),
-        keep_mask_ptr + key_begin,
-        buf("context"),
-        tokens=rows,
-        keys=None if kv is None else kv.write_offset + rows - key_begin,
-        scratch=scratch.attention,
-        num_heads=num_heads,
-        num_kv_heads=num_kv_heads,
+    key_count = rows if kv is None else kv.write_offset + rows - key_begin
+    if aotriton_prefill_admits(
+        rows=rows,
+        keys=key_count,
         head_dim=head_dim,
-        scale=geometry.scale,
-        **kwargs,
-    )
+        sliding_window=geometry.sliding_window,
+        mask_is_causal=attention_mask_is_causal,
+    ):
+        gemma4_attention_prefill_aotriton(
+            buf("q_rot"),
+            (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
+            if kv is not None
+            else buf("k_rot"),
+            (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
+            if kv is not None
+            else buf("v"),
+            buf("context"),
+            tokens=rows,
+            keys=key_count,
+            scratch=scratch.attention,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            scale=geometry.scale,
+            **kwargs,
+        )
+    else:
+        gemma4_attention_prefill_bf16(
+            buf("q_rot"),
+            (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
+            if kv is not None
+            else buf("k_rot"),
+            (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
+            if kv is not None
+            else buf("v"),
+            keep_mask_ptr + key_begin,
+            buf("context"),
+            tokens=rows,
+            keys=key_count,
+            scratch=scratch.attention,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            scale=geometry.scale,
+            **kwargs,
+        )
     gemma4_project(
         buf("context"), layer.o_proj, buf("attn_out"), rows, q_width, hidden_size, **kwargs
     )

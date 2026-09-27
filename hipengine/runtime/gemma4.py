@@ -830,6 +830,11 @@ class Gemma4Runner:
                 rows=rows,
                 eps=config.rms_norm_eps,
                 key_begin=_sliding_read_range(attention, start, rows),
+                # ``_keep_mask`` builds exactly ``key <= query`` plus the window
+                # bound, and the window bound is vacuous while the attended range
+                # is no wider than the window. The layer re-checks the range; this
+                # flag is the mask's *semantics*, which only the builder knows.
+                attention_mask_is_causal=True,
             )
 
         # --- final norm and lm head -----------------------------------------
@@ -901,6 +906,7 @@ def _layer_geometry(attention: Gemma4AttentionGeometry) -> Gemma4LayerGeometry:
         head_dim=attention.head_dim,
         scale=attention.scale,
         k_eq_v=attention.k_eq_v,
+        sliding_window=attention.sliding_window,
     )
 
 
