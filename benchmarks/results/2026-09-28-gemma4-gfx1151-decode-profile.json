@@ -2,7 +2,26 @@
   "kind": "gemma4_gfx1151_decode_profile",
   "performance_claim": false,
   "recorded": "2026-09-28, gfx1151 Strix Halo (AMD Radeon 8060S), Gemma 4 26B-A4B UD-Q4_K_XL",
-  "status": "diagnostic, no change landed",
+  "status": "CORRECTED - see correction below, this profile is not sound",
+  "correction": {
+    "date": "2026-09-28, same session",
+    "what_is_wrong": "The decode-window ranking below is not sound and must not be used to choose work. The profiled run was a cold run and rocprofv3 kernel tracing serializes dispatches, so neither the absolute times nor the balance between kernels is representative.",
+    "evidence": {
+      "profiled_run_prefill_s": 33.45,
+      "profiled_run_decode_tps": 4.31,
+      "clean_run_prefill_s": 1.52,
+      "clean_run_decode_tps": 20.03,
+      "trace_span_s": 40.499,
+      "forwards_in_trace": 16,
+      "trace_span_per_forward_s": 2.53,
+      "clean_run_per_forward_s": 0.135,
+      "inflation": "about 19x"
+    },
+    "the_contradiction": "The decode window holds 2.766 s of kernel time over 15 decode forwards, 184 ms per token. The clean run measures 49.9 ms per token of wall time. A single-stream trace cannot have more kernel time than wall time, so the kernel durations themselves are inflated rather than overlapping.",
+    "stream_check": "Stream_Id is 0 for every dispatch in the decode window and the critical-path union equals the naive duration sum exactly (2.766 s both ways), so there is no overlap to explain the discrepancy. The earlier overlap_caveat below reached the wrong conclusion from the right observation.",
+    "what_survives": "Nothing quantitative about decode. The kernel list does show which kernels the decode path issues, including that grouped prefill-shaped kernels with large grids are among them, but the shares and the millisecond figures do not survive.",
+    "what_replaces_it": "An overhead-free A/B: time a decode with the grouped route disabled against the same decode with it enabled, using the benchmark's own timing rather than a traced run. The bench reports decode_tps directly, so an ablation gives a clean attribution without profiling serialization."
+  },
   "why": "The same-host llama.cpp baseline in worklog/entries/20260927T191536.780145Z-lhl-gemma4-gfx1151-llamacpp-baseline-12f173.md puts decode at 20.03 against 41.92 tok/s, a 2.09x gap that is exactly the objective's 2X decode target, while prefill after the WMMA landing is 338 against 1012.98, a 3.00x gap. Decode is the larger relative gap and the objective names it explicitly, so this profile looks for where its time goes.",
   "command": "rocprofv3 --kernel-trace --output-format csv --output-file /tmp/dec_prof -- python scripts/gemma4_campaign_bench.py --prompt 512 --output 16 --samples 1 --warmup 0 --expect-gpu 8060S",
   "bandwidth_reading": {
@@ -53,8 +72,8 @@
     "not_yet_established": "whether the grouped route is redundant with the GEMV route, serves different tensors (gate/up versus down), or is genuinely required. No correctness or timing experiment was run against that question."
   },
   "next": [
-    "Compute a critical-path union rather than a duration sum, since decode runs on more than one stream and the sums overcount by 3.5x.",
-    "Determine whether the grouped expert route should be reached at batch 1 at all, and if not, what the decode-shaped replacement costs.",
-    "Size the early-return cost: run the grouped kernel at batch 1 against a grid sized to the active experts only."
+    "Redo decode attribution by ablation, not by profiling: run scripts/gemma4_campaign_bench.py with the grouped expert route disabled and compare decode_tps against the same run with it enabled. The bench's own timing carries no tracing overhead.",
+    "If a trace is needed, warm up first and profile only a warmed region, and prefer counter-only collection over --kernel-trace.",
+    "Determine whether the grouped expert route should be reached at batch 1 at all, and if not, what the decode-shaped replacement costs."
   ]
 }
