@@ -46,10 +46,33 @@ _INTERMEDIATE = 704
 _NUM_EXPERTS = 128
 
 # Counts a real router produces at a short prefill: every expert hit, most of
-# them with fewer rows than one 32-row MMQ tile, and a few empty.
+# them with fewer rows than one 32-row MMQ tile, and a few empty. Note the
+# largest count is exactly 32, i.e. exactly one tile, so this pattern never
+# makes an expert span two tiles.
 _SHORT_PREFILL = np.asarray(
     [0, 1, 2, 3, 5, 8, 13, 21, 2, 1, 4, 7, 11, 17, 31, 32] * 8, dtype=np.int64
 )
+
+
+def _skewed_prefill(lanes: int, seed: int) -> np.ndarray:
+    """Counts a real router produces: a heavy head and a long light tail.
+
+    Router weights are close to a power law, so at a given lane count a few
+    experts take far more than the mean while most take a handful. With 128
+    experts and 512 lanes the mean is 4 rows per expert, which is well under one
+    32-row tile, so a uniform or mildly fragmented pattern never exercises an
+    expert whose rows cross a tile boundary. The head here is what does.
+    """
+
+    rng = np.random.default_rng(seed)
+    rank = np.arange(_NUM_EXPERTS, dtype=np.float64) + 1.0
+    weights = rank**-1.25
+    return rng.multinomial(lanes, weights / weights.sum()).astype(np.int64)
+
+
+# The lane count a 64-id prefill with top_k 8 produces, which is a length the
+# real probe diverges at.
+_SKEWED_LANES = 512
 
 # The envelope the MMQ family already asserts against its strict fp32 owner.
 _MAX_ENVELOPE = 2e-2
@@ -232,13 +255,25 @@ def _run_route(
 @_needs_hip
 @pytest.mark.parametrize("profile", ["gaussian", "outlier"])
 @pytest.mark.parametrize("capacity_factor", [1, 8])
+@pytest.mark.parametrize("counts_kind", ["fragmented", "skewed"])
 def test_fused_gate_up_mmq_route_holds_at_the_true_projection_geometry(
     _weights: tuple[np.ndarray, np.ndarray, np.ndarray],
     profile: str,
     capacity_factor: int,
+    counts_kind: str,
 ) -> None:
     fused_raw, gate_raw, up_raw = _weights
-    counts = _SHORT_PREFILL
+    if counts_kind == "fragmented":
+        counts = _SHORT_PREFILL
+    else:
+        counts = _skewed_prefill(_SKEWED_LANES, 20260927)
+        # The point of this pattern is an expert spanning several tiles. If the
+        # head is not heavy enough to cross a tile boundary the case is not
+        # being exercised at all, so fail loudly rather than pass vacuously.
+        assert counts.max() > 32, (
+            f"skewed pattern peaked at {counts.max()} rows, which is one 32-row "
+            "tile: it does not exercise a multi-tile expert"
+        )
     assert len(counts) == _NUM_EXPERTS
     rows = int(counts.sum())
 
@@ -253,8 +288,9 @@ def test_fused_gate_up_mmq_route_holds_at_the_true_projection_geometry(
     normalized_mean = float(difference.mean()) / scale
     worst_row = int(np.argmax(difference.max(axis=1)))
     context = (
-        f"profile {profile!r} at the true geometry with capacity factor "
-        f"{capacity_factor} (live {rows} rows): normalized max "
+        f"profile {profile!r}, {counts_kind} counts at the true geometry with "
+        f"capacity factor {capacity_factor} (live {rows} rows, peak "
+        f"{int(counts.max())} rows on one expert): normalized max "
         f"{normalized_max:.4g} at compact row {worst_row}, normalized mean "
         f"{normalized_mean:.4g}, against scale {scale:.4g}"
     )

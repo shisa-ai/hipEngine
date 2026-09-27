@@ -97,7 +97,19 @@ def main(argv: list[str] | None = None) -> int:
         kl = row_kl_divergence(base, repeats[0])
         flip = bool(np.argmax(base) != np.argmax(repeats[0]))
         deterministic = all(np.array_equal(repeats[0], other) for other in repeats[1:])
+        # A two-arm comparison can say the arms disagree but not which one is
+        # wrong: at 96 ids it reports exact agreement even if both arms are
+        # wrong the same way, and everywhere else it names the MMQ route without
+        # having established that the fp32 route is the correct one. Record the
+        # greedy token each arm picks so a divergence can be attributed against
+        # an independent reference (the model's known-good continuation, the
+        # teacher-forced baseline, or the CPU streaming reference) instead of
+        # being assigned to whichever arm happens to be the second one run.
+        base_argmax = int(np.argmax(base))
+        mmq_argmax = int(np.argmax(repeats[0]))
         rows.append({
+            "base_argmax": base_argmax,
+            "mmq_argmax": mmq_argmax,
             "ids": length,
             "kl": kl,
             "over_bar": kl > KL_MAX_BAR,
@@ -106,7 +118,8 @@ def main(argv: list[str] | None = None) -> int:
             "mmq_route_launches": route,
             "route_used": bool(route),
         })
-        print(f"{length:5d} {kl:11.3e} {int(flip):5d} {str(deterministic):>14s}  {route}")
+        print(f"{length:5d} {kl:11.3e} {int(flip):5d} {str(deterministic):>14s}  "
+              f"{route}  base->{base_argmax} mmq->{mmq_argmax}")
 
     used = [row for row in rows if row["route_used"]]
     over = [row for row in used if row["over_bar"]]

@@ -91,8 +91,71 @@
       "Activation statistics: the DS4 Q8_1 pack derives one int8 scale per 128-element group, so outlier channels and near-zero rows were the leading candidate. Both profiles hold.",
       "expert_start indexed by active rank rather than expert id: qwen35_moe_group_prefix_active_kernel writes expert_start[expert] for every expert plus a total at [num_experts], which is what the leaf reads.",
       "The environment variable having a second effect: it gates only the gate/up projection, _record_moe_route is telemetry, and the down projection is hard-coded to the fp32 grouped route.",
-      "A scratch sized as a capacity but run at a narrower live width: the documented usage, and the one condition the earlier coverage missed (tokens=rows, top_k=1 makes capacity equal live width). Covered now at capacity factor 8, i.e. 4096 lanes of scratch for 512 live rows."
-    ]
+      "A scratch sized as a capacity but run at a narrower live width: the documented usage, and the one condition the earlier coverage missed (tokens=rows, top_k=1 makes capacity equal live width). Covered now at capacity factor 8, i.e. 4096 lanes of scratch for 512 live rows.",
+      "A multi-tile expert: the count pattern used by every earlier case peaked at exactly 32 rows, i.e. exactly one 32-row MMQ tile, so no expert ever crossed a tile boundary and the multi-tile map path was never exercised. A power-law skewed pattern at the real 512-lane width, asserting the head exceeds 32 rows so it cannot pass vacuously, also holds."
+    ],
+    "two_corpus_sweep": {
+      "why": "The probe selects its prompt with exact_prompt_ids over one of two corpora, so the same length is a different token sequence under each. Running both separates a length effect from a routing effect.",
+      "command": "PYTHONPATH=. python scripts/gemma4_mmq_prefill_length_probe.py --corpus {frozen,probe} --repeats 2",
+      "frozen": {
+        "lengths_tested": 13,
+        "over_the_0.05_bar": 7,
+        "decision_flips": [
+          24,
+          64
+        ],
+        "kl": {
+          "16": 0.305,
+          "24": 1.007,
+          "32": 0.1086,
+          "48": 0.135,
+          "64": 2.036,
+          "96": 1.656e-06,
+          "128": 0.1362,
+          "192": 0.003151,
+          "256": 0.1514,
+          "384": 2.558e-06,
+          "512": 3.431e-06,
+          "768": 0.0001246,
+          "1024": 7.335e-07
+        }
+      },
+      "probe": {
+        "lengths_tested": 13,
+        "over_the_0.05_bar": 9,
+        "decision_flips": [
+          16,
+          24,
+          32,
+          96,
+          192,
+          384
+        ],
+        "kl": {
+          "16": 5.563,
+          "24": 3.384,
+          "32": 1.159,
+          "48": 0.001647,
+          "64": 0.4026,
+          "96": 1.614,
+          "128": 0.01018,
+          "192": 1.005,
+          "256": 0.1493,
+          "384": 3.142,
+          "512": 0.7655,
+          "768": 0.002648,
+          "1024": 0.03461
+        }
+      },
+      "finding": "The divergence follows the prompt's routing, not the prompt length. The same length is exact under one corpus and flips the greedy decision under the other: 96 ids is 1.656e-06 frozen against 1.614 with a flip under probe, and 384 ids is 2.558e-06 against 3.142 with a flip. No monotonic or length-structural explanation survives, and the leaf is exact under every structural condition that has been constructed, so the remaining question is which arm of the comparison is correct.",
+      "record_correction": "The recorded claim of greedy decision flips at 7 of the 13 prefill lengths conflates lengths over the KL bar with lengths that change the decision. Under the frozen corpus 7 lengths are over the bar but only 2 flip, at 24 and 64. Under the probe corpus 9 are over the bar and 6 flip.",
+      "recorded_kl_at_1024_is_corpus_specific": "The recorded kl_max 0.0651 was taken at 1024 ids, where the frozen corpus gives 7.335e-07 and the probe corpus gives 0.0346. Neither is representative of the sweep."
+    },
+    "attribution_gap": {
+      "problem": "Every comparator in the campaign is engine-versus-engine. The probe computes KL between route-off and route-on, so it can report that the arms disagree but not which arm is wrong: it would report exact agreement at a length where both arms were wrong the same way, and everywhere else it names the MMQ route without having established that the fp32 route is the correct one. gemma4_teacher_forced_gate.py compares a capture against a stored baseline from an earlier build, which is a regression baseline rather than an oracle, and it does not read the MMQ variable at all.",
+      "mitigation": "The probe now records and prints both arms' greedy argmax so a divergence can be attributed against an independent reference rather than assigned to whichever arm runs second.",
+      "next": "Anchor against llama.cpp, the campaign's ground truth. Both scripts/gemma4_llamacpp_reference_bench.py and scripts/gemma4_llamacpp_compare.py still name /mnt/nvme1/llama-gemma4, which no longer exists; builds live under ~/. Compare each arm's greedy token at 16, 24 and 96 ids under the probe corpus, where the arms disagree."
+    }
   },
   "decision_impact": "the pending lead decision was whether an absolute kl_max applies to a reordering-class tail effect. That framing does not survive: there is no tail effect here to judge. The route is off by default for a concrete observed failure at short prefills, and the recorded rationale arguing for promotion on near-certain rows is corrected in the source comment, docs/ENVS.md and docs/REFACTOR.md.",
   "clearing_condition": "scripts/gemma4_mmq_prefill_length_probe.py exits 0 - that is, the route is inside the kl_max bar at every length from 16 to 1024 ids.",
