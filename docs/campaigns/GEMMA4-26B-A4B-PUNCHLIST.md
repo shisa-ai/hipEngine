@@ -164,6 +164,40 @@ misstates the MoE cost. Profiled decode runs about 25% slower than unprofiled
 because of tracing overhead. Compare families only between traces taken the same
 way, and take headline rates from the unprofiled benches.
 
+### Not yet in this scoreboard
+
+Known holes, so a later pass does not read the tables as complete:
+
+- **8192 context.** The campaign's configured context is 8192 and only 1024 and
+  4096 are traced. Attention is 56% of device-busy at 4096; at 8192 it is more,
+  and the sliding fallback runs twice as many blocks.
+- **Time to first token.** The campaign bench records `first_token_s`; nothing
+  here reports it. It is the user-visible prefill number and the first place a
+  prompt-processing regression shows up.
+- **A prefill floor.** The decode table carries a bytes / 816 GB/s floor; the
+  prefill table does not, so "2.3x behind llama.cpp" cannot be read as "2.3x off
+  the roofline". Without it there is no way to tell a tuneable kernel from a
+  structurally wrong one.
+- **A prefill launch census.** Decode has 1146 launches per token; prefill's
+  per-block launch count is not tabulated (P6 cites 412 dense launches).
+- **Sampler cost.** Sampling and the final softcap sit in the unprofiled step
+  (23.17 ms) but outside device busy (21.30 ms), so about 1.9 ms per step is
+  unattributed and part of it is the sampler.
+- **The serve path.** Every number here comes from `LLM.generate()` or the
+  campaign bench. Nothing measures `hipengine serve`, which is what a user
+  reaches and what `AGENTS.md` requires a landed change to be confirmed on.
+
+## Verification prerequisites
+
+These gate the candidates rather than compete with them.
+
+| ID | Area | Check | Why | Status |
+| --- | --- | --- | --- | --- |
+| V1 | attention | **Extend the campaign gate past the window: `--prompt 4096 --prefill 4096`.** Every recorded gate run in the campaign uses `--prefill 1024` or `--prefill 0` (13 and 3 occurrences, `GEMMA4-26B-A4B-OPTIMIZATION.md`). The sliding window is 1024 tokens, so masking begins at position 1024 and a 1024-token prefill covers positions 0-1023 only. **No gate run has ever exercised the prefill attention path P1 replaces.** | P1 changes a path with no numerical coverage today, and P1 is the largest estimated win on the board. | open |
+| V2 | attention | **Build an independent oracle for the windowed path.** The gate compares two hipEngine arms against a captured baseline, so it cannot detect a wrong mask that both arms share. Options: score hipEngine's 4096-token prefill logits against llama.cpp's, or add a naive CPU reference for windowed attention. | The kernel-level parity test P1 proposes (keys 1536 / 2048 / 4096) is necessary but it is a kernel test, not a model-level one. | open |
+| V3 | attention | **Establish whether the sliding fallback applies the window mask at all, before optimizing it.** Sliding attention is 29.9 ms at 1024 tokens and **1478.7 ms at 4096** -- 49x for 4x the tokens. A correctly windowed kernel is bounded at 1024 keys per query and should scale about 4x (~120 ms). Unwindowed O(n^2) work would give 16x. The 49x is consistent with an unwindowed fallback on top of a slower kernel. | If it does not mask, P1's win is larger than the ~1300 ms estimate, **and today's 4096-token prefill output is wrong**. If it does mask, P1 is a pure speed change. Either answer changes the plan, and the check is one run. | open |
+| V4 | decode | **Re-run the decode gate at 4096 context with BF16 KV.** The recorded decode gate results are at 1024-key chains. D12 (INT8 KV) and D2 / D4 (new attention kernels) all change arithmetic at long context, and llama.cpp's own 4096-context per-family numbers are already flagged indicative because of its BF16-to-F16 conversion. | The long-context decode path is where D2 and D4 spend their estimate and it is the least-covered numerically. | open |
+
 ## Punchlist
 
 **Status** is one of `open`, `in progress`, `won` (landed on the default path),
@@ -272,10 +306,26 @@ about 91 tok/s (2.1×). With the decode punchlist landed (a step of about
 MTP and the decode punchlist multiply, so D1, D2 and M5 share most of their
 kernel work: a multi-row MoE GEMV and multi-row flash-decoding serve both.
 
+### Cross-cutting
+
+These do not belong to one phase or one family.
+
+| ID | Area | Candidate | Evidence / notes | Est. gain | Status | Result |
+| --- | --- | --- | --- | --- | --- | --- |
+| X1 | KV dtype | **Evaluate f16 KV storage against the bf16 default.** This page's own data: llama.cpp decodes 88.85 / 85.82 tok/s with f16 KV against 84.45 / 81.67 with bf16, so **+5.2% / +5.1%**, and its prefill is unchanged. hipEngine stores bf16 (`hipengine/dispatch/batch.py:396`, `kv_storage_dtype: str = "bf16"`). | If the same 5% transfers it is about +2 tok/s of decode, for a storage-format change. KV dtype is arithmetic, so it needs the teacher-forced gate (V4). | ~2 tok/s decode | open | |
+| X2 | capacity | **Track XTX headroom on every candidate that allocates.** Peak is 23.58 GB of 25.75 GB (91.6%) at 1024/128 today. P6 (concatenated replacement layouts), P11 (a second stream), D8 (graph capture) and D12 (INT8 KV) all move it, in both directions. | The XTX already failed to load once at 32.35 GB, and the fix was a layout change. A candidate that adds scratch needs its peak measured, not assumed. | constraint | open | |
+| X3 | lm_head | **Cut the lm_head bytes.** It is the tied Q8_0 `token_embd`, 262144 x 2816: 784 MB per token, 0.96 ms of the 4.9 ms memory floor -- about 20% of the floor for one projection. A lower-precision or clustered head changes output arithmetic and needs the gate. | 1.15 ms against a 0.96 ms floor. D10 fuses the argmax; this reduces what has to be read at all. | ~0.2-0.9 | open | |
+| X4 | attention | **Re-evaluate the vendored AOTriton release.** P1 and P2 are both written against 0.11.2b. A newer release may ship a head_dim-512 image (P2's option b) or better windowed coverage. | P2 lists "an AOTriton head_dim-512 image, if the AOTriton release supports that head dim" as an open question. Answering it is a version check, not a kernel. | unknown | open | |
+| X5 | prefill | **Prefill graph capture.** Device occupancy is about 94% at 1024 tokens (480.6 ms busy in a 511.3 ms span) and 96.9% at 4096. So the recoverable host gap is about 30 ms and 120 ms respectively. | Lower value than D8 because prefill is already nearly saturated, but it scales with context and it is the same machinery D8 needs. | ~10-120 | open | |
+| X6 | scope | **Batching is untested and out of scope for this page.** Everything here is single-request. llama.cpp's server batches, hipEngine has `hipengine/dispatch/batch.py` and `batch_scheduler.py`, and the `KVLiveSpans` ABI is batch-shaped. A serving comparison is a different measurement with a different ranking. | Recorded so the single-request numbers are not read as serving numbers. | — | note | |
+
 ## Measured dead ends
 
 These were measured on this model and lost. Re-open one only with new evidence
-that changes the premise.
+that changes the premise. The decode-attention rows below were measured against
+the pre-repair split decode at 45.75 tok/s (1024/128), before the correctness
+repair that cost 2.0 tok/s; the deltas are same-host paired, so the absolute
+baseline moving does not change them.
 
 | Idea | Result | Where |
 | --- | --- | --- |
@@ -284,5 +334,24 @@ that changes the premise.
 | Int8 MMQ leaf for the MoE down (32-row design) | 8.2× slower (4.0 TFLOP/s); the down stays on WMMA | iteration 142 |
 | Registered Q5_1 decode variants `logical256_t128` / `wave64` | −46% decode | iteration 42 |
 | MoE expert-grid retune, wider out-blocks, occupancy ladder | Neutral or refuted | iterations 101, 102, 112, 131 |
+| Rows-per-expert reuse for the MoE | Refuted: the MoE is bandwidth-bound, and one routed row already costs ~55× the arithmetic and ~65× the byte time | iteration 126 |
 | Key-slice split decode attention | Failed the corrected teacher-forced gate; replaced by dimension partitioning | iterations 36–38 |
+| Dimension-partition decode attention, full grid | −4.4% decode (43.73 against 45.75), `kl_max` 0.0 | `2026-09-26-gemma4-dimension-full-grid-rejected.json` |
+| Dimension-partition decode attention, prefetch 16 | −9.7% decode (41.31 against 45.75), `kl_max` 0.0 | iteration 55, `…-dimension-prefetch16-rejected.json` |
+| Dimension-partition decode attention, four-key tiled value pass | −10.8% decode (40.92 against 45.86), `kl_max` 0.0 | iteration 57, `…-dimension-tiled-rejected.json` |
+| FP64 accumulation in the decode slice kernel | **Numerical failure**: `kl_max` 0.166 against a 0.05 bar, despite 100% top-1 agreement | iteration 51, `…-fp64-slice-rejected.json` |
+| Two-plane Q8 MMQ instead of the three-plane `d4x3` | Speed a wash; the real cost is a load-time repack and its memory | iteration 89 |
 | Routing dense Q/K/V/O through the Q8 MMQ plane by reordering dispatch | 29% slower; the order is what keeps it off | iteration 150 |
+
+Two of these bound live candidates, so read them before opening P4 or D2.
+**D2 is the fourth entry in the dimension-partition design space that has lost**
+(full grid, prefetch 16, tiled value pass, plus the key-slice split before them).
+All three dimension-partition variants were numerically exact — `kl_max` 0.0 — and
+lost on speed alone, at 4.4%, 9.7% and 10.8%. A flash-decoding replacement for
+the sliding layers has to explain why it is not the same kernel again; the
+one-row-at-a-time structure is what those four share, and D2's KV-split with a
+combine kernel is a different decomposition, but the burden is on the candidate.
+**P4 assumes rows-per-expert matters, and iteration 126 refuted that** for the
+current owner: the MoE is bandwidth-bound and quadrupling weight reuse did not
+help. P4's premise is tile shape and occupancy against llama.cpp's `mmq_x=64`,
+which is a different claim — but state which one the change rests on.
