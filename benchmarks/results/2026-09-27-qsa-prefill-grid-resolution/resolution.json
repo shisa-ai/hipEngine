@@ -57,53 +57,53 @@
   "dense_rows_formula": "max(0, min(count, dense_equivalent_limit - start))"
  },
  "family_cost": {
-  "source": "2026-09-17-qwen4exp-per-role-cost role-trace, at 1x (the raw CSV is 2 repetitions)",
+  "source": "2026-09-17-qwen4exp-per-role-cost role-trace, at 1x (the raw CSV is 2 repetitions); ms and n are both 1x per-prefill values",
   "total_ms": 1419.9,
   "taxonomy_reference_ms": 1402.5,
   "kernels": {
    "qwen35_paged_full_attn_decode_context_tensor_batch_kernel": {
     "ms": 801.2,
-    "n": 72,
+    "n": 36,
     "share_pct": 56.4
    },
    "qsa_sparse_attention_h256_wave_rows_f32_kernel": {
     "ms": 455.4,
-    "n": 48,
+    "n": 24,
     "share_pct": 32.1
    },
    "qsa_score_f32_kernel": {
     "ms": 106.1,
-    "n": 48,
+    "n": 24,
     "share_pct": 7.5
    },
    "qsa_split_norm_rope_rows_f32_kernel": {
     "ms": 23.3,
-    "n": 96,
+    "n": 48,
     "share_pct": 1.6
    },
    "qsa_topk_expand_f32_i64_kernel": {
     "ms": 17.2,
-    "n": 48,
+    "n": 24,
     "share_pct": 1.2
    },
    "qsa_gate_context_f32_kernel": {
     "ms": 14.2,
-    "n": 96,
+    "n": 48,
     "share_pct": 1.0
    },
    "qsa_norm_rope_rows_f32_kernel": {
     "ms": 1.9,
-    "n": 96,
+    "n": 48,
     "share_pct": 0.1
    },
    "qsa_pool_norm_rope_f32_kernel": {
     "ms": 0.3,
-    "n": 48,
+    "n": 24,
     "share_pct": 0.0
    },
    "qsa_scatter_index_keys_f32_kernel": {
     "ms": 0.3,
-    "n": 96,
+    "n": 48,
     "share_pct": 0.0
    }
   }

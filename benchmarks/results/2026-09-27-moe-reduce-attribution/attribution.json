@@ -14,7 +14,7 @@
  "moe_reduce_attribution": {
   "taxonomy_total_ms": 758.4,
   "measured_total_ms": 784.93,
-  "source": "2026-09-17-qwen4exp-shipped-default-attribution role-trace, halved from 2 repetitions",
+  "source": "2026-09-17-qwen4exp-shipped-default-attribution role-trace, halved from 2 repetitions; ms and n are 1x per-prefill values",
   "components": [
    {
     "component": "router_logits",
@@ -75,18 +75,19 @@
   },
   "hipengine_bucket_ms": 0.0,
   "why_zero": "our activation conversion happens inside the matmul kernels, so no kernel lands in this bucket",
+  "source": "2026-09-17-qwen4exp-shipped-default-attribution role-trace, halved from 2 repetitions; n is the 1x per-prefill launch count",
   "explicit_conversion_kernels": [
    {
     "kernel": "f32_to_bf16_kernel",
     "ms": 11.16,
-    "n": 768,
+    "n": 384,
     "grid_items": 2621440,
     "block": 256
    },
    {
     "kernel": "bf16_to_f32_kernel",
     "ms": 5.06,
-    "n": 384,
+    "n": 192,
     "grid_items": 2621440,
     "block": 256
    }
