@@ -1750,6 +1750,52 @@ record, not permission to reset unrelated work or weaken correctness.
   half-order, and row-permutation probes and with the plan built before the
   probes, which is what made them valid).
 
+  **Iteration 92: the real root cause -- the MMQ dual owner wants two
+  independently-addressed weight tensors, and Gemma's is fused.** Iteration 91
+  concluded from the ``weight_pack`` registry that the owner needs a
+  ``mmq_kmajor76`` sidecar. That was wrong, and reading the kernel showed why: the
+  wrapper I call is templated ``Q4_K_LAYOUT_RAW``, and the launcher branches
+  ``if constexpr (WEIGHT_LAYOUT == Q4_K_LAYOUT_X8)`` to a different kernel. A RAW
+  owner reads raw GGUF blocks. The registry inference was the same mistake the
+  four failed attempts made -- reasoning from a name instead of the code.
+
+  **What the body actually does** (``gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body``,
+  weight addressing)::
+
+      const int64_t weight_row_bytes = blocks_per_weight_row * Q4_K_BLOCK_BYTES;
+      const int64_t expert_bytes = local_out_features * weight_row_bytes;
+      const uint8_t* expert_base = qweight + expert_id * expert_bytes;
+
+  ``local_out_features`` is the *per-half* width -- 704, not the fused 1408. So
+  ``qweight_a`` and ``qweight_b`` are two independently-addressed tensors, each
+  with an expert stride of ``in_features * out_features_half``. Gemma's fused
+  expert tensor is ``[expert][gate 704 | up 704]`` with an expert stride of
+  ``in_features * 1408``. Every expert except 0 therefore reads from the wrong
+  place, and ``qweight_b`` reads offset 0 for expert 0 -- the gate's data -- so no
+  output row can be fully correct even for the first expert.
+
+  **That accounts for every measurement.** Right magnitudes, because the bytes are
+  real weight data, just the wrong expert's. Uncorrelated values, because a
+  different expert's weights multiply the same activations. Insensitive to the
+  tile map, identity fill, expert-start arrays, plan builder, layout template, and
+  half order, because none of them change the stride that is wrong. And
+  ``rows_ok`` exactly 0.0% including expert 0, because a row needs both halves and
+  the up half is misread for every expert without exception.
+
+  **The fix is a de-interleave, not a repacking kernel.** The owner needs
+  ``[all experts][gate]`` and ``[all experts][up]`` as separate tensors; Gemma
+  stores ``[expert][gate | up]``. Converting one to the other is a pure
+  expert-level copy -- no layout transform, no kmajor76, nothing like the
+  kernel-development task iteration 91 described. The gate_up tensor is about
+  285 MB at these shapes, so the cost is a load-time copy and that much extra
+  device memory.
+
+  **And the diagnosis is directly checkable before any production change:** the
+  oracle can build the two half tensors by copying each expert's halves into two
+  expert-major buffers, re-run the same owner, and expect ``rows_ok`` to go from
+  0.0% to ~100%. If it does not, the stride analysis is wrong and the route
+  closes for good. That check is the next action.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
