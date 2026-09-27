@@ -2046,6 +2046,56 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``/tmp/gemma4_variant_probe.py`` (probe, not committed -- the two
   variant names above are the finding).
 
+  **Iteration 99: the gate_up MoE kernel is L2-bound on activation re-reads, and
+  the lever is the output-column block. This revises iteration 97b.**
+  ``gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<8, 4, true, true, true,
+  true>`` launches grid ``((out_features + 3) / 4, num_experts)`` = 352 x 128 =
+  45,056 CTAs of 128 threads, so **each CTA owns one expert, four output columns,
+  and all live rows**. The activation tensor is therefore re-read once per
+  output-column group: ``out_features / 4`` = **352 times**.
+
+  Traffic, gate_up at 4096 rows x 2816 K x 1408 N::
+
+      activations   4096 x 2816 x 2 B = 23.0 MB, re-read 352x  = 8.10 GB
+      weights       285 MB, read once (each column belongs to one CTA) = 0.29 GB
+      total                                                     = 8.39 GB
+
+  8.39 GB in the measured 7.8 ms is **~1.1 TB/s apparent** -- above the 864 GB/s
+  HBM peak, which is only possible because the 23 MB activation tensor fits inside
+  the 96 MB Infinity Cache. So the kernel is **L2-bandwidth-bound on activation
+  re-reads**, at roughly a quarter of the L2 rate. It is not compute-bound
+  (16.2 G MACs is ~530 us at an INT8 roofline, 15x below measured) and it is not
+  weight-bound (285 MB is 330 us).
+
+  **The lever is the output-column block, and it is a template parameter**::
+
+      out-block   activation traffic   weights   total    predicted
+          4 (now)          8.10 GB     0.29 GB  8.39 GB   7.8 ms (measured)
+         16               2.02 GB     0.29 GB  2.31 GB   ~2.1 ms
+         32               1.01 GB     0.29 GB  1.30 GB   ~1.2 ms
+
+  A 16-wide block predicts ~2.1 ms against 7.8 ms measured, and the shape runs 58
+  times per prefill, so the stake is roughly 325 ms of a 1570 ms layer total.
+
+  **This corrects iteration 97b.** That entry concluded the kernels were
+  "inefficient at both" rooflines and that weight traffic could not be the
+  constraint. The first half was right and the second half was under-specified:
+  the constraint is *activation* traffic, and the re-read factor comes from the
+  grid geometry, not from the kernel's inner loop. Note also that weight traffic
+  becomes material again once blocking is fixed -- at out-block 32 the weights are
+  285 MB of 1.30 GB, 22% of the total. So the weight-layout work is not wasted; it
+  is **downstream of** the blocking fix rather than an alternative to it. That is a
+  cleaner ordering than either entry had.
+
+  **Caveat.** The L2-residency argument is inferred from the apparent bandwidth
+  exceeding HBM peak, not measured. It is consistent, but the direct check is the
+  A/B itself: instantiate a wider out-block, confirm it is bit-identical, and read
+  the time. If the wider block does not win, the re-read model is wrong and this
+  entry should be corrected by a new one rather than quietly dropped.
+
+  Evidence: ``gguf_q4_k_selected_prefill.hip:2680`` (launcher geometry);
+  ``gguf_q4_k_selected_prefill.py:1593`` (registration).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
