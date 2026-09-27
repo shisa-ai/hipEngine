@@ -3664,6 +3664,46 @@ record, not permission to reset unrelated work or weaken correctness.
   ``gemma4_experts.py`` ``_GROUPED_DUAL_AMORTIZED_PREFILL_VARIANT`` (reverted,
   with the measurement recorded in the comment).
 
+  **Iteration 129: the MoE is reduction-bound by construction -- 22 FMAs per
+  thread against an 11-step reduction.**
+
+  Following iteration 128's reversed direction (the cost is in the reduction
+  path, and the bundled form lost because it used only 16 of 128 threads), the
+  per-output arithmetic is::
+
+      k = 2816, blockDim = 128   -> 22 k-elements per thread -> 44 FLOP per thread
+      then a 128-thread reduction: 7 __shfl_down steps + 4 wave_sums + 2 barriers
+                                   ~ 11 synchronization points
+
+  **Every thread performs 22 FMAs and then takes part in an 11-step reduction.**
+  That is a sync-to-work ratio of roughly 1:2, and it is the per-row cost: the
+  measured 1.94 us/row against 90 ns of peak arithmetic is ~21x, and the
+  reduction accounts for the difference by construction rather than by accident.
+
+  **This is what the guide's section 5.6 actually names.** "Widen the reduction
+  tile (the q4_k winner)" is a statement about how many elements each thread
+  reduces before the tree, not -- as iteration 66 first read it -- about the
+  dequant width. The dequant was already amortized (``AMORTIZE_INPUT``) and
+  already paired (``gguf_q4_k_weight_pair128``); the *reduction tile* is the part
+  that is still narrow.
+
+  **And it explains the dense control.** The dense q8_0 line reaches 21.7 TF/s
+  where the grouped MoE reaches 4.1 at a comparable shape. The 5x is the
+  reduction tile: dense amortizes its tree over a wider accumulation per thread,
+  the grouped MoE reduces 128 partials whose arithmetic is 22 FMAs each.
+
+  **The next lever is therefore concrete**: widen the elements accumulated per
+  thread before the tree -- more ``k`` per thread, or more output columns per
+  thread -- so the 11-step reduction is amortized over substantially more than
+  22 FMAs. This is a kernel restructure, not a configuration change, and it is
+  the first MoE lever this session that is supported by a mechanism rather than
+  a correlation.
+
+  Evidence: ``gguf_q4_k_selected_prefill.hip`` (the per-output accumulation at
+  ``:335``-``:361``, the tree at ``:363``, the wave_sums handoff at ``:378``, the
+  publication at ``:389``-``:408``); the census row `down`/`gate_up` per-row
+  invariance (iteration 128); ``docs/RDNA3-TUNING-GUIDE.md`` section 5.6.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
