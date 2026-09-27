@@ -55,13 +55,20 @@
     "mechanism": "qwen35_moe_wmma_tile_map_kernel computes total as prefix[num_experts - 1], the inclusive sum of every expert's padded count, so total == 0 means the router's compacted expert starts were all zero. gemma4_project_experts_gate_up_mmq then raises instead of returning False, even though its own docstring says it returns False when the weight or geometry does not qualify and the caller falls back to the fp32 grouped route.",
     "reading": "a different arithmetic path changes the router's output on a degenerate synthetic fixture, which is expected; the defect is that the MMQ gate/up route treats a zero-row tile map as fatal rather than falling back. Unreachable on the real artifact, where top-8 over 128 experts always selects eight."
   },
+  "isolation": {
+    "method": "rocprofv3 --kernel-trace on the 64-row case, both arms, then a diff of the kernel name multisets.",
+    "result": "both arms dispatch 1560 kernels and exactly three names differ. Off runs gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 4, 16> 205 times. On runs gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32> 175 times and <..., 64, 32> 30 times. Every other kernel, including the MoE router and the tile map, is byte-for-byte the same dispatch.",
+    "reading": "the divergence is sourced entirely in the q8_0 dense prefill. It is not a small-row dispatch difference, not the MoE router, and not the dense bf16 rowtile that use_wmma also disables. The env var flipping four decisions was the leading ambiguity and it is now closed.",
+    "row_tail_hypothesis_is_dead": "the WMMA row tile is AWQ_TILE_N = TN = 32, so 64 rows is exactly two tiles and needs no clamping. The kernel is wrong where the tail cannot be involved. Its stores are guarded (out_row >= rows continue, col < out_features) and its reads are clamped through safe_token, so it is also memory-safe.",
+    "precision_is_not_the_explanation": "the exact tiled route keeps the activation in f32 (x_tile[r] = scalar_to_float<scalar_t>(...)) and the WMMA route narrows it to f16 (out[i] = static_cast<half_t>(scalar_to_float<scalar_t>(p[i]))). f16 carries 10 mantissa bits against bf16's 7, so the WMMA route feeds the matrix core a strictly more precise activation for any value in f16 range, and gemma4 activations are O(1) after RMSNorm so nothing overflows. A more precise input format cannot produce a 10.9 KL gap, which is what makes this a defect rather than an arithmetic-contract difference the gate was written to bound."
+  },
   "how_to_reach_the_win": {
     "command": "HIPENGINE_GGUF_WMMA_PREFILL=1 <the campaign bench command above>",
     "caveat": "the 19 percent applies to long prompts only, and the route is unsound below some row count between 64 and 1024 that has not been located."
   },
   "next": [
-    "Locate the row threshold and isolate the cause before any default-on landing. The candidates are a k-tile tail in the WMMA kernel (in_features 2816 is not obviously a multiple of the K_TILES_PER_BLOCK walk) or a dispatch difference for small rows that the env var also changes, since HIPENGINE_GGUF_WMMA_PREFILL flips more than one route.",
-    "Narrow the experiment by forcing only the q8_0 WMMA variant rather than the whole use_wmma session, which would separate the dense route from every other dispatch decision the env var touches.",
+    "The cause is now localized to gguf_q8_0_prefill_wmma_kernel itself, so the next step is a direct GEMM comparison: one q8_0 weight matrix and one activation block at rows 64, run through both routes with attention out of the picture, against an f16-activation f32-accumulate CPU oracle. That separates a kernel arithmetic defect from something in how the dispatch feeds it.",
+    "Rows 64 and 1024 differ only in how many row tiles are in flight, so the prime suspects are a cross-tile or grid-stride interaction, or an accumulator that is not fully initialized or fully drained for some tiles.",
     "Fix gemma4_project_experts_gate_up_mmq to fall back on a zero-row tile map instead of raising."
   ]
 }
