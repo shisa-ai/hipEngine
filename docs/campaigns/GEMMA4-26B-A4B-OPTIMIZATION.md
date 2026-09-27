@@ -300,7 +300,9 @@ recorded, and the loader contract landed in b42a56c20. What does not exist is th
 forward, the draft/verify loop and the adapter registration;
 `hipengine/generation/gemma4_gguf.py` still declares
 `supports_speculative_mtp = False`. The artifact is at
-`/models/gguf/gemma-4-26B-A4B-it-GGUF/mtp-gemma-4-26B-A4B-it-Q8_0.gguf`.
+`/models/gguf/gemma-4-26B-A4B-it-GGUF/mtp-gemma-4-26B-A4B-it-Q8_0.gguf`. The
+complete forward specification, including the resolved KV binding, is
+[docs/reference/GEMMA4-ASSISTANT-MTP.md](../reference/GEMMA4-ASSISTANT-MTP.md).
 
 ## Current correctness status — 2026-09-26
 
