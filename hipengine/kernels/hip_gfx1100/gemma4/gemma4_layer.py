@@ -335,11 +335,13 @@ def gemma4_layer_forward_bf16(
     sliding layers, which this function does not re-derive.
 
     ``key_begin`` drops cached keys the caller knows are masked out, by moving
-    the key, value and mask pointers forward together and shortening ``keys``.
-    It is only valid for a one-row block, where the mask has a single row to
-    offset; the caller owns that restriction (see ``_sliding_read_range``). It
-    changes no arithmetic: a masked key contributes zero to both reductions, so
-    the remaining terms keep their order and the result is bit-identical.
+    the key and value pointers forward and shortening ``keys``. The keep-mask
+    must already start at ``key_begin``: the kernel indexes it as
+    ``keep_mask + token * keys`` with ``keys`` shortened by the same amount, so a
+    mask whose column 0 is key ``key_begin`` is addressed correctly for every
+    row without the wrapper shifting it. It changes no arithmetic: a masked key
+    contributes zero to both reductions, so the remaining terms keep their order
+    and the result is bit-identical.
 
     Returns ``hidden_ptr`` so the call reads as a pipeline stage.
     """
@@ -453,7 +455,7 @@ def gemma4_layer_forward_bf16(
         (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
         if kv is not None
         else buf("v"),
-        keep_mask_ptr + key_begin,
+        keep_mask_ptr,
         buf("context"),
         tokens=rows,
         keys=None if kv is None else kv.write_offset + rows - key_begin,

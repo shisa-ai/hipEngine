@@ -798,36 +798,46 @@ def _sliding_read_range(
     start: int,
     rows: int,
 ) -> int:
-    """First cached key a decode step must walk, or 0 when nothing is skipped.
+    """First cached key this block must walk, or 0 when nothing is skipped.
 
     A sliding layer's keep-mask zeroes every key outside its window, but the
     mask is full width, so the attention kernel walks the whole live context
     and the walk is what costs: measured on the RX 7900 XTX, the decode kernel's
     time tracks ``keys``, not the number of live keys. Gemma 4 has 25 sliding
     layers of 30, so at context 4096 that is 3073 keys walked per layer whose
-    weight is exactly zero.
+    weight is exactly zero. Prefill pays that per row, so its attention cost
+    grows with the square of the prompt length while a sliding layer can never
+    need more than ``window`` keys for any one row.
 
     Skipping them is bit-exact. A masked key contributes ``exp(-inf) = 0`` to
     the denominator and the same to the weighted sum, and dropping terms whose
     value is zero leaves the surviving terms in their original order, so the
     reduction is unchanged rather than merely close. The one thing that has to
     hold is that the skipped keys are *exactly* the masked ones; the unit tests
-    pin that against the mask itself for a range of window and context lengths.
+    pin that against the mask itself for a range of window, context and block
+    lengths.
 
-    Only a one-row block may skip. A prefill block's rows sit at different
-    positions and so have different windows, and its mask rows are strided by
-    the full key count, so the single pointer offset this enables would read the
-    wrong mask row rather than a shorter one.
+    The bound is the first row's. A block's rows sit at ``start .. start + rows
+    - 1``, and a sliding layer keeps key ``k`` for query ``q`` only while
+    ``q - k < window``, so ``start`` is the earliest query in the block and
+    ``start - window + 1`` is the earliest key any row of it can read. Later
+    rows have later windows and cannot need anything earlier, so this is exact
+    for the block rather than a heuristic. For a one-row block it reduces to
+    ``live - window``, which is what the decode path has always used.
+
+    The mask has to move with this. The kernel indexes it as ``keep_mask + token
+    * keys`` with ``keys`` shortened by ``key_begin``, so ``_keep_mask`` builds
+    exactly that many columns starting at ``key_begin`` and the layer wrapper
+    passes the mask base unshifted.
     """
 
     window = attention.sliding_window
-    if window is None or rows != 1:
+    if window is None:
         return 0
     window = int(window)
     if window <= 0:
         raise ValueError(f"sliding_window must be positive, got {window}")
-    live = start + rows
-    return max(0, live - window)
+    return max(0, start - window + 1)
 
 
 def _keep_mask(
@@ -835,16 +845,19 @@ def _keep_mask(
     start: int,
     rows: int,
 ) -> np.ndarray:
-    """Build the ``(rows, start + rows)`` uint8 keep-mask for one block.
+    """Build the ``(rows, start + rows - key_begin)`` uint8 keep-mask.
 
     A position may attend to a key at or before it, and on a sliding layer only
     within ``sliding_window`` of it. The mask covers exactly the cached range
-    this block writes, which is ``start + rows`` columns.
+    this block reads, which starts at ``key_begin`` and ends at ``start +
+    rows``. Column 0 is key ``key_begin``, because the kernel addresses it as
+    ``keep_mask + token * keys`` and ``keys`` is shortened to match.
     """
 
+    key_begin = _sliding_read_range(attention, start, rows)
     keys = start + rows
     queries = np.arange(start, start + rows, dtype=np.int64)[:, None]
-    key_positions = np.arange(keys, dtype=np.int64)[None, :]
+    key_positions = np.arange(key_begin, keys, dtype=np.int64)[None, :]
     keep = key_positions <= queries
     if attention.sliding_window is not None:
         keep &= (queries - key_positions) < int(attention.sliding_window)
