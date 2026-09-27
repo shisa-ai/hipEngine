@@ -2651,6 +2651,63 @@ record, not permission to reset unrelated work or weaken correctness.
   (mode and flags); ``gemma4_attention.py:1`` (ungated family docstring);
   ``gguf_linear.py:219`` (staging quants).
 
+  **Iteration 109: correction -- the MoE is at 3% of peak bandwidth, not 320
+  GB/s. It is the largest opportunity in this campaign.**
+
+  Iteration 108 recorded "the q4_k family already reads 320 GB/s, so unlike the
+  dense line it is not obviously leaving bandwidth on the table." **That is
+  wrong**, and it is wrong in the direction that closes off the biggest target in
+  the campaign. The shape census header is ``MB/call    GB/s``; ``320.078`` is
+  **MB per call**, and the achieved bandwidth is the next column, **40.6 GB/s**.
+  The census prints the device peak directly under the header: 864 GB/s.
+
+  Measured, from ``scripts/gemma4_prefill_shape_census.py``::
+
+      family                              calls  tot_ms  MB/call   GB/s   TF/s
+      moe_grouped:gguf_q5_1                  58   478.8  219.152   26.5    2.0
+      moe_grouped_dual:gguf_q4_k             58   456.9  320.078   40.6    4.1
+      dense:gguf_q8_0 r=512 k=2816 n=2112   120    34.3   11.365   39.8   21.3
+
+  So the two MoE families together move about 31 GB per prefill pass in 935 ms
+  -- **~33 GB/s, 3.8% of the 864 GB/s peak** -- and sustain 2.0-4.1 TF/s, single
+  digits of the compute peak. The whole prefill pass runs at roughly 28 GB/s,
+  about 3% of peak.
+
+  **The timing is not host-gap inflation.** ``layer_total`` (1443 ms) matches the
+  end-to-end ``prefill_s`` (1.448 s) for the same 1024-token pass, so the kernels
+  really do occupy the wall time; if most of it were launch idle, ``layer_total``
+  would be a small fraction of the prefill rather than all of it. The 10-13%
+  GPU-busy figure from iteration 105 was a different measurement -- a repeated
+  A/B harness that idles between runs -- and does not apply to a single
+  contiguous prefill.
+
+  **llama.cpp proves the target is reachable on this hardware.** At 3910 tok/s a
+  1024-token prefill takes 262 ms; moving comparable traffic in that window is
+  well over 100 GB/s. The gap is a kernel-structure gap, not a hardware limit.
+
+  **Structural clue, from the owner names.** The grouped owners are::
+
+      qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out4_amortized_bf16_bf16_out
+      hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_amortized_bundle_bf16_bf16_out
+
+  -- ``rowbatch8`` x ``out4`` tiles, carrying a ``_selected_`` prefix from the
+  decode-side selected-expert family, being used for bulk prefill. The gates
+  around them are ``_GROUPED_PREFILL_MIN_LANES_PER_EXPERT = 4`` and
+  ``_WMMA_PREFILL_MIN_LANES_PER_EXPERT = 16``, and
+  ``_GROUPED_DUAL_AMORTIZED_MAX_IN_FEATURES = 4096`` means the amortized variant
+  is preferred for both the k=704 and k=2816 MoE shapes.
+
+  **This reopens what iteration 108 closed.** The WMMA route that iteration 86
+  measured at +11.6% is a real but small step against a ~25x gap, so the
+  productive question is not which registered variant to pick but why a 4096-row
+  prefill is running an 8-row x 4-output tile. That is the next thing to
+  establish, and unlike the attention tiling it is not new kernel work if an
+  existing owner has the right tile shape.
+
+  Evidence: ``scripts/gemma4_prefill_shape_census.py`` header and rows;
+  ``gemma4_experts.py:502``-``530`` (variant names, gates, tile constants);
+  ``gemma4_experts.py:793`` (grouped gate), ``:757`` (dual launcher).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
