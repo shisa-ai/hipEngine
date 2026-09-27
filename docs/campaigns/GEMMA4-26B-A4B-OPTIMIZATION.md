@@ -112,6 +112,19 @@ fusing a leaf multiply into the first tree add rounds once where the
 shared-memory tree rounds twice. Recorded in
 `benchmarks/results/2026-09-27-gemma4-attention-prefill-register-tree-accepted.json`.
 
+**A dynamic quant is not one quantization.** The same attribution showed two
+dense projections running the *per-row expert gather* during prefill — one Q5_K
+and one Q8_0, one launch each, 314.8 ms together — because one MoE layer of this
+artifact carries Q5_K gate/up and Q8_0 down weights while the other 29 layers are
+Q4_K/Q5_1. A grouped layer costs about 40 ms for the same shape, so that layer is
+paying roughly six times the grouped cost. The Q8_0 half is fixed: its grouped
+family existed but was registered only under the dense `linear` layer, so binding
+it under `moe_linear` and naming it last in the preference order takes the
+projection **68.13 -> 37.19 ms (1.83x, bit-exact)**. The Q5_K gate/up half
+(244.4 ms) has no exact grouped family at all — the only Q5_K prefill routes that
+exist are WMMA or MMQ, both of which change the association — so it needs either
+a new exact grouped kernel or the numerical gate.
+
 Two refuted candidates are worth carrying forward. Halving the `Q8_0` dense
 route's traffic does **not** help: a row-grouped variant moves 4.56 GB instead of
 9.30 GB over the six dense shapes but takes 21.23 ms against 22.13 ms, because

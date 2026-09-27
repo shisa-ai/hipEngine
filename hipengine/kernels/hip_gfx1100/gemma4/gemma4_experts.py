@@ -71,6 +71,11 @@ _GROUPED_PREFILL_VARIANTS = (
     "selected_grouped_prefill_staged_out4_bf16_bf16_out",
     "selected_grouped_prefill_staged_out8_bf16_bf16_out",
     "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+    # The Q8_0 expert family registers only the plain compact variant, and one
+    # MoE layer of this artifact carries Q8_0 expert weights. Without it here
+    # that layer's projection falls through to the per-row gather, which costs
+    # about eight times a grouped layer.
+    "selected_grouped_prefill_compact_bf16_bf16_out",
 )
 
 # Prefill prefers a grouped family once there is at least one compact lane per

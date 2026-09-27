@@ -35,7 +35,11 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
 )
 from hipengine.kernels.registry import KernelKey, is_registered, register, unregister
 from hipengine.quant.gguf import GGMLQuantizationType
-from tests._gguf_synthetic_weights import make_q4_k_weight, make_q5_1_weight
+from tests._gguf_synthetic_weights import (
+    make_q4_k_weight,
+    make_q5_1_weight,
+    make_q8_0_weight,
+)
 from tests._rocm_guard import hip_runtime_available
 
 _needs_hip = pytest.mark.skipif(
@@ -145,10 +149,15 @@ def _grouped_backend(quant: str) -> str:
     return backend
 
 
-_WEIGHT_MAKERS = {"gguf_q5_1": make_q5_1_weight, "gguf_q4_k": make_q4_k_weight}
+_WEIGHT_MAKERS = {
+    "gguf_q5_1": make_q5_1_weight,
+    "gguf_q4_k": make_q4_k_weight,
+    "gguf_q8_0": make_q8_0_weight,
+}
 _GGML_TYPES = {
     "gguf_q5_1": GGMLQuantizationType.Q5_1,
     "gguf_q4_k": GGMLQuantizationType.Q4_K,
+    "gguf_q8_0": GGMLQuantizationType.Q8_0,
 }
 
 # Both quants are exercised because they are separate kernels against separate
@@ -160,6 +169,9 @@ _GGML_TYPES = {
 _GROUPED_GEOMETRIES = {
     "gguf_q5_1": [(2816, 704), (1408, 2816), (64, 128), (37, 96), (16, 32)],
     "gguf_q4_k": [(1408, 2816), (2816, 2816), (64, 256), (37, 512), (16, 256)],
+    # Q8_0's block is 32 wide, so its in_features only has to be a multiple of
+    # 32. The 704 -> 2816 case is the artifact's own Q8_0 expert down shape.
+    "gguf_q8_0": [(2816, 704), (704, 2816), (64, 32), (37, 96)],
 }
 
 _GROUPED_CASES = [
@@ -168,7 +180,11 @@ _GROUPED_CASES = [
     for out_features, in_features in geometry
 ]
 
-_REFERENCE_GEOMETRY = {"gguf_q5_1": (64, 128), "gguf_q4_k": (64, 256)}
+_REFERENCE_GEOMETRY = {
+    "gguf_q5_1": (64, 128),
+    "gguf_q4_k": (64, 256),
+    "gguf_q8_0": (64, 32),
+}
 
 
 @pytest.mark.parametrize(
@@ -603,6 +619,7 @@ def test_grouped_prefill_is_bit_exact_against_the_selected_gemv(
     selected_buf = malloc(selected.nbytes)
     out_grouped = malloc(rows * out_features * 2)
     out_selected = malloc(rows * out_features * 2)
+    extra_outputs: list[tuple[str, object]] = []
     try:
         copy_host_array_to_device(hidden_buf, hidden_bits)
         copy_host_array_to_device(weights_buf, raw)

@@ -485,6 +485,12 @@ def register_gguf_q8_0_prefill_kernels(*, replace: bool = True) -> None:
     The decode-shaped ``prefill_*`` aliases in ``gguf_k_gemv.py`` are not
     touched here; the runtime dispatch in ``hipengine.runtime.gguf_linear``
     chooses between the two key families.
+
+    ``selected_grouped_prefill_compact_bf16_bf16_out`` is also bound under
+    ``moe_linear``. It is the same wrapper, reached through the MoE expert
+    route: one MoE layer of an unsloth dynamic quant can carry Q8_0 expert
+    weights while the rest of the model is Q4_K, and without this key that
+    layer's projection falls through to the per-row gather.
     """
     for variant, fn in _WRAPPERS.items():
         register(
@@ -492,6 +498,16 @@ def register_gguf_q8_0_prefill_kernels(*, replace: bool = True) -> None:
             fn,
             replace=replace,
         )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q8_0",
+            "selected_grouped_prefill_compact_bf16_bf16_out",
+        ),
+        gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out,
+        replace=replace,
+    )
 
 
 register_gguf_q8_0_prefill_kernels()
