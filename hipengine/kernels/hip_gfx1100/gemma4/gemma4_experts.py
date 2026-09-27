@@ -869,9 +869,15 @@ def _build_mmq_tile_plan(
 
     It reuses the WMMA plan's buffers because a 32-row tiling never needs more
     tiles than a 16-row one and both use the same per-expert start width, so the
-    16-row allocation is an upper bound. Unlike the WMMA path this returns the
-    total the map actually wrote, read back from the device: the leaf sizes its
-    grid from it, so the upper bound would launch tiles past the real plan.
+    16-row allocation is an upper bound for this one.
+
+    Returns the total the map actually wrote, read back from the device. Passing
+    the allocation's upper bound instead looks safe on paper -- the map kernel
+    writes ``-1`` across the whole capacity and the leaf returns early on a
+    negative expert, and ``upper_rows / 32`` stays inside that capacity -- but it
+    faults with a GPU memory access error in practice, so the readback stays
+    until that is understood. The cost is one device-to-host copy and one stream
+    synchronize per call.
     """
 
     import numpy as np

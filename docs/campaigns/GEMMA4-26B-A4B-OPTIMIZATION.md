@@ -4197,6 +4197,55 @@ record, not permission to reset unrelated work or weaken correctness.
   ``gemma4_experts.py`` (``_build_mmq_tile_plan`` for the per-call sync,
   ``_prefill_route_flags`` for ``down_wmma = gate_up_wmma``).
 
+  **Iteration 140: removing the MMQ per-call synchronize faults; reverted. The
+  ~0.4 s overhead is real but not yet explained.**
+
+  Iteration 139 left an unexplained arithmetic fact: the int8 route measured 1.17 s
+  where its 2.07x gate_up advantage predicts ~0.77 s, so roughly 0.4 s sits in
+  per-call overhead -- consistent with a device-to-host readback plus a full stream
+  synchronize on every one of ~60 layer-calls per 1024-token prefill. Removing that
+  would put the route near 1330 tok/s, well past ``wmma_plain``'s 990, so it was
+  worth chasing.
+
+  **The attempt.** ``_build_mmq_tile_plan`` read the padded total back from the
+  device because the leaf sizes its grid from it (``row_tiles = mmq_total_rows /
+  32``). The map kernel fills ``tile_expert`` with ``-1`` across the whole capacity
+  before writing real entries, and the leaf returns early on any tile whose expert
+  is negative (``if (expert_id < 0 || expert_id >= num_experts) return;``). So
+  passing the allocation's routing-independent upper bound looked safe: extra tiles
+  resolve to the sentinel and exit. ``upper_rows`` is ``upper_tiles * 16``, so
+  ``upper_rows / 32`` is half the sentinel-filled capacity, which also checks out.
+
+  **It faults.** With the upper bound passed, the route dies immediately with
+  ``Memory access fault by GPU node-1 ... Page not present or supervisor
+  privilege``. The paper argument above is not sufficient, and the actual cause was
+  not identified within this iteration.
+
+  **Reverted** to the readback version, which reproduces its gated numbers
+  (872/867 tok/s against the 870-872 measured in iteration 139). The docstring now
+  records that the upper-bound substitution looks safe and is not, so the next
+  attempt starts from the failure rather than repeating the reasoning.
+
+  **What is still worth checking next time**, in order: whether the leaf's row
+  addressing for the activation uses the *padded* base from
+  ``expert_start_mmq32`` rather than the expert's compact range -- a padded base
+  plus a 32-row tile can run past ``compact_rows`` and off the end of ``ds4_q8``,
+  which would fault on the activation rather than the tile map, and would not show
+  up in the grid arithmetic; and whether the map kernel's real-entry writes can
+  exceed ``tile_capacity`` when the plan is 32-row while the capacity was sized for
+  16-row tiles.
+
+  **The overhead stands as the largest known unexploited win on this route**: about
+  0.4 s of a 1.17 s prefill, or ~+50% on the route, which would make the int8
+  route faster than ``wmma_plain`` rather than slower. It is worth returning to,
+  but only with the fault understood.
+
+  Evidence: the fault output above; the reverted numbers (872/867);
+  ``group_scatter.hip`` (``qwen35_moe_wmma_tile_map_kernel`` sentinel fill at the
+  capacity loop, ``launch_selected_dual_q8_1_ds4_mmq32_compact32`` grid arithmetic
+  ``row_tiles = mmq_total_rows / 32``); ``gguf_q4_k_q8_1_selected_prefill.hip``
+  (the leaf's negative-expert early return).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
