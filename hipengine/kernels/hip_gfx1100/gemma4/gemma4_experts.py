@@ -78,6 +78,12 @@ _GROUPED_PREFILL_VARIANTS = (
     "selected_grouped_prefill_compact_bf16_bf16_out",
 )
 
+# The grouped row4 GEMV is the only grouped kernel Q5_K has. Its launch ABI
+# differs from the grouped prefill family above (it takes a lane map and both a
+# source and a destination row count), so it is a separate dispatch step rather
+# than another entry in the preference list.
+_GROUPED_ROW4_VARIANT = "selected_grouped_row4_gemv_bf16_bf16_out"
+
 # Prefill prefers a grouped family once there is at least one compact lane per
 # expert. Below that most experts are empty, so a grouped launch's per-expert
 # grid would spend its blocks on nothing and the selected GEMV's per-lane grid
@@ -637,6 +643,66 @@ def gemma4_project_experts_grouped_prefill(
     return False
 
 
+def gemma4_project_experts_grouped_row4(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    expert_start_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+) -> bool:
+    """Run the grouped row4 GEMV when the quant has no grouped prefill family.
+
+    This is the fallback for a quant whose expert weights have a grouped kernel
+    but no grouped *prefill* kernel. It reuses an expert's weight rows across
+    four rows instead of one, which measured 3.05x the per-row gather at the
+    fused gate/up geometry and is bit-exact against it.
+
+    Returns ``False`` when this quant has no such kernel, which is a property of
+    the quant key and not of a model or an artifact.
+    """
+
+    if isinstance(weight, int):
+        return False
+    from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
+    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+    key = KernelKey(
+        weight.backend, "moe_linear", weight.spec.quant_key, _GROUPED_ROW4_VARIANT
+    )
+    _ensure_linear_kernel_registered(key)
+    try:
+        fn = resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+    except MissingKernelError:
+        return False
+    _GROUPED_VARIANT_COUNTS[key.variant] = _GROUPED_VARIANT_COUNTS.get(key.variant, 0) + 1
+    # The compact layout puts lane i's activation in row i, so the lane map is
+    # the identity and the launcher takes a null pointer for it.
+    fn(
+        x_ptr,
+        expert_start_ptr,
+        None,
+        weight.allocation("raw").buffer.ptr,
+        out_ptr,
+        compact_rows,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+    )
+    return True
+
+
 def gemma4_project_experts_gate_up_mmq(
     weight: Gemma4Projection,
     x_ptr: int,
@@ -805,6 +871,18 @@ def gemma4_project_experts_rows(
         stream=stream,
     ):
         return "grouped_prefill"
+    if gemma4_project_experts_grouped_row4(
+        weight,
+        x_ptr,
+        expert_start.ptr,
+        out_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+    ):
+        return "grouped_row4"
     if gemma4_project_experts_selected(
         weight,
         x_ptr,

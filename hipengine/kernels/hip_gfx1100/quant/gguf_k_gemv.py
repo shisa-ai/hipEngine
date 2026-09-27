@@ -965,6 +965,20 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     for quant in ("gguf_q8_0", "gguf_q5_k", "gguf_q6_k"):
         for variant, fn in _WRAPPERS[quant].items():
             register(KernelKey("hip_gfx1100", "linear", quant, variant), fn, replace=replace)
+    # The grouped row4 GEMV is also reachable through the MoE expert route,
+    # which resolves `moe_linear`. It is the only grouped kernel Q5_K has, and
+    # one MoE layer of a dynamic quant can carry Q5_K expert weights while the
+    # rest of the model is Q4_K.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_k",
+            "selected_grouped_row4_gemv_bf16_bf16_out",
+        ),
+        gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out,
+        replace=replace,
+    )
     register(KernelKey("hip_gfx1100", "linear+gr_gated_mean", "gguf_q8_0",
                        "coltile2_branch4_rowbatch4_wave_scale_f32_exact"),
              gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32,
