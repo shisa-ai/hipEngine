@@ -14580,6 +14580,13 @@ def _chunk_ranges(total: int, chunk_size: int, *, min_chunk_size: int = 1) -> tu
         return ((0, total),)
     ranges = [(start, min(start + size, total)) for start in range(0, total, size)]
     while len(ranges) >= 2 and ranges[-1][1] - ranges[-1][0] < min_rows:
+        # Borrow from the previous chunk instead of overflowing fixed-width
+        # token/hidden scratch by merging a short recurrent tail into it.
+        boundary = ranges[-1][1] - min_rows
+        if boundary - ranges[-2][0] >= min_rows and min_rows <= size:
+            ranges[-2] = (ranges[-2][0], boundary)
+            ranges[-1] = (boundary, ranges[-1][1])
+            break
         ranges[-2] = (ranges[-2][0], ranges[-1][1])
         ranges.pop()
     return tuple(ranges)
