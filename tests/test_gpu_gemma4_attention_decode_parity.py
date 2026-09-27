@@ -85,6 +85,12 @@ def _raw_launch(library, symbol, buffers, *, tokens, keys, num_heads, num_kv_hea
         # split_slices <= 1 keeps the single-kernel path; the pointer is only
         # dereferenced when the split actually runs.
         args += [ctypes.c_void_p(split_workspace), ctypes.c_int(split_slices)]
+    else:
+        # Prefill's tail is (window, row_offset) instead of decode's
+        # (split_workspace, split_slices). window 0 makes first_kept 0, so the
+        # prefill symbol visits every key exactly as decode's keep_mask does --
+        # which is the parity these tests assert.
+        args += [0, 0]
     err = fn(*args)
     assert int(err) == HIP_SUCCESS, f"{symbol} returned {err}"
 
@@ -243,8 +249,11 @@ def test_public_wrapper_tokens_one_routes_to_decode_result(attention_library):
                      head_dim=head_dim, scale=1.0)
         fn = signed_kernel_fn(attention_library, _SYMBOL_PREFILL_F32, _ARGTYPES_PREFILL,
                               ctypes.c_int)
+        # The prefill symbol's tail is (window, row_offset); 0/0 is what the
+        # Python wrapper below defaults to, which is what this test compares
+        # the raw symbol against.
         err = fn(*(b.ptr for b in buffers[:5]), 1, heads, heads, head_dim,
-                 ctypes.c_float(1.0), 0, keys)
+                 ctypes.c_float(1.0), 0, keys, 0, 0)
         assert int(err) == HIP_SUCCESS
         copy_device_to_host(host_array_ptr(out_reference), buffers[4], out_reference.nbytes)
 

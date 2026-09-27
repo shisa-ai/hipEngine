@@ -273,7 +273,21 @@ __global__ void gemma4_attention_prefill_kernel(
   const float row_max = gemma4_attn_block_max(partial, running_max);
   __syncthreads();
 
-  // Pass 2: denominator.
+  // Pass 2: denominator, storing each weight back over its logit for pass 3.
+  //
+  // The stride is blockDim.x and thread t only ever touches j == t (mod
+  // blockDim.x), so a thread's writes never race another thread's reads of
+  // `logits_s`, and no key is visited twice. Coverage of [first_kept, keys) is
+  // complete either way: a thread with t >= first_kept starts at t, and one
+  // with t < first_kept starts at the first value congruent to t at or above
+  // first_kept.
+  //
+  // Pass 3 then reads the weight instead of recomputing expf per (element,
+  // key), which was head_dim redundant evaluations per key -- 256 per key at
+  // this artifact's sliding-window geometry, and the whole of the kernel's
+  // inner loop. The stored value is expf of the same arguments on the same
+  // device, so it is the same bits pass 3 used to recompute. The decode twin
+  // already does exactly this.
   float local_sum = 0.0f;
   const int64_t threads = static_cast<int64_t>(blockDim.x);
   int64_t j = static_cast<int64_t>(threadIdx.x);
@@ -281,16 +295,19 @@ __global__ void gemma4_attention_prefill_kernel(
     j = gemma4_attn_stride_first(first_kept, j, threads);
   }
   for (; j < keys; j += threads) {
-    local_sum += expf(logits_s[j] - row_max);
+    const float weight = expf(logits_s[j] - row_max);
+    local_sum += weight;
+    logits_s[j] = weight;
   }
   const float denominator = gemma4_attn_block_sum(partial, local_sum);
   __syncthreads();
 
-  // Pass 3: weighted sum of V, then the normalise.
+  // Pass 3: weighted sum of V, then the normalise. Reads the weight pass 2
+  // stored over its logit rather than recomputing expf.
   for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
     float acc = 0.0f;
     for (int64_t j = first_kept; j < keys; ++j) {
-      const float weight = expf(logits_s[j] - row_max);
+      const float weight = logits_s[j];
       if (weight == 0.0f) {
         continue;
       }
