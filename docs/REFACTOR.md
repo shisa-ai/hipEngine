@@ -9208,26 +9208,3 @@ would compare the route with itself. The implementation, its registered launch
 path, and its correctness tests stay in place. Evidence:
 `benchmarks/results/2026-09-27-gemma4-mmq-gate-up-three-arm-attribution.json`,
 `benchmarks/results/2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json`.
-
-## `HIPENGINE_GEMMA4_MOE_GATE_UP_Q5K_IU8` (added 2026-09-27)
-
-Gates the Q5_K iu8-WMMA risk+repair gate/up route in
-`gemma4_project_experts_gate_up_mmq`. Off by default, and the cause is a named
-observed failure rather than missing evidence: with it enabled the first Q5_K
-layer raises HIP error 1 (`hipErrorInvalidValue`) out of
-`_launch_wmma_iu8_risk`, so the kernel's parameter contract and gemma4's geometry
-differ somewhere not yet identified. Everything else about the route is in place -
-the scratch buffers, the WMMA tile walk, the risk queue, the exact repair - and
-the default path is unchanged with the flag off, so the failure can be worked from
-a green tree.
-
-The prize is real and measured elsewhere: for Qwen the same route is
-bit-identical to the exact pair2 parent in all 32 screen cases and 1.50-1.82x
-operation-complete, and promoting it improved every prefill case by 7.6-8.8%.
-Layer 29's gate_up is 110.89 ms, about 5.6% of the prefill, against 6.53 ms for a
-Q4_K layer doing the same shapes.
-
-Clearing command: `HIPENGINE_GEMMA4_MOE_GATE_UP_Q5K_IU8=1` once the launch
-succeeds and the route is shown bit-identical to the strict row4 owner. Remove the
-flag, `gemma4_moe_gate_up_q5k_iu8_enabled`, and the dead scratch buffers when that
-holds. Evidence: `benchmarks/results/2026-09-27-gemma4-gfx1151-layer29-q5k-route.json`.
