@@ -1,0 +1,36 @@
+{
+ "kind": "gemma4_campaign_candidate",
+ "verdict": "rejected - the incumbent is the measured optimum of the space",
+ "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B Q5_1 expert down projection",
+ "candidate": "change the Q5_1 staged grouped prefill's tile shape, or stage its weight bytes in shared memory, to cut the traffic that the route was believed to be paying for. Six tile shapes and one shared-weight-staging rewrite were built and measured at the route's real geometry.",
+ "reason": "every variant is bit-identical to the incumbent and every one is slower. The route is not bound by the traffic these changes remove, so the tile space is closed rather than merely untested.",
+ "geometry": {
+  "source": "recorded from a live 512-token forward by wrapping the registered kernel, not assumed: in 704, out 2816, 128 experts, 4096 compact rows, row_bytes 528, 190.3 MB of expert weights, grid 704 x 128, sum over experts of ceil(rows / 4) = 1069 passes.",
+  "note": "an earlier probe used in 2816 / out 1408, which is this projection transposed, and produced numbers 2x off production. The live geometry is the one the route is actually asked for."
+ },
+ "mechanism": {
+  "incumbent": "one block per (4 output columns, expert); each block walks its expert's compact rows in row batches of 4 and re-reads its 4 columns' weight bytes from DRAM once per row batch, with one-byte loads that use 16 bytes of every 32-byte sector.",
+  "variants_measured": {
+   "out4_rowbatch4 (incumbent)": 21.05,
+   "out8_rowbatch2": 22.43,
+   "wstaged_out4_rowbatch4": 23.81,
+   "out4_rowbatch2": 24.84,
+   "out2_rowbatch8": 25.67,
+   "out8_rowbatch4": 23.24,
+   "out4_rowbatch8": 27.54,
+   "compact_rowbatch8_out8": 38.54,
+   "out16_rowbatch2": 57.52,
+   "out4_rowbatch16": 60.83
+  },
+  "unit": "ms per layer; x29 gives the route's contribution to a 512-token prefill",
+  "arithmetic": "unchanged in every variant. The output tile and the row batch are launch shapes, not arithmetic choices: each row's per-thread partials and the shared 256-wide stride-128 tree are identical, so all of them produce bit-identical output. Verified: 0 of 11,534,336 bf16 outputs differ from the incumbent in each of the seven new variants.",
+  "the_one_non_bit_exact_comparison": "compact_rowbatch8_out8 is the only measured variant that is not bit-exact (1,306,624 of 11,534,336 outputs differ), and it is also 1.83x slower. It confirms the recorded claim that the staged variant's contraction is the incumbent's, not the compact variant's."
+ },
+ "refuted_hypotheses": {
+  "weight_traffic": "the route re-reads its weights once per row batch, so 8.35 passes at the real geometry, and a first probe found the time proportional to the pass count with flat per-pass cost - which looks like DRAM bound. It is not: halving the passes (rowbatch 8) is 1.31x slower, quartering them (rowbatch 16) is 2.89x slower, and staging the block's weight bytes in shared memory once, coalesced, so that global weight traffic drops 8.35x and the sector waste disappears, is 1.13x slower.",
+  "activation_traffic": "each of the 704 output-tile blocks re-reads the same 5.8 MB of activations, which is 4.06 GB of L2 traffic against 1.59 GB of weights. Widening the output tile to 8 halves it and is 1.07x slower; widening to 16 is 2.73x slower.",
+  "occupancy": "register pressure was the proposed mechanism for the row-batch regression, but the smallest-footprint shapes (out4_rowbatch2 at ~20 registers against the incumbent's ~40, and out2_rowbatch8) are also slower, so it is not a simple occupancy trade either."
+ },
+ "what_this_leaves": "the route has no remaining bit-exact lever that measurement supports. The only measured faster shape is the same kernel at K_TILE=512 (17.28 ms against 20.23 ms at the Qwen4Exp geometry, recorded in the accepted Q5_1 row), which is not bit-exact because it changes the reduction's k tiling. It is a gate candidate of the same class as the Q4_K MMQ route, and it joins the kl_max decision rather than being promoted here.",
+ "reproducing": "the variants are template instantiations of q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel<ROW_BATCH, OUT_TILE, 256> plus one shared-weight rewrite of it. They were reverted rather than landed because they are slower and nothing selects them; re-adding an instantiation to launch_q5_1_staged_grouped is a one-line change."
+}

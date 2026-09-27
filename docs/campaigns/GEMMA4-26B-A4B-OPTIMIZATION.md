@@ -69,6 +69,31 @@ same kernel's `K_TILE=512` shape reaches 17.28 ms but is **not** bit-exact, so i
 was dropped rather than shipped. Recorded in
 `benchmarks/results/2026-09-27-gemma4-q5-1-staged-grouped-prefill-accepted.json`.
 
+*Measured 2026-09-27 (iteration 47): this route's tile space is closed, and it
+has no remaining bit-exact lever.* Six tile shapes and a shared-weight-staging
+rewrite were built and measured at the geometry the route is actually asked for
+- recorded from a live forward rather than assumed: in 704, out 2816, 128
+experts, 4096 compact rows, 190.3 MB of weights, grid 704 x 128, 1069 passes.
+Every variant is bit-identical to the incumbent (0 of 11,534,336 bf16 outputs
+differ) and every one is slower: `out8_rowbatch2` 1.07x, `out8_rowbatch4` 1.10x,
+shared-weight staging 1.13x, `out4_rowbatch2` 1.18x, `out2_rowbatch8` 1.22x,
+`out4_rowbatch8` 1.31x, `compact_rowbatch8_out8` 1.83x, `out16_rowbatch2` 2.73x,
+`out4_rowbatch16` 2.89x. The incumbent reproduces production at 21.03 ms per
+layer against the attribution's 22.5. **Both traffic explanations for the
+route's 5%-of-peak FLOP rate are refuted**: the kernel re-reads its weights once
+per row batch (8.35 passes) and the time is proportional to the pass count with
+flat per-pass cost, which looks like DRAM bound - but halving the passes is
+1.31x slower and staging the block's weight bytes in shared memory, coalesced,
+so global weight traffic drops 8.35x and the one-byte loads' 2x sector waste
+disappears, is 1.13x slower. The activations are the larger term (4.06 GB of L2
+against 1.59 GB of weights, because each of the 704 output-tile blocks re-reads
+the same 5.8 MB) and widening the output tile to halve it is also slower. The
+variants were reverted rather than landed - they are slower and nothing selects
+them. The one surviving faster shape is this kernel at `K_TILE=512` (17.28
+against 20.23 ms), which changes the reduction's k tiling and is therefore a
+gate candidate, not a bit-exact route. Evidence row
+`2026-09-27-gemma4-q5_1-staged-tile-space-rejected.json`.
+
 58 of the 60 expert projections per prefill block now take the grouped route.
 The two that do not are layer 29's `Q5_K` gate/up and `Q8_0` down, which have no
 grouped family with a bf16-activation ABI in this tree. Routing the `Q4_K`
