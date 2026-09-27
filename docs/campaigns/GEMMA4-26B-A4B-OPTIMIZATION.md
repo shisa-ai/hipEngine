@@ -1494,6 +1494,50 @@ record, not permission to reset unrelated work or weaken correctness.
   found that both fixes were already written, in the decode family, and that the
   missing piece was the launcher's routing rather than the kernel.
 
+  **Iteration 87: two attempts at the MoE dp4a gate_up, both wrong, both caught
+  by the gate, both reverted.** Iteration 86 established that a grouped dp4a
+  owner exists for the MoE gate_up and that the Gemma path has most of the
+  plumbing. Wiring it produced two failures, and the way they failed is the
+  useful part.
+
+  **Attempt 1: non-finite logits.** I built a *separate* tile plan with
+  ``qwen35_moe_mmq32_tile_map``, reasoning that a 32-row owner needs a 32-row
+  plan. The reference does not do that: ``qwen4_exp_runner`` builds the plan with
+  ``qwen35_moe_wmma_tile_map`` and uses ``tile_rows = 32`` only to *validate*
+  ``wmma_total_rows`` against the tile capacity. The 32 in the owner's name is a
+  row count it checks, not a different plan. The wrong expert/tile mapping
+  produced non-finite logits, and the census in the same run reported
+  **801.75 tok/s, +22.6%** -- a fast wrong answer, measured and believed for the
+  few minutes it took the gate to run.
+
+  **Attempt 2: plausible but wrong.** Switching to the existing 16-row plan (and
+  dropping the extra buffers, since the plan is shared) still fails the gate:
+  ``kl_max`` 29.29 against a 0.05 bar, ``kl_mean`` 0.764 against 0.001. This is
+  worse than attempt 1 in the way that matters -- the numbers are finite and
+  plausible, so nothing but the gate would have flagged them.
+
+  **What I did not do, and should have.** I read the wrapper's *signature* and
+  the reference's *call site*, and inferred the contract from them. Neither
+  states what ``compact_to_source`` means, what output layout the owner writes,
+  or what expert stride it assumes. The reference shows what qwen4 passes, not
+  why it is correct there, and there is a concrete difference I noticed and
+  dismissed: qwen4 passes **separate allocations** for gate and up
+  (``weights["expert_gate"]`` and ``weights["expert_up"]``), while Gemma's fused
+  expert tensor gives one ``base_ptr`` plus a half offset. Assuming those are
+  interchangeable is exactly the kind of inference that needs the kernel's own
+  documentation, not a call site.
+
+  **The transferable point.** Both failures were caught by the gate and neither
+  by the census. The census measures speed; it cannot see a wrong answer, and
+  the +22.6% it reported was attached to a kernel writing infinities. Any future
+  attempt at this route starts by reading the owner's contract in the kernel
+  source, and treats the census as a speed instrument only after the gate is
+  green.
+
+  The MoE dp4a route is unproven, not disproven: the owner's shape constraints
+  fit, the plumbing is nearly all present, and the prize is real. Reverted;
+  the grouped fp32 owners stay on the MoE line.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
