@@ -1848,6 +1848,39 @@ record, not permission to reset unrelated work or weaken correctness.
   and prints ``tile_expert[0]``, the row-major/tile-major comparison, and the
   per-tile error profile).
 
+  **Iteration 95: the residual is row-dependent, so it is on the activation
+  side -- and my stated hypothesis had the implication backwards.** Iteration 34
+  left a ~2% median residual with sparse 20% outliers and asked whether the
+  per-tile error profile is row-independent (activation packing) or row-dependent
+  (weight side). That framing was wrong, and the measurement says so plainly.
+
+  The implication runs the other way. A *weight-side* error -- wrong weight rows,
+  columns, or values -- hits the same output columns for every row, so the
+  per-tile error profile would be identical across rows: row-independent. An
+  *activation-side* error mis-packs one row's activations, so the error differs
+  from row to row: row-dependent.
+
+  **Measured, split weights:** ``mean`` 0.1705, ``across_row_std`` 0.3001, ratio
+  1.76, and the worst tile per row is ``[20, 11, 18, 6, 21, 5, 11, 10]`` -- eight
+  different indices. The error varies per row by more than its own mean, so the
+  residual is on the activation side. For contrast the fused case measures ratio
+  0.02: a single uniform profile, which is what a stride error looks like.
+
+  **This narrows the remaining work to the activation pack.** The weights are
+  structurally right (the two-tensor split took the error from 3.9 to quantization
+  scale), and the leftover is in how the row's activations are quantized and
+  laid out for the owner -- consistent with ``block_q8_1_mmq_ds4`` being four
+  32-feature (scale, sum) sub-blocks, which is also the column-tile width. The
+  candidates are the pack variant (the generic single-plane pack versus the d4x3
+  and f32 forms) and the sub-block or row offset within it. Worth noting for
+  calibration: both paths read the *same* raw Q4_K weights, so the only intended
+  difference is bf16 activations becoming Q8_1, which should cost a few tenths of
+  a percent -- not the 20% outliers seen here. Those outliers are a real defect,
+  not quantization noise.
+
+  Evidence: ``scripts/gemma4_moe_owner_oracle.py`` (per-tile profile across eight
+  rows, with the across-row variance and the worst-tile index per row).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``

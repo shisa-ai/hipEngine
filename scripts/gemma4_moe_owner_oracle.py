@@ -285,6 +285,24 @@ def main() -> int:
                 f"      tiles_bad={len(bad)}/{tiles} first={bad[:6]} "
                 f"worst={per_tile.max():.4f} median={np.median(per_tile):.4f}"
             )
+        # Row-independent or row-dependent? If the per-tile error profile is the
+        # same across rows the residual is in the activation packing (four
+        # 32-feature sub-blocks, matching the 32-wide column tile); if it varies
+        # per row it is on the weight side.
+        sample = [i * (compact_rows // 8) for i in range(8)]
+        prof = np.stack(
+            [np.abs(g[i, :H] - r[i, :H]).reshape(tiles, 32).max(axis=1) for i in sample]
+        )
+        tmean = prof.mean(axis=0)
+        tstd = prof.std(axis=0)
+        print(
+            f"    tile profile: mean={tmean.mean():.4f} across_row_std={tstd.mean():.4f} "
+            f"ratio={tstd.mean() / max(tmean.mean(), 1e-9):.2f}"
+        )
+        print(
+            f"      worst tile per row: {list(prof.argmax(axis=1))} "
+            f"(identical index => row-independent)"
+        )
 
     for label, builder in (
         ("mmq32-plan", qwen35_moe_mmq32_tile_map),
