@@ -3358,10 +3358,37 @@ def _qwen4_exp_q8_mmq_policy(policy):
     return policy
 
 
-def _qwen4_exp_router_f32_tile4_enabled(rows: int) -> bool:
-    """Select the exact four-token F32 router producer for multirow work."""
+_ROUTER_PRODUCER_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"
+_ROUTER_PRODUCER_TILE4_VARIANT = "f32_hidden_token_tile4_dense_exact"
+_ROUTER_PRODUCER_WARP_REDUCE_VARIANT = "f32_hidden_warp_reduce_dense_exact"
+_ROUTER_PRODUCER_VARIANTS = (
+    _ROUTER_PRODUCER_TILE4_VARIANT,
+    _ROUTER_PRODUCER_WARP_REDUCE_VARIANT,
+)
 
-    return rows >= 2
+
+def _qwen4_exp_router_producer_variant(rows: int) -> str | None:
+    """Return the multirow F32 router producer variant, or None for the linear path.
+
+    ``HIPENGINE_QWEN4_EXP_ROUTER_VARIANT`` is the screening switch for the
+    warp-per-token reduction candidate. It is removed once that candidate is
+    promoted or rejected; see docs/REFACTOR.md. An unrecognized value raises
+    instead of silently falling back, because a silently inert arm produces a
+    measurement that looks like a null result.
+    """
+
+    if rows < 2:
+        return None
+    requested = os.environ.get(_ROUTER_PRODUCER_VARIANT_ENV, "").strip()
+    if not requested:
+        return _ROUTER_PRODUCER_TILE4_VARIANT
+    if requested not in _ROUTER_PRODUCER_VARIANTS:
+        raise ValueError(
+            f"{_ROUTER_PRODUCER_VARIANT_ENV} must be one of "
+            + ", ".join(_ROUTER_PRODUCER_VARIANTS)
+            + f"; got {requested!r}"
+        )
+    return requested
 
 
 def _qwen4_exp_production_moe_prefill_enabled(
@@ -3769,13 +3796,13 @@ def run_qwen4_exp_moe(
         raise ValueError("missing Qwen4Exp MoE weights: " + ", ".join(missing))
     backend = str(weights["expert_gate"].backend)
     _ensure_qwen4_exp_moe_backend(backend)
-    router_tile4 = _qwen4_exp_router_f32_tile4_enabled(rows)
-    if router_tile4:
+    router_variant = _qwen4_exp_router_producer_variant(rows)
+    if router_variant is not None:
         router_logits = resolve(
             backend=backend,
             layer="router_logits",
             quant="f32",
-            variant="f32_hidden_token_tile4_dense_exact",
+            variant=router_variant,
         )
         router_logits(
             mixed_ptr,

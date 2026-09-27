@@ -364,6 +364,29 @@ CANDIDATES["production_dense_q8_restore"] = replace(
     direct_dispatch_target=None, direct_dispatch_reference=None, count_registered_dispatch=True,
 )
 
+CANDIDATES["router_warp_reduce"] = CandidateSpec(
+    name="router_warp_reduce",
+    classification="T1",
+    mechanism=(
+        "warp-per-token router logits reduction: one warp per token with a "
+        "32-lane shuffle reduction and the expert row staged once per block "
+        "in LDS, replacing the four-token tile's 256-thread LDS tree over a "
+        "global weight row"
+    ),
+    environment={
+        "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_warp_reduce_dense_exact",
+    },
+    base_profile="production",
+    scenario_id="qwen4exp-ud-q4-k-xl-router-warp-reduce",
+    candidate_key=("hip_gfx1151", "router_logits", "f32",
+                   "f32_hidden_warp_reduce_dense_exact"),
+    fallback_key=("hip_gfx1151", "router_logits", "f32",
+                  "f32_hidden_token_tile4_dense_exact"),
+    count_registered_dispatch=True,
+    # The launcher ABI is (hidden, weight, logits, tokens, hidden_size, num_rows).
+    dispatch_shape_positions=(3, 4, 5),
+)
+
 
 class GateError(RuntimeError):
     """Raised when the profile gate cannot be evaluated safely."""

@@ -33,6 +33,9 @@ _SYMBOL_LOGITS_F32_F32W = "hipengine_qwen35_router_logits_f32_f32w"
 _SYMBOL_LOGITS_F32_F32W_TILE4_DENSE_EXACT = (
     "hipengine_qwen35_router_logits_f32_f32w_token_tile4_dense_exact"
 )
+_SYMBOL_LOGITS_F32_F32W_WARP_REDUCE_DENSE_EXACT = (
+    "hipengine_qwen35_router_logits_f32_f32w_warp_reduce_dense_exact"
+)
 _SYMBOL_SELECT = "hipengine_qwen35_router_select"
 _SYMBOL_TOPK_SHARED_OUT = "hipengine_qwen35_router_topk_shared_out_bf16"
 _SYMBOL_TOPK_SHARED_OUT_FP16 = "hipengine_qwen35_router_topk_shared_out_fp16"
@@ -586,6 +589,56 @@ def qwen35_router_logits_f32_f32w_token_tile4_dense_exact(
     _check_launch(runtime, err)
 
 
+def qwen35_router_logits_f32_f32w_warp_reduce_dense_exact(
+    hidden_ptr: int,
+    weight_ptr: int,
+    logits_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    num_rows: int,
+    *,
+    threads: int = 512,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the warp-per-token router logits reduction.
+
+    Each warp owns one token, so the reduction is a 32-lane shuffle instead of
+    the exact parent's 256-thread LDS tree, and the expert row is staged once per
+    block in LDS. This is a distinct production arithmetic: it is not
+    bit-identical to ``qwen35_router_logits_f32_f32w_token_tile4_dense_exact``
+    and needs the execution-profile gate.
+    """
+
+    _check_positive(tokens, "tokens")
+    _check_positive(hidden_size, "hidden_size")
+    _check_positive(num_rows, "num_rows")
+    if threads != 512:
+        raise ValueError("warp-reduce router logits requires 512 threads")
+    if hidden_size * 4 > 64 * 1024:
+        raise ValueError("warp-reduce router logits requires hidden_size * 4 <= 64 KiB")
+    library = library or _router_library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_LOGITS_F32_F32W_WARP_REDUCE_DENSE_EXACT,
+        _ARGTYPES_ROUTER_LOGITS,
+        ctypes.c_int,
+    )
+    err = fn(
+        hidden_ptr,
+        weight_ptr,
+        logits_ptr,
+        tokens,
+        hidden_size,
+        num_rows,
+        threads,
+        stream,
+    )
+    _check_launch(runtime, err)
+
+
 def qwen35_router_select(
     logits_ptr: int,
     selected_ptr: int,
@@ -1088,6 +1141,16 @@ def register_qwen35_router_kernels(*, replace: bool = True) -> None:
             "f32_hidden_token_tile4_dense_exact",
         ),
         qwen35_router_logits_f32_f32w_token_tile4_dense_exact,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "router_logits",
+            "f32",
+            "f32_hidden_warp_reduce_dense_exact",
+        ),
+        qwen35_router_logits_f32_f32w_warp_reduce_dense_exact,
         replace=replace,
     )
     register(
