@@ -331,5 +331,57 @@
   "what_fixing_it_actually_requires": "One of two things, neither of which is three edits. (a) Add a pass loop to the DS4 (f16) WMMA body. That is a real kernel change and it has a subtlety: the inner loop accumulates an int8xint4 dot product into dot_acc and then applies acc_f[j] += scale_f * xd * dot_acc[j] - min_f * xsum, so a pass loop has to decide how the min_f * xsum correction composes across planes rather than simply adding another dot product. The f32 body is the reference for how that is done. (b) Move the Gemma 4 route to the f32 activation family, which needs a fused RAW f32 leaf that does not exist yet. Either way this is a kernel unit with its own correctness gate, not a configuration flip.",
   "state_landed": "The kernel-level enabler is landed and correct: the fused leaf kernel is now templated on ACTIVATION_PASSES instead of hardcoding 1, the launcher forwards it, and hipengine_gguf_q4_k_selected_dual_q8_1_ds4x3_fused_mmq32_prefill_compact32_bf16_bf16_out is exported. The route stays on one plane, because with the body reading one plane a three-plane pack would pay three times the activation bytes and pack work for no accuracy.",
   "measured": "With three populated activation planes, the workspace sized for three, the launcher forwarding ACTIVATION_PASSES = 3 and the route instrumented to confirm it calls the new ds4x3 symbol, the gate/up error is bit-identical: mean absolute 0.8225 at 64 ids against 0.8225 for the one-plane quantization arm, ratio 1.00x."
+ },
+ "task18_premises_corrected": {
+  "why": "Before restructuring a hot inner loop in ~12 places, I tried to verify the payoff and the mechanism. Both checks changed the plan, and one of them refutes an assumption I recorded in the task-16 note.",
+  "finding_1_the_harness_cannot_measure_the_payoff": {
+   "what_i_did": "Quantized packed_hidden to 1, 2 and 3 planes, reconstructed it exactly as the leaf would (sum_p q_p * scale_p), wrote it back into the activation buffer and ran the real fp32 grouped route, so the delta against the unmodified fp32 run is the error the MMQ route would carry at that plane count. No kernel change involved.",
+   "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python /tmp/mmq_passgain.py",
+   "measured": {
+    "ids_64": {
+     "1_plane": {
+      "max": 38.75,
+      "mean": 0.822485
+     },
+     "2_planes": {
+      "max": 38.75,
+      "mean": 0.822606
+     },
+     "3_planes": {
+      "max": 38.75,
+      "mean": 0.822485
+     }
+    },
+    "ids_96": {
+     "1_plane": {
+      "max": 38.563477,
+      "mean": 0.990192
+     },
+     "2_planes": {
+      "max": 38.563477,
+      "mean": 0.990304
+     },
+     "3_planes": {
+      "max": 38.563477,
+      "mean": 0.990192
+     }
+    }
+   },
+   "reading": "The error is identical at one, two and three planes, which is NOT evidence that the fix cannot work. It is a harness artifact: the activation buffer is bf16 by construction, so the reconstruction is rounded to an 8-bit mantissa on the way back in, and that rounding (about 0.2 percent relative) dominates the three-plane reconstruction error (0.00044 percent). The one-plane DS4 error (0.717 percent) still dominates bf16 rounding, which is why the one-plane number agrees with the MMQ route. So this method can measure the one-plane error and cannot measure the multi-plane one.",
+   "consequence": "The task-18 payoff remains UNVERIFIED. The prediction that the gate/up error falls about 1630x with three planes follows from the projection being linear in the activation error, and that linearity has not been tested. The kernel change is the only way to measure it, because the leaf consumes int8 directly and never round-trips through bf16."
+  },
+  "finding_2_the_sum_correction_does_not_telescope": {
+   "the_assumption_i_recorded": "The task-16 note said the per-pass sums telescope, so a pass loop could simply accumulate the stored xsum values: sum_p sum(residual_p) approximately equals the reconstruction's own sum.",
+   "measurement": "It does not. |sum_p sum(residual_p) - sum of the reconstruction| over |mean reconstruction sum| is 5.84e-02 at 64 ids and 6.12e-02 at 96 ids - about six percent, not negligible. The extra term sum_p sum(residual_{p+1}) is comparable in size to the reconstruction sum rather than small.",
+   "so_a_pass_loop_must_not": "accumulate the stored ds4[2*ds4_idx + 1] values across passes. That would introduce a several-percent error in the min_f * xsum correction term, which is exactly the kind of error this work exists to remove.",
+   "what_the_working_reference_does": "The f32 multi-pass body does not use the stored sum at all. At lines 4473 onward it reads the per-pass block, takes d = ds4[2*(k32&3)] as the per-pass scale, and computes sum0/sum1 by dp4a-summing the int8 qs bytes directly with gguf_q4_k_mmq_dp4a(0x01010101u, ...). So the effective activation sum is d_p * sum(q_p) accumulated across passes, which does converge to sum(x), rather than sum(residual_p) accumulated across passes, which does not.",
+   "the_even_simpler_option_the_ds4_path_has": "For the DS4 block, pass 0's stored sum is sum(residual_0) = sum(x) exactly, and sum(x) is precisely what the Q4_K min-offset correction needs, since that term accounts for w_min * sum_k x[k]. So a DS4 pass loop can take the correction from pass 0 alone and accumulate only the dot products. That is cheaper than recomputing sum(q_p) per pass and is exact rather than convergent. It is a design choice for the implementer, not a measured result."
+  },
+  "finding_3_the_staging_shape": "The f32 body stages every pass into activation_tile[pass][row_offset] before the accumulation, so the DS4 path needs the same staging plus a per-pass accumulation of the dot product, since the per-pass scale xd differs and the int dot cannot be scaled once at the end. That is the restructure: currently one dot_acc is accumulated over kt and then scaled by a single xd inside the j loop, and multi-pass needs a separate dot_acc per pass combined with that pass's xd.",
+  "limits": [
+   "The linearity of the gate/up error in the activation error is assumed, not measured. Finding 1 explains why the obvious harness cannot measure it.",
+   "Only the first layer was instrumented, as in the earlier passes.",
+   "The f32 reference was read, not run; its pass accumulation is inferred from its source at lines 4473 onward rather than from a measurement of that kernel."
+  ]
  }
 }
