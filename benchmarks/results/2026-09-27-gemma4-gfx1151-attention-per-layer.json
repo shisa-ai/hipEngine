@@ -1,0 +1,46 @@
+{
+  "date": "2026-09-27",
+  "platform": "gfx1151",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "model": "gemma-4-26B-A4B-it UD-Q4_K_XL",
+  "status": "measurement",
+  "performance_claim": false,
+  "method": "Per-launch durations of gemma4_attention_prefill_kernel from the 512-token rocprofv3 kernel trace, sorted by start timestamp. The 30 launches are in layer order, so each maps to one layer without further instrumentation.",
+  "per_layer_ms": {
+    "sliding_head_dim_256": 7.1,
+    "global_head_dim_512": 23.5,
+    "sliding_layers": 25,
+    "global_layers": 5
+  },
+  "attention_total_ms": 301.09,
+  "split": {
+    "sliding_ms": 177.5,
+    "sliding_pct": 59.0,
+    "global_ms": 117.4,
+    "global_pct": 39.0
+  },
+  "findings": [
+    "Every sixth launch is slow, in a strict 5:1 pattern: 25 sliding layers at about 7.1 ms and 5 global layers at about 23.5 ms. The global layers are therefore 3.3x slower per layer while doing identical FLOP, since head_dim 512 with 4 heads is the same work as head_dim 256 with 8 heads. That is the campaign's first item confirmed per layer rather than in aggregate, and it is 39% of attention time, or 5.8% of the whole prefill.",
+    "The cause is a gate, not a tuning miss. The fast warp-per-key path is guarded by `if (head_dim == 256 && blockDim.x == 256)`, so the global layers can never take it and always run the block path whose own comment says the per-key barrier rounds are 'the whole cost of this kernel'. The kernel's tuning surface is one derived value, threads = next_pow2(head_dim) capped at kGemma4AttentionMaxThreads (256), so both head dims run 256 threads and no tile parameter exists to sweep.",
+    "Neither path is compute-limited. The sliding layers do 2.15 GFLOP in 7.1 ms, 1.0% of gfx1151's roughly 30 TFLOP/s, and the global layers 0.3%. One block per (token, head) means each block re-reads all of K and V for its head: 512 KiB per block at head_dim 256, 2.15 GB per layer across 4096 blocks, which is 302 GB/s. That is at or above the ~256 GB/s DRAM figure, so much of it is served by cache and the kernel is memory-limited rather than compute-limited either way.",
+    "The lever is therefore query tiling, which reduces the K/V traffic and the barrier count at the same time - a block covering Q query tokens reads K and V once instead of Q times. It is also the only route that helps the sliding layers, which are 59% of attention and already on the fast path."
+  ],
+  "limits": [
+    "The 256 GB/s DRAM figure is an assumption, not a measurement on this box, and the computed 302 GB/s exceeds it. Read the bandwidth statement as 'memory-limited rather than compute-limited', which the 1.0% and 0.3% of peak figures support on their own, and not as a claim about which level of the hierarchy is saturated.",
+    "The 7.1 and 23.5 ms figures are per-launch means from a single profiling run; the pattern is strict and the two groups do not overlap.",
+    "Kernel time is not a promotion claim. This sizes the next unit.",
+    "An earlier draft of this entry's companion script printed that a perfect attention fix caps at 1.6% of prefill, conflating attention's FLOP share with its time share. The correct figure is up to 15%, its share of wall time. The error is recorded rather than quietly dropped because the FLOP-share and time-share distinction is the whole point of the context block above."
+  ],
+  "whole_prefill_context": {
+    "prefill_s": 1.991,
+    "tflop": 4.1,
+    "tflop_per_s": 2.06,
+    "pct_of_30_tflops_peak": 6.9,
+    "weights_gb_at_4p5_bpw": 14.6,
+    "weight_gb_per_s": 7.3,
+    "pct_of_256_gb_per_s_dram": 2.9,
+    "attention_pct_of_flops": 1.6,
+    "attention_pct_of_time": 15.1,
+    "reading": "The whole prefill runs at 6.9% of FLOP peak and 2.9% of DRAM bandwidth, so it is neither compute-bound nor bandwidth-bound. That is why attention can be 1.6% of the FLOP and 15% of the time: it runs at 0.7% of peak against the matmuls' ~7%. A perfect attention fix would recover up to its 15% of wall time, taking the prefill from 3.54x to about 3.0x llama.cpp at 512, so attention is worth doing but cannot close the gap alone; the same question has to be asked of the matmul side, which is 78% of the time at ~7% of peak."
+  }
+}
