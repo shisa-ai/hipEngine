@@ -46,6 +46,9 @@ _BF16_BYTES = 2
 _I32_BYTES = 4
 _I64_BYTES = 8
 _F32_BYTES = 4
+# ``block_q8_1_mmq_ds4`` is ``uint16_t ds4[8]`` plus ``int8_t qs[128]``.
+_DS4_BLOCK_BYTES = 144
+_DS4_BLOCK_VALUES = 128
 
 
 # WMMA prefill owners address padded 16-row tiles rather than compact rows, so
@@ -101,6 +104,17 @@ class Gemma4ExpertScratch:
         buf = malloc(self._size_of(name))
         self._by_name[name] = buf
         self._buffers.append(buf)
+        if name == "compact_to_source":
+            # The MMQ leaf dereferences this unconditionally, so it has to hold
+            # a real map rather than a null. Gemma4's compact buffer is already
+            # in source order, which makes it the identity: fill it once here
+            # instead of paying a kernel launch on every prefill.
+            import numpy as np
+
+            from hipengine.core.memory import copy_host_to_device, host_array_ptr
+
+            iota = np.arange(self.total_lanes, dtype=np.int64)
+            copy_host_to_device(buf, host_array_ptr(iota))
         return buf
 
     def free(self) -> None:
@@ -138,6 +152,13 @@ class Gemma4ExpertScratch:
             "wmma_expert_start": (self.num_experts + 1) * _I64_BYTES,
             "wmma_tile_expert": _wmma_tile_upper_bound(lanes, self.num_experts)[1] * _I64_BYTES,
             "wmma_total": _I64_BYTES,
+            # Grouped int8 MMQ prefill. ``ds4_q8`` holds the compact activations
+            # packed as llama.cpp-style DS4 ``block_q8_1_mmq`` blocks, and
+            # ``compact_to_source`` is the row map the MMQ leaf dereferences. The
+            # MMQ32 tile ABI is the same 16-row plan the WMMA owners build, so
+            # that plan is reused and no second one is allocated here.
+            "ds4_q8": lanes * (self.hidden_size // 128) * _DS4_BLOCK_BYTES,
+            "compact_to_source": lanes * _I64_BYTES,
         }
         try:
             return sizes[name]
@@ -256,8 +277,32 @@ def gemma4_experts_forward_bf16(
     #    actually use it.
     fused = 2 * intermediate
     mode = _prefill_mode()
-    gate_up_wmma, compensated = _prefill_route_flags(mode)
+    gate_up_wmma, compensated, use_mmq = _prefill_route_flags(mode)
     down_wmma = gate_up_wmma
+    mmq_rows = 0
+    if use_mmq:
+        # The grouped int8 MMQ leaf derives each expert's weight stride from its
+        # output width, so it needs gate and up in separate per-expert
+        # allocations. Gemma4 stores them fused in one ``ffn_gate_up_exps``
+        # tensor -- a layout the grouped owners handle with an explicit
+        # ``expert_stride_rows``, which this leaf has no parameter for. Feeding
+        # it the fused layout reads expert 0's up half as expert 1's gate and
+        # produces wrong logits (measured kl_max 25.5 against a 0.05 bar, 125
+        # top-1 flips at 2048 prompt / 1024 prefill), so the route refuses until
+        # the loader splits the tensor rather than returning those numbers.
+        # Clearing condition: split ``ffn_gate_up_exps`` into per-expert gate and
+        # up allocations, then flip this to True.
+        if not _MMQ_DUAL_WEIGHTS_ARE_SPLIT:
+            raise NotImplementedError(
+                "HIPENGINE_GEMMA4_MOE_PREFILL=mmq requires the fused "
+                "ffn_gate_up_exps tensor split into separate per-expert gate and "
+                "up allocations; the grouped int8 MMQ leaf has no fused-stride "
+                "parameter. Use auto, grouped, selected, wmma or wmma_plain."
+            )
+        if lanes >= _WMMA_PREFILL_MIN_LANES_PER_EXPERT * num_experts:
+            mmq_rows = _build_mmq_tile_plan(
+                scratch, expert_start.ptr, lanes, stream=stream, runtime=runtime
+            )
     wmma_rows = 0
     if (
         (gate_up_wmma or down_wmma)
@@ -266,7 +311,23 @@ def gemma4_experts_forward_bf16(
         wmma_rows = _build_wmma_tile_plan(
             scratch, expert_start.ptr, lanes, stream=stream, runtime=runtime
         )
-    if gate_up_wmma and wmma_rows and gemma4_project_experts_wmma_dual(
+    if use_mmq and mmq_rows and gemma4_project_experts_mmq_dual(
+        gate_up_proj,
+        packed_hidden.ptr,
+        expert_start.ptr,
+        scratch,
+        gate_up_out.ptr,
+        lanes,
+        num_experts,
+        hidden_size,
+        intermediate,
+        fused,
+        mmq_rows,
+        stream=stream,
+        runtime=runtime,
+    ):
+        pass
+    elif gate_up_wmma and wmma_rows and gemma4_project_experts_wmma_dual(
         gate_up_proj,
         packed_hidden.ptr,
         expert_start.ptr,
@@ -534,6 +595,14 @@ _GROUPED_PREFILL_MIN_LANES_PER_EXPERT = 4
 # block once per 16-row tile, so they need more live rows than the grouped GEMV
 # before the wider grid pays. Same reasoning as the grouped gate, higher bar.
 _WMMA_PREFILL_VARIANT = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
+# Grouped int8 MMQ prefill. The leaf is Q4_K-specific and consumes DS4-packed
+# activations, so it is a route of its own rather than a variant of the grouped
+# owners, which take BF16 activations and dequantize the weights.
+_MMQ_DUAL_QUANT_KEY = "gguf_q4_k"
+# The grouped int8 MMQ leaf needs gate and up in separate per-expert weight
+# allocations. Gemma4 loads them fused in one ``ffn_gate_up_exps`` tensor, and no
+# loader path splits it yet, so the route is unreachable until one does.
+_MMQ_DUAL_WEIGHTS_ARE_SPLIT = False
 _WMMA_PREFILL_MIN_LANES_PER_EXPERT = 16
 
 # Compensated twins of the two WMMA owners. The plain owners round every
@@ -574,7 +643,9 @@ _WMMA_DUAL_PREFILL_COMP_VARIANT = (
 # ``wmma_plain`` is the uncompensated form, kept as the diagnostic that isolates
 # the fp16 weight-rounding term. ``grouped`` and ``selected`` pin the exact arms.
 _PREFILL_MODE_ENV = "HIPENGINE_GEMMA4_MOE_PREFILL"
-_PREFILL_MODES = frozenset({"auto", "wmma", "wmma_plain", "grouped", "selected"})
+_PREFILL_MODES = frozenset(
+    {"auto", "wmma", "wmma_plain", "mmq", "grouped", "selected"}
+)
 
 
 def _prefill_mode() -> str:
@@ -586,19 +657,23 @@ def _prefill_mode() -> str:
     return raw if raw in _PREFILL_MODES else "auto"
 
 
-def _prefill_route_flags(mode: str) -> tuple[bool, bool]:
-    """Return ``(use_wmma, compensated)`` for a prefill route selector.
+def _prefill_route_flags(mode: str) -> tuple[bool, bool, bool]:
+    """Return ``(use_wmma, compensated, use_mmq)`` for a prefill selector.
 
     ``auto``, ``grouped`` and ``selected`` keep the exact routes, so the WMMA
     owners are not probed at all. ``wmma`` probes them in their compensated
-    form and ``wmma_plain`` in their uncompensated form.
+    form and ``wmma_plain`` in their uncompensated form. ``mmq`` selects the
+    grouped int8 MMQ owner, which packs activations to DS4 and computes int8
+    against int8 instead of dequantizing the weights to BF16 first.
     """
 
     if mode == "wmma":
-        return True, True
+        return True, True, False
     if mode == "wmma_plain":
-        return True, False
-    return False, False
+        return True, False, False
+    if mode == "mmq":
+        return False, False, True
+    return False, False, False
 
 
 def gemma4_project_experts_wmma_dual(
@@ -759,6 +834,144 @@ def _build_wmma_tile_plan(
         runtime=runtime,
     )
     return upper_rows
+
+
+def _build_mmq_tile_plan(
+    scratch: Gemma4ExpertScratch,
+    expert_start_ptr: int,
+    lanes: int,
+    *,
+    stream: int,
+    runtime: object | None,
+) -> int:
+    """Fill ``scratch``'s 32-row MMQ tile plan and return its padded row count.
+
+    The MMQ32 leaf tiles 32 rows at a time where the WMMA owners tile 16, so it
+    needs its own map -- the two are not interchangeable, and feeding a 16-row
+    plan to the MMQ32 leaf walks off the end of the activation buffer.
+
+    It reuses the WMMA plan's buffers because a 32-row tiling never needs more
+    tiles than a 16-row one and both use the same per-expert start width, so the
+    16-row allocation is an upper bound. Unlike the WMMA path this returns the
+    total the map actually wrote, read back from the device: the leaf sizes its
+    grid from it, so the upper bound would launch tiles past the real plan.
+    """
+
+    import numpy as np
+
+    from hipengine.core.memory import copy_device_to_host, host_array_ptr
+    from hipengine.kernels.hip_gfx1100.moe.group_scatter import qwen35_moe_mmq32_tile_map
+
+    _, upper_tiles = _wmma_tile_upper_bound(lanes, scratch.num_experts)
+    qwen35_moe_mmq32_tile_map(
+        expert_start_ptr,
+        scratch.buffer("wmma_expert_start").ptr,
+        scratch.buffer("wmma_tile_expert").ptr,
+        scratch.buffer("wmma_total").ptr,
+        scratch.num_experts,
+        tile_capacity=upper_tiles,
+        stream=stream,
+        runtime=runtime,
+    )
+    if stream:
+        from hipengine.core.hip import get_hip_runtime
+
+        (runtime or get_hip_runtime()).stream_synchronize(stream)
+    total = np.empty(1, dtype=np.int64)
+    copy_device_to_host(
+        host_array_ptr(total),
+        scratch.buffer("wmma_total"),
+        np.dtype(np.int64).itemsize,
+        runtime=runtime,
+    )
+    return int(total[0])
+
+
+def gemma4_project_experts_mmq_dual(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    expert_start_ptr: int,
+    scratch: Gemma4ExpertScratch,
+    out_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    fused_width: int,
+    mmq_total_rows: int,
+    *,
+    stream: int = 0,
+    library: object | None = None,
+    runtime: object | None = None,
+) -> bool:
+    """Run a fused ``gate_up`` projection through the grouped int8 MMQ owner.
+
+    Packs the compact activations to llama.cpp-style DS4 ``block_q8_1_mmq`` on
+    the GPU and then runs the 32x32 packed-dot leaf, which multiplies int8
+    activations against int8 weights. That is the structural difference from the
+    grouped and WMMA owners, which dequantize each weight to BF16 and then do
+    BF16 FMAs: at the Gemma4 MoE shape the int8 leaf measures 2.07x the BF16
+    WMMA owner, and 2.00x even paying this packing cost.
+
+    ``mmq_total_rows`` is the padded row count of the 32-row MMQ tile plan
+    already held in ``scratch``. The leaf reads that plan's per-expert start and
+    tile->expert map, which the WMMA owners' 16-row plan cannot substitute for.
+
+    Returns ``False`` when the weight is not a Q4_K expert stack or the shape is
+    not one the leaf serves, which leaves the grouped and selected owners to
+    handle it.
+    """
+
+    if isinstance(weight, int):
+        return False
+    if weight.spec.quant_key != _MMQ_DUAL_QUANT_KEY:
+        return False
+    if in_features % _DS4_BLOCK_VALUES or out_features % 32:
+        return False
+    if compact_rows < _GROUPED_PREFILL_MIN_LANES_PER_EXPERT * num_experts:
+        return False
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+        build_gguf_q4_k_q8_1_selected_prefill,
+        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+        gguf_q8_1_mmq_ds4_pack_bf16,
+    )
+
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    ds4 = scratch.buffer("ds4_q8")
+    gguf_q8_1_mmq_ds4_pack_bf16(
+        x_ptr,
+        ds4.ptr,
+        compact_rows,
+        in_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+    base_ptr = weight.allocation("raw").buffer.ptr
+    # Same half-split as the grouped dual owner: a Q4_K row is a whole number of
+    # 256-value blocks, so the fused half boundary is a block boundary too.
+    half_bytes = weight.expert_stride_bytes // 2
+    gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+        ds4.ptr,
+        scratch.buffer("compact_to_source").ptr,
+        expert_start_ptr,
+        scratch.buffer("wmma_expert_start").ptr,
+        scratch.buffer("wmma_tile_expert").ptr,
+        base_ptr,
+        base_ptr + half_bytes,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features,
+        out_features,
+        num_experts,
+        mmq_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+    return True
 
 
 def gemma4_project_experts_grouped_dual(
