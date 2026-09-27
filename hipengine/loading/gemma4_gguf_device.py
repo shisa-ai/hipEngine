@@ -33,16 +33,28 @@ from hipengine.quant.gguf import GGMLQuantizationType, quant_layout
 
 __all__ = [
     "LAYOUT_DENSE_F32",
+    "LAYOUT_Q4_K_PACK8",
     "LAYOUT_RAW_GGUF",
     "Gemma4GGUFDeviceWeight",
     "Gemma4GGUFWeightSpec",
     "materialize_gemma4_gguf_device_weight",
+    "pack8_arrays",
     "plan_gemma4_gguf_resident_specs",
     "resident_bytes",
 ]
 
 LAYOUT_RAW_GGUF = "raw_gguf"
 LAYOUT_DENSE_F32 = "dense_f32"
+# A Q4_K tensor that also carries the pack8 GEMV layout. The packed arrays sit
+# alongside the raw blocks rather than replacing them, because three of the four
+# expert routes read the raw allocation and a missing one would be a KeyError
+# rather than a fallback.
+LAYOUT_Q4_K_PACK8 = "q4_k_pack8"
+
+# The packed components a pack8 weight carries, in the order the kernel takes
+# them. ``qweight_high`` is not among them: the kernel requires it only for q5_k
+# and q6_k, and for q4_k it passes null.
+_PACK8_ALLOCATION_NAMES = ("qweight", "scales", "mins")
 
 # The quant types this artifact is built from, plus the f32 norms. This is the
 # set the *loader* can carry, not an admission list for a model: a Gemma 4 GGUF
@@ -120,6 +132,50 @@ class Gemma4GGUFDeviceWeight:
             allocation.free(runtime=runtime)
 
 
+def _pack8_shapes(shape: tuple[int, ...]) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """Return the packed ``(qweight, scales)`` shapes for an expert tensor.
+
+    Derived from the source shape alone so a caller can size the layout without
+    building it, which is what :func:`resident_bytes` needs. ``scales`` and
+    ``mins`` share a shape: one value per 32-value group, per expert, per output
+    column.
+    """
+
+    if len(shape) != 3:
+        raise ValueError(f"pack8 needs a rank-3 expert tensor, got rank {len(shape)}")
+    experts, out_features, in_features = (int(dim) for dim in shape)
+    from hipengine.quant.gguf_q4_k import GGUF_Q4_K_PACK, GGUF_Q4_K_SUBBLOCKS, QK_K
+
+    if out_features % GGUF_Q4_K_PACK:
+        raise ValueError(
+            f"pack8 needs out_features divisible by {GGUF_Q4_K_PACK}; "
+            f"{out_features} is not, so groups would straddle experts"
+        )
+    if in_features % QK_K:
+        raise ValueError(f"Q4_K needs in_features divisible by {QK_K}; {in_features} is not")
+    groups = (in_features // QK_K) * GGUF_Q4_K_SUBBLOCKS
+    return (
+        (experts, out_features // GGUF_Q4_K_PACK, in_features),
+        (experts, groups, out_features),
+    )
+
+
+def _pack8_nbytes(shape: tuple[int, ...]) -> int:
+    """Device bytes the pack8 arrays for ``shape`` occupy, without building them."""
+
+    qweight_shape, scale_shape = _pack8_shapes(shape)
+    qweight_bytes = 4 * _product(qweight_shape)
+    scale_bytes = 4 * _product(scale_shape)
+    return qweight_bytes + 2 * scale_bytes
+
+
+def _product(shape: tuple[int, ...]) -> int:
+    total = 1
+    for dim in shape:
+        total *= int(dim)
+    return total
+
+
 def _plan_one(slot_path: str, source: GGUFTensorInfo) -> Gemma4GGUFWeightSpec:
     qtype = GGMLQuantizationType(int(source.ggml_type))
     if qtype is GGMLQuantizationType.F32:
@@ -139,6 +195,22 @@ def _plan_one(slot_path: str, source: GGUFTensorInfo) -> Gemma4GGUFWeightSpec:
         raise ValueError(
             f"{slot_path}: {source.name} is rank {len(source.shape)}; raw GGUF "
             "residency needs rank-2 or rank-3 block storage"
+        )
+    # A rank-3 Q4_K expert tensor also carries the pack8 GEMV layout, which
+    # precomputes the per-32-value scale and min terms so the kernel does not
+    # re-decode raw block metadata on every weight read. Only Q4_K: the pack8
+    # expert GEMV family registers q4_k, q5_k and q6_k, and this artifact's
+    # expert tensors are Q4_K.
+    if len(source.shape) == 3 and qtype is GGMLQuantizationType.Q4_K:
+        return Gemma4GGUFWeightSpec(
+            slot_path=slot_path,
+            source=source,
+            quant_key="gguf_q4_k",
+            layout=LAYOUT_Q4_K_PACK8,
+            # The raw copy stays alongside the packed arrays. Three of the four
+            # expert routes read it, so dropping it would turn them into a
+            # missing-key error rather than a working fallback.
+            allocation_names=("raw",) + _PACK8_ALLOCATION_NAMES,
         )
     # One allocation holds the whole tensor, including a stacked expert tensor.
     # A rank-3 expert tensor is *not* split per expert: the per-expert gather is
@@ -195,9 +267,46 @@ def plan_gemma4_gguf_resident_specs(
 
 
 def resident_bytes(specs: tuple[Gemma4GGUFWeightSpec, ...]) -> int:
-    """Return the device bytes ``specs`` would occupy, without allocating."""
+    """Return the device bytes ``specs`` would occupy, without allocating.
 
-    return sum(int(spec.source.nbytes) for spec in specs)
+    A pack8 weight is larger than its stored bytes, because the packed arrays sit
+    alongside the raw blocks rather than replacing them. Planning the total from
+    the artifact size alone would under-report that allocation by the expansion.
+    """
+
+    total = 0
+    for spec in specs:
+        total += int(spec.source.nbytes)
+        if spec.layout == LAYOUT_Q4_K_PACK8:
+            total += _pack8_nbytes(tuple(int(dim) for dim in spec.source.shape))
+    return total
+
+
+def pack8_arrays(raw, shape: tuple[int, ...]):
+    """Repack one stacked expert tensor's raw bytes into the pack8 arrays.
+
+    ``repack_gguf_q4_k_pack8`` handles one expert and rejects a rank-3 input, so
+    this loops per expert and stacks. The stacked shapes are exactly what the
+    kernel indexes -- ``qweight [experts, out_features/8, in_features]`` and one
+    scale and min per 32-value group.
+    """
+
+    import numpy as np
+
+    from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8
+
+    raw = np.asarray(raw, dtype=np.uint8)
+    experts = int(shape[0])
+    if raw.shape[0] != experts:
+        raise ValueError(
+            f"raw storage has {raw.shape[0]} experts but the shape declares {experts}"
+        )
+    packed = [repack_gguf_q4_k_pack8(raw[expert]) for expert in range(experts)]
+    return (
+        np.ascontiguousarray(np.stack([item.qweight for item in packed])),
+        np.ascontiguousarray(np.stack([item.scales for item in packed])),
+        np.ascontiguousarray(np.stack([item.mins for item in packed])),
+    )
 
 
 def materialize_gemma4_gguf_device_weight(
@@ -212,6 +321,7 @@ def materialize_gemma4_gguf_device_weight(
     """Upload one planned weight's blocks to device, unmodified."""
 
     raw = reader.tensor_data(spec.source.name)
+    allocations: dict[str, DeviceTensorAllocation] = {}
     if spec.layout == LAYOUT_RAW_GGUF:
         # ``storage_dtype`` is the byte view the kernels index; every block type
         # this loader carries stores as uint8 blocks.
@@ -224,6 +334,16 @@ def materialize_gemma4_gguf_device_weight(
         dtype, source_dtype = DType.INT8, "I8"
     elif spec.layout == LAYOUT_DENSE_F32:
         dtype, source_dtype = DType.FP32, "F32"
+    elif spec.layout == LAYOUT_Q4_K_PACK8:
+        return _materialize_pack8(
+            reader,
+            spec,
+            raw,
+            device=device,
+            runtime=runtime,
+            backend=backend,
+            allocator=allocator,
+        )
     else:
         raise ValueError(f"unsupported resident layout {spec.layout!r}")
 
@@ -236,8 +356,73 @@ def materialize_gemma4_gguf_device_weight(
         runtime=runtime,
         allocator=allocator,
     )
+    allocations["raw"] = allocation
     return Gemma4GGUFDeviceWeight(
         spec=spec,
-        allocations={"raw": allocation},
+        allocations=allocations,
+        backend=backend,
+    )
+
+
+def _materialize_pack8(
+    reader: GGUFReader,
+    spec: Gemma4GGUFWeightSpec,
+    raw,
+    *,
+    device=None,
+    runtime=None,
+    backend: str = "hip_gfx1100",
+    allocator=None,
+) -> Gemma4GGUFDeviceWeight:
+    """Upload a Q4_K expert tensor's raw blocks and its pack8 arrays.
+
+    The raw blocks go up first and stay: the grouped-prefill, grouped-row4 and
+    per-expert-offset routes all read the ``raw`` allocation, and the pack8 route
+    is one more option in the ladder rather than a replacement for the ladder.
+
+    If a packed upload fails partway, the allocations already made are released
+    before the error propagates, so a failed load does not leak device memory.
+    """
+
+    shape = tuple(int(dim) for dim in spec.source.shape)
+    expected = _pack8_shapes(shape)
+    qweight, scales, mins = pack8_arrays(raw, shape)
+    actual = (tuple(qweight.shape), tuple(scales.shape))
+    if actual != expected:
+        raise ValueError(
+            f"{spec.slot_path}: pack8 produced shapes {actual} but the plan sized {expected}"
+        )
+
+    allocations: dict[str, DeviceTensorAllocation] = {}
+    try:
+        allocations["raw"] = load_host_array_to_device_as_dtype(
+            spec.source.name,
+            raw,
+            DType.INT8,
+            source_dtype="I8",
+            device=device,
+            runtime=runtime,
+            allocator=allocator,
+        )
+        for name, array, dtype in (
+            ("qweight", qweight, DType.INT32),
+            ("scales", scales, DType.FP32),
+            ("mins", mins, DType.FP32),
+        ):
+            allocations[name] = load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.{name}",
+                array,
+                dtype,
+                device=device,
+                runtime=runtime,
+                allocator=allocator,
+            )
+    except Exception:
+        for allocation in reversed(tuple(allocations.values())):
+            allocation.free(runtime=runtime)
+        raise
+    return Gemma4GGUFDeviceWeight(
+        spec=spec,
+        allocations=allocations,
         backend=backend,
     )

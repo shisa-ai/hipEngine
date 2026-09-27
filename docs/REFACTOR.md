@@ -9208,3 +9208,23 @@ would compare the route with itself. The implementation, its registered launch
 path, and its correctness tests stay in place. Evidence:
 `benchmarks/results/2026-09-27-gemma4-mmq-gate-up-three-arm-attribution.json`,
 `benchmarks/results/2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json`.
+
+## Gemma 4 expert tensors carry both the raw blocks and the pack8 arrays
+
+`Gemma4GGUFWeightSpec` for a rank-3 Q4_K expert tensor names four allocations:
+`raw`, `qweight`, `scales`, `mins`. The packed arrays are what the pack8 expert
+GEMV reads. The raw copy exists because three of the four routes in
+`gemma4_project_experts_rows` -- `grouped_prefill`, `grouped_row4` and
+`per_expert_offset` -- read `allocation("raw")`, so dropping it would turn each of
+them into a missing-key error rather than a working fallback.
+
+On the 26B artifact this duplication is 19.2 GB. The 60 rank-3 expert tensors are
+14.4 GB raw and expand by 1.33x to 19.2 GB packed, against a measured device
+ceiling of 124 GiB. It fits, so it is affordable, but it is pure duplication of
+the same weights.
+
+Remove it once the remaining routes are pack8-aware, or once the ladder has a
+single packed path. The CPU reference does not constrain the device layout: it
+reads `ffn_gate_up_exps` from the file through `layer_map.tensor(...).name`, not
+from device residency. Evidence:
+`benchmarks/results/2026-09-27-gemma4-gfx1151-decode-kernel-profile.json`.
