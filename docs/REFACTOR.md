@@ -9211,6 +9211,16 @@ path, and its correctness tests stay in place. Evidence:
 
 ## Gemma 4's pack8 expert layout is off by default
 
+**SETTLED 2026-09-28: the packed layout is never ahead, so the deletion below is
+unblocked.** The clearing condition this entry set was measured at 512 prefill
+rows against 128 experts, the one regime the ladder does not give to
+`grouped_prefill`: prefill 343.2 against 340.0 tok/s (a 0.9 percent difference,
+inside run-to-run variation) and decode 21.24 against 7.78 tok/s, reproducing the
+documented 2.73x regression on a fresh run. Evidence:
+`benchmarks/results/2026-09-28-gemma4-gfx1151-expert-pack8-layout-settlement.json`.
+Delete the flag, the seven unreached symbols, and the pinning test that exists
+only to keep the flag from flipping.
+
 `HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT` is a default-off flag for giving Gemma 4's
 rank-3 `Q4_K` expert tensors the pack8 GEMV layout alongside their raw blocks. It
 is one of the legitimate default-off cases: a **measured cause**, not a missing
