@@ -2422,6 +2422,63 @@ record, not permission to reset unrelated work or weaken correctness.
   intervals across three back-to-back ``scripts/gemma4_amortized_ab.py`` runs;
   ``/tmp/clock_{1,2,3}.txt``.
 
+  **Iteration 106: Gemma prefill attention has no query-row blocking, while the
+  repo's Laguna path has a tiled variant system it never got.**
+
+  ``attention_prefill`` is 60 calls / 201 ms, 12-15% of layer time, and had never
+  been examined. Both prefill kernels launch::
+
+      dim3(num_q_heads, rows)      // one CTA per (query head, query row)
+
+  so each CTA walks its full causal key range for a **single** query row, and K/V
+  is loaded once per query row with no reuse across rows. Query-row tiling is
+  exactly what flash attention exists to provide and it is absent here. At 1024
+  tokens the sliding window does not bite (window >= sequence), so all 58 layers
+  behave as global attention and this applies to every one of them.
+
+  **The repo already has the tiled version, for a different model.** In
+  ``laguna_flash_attention_prefill.hip``::
+
+      __global__ void laguna_flash_attention_prefill_f16_wmma_whole_kernel(...)
+        const int query_row = query_tile * QUERY_ROWS + query_local;
+
+  and a mature variant system around it in ``kernels/hip_gfx1100/__init__.py``::
+
+      LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_m128_c256_exact_spans"
+
+  -- query-row-4, M128, C256 tiles -- with a documented crossover ("selects qrow4
+  only for complete M128 tiles at position 256+") and qrow2/qrow4/local128/wave32
+  variants registered as explicit rollbacks. Gemma binds
+  ``hipengine_gemma4_attention_prefill_bf16``, the untiled kernel, and never got
+  any of it.
+
+  **It is a port, not a switch.** Gemma's kernel takes a dense ``(tokens, keys)``
+  uint8 keep-mask; the Laguna variants take KVLiveSpans (``base_offsets``,
+  ``live_counts``). Those are different attention ABIs, and PLAN.md names
+  KVLiveSpans as the intended one with dense policies filling it uniformly -- so
+  Gemma's keep-mask path is drift from the stated ABI as well as a slower kernel.
+
+  **Do not price this at the tile factor.** Four traffic-based predictions have
+  failed in this session, one of them built on a genuine code-level re-read that
+  turned out to be worth 4% instead of 2x. The structural fact here is certain --
+  there is no query-row blocking, and the launcher says so in one line. Whether
+  that costs the time it appears to is not established, and the honest prior after
+  four failures is that the traffic model is unreliable for these kernels. This
+  entry records a lead and a port, not a projected win.
+
+  **The pattern is now three for three.** The MoE grouped owner has a faster WMMA
+  sibling held by a numeric gate; the down kernel lacks the nest its sibling
+  gate_up already has; Gemma attention lacks the tiling the Laguna path already
+  has. In each case a better implementation exists in this tree or in a sibling
+  model's path and Gemma's production route does not use it. Before writing more
+  kernels, the question worth answering is why -- correctness gate, interface gap,
+  or simply never wired -- because that determines whether the fix is a port or a
+  promotion.
+
+  Evidence: ``laguna_kv_attention.hip:13690`` and ``:18480`` (launch geometry);
+  ``gemma4_attention.py:39`` (bound symbol); ``kernels/hip_gfx1100/__init__.py:16``
+  (Laguna variant system).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
