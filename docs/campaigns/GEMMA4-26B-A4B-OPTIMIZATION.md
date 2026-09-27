@@ -2922,6 +2922,58 @@ record, not permission to reset unrelated work or weaken correctness.
   verdict at ``~/.cache/hipengine/gates/moe_wmma_verdict.json``; baseline capture
   ``moe_auto_base.npz`` (1,072,701,527 bytes = 1024 x 262144 x f32).
 
+  **Iteration 114: the MoE WMMA flip is a large q5_1 win and a q4_k regression,
+  and the compensation costs 39%.**
+
+  Iteration 113 flipped ``auto`` to the compensated WMMA owners for +12.2% on the
+  default path. The census now attributes the WMMA families (it did not before,
+  which is why iteration 112 could only measure this arm end-to-end), and the two
+  MoE quants move in opposite directions::
+
+      family                        before    after     change
+      moe_grouped:gguf_q5_1          478.0     83.5 ms   5.7x faster
+      moe_grouped_dual:gguf_q4_k     457.1    598.4 ms   1.31x SLOWER
+      layer_total                   1442.9   1272.0 ms
+
+  So the headline +12.2% is a net of a 395 ms saving on q5_1 and a 141 ms loss on
+  q4_k. Routing per quant -- WMMA for q5_1, the exact grouped owner for q4_k --
+  would put ``layer_total`` near 1131 ms, about 894 tok/s, another ~12.5%.
+
+  **The compensation is expensive, which is the deeper finding.** ``wmma``
+  selects the compensated owners and measures 801.14 tok/s; ``wmma_plain``
+  selects the uncompensated ones and measures **1113.39**. The correction that
+  buys bit-identity costs **39%** of the whole prefill. That is not a plausible
+  price for repairing an fp16 weight rounding, and it is the single largest
+  identified lever left in the campaign. The q4_k compensated owner is
+  specifically ``..._amortized_bundle_bf16_bf16_out``; per iteration 47's lesson,
+  the next question is whether a non-bundle compensated q4_k owner exists and is
+  simply not the one selected.
+
+  **What this says about the earlier entries.** Iteration 112's "the MoE WMMA
+  route measures +14.2%" was true of the aggregate and hid a regression inside
+  it. Iteration 113's +12.2% default flip is correct as a net but leaves a
+  kernel that is slower than the exact one it replaced running on the default
+  path for q4_k. Neither is wrong, and both are incomplete -- the aggregate
+  number was never broken down per quant until the census could attribute the
+  families.
+
+  **Also moved**: ``attention_prefill`` 203.9 -> 243.7 ms (14.1% -> 19.2%) and
+  ``dense`` 157.8 -> 185.6 ms. Attention is now the second-largest family and
+  still has no measured traffic; its share grew partly because the MoE got
+  faster, so the earlier 14.1% understated where the remaining time is.
+
+  **Revised breakdown** (layer_total 1272.0 ms, default path 794.66 tok/s)::
+
+      moe_wmma_dual:gguf_q4_k      598.4 ms   47.0%
+      attention_prefill            243.7 ms   19.2%
+      dense:gguf_q8_0              185.6 ms   14.6%
+      moe_wmma:gguf_q5_1            83.5 ms    6.6%
+      moe_selected:gguf_q8_0        48.5 ms    3.8%
+      moe_misc (compact/gather)     43.6 ms    3.4%
+
+  Evidence: ``gemma4_prefill_census.py`` family rows before and after; the
+  ``wmma``/``wmma_plain`` comparison at 801.14 and 1113.39 tok/s.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
