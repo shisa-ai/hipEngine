@@ -3110,6 +3110,43 @@ record, not permission to reset unrelated work or weaken correctness.
   ``gemma4_teacher_forced_gate.py:31`` (the ``--prefill`` recipe), ``:445``
   (prefill-mismatch check); campaign line 687 (the known exactly-zero artifact).
 
+  **Iteration 117: no compensated dense twin exists, and the proposal was
+  probably aimed at the wrong term anyway.**
+
+  Iteration 116 suggested that if the dense ``t16_wmma_prefill`` family carried a
+  compensated twin like the MoE's ``_WMMA_PREFILL_COMP_VARIANT``, the +18.6%
+  could be kept without the ``kl_max`` breach and the open ruling would not be
+  needed. Checked: **it does not, and it would probably not have worked.**
+
+  The dense family's variant space is mature -- ``smallm``, ``lowvgpr``,
+  ``lowvgpr48``, ``shared_b``, ``shared_b_row64``, ``shared_b2w2``, ``shared4``,
+  ``shared4_row64``, ``qmicro``, and ``fp16_in`` forms of several of those --
+  and none of them is a compensated variant. ``_WMMA_PREFILL_COMP_VARIANT`` is
+  defined in ``gemma4_experts.py`` and applies to the MoE owners only.
+
+  **The more useful correction is why it would not have helped.** Compensation
+  exists to repair fp16 **weight rounding**: the compensated owners "carry each
+  weight as an fp16 high part plus an fp16 residual and issue a second WMMA per
+  k-tile". But the campaign's own diagnosis for this class of breach is
+  **reduction association**, not rounding -- the attention-split diagnostic
+  concluded the divergence "is a pure association reordering of the weighted-V
+  sum", and the MoE comment likewise attributes its 0.0609 to "reduction
+  association, not a defect". Compensation does not change association order; a
+  compensated dense owner would still sum k-tiles in WMMA order rather than the
+  exact kernel's order, and would very likely still breach.
+
+  So the honest conclusion is that **the dense +18.6% cannot be made bit-identical
+  by selecting an existing variant**, and probably not by writing a compensated
+  one either. The ``kl_max``-applicability ruling is the real path for this
+  change, and the same ruling covers the MoE arm. That is worth stating plainly
+  because it closes off the "just make it exact" escape hatch that iteration 116
+  was reaching for -- and it took one grep to establish rather than a kernel
+  written against the wrong theory of the divergence.
+
+  Evidence: ``gguf_k_t16_selected_prefill.py:65``-``98`` (the variant list);
+  ``gemma4_experts.py`` (``_WMMA_PREFILL_COMP_VARIANT`` scope); campaign
+  line ~745 (the association-reordering diagnostic).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
