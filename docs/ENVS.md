@@ -57,8 +57,27 @@ env -i HOME="$HOME" USER="$USER" LOGNAME="$LOGNAME" \
   HIP_INCLUDE_PATH="$ROOT/include" \
   HIP_DEVICE_LIB_PATH="$ROOT/lib/llvm/amdgcn/bitcode" \
   HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+  "${PASSTHROUGH[@]}" \
   "$PY" <command>
 ```
+
+`env -i` discards the caller's environment, so an experiment switch such as
+`HIPENGINE_...=1 cmd` on the command line never reaches the child. The command
+then runs its default path and reports a plausible number for work it did not
+do. Forward the switches explicitly instead of relying on inheritance:
+
+```bash
+PASSTHROUGH=()
+while IFS= read -r line; do
+  case "$line" in
+    HIPENGINE_*=*|QWEN4EXP_*=*) PASSTHROUGH+=("$line") ;;
+  esac
+done < <(env)
+```
+
+Add the array to the `env -i` argument list after `PYTHONPATH=.`. Every wrapper
+in this repository that uses `env -i` needs the same passthrough; without it, an
+A/B whose arms differ only by an environment switch measures one arm twice.
 
 Use the W7900-specific wrapper in `THEROCK.md` for retained gfx1100 rows; its
 legacy package directory is different. Do not set `HSA_OVERRIDE_GFX_VERSION` for

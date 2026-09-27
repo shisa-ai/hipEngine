@@ -1,0 +1,148 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_fullattn_context_promoted_route",
+  "date": "2026-09-27",
+  "host": {
+    "physical_host_id": "55ea6c509d0b49eea8de7094a1023668",
+    "device": "AMD Radeon 8060S",
+    "arch": "gfx1151",
+    "rocm": "TheRock ROCm 10.0.0",
+    "env": "HIPENGINE_HIP_ARCH=gfx1151"
+  },
+  "model": {
+    "name": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL",
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "bf16",
+    "block_size": 256
+  },
+  "workload": {
+    "harness": "scripts/qwen4exp_profile_gap.py",
+    "mode": "prefill",
+    "case_id": "code-p4096",
+    "prompt_tokens": 4096,
+    "prefill_chunk_size": 1024,
+    "repetitions": 3
+  },
+  "kernel": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
+  "levers": {
+    "int32_token_offsets": "shared_bytes 25,607 -> 17,223 B at max_context_len 2048; residency 2 -> 3 blocks/CU",
+    "qk_two_token_unroll": "second independent dot/shuffle chain per warp iteration"
+  },
+  "bit_exact": true,
+  "maxdiff": 0.0,
+  "microbench_replay": {
+    "artifact": "/tmp/fullattn-launch.npz",
+    "captured_launch": {
+      "rows": 1024,
+      "max_context_len": 2048,
+      "live_min": 1025,
+      "live_max": 2048,
+      "live_sum": 1573376
+    },
+    "repetitions": 15,
+    "shipped_fixed256_ms": 54.598,
+    "promoted_int64_fallback_ms": 43.423,
+    "promoted_int32_ms": 31.396,
+    "promoted_int32_speedup": 1.739,
+    "variants_ms": {
+      "0_shipped": 54.667,
+      "1_int32_offsets": 38.992,
+      "2_two_token_qk": 43.42,
+      "3_both": 31.381,
+      "4_value_vector_1": 67.663,
+      "5_value_vector_1_int32": 46.071
+    }
+  },
+  "same_session_ab": {
+    "protocol": "scripts/qwen4exp_fullattn_launch_probe.py, 3 repetitions, device-synchronised around each launch; arm selected by HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY",
+    "legacy": {
+      "launch_rows1024_ctx1024_ms": 12.413,
+      "launch_rows1024_ctx2048_ms": 54.731,
+      "launch_rows3_ctx2051_ms": 0.596,
+      "per_layer_total_ms": 67.74,
+      "twelve_layer_total_ms": 812.9,
+      "wall_median_s": 16.6865,
+      "tok_s": 245.415
+    },
+    "promoted": {
+      "launch_rows1024_ctx1024_ms": 8.715,
+      "launch_rows1024_ctx2048_ms": 31.562,
+      "launch_rows3_ctx2051_ms": 0.489,
+      "per_layer_total_ms": 40.766,
+      "twelve_layer_total_ms": 489.2,
+      "wall_median_s": 16.3325,
+      "tok_s": 250.813
+    },
+    "wall_delta_ms": -354.0,
+    "wall_delta_pct": -2.12,
+    "tok_s_delta_pct": 2.2,
+    "launch_ctx2048_speedup": 1.734,
+    "launch_ctx1024_speedup": 1.424,
+    "twelve_layer_speedup": 1.662
+  },
+  "gate": {
+    "type": "byte_equality",
+    "test": "tests/test_gpu_fullattn_context_promoted_route.py",
+    "note": "No KL/top-1 envelope applies: the promoted route changes no floating-point operation, so it is byte-identical to the shipped route over the full 1024x24x256 production output."
+  },
+  "source": {
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip",
+    "worklog": "worklog/entries/20260927T175027.679637Z-lhl-qwen4exp-fullattn-context-promoted-9304df.md"
+  },
+  "category_suite": {
+    "protocol": "same-session A/B at p4096 across all four mtp-bench categories, 3 repetitions per case, arm selected by HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY",
+    "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "cases": {
+      "code": {
+        "legacy": {
+          "tok_s": 246.552,
+          "wall_median_s": 16.6089
+        },
+        "promoted": {
+          "tok_s": 253.033,
+          "wall_median_s": 16.188
+        },
+        "delta_pct": 2.63
+      },
+      "general_en": {
+        "legacy": {
+          "tok_s": 248.581,
+          "wall_median_s": 16.4722
+        },
+        "promoted": {
+          "tok_s": 252.846,
+          "wall_median_s": 16.1958
+        },
+        "delta_pct": 1.72
+      },
+      "general_ja": {
+        "legacy": {
+          "tok_s": 249.248,
+          "wall_median_s": 16.4399
+        },
+        "promoted": {
+          "tok_s": 253.567,
+          "wall_median_s": 16.1538
+        },
+        "delta_pct": 1.73
+      },
+      "mixed_ja_en": {
+        "legacy": {
+          "tok_s": 248.056,
+          "wall_median_s": 16.5138
+        },
+        "promoted": {
+          "tok_s": 253.953,
+          "wall_median_s": 16.126
+        },
+        "delta_pct": 2.38
+      }
+    },
+    "mean_tok_s": {
+      "legacy": 248.109,
+      "promoted": 253.35
+    },
+    "mean_delta_pct": 2.11,
+    "all_categories_improve": true
+  }
+}

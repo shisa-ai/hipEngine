@@ -348,7 +348,9 @@ __global__ void qwen35_full_attn_gate_mul_fp16_kernel(
 template <
     bool PRECOMPUTE_TOKEN_OFFSETS,
     int VALUE_VECTOR = 1,
-    bool SHARED_BLOCK_TABLE = false>
+    bool SHARED_BLOCK_TABLE = false,
+    typename OffsetT = int64_t,
+    int QK_TOKENS = 1>
 __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
     const float* query,
     const uint16_t* key_cache,
@@ -383,11 +385,13 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
   const int raw_value_groups = (head_dim >= 128 && context_len >= 128) ? static_cast<int>(blockDim.x / static_cast<unsigned int>(head_dim)) : 0;
   const int value_groups = (blockDim.x >= 512 && raw_value_groups > 1) ? raw_value_groups : 1;
   float* value_partials = q_shared + head_dim;
+  const uintptr_t offset_align_mask = alignof(OffsetT) - 1;
   const uintptr_t token_offset_base =
       (reinterpret_cast<uintptr_t>(
-           value_partials + static_cast<int64_t>(value_groups) * head_dim) + 7u) &
-      ~static_cast<uintptr_t>(7u);
-  int64_t* token_offsets = reinterpret_cast<int64_t*>(token_offset_base);
+           value_partials + static_cast<int64_t>(value_groups) * head_dim) +
+       offset_align_mask) &
+      ~offset_align_mask;
+  OffsetT* token_offsets = reinterpret_cast<OffsetT*>(token_offset_base);
   const int64_t q_head = blockIdx.x;
   if (q_head >= num_q_heads) {
     return;
@@ -409,40 +413,85 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
       const int64_t block_offset = token - logical_block * block_size;
       const int64_t physical_block =
           static_cast<int64_t>(row_block_table[logical_block]);
-      token_offsets[token] =
-          (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
+      token_offsets[token] = static_cast<OffsetT>(
+          (physical_block * block_size + block_offset) * num_kv_heads * head_dim);
     }
   }
   __syncthreads();
 
-  float local_max = -3.4028234663852886e38f;
-  for (int64_t token = warp_id; token < context_len; token += num_warps) {
-    int64_t token_offset;
+  // Single source of truth for a token's physical KV element offset. The
+  // precompute route reads the shared table; the generic route rebuilds the
+  // address inline. Both routes must agree exactly.
+  const auto token_offset_of = [&](int64_t token) -> int64_t {
     if constexpr (PRECOMPUTE_TOKEN_OFFSETS) {
-      token_offset = token_offsets[token];
+      return static_cast<int64_t>(token_offsets[token]);
     } else {
       const int64_t logical_block = token / block_size;
       const int64_t block_offset = token - logical_block * block_size;
       const int64_t physical_block =
           static_cast<int64_t>(row_block_table[logical_block]);
-      token_offset =
-          (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
+      return (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
     }
-    const int64_t k_offset = token_offset + kv_head * head_dim;
-    float acc = 0.0f;
-    for (int64_t dim = lane_id * 4; dim < head_dim; dim += warpSize * 4) {
-      acc += q_shared[dim + 0] * bf16_bits_to_float(key_cache[k_offset + dim + 0]);
-      acc += q_shared[dim + 1] * bf16_bits_to_float(key_cache[k_offset + dim + 1]);
-      acc += q_shared[dim + 2] * bf16_bits_to_float(key_cache[k_offset + dim + 2]);
-      acc += q_shared[dim + 3] * bf16_bits_to_float(key_cache[k_offset + dim + 3]);
+  };
+
+  float local_max = -3.4028234663852886e38f;
+  if constexpr (QK_TOKENS == 2) {
+    // Two tokens per iteration give the dot-product and shuffle chains a second
+    // independent chain to overlap. Each token keeps its original arithmetic:
+    // same dimension order, same reduction tree, and the per-warp max fold stays
+    // order-independent. The exp/sum pass keeps its own token-to-warp map, so the
+    // denominator is unchanged and the result stays byte-identical.
+    for (int64_t token = static_cast<int64_t>(warp_id) * 2; token < context_len;
+         token += static_cast<int64_t>(num_warps) * 2) {
+      const bool have_second = (token + 1) < context_len;
+      const int64_t token_b = have_second ? (token + 1) : token;
+      const int64_t k_offset_a = token_offset_of(token) + kv_head * head_dim;
+      const int64_t k_offset_b = token_offset_of(token_b) + kv_head * head_dim;
+      float acc_a = 0.0f;
+      float acc_b = 0.0f;
+      for (int64_t dim = lane_id * 4; dim < head_dim; dim += warpSize * 4) {
+        acc_a += q_shared[dim + 0] * bf16_bits_to_float(key_cache[k_offset_a + dim + 0]);
+        acc_b += q_shared[dim + 0] * bf16_bits_to_float(key_cache[k_offset_b + dim + 0]);
+        acc_a += q_shared[dim + 1] * bf16_bits_to_float(key_cache[k_offset_a + dim + 1]);
+        acc_b += q_shared[dim + 1] * bf16_bits_to_float(key_cache[k_offset_b + dim + 1]);
+        acc_a += q_shared[dim + 2] * bf16_bits_to_float(key_cache[k_offset_a + dim + 2]);
+        acc_b += q_shared[dim + 2] * bf16_bits_to_float(key_cache[k_offset_b + dim + 2]);
+        acc_a += q_shared[dim + 3] * bf16_bits_to_float(key_cache[k_offset_a + dim + 3]);
+        acc_b += q_shared[dim + 3] * bf16_bits_to_float(key_cache[k_offset_b + dim + 3]);
+      }
+      for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+        acc_a += __shfl_down(acc_a, offset);
+        acc_b += __shfl_down(acc_b, offset);
+      }
+      if (lane_id == 0) {
+        const float score_a = acc_a * scale;
+        scores[token] = score_a;
+        local_max = fmaxf(local_max, score_a);
+        if (have_second) {
+          const float score_b = acc_b * scale;
+          scores[token_b] = score_b;
+          local_max = fmaxf(local_max, score_b);
+        }
+      }
     }
-    for (int offset = warpSize / 2; offset > 0; offset /= 2) {
-      acc += __shfl_down(acc, offset);
-    }
-    if (lane_id == 0) {
-      const float score = acc * scale;
-      scores[token] = score;
-      local_max = fmaxf(local_max, score);
+  } else {
+    for (int64_t token = warp_id; token < context_len; token += num_warps) {
+      const int64_t k_offset = token_offset_of(token) + kv_head * head_dim;
+      float acc = 0.0f;
+      for (int64_t dim = lane_id * 4; dim < head_dim; dim += warpSize * 4) {
+        acc += q_shared[dim + 0] * bf16_bits_to_float(key_cache[k_offset + dim + 0]);
+        acc += q_shared[dim + 1] * bf16_bits_to_float(key_cache[k_offset + dim + 1]);
+        acc += q_shared[dim + 2] * bf16_bits_to_float(key_cache[k_offset + dim + 2]);
+        acc += q_shared[dim + 3] * bf16_bits_to_float(key_cache[k_offset + dim + 3]);
+      }
+      for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+        acc += __shfl_down(acc, offset);
+      }
+      if (lane_id == 0) {
+        const float score = acc * scale;
+        scores[token] = score;
+        local_max = fmaxf(local_max, score);
+      }
     }
   }
   for (int offset = warpSize / 2; offset > 0; offset /= 2) {
@@ -504,17 +553,7 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
       const int group = static_cast<int>(static_cast<int64_t>(threadIdx.x) / head_dim);
       float acc = 0.0f;
       for (int64_t token = group; token < context_len; token += value_groups) {
-        int64_t token_offset;
-        if constexpr (PRECOMPUTE_TOKEN_OFFSETS) {
-          token_offset = token_offsets[token];
-        } else {
-          const int64_t logical_block = token / block_size;
-          const int64_t block_offset = token - logical_block * block_size;
-          const int64_t physical_block =
-              static_cast<int64_t>(row_block_table[logical_block]);
-          token_offset =
-              (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
-        }
+        const int64_t token_offset = token_offset_of(token);
         const int64_t v_offset = token_offset + kv_head * head_dim + dim;
         acc += (scores[token] * inv_denom) * bf16_bits_to_float(value_cache[v_offset]);
       }
@@ -534,17 +573,7 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
          dim_base += static_cast<int64_t>(blockDim.x) * VALUE_VECTOR) {
       float acc[VALUE_VECTOR] = {};
       for (int64_t token = 0; token < context_len; ++token) {
-        int64_t token_offset;
-        if constexpr (PRECOMPUTE_TOKEN_OFFSETS) {
-          token_offset = token_offsets[token];
-        } else {
-          const int64_t logical_block = token / block_size;
-          const int64_t block_offset = token - logical_block * block_size;
-          const int64_t physical_block =
-              static_cast<int64_t>(row_block_table[logical_block]);
-          token_offset =
-              (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
-        }
+        const int64_t token_offset = token_offset_of(token);
         const int64_t v_offset = token_offset + kv_head * head_dim + dim_base;
 #pragma unroll
         for (int i = 0; i < VALUE_VECTOR; ++i) {
@@ -6336,6 +6365,109 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed2
         base_offsets, live_counts, out, rows, max_context_len, block_size,
         block_table_len, num_q_heads, num_kv_heads, head_dim, scale);
   }
+  return static_cast<int>(hipGetLastError());
+}
+
+// True when every element offset the per-token table can hold fits int32. The
+// widest offset is an index into the KV cache, so it is bounded by the cache
+// element count. A non-positive capacity means the caller cannot bound it.
+static bool fullattn_context_offsets_fit_int32(int64_t kv_capacity_tokens,
+                                               int64_t num_kv_heads,
+                                               int64_t head_dim) {
+  const int64_t kv_stride = num_kv_heads * head_dim;
+  if (kv_capacity_tokens <= 0 || kv_stride <= 0) {
+    return false;
+  }
+  if (kv_capacity_tokens > (INT32_MAX / kv_stride)) {
+    return false;
+  }
+  return (kv_capacity_tokens * kv_stride) <= INT32_MAX;
+}
+
+// Test-visible view of the int32-offset guard so the boundary can be asserted
+// directly instead of inferred from a timing difference.
+extern "C" int hipengine_qwen35_fullattn_context_offsets_fit_int32(
+    int64_t kv_capacity_tokens, int64_t num_kv_heads, int64_t head_dim) {
+  return fullattn_context_offsets_fit_int32(kv_capacity_tokens, num_kv_heads, head_dim)
+             ? 1
+             : 0;
+}
+
+// Promoted full-attention context route. Two byte-identical levers over the
+// original fixed256 shape:
+//
+//   * the per-token physical-offset table is stored as int32 instead of int64,
+//     which drops the dynamic shared-memory request from 25,607 to 17,223 bytes
+//     at max_context_len 2048 and lifts residency from 2 to 3 blocks per CU;
+//   * the QK phase scores two tokens per iteration so the dot-product and
+//     shuffle chains each have a second independent chain to overlap.
+//
+// Neither lever changes any floating-point operation: each token keeps its
+// original dimension order and reduction tree, the per-warp max fold stays
+// order-independent, and the exp/sum pass keeps its own token-to-warp map, so
+// the denominator is bit-identical. The int32 table is used only when the whole
+// offset range provably fits, which is decided from the KV cache element count
+// the caller supplies; otherwise the int64 table is used.
+extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_promoted_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t kv_capacity_tokens,
+    hipStream_t stream) {
+  if (rows <= 0 || !valid_paged_attn_shape(max_context_len, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  constexpr int max_warps = threads / 32;
+  constexpr int value_groups = 1;
+  const size_t float_bytes = static_cast<size_t>(
+      max_context_len + max_warps + head_dim + value_groups * head_dim) *
+      sizeof(float);
+  // Every stored offset is an element index into the KV cache, so the widest
+  // value the table can hold is kv_capacity_tokens * num_kv_heads * head_dim.
+  // Use int32 only when that range provably fits; otherwise the int64 table.
+  const bool offsets_fit_int32 =
+      fullattn_context_offsets_fit_int32(kv_capacity_tokens, num_kv_heads, head_dim);
+  const size_t shared_int64 =
+      float_bytes + 7u + static_cast<size_t>(max_context_len) * sizeof(int64_t);
+  const size_t shared_int32 =
+      float_bytes + 7u + static_cast<size_t>(max_context_len) * sizeof(int32_t);
+  const dim3 grid(static_cast<unsigned int>(num_q_heads),
+                  static_cast<unsigned int>(rows));
+  const dim3 block(threads);
+  const bool even_head_dim = (head_dim % 2) == 0;
+#define HIPENGINE_FULLATTN_PROMOTED_LAUNCH(VV, OFFSET_T, SHARED)                          \
+  hipLaunchKernelGGL(                                                                    \
+      (qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, VV, false,         \
+                                                                 OFFSET_T, 2>),           \
+      grid, block, SHARED, stream, query, key_cache, value_cache, base_offsets,           \
+      live_counts, out, rows, max_context_len, block_size, block_table_len, num_q_heads,   \
+      num_kv_heads, head_dim, scale)
+  if (offsets_fit_int32) {
+    if (even_head_dim) {
+      HIPENGINE_FULLATTN_PROMOTED_LAUNCH(2, int32_t, shared_int32);
+    } else {
+      HIPENGINE_FULLATTN_PROMOTED_LAUNCH(1, int32_t, shared_int32);
+    }
+  } else {
+    if (even_head_dim) {
+      HIPENGINE_FULLATTN_PROMOTED_LAUNCH(2, int64_t, shared_int64);
+    } else {
+      HIPENGINE_FULLATTN_PROMOTED_LAUNCH(1, int64_t, shared_int64);
+    }
+  }
+#undef HIPENGINE_FULLATTN_PROMOTED_LAUNCH
   return static_cast<int>(hipGetLastError());
 }
 
