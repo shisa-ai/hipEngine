@@ -60,6 +60,26 @@ _I64_BYTES = 8
 _IU8_RISK_MULTIPLIER = 4.0
 _F32_BYTES = 4
 
+# Activation planes the MMQ gate/up route packs and consumes. The pack uses the
+# passes for error feedback - each pass re-quantizes the previous pass's
+# residual - so this is an accuracy knob as well as a size knob: one plane costs
+# 0.717% relative activation error on Gemma 4's activations, two cost 0.0028% and
+# three cost 0.0004%. Must match the ACTIVATION_PASSES the leaf is instantiated
+# with, which is the ds4x3 symbol.
+#
+# BLOCKED AT 1, and the cause is measured rather than assumed. The fused leaf
+# kernel hardcoded ACTIVATION_PASSES = 1 and the launcher did not forward it, so
+# a three-pass instantiation silently ran as one pass. Both are fixed - the fused
+# kernel is now templated on the pass count and the launcher forwards it, and
+# hipengine_gguf_q4_k_selected_dual_q8_1_ds4x3_fused_mmq32_prefill_compact32_bf16_bf16_out
+# is exported - but the gate/up error is still bit-identical with three populated
+# activation planes (mean absolute 0.8225 at 64 ids, ratio 1.00x against the
+# one-plane quantization arm). So the leaf body still reads one plane at this
+# layout and geometry, and raising this constant alone would only pay three times
+# the pack cost for no accuracy. Set it to 3 when the body's activation read is
+# shown to consume the extra planes.
+_MMQ_ACTIVATION_PASSES = 1
+
 # Grouped-prefill family: one launch covers every expert, reading each expert's
 # weight matrix once and reusing it across that expert's contiguous row slice.
 # The ABI is (input, expert_start, weights, out, compact_rows, num_experts,
@@ -263,8 +283,11 @@ class Gemma4ExpertScratch:
             "activated": lanes * self.intermediate * _BF16_BYTES,
             "expert_out": lanes * self.hidden_size * _BF16_BYTES,
             # DS4 Q8_1 activation planes: one 144-byte block per 128 input
-            # elements per row, the size the single-plane pack kernel writes.
-            "mmq_workspace": lanes * (self.hidden_size // 128) * 144,
+            # elements per row, times the plane count the MMQ32 route consumes.
+            # The pack uses extra planes for error feedback, which is the whole
+            # point of paying for them; _MMQ_ACTIVATION_PASSES records why that
+            # count is 1 today.
+            "mmq_workspace": lanes * (self.hidden_size // 128) * 144 * _MMQ_ACTIVATION_PASSES,
             "mmq_identity": lanes * _I64_BYTES,
             # One 32-row tile per entry; a tile-per-expert bound is exact when
             # every expert has at least one row, and adding the leftover rows
@@ -847,10 +870,14 @@ def gemma4_project_experts_gate_up_mmq(
     the shapes rather than of a model or an artifact; the caller then falls back
     to the fp32 grouped route.
 
-    This route quantizes the block's activations to DS4 Q8_1, so its arithmetic
-    differs from the fp32 route: the error is bounded by the activation
-    quantization step, not by reassociation, and is measured against the strict
-    owner in ``tests/test_unit_gemma4_expert_route.py``.
+    This route quantizes the block's activations to DS4 Q8_1 over
+    ``_MMQ_ACTIVATION_PASSES`` activation planes, so its arithmetic differs from
+    the fp32 route: the error is bounded by the activation quantization step, not
+    by reassociation, and is measured against the strict owner in
+    ``tests/test_unit_gemma4_expert_route.py``. The pack supports error feedback
+    across extra planes, which would cut that step by about three orders of
+    magnitude, but the leaf body does not yet consume them at this geometry; see
+    the note on ``_MMQ_ACTIVATION_PASSES``.
     """
 
     if isinstance(weight, int):

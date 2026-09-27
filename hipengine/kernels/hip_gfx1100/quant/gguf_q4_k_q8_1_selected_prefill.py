@@ -26,6 +26,9 @@ _SYMBOL_DS4_MMQ32_BF16 = (
 _SYMBOL_FUSED_DS4_MMQ32_BF16 = (
     "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out"
 )
+_SYMBOL_FUSED_DS4X3_MMQ32_BF16 = (
+    "hipengine_gguf_q4_k_selected_dual_q8_1_ds4x3_fused_mmq32_prefill_compact32_bf16_bf16_out"
+)
 _SYMBOL_X8_DS4_MMQ32_BF16 = (
     "hipengine_gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 )
@@ -1791,6 +1794,58 @@ def gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out
         library=library,
         runtime=runtime,
         _symbol=_SYMBOL_FUSED_DS4_MMQ32_BF16,
+    )
+
+
+def gguf_q4_k_selected_dual_q8_1_ds4x3_fused_mmq32_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    compact_to_source_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq32_ptr: int,
+    mmq_tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the three-activation-plane twin of the fused MMQ32 leaf.
+
+    Same weight layout and output as
+    :func:`gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out`,
+    but the activation buffer holds three DS4 Q8_1 planes instead of one and
+    must be sized accordingly. The extra planes carry the pack's error
+    feedback, so this variant trades three times the activation bytes for a
+    large reduction in the activation quantization error.
+    """
+
+    gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+        x_q8_ptr,
+        compact_to_source_ptr,
+        expert_start_compact_ptr,
+        expert_start_mmq32_ptr,
+        mmq_tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        _symbol=_SYMBOL_FUSED_DS4X3_MMQ32_BF16,
     )
 
 
