@@ -3393,6 +3393,54 @@ record, not permission to reset unrelated work or weaken correctness.
   421 vs 652-700 us), ``:1026``-``1055`` (the tile selector and ``tile = 8``);
   ``gemma4_attention.py:266``-``280`` (the Python routing).
 
+  **Iteration 123: the guide's smaller-worker-grid trap exists in the tree but
+  does not apply to Gemma -- checked before acting.**
+
+  The guide's section 3.5 records a measured 59% regression from shrinking a
+  grouped expert grid: "the added per-expert token loop serialized work that had
+  been parallel across blocks, and the smaller grid removed the thread-level
+  parallelism that was hiding memory latency." That structure is present in this
+  tree. ``gguf_q4_k_selected_prefill.hip`` carries a full-grid launcher and an
+  ``expertgrid64`` sibling, and the sibling's body is::
+
+      constexpr int expert_workers = 64;
+      const int64_t worker_count = num_experts < expert_workers ? num_experts : expert_workers;
+      hipLaunchKernelGGL(..., dim3((out_features + out_batch - 1) / out_batch, worker_count), ...);
+
+  With ``num_experts = 128`` that grid is ``(704, 64)`` -- half the CTAs -- and the
+  kernel's own loop ``for (int64_t expert = blockIdx.y; expert < num_experts;
+  expert += gridDim.y)`` then runs **twice** per CTA, serially. ``qwen4_exp_profiles.py``
+  binds ``expertgrid64`` across many profile rows, so on the Qwen side this is the
+  configuration in production.
+
+  **It is not what Gemma uses.** ``gemma4_experts.py:467`` introduces its grouped
+  owners as ones that "keep one CTA per (expert, output column) and reuse" and
+  binds ``selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out`` -- the
+  full expert grid, with the amortized input nest (one metadata slab per output
+  column the CTA owns). Gemma's ``in_features = 704`` is also not a multiple of
+  ``QK_K = 256``, which this kernel's guard rejects outright, so the path cannot
+  be the one Gemma takes. **The candidate is rejected, and this is the sixth
+  structural hypothesis this session -- the first caught by checking the binding
+  before acting rather than by measuring an adjacent quantity afterwards.**
+
+  **Where that leaves the MoE.** The Gemma grouped owner already uses the full
+  grid and already carries the amortized nest, so it is tuned along exactly the
+  axis the guide warns about. What remains measured is only the shape of the
+  problem: 26-40 GB/s (about 4% of the 864 GB/s peak) and roughly 2 TF/s (about
+  4.5% of the fp16 peak), far from bound by either resource -- which reads as
+  latency- or overhead-bound. The occupancy lever is already refuted on the WMMA
+  sibling (the launch-bounds ladder was monotonically slower), and PMC counters
+  are unavailable on this stack, so there is currently **no measured explanation
+  for the 4% efficiency**, only a measurement of it.
+
+  Evidence: ``gguf_q4_k_selected_prefill.hip:226``-``288`` (the expert loop and
+  its full-grid comment), ``:2617``-``2650`` (``expertgrid64``, ``worker_count``,
+  the ``(704, 64)`` grid); ``gemma4_experts.py:467``-``511`` (the Gemma grouped
+  bindings); ``qwen4_exp_profiles.py`` (the Qwen bindings);
+  ``docs/RDNA3-TUNING-GUIDE.md`` section 3.5 (the 59% measurement) and section
+  4.9 (PMC counters unavailable; use code-object metadata and kernel-trace
+  durations).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
