@@ -1364,15 +1364,20 @@ direction. The clean-device pass also puts every other cell 4-10% above its
     shelf**: fusion that does not serialise a reduction before a dependent
     transform, or a graph that helps where host is already hidden. Evidence row
     `2026-09-26-gemma4-26b-a4b-profile-gap-closed-launch-bubbles.json`.
-  *Diagnostic 2026-09-27 (iteration 52): MTP does not apply to this model, and the
+  *Diagnostic 2026-09-27 (iteration 52): this artifact has no MTP head, and the
 obvious next decode lever is already spent.* The artifact carries 658 tensors and
 none match `mtp`, `nextn`, `next_n`, `draft`, `spec` or `eagle`; its top-level
 prefixes are `blk`, `output_norm`, `rope_freqs` and `token_embd`, and no metadata
 field mentions MTP. The in-tree speculative path is a NextN head that reads
 `nextn.enorm` and `nextn.hnorm`, so it keys on tensor presence rather than on a
 model name, and `Gemma4GGUFGenerator.supports_speculative_mtp` is already `False`
-and surfaced through `engine_service`. **Decode on this model cannot be
-accelerated by speculative decoding**; it has to come from the single-token path.
+and surfaced through `engine_service`. **Speculative decoding is therefore
+unavailable from this artifact, not from the model:** Gemma 4's MTP head ships
+separately as `google/gemma-4-26B-A4B-it-assistant`, and GGUF MTP quants of it
+exist (`ironbcc/gemma-4-26B-A4B-it-MTP-GGUF`). Neither has been downloaded or run
+here, and neither is blocked by the engine - the route keys on tensor presence.
+Wiring a draft artifact is deferred until base decode and prefill land, so decode
+work stays on the single-token path for now.
 On that path, the decode attention kernel's barrier batch is not a tunable: it is
 derived per launch as the largest of 8, 4, 2, 1 whose partial rows fit the 64 KB
 LDS budget, and the dispatch switch already carries a `case 16` the search never
