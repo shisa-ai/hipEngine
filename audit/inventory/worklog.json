@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10924,
-    "current": 3692,
+    "entries": 10945,
+    "current": 3713,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1174,
+    "rows": 1176,
     "by_rule": {
       "dependency": 40,
       "legacy-next": 109,
-      "status": 1025
+      "status": 1027
     }
   },
   "rows": [
@@ -42144,14 +42144,14 @@
         "written": "2026-09-23",
         "age_days": 5,
         "open_by": "status",
-        "continuation_entries": 4,
+        "continuation_entries": 7,
         "open_text": "1. Build the arena-with-guards experiment above, so the over-read faults at the\n   buffer that caused it.\n2. Fix the over-read, then re-run 20+ decode steps clean.\n3. Only then is the generation adapter's end-to-end path validated.\n4. Then the real artifact at\n   `/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf`.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as blocked \u2014 the entry says the unit is blocked",
-        "4 later entries by the same worker share this topic prefix"
+        "7 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260923T020151.588610Z-lhl-gemma4-decode-fault-b43475.md",
@@ -42168,7 +42168,7 @@
         ]
       },
       "id": "worklog/20260923T020151.588610Z-lhl-gemma4-decode-fault-b43475",
-      "evidence_hash": "a9ba5cef3a3c"
+      "evidence_hash": "da9ebb9d133c"
     },
     {
       "kind": "worklog",
@@ -42182,14 +42182,14 @@
         "written": "2026-09-23",
         "age_days": 5,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 6,
         "open_text": "The experiment the blocker entry already named, now with a narrowed target:\nallocate the scratch buffers through one large arena with a guard region after\neach, so an over-read faults deterministically at the buffer that caused it.\n`Gemma4LayerScratch` takes its buffers from a list it owns, so the arena can be\nintroduced there without touching the kernels.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "3 later entries by the same worker share this topic prefix"
+        "6 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260923T021546.607698Z-lhl-gemma4-decode-fault-26eb39.md",
@@ -42209,7 +42209,7 @@
         ]
       },
       "id": "worklog/20260923T021546.607698Z-lhl-gemma4-decode-fault-26eb39",
-      "evidence_hash": "cf58bd0b2741"
+      "evidence_hash": "fe42f5bc70e0"
     },
     {
       "kind": "worklog",
@@ -42223,14 +42223,14 @@
         "written": "2026-09-23",
         "age_days": 5,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 5,
         "open_text": "- Call the router logits and router select kernels standalone on GGUF weights and\n  probe a memcpy afterwards. They are the only steps in\n  `gemma4_experts_forward_bf16` without individual coverage, and they are the\n  remaining suspects for the composition-level hang.\n- Until that lands, the Gemma 4 GPU path cannot complete a request: `LLM.generate()`\n  reaches the runner, and the first expert forward wedges the device.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "5 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260923T034607.312889Z-lhl-gemma4-decode-fault-78560a.md",
@@ -42248,7 +42248,7 @@
         ]
       },
       "id": "worklog/20260923T034607.312889Z-lhl-gemma4-decode-fault-78560a",
-      "evidence_hash": "33afc03bf049"
+      "evidence_hash": "b1e0c64fb756"
     },
     {
       "kind": "worklog",
@@ -44084,14 +44084,14 @@
         "written": "2026-09-27",
         "age_days": 1,
         "open_by": "dependency",
-        "continuation_entries": 0,
+        "continuation_entries": 3,
         "open_text": "- Decode throughput has to come from the single-token path. In measured order\n  the unblocked candidates are the q4_k decode re-route (blocked on a missing\n  Q5_1 compact down kernel, which is a kernel to write rather than a gate to\n  clear) and launch-count reduction on the dense route (410 launches per step).\n- The q4_k decode GEMV is 23% of decode at KV~129 and the campaign's routing\n  probe already showed the production path resolves to the kernel it measured,\n  so the remaining work there is the missing compact down kernel.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "Next names a dependency: 'blocked on'",
-        "no later entry by the same worker shares this topic prefix"
+        "3 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260927T022313.554398Z-lhl-gemma4-decode-mtp-capability-bb0ccf.md",
@@ -44110,7 +44110,7 @@
         ]
       },
       "id": "worklog/20260927T022313.554398Z-lhl-gemma4-decode-mtp-capability-bb0ccf",
-      "evidence_hash": "c823b85add00"
+      "evidence_hash": "dfb954f1a567"
     },
     {
       "kind": "worklog",
@@ -44224,6 +44224,91 @@
       },
       "id": "worklog/20260927T154851.180637Z-lhl-gemma4-prefill-next-unit-9b8480",
       "evidence_hash": "4bfbbdab4f5f"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260927T160339.051045Z-lhl-gemma4-q5k-iu8-wired-0edbbf",
+      "title": "The Q5_K iu8 gate/up route is wired but gated off on a launch failure",
+      "location": "worklog/entries/20260927T160339.051045Z-lhl-gemma4-q5k-iu8-wired-0edbbf.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-q5k-iu8-wired",
+        "written": "2026-09-27",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 1,
+        "open_text": "- Find the launch mismatch. The kernel's own guards are the place to look:\n  `valid_selected_dual_common` is defined at `gguf_q5_k_q8_1_selected_prefill.hip`\n  line 549 and takes `tile_m=64, tile_n=16`, so it is worth checking whether it\n  constrains `num_experts` (gemma4 has 128, the Qwen model may not) or\n  `compact_rows` in a way the tile map's padded total violates.\n- Then `HIPENGINE_GEMMA4_MOE_GATE_UP_Q5K_IU8=1`, confirm the route runs, and check\n  it is bit-identical to the strict row4 owner before considering the flag's\n  removal.\n- `tests/test_gpu_gemma4_expert_route_true_geometry.py` ",
+        "paths_missing": [],
+        "flags_unread": [
+          "HIPENGINE_GEMMA4_MOE_GATE_UP_Q5K_IU8"
+        ]
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "1 later entry by the same worker share this topic prefix",
+        "names flag(s) no code reads: HIPENGINE_GEMMA4_MOE_GATE_UP_Q5K_IU8"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260927T160339.051045Z-lhl-gemma4-q5k-iu8-wired-0edbbf.md",
+        "refs": [
+          "HIPENGINE_GEMMA4_MOE_GATE_UP_Q5K_IU8",
+          "tests/test_gpu_gemma4_expert_route_true_geometry.py"
+        ],
+        "tokens": [
+          "but",
+          "failure",
+          "gate",
+          "gated",
+          "iu8",
+          "launch",
+          "off",
+          "q5_k",
+          "route",
+          "wired"
+        ]
+      },
+      "id": "worklog/20260927T160339.051045Z-lhl-gemma4-q5k-iu8-wired-0edbbf",
+      "evidence_hash": "1c608a2ad31b"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260927T160840.284441Z-lhl-gemma4-decode-pack-launches-5a144c",
+      "title": "The 202-per-step pack launches are the seven dense q8_0 projections",
+      "location": "worklog/entries/20260927T160840.284441Z-lhl-gemma4-decode-pack-launches-5a144c.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-decode-pack-launches",
+        "written": "2026-09-27",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 1,
+        "open_text": "- Profile `gguf_q8_0_pack8_gemv` at the decode shape directly: at 44.7 us per\n  launch and 26.0% of decode, it is the largest addressable single kernel after\n  the Q4_K MoE gate/up.\n- The Q4_K gate/up at 28.0% remains the largest line overall and needs its own\n  decode-shape look; the prefill route work does not transfer to it.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "1 later entry by the same worker share this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260927T160840.284441Z-lhl-gemma4-decode-pack-launches-5a144c.md",
+        "refs": [],
+        "tokens": [
+          "202",
+          "dense",
+          "launches",
+          "pack",
+          "per",
+          "projections",
+          "q8_0",
+          "seven",
+          "step"
+        ]
+      },
+      "id": "worklog/20260927T160840.284441Z-lhl-gemma4-decode-pack-launches-5a144c",
+      "evidence_hash": "db97146e4acb"
     }
   ]
 }
