@@ -7471,3 +7471,21 @@ of the comparator's win we deliberately do not gate. See
 
 Removal trigger: the LDS weight-staging variant lands and passes the same
 bit-identity gate, or no packet or test refers to the 32-row entry points.
+
+## Full-attention context leaf: superseded fixed256 route
+
+`qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans` and its
+`..._fixed256_threads_spans` sibling predate the promoted route
+(`..._fixed256_promoted_spans`) that `qwen4_exp_runner` now calls for the dense
+full-attention chunk. The promoted route differs by two byte-identical levers -
+an int32 per-token offset table when the KV capacity proves the range fits, and a
+two-token QK unroll - and by taking the KV capacity as an explicit argument.
+
+The superseded symbols stay until nothing needs them: the microbench uses
+`..._fixed256_spans` as the bit-exactness reference for the promoted route, and
+`..._fixed256_threads_spans` still carries the runtime thread-width sweep. The
+generic `..._batch_spans` route remains the default for the non-fixed256 case.
+
+Removal trigger: the promoted route has held as the default across a full
+category suite and the runtime thread-width sweep is retired, at which point the
+fixed256 pair, its `__init__` exports, and the microbench reference path go away.

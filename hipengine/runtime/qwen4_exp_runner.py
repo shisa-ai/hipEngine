@@ -37,6 +37,7 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa_flash import (
 )
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans,
+    qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_promoted_spans,
     qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
 )
@@ -2775,11 +2776,27 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             runtime=active_runtime,
         )
     elif dense_rows:
-        dense_attention = (
-            qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans
-            if _qwen4_exp_qsa_dense_fixed256_enabled(dense_rows)
-            else qwen35_paged_full_attn_decode_context_bf16_batch_spans
-        )
+        if _qwen4_exp_qsa_dense_fixed256_enabled(dense_rows):
+            if _qwen4_exp_fullattn_context_legacy_enabled():
+                # Temporary A/B opt-out back to the pre-promotion route. See
+                # docs/REFACTOR.md for the removal trigger.
+                dense_attention = (
+                    qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans
+                )
+                kv_capacity_tokens = 0
+            else:
+                # The promoted route needs the KV capacity to decide whether the
+                # per-token offset table provably fits int32. The buffer is one
+                # layer of bf16 KV, so tokens = bytes / (kv_heads * head_dim * 2).
+                dense_attention = (
+                    qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_promoted_spans
+                )
+                kv_capacity_tokens = attention_state.key_cache.nbytes // (
+                    kv_heads * head_dim * 2
+                )
+        else:
+            dense_attention = qwen35_paged_full_attn_decode_context_bf16_batch_spans
+            kv_capacity_tokens = 0
         dense_attention(
             scratch.query.ptr,
             attention_state.key_cache.ptr,
@@ -2793,6 +2810,7 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             kv_heads,
             head_dim,
             head_dim ** -0.5,
+            *((kv_capacity_tokens,) if kv_capacity_tokens else ()),
             stream=stream,
             runtime=active_runtime,
         )
@@ -3181,6 +3199,19 @@ def run_qwen4_exp_gr_read(
 
 def _qwen4_exp_qsa_dense_fixed256_enabled(rows: int) -> bool:
     return rows >= 2
+
+
+def _qwen4_exp_fullattn_context_legacy_enabled() -> bool:
+    """Temporary A/B opt-out back to the pre-promotion context route.
+
+    Set ``HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY=1`` to measure the shipped
+    fixed256 route in the same session as the promoted route. Removal trigger is
+    recorded in docs/REFACTOR.md.
+    """
+
+    return os.environ.get(
+        "HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY", "0"
+    ) not in {"", "0", "false", "False"}
 
 
 def _qwen4_exp_q51_register_cache_key(key: KernelKey, *, rows: int, in_features: int) -> KernelKey:

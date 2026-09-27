@@ -28,6 +28,10 @@ _SYMBOL_CONTEXT_BATCH_FIXED256_THREADS = (
     "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_threads_spans"
 )
 _SYMBOL_CONTEXT_BATCH_C1_EXACT = "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans"
+_SYMBOL_CONTEXT_OFFSETS_FIT_INT32 = "hipengine_qwen35_fullattn_context_offsets_fit_int32"
+_SYMBOL_CONTEXT_BATCH_FIXED256_PROMOTED = (
+    "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_promoted_spans"
+)
 _SYMBOL_CONTEXT_BATCH_Q3_C1_EXACT = (
     "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_q3_c1_exact_spans"
 )
@@ -438,6 +442,110 @@ def qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans(
         ctypes.c_int64(num_kv_heads),
         ctypes.c_int64(head_dim),
         ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_fullattn_context_offsets_fit_int32(
+    kv_capacity_tokens: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> bool:
+    """Report whether the promoted route will use its int32 offset table.
+
+    The guard bounds every element offset the per-token table can hold by the KV
+    cache element count. A non-positive capacity means the caller cannot bound
+    it, so the int64 table is used.
+    """
+
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    fn = getattr(library, _SYMBOL_CONTEXT_OFFSETS_FIT_INT32)
+    fn.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+    fn.restype = ctypes.c_int
+    return bool(fn(ctypes.c_int64(kv_capacity_tokens),
+                   ctypes.c_int64(num_kv_heads),
+                   ctypes.c_int64(head_dim)))
+
+
+def qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_promoted_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    max_context_len: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    kv_capacity_tokens: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the promoted full-attention context route.
+
+    ``kv_capacity_tokens`` is the KV cache capacity in tokens. It bounds the
+    widest element offset the per-token table can hold, so the int32 table is
+    selected only when that range provably fits and the int64 table is used
+    otherwise. The two routes are byte-identical; only the shared-memory request
+    and the QK loop unroll differ. Pass 0 when the capacity cannot be bounded.
+    """
+
+    block_table_len = _check_decode_batch_shape(
+        spans,
+        rows,
+        max_context_len,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+    )
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_CONTEXT_BATCH_FIXED256_PROMOTED)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(max_context_len),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(block_table_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_int64(kv_capacity_tokens),
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
