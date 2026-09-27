@@ -21,7 +21,8 @@
     "expected_pct_of_prefill": "1.9-2.8%",
     "q4_k_layer_gate_up_ms": 6.53,
     "unexplained": "Even after that speedup, layer 29's gate_up would sit an order of magnitude above a q4_k layer's 6.53 ms, and the 17x gap is not explained by the route difference alone. Either the 30 MoE layers do not share expert shapes, or the q4_k fused MMQ32 route is doing something the q5_k path has no equivalent of. That is a separate question and worth resolving before the port, because it decides whether the ceiling is 2% or much more.",
-    "supersedes": "An earlier revision of this artifact said the prize was about 100 ms and 5% of prefill by reading the 17x as what the fast route would recover. The measured iu8 speedup is 1.50-2.00x, so 5% is wrong and the correct figure is 1.9-2.8% unless the unexplained 17x gap has another cause."
+    "supersedes": "An earlier revision of this artifact said the prize was about 100 ms and 5% of prefill by reading the 17x as what the fast route would recover. The measured iu8 speedup is 1.50-2.00x, so 5% is wrong and the correct figure is 1.9-2.8% unless the unexplained 17x gap has another cause.",
+    "lower_bound_note": "The 1.50-2.00x figure for the iu8 route was measured operation-complete at m=1..8, which are decode-shaped row counts. Layer 29's prefill runs at m in the hundreds. A 128-thread GEMV-style kernel with strided k ownership and a serial wave sum, which is what the row4 parent is, degrades badly as m grows, while a WMMA prefill route should not. So 1.50-2.00x is a lower bound for this use, not the expected value, and the ceiling is set by the q4_k MMQ32 number at 6.53 ms per layer. The honest range is therefore 1.9% to about 5% of prefill, and the only way to narrow it is to wire the route and measure at m=512."
   },
   "limits": [
     "The 17x comparison assumes the 30 MoE layers share expert shapes. The launch counts (29 plus 1) and Gemma 4 26B-A4B's uniform MoE design support that, but the expert shapes were not read from the artifact, so treat 17x as an indication of the gap rather than a measured per-shape ratio.",
@@ -41,5 +42,31 @@
     "tile_map": "qwen35_moe_wmma_tile_map exists in hipengine/kernels/hip_gfx1100/moe/group_scatter.py and is reusable as is.",
     "sequencing_reference": "hipengine/runtime/qwen4_exp_runner.py around line 3845: tile map, ensure risk buffers, memset the count, resolve the risk and repair variants by (backend, layer='moe_linear', quant=...), call the risk kernel, then the repair.",
     "template_in_gemma4": "gemma4_project_experts_gate_up_mmq is the q4_k shape to mirror: gate on quant and shapes, reuse scratch buffers, build the tile map, read back total_rows and validate it against capacity, then one fused call."
+  },
+  "shapes_resolved": {
+    "method": "Parsed the GGUF tensor table of gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf directly (658 tensors, 60 metadata keys).",
+    "blk0_gate_up_exps": {
+      "name": "blk.0.ffn_gate_up_exps.weight",
+      "dims": [
+        2816,
+        1408,
+        128
+      ],
+      "type": 12
+    },
+    "blk29_gate_up_exps": {
+      "name": "blk.29.ffn_gate_up_exps.weight",
+      "dims": [
+        2816,
+        1408,
+        128
+      ],
+      "type": 13
+    },
+    "ggml_type_ids": {
+      "12": "Q4_K",
+      "13": "Q5_K"
+    },
+    "conclusion": "The two layers have identical expert shapes and differ only in quant. The 17x is therefore entirely a kernel-route difference, and Q5_K's ~22% larger weights cannot account for it. Layer 29's ffn_down_exps is also the same shape at blk.0's (704, 2816, 128) versus blk.29's (704, 2816, 128), both type 8 (Q8_0), so the down side is quant-identical and only gate_up differs."
   }
 }
