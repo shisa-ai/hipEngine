@@ -153,26 +153,6 @@ def gemma4_moe_gate_up_mmq_enabled() -> bool:
     )
 
 
-def gemma4_moe_gate_up_q5k_iu8_enabled() -> bool:
-    """Whether the Q5_K iu8-WMMA gate/up route may be selected.
-
-    **Off by default, and the cause is a named observed failure, not missing
-    evidence.** With it enabled the first Q5_K layer raises HIP error 1
-    (``hipErrorInvalidValue``) out of ``_launch_wmma_iu8_risk``, so the kernel's
-    parameter contract and gemma4's geometry differ somewhere not yet identified.
-    The route is wired behind this lever so the failure can be worked from a
-    green tree.
-
-    Clearing command: ``HIPENGINE_GEMMA4_MOE_GATE_UP_Q5K_IU8=1`` once the launch
-    succeeds and the route shows bit-identical to the strict row4 owner. Remove
-    the flag and this function when that holds.
-    """
-
-    import os
-
-    return os.environ.get("HIPENGINE_GEMMA4_MOE_GATE_UP_Q5K_IU8", "").strip() == "1"
-
-
 def gemma4_moe_expert_route_counts() -> dict[str, int]:
     """Return how many expert projections used each dispatch route."""
 
@@ -788,8 +768,6 @@ def gemma4_project_experts_gate_up_mmq(
         return False
     quant_key = getattr(weight.spec, "quant_key", None)
     if quant_key == "gguf_q5_k":
-        if not gemma4_moe_gate_up_q5k_iu8_enabled():
-            return False
         return _gemma4_project_experts_gate_up_wmma_iu8(
             weight,
             x_ptr,
@@ -920,6 +898,14 @@ def _gemma4_project_experts_gate_up_wmma_iu8(
     owner rather than merely close to it, which is the property
     ``tests/test_unit_gemma4_expert_route.py`` checks.
     """
+
+    # The iu8-WMMA kernel tiles out_features in 128-column units, so an
+    # expert intermediate that is not a multiple of 128 cannot be tiled at all
+    # - Gemma 4 26B-A4B's is 704. That is a property of the kernel, so this
+    # route declines and the strict grouped owner runs, rather than the kernel
+    # failing its own argument guard at launch.
+    if intermediate % 128:
+        return False
 
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import (
