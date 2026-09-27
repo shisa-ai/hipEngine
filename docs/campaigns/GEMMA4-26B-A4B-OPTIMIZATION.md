@@ -268,6 +268,73 @@ Four conclusions follow.
 4. The earlier headline gap (1393 vs 3910) mixed GPUs. On the same GPU it is
    3761 vs 1394, a factor of 2.7.
 
+### Three-engine comparison, 2026-09-27
+
+Re-measured from scratch, because the `8cfc315` comparator above **can no
+longer be re-run on this box**: every local llama.cpp build carries
+`GGML_NATIVE=ON` from a machine with a higher CPU ISA level and aborts at load
+with ``CPU ISA level is lower than required``. The rows below are fresh builds
+made here, so they are comparable to each other but not to the `3761` / `4124`
+figures above.
+
+Basis, identical for all three engines: `gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf`,
+1024 prompt tokens, **bf16 KV** (hipEngine's ``kv_storage_dtype`` default),
+flash attention on, one GPU at a time with both idle. Prefill is a pure prompt
+forward in both engines -- ``llama-bench pp1024`` times only the prompt decode,
+and the campaign bench's ``prefill_s`` is ``forward(prompt)`` plus a device
+synchronize. Five repetitions, both builds the same flags
+(``GGML_HIP=ON -DAMDGPU_TARGETS=gfx1100 -DGGML_NATIVE=OFF``).
+
+| Engine | build | W7900 prefill | XTX prefill |
+| --- | --- | ---: | ---: |
+| strix-llama.cpp | `72ea598` | 4364.2 ± 90.7 | 4963.5 ± 151.6 |
+| llama.cpp (upstream) | `a97cce8` | 4377.0 ± 17.6 | 4991.8 ± 70.2 |
+| hipEngine | `5774e80e3` | **1759.5** | **1979.6** |
+| hipEngine as % of llama.cpp | | **40.2%** | **39.7%** |
+
+| Engine | W7900 decode @1024 | XTX decode @1024 | W7900 tg128 | XTX tg128 |
+| --- | ---: | ---: | ---: | ---: |
+| strix-llama.cpp | 65.4 | 74.4 | 74.56 ± 0.16 | 86.57 ± 0.36 |
+| llama.cpp (upstream) | 70.1 | 81.3 | 76.35 ± 0.13 | 89.21 ± 0.21 |
+| hipEngine | **38.79** | **43.73** | — | — |
+| hipEngine as % of llama.cpp | **55.3%** | **53.8%** | | |
+
+Decode @1024 is `llama-cli`'s ``Generation`` rate at a 1024-token context
+(median of three), which matches what the campaign bench's ``decode_tps``
+measures: the single-token forwards of a 128-output row at that context.
+``tg128`` is llama-bench's warm short-context row and is **not** comparable to
+hipEngine's number, because the context lengths differ; it is here to show that
+the fork's decode deficit reproduces on the tightest measurement available.
+
+**The fork buys nothing on gfx1100, and costs a little decode.**
+`strix-llama.cpp` is explicitly the gfx1151 fork -- its recent commits are
+Strix Halo, Qwen4-exp and Vulkan work -- so this is the expected result rather
+than a surprise. Prefill is level (within ±0.7% across both GPUs). Decode is
+consistently behind upstream by 2.3% and 3.0% on the warm short-context row and
+by 6.7% and 8.5% at a 1024-token context. The one fork commit that could have
+moved Gemma's attention routing, ``cfe6bb1`` (*keep FA head size 192 off the
+WMMA kernel*), narrows the WMMA guard to ``ne[0] <= 128 || ne[0] == 256``;
+Gemma 4's head sizes are 256 and 512, both on the same side of that guard as
+before, so it is not the cause. The deficit is unexplained and small enough
+that it is not worth chasing on hardware the fork does not target.
+
+**The Gemma 4 gap to llama.cpp is wider than the `3761` row implies**, and the
+number to carry is 40%, not 48%. Two caveats on that, both open: the cause of
+the `3761` -> `4377` difference cannot be attributed, because the old build will
+not start here and `8cfc315` is in neither local clone; and the harness basis is
+not interchangeable -- `llama-cli`'s ``Prompt`` rate is
+``n_prompt_processed / (t_prompt_last - t_start)``, i.e. request-start-relative,
+and reads only ~2500 for the same 1024-token prompt, so it must not be quoted
+against hipEngine's ``prefill_s``.
+
+Evidence: `llama-bench -m <model> -p 1024 -n 128 -b 4096 -ub 1024 -fa on
+-ngl 99 -ctk bf16 -ctv bf16 -r 5` and the same with ``llama-cli -f
+/tmp/gemma4_prompt1024.txt -st --no-warmup``; hipEngine via
+``scripts/gemma4_campaign_bench.py --prompt 1024 --output 128 --samples 3
+--warmup 1``, artifacts `/tmp/gemma4_bench_gpu0.json` and
+`/tmp/gemma4_bench_gpu1.json`. The 1024-token prompt is a prefix of
+`docs/PLAN.md` trimmed to exactly 1024 tokens by the model's own tokenizer.
+
 ### Where each prefill spends its time
 
 These are kernel-trace (`rocprofv3 --kernel-trace`) sums in milliseconds per
