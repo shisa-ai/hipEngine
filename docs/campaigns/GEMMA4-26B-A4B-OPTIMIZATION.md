@@ -3704,6 +3704,51 @@ record, not permission to reset unrelated work or weaken correctness.
   publication at ``:389``-``:408``); the census row `down`/`gate_up` per-row
   invariance (iteration 128); ``docs/RDNA3-TUNING-GUIDE.md`` section 5.6.
 
+  **Iteration 130: correction -- the "22 FMAs per thread" figure was wrong, and
+  the reduction-bound framing was overstated.**
+
+  Iteration 129 claimed each thread performs 22 FMAs before an 11-step reduction,
+  giving a ~1:2 sync-to-work ratio and making the grouped MoE "reduction-bound by
+  construction". Reading the accumulation region end to end
+  (``gguf_q4_k_selected_prefill.hip:312``-``:360``) shows that is wrong::
+
+      float acc_a[OUT_BATCH][ROW_BATCH] = {};      // 32 floats per thread
+      for (block_index = 0; block_index < q4_blocks; ++block_index) {   // ALL of k
+        column0 = block_index * QK_K + threadIdx.x;
+        column1 = column0 + 128;
+        for (out_offset = 0; out_offset < OUT_BATCH; ++out_offset)
+          for (row = 0; row < ROW_BATCH; ++row) {
+            acc_a[out_offset][row] += value0[row] * wa.first;
+            acc_b[out_offset][row] += value0[row] * wb.first;
+            acc_a[out_offset][row] += value1[row] * wa.second;
+            acc_b[out_offset][row] += value1[row] * wb.second;
+          }
+      }
+
+  The k-loop runs over **all** ``q4_blocks``, not a 22-element slice, so a thread
+  performs ``q4_blocks * OUT_BATCH * ROW_BATCH * 4 = 11 * 4 * 8 * 4`` = **1408
+  FMAs per 8-row batch, 176 per row** -- eight times the figure I stated. The
+  reduction is **32 separate 128-thread reductions** (4 output columns x 8 rows)
+  per batch, i.e. ~8 barriers per row, so the barrier-to-work ratio is closer to
+  **1:22** than 1:2.
+
+  **The reduction-bound claim is withdrawn.** What still stands is the measured
+  gap: 176 FMAs per thread per row is ~176 cycles of issue at 1 FMA/cycle against
+  the measured ~5000 cycles per row, so the kernel issues at roughly **3.5% of its
+  FMA potential**. It is stalled -- but the mechanism is not the reduction, and
+  iteration 129's mechanism is not established.
+
+  **What the read did establish.** The accumulator is 32 floats, ``value0`` and
+  ``value1`` add 16 more, and the weight pair plus the two metadata slab indices
+  add more on top -- a high register footprint for a 128-thread block. **VGPR-
+  limited occupancy is therefore a live hypothesis for this specific kernel.**
+  That is the lever the guide's section 5.3 ladder addresses, which was tested on
+  the **WMMA** sibling (monotonically slower) but never on this grouped owner.
+
+  Evidence: ``gguf_q4_k_selected_prefill.hip:312``-``:360`` (the accumulator, the
+  full-k loop, and the four FMAs per (out, row)); ``:363``-``:408`` (the 32
+  reductions and their barriers). Iteration 129's arithmetic is corrected here.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
