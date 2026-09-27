@@ -183,13 +183,48 @@ __global__ void q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel(
 
   const uint8_t* __restrict__ weight_base =
       weights + (static_cast<int64_t>(expert) * out_features + out_base) * row_bytes;
-  __shared__ float weight_d[OUT_TILE][SUBS];
-  __shared__ float weight_m[OUT_TILE][SUBS];
-  __shared__ uint32_t weight_qh[OUT_TILE][SUBS];
-  __shared__ float slot[OUT_TILE][ROW_BATCH][LOGICAL / 2];
+  // The staged weights cover every k-chunk at once, so they are sized by the
+  // whole row rather than by one chunk and live in dynamic shared memory. The
+  // slot count is chunks*SUBS, not in_features/32: a row whose width is not a
+  // multiple of K_TILE still gets a full SUBS-wide tail chunk, and the compute
+  // reads sub+4 into it exactly as the per-chunk staging did.
   const int chunks = (in_features + K_TILE - 1) / K_TILE;
+  const int total_subs = chunks * SUBS;
+  extern __shared__ unsigned char staged_raw[];
+  float* __restrict__ weight_d = reinterpret_cast<float*>(staged_raw);
+  float* __restrict__ weight_m = weight_d + OUT_TILE * total_subs;
+  uint32_t* __restrict__ weight_qh =
+      reinterpret_cast<uint32_t*>(weight_m + OUT_TILE * total_subs);
+  __shared__ float slot[OUT_TILE][ROW_BATCH][LOGICAL / 2];
   const int sub = threadIdx.x >> 5;
   const int within = threadIdx.x & 31;
+
+  // Stage once for the whole block. These bytes depend only on the expert and
+  // the output column, never on the row, so the previous per-chunk staging
+  // re-fetched the same 8448 bytes for each of the 8 row batches: 88 global
+  // round trips where 11 suffice, each one closed by two block-wide barriers.
+  for (int idx = threadIdx.x; idx < OUT_TILE * total_subs; idx += THREADS) {
+    const int o = idx / total_subs;
+    const int s = idx - o * total_subs;
+    // Slots are laid out [chunk][out][sub], so the compute side indexes with a
+    // compile-time inner stride and hoists chunk*OUT_TILE*SUBS out of its out
+    // loop. Indexing [out][global sub] instead costs a runtime multiply per
+    // access and measured 300 extra VALU instructions per wave.
+    const int slot = (s / SUBS) * (OUT_TILE * SUBS) + o * SUBS + (s % SUBS);
+    if (out_base + o < out_features && s * 32 < in_features) {
+      const uint8_t* block = weight_base +
+                             static_cast<int64_t>(o) * row_bytes +
+                             static_cast<int64_t>(s) * 24;
+      weight_d[slot] = load_fp16(block);
+      weight_m[slot] = load_fp16(block + 2);
+      weight_qh[slot] = *reinterpret_cast<const uint32_t*>(block + 4);
+    } else {
+      weight_d[slot] = 0.0f;
+      weight_m[slot] = 0.0f;
+      weight_qh[slot] = 0U;
+    }
+  }
+  __syncthreads();
 
   for (int base = start; base < end; base += ROW_BATCH) {
     float value0[OUT_TILE][ROW_BATCH];
@@ -204,24 +239,7 @@ __global__ void q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel(
     }
     for (int chunk = 0; chunk < chunks; ++chunk) {
       const int k0 = chunk * K_TILE;
-      if (threadIdx.x < OUT_TILE * SUBS) {
-        const int o = threadIdx.x / SUBS;
-        const int s = threadIdx.x - o * SUBS;
-        const int k = k0 + s * 32;
-        if (out_base + o < out_features && k < in_features) {
-          const uint8_t* block =
-              weight_base + static_cast<int64_t>(o) * row_bytes +
-              static_cast<int64_t>(chunk * SUBS + s) * 24;
-          weight_d[o][s] = load_fp16(block);
-          weight_m[o][s] = load_fp16(block + 2);
-          weight_qh[o][s] = *reinterpret_cast<const uint32_t*>(block + 4);
-        } else {
-          weight_d[o][s] = 0.0f;
-          weight_m[o][s] = 0.0f;
-          weight_qh[o][s] = 0U;
-        }
-      }
-      __syncthreads();
+      const int sub_base = chunk * (OUT_TILE * SUBS);
       const int column0 = k0 + threadIdx.x;
       const int column1 = k0 + threadIdx.x + THREADS;
       float x0[ROW_BATCH];
@@ -253,27 +271,28 @@ __global__ void q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel(
                                                               : static_cast<uint8_t>(0);
         const uint8_t low0 = within < 16 ? (packed0 & 0x0fU) : (packed0 >> 4);
         const uint8_t low1 = within < 16 ? (packed1 & 0x0fU) : (packed1 >> 4);
+        const int wi0 = sub_base + o * SUBS + sub;
+        const int wi1 = wi0 + 4;
         const float w0 =
-            weight_d[o][sub] *
+            weight_d[wi0] *
                 static_cast<float>(low0 |
                                    (static_cast<uint8_t>(
-                                        (weight_qh[o][sub] >> within) & 1U)
+                                        (weight_qh[wi0] >> within) & 1U)
                                     << 4)) +
-            weight_m[o][sub];
+            weight_m[wi0];
         const float w1 =
-            weight_d[o][sub + 4] *
+            weight_d[wi1] *
                 static_cast<float>(low1 |
                                    (static_cast<uint8_t>(
-                                        (weight_qh[o][sub + 4] >> within) & 1U)
+                                        (weight_qh[wi1] >> within) & 1U)
                                     << 4)) +
-            weight_m[o][sub + 4];
+            weight_m[wi1];
 #pragma unroll
         for (int r = 0; r < ROW_BATCH; ++r) {
           value0[o][r] += x0[r] * w0;
           value1[o][r] += x1[r] * w1;
         }
       }
-      __syncthreads();
     }
     // Level one of the incumbent's tree pairs slots t and t + 128, which this
     // thread already owns; the remaining levels run on the shared 128 slots.
@@ -1703,13 +1722,20 @@ static int launch_q5_1_staged_grouped(
   }
   constexpr int64_t out_tile = 4;
   const int64_t row_bytes = (in_features / 32) * 24;
+  // The staged weights are float d, float m and uint32 qh for every 32-column
+  // block, four output columns, over the row's chunks*SUBS slot count. They are
+  // the only dynamic shared memory this route needs; the slot array is static.
+  const int64_t staged_bytes = out_tile * ((in_features + 255) / 256) * 8 * 12;
+  if (staged_bytes > 65536 - 8192) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
   const dim3 grid(
       static_cast<unsigned int>((out_features + out_tile - 1) / out_tile),
       static_cast<unsigned int>(num_experts));
   const dim3 block(128);
   hipLaunchKernelGGL(
       (q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel<4, 4, 256>),
-      grid, block, 0, stream,
+      grid, block, static_cast<size_t>(staged_bytes), stream,
       static_cast<const uint16_t*>(input),
       static_cast<const int64_t*>(expert_start),
       static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),

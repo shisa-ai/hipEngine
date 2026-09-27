@@ -3609,7 +3609,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 1126,
+        "lines": 1233,
         "referrers": 12,
         "runtime_referrers": [],
         "test_referrers": [
@@ -3636,7 +3636,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_experts.py",
-      "evidence_hash": "d39ef2a9e9e6"
+      "evidence_hash": "3e766a6f166c"
     },
     {
       "kind": "kernel",
@@ -5199,7 +5199,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 518,
-        "referrers": 4,
+        "referrers": 5,
         "runtime_referrers": [
           "hipengine/runtime/qwen35_gguf_runner.py"
         ],
@@ -5223,7 +5223,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_expert_pack8_gemv.hip",
-      "evidence_hash": "43a7d181f8ed"
+      "evidence_hash": "4d14baca897a"
     },
     {
       "kind": "kernel",
@@ -5234,7 +5234,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 275,
-        "referrers": 3,
+        "referrers": 4,
         "runtime_referrers": [
           "hipengine/runtime/qwen35_gguf_runner.py"
         ],
@@ -5257,7 +5257,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_expert_pack8_gemv.py",
-      "evidence_hash": "02b8f97fbd63"
+      "evidence_hash": "232fa7dfa831"
     },
     {
       "kind": "kernel",
@@ -8719,7 +8719,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".hip",
-        "lines": 2284,
+        "lines": 2310,
         "referrers": 18,
         "runtime_referrers": [
           "hipengine/loading/gguf_selected_contract.py",
@@ -8748,7 +8748,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/qwen4_exp_q5_1.hip",
-      "evidence_hash": "9f5022c71974"
+      "evidence_hash": "8ef58a84bc55"
     },
     {
       "kind": "kernel",
@@ -8758,7 +8758,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 1127,
+        "lines": 1136,
         "referrers": 18,
         "runtime_referrers": [
           "hipengine/loading/gguf_selected_contract.py",
@@ -8786,7 +8786,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/qwen4_exp_q5_1.py",
-      "evidence_hash": "28c42c3d0422"
+      "evidence_hash": "a01b3c20ac18"
     },
     {
       "kind": "kernel",

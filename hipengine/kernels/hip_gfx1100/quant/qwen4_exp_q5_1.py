@@ -250,6 +250,15 @@ def _staged_grouped_prefill(
         raise ValueError("compact_rows and num_experts must be positive")
     if in_features <= 0 or in_features % 32 or out_features <= 0:
         raise ValueError("Q5_1 grouped projection has invalid feature geometry")
+    staged_bytes = 4 * ((in_features + 255) // 256) * 8 * 12
+    if staged_bytes > 65536 - 8192:
+        raise ValueError(
+            f"Q5_1 grouped projection cannot stage {in_features} input features: "
+            f"the packed weights need {staged_bytes} bytes of dynamic shared "
+            f"memory against a budget of {65536 - 8192}. This route stages the "
+            "whole row at once, so it is bounded at 38144 input features; use "
+            "a per-chunk route for wider rows."
+        )
     library = library or build_qwen4_exp_q5_1(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, symbol, _ARGS_GROUPED, ctypes.c_int)
