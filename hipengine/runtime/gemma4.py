@@ -24,6 +24,8 @@ whose tensors they cannot fails inside the dispatch that could not serve it.
 
 from __future__ import annotations
 
+import contextlib
+import os
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
@@ -68,7 +70,11 @@ from hipengine.loading.gemma4_gguf_device import (
 from hipengine.loading.materialize import DeviceTensorAllocation, load_host_array_to_device_as_dtype
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
-from hipengine.runtime.gguf_linear import launch_gguf_linear
+from hipengine.runtime.gguf_linear import (
+    _WMMA_PREFILL_ENV,
+    launch_gguf_linear,
+    wmma_prefill_session,
+)
 
 _BF16_BYTES = 2
 _F32_BYTES = 4
@@ -410,6 +416,20 @@ def _bf16_bits(values: np.ndarray) -> np.ndarray:
     return ((bits + rounding) >> 16).astype(np.uint16)
 
 
+def _gemma4_block_wmma_session(enabled: bool):
+    """Scope the WMMA dense prefill opt-in to one Gemma 4 prefill block.
+
+    An explicitly set ``HIPENGINE_GGUF_WMMA_PREFILL`` wins outright, so the env
+    var stays a working rollback lever rather than something this wrapper
+    silently overrides. When it is unset, a full block opts in and a partial
+    block opts out.
+    """
+
+    if os.environ.get(_WMMA_PREFILL_ENV, "").strip():
+        return contextlib.nullcontext()
+    return wmma_prefill_session(enabled)
+
+
 @dataclass
 class Gemma4Runner:
     """Runs the Gemma 4 decoder forward pass over a KV cache.
@@ -621,9 +641,21 @@ class Gemma4Runner:
 
         logits = None
         for start in range(0, rows, self.max_block):
-            logits = self._forward_block(
-                tokens[start : start + self.max_block], apply_softcap=apply_softcap
-            )
+            block = tokens[start : start + self.max_block]
+            # The WMMA dense prefill is 2.16x faster at the kernel and 19 percent
+            # end-to-end on a full block, and it is a different arithmetic path:
+            # it narrows the activation to f16 where the exact tiled route keeps
+            # f32, and that difference compounds across the 30 layers. A full
+            # block is near-clean (kl_mean 3e-04 against a 1e-3 limit, zero top-1
+            # flips over three independent prompts), while a partial block is two
+            # to three orders of magnitude worse (kl_mean 2.5e-02, kl_max 1.6 to
+            # 13.2, one to six top-1 flips). So a partial block takes the exact
+            # route: the WMMA route is not a working path for that shape, and
+            # picking the working path per shape is dispatch rather than a gate.
+            # Clearing command: fix the partial-block path, then rerun
+            # scripts/gemma4_teacher_forced_gate.py at --prefill 256.
+            with _gemma4_block_wmma_session(len(block) == self.max_block):
+                logits = self._forward_block(block, apply_softcap=apply_softcap)
         assert logits is not None
         return logits
 
