@@ -631,3 +631,107 @@ def _f32_to_bf16_u16(arr: np.ndarray) -> np.ndarray:
 def _bf16_u16_to_f32(arr: np.ndarray) -> np.ndarray:
     u16 = np.ascontiguousarray(arr, dtype=np.uint16)
     return (u16.astype(np.uint32) << 16).view(np.float32).reshape(u16.shape).copy()
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_router_warp_reduce_variant_registers() -> None:
+    register_qwen35_router_kernels()
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="router_logits",
+            quant="f32",
+            variant="f32_hidden_warp_reduce_dense_exact",
+        )
+        is router_module.qwen35_router_logits_f32_f32w_warp_reduce_dense_exact
+    )
+
+
+def test_router_warp_reduce_launcher_validates_shape() -> None:
+    """Shape guards run before any GPU load, so this needs no HIP runtime."""
+    with pytest.raises(ValueError):
+        router_module.qwen35_router_logits_f32_f32w_warp_reduce_dense_exact(
+            1, 2, 3, 1024, 2560, 512, threads=256
+        )
+    # 20000 * 4 = 80 KiB exceeds the 64 KiB workgroup LDS budget.
+    with pytest.raises(ValueError):
+        router_module.qwen35_router_logits_f32_f32w_warp_reduce_dense_exact(
+            1, 2, 3, 1024, 20000, 512, threads=512
+        )
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("tokens", [1, 5, 15, 16, 17, 512, 1024])
+def test_router_warp_reduce_matches_exact_parent_within_gate(
+    router_library, tokens: int
+) -> None:
+    """RED contract for the warp-per-token router logits reduction.
+
+    This variant is deliberately NOT bit-identical to the exact parent: the
+    reduction order changes from a 256-thread LDS tree to a 32-lane shuffle, and
+    the expert row is read from LDS rather than from the global weight row. The
+    binding contract is therefore the outer smoke floor against the parent --
+    KL <= 0.05 and top-1 agreement >= 90% -- not array equality. The parent
+    remains registered as the strict fallback.
+    """
+    rng = np.random.default_rng(20260927 + tokens)
+    hidden_size = 2560
+    num_experts = 512
+    hidden = rng.normal(0.0, 0.1, size=(tokens, hidden_size)).astype(np.float32)
+    weight = rng.normal(0.0, 0.1, size=(num_experts, hidden_size)).astype(np.float32)
+    parent = np.empty((tokens, num_experts), dtype=np.float32)
+    candidate = np.empty_like(parent)
+    replay = np.empty_like(parent)
+    buffers = [malloc(arr.nbytes) for arr in (hidden, weight, parent, candidate, replay)]
+    try:
+        for arr, buf in zip((hidden, weight), buffers, strict=False):
+            copy_host_to_device(buf, host_array_ptr(arr), arr.nbytes)
+        qwen35_router_logits_f32_f32w_token_tile4_dense_exact(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[2].ptr,
+            tokens,
+            hidden_size,
+            num_experts,
+            threads=256,
+            library=router_library,
+        )
+        for buf in (buffers[3], buffers[4]):
+            router_module.qwen35_router_logits_f32_f32w_warp_reduce_dense_exact(
+                buffers[0].ptr,
+                buffers[1].ptr,
+                buf.ptr,
+                tokens,
+                hidden_size,
+                num_experts,
+                threads=512,
+                library=router_library,
+            )
+        copy_device_to_host(host_array_ptr(parent), buffers[2], parent.nbytes)
+        copy_device_to_host(host_array_ptr(candidate), buffers[3], candidate.nbytes)
+        copy_device_to_host(host_array_ptr(replay), buffers[4], replay.nbytes)
+    finally:
+        for buf in reversed(buffers):
+            free(buf)
+
+    # Determinism: the same schedule must produce the same bits.
+    np.testing.assert_array_equal(replay.view(np.uint32), candidate.view(np.uint32))
+
+    # The parent and the candidate must agree on the top-1 expert per token,
+    # which is what routing actually consumes, at >= 90%.
+    top1_parent = parent.argmax(axis=1)
+    top1_candidate = candidate.argmax(axis=1)
+    agreement = float(np.mean(top1_parent == top1_candidate))
+    assert agreement >= 0.90, f"top-1 agreement {agreement:.4f} below the 0.90 floor"
+
+    # Softmax KL between the two logit fields, the smoke-gate form.
+    def _softmax(x: np.ndarray) -> np.ndarray:
+        shifted = x - x.max(axis=1, keepdims=True)
+        exp = np.exp(shifted)
+        return exp / exp.sum(axis=1, keepdims=True)
+
+    p = _softmax(parent.astype(np.float64))
+    q = _softmax(candidate.astype(np.float64))
+    kl = float(np.mean(np.sum(p * (np.log(p + 1e-30) - np.log(q + 1e-30)), axis=1)))
+    assert kl <= 0.05, f"mean KL {kl:.6g} above the 0.05 smoke floor"
+    assert np.max(np.abs(parent - candidate)) <= 1.0e-5

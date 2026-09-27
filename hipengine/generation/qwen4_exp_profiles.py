@@ -105,6 +105,36 @@ _ROUTER_F32_TILE4_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json"
 )
+_ROUTER_WARP_REDUCE_EVIDENCE = (
+    "benchmarks/results/2026-09-27-router-warp-reduce/"
+)
+# Experiment switch for the warp-per-token router logits reduction. It selects a
+# different reduction order (32-lane shuffle instead of a 256-thread LDS tree)
+# and a different weight read (LDS stage instead of the global row), so the two
+# variants are distinct production arithmetics. Remove this switch once the
+# candidate is either promoted or rejected; see docs/REFACTOR.md.
+_ROUTER_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"
+_ROUTER_TILE4_VARIANT = "f32_hidden_token_tile4_dense_exact"
+_ROUTER_WARP_REDUCE_VARIANT = "f32_hidden_warp_reduce_dense_exact"
+
+
+def _selected_router_producer_variant() -> str:
+    """Return the router logits producer the manifest declares.
+
+    The default is the shipped four-token tile. The runner reads the same
+    variable at launch, and the binder publishes this resolved value, so the
+    manifest and the launched kernel cannot disagree.
+    """
+
+    return os.environ.get(_ROUTER_VARIANT_ENV, "").strip() or _ROUTER_TILE4_VARIANT
+
+
+_ROUTER_LOGITS_SELECTED_VARIANT = _selected_router_producer_variant()
+_ROUTER_LOGITS_EVIDENCE = (
+    _ROUTER_WARP_REDUCE_EVIDENCE
+    if _ROUTER_LOGITS_SELECTED_VARIANT == _ROUTER_WARP_REDUCE_VARIANT
+    else _ROUTER_F32_TILE4_EVIDENCE
+)
 _GR_UP_SIGMOID_MEAN_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json"
@@ -437,10 +467,10 @@ def _production_selections(*, dpp: bool = False, recovery: bool = False) -> tupl
         _selection(
             "router_logits",
             "qwen4exp_multirow_f32_router",
-            "f32_hidden_token_tile4_dense_exact",
+            _ROUTER_LOGITS_SELECTED_VARIANT,
             "f32_hidden_token_tile4_dense_exact",
             "f32",
-            evidence=_ROUTER_F32_TILE4_EVIDENCE,
+            evidence=_ROUTER_LOGITS_EVIDENCE,
         ),
         _selection(
             "gr_gated_mean_sigmoid",
@@ -652,6 +682,9 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
     profile_env: dict[str, str] = {}
     for key, value in {
         "HIPENGINE_GGUF_WMMA_PREFILL": "0",
+        # Publish the router producer the manifest declares, so the runner's
+        # launch-time switch cannot disagree with the resolved selection.
+        _ROUTER_VARIANT_ENV: _ROUTER_LOGITS_SELECTED_VARIANT,
         "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL": "0",
         "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "0",
         "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA": "0",

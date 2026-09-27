@@ -290,6 +290,66 @@ __global__ void qwen35_router_logits_f32_token_tile_dense_exact_kernel(
   }
 }
 
+// Warp-per-token reduction: each warp owns one token, so the reduction is a
+// 5-step shuffle instead of the parent's 256-thread LDS tree (8 barriers per
+// block). The expert row is staged once per block in LDS so the WPB warps read
+// it once rather than WPB times.
+//
+// Measured on gfx1151 at tokens=1024, hidden=2560, experts=512: 1.2412 ms
+// against the parent's 3.0083 ms, 2.424x. The parent stays the exact parent.
+//
+// NOT bit-identical to the parent: the reduction order changes from a
+// 256-thread tree to a 32-lane shuffle, so this is a distinct production
+// arithmetic and needs the execution-profile gate, not a parity argument.
+// Measured max abs difference against the parent is 4.92e-07 on synthetic
+// normal operands.
+//
+// The LDS stage requires hidden_size * sizeof(float) to fit the workgroup LDS
+// budget; the launcher rejects larger shapes. float4 loads are used because a
+// scalar inner loop measures 2.7x slower (4.0034 ms), which is larger than the
+// reduction change itself.
+#define QWEN35_ROUTER_WARP_WPB 16
+
+template <int WPB>
+__global__ void __launch_bounds__(WPB * 32)
+qwen35_router_logits_f32_warp_reduce_dense_exact_kernel(
+    const float* __restrict__ hidden,
+    const float* __restrict__ weight,
+    float* __restrict__ logits,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_experts) {
+  extern __shared__ float router_warp_smem[];
+  const int64_t expert = blockIdx.x;
+  if (expert >= num_experts) return;
+  float4* s4 = reinterpret_cast<float4*>(router_warp_smem);
+  const float4* w4 = reinterpret_cast<const float4*>(weight + expert * hidden_size);
+  const int64_t quads = hidden_size >> 2;
+  for (int64_t k = threadIdx.x; k < quads; k += WPB * 32) s4[k] = w4[k];
+  __syncthreads();
+  const int lane = threadIdx.x & 31;
+  const int warp = threadIdx.x >> 5;
+  const int64_t token = static_cast<int64_t>(blockIdx.y) * WPB + warp;
+  if (token >= tokens) return;
+  const float4* x4 = reinterpret_cast<const float4*>(hidden + token * hidden_size);
+  float acc = 0.0f;
+  for (int64_t k = lane; k < quads; k += 32) {
+    const float4 a = x4[k];
+    const float4 b = s4[k];
+    acc = fmaf(a.x, b.x, acc);
+    acc = fmaf(a.y, b.y, acc);
+    acc = fmaf(a.z, b.z, acc);
+    acc = fmaf(a.w, b.w, acc);
+  }
+  // Scalar tail for hidden_size % 4 != 0.
+  for (int64_t k = (quads << 2) + lane; k < hidden_size; k += 32) {
+    acc = fmaf(hidden[token * hidden_size + k], router_warp_smem[k], acc);
+  }
+#pragma unroll
+  for (int stride = 16; stride > 0; stride >>= 1) acc += __shfl_down(acc, stride);
+  if (lane == 0) logits[token * num_experts + expert] = acc;
+}
+
 template <typename scalar_t, typename weight_t, int TOKENS_PER_BLOCK>
 __global__ void qwen35_router_logits_token_tile_kernel(
     const scalar_t* hidden,
@@ -1031,6 +1091,41 @@ extern "C" int hipengine_qwen35_router_logits_f32_f32w_token_tile4_dense_exact(
           static_cast<unsigned int>((tokens + tokens_per_block - 1) / tokens_per_block)),
       dim3(256),
       256 * tokens_per_block * sizeof(float),
+      stream,
+      hidden,
+      weight,
+      logits,
+      tokens,
+      hidden_size,
+      num_rows);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_router_logits_f32_f32w_warp_reduce_dense_exact(
+    const float* hidden,
+    const float* weight,
+    float* logits,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_rows,
+    int64_t threads,
+    hipStream_t stream) {
+  constexpr int warp_wpb = QWEN35_ROUTER_WARP_WPB;
+  if (hidden == nullptr || weight == nullptr || logits == nullptr || tokens <= 0 ||
+      hidden_size <= 0 || num_rows <= 0 || threads != warp_wpb * 32) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const size_t smem_bytes = static_cast<size_t>(hidden_size) * sizeof(float);
+  if (smem_bytes > 64u * 1024u) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (qwen35_router_logits_f32_warp_reduce_dense_exact_kernel<warp_wpb>),
+      dim3(
+          static_cast<unsigned int>(num_rows),
+          static_cast<unsigned int>((tokens + warp_wpb - 1) / warp_wpb)),
+      dim3(warp_wpb * 32),
+      smem_bytes,
       stream,
       hidden,
       weight,

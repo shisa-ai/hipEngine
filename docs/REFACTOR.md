@@ -171,6 +171,33 @@
   fused kernel without changing operand or accumulation order. Evidence:
   `benchmarks/results/2026-09-27-gr-up-wide-tile-screen/`.
 
+## Router Producer Variant (`HIPENGINE_QWEN4_EXP_ROUTER_VARIANT`)
+
+- Selects the multirow F32 router logits producer. Default
+  `f32_hidden_token_tile4_dense_exact` (shipped, exact parent); candidate
+  `f32_hidden_warp_reduce_dense_exact` (one warp per token, 32-lane shuffle
+  reduction, expert row staged once per block in LDS). Read by the runner at
+  launch, and the profile binder publishes the resolved selection so the
+  manifest and the launched kernel cannot disagree.
+- Screened at `+1.65%` prefill on `code-p4096` (247.739 -> 251.823 tok/s,
+  `-0.272 s`), with the router kernel itself `2.158x` faster
+  (619.45 -> 287.11 ms). Same-session two-arm A/B, disjoint per-run spreads.
+  Evidence: `benchmarks/results/2026-09-27-router-warp-reduce/`.
+- **Not bit-exact**: the reduction order changes from a 256-thread LDS tree to a
+  32-lane shuffle, so the two variants are distinct production arithmetics. The
+  promotion bar is the production envelope in `docs/EXECUTION-PROFILES.md`, not
+  parent parity. The tile4 parent stays registered as the strict fallback.
+- **The risk mechanism is discrete, not drift.** The router logits feed
+  `qwen35_router_select`, so a near-tie expert can change which of the 512
+  experts is selected. A 4.9e-7 logit difference is irrelevant as drift and
+  decisive as a selection flip. Judge this route on expert-selection stability
+  and the model-logit envelope together; a KL-only reading can miss it. This is
+  the "confirmed router-flip mechanism" the GR section below asks for, applied
+  to the router itself rather than to a GR projection.
+- Remove this switch once the candidate is promoted or rejected. On promotion,
+  make it the profile's default selection and delete the runner's env read; on
+  rejection, delete the switch and keep the kernel registered but unselected.
+
 ## MoE Backend Refresh Cache
 
 - Stable-generation MoE backend caching is unconditional after its exact
