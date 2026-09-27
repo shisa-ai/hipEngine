@@ -2714,7 +2714,11 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_amortize
     return static_cast<int>(hipErrorInvalidValue);
   }
   // Four output columns per CTA, so the input row batch is loaded once per
-  // k-block and reused four times instead of once per column.
+  // k-block and reused four times instead of once per column. Wider blocks were
+  // measured and rejected: <4, 8> and <8, 8> both halve the input traffic this
+  // amortizes and both run slower (11756 us and 14971 us against 7742 us), the
+  // first at an identical 64-float accumulator footprint. Input traffic is
+  // therefore not the binding constraint here; the nest is latency/issue-bound.
   hipLaunchKernelGGL(
       (gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<8, 4, true, true, true>),
       dim3(static_cast<uint32_t>((out_features + 3) / 4),

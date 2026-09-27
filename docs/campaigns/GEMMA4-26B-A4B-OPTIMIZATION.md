@@ -2141,6 +2141,65 @@ record, not permission to reset unrelated work or weaken correctness.
 
   Evidence: ``scripts/gemma4_amortized_ab.py`` (the A/B, committed).
 
+  **Iteration 101: the input-traffic model is FALSIFIED. Wider out-blocks make the
+  grouped gate_up slower, including at identical register cost. Iterations 99 and
+  100 are superseded by this entry.**
+
+  Three arms of ``gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel``, same
+  shape (4096 rows, k=2816, n=1408, 128 experts), same 1024-token prefill, each
+  measured after clearing the family build cache::
+
+      template      accumulators   input traffic   gate_up
+      <8, 4> now        64           8.12 GB       7742 us
+      <4, 8>            64           4.06 GB      11756 us   1.52x slower
+      <8, 8>           128           4.06 GB      14971 us   1.93x slower
+
+  **Why this falsifies the model.** ``<4, 8>`` halves the input traffic that the
+  amortized nest exists to reduce, at an accumulator footprint of 2 * 8 * 4 = 64
+  floats -- *identical* to the production owner -- and it is 1.52x slower. If
+  input traffic bound this kernel, halving it could not cost 52%. ``<8, 8>``
+  halves traffic and doubles accumulators, and is slower again, so register
+  pressure is a real second effect but not the primary one.
+
+  **What iteration 100 actually measured.** Arm B there was the *non-amortized*
+  nest, which differs from arm A in code structure -- columns outermost, rows
+  re-walked -- as well as in traffic. The 2.82x ratio conflated the two, and
+  fitting ``3052 us + 577 us/GB`` across that pair attributed a structural
+  difference to traffic. The slope looked corroborated because it exceeded HBM
+  peak, which is consistent with L2 but is not evidence that traffic *binds*.
+  Iteration 99's L2 inference rested on the same conflation.
+
+  **What the three arms do show.** They differ in per-CTA work and grid size, and
+  time rises monotonically as per-CTA work rises::
+
+      template   CTAs     FMAs/thread   gate_up
+      <8, 4>     45056       2816       7742 us
+      <4, 8>     22528       5625      11756 us
+      <8, 8>     22528       5625      14971 us
+
+  Total FMAs are identical across all three. So the cost tracks *how the work is
+  divided*, not how much traffic it moves: fewer, longer-running CTAs hide load
+  latency worse. The nest is **latency/issue-bound**. That is consistent with the
+  39% "fixed" term iteration 100 isolated, and it is the term that a wider block
+  cannot touch -- which is why the asymptote it predicted was never reachable.
+
+  **What this closes and what it leaves.** The wider-out-block lever on the exact
+  grouped owner is closed: two configurations tested, both regressions, one at
+  equal register cost. It does not reopen weight traffic either -- the weights are
+  already read exactly once per column. The remaining gap is issue/latency-bound
+  structure, which is what a different compute path addresses rather than a
+  retune of this one. The campaign already records the compensated WMMA owners at
+  2.7x on a 1024-token prefill, held off the default path by the arithmetic gate;
+  this measurement says the exact grouped nest has little left in it by retuning.
+
+  **Reverted.** ``gguf_q4_k_selected_prefill.hip`` is back to ``<8, 4>`` and the
+  reverted binary reproduces 7752 us against the 7742 us baseline, 0.1%. The
+  rejection is recorded in a comment at the launcher so the next reader does not
+  repeat the experiment.
+
+  Evidence: ``scripts/gemma4_amortized_ab.py`` (unchanged, reused for all three
+  arms).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
