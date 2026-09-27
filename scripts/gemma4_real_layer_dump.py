@@ -19,6 +19,7 @@ branch the real model uses.
 from __future__ import annotations
 
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -31,7 +32,13 @@ from hipengine.kernels.cpu_reference.gemma4_streaming import (
 )
 from hipengine.loading.gguf import GGUFReader
 
-ARTIFACT = Path("/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf")
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts.gemma4_campaign_bench import resolve_artifact  # noqa: E402
+
+ARTIFACT = resolve_artifact()
 
 PROMPT = [2, 818, 5279, 529, 7001, 563]
 LAYER = int(os.environ.get("G4_LAYER", "0"))

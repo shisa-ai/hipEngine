@@ -20,7 +20,13 @@ from hipengine.kernels.cpu_reference.gemma4_streaming import (
 from hipengine.loading.gguf import GGUFReader
 from hipengine.tokenization.gguf import Gemma4GGUFTokenizer
 
-ARTIFACT = Path("/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf")
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts.gemma4_campaign_bench import resolve_artifact  # noqa: E402
+
+ARTIFACT = resolve_artifact()
 OUT = Path("/tmp/gemma4_real_run.jsonl")
 
 

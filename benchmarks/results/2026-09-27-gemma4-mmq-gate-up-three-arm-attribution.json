@@ -1,0 +1,245 @@
+{
+  "schema": 1,
+  "kind": "gemma4_mmq_gate_up_three_arm_attribution",
+  "performance_claim": false,
+  "status": "ok",
+  "created_at": "2026-09-27T06:33:52.677273+00:00",
+  "artifact": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "why": "scripts/gemma4_mmq_prefill_length_probe.py compares the MMQ gate/up route against its fp32 owner and reports that the arms disagree. That comparison cannot say which arm is wrong: at a length where both arms are wrong the same way it reports exact agreement, and everywhere else it names the MMQ route without having established that the fp32 route is correct. This run adds llama.cpp's llama-server on the same artifact, GPU, context and KV dtype as a third arm, so the greedy tokens can be attributed against an independent implementation instead of against whichever of our own two kernels ran second.",
+  "command": "PYTHONPATH=. python scripts/gemma4_mmq_arm_attribution.py --corpus {probe,frozen} --lengths ...",
+  "anchor": {
+    "commit": "17252c769a63c1cb650ce98ae309cf4de0da7778",
+    "engine": "llama.cpp llama-server",
+    "logits": "final-row argmax with the model's own final_logit_softcapping applied",
+    "sampling": "temperature=0, top_k=1, seed=12345, ignore_eos=true, cache_prompt=false",
+    "server_command": [
+      "/home/lhl/llama.cpp/llama.cpp-hip/build-hip/bin/llama-server",
+      "-m",
+      "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+      "-ngl",
+      "99",
+      "-fa",
+      "on",
+      "-ctk",
+      "bf16",
+      "-ctv",
+      "bf16",
+      "-c",
+      "8192",
+      "-np",
+      "1",
+      "-b",
+      "4096",
+      "-ub",
+      "1024",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "18793",
+      "--no-cache-prompt",
+      "--fit",
+      "off"
+    ],
+    "source": "/home/lhl/llama.cpp/llama.cpp-hip"
+  },
+  "positive_control": {
+    "why": "The anchor needs a case where agreement is expected, or a failure to agree proves nothing about which arm is at fault. The frozen campaign corpus is natural text and the campaign's recorded evidence was taken on it, so agreement there validates the harness rather than the route.",
+    "corpus": "frozen",
+    "rows": [
+      {
+        "arms_agree": true,
+        "base_first": 870,
+        "base_first_margin": 12.357577323913574,
+        "base_matches_llama": true,
+        "base_tokens": [
+          870,
+          236781,
+          573,
+          1123
+        ],
+        "ids": 96,
+        "llama_first": 870,
+        "llama_tokens": [
+          870,
+          236781,
+          573,
+          1123
+        ],
+        "mmq_first": 870,
+        "mmq_first_margin": 11.984014511108398,
+        "mmq_matches_llama": true,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          870,
+          236781,
+          573,
+          1123
+        ]
+      },
+      {
+        "arms_agree": true,
+        "base_first": 13718,
+        "base_first_margin": 12.309220314025879,
+        "base_matches_llama": true,
+        "base_tokens": [
+          13718,
+          8633,
+          653,
+          618
+        ],
+        "ids": 512,
+        "llama_first": 13718,
+        "llama_tokens": [
+          13718,
+          8633,
+          653,
+          618
+        ],
+        "mmq_first": 13718,
+        "mmq_first_margin": 11.736089706420898,
+        "mmq_matches_llama": true,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          13718,
+          8633,
+          653,
+          618
+        ]
+      },
+      {
+        "arms_agree": true,
+        "base_first": 43424,
+        "base_first_margin": 13.45937728881836,
+        "base_matches_llama": true,
+        "base_tokens": [
+          43424,
+          5990,
+          39188,
+          1003
+        ],
+        "ids": 1024,
+        "llama_first": 43424,
+        "llama_tokens": [
+          43424,
+          5990,
+          39188,
+          1003
+        ],
+        "mmq_first": 43424,
+        "mmq_first_margin": 13.873005867004395,
+        "mmq_matches_llama": true,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          43424,
+          5990,
+          39188,
+          1003
+        ]
+      }
+    ],
+    "finding": "All three engines agree exactly at 96, 512 and 1024 ids, and the fp32 top-2 margins are 12.31 to 13.46. The 96-id point is the same length that disagrees under the probe corpus, so length alone does not predict the outcome. This establishes that the tokenizer, the prompt-id path into both engines, and the comparison itself are sound: a harness defect would not spare the confident rows."
+  },
+  "probe_corpus": {
+    "rows": [
+      {
+        "arms_agree": false,
+        "base_first": 236778,
+        "base_first_margin": 1.5612173080444336,
+        "base_matches_llama": true,
+        "base_tokens": [
+          236778,
+          236778,
+          236778,
+          236778
+        ],
+        "ids": 16,
+        "llama_first": 236778,
+        "llama_tokens": [
+          236778,
+          236778,
+          16652,
+          236763
+        ],
+        "mmq_first": 236800,
+        "mmq_first_margin": 3.2946672439575195,
+        "mmq_matches_llama": false,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          236800,
+          236800,
+          236800,
+          236800
+        ]
+      },
+      {
+        "arms_agree": false,
+        "base_first": 236800,
+        "base_first_margin": 5.954424858093262,
+        "base_matches_llama": false,
+        "base_tokens": [
+          236800,
+          236800,
+          236800,
+          236800
+        ],
+        "ids": 24,
+        "llama_first": 236771,
+        "llama_tokens": [
+          236771,
+          236812,
+          236771,
+          236812
+        ],
+        "mmq_first": 236812,
+        "mmq_first_margin": 2.8810911178588867,
+        "mmq_matches_llama": false,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          236812,
+          236812,
+          236812,
+          236812
+        ]
+      },
+      {
+        "arms_agree": false,
+        "base_first": 236778,
+        "base_first_margin": 3.1374034881591797,
+        "base_matches_llama": false,
+        "base_tokens": [
+          236778,
+          236825,
+          236743,
+          236828
+        ],
+        "ids": 96,
+        "llama_first": 236800,
+        "llama_tokens": [
+          236800,
+          236800,
+          236743,
+          236832
+        ],
+        "mmq_first": 236800,
+        "mmq_first_margin": 1.7277050018310547,
+        "mmq_matches_llama": true,
+        "mmq_route_used": true,
+        "mmq_tokens": [
+          236800,
+          236800,
+          236743,
+          236832
+        ]
+      }
+    ],
+    "finding": "The three arms disagree at all three lengths, and the anchor does not consistently side with either arm: it matches fp32 at 16 ids, the MMQ route at 96 ids, and neither at 24 ids. The fp32 top-2 margins are 1.56 to 5.95, against 12.31 to 13.46 on the frozen corpus, which is what probe_corpus was built to produce - its docstring states that the frozen corpus leaves the model close to certain everywhere and that a top-1 bar cannot see a reordering-class divergence there."
+  },
+  "finding": "The MMQ gate/up divergence is a near-tie sensitivity on rows that the probe corpus creates deliberately, not a defect that one arm has and the other does not. On confident natural rows all three engines agree exactly, and the campaign's recorded evidence - 1024 ids on the frozen corpus, where the route measures 7.335e-07 against the 5e-2 bar - is reproduced with the independent anchor agreeing as well. On the low-margin rows the anchor splits between the arms rather than condemning either, so the route does not diverge from an independent implementation by more than that implementation diverges from fp32.",
+  "caveats": [
+    "The anchor is one independent implementation and its own Q4_K_XL path is approximate, so it is evidence about which arm is closer rather than proof of correctness for either.",
+    "At 24 ids the anchor matches neither arm, so the low-margin rows remain unresolved at the level of which single arm is right on any one row; what the run establishes is that neither arm is systematically wrong.",
+    "The fp32 top-2 margins differ between the arms on the low-margin rows (5.954 against 2.881 at 24 ids), so the MMQ route does perturb logits more than fp32 does on those rows. That is a magnitude observation, not an attribution.",
+    "This is a diagnostic and adds no performance row; the campaign's timing evidence is unaffected."
+  ],
+  "reproduction": "Deterministic: the probe-corpus run was repeated and returned identical tokens for all three arms at all three lengths."
+}
