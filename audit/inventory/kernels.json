@@ -3534,7 +3534,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".hip",
-        "lines": 1149,
+        "lines": 1178,
         "referrers": 20,
         "runtime_referrers": [
           "hipengine/runtime/gemma4.py"
@@ -3562,7 +3562,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_attention.hip",
-      "evidence_hash": "d30bffeb19c8"
+      "evidence_hash": "3259ef58d355"
     },
     {
       "kind": "kernel",
