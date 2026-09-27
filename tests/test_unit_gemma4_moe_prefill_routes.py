@@ -23,6 +23,7 @@ import pytest
 
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
     _PREFILL_MODE_ENV,
+    _PREFILL_MODES,
     _WMMA_DUAL_PREFILL_COMP_VARIANT,
     _WMMA_DUAL_PREFILL_VARIANT,
     _WMMA_PREFILL_COMP_VARIANT,
@@ -35,17 +36,24 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
 def test_auto_keeps_the_exact_routes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(_PREFILL_MODE_ENV, raising=False)
     assert _prefill_mode() == "auto"
-    assert _prefill_route_flags("auto") == (False, False)
+    assert _prefill_route_flags("auto") == (False, False, False)
 
 
 def test_pinned_exact_modes_never_probe_wmma() -> None:
-    assert _prefill_route_flags("grouped") == (False, False)
-    assert _prefill_route_flags("selected") == (False, False)
+    assert _prefill_route_flags("grouped") == (False, False, False)
+    assert _prefill_route_flags("selected") == (False, False, False)
 
 
 def test_wmma_modes_select_compensated_and_plain() -> None:
-    assert _prefill_route_flags("wmma") == (True, True)
-    assert _prefill_route_flags("wmma_plain") == (True, False)
+    assert _prefill_route_flags("wmma") == (True, True, False)
+    assert _prefill_route_flags("wmma_plain") == (True, False, False)
+
+
+def test_mmq_mode_selects_only_the_grouped_int8_owner() -> None:
+    # The MMQ leaf replaces the BF16 gate_up owners rather than supplementing
+    # them, so it must not also ask for the WMMA route.
+    assert _prefill_route_flags("mmq") == (False, False, True)
+    assert "mmq" in _PREFILL_MODES
 
 
 def test_unknown_selector_falls_back_to_auto(monkeypatch: pytest.MonkeyPatch) -> None:

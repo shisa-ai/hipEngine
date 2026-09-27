@@ -3984,6 +3984,73 @@ record, not permission to reset unrelated work or weaken correctness.
   ``--prompt 2048 --prefill 1024`` (``--prefill`` defaults to 0 = decode-only) and
   measure with ``gemma4_campaign_bench.py``.
 
+  **Iteration 136: the grouped int8 MMQ route is 30% faster and WRONG -- two
+  corrections and a precise root cause.**
+
+  Implemented the port from iteration 135 and measured it end-to-end at 1024p/128o
+  through ``HIPENGINE_GEMMA4_MOE_PREFILL=mmq``::
+
+      mode    prefill tok/s        vs default
+      auto    687 / 685 / 684      --
+      mmq     895 / 894           +30.4%
+
+  Close to the projection from gate_up alone (2.07x on the 2/3 of MoE FLOPs that
+  gate_up owns predicts ~1.34x -> ~919 tok/s), and ``path parity=True``.
+
+  **The campaign logits gate then failed, and not marginally::**
+
+      metric      measured    bar
+      kl_max      25.54       0.05
+      kl_mean     0.777       0.001
+      kl_p95      5.73        0.005
+      kl_p99      12.61       0.02
+      top1_flips  125 / 1023  --
+      top1_rate   0.878       0.99
+
+  ``kl_max`` 25.5 is not a precision loss, it is the wrong function. **The +30.4%
+  is invalid and the route does not ship.**
+
+  **Correction 1 -- the tile plan is NOT shared.** Iteration 135 concluded the
+  MMQ32 leaf reuses the WMMA 16-row tile plan, because the microbench builds both
+  through one ``_make_uniform_compact_metadata`` call and asserts
+  ``mmq32_compact_rows == compact_rows``. That assert compares *compact* row counts,
+  which agree trivially; the MMQ32 call passes ``tile_rows=32`` while the WMMA call
+  takes the 16 default. Feeding the 16-row plan to the leaf produced an immediate
+  GPU page fault. The 32-row map already exists as ``qwen35_moe_mmq32_tile_map``
+  (``group_scatter.py:423``), and the qwen4 runner selects it with
+  ``tile_rows = 32 if q4_k_mmq_prefill else 16`` (``qwen4_exp_runner.py:3781``).
+  The leaf also wants the *actual* padded total read back from the device, not the
+  allocation's upper bound, which is what the WMMA path passes.
+
+  **Correction 2 -- the root cause of the wrong output is the weight layout.** The
+  MMQ32 leaf takes ``qweight_a`` and ``qweight_b`` with no stride parameter, so it
+  derives each expert's stride from that matrix's output width and therefore
+  requires **two separate per-expert allocations**. The qwen4 runner passes exactly
+  that: ``weights["expert_gate"]`` and ``weights["expert_up"]``, distinct buffers.
+  Gemma4 instead loads **one fused ``ffn_gate_up_exps`` tensor**
+  (``runtime/gemma4.py:108``), which the grouped owners handle through an explicit
+  ``expert_stride_rows=fused_width``. Passing ``base`` and ``base + half_bytes``
+  makes the leaf read expert 0's up half as expert 1's gate. Weights are *not* the
+  problem: the microbench copies raw Q4_K for this mode, so no repack is involved.
+
+  **State of the tree.** The scaffold is in place and verified -- the ``ds4_q8``
+  and ``compact_to_source`` scratch buffers, the identity-iota fill, the 32-row
+  ``_build_mmq_tile_plan``, and ``gemma4_project_experts_mmq_dual``. The route
+  itself refuses with an explicit ``NotImplementedError`` rather than returning
+  those logits, gated on ``_MMQ_DUAL_WEIGHTS_ARE_SPLIT``. ``auto`` and every other
+  mode are unchanged.
+
+  **Clearing condition**: split ``ffn_gate_up_exps`` into per-expert gate and up
+  allocations at load, then flip ``_MMQ_DUAL_WEIGHTS_ARE_SPLIT``. That is the only
+  remaining step before the +30% (and, with the q5_1 down leaf, the projected
+  ~1.57x) is available.
+
+  Evidence: the two mode tables and the gate verdict above;
+  ``$HOME/.cache/hipengine/tmp/gate_mmq_verdict.json``;
+  ``gemma4_experts.py`` (``_build_mmq_tile_plan``, ``gemma4_project_experts_mmq_dual``,
+  ``_MMQ_DUAL_WEIGHTS_ARE_SPLIT``); ``qwen4_exp_runner.py:3747``-``:3815`` (the
+  working split-weight MMQ32 integration).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
