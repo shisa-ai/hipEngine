@@ -4576,6 +4576,61 @@ record, not permission to reset unrelated work or weaken correctness.
   ``qwen36_execution_profile_adapter.py``; ``wc -l`` for the adapter and teacher
   fixture sizes.
 
+  **Iteration 146: complete prefill cost breakdown, and two quantified targets.**
+
+  Full per-kernel accounting for the current best route at ``--prompt 1024
+  --output 1`` (isolated prefill, 1432 ms of kernel time):
+
+      ms      %     n     per-launch  kernel
+     352.2  24.6   100      3.52 ms   gemma4_attention_decode_class_kernel
+     254.2  17.8   116      2.19 ms   gguf_q4_k_selected_dual_q8_1_ds4_mmq32   (MoE gate_up)
+     243.5  17.0   700      0.35 ms   gguf_q8_0_prefill_wmma_kernel             (dense)
+     107.8   7.5   116      0.93 ms   q5_1_selected_grouped_wmma_prefill_bf16  (MoE down)
+      99.1   6.9     4     24.77 ms   gguf_k_selected_prefill_out_kernel
+      86.0   6.0    20      4.30 ms   gemma4_attention_decode_class_kernel (2nd)
+      83.4   5.8   120      0.69 ms   gguf_q8_0_prefill_wmma_kernel (2nd)
+      49.9   3.5     4     12.47 ms   gguf_q4_k_selected_dual_grouped_rowbatch8
+      48.2   3.4   120      0.40 ms   qwen35_moe_group_compact_active_kernel
+      27.8   1.9   120      0.23 ms   qwen35_router_logits_token_tile_kernel
+
+  Attention is 438 ms combined (30.6%). Dense q/k/v/o is 327 ms (22.8%). The MoE
+  is 362 ms (25.3%) for gate_up plus down. Everything else is under 7% each.
+
+  **The prefill is chunked 4 ways.** Kernels that run per layer show ``n = 120``,
+  which is 4 chunks x 30 layers, so a 1024-token prefill is processed as four
+  256-token chunks. Kernels with ``n = 4`` therefore run **once per chunk, not per
+  layer** -- which is how ``gguf_k_selected_prefill_out_kernel`` is identified as
+  the lm_head rather than a per-layer projection.
+
+  **Target 1, needs verification before it is a claim: the lm_head runs over all
+  1024 prompt tokens.** ``gguf_k_selected_prefill_out_kernel`` is 99.1 ms at
+  ``n = 4``, one launch per 256-token chunk, so it projects every prompt position
+  through the full 262144-entry vocabulary: 1024 x 262144 x 2816 x 2 = 1.51 TFLOP
+  in 99.1 ms = **15.2 TFLOP/s**, which is close to the 21.7 TFLOP/s dense rate and
+  so is not itself inefficient. The question is whether the *caller* needs those
+  rows. Token generation samples only the final position, and if the generation
+  path requests all-token logits it spends 6.9% of prefill on rows nothing reads.
+  Not yet checked: what ``gemma4_campaign_bench.py`` and the GGUF generation path
+  actually request, and whether the bench's token-parity check is what forces the
+  all-token form. If the parity check is the reason, the win is real for
+  ``LLM.generate()`` and the bench should keep its behaviour.
+
+  **Target 2: dense q/k/v/o at 327 ms has roughly 3x headroom.** 820 launches at
+  0.35-0.69 ms each. Per layer the four projections are about 4 x 2816^2 x 2 =
+  63.4 MFLOP per token, so 1024 tokens over 30 layers is 1.95 TFLOP in 327 ms =
+  **6.0 TFLOP/s**, against the 21.7 TFLOP/s this engine already reaches on dense
+  int8 MMQ and the 32.5 TFLOP/s the WMMA down reaches. That is the same shape of
+  gap the MoE gate_up had before iteration 142, and the same fix may apply: an int8
+  MMQ dense owner already exists for Q8_0
+  (``scripts/execution_profile_q8_mmq_plane_gate.py`` is the gate for that plane),
+  so the question is whether the Gemma4 dense projections can route through it.
+
+  Both targets are recorded as quantified opportunities, not as findings: neither
+  was exercised or measured beyond the arithmetic above.
+
+  Evidence: ``rocprofv3 --kernel-trace`` at ``--prompt 1024 --output 1``
+  (``ROCR_VISIBLE_DEVICES=0``); the per-kernel table above.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
