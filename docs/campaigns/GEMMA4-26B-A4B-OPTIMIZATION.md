@@ -3045,6 +3045,71 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``gemma4_experts.py`` ``_PREFILL_MODES`` comment block (the ruling
   this reverts to); revert verified by the 708.10 tok/s default-path measurement.
 
+  **Iteration 116: the prefill-exercising gate works, and it says iteration 107's
+  dense change is not bit-identical. kl_max 0.3078 against a 0.05 bar.**
+
+  Iteration 115 established that the teacher-forced gate is blind to prefill
+  changes when captured with its default ``--prefill 0``. The gate's own
+  docstring gives the fix, and iteration 115 did not read far enough to find it::
+
+      use, for example, ``--prompt 2048 --prefill 1024`` to score 1023 decode rows.
+
+  ``--prefill N`` pushes N tokens through the prefill path, so their KV state is
+  whatever the candidate's prefill produced; the scored rows then diverge if the
+  prefill arithmetic did. Re-running iteration 107's dense WMMA change against an
+  incumbent captured the same way (kwarg removed, verified restored, tree clean
+  afterwards)::
+
+      failed          ['kl_max']
+      kl_mean         0.000317    bar 1e-3    PASSES
+      kl_p95          1.66e-05    bar 5e-3    PASSES
+      kl_p99          0.0001435   bar 2e-2    PASSES
+      kl_max          0.3078      bar 5e-2    FAILS, 6.2x over
+      top1_rate       1.0, 0 flips            PASSES
+      prefill         1024, scored_key_range [1025, 2047]
+
+  **So iteration 107's claim that the change is "bit-identical where measured" is
+  false, and iteration 116 is the entry that corrects it.** The measurement it
+  rested on was taken with ``--prefill 0``, which makes the whole chain decode and
+  cannot see a prefill route at all.
+
+  **The campaign already documents this failure signature.** Line 687, on an
+  earlier arm: a gate "reported ``kl_max`` of exactly 0.0. The 2026-09-25 split
+  gate result (kl_max 0.006746) therefore measured the sliding read range, not
+  [the intended quantity]." Exactly-zero is a known artifact of a mis-scoped
+  chain here, and iteration 113 read it as proof of bit-identity rather than as a
+  reason to check the chain.
+
+  **What the numbers mean.** The pattern is the one the campaign's own record
+  describes for this class: every aggregate bar passes with 3-100x margin and
+  top-1 is unchanged on all 1023 rows, while a single order statistic breaches.
+  The recorded framing applies unchanged: "``kl_max`` is a single order
+  statistic, and on a peaked reference it is dominated by the residual tail: a
+  candidate whose tail is a few orders of magnitude smaller scores a large KL
+  while agreeing on every token."
+
+  **Both of this campaign's performance changes sit on the same question**, which
+  the record states is "a decision rather than a measurement ... recorded here
+  rather than taken: either [the kernel is made bit-identical], or the
+  applicability of an absolute ``kl_max`` bar to a peaked reference on a greedy
+  workload is re-derived with the lead, or the strict path returns as the
+  default." Iteration 107's dense change is live on the default path and
+  breaches; iteration 113's MoE change is reverted and breaches. Neither is a
+  defect by the campaign's own classification, and neither can be promoted by an
+  agent while that question is open -- so the default-path status of the dense
+  change is surfaced to the lead with this measurement rather than decided here.
+
+  **The engineering follow-up this suggests**: the MoE family carries
+  ``_WMMA_PREFILL_COMP_VARIANT`` compensated twins precisely to hold bit-identity
+  on a WMMA route. If the dense ``t16_wmma_prefill`` family has an equivalent,
+  the +18.6% could be kept without the breach, which would settle the question by
+  measurement instead of by ruling. That is the next thing to check.
+
+  Evidence: gate verdicts at ``~/.cache/hipengine/gates/dense_verdict.json``
+  (prefill 1024) against ``dense_ON_p1024.npz`` and ``dense_OFF_p1024.npz``;
+  ``gemma4_teacher_forced_gate.py:31`` (the ``--prefill`` recipe), ``:445``
+  (prefill-mismatch check); campaign line 687 (the known exactly-zero artifact).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
