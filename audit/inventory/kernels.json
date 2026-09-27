@@ -3609,7 +3609,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 859,
+        "lines": 937,
         "referrers": 8,
         "runtime_referrers": [],
         "test_referrers": [
@@ -3636,7 +3636,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_experts.py",
-      "evidence_hash": "0936432b20fc"
+      "evidence_hash": "1667a0b179bf"
     },
     {
       "kind": "kernel",
@@ -5791,7 +5791,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 1869,
+        "lines": 1883,
         "referrers": 77,
         "runtime_referrers": [
           "hipengine/quant/gguf_k.py",
@@ -5823,7 +5823,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_k_gemv.py",
-      "evidence_hash": "69ee890911b5"
+      "evidence_hash": "52d91c05daff"
     },
     {
       "kind": "kernel",
