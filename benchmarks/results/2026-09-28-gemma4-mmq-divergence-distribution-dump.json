@@ -85,5 +85,22 @@
  ],
  "artifacts": {
   "dump_script": "/tmp/mmq_dump.py (scratch, not committed)"
+ },
+ "leaf_contract_cleared_this_pass": {
+  "why": "The dump left one named next step: read the leaf and check what it does with tile_capacity, total_rows and the identity map when the live tile count is far below capacity, in particular whether any index is derived from the capacity rather than from total_rows. That pass is done and it cleared the surface it was aimed at.",
+  "cleared": [
+   "Grid dimension: the launcher computes row_tiles = mmq_total_rows / 32, so the grid covers every padded tile rather than only the compact rows. Correct.",
+   "Row masking inside the leaf body: valid_rows is min(expert_count - tile_row_in_expert, 32) with a <= 0 guard, and valid_route is local_route >= 0 && local_route < expert_count. Padded rows are masked at both the weight and the activation load. Correct.",
+   "Activation plane stride agreement: the pack kernel gguf_q8_1_mmq_ds4_pack_bf16_kernel writes plane_blocks = rows * blocks_per_row with rows = compact_rows, and the leaf body reads plane_blocks = q8_blocks_per_row * source_rows where the fused kernel passes source_rows = compact_rows. The two match exactly and both take the same compact_rows. No stride mismatch.",
+   "Activation indexing: source_row = compact_to_source[compact_base + local_route] with local_route bounded by expert_count, so compact_row stays inside [0, compact_rows) and the identity map is read in range.",
+   "The identity buffer itself: total_lanes = tokens * top_k, buffer is lanes * 8 bytes, arange is total_lanes int64. Correctly sized, and its contents are the identity the comment claims."
+  ],
+  "not_cleared": "tile_capacity is still the one measured quantity out of proportion to the live work, and nothing in this pass showed anything misbehaving because of it. The capacity is derived from the widest block (8192 lanes / 32 + 1 = 257) while the live work is 84 to 93 tiles at the dumped lengths."
+ },
+ "capacity_arithmetic_note": {
+  "observation": "tile_capacity must cover sum(ceil(count_e / 32)) tiles, which is compact_rows / 32 only when every expert's count is a multiple of 32. For a ragged distribution it approaches (compact_rows + 31 * experts_with_rows) / 32. The capacity is instead derived from total_lanes / 32 + 1, which is a different quantity: at 64 ids, total_lanes = 512 gives 17 tiles but the route actually needs 84.",
+  "why_it_did_not_bite_here": "the scratch is sized for the widest block the route serves, 1024 tokens or 8192 lanes, giving 257 tiles, and the caller guards total_rows > tile_capacity * 32 before launching. At the dumped lengths 84 and 93 are both under 257, so the guard never fires and no tile is dropped.",
+  "why_it_is_still_the_lead": "it is tight in the other direction. At 1024 ids the padded total is about 8192, which is 256 tiles against a capacity of 257, so a slightly more ragged distribution at the widest length would hit the guard rather than silently corrupt. A route whose capacity is 17 tiles at one length and 257 at another, sized by the widest, is exactly the 'scratch is a capacity, not an identity' shape the recorded artifact flagged, and the guard converts an overflow into a raise rather than a wrong answer - which is the right design but does not explain a wrong answer at 64 ids.",
+  "next": "the trigger is still unidentified. What this pass adds is a cleared list: the tile map kernel, the identity buffer, the grid dimension, the row masking and the pack/leaf stride agreement are all correct, so the remaining surface is narrower than it was. The next step is to compare the leaf's actual per-tile inputs at 64 ids against 96 ids rather than reading more source."
  }
 }
