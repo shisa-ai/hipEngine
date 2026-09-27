@@ -3534,7 +3534,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".hip",
-        "lines": 1178,
+        "lines": 1221,
         "referrers": 20,
         "runtime_referrers": [
           "hipengine/runtime/gemma4.py"
@@ -3562,7 +3562,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_attention.hip",
-      "evidence_hash": "3259ef58d355"
+      "evidence_hash": "f8a6f258aa15"
     },
     {
       "kind": "kernel",
@@ -3572,7 +3572,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 469,
+        "lines": 493,
         "referrers": 20,
         "runtime_referrers": [
           "hipengine/runtime/gemma4.py"
@@ -3599,7 +3599,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_attention.py",
-      "evidence_hash": "c4b9437addc9"
+      "evidence_hash": "171cc3f2f745"
     },
     {
       "kind": "kernel",
@@ -3646,7 +3646,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 604,
+        "lines": 622,
         "referrers": 9,
         "runtime_referrers": [
           "hipengine/loading/gemma4_gguf_materialize.py",
@@ -3678,7 +3678,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_layer.py",
-      "evidence_hash": "f03fc6cc90f6"
+      "evidence_hash": "5a538ae5dbfd"
     },
     {
       "kind": "kernel",
@@ -10705,7 +10705,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 509,
-        "referrers": 553,
+        "referrers": 555,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
@@ -10737,7 +10737,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/yue2/nar.hip",
-      "evidence_hash": "311027bf132e"
+      "evidence_hash": "b355c66ed19f"
     },
     {
       "kind": "kernel",
@@ -10748,7 +10748,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 246,
-        "referrers": 553,
+        "referrers": 555,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
@@ -10779,7 +10779,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/yue2/nar.py",
-      "evidence_hash": "8f3625cb17ae"
+      "evidence_hash": "6b997d0f1801"
     },
     {
       "kind": "kernel",
