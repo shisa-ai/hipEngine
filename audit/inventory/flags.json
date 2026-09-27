@@ -2509,7 +2509,7 @@
       "kind": "flag",
       "key": "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ",
       "title": "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ",
-      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:124",
+      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:129",
       "evidence": {
         "default": "unknown",
         "sites_by_root": {
@@ -2518,9 +2518,9 @@
           "tests": 4
         },
         "runtime_sites": [
-          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:124",
-          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:128",
-          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:140"
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:129",
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:133",
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:145"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -2540,7 +2540,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ",
-      "evidence_hash": "502df7b5b3b5"
+      "evidence_hash": "4400da48cfcb"
     },
     {
       "kind": "flag",
