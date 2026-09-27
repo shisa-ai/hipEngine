@@ -447,16 +447,18 @@ CTA computes an output, not the order its k-blocks accumulate in, and the
 1023-row teacher-forced gate returns exactly its previous verdict - and takes
 prefill to 1791.1 tok/s on the W7900 and 1988.7 on the XTX. Serving the same
 shapes from the int8 MMQ128 chain was measured and **rejected**: it is 44%
-slower.
+slower. Together the tile and the attention swap take prefill from 1394 to
+1791.1 tok/s on the W7900 and from 1886.8 to 1988.7 on the XTX, against
+llama.cpp's 3761 and 4124 on the same GPUs.
 
 hipEngine's own shape matrix at 128 outputs: decode 52.28 tok/s at a 128-token
-prompt, 48.12 at 512, 43.87 at 1024, 40.02 at 4096; prefill 140.2 / 135.7 /
+prompt, 48.12 at 512, 43.84 at 1024, 40.02 at 4096; prefill 140.2 / 135.7 /
 128.5 / 108.6 tok/s at the same shapes. The 128/512/4096 rows are one sample
 each; the 1024/128 row is three. The matrix's prefill figures were taken before
-the expert-projection routing and the flash-attention path; the current
-1024-token prefill is the 1886.8 tok/s in the table, and the current 1024/128
-decode is unchanged at 43.87. First-token latency at 1024 is 0.54 s and
-public request wall time is 3.44 s including prefill. Decode is close to flat
+the expert-projection routing, the flash-attention path and the tile change; the
+current 1024-token prefill is the 1988.7 tok/s in the table, and the current
+1024/128 decode is unchanged at 43.84. First-token latency at 1024 is 0.51 s and
+public request wall time is 3.41 s including prefill. Decode is close to flat
 across context length - 52.28 down to 40.02 - because the sliding layers, 25 of
 the model's 30, read only the keys inside their 1024-token window instead of
 walking the whole cached context and masking the difference away.
