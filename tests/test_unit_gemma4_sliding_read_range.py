@@ -136,3 +136,31 @@ def test_a_dense_block_mask_covers_every_key_from_the_range():
 def test_zero_window_is_rejected_rather_than_silently_wrong():
     with pytest.raises(ValueError):
         _sliding_read_range(_Attention(0), start=10, rows=1)
+
+
+def test_every_column_below_the_per_row_bound_is_masked():
+    """The kernel may start a row's walk at its own first kept column.
+
+    Row ``t`` of a block sits at ``start + t`` and the mask's column 0 is key
+    ``key_begin``, so the row's own bound is ``max(0, (start - key_begin) + t -
+    window + 1)``. Every column below it must be zero, or starting the walk
+    there would drop a key the mask keeps and the output would be wrong rather
+    than merely different. The bound must also be tight, since a bound that
+    lags the mask would silently give back the win it is there to take.
+
+    This is the contract the prefill kernel's per-row skip relies on, and it
+    has to hold for every block shape, not only for one-row blocks.
+    """
+
+    for window in (1, 4, 1024):
+        for start in (0, 1, 5, 1024, 4096):
+            for rows in (1, 2, 8, 64):
+                attention = _Attention(window)
+                key_begin = _sliding_read_range(attention, start, rows)
+                mask = _keep_mask(attention, start, rows)
+                for token in range(rows):
+                    bound = max(0, (start - key_begin) + token - window + 1)
+                    assert not mask[token, :bound].any(), (window, start, rows, token)
+                    # A row always keeps its own position, so the bound names a
+                    # column that exists and is kept.
+                    assert mask[token, bound], (window, start, rows, token)
