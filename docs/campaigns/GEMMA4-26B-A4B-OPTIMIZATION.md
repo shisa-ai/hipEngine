@@ -2364,6 +2364,64 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``scripts/gemma4_amortized_ab.py`` (reused); reverted change described
   above.
 
+  **Iteration 105: the platform is healthy and the 8-9% drift is a 12% clock
+  swing. Kernel conclusions stand; A/B method has to change.**
+
+  Four shape and traffic retunes failed to move the MoE kernels, and both land at
+  ~7.7 ms per call despite very different shapes (16.2 G MACs against 8.1 G). A
+  uniform shortfall across unrelated kernels is what a throttled or low-clocked
+  device produces, so this iteration checked the platform state directly with
+  ``rocm-smi`` under a real prefill load::
+
+      t=4s    junction 32C   sclk    0 MHz   power  13 W   idle (model loading)
+      t=8s    junction 42C   sclk 2588 MHz   power 267 W   active
+      t=12s   junction 37C   sclk 2850 MHz   power  80 W
+      t=16s   junction 38C   sclk    0 MHz   power  10 W
+      t=20s   junction 73C   sclk 2500 MHz   power 240 W   active
+      t=24s+  junction ~37C  sclk    0 MHz   power  14 W   idle (model loading)
+
+  **The platform is healthy.** Under load the device holds 2588-2850 MHz, which is
+  at or above the W7900's nominal boost, draws 267 W against a 295 W limit, and
+  reaches 73 C junction. There is no throttling and no low-power state. So the
+  kernels do saturate the device and the 20-40x-off-roofline finding stands -- the
+  remaining gap is genuinely kernel inefficiency, not platform state.
+
+  **A first reading of this data was wrong and is worth recording.** Sampling
+  only from t=22s showed sclk 0 MHz and a flat junction, which read as "the device
+  is idle, so the kernels are occupancy-bound". That was an artifact: the A/B
+  script spends most of its wall time loading the model, so the samples missed the
+  GPU windows entirely. Sampling from t=0 across back-to-back runs caught two
+  267 W / 240 W bursts. The lesson is that a plausible mechanism (occupancy) plus
+  an unvalidated instrument (sampling that missed the load window) produced a
+  confident wrong conclusion in one step -- the same failure mode as iterations
+  99-100, in a different costume.
+
+  **The drift is explained, and it is thermal.** The device boosts to **2850 MHz**
+  when cool and settles to **~2500 MHz** hot. That is a **~12% swing**, which
+  brackets the 8-9% run-to-run variation measured repeatedly in this session
+  (production 598.36 tok/s against a recorded 653.68; layer_total 1699.9 ms
+  against ~1570 ms earlier in the same session). It is not a mystery and it is not
+  noise in the ordinary sense -- it is a clock state that depends on how recently
+  the GPU ran hard.
+
+  **What this means for method.** Comparisons below ~10% are unreliable in the
+  order the campaign has been running them, which is single-arm before/after:
+  the first arm runs cool and fast, the second runs hot and slow. Consequences
+  already visible in the record: the ``<8, 4>`` vs ``<4, 8>`` rejections (1.52x,
+  1.93x) are far above the band and stand; the COLS=4 result (~4%, iteration 104)
+  sits inside it and was correctly reverted rather than kept on a weak margin.
+  Going forward, either interleave the arms or warm the device to a steady state
+  before measuring, and state the clock state with any sub-10% claim.
+
+  **Cheap practical note.** Model loading dominates wall time -- roughly 10-13% of
+  a measurement run is GPU-busy. A GPU-bound microbenchmark that reuses loaded
+  weights would make iteration several times cheaper than the current
+  load-model-per-arm loop.
+
+  Evidence: ``rocm-smi --showclocks --showtemp --showpower`` sampled at 4 s
+  intervals across three back-to-back ``scripts/gemma4_amortized_ab.py`` runs;
+  ``/tmp/clock_{1,2,3}.txt``.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
