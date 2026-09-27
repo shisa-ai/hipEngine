@@ -1538,6 +1538,56 @@ record, not permission to reset unrelated work or weaken correctness.
   fit, the plumbing is nearly all present, and the prize is real. Reverted;
   the grouped fp32 owners stay on the MoE line.
 
+  **Iteration 88: the MoE dp4a route is closed after four attempts, all wrong,
+  all reverted -- and the census reported a win on every one of them.** Iteration
+  87 recorded two attempts. Two more followed, each after reading the reference
+  more carefully, and each failing the same way.
+
+  **Attempt 3: separate expert-start arrays.** Reading the launcher showed it
+  takes ``expert_start_compact`` *and* ``expert_start_mmq32`` as distinct
+  arguments, and ``qwen4_exp_runner`` passes ``group_expert_start`` (compact) for
+  the first and ``group_wmma_expert_start`` (plan) for the second. My earlier
+  attempts had passed one array for both, in opposite directions: attempt 1 used
+  the padded array as compact, attempt 2 used the compact array as padded. Fixed
+  to match the reference exactly. Result: non-finite.
+
+  **Attempt 4: padded-capacity buffers.** Reading the reference's *allocations*
+  -- which I had never done, having only read its call -- showed its identity map
+  and Q8_1 workspace are sized by ``compact_capacity``, not by the unpadded row
+  count. Since the tile plan pads rows to a 32-row boundary, sizing by ``lanes``
+  lets the owner index past the end for padding rows, and an uninitialized int64
+  row index is a wild gather. Sized both by a padded-capacity bound and filled
+  the identity over the padded range. Result: non-finite.
+
+  **The pattern, which is the real finding.** Each round I found a genuine
+  discrepancy, fixed it, and the failure mode never changed. Four rounds of that
+  is not a sequence of near-misses; it means my model of the contract is wrong in
+  a way I have not identified, and reading the reference one detail at a time is
+  narrowing it too slowly to converge.
+
+  **And the instrument was actively misleading.** Every broken attempt produced a
+  large apparent speedup on the census: 801.75 tok/s (+22.6%) on attempt 1,
+  747.49 (+24.8%) on attempt 3, 744.60 (+24.3%) on attempt 4, against a 598.9
+  baseline. A broken path is *faster*, because it is not doing the work
+  correctly, so the census did not merely fail to catch four wrong kernels -- it
+  recommended all four. An instrument that rewards the failure it cannot see is
+  worse than no instrument.
+
+  **What to do instead, next time.** The contract has at least five interacting
+  arrays (packed activations, compact-to-source map, two expert-start arrays, the
+  tile-expert map, two weight pointers, and an output layout). Iterating that
+  through a ten-minute end-to-end gate costs forty minutes to learn one bit per
+  round. A kernel-level numerical oracle -- run the MMQ owner against the fp32
+  grouped owner on random inputs and compare, ~30 seconds per cycle -- would have
+  localized the error to weights, plan, or output layout in the first round and
+  made the other three unnecessary. Build the direct oracle before touching the
+  end-to-end path.
+
+  The route is unproven, not disproven: the owner's shape constraints fit, the
+  plumbing is nearly all present, and the apparent prize (~25%) is large enough
+  to be worth a properly instrumented attempt. It is not worth a fifth
+  inference. Reverted; ``gemma4_experts.py`` is byte-identical to HEAD.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
