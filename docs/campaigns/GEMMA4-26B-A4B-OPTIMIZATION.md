@@ -3254,6 +3254,40 @@ record, not permission to reset unrelated work or weaken correctness.
   campaign lines 313-348 (iterations 21-22, the decode restructure and its
   bit-exactness); ``LESSONS-LEARNED.md`` 636-690.
 
+  **Iteration 120: the owed attention measurement is a small census change, not a
+  new instrument.**
+
+  Iterations 118-119 both ended at the same owed step: attention is 19.2% of layer
+  time and has no measured traffic, so the GQA and address-hoisting leads cannot
+  be priced. Reading the census's own hook structure closes that gap to a local
+  edit.
+
+  ``gemma4_prefill_census.py`` already wraps the attention entry point::
+
+      census.wrap(gemma4_layer, "gemma4_attention_prefill_bf16",
+                  lambda *a, **k: "attention_prefill")
+
+  and ``census.wrap`` passes the full launch argument list to its label function,
+  exactly as ``dense_label(x_ptr, weight, out_ptr, rows, in_features,
+  out_features, **kw)`` does. ``dense_label`` ignores its own shape arguments and
+  lets the census compute ``wb + rows * (in_features + out_features) * 2`` from
+  the same arguments it was handed, recording into ``shape_bytes`` as a side
+  effect. Attention needs the identical treatment: a label that names the shape
+  and records K/V bytes plus Q and output bytes, using the geometry the launcher
+  already receives.
+
+  **So the remaining work is an ``attention_label`` of roughly the size of
+  ``dense_label``**, not a profiler run and not a new harness. The one unknown is
+  the launcher's argument order, which the wrapper exposes directly. Until it
+  exists, every statement about attention traffic in this campaign -- including
+  iteration 46's structural description and iteration 118's 1.11x projection --
+  is unmeasured, and the four measurement failures already logged in this session
+  are the reason to leave it that way rather than estimate.
+
+  Evidence: ``scripts/gemma4_prefill_census.py:112``-``114`` (the attention wrap),
+  ``:58``-``59`` (``dense_label`` and the ``shape_bytes`` side effect),
+  ``:106``-``110`` (the report that consumes it).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
