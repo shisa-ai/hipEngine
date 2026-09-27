@@ -2096,6 +2096,51 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``gguf_q4_k_selected_prefill.hip:2680`` (launcher geometry);
   ``gguf_q4_k_selected_prefill.py:1593`` (registration).
 
+  **Iteration 100: A/B confirms the input-traffic model and fits its cost; the
+  gate_up kernel is 39% fixed cost. Predicts 1.4-1.8x from a wider out_batch.**
+  ``gemma4_experts`` inserts the amortized dual owner only while ``in_features <=
+  _GROUPED_DUAL_AMORTIZED_MAX_IN_FEATURES``. Lowering that constant to 2048 makes
+  the same forward fall back to the non-amortized row-batch owner on identical
+  shapes, which is a 4x spread in input traffic on the same kernel family. Both
+  arms measured with the shape census, one 1024-token prefill each::
+
+      arm  resolved variant                                  in-traffic   gate_up
+      A    selected_dual_grouped_rowbatch8_out4_amortized    8.12 GB      7742 us
+      B    selected_dual_grouped_rowbatch8                   32.5 GB     21824 us
+
+  4x the input traffic costs 2.82x the time, so the kernel is **partially**
+  traffic-bound. Two points fit a linear model::
+
+      time = 3052 us fixed + 577 us/GB of traffic
+
+  The slope is ~1.73 TB/s effective, **above the 864 GB/s HBM peak** -- independent
+  corroboration of iteration 99's L2 inference, from a different experiment.
+
+  **The fixed term is the more interesting number: 3052 us of the current 7742 us,
+  39%, does not move with traffic at all.** That is compute/issue cost, and it is
+  the floor this lever can reach. Predicted gate_up at wider out-blocks, from the
+  fit rather than from a bandwidth argument::
+
+      out_batch    in-traffic   predicted   vs now
+          4 (now)    8.12 GB      7742 us    1.00x  (measured)
+          8          4.06 GB      5562 us    1.39x
+         16          2.03 GB      4391 us    1.76x
+         32          1.02 GB      3802 us    2.04x
+      asymptote     0            3052 us    2.54x
+
+  **Why this justifies building the wider block.** The earlier case for it rested
+  on an inferred L2-residency argument. This rests on a measured two-point fit
+  whose slope is independently corroborated, and it bounds the payoff: no wider
+  block can beat 2.54x on this kernel, because the fixed cost does not shrink.
+
+  **The down projection did not move**: 7864 us in arm B against 8116 us in arm A,
+  a 3% difference within run-to-run noise. The gate covers only the *dual* owner,
+  so the 470 ms ``selected_grouped_prefill_pair2_fold128`` kernel was untouched by
+  the switch and its own geometry is still unexamined. It is the single largest
+  shape in the prefill and the next thing to read.
+
+  Evidence: ``scripts/gemma4_amortized_ab.py`` (the A/B, committed).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
