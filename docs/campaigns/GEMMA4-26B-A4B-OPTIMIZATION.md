@@ -2255,6 +2255,65 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``scripts/gemma4_prefill_census.py`` (both arms);
   ``/tmp/census_{auto,wmma}.txt``.
 
+  **Iteration 103: the down projection re-reads its input 4x per CTA -- read from
+  the code, not inferred. It is the gate_up's `AMORTIZE_INPUT` fix, never applied.**
+
+  ``q5_1_selected_grouped_prefill_pair2_bf16_kernel`` at Gemma's down geometry
+  (FOLD128, no pair-reduce, no register cache, no row publish) runs this nest::
+
+      for (offset = 0; offset < 8; offset += 2) {          // 4 passes, 2 columns
+        load metadata for 2 columns; __syncthreads();
+        for (base = begin; base < end; base += R) {        // rows, R = 8
+          for (column = threadIdx.x; column < k; column += L) {   // k, L = 256
+            x0 = input[(base+r)*k + column];               // input load
+            ...FMA...
+
+  **The whole row-by-k traversal is inside the offset loop**, so every CTA walks
+  its expert's input slice once per offset pass -- four times. This is exactly the
+  shape the gate_up's ``AMORTIZE_INPUT`` exists to remove, and this kernel never
+  got that treatment.
+
+  Traffic at Gemma's down geometry (4096 rows, k=704, n=2816, 128 experts)::
+
+      CTAs per expert       n / 8            = 352
+      offset passes         per CTA          = 4
+      rows per expert                        = 32
+      input bytes           352*4*32*704*2   = 63.4 MB per expert
+      total                 x 128 experts    = 8.1 GB
+
+  Against a 5.8 MB input tensor that is a **~1400x re-read**, four times worse
+  than the gate_up's 352x. At the measured 8.08 ms it is **~1.0 TB/s apparent**,
+  and the time matches the traffic almost exactly.
+
+  **The weight dequantization is not the problem** -- the hypothesis this
+  iteration started from is wrong. ``w0[p]``/``w1[p]`` are hoisted out of the row
+  loop, so each weight is dequantized once and reused across all R=8 rows, the
+  same amortization the gate_up has. Only the input re-read differs.
+
+  **The fix is the nest swap the gate_up already has.** Swapping amortized-vs-not
+  is the one *unconfounded* direction in iteration 100's comparison -- arm A
+  against arm B varied code structure and traffic together, but the swap itself
+  measured 2.82x. The constraint is that reusing input across columns needs one
+  accumulator per (column x row): 8 columns x 8 rows = 128 accumulators is the
+  configuration that regressed 1.93x on the gate_up. The 64-accumulator options
+  are 4 columns x 8 rows (traffic halves to ~4 GB) and 8 columns x 4 rows (input
+  read once, ~2 GB, at the cost of halving the dequant amortization).
+
+  Predicted from the traffic: 8.1 GB -> ~4 GB or ~2 GB, so ~4 ms or ~2 ms
+  against 8.08 ms measured, on a shape worth 470 ms of the prefill.
+
+  **Why this is not iteration 99-100 again.** Those inferred a mechanism from a
+  two-point fit whose slope looked corroborated because it exceeded HBM peak; the
+  inference was wrong and cost two iterations. Here the re-read is *in the code*
+  -- the nest is literally written that way -- and the traffic model is a
+  multiplication over constants that are all visible. The apparent-bandwidth
+  agreement is corroboration, not the argument. The A/B is still the test, and if
+  a swapped nest does not win, this entry is wrong and should be corrected by a
+  new one.
+
+  Evidence: ``qwen4_exp_q5_1.hip:515`` (kernel), ``:590-612`` (the nest),
+  ``:1798`` (launcher).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
