@@ -1,7 +1,7 @@
 {
   "kind": "flags",
   "meta": {
-    "names": 753,
+    "names": 754,
     "roots": "hipengine, scripts, tests, benchmarks"
   },
   "rows": [
@@ -2471,6 +2471,39 @@
       },
       "id": "flag/HIPENGINE_GDN_TLOOP_C1_EXACT",
       "evidence_hash": "43450df6f6eb"
+    },
+    {
+      "kind": "flag",
+      "key": "HIPENGINE_GEMMA4_ARTIFACT",
+      "title": "HIPENGINE_GEMMA4_ARTIFACT",
+      "location": "scripts/gemma4_campaign_bench.py:62",
+      "evidence": {
+        "default": "unknown",
+        "sites_by_root": {
+          "scripts": 2
+        },
+        "runtime_sites": [],
+        "in_refactor_ledger": false,
+        "in_envs_doc": true
+      },
+      "signals": [
+        "no read site under hipengine/ \u2014 only scripts",
+        "read only from harnesses, never by the runtime",
+        "no docs/REFACTOR.md entry \u2014 no recorded removal condition"
+      ],
+      "hints": {
+        "anchor": "env",
+        "refs": [
+          "HIPENGINE_GEMMA4_ARTIFACT"
+        ],
+        "tokens": [
+          "artifact",
+          "gemma4",
+          "hipengine"
+        ]
+      },
+      "id": "flag/HIPENGINE_GEMMA4_ARTIFACT",
+      "evidence_hash": "a511c28f9dbd"
     },
     {
       "kind": "flag",
