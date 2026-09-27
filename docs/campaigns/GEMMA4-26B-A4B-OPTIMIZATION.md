@@ -1972,6 +1972,49 @@ record, not permission to reset unrelated work or weaken correctness.
 
   Evidence: ``scripts/gemma4_weight_bytes_census.py``.
 
+  **Iteration 97b: per-shape census -- the dense linears run at 1.5% of memory
+  bandwidth, and I cannot yet say which owner is running them.**
+  ``scripts/gemma4_prefill_shape_census.py`` reuses the prefill census's HIP-event
+  timing but labels each call by shape and adds bytes, GB/s, and TF/s. The family
+  view had been hiding the distribution, and the distribution is the story::
+
+      shape                                              calls   tot ms   mean us   MB/call  GB/s  TF/s
+      moe_grouped:gguf_q5_1 rows=4096 k=704  n=2816 e=128    58    473.2    8158.6   219.15  26.9   2.0
+      moe_grouped_dual:q4_k rows=4096 k=2816 n=1408 e=128    58    451.3    7780.6   320.08  41.1   4.2
+      dense:gguf_q8_0 r=512 k=2816 n=2112                   120    107.0     891.7    11.37  12.7   6.8
+      dense:gguf_q8_0 r=512 k=2816 n=4096                    50     74.1    1482.4    19.33  13.0   8.0
+      dense:gguf_q8_0 r=512 k=2816 n=2048                   100     73.7     736.9    11.11  15.1   8.0
+      dense:gguf_q8_0 r=512 k=2112 n=2816                    60     63.6    1059.9    11.37  10.7   5.7
+      dense:gguf_q8_0 r=512 k=4096 n=2816                    50     55.4    1108.5    19.33  17.4  10.7
+
+  **Measured, and solid.** Every dense call is 512 rows. The dense line achieves
+  10.7-17.4 GB/s -- about 1.5% of the 864 GB/s peak -- at 5.7-10.7 TF/s. The MoE
+  families do better but are still low: 26.9-41.1 GB/s at 2.0-4.2 TF/s. The two
+  MoE shapes alone are 924 ms of the 1570 ms layer total, 59%.
+
+  A 512x2816x2048 projection moves 11.4 MB, which at peak bandwidth is 13 us. It
+  takes 737 us: 57x off the memory roofline, and roughly 15x off an INT8 compute
+  roofline. It is inefficient at both, so neither roofline is the binding
+  constraint.
+
+  **Not asserted, and this matters before any kernel conclusion.** The label is by
+  *quant*, not by *owner*. ``_NATIVE_ROWTILE_CHUNK_MAX_ROWS = 512`` carries the
+  comment "rows >= 512 is the bulk-prefill regime and stays on WMMA", so these
+  512-row dense batches may be running the WMMA path rather than the Q8_0 MMQ
+  path -- in which case the finding is that the WMMA dense path is slow and the
+  MMQ path is not engaged for these shapes at all, which is a different problem
+  with a different fix. Which owner serves these shapes has to be established
+  first; the shape census deliberately does not guess.
+
+  **Why this matters for the campaign's direction.** Every lever pursued so far --
+  the MoE dp4a route, the weight_pack questions, the layout templates, the
+  two-plane MMQ variant -- assumes weight traffic is the constraint. At 1.5% of
+  bandwidth on the dense line and ~3-5% on the MoE line, it cannot be. Whatever
+  the owner turns out to be, the headroom is in kernel efficiency, and the first
+  question is which kernel is running.
+
+  Evidence: ``scripts/gemma4_prefill_shape_census.py``.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
