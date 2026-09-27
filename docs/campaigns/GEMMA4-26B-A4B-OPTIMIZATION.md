@@ -3839,6 +3839,48 @@ record, not permission to reset unrelated work or weaken correctness.
   ``gemma4_experts.py:558``-``:576`` (the route comment) and ``:589``
   (``_prefill_route_flags``).
 
+  **Iteration 133: `wmma_plain` PASSES the campaign's logits gate, and its kl_max
+  is 58x BETTER than the compensated form's -- the fast arm is also the accurate one.**
+
+  Ran ``scripts/gemma4_teacher_forced_gate.py`` capture/gate at ``--prompt 2048
+  --prefill 1024``. The explicit ``--prefill`` matters: it defaults to 0, which
+  makes the chain decode-only, and that default is what made the iteration-107 gate
+  run blind to its own prefill changes. This run's provenance records
+  ``prefill: 1024``, so the prefill path is demonstrably exercised.
+
+      metric      measured     bar      margin
+      kl_max      0.00104      0.05      48x under
+      kl_mean     6.90e-06     0.001    145x under
+      kl_p95      1.85e-05     0.005    271x under
+      kl_p99      1.60e-04     0.02     125x under
+      top1_flips  0 / 1023     --       perfect
+
+  The divergence is **non-zero**, so the candidate genuinely differed from the
+  baseline and the comparison is meaningful; a self-comparison would report
+  ``kl_max`` of exactly 0.0.
+
+  **`wmma_plain`'s kl_max (0.00104) is 58x better than the compensated form's
+  recorded 0.0609.** The arm that pays +45.6% in speed is also the more accurate
+  one, which makes the compensated form **dominated on both axes** at this shape:
+  not faster (+0.3%) and with a worse recorded divergence. There is no configuration
+  in which enabling the compensated arm is the right call.
+
+  **Caveat on the comparison.** The recorded 0.0609 does not state its ``--prefill``.
+  If it came from a default-``--prefill`` run it measured a different (decode-only)
+  path than this one. This measurement is the one whose provenance states
+  ``prefill: 1024``, so it is the one with the prefill path demonstrably exercised.
+
+  **``promotion_qualified: false``.** The campaign's logits gate is necessary but
+  not sufficient; the full execution-profile gate in ``docs/EXECUTION-PROFILES.md``
+  is still owed before this becomes the default path. That is the remaining work
+  item, it is runnable, and it is the last step between the objective's "let's get
+  it fast" and a +45.6% prefill.
+
+  Evidence: ``scripts/gemma4_teacher_forced_gate.py capture|gate`` at
+  ``--prompt 2048 --prefill 1024``, baseline ``auto`` vs candidate
+  ``HIPENGINE_GEMMA4_MOE_PREFILL=wmma_plain``; verdict at
+  ``$HOME/.cache/hipengine/tmp/gate_verdict.json``.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
