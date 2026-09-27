@@ -3483,6 +3483,51 @@ record, not permission to reset unrelated work or weaken correctness.
   FLOP formulas) and ``:148`` (``shape_flops / mean_us``); the census table above;
   ``docs/RDNA3-TUNING-GUIDE.md`` section 2 (the 864 GB/s and fp16 rooflines).
 
+  **Iteration 125: the MoE's rows-per-expert is capped by the prefill chunk
+  size, and its efficiency is flat across token counts.**
+
+  Added ``--tokens`` to ``scripts/gemma4_prefill_shape_census.py`` and swept
+  512 / 1024 / 4096. The MoE's compact block is **4096 in every run** while its
+  call count scales with the prefill::
+
+      tokens   q5_1 calls  q5_1 tot ms  q5_1 TF/s   q4_k TF/s   dense TF/s
+         512           29        237.4         2.0          4.2         21.7
+        1024           58        477.3         2.0          4.2         21.5
+        4096          232       1935.3         1.9          4.1         20.8
+
+  ``compact_rows = 4096`` at every token count, and the achieved rate does not
+  move. **A longer prefill buys more calls at the same low efficiency, not
+  better ones.** The dense control holds at 20.8-21.7 TF/s throughout.
+
+  **Root cause.** ``engine_loop.py:450`` sets ``prefill_chunk_size = 1024``
+  tokens; at top_k 4 that is exactly the 4096 compact rows the census observes.
+  Rows per expert is therefore ``compact_rows / num_experts`` = **32**, against
+  the dense line's **512 rows per weight read** -- roughly **16x less weight
+  reuse**, which is the arithmetic-intensity gap measured in iteration 124 (74
+  FLOP/byte against dense's 537, with the machine ridge at 51).
+
+  **The lever.** Raising ``prefill_chunk_size`` to 4096 tokens yields 16384
+  compact rows and **128 rows per expert** -- four times the reuse on the arm
+  that is 73% of prefill time. This is a **configuration** change, not a kernel
+  change, and the kernel's own comment already anticipates the larger geometry:
+  ``gemma4_experts.py:478`` refers to "Gemma's down geometry (8192 compact rows,
+  128 experts, in 704, out ...)".
+
+  **Caveats, stated before the experiment rather than after.** Bigger chunks cost
+  memory and first-token latency, and they are a throughput/latency trade rather
+  than a free win. The attention does **not** obviously benefit: its call count is
+  **constant at 25 across all three token counts** (119.2 ms at 4096 tokens,
+  identical to 512), which is itself unexplained and must be understood before
+  any attention conclusion is drawn from this sweep. And because this is a
+  configuration change, the census cannot settle it -- the end-to-end prefill
+  benchmark must.
+
+  Evidence: the sweep table above; ``engine_loop.py:450`` (``prefill_chunk_size``
+  default 1024), ``:70`` and ``:1807`` (``DEFAULT_MAX_PREFILL_CHUNK_TOKENS = 256``
+  and its env var), ``:2008`` (the CLI argument);
+  ``gemma4_experts.py:183`` (the scratch-capacity guard) and ``:478`` (the 8192-row
+  down geometry).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
