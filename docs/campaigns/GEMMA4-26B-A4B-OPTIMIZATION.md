@@ -1356,7 +1356,25 @@ direction. The clean-device pass also puts every other cell 4-10% above its
     shelf**: fusion that does not serialise a reduction before a dependent
     transform, or a graph that helps where host is already hidden. Evidence row
     `2026-09-26-gemma4-26b-a4b-profile-gap-closed-launch-bubbles.json`.
-  *Measured 2026-09-27 (iteration 46): the expert gate/up prefill takes the MMQ
+  *Measured 2026-09-27 (iteration 51): the evaluator gap the iteration-46 entry
+recorded below is closed, and the first route it was pointed at is not what that
+entry thought.* The frozen corpus is eight sentences cycled to the target length,
+so a 1024-token chain repeats each many times; measured on the strict arm it has
+**no row below 0.20 top-1 margin at all**, median margin 1.0000, which is why its
+top-1 bar is not "nearly blind" but exactly blind. `probe_corpus` in
+`scripts/gemma4_campaign_bench.py` generates a seeded, never-repeating chain that
+mixes material with no predictable continuation against material where only the
+wording is open, and `--corpus probe` selects it; `require_single_pass` raises
+rather than cycling so repetition cannot silently return. It carries 247 rows
+below 0.20 and 77 below 0.05. The gate's verdict now also reports the baseline's
+own top-1 margin per row and breaks KL and flips down by margin band, so a
+`kl_max` breach can be read against where it happened instead of only how large
+it was. Pointed at the MMQ gate/up route the probe chain reports `kl_mean` 0.384,
+`kl_max` 10.86 and 229 top-1 flips of 1023 rows, against the recorded 1.438e-04,
+0.0651 and 0 flips on the frozen chain - see the correction on that route above.
+Evidence row `2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json`.
+
+*Measured 2026-09-27 (iteration 46): the expert gate/up prefill takes the MMQ
   route the Qwen4 experts already use, and it is 1.27x - but it lands in the
   kl_max decision rather than settling it.* The route reads the artifact's
   per-expert fused `gate | up` row block directly through the int8-dp4a MMQ32
