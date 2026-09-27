@@ -237,6 +237,71 @@ kernel's `tile8x4` shape moves *more* traffic (3.05 GB against 2.31 GB for
 attn_q) while running faster (5.95 ms against 5.47 ms) because it sustains
 higher bandwidth, which is why the dispatcher's `tile16x4` preference is right.
 
+## Current decode status — 2026-09-28, gfx1151
+
+The decode step has been attributed twice on this host: once by route ablation
+and once by a launch census that sums the weight and activation bytes of every
+launch. The two agree, and together they replace the earlier per-kernel profile,
+which was withdrawn because `rocprofv3 --kernel-trace` serializes dispatches on
+this host and inflates kernel durations about 19x.
+
+| component | ms/token | bytes/step | launches/step | GB/s |
+| --- | ---: | ---: | ---: | ---: |
+| dense `Q8_0` GEMV | 13.78 | 1866.7 MB | 218.7 | 135 |
+| expert GEMV (`Q4_K` gate/up, `Q5_1` down) | 14.04 | 1348.1 MB | 62.0 | 96 |
+| host floor (launches removed) | 8.12 | — | — | — |
+| norm + rotary | 2.24 | — | 416 | — |
+| MoE elementwise | 1.09 | — | — | — |
+| router | 0.93 | — | 30 | 12 |
+| attention | 0.14 | — | 32 | — |
+| measurement slack | 3.54 | — | — | — |
+| **total** | **43.88** | **3219.6 MB** | **825.6** | **73** |
+
+One decode step issues 825.6 kernel launches. At the 256 GB/s this host reaches
+on a pack8 `Q8_0` GEMV in isolation, the 3219.6 MB of weight traffic is 12.6 ms,
+so the step runs at **29% of achievable bandwidth**. The same-host llama.cpp
+reference is 41.92 tok/s, which is 135 GB/s on the same traffic — **53% of peak,
+not peak**. The remaining 1.84x is therefore a gap in *achieved* bandwidth
+between two implementations that are both short of peak, and "reach peak" is not
+the plan.
+
+The host floor is 18.5% of the step and is hidden: the host spends 9.8 us per
+launch against 53 us of device time per launch, so the queue stays full and the
+GPU is the bottleneck. Removing host cost is worth at most the 3.5 ms of
+measurement slack.
+
+**What the numbers point at.** The lm head is one `Q8_0` GEMV of 784 MB issued
+once per token and it runs at **195 GB/s**, while the 218.7 per-layer dense GEMVs
+run at **135 GB/s** on the same kernel family. The difference between them is
+launch count: a 6.3 MB GEMV cannot amortize the roughly 30 us of device-side
+latency each launch carries. That is a fewer-and-larger-launches problem, not a
+faster-kernel problem. The dense MLP gate and up (`2816 -> 2112`, twice per
+layer, 379 MB/step) share one input and are two launches, and the attention
+projections are three more. 416 of the 825 launches are normalization and rotary
+kernels costing 2.24 ms in total, so they are cheap per launch and are not the
+problem.
+
+**One bit-exact route change has landed.** The expert route resolved
+`linear/<quant>/selected_gemv_bf16_bf16_out`, one output column per block, and
+now prefers `selected_pack8_gemv_bf16_bf16_out` where the quant registers it:
+**22.32 -> 22.80 tok/s (+2.2%)** with identical generated token ids. The gain is
+small for the reason above — at rows=8 the x row is L2-resident, so the pack8
+saving is the amortized block reduction, not x traffic.
+`Q5_1`, which carries this artifact's expert down projection, does not register
+that sibling: its compact pack8 kernel is on `moe_linear` and takes a compact
+expert-start array rather than a per-row selected index, so reaching it needs the
+compact MoE scheduler chain that the qwen35 runner builds and this path does not.
+
+**MTP is the larger lever and is not implemented.** The head is a separate
+`gemma4-assistant` artifact (4 blocks, width 1024, `nextn` pre/post projections,
+no `attn_k`/`attn_v` — it attends against the backbone's cache). Its
+hyperparameters, tensor layout and the llama.cpp reference algorithm are all
+recorded, and the loader contract landed in b42a56c20. What does not exist is the
+forward, the draft/verify loop and the adapter registration;
+`hipengine/generation/gemma4_gguf.py` still declares
+`supports_speculative_mtp = False`. The artifact is at
+`/models/gguf/gemma-4-26B-A4B-it-GGUF/mtp-gemma-4-26B-A4B-it-Q8_0.gguf`.
+
 ## Current correctness status — 2026-09-26
 
 The key-slice attention implementation failed the corrected teacher-forced
