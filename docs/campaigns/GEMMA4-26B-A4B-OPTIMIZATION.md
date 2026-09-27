@@ -3749,6 +3749,48 @@ record, not permission to reset unrelated work or weaken correctness.
   full-k loop, and the four FMAs per (out, row)); ``:363``-``:408`` (the 32
   reductions and their barriers). Iteration 129's arithmetic is corrected here.
 
+  **Iteration 131: register-limited occupancy is REFUTED -- Gemma's grouped owner
+  uses 55 VGPRs, about 9 blocks per SIMD.**
+
+  Extracted the device code object from the family's host ``.so`` and read its
+  notes. Three tooling obstacles, all worked around: ``roc-obj-ls`` is broken on
+  this host ("Can't locate File/Which.pm in @INC"); ``/tmp`` is full, so the first
+  ``objcopy --dump-section`` failed with "No space left on device"; and the
+  extracted ``.hip_fatbin`` is a ``__CLANG_OFFLOAD_BUNDLE__`` container whose ELF
+  members are nested, so ``llvm-readobj --notes`` on the container finds nothing.
+  Parsing the container directly (24-byte magic, ``uint64`` count, then
+  ``(offset, size, name_len, name)`` entries) yields a plain uncompressed gfx1100
+  ELF of 1,635,344 bytes.
+
+  **The register ladder for the grouped row-batch kernel**, by template argument::
+
+      <8, 1, 0, 0, 0, 0>   41 VGPR     <8, 4, 1, 1, 1, 0>  173 VGPR
+      <8, 4, 0, 0, 0, 0>   42 VGPR     <8, 4, 1, 1, 1, 1>  212 VGPR
+      <8, 4, 1, 0, 0, 0>   55 VGPR   <- Gemma's (AMORTIZE_INPUT)
+      <8, 4, 1, 1, 0, 0>   66 VGPR   <- the bundle variant tested in iteration 128
+
+  **Gemma's owner is the 55-VGPR instantiation.** 55 x 128 threads = 7,040 VGPRs
+  per block against 65,536 per SIMD, so roughly **9 blocks per SIMD** -- the
+  opposite of the guide's section 5.3 worst case. **Occupancy is not this kernel's
+  limit**, and the 28 instantiations sitting at the 256-VGPR hard cap belong to
+  other specializations, not this one.
+
+  **This also confirms iteration 128's reading of the bundle experiment.** The
+  bundled variant is the 66-VGPR instantiation, only 11 registers above Gemma's,
+  so its 2.75x slowdown cannot have been a register or occupancy effect -- it was
+  the collapse of the final reduction onto 16 of 128 threads, exactly as recorded.
+
+  **Seven explanations are now excluded** for the MoE's ~2 us per routed row:
+  bandwidth, the weights, call overhead, rows-per-expert, per-row-batch dequant,
+  barrier count, and register-limited occupancy. The stall is real and measured
+  (176 FMAs per thread per row against ~5000 cycles, about 3.5% of FMA issue
+  potential), and its mechanism remains unidentified.
+
+  Evidence: the extraction above; the notes table; ``gguf_q4_k_selected_prefill.hip``
+  template parameters at ``:223``. Tooling note for future profiling runs:
+  ``roc-obj-ls`` and the ``/tmp`` volume are both unusable on this host, and the
+  bundle must be parsed manually.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
