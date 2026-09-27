@@ -5,7 +5,15 @@
 **Model:** Qwen3.8-Flash-Next UD-Q4_K_XL / BF16 KV, chunk 1024
 **Source:** `479be908f` + the default-off route in this unit
 **Artifacts:** `projection-screen.json`, `prefill-boundary-probe.json`,
+`production-gate-780.json`, `short-prompt-gate-invalid.json`,
 `qwen4exp_gr_projection_screen.py`
+
+## Verdict
+
+The wide tile is **4.38x faster on the GR-up projection and rejected by the
+780-row production gate**. It fails on the numerical envelope only: mean KL
+1.554e-3, p95 7.081e-3, max 7.349e-2, top-1 768/780. Determinism, state
+repeatability, and lifecycle all pass. The route stays default-off.
 
 ## Why
 
@@ -71,27 +79,73 @@ gated-mean kernels) and screened with
 Both sit **8.5-85x below** the passing bracket (dense wide 4.41e-9, GR-down
 compensated 8.48e-9) and the run was deterministic in both arms.
 
-**This is a screen, not a qualification, and the margin is not as large as it
-looks.** The publication row has a ~22-logit argmax gap, so the softmax is
-effectively one-hot and KL is insensitive to the logits that actually moved:
-median absolute logit drift is 0.095 and max is 1.20, i.e. the logits change
-substantially while the *distribution* at that position barely moves. The
-screen therefore cannot rule out the flip mechanism the localization identified
-(margin-limited near-ties at decode rows, teacher top-2 margins 0.002-0.24).
-The 780-row production gate is the binding test and is required before any
-promotion.
+## The screen did not predict the outcome
+
+The 780-row production gate
+(`qwen4exp_q8_repair_depth_gate.py --candidate production_gr_up_wide
+--decode-steps 64 --repeats 3`, 12 canonical 512/1K/4K cases) ran the route for
+real - 6912 direct calls, shapes identical to the GR-up iu8 gate's - and
+rejected it:
+
+| metric | measured | threshold | verdict |
+| --- | ---: | ---: | --- |
+| mean KL | 1.554e-03 | <= 1e-03 | FAIL |
+| p95 KL | 7.081e-03 | <= 5e-03 | FAIL |
+| p99 KL | 1.797e-02 | <= 2e-02 | pass |
+| max KL | 7.349e-02 | <= 5e-02 | FAIL |
+| top-1 | 768/780 (98.46%) | >= 99% | FAIL |
+| per-category top-1 | 97.95% - 99.49% | >= 97% | pass |
+
+All 12 top-1 mismatches are flip-eligible and none is outside it; every
+category, shape, and the steady transition fail. Determinism, state
+repeatability, and lifecycle pass, so the rejection is purely numerical.
+
+This lands on the same plateau as every other GR arithmetic route:
+
+| route | projection drift (rel L2) | prefill-KL screen | gate mean KL | top-1 |
+| --- | ---: | ---: | ---: | ---: |
+| GR-up iu8 (rejected) | 1.12e-07 - 3.69e-07 | 1.48e-08 | 1.402e-03 | 772/780 |
+| GR-up wide (this) | **4.709e-05** | **5.17e-11** | 1.554e-03 | 768/780 |
+
+**The screen is not a predictor.** A route with 300x more projection drift
+screened 285x *better* on prefill-boundary KL and failed at the same place. The
+cause is visible in the probe rows themselves: the publication row has a
+~22-logit argmax gap, so the softmax is effectively one-hot and KL is blind to
+the logits that actually moved (median absolute drift 0.095, max 1.20).
+
+Across the routes measured so far the gate outcome is insensitive to the
+projection's accuracy, including corrections that were *more* accurate than the
+incumbent. That is consistent with the unconfirmed hypothesis that the
+downstream discrete step - the MoE router's top-k, which consumes the GR
+output - saturates the metric, but no router-selection capture exists yet and
+this artifact does not establish it.
+
+## A screen that reports a pass without running the route
+
+The first gate attempt used the harness default prompt suite. That suite is
+39-71 tokens, below the GR routes' `rows > 256` admission, so the route never
+ran and the candidate was **bit-identical** to strict: 780 rows of
+`max_abs_logit_delta: 0.0`, `kl_mean: 0.0`, `top1_agreement: 1.0`.
+
+That reads as a perfect pass. The harness caught it only because it
+independently counts dispatches: `candidate_dispatch_calls: 0`,
+`measurement_valid: false`. The capture is kept as
+`short-prompt-gate-invalid.json` because it is a clean negative control for the
+valid run - an unchanged candidate scores exactly zero on this harness, so the
+1.554e-3 above is the route's own contribution - and because it is a trap any
+future GR or dense candidate can fall into.
 
 ## Status
 
 Route is **default-off**. `benchmarks/README.md` and `benchmarks/CHANGELOG.md`
-are untouched because there is no retained benchmark row yet: the projection
-screen is diagnostic (no end-to-end prefill rate) and the gate has not run.
+are untouched because there is no retained benchmark row: the projection screen
+is diagnostic (no end-to-end prefill rate) and the gate rejected the route.
 
 ## Next
 
-1. Run `qwen4exp_layer2_profile_gate.py --candidate production_gr_up_wide`
-   (12 prompts, `--decode-steps 64` = 780 rows) and record mean/p95/max KL,
-   top-1 by category, determinism, isolation, and the task gate.
-2. If it passes, measure the end-to-end prefill rate and promote; if it fails,
-   record the measured mean KL against the cliff and close the GR-up wide
-   direction the way the iu8 direction was closed.
+The GR family is closed to arithmetic change: every measured route, including
+more-accurate ones, saturates the gate at 1.3e-3 - 1.6e-3. Only a bit-exact
+change can land, and the two equal-accumulator retiles were already measured
+(0.80x, 1.007x). Reopening needs either a confirmed router-flip mechanism with
+a way to make the discrete selection robust, or a bit-exact route that beats
+the fused kernel without touching operand or accumulation order.
