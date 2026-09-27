@@ -383,5 +383,35 @@
    "Only the first layer was instrumented, as in the earlier passes.",
    "The f32 reference was read, not run; its pass accumulation is inferred from its source at lines 4473 onward rather than from a measurement of that kernel."
   ]
+ },
+ "task18_unresolved_contradiction": {
+  "the_contradiction": "The DS4 MMQ body ALREADY has a multi-pass activation path that looks correct, yet three populated activation planes measure bit-identical to one. Both cannot be true and I have not resolved which is wrong. I am recording the contradiction rather than picking the explanation that suits the fix.",
+  "side_a_the_body_looks_correct": {
+   "template": "gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body is declared template <int WEIGHT_LAYOUT, int ACTIVATION_PASSES, bool COLLECT_RISKS, bool FUSED_EXPERT_LAYOUT = false> at line 1041, so ACTIVATION_PASSES is a real template parameter with no shadowing local.",
+   "the_loop": "At line 1233 the body runs for (int activation_pass = 0; activation_pass < ACTIVATION_PASSES; ++activation_pass) and reads x_q8[static_cast<int64_t>(activation_pass) * plane_blocks + source_row * q8_blocks_per_row + (k32 >> 2)] at line 1243. So the plane offset is there.",
+   "the_accumulation": "The pass loop is INSIDE the k32 loop, and each pass ends with acc[wsic * TM + cr] += xd * dscale * dot - dmin * xsum over the dp4a result, so every pass adds to the same accumulator. The activation_tile overwrite per pass is therefore harmless: the tile is consumed inside the same pass that wrote it.",
+   "conclusion": "On a plain reading, three planes should accumulate three times into acc and the error should collapse. That is what the earlier task-16 note claimed was missing, and the claim was wrong."
+  },
+  "side_b_the_measurement_says_otherwise": {
+   "setup": "_MMQ_ACTIVATION_PASSES = 3, the route calling gguf_q8_1_mmq_ds4_pack_bf16_d4x3 and gguf_q4_k_selected_dual_q8_1_ds4x3_fused_mmq32_prefill_compact32_bf16_bf16_out, the JIT cache for the kernel deleted so the .hip was rebuilt from scratch, and the route instrumented in an earlier pass to confirm it calls the ds4x3 symbol.",
+   "measured": {
+    "ids_64": {
+     "mmq_vs_fp32": {
+      "max": 38.75,
+      "mean": 0.8225
+     }
+    },
+    "ids_96": {
+     "mmq_vs_fp32": {
+      "max": 38.5723,
+      "mean": 0.9903
+     }
+    }
+   },
+   "reading": "Identical to the one-plane numbers to four significant figures at both lengths, with a clean rebuild. Three populated planes were separately confirmed by reading the workspace back."
+  },
+  "what_i_did_not_do": "I did not resolve it, and I did not leave the three-plane route in place. With the benefit unmeasured and the cost real - three times the activation bytes and three times the pack work - the route is back on one plane. Leaving it on three would be a cost regression justified only by a source reading that the measurement contradicts.",
+  "the_next_check_is_narrow_and_cheap": "Instrument the kernel itself rather than the host. The two live possibilities are that ACTIVATION_PASSES is reaching the body as 1 despite the launcher forwarding it, or that the pass loop is compiled away or its accumulation is dead. A printf of ACTIVATION_PASSES inside the body, or a look at the generated ISA for the ds4x3 symbol to see whether the plane offset appears, would separate them in one step. Do not start from the source reading again - it has already been wrong once.",
+  "also_carried_forward": "The f32 multi-pass reference does not use the stored sum: it dp4a-sums the int8 qs bytes per pass. This body instead accumulates the stored ds4[2*ds4_idx + 1] values across passes, and those were measured to differ from the reconstruction's own sum by 5.8 to 6.1 percent relative. If the accumulation does turn out to be live, that correction term is a second defect to fix in the same place."
  }
 }
