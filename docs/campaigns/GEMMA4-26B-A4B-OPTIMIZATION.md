@@ -3934,6 +3934,56 @@ record, not permission to reset unrelated work or weaken correctness.
   (the exported grouped symbol family); ``qwen4_exp_runner.py:4195``-``:4210`` (the
   working qwen4 integration template).
 
+  **Iteration 135: the grouped int8 MMQ port design is fully determined -- every
+  ABI argument maps onto existing Gemma4 buffers except two.**
+
+  Target: ``gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out``
+  (``gguf_q4_k_q8_1_selected_prefill.py:1668``) for gate_up, and
+  ``gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out`` for down.
+
+  **The MMQ32 tile ABI is the same 16-row tile plan the WMMA route already builds.**
+  The microbench constructs both from one call (``_make_uniform_compact_metadata``
+  at ``gguf_q4_k_t16_selected_prefill_microbench.py:108``, invoked for the MMQ32
+  path at ``:262``) and asserts the compact row counts agree (``:267``). So Gemma4's
+  existing ``wmma_expert_start`` (``gemma4_experts.py:138``), ``wmma_tile_expert``
+  (``:139``) and ``wmma_rows`` (returned by ``_build_wmma_tile_plan`` at ``:266``)
+  are directly reusable -- no second tile plan is needed.
+
+  **Activation indexing.** The MMQ32 kernel body passes ``x_q8`` together with
+  ``compact_to_source``, ``expert_start_compact``, ``expert_start_mmq32`` and
+  ``tile_expert``, and forwards ``compact_rows`` twice (compact and source rows).
+  It walks padded tiles, maps each tile to its expert, takes that expert's compact
+  row range, and reads the activation as ``x_q8[compact_to_source[compact_row]]``.
+  With Gemma4's compact buffer already in source order, ``compact_to_source`` is the
+  **identity iota** -- matching the microbench, which builds
+  ``np.arange(compact_rows, dtype=np.int64)`` at ``:236``.
+
+  ABI map::
+
+      MMQ32 argument          Gemma4 source
+      x_q8                    NEW  ds4 workspace, compact_rows * (in/128) * 144 B
+      compact_to_source       NEW  int64 identity iota, compact_rows * 8 B
+      expert_start_compact    existing  expert_start
+      expert_start_mmq32      existing  wmma_expert_start
+      mmq_tile_expert         existing  wmma_tile_expert
+      mmq_total_rows          existing  wmma_rows
+      qweight_a / qweight_b   existing  weight raw base and base + half_bytes
+      out_ptr                 existing  gate_up_out
+
+  **Buffer sizing.** ``block_q8_1_mmq_ds4`` is ``uint16_t ds4[8]`` + ``int8_t
+  qs[128]`` = **144 bytes per 128 values** (``gguf_q4_k_q8_1_selected_prefill.hip:69``,
+  ``Q8_1_MMQ_BLOCK = 128``). For the MoE shape that is 4096 * 22 * 144 = 13.0 MB,
+  against a 23 MB bf16 ``packed_hidden`` -- so the workspace is not a memory concern.
+
+  **Remaining implementation steps**, all mechanical now: (1) add the two scratch
+  buffers; (2) add ``gemma4_project_experts_mmq_dual`` that packs ``packed_hidden``
+  through ``gguf_q8_1_mmq_ds4_pack_bf16`` (``gguf_q4_k_q8_1_selected_prefill.py:372``)
+  and calls the MMQ32 leaf; (3) add the route flag to ``_prefill_route_flags`` /
+  ``_PREFILL_MODES``; (4) build the library in ``hipengine/runtime/gemma4.py``
+  (which today builds only ``gguf_q8_0_mmq_prefill``, ``:676``-``:691``); (5) gate at
+  ``--prompt 2048 --prefill 1024`` (``--prefill`` defaults to 0 = decode-only) and
+  measure with ``gemma4_campaign_bench.py``.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
