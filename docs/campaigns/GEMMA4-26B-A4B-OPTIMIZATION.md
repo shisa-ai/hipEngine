@@ -69,6 +69,27 @@ same kernel's `K_TILE=512` shape reaches 17.28 ms but is **not** bit-exact, so i
 was dropped rather than shipped. Recorded in
 `benchmarks/results/2026-09-27-gemma4-q5-1-staged-grouped-prefill-accepted.json`.
 
+*Measured 2026-09-27 (iteration 50): the Q8_0 dense route's tile space was never
+swept either, and it was worth more than the expert routes.* The route is 205
+calls over eight shapes and 717 ms, 23.9% of the prefill - the second largest
+entry in the closed profile - and its selected shape was `col16 row4`. Only three
+of the family's legal shapes had ever been instantiated. At the route's own
+geometries, recorded from a live forward, `col4 row16` is **2.32 against 3.18 ms
+at in 2816/out 2112 (1.37x)** and **4.10 against 5.19 ms at in 2816/out 4096
+(1.27x)**, and the 512-token prefill is **2.993 -> 2.770 s (1.081x)** with the
+same timing script in two worktrees. The public delta exceeds the kernel-level
+prediction (-223 against about -167 ms), which is consistent with the same change
+also cutting activation reloads rather than being an unexplained excess. It is
+bit-exact - the k-loop stride is `blockDim.x` and the per-(row, column) shuffle
+tree and four-wave sum are unchanged, with 0 differing outputs across the sweep -
+so it ships on the default path with no flag and no gate, and all 205 calls were
+confirmed to resolve to the new shape. Row tile is the weight-reuse lever: at
+`col4`, row1 7.90, row2 4.49, row4 3.18, row8 2.42, row16 2.32 ms. The change is
+made only in the branch the route's own geometries take, because rows 8 with a
+wide output favours `col8 row8` by 1.9x over any 16-row tile; every row count that
+branch can see was measured. Evidence row
+`2026-09-27-gemma4-q8-0-dense-prefill-tile4x16-accepted.json`.
+
 *Measured 2026-09-27 (iteration 49): the prefill profile is closed, and there is
 no host-side work to remove.* The route attribution that drove this campaign
 wraps registered kernels, which misses attention and every launch the registry

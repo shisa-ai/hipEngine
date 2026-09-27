@@ -5534,6 +5534,34 @@ extern "C" int hipengine_##NAME##_selected_pack8_gemv_q8_1_dp4a_bf16_bf16_out( \
 HIPENGINE_GGUF_K_SELECTED_PACK8_DP4A_EXPORT(gguf_q5_k, 5)
 HIPENGINE_GGUF_K_SELECTED_PACK8_DP4A_EXPORT(gguf_q6_k, 6)
 
+// The exact Q8_0 prefill's tile space. COL_TILE columns share one thread's
+// accumulator registers and ROW_TILE rows are accumulated together, with the
+// product bounded to 16/32/64 by the kernel's static_assert. The shape is a
+// launch shape and not an arithmetic choice: the k-loop stride is blockDim.x and
+// the per-(row, column) shuffle tree and four-wave sum are unchanged, so every
+// shape in the space is bit-identical to every other.
+//
+// Measured 2026-09-27 at the dense route's own geometries, which were recorded
+// from a live 512-token forward (in 2816 out 2112 over 60 calls, in 2816 out
+// 4096 over 25): col4 row16 is 2.32 against the col16 row4 shape's 3.18 ms at
+// the first and 4.10 against 5.19 ms at the second, 1.37x and 1.27x, with 0 of
+// 1,081,344 and 0 of 2,097,152 bf16 outputs differing. Row tile dominates - at
+// col4, row1 7.90 ms, row2 4.49, row4 3.18, row8 2.42, row16 2.32 - because a
+// block's weight bytes are re-read once per row tile. col8 row8 is second at
+// 2.42 and 4.29 ms.
+extern "C" int hipengine_gguf_q8_0_exact_prefill_tile4x16_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q8_0_exact_prefill_tiled_out<uint16_t, uint16_t, 4, 16>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
 extern "C" int hipengine_gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out(
     const uint16_t* x,
     const uint8_t* qweight,

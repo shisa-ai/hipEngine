@@ -8246,13 +8246,15 @@ def _exact_q8_prefill_dispatch(
         variant = "pack8_gemv_bf16_bf16_out"
         if rows >= 8:
             # Keep enough column blocks to fill the device at short/narrow
-            # shapes. Once the measured grid is large enough, 16x4 halves
-            # activation reloads while preserving every dot association.
+            # shapes. Once the measured grid is large enough, 4x16 reuses each
+            # block's weight bytes across sixteen rows instead of four, which is
+            # worth 1.27-1.37x at the route's own geometries and is bit-exact
+            # because every shape in this family keeps the same dot association.
             tile16_row_threshold = (
                 512 if out_features <= 512 else 64 if out_features <= 2048 else 32
             )
             if out_features % 16 == 0 and rows >= tile16_row_threshold:
-                variant = "exact_prefill_tile16x4_bf16_bf16_out"
+                variant = "exact_prefill_tile4x16_bf16_bf16_out"
             else:
                 variant = (
                     "exact_prefill_tile8x2_bf16_bf16_out"

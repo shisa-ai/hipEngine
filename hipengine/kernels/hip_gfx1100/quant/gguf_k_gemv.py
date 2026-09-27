@@ -390,6 +390,9 @@ gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out = _make_pack8_wrapper(
 gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out = _make_pack8_wrapper(
     "gguf_q8_0", _symbol("gguf_q8_0", "exact_prefill_tile16x4_bf16_bf16_out")
 )
+gguf_q8_0_exact_prefill_tile4x16_bf16_bf16_out = _make_pack8_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "exact_prefill_tile4x16_bf16_bf16_out")
+)
 gguf_q8_0_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "selected_gemv_bf16_bf16_out"))
 
 
@@ -1587,6 +1590,7 @@ _WRAPPERS = {
         "exact_prefill_tile8x2_bf16_bf16_out": gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out,
         "exact_prefill_tile8x4_bf16_bf16_out": gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out,
         "exact_prefill_tile16x4_bf16_bf16_out": gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out,
+        "exact_prefill_tile4x16_bf16_bf16_out": gguf_q8_0_exact_prefill_tile4x16_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q8_0_selected_gemv_bf16_bf16_out,
         "selected_grouped_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
         "selected_grouped_row4_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out,
