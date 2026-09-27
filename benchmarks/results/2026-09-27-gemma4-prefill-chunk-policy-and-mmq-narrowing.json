@@ -1,0 +1,35 @@
+{
+ "kind": "gemma4_prefill_chunk_policy_and_mmq_defect_narrowing",
+ "performance_claim": false,
+ "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL",
+ "chunk_policy": {
+  "question": "DEFAULT_PREFILL_BLOCK is 512 and the source comment justifies it by scratch memory (52.68 GB at 8192 against 3.29 GB at 512), not by measurement. The forward path documents chunking as exact, so the block size is a free launch-shape parameter if that holds.",
+  "bit_exactness": "confirmed. A 1024-token prefill at block 1024 and at block 2048 produces bit-identical logits to block 512: 0 of 262144 differing words in both arms.",
+  "speed": {
+   "prompt_tokens": 1024,
+   "block_512_s": 5.963,
+   "block_1024_s": 6.072,
+   "block_2048_s": 6.126,
+   "note": "second (warm) run at block 2048 is 7.671 s, so the wider block also loses to allocation pressure"
+  },
+  "verdict": "closed by measurement. The memory-driven default is also the fastest of the three, so the chunk policy is not a lever on this model and the Qwen35 chunk-policy finding does not transfer."
+ },
+ "mmq_gate_up_narrowing": {
+  "context": "This route is the largest remaining prefill lever at 1.265x (about 0.84 s of a 3.65 s prefill) and it is off by default for a defect: deterministic, over the 0.05 kl_max bar at 7 of the 13 prefill lengths from 16 to 1024 ids, up to 2.036 KL with greedy decision flips. The leaf is launched only for the prefill's expert gate/up projection.",
+  "leaf_is_correct_in_isolation": {
+   "harness": "tests/test_unit_gemma4_expert_route.py's own setup, swept over per-expert count patterns against a numpy dequantized reference at the model's real geometry (num_experts 128, in_features 2816, intermediate 1408).",
+   "patterns_held": [
+    "uniform 1, 2, 3, 4, 6, 8, 16, 32, 64 lanes per expert",
+    "1, 4, 16, 64 and 128 active experts",
+    "32 experts x8 plus 16 experts x1",
+    "random routing at 16, 24, 32, 48, 64, 96, 128, 256, 512 and 1024 tokens x top_k 8"
+   ],
+   "envelope": "normalized max 2.9e-3 to 1.0e-2 against the asserted 2e-2 bound, mean 3.4e-4 to 9.8e-4 against 2e-3, in every pattern at both the test geometry and the model geometry, at top_k 1 and top_k 8.",
+   "overflow_refuted": "the tile walk pads every expert up to a whole 32-row tile and reports the padded total as mmq_total, and the host launches the leaf with that padded total while gate_up_out is sized for compact rows only - so the leaf is always asked for more rows than the buffer holds, by up to 32 x (experts-1). A canary tail of 32 x num_experts rows after the output is untouched at every pattern, including 3968 rows of padding, so the leaf masks its padding.",
+   "scratch_reuse_refuted": "one scratch reused across six calls including a big-then-small sequence, which is the real pattern of a full chunk followed by a partial one: all six calls are inside the envelope and the canary is untouched. The identity buffer written once per scratch is therefore not stale."
+  },
+  "conclusion": "the leaf, its tile walk, its padding mask and its scratch reuse are all correct in every configuration this harness can build, so the defect is in the data the real path builds on device and hands the leaf: the group scatter's expert_start and packed_hidden. The next unit instruments that handoff rather than the leaf.",
+  "coverage_added": "tests/test_unit_gemma4_expert_route.py now covers the model's 128 experts, five fragmentation patterns, the padded-output canary and scratch reuse. Its only previous coverage was 4 experts over 10 rows."
+ },
+ "task_state": "Task 6's named items are now all resolved by measurement: host-side redundant work is 0.5% of the prefill (rocprofv3, device 99.5% busy), the chunk policy is closed above, the WMMA prefill route was rejected earlier as slower, and the MMQ/t16 route is implemented and measured at 1.265x but off the default path for the defect above. The prefill itself moved 3.652 -> 2.770 s (1.32x) on this host across this session's bit-exact units."
+}

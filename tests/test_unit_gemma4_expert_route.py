@@ -983,6 +983,173 @@ def test_fused_gate_up_mmq_route_matches_a_dequantized_reference() -> None:
     )
 
 
+@_needs_hip
+def test_fused_gate_up_mmq_route_holds_at_the_model_geometry_and_every_fragmentation() -> None:
+    """The route's own tile walk, over the count patterns a real router produces.
+
+    The route's only other coverage is four experts over ten rows, which cannot
+    reach the model's 128 experts or the fragmented counts a short prefill
+    produces. This sweeps both, reusing one scratch across calls the way the real
+    path does across layers and chunks, and holds a canary after the output
+    because the tile walk pads every expert up to a whole 32-row tile and reports
+    the padded total as its row count - so a leaf that wrote its padding would
+    run past the buffer the caller sized for compact rows only.
+    """
+
+    from types import SimpleNamespace
+
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        copy_host_array_to_device,
+        free,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        Gemma4ExpertScratch,
+        gemma4_project_experts_gate_up_mmq,
+    )
+    from hipengine.quant.gguf import dequantize_gguf_data
+
+    backend = _grouped_backend("gguf_q4_k")
+    num_experts = 128
+    in_features = 256
+    intermediate = 64
+    fused_width = 2 * intermediate
+    canary_rows = 32 * num_experts
+    canary_fill = 0xABAB
+    rng = np.random.default_rng(20260927)
+
+    gate_raw = np.concatenate(
+        [make_q4_k_weight(intermediate, in_features) for _ in range(num_experts)]
+    )
+    up_raw = np.concatenate(
+        [make_q4_k_weight(intermediate, in_features) for _ in range(num_experts)]
+    ).copy()
+    up_raw[:, 1::2] ^= np.uint8(0x04)
+    fused_raw = np.concatenate(
+        [
+            gate_raw.reshape(num_experts, intermediate, -1),
+            up_raw.reshape(num_experts, intermediate, -1),
+        ],
+        axis=1,
+    ).reshape(num_experts * fused_width, -1)
+    weights_buf = malloc(fused_raw.nbytes)
+    copy_host_array_to_device(weights_buf, fused_raw)
+    weight = _ResidentWeight(
+        backend=backend, quant_key="gguf_q4_k", ptr=weights_buf.ptr
+    )
+
+    patterns = {
+        "one lane per expert": np.full(num_experts, 1, dtype=np.int64),
+        "three lanes per expert": np.full(num_experts, 3, dtype=np.int64),
+        "a whole tile per expert": np.full(num_experts, 32, dtype=np.int64),
+        "one expert active": np.concatenate(
+            [np.ones(1, dtype=np.int64), np.zeros(num_experts - 1, dtype=np.int64)]
+        ),
+        "thirty-two experts active": np.concatenate(
+            [np.full(32, 8, dtype=np.int64), np.zeros(num_experts - 32, dtype=np.int64)]
+        ),
+    }
+    # One scratch for every pattern: the real path reuses one across layers and
+    # across chunks, so a stale identity or a stale tile total has to show here.
+    scratch = Gemma4ExpertScratch(
+        tokens=int(max(int(c.sum()) for c in patterns.values())),
+        top_k=1,
+        hidden_size=in_features,
+        intermediate=intermediate,
+        num_experts=num_experts,
+    )
+    try:
+        for name, counts in patterns.items():
+            rows = int(counts.sum())
+            hidden = rng.standard_normal((rows, in_features)).astype(np.float32)
+            hidden_bits = _to_bf16_bits(hidden)
+            rounded = _from_bf16_bits(hidden_bits)
+            expected = np.zeros((rows, fused_width), dtype=np.float32)
+            start = 0
+            for expert, count in enumerate(counts):
+                if count == 0:
+                    continue
+                gate = np.asarray(
+                    dequantize_gguf_data(
+                        gate_raw[expert * intermediate : (expert + 1) * intermediate],
+                        GGMLQuantizationType.Q4_K,
+                    ),
+                    dtype=np.float32,
+                )
+                up = np.asarray(
+                    dequantize_gguf_data(
+                        up_raw[expert * intermediate : (expert + 1) * intermediate],
+                        GGMLQuantizationType.Q4_K,
+                    ),
+                    dtype=np.float32,
+                )
+                block = rounded[start : start + count]
+                expected[start : start + count, :intermediate] = block @ gate.T
+                expected[start : start + count, intermediate:] = block @ up.T
+                start += int(count)
+            starts = np.zeros(num_experts + 1, dtype=np.int64)
+            starts[1:] = np.cumsum(counts)
+
+            hidden_buf = malloc(hidden_bits.nbytes)
+            starts_buf = malloc(starts.nbytes)
+            out_bytes = rows * fused_width * 2
+            out_buf = malloc(out_bytes + canary_rows * fused_width * 2)
+            try:
+                copy_host_array_to_device(hidden_buf, hidden_bits)
+                copy_host_array_to_device(starts_buf, starts)
+                canary = np.full((canary_rows, fused_width), canary_fill, dtype=np.uint16)
+                copy_host_array_to_device(
+                    DeviceBuffer(ptr=out_buf.ptr + out_bytes, nbytes=canary.nbytes),
+                    canary,
+                )
+                served = gemma4_project_experts_gate_up_mmq(
+                    weight,
+                    hidden_buf.ptr,
+                    out_buf.ptr,
+                    SimpleNamespace(ptr=starts_buf.ptr),
+                    rows,
+                    num_experts,
+                    in_features,
+                    intermediate,
+                    scratch=scratch,
+                )
+                assert served is True, f"{name}: the route declined a Q4_K weight"
+                got = np.empty((rows, fused_width), dtype=np.uint16)
+                copy_device_to_host(
+                    int(got.ctypes.data),
+                    DeviceBuffer(ptr=out_buf.ptr, nbytes=got.nbytes),
+                )
+                tail = np.empty((canary_rows, fused_width), dtype=np.uint16)
+                copy_device_to_host(
+                    int(tail.ctypes.data),
+                    DeviceBuffer(ptr=out_buf.ptr + out_bytes, nbytes=tail.nbytes),
+                )
+                got = _from_bf16_bits(got)
+            finally:
+                for buffer in (hidden_buf, starts_buf, out_buf):
+                    free(buffer)
+
+            clobbered = int(np.count_nonzero(tail != canary_fill))
+            assert clobbered == 0, (
+                f"{name}: the route wrote {clobbered} canary words past the "
+                f"{rows}-row output buffer"
+            )
+            scale = float(np.abs(expected).max())
+            difference = np.abs(got - expected)
+            assert float(difference.max()) < 2e-2 * scale, (
+                f"{name}: normalized max {float(difference.max()) / scale:.4g} "
+                f"against scale {scale:.4g}"
+            )
+            assert float(difference.mean()) < 2e-3 * scale, (
+                f"{name}: normalized mean {float(difference.mean()) / scale:.4g}"
+            )
+    finally:
+        scratch.free()
+        free(weights_buf)
+
+
 @pytest.mark.parametrize(
     "quant_key, in_features, intermediate",
     [
