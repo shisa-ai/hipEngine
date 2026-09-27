@@ -4051,6 +4051,57 @@ record, not permission to reset unrelated work or weaken correctness.
   ``_MMQ_DUAL_WEIGHTS_ARE_SPLIT``); ``qwen4_exp_runner.py:3747``-``:3815`` (the
   working split-weight MMQ32 integration).
 
+  **Iteration 137: the grouped int8 MMQ route works and passes the logits gate --
+  +29.2% prefill, zero top-1 flips.**
+
+  The iteration-136 failure is fixed. Splitting the fused ``ffn_gate_up_exps`` stack
+  into separate per-expert gate and up resident tensors gives the int8 MMQ leaf the
+  weight stride it derives from its own output width, and the route now computes the
+  right function::
+
+      mode    prefill tok/s        vs default
+      auto    687 / 685 / 684      --
+      mmq     886 / 885           +29.2%
+
+  Campaign logits gate at ``--prompt 2048 --prefill 1024``, baseline ``auto``::
+
+      metric      measured    bar      margin
+      kl_max      0.00503     0.05      9.9x under
+      kl_mean     1.02e-05    0.001    98x under
+      kl_p95      1.87e-05    0.005   267x under
+      kl_p99      9.68e-05    0.02    207x under
+      top1_flips  0 / 1023    --       perfect
+
+  ``passed: true``, and the divergence is non-zero, so the candidate genuinely
+  differed and the comparison is meaningful. Against iteration 136's failure this is
+  a factor of **5080x** on ``kl_max`` (25.54 -> 0.00503), which is the signature of a
+  layout bug rather than an arithmetic one.
+
+  **The split is additive and route-gated.** ``raw`` stays resident so every other
+  prefill route keeps reading the allocation it always read -- splitting it
+  unconditionally broke ``gemma4_project_experts_grouped_dual`` with a ``KeyError``
+  on ``allocation("raw")``, which is the exact regression the "works in the harness
+  is not works" rule warns about. Gate and up are *additional* allocations, built
+  only when ``HIPENGINE_GEMMA4_MOE_PREFILL=mmq`` selects the route that needs them,
+  because they cost a second copy of the largest expert tensor.
+
+  The split is a host-side gather of the contiguous per-expert halves, matched on
+  shape (rank-3, middle dim ``2 * expert_ff``) rather than on slot name so the raw
+  device materializer and the reference materializer cannot drift apart about which
+  tensor is the fused one.
+
+  **Still owed: the execution-profile gate.** ``promotion_qualified: false``. The
+  campaign logits gate is necessary but not sufficient, so the route stays opt-in
+  and off the default path until that gate runs. That is the remaining step, and it
+  is the last one before this lands enabled.
+
+  Evidence: the two mode tables and the gate verdict above;
+  ``$HOME/.cache/hipengine/tmp/gate_mmq2_verdict.json``;
+  ``gemma4_gguf_device.py`` (``_mmq_split_requested``, ``_is_fused_expert_gate_up``,
+  the additive split in ``materialize_gemma4_gguf_device_weight``);
+  ``gemma4_experts.py`` (``_MMQ_DUAL_WEIGHTS_ARE_SPLIT``, ``_build_mmq_tile_plan``,
+  ``gemma4_project_experts_mmq_dual``).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``

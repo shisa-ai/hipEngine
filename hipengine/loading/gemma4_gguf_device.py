@@ -23,6 +23,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+import numpy as np
+
 from hipengine.core.dtype import DType
 from hipengine.loading.gguf import GGUFReader, GGUFTensorInfo, MissingGGUFTensorError
 from hipengine.loading.materialize import (
@@ -69,6 +71,7 @@ class Gemma4GGUFWeightSpec:
     quant_key: str
     layout: str
     allocation_names: tuple[str, ...] = ("raw",)
+    split_gate_up: bool = False
 
 
 @dataclass(frozen=True)
@@ -120,7 +123,12 @@ class Gemma4GGUFDeviceWeight:
             allocation.free(runtime=runtime)
 
 
-def _plan_one(slot_path: str, source: GGUFTensorInfo) -> Gemma4GGUFWeightSpec:
+def _plan_one(
+    slot_path: str,
+    source: GGUFTensorInfo,
+    *,
+    split_gate_up: bool = False,
+) -> Gemma4GGUFWeightSpec:
     qtype = GGMLQuantizationType(int(source.ggml_type))
     if qtype is GGMLQuantizationType.F32:
         return Gemma4GGUFWeightSpec(
@@ -144,11 +152,19 @@ def _plan_one(slot_path: str, source: GGUFTensorInfo) -> Gemma4GGUFWeightSpec:
     # A rank-3 expert tensor is *not* split per expert: the per-expert gather is
     # the kernel's job, and the dispatch selects the expert by index. Splitting
     # here would multiply the allocation count by 128 for no benefit.
+    #
+    # ``split_gate_up`` is the one exception, and it is not a per-expert split:
+    # the fused gate|up stack becomes two expert-strided tensors instead of one,
+    # because the grouped int8 MMQ leaf derives an expert's stride from its own
+    # output width and so cannot read a fused stack. That is 2 allocations, not
+    # 128, and the expert gather stays the kernel's job in both.
     return Gemma4GGUFWeightSpec(
         slot_path=slot_path,
         source=source,
         quant_key=f"gguf_{source.ggml_type_name.lower()}",
         layout=LAYOUT_RAW_GGUF,
+        allocation_names=("raw", "gate", "up") if split_gate_up else ("raw",),
+        split_gate_up=split_gate_up,
     )
 
 
@@ -185,7 +201,18 @@ def plan_gemma4_gguf_resident_specs(
                     f"Gemma 4 layer {layer_id} is missing GGUF tensor slot {slot!r}"
                 )
             tensor = layer_map.tensor(slot)
-            specs.append(_plan_one(f"layers.{layer_id}.{slot}", tensor))
+            specs.append(
+                _plan_one(
+                    f"layers.{layer_id}.{slot}",
+                    tensor,
+                    split_gate_up=_is_fused_expert_gate_up(
+                        tensor,
+                        experts=config.expert_count,
+                        fused_width=2 * config.expert_feed_forward_length,
+                    )
+                    and _mmq_split_requested(),
+                )
+            )
 
     specs.append(_plan_one("token_embedding", resolved.root("token_embedding")))
     specs.append(_plan_one("output_norm", resolved.root("output_norm")))
@@ -198,6 +225,33 @@ def resident_bytes(specs: tuple[Gemma4GGUFWeightSpec, ...]) -> int:
     """Return the device bytes ``specs`` would occupy, without allocating."""
 
     return sum(int(spec.source.nbytes) for spec in specs)
+
+
+def _mmq_split_requested() -> bool:
+    """True when the resident split gate_up layout is worth its extra memory.
+
+    The grouped int8 MMQ leaf cannot read a fused ``gate | up`` stack, so that
+    route needs gate and up resident separately. Materializing the split costs a
+    second copy of the largest expert tensor, so it is built only when the route
+    that needs it is selected; every other route keeps reading the fused ``raw``
+    allocation it has always read.
+    """
+
+    import os
+
+    return os.environ.get("HIPENGINE_GEMMA4_MOE_PREFILL", "").strip().lower() == "mmq"
+
+
+def _is_fused_expert_gate_up(spec_source, *, experts: int, fused_width: int) -> bool:
+    """True for the rank-3 ``(experts, 2 * intermediate, hidden)`` gate_up stack.
+
+    Matched on shape rather than on the slot name so the raw device materializer
+    and the reference materializer cannot drift apart about which tensor is the
+    fused one: the reference path validates this exact shape too.
+    """
+
+    shape = tuple(int(dim) for dim in spec_source.shape)
+    return shape[:2] == (experts, fused_width)
 
 
 def materialize_gemma4_gguf_device_weight(
@@ -236,6 +290,45 @@ def materialize_gemma4_gguf_device_weight(
         runtime=runtime,
         allocator=allocator,
     )
+    if spec.split_gate_up:
+        # The split is additive: ``raw`` stays resident so every other prefill
+        # route keeps working unchanged, and gate/up are extra views the int8
+        # MMQ leaf can stride per expert. The gather is one-time, at load.
+        experts = int(spec.source.shape[0])
+        expert_bytes = int(spec.source.nbytes) // experts
+        if expert_bytes % 2:
+            raise ValueError(
+                f"{spec.slot_path}: fused expert gate_up expert stride "
+                f"{expert_bytes} bytes is not even"
+            )
+        half = expert_bytes // 2
+        blocks = np.frombuffer(raw, dtype=np.uint8).reshape(experts, expert_bytes)
+        gate, up = blocks[:, :half], blocks[:, half:]
+        return Gemma4GGUFDeviceWeight(
+            spec=spec,
+            allocations={
+                "raw": allocation,
+                "gate": load_host_array_to_device_as_dtype(
+                    f"{spec.source.name}.gate",
+                    np.ascontiguousarray(gate),
+                    dtype,
+                    source_dtype=source_dtype,
+                    device=device,
+                    runtime=runtime,
+                    allocator=allocator,
+                ),
+                "up": load_host_array_to_device_as_dtype(
+                    f"{spec.source.name}.up",
+                    np.ascontiguousarray(up),
+                    dtype,
+                    source_dtype=source_dtype,
+                    device=device,
+                    runtime=runtime,
+                    allocator=allocator,
+                ),
+            },
+            backend=backend,
+        )
     return Gemma4GGUFDeviceWeight(
         spec=spec,
         allocations={"raw": allocation},
