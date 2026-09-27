@@ -33,22 +33,41 @@ production fused kernel and its registered strict unfused chain.
 | arm | up K=320 N=10240 | down K=10240 N=320 |
 | --- | ---: | ---: |
 | production fused exact | **6.538 ms** (1.03 TFLOP/s) | **2.807 ms** |
-| strict unfused chain | 7.899 ms (0.83x) | — |
+| strict unfused chain | 7.899 ms (0.83x) | - |
 | wide tile, f32 input | 1.493 ms (4.38x) | 1.839 ms (1.53x) |
 | wide tile, f16 input | 1.419 ms (4.61x) | 1.299 ms (2.16x) |
 
-The limiter is **load issue on the K=320 weight stream, not the epilogue and not
-the reduction.** Two independent readings agree:
+The limiter is **weight traffic**, and the arithmetic is checkable from both
+kernels' source rather than inferred from the timing.
 
-- The production fused kernel runs at **1.03 TFLOP/s = 3.9% of the gfx1151 FP32
-  peak**, which no reduction- or epilogue-bound kernel would do.
-- The same weights through a 256-column tile reach 4.50 TFLOP/s, and the entire
-  difference is tile geometry: the fused kernel's `N`-column walk re-reads the
-  320-element weight row per output column, while the wide tile stages it once
-  per block.
+`q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel`
+(`hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip:952`) tiles
+`ROW_BATCH=4` rows x `HIDDEN_TILE=2` hidden columns x 4 branches, so each block
+holds 8 weight rows and re-reads them once per 4-row batch. At `rows=1024`:
 
-Fusion is already earning its keep, but only **1.21x** over the strict chain
-(6.538 against 7.899 ms). The wide tile is **4.38x** over the fused kernel.
+| quantity | fused exact | wide tile |
+| --- | ---: | ---: |
+| block tile | 4 rows x 2 cols x 4 branches | `BM=128, BN=256` (`gguf_q8_0_dense_wide.hip:513`) |
+| grid | 5120 x 256 = 1,310,720 blocks | 80 x 4 = **320 blocks** |
+| weight staging | dequantize per k, per block | 128x64 dequantized **f16 LDS tile**, reused across 256 rows |
+| weight bytes read | **3.565 GB** | **13.9 MB** |
+| arithmetic intensity | **1.88 FLOP/byte** | 483 FLOP/byte |
+
+At 1.88 FLOP/byte the fused kernel cannot be compute-bound: it would need
+~13 FLOP/byte to saturate this GPU's FP32 rate, and 3.565 GB alone accounts for
+~14 ms at peak bandwidth (measured 6.54 ms, so L2 absorbs part of it). The wide
+tile removes the re-read entirely and lands at 4.50 TFLOP/s. **Reduction and
+epilogue are not the limiter**: the reduction is 5 shuffles plus 4 wave sums per
+output and the epilogue covers at most 8 outputs per block, and fusing the
+epilogue is a net **1.21x win** over the strict unfused chain (6.538 against
+7.899 ms), which is the opposite of an epilogue tail.
+
+One measurement in the record does not fit a pure-bandwidth story and is left
+open rather than smoothed over: the 2026-09-06 `RB8/HT1` retile halves the
+re-read (1.78 GB, 8 FMA per staged weight against 4) and measured **0.80x**,
+i.e. slower. Whatever else that retile changed cost more than the traffic it
+saved. A source-level re-read of it is the first step before any further
+bit-exact attempt.
 
 At the code-p4096 shape this is 384 launches per leg:
 
