@@ -1924,6 +1924,54 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``scripts/gemma4_moe_owner_oracle.py`` (pack-variant comparison,
   per-tile good/bad counts, expert ids of good tiles).
 
+  **Iteration 97: weight traffic is not the bottleneck anywhere -- every family
+  runs 20-100x above its own weight ceiling.** Eight iterations went into routing
+  the MoE gate_up through a dp4a owner on the premise that the MoE line was far
+  above its memory floor. That premise was never measured. This iteration measured
+  it, and it does not survive.
+
+  ``scripts/gemma4_weight_bytes_census.py`` wraps the projection owners during a
+  forward and records the weight tensor bytes each call touches, giving a
+  per-family traffic ceiling (tensor bytes / 864 GB/s). Against the 653.68
+  census's timings::
+
+      family                        time      tensor bytes   ceiling   ratio
+      moe_grouped_dual:gguf_q4_k    417.9 ms      16.6 GB      19.2 ms    22x
+      moe_grouped:gguf_q5_1         435.5 ms      11.0 GB      12.8 ms    34x
+      dense:gguf_q8_0               394.3 ms       3.5 GB       4.0 ms    98x
+      whole prefill                1570.3 ms      32.9 GB      38.0 ms    41x
+
+  **Two things follow.** First, a grouped or selected owner touches only the
+  activated experts' rows, so its tensor size is a *ceiling* on its traffic, not
+  its actual traffic -- dividing measured time by these numbers produced
+  impossible bandwidths (32 TB/s), which is how the ceiling/floor confusion was
+  caught. Second, and more important, even the *ceiling* is 20-100x below the
+  measured time. No family is anywhere near memory-bound on weights.
+
+  **The dense line is the cleanest case**, because each call reads its whole
+  weight: 12.255 MB per call at a 961 us mean, so roughly 18 MB moved per call
+  counting activations. That is about 19 GB/s, or 2% of device peak. These are
+  memory-*inefficient* kernels, not memory-*bound* ones.
+
+  **What this means for the campaign.** The MoE dp4a work, the weight_pack
+  questions, the layout templates, and the dense MMQ two-plane variant all target
+  weight traffic. If weight traffic is not the constraint, none of them can
+  deliver the headroom they promise, and the eight iterations spent on the MoE
+  route were aimed at the wrong bottleneck -- which is consistent with the route
+  never producing a measurable win. The headroom is in kernel *efficiency*:
+  occupancy, access pattern, tile shape, and the per-call overheads that the
+  census currently buries in ``unattributed`` (33-70 ms, including the Q8_1
+  activation packing that the MMQ path adds per call). That is a different
+  optimization target, and it should be chosen deliberately rather than by
+  continuing down the layout path.
+
+  Caveat stated plainly: these are tensor sizes, not measured traffic. The
+  read fraction needs a profiler (``rocprofv3``) or a routing histogram, not
+  arithmetic. The dense number is the trustworthy one because its read fraction is
+  1.0 by construction.
+
+  Evidence: ``scripts/gemma4_weight_bytes_census.py``.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
