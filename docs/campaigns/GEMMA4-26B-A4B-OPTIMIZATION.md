@@ -1634,6 +1634,65 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``/mnt/nvme1/lhl/gemma4-captures/census-mmq-xtx.json`` (baseline),
   ``census-mmq2plane-xtx.json`` (two-plane), ``/tmp/gate-mmq2plane.json``.
 
+  **Iteration 90: the kernel-level oracle found the MoE dp4a root cause in five
+  30-second runs, after four ten-minute gate cycles could not.** Iteration 88
+  closed the route and named the missing instrument. This iteration built it:
+  ``scripts/gemma4_moe_owner_oracle.py`` wraps the production grouped-dual owner
+  to capture its real arguments on a live forward, then replays those exact
+  arguments through the known-good fp32 owner and through the Q4_K ds4 MMQ owner
+  and compares. It paid for itself immediately.
+
+  **The four failed attempts varied arguments that do not matter.** All eight
+  combinations of identity fill (unpadded vs padded), expert-start array (compact
+  vs plan), and plan builder (``qwen35_moe_mmq32_tile_map`` vs
+  ``qwen35_moe_wmma_tile_map``) produce the *identical* wrong answer --
+  ``max_abs`` 3.91504 to five digits, on every one of them. So
+  ``compact_to_source``, the expert-start arrays, and the plan choice are all
+  irrelevant to the failure. Every hypothesis those four attempts were built on
+  was a variable that changes nothing.
+
+  **The error is a uniform scale, not an indexing error.** With a valid plan the
+  best-fit scale is 0.062 -- the MMQ output is ~16x too large -- and *zero* rows
+  land within 1e-2 of the reference, while a half-swap test is no better than the
+  direct comparison. No row is right and every row is wrong by the same factor:
+  that is a wrong *input format*, not a wrong index.
+
+  **The oracle also reproduced the end-to-end failure mode exactly.** An early
+  version of it called the MMQ owner before ``build_plan``, leaving the
+  tile-expert map uninitialized; that run reported non-finite output, and a
+  repeat of the *same* call reported finite output instead -- non-determinism
+  from reading uninitialized device memory. That is the attempt-2 failure: the
+  plan buffers are only built when ``gate_up_wmma or down_wmma`` is set, which is
+  false by default, so attempt 2 fed the owner an uninitialized tile map. A
+  silently-uninitialized plan is indistinguishable from a wrong one at the gate,
+  and it cost a full cycle to learn.
+
+  **The root cause is a misleading import alias.** ``qwen4_exp_runner`` line 123
+  reads::
+
+      gguf_q8_1_mmq_ds4_pack_bf16_d4x3 as gguf_q8_1_mmq_ds4_pack_bf16,
+
+  so the call site I copied -- ``gguf_q8_1_mmq_ds4_pack_bf16(...)`` -- does not
+  run the generic single-plane pack. It runs the three-plane one. The pack I
+  called is documented as "Pack BF16 activations as primary DS4 plus two residual
+  DS4 planes", and the owner's registered variants are all ``d4x3``. Feeding the
+  owner a single-plane pack drops both residual planes, which is exactly the
+  uniform-scale signature the oracle measured, and the three-plane format also
+  needs a larger workspace than the 144-bytes-per-128-block I allocated -- which
+  is what faulted the GPU when the three-plane pack was tried.
+
+  **Cost accounting, because this is the whole argument for the instrument.**
+  Four end-to-end attempts: roughly 40 minutes of gate cycles, each learning one
+  bit, all four bits irrelevant. Five oracle runs: roughly three minutes total,
+  producing the failure class, the eliminated variables, the reproduced
+  end-to-end defect, and the root cause. The next step is mechanical rather than
+  inferential -- read ``struct block_q8_1_mmq_ds4`` for the three-plane stride,
+  size the workspace, re-run the oracle expecting ``scale_k`` ~ 1.0 and
+  ``rows_ok`` ~ 100%, then wire it and gate it.
+
+  Evidence: ``scripts/gemma4_moe_owner_oracle.py``; captures
+  ``rows=4096 experts=128 in=2816 half=704 fused=1408``.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
