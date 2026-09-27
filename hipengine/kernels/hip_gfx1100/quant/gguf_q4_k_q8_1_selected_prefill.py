@@ -389,8 +389,12 @@ def gguf_q8_1_mmq_ds4_pack_bf16(
 
     _check_positive(rows, "rows")
     _check_positive(hidden, "hidden")
-    if hidden % _Q8_1_MMQ_BLOCK != 0:
-        raise ValueError("hidden must be divisible by DS4 Q8_1 MMQ block size 128")
+    # 32, not 128: a width that is not a multiple of the 128-wide DS4 block is
+    # packed with a partial trailing block, which the kernel fills from the
+    # elements that exist and zeroes for the rest. The _f32 pack variants use a
+    # different kernel and keep the 128-wide requirement.
+    if hidden % 32 != 0:
+        raise ValueError("hidden must be a multiple of the 32-wide Q5_1 block")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_DS4_PACK_BF16)
@@ -427,8 +431,12 @@ def gguf_q8_1_mmq_ds4_pack_bf16_d4x3(
 
     _check_positive(rows, "rows")
     _check_positive(hidden, "hidden")
-    if hidden % _Q8_1_MMQ_BLOCK != 0:
-        raise ValueError("hidden must be divisible by DS4 Q8_1 MMQ block size 128")
+    # 32, not 128: a width that is not a multiple of the 128-wide DS4 block is
+    # packed with a partial trailing block, which the kernel fills from the
+    # elements that exist and zeroes for the rest. The _f32 pack variants use a
+    # different kernel and keep the 128-wide requirement.
+    if hidden % 32 != 0:
+        raise ValueError("hidden must be a multiple of the 32-wide Q5_1 block")
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_DS4X3_PACK_BF16)

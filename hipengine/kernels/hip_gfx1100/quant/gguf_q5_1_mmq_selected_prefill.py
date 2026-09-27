@@ -22,14 +22,27 @@ _ARGS = (
 ) + (ctypes.c_int64,) * 5
 
 
+def _ds4_blocks(in_features: int) -> int:
+    """128-wide DS4 activation blocks covering ``in_features``, tail included.
+
+    The DS4 Q8_1 MMQ block is 128 elements, and Gemma 4 26B-A4B's expert down
+    projection is 704 wide -- five full blocks plus a 64-element tail. Rounding
+    down here would silently drop that tail, so every size, loop bound and guard
+    on this route rounds up and the kernel stops at the last block that holds
+    real data.
+    """
+
+    return (in_features + 127) // 128
+
+
 def ds4_workspace_nbytes(compact_rows: int, in_features: int, planes: int = 3) -> int:
     """Device bytes for the multi-plane ds4 activation workspace."""
 
-    if compact_rows <= 0 or in_features <= 0 or in_features % 128:
-        raise ValueError("compact_rows must be positive and in_features % 128 == 0")
+    if compact_rows <= 0 or in_features <= 0 or in_features % 32:
+        raise ValueError("compact_rows must be positive and in_features % 32 == 0")
     if planes <= 0 or planes > 3:
         raise ValueError("planes must be in 1..3")
-    return planes * compact_rows * (in_features // 128) * 144
+    return planes * compact_rows * _ds4_blocks(in_features) * 144
 
 
 def plan_gguf_q5_1_mmq_selected_prefill_build(
@@ -89,8 +102,12 @@ def gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
 
     if compact_rows <= 0 or num_experts <= 0:
         raise ValueError("compact_rows and num_experts must be positive")
-    if in_features <= 0 or in_features % 128:
-        raise ValueError("in_features must be a positive multiple of 128")
+    if in_features <= 0 or in_features % 32:
+        raise ValueError(
+            "in_features must be a positive multiple of the 32-wide Q5_1 block; "
+            "widths that are not a multiple of the 128-wide DS4 block use a "
+            "partial trailing block"
+        )
     if out_features <= 0:
         raise ValueError("out_features must be positive")
     if planes <= 0 or planes > 3:
