@@ -2479,6 +2479,92 @@ record, not permission to reset unrelated work or weaken correctness.
   ``gemma4_attention.py:39`` (bound symbol); ``kernels/hip_gfx1100/__init__.py:16``
   (Laguna variant system).
 
+  **Iteration 107: the dense line's owner was named, and it was missing a
+  production default. +18.6% prefill.**
+
+  Iteration 38 left the dense family -- 428 ms, 25% of prefill, 410 calls at
+  10-17 GB/s -- without an owner, because it does not resolve through
+  ``registry.resolve``. It does not, because it is not a registry kernel at all:
+  ``gemma4_project`` (gemma4_layer.py:117) funnels every dense projection into
+  ``hipengine.runtime.gguf_linear.launch_gguf_linear``.
+
+  That function's own docstring names the lever::
+
+      When rows > 1 and the raw-layout quant has a WMMA prefill kernel
+      registered (currently gguf_q8_0 and raw gguf_q4_k), the dispatch rewrites
+      to the wmma_prefill_* family if any of these is true:
+        * use_wmma_prefill=True is passed explicitly,
+        * a runner has called set_wmma_prefill_enabled with True,
+        * the env var HIPENGINE_GGUF_WMMA_PREFILL is set.
+      Otherwise aligned raw-Q8 BF16 projections use the exact pack8/row-tiled
+      schedule.
+
+  ``gemma4_project`` passed none of them. ``docs/ENVS.md`` then says the quiet
+  part out loud::
+
+      HIPENGINE_GGUF_WMMA_PREFILL | false | Low-level performance selector
+      ... The public generator passes use_wmma_prefill=True.
+
+  and both shipping GGUF call sites do exactly that, literally --
+  ``generation/qwen35_gguf.py:3639`` and ``runtime/qwen35_gguf_nextn.py:446``.
+  So the env var is only the low-level session default; **the shipped path
+  already runs WMMA prefill, and Gemma was not on it.** This is not a gated
+  candidate arm. It is the production path not doing what production does.
+
+  **Bracketed A/B** (default / wmma / default, so drift cannot masquerade):
+
+  ==================  ==========  ==========  =======
+  dense shape         default     wmma        speedup
+  ==================  ==========  ==========  =======
+  r=512 k=2816 n=2112   888.9 us    281.5 us    3.16x
+  r=512 k=2816 n=4096  1467.9 us    522.3 us    2.81x
+  r=512 k=4096 n=2816  1107.3 us    555.5 us    1.99x
+  ==================  ==========  ==========  =======
+
+  The unaffected MoE gate_up read 7744 / 7743 / 7770 us across the three runs and
+  the two default dense runs agreed to 0.2% (888.9 vs 890.7), so the 2-3x is the
+  kernel and not the 12% thermal swing that invalidated earlier attempts.
+
+  **End-to-end**: ``prefill_tps`` 598.36 -> **709.38** (+18.6%), ``prefill_s``
+  1.7114 -> 1.4435, ``layer_total`` 1699.9 -> 1432.4 ms.
+
+  **Teacher-forced gate** (``scripts/gemma4_teacher_forced_gate.py``, the
+  evaluator that gates changed-arithmetic candidates against frozen incumbent
+  logits with the production KL/top-1 limits from EXECUTION-PROFILES.md):
+
+      kl_mean 0.0   kl_p95 0.0   kl_p99 0.0   kl_max 0.0
+      top1_rate 1.0   top1_flips 0     rows 1023   vocab 262144
+
+  **Every percentile is exactly zero.** The WMMA prefill family reproduces the
+  incumbent logits bit-for-bit on the frozen chain, so this is not a
+  changed-arithmetic promotion and the KL/top-1 limits are not the relevant
+  question. The gate nevertheless reports ``passed: false`` with
+  ``failed: ['split_not_exercised']`` and ``split_launches: 0``: the prompt-1024
+  chain never crosses the split-key-range threshold, and the gate requires the
+  chain to exercise that route before it will qualify anything. That is a
+  chain-selection precondition, not a numerical result -- and it is owed a
+  long-context re-run, which is what the remaining verification for this entry
+  is.
+
+  **Kept on the default path.** It matches the two shipping call sites, it is
+  bit-identical where measured, and the alternative -- leaving Gemma on a
+  fallback the shipped generator does not use -- is the defect. One consequence
+  worth recording: because an explicit kwarg outranks the session toggle and the
+  env var (``_resolve_use_wmma_prefill``), Gemma's dense path now follows the
+  shipping pattern in also being no longer switchable from the environment. The
+  Qwen call sites have that same property; it is the established pattern, not a
+  new lever that was removed.
+
+  **This is the fourth time a better implementation already existed in this
+  tree and Gemma's route did not use it** -- after the MoE grouped owner's WMMA
+  sibling, the down kernel's missing nest, and the attention tiling the Laguna
+  path has. The first three were blocked by gates or interfaces. This one was
+  blocked by nothing at all: it was a missing keyword argument, worth 18.6%.
+
+  Evidence: ``gemma4_layer.py:117`` (owner, now passing the kwarg);
+  ``gguf_linear.py:3055`` (dispatch contract), ``:1829`` (precedence);
+  ``ENVS.md:272``; ``qwen35_gguf.py:3639``, ``qwen35_gguf_nextn.py:446``.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``

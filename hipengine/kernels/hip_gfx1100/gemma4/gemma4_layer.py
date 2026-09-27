@@ -138,6 +138,15 @@ def gemma4_project(
     # the runtime layer and the kernel package does not depend on it otherwise.
     from hipengine.runtime.gguf_linear import launch_gguf_linear
 
+    # ``use_wmma_prefill=True`` is what both shipping GGUF call sites pass
+    # literally (generation/qwen35_gguf.py, runtime/qwen35_gguf_nextn.py), and
+    # ENVS.md records it as the public generator's behaviour: the env var is only
+    # the low-level session default. Gemma's dense projections were taking the
+    # fallback schedule instead -- 888.9 us against 281.5 us on the (512, 2816,
+    # 2112) q/k/v shape, a 3.16x difference measured with the unaffected MoE
+    # gate_up flat across the same runs. The dispatch only rewrites shapes that
+    # have a registered WMMA prefill kernel (currently gguf_q8_0 and raw
+    # gguf_q4_k), so every other quant and row count keeps its existing schedule.
     launch_gguf_linear(
         weight,
         x_ptr,
@@ -146,6 +155,7 @@ def gemma4_project(
         in_features,
         out_features,
         stream=stream,
+        use_wmma_prefill=True,
     )
 
 
