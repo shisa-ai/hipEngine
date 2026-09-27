@@ -117,28 +117,44 @@ def test_gguf_q8_0_wmma_prefill_registry_and_build_plan() -> None:
 
 
 def test_gguf_q8_0_wmma_prefill_default_tiles_match_paro_heuristic() -> None:
-    """P9.C1 tuned heuristic: shape-aware (tile_m, tile_n) defaults.
+    """Pinning test for the (tile_m, tile_n) default.
 
-    Pinning test for the per-shape dispatch decision. Each assertion below
-    is anchored to a microbench-best tile measured on RX 7900 XTX / gfx1100
-    at rows=512, BF16/BF16. Changing the heuristic must also change these
-    assertions deliberately (with new microbench evidence).
+    The default is flat now: every shape at ``rows >= 32`` takes ``(16, 32)``
+    and everything below takes ``(16, 16)``. Each assertion is anchored to a
+    microbench-best tile measured on gfx1100 (2026-09-27 sweep, thirteen
+    shapes, rows 8/31/128/256/512/1024, BF16/BF16; the sweep script is
+    ``scripts/gemma4_dense_q8_tile_sweep.py``). Changing the default must also
+    change these assertions deliberately, with new microbench evidence.
+
+    The shape cascade these replace chose ``tile_m`` 32 or 64 for most of the
+    shapes below and lost 1.17-1.94x at rows >= 128 and 1.72-3.31x at rows 8
+    and 31.
     """
 
-    # P9.C1 sweep: at rows=512 the optimal TN is 32 across all out_features.
-    # rows < 32 falls back to TN=16 because the bigger TN under-utilises the
-    # WMMA tile.
+    # rows >= 32: (16, 32) at every measured shape, including the ones the old
+    # cascade sent to 32 or 64.
     assert _default_tiles(rows=512, in_features=2048, out_features=8192) == (16, 32)
     assert _default_tiles(rows=512, in_features=2048, out_features=4096) == (16, 32)
-    assert _default_tiles(rows=512, in_features=4096, out_features=2048) == (64, 32)
-    assert _default_tiles(rows=512, in_features=2048, out_features=2048) == (32, 32)
+    assert _default_tiles(rows=512, in_features=4096, out_features=2048) == (16, 32)
+    assert _default_tiles(rows=512, in_features=2048, out_features=2048) == (16, 32)
     assert _default_tiles(rows=512, in_features=2048, out_features=512) == (16, 32)
     assert _default_tiles(rows=32, in_features=2048, out_features=8192) == (16, 32)
-    assert _default_tiles(rows=32, in_features=4096, out_features=2048) == (64, 32)
+    assert _default_tiles(rows=32, in_features=4096, out_features=2048) == (16, 32)
+    # Gemma 4's dense Q8_0 shapes, where the cascade picked (32, 32) or (64, 32).
+    assert _default_tiles(rows=512, in_features=2816, out_features=4096) == (16, 32)
+    assert _default_tiles(rows=512, in_features=2816, out_features=8192) == (16, 32)
+    assert _default_tiles(rows=512, in_features=4096, out_features=2816) == (16, 32)
+    assert _default_tiles(rows=512, in_features=8192, out_features=2816) == (16, 32)
+    assert _default_tiles(rows=512, in_features=2816, out_features=2112) == (16, 32)
+    assert _default_tiles(rows=512, in_features=2112, out_features=2816) == (16, 32)
+    # rows < 32: the narrower tile_n, and tile_m 16 rather than the cascade's
+    # 32/64 -- worth 1.72-3.31x at these row counts.
     assert _default_tiles(rows=31, in_features=2048, out_features=8192) == (16, 16)
-    assert _default_tiles(rows=31, in_features=4096, out_features=2048) == (64, 16)
-    assert _default_tiles(rows=8, in_features=2048, out_features=2048) == (32, 16)
-    # tile_m falls back to 16 when out_features < 32 (rare; lm_head etc.).
+    assert _default_tiles(rows=31, in_features=4096, out_features=2048) == (16, 16)
+    assert _default_tiles(rows=31, in_features=2816, out_features=8192) == (16, 16)
+    assert _default_tiles(rows=8, in_features=2048, out_features=2048) == (16, 16)
+    assert _default_tiles(rows=8, in_features=8192, out_features=2816) == (16, 16)
+    # out_features < 32 (rare; lm_head etc.) keeps tile_m 16.
     assert _default_tiles(rows=512, in_features=2048, out_features=16) == (16, 32)
 
     for tm, tn in _ALLOWED_TILES:
