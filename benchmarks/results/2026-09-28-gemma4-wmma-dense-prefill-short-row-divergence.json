@@ -62,13 +62,34 @@
     "row_tail_hypothesis_is_dead": "the WMMA row tile is AWQ_TILE_N = TN = 32, so 64 rows is exactly two tiles and needs no clamping. The kernel is wrong where the tail cannot be involved. Its stores are guarded (out_row >= rows continue, col < out_features) and its reads are clamped through safe_token, so it is also memory-safe.",
     "precision_is_not_the_explanation": "the exact tiled route keeps the activation in f32 (x_tile[r] = scalar_to_float<scalar_t>(...)) and the WMMA route narrows it to f16 (out[i] = static_cast<half_t>(scalar_to_float<scalar_t>(p[i]))). f16 carries 10 mantissa bits against bf16's 7, so the WMMA route feeds the matrix core a strictly more precise activation for any value in f16 range, and gemma4 activations are O(1) after RMSNorm so nothing overflows. A more precise input format cannot produce a 10.9 KL gap, which is what makes this a defect rather than an arithmetic-contract difference the gate was written to bound."
   },
+  "correction": {
+    "what_iteration_58_claimed": "that the divergence was a defect in gguf_q8_0_prefill_wmma_kernel's arithmetic, on the grounds that the tiled route keeps the activation in f32 and the WMMA route narrows it to f16, so a more precise input format cannot produce the gap.",
+    "what_direct_measurement_shows": "the kernel is arithmetically correct. A bare GEMM, attention and the MoE router out of the picture, puts the WMMA route and the exact tiled route on the same raw Q8_0 weight and the same bf16 activation, and they agree to 1.126e-03 at worst and 0.000e+00 at 16 and 32 rows. Both sit about 2.5e-03 from a float64 CPU oracle, which is exactly bf16 output rounding (2**-9 = 1.95e-03), so both are reproducing their own contract to the last bit the output format can carry.",
+    "tile_sweep": "all six (tile_m, tile_n) combinations the launcher accepts were run at rows 64, 128, 256 and 512. Every one of the 24 results lands on the same 2.2e-03 to 2.8e-03 against the oracle, so no single tile is broken either.",
+    "shape_sweep": "in_features 2816 against out_features 512, 104 and 2112, with rows 16 through 1024 including 100 and other non-multiples of the 32-row tile, and out_features 104 as a non-multiple of 64. The worst WMMA-against-tiled relative difference across every shape is 1.126e-03.",
+    "the_10.9_kl_was_an_input_artifact": "the original short-prompt probe used random token ids, which put the model far off the manifold its weights were trained on, where residual cancellation amplifies a 1e-3 perturbation. Rerunning the identical harness on the campaign's own frozen corpus drops the divergence by one to two orders of magnitude and no top-1 ever flips: rows 4 gives 0.027, 16 gives 0.258, 64 gives 0.185, 128 gives 0.341, 256 gives 0.088, and 512 gives 3.9e-06. The 512 result is the block size, where the two routes are effectively identical.",
+    "so_the_cause_is_still_open": "profiling the failing shape does not move the answer. At 256 rows on real text both arms dispatch 1558 kernels and the same three names differ as at 64 rows, with the same 205 q8_0 prefill calls. The kernel is correct, it is the only difference, and the end-to-end result still differs, so the cause is in how the route is invoked rather than in what the kernel computes. Arguments, buffer stride or aliasing are the remaining candidates and none has been tested."
+  },
+  "the_gate_fails_at_a_shape_production_actually_hits": {
+    "command": "scripts/gemma4_teacher_forced_gate.py capture/gate --prompt 512 --prefill 256",
+    "rows": 255,
+    "passed": false,
+    "kl_mean": 0.024906443296690495,
+    "kl_p95": 0.08373528679095238,
+    "kl_p99": 0.7123569275017627,
+    "kl_max": 1.5998782805954568,
+    "top1_rate": 0.9764705882352941,
+    "top1_flips": 6,
+    "reading": "against limits of 1e-3 / 5e-3 / 2e-2 / 5e-2 and a 0.99 top-1 rate, this is a hard fail on every axis, with six top-1 flips in 255 rows. A 256-row prefill is not an exotic shape: it is what any prompt shorter than the 512-token block produces, and what the final partial block of a longer prompt produces. The 1024-row pass therefore covers the shapes the campaign measures rather than the shapes users hit, which is the strongest argument for keeping this reverted."
+  },
   "how_to_reach_the_win": {
     "command": "HIPENGINE_GGUF_WMMA_PREFILL=1 <the campaign bench command above>",
     "caveat": "the 19 percent applies to long prompts only, and the route is unsound below some row count between 64 and 1024 that has not been located."
   },
   "next": [
-    "The cause is now localized to gguf_q8_0_prefill_wmma_kernel itself, so the next step is a direct GEMM comparison: one q8_0 weight matrix and one activation block at rows 64, run through both routes with attention out of the picture, against an f16-activation f32-accumulate CPU oracle. That separates a kernel arithmetic defect from something in how the dispatch feeds it.",
-    "Rows 64 and 1024 differ only in how many row tiles are in flight, so the prime suspects are a cross-tile or grid-stride interaction, or an accumulator that is not fully initialized or fully drained for some tiles.",
+    "The kernel is exonerated, so stop looking at its arithmetic. The remaining candidates are invocation-side: a non-contiguous or padded activation stride that both routes assume away (both index x as token * in_features), a scratch buffer that the WMMA route aliases and the tiled route does not, or a rows argument that differs from what the caller believes.",
+    "The cleanest next probe is to call the real dispatch (launch_gguf_linear) rather than the registered wrapper, on a realistic activation block with the same buffer the runner uses, and compare the two arms' outputs for a single layer. That reproduces the invocation rather than approximating it.",
+    "Profile the failing shape with the kernel arguments captured, not just the kernel names, since the names are already known to be identical.",
     "Fix gemma4_project_experts_gate_up_mmq to fall back on a zero-row tile map instead of raising."
   ]
 }
