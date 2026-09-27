@@ -81,22 +81,31 @@ def _symbol(variant: str) -> str:
 def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int, int]:
     """Heuristic default for (tile_m, tile_n) when the caller does not override.
 
-    P9.C1 tuning (microbench on RX 7900 XTX / gfx1100, rows=512, BF16/BF16)
-    is shape-specific; ``out_features`` alone was too coarse for qwen35moe:
+    ``(16, 32)`` for every shape at ``rows >= 32``, and ``(16, 16)`` below that,
+    where the wider ``tile_n`` under-fills the WMMA tile.
 
-    * ``(in=2048, out=8192)`` (linear-attention qkv and full-attn q+gate):
-      ``(16,32)`` is the fastest measured tile (`~0.54 ms` synthetic). The
-      previous broad ``out>=4096 -> (64,32)`` rule over-tiled this shape.
-    * ``(in=2048, out=4096)`` (linear-attention gate): ``(16,32)`` slightly
-      wins over ``(64,32)`` and is retained to keep the large-input family
-      consistent.
-    * ``(in=4096, out=2048)`` (ssm/shared down): ``(64,32)`` is best.
-    * ``out<=512`` (full-attn k/v): ``(16,32)`` is best.
-    * Other medium shapes keep the stable P8/P9 ``(32,32)`` default.
-    * ``rows < 32``: drop ``tile_n`` to 16 (the kernel still launches but
-      the bigger TN under-utilises the WMMA tile).
+    This replaces a shape cascade (``in >= 4096 and out >= 2048 -> tile_m 64``,
+    ``in <= 2048 and out >= 4096 -> 16``, ``out >= 32 -> 32``, else 16) that was
+    tuned in P9.C1. A 2026-09-27 sweep on the same GPU (RX 7900 W7900 / gfx1100,
+    BF16/BF16, thirteen shapes, rows 8/31/128/256/512/1024, interleaved passes
+    with per-tile medians) finds ``tile_m`` 16 fastest or tied at *every*
+    measured point, and the cascade's 32/64 choices losing by:
 
-    See ``tests/test_gpu_gguf_q8_0_wmma_prefill.py`` for dispatch pinning tests.
+    * ``rows >= 128``: 1.17-1.94x. Gemma 4's dense Q8_0 projections, which are
+      159 ms of a 554 ms per-prefill kernel budget, were all on the losing side.
+    * ``rows == 8`` or ``31``: 1.72-3.31x, so the small-row prefill shapes
+      (MTP/verifier blocks) lose most of all.
+
+    The cascade's rules that already selected 16 -- ``in <= 2048 and
+    out >= 4096``, ``out <= 512``, and ``out < 32`` -- still select 16 here, so
+    collapsing it changes only the cases the sweep shows were wrong. ``tile_n``
+    is unchanged: 32 at ``rows >= 32`` is fastest or within 1.4% at every
+    measured shape.
+
+    ``in_features`` no longer selects anything; it stays in the signature
+    because callers and the override path pass the shape as a unit. See
+    ``tests/test_gpu_gguf_q8_0_wmma_prefill.py`` for the pinning tests and
+    ``scripts/gemma4_dense_q8_tile_sweep.py`` for the sweep that produced this.
     """
 
     override_m = os.environ.get("HIPENGINE_GGUF_Q8_0_WMMA_TILE_M")
@@ -108,18 +117,7 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
         if tile not in _ALLOWED_TILES:
             raise ValueError(f"unsupported Q8_0 WMMA tile override: {tile}")
         return tile
-    tile_n = 32 if rows >= 32 else 16
-    if out_features <= 512:
-        tile_m = 16
-    elif in_features >= 4096 and out_features >= 2048:
-        tile_m = 64
-    elif in_features <= 2048 and out_features >= 4096:
-        tile_m = 16
-    elif out_features >= 32:
-        tile_m = 32
-    else:
-        tile_m = 16
-    return tile_m, tile_n
+    return 16, (32 if rows >= 32 else 16)
 
 
 def _launch(

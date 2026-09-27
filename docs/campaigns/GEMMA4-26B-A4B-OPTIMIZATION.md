@@ -396,10 +396,21 @@ test a single-plane MMQ of llama.cpp's shape, which runs at an estimated
    +23.1% prefill (1397 -> 1720 tok/s on the W7900 at 1024 tokens). The
    head_dim-512 global layers and prompts past the window width still need the
    tiled kernel.
-3. Route layer 29 through the existing fast owners.
+3. Route layer 29 through the existing fast owners. **Partly answered in
+   iteration 154, and the answer is not the MMQ family**: Gemma's expert down
+   input is 704 wide, which is 5.5 DS4-128 blocks, so no MMQ down leaf can
+   serve it at any quant. Layer 29's down (24.6 ms of a 277 ms block-pass) and
+   its Q5_K gate_up (12.4 ms) need a non-MMQ grouped owner for Q8_0 and Q5_K --
+   either a new exact grouped GEMV leaf, or the already-registered WMMA owner
+   under the open absolute-``kl_max`` ruling.
 4. Replace the MoE `compact_active` + gather scheduler with the Qwen scheduler.
 5. Longer term: single-plane int8 MMQ with llama.cpp-sized tiles for dense and
-   MoE. This benefits Qwen equally.
+   MoE. This benefits Qwen equally. **The dense half does not transfer to
+   Gemma**: measured in iteration 154, the Q8_0 MMQ128 chain is 44% *slower*
+   than the bf16 WMMA owner at Gemma's dense shapes, and the MoE half is
+   excluded by the 704-wide down. What did transfer is the tile: the WMMA
+   owner's shape cascade was losing 1.2-1.9x on these shapes, and flattening it
+   is worth 5.2-5.4% of prefill.
 
 If items 1–4 hit their estimates, the prefill falls from 709 ms to about
 440 ms, roughly 2300 tok/s on the W7900. Adding item 5 is what closes the rest
@@ -4951,6 +4962,86 @@ record, not permission to reset unrelated work or weaken correctness.
   ``hipengine/runtime/gemma4.py`` (``GEMMA4_Q8_MMQ_MIN_ROWS`` at line 430, the policy
   construction at 683, ``q8_mmq_prefill_session``); ``gguf_q8_0_mmq_prefill.py``
   (``Q8MMQPrefillPolicy``).
+
+  **Iteration 154: the Q8_0 WMMA tile cascade was wrong on this GPU, and the
+  dense projections were all on the losing side.**
+
+  This starts from the post-flash kernel trace, re-read for the block structure.
+  One 1024-token prefill is two 512-row block-passes; each block-pass is 277 ms
+  of kernel time, and a 512-token prefill in one block measures 259 ms of wall,
+  which is what fixes the unit. The largest single item is
+  ``gguf_q8_0_prefill_wmma_kernel`` at 79.4 ms per block-pass -- **158.9 ms per
+  1024-token prefill, 28.7% of the budget** -- and a route census over the real
+  model identifies its 205 launches per block-pass as the dense attention
+  projections and the dense MLP: ``attn_q`` 2816->4096 (sliding) and
+  2816->8192 (global), ``attn_k``/``attn_v`` 2816->2048 and 2816->1024,
+  ``attn_output`` 4096->2816 and 8192->2816, and the dense MLP's
+  2816->2112 / 2112->2816 pair. Those are Q8_0 in `UD-Q4_K_XL`.
+
+  **The int8 MMQ owner loses here, by a lot.** The Q8_0 MMQ128 prefill family is
+  already registered and the Gemma runner already carries a crossover map naming
+  six of these shapes at `min_rows` 512 -- but the map is inert:
+  ``_wmma_prefill_dispatch`` rewrites the incoming ``prefill_bf16_bf16_out`` to
+  ``wmma_prefill_bf16_bf16_out`` before ``_q8_mmq_prefill_dispatch`` looks at it,
+  and that gate only recognises the un-rewritten name. Carrying the candidate
+  gate (accept the WMMA-rewritten name) as a monkeypatch, so the measurement
+  precedes any code change: a 512-token prefill goes **258.6 -> 373.2 ms, a 44%
+  regression**, with all six mapped shapes switched to the MMQ chain. The map
+  would therefore be a landmine rather than a fast path if the dispatch order
+  ever moved, and ``GEMMA4_Q8_MMQ_MAX_ROWS`` is 4096 while the runner's
+  ``max_block`` is 512, so no row count Gemma can produce reaches a shape where
+  the route could win.
+
+  **A second, independent reason the expert down projection cannot use that
+  family.** Layer 29's expert tensors are Q5_K (gate_up) and Q8_0 (down) while
+  layers 0-28 are Q4_K and Q5_1, and the int8 MMQ leaves are registered per
+  quant (``_MMQ_DUAL_QUANT_KEY = "gguf_q4_k"``,
+  ``_MMQ_DOWN_QUANT_KEY = "gguf_q5_1"``). That is not the whole story: the DS4
+  activation block is 128 values and every MMQ route guards on
+  ``in_features % 128``, while Gemma's expert down input is
+  ``moe_intermediate_size`` = **704**, which is 5.5 blocks. So *no* Q8_0 or Q5_1
+  MMQ down leaf could serve this geometry even if one were written, and the
+  704-wide down is structurally an MMQ-free shape. That is why layers 0-28's
+  down runs the grouped WMMA owner (``q5_1_selected_grouped_wmma_prefill``,
+  1.78 ms per layer) and layer 29's runs the per-row selected GEMV
+  (``gguf_k_selected_prefill_out``, **24.6 ms for that one layer**).
+
+  **So the available win was the tile, and the tile heuristic was wrong.**
+  ``_default_tiles`` chose ``tile_m`` 32 or 64 for every one of these shapes.
+  A sweep on the W7900 over thirteen shapes at rows 8/31/128/256/512/1024, with
+  interleaved passes and per-tile medians, finds **``(16, 32)`` fastest or tied
+  at every measured point**: the cascade's 32/64 choices lose 1.17-1.94x at
+  rows >= 128 and **1.72-3.31x at rows 8 and 31**. The three rules that already
+  selected 16 (``in <= 2048 and out >= 4096``, ``out <= 512``, ``out < 32``)
+  still select 16, so collapsing the cascade changes only the cases the sweep
+  shows were wrong. The heuristic is now flat: ``(16, 32)`` at ``rows >= 32``,
+  ``(16, 16)`` below.
+
+  **Measured result, and it is bit-identical.** W7900 1024-token prefill
+  **1702.8 -> 1791.1 tok/s (+5.2%)**, RX 7900 XTX **1886.8 -> 1988.7 (+5.4%)**,
+  decode flat at 39.37 and 43.84, peak unchanged at 21.96 GiB,
+  ``public_path_parity`` true on both. Against llama.cpp's 3761/4124 that is
+  45.3% -> 47.6% and 45.8% -> 48.2%. The gain matches the attribution rather
+  than exceeding it: 28.7% of the budget at 1.25x is 5.8% off the kernel total.
+  The teacher-forced gate over 1023 rows returns **exactly the same verdict as
+  before the change** -- ``kl_max`` 0.000773422210741528, ``kl_mean`` 5.5e-06,
+  ``kl_p99`` 1.4e-04, 0 flips -- because a tile decides which CTA computes an
+  output, not the order its k-blocks are accumulated in.
+
+  **Scope of the sweep, stated rather than implied.** All timings are the W7900
+  at ``rows >= 8`` with synthetic Q8_0 weights of the real geometry, so the
+  memory traffic is the real one and no tile's cost is value-dependent; the
+  XTX row is the end-to-end confirmation, not a second sweep. The small-row
+  result (rows 8 and 31) is measured on the same GPU and is where the largest
+  relative gains are, so it is worth re-checking on any other target before
+  relying on it there.
+
+  Evidence: ``scripts/gemma4_dense_q8_route_probe.py`` (route census and the
+  MMQ A/B), ``scripts/gemma4_dense_q8_tile_sweep.py`` (the tile table),
+  ``hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py`` (``_default_tiles``),
+  ``tests/test_gpu_gguf_q8_0_wmma_prefill.py`` (the pinning test),
+  ``$HOME/.cache/hipengine/tmp/gate_q8tile_verdict.json``,
+  ``benchmarks/results/2026-09-27-gemma4-q8-wmma-tile16-*.json``.
 
   **Iteration 153: the 25 sliding layers' prefill attention runs AOTriton's flash
   kernel; attention falls from 216 to 73 ms per prefill.**

@@ -399,13 +399,13 @@ differs.
 | Engine | Prefill 1024 | Decode at 1024/128 |
 | --- | ---: | ---: |
 | llama.cpp HIP `8cfc315`, same GGUF | **3910** | **68.92** |
-| hipEngine | 1886.8 | 43.87 |
+| hipEngine | 1988.7 | 43.84 |
 
 On the same GPU and with llama.cpp rebuilt at build `8cfc315` for native HIP, a
 separately measured comparator row at `-fa on -b 4096 -ub 1024` reports 4124
 prefill tok/s; the table keeps the row recorded with this section's original
-flags rather than mixing protocols. On the W7900, hipEngine measures 1702.8
-prefill and 39.27 decode at the same shape, against 3761 prefill for llama.cpp.
+flags rather than mixing protocols. On the W7900, hipEngine measures 1791.1
+prefill and 39.37 decode at the same shape, against 3761 prefill for llama.cpp.
 
 Prefill now serves both MoE expert projections from grouped expert owners
 instead of one CTA per output column. The owners reuse each loaded weight row
@@ -436,6 +436,18 @@ does not cover, and still run the exact kernel. Together the expert routing and
 the attention swap take the W7900 lane from 1394 to 1702.8 prefill tok/s, and
 the XTX lane - which could not run the model before the gate/up split removal
 freed peak memory - now measures 1886.8.
+
+The dense Q8_0 projections - `q`, `k`, `v`, `o` and the dense MLP, 159 ms of a
+554 ms per-prefill kernel budget - were running at a tile chosen by a shape
+cascade that is wrong on this GPU. A sweep over thirteen shapes at rows 8
+through 1024 finds `(16, 32)` fastest or tied at every point, against 1.2-1.9x
+losses at rows 128 and above and 1.7-3.3x below that for the tiles the cascade
+picked. Flattening it to `(16, 32)` is **bit-identical** - the tile decides which
+CTA computes an output, not the order its k-blocks accumulate in, and the
+1023-row teacher-forced gate returns exactly its previous verdict - and takes
+prefill to 1791.1 tok/s on the W7900 and 1988.7 on the XTX. Serving the same
+shapes from the int8 MMQ128 chain was measured and **rejected**: it is 44%
+slower.
 
 hipEngine's own shape matrix at 128 outputs: decode 52.28 tok/s at a 128-token
 prompt, 48.12 at 512, 43.87 at 1024, 40.02 at 4096; prefill 140.2 / 135.7 /
