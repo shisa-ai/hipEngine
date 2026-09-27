@@ -42,6 +42,15 @@ from scripts.qwen4exp_canonical_ar_bench import (
 FLAGS = ("HIPENGINE_QWEN4_EXP_GR_IU8", "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN",
          "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM")
 
+# ``wide`` is a route, not one of the iu8 flags: it swaps the GR up projection
+# for the promoted dense wide tile plus the retained exact epilogue.
+ROUTES = {
+    "up": FLAGS[0],
+    "down": FLAGS[1],
+    "dense": FLAGS[2],
+    "wide": "HIPENGINE_QWEN4_EXP_GR_WIDE",
+}
+
 
 def hip_available() -> bool:
     try:
@@ -61,7 +70,7 @@ def main() -> None:
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--case-id", action="append")
-    p.add_argument("--route", choices=("up", "down", "dense"), default="up")
+    p.add_argument("--route", choices=tuple(ROUTES), default="up")
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()
     if not hip_available():
@@ -89,8 +98,7 @@ def main() -> None:
         "host": _host_metadata(),
         "command": sys.argv,
         "arithmetic_class": "T1_production_candidate",
-        "flag": (FLAGS[0] if a.route == "up"
-                 else FLAGS[1] if a.route == "down" else FLAGS[2]),
+        "flag": ROUTES[a.route],
         "runtime_default_changed": False,
         "fixture_sha256": digest,
         "manifest_sha256": resolved.manifest_sha256,
@@ -105,8 +113,7 @@ def main() -> None:
                       or case["id"] == "code-p4096"):
                 continue
             rows = {}
-            flag = FLAGS[0] if a.route == "up" else (
-                FLAGS[1] if a.route == "down" else FLAGS[2])
+            flag = ROUTES[a.route]
             for label, enabled in (
                 ("incumbent_a", "0"), ("incumbent_b", "0"),
                 ("candidate_a", "1"), ("candidate_b", "1"),
@@ -156,7 +163,7 @@ def main() -> None:
             report["cases"].append(entry)
             print(json.dumps(entry), flush=True)
     finally:
-        for flag in FLAGS:
+        for flag in (*FLAGS, ROUTES["wide"]):
             os.environ[flag] = "0"
         generator.close()
     a.output.parent.mkdir(parents=True, exist_ok=True)

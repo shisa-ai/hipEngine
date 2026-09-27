@@ -131,6 +131,29 @@
   measurement that identifies the cliff. Revisit with a further ~2x prefill-KL
   reduction, screened with one prefill per arm.
 
+## GR-Up Wide Tile (`HIPENGINE_QWEN4_EXP_GR_WIDE`)
+
+- Default-off route that replaces the GR-up projection with the promoted dense
+  tile (`dense_wide256_f32_f32_out`) plus the retained exact sigmoid and
+  gated-mean kernels. Measured 4.38x on the projection at the production chunk
+  shape (1.4925 ms against 6.5379 ms at rows=1024, K=320, N=10240), worth
+  1937 ms of the code-p4096 prefill. The fused parent runs at 1.03 TFLOP/s =
+  3.9% of the gfx1151 FP32 peak, so the limiter is load issue on the K=320
+  weight stream, not the epilogue or the reduction. Fusion is still worth 1.21x
+  over the strict unfused chain.
+- Screen passes with room: prefill-boundary KL 5.17e-11 (code-p512) and
+  3.40e-10 (general_en-p512), 8.5-85x below the ~5e-9 cliff, deterministic in
+  both arms. The screen is not a qualification - the publication row's ~22-logit
+  argmax gap makes KL insensitive to the logits that did move (median absolute
+  drift 0.095, max 1.20).
+- **Remove this flag when** the 780-row production gate
+  (`qwen4exp_layer2_profile_gate.py --candidate production_gr_up_wide`) either
+  passes - then promote the route to default and delete the flag - or fails,
+  in which case delete the flag, the branch, and the gate candidate together
+  and record the measured mean KL against the cliff. Do not leave it
+  default-off indefinitely. Evidence:
+  `benchmarks/results/2026-09-27-gr-up-wide-tile-screen/`.
+
 ## MoE Backend Refresh Cache
 
 - Stable-generation MoE backend caching is unconditional after its exact
