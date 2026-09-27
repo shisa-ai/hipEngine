@@ -121,6 +121,13 @@ class _ResidentWeight:
         assert name == "raw", "the grouped route reads the artifact's raw bytes"
         return SimpleNamespace(buffer=SimpleNamespace(ptr=self.ptr))
 
+    def has_allocation(self, name: str) -> bool:
+        # This double models a weight carrying only the raw blocks, which is what
+        # a rank-2 tensor or a non-Q4_K expert tensor plans. The pack8 route must
+        # decline it, so the ladder falls through to the raw selected route
+        # rather than looking up a packed allocation that was never planned.
+        return name == "raw"
+
 
 def _grouped_backend(quant: str) -> str:
     """Resolve this host's backend with one quant's grouped family registered.

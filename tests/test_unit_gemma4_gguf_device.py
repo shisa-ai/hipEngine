@@ -564,3 +564,144 @@ def test_selected_expert_dispatch_matches_the_bf16_offset_path(reader: GGUFReade
         w_ptr.free()
         sel_ptr.free()
         quantized.free()
+
+
+@pytest.mark.skipif(
+    not hip_runtime_available(), reason="HIP runtime unavailable; skipping pack8 route test"
+)
+def test_pack8_route_matches_the_raw_route_on_the_same_weight(reader: GGUFReader) -> None:
+    """The pack8 route and the raw selected route produce the same numbers.
+
+    This is the correctness gate for the packed layout, and it is run on **one
+    weight object** that carries both representations, so the only difference
+    between the two calls is which representation the kernel reads. A pack8
+    repack that mis-shifted the 4-bit lanes, paired a scale with the wrong
+    32-value group, or read `mins` where `scales` belongs would disagree here.
+
+    The raw route is itself pinned against the CPU reference by
+    `test_selected_expert_dispatch_matches_the_bf16_offset_path`, so agreeing
+    with it transitively pins the packed layout against that reference too.
+    """
+
+    from hipengine.core.memory import DeviceBuffer, copy_device_to_host, free, host_array_ptr, malloc
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        gemma4_project_experts_pack8,
+        gemma4_project_experts_selected,
+    )
+    from hipengine.loading.materialize import (
+        float_array_to_bf16_bits,
+        load_host_array_to_device_as_dtype,
+    )
+
+    specs = plan_gemma4_gguf_resident_specs(reader)
+    spec = next(s for s in specs if s.layout == LAYOUT_Q4_K_PACK8)
+    num_experts, out_features, in_features = (int(d) for d in spec.source.shape)
+
+    # Distinct experts per row, including a repeat, so a route that ignored
+    # `selected` and used one expert throughout would be caught.
+    experts = [0, 1, num_experts - 1, 0]
+    rows = len(experts)
+
+    rng = np.random.default_rng(20260927)
+    x = rng.standard_normal((rows, in_features)).astype(np.float32)
+
+    x_ptr = load_host_array_to_device_as_dtype(
+        "x", float_array_to_bf16_bits(x), "bf16", source_dtype="BF16"
+    )
+    sel_ptr = load_host_array_to_device_as_dtype(
+        "selected", np.asarray(experts, dtype=np.int64), "int64", source_dtype="I64"
+    )
+    out_pack8 = malloc(rows * out_features * 2)
+    out_raw = malloc(rows * out_features * 2)
+    weight = materialize_gemma4_gguf_device_weight(reader, spec)
+    try:
+        assert weight.has_allocation("qweight"), "the plan did not give this weight a pack8 layout"
+
+        assert (
+            gemma4_project_experts_pack8(
+                weight,
+                x_ptr.buffer.ptr,
+                sel_ptr.buffer.ptr,
+                out_pack8.ptr,
+                rows,
+                rows,
+                num_experts,
+                in_features,
+                out_features,
+            )
+            is True
+        )
+        assert (
+            gemma4_project_experts_selected(
+                weight,
+                x_ptr.buffer.ptr,
+                sel_ptr.buffer.ptr,
+                out_raw.ptr,
+                rows,
+                rows,
+                num_experts,
+                in_features,
+                out_features,
+            )
+            is True
+        )
+
+        def read_back(buffer) -> np.ndarray:
+            raw = np.empty(rows * out_features, dtype=np.uint16)
+            copy_device_to_host(
+                host_array_ptr(raw),
+                DeviceBuffer(ptr=buffer.ptr, nbytes=raw.nbytes),
+                raw.nbytes,
+            )
+            return (
+                (raw.astype(np.uint32) << np.uint32(16))
+                .view(np.float32)
+                .reshape(rows, out_features)
+            )
+
+        packed_result = read_back(out_pack8)
+        raw_result = read_back(out_raw)
+        scale = float(np.abs(raw_result).max())
+        assert scale > 0, "the raw route produced all zeros; the fixture is degenerate"
+        assert np.allclose(packed_result, raw_result, rtol=2e-2, atol=2e-2 * scale), (
+            f"the pack8 route disagreed with the raw route: max abs diff "
+            f"{np.abs(packed_result - raw_result).max():.4g} against scale {scale:.4g}"
+        )
+    finally:
+        weight.free()
+        free(out_pack8)
+        free(out_raw)
+        x_ptr.free()
+        sel_ptr.free()
+
+
+@pytest.mark.skipif(
+    not hip_runtime_available(), reason="HIP runtime unavailable; skipping pack8 route test"
+)
+def test_the_route_ladder_prefers_pack8_for_a_packed_weight(reader: GGUFReader) -> None:
+    """A packed weight takes the pack8 route rather than the raw selected one.
+
+    Both would produce the same numbers, so this is a cost decision rather than
+    an arithmetic one -- and the packed layout is the entire reason for carrying
+    it. A weight with no packed arrays must still be served by the raw route, so
+    the ladder is checked in both directions.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        gemma4_project_experts_pack8,
+        gemma4_project_experts_selected,
+    )
+
+    specs = plan_gemma4_gguf_resident_specs(reader)
+    spec = next(s for s in specs if s.layout == LAYOUT_Q4_K_PACK8)
+    weight = materialize_gemma4_gguf_device_weight(reader, spec)
+    try:
+        assert weight.has_allocation("qweight")
+        assert weight.has_allocation("raw")
+    finally:
+        weight.free()
+
+    # An integer weight handle is the bf16 case: no allocations at all, so
+    # neither route may claim it.
+    assert gemma4_project_experts_pack8(0, 0, 0, 0, 1, 1, 1, 256, 128) is False
+    assert gemma4_project_experts_selected(0, 0, 0, 0, 1, 1, 1, 256, 128) is False
