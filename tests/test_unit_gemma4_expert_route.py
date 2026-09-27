@@ -148,12 +148,18 @@ def _grouped_backend(quant: str) -> str:
         )
 
         register_qwen4_exp_q5_1_kernels(replace=True)
-    else:
+    elif quant == "gguf_q4_k":
         from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
             register_gguf_q4_k_gemv_kernels,
         )
 
         register_gguf_q4_k_gemv_kernels(replace=True)
+    else:
+        from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+            register_gguf_k_gemv_kernels,
+        )
+
+        register_gguf_k_gemv_kernels(replace=True)
     backend = resolve_backend("auto")
     load_backend_kernel_package(backend)
     return backend
@@ -162,11 +168,13 @@ def _grouped_backend(quant: str) -> str:
 _WEIGHT_MAKERS = {
     "gguf_q5_1": make_q5_1_weight,
     "gguf_q4_k": make_q4_k_weight,
+    "gguf_q5_k": make_q5_k_weight,
     "gguf_q8_0": make_q8_0_weight,
 }
 _GGML_TYPES = {
     "gguf_q5_1": GGMLQuantizationType.Q5_1,
     "gguf_q4_k": GGMLQuantizationType.Q4_K,
+    "gguf_q5_k": GGMLQuantizationType.Q5_K,
     "gguf_q8_0": GGMLQuantizationType.Q8_0,
 }
 
@@ -674,6 +682,222 @@ def test_grouped_row4_is_bit_exact_against_the_selected_gemv(
     assert differing == 0, (
         f"grouped row4 differs from the selected GEMV in {differing} of "
         f"{row4_bits.size} bf16 outputs at out={out_features} in={in_features}"
+    )
+
+
+# The bit-exact sibling the selected route prefers when it is registered. Eight
+# output columns per block share one x read and one block reduction; the k walk,
+# the dequant and the reduction tree are per output and unchanged.
+_SELECTED_PACK8_KEY = KernelKey(
+    "hip_gfx1100",
+    "linear",
+    "gguf_q5_1",
+    "selected_pack8_gemv_bf16_bf16_out",
+)
+
+
+def _run_selected(weight, out_features: int, in_features: int = 704):
+    return gemma4_project_experts_selected(
+        weight,
+        0x1000,
+        0x2000,
+        0x3000,
+        8,
+        8,
+        128,
+        in_features,
+        out_features,
+    )
+
+
+def test_selected_prefers_the_pack8_sibling_over_the_single_output_owner() -> None:
+    """Eight columns per block is the same arithmetic, so it is preferred."""
+
+    pack8_calls: list[tuple] = []
+    selected_calls: list[tuple] = []
+    register(_SELECTED_PACK8_KEY, lambda *a, **k: pack8_calls.append(a), replace=True)
+    register(_SELECTED_KEY, lambda *a, **k: selected_calls.append(a), replace=True)
+    try:
+        ran = _run_selected(
+            _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1"), 2816
+        )
+    finally:
+        unregister(_SELECTED_PACK8_KEY)
+
+    assert ran is True
+    assert len(pack8_calls) == 1
+    assert selected_calls == []
+
+
+def test_selected_falls_back_when_the_width_is_not_eight_wide() -> None:
+    """A pack8 block has to write eight columns, so an odd width declines it.
+
+    2812 is the shape half the artifact's widths are not: it is a multiple of
+    four, so it is not obviously malformed, but it leaves a partial block at the
+    end. The route must not reach for the pack8 kernel and then rely on the
+    kernel to drop the tail.
+    """
+
+    pack8_calls: list[tuple] = []
+    selected_calls: list[tuple] = []
+    register(_SELECTED_PACK8_KEY, lambda *a, **k: pack8_calls.append(a), replace=True)
+    register(_SELECTED_KEY, lambda *a, **k: selected_calls.append(a), replace=True)
+    try:
+        ran = _run_selected(
+            _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1"), 2812
+        )
+    finally:
+        unregister(_SELECTED_PACK8_KEY)
+
+    assert ran is True
+    assert pack8_calls == []
+    assert len(selected_calls) == 1
+
+
+def test_selected_falls_back_when_no_pack8_sibling_is_registered() -> None:
+    """A quant that declares no pack8 sibling keeps the arithmetic it had.
+
+    Q5_1 is that quant in this tree: its compact pack8 kernel is registered for
+    the MoE expert route, not for the plain linear layer, and it reassociates.
+    """
+
+    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+    unregister(_SELECTED_PACK8_KEY)
+    _ensure_linear_kernel_registered(_SELECTED_PACK8_KEY)
+    assert not is_registered(_SELECTED_PACK8_KEY), (
+        "this test needs a quant with no pack8 sibling on the linear layer"
+    )
+
+    selected_calls: list[tuple] = []
+    register(_SELECTED_KEY, lambda *a, **k: selected_calls.append(a), replace=True)
+
+    ran = _run_selected(_ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1"), 2816)
+
+    assert ran is True
+    assert len(selected_calls) == 1
+
+
+def test_selected_reports_a_quant_that_registers_neither_variant() -> None:
+    """The boolean still means what it meant: this quant has no selected GEMV."""
+
+    unregister(_SELECTED_PACK8_KEY)
+    unregister(_SELECTED_KEY)
+
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts
+
+    original = gemma4_experts._SELECTED_VARIANT
+    gemma4_experts._SELECTED_VARIANT = "selected_gemv_variant_that_is_not_registered"
+    try:
+        ran = _run_selected(
+            _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1"), 2816
+        )
+    finally:
+        gemma4_experts._SELECTED_VARIANT = original
+
+    assert ran is False
+
+
+# The pack8 sibling has to be bit-exact with the single-output owner, because the
+# route prefers it without a numerical gate. These are the artifact's own expert
+# shapes: Q4_K and Q5_K gate/up at 1408 out, Q4_K up at 2816 out, and the odd
+# layer's Q8_0 down at 2816 out.
+_PACK8_SELECTED_CASES = [
+    ("gguf_q4_k", 1408, 2816),
+    ("gguf_q4_k", 2816, 2816),
+    ("gguf_q5_k", 1408, 2816),
+    ("gguf_q8_0", 2816, 704),
+]
+
+
+@_needs_hip
+@pytest.mark.parametrize("quant, out_features, in_features", _PACK8_SELECTED_CASES)
+def test_pack8_selected_is_bit_exact_against_the_single_output_owner(
+    quant, out_features, in_features
+) -> None:
+    """Weight reuse must not cost a single bit against the per-lane GEMV.
+
+    Both kernels are launched on the same weights and the same rows and their
+    bf16 outputs are compared as bit patterns. The route prefers the pack8
+    sibling, so a difference here is a silent numerical change on the default
+    decode path rather than a candidate that a gate would catch.
+    """
+
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        copy_host_array_to_device,
+        free,
+        malloc,
+    )
+    from hipengine.kernels.registry import resolve
+
+    backend = _grouped_backend(quant)
+    num_experts = 4
+    rows = 8
+    rng = np.random.default_rng(20260930)
+    hidden_bits = _to_bf16_bits(
+        rng.standard_normal((rows, in_features)).astype(np.float32)
+    )
+    raw = np.concatenate(
+        [_WEIGHT_MAKERS[quant](out_features, in_features) for _ in range(num_experts)],
+        axis=0,
+    )
+    selected = np.asarray([3, 0, 2, 1, 1, 3, 0, 2], dtype=np.int64)
+
+    hidden_buf = malloc(hidden_bits.nbytes)
+    weights_buf = malloc(raw.nbytes)
+    selected_buf = malloc(selected.nbytes)
+    out_pack8 = malloc(rows * out_features * 2)
+    out_owner = malloc(rows * out_features * 2)
+    try:
+        for buffer, array in (
+            (hidden_buf, hidden_bits),
+            (weights_buf, raw),
+            (selected_buf, selected),
+        ):
+            copy_host_array_to_device(buffer, array)
+
+        weight = _ResidentWeight(backend=backend, quant_key=quant, ptr=weights_buf.ptr)
+        args = (
+            hidden_buf.ptr,
+            selected_buf.ptr,
+            weights_buf.ptr,
+            rows,
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+        )
+        for variant, out_buf in (
+            ("selected_pack8_gemv_bf16_bf16_out", out_pack8),
+            ("selected_gemv_bf16_bf16_out", out_owner),
+        ):
+            fn = resolve(
+                backend=backend, layer="linear", quant=quant, variant=variant
+            )
+            fn(*args[:3], out_buf.ptr, *args[3:])
+
+        pack8_bits = np.empty(rows * out_features, dtype=np.uint16)
+        owner_bits = np.empty(rows * out_features, dtype=np.uint16)
+        copy_device_to_host(pack8_bits.ctypes.data, out_pack8, pack8_bits.nbytes)
+        copy_device_to_host(owner_bits.ctypes.data, out_owner, owner_bits.nbytes)
+    finally:
+        for buffer in (
+            hidden_buf,
+            weights_buf,
+            selected_buf,
+            out_pack8,
+            out_owner,
+        ):
+            free(buffer)
+
+    assert np.abs(_from_bf16_bits(owner_bits)).max() > 0, "the owner wrote nothing"
+    differing = int((pack8_bits != owner_bits).sum())
+    assert differing == 0, (
+        f"the {quant} pack8 selected GEMV differs from the single-output owner "
+        f"in {differing} of {pack8_bits.size} bf16 outputs at "
+        f"out={out_features} in={in_features}"
     )
 
 
