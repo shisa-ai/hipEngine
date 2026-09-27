@@ -2974,6 +2974,77 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``gemma4_prefill_census.py`` family rows before and after; the
   ``wmma``/``wmma_plain`` comparison at 801.14 and 1113.39 tok/s.
 
+  **Iteration 115: iteration 113 was wrong and is reverted. The gate I cited was
+  blind to the change it was validating.**
+
+  Iteration 113 flipped ``auto`` to the compensated WMMA MoE owners on the
+  strength of a teacher-forced gate result showing every KL percentile at exactly
+  0.0. That result was real and it was **not evidence for the change**. The
+  ``_PREFILL_MODES`` comment block, which iteration 113 did not read before
+  editing the function beneath it, states the position plainly::
+
+      auto runs the exact routes only ... Both measured bit-identical to the
+      strict reference, which is what the campaign's logits gate requires.
+
+      wmma selects the compensated WMMA owners instead. They are 2.7x faster on a
+      1024-token prefill but breach the campaign's absolute kl_max bar on 1 of
+      1023 rows (0.0609 against 0.05) ... Treating an absolute kl_max as
+      inapplicable to a reordering-class change is an open lead decision recorded
+      in docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md, so the arm stays off the
+      default path until that is ruled on.
+
+  So the route is a **known gate failure** whose promotion is explicitly awaiting
+  the human lead, and iteration 113 shipped it on a reading of "KL == 0.0" that
+  could not have detected the failure in the first place.
+
+  **Why the gate was blind.** ``scripts/gemma4_teacher_forced_gate.py`` captures
+  with ``--prefill 0`` and scores a decode chain; the runner's prefill route is
+  not exercised. Both of my changes -- iteration 107's dense
+  ``use_wmma_prefill`` and iteration 113's MoE route -- are **prefill-only**, so
+  the evaluator could not observe either of them. A gate that passes is evidence
+  only if it covers the changed path; this one does not, and I cited it twice
+  without checking.
+
+  **This does not invalidate iteration 107**, which rests on a different argument:
+  the two shipping Qwen GGUF call sites pass ``use_wmma_prefill=True`` literally
+  and ENVS.md records it as the public generator's behaviour, so that change is
+  production parity rather than an arithmetic promotion. It does invalidate
+  iteration 113's justification, and it means the "bit-identical" claim in
+  iteration 107's entry has no gate evidence behind it either -- only the
+  parity argument, which is the actual basis.
+
+  **Reverted**: ``_prefill_route_flags`` is restored to ``auto``/``grouped``/
+  ``selected`` = exact routes, ``wmma`` = compensated probe, ``wmma_plain`` =
+  uncompensated probe. Default path measured back at **708.10 tok/s** against
+  708.28 before the flip.
+
+  **What survives from iterations 112-114 is the measurement, not the
+  promotion.** All of these are real and were taken on the default path or with
+  the mode pinned explicitly::
+
+      auto (exact, default)                708.28 tok/s
+      wmma   (compensated)                 801.14  +13.1%
+      wmma_plain (uncompensated)          1113.39  +57.2%
+      moe_grouped:gguf_q5_1      478.0 ->  83.5 ms   5.7x faster
+      moe_grouped_dual:gguf_q4_k 457.1 -> 598.4 ms   1.31x SLOWER
+
+  **The q4_k regression is the part the comment's own "2.7x faster" aggregate
+  hides**, and it cuts the other way from what iteration 114 assumed: the
+  compensated arm is not uniformly better and on q4_k it is worse than the exact
+  owner it displaces. So even a favourable lead ruling on the ``kl_max`` question
+  would need per-quant routing, and the q4_k compensated owner would need fixing
+  first. The 39% price of compensation (801 against 1113) is still the largest
+  identified lever, and it is now the only defensible reading of these numbers.
+
+  **The failure mode is the same one this campaign has now hit three times**:
+  iteration 48 misread a census column and drew a strategic conclusion from it;
+  iteration 105 trusted a harness whose instrumentation was unvalidated; this
+  iteration cited a gate without confirming it exercised the change. In all three
+  a measurement was accepted without checking what it actually measured.
+
+  Evidence: ``gemma4_experts.py`` ``_PREFILL_MODES`` comment block (the ruling
+  this reverts to); revert verified by the 708.10 tok/s default-path measurement.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
