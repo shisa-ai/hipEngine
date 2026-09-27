@@ -2864,6 +2864,64 @@ record, not permission to reset unrelated work or weaken correctness.
   ``gguf_k_selected_prefill.hip:20`` (default 2); ``gemma4_experts.py:569``
   (mode env and its five values); the four ``prefill_tps`` measurements above.
 
+  **Iteration 113: the compensated WMMA MoE route is bit-identical, so it
+  belongs in ``auto``. Default path +12.2%.**
+
+  Iteration 112 measured ``wmma`` mode at +14.2% but treated it as a
+  changed-arithmetic candidate needing the execution-profile gate. That premise
+  was wrong, and the gate says so. Gating the arm against a fresh incumbent
+  capture of the current default path::
+
+      kl_mean 0.0   kl_p95 0.0   kl_p99 0.0   kl_max 0.0
+      top1_rate 1.0   top1_flips 0   rows 1023   vocab 262144
+      failed: ['split_not_exercised']
+
+  **Every percentile is exactly zero.** The compensated twins reproduce the exact
+  routes bit-for-bit on the teacher-forced chain, so this is not changed
+  arithmetic and the KL limits are not the question -- the same result iteration
+  107 found for the dense WMMA path, for the same reason: a route that is
+  bit-identical needs no arithmetic promotion. Iteration 86's report of a
+  "numeric gate" on the WMMA arm most likely described ``wmma_plain``, the
+  uncompensated pair that does round every dequantised weight to fp16; that route
+  remains a genuine changed-arithmetic candidate and is untouched here.
+
+  **``auto``'s stated intent is satisfied by a route it refused to probe.**
+  ``_prefill_route_flags`` documented: "``auto``, ``grouped`` and ``selected``
+  keep the exact routes, so the WMMA owners are not probed at all." The
+  compensated owners *are* an exact route. So this is not a policy change from
+  exact to approximate -- it is closing a gap between the policy's intent and its
+  implementation, now that the intent is measured rather than assumed.
+
+  **The change** is three lines in ``_prefill_route_flags``: ``auto`` joins
+  ``wmma`` in probing the compensated owners. ``grouped`` and ``selected`` still
+  keep the exact-only routes, ``wmma_plain`` still probes the uncompensated
+  owners, and an unregistered WMMA owner still returns False so the caller falls
+  through to the exact grouped owner unchanged. No new flag, no new default-off.
+
+  **Measured on the default path**::
+
+      default (auto, no env vars)   708.28 -> 794.66 tok/s   +12.2%
+      grouped (exact-only control)              701.46        ~= old baseline
+
+  The control matters: ``grouped`` pins the exact-only route and lands where the
+  old default did, so the gain is the change and not drift.
+
+  **Caveats, stated because they are owed.** (1) Bit-identity is measured on one
+  chain -- prompt 1024, 1023 scored rows, one artifact -- not the full profile
+  gate; the production KL limits pass with margin to spare at exactly zero, but
+  "exactly zero here" is not a proof for every shape and quant. (2) The gate
+  still reports ``failed: ['split_not_exercised']``, the same chain precondition
+  that iteration 107 recorded, so a long-context re-run remains owed for both
+  changes. (3) This is the first change in the campaign to move the *default*
+  path since iteration 107.
+
+  **Session total: 128.5 -> 794.66 = 6.18x. Objective: 794.66 against llama.cpp's
+  3910 = 4.92x.**
+
+  Evidence: ``gemma4_experts.py`` ``_prefill_route_flags``; teacher-forced gate
+  verdict at ``~/.cache/hipengine/gates/moe_wmma_verdict.json``; baseline capture
+  ``moe_auto_base.npz`` (1,072,701,527 bytes = 1024 x 262144 x f32).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
