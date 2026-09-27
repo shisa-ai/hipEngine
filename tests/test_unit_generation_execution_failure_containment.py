@@ -480,6 +480,47 @@ def test_service_fatal_execution_failure_reports_unhealthy_reason() -> None:
     assert service.health()["status"] == "unhealthy"
 
 
+def test_close_during_fatal_cleanup_does_not_wait_for_abandoned_command(monkeypatch):
+    import threading
+
+    published = threading.Event()
+    shutdown_queued = threading.Event()
+    original_fail = EngineService._fail_all
+    original_put = EngineService._put_command
+
+    def fail_then_pause(self, error):
+        original_fail(self, error)
+        published.set()
+        assert shutdown_queued.wait(5)
+
+    def put_then_release(self, command):
+        original_put(self, command)
+        if command.kind == "shutdown":
+            shutdown_queued.set()
+
+    monkeypatch.setattr(EngineService, "_fail_all", fail_then_pause)
+    monkeypatch.setattr(EngineService, "_put_command", put_then_release)
+    inner = _ContainingInner()
+    inner.runner.contain = False
+    inner.runner.fail_decode = {0}
+    service = EngineService(
+        SubmitPollTextGenerator(inner, capacity=3, prefill_chunk_size=4),
+        command_timeout_seconds=1,
+    )
+    try:
+        handle = service.submit_child(_service_request(2))
+        with pytest.raises(RuntimeError, match="packed sampler row"):
+            handle.result()
+        assert published.wait(5)
+        service.close()
+        assert not service._thread.is_alive()
+        assert service.health()["status"] == "unhealthy"
+    finally:
+        shutdown_queued.set()
+        service._thread.join(5)
+        service.close()
+
+
 def test_service_simulated_fatal_device_error_names_phase_and_rows() -> None:
     """A device fault is never contained, and the stop names what it touched."""
 
