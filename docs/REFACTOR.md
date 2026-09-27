@@ -9209,22 +9209,34 @@ path, and its correctness tests stay in place. Evidence:
 `benchmarks/results/2026-09-27-gemma4-mmq-gate-up-three-arm-attribution.json`,
 `benchmarks/results/2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json`.
 
-## Gemma 4 expert tensors carry both the raw blocks and the pack8 arrays
+## Gemma 4's pack8 expert layout is off by default
 
-`Gemma4GGUFWeightSpec` for a rank-3 Q4_K expert tensor names four allocations:
-`raw`, `qweight`, `scales`, `mins`. The packed arrays are what the pack8 expert
-GEMV reads. The raw copy exists because three of the four routes in
-`gemma4_project_experts_rows` -- `grouped_prefill`, `grouped_row4` and
-`per_expert_offset` -- read `allocation("raw")`, so dropping it would turn each of
-them into a missing-key error rather than a working fallback.
+`HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT` is a default-off flag for giving Gemma 4's
+rank-3 `Q4_K` expert tensors the pack8 GEMV layout alongside their raw blocks. It
+is one of the legitimate default-off cases: a **measured cause**, not a missing
+qualification. Decode measured 21.03 tok/s without it and 7.64 tok/s with it on
+the same campaign run, with `pack8_selected` confirmed as the route that ran.
 
-On the 26B artifact this duplication is 19.2 GB. The 60 rank-3 expert tensors are
-14.4 GB raw and expand by 1.33x to 19.2 GB packed, against a measured device
-ceiling of 124 GiB. It fits, so it is affordable, but it is pure duplication of
-the same weights.
+The layout is arithmetically correct -- `tests/test_unit_gemma4_gguf_device.py`
+runs both routes on one weight object carrying both representations and they agree
+-- so every correctness test passes either way. That is why the default is pinned
+by its own test: a silent flip back would reintroduce a 2.75x decode regression
+with nothing else noticing.
 
-Remove it once the remaining routes are pack8-aware, or once the ladder has a
-single packed path. The CPU reference does not constrain the device layout: it
-reads `ffn_gate_up_exps` from the file through `layer_map.tensor(...).name`, not
-from device residency. Evidence:
-`benchmarks/results/2026-09-27-gemma4-gfx1151-decode-kernel-profile.json`.
+Two things go away together when the question is settled:
+
+- **The flag**, if the packed layout is never ahead. Clear it by measuring the
+  packed layout against the raw one at a row count where `rows` exceeds the expert
+  count, which is the one regime the ladder does not already give to
+  `grouped_prefill`. Record the row, then either delete the layout or make it the
+  default with its own profile gate.
+- **The unreached code**, if it is deleted: `LAYOUT_Q4_K_PACK8`,
+  `pack8_arrays`, `_materialize_pack8`, `_pack8_shapes`, `_pack8_nbytes`,
+  `pack8_layout_enabled`, and `gemma4_project_experts_pack8`. Keeping them is
+  defensible only while the measurement above is outstanding.
+
+The raw/packed duplication that the flag enables is 19.2 GB on the 26B artifact:
+60 rank-3 expert tensors at 14.4 GB raw expanding by 1.33x. It is affordable
+against the measured 124 GiB device ceiling, which is not the reason the flag is
+off. Evidence:
+`benchmarks/results/2026-09-27-gemma4-gfx1151-pack8-expert-route-measured.json`.
