@@ -3338,6 +3338,61 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``scripts/gemma4_prefill_shape_census.py`` (``attention_label``);
   the four rows above.
 
+  **Iteration 122: correction -- prefill already runs the barrier-batched
+  kernel, and iteration 121's bandwidth framing measured the wrong resource.**
+
+  Iteration 62 hypothesised that prefill runs the "correctness-first block
+  kernel" and that the barrier-batched decode twin was an unused fast path. That
+  is wrong, and the source says so at the top of the prefill launcher::
+
+      // Multi-token blocks use the same key-class / barrier-batched family the
+      // decode step does. Its kernels are bit-identical to the block kernel
+      // below (same logit trees, same pass-2 and pass-3 partitions) and were
+      // measured at 421 us against the block kernel's 652-700 at keys=1024,
+      // head_dim 256, so prefill has no reason to keep the ~10 barriers per key
+      // the block kernel spends. The fallback below still covers every other
+      // geometry.
+      if (tokens > 1) {
+        const int batched_rc = launch_gemma4_attention_decode<scalar_t>(...);
+        if (batched_rc >= 0) { return batched_rc; }
+      }
+
+  ``if (tokens > 1)`` is the **fast path**, not a guard: it calls the batched
+  family and falls back only when that cannot serve the geometry. The tile
+  selector then picks the largest barrier batch the LDS budget admits -- at
+  head_dim 256, keys 1024, threads 256 that is ``tile = 8``, the maximum offered.
+  So the prefill attention path is already the optimised one, and iterations 46,
+  118 and 119's premise that it is untuned is **withdrawn**. The Python-side
+  ``attention_symbol`` routing (``tokens == 1`` -> decode symbol) is real but
+  irrelevant: the prefill symbol dispatches internally.
+
+  **The traffic arithmetic also reframes iteration 121.** Per CTA the kernel
+  reads ``keys * head_dim * 2 * 2`` = 1.05 MB of K/V at these shapes, and the
+  grid is ``tokens * num_heads`` = 512 x 16 = 8192 CTAs, so one call moves about
+  **8.6 GB** against an irreducible 8.4 MB -- a **1024x amplification**, which is
+  the one-CTA-per-(token, head) structure measured rather than inferred.
+
+  **But that 8.6 GB is L2 traffic, not DRAM.** A single layer's K/V is 8.4 MB and
+  fits in L2, so the re-reads are cache hits and the DRAM traffic really is the
+  irreducible ~17 MB/call. Iteration 121's "3.6-9.1 GB/s, 0.4-1.1% of the 864
+  GB/s peak" therefore measures **the wrong resource**: the kernel is moving on
+  the order of 1.8 TB/s through L2, which is plausibly at or near the L2 limit.
+  On that reading attention is **L2-bandwidth-bound by its own redundant
+  traffic**, which is precisely the quantity GQA grouping and row blocking
+  reduce.
+
+  **Stated as an inference, not a measurement.** This is arithmetic from shapes
+  and the documented grid, not a counter reading. Confirming it needs L2 traffic
+  counters (rocprofv3), not DRAM GB/s, and until then the claim is a hypothesis
+  with a named instrument -- the same standard this campaign has failed to meet
+  four times already. What it does change is the justification: the fix must be
+  argued against L2 traffic and not against the DRAM roofline, and iteration
+  121's peak-percentage framing should not be quoted.
+
+  Evidence: ``gemma4_attention.hip:226``-``237`` (the fast path and its measured
+  421 vs 652-700 us), ``:1026``-``1055`` (the tile selector and ``tile = 8``);
+  ``gemma4_attention.py:266``-``280`` (the Python routing).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
