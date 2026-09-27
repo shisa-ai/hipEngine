@@ -4631,6 +4631,53 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``rocprofv3 --kernel-trace`` at ``--prompt 1024 --output 1``
   (``ROCR_VISIBLE_DEVICES=0``); the per-kernel table above.
 
+  **Iteration 147: target 1 closed -- the lm_head already runs one row. The
+  hypothesis was wrong, and it also invalidates the kernel identification that
+  produced it.**
+
+  Iteration 146 recorded a hypothesis: ``gguf_k_selected_prefill_out_kernel`` at
+  99.1 ms and ``n = 4`` looked like an lm_head projecting all 1024 prompt tokens
+  once per chunk, and if the caller only needed the final position that would be
+  6.9% of prefill spent on rows nothing reads. **The code refutes it.**
+
+  ``hipengine/runtime/gemma4.py::_forward_block_inner`` already narrows to the last
+  row before the head:
+
+      # Only the last row is needed: the caller wants the next-token
+      # distribution, and the earlier rows' logits are never read.
+      last = (rows - 1) * hidden * _BF16_BYTES
+      gemma4_rmsnorm_f32w_bf16(self._hidden.ptr + last, ..., 1, hidden, ...)
+      launch_gguf_linear(head, self._normalized.ptr, self._logits.ptr,
+                         1, hidden, vocab, output_dtype="f32")
+
+  Both the final norm and the head take ``rows = 1``. There is no all-token waste
+  in the generation path, and this target is closed rather than deferred.
+
+  **The refutation also invalidates the identification.** With ``rows = 1`` the head
+  is a GEMV, not a "selected" grouped kernel, so ``gguf_k_selected_prefill_out_kernel``
+  is **not** the lm_head and iteration 146's inference -- that ``n = 4`` means
+  once-per-chunk and therefore once-per-chunk work is the head -- does not hold for
+  this kernel. What it actually is remains unidentified. The chunked-4 structure
+  itself is still supported by the per-layer kernels showing ``n = 120``; only the
+  attribution of this one kernel is withdrawn.
+
+  **A separate, unmeasured observation, recorded so it is not mistaken for a
+  finding.** A one-row head over a 262144-entry vocabulary reads roughly 413 MB of
+  Q4_K weights per row. If that GEMV is slow it would be a memory-bound target
+  distinct from anything above -- but it was **not** measured, its kernel was not
+  identified, and nothing here claims it is slow. The 99.1 ms belongs to
+  ``gguf_k_selected_prefill_out_kernel``, which is now known not to be the head.
+
+  This is the second hypothesis in three iterations to be refuted by reading the
+  deciding code after pattern-matching suggested otherwise -- iteration 144's
+  "unwired prefill attention kernel" was the first. The habit worth keeping is the
+  one that caught both: read the function that chooses, before writing down what
+  the profile implies.
+
+  Evidence: ``hipengine/runtime/gemma4.py`` (``_forward_block_inner``, the last-row
+  narrowing and the single-row head launch); iteration 146's per-kernel table for
+  the ``n = 4`` rows.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
