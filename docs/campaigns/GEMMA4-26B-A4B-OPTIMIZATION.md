@@ -1774,13 +1774,23 @@ record, not permission to reset unrelated work or weaken correctness.
   place, and ``qweight_b`` reads offset 0 for expert 0 -- the gate's data -- so no
   output row can be fully correct even for the first expert.
 
-  **That accounts for every measurement.** Right magnitudes, because the bytes are
-  real weight data, just the wrong expert's. Uncorrelated values, because a
-  different expert's weights multiply the same activations. Insensitive to the
-  tile map, identity fill, expert-start arrays, plan builder, layout template, and
-  half order, because none of them change the stride that is wrong. And
-  ``rows_ok`` exactly 0.0% including expert 0, because a row needs both halves and
-  the up half is misread for every expert without exception.
+  **That accounts for most of the measurements.** Right magnitudes, because the
+  bytes are real weight data, just the wrong expert's. Uncorrelated values,
+  because a different expert's weights multiply the same activations. Insensitive
+  to the tile map, identity fill, expert-start arrays, plan builder, layout
+  template, and half order, because none of them change the stride that is wrong.
+
+  **One measurement it does not yet account for, stated rather than smoothed
+  over.** For expert 0 both tensors resolve to their true starts -- ``qweight_a``
+  at 0 and ``qweight_b`` at ``base_ptr + half_bytes`` -- so *if* expert 0 owned
+  any output rows, those rows would be correct and ``rows_ok`` would be at least
+  0.8% (32 of 4096 rows). It measured exactly 0.0%, and the row-match probe found
+  row 0 wrong. The likely resolution is that output rows are in *tile* order, so
+  row 0 belongs to whatever expert the first tile holds, which need not be expert
+  0 -- but that is an assumption, not a measurement. The validation below should
+  also print ``tile_expert[0]`` so it is settled rather than assumed. If the first
+  tile *is* expert 0 and its rows are still wrong, then a second difference exists
+  and the stride analysis is incomplete.
 
   **The fix is a de-interleave, not a repacking kernel.** The owner needs
   ``[all experts][gate]`` and ``[all experts][up]`` as separate tensors; Gemma
