@@ -15,14 +15,16 @@
     "reading": "Attention is not the decode bottleneck. The attention-dependent part of a decode step is the difference between the shortest and longest context here, about 2.7 tok/s out of 22.4, so roughly 12 percent. The remaining 88 percent is weight streaming: the MoE expert path plus the dense projections, which cost the same per token regardless of context.",
     "consequence_for_the_objective": "The objective's 2X decode target is a weight-path target. Decode is 22.38 tok/s at short context and llama.cpp is 41.92, so the entire 2.09x gap lives where the weights are read, and no amount of attention work closes it.",
     "bandwidth_arithmetic": {
+      "CORRECTED": "The first version of this block used 2.25 GB per token and reported about 50 GB/s and 20 percent. That input was wrong. The active weight traffic is 3.50 GB per token, measured from the artifact's own tensor offsets rather than assumed. The corrected figures are below and the original is withdrawn.",
       "ms_per_token_at_short_context": 44.7,
-      "active_weights_per_token_bytes": 2250000000,
-      "basis": "4B active parameters at Q4_K, about 4.5 bits per parameter",
-      "achieved_gb_s": 50,
+      "active_weights_per_token_bytes": 3500000000,
+      "basis": "measured, not assumed: the artifact's 658 tensors are sized from their data-offset deltas, which sum to the file's 17.01 GB exactly, and the 60 rank-3 expert tensors (14.42 GB) are scaled by expert_used_count/expert_count = 8/128. An earlier version of this block assumed 4B active parameters at 4.5 bits per parameter, which gave 2.25 GB and was wrong by 1.55x",
+      "achieved_gb_s": 78,
       "peak_gb_s": 256,
-      "utilisation": 0.20,
-      "llama_cpp_achieved_gb_s": 94,
-      "note": "This is arithmetic on two measured numbers rather than a profiler counter. It lands near the withdrawn profile's 18 percent by coincidence: the profile's shares were unsound, but the clean wall-clock numbers give a similar utilisation, so the headroom reading survives even though the attribution behind it did not."
+      "utilisation": 0.31,
+      "llama_cpp_achieved_gb_s": 146,
+      "llama_cpp_utilisation": 0.57,
+      "note": "The withdrawn decode profile reported 18 percent and the first version of this block reported 20 percent. Both were built on the wrong 2.25 GB input. The corrected reading is 31 percent at short context and 27 percent at 512 context, against llama.cpp's 57 percent, so the headroom is 1.87x rather than 5x and 146 GB/s is a realistic target because it is what llama.cpp already reaches on this host and artifact."
     }
   },
   "what_this_does_not_establish": "Which kernel or which part of the weight path is slow. It rules attention out and points at weight streaming; it does not distinguish the MoE expert gather from the dense projections, and it does not explain why 50 GB/s is reached rather than 94. That needs an ablation, not a profile.",
