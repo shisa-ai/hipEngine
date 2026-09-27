@@ -4511,6 +4511,71 @@ record, not permission to reset unrelated work or weaken correctness.
   (``attention_symbol``, ``gemma4_attention_shared_bytes``); ``gemma4_layer.py:458``
   for the live call site.
 
+  **Iteration 145: scoping the promotion packet. The template exists and is
+  Qwen3.6-hardcoded; `auto` already picks the best exact route.**
+
+  Two questions had to be answered before committing sessions to the packet, and
+  both came back cheap.
+
+  **Is there a gate-free win?** If some already-gated *exact* route were faster
+  than what ``auto`` picks, promoting it would need no execution-profile gate at
+  all. Measured at ``--prompt 1024 --output 8``:
+
+      route      prefill tok/s
+      auto           675-678
+      grouped        684
+      selected       137
+
+  ``auto`` already resolves to the ``grouped`` route -- 684 against ``auto``'s
+  675-678 is run-to-run spread, not a difference -- and ``selected`` is **5x
+  slower**. So the default is already the best of the exact routes and there is no
+  gate-free win. Every faster route is changed-arithmetic and needs the gate. That
+  closes the last cheap avenue and makes the packet the only path to a faster
+  default.
+
+  **What does the packet actually take?** ``scripts/qwen36_execution_profile_adapter.py``
+  is small (145 lines) and adaptable, but it is not the whole story: its own help
+  says it "does not invent control telemetry. The caller must provide an actual
+  control capture carrying the same run ID; legacy full-logit caches alone are
+  insufficient to certify request/state/KV/route ownership."
+
+  The producer of that telemetry is
+  ``scripts/execution_profile_gguf_control_smoke.py``, and it is the real template:
+  it runs a teacher-forced schedule for the ``strict`` and ``production`` profiles,
+  "emits the standardized actual-control capture from live resident-session state,
+  builds the independent expected-control fixtures from the schedule spec, writes
+  the RunCapture manifests + variant manifests + task results, and evaluates
+  everything through ``execution_profile_gate.py``."
+
+  **It is hard-coded to Qwen3.6** -- it runs "a small teacher-forced c1 schedule on
+  a Qwen3.6 GGUF model" and exposes ``--gdn-mode``, which is Qwen3.6's linear
+  attention. Gemma 4 has no GDN, different attention geometry, and folds the
+  softmax scale into the query norm. So the work is: adapt this smoke to the Gemma4
+  runtime, plus a Gemma4 teacher fixture in place of
+  ``scripts/quant_quality/qwen36_teacher.py`` (845 lines), plus the variant and
+  strict manifests for the MoE prefill owners.
+
+  The Gemma4 side already has the two ingredients the smoke's schedule needs:
+  ``scripts/gemma4_teacher_forced_gate.py`` (teacher-forced capture at
+  ``--prompt 2048 --prefill 1024``, already used for this campaign's logits gates)
+  and ``scripts/gemma4_real_generate.py`` for the resident session. Neither emits
+  controls today.
+
+  **Scope, stated plainly.** This is a bounded multi-session build against a
+  working template, not a research project -- but it is larger than any single
+  iteration, and it produces no speedup of its own. It converts the existing
+  verified 1393 into the default 1393, which is the entire user-facing gain of the
+  campaign so far (2.06x against today's 675).
+
+  Nothing was built here. This entry exists so the build starts from the template
+  and the measured negative results rather than re-deriving either.
+
+  Evidence: ``gemma4_campaign_bench.py`` at ``--prompt 1024 --output 8`` for
+  ``grouped`` and ``selected``; ``--help`` for
+  ``execution_profile_gguf_control_smoke.py`` and
+  ``qwen36_execution_profile_adapter.py``; ``wc -l`` for the adapter and teacher
+  fixture sizes.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
