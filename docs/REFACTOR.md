@@ -7373,11 +7373,28 @@ read traffic falls 6.3% instead of the modeled 45%
 the cost packet and the RED test call them.
 
 They stay because they are the substrate for the design that would actually bank
-the traffic: stage the K chunk's quantized weights in LDS once per block
-(32 KB per 128 columns x 256 K chunk) and have all 8 warps read them from
-shared memory, instead of each lane gathering its own column's blocks from
-global. That removes the redundant read instead of hoping for cache reuse, and
-it is the same change that would let a taller tile pay at all.
+the traffic: stage the K chunk's quantized weights in LDS once per block and
+have all 8 warps read them from shared memory, instead of each lane gathering
+its own column's blocks from global. That removes the redundant read instead of
+hoping for cache reuse, and it is the same change that would let a taller tile
+pay at all.
+
+Size the staging from the quant, not from a round number. A 128-column x 256-K
+chunk is **24 KB** for Q5_1 down (256/32 x 24 B x 128) and **18 KB** for Q4_K
+gate/up (one 144-byte superblock per column x 128), not 32 KB. With the
+activation staging the kernel already holds (32,384 B at `TILE_ROWS=32`:
+`lds_q8a` 26,112 + `lds_da` 3,072 + `lds_sumq8a` 3,072 + `lds_row_atrisk` 128),
+a 256-K Q5_1 chunk totals 56,960 B of the 65,536 B gfx11 workgroup budget - it
+fits with 8.4 KB spare. A 128-K chunk halves the weight tile to 12,288 B for
+20.4 KB of headroom, enough to double-buffer the staging against the MMA loop.
+
+This path is **bit-exact** and does not need an arithmetic change: the staged
+bytes are the same Q5_1 codes read in the same order into the same iu8 WMMA and
+the same Kahan/at-risk repair, and only the address the lane reads from changes.
+The GR family's closure to arithmetic change therefore does not apply to it.
+Do not port MMB's BF16 operands along with it: `LLAMA_MMB_BF16W=1` is the part
+of the comparator's win we deliberately do not gate. See
+`benchmarks/results/2026-09-27-moe-down-lds-weight-staging/`.
 
 Removal trigger: the LDS weight-staging variant lands and passes the same
 bit-identity gate, or no packet or test refers to the 32-row entry points.

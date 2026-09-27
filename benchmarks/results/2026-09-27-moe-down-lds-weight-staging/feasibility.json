@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "kind": "moe_down_lds_weight_staging_feasibility",
+  "status": "analyzed_not_implemented",
+  "performance_claim": false,
+  "promotion_claim": false,
+  "question": "Does the prescribed fix for the routed-MoE down kernel fit in LDS, and what is its prize?",
+  "measured_inputs": {
+    "engine_down_ms_code_p4096_post_unroll": 2229.8,
+    "engine_gap_ms_code_p4096": 12970.0,
+    "gate_up_grid_y_tiles_at_10240_compact_rows": 1120,
+    "wmma_total_rows_at_10240_compact_rows": 17920,
+    "real_to_modeled_dram_ratio_16row_down_40960_balanced": 1.08,
+    "measured_effective_bandwidth_gbs": "104-126",
+    "host_roofline_gbs_approx": 200,
+    "down_expert_tensor_bytes_q5_1": 1126000,
+    "source": "benchmarks/results/2026-09-22-moe-main-kernel-cost/, benchmarks/results/2026-09-22-moe-j32-tile/dram-counters.json"
+  },
+  "traffic_model": {
+    "formula": "bytes = sum_experts(ceil(rows_in_expert / TILE_ROWS)) * out_features_total * row_bytes",
+    "engine_launch_traffic_gb": 1.261,
+    "launches_per_code_p4096_prefill": 192,
+    "prefill_traffic_gb": 242.1,
+    "distinct_expert_bytes_per_launch_gb": 0.577,
+    "over_read_ratio": 2.188
+  },
+  "lds_budget_bytes": {
+    "gfx11_per_workgroup": 65536,
+    "activation_staging_existing": {
+      "lds_q8a": 26112,
+      "lds_da": 3072,
+      "lds_sumq8a": 3072,
+      "lds_row_atrisk": 128
+    },
+    "activation_total": 32384,
+    "weight_chunk_128col_x_256K_q5_1": 24576,
+    "total_with_256K_chunk": 56960,
+    "headroom_with_256K_chunk": 8576,
+    "weight_chunk_128col_x_128K_q5_1": 12288,
+    "total_with_128K_chunk": 44672,
+    "headroom_with_128K_chunk": 20864
+  },
+  "arithmetic_class": "bit_exact_candidate",
+  "arithmetic_note": "Staging the same Q5_1 quantized bytes in LDS and reading them from there changes only the data path, not the operands, the accumulation order, or the risk repair. Unlike the comparator's MMB (BF16 operands) this carries no numerical-gate risk.",
+  "reference_implementation": {
+    "repo": "/home/lhl/comparators-20260915/halobox-pr63",
+    "files": [
+      "ggml/src/ggml-cuda/mmb.cu",
+      "ggml/src/ggml-cuda/mmb-quant.cuh"
+    ],
+    "absent_in_base": "/home/lhl/comparators-20260915/halobox-strix",
+    "geometry": {
+      "MMB_BK": 64,
+      "MMB_NT": 256,
+      "MMB_LDS_STRIDE": "MMB_BK + 8"
+    },
+    "note": "Geometry is identical to our promoted dense_wide256 tile (WIDE_BK=64, WIDE_LDS_STRIDE=BK+8). MMB dequantizes weights to BF16 in LDS and uses BF16 WMMA; it is gated by LLAMA_MMB* env vars including LLAMA_MMB_BF16W=1."
+  }
+}
