@@ -396,7 +396,21 @@ def gemma4_experts_forward_bf16(
     gemma4_gelu_tanh_mul_bf16(gate_up_out.ptr, activated.ptr, lanes, intermediate, **kwargs)
 
     # 4. The down projection, over the same compact rows.
-    if down_wmma and wmma_rows and gemma4_project_experts_wmma(
+    if use_mmq and gemma4_project_experts_mmq(
+        down_proj,
+        activated.ptr,
+        expert_start.ptr,
+        scratch,
+        expert_out.ptr,
+        lanes,
+        num_experts,
+        intermediate,
+        hidden_size,
+        stream=stream,
+        runtime=runtime,
+    ):
+        pass
+    elif down_wmma and wmma_rows and gemma4_project_experts_wmma(
         down_proj,
         activated.ptr,
         expert_start.ptr,
@@ -599,6 +613,8 @@ _WMMA_PREFILL_VARIANT = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
 # activations, so it is a route of its own rather than a variant of the grouped
 # owners, which take BF16 activations and dequantize the weights.
 _MMQ_DUAL_QUANT_KEY = "gguf_q4_k"
+# The down projection is a single Q5_1 matrix, so its MMQ leaf needs no split.
+_MMQ_DOWN_QUANT_KEY = "gguf_q5_1"
 # The grouped int8 MMQ leaf needs gate and up in separate per-expert weight
 # allocations, so the loader materializes the fused ``ffn_gate_up_exps`` stack as
 # two expert-strided tensors. Set once that split lands; the route refuses loudly
@@ -975,6 +991,78 @@ def gemma4_project_experts_mmq_dual(
         stream=stream,
         library=library,
         runtime=runtime,
+    )
+    return True
+
+
+def gemma4_project_experts_mmq(
+    weight: Gemma4Projection,
+    x_ptr: int,
+    expert_start_ptr: int,
+    scratch: Gemma4ExpertScratch,
+    out_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: object | None = None,
+    runtime: object | None = None,
+) -> bool:
+    """Run one projection through the grouped int8 Q5_1 MMQ owner.
+
+    The down projection is a single matrix, so this leaf reads the raw GGUF Q5_1
+    layout directly: no split is needed, and unlike the Q4_K dual leaf it takes
+    the compact ``expert_start`` rather than a padded tile plan.
+
+    Returns ``False`` when the weight is not a Q5_1 expert stack or the shape is
+    not one the leaf serves, which leaves the grouped and selected owners to
+    handle it.
+    """
+
+    if isinstance(weight, int):
+        return False
+    if weight.spec.quant_key != _MMQ_DOWN_QUANT_KEY:
+        return False
+    if in_features % _DS4_BLOCK_VALUES:
+        return False
+    if compact_rows < _GROUPED_PREFILL_MIN_LANES_PER_EXPERT * num_experts:
+        return False
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+        gguf_q8_1_mmq_ds4_pack_bf16,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_mmq_selected_prefill import (
+        build_gguf_q5_1_mmq_selected_prefill,
+        gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out,
+    )
+
+    library = library or build_gguf_q5_1_mmq_selected_prefill(load=True)
+    # The down input is the post-GeGLU activation, which is narrower than the
+    # gate_up input, so it reuses the same DS4 workspace the dual leaf packs
+    # into: the two projections run back to back and never hold it at once.
+    ds4 = scratch.buffer("ds4_q8")
+    gguf_q8_1_mmq_ds4_pack_bf16(
+        x_ptr,
+        ds4.ptr,
+        compact_rows,
+        in_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
+        ds4.ptr,
+        expert_start_ptr,
+        weight.allocation("raw").buffer.ptr,
+        out_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        runtime=runtime,
+        library=library,
     )
     return True
 
