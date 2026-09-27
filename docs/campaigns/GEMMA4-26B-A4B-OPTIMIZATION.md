@@ -3528,6 +3528,58 @@ record, not permission to reset unrelated work or weaken correctness.
   ``gemma4_experts.py:183`` (the scratch-capacity guard) and ``:478`` (the 8192-row
   down geometry).
 
+  **Iteration 126: the rows-per-expert hypothesis is REFUTED, and the MoE's cost
+  is a fixed ~2 us per routed row -- neither bandwidth nor call overhead.**
+
+  **The real knob, found after the first attempt was void.** ``runtime/gemma4.py:85``
+  sets ``DEFAULT_PREFILL_BLOCK = 512``; ``__post_init__`` uses it for ``max_block``
+  and sizes each layer's ``Gemma4LayerScratch(tokens=self.max_block)``
+  (``:499``-``:507``). At top_k 8 that is ``512 * 8 = 4096`` compact rows and
+  therefore ``4096 / 128 = 32`` rows per expert -- exactly the census constant,
+  and it also explains why every attention row reads ``t=512``.
+
+  **The first end-to-end test was void and is withdrawn.** Iteration 125's
+  ``--prefill-chunk-size`` on the bench set ``runner.prefill_chunk_size``, an
+  attribute ``Gemma4Runner`` does not have; the census confirms ``compact_rows``
+  stayed 4096 at every chunk size, and the reported -2.2% was noise on an
+  unchanged configuration. The bench flag has been removed rather than left to
+  mislead.
+
+  **The real experiment.** ``--prefill-block`` on the census, re-initializing the
+  runner after clearing ``_scratches`` (``__post_init__`` *appends*, and the
+  per-layer call reads ``_scratches[0]``, so a post-construction override is
+  inert without that)::
+
+      block  quant   compact rows  calls   tot ms   mean us   MB/call   GB/s  TF/s
+        512  q4_k            4096    116    923.3    7959.7   320.078   40.2   4.1
+       2048  q4_k           16384     29   1089.8   37577.8   423.887   11.3   3.5
+        512  q5_1            4096    116    969.3    8356.0   219.152   26.2   1.9
+       2048  q5_1           16384     29    994.4   34288.7   305.660    8.9   1.9
+
+  **Four times the rows per expert did not help; it slightly hurt.** The
+  hypothesis is refuted.
+
+  **And the arithmetic that replaces it is sharper than the hypothesis.**
+  Total bytes moved *fell* from ``116 x 320 MB = 37 GB`` to ``29 x 424 MB =
+  12 GB`` -- **3x fewer bytes in the same wall time**. So the MoE is not
+  bandwidth-bound, and the weights are not the cost: quadrupling their reuse
+  bought nothing. What is fixed is **per row**: ``7959 / 4096 = 1.94 us`` per
+  row at block 512 and ``37578 / 16384 = 2.29 us`` per row at block 2048 --
+  about **2 us per routed (token, expert) row, independent of how many bytes
+  that row moves**. At ~2.5 GHz that is roughly **5000 cycles per row**, against
+  a gate_up row whose arithmetic at the 44 TF/s peak is about **90 ns**. The
+  per-row cost is ~55x the arithmetic and ~65x the byte time.
+
+  **So the next target is not the weights, the grid, or the tile -- it is what a
+  single routed row costs.** Candidates in order of testability: per-row
+  activation dequantization, the gather/scatter into compact order, and the
+  per-row reduction tree.
+
+  Evidence: ``runtime/gemma4.py:85`` (``DEFAULT_PREFILL_BLOCK``), ``:454``-``:476``
+  (``max_block`` and its guards), ``:499``-``:507`` (scratch sizing),
+  ``:457``/``:808`` (``_scratches`` as a field, read by index); the census table
+  above; ``scripts/gemma4_prefill_shape_census.py --tokens/--prefill-block``.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
