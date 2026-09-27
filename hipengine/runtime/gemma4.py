@@ -82,6 +82,21 @@ _I64_BYTES = 8
 # 8192-token context costs 52.68 GB against 3.29 GB for a 512-token block, on
 # top of 17.00 GB of resident blocks and 1.85 GB of KV. A prompt wider than
 # this is forwarded as consecutive blocks, which is exact.
+# Tokens per prefill pass. This is the ubatch equivalent: a prompt wider than
+# this is forwarded as consecutive blocks.
+#
+# Raising this to 1024 to match llama.cpp's ubatch was measured and does not pay.
+# The argument for it was weight reuse -- a 1024-token block routes about 64
+# tokens per expert against 32, halving the number of passes over the expert
+# weights. But the int8 MMQ path is compute-bound on the WMMA units rather than
+# memory-bound on those weights, so halving the reads buys almost nothing:
+#
+#     prompt 1024   block 512: 1373/1367/1367     block 1024: 1351/1397/1397
+#     prompt 2048   block 512: 1118/1119          block 1024: 1141/1131  (+1.5%)
+#     decode        block 512: 38.86-39.09        block 1024: 37.96-38.15  (-2%)
+#
+# That is a wash, and it costs a larger per-layer scratch, so 512 stays. The
+# reuse argument would apply to a memory-bound prefill owner, not this one.
 DEFAULT_PREFILL_BLOCK = 512
 
 # Which layer field each artifact slot feeds. The slot names are the loader's;
