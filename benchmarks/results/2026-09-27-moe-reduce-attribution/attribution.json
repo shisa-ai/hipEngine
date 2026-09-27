@@ -1,0 +1,161 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_moe_reduce_and_packing_attribution",
+ "performance_claim": false,
+ "shape": {
+  "tokens": 1024,
+  "hidden": 2560,
+  "experts": 512,
+  "top_k": 10,
+  "layers": 48,
+  "chunks": 4,
+  "case": "code-p4096"
+ },
+ "moe_reduce_attribution": {
+  "taxonomy_total_ms": 758.4,
+  "measured_total_ms": 784.93,
+  "source": "2026-09-17-qwen4exp-shipped-default-attribution role-trace, halved from 2 repetitions",
+  "components": [
+   {
+    "component": "router_logits",
+    "class": "maps",
+    "kernel": "qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>",
+    "ms": 617.73,
+    "share_pct": 78.7
+   },
+   {
+    "component": "router_select",
+    "class": "maps",
+    "kernel": "qwen35_router_select_kernel",
+    "ms": 18.25,
+    "share_pct": 2.3
+   },
+   {
+    "component": "weighted_lanes_sum",
+    "class": "reduction",
+    "kernel": "weighted_lanes_sum_out_kernel",
+    "ms": 67.66,
+    "share_pct": 8.6
+   },
+   {
+    "component": "group_scatter_gather",
+    "class": "scatter_gather",
+    "kernel": "qwen35_moe_group_scatter_gather_kernel",
+    "ms": 52.06,
+    "share_pct": 6.6
+   },
+   {
+    "component": "silu_mul_dual",
+    "class": "activation",
+    "kernel": "silu_mul_dual_out_kernel",
+    "ms": 29.22,
+    "share_pct": 3.7
+   }
+  ],
+  "class_totals_ms": {
+   "maps": 635.98,
+   "reduction": 67.66,
+   "scatter_gather": 52.06,
+   "activation": 29.22
+  },
+  "class_shares_pct": {
+   "maps": 81.0,
+   "reduction": 8.6,
+   "scatter_gather": 6.6,
+   "activation": 3.7
+  },
+  "conclusion": "the bucket is 81% maps; fusing the reduction caps at 67.66 ms"
+ },
+ "activation_packing": {
+  "comparator_bucket": {
+   "name": "quantize_pack",
+   "halobox_base_ms": 284.8,
+   "halobox_pr63_ms": 0.0,
+   "definition": "activation quantization feeding a quantized matmul (comparator-side family)"
+  },
+  "hipengine_bucket_ms": 0.0,
+  "why_zero": "our activation conversion happens inside the matmul kernels, so no kernel lands in this bucket",
+  "explicit_conversion_kernels": [
+   {
+    "kernel": "f32_to_bf16_kernel",
+    "ms": 11.16,
+    "n": 768,
+    "grid_items": 2621440,
+    "block": 256
+   },
+   {
+    "kernel": "bf16_to_f32_kernel",
+    "ms": 5.06,
+    "n": 384,
+    "grid_items": 2621440,
+    "block": 256
+   }
+  ],
+  "explicit_conversion_total_ms": 16.22,
+  "double_counting": "claiming the comparator's 284.8 ms would double-count with dense_projection, where our conversion already lives",
+  "comparator_pr63_context": {
+   "quantize_pack": [
+    284.8,
+    0.0
+   ],
+   "dense_projection": [
+    1536.7,
+    1374.3
+   ],
+   "expert_gate_up": [
+    819.4,
+    761.8
+   ],
+   "expert_down": [
+    1149.8,
+    412.8
+   ],
+   "note": "PR#63 changed the matmuls and the packing together, so the bucket's elimination is not a clean 284.8 ms win even on the comparator side"
+  }
+ },
+ "router_mechanism": {
+  "question": "what limits qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>",
+  "geometry": {
+   "grid": [
+    512,
+    256
+   ],
+   "block": 256,
+   "lds_bytes": 4096,
+   "tile": "4 tokens x 1 expert"
+  },
+  "arithmetic": {
+   "flops_gflop": 2.684,
+   "fma_floor_ms": 0.1637,
+   "achieved_gflop_s": 891.0
+  },
+  "screen": {
+   "shipped_library_ms": 3.0126,
+   "router_token_tile4_ms": 3.0877,
+   "router_token_tile4_max_abs_diff": 0.0,
+   "router_token_tile8_ms": 2.7062,
+   "router_token_tile16_ms": 2.9069,
+   "router_token_tile32_ms": 4.0032,
+   "router_warp_token_ms": 1.4834,
+   "router_warp_token_max_abs_diff": 4.917383193969727e-07,
+   "router_tile2d_16x16_ms": 11.7314,
+   "router_tile2d_max_abs_diff": 5.9604644775390625e-06
+  },
+  "findings": [
+   "the faithful T=4 copy is bit-identical to the shipped library, so the screen is attributable",
+   "token tile width is not the lever: T=8 1.11x, T=16 1.04x, T=32 0.75x",
+   "traffic is not the lever: the shipped kernel sustains 2222 GB/s of L2-resident re-reads, and a 2D LDS tile with 10x less traffic is 3.9x slower",
+   "the lever is the reduction structure: replacing the 8-barrier 256-thread LDS tree with a 32-lane shuffle is 2.03x"
+  ],
+  "prize_ms": 313.6,
+  "arithmetic_status": "the warp variant is NOT bit-exact (max abs diff 4.9e-7) because the reduction order changes, so it needs the production profile gate, not a parity argument"
+ },
+ "double_counting_guard": {
+  "rule": "report complete-operation cost; do not add a family's saving to a bucket that moved work into it",
+  "applied": [
+   "moe_reduce is counted once, split into maps/reduction/scatter/activation with no overlap",
+   "the comparator quantize_pack elimination is not claimed as recoverable on our side",
+   "the repair passes are not counted here; they are folded into expert_gate_up and expert_down"
+  ]
+ }
+}
