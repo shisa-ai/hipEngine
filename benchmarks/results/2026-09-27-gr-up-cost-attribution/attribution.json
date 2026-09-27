@@ -1,0 +1,144 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_gr_up_cost_attribution",
+ "performance_claim": false,
+ "created_at": "2026-09-27T17:05:00Z",
+ "candidate_promoted": false,
+ "subject": {
+  "kernel": "q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32<true>",
+  "template_wave_scale": true,
+  "role": "hyper_connection.gr_up (Q8_0 projection + sigmoid + gated-mean, fused)",
+  "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip:952",
+  "host": {
+   "hostname": "gfx1151",
+   "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+   "gpu": "AMD Radeon 8060S (Strix Halo APU)",
+   "rocm_platform": "10.0.0",
+   "hipcc_version": "HIP version: 7.15.26333-0000000"
+  },
+  "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "case": "code-p4096, prefill, 1024-token chunks",
+  "measurement": {
+   "source": "benchmarks/results/2026-09-27-router-warp-reduce/trace-a_kernel_trace.csv",
+   "note": "current composition, taken after the dense_wide256 layer-scope promotion to layers 16-47; the raw CSV holds two prefill passes, all figures here are 1x",
+   "ms_1x": 2507.0,
+   "launches_1x": 384,
+   "ms_per_launch": 6.529,
+   "launches_per_layer_per_chunk": 2,
+   "prefill_kernel_total_ms_1x": 16189.5,
+   "share_of_prefill_pct": 15.5,
+   "rank_in_prefill": 1
+  },
+  "geometry": {
+   "rows": 1024,
+   "k_in_features": 320,
+   "k_role": "low_rank",
+   "n_out_features": 10240,
+   "n_role": "branches(4) x hidden(2560)",
+   "grid": [1280, 256, 1],
+   "workgroup": [128, 1, 1],
+   "blocks": 327680,
+   "grid_column_semantics": "rocprofv3 Grid_Size_X/Y report total work-items (grid_dim * workgroup_size), not grid dimensions; 163840 = 1280*128 and 256 = 256*1",
+   "tile": {"ROW_BATCH": 4, "HIDDEN_TILE": 2, "BRANCHES": 4, "waves": 4}
+  }
+ },
+ "roofline": {
+  "flop_per_launch": 6707200000,
+  "tflops_measured": 1.03,
+  "fp32_peak_tflops_est": 30.0,
+  "pct_of_fp32_peak": 3.4,
+  "traffic_bytes_per_launch": {
+   "weights_reread": 891289600,
+   "gate_store": 41943040,
+   "normalized_read": 41943040,
+   "mixed_store": 10485760,
+   "x_read": 1310720,
+   "total": 987184640
+  },
+  "effective_bandwidth_gb_s": 151.2,
+  "dram_peak_gb_s_est": 256.0,
+  "pct_of_dram_peak": 59.1,
+  "operational_intensity_flop_per_byte": 6.79,
+  "machine_balance_flop_per_byte_est": 117.0,
+  "pct_of_machine_balance": 5.8,
+  "verdict": "weight-bandwidth-bound at 59% of DRAM peak. 90.3% of the traffic is a 256x re-read of the same 3.48 MB weight tensor, because the dequantized weight is reused across only ROW_BATCH=4 rows."
+ },
+ "weight_reread_mechanism": {
+  "weight_bytes_once": 3481600,
+  "reread_factor": 256,
+  "why": "row_base = blockIdx.y * ROW_BATCH and blockIdx.y spans rows/ROW_BATCH = 256. Every row-batch sweeps all 1280 hidden tiles, so the whole 3.48 MB weight tensor is swept once per row-batch. The reuse distance is the full 3.48 MB, which is served from DRAM, not cache.",
+  "access_pattern_is_not_the_problem": "q8_0_weight_wave_scale (gguf_k_gemv.hip:105) uses __builtin_amdgcn_readfirstlane for the block index, so all 32 lanes of a warp read one 34-byte q8_0 block: the 2-byte scale is broadcast and the 32 quant bytes are lane-indexed (k & 31 == lane). The read is coalesced, not a gather.",
+  "arith_per_byte_weights_only": 7.53,
+  "basis_correction": "docs/REFACTOR.md 'GR-Up Wide Tile' states the fused kernel's weight traffic as 3.565 GB and 1.88 FLOP/byte. That is the f32-DEQUANTIZED size (10240*320*4 = 13.11 MB, x256 = 3.355 GB), not the packed q8_0 tensor the kernel actually reads (3.48 MB, x256 = 891 MB). The real operational intensity on weight traffic is 7.53 FLOP/byte, 4x the recorded figure. The conclusion 'the limiter is weight traffic' survives - 90% of traffic is still the re-read - but the magnitude does not. The wide tile's recorded 13.9 MB / 483 FLOP/byte has the same conflation: 13.9 MB is its f16 LDS staging size, while its DRAM weight read is the same 3.48 MB packed tensor."
+ },
+ "epilogue_estimate": {
+  "measured": false,
+  "method": "instruction count from source, not a counter measurement",
+  "active_threads": 8,
+  "of_threads": 128,
+  "per_block_epilogue_ops": 29,
+  "per_thread_mainloop_ops": 220,
+  "estimated_critical_path_share_pct": 13.0,
+  "store_coalescing_risk": "gate[index] with index = row*10240 + branch*2560 + hidden_base + col. Per block the 8 active threads write 2 consecutive floats (col 0,1) per (row, branch): 4 branches at 10 KB stride and 4 rows at 40 KB stride, so 32 scattered 4-byte stores covering up to 32 cache lines. The 64-byte line at hidden_base is shared with the 7 neighbouring blocks at consecutive blockIdx.x, so merging depends on their co-residency and is not established here.",
+  "note": "This is the one component the trace cannot separate; the projection/epilogue split needs a variant microbenchmark at the same geometry, not a counter reading."
+ },
+ "levers": [
+  {
+   "rank": 1,
+   "lever": "ROW_BATCH 4 -> 8 at HIDDEN_TILE=2",
+   "arithmetic": "preserving (bit-exact)",
+   "why": "halves the weight re-read, 891 MB -> 445 MB per launch, taking total traffic to 541 MB and the operational intensity from 6.8 to 12.4 FLOP/byte. The per-output k-order, the 16/8/4/2/1 shuffle tree, and the 4-wave LDS sum are all untouched: ROW_BATCH only adds independent row accumulators, and weights[branch][col] is dequantized once and consumed by all rows in the same order.",
+   "cost": "acc[8][4][2] is 64 floats against 32 at RB4, plus weight_rows[4][2] pointers; estimated 66 -> 98 VGPRs, so about 7 -> 5 blocks/CU.",
+   "existing_evidence_does_not_test_this": "The 2026-09-06 RB8/HT1 retile halved the re-read and measured 0.80x. It changed ROW_BATCH and HIDDEN_TILE together: HT1 halves the FMAs per x load and doubles the block count, so it is a confounded experiment, not evidence about row batching. Only a rowbatch4 kernel exists in-tree (gguf_k_gemv.hip:952); no clean RB8/HT2 variant has ever been built here.",
+   "estimated_prize_ms": 900,
+   "estimated_prize_basis": "traffic reduction of 350 MB per launch at the measured 151 GB/s effective rate; an upper bound that assumes the kernel stays bandwidth-bound and occupancy loss is free"
+  },
+  {
+   "rank": 2,
+   "lever": "drop the dead gate store",
+   "arithmetic": "preserving (bit-exact)",
+   "why": "In the fused_up path the kernel writes gate[index] and then uses its own local sigmoid_gate to build mixed. Nothing reads scratch.gate afterwards: the follow-up qwen4_exp_sigmoid_f32 is guarded by `not fused_up and not fused_sigmoid_mean` (qwen4_exp_runner.py:3127) and is skipped. The 41.9 MB/launch store is dead.",
+   "cost": "a separate kernel entry point without the store, or a template parameter",
+   "traffic_saved_per_launch": 41943040,
+   "estimated_prize_ms": 107,
+   "estimated_prize_basis": "41.9 MB/launch at 151 GB/s, 4.3% of the kernel; does not include the store-coalescing amplification, which would only increase it",
+   "verify_before_implementing": "the dead-store claim holds for the fused_up path only. The gr_wide and gr_iu8 paths DO read scratch.gate back (their separate sigmoid and gated_mean kernels), so a template parameter is safer than deleting the store outright."
+  },
+  {
+   "rank": 3,
+   "lever": "HIDDEN_TILE 2 -> 4 at ROW_BATCH=4",
+   "arithmetic": "preserving (bit-exact)",
+   "why": "doubles the FMAs per x load (32 -> 64 per xv) and halves the block count and epilogue invocations. It does not change weight traffic, because the re-read factor is rows/ROW_BATCH and is independent of the hidden tiling.",
+   "cost": "acc[4][4][4] is 64 floats and weight_rows[4][4] is 16 pointers; same register class as lever 1, so the two cannot be combined for free",
+   "estimated_prize_ms": null,
+   "estimated_prize_basis": "instruction-efficiency only; the kernel is at 3.4% of FP32 peak, so this addresses a non-binding resource"
+  },
+  {
+   "rank": 4,
+   "lever": "fuse the grouped-rmsnorm producer of normalized",
+   "arithmetic": "preserving if the rmsnorm arithmetic is unchanged",
+   "why": "normalized is read for 41.9 MB/launch. If a separate kernel produces it, fusing removes that launch plus its write and this read.",
+   "cost": "needs the producer identified; not established in this pass",
+   "estimated_prize_ms": null
+  },
+  {
+   "rank": 5,
+   "lever": "projection ILP",
+   "arithmetic": "preserving",
+   "why": "Recorded in the task's no-arithmetic-risk trio, but the source does not support it as an independent lever: at ROW_BATCH=4 x BRANCHES=4 x HIDDEN_TILE=2 there are already 32 independent FMA chains per thread. ILP is not the limiter; traffic is, and lever 1 is the traffic lever.",
+   "estimated_prize_ms": 0
+  }
+ ],
+ "arithmetic_change_is_closed": {
+  "finding": "The GR family is closed to arithmetic change for an independent reason, recorded in docs/REFACTOR.md. Every measured arithmetic route saturates the production gate at 1.3e-3 - 1.6e-3 mean KL, including corrections more accurate than the incumbent.",
+  "shared_mechanism": "The MoE router's top-k expert selection is a discrete amplification node: a ~1 ulp router-logit difference flips which of 512 experts runs, which moves the model logits by O(1). Measured on the router warp-reduce candidate at benchmarks/results/2026-09-27-router-warp-reduce/, where all six top-1 mismatches were flip-eligible and none were outside. Every downstream GR or dense arithmetic route inherits that saturation.",
+  "consequence": "Levers 1-3 are bit-exact and do not need the numerical gate; they need only the strict parity contract, which they satisfy by construction. This is why they are the only ones ranked as actionable."
+ },
+ "correction": {
+  "date": "2026-09-27",
+  "supersedes_ms": 2431.8,
+  "current_ms_1x": 2507.0,
+  "cause": "the 2431.8 ms figure came from an earlier trace; the dense_wide256 layer-scope promotion to layers 16-47 changed the composition",
+  "note": "the kernel is unchanged; only its measured share moved"
+ }
+}
