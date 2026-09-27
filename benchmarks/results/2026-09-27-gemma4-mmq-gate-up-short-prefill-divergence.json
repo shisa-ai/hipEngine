@@ -1,90 +1,90 @@
 {
- "kind": "gemma4_numerical_evaluator_and_defect",
- "performance_claim": false,
- "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL, 8192 context",
- "summary": "A margin-aware probe chain closes the evaluator gap the campaign had recorded, and the first route it was pointed at turns out not to be marginally divergent at all. The MMQ expert gate/up route is deterministic and off by up to 2.036 KL with greedy decision flips at 7 of the 13 prefill lengths where it runs, while being nearly exact at the one length the campaign's recorded evidence was taken at.",
- "probe_chain": {
-  "why": "The frozen campaign corpus is eight sentences cycled to the target length, so a 1024-token chain repeats each many times and the model is close to certain everywhere. The top-1 bar cannot see a reordering-class divergence there.",
-  "construction": "scripts/gemma4_campaign_bench.py probe_corpus: a seeded, never-repeating chain mixing material with no predictable continuation (hex digests, id-like digit groups, random codes) with material where only the wording is open (shuffled word lists, interchangeable enumerations). require_single_pass raises rather than cycling, so repetition cannot silently return.",
-  "measured_margin_contrast": {
-   "chain": "1023 scored rows, 2048-token prompt with a 1024-id prefill, strict arm",
-   "frozen": {
-    "median_margin": 1.0,
-    "rows_below_0.20": 0,
-    "rows_below_0.05": 0,
-    "rows_below_0.01": 0
-   },
-   "probe": {
-    "median_margin": 0.7203,
-    "rows_below_0.20": 247,
-    "rows_below_0.05": 77,
-    "rows_below_0.01": 14
-   }
+  "kind": "gemma4_numerical_evaluator_and_defect",
+  "performance_claim": false,
+  "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL, 8192 context",
+  "summary": "A margin-aware probe chain closes the evaluator gap the campaign had recorded, and the first route it was pointed at turns out not to be marginally divergent at all. The MMQ expert gate/up route is deterministic and off by up to 2.036 KL with greedy decision flips at 7 of the 13 prefill lengths where it runs, while being nearly exact at the one length the campaign's recorded evidence was taken at.",
+  "probe_chain": {
+    "why": "The frozen campaign corpus is eight sentences cycled to the target length, so a 1024-token chain repeats each many times and the model is close to certain everywhere. The top-1 bar cannot see a reordering-class divergence there.",
+    "construction": "scripts/gemma4_campaign_bench.py probe_corpus: a seeded, never-repeating chain mixing material with no predictable continuation (hex digests, id-like digit groups, random codes) with material where only the wording is open (shuffled word lists, interchangeable enumerations). require_single_pass raises rather than cycling, so repetition cannot silently return.",
+    "measured_margin_contrast": {
+      "chain": "1023 scored rows, 2048-token prompt with a 1024-id prefill, strict arm",
+      "frozen": {
+        "median_margin": 1.0,
+        "rows_below_0.20": 0,
+        "rows_below_0.05": 0,
+        "rows_below_0.01": 0
+      },
+      "probe": {
+        "median_margin": 0.7203,
+        "rows_below_0.20": 247,
+        "rows_below_0.05": 77,
+        "rows_below_0.01": 14
+      }
+    },
+    "verdict": "the frozen chain has no low-margin row at all, so its top-1 bar is not nearly blind there - it is exactly blind. The probe chain carries 247 rows below 0.20 and 14 below 0.01."
   },
-  "verdict": "the frozen chain has no low-margin row at all, so its top-1 bar is not nearly blind there - it is exactly blind. The probe chain carries 247 rows below 0.20 and 14 below 0.01."
- },
- "shipped_default_is_exact": {
-  "measured": "the default path is bit-identical to the strict single-kernel arm on both chains: KL exactly 0.0 on all 1023 rows, 0 top-1 flips, including all 77 close-margin rows. Observed selections [2] with 30690 split launches against the strict arm's [1] with 0, so the split engaged and still produced identical bits.",
-  "consequence": "the recorded claim that the shipped split breaches the same kl_max bar (0.055589) is not what this tree does today; it is stale text, not a measured property of the current default path."
- },
- "mmq_gate_up_route": {
-  "recorded_evidence_reproduced": {
-   "chain": "frozen, prompt 2048, prefill 1024",
-   "kl_mean": 0.0001438,
-   "kl_max": 0.0651,
-   "top1_flips": 0,
-   "rows_over_1e-3": 3,
-   "note": "matches the campaign's recorded 1.438e-04 / 0.0651 / 0 flips exactly"
+  "shipped_default_is_exact": {
+    "measured": "the default path is bit-identical to the strict single-kernel arm on both chains: KL exactly 0.0 on all 1023 rows, 0 top-1 flips, including all 77 close-margin rows. Observed selections [2] with 30690 split launches against the strict arm's [1] with 0, so the split engaged and still produced identical bits.",
+    "consequence": "the recorded claim that the shipped split breaches the same kl_max bar (0.055589) is not what this tree does today; it is stale text, not a measured property of the current default path."
   },
-  "probe_chain_result": {
-   "chain": "probe, prompt 2048, prefill 1024",
-   "kl_mean": 0.3837,
-   "kl_max": 10.857,
-   "top1_flips": 229,
-   "rows_over_1e-3": 830,
-   "rows_over_1e-6": 1023,
-   "first_divergent_row": 0,
-   "baseline_margin_at_first_divergence": 0.89551
+  "mmq_gate_up_route": {
+    "recorded_evidence_reproduced": {
+      "chain": "frozen, prompt 2048, prefill 1024",
+      "kl_mean": 0.0001438,
+      "kl_max": 0.0651,
+      "top1_flips": 0,
+      "rows_over_1e-3": 3,
+      "note": "matches the campaign's recorded 1.438e-04 / 0.0651 / 0 flips exactly"
+    },
+    "probe_chain_result": {
+      "chain": "probe, prompt 2048, prefill 1024",
+      "kl_mean": 0.3837,
+      "kl_max": 10.857,
+      "top1_flips": 229,
+      "rows_over_1e-3": 830,
+      "rows_over_1e-6": 1023,
+      "first_divergent_row": 0,
+      "baseline_margin_at_first_divergence": 0.89551
+    },
+    "attribution": "the route replaces only the prefill's expert gate/up projection, so the whole 1023-row divergence is inherited through the KV cache from the prefill. A single forward of N ids under each arm reproduces it.",
+    "length_probe": {
+      "command": "PYTHONPATH=. python scripts/gemma4_mmq_prefill_length_probe.py --artifact <model.gguf>",
+      "corpus": "frozen, so this is not a property of the probe chain",
+      "route_absent_below": 16,
+      "kl_by_length": {
+        "16": 0.305,
+        "24": 1.007,
+        "32": 0.1086,
+        "48": 0.135,
+        "64": 2.036,
+        "96": 1.656e-06,
+        "128": 0.1362,
+        "192": 0.003151,
+        "256": 0.1514,
+        "384": 2.558e-06,
+        "512": 3.431e-06,
+        "768": 0.0001246,
+        "1024": 7.335e-07
+      },
+      "over_the_0.05_bar_at": [
+        16,
+        24,
+        32,
+        48,
+        64,
+        128,
+        256
+      ],
+      "top1_flips_at": [
+        24,
+        64
+      ],
+      "deterministic": true,
+      "kl_at_the_recorded_evidence_length": 7.335e-07
+    },
+    "conclusion": "the route is not a marginally divergent arithmetic path. It is deterministically wrong at most prefill lengths from 16 to 256 ids, which is the ordinary short-prompt case, and the campaign's 1024-id evidence is its best case rather than a representative one. The recorded kl_max 0.0651 understates the divergence by roughly 30x and the recorded 'zero top-1 flips' does not survive at 24 or 64 ids.",
+    "not_established": "the mechanism. The route quantizes activations to DS4 Q8_1, whose error is per-row and should not vary by six orders of magnitude with the row count, so a per-row quantization bound does not explain it. Three candidate mechanisms have since been eliminated: the route's own arithmetic at the true projection geometry (2816 -> 2*704, 128 experts, fragmented short-prefill counts) now has GPU coverage in tests/test_gpu_gemma4_expert_route_true_geometry.py and holds inside the same envelope the toy-geometry case uses; the leaf's tile walk masks padded rows and maps them back through expert_start_compact, so its row space is compact and the compact-lane sizing of mmq_workspace and mmq_identity is correct; and the dispatch passes packed_hidden, i.e. the gathered compact rows in compact order, which is what the route's identity map assumes. The remaining difference between the passing unit coverage and the diverging real path is the activation statistics: the tests use unit-variance gaussian rows, while real hidden states carry the large outliers Gemma 4 is known for. Next experiment is a true-geometry case with outlier and near-zero rows against the same reference."
   },
-  "attribution": "the route replaces only the prefill's expert gate/up projection, so the whole 1023-row divergence is inherited through the KV cache from the prefill. A single forward of N ids under each arm reproduces it.",
-  "length_probe": {
-   "command": "PYTHONPATH=. python scripts/gemma4_mmq_prefill_length_probe.py --artifact <model.gguf>",
-   "corpus": "frozen, so this is not a property of the probe chain",
-   "route_absent_below": 16,
-   "kl_by_length": {
-    "16": 0.305,
-    "24": 1.007,
-    "32": 0.1086,
-    "48": 0.135,
-    "64": 2.036,
-    "96": 1.656e-06,
-    "128": 0.1362,
-    "192": 0.003151,
-    "256": 0.1514,
-    "384": 2.558e-06,
-    "512": 3.431e-06,
-    "768": 0.0001246,
-    "1024": 7.335e-07
-   },
-   "over_the_0.05_bar_at": [
-    16,
-    24,
-    32,
-    48,
-    64,
-    128,
-    256
-   ],
-   "top1_flips_at": [
-    24,
-    64
-   ],
-   "deterministic": true,
-   "kl_at_the_recorded_evidence_length": 7.335e-07
-  },
-  "conclusion": "the route is not a marginally divergent arithmetic path. It is deterministically wrong at most prefill lengths from 16 to 256 ids, which is the ordinary short-prompt case, and the campaign's 1024-id evidence is its best case rather than a representative one. The recorded kl_max 0.0651 understates the divergence by roughly 30x and the recorded 'zero top-1 flips' does not survive at 24 or 64 ids.",
-  "not_established": "the mechanism. The route quantizes activations to DS4 Q8_1, whose error is per-row and should not vary by six orders of magnitude with the row count, so a per-row quantization bound does not explain it; but no per-expert row-count correlation has been measured, so the trigger is unidentified. The leaf's only unit coverage is 4 experts over 10 rows (tests/test_unit_gemma4_expert_route.py), which does not reach the real geometry of 128 experts."
- },
- "decision_impact": "the pending lead decision was whether an absolute kl_max applies to a reordering-class tail effect. That framing does not survive: there is no tail effect here to judge. The route is off by default for a concrete observed failure at short prefills, and the recorded rationale arguing for promotion on near-certain rows is corrected in the source comment, docs/ENVS.md and docs/REFACTOR.md.",
- "clearing_condition": "scripts/gemma4_mmq_prefill_length_probe.py exits 0 - that is, the route is inside the kl_max bar at every length from 16 to 1024 ids."
+  "decision_impact": "the pending lead decision was whether an absolute kl_max applies to a reordering-class tail effect. That framing does not survive: there is no tail effect here to judge. The route is off by default for a concrete observed failure at short prefills, and the recorded rationale arguing for promotion on near-certain rows is corrected in the source comment, docs/ENVS.md and docs/REFACTOR.md.",
+  "clearing_condition": "scripts/gemma4_mmq_prefill_length_probe.py exits 0 - that is, the route is inside the kl_max bar at every length from 16 to 1024 ids."
 }
