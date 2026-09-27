@@ -1,0 +1,67 @@
+{
+  "kind": "gemma4_wmma_dense_prefill_short_row_divergence",
+  "performance_claim": false,
+  "recorded": "2026-09-28, gfx1151 Strix Halo (zbook, AMD Radeon 8060S), Gemma 4 26B-A4B UD-Q4_K_XL",
+  "status": "reverted, not landed",
+  "summary": "The WMMA matrix-core dense prefill route is 19 percent faster on a 512-token prefill and passes the campaign's numerical gate over 1023 paired rows, but it diverges from the exact tiled route by up to 10.9 KL at short prompt lengths. The route has no row guard. Enabling it by default would be a correctness regression on short prompts, so the landing was reverted and the divergence is recorded unresolved rather than papered over with a row floor whose cause is unknown.",
+  "what_was_tried": {
+    "mechanism": "hipengine/generation/gemma4_gguf.py contains no wmma reference at all, so the Gemma 4 path never opts into the WMMA dense prefill that the Qwen resident path enables by default via PrefillConfig.use_wmma_prefill. hipengine/runtime/gguf_linear.py exposes HIPENGINE_GGUF_WMMA_PREFILL=1 as a process-wide equivalent.",
+    "landing_attempted": "Gemma4Runner.forward wrapped its block loop in wmma_prefill_session(True) for rows > 1, deferring to HIPENGINE_GGUF_WMMA_PREFILL when set so the env var stayed a working rollback lever. Reverted.",
+    "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python scripts/gemma4_campaign_bench.py --prompt 512 --output 128 --samples 3 --warmup 1 --expect-gpu 8060S"
+  },
+  "the_win_is_real": {
+    "end_to_end_512p128o": {"wmma_off_tok_s": 273.6, "wmma_on_tok_s": 338.0, "delta": "+19 percent"},
+    "kernel_level": {
+      "method": "rocprofv3 --kernel-trace --output-format rocpd, 512-token prefill, 3 forwards after warmup, union of dispatch intervals",
+      "off": {"gguf_q8_0_exact_prefill_tiled_out": 746.0},
+      "on": {"gguf_q8_0_prefill_wmma_kernel_Li32": 234.3, "gguf_q8_0_prefill_wmma_kernel_Li64": 111.0},
+      "reading": "the intended route ran and replaced the tiled kernel, 746.0 ms against 345.3 ms, a 2.16x kernel win. Per-forward union fell 2510.5 to 2027.3 ms."
+    },
+    "decode_unchanged": "20.98 tok/s against 21.02, so the route only claims multi-row dispatch."
+  },
+  "numerical_gate_passes_at_1024_rows": {
+    "command": "scripts/gemma4_teacher_forced_gate.py capture/gate --prompt 2048 --prefill 1024",
+    "baseline_sha256": "a2e3625385d91b42a1afa2273a4c2ad52ff6878ff982c537654811e7f634f134",
+    "rows": 1023,
+    "kl_mean": 4.905959555062258e-05,
+    "kl_p95": 1.5389525029404404e-05,
+    "kl_p99": 0.00020898549357656188,
+    "kl_max": 0.03649436572840374,
+    "top1_rate": 1.0,
+    "top1_flips": 0,
+    "thresholds": {"kl_mean": 0.001, "kl_p95": 0.005, "kl_p99": 0.02, "kl_max": 0.05, "top1_rate": 0.99},
+    "passed": true,
+    "promotion_qualified": false,
+    "reading": "every limit passes and the single-chain evaluator does not supply the category, isolation and task gates, so promotion_qualified is false by design rather than by failure."
+  },
+  "but_it_diverges_at_short_rows": {
+    "method": "the real artifact's last-row logits at each prompt length, computed once with the route on and once with it off, then compared as KL(off || on) of the softmax. Same prompt ids, same process shape, one arm per process.",
+    "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_WMMA_PREFILL=<0|1> ~/miniforge3/bin/python /tmp/short_prompt.py 2 4 8 16 32 64 /tmp/short_<off|on>.json",
+    "table": [
+      {"rows": 2, "kl_off_on": 0.1865, "top1_same": true},
+      {"rows": 4, "kl_off_on": 0.6577, "top1_same": false},
+      {"rows": 8, "kl_off_on": 0.0926, "top1_same": true},
+      {"rows": 16, "kl_off_on": 0.8982, "top1_same": true},
+      {"rows": 32, "kl_off_on": 3.4560, "top1_same": false},
+      {"rows": 64, "kl_off_on": 10.8800, "top1_same": false}
+    ],
+    "worst_case": "at 64 rows the WMMA arm assigns probability 0.000000 to the tiled arm's top-1 token. That is not a reassociation difference; a reassociation cannot drive a token's probability to zero.",
+    "harness_self_check": "the off arm run twice produces bit-identical logits and KL 0.000e+00 at rows 4, 16 and 64, so the divergence is not a harness artifact.",
+    "reading": "the divergence is worst at 64 rows and the gate is clean at 1024, so the route is sound at large row counts and broken at small ones. The boundary was not located and the cause was not isolated, which is why no row floor was added: a threshold chosen from an unexplained boundary would hide the defect rather than fix it."
+  },
+  "a_pre_existing_defect_it_exposes": {
+    "symptom": "with the route forced on, tests/test_unit_gemma4_runner.py::test_runner_prefill_matches_the_reference fails with 'gemma4 MMQ gate/up tile row count 0 is outside capacity 224'",
+    "isolation": "reproduced on the unmodified tree with only HIPENGINE_GGUF_WMMA_PREFILL=1 set, so it is not caused by the landing attempt. The same test passes with the env var unset or set to 0.",
+    "mechanism": "qwen35_moe_wmma_tile_map_kernel computes total as prefix[num_experts - 1], the inclusive sum of every expert's padded count, so total == 0 means the router's compacted expert starts were all zero. gemma4_project_experts_gate_up_mmq then raises instead of returning False, even though its own docstring says it returns False when the weight or geometry does not qualify and the caller falls back to the fp32 grouped route.",
+    "reading": "a different arithmetic path changes the router's output on a degenerate synthetic fixture, which is expected; the defect is that the MMQ gate/up route treats a zero-row tile map as fatal rather than falling back. Unreachable on the real artifact, where top-8 over 128 experts always selects eight."
+  },
+  "how_to_reach_the_win": {
+    "command": "HIPENGINE_GGUF_WMMA_PREFILL=1 <the campaign bench command above>",
+    "caveat": "the 19 percent applies to long prompts only, and the route is unsound below some row count between 64 and 1024 that has not been located."
+  },
+  "next": [
+    "Locate the row threshold and isolate the cause before any default-on landing. The candidates are a k-tile tail in the WMMA kernel (in_features 2816 is not obviously a multiple of the K_TILES_PER_BLOCK walk) or a dispatch difference for small rows that the env var also changes, since HIPENGINE_GGUF_WMMA_PREFILL flips more than one route.",
+    "Narrow the experiment by forcing only the q8_0 WMMA variant rather than the whole use_wmma session, which would separate the dense route from every other dispatch decision the env var touches.",
+    "Fix gemma4_project_experts_gate_up_mmq to fall back on a zero-row tile map instead of raising."
+  ]
+}
