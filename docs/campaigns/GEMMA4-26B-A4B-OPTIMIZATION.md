@@ -4246,6 +4246,71 @@ record, not permission to reset unrelated work or weaken correctness.
   ``row_tiles = mmq_total_rows / 32``); ``gguf_q4_k_q8_1_selected_prefill.hip``
   (the leaf's negative-expert early return).
 
+  **Iteration 141: the sync removal works, the gate is bit-identical, and the
+  0.4 s overhead I chased was a mirage from a bad estimate.**
+
+  Iteration 140 reverted this change and recorded that passing the upper bound
+  "looks safe and is not". **That verdict was wrong, and so was the premise.** The
+  bound was invalid, but not for the reason I assumed, and the fault was a
+  *symptom* of passing a value that was too small rather than evidence the
+  substitution is unsafe.
+
+  **The algebra error.** ``_wmma_tile_upper_bound`` returns a bound for **16-row**
+  tiling. I assumed a 32-row plan could only be smaller. It cannot: 32-row padding
+  is *larger* than 16-row padding for any count that is not a multiple of 32.
+
+      c = 33:  ceil(33/32)*32 = 64   >   ceil(33/16)*16 = 48
+
+  So ``upper_rows`` (6016) is not a ceiling for the 32-row plan, and the map
+  kernel wrote more rows than the grid was told to launch. Measured directly with
+  an instrumented build:
+
+      [mmq-plan] real_total=6304  bound=6016  real_tiles=197  bound_tiles=188
+                 capacity_tiles=376  lanes=4096
+
+  ``real_total > bound`` is the violation, on the first prefill layer, in every
+  sample. The correct routing-independent bound is ``sum(c_e + 31) = lanes +
+  31 * num_experts``, which gives 8064 rows / 252 tiles against a 16-row capacity
+  of 376 tiles -- so the sentinel fill still covers the grid, and the extra tiles
+  resolve to ``-1`` and exit.
+
+  **The fix works and is exactly correct.** With ``lanes + 31 * num_experts`` passed
+  and the readback plus ``stream_synchronize`` removed:
+
+      metric      measured     bar      margin
+      kl_max      0.00503      0.05     10x under
+      kl_mean     1.02e-05     0.001    98x under
+      kl_p95      1.87e-05     0.005    267x under
+      kl_p99      9.68e-05     0.02     207x under
+      top1_flips  0 / 1023     --       perfect
+
+  ``kl_max`` is **bit-identical** to the readback version's recorded
+  ``gate_mmq3_verdict.json`` (0.005029002284065986), which is the strongest
+  available evidence that the bound only adds skipped sentinel tiles and does not
+  change the arithmetic. The ``--prefill 1024`` recipe was used, so the prefill
+  path is demonstrably exercised.
+
+  **The 0.4 s was not the sync.** Speed went 872/867/870 -> 885/882/876 tok/s, about
+  **+1.5%**, not the ~+50% predicted. The prediction came from comparing the route's
+  measured 1.17 s against a 0.77 s figure derived from the isolated 2.07x gate_up
+  advantage -- an extrapolation from one kernel's microbenchmark to the whole
+  layer, which does not hold. **The per-call synchronize was worth ~1.5%, not 34%.**
+  Iteration 139's "largest known unexploited win in the campaign" claim is withdrawn:
+  the route's gap to its own prediction is real but is not in the plan bookkeeping,
+  and the next place to look is the pack kernels and the down projection rather than
+  the tile plan.
+
+  The change is kept: it is bit-identical on the gate, 1.5% faster, and removes a
+  per-call device round-trip.
+
+  ``promotion_qualified: false`` still, and the int8 route remains behind
+  ``wmma_plain`` (885 vs 990), so this does not change which arm leads.
+
+  Evidence: the instrumented ``HIPENGINE_GEMMA4_MMQ_PLAN_DEBUG`` printout above;
+  ``scripts/gemma4_teacher_forced_gate.py capture|gate`` at ``--prompt 2048
+  --prefill 1024`` against ``$HOME/.cache/hipengine/tmp/gate_base_mmq.npz``;
+  ``gemma4_experts.py::_build_mmq_tile_plan``.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``

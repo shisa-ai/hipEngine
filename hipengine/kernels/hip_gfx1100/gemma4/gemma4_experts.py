@@ -867,22 +867,22 @@ def _build_mmq_tile_plan(
     needs its own map -- the two are not interchangeable, and feeding a 16-row
     plan to the MMQ32 leaf walks off the end of the activation buffer.
 
-    It reuses the WMMA plan's buffers because a 32-row tiling never needs more
-    tiles than a 16-row one and both use the same per-expert start width, so the
-    16-row allocation is an upper bound for this one.
+    Returns a routing-independent upper bound instead of the total the map
+    actually wrote, so no device readback and no stream synchronize is needed per
+    call.
 
-    Returns the total the map actually wrote, read back from the device. Passing
-    the allocation's upper bound instead looks safe on paper -- the map kernel
-    writes ``-1`` across the whole capacity and the leaf returns early on a
-    negative expert, and ``upper_rows / 32`` stays inside that capacity -- but it
-    faults with a GPU memory access error in practice, so the readback stays
-    until that is understood. The cost is one device-to-host copy and one stream
-    synchronize per call.
+    The bound is ``lanes + 31 * num_experts``, from
+    ``sum(ceil(c_e / 32) * 32) <= sum(c_e + 31)``. It has to be computed for 32-row
+    tiling specifically: 32-row padding is *larger* than 16-row padding
+    (``ceil(33/32)*32 = 64`` against ``ceil(33/16)*16 = 48``), so the 16-row bound
+    ``_wmma_tile_upper_bound`` returns is not a ceiling for this plan and passing
+    it drops real tiles -- measured 6304 real rows against a 6016 bound. The
+    sentinel fill makes the extra tiles harmless: the map writes ``-1`` across the
+    whole capacity and the leaf returns early on a negative expert, and the
+    16-row capacity always exceeds ``bound / 32`` tiles, so the fill covers the
+    grid this launches.
     """
 
-    import numpy as np
-
-    from hipengine.core.memory import copy_device_to_host, host_array_ptr
     from hipengine.kernels.hip_gfx1100.moe.group_scatter import qwen35_moe_mmq32_tile_map
 
     _, upper_tiles = _wmma_tile_upper_bound(lanes, scratch.num_experts)
@@ -896,18 +896,7 @@ def _build_mmq_tile_plan(
         stream=stream,
         runtime=runtime,
     )
-    if stream:
-        from hipengine.core.hip import get_hip_runtime
-
-        (runtime or get_hip_runtime()).stream_synchronize(stream)
-    total = np.empty(1, dtype=np.int64)
-    copy_device_to_host(
-        host_array_ptr(total),
-        scratch.buffer("wmma_total"),
-        np.dtype(np.int64).itemsize,
-        runtime=runtime,
-    )
-    return int(total[0])
+    return lanes + 31 * scratch.num_experts
 
 
 def gemma4_project_experts_mmq_dual(
