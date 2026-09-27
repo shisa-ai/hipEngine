@@ -130,6 +130,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="greedy tokens per arm; only the first is a clean comparison "
                              "once the arms diverge, the rest show whether they re-converge")
     parser.add_argument("--corpus", choices=("frozen", "probe"), default="probe")
+    parser.add_argument("--text", default=None,
+                        help="literal prompt text; overrides --corpus and --lengths and compares "
+                             "the whole text as one prompt, so a specific prompt class (a code "
+                             "snippet, a repeated sentence) can be put to all three arms")
+    parser.add_argument("--text-file", type=Path, default=None,
+                        help="read the prompt text from a file instead of --text")
     parser.add_argument("--server", type=Path,
                         default=Path("~/llama.cpp/llama.cpp-hip/build-hip/bin/llama-server").expanduser())
     parser.add_argument("--source", type=Path,
@@ -170,14 +176,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     llm, runner, loading = _resolve_generator(args.artifact, args.context)
     tokenize = llm._get_text_generator().tokenize
-    longest = max(int(n) for n in args.lengths)
-    if args.corpus == "probe":
-        ids = exact_prompt_ids(tokenize, longest, corpus=probe_corpus(seed=PROBE_CORPUS_SEED),
+    lengths = [int(n) for n in args.lengths]
+    if args.text is not None or args.text_file is not None:
+        # A literal prompt is a single-length comparison: the point is to reach
+        # the position the prompt ends at, not to sweep widths of it.
+        text = args.text_file.read_text() if args.text_file is not None else args.text
+        ids = [int(token) for token in tokenize(text)]
+        lengths = [len(ids)]
+        if not ids:
+            parser.error("the supplied prompt text tokenized to no ids")
+    elif args.corpus == "probe":
+        ids = exact_prompt_ids(tokenize, max(lengths), corpus=probe_corpus(seed=PROBE_CORPUS_SEED),
                                require_single_pass=True)
     else:
-        ids = exact_prompt_ids(tokenize, longest)
-    print(f"[attribution] loaded in {loading['load_s']:.1f}s, {longest} prompt ids from "
-          f"the {args.corpus} corpus", flush=True)
+        ids = exact_prompt_ids(tokenize, max(lengths))
+    print(f"[attribution] loaded in {loading['load_s']:.1f}s, {len(ids)} prompt ids "
+          f"from {'literal text' if lengths == [len(ids)] and (args.text or args.text_file) else args.corpus} "
+          f"corpus", flush=True)
 
     source_commit = ""
     try:
@@ -204,7 +219,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             process = subprocess.Popen(server_command, stdout=log, stderr=subprocess.STDOUT)
         _wait_health(base, process, log_path)
 
-        for length in (int(n) for n in args.lengths):
+        for length in lengths:
             prompt = ids[:length]
             response = _post(base, _completion_body(prompt, args.continuation))
             if response.get("tokens_evaluated") != length:
@@ -249,6 +264,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "created_at": started_at,
         "artifact": str(args.artifact),
         "corpus": args.corpus,
+        "prompt_source": "literal text" if (args.text is not None or args.text_file is not None)
+                         else f"{args.corpus} corpus",
         "continuation": args.continuation,
         "anchor": {
             "engine": "llama.cpp llama-server",
