@@ -2757,6 +2757,57 @@ record, not permission to reset unrelated work or weaken correctness.
   comments), ``:793`` (grouped gate); iteration 86 (+11.6% WMMA);
   ``scripts/gemma4_prefill_shape_census.py`` (MB/call and GB/s columns).
 
+  **Iteration 111: the tuning guide the objective named contains the diagnosis,
+  and it explains both MoE observations at once.**
+
+  Iteration 50 was left with a contradiction: the MoE is compute-side at ~7% of
+  peak (101 FLOP/byte, so it cannot be bandwidth-bound), yet its tensor-core
+  variant buys only 11.6% -- which rules out FMA throughput. The objective asked
+  for ``docs/RDNA3-TUNING-GUIDE.md`` to be read and this campaign had never read
+  it. It answers the question in §5.3::
+
+      1-2 waves per SIMD is critically undersubscribed and can drop effective
+      bandwidth to 30-40%. ... A low-row WMMA kernel can launch hundreds of
+      blocks and remain latency-bound if roughly 200-250 VGPRs per thread permit
+      only a few waves per issue slot. In that case, reducing the accumulator
+      tile can outperform adding more blocks.
+
+  That is the shape of both facts. A kernel with many blocks, a small accumulator
+  tile, and high per-thread state stays latency-bound no matter how the grid is
+  arranged -- and moving it to WMMA does not help, because the limit was never
+  the arithmetic units. §5.2 gives the mechanism: "more row/column accumulators
+  increase VGPR allocation; lower occupancy can reduce outstanding memory
+  requests; collapsing the M grid can also remove useful N-direction
+  parallelism." §3.5 already warns that "the smaller grid removed the
+  thread-level parallelism that was hiding memory latency", measured as 59%
+  slower on a grid reshape.
+
+  §3.3 also classifies the regime, consistent with the measured intensity:
+  prefill is where "compute throughput and K-loop scheduling matter more" and
+  where "a separate build/profile and dispatch policy from decode" is required.
+  The MoE prefill owner carries a ``_selected_`` prefix from the decode-side
+  selected-expert family, which is exactly the decode-shaped provenance §3.3
+  warns about.
+
+  **The hypothesis is therefore occupancy, and it is directly checkable.** §5.3
+  states the rule the repository already accepts: "Treat any allocation above
+  about 128 VGPRs as worth inspecting", with the ladder 96 VGPRs -> 16 waves,
+  192 -> 8, above 256 -> 4-5 and "starts to starve the memory controller". So
+  this is not a new threshold being invented for the occasion -- the guide is
+  normative for kernel work and supplies a pre-registered decision rule. The
+  measurement to make is the MoE owner's VGPR allocation and resident waves per
+  SIMD, and the decision follows from the guide's own numbers.
+
+  **Stated honestly**: the guide's 30-40% floor is for a bandwidth-bound decode
+  kernel, and the MoE is at 3.8% of peak, so occupancy alone may not account for
+  the whole gap to llama.cpp. What the guide does establish is that the observed
+  pattern -- many blocks, no WMMA benefit, compute-side classification -- is a
+  documented latency-bound signature rather than an unexplained anomaly, and
+  that the correct next move is a resource measurement rather than another
+  variant or another kernel.
+
+  Evidence: ``docs/RDNA3-TUNING-GUIDE.md`` §3.3, §3.5, §5.2, §5.3.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
