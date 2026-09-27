@@ -9150,20 +9150,36 @@ plus a fused-stride read with one pack, one tile map, and one MMQ launch that
 reads Gemma 4's per-expert `gate | up` row block directly, and it measures
 **4.23 s -> 3.33 s on the 512/128 prefill (1.27x)** with path parity intact.
 
-It does not select by default for a recorded numerical reason. Against the strict
-single-kernel arm, 1022 paired rows at keys 1025-2047: `kl_mean` 1.44e-4,
-`kl_p95` 1.3e-5, `kl_p99` 1.5e-4, top-1 100% with zero flips - all inside their
-bars - but `kl_max` 0.0651 on 2 rows against the binding 0.05 bar. Both rows are
-near-certain repeated-context rows where the decision does not move, and the
-already-shipped 4-slice attention split breaches the same bar on the same chain
-at the same rows (`kl_max` 0.055589, 1 row, recorded in
-`docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md`). That document records the
-applicability of an absolute `kl_max` to a peaked reference on a greedy workload
-as an open lead decision, and this route lands in the same class: raising the
-activation precision cannot clear it, because the split breaches at 2, 4, 8, and
-16 slices alike.
+It does not select by default for a concrete observed failure, not for a missing
+qualification. The route replaces only the prefill's expert gate/up projection,
+so one forward of N ids under each arm reproduces everything a longer
+teacher-forced chain shows, and `scripts/gemma4_mmq_prefill_length_probe.py`
+sweeps that. Measured on the frozen campaign chain, deterministically: the route
+is over the binding 0.05 `kl_max` bar at **7 of the 13 prefill lengths from 16 to
+1024 ids** where it runs - `kl` 0.305 at 16, 1.007 at 24, 0.109 at 32, 0.135 at
+48, **2.036 at 64** - with greedy decision flips at 24 and 64 ids. At 1024 ids it
+is 7.3e-07.
 
-Remove this flag - and make the route the default - once that decision lands, by
-re-running `scripts/gemma4_teacher_forced_gate.py gate` against the campaign's
-frozen evaluator and recording the verdict. The implementation, its registered
-launch path, and its correctness test stay in place until then.
+The earlier recorded reason for this flag was wrong in a way that argued for
+promotion. It read the breach as a near-certain-row tail effect: `kl_max` 0.0651
+on 2 of 1022 rows, top-1 100% with zero flips, and the already-shipped attention
+split breaching the same bar at the same rows. That measurement was taken at a
+1024-id prefill, which is this route's **best case** rather than a representative
+one, and the current default path is bit-identical to the strict arm on both
+chains (KL exactly 0.0 over 1023 rows, including all 77 close-margin rows, with
+30690 split launches engaged), so the split does not breach that bar today. The
+applicability question that text raised was not the operative one.
+
+The mechanism is unidentified and is not a per-row activation-quantization bound:
+that bound is per row and should not vary by six orders of magnitude with the row
+count. No per-expert row-count correlation has been established, and the leaf's
+only unit coverage is 4 experts over 10 rows in
+`tests/test_unit_gemma4_expert_route.py`, which does not reach the real geometry
+of 128 experts.
+
+Remove this flag - and make the route the default - once
+`scripts/gemma4_mmq_prefill_length_probe.py` exits 0, then re-run
+`scripts/gemma4_teacher_forced_gate.py gate` against the campaign's frozen
+evaluator and record the verdict. The implementation, its registered launch
+path, and its correctness test stay in place until then. Evidence:
+`benchmarks/results/2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json`.

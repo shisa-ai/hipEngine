@@ -62,6 +62,22 @@ THRESHOLDS: dict[str, float] = {
     "top1_rate": 0.99,
 }
 
+# Margin bands for the per-row breakdown, ascending and exclusive of the upper
+# edge. "Close" is the band a decision can actually move in; the top-1 bar is
+# nearly blind there because a near-tie that stays a tie is not a flip.
+MARGIN_BANDS: tuple[tuple[str, float], ...] = (
+    ("margin_lt_0.01", 0.01),
+    ("margin_0.01_to_0.05", 0.05),
+    ("margin_0.05_to_0.20", 0.20),
+    ("margin_ge_0.20", float("inf")),
+)
+
+# The upper edge of the bands a changed decision can live in.
+CLOSE_MARGIN = 0.05
+
+# Rows per block when forming the full-vocabulary denominator.
+_MARGIN_CHUNK = 64
+
 # The shipped decode_slices, captured on first use by force_slices so an
 # override can be undone inside one process.
 _ORIGINAL_DECODE_SLICES: Any = None
@@ -86,6 +102,82 @@ def _nearest_rank(values: np.ndarray, q: float) -> float:
     ordered = np.sort(values)
     rank = max(1, int(np.ceil(q * ordered.size)))
     return float(ordered[min(rank, ordered.size) - 1])
+
+
+def row_top2_margin(baseline: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Per-row top-1 probability margin and top-1 logit gap.
+
+    The margin is ``p1 - p2`` and therefore needs the full-vocabulary
+    denominator; it is formed in row blocks with a float64 accumulator so a
+    million-row capture does not allocate a second float64 copy of itself. The
+    logit gap is exact and free, and is reported alongside because it is what a
+    numerical divergence directly perturbs.
+    """
+
+    x = np.asarray(baseline, dtype=np.float32)
+    if x.ndim != 2 or x.shape[1] < 2:
+        raise ValueError(f"baseline must be (rows, vocab>=2); got {x.shape}")
+    rows = x.shape[0]
+    margin = np.empty(rows, dtype=np.float64)
+    gap = np.empty(rows, dtype=np.float64)
+    for start in range(0, rows, _MARGIN_CHUNK):
+        block = x[start:start + _MARGIN_CHUNK]
+        top2 = np.sort(np.partition(block, -2, axis=1)[:, -2:], axis=1)
+        second = top2[:, 0].astype(np.float64)
+        first = top2[:, 1].astype(np.float64)
+        stop = start + block.shape[0]
+        gap[start:stop] = first - second
+        total = np.exp(block - top2[:, 1:2], dtype=np.float64).sum(axis=1)
+        margin[start:stop] = (1.0 - np.exp(second - first)) / total
+    return margin, gap
+
+
+def margin_report(
+    baseline: np.ndarray,
+    candidate: np.ndarray,
+    kl: np.ndarray,
+    flips: Sequence[int],
+) -> dict[str, Any]:
+    """Break a verdict down by how close the frozen row's decision was.
+
+    A single ``kl_max`` cannot distinguish a probability-tail difference at a
+    near-one-hot row from a changed decision at a near-tie, and the frozen chain
+    is almost entirely the former. This reports both, so a breach can be read
+    against where it actually happened.
+    """
+
+    margin, gap = row_top2_margin(baseline)
+    flipped = np.zeros(margin.shape[0], dtype=bool)
+    for index in flips:
+        flipped[int(index)] = True
+    close = margin < CLOSE_MARGIN
+
+    bands: list[dict[str, Any]] = []
+    lower = 0.0
+    for name, upper in MARGIN_BANDS:
+        in_band = (margin >= lower) & (margin < upper)
+        count = int(in_band.sum())
+        bands.append({
+            "band": name,
+            "rows": count,
+            "share": count / margin.shape[0],
+            "flips": int(np.count_nonzero(in_band & flipped)),
+            "kl_mean": float(kl[in_band].mean()) if count else None,
+            "kl_max": float(kl[in_band].max()) if count else None,
+        })
+        lower = upper
+
+    return {
+        "band_definition": "margin is p1 - p2 within the frozen baseline row",
+        "bands": bands,
+        "margin_median": float(np.median(margin)),
+        "margin_min": float(margin.min()),
+        "logit_gap_median": float(np.median(gap)),
+        "close_margin_definition": f"margin < {CLOSE_MARGIN}",
+        "close_margin_rows": int(np.count_nonzero(close)),
+        "close_margin_flips": int(np.count_nonzero(close & flipped)),
+        "close_margin_kl_max": float(kl[close].max()) if close.any() else None,
+    }
 
 
 def evaluate(baseline_logits: np.ndarray, candidate_logits: np.ndarray) -> dict[str, Any]:
@@ -142,6 +234,8 @@ def evaluate(baseline_logits: np.ndarray, candidate_logits: np.ndarray) -> dict[
         for key, limit in THRESHOLDS.items()
         if (verdict[key] > limit if key != "top1_rate" else verdict[key] < limit)
     ]
+    verdict["margin_report"] = margin_report(baseline, candidate, kl, flips)
+    verdict["top1_flips_close_margin"] = verdict["margin_report"]["close_margin_flips"]
     verdict["evidence_level"] = "screen" if rows < 500 else "numerical_rows"
     verdict["promotion_qualified"] = False  # Category/task/isolation gates are separate.
     if rows < 500 and flips:
@@ -320,13 +414,40 @@ def load_capture(path: Path) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     return logits, prompt_ids, provenance
 
 
-def _load_chain(artifact: Path, prompt_tokens: int, context: int):
-    from scripts.gemma4_campaign_bench import exact_prompt_ids, _resolve_generator
+def _load_chain(
+    artifact: Path, prompt_tokens: int, context: int,
+    *, corpus: str = "frozen", corpus_seed: int | None = None,
+):
+    """Resolve the chain a capture or gate arm teacher-forces.
+
+    ``frozen`` is the campaign corpus, cycled: eight sentences repeated to the
+    target length, so its rows are near one-hot. ``probe`` is generated from a
+    fixed seed and never repeats, so one chain carries rows across the whole
+    margin range. Both are deterministic, which is what makes two arms paired.
+    """
+
+    from scripts.gemma4_campaign_bench import (
+        PROBE_CORPUS_SEED,
+        exact_prompt_ids,
+        probe_corpus,
+        _resolve_generator,
+    )
 
     llm, runner, loading = _resolve_generator(artifact, context)
     generator = llm._get_text_generator()
-    prompt_ids = exact_prompt_ids(generator.tokenize, prompt_tokens)
-    return runner, prompt_ids, loading
+    if corpus == "frozen":
+        prompt_ids = exact_prompt_ids(generator.tokenize, prompt_tokens)
+        seed = None
+    elif corpus == "probe":
+        seed = PROBE_CORPUS_SEED if corpus_seed is None else int(corpus_seed)
+        prompt_ids = exact_prompt_ids(
+            generator.tokenize, prompt_tokens,
+            corpus=probe_corpus(seed=seed),
+            require_single_pass=True,
+        )
+    else:
+        raise ValueError(f"unknown corpus {corpus!r}")
+    return runner, prompt_ids, loading, {"corpus": corpus, "corpus_seed": seed}
 
 
 def _provenance(artifact: Path, loading: dict[str, Any]) -> dict[str, Any]:
@@ -368,6 +489,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             default=None,
             help="pin decode_slices for this arm (1 = strict single-kernel path)",
         )
+        p.add_argument(
+            "--corpus",
+            choices=("frozen", "probe"),
+            default="frozen",
+            help="frozen = the campaign's cycled prose chain; probe = a "
+            "seeded never-repeating chain that carries low-margin rows, which "
+            "the cycled chain cannot",
+        )
+        p.add_argument(
+            "--corpus-seed",
+            type=int,
+            default=None,
+            help="override the probe corpus seed (both arms must match)",
+        )
 
     capture = sub.add_parser("capture", help="freeze the incumbent chain")
     common(capture)
@@ -388,7 +523,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "capture":
         started = time.time()
         force_slices(args.slices)
-        runner, prompt_ids, loading = _load_chain(args.artifact, args.prompt, args.context)
+        runner, prompt_ids, loading, chain_kind = _load_chain(
+            args.artifact, args.prompt, args.context,
+            corpus=args.corpus, corpus_seed=args.corpus_seed,
+        )
         routes = []
         try:
             logits = capture_chain(runner, prompt_ids, args.prefill, routes=routes)
@@ -399,6 +537,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         provenance["observed_routes"] = route_summary(routes)
         provenance["prefill"] = int(args.prefill)
         provenance["forced_slices"] = None if args.slices is None else int(args.slices)
+        provenance["chain_kind"] = chain_kind
         save_capture(args.out, logits, prompt_ids, provenance)
         elapsed = time.time() - started
         digest = sha256_file(args.out)
@@ -415,6 +554,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "forced_slices": None if args.slices is None else int(args.slices),
             "scored_key_range": [int(args.prefill) + 1, len(prompt_ids) - 1],
             "chain_sha256": chain_sha256(prompt_ids),
+            "chain_kind": chain_kind,
             "thresholds": dict(THRESHOLDS),
             "threshold_source": "docs/EXECUTION-PROFILES.md production table "
             "(mean/p95/p99/max KL, top-1)",
@@ -430,13 +570,26 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     baseline, base_ids, base_provenance = load_capture(args.baseline)
     force_slices(args.slices)
-    runner, prompt_ids, loading = _load_chain(args.artifact, args.prompt, args.context)
+    runner, prompt_ids, loading, chain_kind = _load_chain(
+        args.artifact, args.prompt, args.context,
+        corpus=args.corpus, corpus_seed=args.corpus_seed,
+    )
     if [int(x) for x in base_ids] != [int(x) for x in prompt_ids]:
         runner.close()
         force_slices(None)
         raise SystemExit(
             "chain mismatch: the candidate chain differs from the frozen "
             "baseline's prompt ids; both arms must teacher-force the same ids"
+        )
+    base_kind = base_provenance.get(
+        "chain_kind", {"corpus": "frozen", "corpus_seed": None}
+    )
+    if base_kind != chain_kind:
+        runner.close()
+        force_slices(None)
+        raise SystemExit(
+            f"chain kind mismatch: baseline {base_kind} vs candidate {chain_kind}; "
+            "a probe baseline cannot be gated against a frozen chain"
         )
     if int(base_provenance.get("prefill", 0)) != int(args.prefill):
         runner.close()
@@ -458,6 +611,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     verdict["observed_routes"] = route_summary(routes)
     require_candidate_route(verdict, verdict["observed_routes"], args.slices)
     verdict["prefill"] = int(args.prefill)
+    verdict["chain_kind"] = chain_kind
     verdict["scored_key_range"] = [int(args.prefill) + 1, len(prompt_ids) - 1]
     verdict["baseline_forced_slices"] = base_provenance.get("forced_slices")
     verdict["candidate_forced_slices"] = None if args.slices is None else int(args.slices)
