@@ -5006,6 +5006,22 @@ record, not permission to reset unrelated work or weaken correctness.
   1.78 ms per layer) and layer 29's runs the per-row selected GEMV
   (``gguf_k_selected_prefill_out``, **24.6 ms for that one layer**).
 
+  **The map stays, and the ordering it depends on is now guarded.**
+  ``GEMMA4_Q8_MMQ_MIN_ROWS`` was not written blind: its comment records
+  ``min_rows`` calibrated against the *exact* owner, which is what a shape runs
+  when WMMA prefill is off, and the route is reachable there (the gate fires on
+  the un-rewritten name, which ``use_wmma=False`` leaves in place). So deleting
+  it would remove a working optimization for that configuration. What was
+  missing is that the calibration basis and the ordering it silently depends on
+  were only in a comment: the map's values are meaningless against the WMMA
+  owner, and the only thing keeping them from applying there is where
+  ``_q8_mmq_prefill_dispatch`` sits in the rewrite chain. The comment now says
+  so, and ``tests/test_unit_gguf_q8_mmq_prefill_ordering.py`` pins all four
+  facts -- the WMMA rewrite claims the name the MMQ gate reads, the gate leaves
+  a WMMA-claimed shape alone, the gate does take the shape when
+  ``use_wmma=False``, and the Gemma map admits exactly its shapes at exactly
+  512 rows. A reorder now fails a test instead of costing 44% of prefill.
+
   **So the available win was the tile, and the tile heuristic was wrong.**
   ``_default_tiles`` chose ``tile_m`` 32 or 64 for every one of these shapes.
   A sweep on the W7900 over thirteen shapes at rows 8/31/128/256/512/1024, with
@@ -5040,6 +5056,7 @@ record, not permission to reset unrelated work or weaken correctness.
   MMQ A/B), ``scripts/gemma4_dense_q8_tile_sweep.py`` (the tile table),
   ``hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py`` (``_default_tiles``),
   ``tests/test_gpu_gguf_q8_0_wmma_prefill.py`` (the pinning test),
+  ``tests/test_unit_gguf_q8_mmq_prefill_ordering.py`` (the ordering guard),
   ``$HOME/.cache/hipengine/tmp/gate_q8tile_verdict.json``,
   ``benchmarks/results/2026-09-27-gemma4-q8-wmma-tile16-*.json``.
 
