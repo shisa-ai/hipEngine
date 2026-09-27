@@ -2200,6 +2200,61 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``scripts/gemma4_amortized_ab.py`` (unchanged, reused for all three
   arms).
 
+  **Iteration 102: the expert-grid retune is neutral, and the WMMA MoE prize
+  measures +11.6% on today's code, not the 2.7x the campaign records.**
+
+  Two results, one negative and one that changes a pending decision.
+
+  **Negative: the down projection's expert grid is not the constraint.**
+  ``launch_q51_pair2`` caps ``grid.y`` at 64, so with Gemma's 128 experts each CTA
+  walked two experts: 22528 CTAs at 360K MACs each, for a shape that is the
+  single largest in the prefill (470 ms). Uncapping it to ``experts`` doubles the
+  CTA count at half the work per CTA -- the direction iteration 101's two arms
+  both favoured -- and measures 8079 us against a 7827-8165 us baseline range.
+  No effect. Shared memory on that launcher is only ~4.6 KB, so the cap was never
+  an occupancy limit, and the kernel is indifferent to it. Reverted; worktree
+  clean.
+
+  That is the third retune of these two kernels with no win: wider out-block at
+  two accumulator footprints (iteration 101), and a wider expert grid here. Both
+  kernels run ~30-60x below compute peak and do not respond to blocking or grid
+  geometry. Whatever limits them is not the shape of the launch.
+
+  **Decision-relevant: the WMMA arm is worth ~12%, not 270%.** The campaign
+  records the compensated WMMA MoE owners as "2.7x faster on a 1024-token
+  prefill", held off the default path by the arithmetic gate. Measured today,
+  same box, same 1024-token prefill, via ``HIPENGINE_GEMMA4_MOE_PREFILL``::
+
+      auto    prefill_s=1.711354   prefill_tps=598.36
+      wmma    prefill_s=1.533729   prefill_tps=667.65
+
+  That is **1.116x, +11.6%**. The arm is still faster, so the record is not
+  wrong about direction, but the magnitude does not reproduce. This matters
+  because the open lead decision is whether an absolute ``kl_max`` bar applies to
+  a reordering-class change, and the cost side of that trade was priced at 2.7x.
+  At 1.12x it reads differently: a modest win that still breaches an absolute bar
+  on 1 of 1023 rows. The ruling is now low-stakes rather than the largest
+  available lever.
+
+  **Measurement caveat, and it is not small.** Production measured 598.36 tok/s
+  here against the 653.68 recorded as the loop's current metric, and
+  ``layer_total`` 1699.9 ms against ~1570 ms measured earlier in this same
+  session. That is 8-9% environmental drift between runs. Two consequences:
+  single-run comparisons below ~10% are not reliable and need repeats, and the
+  iteration-101 rejections (1.52x, 1.93x) stand comfortably above that floor
+  while a 1.12x result sits inside it. The WMMA number above is one run each and
+  should be repeated before it is relied on; it is recorded as measured, not as
+  settled.
+
+  **Where this leaves the objective.** Three retunes dead, the gated WMMA prize
+  ~12%, and the two MoE kernels ~30-60x below compute peak and unresponsive to
+  the knobs tried. Reaching llama.cpp's 3910 tok/s from ~600 needs ~6.5x. No
+  available knob supplies that; it needs a different kernel structure rather than
+  more retuning of these two.
+
+  Evidence: ``scripts/gemma4_prefill_census.py`` (both arms);
+  ``/tmp/census_{auto,wmma}.txt``.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
