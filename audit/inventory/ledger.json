@@ -4712,7 +4712,9 @@
       "location": "docs/REFACTOR.md:9145",
       "evidence": {
         "paths_named": [
-          "docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md"
+          "benchmarks/results/2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json",
+          "scripts/gemma4_mmq_prefill_length_probe.py",
+          "tests/test_unit_gemma4_expert_route.py"
         ],
         "paths_missing": [],
         "flags_named": [
@@ -4720,14 +4722,16 @@
         ],
         "flags_unread": [],
         "age_days": 0,
-        "body_chars": 1553
+        "body_chars": 2550
       },
       "signals": [],
       "hints": {
         "anchor": "docs/REFACTOR.md",
         "refs": [
           "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ",
-          "docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md"
+          "benchmarks/results/2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json",
+          "scripts/gemma4_mmq_prefill_length_probe.py",
+          "tests/test_unit_gemma4_expert_route.py"
         ],
         "tokens": [
           "2026",
@@ -4743,7 +4747,7 @@
         ]
       },
       "id": "ledger/gemma-4-fused-mmq-gate-up-prefill-is-selectable-bu-23f888b0e3ce",
-      "evidence_hash": "5951dc47418a"
+      "evidence_hash": "ada15210abc9"
     },
     {
       "kind": "ledger",
