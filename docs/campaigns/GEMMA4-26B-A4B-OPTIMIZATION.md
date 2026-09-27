@@ -1588,6 +1588,52 @@ record, not permission to reset unrelated work or weaken correctness.
   to be worth a properly instrumented attempt. It is not worth a fifth
   inference. Reverted; ``gemma4_experts.py`` is byte-identical to HEAD.
 
+  **Iteration 89: the two-plane Q8 MMQ passes the gate; its speed is a wash, and
+  the apparent regression was my own measurement error.** Iteration 88 closed the
+  MoE dp4a route and named the dense Q8_0 linears as the next target, on the
+  campaign's own roadmap ("attention and the dense Q8_0 linears are the larger
+  remaining share and neither has been routed through a WMMA owner yet") plus the
+  observation that ``dense:gguf_q8_0`` runs at roughly a third of the memory
+  roofline. Reading the policy resolver showed the dense MMQ path is *already*
+  engaged by default as the "retained three-plane d4x3 exact chain", and that a
+  two-plane variant exists behind ``HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES=2``,
+  documented as "+1.4x on the dense legs, quantization-level drift pending
+  envelope qualification".
+
+  **The gate result, which is the durable finding: the two-plane variant passes
+  with large margin.** ``kl_max`` 0.00642 against a 0.05 bar (7.8x), ``kl_mean``
+  1.62e-05 against 1e-3 (62x), zero failed checks. The "drift pending envelope
+  qualification" caveat attached to that env var since it was introduced is now
+  discharged: the faster dense-MMQ variant is numerically qualified against the
+  same teacher-forced reference every other arm is judged by. The default is
+  unchanged at three planes, because a variant with no measured speed benefit is
+  not worth an arithmetic change -- but the qualification is no longer the reason
+  to hold it back.
+
+  **The speed is a wash, and I first read it as a 1.1% regression.** The census
+  reported 646.79 against a 653.68 baseline. Every family I had printed in the
+  run was *faster*, which is impossible, so I went to the JSON artifact for the
+  full split and then to the baseline's own JSON -- and found the real
+  comparison, because the 1553.7 ms ``layer_total`` I had been reasoning from was
+  the *broken* MoE run's, not the clean baseline's. Against the correct baseline
+  every family moves by the same small amount: dense Q8_0 +4.9, gate_up +4.5,
+  attention +4.9, down +2.1, ``moe_misc`` exactly 0.0. Attention prefill and the
+  MoE bookkeeping kernels do not touch the Q8 MMQ path at all, so a uniform shift
+  across them is not a kernel effect. It is host contention: I ran this census in
+  parallel with a teacher-forced gate on the other GPU, and the gate is
+  CPU-heavy.
+
+  **Two process rules fall out, and both cost real time here.** First, capture
+  the census whole: I piped it through ``grep`` at capture time, which is why the
+  first pass had no family split to explain its own result -- the ``--json``
+  artifact had it all along. Second, do not run the census concurrently with
+  another GPU job. The contention effect here is about 1%, the same size as the
+  keep/kill threshold, and it flipped the sign of this comparison. A single-lane
+  census is the only one whose numbers can decide a keep.
+
+  Evidence: ``/mnt/nvme1/lhl/gemma4-captures/census-mmq-xtx.json`` (baseline),
+  ``census-mmq2plane-xtx.json`` (two-plane), ``/tmp/gate-mmq2plane.json``.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
