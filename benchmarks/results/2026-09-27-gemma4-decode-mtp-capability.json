@@ -1,0 +1,50 @@
+{
+ "kind": "gemma4_decode_mtp_capability_finding",
+ "performance_claim": false,
+ "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL",
+ "mtp_finding": {
+  "verdict": "named capability gap: the model carries no MTP/NextN head, so no speculative route applies to Gemma 4. The gap is the model's, not a gate the engine imposes.",
+  "artifact_measurement": {
+   "artifact": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+   "tensors": 658,
+   "tensor_name_matches": {
+    "mtp": 0,
+    "nextn": 0,
+    "next_n": 0,
+    "draft": 0,
+    "spec": 0,
+    "eagle": 0,
+    "head": 0
+   },
+   "top_level_prefixes": [
+    "blk",
+    "output_norm",
+    "rope_freqs",
+    "token_embd"
+   ],
+   "architecture": "gemma4",
+   "metadata_fields_matching_mtp": []
+  },
+  "engine_route": "the in-tree speculative path is a NextN head: it reads tensors named nextn.enorm and nextn.hnorm (hipengine/runtime/qwen35_gguf_nextn.py, qwen4_exp_mtp.py). Presence of those tensors is what the route keys on, so an artifact that carried a NextN head is what the existing path reads; nothing in the engine refuses a Gemma 4 MTP head by model name.",
+  "declaration": "Gemma4GGUFGenerator.supports_speculative_mtp is already False (hipengine/generation/gemma4_gguf.py) and is surfaced through engine_service.supports_speculative_mtp, so the server already reports the capability as absent. This finding confirms the declaration against the artifact rather than changing it.",
+  "consequence": "decode cannot be accelerated by speculative decoding on this model, so decode work has to come from the single-token path: attention and the projection routes."
+ },
+ "decode_lever_closed": {
+  "candidate": "raise the decode attention kernel's barrier batch. The 2026-09-24 decode specialization batches barrier rounds across 8 keys and halved the reduction barrier cost, so a larger batch is the obvious next step.",
+  "measured": "the batch is not a tunable. gemma4_attention.hip derives it per launch as the largest candidate from 8, 4, 2, 1 whose partial rows fit the 64 KB LDS budget, and the switch already carries a case 16 that the search never selects. It is therefore already at the hardware budget maximum on this target, and raising it needs a different reduction layout rather than a larger constant.",
+  "verdict": "closed by reading the selection rule against the hardware limit"
+ },
+ "decode_state": {
+  "current_tok_s": 21.06,
+  "baseline_tok_s": 16.09,
+  "improvement": "1.31x over the gfx1151 baseline, public-path token-id parity exact",
+  "source": "recorded campaign rows: the 2026-09-24 bit-exact decode attention specialization (16.09 -> 20.48 tok/s) plus the later accepted units (-> 21.06 tok/s at 1024 prompt / 128 output). No decode throughput was added by this unit.",
+  "where_the_time_goes": "decode is device-bound. At KV~4096 attention is 79.2% of decode device time; at KV~129 it is 24%, with q4_k 23% and pack8 19% over 410 launches per step. The campaign's decode row is at 1024 prompt / 128 output, between those two.",
+  "remaining_levers_and_why_they_are_blocked": {
+   "attention split": "rejected at the numerical gate (kl_max 0.304 against 0.05, attributed to bf16-KV amplification), so it is changed arithmetic rather than an open optimization.",
+   "q4_k decode re-route": "blocked on a missing Q5_1 compact down kernel (no table entry in any family) and an expert_ffn % 256 guard the artifact's ffn=704 fails.",
+   "pack8 dense decode rewrite": "rejected: not bit-exact, and the measured mechanism is pinned by tests/test_gpu_gguf_q8_0_pack8_gemv_decode_parity.py.",
+   "pack8 launch count": "410 launches per step is a real cost but the route is already selected; cutting the count means graph capture or a batched dense GEMV, and the campaign records graph capture as following stable pointer and state ownership rather than preceding it."
+  }
+ }
+}
