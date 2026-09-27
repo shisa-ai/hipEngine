@@ -3441,6 +3441,48 @@ record, not permission to reset unrelated work or weaken correctness.
   4.9 (PMC counters unavailable; use code-object metadata and kernel-trace
   durations).
 
+  **Iteration 124: the census's dense-vs-MoE contrast is the sharpest evidence
+  in the record, and the MoE is bound by neither resource.**
+
+  Re-ran the prefill shape census and read the table against its own formulas
+  rather than from memory. Totals per prefill: **MoE 945 ms of about 1300 ms
+  (73%)**, attention 202 ms (15.5%), dense 155 ms (11.9%). The MoE lines::
+
+      shape                                            calls  tot ms  mean us  MB/call   GB/s  TF/s
+      moe_grouped:gguf_q5_1 rows=4096 k=704 n=2816 e=128    58   472.8   8151.4  219.152   26.9   2.0
+      moe_grouped_dual:gguf_q4_k rows=4096 k=2816 n=1408 e=128 58  449.9   7756.6  320.078   41.3   4.2
+      moe_grouped_dual:gguf_q5_k rows=4096 k=2816 n=1408 e=128  2   22.7  11337.8  383.517   33.8   2.9
+      dense:gguf_q8_0 r=512 k=2816 n=2112                    120    33.7    281.0   11.365   40.4  21.7
+      dense:gguf_q8_0 r=512 k=4096 n=2816                     50    27.7    554.3   19.333   34.9  21.3
+
+  **The dense line is the control.** It reaches **21.7 TF/s at 40.4 GB/s** -- the
+  same bandwidth class as the MoE's 41.3 GB/s -- while the MoE reaches **2.0-4.2
+  TF/s**. Same hardware, same memory system, same order of achieved bandwidth,
+  **5-10x difference in compute rate**. That is a direct demonstration that the
+  MoE is not bandwidth-starved: a sibling kernel with the same traffic profile
+  converts it into five to ten times more work. The MoE sits at roughly **3% of
+  the 864 GB/s peak and 4.5-9.5% of the fp16 peak** -- far from bound by either,
+  which reads as stalled rather than throttled.
+
+  **A structural difference that is measured, not inferred**: the MoE's compact
+  rows are distributed across 128 experts, so each expert sees on the order of
+  ``compact_rows / num_experts`` rows (about 32 at these shapes) while the dense
+  line has 512 -- roughly **16x less weight reuse per expert**. That predicts a
+  memory-side gap but not a 3%-of-peak one, so it is a partial explanation and is
+  recorded as such.
+
+  **One hypothesis rejected by reading the formula rather than trusting it.** The
+  census computes ``shape_flops = 2.0 * compact_rows * in_features * out_features``,
+  and ``compact_rows`` for the grouped MoE **is** the routed-pair count, not the
+  token count -- so the printed TF/s needs no top-k correction. A guess that the
+  column was understated by the routing factor was wrong, and checking the source
+  is what killed it. This is the second consecutive candidate stopped before
+  acting on it.
+
+  Evidence: ``scripts/gemma4_prefill_shape_census.py:60``, ``:74``, ``:88`` (the
+  FLOP formulas) and ``:148`` (``shape_flops / mean_us``); the census table above;
+  ``docs/RDNA3-TUNING-GUIDE.md`` section 2 (the 864 GB/s and fp16 rooflines).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
