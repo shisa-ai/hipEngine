@@ -22,7 +22,8 @@ not recoverable here - claiming it would double-count with `dense_projection`.
 
 ## 1. moe_reduce attribution
 
-From the shipped-default role trace (halved from 2 repetitions):
+From the shipped-default role trace (halved from 2 repetitions; every `ms`
+and `n` in this artifact is a 1x per-prefill value):
 
 | component | class | kernel | ms | share |
 | --- | --- | --- | ---: | ---: |
@@ -101,8 +102,8 @@ explicit conversion cost on our side is:
 
 | kernel | ms | n |
 | --- | ---: | ---: |
-| `f32_to_bf16_kernel` | 11.16 | 768 |
-| `bf16_to_f32_kernel` | 5.06 | 384 |
+| `f32_to_bf16_kernel` | 11.16 | 384 |
+| `bf16_to_f32_kernel` | 5.06 | 192 |
 | **total** | **16.22** | |
 
 **So the honest complete-operation cost of activation packing here is 16.22 ms of

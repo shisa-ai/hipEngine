@@ -52,23 +52,24 @@ max(0, min(count, dense_equivalent_limit - start))` and `sparse_rows = count -
 dense_rows`, with `dense_equivalent_limit = block_budget x compression_ratio +
 compression_ratio - 1 = 512 x 4 + 3 = 2051`. For code-p4096's four 1024-token
 chunks that gives sparse rows 0, 0, **1021**, **1024** - matching the two observed
-grids, 24 launches each over 24 QSA layers.
+grids, 12 launches each over the 12 QSA layers (3, 7, ..., 47).
 
 ## 2. Where the family's time is
 
-The `qsa_attention` family, at 1x, from the role trace:
+The `qsa_attention` family, at 1x, from the role trace. Both `ms` and `n` are
+1x per-prefill values; the raw CSV holds two repetitions.
 
 | kernel | ms | n | share |
 | --- | ---: | ---: | ---: |
-| **`qwen35_paged_full_attn_decode_context_tensor_batch_kernel`** | **801.2** | 72 | **56.4%** |
-| **`qsa_sparse_attention_h256_wave_rows_f32_kernel`** | **455.4** | 48 | **32.1%** |
-| `qsa_score_f32_kernel` | 106.1 | 48 | 7.5% |
-| `qsa_split_norm_rope_rows_f32_kernel` | 23.3 | 96 | 1.6% |
-| `qsa_topk_expand_f32_i64_kernel` | 17.2 | 48 | 1.2% |
-| `qsa_gate_context_f32_kernel` | 14.2 | 96 | 1.0% |
-| `qsa_norm_rope_rows_f32_kernel` | 1.9 | 96 | 0.1% |
-| `qsa_pool_norm_rope_f32_kernel` | 0.3 | 48 | 0.0% |
-| `qsa_scatter_index_keys_f32_kernel` | 0.3 | 96 | 0.0% |
+| **`qwen35_paged_full_attn_decode_context_tensor_batch_kernel`** | **801.2** | 36 | **56.4%** |
+| **`qsa_sparse_attention_h256_wave_rows_f32_kernel`** | **455.4** | 24 | **32.1%** |
+| `qsa_score_f32_kernel` | 106.1 | 24 | 7.5% |
+| `qsa_split_norm_rope_rows_f32_kernel` | 23.3 | 48 | 1.6% |
+| `qsa_topk_expand_f32_i64_kernel` | 17.2 | 24 | 1.2% |
+| `qsa_gate_context_f32_kernel` | 14.2 | 48 | 1.0% |
+| `qsa_norm_rope_rows_f32_kernel` | 1.9 | 48 | 0.1% |
+| `qsa_pool_norm_rope_f32_kernel` | 0.3 | 24 | 0.0% |
+| `qsa_scatter_index_keys_f32_kernel` | 0.3 | 48 | 0.0% |
 | **total** | **1419.9** | | |
 
 The total reconciles with the shared taxonomy's 1402.5 ms, which is what makes
