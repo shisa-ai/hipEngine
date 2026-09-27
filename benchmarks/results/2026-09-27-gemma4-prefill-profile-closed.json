@@ -1,0 +1,43 @@
+{
+ "kind": "gemma4_prefill_profile",
+ "verdict": "complete and closed: the per-kernel GPU time sums to the measured prefill span, and there is no host-side gap",
+ "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL, 512 prompt / 128 output",
+ "why": "the campaign's route attribution wrapped registered kernels, which misses attention (it resolves its kernel outside the wrapper) and every launch the registry does not own. That left 435 ms of a 3.04 s prefill unexplained, and the task's own list names host-side redundant work as a target. A device trace settles both.",
+ "method": {
+  "tool": "rocprofv3 --kernel-trace, SQLite output, one process, five timed 512-token prefills after a warm-up",
+  "prebuild": "the .so files were built outside the profiler and the profiled process reused the cache, per docs/OPTIMIZATION.md 7 - no hipcc runs inside the trace",
+  "analysis": "per-kernel GPU time is the union of that kernel's dispatch intervals, not the sum of durations. Summing durations double-counts: it reports 3588 ms for a 3018 ms span because rocprofv3 end stamps overlap the next dispatch's start. All 5558 dispatches are on stream 0, so no two kernels actually run concurrently and the union is the correct attribution.",
+  "self_check": "the per-kernel unions sum to 3002.8 ms against a 3003 ms prefill. The accounting is closed rather than approximately closed, so nothing in the prefill is unattributed."
+ },
+ "host_side": {
+  "question": "how much of the prefill is host time rather than GPU time?",
+  "answer": "15 ms per prefill, 0.5%",
+  "evidence": "the union of all dispatches is 15.014 s of a 15.089 s five-prefill span, so the device is 99.5% busy. The remaining 75 ms is the host's 5558 launches and buffer work across five prefills.",
+  "conclusion": "there is no host-side redundant work to remove at this size. The MoE grouping, the expert histogram and prefix, the lane compaction and the hidden-row gather are all device kernels, and their measured cost is 45 ms per prefill combined. The task item is closed by measurement rather than by a change."
+ },
+ "breakdown_ms_per_prefill": {
+  "gguf_q4_k_selected_grouped_prefill_staged (expert gate/up, 29 layers)": 1044.6,
+  "gguf_q8_0_exact_prefill_tiled_out (dense projections, 205 calls)": 717.2,
+  "q5_1_selected_grouped_prefill_staged (expert down, 29 layers)": 681.0,
+  "gemma4_attention_prefill (30 calls)": 317.3,
+  "gguf_q5_k_selected_grouped_row4 (1 call, layer 29 gate/up)": 112.2,
+  "q8_0_selected_grouped_prefill (1 call, layer 29 down)": 53.9,
+  "qwen35_router_logits_token_tile": 18.5,
+  "qwen35_moe_group_compact_active": 14.7,
+  "qwen35_moe_gather_packed_hidden": 11.6,
+  "gemma4_moe_weighted_accumulate": 4.8,
+  "head_rmsnorm, rmsnorm, rmsnorm_weightless, add_rmsnorm_scale": 12.0,
+  "gguf_k_pack8_prefill_out": 4.3,
+  "partial_rotary, gelu_tanh_mul, gelu_tanh_mul_split": 6.1,
+  "router_select, router_prescale, branch_add, scale, expert_weight_scale, lane_to_row": 4.2,
+  "copyBuffer, fillBufferUnAligned, embedding": 0.5,
+  "total": 3002.8
+ },
+ "what_it_changes": {
+  "three_routes_are_81_percent": "the Q4_K expert gate/up, the Q8_0 dense projections and the Q5_1 expert down are 2443 ms of 3003 ms. Every other kernel in the prefill is 2.4% or less combined outside attention.",
+  "attention_is_10_6_percent": "317 ms, after this session's 3.08x kernel-level rewrite. It is the fourth largest entry and no longer the first thing to reach for.",
+  "the_glue_is_not_a_target": "router, expert grouping, lane compaction, hidden gather, all norms, GeGLU, rotary and the weighted accumulate together are 73 ms, 2.4%. Micro-tuning any of them cannot move the row.",
+  "isolated_against_in_context": "the Q4_K route measures 32.52 ms per launch in isolation but 36.0 ms in context. The isolated figure reuses the same expert weights back to back with L2 warm; in context each layer's 285 MB of expert weights is cold. Both numbers are correct for their question, and only the in-context one predicts a public delta - which is why the accepted row's primary claim is the two-worktree public A/B and the isolated figure is the mechanism."
+ },
+ "leaves_open": "the Q8_0 dense route (717 ms, 23.9%, 205 calls over 7 projections per layer) has never had its tile shape swept. Its selected variant is exact_prefill_tiled_out<..., 16, 4>, and the last two routes swept in this campaign either improved (Q4_K, 1.10x) or were proven optimal (Q5_1). The sweep is a launch-shape question and therefore bit-exact if the reduction is per-output, which is the pattern both earlier sweeps confirmed. Unlike the MMQ and K_TILE candidates this is not behind the numerical decision."
+}
