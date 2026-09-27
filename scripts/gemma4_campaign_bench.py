@@ -56,9 +56,39 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-DEFAULT_ARTIFACT = Path(
-    "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+# The campaign's GGUF. This was a hard-coded path under /mnt/nvme1 until that
+# mount moved, which broke every script here at import time with a
+# FileNotFoundError that named the model rather than the missing mount. Resolve
+# instead: an explicit HIPENGINE_GEMMA4_ARTIFACT wins, then the known locations.
+# A missing artifact still fails loudly, but at the point of use and naming every
+# path that was tried.
+ARTIFACT_ENV = "HIPENGINE_GEMMA4_ARTIFACT"
+_ARTIFACT_CANDIDATES = (
+    Path("/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"),
+    Path("/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"),
 )
+
+
+def resolve_artifact(explicit: str | Path | None = None) -> Path:
+    """Return the campaign GGUF path, preferring one that exists.
+
+    Never raises: an import of this module must not depend on a model being
+    present, so a box without the artifact still imports and fails at the point
+    of use, where the caller can say which paths were tried.
+    """
+
+    override = os.environ.get(ARTIFACT_ENV, "").strip()
+    candidates = [Path(override)] if override else []
+    if explicit is not None:
+        candidates.append(Path(explicit))
+    candidates.extend(_ARTIFACT_CANDIDATES)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+DEFAULT_ARTIFACT = resolve_artifact()
 DEFAULT_OUT = Path("/tmp/gemma4_campaign_bench.json")
 DEFAULT_CONTEXT = 8192
 DEFAULT_EXPECT_GPU = "RX 7900 XTX"
