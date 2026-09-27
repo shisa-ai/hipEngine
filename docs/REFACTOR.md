@@ -137,10 +137,15 @@
   tile (`dense_wide256_f32_f32_out`) plus the retained exact sigmoid and
   gated-mean kernels. Measured 4.38x on the projection at the production chunk
   shape (1.4925 ms against 6.5379 ms at rows=1024, K=320, N=10240), worth
-  1937 ms of the code-p4096 prefill. The fused parent runs at 1.03 TFLOP/s =
-  3.9% of the gfx1151 FP32 peak, so the limiter is load issue on the K=320
-  weight stream, not the epilogue or the reduction. Fusion is still worth 1.21x
-  over the strict unfused chain.
+  1937 ms of the code-p4096 prefill. The limiter is weight traffic, checkable
+  from source: the fused kernel's 4x2x4 block tile re-reads its weight rows once
+  per 4-row batch (3.565 GB, 1.88 FLOP/byte) where the wide tile stages a
+  dequantized 128x64 f16 LDS tile reused across 256 rows (13.9 MB, 483
+  FLOP/byte). Fusion still beats the strict unfused chain 1.21x, so the
+  epilogue is not the tail.
+- The 2026-09-06 `RB8/HT1` retile halves the re-read and measured 0.80x. That
+  does not fit a pure-bandwidth story and is open; re-read that variant's source
+  before any further bit-exact attempt.
 - Screen passed on the prefill-boundary KL and the 780-row production gate
   **rejected the route**: mean KL 1.554e-3, p95 7.081e-3, max 7.349e-2, top-1
   768/780, with all 12 mismatches flip-eligible. Determinism, state
