@@ -4447,6 +4447,70 @@ record, not permission to reset unrelated work or weaken correctness.
   ``scripts/execution_profile_gguf_int8_direct_prefill_gate.py --help`` for the
   route it actually gates.
 
+  **Iteration 144: attention is now the largest prefill cost at 31%, the existing
+  routing is already the faster of the two available kernels, and closing it needs
+  a tiled prefill owner that does not exist.**
+
+  Re-profiled the new best route (mmq gate_up + WMMA down) at ``--prompt 1024
+  --output 1`` to isolate prefill. Kernel time falls to 1432 ms from 2240 ms, and
+  the ranking inverts:
+
+      ms     %      n   kernel
+     352.2  24.6   100  gemma4_attention_decode_class_kernel
+     254.2  17.8   116  gguf_q4_k_selected_dual_q8_1_ds4_mmq32     (MoE gate_up)
+     243.5  17.0   700  gguf_q8_0_prefill_wmma_kernel               (dense)
+     107.8   7.5   116  q5_1_selected_grouped_wmma_prefill_bf16    (MoE down)
+      99.1   6.9     4  gguf_k_selected_prefill_out_kernel
+      86.0   6.0    20  gemma4_attention_decode_class_kernel (2nd)
+
+  **Attention is 438 ms across 120 launches -- 31% of prefill, 4 launches per layer
+  for 30 layers, 3.5 ms each.** It was 22% before this route existed; the MoE
+  reduction promoted it to first place.
+
+  **The obvious hypothesis was that a prefill attention kernel existed and was
+  unwired. It is wrong, and the code says so.** ``gemma4_attention_prefill_bf16``
+  *is* called (``gemma4_layer.py:458``) and *does* route multi-token to
+  ``_SYMBOL_PREFILL_BF16`` (``attention_symbol``), but
+  ``launch_gemma4_attention_prefill`` then deliberately dispatches ``tokens > 1``
+  into the decode family:
+
+      // ... measured at 421 us against the block kernel's 652-700 at keys=1024,
+      // head_dim 256, so prefill has no reason to keep the ~10 barriers per key
+      // the block kernel spends.
+      if (tokens > 1) { launch_gemma4_attention_decode(...); }
+
+  So ``gemma4_attention_prefill_kernel`` never launching is the intended design,
+  not a wiring miss, and the decode family is already the faster of the two
+  available implementations -- 1.55x to 1.66x, and bit-identical by construction.
+  Two greps in this iteration pointed the wrong way before the launcher was read:
+  one for Python call sites of a ctypes symbol, and one that took the absence of
+  ``gemma4_attention_prefill_kernel`` from the trace as evidence of dead code
+  rather than of a deliberate branch.
+
+  **Why 438 ms is still slow, and what would fix it.** The resident-logit design
+  holds one logit per live key in LDS, which caps it at 64 KB of shared memory and
+  makes every query block scan every key. llama.cpp completes the *entire* 1024
+  token prefill in 262 ms, so its attention is a fraction of our 438 ms. Matching
+  it needs a **tiled** prefill attention owner -- the same shift
+  ``gemma4_attention.py`` already names for large contexts ("Larger contexts need a
+  tiled attention implementation, not a larger prefill scratch block").
+
+  A tiled owner exists for Laguna (``laguna_global_attention_prefill_bf16_spans``,
+  ``laguna_kv.py``) but cannot be reused: it is gated, and it hard-codes Laguna's
+  head geometry, while Gemma 4 is ungated and folds the softmax scale into the
+  query norm. So this is a new kernel, not a rewire, and it is the largest
+  remaining single target on the prefill path.
+
+  Recorded as a scoped finding rather than a start: writing a tiled ungated prefill
+  attention owner is a multi-session kernel project, and the existing path is
+  already the best available among what is implemented.
+
+  Evidence: ``rocprofv3 --kernel-trace`` at ``--prompt 1024 --output 1``
+  (``ROCR_VISIBLE_DEVICES=0``); ``gemma4_attention.hip``
+  (``launch_gemma4_attention_prefill``, lines 206-262) and ``gemma4_attention.py``
+  (``attention_symbol``, ``gemma4_attention_shared_bytes``); ``gemma4_layer.py:458``
+  for the live call site.
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
