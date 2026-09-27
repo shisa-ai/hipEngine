@@ -2565,6 +2565,92 @@ record, not permission to reset unrelated work or weaken correctness.
   ``gguf_linear.py:3055`` (dispatch contract), ``:1829`` (precedence);
   ``ENVS.md:272``; ``qwen35_gguf.py:3639``, ``qwen35_gguf_nextn.py:446``.
 
+  **Iteration 108: audit of the iteration-47 defect class. It has exactly one
+  instance, and two of my earlier leads were wrong.**
+
+  Iteration 47 gained 18.6% from a missing keyword argument, so the obvious next
+  move was to enumerate every opt-in the shipping path passes and Gemma does not,
+  rather than rediscovering them one at a time. Result: **the defect class has
+  exactly one instance, and it is the one already fixed.**
+
+  The shipping GGUF path passes *two* opt-ins, at twelve call sites
+  (``qwen35_gguf.py``:1688, 1758, 3197, 3640, 3805, 4139, 4146, 4348, 4355, 9164,
+  9202; ``laguna_gguf_runner.py``:6070)::
+
+      use_wmma_prefill=True, use_gemv_decode=True
+
+  ``gemma4_project`` now passes the first (iteration 107). The only other Gemma
+  call site that accepts them is ``gemma4_project_expert``, which reaches
+  ``launch_gguf_linear_raw_ptr`` -- whose signature does take ``use_wmma_prefill``
+  (gguf_linear.py:4634) -- and passes neither. That path serves 2 of 410 prefill
+  calls, so it is a decode-relevant gap rather than a prefill one, and it is
+  recorded here rather than changed blind.
+
+  **Lead rejected: F16 activation staging.** ENVS.md:281 marks
+  ``HIPENGINE_GGUF_PREFILL_F16_STAGING`` as production-profile-enabled and
+  strict-disabled, and its row range (17..1024) covers the 512-row dense shapes,
+  so it looked like a second instance. It is not: the eligible quant set is
+  ``['gguf_q4_k_t16_v1', 'gguf_q5_k_t16_v1']`` and Gemma's dense projections are
+  ``gguf_q8_0``. The bracketed A/B agrees -- dense 284.6 / 285.4 / 286.7 us across
+  default/staging/default, flat. Ruled out in one run.
+
+  **Lead reclassified: the MoE WMMA route is not a parity gap.** Iteration 86
+  found a WMMA arm worth +11.6% "held by a numeric gate", which in iteration 47's
+  light looked like it might be another missing call-site opt-in. It is not::
+
+      def _prefill_route_flags(mode):
+          """... ``auto``, ``grouped`` and ``selected`` keep the exact routes,
+          so the WMMA owners are not probed at all."""
+          if mode == "wmma":       return True, True
+          if mode == "wmma_plain": return True, False
+          return False, False
+
+  ``auto`` *is* the production policy and it deliberately keeps the exact routes;
+  ``wmma`` and ``wmma_plain`` are explicit probes, compensated and uncompensated
+  respectively. So the MoE WMMA route is a genuine changed-arithmetic candidate
+  and its numeric gate is the correct instrument, not an oversight. It needs the
+  execution-profile gate, not a call-site fix.
+
+  **Lead withdrawn: attention tiling is not a port.** Iteration 106 recorded that
+  Gemma's prefill attention has no query-row blocking while the Laguna path has
+  ``swa_context_rows_qrow4_m128_c256_exact_spans``, and suggested porting it. The
+  Gemma attention module's own docstring forecloses that::
+
+      Gemma 4 attention is *ungated*. Every Qwen3.5 prefill variant reads an
+      attention gate and multiplies by sigmoid(gate); Laguna's ungated kernel
+      hard-codes Laguna's head geometry. Neither can serve Gemma 4, so this
+      family exists.
+
+  The Laguna tiled variants either read an attention gate Gemma does not have or
+  hard-code a head geometry Gemma does not share. Gemma exposes exactly one
+  prefill symbol (``hipengine_gemma4_attention_prefill_bf16``) and no gemma4
+  attention registration exists, so there is no variant to select and no missing
+  selector -- the gap is real but closing it is **new kernel work**, not a port
+  from a sibling model. Iteration 106's "it is a port, not a switch" was wrong in
+  the direction of optimism.
+
+  **Current breakdown** (layer_total 1442.9 ms, prefill_tps 704-709)::
+
+      moe_grouped:gguf_q5_1      478.0 ms   33.1%
+      moe_grouped_dual:gguf_q4_k 457.1 ms   31.6%
+      attention_prefill          203.9 ms   14.1%
+      dense:gguf_q8_0            157.8 ms   10.9%   (was 428 ms)
+      moe_selected:gguf_q8_0      47.1 ms    3.3%
+      unattributed                76.7 ms    5.3%
+
+  The MoE is now 64.7% of layer time and the dense line fell by 63%. The two MoE
+  families run at ~8 ms per call and the q4_k family already reads 320 GB/s, so
+  unlike the dense line it is not obviously leaving bandwidth on the table.
+
+  Net effect of the audit: the cheap class of win is exhausted. What remains is
+  the MoE WMMA promotion behind its numeric gate, or new attention kernel work --
+  both of which are real engineering, not a missing argument.
+
+  Evidence: ``qwen35_gguf.py:3640`` and 11 other call sites;
+  ``gemma4_experts.py:450`` (raw_ptr, no opt-ins), ``:573``/``:582``
+  (mode and flags); ``gemma4_attention.py:1`` (ungated family docstring);
+  ``gguf_linear.py:219`` (staging quants).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
