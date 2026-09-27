@@ -82,14 +82,27 @@
     "top1_flips": 6,
     "reading": "against limits of 1e-3 / 5e-3 / 2e-2 / 5e-2 and a 0.99 top-1 rate, this is a hard fail on every axis, with six top-1 flips in 255 rows. A 256-row prefill is not an exotic shape: it is what any prompt shorter than the 512-token block produces, and what the final partial block of a longer prompt produces. The 1024-row pass therefore covers the shapes the campaign measures rather than the shapes users hit, which is the strongest argument for keeping this reverted."
   },
+  "same_process_ab_resolves_it": {
+    "method": "both arms in one process, driven by the wmma_prefill_session toggle rather than the env var, with every one of the 205 q8_0 prefill dispatches captured and its output buffer summarized. Cross-process comparison cannot separate an argument difference from allocator layout, and comparing only final logits cannot say which dispatch diverged.",
+    "argument_check": "the shape triple (rows, in_features, out_features) is identical in both arms for all 205 calls, so rows and shape are eliminated as the cause. Pointer offsets are not comparable across processes because allocator layout differs, which is why the same-process run was necessary.",
+    "per_call_growth": [
+      {"calls": "0-5", "relative_difference_in_sum_abs": "5e-06 to 6.5e-05"},
+      {"calls": "18-50", "relative_difference_in_sum_abs": "about 1e-03 to 5e-03"},
+      {"calls": "96-130", "relative_difference_in_sum_abs": "about 1e-02 to 5e-02"},
+      {"calls": "160-204", "relative_difference_in_sum_abs": "up to 8.02e-02"}
+    ],
+    "non_finite_outputs": 0,
+    "reading": "the difference does not appear at one dispatch. It starts at about 5e-06 in the first layers, roughly the f16 activation narrowing the WMMA route performs against the tiled route's f32, and compounds smoothly across the 30 layers to 8e-02 by the last one. That is amplification of a small per-layer arithmetic difference through a recurrent stack, not a discrete defect. It is consistent with everything measured: a single bare GEMM matches because there is nothing to amplify, and the end-to-end result diverges only as far as the depth lets it.",
+    "why_the_kernel_and_invocation_searches_were_both_negative": "there was nothing to find in either. The kernel is correct and the dispatch feeds both routes the same shapes; the route is simply a different arithmetic path, and the network amplifies it."
+  },
   "how_to_reach_the_win": {
     "command": "HIPENGINE_GGUF_WMMA_PREFILL=1 <the campaign bench command above>",
     "caveat": "the 19 percent applies to long prompts only, and the route is unsound below some row count between 64 and 1024 that has not been located."
   },
   "next": [
-    "The kernel is exonerated, so stop looking at its arithmetic. The remaining candidates are invocation-side: a non-contiguous or padded activation stride that both routes assume away (both index x as token * in_features), a scratch buffer that the WMMA route aliases and the tiled route does not, or a rows argument that differs from what the caller believes.",
-    "The cleanest next probe is to call the real dispatch (launch_gguf_linear) rather than the registered wrapper, on a realistic activation block with the same buffer the runner uses, and compare the two arms' outputs for a single layer. That reproduces the invocation rather than approximating it.",
-    "Profile the failing shape with the kernel arguments captured, not just the kernel names, since the names are already known to be identical.",
+    "Stop looking for a defect; there is none. The open question is now a numerics question: whether a route whose per-layer difference compounds to 8e-02 by the last layer should be enabled at all, and if so at which shapes. The evidence already suggests full 512-token blocks behave differently from partial ones, since a 1024-row prefill (two full blocks) passes the gate and a 256-row prefill (one partial block) fails it, and a direct 512-row comparison landed at 3.9e-06.",
+    "Run the gate at --prefill 512 to confirm the full-block case passes on its own terms, then at --prefill 768 to see whether a full block plus a partial one fails, which would confirm the block-boundary reading rather than a row-count reading.",
+    "If full blocks pass and partial blocks do not, the shape condition is a legitimate capability condition with a named cause and a clear route to lifting it, not a hiding place.",
     "Fix gemma4_project_experts_gate_up_mmq to fall back on a zero-row tile map instead of raising."
   ]
 }
