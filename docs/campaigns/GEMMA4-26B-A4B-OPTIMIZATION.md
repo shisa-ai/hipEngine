@@ -3615,6 +3615,55 @@ record, not permission to reset unrelated work or weaken correctness.
   Evidence: ``gguf_q4_k_selected_prefill.hip:135``, ``:164``, ``:211``-``:212``,
   ``:241``-``:243``; ``gemma4_experts.py:496`` (the amortized Gemma binding).
 
+  **Iteration 128: the barrier hypothesis is refuted by measurement, and the
+  direction reverses -- the MoE's per-row cost is reduction parallelism.**
+
+  **A comparison already in the census that I had not registered.** The MoE's two
+  projections differ 4x in ``k`` and 2x in ``n`` yet cost the **same per row**::
+
+      down    q5_1  k=704  n=2816  4096 rows   8356.0 us   2.04 us/row   1.9 TF/s
+      gate_up q4_k  k=2816 n=1408  4096 rows   7959.7 us   1.94 us/row   4.1 TF/s
+
+  The per-row cost is invariant to both ``k`` and ``n``, so it is not the matmul,
+  not the activation load, and not the output write. At ~2.5 GHz that is ~5000
+  cycles of something that does not scale with the reduction depth.
+
+  **That pointed at serialization, and the source offered a controlled test.**
+  ``gguf_q4_k_selected_prefill.hip`` publishes results two ways. The non-bundled
+  path (``:389``-``:408``) executes one ``__syncthreads`` **per row per output
+  half** -- 16 per ``out_offset``, and 64 per 8-row batch, i.e. **8 barriers per
+  row**. The ``BUNDLED_PUBLICATION`` sibling (``:358``-``:388``) publishes all
+  ROW_BATCH rows after one barrier per output column: 2 per ``out_offset``, 8 per
+  batch, **1 barrier per row**. The launcher for the bundled form already existed
+  at ``:2704`` with the same ``<8, 4, true>`` shape Gemma uses plus the bundle
+  flag, so the test was a one-string change to
+  ``_GROUPED_DUAL_AMORTIZED_PREFILL_VARIANT``.
+
+  **Measured: the 8x-fewer-barriers sibling is 2.75x SLOWER.**
+
+      non-bundled  8 barriers/row   7959.7 us   4.1 TF/s   (Gemma's current binding)
+      bundled      1 barrier/row   21900.1 us   1.5 TF/s   (measured, then reverted)
+
+  **So barriers are not this kernel's bottleneck**, and the change was reverted.
+
+  **But the 2.75x swing is itself informative and it reverses the direction.**
+  The bundled branch collapses the final reduction onto ``2 * ROW_BATCH = 16`` of
+  the 128 threads (``:374``-``:385``), so it trades barriers for parallelism and
+  loses badly. The per-row cost therefore **is** in the reduction/publication
+  path -- just not in its barrier count. The fix direction is **more parallelism
+  in the reduction**, not fewer barriers.
+
+  **Six explanations are now excluded** for the MoE's ~2 us per routed row:
+  bandwidth (iteration 65: 3x fewer bytes, same time), the weights (4x the reuse
+  bought nothing), call overhead (time scales linearly with rows inside a call),
+  rows-per-expert (refuted), per-row-batch dequant (already amortized), and
+  barrier count (this iteration, by measurement).
+
+  Evidence: the census table above; ``gguf_q4_k_selected_prefill.hip:358``-``:408``
+  (both publication paths) and ``:2704`` (the bundled launcher);
+  ``gemma4_experts.py`` ``_GROUPED_DUAL_AMORTIZED_PREFILL_VARIANT`` (reverted,
+  with the measurement recorded in the comment).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
