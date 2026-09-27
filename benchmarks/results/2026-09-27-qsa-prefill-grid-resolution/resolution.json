@@ -1,0 +1,166 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_qsa_prefill_grid_resolution",
+ "performance_claim": false,
+ "grid_semantics": {
+  "finding": "rocprofv3 Grid_Size_X/Y report total work-items (grid_dim * workgroup_size), not grid dimensions",
+  "verification": [
+   {
+    "kernel": "qwen35_moe_group_scatter_gather_kernel",
+    "launch": "dim3(total_lanes), dim3(256)",
+    "source": "group_scatter.hip:1093",
+    "total_lanes": 10240,
+    "reported_grid": "(2621440, 1)",
+    "check": "10240*256 = 2621440"
+   },
+   {
+    "kernel": "weighted_lanes_sum_out_kernel",
+    "launch": "dim3(feature_grid(2560,128).x, tokens), dim3(128)",
+    "source": "paro_combine.hip:787",
+    "reported_grid": "(2560, 1024)",
+    "check": "20*128 = 2560 and 1024*1 = 1024"
+   },
+   {
+    "kernel": "qsa_sparse_attention_h256_wave_rows_f32_kernel<true,4>",
+    "launch": "dim3(query_heads/HEADS, rows), dim3(32)",
+    "source": "qwen4_exp_qsa.hip:1778",
+    "reported_grid": "(192, 1021) and (192, 1024)",
+    "check": "6*32 = 192"
+   }
+  ]
+ },
+ "resolution": {
+  "observed": "grid (192,1021,1) at block 32",
+  "apparent": "query_heads = 192*4 = 768, against metadata head_count 24",
+  "actual_grid": "(6, 1021, 1)",
+  "actual_grid_x": "query_heads/HEADS = 24/4 = 6",
+  "metadata": {
+   "head_count": 24,
+   "head_count_kv": 2,
+   "key_length": 256,
+   "value_length": 256,
+   "indexer_head_count": 4,
+   "indexer_key_length": 128
+  },
+  "verdict": "no anomaly; the 768 was an artifact of reading Grid_Size_X as a grid dimension",
+  "production_route": "strict_h256_head_quad_rows_spans (HEADS=4), selected by the profile",
+  "profile_env": {
+   "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256",
+   "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR": "quad"
+  },
+  "grid_y": "rows = sparse_rows, not the chunk length",
+  "grid_y_values": {
+   "1021": "chunk 3, dense_rows=3",
+   "1024": "chunk 4, dense_rows=0"
+  },
+  "dense_equivalent_limit": "block_budget*compression_ratio + compression_ratio - 1 = 2051 (512*4+3)",
+  "dense_rows_formula": "max(0, min(count, dense_equivalent_limit - start))"
+ },
+ "family_cost": {
+  "source": "2026-09-17-qwen4exp-per-role-cost role-trace, 48 QSA launches",
+  "total_ms": 1237.3,
+  "kernels": {
+   "qsa_sparse_attention_h256_wave_rows_f32_kernel": {
+    "ms": 910.8,
+    "n": 48
+   },
+   "qsa_score_f32_kernel": {
+    "ms": 212.2,
+    "n": 48
+   },
+   "qsa_split_norm_rope_rows_f32_kernel": {
+    "ms": 46.5,
+    "n": 96
+   },
+   "qsa_topk_expand_f32_i64_kernel": {
+    "ms": 34.5,
+    "n": 48
+   },
+   "qsa_gate_context_f32_kernel": {
+    "ms": 28.4,
+    "n": 96
+   },
+   "qsa_norm_rope_rows_f32_kernel": {
+    "ms": 3.7,
+    "n": 96
+   },
+   "qsa_pool_norm_rope_f32_kernel": {
+    "ms": 0.6,
+    "n": 48
+   },
+   "qsa_scatter_index_keys_f32_kernel": {
+    "ms": 0.6,
+    "n": 96
+   }
+  }
+ },
+ "kv_reuse_ranking": {
+  "measurement": "scripts/qwen4exp_qsa_head_tile_microbench.py --rows 1024 --stride 2051 --repetitions 20",
+  "bit_identical_across_variants": true,
+  "variants": {
+   "heads_1_page256": {
+    "heads": 1,
+    "blocks_per_row": 24,
+    "kv_gb": 51.5899392,
+    "median_ms": 54.938,
+    "effective_kv_gb_s": 939.1,
+    "speedup_vs_heads4": 0.352
+   },
+   "heads_2_head_pair": {
+    "heads": 2,
+    "blocks_per_row": 12,
+    "kv_gb": 25.7949696,
+    "median_ms": 20.823,
+    "effective_kv_gb_s": 1238.8,
+    "speedup_vs_heads4": 0.929
+   },
+   "heads_4_head_quad": {
+    "heads": 4,
+    "blocks_per_row": 6,
+    "kv_gb": 12.8974848,
+    "median_ms": 19.335,
+    "effective_kv_gb_s": 667.1,
+    "speedup_vs_heads4": 1.0
+   }
+  },
+  "finding": "K/V amortization saturates at HEADS=2; the 2->4 step halves traffic for 1.08x",
+  "admissible_heads": [
+   1,
+   2,
+   3,
+   4,
+   6,
+   12
+  ],
+  "registered_heads": [
+   1,
+   2,
+   4
+  ]
+ },
+ "ranking": [
+  {
+   "rank": 1,
+   "lever": "tensor cores (WMMA Q*K and P*V)",
+   "arithmetic": "changing",
+   "why": "the kernel is not K/V-traffic limited at HEADS=4, so only instruction-count reduction can move it",
+   "requirement": "production profile gate plus a registered strict fallback",
+   "untested": true
+  },
+  {
+   "rank": 2,
+   "lever": "K/V reuse via HEADS 4->6 or 12",
+   "arithmetic": "preserving (bit-identical measured)",
+   "why": "measured dead: 2->4 halves traffic for 1.08x, so 4->12 buys about 8% at best",
+   "prize_ceiling_ms": 72.9,
+   "untested": false
+  },
+  {
+   "rank": 3,
+   "lever": "LDS staging of the K/V tile",
+   "arithmetic": "preserving",
+   "why": "same constraint as rank 2 (K/V traffic), plus the block is one wave so there is no intra-block cross-warp sharing to capture",
+   "untested": true
+  }
+ ]
+}
