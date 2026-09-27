@@ -211,6 +211,199 @@ and fallback reason through `LLM.generate()` or `hipengine serve`; a private
 harness-only win is not shipped. Do not add model-name allowlists or default-off
 flags because a configuration has not been benchmarked.
 
+## Prefill gap analysis: llama.cpp and the Qwen3.6 MoE path — 2026-09-27
+
+This section compares the current Gemma 4 prefill against same-artifact
+llama.cpp and against hipEngine's own Qwen3.6-35B-A3B GGUF MoE path, which
+has been described as faster than llama.cpp. Every number below comes from
+one clean, sequential session. Before each run the script waited until the
+target GPU showed 0% use and 0% VRAM, and a `rocm-smi` process sampler ran
+for the whole session. No foreign process appeared on either GPU during any
+measured run.
+
+Basis: hipEngine `gemma4` at `780d24f29` (production prefill route, the
+default since `13532ae2b`); llama.cpp HIP `8cfc315` (`-fa on -b 4096 -ub 1024`,
+BF16 KV, prompt caching off); 1024 prompt tokens; three warmups and five
+measured samples; medians. "Real text" is 1024 tokens of English prose from
+this repository, tokenized by each model's own tokenizer. The Gemma 4 hipEngine
+rows use the campaign bench's own prompt. This is a comparator diagnostic, not
+a published benchmark row.
+
+### Measured prefill throughput (tok/s, 1024 tokens)
+
+| Engine / model | RX 7900 XTX | W7900 | hipEngine as % of llama.cpp |
+| --- | ---: | ---: | ---: |
+| llama.cpp, Gemma 4 (real text) | **4124** (rerun 4138) | **3761** | — |
+| hipEngine, Gemma 4 (default route) | **fails to load: out of memory** | **1394** | W7900: 37% |
+| llama.cpp, Qwen3.6-35B-A3B (real text) | **4101** | **3643** | — |
+| hipEngine, Qwen3.6-35B-A3B (real text) | **3210** | **2895** | XTX 78%, W7900 79% |
+
+Prompt content barely matters for hipEngine Qwen on the XTX: a single token
+repeated 1024 times gives 3392, random ids 3228, real text 3210. llama.cpp's
+repeated and random rows vary more from run to run on these short (~0.25 s)
+requests, so only its real-text rows are used.
+
+Four conclusions follow.
+
+1. **hipEngine's Qwen prefill is not faster than llama.cpp today.** It
+   reaches 78–79% of llama.cpp on both GPUs. The "faster" claim compares
+   against `benchmarks/HISTORY.md`'s llama.cpp HIP row from May 2026: an older
+   build, 512 tokens, 2436 tok/s on the W7900. Current llama.cpp does 3643 on
+   the same W7900 at 1024 tokens.
+2. **llama.cpp runs both models at the same speed** (4124 vs 4101 on the XTX).
+   hipEngine is at 79% on Qwen and 37% on Gemma 4, so most of the Gemma gap
+   comes from Gemma-specific paths rather than from the engine as a whole.
+3. **The default route no longer fits the 24 GB XTX.** It peaked at 32.35 GB
+   on the W7900. The cause is under "Defects found" below.
+4. The earlier headline gap (1393 vs 3910) mixed GPUs. On the same GPU it is
+   3761 vs 1394, a factor of 2.7.
+
+### Where each prefill spends its time
+
+These are kernel-trace (`rocprofv3 --kernel-trace`) sums in milliseconds per
+1024-token prefill.
+
+- Both llama.cpp traces and the hipEngine Qwen trace are from the XTX.
+- The hipEngine Gemma 4 trace is from the W7900, because Gemma 4 does not load
+  on the XTX. The W7900 runs about 9% slower on this workload, measured with
+  llama.cpp (3761 vs 4124).
+- The Gemma 4 bench trace contains two prefills, the instrumented one and the
+  public `generate` parity call, so its per-layer kernels show n = 120
+  (30 layers × 2 blocks × 2 prefills). All values are divided by 2.
+- The trace does not show a 4 × 256-token chunking.
+
+| Bucket | llama.cpp Gemma | hipEngine Gemma (W7900) | llama.cpp Qwen | hipEngine Qwen |
+| --- | ---: | ---: | ---: | ---: |
+| Attention (softmax) | 24.9 | **216.0** | 5.8 | 11.4 (AOTriton) |
+| Linear attention (GDN), Qwen only | — | — | 34.4 | 44.2 |
+| MoE expert matmuls | 89.7 | 179.1 (layers 0–28) + **74.0 (layer 29)** | 78.7 | 138.0 |
+| MoE routing, gather, combine | 10.1 | 35.8 + 6.2 act. pack | 18.0 | 6.2 |
+| Dense projections (Q8_0) | 61.5 | 162.2 | 49.0 | 90.5 |
+| Router logits / small BLAS | 5.8 | 15.1 | 9.1 | 16.8 |
+| Norms, RoPE, element-wise, other | 27.1 | 20.2 | 31.5 | 5.9 |
+| **Total kernel time** | **219** | **709** | **227** | **313** |
+| Measured wall time | 248 | 735 | 250 | 319 |
+
+Matmul throughput on the MoE experts, using 2·K·N FLOPs per routed row:
+
+| | Gemma 4 | Qwen3.6 |
+| --- | ---: | ---: |
+| hipEngine | ~16 TFLOP/s (W7900; ~17 at XTX clocks) | ~15 TFLOP/s |
+| llama.cpp | ~33 TFLOP/s | ~26 TFLOP/s |
+
+hipEngine's MoE kernels run at the same efficiency on both models, about half
+of llama.cpp's. **The Qwen path is not closer to llama.cpp because of better
+MoE kernels.** It is closer because its attention is cheap: 30 of its 40
+layers are GDN linear attention, and its 10 full-attention layers use AOTriton
+flash attention. Gemma 4 runs softmax attention on all 30 layers through a
+decode-class kernel.
+
+### What llama.cpp does differently
+
+| | llama.cpp HIP on gfx1100 | hipEngine Gemma 4 (default) |
+| --- | --- | --- |
+| Matmul arithmetic | Activations are quantized to Q8_1 once per matmul, and every weight matmul runs int8 × int8 on WMMA. `ggml_cuda_should_use_mmq` is true on RDNA3 for Q4_K, Q5_1 and Q8_0. | MoE gate_up uses int8 MMQ (32-row tiles). The MoE down uses BF16 WMMA. Dense projections use BF16 WMMA. |
+| Tiles | Tuned per quant type (`mmq-config-rdna3.cuh`): up to 128 weight rows × 128 tokens, 256 threads, stream-k. | 32-row int8 tiles on gate_up, 16-row WMMA elsewhere. |
+| MoE launch | One `mm_ids_helper` sort, then one MMQ launch per projection across all experts. | Compact scheduler plus `qwen35_moe_group_compact_active_kernel` (23.8 ms) and a packed-hidden gather (6.9 ms). |
+| Odd-quant layer | Layer 29 (Q5_K gate_up, Q8_0 down) goes through the same MMQ kernels as every other layer. | Layer 29 falls back to `gguf_q4_k_selected_dual_grouped_rowbatch` and `gguf_k_selected_prefill_out_kernel`: **74 ms, about 12× a normal layer.** This is the kernel iteration 146 left unidentified. |
+| Attention | Flash attention. Head_dim-256 sliding-window layers use `flash_attn_ext_f16` (WMMA); head_dim-512 global layers use `flash_attn_tile`. 24.9 ms total. | `gemma4_attention_decode_class_kernel` runs for prefill (60 launches per prefill). 7.0 ms per sliding-window layer, 8.5 ms per global layer; 216 ms total. |
+| Block | ubatch 1024. | 512-token blocks. The block-1024 measurement came out as a wash (commit `0b2ce993a`). |
+| Weight residency | GGUF blocks read in place, no duplicate. | Fused `ffn_gate_up_exps` kept **plus** split gate and up copies: 32.35 GB peak. |
+
+### Qwen3.6 MoE: hipEngine against llama.cpp
+
+| Area | hipEngine Qwen | llama.cpp Qwen | Result |
+| --- | --- | --- | --- |
+| Element-wise, norms, residual | Fused composites (add+RMSNorm, SiLU-mul dual output, shared-gate combine with residual): 5.9 ms | Separate kernels: 31.5 ms | **hipEngine ahead by about 25 ms** |
+| MoE routing and combine | Count / prefix / scatter-gather / tile-map scheduler plus fused weighted sum: 6.2 ms | `mm_ids_helper` plus `moe_weighted_reduction`: 18.0 ms | **hipEngine ahead by about 12 ms** |
+| MoE expert matmuls | FP16 WMMA on byte-lossless T16 repacked weights: one wave, 16×32 tiles, per-lane dequantization, no LDS: 138 ms | int8 MMQ with 128-row tiles: 79 ms | llama.cpp 1.75× faster |
+| Dense Q8_0 projections | `gguf_q8_0_t16_prefill_wmma_nwave` (BF16 WMMA): 90.5 ms | int8 MMQ: 49 ms | llama.cpp 1.8× faster |
+| GDN linear attention | 44 ms | 34 ms | llama.cpp 1.3× faster |
+| Full attention | AOTriton `attn_fwd`: 11.4 ms | flash attention: 5.8 ms | llama.cpp 2× faster, but both are small |
+
+hipEngine wins on glue and fusion, about 37 ms of launches and element-wise
+work that llama.cpp spends. It loses on every matmul, because llama.cpp runs
+int8 × int8 with large tiles while hipEngine runs FP16/BF16 WMMA with small
+tiles.
+
+### What the Qwen path does that Gemma 4 should adopt
+
+Savings are estimated from the traces above, in W7900 milliseconds out of a
+709 ms prefill. None of them has been measured as a change.
+
+| Qwen practice | Gemma 4 today | Adopt as | Est. saving |
+| --- | --- | --- | ---: |
+| Flash attention for prefill: AOTriton at ≥512 tokens, about 1.1 ms per head_dim-256 layer at 1024 tokens | Decode-class kernel, 7.0 ms per head_dim-256 layer | Route the 25 sliding-window layers through AOTriton. Pass scale 1.0, since Gemma folds the softmax scale into the query norm. Through 1024 tokens the 1024-token window never binds; above that a windowed mask is needed. The 5 head_dim-512 global layers need a tiled kernel, following llama.cpp's `flash_attn_tile<512>`. | ~145 (sliding-window) + up to ~35 (global) |
+| Every quant in the artifact has a fast owner | Layer 29 (Q5_K gate_up, Q8_0 down) falls to scalar fallbacks | Register or route layer 29 to the compact WMMA owners that already exist for Q5_K and a grouped Q8_0 down | ~65 |
+| Replacement layouts, no duplicate weights (T16 replaces raw) | Split gate/up is additive to the fused tensor (+~8.6 GB) | Replace the fused allocation with the split one. The dual WMMA owner already registers a two-tensor form. | Memory: restores the XTX |
+| Cheap MoE scheduler (count / prefix / scatter-gather): ~3 ms | `compact_active` + gather: ~31 ms | Reuse the Qwen scheduler kernels | ~25 |
+| Fused norm, residual and gate composites | Already close: 20 ms vs llama.cpp's 27 | — | — |
+
+Two items are not transferable from Qwen, because Qwen does not solve them
+either:
+
+- **MoE matmul efficiency** is about 16 TFLOP/s on both models, against
+  llama.cpp's 26–33.
+- **Dense matmuls** are 1.8–2.6× behind llama.cpp on both models.
+
+For both, the reference is llama.cpp's int8 MMQ (Q8_1 activations, 128-row
+tiles, one launch across experts), not the Qwen path. Iteration 150 refuted
+the dense int8 route, but only for hipEngine's *guarded three-plane* d4x3
+MMQ: three int8 WMMA planes per tile to reproduce exact results. It does not
+test a single-plane MMQ of llama.cpp's shape, which runs at an estimated
+~55 TFLOP/s here (dense FLOPs computed from the tensor shapes).
+
+### Defects found
+
+- **XTX capacity regression.** `gemma4_gguf_device.py` keeps the raw fused
+  `ffn_gate_up_exps` and uploads split `gate` and `up` copies. Since
+  `13532ae2b` made the int8 route the default, every load pays this. The
+  default route peaks at 32.35 GB and fails on the RX 7900 XTX, the campaign's
+  primary GPU, with `HIP error 2: out of memory` while materializing a layer's
+  expert tensors. Reproduce with `ROCR_VISIBLE_DEVICES=1 scripts/gemma4_campaign_bench.py
+  --prompt 1024 --output 8`.
+- **The attention analysis drafted as iteration 151 (per-key barriers in
+  `gemma4_attention_prefill_kernel`) targets a kernel that does not run
+  during prefill.** The trace shows `gemma4_attention_decode_class_kernel<…,1,2>`
+  (sliding-window) and `<…,2,2>` (global) at 60 launches per prefill.
+  `gemma4_attention_prefill_kernel` does not appear. The fix direction (flash /
+  online softmax, tiled over keys) still stands, but the barrier analysis
+  should be redone against the decode-class kernel.
+- **The published Qwen comparator is stale.** See conclusion 1 above.
+
+### Recommended order
+
+1. Fix the additive gate/up split: replace, don't duplicate. This is a
+   capacity defect on the primary GPU and a prerequisite for every XTX
+   measurement.
+2. Flash attention for the 25 sliding-window layers (AOTriton first, since it
+   already ships for Qwen); then a tiled head_dim-512 kernel for the 5 global
+   layers.
+3. Route layer 29 through the existing fast owners.
+4. Replace the MoE `compact_active` + gather scheduler with the Qwen scheduler.
+5. Longer term: single-plane int8 MMQ with llama.cpp-sized tiles for dense and
+   MoE. This benefits Qwen equally.
+
+If items 1–4 hit their estimates, the prefill falls from 709 ms to about
+440 ms, roughly 2300 tok/s on the W7900. Adding item 5 is what closes the rest
+of the gap to llama.cpp's 3761. These are projections from the trace, not
+measurements.
+
+Commands (hipEngine worktree `gemma4`; each preceded by an idle check on the
+target GPU):
+
+```bash
+# llama.cpp comparator, explicit token ids, same flags as the campaign reference
+llama-server -m <gguf> -ngl 99 -fa on -ctk bf16 -ctv bf16 -c 8192 -np 1 \
+  -b 4096 -ub 1024 --no-cache-prompt --fit off   # then POST /completion {prompt: [ids], n_predict: 1}
+# hipEngine Qwen: scripts/qwen35_gguf_bench.py with --public-ar-profile (the shipped
+# WMMA prefill selectors; without it WMMA prefill resolves off), --persistent-session,
+# --prompt-length 1024, --warmup-runs 3 --measured-runs 5, and explicit prompt ids
+# hipEngine Gemma 4: scripts/gemma4_campaign_bench.py --prompt 1024 --output 8 --samples 5 --warmup 2
+# traces: rocprofv3 --kernel-trace --output-format csv (hipEngine Qwen additionally
+# uses --selected-regions with --rocprof-selected-region prefill)
+```
+
 ## Execution milestones
 
 - [ ] **G0 — Harness and baseline.** Implement separated phase timing and public
