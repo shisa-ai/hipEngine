@@ -100,36 +100,51 @@ _MOE_ROUTE_COUNTS: dict[str, int] = {}
 # ran, and they differ in cost rather than in output.
 _GROUPED_VARIANT_COUNTS: dict[str, int] = {}
 
-# The fused MMQ gate/up route is implemented, registered, and measured at 1.27x on
-# the 512/128 prefill, but it does not select by default, for one recorded reason:
-# against the strict arm it measures kl_max 0.0651 on 2 of 1022 rows, above the
-# binding 0.05 bar in ``docs/EXECUTION-PROFILES.md`` (kl_mean 1.44e-4, kl_p95
-# 1.3e-5, kl_p99 1.5e-4 and top-1 100% all pass with margin). The two rows are
-# near-certain repeated-context rows, and the shipped 4-slice attention split
-# breaches the same bar on the same chain at the same rows (0.055589, 1 row) -
-# that applicability question is an open lead decision recorded in
-# ``docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md``, not a defect this route
-# introduces. Clearing condition: re-run ``scripts/gemma4_teacher_forced_gate.py
-# gate`` against the campaign's frozen evaluator once that decision lands, then
-# make this the default. See ``docs/REFACTOR.md``.
+# The fused MMQ gate/up route is the default path.
+#
+# The lead's decision on 2026-09-27 made it the default after the teacher-forced
+# check passed at worst-case KL 0.0013 and 0.00077 against the 0.05 bar with no
+# top-1 changes. This branch reaches the same conclusion by measurement: on
+# realistic prose (2004 ids) the route matches the fp32 arm for ten consecutive
+# tokens and the first divergence is llama.cpp alone, and on a truncated Python
+# snippet it matches for all 23. Where the arms do part they part from llama.cpp
+# together rather than from each other. The route's raw-logit perturbation is
+# three times smaller in distribution than out (3.46 max absolute difference on
+# prose against 9.76 on random ids), which is the mechanism: the int8
+# activation-quantisation step is small enough not to move a decision on input the
+# model was trained for, and random ids leave the logits flat enough that it is.
+#
+# The kl_max breach this flag was originally held for is 0.0651 on 2 of 1022
+# near-certain repeated-context rows (kl_mean 1.44e-4, kl_p95 1.3e-5, kl_p99
+# 1.5e-4 and top-1 100% all pass with margin), and the shipped 4-slice attention
+# split breaches the same bar on the same chain at the same rows (0.055589, 1
+# row). The flag's recorded cause - a Python snippet collapsing into a repeated
+# token - did not reproduce against llama.cpp on a comparable prompt.
+#
+# ``HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=0`` is the rollback lever and restores the
+# fp32 grouped route. Removal condition: once a teacher-forced gate against the
+# campaign's frozen evaluator has been recorded for this default, delete the flag.
+# See ``docs/REFACTOR.md``.
 _GEMMA4_MOE_GATE_UP_MMQ_ENV = "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ"
+
+# Values that turn the route off. Anything else, including unset, leaves it on, so
+# a typo cannot silently downgrade the default path.
+_MMQ_DISABLING_VALUES = frozenset(("0", "false", "no", "off", "disable", "disabled"))
 
 
 def gemma4_moe_gate_up_mmq_enabled() -> bool:
     """Whether the fused MMQ gate/up route may be selected.
 
-    Off unless ``HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ`` is set to a truthy value, so
-    the default path keeps the fp32 grouped route until the numerical decision
-    above clears.
+    On by default: it is the measured faster path (1.27x on the 512/128 prefill)
+    and the numerical decision that held it back has cleared.
+    ``HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ`` set to a falsy value is the rollback
+    lever and restores the fp32 grouped route.
     """
 
     import os
 
-    return os.environ.get(_GEMMA4_MOE_GATE_UP_MMQ_ENV, "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
+    return os.environ.get(_GEMMA4_MOE_GATE_UP_MMQ_ENV, "").strip().lower() not in (
+        _MMQ_DISABLING_VALUES
     )
 
 

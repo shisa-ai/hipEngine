@@ -197,9 +197,10 @@ def _logit_comparison(base_arm: dict[str, Any], mmq_arm: dict[str, Any]) -> dict
 
 
 def _run_arm(runner: Any, ids: Sequence[int], outputs: int, mmq: bool) -> dict[str, Any]:
-    os.environ.pop("HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ", None)
-    if mmq:
-        os.environ["HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ"] = "1"
+    # The route is the default path now, so the fp32 arm is selected by the
+    # explicit rollback value. Popping the variable would leave the route on and
+    # compare it with itself.
+    os.environ["HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ"] = "1" if mmq else "0"
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts as experts
 
     before = dict(experts.gemma4_moe_expert_route_counts())
