@@ -1,10 +1,13 @@
 # Router warp-per-token reduction: same-session A/B
 
 **Date:** 2026-09-27
-**Verdict:** the candidate wins end-to-end. `+1.65%` prefill (`247.739 -> 251.823`
-tok/s), `-0.272 s` per 4096-token prefill, with disjoint per-run spreads. The
-router kernel itself is `2.16x` faster. **Not yet promoted:** it is a different
-reduction order, so it needs the production numerical gate, which has not run.
+**Verdict: REJECTED by the production gate.** The kernel win is real and large -
+`+1.65%` prefill (`247.739 -> 251.823` tok/s, `-0.272 s`), with the router kernel
+itself `2.16x` faster - and it still fails admission. The gate rejects it on
+top-1 agreement (98.67% against a 99% floor) and on mean KL in the `prefill_last`
+scope (`3.515e-3` against a `1e-3` budget), and **all six top-1 mismatches are
+flip-eligible**, so the cause is the router's discrete expert selection
+amplifying a 1-ulp logit difference, not arithmetic drift. See section 6.
 
 ## Protocol
 
@@ -102,15 +105,65 @@ value. Both are corrected.
 
 ## 5. What is not established
 
-- **Numerical admission.** The candidate changes the reduction order (32-lane
-  shuffle instead of a 256-thread LDS tree) and reads the expert row from LDS
-  instead of global. It is not bit-identical to the parent. The production
-  envelope (mean KL <= `1e-3`, p95 <= `5e-3`, p99 <= `2e-2`, max <= `5e-2`,
-  top-1 >= `99%` overall and >= `97%` per scope) has **not** been measured for
-  this route.
+- ~~**Numerical admission.**~~ Resolved by the gate run in section 6: rejected.
 - The screen is one case (`code-p4096`) on one host. `docs/BENCHMARK.md`
   "Anti-gaming" requires the full multi-prompt suite for a retained claim; this
   is a screen, not a retained benchmark row.
+
+## 6. Production gate: rejected
+
+`scripts/qwen4exp_layer2_profile_gate.py --candidate router_warp_reduce` over 450
+rows. `measurement_valid: true`, `candidate_dispatch_calls: 4320` across
+`(rows, 2560, 512)` shapes with rows 39-52, so the candidate genuinely ran - the
+route admits at `rows >= 2` and the suite's 39-71 token prompts clear it. This is
+not the silent no-op that `docs/REFACTOR.md` warns about for `rows > 256` routes.
+
+| gate | result |
+| --- | --- |
+| numerical | **FAILED** |
+| task | **FAILED** (`requires_review`, 12/18 exact) |
+| state / determinism | passed (3 runs, byte-identical trajectories) |
+| lifecycle | passed |
+
+| metric | value | budget | |
+| --- | ---: | ---: | --- |
+| mean KL | 5.714e-4 | 1e-3 | pass |
+| p95 KL | 2.322e-3 | 5e-3 | pass |
+| p99 KL | 6.228e-3 | 2e-2 | pass |
+| max KL | 3.344e-2 | 5e-2 | pass |
+| **top-1 agreement** | **98.67%** (444/450) | >= 99% | **fail** |
+
+`scope_failures`: `category/mixed_ja_en`, `shape/prefill_last`,
+`transition/prefill_to_c1`. The two `prefill_last` scopes fail on **mean KL
+3.515e-3**, 3.5x over budget, not on top-1 (100% there). `mixed_ja_en` fails
+narrowly at mean KL 1.083e-3.
+
+### The failure mechanism is discrete, not drift
+
+The router candidate runs only on the 18 `prefill_last` rows; the 432 `c1` rows
+take the linear path and inherit their divergence from the prefill state.
+
+- `flip_eligible_rows`: 48 (10.7%)
+- `top1_mismatches_flip_eligible`: **6**
+- `top1_mismatches_outside_flip_eligible`: **0**
+- `max_abs_logit_delta`: 1.673
+
+The router logits feed `qwen35_router_select`, so a near-tie can change which of
+the 512 experts is selected. That turns a 4.9e-7 logit difference into an O(1)
+model-logit change: every top-1 mismatch sits on a row where strict's own top-1
+margin is small enough for the observed drift to explain it. The KL envelope
+passes comfortably at 57% of budget while top-1 fails, which is the signature of
+a discrete amplification node rather than a numerically sloppy kernel.
+
+**Tuning the kernel cannot fix this.** Any change to the router's reduction order
+moves the logits by ~1 ulp and will flip the same near-ties. The route is closed
+as arithmetic; the reopening path is to make the *selection* invariant, which
+re-baselines strict and is a campaign-level decision. See `docs/REFACTOR.md`
+"Router Producer Variant".
+
+The task gate's 6 divergences are stylistic ("generation process" against
+"decoding process", docstring and section-heading differences), but the gate
+counts them.
 
 ## Files
 
@@ -119,6 +172,7 @@ value. Both are corrected.
 | `plain-a.json`, `plain-b.json` | unprofiled 3-rep wall clock; `route_env` carries the arm |
 | `trace-a_kernel_trace.csv`, `trace-b_kernel_trace.csv` | rocprofv3 kernel traces, 2 passes each - **gitignored raw dumps** (`.gitignore` line 66), not committed; the derived per-kernel figures are in section 2 |
 | `child-a.json`, `child-b.json` | profiled child reports |
+| `production-gate.json` | the 450-row production gate: rejection and mechanism |
 | `warmup-a.json`, `warmup-b.json` | the invalid first attempt, kept because `route_env` is the evidence that the env var was dropped |
 | `hipcc-version.txt` | compiler identity for the cached-build guard |
 
