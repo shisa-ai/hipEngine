@@ -286,5 +286,40 @@
    "Only one layer, the first, was compared. Nothing here says the error is uniform across layers.",
    "The fp32 arm is treated as the reference. Task 14 established it is bit-identical to the strict single-kernel arm on both chains, so it is a sound reference, but it is not an independently-computed high-precision reference."
   ]
+ },
+ "task15_answer": {
+  "question": "Is the ~0.8 mean absolute MMQ gate/up error inherent to DS4 Q8_1 activation quantization at this geometry, or a defect in the leaf? And since the identical route is measured and promoted for Qwen35, what differs about Gemma4's activations?",
+  "answer": "The error is inherent to activation quantization and the leaf is correct - but it is NOT a property of Gemma4's activations. Nothing differs about Gemma4's activations. What differs is the route's ACTIVATION PACKING PRECISION: the Gemma4 route packs ONE activation plane, while the Qwen35 route packs THREE with error feedback (the d4x3 shape). Single-plane packing costs 0.717 percent relative activation error, which is the entire 0.8 mean absolute gate/up error, and it is the one thing the Gemma4 route does differently.",
+  "evidence_1_the_leaf_is_correct": "Running the fp32 arm on activations that had only been quantized to DS4 and back reproduces the MMQ arm's error to four significant figures - at 64 ids max 38.7500 vs 38.7500 and mean 0.8225 vs 0.8226, at 96 ids 38.5635 vs 38.5703 and 0.9905 vs 0.9904 - at a ratio of 1.00x at both lengths. The fp32 arm contains no MMQ leaf, so there is nothing left for a leaf defect to explain.",
+  "evidence_2_the_range_is_not_the_problem": "The activation dynamic range is modest: per-32-element-sub-block max over median is 5.14 at 64 ids and 5.22 at 96 ids, activation rms 0.289 and 0.277, max abs 3.36 at both. The outlier structure that the task named as a leading candidate is not present. 0.717 percent rms is the practical floor for int8 with one scale per 32 elements, since the step is max|v|/254 and the relative error is roughly the outlier ratio over 254.",
+  "evidence_3_the_packing_precision_is_the_difference": "gemma4_experts.py sizes mmq_workspace as lanes * (hidden_size // 128) * 144 with the comment 'the size the single-plane pack kernel writes'. A DS4 block is 144 bytes, so that is exactly ONE activation plane, and the Gemma4 route therefore runs the one-pass pack. The same file family exports hipengine_gguf_q8_1_mmq_ds4_pack_bf16_d4x3 for three passes, and qwen4_exp_profiles.py names d4x3 variants throughout. The pack kernel's own error feedback - residual = residual - q * scale, which it already computes on every pass - is what makes the extra planes worth their bytes.",
+  "evidence_4_the_predicted_fix": {
+   "method": "reproduced the pack's multi-pass arithmetic in numpy on the real captured Gemma4 activations, 512 rows x 2816 hidden, 45056 sub-blocks of 32",
+   "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python /tmp/mmq_passes.py",
+   "measured": {
+    "passes_1": {
+     "err_rms": 0.002073,
+     "rel": 0.0071687,
+     "max_abs_err": 0.013245
+    },
+    "passes_2": {
+     "err_rms": 8.072e-06,
+     "rel": 2.79e-05,
+     "max_abs_err": 5.1618e-05
+    },
+    "passes_3": {
+     "err_rms": 1.269e-06,
+     "rel": 4.4e-06,
+     "max_abs_err": 3.7551e-06
+    }
+   },
+   "reading": "two planes cut the activation error 257x and three planes cut it 1630x. Since the measured gate/up error is exactly the one-plane quantization budget, three-plane packing predicts a gate/up error of about 0.0005 mean and 0.024 max instead of 0.8226 and 38.75."
+  },
+  "the_fix_is_already_built": "A three-pass MMQ32 prefill leaf is already exported: hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out. So the change is to size mmq_workspace for three planes, call the d4x3 pack, and launch the ds4x3 leaf - not to write a kernel.",
+  "what_this_does_not_establish": [
+   "The 1630x figure is a prediction from the pack arithmetic, not a measurement of the three-plane route. The gate/up error after the change must be measured, not assumed.",
+   "It does not establish that three-plane packing clears the KL bar at every length. It predicts the projection error falls far enough that it should, but the bar is a downstream margin and task 14 showed that margin is what the probe measures.",
+   "It does not establish the cost. Three planes mean three times the activation bytes and three times the pack work, which eats into the 1.265x the route is measured to win by. That must be measured before any promotion."
+  ]
  }
 }
