@@ -80,19 +80,120 @@ def _top2_margin(logits: np.ndarray) -> float:
     return float(top2[1] - top2[0])
 
 
+def _p_top1(logits: np.ndarray) -> float:
+    """Softmax probability of the argmax, comparable with llama.cpp's reported prob.
+
+    llama.cpp reports post-softmax probabilities, so a raw logit margin is not
+    comparable with it; the top token's own probability is.
+    """
+
+    row = np.asarray(logits, dtype=np.float32).reshape(-1)
+    shifted = np.exp(row - row.max())
+    return float(shifted.max() / shifted.sum())
+
+
+def _fmt(value: Any) -> str:
+    return "  n/a" if value is None else f"{float(value):.4f}"
+
+
 def _arm_tokens(runner: Any, ids: Sequence[int], outputs: int) -> dict[str, Any]:
-    """Greedy continuation of ``outputs`` tokens from a fresh prefill of ``ids``."""
+    """Greedy continuation of ``outputs`` tokens from a fresh prefill of ``ids``.
+
+    The first forward is taken twice, once raw and once with the model's own
+    ``final_logit_softcapping``. The cap is ``c * tanh(x / c)`` applied elementwise
+    after the logits leave the device, so it is strictly monotonic and cannot
+    reorder an argmax; recording both is what makes that checkable per row rather
+    than an assumption, and it separates a flip in the route's arithmetic from a
+    flip the output transform could have caused.
+    """
 
     runner.reset()
-    logits = np.asarray(runner.forward(list(ids)), dtype=np.float32).reshape(-1)
-    first = int(np.argmax(logits))
-    margin = _top2_margin(logits)
-    first_logit = float(logits.max())
+    raw = np.asarray(runner.forward(list(ids), apply_softcap=False), dtype=np.float32).reshape(-1)
+    runner.reset()
+    capped = np.asarray(runner.forward(list(ids)), dtype=np.float32).reshape(-1)
+    top = np.partition(raw, -5)[-5:][::-1]
+    first = int(np.argmax(capped))
+    margin = _top2_margin(capped)
     tokens = [first]
+    # Per-step confidence, because a route that agrees on the first token and then
+    # degrades is not visible at the first token. Steps read the raw logits so the
+    # margin is the model's own; the argmax is identical either way, the cap being
+    # monotonic, so this does not change the chain that gets generated.
+    steps = [{"token": first, "raw_margin": _top2_margin(raw), "p_top1": _p_top1(capped)}]
     for _ in range(outputs - 1):
-        logits = np.asarray(runner.forward([tokens[-1]]), dtype=np.float32).reshape(-1)
-        tokens.append(int(np.argmax(logits)))
-    return {"tokens": tokens, "first_margin": margin, "first_logit": first_logit}
+        logits = np.asarray(runner.forward([tokens[-1]], apply_softcap=False),
+                            dtype=np.float32).reshape(-1)
+        token = int(np.argmax(logits))
+        tokens.append(token)
+        steps.append({"token": token, "raw_margin": _top2_margin(logits),
+                      "p_top1": _p_top1(logits)})
+    return {
+        "tokens": tokens,
+        "steps": steps,
+        "first_margin": margin,
+        "first_logit": float(capped.max()),
+        "raw_argmax": int(np.argmax(raw)),
+        "capped_argmax": first,
+        "raw_top5": [float(v) for v in top],
+        "raw_span5": float(top[0] - top[-1]),
+        "raw": raw,
+        "capped": capped,
+    }
+
+
+def _repeat_check(runner: Any, ids: Sequence[int]) -> dict[str, Any]:
+    """Measure one prompt twice in the same process and report whether it moved.
+
+    Every number this campaign records comes from a process that prefilled several
+    lengths in sequence, so if a prefill's logits depend on what the runner did
+    before it, the recorded divergences are partly a function of the sweep order
+    rather than of the route. ``runner.reset()`` is what should make that not
+    happen; this is the check that it does.
+    """
+
+    rows = []
+    for _ in range(2):
+        runner.reset()
+        rows.append(np.asarray(runner.forward(list(ids), apply_softcap=False),
+                               dtype=np.float32).reshape(-1))
+    delta = rows[1] - rows[0]
+    return {
+        "argmax_a": int(np.argmax(rows[0])),
+        "argmax_b": int(np.argmax(rows[1])),
+        "argmax_stable": int(np.argmax(rows[0])) == int(np.argmax(rows[1])),
+        "max_abs_delta": float(np.abs(delta).max()),
+        "bit_identical": bool(np.array_equal(rows[0], rows[1])),
+    }
+
+
+def _logit_comparison(base_arm: dict[str, Any], mmq_arm: dict[str, Any]) -> dict[str, Any]:
+    """How the two arms' raw final-row logits differ, before any softcap.
+
+    A constant offset is argmax-neutral, a scale change moves the softmax
+    temperature, and a reordering is the only thing that can move the argmax. The
+    three are separated here because they imply different faults: a scale says the
+    route's hidden state reaches the head at the wrong magnitude, a reordering at
+    one position says the projection itself is wrong.
+    """
+
+    delta = mmq_arm["raw"] - base_arm["raw"]
+    base_rank = np.argsort(np.argsort(-base_arm["raw"]))[:64]
+    mmq_rank = np.argsort(np.argsort(-mmq_arm["raw"]))[:64]
+    return {
+        "raw_argmax_base": base_arm["raw_argmax"],
+        "raw_argmax_mmq": mmq_arm["raw_argmax"],
+        "raw_argmax_agrees": base_arm["raw_argmax"] == mmq_arm["raw_argmax"],
+        "softcap_preserves_argmax_base": base_arm["raw_argmax"] == base_arm["capped_argmax"],
+        "softcap_preserves_argmax_mmq": mmq_arm["raw_argmax"] == mmq_arm["capped_argmax"],
+        "delta_median": float(np.median(delta)),
+        "delta_std": float(delta.std()),
+        "delta_max_abs": float(np.abs(delta).max()),
+        "raw_top5_base": base_arm["raw_top5"],
+        "raw_top5_mmq": mmq_arm["raw_top5"],
+        "raw_span5_base": base_arm["raw_span5"],
+        "raw_span5_mmq": mmq_arm["raw_span5"],
+        "top64_same_order": bool(np.array_equal(base_rank, mmq_rank)),
+    }
 
 
 def _run_arm(runner: Any, ids: Sequence[int], outputs: int, mmq: bool) -> dict[str, Any]:
@@ -221,15 +322,24 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         for length in lengths:
             prompt = ids[:length]
-            response = _post(base, _completion_body(prompt, args.continuation))
+            response = _post(base, _completion_body(prompt, args.continuation, n_probs=5))
             if response.get("tokens_evaluated") != length:
                 raise RuntimeError(
                     f"llama.cpp evaluated {response.get('tokens_evaluated')} of {length} ids")
             llama = [int(t) for t in response.get("tokens", [])]
             if not llama:
                 raise RuntimeError(f"llama.cpp returned no token for {length} ids")
+            llama_steps = []
+            for entry in (response.get("completion_probabilities") or [])[: len(llama)]:
+                probs = entry.get("probs") or []
+                llama_steps.append({
+                    "token": int(entry.get("id", -1)),
+                    "p_top1": float(probs[0]["prob"]) if probs else None,
+                    "runner_up": float(probs[1]["prob"]) if len(probs) > 1 else None,
+                })
             base_arm = _run_arm(runner, prompt, args.continuation, mmq=False)
             mmq_arm = _run_arm(runner, prompt, args.continuation, mmq=True)
+            logits = _logit_comparison(base_arm, mmq_arm)
             rows.append({
                 "ids": length,
                 "llama_first": llama[0],
@@ -244,15 +354,38 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "base_first_margin": base_arm["first_margin"],
                 "mmq_first_margin": mmq_arm["first_margin"],
                 "mmq_route_used": mmq_arm["route_used"],
+                "logits": logits,
+                "repeat_check": _repeat_check(runner, prompt),
+                "llama_steps": llama_steps,
+                "base_steps": base_arm["steps"],
+                "mmq_steps": mmq_arm["steps"],
             })
             row = rows[-1]
             print(f"{length:5d}  llama->{llama[0]:<7d} base->{base_arm['tokens'][0]:<7d} "
                   f"mmq->{mmq_arm['tokens'][0]:<7d} "
+                  f"rawbase->{logits['raw_argmax_base']:<7d} "
+                  f"rawmmq->{logits['raw_argmax_mmq']:<7d} "
+                  f"dmed={logits['delta_median']:+.3f} dmax={logits['delta_max_abs']:.2f} "
+                  f"span {logits['raw_span5_base']:.2f}->{logits['raw_span5_mmq']:.2f} "
+                  f"softcap_keeps_argmax={logits['softcap_preserves_argmax_base']}/"
+                  f"{logits['softcap_preserves_argmax_mmq']} "
+                  f"repeat_stable={row['repeat_check']['argmax_stable']} "
+                  f"repeat_maxdelta={row['repeat_check']['max_abs_delta']:.3g}",
                   f"base={'Y' if row['base_matches_llama'] else 'n'} "
                   f"mmq={'Y' if row['mmq_matches_llama'] else 'n'} "
                   f"margin base={row['base_first_margin']:.3f} "
                   f"mmq={row['mmq_first_margin']:.3f} "
                   f"route={'yes' if row['mmq_route_used'] else 'NO'}", flush=True)
+            # The campaign has been scoring the first token. A route that agrees
+            # there and degrades afterwards is only visible step by step.
+            span = min(len(llama_steps), len(base_arm["steps"]), len(mmq_arm["steps"]))
+            for index in range(span):
+                ls, bs, ms = llama_steps[index], base_arm["steps"][index], mmq_arm["steps"][index]
+                agree = ls["token"] == bs["token"] == ms["token"]
+                print(f"      step {index:2d}  llama {ls['token']:<7d} p={_fmt(ls['p_top1'])}  "
+                      f"base {bs['token']:<7d} p={_fmt(bs['p_top1'])} m={bs['raw_margin']:+7.2f}  "
+                      f"mmq {ms['token']:<7d} p={_fmt(ms['p_top1'])} m={ms['raw_margin']:+7.2f}"
+                      f"{'  <-- parts here' if not agree else ''}", flush=True)
     finally:
         if process is not None:
             _stop(process)

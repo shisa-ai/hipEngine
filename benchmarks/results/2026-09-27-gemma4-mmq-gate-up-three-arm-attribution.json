@@ -465,5 +465,377 @@
     },
     "finding": "At 96 ids llama.cpp and fp32 each emit 10 distinct tokens of 16 while the MMQ route emits 3, collapsing into 236832 repeated. The route's first token there is identical to llama.cpp's, so a first-token comparison reports agreement. At 16 and 24 ids all three arms degenerate, which makes those lengths a property of the short prompt rather than of the route, so 96 is the only clean case and it is decisive.",
     "correction": "This supersedes the conclusion recorded from first tokens alone in this artifact, that neither arm is systematically wrong. That reading was correct about what it measured and too narrow to generalise from: confident rows still agree across all three engines, so the low-margin account of the flips survives, but a flip that self-reinforces into a loop is a distinct and worse failure than a flip."
+  },
+  "per_step_attribution": {
+    "why": "Once the chains part the arms see different contexts and their logits stop being comparable, so only the steps before the split attribute anything. Within that window the route agrees with the outside implementation and the fp32 arm does not.",
+    "rows": [
+      {
+        "arms_agree": false,
+        "base_first": 236778,
+        "base_first_margin": 3.1374034881591797,
+        "base_matches_llama": false,
+        "base_steps": [
+          {
+            "p_top1": 0.9128713011741638,
+            "raw_margin": 7.140625,
+            "token": 236778
+          },
+          {
+            "p_top1": 0.9999998807907104,
+            "raw_margin": 16.492982864379883,
+            "token": 236825
+          },
+          {
+            "p_top1": 0.9999912977218628,
+            "raw_margin": 11.659311294555664,
+            "token": 236743
+          },
+          {
+            "p_top1": 0.9949703812599182,
+            "raw_margin": 5.307090759277344,
+            "token": 236828
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 19.489295959472656,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 28.35080909729004,
+            "token": 236771
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 27.421886444091797,
+            "token": 236812
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 27.59836196899414,
+            "token": 236743
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 27.53058433532715,
+            "token": 236770
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 25.611576080322266,
+            "token": 236828
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 31.28944206237793,
+            "token": 236778
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 29.31664276123047,
+            "token": 236810
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 26.958175659179688,
+            "token": 236743
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 27.069412231445312,
+            "token": 236771
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 25.068286895751953,
+            "token": 236800
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 34.43961715698242,
+            "token": 236778
+          }
+        ],
+        "base_tokens": [
+          236778,
+          236825,
+          236743,
+          236828,
+          236832,
+          236771,
+          236812,
+          236743,
+          236770,
+          236828,
+          236778,
+          236810,
+          236743,
+          236771,
+          236800,
+          236778
+        ],
+        "ids": 96,
+        "llama_first": 236800,
+        "llama_steps": [
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236800
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236800
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236743
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236832
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236810
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236828
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236770
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236743
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236819
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236800
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236778
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236825
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236743
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236828
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236832
+          },
+          {
+            "p_top1": null,
+            "runner_up": null,
+            "token": 236771
+          }
+        ],
+        "llama_tokens": [
+          236800,
+          236800,
+          236743,
+          236832,
+          236810,
+          236828,
+          236770,
+          236743,
+          236819,
+          236800,
+          236778,
+          236825,
+          236743,
+          236828,
+          236832,
+          236771
+        ],
+        "logits": {
+          "delta_max_abs": 9.75543212890625,
+          "delta_median": -1.5519052743911743,
+          "delta_std": 1.0098870992660522,
+          "raw_argmax_agrees": false,
+          "raw_argmax_base": 236778,
+          "raw_argmax_mmq": 236800,
+          "raw_span5_base": 11.117996215820312,
+          "raw_span5_mmq": 5.997570037841797,
+          "raw_top5_base": [
+            32.73771667480469,
+            25.597091674804688,
+            24.864215850830078,
+            22.675260543823242,
+            21.619720458984375
+          ],
+          "raw_top5_mmq": [
+            26.150728225708008,
+            22.982284545898438,
+            21.502283096313477,
+            20.308956146240234,
+            20.15315818786621
+          ],
+          "softcap_preserves_argmax_base": true,
+          "softcap_preserves_argmax_mmq": true,
+          "top64_same_order": false
+        },
+        "mmq_first": 236800,
+        "mmq_first_margin": 1.7277050018310547,
+        "mmq_matches_llama": true,
+        "mmq_route_used": true,
+        "mmq_steps": [
+          {
+            "p_top1": 0.7376709580421448,
+            "raw_margin": 3.1684436798095703,
+            "token": 236800
+          },
+          {
+            "p_top1": 0.9999963045120239,
+            "raw_margin": 13.379018783569336,
+            "token": 236800
+          },
+          {
+            "p_top1": 0.9999649524688721,
+            "raw_margin": 10.385232925415039,
+            "token": 236743
+          },
+          {
+            "p_top1": 0.9988517761230469,
+            "raw_margin": 7.3428192138671875,
+            "token": 236832
+          },
+          {
+            "p_top1": 0.5605988502502441,
+            "raw_margin": 0.366912841796875,
+            "token": 236832
+          },
+          {
+            "p_top1": 0.7255620360374451,
+            "raw_margin": 1.0272884368896484,
+            "token": 236832
+          },
+          {
+            "p_top1": 0.999932050704956,
+            "raw_margin": 9.792150497436523,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 23.634029388427734,
+            "token": 236743
+          },
+          {
+            "p_top1": 0.9990522265434265,
+            "raw_margin": 6.960472106933594,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 16.730205535888672,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 24.525192260742188,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 26.344741821289062,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 24.45705795288086,
+            "token": 236743
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 21.70069122314453,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 32.62611770629883,
+            "token": 236832
+          },
+          {
+            "p_top1": 1.0,
+            "raw_margin": 25.937170028686523,
+            "token": 236832
+          }
+        ],
+        "mmq_tokens": [
+          236800,
+          236800,
+          236743,
+          236832,
+          236832,
+          236832,
+          236832,
+          236743,
+          236832,
+          236832,
+          236832,
+          236832,
+          236743,
+          236832,
+          236832,
+          236832
+        ],
+        "repeat_check": {
+          "argmax_a": 236800,
+          "argmax_b": 236800,
+          "argmax_stable": true,
+          "bit_identical": true,
+          "max_abs_delta": 0.0
+        }
+      }
+    ],
+    "comparable_window": "steps 0-3, where llama.cpp and the route emit identical tokens",
+    "llama_and_mmq_steps_0_3": [
+      236800,
+      236800,
+      236743,
+      236832
+    ],
+    "fp32_steps_0_3": [
+      236778,
+      236825,
+      236743,
+      236828
+    ],
+    "fp32_split": "step 0, 236778 against 236800, raw margin +7.14 - a confident disagreement",
+    "route_degeneration": "step 4, llama 236810 against route 236832 at raw margin +0.37, after which the route's margins on 236832 grow to +32 as the repeated context makes each further repeat easier",
+    "determinism": {
+      "repeat_bit_identical": true,
+      "softcap_preserves_argmax": true,
+      "note": "an earlier run of this harness reported softcap_preserves_argmax false; that run forwarded twice without an intervening reset, so the second call prefilled at an advanced position. The check exists because of it."
+    },
+    "correction": "This supersedes the attribution in the continuation-degeneration entry, which observed the collapse correctly and concluded from it that the route was the deviant arm. Step by step, the route is the arm that tracks the anchor."
   }
 }
