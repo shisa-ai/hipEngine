@@ -4311,6 +4311,82 @@ record, not permission to reset unrelated work or weaken correctness.
   --prefill 1024`` against ``$HOME/.cache/hipengine/tmp/gate_base_mmq.npz``;
   ``gemma4_experts.py::_build_mmq_tile_plan``.
 
+  **Iteration 142: the int8 route was never losing to overhead -- it was one
+  pathological kernel. Fixing it gives 1393 tok/s, +40.7% over the previous best.**
+
+  Iteration 139 measured the int8 route 2.07x faster than the bf16 WMMA owner on
+  the gate_up in isolation, yet the route came out slower end to end (1.17 s
+  against 1.03 s). Iterations 139 and 141 both guessed at where that went: first
+  the per-call synchronize, then the activation pack. **Both guesses were wrong,
+  and profiling settled it in one run.**
+
+  **The per-kernel diff.** Profiled both arms with ``rocprofv3 --kernel-trace`` on
+  the W7900 at ``--prompt 1024 --output 8`` and diffed by kernel. The int8 route
+  adds exactly three kernels:
+
+      wmma ms    mmq ms    delta  kernel
+        714.0       0.0   -714.0  q4_k_selected_dual_wmma_prefill_compact   (gate_up)
+          0.0     247.1   +247.1  q4_k_selected_dual_q8_1_ds4_mmq32          (gate_up)
+          0.0      12.3    +12.3  q8_1_mmq_ds4_pack_bf16                     (pack)
+        115.8       0.0   -115.8  q5_1_selected_grouped_wmma_prefill_bf16    (down)
+          0.0     947.3   +947.3  q5_1_selected_grouped_prefill_pair2        (down)
+
+  **The int8 gate_up is 2.89x the bf16 owner -- better than the 2.07x measured in
+  isolation. The pack costs 12.3 ms, which is nothing.** The entire loss is the
+  down projection: the MMQ leaf runs at **947 ms against 116 ms over the same 116
+  launches** -- 8.2x slower, 4.0 against 32.5 TFLOP/s at Gemma's down geometry
+  (8192 compact rows, 128 experts, in 704, out 2816).
+
+  Net: the route wins 467 ms on the gate_up and loses 831 ms on the down, for the
+  +294 ms observed. That matches the measured delta exactly, so the account is
+  closed rather than merely plausible.
+
+  **The fix.** The MMQ gate_up already writes bf16, which is exactly what the WMMA
+  down reads, so the down keeps the WMMA owner on the int8 route and only the
+  gate_up uses the int8 leaf. The two tile plans share buffers and tile different
+  widths (32 rows against 16), so the 16-row plan is rebuilt after the gate_up has
+  finished with the 32-row one.
+
+  **Result: 1393 / 1387 / 1384 tok/s** against ``wmma_plain``'s 990 and the int8
+  route's own 885 -- **+40.7% over the previous best**, prefill 1.02 s to 0.73 s.
+
+  **It is also more accurate, not less:**
+
+      metric      measured     bar      margin
+      kl_max      0.001341     0.05     37x under
+      kl_mean     8.76e-06     0.001    114x under
+      kl_p95      2.45e-05     0.005    204x under
+      kl_p99      1.60e-04     0.02     125x under
+      top1_flips  0 / 1023     --       perfect
+
+  ``kl_max`` improves on the int8 route's own recorded 0.005029 by 3.7x, because
+  the WMMA down is the more accurate of the two. The arm that is 40% faster is also
+  the more accurate one, so this is a dominant improvement on both axes.
+
+  **A fault worth recording, because it was self-inflicted and instructive.** The
+  first attempt faulted with a GPU memory access error. Setting ``down_wmma`` true
+  under mmq also enabled the *pre-gate_up* plan build, whose guard was
+  ``(gate_up_wmma or down_wmma)`` -- so the 16-row plan overwrote the 32-row plan
+  before the gate_up ran, and the MMQ leaf read 16-row starts as 32-row. The guard
+  is now ``gate_up_wmma`` alone, since the down's plan is built later by
+  construction. A flag that means "the down wants a plan" was also being read as
+  "build the plan now", and those are different questions.
+
+  Distance to the same-artifact llama.cpp comparator narrows from 3.9x to
+  **2.81x** (3910 against 1393).
+
+  ``promotion_qualified: false``: the campaign's logits gate is necessary but not
+  sufficient, and the full execution-profile gate in ``docs/EXECUTION-PROFILES.md``
+  is still owed. That remains the last step between this and a default path.
+
+  Evidence: ``rocprofv3 --kernel-trace`` diffs for both arms at
+  ``--prompt 1024 --output 8`` on ``ROCR_VISIBLE_DEVICES=0`` (W7900);
+  ``gemma4_campaign_bench.py --prompt 1024 --output 128`` for both;
+  ``scripts/gemma4_teacher_forced_gate.py gate --prompt 2048 --prefill 1024``
+  against ``$HOME/.cache/hipengine/tmp/gate_base_mmq.npz``;
+  ``gemma4_experts.py`` (the ``down_wmma`` assignment, the plan-rebuild guard, and
+  the down dispatch order).
+
   **Iteration 86: the MoE line has a grouped dp4a owner, and the Gemma path is
   already most of the way to it.** The dense win in iteration 85 leaves the two
   grouped MoE owners as the largest target by a wide margin -- ``moe_grouped``
