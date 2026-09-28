@@ -6,7 +6,9 @@ against the exact coltile chain on the Qwen4Exp UD-Q4_K_XL canonical
 exact-token fixture: full-vocabulary logits trajectories with the candidate
 consuming the strict generated prefix at every compared transition, evaluated
 with the calibrated mean/tail/max KL and top-1 thresholds, plus same-schedule
-repeat determinism. ``--route`` picks which route is measured; see
+repeat determinism. Schema v2 distinguishes complete canonical numerical
+coverage from profile admission: partial runs are screens, and this collector
+alone never claims full profile qualification. ``--route`` picks which route is measured; see
 :data:`SELECTORS`.
 
 The teacher is the named production profile with the route's selectors cleared,
@@ -57,7 +59,8 @@ from scripts.execution_profile_gdn_calibration import (
 )
 
 KIND = "hipengine_execution_profile_q8_wmma_prefill_layers_gate"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+CANONICAL_FIXTURE_SHA256 = "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1"
 WMMA_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"
 DENSE_WIDE_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"
 DENSE_WIDE_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"
@@ -67,6 +70,68 @@ DEFAULT_MODEL_ROOT = Path(
 DEFAULT_FIXTURE = Path(
     "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json"
 )
+
+
+def qualification_coverage(*, captures, fixture_sha256: str, prefill_chunk_size: int):
+    """Account for actual trajectories, not requested CLI counts.
+
+    This is the frozen canonical D128 numerical protocol, not the full profile
+    admission protocol. A changed fixture requires explicit protocol review.
+    A complete run at one chunk size never qualifies another chunk size.
+    """
+    expected = {
+        f"{category}-p{shape}": category
+        for category in ("code", "general_en", "general_ja", "mixed_ja_en")
+        for shape in (512, 1024, 4096)
+    }
+    ids = [capture.prompt_id for capture in captures]
+    checks = {
+        "canonical_fixture_identity": fixture_sha256 == CANONICAL_FIXTURE_SHA256,
+        "canonical_cases_once_each": len(ids) == len(expected) and set(ids) == set(expected),
+        "canonical_categories": all(expected.get(c.prompt_id) == c.category for c in captures),
+        "teacher_d128": bool(captures) and all(len(c.strict) == 129 for c in captures),
+        "candidate_d128_three_repeats": bool(captures) and all(
+            len(c.candidate_runs.get("candidate", ())) >= 3
+            and all(len(run) == 129 for run in c.candidate_runs.get("candidate", ()))
+            for c in captures
+        ),
+        "positive_chunk_size": prefill_chunk_size > 0,
+    }
+    return {
+        "protocol": "canonical_12_case_d128_three_repeat_numerical_v1",
+        "complete": all(checks.values()), "checks": checks,
+        "required_fixture_sha256": CANONICAL_FIXTURE_SHA256,
+        "observed_fixture_sha256": fixture_sha256,
+        "observed_case_ids": ids,
+        "observed_teacher_rows": sum(len(c.strict) for c in captures),
+        "prefill_chunk_size": prefill_chunk_size,
+        "scope": "this route/layer set, manifest and chunk size only",
+    }
+
+
+def qualification_verdict(coverage, *, quality_passed, deterministic, clean):
+    checks = {
+        "complete canonical numerical coverage": coverage["complete"],
+        "calibrated quality thresholds": quality_passed,
+        "same-schedule repeat determinism": deterministic,
+        "execution-affecting worktree provenance": clean,
+    }
+    numerical = all(checks.values())
+    # This collector does not produce these independent admission certificates.
+    missing = [
+        "category-heldout numerical evidence",
+        "strict-teacher and applicable BF16-relative evidence",
+        "exact control/isolation/graph/lifecycle evidence",
+        "task-quality evidence",
+        "candidate route engagement and repair-oracle coverage",
+    ]
+    return {
+        "status": "complete" if numerical else "invalid_or_screen_only",
+        "measurement_valid": numerical,
+        "canonical_numerical_qualification_claim": numerical,
+        "profile_qualification_claim": False,
+        "qualification_blockers": [name for name, ok in checks.items() if not ok] + missing,
+    }
 
 
 def _load_fixture(path: Path) -> tuple[dict[str, Any], str]:
@@ -258,11 +323,15 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         cases = [row for row in cases if str(row["id"]) in selected]
         if {str(row["id"]) for row in cases} != selected:
             raise CalibrationError("unknown canonical case id in --case-id")
-    if args.limit:
+    if args.limit is not None:
+        if int(args.limit) <= 0:
+            raise CalibrationError("--limit must be positive")
         cases = cases[: int(args.limit)]
     if not cases:
         raise CalibrationError("selected case set is empty")
     decode_steps = int(args.decode_steps)
+    if decode_steps < 0 or int(args.prefill_chunk_size) <= 0:
+        raise CalibrationError("decode steps must be nonnegative and chunk size positive")
     transitions = int(fixture.get("decode_transitions", 128))
     if decode_steps > transitions:
         raise CalibrationError(
@@ -415,24 +484,20 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
     # not on whether any file anywhere is dirty: another agent's untracked
     # notes cannot alter dispatch or arithmetic.
     clean = not provenance.get("execution_affecting_dirty", provenance.get("dirty"))
-    measurement_valid = bool(quality_passed and deterministic and clean)
+    coverage = qualification_coverage(
+        captures=captures, fixture_sha256=fixture_sha256,
+        prefill_chunk_size=int(args.prefill_chunk_size),
+    )
+    verdict = qualification_verdict(
+        coverage, quality_passed=quality_passed, deterministic=deterministic, clean=clean,
+    )
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": route.kind,
-        "status": "complete" if measurement_valid else "invalid_or_screen_only",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "measurement_valid": measurement_valid,
         "performance_claim": False,
-        "profile_qualification_claim": quality_passed and deterministic,
-        "qualification_blockers": [
-            blocker
-            for blocker, ok in (
-                ("calibrated quality thresholds", quality_passed),
-                ("same-schedule repeat determinism", deterministic),
-                ("execution-affecting worktree provenance", clean),
-            )
-            if not ok
-        ],
+        **verdict,
+        "qualification_coverage": coverage,
         "route": {
             "name": str(args.route),
             "surface": route.surface,
@@ -494,7 +559,10 @@ def build_parser() -> argparse.ArgumentParser:
         default="0-47",
         help="candidate layer set, e.g. 0-47 or 8,9,10 (default: every layer)",
     )
-    parser.add_argument("--decode-steps", type=int, default=24)
+    parser.add_argument(
+        "--decode-steps", type=int, default=24,
+        help="decode depth (default: 24, screen only; canonical numerical coverage requires 128)",
+    )
     parser.add_argument("--repeat-runs", type=int, default=3)
     parser.add_argument("--execution-profile", choices=("production",), default="production")
     parser.add_argument("--prefill-chunk-size", type=int, default=1024)
