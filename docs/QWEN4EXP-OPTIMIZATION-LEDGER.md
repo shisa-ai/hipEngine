@@ -285,6 +285,12 @@ The supplemental [natural long tasks](../benchmarks/prompts/qwen4exp-natural-lon
 cover all four categories with predeclared review criteria. Their measured
 chat-formatted lengths are 438/508/424/512 tokens on the target tokenizer;
 lengths alone establish neither active dispatch nor task quality.
+The [dense-Q8 supplemental screen](../benchmarks/results/2026-09-28-qwen4exp-natural-long-dense-q8/README.md)
+observes 398 candidate host calls per prefill on every task/repeat, with
+repeatable outputs and zero tracked live allocations after close. Task
+qualification does not pass: both arms truncate code at 2048 tokens and give
+contradictory backup-retention conclusions. Shared failures do not isolate
+candidate arithmetic regression; GPU role/layer attribution remains open.
 
 Implementation classes are T0 (reference-preserving), T1 (local arithmetic
 drift), T2 (association/layout drift), and T3 (representation or algorithm
