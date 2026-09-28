@@ -9356,6 +9356,14 @@ and 176 `__syncthreads()` to 22 and 44 at identical arithmetic. It is exported a
 Python wrapper, and `tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py` checks it **bitwise**
 against the 32-wide route on three geometries plus the CPU reference. Nothing routes to it.
 
+Removal condition: delete
+`gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_kernel`, its `extern "C"`
+launcher and its Python symbol unless the route is either re-measured at the production gate/up
+geometry and wins, or wired behind an `in_features % 128 == 0` dispatch condition and shown to
+improve end-to-end prefill. Clearing command: rerun
+`scripts/gemma4_mmq_k_width_leaf_bench.py` at `out_features` 1408 once the fixture can reach it,
+or promote the route and take an end-to-end number.
+
 **It is unwired because it was measured and did not earn the place.** On the leaf bench
 (`scripts/gemma4_mmq_k_width_leaf_bench.py`) the wide pass was 0.986x at `in_features` 512,
 0.897x at 1024, and 0.914x at 2816 -- and the 2816 medians moved between runs (narrow 138.2
