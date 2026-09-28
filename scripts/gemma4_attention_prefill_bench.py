@@ -46,18 +46,26 @@ def main() -> int:
     runtime = get_hip_runtime()
     tokens = args.tokens
 
-    # (label, num_heads, num_kv_heads, head_dim, window, layers)
+    # (label, num_heads, num_kv_heads, head_dim, window, layers, counts_toward_total)
+    #
+    # The two sliding-window rows are the same 25 layers under two window
+    # settings, so only the artifact's own (window=1024) row is part of the
+    # model's attention cost; the window=0 row is a probe that says what the
+    # window is worth. Summing all three rows counts those 25 layers twice and
+    # adds a diagnostic that does not exist in the model, which is what an
+    # earlier revision of this script printed.
     cases = [
-        ("swa  256d 16q/8kv window=1024", 16, 8, 256, 1024, 25),
-        ("swa  256d 16q/8kv window=0", 16, 8, 256, 0, 25),
-        ("full 512d 16q/2kv window=0", 16, 2, 512, 0, 5),
+        ("swa  256d 16q/8kv window=1024", 16, 8, 256, 1024, 25, True),
+        ("swa  256d 16q/8kv window=0", 16, 8, 256, 0, 25, False),
+        ("full 512d 16q/2kv window=0", 16, 2, 512, 0, 5, True),
     ]
 
     print(f"tokens={tokens} iters={args.iters}")
     print(f"{'case':32s} {'ms/launch':>10s} {'GFLOP/s':>10s} {'all layers':>11s}")
 
     total_ms = 0.0
-    for label, n_head, n_kv, head_dim, window, layers in cases:
+    total_layers = 0
+    for label, n_head, n_kv, head_dim, window, layers, counts in cases:
         rng = np.random.default_rng(20260930)
         q = rng.standard_normal((tokens, n_head, head_dim)).astype(np.float32)
         k = rng.standard_normal((tokens, n_kv, head_dim)).astype(np.float32)
@@ -126,10 +134,18 @@ def main() -> int:
             pairs += t + 1 - lo
         flops = 4.0 * pairs * n_head * head_dim
         gflops = flops / (ms / 1000.0) / 1e9
-        total_ms += ms * layers
-        print(f"{label:32s} {ms:10.2f} {gflops:10.1f} {ms * layers:9.1f} ms")
+        if counts:
+            total_ms += ms * layers
+            total_layers += layers
+        print(
+            f"{label:32s} {ms:10.2f} {gflops:10.1f} {ms * layers:9.1f} ms"
+            + ("" if counts else "   (probe, not in the total)")
+        )
 
-    print(f"\nall 30 layers: {total_ms:.1f} ms  (ablation measured 2295 ms)")
+    print(
+        f"\nthe model's {total_layers} attention layers: {total_ms:.1f} ms  "
+        f"(the 2048-token route ablation measured 2295 ms for the same route in situ)"
+    )
     return 0
 
 
