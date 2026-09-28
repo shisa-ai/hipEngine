@@ -255,6 +255,7 @@ def gemma4_experts_forward_bf16(
         sorted_weights.ptr,
         lanes,
         num_experts,
+        parallel=True,
         **kwargs,
     )
 
