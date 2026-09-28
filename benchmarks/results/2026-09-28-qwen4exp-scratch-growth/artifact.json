@@ -1,0 +1,1226 @@
+{
+  "schema": 1,
+  "kind": "ordered-scratch-growth-screen",
+  "source_commit": "9069efbf0",
+  "hardware": "Framework Radeon 8060S gfx1151",
+  "model_scope": "Synthetic Qwen3.8-Flash-Next GDN geometry; dense Q8_0 test weights, not loaded model",
+  "performance_claim": false,
+  "pilots": [
+    {
+      "schema": 1,
+      "kind": "qwen4exp_gdn_ordered_scratch_pilot",
+      "command": [
+        "scripts/qwen4exp_scratch_order_probe.py",
+        "--arm",
+        "sham",
+        "--victim",
+        "wave-norm",
+        "--trigger",
+        "dense-wide",
+        "--tokens",
+        "64",
+        "--repeats",
+        "31",
+        "--output",
+        "/tmp/qwen4exp-scratch-audit/dense-order-0-sham.json"
+      ],
+      "arm": "sham",
+      "shape": {
+        "tokens": 64,
+        "Hk": 16,
+        "Hv": 48,
+        "Dk": 128,
+        "Dv": 128
+      },
+      "victim": "qwen4_exp_gdn_wave_norm_prefill_f32",
+      "trigger": "qwen4_exp_gdn_wave_norm_prefill_f32",
+      "dense_shape": [
+        257,
+        256,
+        256
+      ],
+      "dense_reference_check": null,
+      "clock_snapshots": [
+        {
+          "stage": "before",
+          "monotonic_ns": 3905550271491954,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "0",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        },
+        {
+          "stage": "pre-trigger",
+          "monotonic_ns": 3905550285294289,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "1",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        },
+        {
+          "stage": "post-trigger",
+          "monotonic_ns": 3905550296631967,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "2",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        },
+        {
+          "stage": "after",
+          "monotonic_ns": 3905550310417330,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "3",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        }
+      ],
+      "dense_library": {
+        "path": "/home/lhl/.cache/hipengine/build/gguf_q8_0_dense_wide-607dcca699485493/gguf_q8_0_dense_wide.so",
+        "sha256": "734fea59ed643644014c9e57c85371bd3c5c3508908acb84245a9c2aa98cfd99"
+      },
+      "before_ms": [
+        0.34282100200653076,
+        0.3373109996318817,
+        0.3390739858150482,
+        0.33498600125312805,
+        0.3375909924507141,
+        0.3326219916343689,
+        0.33702999353408813,
+        0.33667001128196716,
+        0.3343859910964966,
+        0.33723101019859314,
+        0.33450499176979065,
+        0.3323819935321808,
+        0.3351069986820221,
+        0.3324210047721863,
+        0.3348659873008728,
+        0.33001700043678284,
+        0.3308179974555969,
+        0.33422499895095825,
+        0.3338240087032318,
+        0.3355869948863983,
+        0.3313789963722229,
+        0.3313789963722229,
+        0.3336229920387268,
+        0.3314189910888672,
+        0.3335829973220825,
+        0.3293749988079071,
+        0.332179993391037,
+        0.3337019979953766,
+        0.333622008562088,
+        0.3353460133075714,
+        0.3291740119457245
+      ],
+      "after_ms": [
+        0.3443250060081482,
+        0.3353480100631714,
+        0.33490699529647827,
+        0.33370500802993774,
+        0.3355880081653595,
+        0.32897600531578064,
+        0.33250299096107483,
+        0.3343859910964966,
+        0.33146101236343384,
+        0.33374500274658203,
+        0.3295780122280121,
+        0.33098000288009644,
+        0.3342660069465637,
+        0.32701200246810913,
+        0.33322399854660034,
+        0.3313010036945343,
+        0.3327830135822296,
+        0.33298400044441223,
+        0.331822007894516,
+        0.33366501331329346,
+        0.3290970027446747,
+        0.331059992313385,
+        0.33390599489212036,
+        0.3315809965133667,
+        0.33318400382995605,
+        0.3292970061302185,
+        0.33194100856781006,
+        0.33250299096107483,
+        0.33098000288009644,
+        0.3332650065422058,
+        0.33045899868011475
+      ],
+      "trigger_ms": 0.3319390118122101,
+      "after_over_before": 0.9960427719165899,
+      "output_and_state_exact": true,
+      "hashes": [
+        "aaf361f0438989bdd3673cf924f0e76d1227fb66836b71a35483cc90a729bea8",
+        "597e31b64c8026b44fdde3a82fc13d03c89f5de65a6f79396e03ca3fe100da7a"
+      ],
+      "build": {
+        "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-3d97211ffad0e4c1/qwen4_exp_gdn.so",
+        "sha256": "1e39f1cdad1bac1ed7b1a0b7357f68073486c5436b84bc6a567c9a5d546ba291"
+      },
+      "host": {
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "uname": [
+          "Linux",
+          "gfx1151",
+          "7.1.6-1-cachyos",
+          "#1 SMP PREEMPT_DYNAMIC Mon, 03 Aug 2026 16:03:35 +0000",
+          "x86_64"
+        ]
+      },
+      "performance_claim": false,
+      "limits": [
+        "specified GDN victim only",
+        "not a serving or model benchmark",
+        "boundary clock snapshots only; allocation needs separate trace"
+      ]
+    },
+    {
+      "schema": 1,
+      "kind": "qwen4exp_gdn_ordered_scratch_pilot",
+      "command": [
+        "scripts/qwen4exp_scratch_order_probe.py",
+        "--arm",
+        "scratch",
+        "--victim",
+        "wave-norm",
+        "--trigger",
+        "dense-wide",
+        "--tokens",
+        "64",
+        "--repeats",
+        "31",
+        "--output",
+        "/tmp/qwen4exp-scratch-audit/dense-order-1-scratch.json"
+      ],
+      "arm": "scratch",
+      "shape": {
+        "tokens": 64,
+        "Hk": 16,
+        "Hv": 48,
+        "Dk": 128,
+        "Dv": 128
+      },
+      "victim": "qwen4_exp_gdn_wave_norm_prefill_f32",
+      "trigger": "dense_wide256_f32_f32_out",
+      "dense_shape": [
+        257,
+        256,
+        256
+      ],
+      "dense_reference_check": {
+        "max_abs_error": 3.7103891372680664e-06,
+        "reference_scale": 9.250214397907257,
+        "f16_reference_pass": true
+      },
+      "clock_snapshots": [
+        {
+          "stage": "before",
+          "monotonic_ns": 3905550793526780,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "2",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        },
+        {
+          "stage": "pre-trigger",
+          "monotonic_ns": 3905550806422243,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "3",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        },
+        {
+          "stage": "post-trigger",
+          "monotonic_ns": 3905550809326023,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "4",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        },
+        {
+          "stage": "after",
+          "monotonic_ns": 3905550823467503,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "5",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        }
+      ],
+      "dense_library": {
+        "path": "/home/lhl/.cache/hipengine/build/gguf_q8_0_dense_wide-607dcca699485493/gguf_q8_0_dense_wide.so",
+        "sha256": "734fea59ed643644014c9e57c85371bd3c5c3508908acb84245a9c2aa98cfd99"
+      },
+      "before_ms": [
+        0.3369689881801605,
+        0.33274099230766296,
+        0.33578598499298096,
+        0.3331420123577118,
+        0.3358669877052307,
+        0.33201998472213745,
+        0.3324199914932251,
+        0.3349049985408783,
+        0.32905399799346924,
+        0.3348250091075897,
+        0.33053699135780334,
+        0.33105799555778503,
+        0.3343049883842468,
+        0.3326610028743744,
+        0.3342610001564026,
+        0.32580599188804626,
+        0.33313998579978943,
+        0.33434098958969116,
+        0.33229801058769226,
+        0.33438199758529663,
+        0.32857099175453186,
+        0.3316569924354553,
+        0.33354100584983826,
+        0.33185699582099915,
+        0.33386099338531494,
+        0.33189699053764343,
+        0.3312160074710846,
+        0.3334600031375885,
+        0.3316969871520996,
+        0.33362099528312683,
+        0.3307749927043915
+      ],
+      "after_ms": [
+        0.3362550139427185,
+        0.3328990042209625,
+        0.3342230021953583,
+        0.33197900652885437,
+        0.33406299352645874,
+        0.3298549950122833,
+        0.329133003950119,
+        0.3333809971809387,
+        0.3316580057144165,
+        0.3334609866142273,
+        0.3314580023288727,
+        0.33230000734329224,
+        0.33302098512649536,
+        0.331618994474411,
+        0.3292129933834076,
+        0.3300960063934326,
+        0.33201900124549866,
+        0.33302098512649536,
+        0.33181899785995483,
+        0.3334619998931885,
+        0.3281719982624054,
+        0.33133700489997864,
+        0.32785099744796753,
+        0.3318989872932434,
+        0.3334220051765442,
+        0.32933399081230164,
+        0.3304559886455536,
+        0.33281999826431274,
+        0.3314180076122284,
+        0.3336620032787323,
+        0.3292140066623688
+      ],
+      "trigger_ms": 1.1722509860992432,
+      "after_over_before": 0.9974694881788385,
+      "output_and_state_exact": true,
+      "hashes": [
+        "aaf361f0438989bdd3673cf924f0e76d1227fb66836b71a35483cc90a729bea8",
+        "597e31b64c8026b44fdde3a82fc13d03c89f5de65a6f79396e03ca3fe100da7a"
+      ],
+      "build": {
+        "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-3d97211ffad0e4c1/qwen4_exp_gdn.so",
+        "sha256": "1e39f1cdad1bac1ed7b1a0b7357f68073486c5436b84bc6a567c9a5d546ba291"
+      },
+      "host": {
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "uname": [
+          "Linux",
+          "gfx1151",
+          "7.1.6-1-cachyos",
+          "#1 SMP PREEMPT_DYNAMIC Mon, 03 Aug 2026 16:03:35 +0000",
+          "x86_64"
+        ]
+      },
+      "performance_claim": false,
+      "limits": [
+        "specified GDN victim only",
+        "not a serving or model benchmark",
+        "boundary clock snapshots only; allocation needs separate trace"
+      ]
+    },
+    {
+      "schema": 1,
+      "kind": "qwen4exp_gdn_ordered_scratch_pilot",
+      "command": [
+        "scripts/qwen4exp_scratch_order_probe.py",
+        "--arm",
+        "scratch",
+        "--victim",
+        "wave-norm",
+        "--trigger",
+        "dense-wide",
+        "--tokens",
+        "64",
+        "--repeats",
+        "31",
+        "--output",
+        "/tmp/qwen4exp-scratch-audit/dense-order-2-scratch.json"
+      ],
+      "arm": "scratch",
+      "shape": {
+        "tokens": 64,
+        "Hk": 16,
+        "Hv": 48,
+        "Dk": 128,
+        "Dv": 128
+      },
+      "victim": "qwen4_exp_gdn_wave_norm_prefill_f32",
+      "trigger": "dense_wide256_f32_f32_out",
+      "dense_shape": [
+        257,
+        256,
+        256
+      ],
+      "dense_reference_check": {
+        "max_abs_error": 3.7103891372680664e-06,
+        "reference_scale": 9.250214397907257,
+        "f16_reference_pass": true
+      },
+      "clock_snapshots": [
+        {
+          "stage": "before",
+          "monotonic_ns": 3905551233592437,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "4",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        },
+        {
+          "stage": "pre-trigger",
+          "monotonic_ns": 3905551246543323,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "5",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        },
+        {
+          "stage": "post-trigger",
+          "monotonic_ns": 3905551249331215,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "5",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        },
+        {
+          "stage": "after",
+          "monotonic_ns": 3905551262239622,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "6",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        }
+      ],
+      "dense_library": {
+        "path": "/home/lhl/.cache/hipengine/build/gguf_q8_0_dense_wide-607dcca699485493/gguf_q8_0_dense_wide.so",
+        "sha256": "734fea59ed643644014c9e57c85371bd3c5c3508908acb84245a9c2aa98cfd99"
+      },
+      "before_ms": [
+        0.3381919860839844,
+        0.33494600653648376,
+        0.3365890085697174,
+        0.33422398567199707,
+        0.33550700545310974,
+        0.32969599962234497,
+        0.33097800612449646,
+        0.33454498648643494,
+        0.33246099948883057,
+        0.33502599596977234,
+        0.3256889879703522,
+        0.33177998661994934,
+        0.33526599407196045,
+        0.3327789902687073,
+        0.3341419994831085,
+        0.3287310004234314,
+        0.32861098647117615,
+        0.33358100056648254,
+        0.3320170044898987,
+        0.33177798986434937,
+        0.3302150070667267,
+        0.3334200084209442,
+        0.3347429931163788,
+        0.33229801058769226,
+        0.3337009847164154,
+        0.3294129967689514,
+        0.33009400963783264,
+        0.3329789936542511,
+        0.33161699771881104,
+        0.33357998728752136,
+        0.32833099365234375
+      ],
+      "after_ms": [
+        0.33454200625419617,
+        0.33205899596214294,
+        0.3333809971809387,
+        0.33254000544548035,
+        0.3327009975910187,
+        0.3276500105857849,
+        0.3301750123500824,
+        0.332940012216568,
+        0.33201900124549866,
+        0.3334619998931885,
+        0.3292129933834076,
+        0.33177798986434937,
+        0.33330100774765015,
+        0.32873299717903137,
+        0.3334609866142273,
+        0.32901298999786377,
+        0.33133798837661743,
+        0.33306100964546204,
+        0.33230000734329224,
+        0.3332209885120392,
+        0.3319379985332489,
+        0.3298949897289276,
+        0.3328999876976013,
+        0.33229899406433105,
+        0.33334100246429443,
+        0.3279719948768616,
+        0.3300960063934326,
+        0.33281999826431274,
+        0.3296140134334564,
+        0.3337019979953766,
+        0.3291339874267578
+      ],
+      "trigger_ms": 1.2348769903182983,
+      "after_over_before": 0.9985576126546071,
+      "output_and_state_exact": true,
+      "hashes": [
+        "aaf361f0438989bdd3673cf924f0e76d1227fb66836b71a35483cc90a729bea8",
+        "597e31b64c8026b44fdde3a82fc13d03c89f5de65a6f79396e03ca3fe100da7a"
+      ],
+      "build": {
+        "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-3d97211ffad0e4c1/qwen4_exp_gdn.so",
+        "sha256": "1e39f1cdad1bac1ed7b1a0b7357f68073486c5436b84bc6a567c9a5d546ba291"
+      },
+      "host": {
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "uname": [
+          "Linux",
+          "gfx1151",
+          "7.1.6-1-cachyos",
+          "#1 SMP PREEMPT_DYNAMIC Mon, 03 Aug 2026 16:03:35 +0000",
+          "x86_64"
+        ]
+      },
+      "performance_claim": false,
+      "limits": [
+        "specified GDN victim only",
+        "not a serving or model benchmark",
+        "boundary clock snapshots only; allocation needs separate trace"
+      ]
+    },
+    {
+      "schema": 1,
+      "kind": "qwen4exp_gdn_ordered_scratch_pilot",
+      "command": [
+        "scripts/qwen4exp_scratch_order_probe.py",
+        "--arm",
+        "sham",
+        "--victim",
+        "wave-norm",
+        "--trigger",
+        "dense-wide",
+        "--tokens",
+        "64",
+        "--repeats",
+        "31",
+        "--output",
+        "/tmp/qwen4exp-scratch-audit/dense-order-3-sham.json"
+      ],
+      "arm": "sham",
+      "shape": {
+        "tokens": 64,
+        "Hk": 16,
+        "Hv": 48,
+        "Dk": 128,
+        "Dv": 128
+      },
+      "victim": "qwen4_exp_gdn_wave_norm_prefill_f32",
+      "trigger": "qwen4_exp_gdn_wave_norm_prefill_f32",
+      "dense_shape": [
+        257,
+        256,
+        256
+      ],
+      "dense_reference_check": null,
+      "clock_snapshots": [
+        {
+          "stage": "before",
+          "monotonic_ns": 3905551698643756,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "5",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        },
+        {
+          "stage": "pre-trigger",
+          "monotonic_ns": 3905551711455361,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "6",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        },
+        {
+          "stage": "post-trigger",
+          "monotonic_ns": 3905551720467835,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "6",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        },
+        {
+          "stage": "after",
+          "monotonic_ns": 3905551733370902,
+          "values": {
+            "/sys/class/drm/card1/device/gpu_busy_percent": "7",
+            "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+          }
+        }
+      ],
+      "dense_library": {
+        "path": "/home/lhl/.cache/hipengine/build/gguf_q8_0_dense_wide-607dcca699485493/gguf_q8_0_dense_wide.so",
+        "sha256": "734fea59ed643644014c9e57c85371bd3c5c3508908acb84245a9c2aa98cfd99"
+      },
+      "before_ms": [
+        0.333965003490448,
+        0.33114001154899597,
+        0.3326230049133301,
+        0.32941699028015137,
+        0.33194100856781006,
+        0.32769298553466797,
+        0.3291360139846802,
+        0.3311389982700348,
+        0.32993701100349426,
+        0.3318209946155548,
+        0.3275730013847351,
+        0.32921600341796875,
+        0.33114001154899597,
+        0.32945600152015686,
+        0.33129701018333435,
+        0.32728898525238037,
+        0.32809001207351685,
+        0.3326190114021301,
+        0.3292129933834076,
+        0.33233898878097534,
+        0.3280099928379059,
+        0.32909199595451355,
+        0.3309760093688965,
+        0.32957300543785095,
+        0.32756999135017395,
+        0.3279300034046173,
+        0.32905200123786926,
+        0.33085599541664124,
+        0.3297329843044281,
+        0.3319379985332489,
+        0.3267279863357544
+      ],
+      "after_ms": [
+        0.3398059904575348,
+        0.3318609893321991,
+        0.33270299434661865,
+        0.33125999569892883,
+        0.33294299244880676,
+        0.3280549943447113,
+        0.3292970061302185,
+        0.3313409984111786,
+        0.3301379978656769,
+        0.33190199732780457,
+        0.3275730013847351,
+        0.3293370008468628,
+        0.3313409984111786,
+        0.3282949924468994,
+        0.33194199204444885,
+        0.3278540074825287,
+        0.3236059844493866,
+        0.33142000436782837,
+        0.3308190107345581,
+        0.3318620026111603,
+        0.3280540108680725,
+        0.327894002199173,
+        0.33122000098228455,
+        0.329816997051239,
+        0.33174100518226624,
+        0.32765400409698486,
+        0.32917600870132446,
+        0.33170101046562195,
+        0.3308990001678467,
+        0.33190199732780457,
+        0.3258099853992462
+      ],
+      "trigger_ms": 0.33005398511886597,
+      "after_over_before": 1.0040233717814178,
+      "output_and_state_exact": true,
+      "hashes": [
+        "aaf361f0438989bdd3673cf924f0e76d1227fb66836b71a35483cc90a729bea8",
+        "597e31b64c8026b44fdde3a82fc13d03c89f5de65a6f79396e03ca3fe100da7a"
+      ],
+      "build": {
+        "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-3d97211ffad0e4c1/qwen4_exp_gdn.so",
+        "sha256": "1e39f1cdad1bac1ed7b1a0b7357f68073486c5436b84bc6a567c9a5d546ba291"
+      },
+      "host": {
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "uname": [
+          "Linux",
+          "gfx1151",
+          "7.1.6-1-cachyos",
+          "#1 SMP PREEMPT_DYNAMIC Mon, 03 Aug 2026 16:03:35 +0000",
+          "x86_64"
+        ]
+      },
+      "performance_claim": false,
+      "limits": [
+        "specified GDN victim only",
+        "not a serving or model benchmark",
+        "boundary clock snapshots only; allocation needs separate trace"
+      ]
+    }
+  ],
+  "profiled": {
+    "schema": 1,
+    "kind": "qwen4exp_gdn_ordered_scratch_pilot",
+    "command": [
+      "scripts/qwen4exp_scratch_order_probe.py",
+      "--arm",
+      "scratch",
+      "--victim",
+      "wave-norm",
+      "--trigger",
+      "dense-wide",
+      "--tokens",
+      "64",
+      "--repeats",
+      "3",
+      "--output",
+      "/tmp/qwen4exp-scratch-audit/dense-order-profiled.json"
+    ],
+    "arm": "scratch",
+    "shape": {
+      "tokens": 64,
+      "Hk": 16,
+      "Hv": 48,
+      "Dk": 128,
+      "Dv": 128
+    },
+    "victim": "qwen4_exp_gdn_wave_norm_prefill_f32",
+    "trigger": "dense_wide256_f32_f32_out",
+    "dense_shape": [
+      257,
+      256,
+      256
+    ],
+    "dense_reference_check": {
+      "max_abs_error": 3.7103891372680664e-06,
+      "reference_scale": 9.250214397907257,
+      "f16_reference_pass": true
+    },
+    "clock_snapshots": [
+      {
+        "stage": "before",
+        "monotonic_ns": 3905602316744283,
+        "values": {
+          "/sys/class/drm/card1/device/gpu_busy_percent": "0",
+          "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+          "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+        }
+      },
+      {
+        "stage": "pre-trigger",
+        "monotonic_ns": 3905602319828181,
+        "values": {
+          "/sys/class/drm/card1/device/gpu_busy_percent": "0",
+          "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+          "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+        }
+      },
+      {
+        "stage": "post-trigger",
+        "monotonic_ns": 3905602322691725,
+        "values": {
+          "/sys/class/drm/card1/device/gpu_busy_percent": "1",
+          "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+          "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+        }
+      },
+      {
+        "stage": "after",
+        "monotonic_ns": 3905602325834623,
+        "values": {
+          "/sys/class/drm/card1/device/gpu_busy_percent": "1",
+          "/sys/class/drm/card1/device/pp_dpm_sclk": "0: 2900Mhz \n1: 1100Mhz \n2: 2900Mhz *",
+          "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 400Mhz \n1: 800Mhz \n2: 1000Mhz *"
+        }
+      }
+    ],
+    "dense_library": {
+      "path": "/home/lhl/.cache/hipengine/build/gguf_q8_0_dense_wide-607dcca699485493/gguf_q8_0_dense_wide.so",
+      "sha256": "734fea59ed643644014c9e57c85371bd3c5c3508908acb84245a9c2aa98cfd99"
+    },
+    "before_ms": [
+      0.3523780107498169,
+      0.3407360017299652,
+      0.34088701009750366
+    ],
+    "after_ms": [
+      0.35249799489974976,
+      0.34248998761177063,
+      0.34251999855041504
+    ],
+    "trigger_ms": 1.443215012550354,
+    "after_over_before": 1.0047904097385356,
+    "output_and_state_exact": true,
+    "hashes": [
+      "aaf361f0438989bdd3673cf924f0e76d1227fb66836b71a35483cc90a729bea8",
+      "597e31b64c8026b44fdde3a82fc13d03c89f5de65a6f79396e03ca3fe100da7a"
+    ],
+    "build": {
+      "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-3d97211ffad0e4c1/qwen4_exp_gdn.so",
+      "sha256": "1e39f1cdad1bac1ed7b1a0b7357f68073486c5436b84bc6a567c9a5d546ba291"
+    },
+    "host": {
+      "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+      "uname": [
+        "Linux",
+        "gfx1151",
+        "7.1.6-1-cachyos",
+        "#1 SMP PREEMPT_DYNAMIC Mon, 03 Aug 2026 16:03:35 +0000",
+        "x86_64"
+      ]
+    },
+    "performance_claim": false,
+    "limits": [
+      "specified GDN victim only",
+      "not a serving or model benchmark",
+      "boundary clock snapshots only; allocation needs separate trace"
+    ]
+  },
+  "trace": {
+    "kernels": [
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "1",
+        "Kernel_Id": "9",
+        "Kernel_Name": "__amd_rocclr_copyBuffer",
+        "Correlation_Id": "1",
+        "Start_Timestamp": "3905602294411734",
+        "End_Timestamp": "3905602294413938",
+        "LDS_Block_Size": "0",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "512",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "1024",
+        "Grid_Size_Y": "1",
+        "Grid_Size_Z": "1"
+      },
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "2",
+        "Kernel_Id": "9",
+        "Kernel_Name": "__amd_rocclr_copyBuffer",
+        "Correlation_Id": "2",
+        "Start_Timestamp": "3905602294698235",
+        "End_Timestamp": "3905602294700479",
+        "LDS_Block_Size": "0",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "512",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "1024",
+        "Grid_Size_Y": "1",
+        "Grid_Size_Z": "1"
+      },
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "3",
+        "Kernel_Id": "9",
+        "Kernel_Name": "__amd_rocclr_copyBuffer",
+        "Correlation_Id": "3",
+        "Start_Timestamp": "3905602294746996",
+        "End_Timestamp": "3905602294748278",
+        "LDS_Block_Size": "0",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "512",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "512",
+        "Grid_Size_Y": "1",
+        "Grid_Size_Z": "1"
+      },
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "4",
+        "Kernel_Id": "9",
+        "Kernel_Name": "__amd_rocclr_copyBuffer",
+        "Correlation_Id": "4",
+        "Start_Timestamp": "3905602294771311",
+        "End_Timestamp": "3905602294772633",
+        "LDS_Block_Size": "0",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "512",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "512",
+        "Grid_Size_Y": "1",
+        "Grid_Size_Z": "1"
+      },
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "5",
+        "Kernel_Id": "9",
+        "Kernel_Name": "__amd_rocclr_copyBuffer",
+        "Correlation_Id": "5",
+        "Start_Timestamp": "3905602294825061",
+        "End_Timestamp": "3905602294826383",
+        "LDS_Block_Size": "0",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "512",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "512",
+        "Grid_Size_Y": "1",
+        "Grid_Size_Z": "1"
+      },
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "6",
+        "Kernel_Id": "29",
+        "Kernel_Name": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "Correlation_Id": "6",
+        "Start_Timestamp": "3905602312378453",
+        "End_Timestamp": "3905602312701657",
+        "LDS_Block_Size": "0",
+        "Scratch_Size": "36",
+        "VGPR_Count": "256",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "128",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "6144",
+        "Grid_Size_Y": "1",
+        "Grid_Size_Z": "1"
+      },
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "7",
+        "Kernel_Id": "29",
+        "Kernel_Name": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "Correlation_Id": "7",
+        "Start_Timestamp": "3905602312884938",
+        "End_Timestamp": "3905602313209424",
+        "LDS_Block_Size": "0",
+        "Scratch_Size": "36",
+        "VGPR_Count": "256",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "128",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "6144",
+        "Grid_Size_Y": "1",
+        "Grid_Size_Z": "1"
+      },
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "8",
+        "Kernel_Id": "29",
+        "Kernel_Name": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "Correlation_Id": "8",
+        "Start_Timestamp": "3905602313307607",
+        "End_Timestamp": "3905602313634417",
+        "LDS_Block_Size": "0",
+        "Scratch_Size": "36",
+        "VGPR_Count": "256",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "128",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "6144",
+        "Grid_Size_Y": "1",
+        "Grid_Size_Z": "1"
+      },
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "9",
+        "Kernel_Id": "29",
+        "Kernel_Name": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "Correlation_Id": "9",
+        "Start_Timestamp": "3905602316886328",
+        "End_Timestamp": "3905602317211255",
+        "LDS_Block_Size": "0",
+        "Scratch_Size": "36",
+        "VGPR_Count": "256",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "128",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "6144",
+        "Grid_Size_Y": "1",
+        "Grid_Size_Z": "1"
+      },
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "10",
+        "Kernel_Id": "29",
+        "Kernel_Name": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "Correlation_Id": "10",
+        "Start_Timestamp": "3905602317309889",
+        "End_Timestamp": "3905602317632571",
+        "LDS_Block_Size": "0",
+        "Scratch_Size": "36",
+        "VGPR_Count": "256",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "128",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "6144",
+        "Grid_Size_Y": "1",
+        "Grid_Size_Z": "1"
+      },
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "11",
+        "Kernel_Id": "29",
+        "Kernel_Name": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "Correlation_Id": "11",
+        "Start_Timestamp": "3905602317722459",
+        "End_Timestamp": "3905602318047626",
+        "LDS_Block_Size": "0",
+        "Scratch_Size": "36",
+        "VGPR_Count": "256",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "128",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "6144",
+        "Grid_Size_Y": "1",
+        "Grid_Size_Z": "1"
+      },
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "12",
+        "Kernel_Id": "41",
+        "Kernel_Name": "void (anonymous namespace)::q8_0_dense_wide_kernel<float, 128, 256, 64, 64, true>(float const*, unsigned char const*, float*, int, int, int)",
+        "Correlation_Id": "12",
+        "Start_Timestamp": "3905602321294718",
+        "End_Timestamp": "3905602321326577",
+        "LDS_Block_Size": "55296",
+        "Scratch_Size": "92",
+        "VGPR_Count": "256",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "256",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "512",
+        "Grid_Size_Y": "2",
+        "Grid_Size_Z": "1"
+      },
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "13",
+        "Kernel_Id": "29",
+        "Kernel_Name": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "Correlation_Id": "13",
+        "Start_Timestamp": "3905602322833601",
+        "End_Timestamp": "3905602323158167",
+        "LDS_Block_Size": "0",
+        "Scratch_Size": "36",
+        "VGPR_Count": "256",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "128",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "6144",
+        "Grid_Size_Y": "1",
+        "Grid_Size_Z": "1"
+      },
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "14",
+        "Kernel_Id": "29",
+        "Kernel_Name": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "Correlation_Id": "14",
+        "Start_Timestamp": "3905602323264004",
+        "End_Timestamp": "3905602323588009",
+        "LDS_Block_Size": "0",
+        "Scratch_Size": "36",
+        "VGPR_Count": "256",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "128",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "6144",
+        "Grid_Size_Y": "1",
+        "Grid_Size_Z": "1"
+      },
+      {
+        "Kind": "KERNEL_DISPATCH",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Stream_Id": "0",
+        "Thread_Id": "3089667",
+        "Dispatch_Id": "15",
+        "Kernel_Id": "29",
+        "Kernel_Name": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "Correlation_Id": "15",
+        "Start_Timestamp": "3905602323676935",
+        "End_Timestamp": "3905602324004306",
+        "LDS_Block_Size": "0",
+        "Scratch_Size": "36",
+        "VGPR_Count": "256",
+        "Accum_VGPR_Count": "0",
+        "SGPR_Count": "128",
+        "Workgroup_Size_X": "128",
+        "Workgroup_Size_Y": "1",
+        "Workgroup_Size_Z": "1",
+        "Grid_Size_X": "6144",
+        "Grid_Size_Y": "1",
+        "Grid_Size_Z": "1"
+      }
+    ],
+    "scratch_allocations": [
+      {
+        "Kind": "SCRATCH_MEMORY",
+        "Operation": "SCRATCH_MEMORY_ALLOC",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Thread_Id": "3089719",
+        "Alloc_Flags": "0",
+        "Start_Timestamp": "3905602312197018",
+        "End_Timestamp": "3905602312299731",
+        "Allocation_Size": "1638400"
+      },
+      {
+        "Kind": "SCRATCH_MEMORY",
+        "Operation": "SCRATCH_MEMORY_FREE",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Thread_Id": "3089719",
+        "Alloc_Flags": "0",
+        "Start_Timestamp": "3905602321108784",
+        "End_Timestamp": "3905602321109235",
+        "Allocation_Size": "0"
+      },
+      {
+        "Kind": "SCRATCH_MEMORY",
+        "Operation": "SCRATCH_MEMORY_ALLOC",
+        "Agent_Id": "Agent 1",
+        "Queue_Id": "1",
+        "Thread_Id": "3089719",
+        "Alloc_Flags": "0",
+        "Start_Timestamp": "3905602321107722",
+        "End_Timestamp": "3905602321268133",
+        "Allocation_Size": "3932160"
+      }
+    ]
+  },
+  "raw_hashes": {
+    "/tmp/qwen4exp-scratch-audit/dense-order-trace/gfx1151/3089667_kernel_trace.csv": "758c23f9a917e3af5f540e7b4af9492373ebe897426bda2818c67f8dd610ecb6",
+    "/tmp/qwen4exp-scratch-audit/dense-order-trace/gfx1151/3089667_scratch_memory_trace.csv": "22f3d5e3e5acdb2176bb141b4dfbe989b7ddd7d6e4dadda051ff413219692705",
+    "/tmp/qwen4exp-scratch-audit/dense-order-trace/gfx1151/3089667_agent_info.csv": "5239c42eb699d523da3e4a43e3533cdb66e3f5754799e8915830891fd581d5a1"
+  },
+  "limits": [
+    "No representative decode victims yet",
+    "Incomplete all-kernel code-object metadata census",
+    "Clock boundary snapshots, not continuous monitoring",
+    "Already-scratch-enabled victim baseline: scratch growth, not pristine-to-first-scratch transition"
+  ]
+}
