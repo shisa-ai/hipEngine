@@ -64,10 +64,12 @@ __device__ __forceinline__ uint32_t lo_plane_nibbles(uint32_t bytes4) {
 }
 
 __device__ __forceinline__ uint32_t load_qs_bytes(const uint8_t* qs, int w) {
-  return static_cast<uint32_t>(qs[4 * w]) |
-      (static_cast<uint32_t>(qs[4 * w + 1]) << 8) |
-      (static_cast<uint32_t>(qs[4 * w + 2]) << 16) |
-      (static_cast<uint32_t>(qs[4 * w + 3]) << 24);
+  // One dword load, not four byte loads or-ed together. The four-byte form
+  // leaves the merge to the compiler's load-combine pass, which has to prove
+  // the alignment of `qs + 4 * w` through a chain of dynamic offsets. Every
+  // qword in this kernel sits at a 4-byte-aligned offset by construction:
+  // Q5_1_BLOCK_BYTES is 24 and the qs field starts at byte 8 of the block.
+  return *reinterpret_cast<const uint32_t*>(qs + 4 * w);
 }
 
 __device__ __forceinline__ uint32_t expand_hi_bits(uint32_t bits4) {
@@ -160,28 +162,47 @@ void q5_1_mmq_ds4_selected_prefill_kernel(
               fp16_bits_to_float(*reinterpret_cast<const uint16_t*>(w_sub + 2));
           const uint32_t qh =
               *reinterpret_cast<const uint32_t*>(w_sub + 4);
+          // The weight side of the dot product is the same for every row in the
+          // pass and every plane, so it is unpacked once here instead of per
+          // row. The row loop is not unrolled -- rcount is dynamic -- so inside
+          // it this costs four qword loads, eight nibble planes and eight
+          // high-bit expansions for every row of every sub-block.
+          uint32_t w_lo[4];
+          uint32_t w_hi[4];
+          uint32_t w_hlo[4];
+          uint32_t w_hhi[4];
+#pragma unroll
+          for (int w = 0; w < 4; ++w) {
+            const uint32_t bytes4 = load_qs_bytes(w_sub + 8, w);
+            w_lo[w] = lo_plane_nibbles(bytes4);
+            w_hi[w] = lo_plane_nibbles(bytes4 >> 4);
+            w_hlo[w] = expand_hi_bits(qh >> (4 * w));
+            w_hhi[w] = expand_hi_bits(qh >> (16 + 4 * w));
+          }
           for (int plane = 0; plane < planes; ++plane) {
           const uint8_t* x_base = x_ds4 +
               (static_cast<int64_t>(plane) * compact_rows * ds4_blocks +
                row_base * ds4_blocks + kb) * x_block_bytes;
           for (int r = 0; r < rcount; ++r) {
             const uint8_t* x_block = x_base + r * ds4_blocks * x_block_bytes;
-            const int32_t* xw = reinterpret_cast<const int32_t*>(
-                x_block + (F32_SCALES ? 32 : 16) + sub * 32);
+            // The eight activation quants come in two 16-byte loads rather than
+            // eight dword loads. The block header is 16 bytes (32 in the fp32
+            // twin) and the block stride is a multiple of 16, so this address is
+            // 16-byte aligned by construction.
+            const uint8_t* xq =
+                x_block + (F32_SCALES ? 32 : 16) + sub * 32;
+            const uint4 xa = *reinterpret_cast<const uint4*>(xq);
+            const uint4 xb = *reinterpret_cast<const uint4*>(xq + 16);
+            const uint32_t x_lo[4] = {xa.x, xa.y, xa.z, xa.w};
+            const uint32_t x_hi[4] = {xb.x, xb.y, xb.z, xb.w};
             int dot_q = 0;
             int dot_h = 0;
 #pragma unroll
             for (int w = 0; w < 4; ++w) {
-              const uint32_t bytes4 = load_qs_bytes(w_sub + 8, w);
-              const uint32_t lo = lo_plane_nibbles(bytes4);
-              const uint32_t hi = lo_plane_nibbles(bytes4 >> 4);
-              const uint32_t x_lo = static_cast<uint32_t>(xw[w]);
-              const uint32_t x_hi = static_cast<uint32_t>(xw[4 + w]);
-              dot_q = dot4_u8_s8(lo, x_lo, dot_q);
-              dot_q = dot4_u8_s8(hi, x_hi, dot_q);
-              dot_h = dot4_u8_s8(expand_hi_bits(qh >> (4 * w)), x_lo, dot_h);
-              dot_h = dot4_u8_s8(
-                  expand_hi_bits(qh >> (16 + 4 * w)), x_hi, dot_h);
+              dot_q = dot4_u8_s8(w_lo[w], x_lo[w], dot_q);
+              dot_q = dot4_u8_s8(w_hi[w], x_hi[w], dot_q);
+              dot_h = dot4_u8_s8(w_hlo[w], x_lo[w], dot_h);
+              dot_h = dot4_u8_s8(w_hhi[w], x_hi[w], dot_h);
             }
             const float xd = x_block_scale<F32_SCALES>(x_block, 2 * sub);
             const float xs = x_block_scale<F32_SCALES>(x_block, 2 * sub + 1);
