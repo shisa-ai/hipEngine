@@ -1,0 +1,477 @@
+{
+  "status": "captured_requires_manual_review",
+  "command": [
+    "scripts/qwen4exp_q8_repair_tasks.py",
+    "--model-root",
+    "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/qwen4exp-ledger-20260928-current/hipcc-version.txt",
+    "--output",
+    "/tmp/qwen4exp-natural-long-dense-q8-code4096.json",
+    "--candidate",
+    "production_dense_q8_restore",
+    "--max-tokens",
+    "4096",
+    "--extra-prompts",
+    "benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl",
+    "--prompt-id",
+    "long_code_booking_merge"
+  ],
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "f0d151d32541fff5093d67fe9acc0cdb2b8e1a15",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "It seems that tuned daemon is not running, preset profile is not activated.\nPreset profile: accelerator-performance",
+    "cpu_governors": {
+      "powersave": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "protocol": "Capture complete paired task outputs for manual non-inferiority review.\n\nPredeclared review: each prompt must preserve requested facts, constraints,\ncode behavior and language. No per-prompt degradation versus strict allowed.\nTruncated responses require further review, never an automatic pass.\n",
+  "prompts": [
+    {
+      "id": "long_code_booking_merge",
+      "category": "code",
+      "prompt": "Implement a pure Python function reconcile(events) for a room-booking service. Return only executable Python code including focused assert-based tests. Each event is a dictionary with keys booking_id, revision, room, start, end, and cancelled. booking_id and room are strings; revision, start and end are integers; cancelled is a boolean. Inputs are already type-checked and every interval has start < end. Times are integer minutes and intervals are half-open. The function must not mutate the input list or any event dictionary. Events can arrive out of revision order. First choose exactly one winning event for each booking_id: the largest revision wins, and when revisions tie the event appearing later in the input wins. This selection happens before any cancellation or overlap processing. A winning cancellation deletes that booking even if an earlier revision was active. A cancelled event must never reserve time or block another booking.\n\nThen process all surviving bookings in ascending order of (start, end, booking_id), independent of their original arrival order. Accept a booking unless it overlaps a previously accepted booking in the same room. Reject the whole booking on overlap; do not clip, merge or reschedule it. A booking rejected because of an overlap must not block later bookings. Adjacent bookings where one end equals the next start do not overlap. Different rooms are independent. Return a dictionary with accepted and rejected fields, each containing a list of booking IDs in processing order. Deleted bookings appear in neither list. Empty input returns two empty lists. Clarity matters more than asymptotic performance; a straightforward quadratic implementation is acceptable.\n\nInclude tests demonstrating out-of-order revisions, equal-revision last-arrival selection, cancellation of an earlier active booking, adjacency, room independence, and the fact that a rejected booking does not block a later one. For the last case use one room with A=[0,5), B=[3,10), C=[5,7); A and C must be accepted and B rejected. Also test that a deep copy of the input still equals the original after the function returns. Do not use external libraries or access files, clocks or networks.",
+      "source": {
+        "id": "long_code_booking_merge",
+        "category": "code",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Implement a pure Python function reconcile(events) for a room-booking service. Return only executable Python code including focused assert-based tests. Each event is a dictionary with keys booking_id, revision, room, start, end, and cancelled. booking_id and room are strings; revision, start and end are integers; cancelled is a boolean. Inputs are already type-checked and every interval has start < end. Times are integer minutes and intervals are half-open. The function must not mutate the input list or any event dictionary. Events can arrive out of revision order. First choose exactly one winning event for each booking_id: the largest revision wins, and when revisions tie the event appearing later in the input wins. This selection happens before any cancellation or overlap processing. A winning cancellation deletes that booking even if an earlier revision was active. A cancelled event must never reserve time or block another booking.\n\nThen process all surviving bookings in ascending order of (start, end, booking_id), independent of their original arrival order. Accept a booking unless it overlaps a previously accepted booking in the same room. Reject the whole booking on overlap; do not clip, merge or reschedule it. A booking rejected because of an overlap must not block later bookings. Adjacent bookings where one end equals the next start do not overlap. Different rooms are independent. Return a dictionary with accepted and rejected fields, each containing a list of booking IDs in processing order. Deleted bookings appear in neither list. Empty input returns two empty lists. Clarity matters more than asymptotic performance; a straightforward quadratic implementation is acceptable.\n\nInclude tests demonstrating out-of-order revisions, equal-revision last-arrival selection, cancellation of an earlier active booking, adjacency, room independence, and the fact that a rejected booking does not block a later one. For the last case use one room with A=[0,5), B=[3,10), C=[5,7); A and C must be accepted and B rejected. Also test that a deep copy of the input still equals the original after the function returns. Do not use external libraries or access files, clocks or networks."
+          }
+        ]
+      },
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl"
+    }
+  ],
+  "arms": {
+    "strict": {
+      "manifest": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed",
+      "overrides": {},
+      "cases": [
+        {
+          "id": "long_code_booking_merge",
+          "category": "code",
+          "input_tokens": 438,
+          "dispatch_observations": [
+            {
+              "prefill": {
+                "calls": 0,
+                "shapes": []
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": false,
+              "candidate_observed": null,
+              "gpu_engagement_certified": false
+            },
+            {
+              "prefill": {
+                "calls": 0,
+                "shapes": []
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": false,
+              "candidate_observed": null,
+              "gpu_engagement_certified": false
+            }
+          ],
+          "deterministic": true,
+          "output": "```python\ndef reconcile(events):\n    \"\"\"\n    Reconcile room booking events.\n    \n    Args:\n        events: List of event dictionaries with keys:\n            - booking_id (str)\n            - revision (int)\n            - room (str)\n            - start (int)\n            - end (int)\n            - cancelled (bool)\n    \n    Returns:\n        Dictionary with 'accepted' and 'rejected' lists of booking IDs.\n    \"\"\"\n    # Step 1: Choose winning event for each booking_id\n    # Largest revision wins; ties broken by later appearance in input\n    winners = {}  # booking_id -> (revision, index, event)\n    \n    for idx, event in enumerate(events):\n        bid = event['booking_id']\n        rev = event['revision']\n        \n        if bid not in winners:\n            winners[bid] = (rev, idx, event)\n        else:\n            old_rev, old_idx, old_event = winners[bid]\n            # Larger revision wins; if tie, later index wins\n            if rev > old_rev or (rev == old_rev and idx > old_idx):\n                winners[bid] = (rev, idx, event)\n    \n    # Step 2: Filter out cancelled winning events\n    surviving = []\n    for bid, (rev, idx, event) in winners.items():\n        if not event['cancelled']:\n            surviving.append(event)\n    \n    # Step 3: Sort surviving bookings by (start, end, booking_id)\n    surviving.sort(key=lambda e: (e['start'], e['end'], e['booking_id']))\n    \n    # Step 4: Process bookings, accepting unless overlap in same room\n    accepted = []\n    rejected = []\n    \n    # Track accepted bookings per room for overlap checking\n    # For each room, keep list of accepted intervals (start, end)\n    room_intervals = {}  # room -> list of (start, end)\n    \n    for event in surviving:\n        room = event['room']\n        start = event['start']\n        end = event['end']\n        bid = event['booking_id']\n        \n        if room not in room_intervals:\n            room_intervals[room] = []\n        \n        # Check for overlap with any previously accepted booking in the same room\n        # Overlap occurs if intervals intersect: not (end <= other_start or start >= other_end)\n        # i.e., start < other_end and other_start < end\n        has_overlap = False\n        for other_start, other_end in room_intervals[room]:\n            if start < other_end and other_start < end:\n                has_overlap = True\n                break\n        \n        if has_overlap:\n            rejected.append(bid)\n        else:\n            accepted.append(bid)\n            room_intervals[room].append((start, end))\n    \n    return {'accepted': accepted, 'rejected': rejected}\n\n\n# Tests\ndef test_out_of_order_revisions():\n    \"\"\"Test that out-of-order revisions are handled correctly.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 2, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Revision 2 wins, so A with [0,10) is accepted\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == []\n\n\ndef test_equal_revision_last_arrival():\n    \"\"\"Test that when revisions tie, the later arrival wins.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 10, 'end': 15, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Second event (later arrival) wins, so A with [10,15) is accepted\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == []\n\n\ndef test_cancellation_of_earlier_active():\n    \"\"\"Test that a cancelled winning event deletes the booking.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 2, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': True},\n    ]\n    result = reconcile(events)\n    # Revision 2 wins and is cancelled, so A is deleted\n    assert result['accepted'] == []\n    assert result['rejected'] == []\n\n\ndef test_adjacency():\n    \"\"\"Test that adjacent bookings (end == start) do not overlap.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 10, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Both should be accepted since they are adjacent\n    assert result['accepted'] == ['A', 'B']\n    assert result['rejected'] == []\n\n\ndef test_room_independence():\n    \"\"\"Test that different rooms are independent.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R2', 'start': 0, 'end': 10, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Both should be accepted since they are in different rooms\n    assert result['accepted'] == ['A', 'B']\n    assert result['rejected'] == []\n\n\ndef test_rejected_does_not_block():\n    \"\"\"Test that a rejected booking does not block later bookings.\"\"\"\n    # A=[0,5), B=[3,10), C=[5,7) in same room\n    # A accepted, B rejected (overlaps A), C accepted (adjacent to A, doesn't overlap A)\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 3, 'end': 10, 'cancelled': False},\n        {'booking_id': 'C', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 7, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Processing order by (start, end, booking_id): A(0,5), B(3,10), C(5,7)\n    # A accepted, B rejected (overlaps A), C accepted (adjacent to A, no overlap with A)\n    assert result['accepted'] == ['A', 'C']\n    assert result['rejected'] == ['B']\n\n\ndef test_empty_input():\n    \"\"\"Test that empty input returns empty lists.\"\"\"\n    result = reconcile([])\n    assert result['accepted'] == []\n    assert result['rejected'] == []\n\n\ndef test_no_mutation():\n    \"\"\"Test that the input is not mutated.\"\"\"\n    import copy\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 15, 'cancelled': False},\n    ]\n    original = copy.deepcopy(events)\n    reconcile(events)\n    assert events == original\n\n\ndef test_multiple_bookings_same_room_overlap():\n    \"\"\"Test overlapping bookings in same room.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 15, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # A accepted, B rejected (overlaps A)\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == ['B']\n\n\ndef test_cancelled_does_not_block():\n    \"\"\"Test that a cancelled booking does not block others.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': True},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 15, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # A is cancelled, so B should be accepted\n    assert result['accepted'] == ['B']\n    assert result['rejected'] == []\n\n\ndef test_revision_tie_with_cancellation():\n    \"\"\"Test that cancellation in winning revision deletes booking.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': True},\n    ]\n    result = reconcile(events)\n    # Second event (later arrival) wins and is cancelled\n    assert result['accepted'] == []\n    assert result['rejected'] == []\n\n\nif __name__ == '__main__':\n    test_out_of_order_revisions()\n    test_equal_revision_last_arrival()\n    test_cancellation_of_earlier_active()\n    test_adjacency()\n    test_room_independence()\n    test_rejected_does_not_block()\n    test_empty_input()\n    test_no_mutation()\n    test_multiple_bookings_same_room_overlap()\n    test_cancelled_does_not_block()\n    test_revision_tie_with_cancellation()\n    print(\"All tests passed!\")\n```<|im_end|>",
+          "prefix_matches_previous_capture": true,
+          "repeat_summaries": [
+            {
+              "tokens": 2424,
+              "finish_reason": "eos",
+              "ids_sha256": "8fa90405253ee69ec847ee1c0488c939fc548d47d67db5c640cfe994eac98664",
+              "text_sha256": "5df92c9e4c222094ccded0092cefc2fdea695563333c2e224c71718510b14a71"
+            },
+            {
+              "tokens": 2424,
+              "finish_reason": "eos",
+              "ids_sha256": "8fa90405253ee69ec847ee1c0488c939fc548d47d67db5c640cfe994eac98664",
+              "text_sha256": "5df92c9e4c222094ccded0092cefc2fdea695563333c2e224c71718510b14a71"
+            }
+          ]
+        }
+      ]
+    },
+    "production_dense_q8_restore": {
+      "manifest": "35e57360e648bcc8ce8f21d89bf5583a0b4217061b306ec96616b2607cc6e565",
+      "overrides": {
+        "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
+        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "0",
+        "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "1",
+        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0"
+      },
+      "cases": [
+        {
+          "id": "long_code_booking_merge",
+          "category": "code",
+          "input_tokens": 438,
+          "dispatch_observations": [
+            {
+              "prefill": {
+                "calls": 398,
+                "shapes": [
+                  {
+                    "arguments": [
+                      438,
+                      640,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      512
+                    ],
+                    "calls": 24
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      640
+                    ],
+                    "calls": 96
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      2560
+                    ],
+                    "calls": 1
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      6144
+                    ],
+                    "calls": 36
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      10240
+                    ],
+                    "calls": 37
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      12288
+                    ],
+                    "calls": 12
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      6144,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      10240,
+                      320
+                    ],
+                    "calls": 96
+                  }
+                ]
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": true,
+              "candidate_observed": true,
+              "gpu_engagement_certified": false
+            },
+            {
+              "prefill": {
+                "calls": 398,
+                "shapes": [
+                  {
+                    "arguments": [
+                      438,
+                      640,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      512
+                    ],
+                    "calls": 24
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      640
+                    ],
+                    "calls": 96
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      2560
+                    ],
+                    "calls": 1
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      6144
+                    ],
+                    "calls": 36
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      10240
+                    ],
+                    "calls": 37
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      12288
+                    ],
+                    "calls": 12
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      6144,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      10240,
+                      320
+                    ],
+                    "calls": 96
+                  }
+                ]
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": true,
+              "candidate_observed": true,
+              "gpu_engagement_certified": false
+            }
+          ],
+          "deterministic": true,
+          "output": "```python\ndef reconcile(events):\n    \"\"\"\n    Reconcile room booking events.\n    \n    Args:\n        events: List of event dictionaries with keys:\n            - booking_id (str)\n            - revision (int)\n            - room (str)\n            - start (int)\n            - end (int)\n            - cancelled (bool)\n    \n    Returns:\n        Dictionary with 'accepted' and 'rejected' lists of booking IDs.\n    \"\"\"\n    # Step 1: Choose winning event for each booking_id\n    # Largest revision wins; ties broken by later appearance in input\n    winners = {}  # booking_id -> (revision, index, event)\n    \n    for idx, event in enumerate(events):\n        bid = event['booking_id']\n        rev = event['revision']\n        \n        if bid not in winners:\n            winners[bid] = (rev, idx, event)\n        else:\n            old_rev, old_idx, old_event = winners[bid]\n            # Larger revision wins; if tie, later index wins\n            if rev > old_rev or (rev == old_rev and idx > old_idx):\n                winners[bid] = (rev, idx, event)\n    \n    # Step 2: Filter out cancelled winning events\n    surviving = []\n    for bid, (rev, idx, event) in winners.items():\n        if not event['cancelled']:\n            surviving.append(event)\n    \n    # Step 3: Sort surviving bookings by (start, end, booking_id)\n    surviving.sort(key=lambda e: (e['start'], e['end'], e['booking_id']))\n    \n    # Step 4: Process bookings, accepting unless overlap in same room\n    accepted = []\n    rejected = []\n    \n    # Track accepted bookings per room for overlap checking\n    # For each room, keep list of accepted intervals (start, end)\n    room_intervals = {}  # room -> list of (start, end)\n    \n    for event in surviving:\n        room = event['room']\n        start = event['start']\n        end = event['end']\n        bid = event['booking_id']\n        \n        if room not in room_intervals:\n            room_intervals[room] = []\n        \n        # Check for overlap with any previously accepted booking in the same room\n        # Overlap occurs if intervals intersect: not (end <= other_start or start >= other_end)\n        # i.e., start < other_end and other_start < end\n        has_overlap = False\n        for other_start, other_end in room_intervals[room]:\n            if start < other_end and other_start < end:\n                has_overlap = True\n                break\n        \n        if has_overlap:\n            rejected.append(bid)\n        else:\n            accepted.append(bid)\n            room_intervals[room].append((start, end))\n    \n    return {'accepted': accepted, 'rejected': rejected}\n\n\n# Tests\ndef test_out_of_order_revisions():\n    \"\"\"Test that out-of-order revisions are handled correctly.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 2, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Revision 2 wins, so A with [0,10) is accepted\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == []\n\n\ndef test_equal_revision_last_arrival():\n    \"\"\"Test that when revisions tie, the later arrival wins.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 10, 'end': 15, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Second event (later arrival) wins, so A with [10,15) is accepted\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == []\n\n\ndef test_cancellation_of_earlier_active():\n    \"\"\"Test that a cancelled winning event deletes the booking.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 2, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': True},\n    ]\n    result = reconcile(events)\n    # Revision 2 wins and is cancelled, so A is deleted\n    assert result['accepted'] == []\n    assert result['rejected'] == []\n\n\ndef test_adjacency():\n    \"\"\"Test that adjacent bookings (end == start) do not overlap.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 10, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Both should be accepted since they are adjacent\n    assert result['accepted'] == ['A', 'B']\n    assert result['rejected'] == []\n\n\ndef test_room_independence():\n    \"\"\"Test that different rooms are independent.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R2', 'start': 0, 'end': 10, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Both should be accepted since they are in different rooms\n    assert result['accepted'] == ['A', 'B']\n    assert result['rejected'] == []\n\n\ndef test_rejected_does_not_block():\n    \"\"\"Test that a rejected booking does not block later bookings.\"\"\"\n    # A=[0,5), B=[3,10), C=[5,7) in same room\n    # A accepted, B rejected (overlaps A), C accepted (adjacent to A, doesn't overlap A)\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 3, 'end': 10, 'cancelled': False},\n        {'booking_id': 'C', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 7, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Processing order by (start, end, booking_id): A(0,5), B(3,10), C(5,7)\n    # A accepted, B rejected (overlaps A), C accepted (adjacent to A, no overlap with A)\n    assert result['accepted'] == ['A', 'C']\n    assert result['rejected'] == ['B']\n\n\ndef test_empty_input():\n    \"\"\"Test that empty input returns empty lists.\"\"\"\n    result = reconcile([])\n    assert result['accepted'] == []\n    assert result['rejected'] == []\n\n\ndef test_no_mutation():\n    \"\"\"Test that the input is not mutated.\"\"\"\n    import copy\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 15, 'cancelled': False},\n    ]\n    original = copy.deepcopy(events)\n    reconcile(events)\n    assert events == original\n\n\ndef test_multiple_bookings_same_room_overlap():\n    \"\"\"Test overlapping bookings in same room.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 15, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # A accepted, B rejected (overlaps A)\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == ['B']\n\n\ndef test_cancelled_does_not_block():\n    \"\"\"Test that a cancelled booking does not block others.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': True},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 15, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # A is cancelled, so B should be accepted\n    assert result['accepted'] == ['B']\n    assert result['rejected'] == []\n\n\ndef test_revision_tie_with_cancellation():\n    \"\"\"Test that cancellation in winning revision deletes booking.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': True},\n    ]\n    result = reconcile(events)\n    # Second event (later arrival) wins and is cancelled\n    assert result['accepted'] == []\n    assert result['rejected'] == []\n\n\nif __name__ == '__main__':\n    test_out_of_order_revisions()\n    test_equal_revision_last_arrival()\n    test_cancellation_of_earlier_active()\n    test_adjacency()\n    test_room_independence()\n    test_rejected_does_not_block()\n    test_empty_input()\n    test_no_mutation()\n    test_multiple_bookings_same_room_overlap()\n    test_cancelled_does_not_block()\n    test_revision_tie_with_cancellation()\n    print(\"All tests passed!\")\n```<|im_end|>",
+          "prefix_matches_previous_capture": true,
+          "repeat_summaries": [
+            {
+              "tokens": 2424,
+              "finish_reason": "eos",
+              "ids_sha256": "8fa90405253ee69ec847ee1c0488c939fc548d47d67db5c640cfe994eac98664",
+              "text_sha256": "5df92c9e4c222094ccded0092cefc2fdea695563333c2e224c71718510b14a71"
+            },
+            {
+              "tokens": 2424,
+              "finish_reason": "eos",
+              "ids_sha256": "8fa90405253ee69ec847ee1c0488c939fc548d47d67db5c640cfe994eac98664",
+              "text_sha256": "5df92c9e4c222094ccded0092cefc2fdea695563333c2e224c71718510b14a71"
+            }
+          ]
+        }
+      ],
+      "dispatch": {
+        "calls": 796,
+        "shapes": [
+          {
+            "arguments": [
+              438,
+              640,
+              2560
+            ],
+            "calls": 96
+          },
+          {
+            "arguments": [
+              438,
+              2560,
+              512
+            ],
+            "calls": 48
+          },
+          {
+            "arguments": [
+              438,
+              2560,
+              640
+            ],
+            "calls": 192
+          },
+          {
+            "arguments": [
+              438,
+              2560,
+              2560
+            ],
+            "calls": 2
+          },
+          {
+            "arguments": [
+              438,
+              2560,
+              6144
+            ],
+            "calls": 72
+          },
+          {
+            "arguments": [
+              438,
+              2560,
+              10240
+            ],
+            "calls": 74
+          },
+          {
+            "arguments": [
+              438,
+              2560,
+              12288
+            ],
+            "calls": 24
+          },
+          {
+            "arguments": [
+              438,
+              6144,
+              2560
+            ],
+            "calls": 96
+          },
+          {
+            "arguments": [
+              438,
+              10240,
+              320
+            ],
+            "calls": 192
+          }
+        ],
+        "key": [
+          "hip_gfx1151",
+          "linear",
+          "gguf_q8_0",
+          "iu8_wmma_prefill_f32_f32_out"
+        ],
+        "direct_target": null,
+        "required": true,
+        "kind": "host_candidate_call_observation",
+        "gpu_engagement_certified": false,
+        "candidate_observed_every_repeat": true
+      }
+    }
+  },
+  "lifecycle": {
+    "strict": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 84236891024,
+      "total_allocated_bytes": 84236891024,
+      "total_freed_bytes": 84236891024,
+      "active_allocations": 0,
+      "peak_allocations": 1617
+    },
+    "production_dense_q8_restore": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 84347564952,
+      "total_allocated_bytes": 168629307184,
+      "total_freed_bytes": 168629307184,
+      "active_allocations": 0,
+      "peak_allocations": 1622
+    }
+  },
+  "candidate": "production_dense_q8_restore",
+  "complete_suite": false,
+  "canonical_suite_complete": false,
+  "prompt_token_budget": 1024,
+  "suite_sha256": {
+    "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280",
+    "/home/lhl/hipEngine/benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl": "ecede69819aad1443f677ebe8f8c7dd505c1e9c8a160f6f40c5d37e7f80805fb"
+  },
+  "max_tokens": 4096,
+  "repeats": 2,
+  "performance_claim": false,
+  "task_passed": false,
+  "raw_capture_sha256": "eedc48f3ce66147d9817ab2fbe087826bd7d081c18cd667088d7e26d7e4f184b",
+  "all_arm_outputs_identical": true
+}
