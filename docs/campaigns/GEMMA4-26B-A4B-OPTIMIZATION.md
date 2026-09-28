@@ -350,6 +350,52 @@ Artifacts: `benchmarks/results/2026-09-28-gemma4-gfx1151-prefill-route-attributi
 `scripts/gemma4_prefill_route_ablation.py`,
 `scripts/gemma4_attention_prefill_bench.py`.
 
+## Current prefill status — 2026-09-29, gfx1151 (the remaining gap is one kernel)
+
+The campaign metric has been a 512-token prefill. Measured at the same-host
+llama.cpp reference's own protocol, that point is the **least** informative one on
+the curve:
+
+| prompt | this engine | llama.cpp | gap |
+| ---: | ---: | ---: | ---: |
+| 512 | 870.4 tok/s | 1012.98 | 1.16x |
+| 1024 | 704.3 | 1057.48 | 1.50x |
+| 2048 | 567.8 | 1067.14 | 1.88x |
+| 4096 | **453.9** | **1039.85** | **2.29x** |
+
+The engine's rate falls 2.47x per doubling; the reference is flat within 3
+percent across the same eightfold range.
+
+A kernel census at 512/2048/4096 (HIP event pairs, accounted to 98.5/98.9/98.9
+percent) says why. **Every non-attention term scales linearly, 7.4 to 7.8x for 8x
+the tokens** — the expert block, the dense projections, the router, and every
+norm, rotary and elementwise kernel. `gemma4_attention_prefill_bf16` scales
+**41.13x** and is **61.0 percent of the 4096-token step**.
+
+**The non-attention total at 4096 tokens is 3534 ms against the reference's entire
+4096-token prefill of about 3940 ms.** The rest of the step is already at the
+reference's whole prefill cost, so the remaining gap is the attention kernel and
+nothing else. The same holds at 512, where non-attention is 469.7 ms against a
+505 ms reference.
+
+The kernel performs 1524.7 GFLOP of attention in 5.5207 s at 4096 tokens — **276
+GFLOP/s, about one percent of this part's bf16 rate** — and the rate is flat in
+length, so there is no length-dependent inefficiency to remove: it is slow at
+every length and its share grows only because it is the one quadratic term. Its
+in-situ decomposition was already taken: the K/V load and its dot are 25 percent
+of the cost and the surrounding per-key machinery — mask test, LDS write of the
+logit, block max, softmax rescale, loop scalars — is 75 percent. The kernel's own
+comments record that it issues about 3.4 percent of peak and that its deliberate
+`#pragma unroll 2` is not being applied by the compiler.
+
+Structure: one block of 256 threads per (token, head), three passes over the
+keys, no query tiling, and a warp-level reduction **per key**, so with head_dim
+256 each thread does one multiply-add per key and the rest of the iteration is
+overhead.
+
+Artifacts: `benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-ladder-and-attention-share.json`,
+`worklog/entries/20260930T020000.000000Z-lhl-gemma4-prefill-gap-is-entirely-attention-7c1e5a.md`.
+
 ## Current correctness status — 2026-09-26
 
 The key-slice attention implementation failed the corrected teacher-forced
