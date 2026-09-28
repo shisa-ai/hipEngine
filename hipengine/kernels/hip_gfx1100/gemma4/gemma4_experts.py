@@ -455,8 +455,14 @@ def gemma4_experts_forward_bf16(
     # group-scatter this machinery was first built for.
     from hipengine.runtime.laguna_moe import resolve_laguna_group_compact_mode
 
-    compact_parallel = (
-        resolve_laguna_group_compact_mode(gate_up_proj.backend) == "parallel"
+    # `Gemma4Projection` is `int | Gemma4GGUFDeviceWeight`, and a raw pointer
+    # carries no backend to resolve a capability against. That is not a silent
+    # downgrade: it is the same answer the resolver gives a backend that
+    # declares nothing, and the mode is still the profile's to set by name. The
+    # GGUF path, which is what production passes, always has the weight object.
+    compact_backend = getattr(gate_up_proj, "backend", None)
+    compact_parallel = compact_backend is not None and (
+        resolve_laguna_group_compact_mode(compact_backend) == "parallel"
     )
     qwen35_moe_group_prefix_active(
         counts.ptr,
