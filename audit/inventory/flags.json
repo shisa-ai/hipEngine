@@ -10390,7 +10390,7 @@
           "hipengine/benchmark/provenance.py:336",
           "hipengine/core/build.py:17",
           "hipengine/core/build.py:225",
-          "hipengine/generation/gemma4_gguf.py:322",
+          "hipengine/generation/gemma4_gguf.py:427",
           "hipengine/kernels/backends.py:24",
           "hipengine/kernels/backends.py:289",
           "hipengine/kernels/hip_gfx1151/__init__.py:5"
@@ -10415,7 +10415,7 @@
         ]
       },
       "id": "flag/HIPENGINE_HIP_ARCH",
-      "evidence_hash": "8b332f72051e"
+      "evidence_hash": "9c53343eb2c6"
     },
     {
       "kind": "flag",

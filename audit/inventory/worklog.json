@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11131,
-    "current": 3899,
+    "entries": 11132,
+    "current": 3900,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1226,
+    "rows": 1227,
     "by_rule": {
       "dependency": 40,
       "legacy-next": 109,
-      "status": 1077
+      "status": 1078
     }
   },
   "rows": [
@@ -46242,6 +46242,48 @@
       },
       "id": "worklog/20260928T091614.355742Z-lhl-gemma4-decode-floor-a85859",
       "evidence_hash": "ed3ee4b77b30"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T092503.055565Z-lhl-gemma4-mtp-provider-1cad49",
+      "title": "the gemma 4 mtp provider is registered and runs through the generator but llm generate does not select it",
+      "location": "worklog/entries/20260928T092503.055565Z-lhl-gemma4-mtp-provider-1cad49.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-mtp-provider",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "1. **Find why `llm.generate` does not select the speculative route.** Read the\n   path from `LLM.generate` through the engine loop; the answer is a specific\n   branch, and the last attempt shows guessing at declarations does not find it.\n2. **Add a test that pins the route**, not just the provider: that a generator\n   with an attached provider and a greedy request reaches\n   `execution_path == \"gemma4_mtp_batched_exact_verify\"`.\n3. **Bit-exactness is the reason this can land enabled by default.** The cycle\n   reproduces plain greedy exactly, so promotion does not need the\n   arithmetic-change ",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T092503.055565Z-lhl-gemma4-mtp-provider-1cad49.md",
+        "refs": [],
+        "tokens": [
+          "but",
+          "does",
+          "gemma",
+          "generate",
+          "generator",
+          "llm",
+          "mtp",
+          "provider",
+          "registered",
+          "runs",
+          "select",
+          "through"
+        ]
+      },
+      "id": "worklog/20260928T092503.055565Z-lhl-gemma4-mtp-provider-1cad49",
+      "evidence_hash": "7d5a58f57cf4"
     },
     {
       "kind": "worklog",
