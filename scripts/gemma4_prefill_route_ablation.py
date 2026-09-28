@@ -30,13 +30,14 @@ from pathlib import Path
 
 
 def _arms() -> list[tuple[str, str, tuple[str, ...]]]:
-    """(arm name, choke point, symbols/functions skipped)"""
+    """(arm name, choke point) -- the third field is unused, kept for shape."""
 
     return [
         ("baseline", "", ()),
-        # The four dense Q8_0 prefill leaves and the lm head.
-        ("no_dense_q8", "k_launch", ("hipengine_gguf_q8_0",)),
-        ("no_all_gemv", "k_launch", ("*",)),
+        # The dense projections the layer runs through `gemma4_project`, and the
+        # lm head.
+        ("no_dense_q8", "dense_q8", ()),
+        ("no_all_gemv", "all_gemv", ()),
         ("no_experts", "experts", ()),
         ("no_attention", "attention", ()),
         ("no_router", "router", ()),
@@ -81,13 +82,9 @@ def main() -> int:
     from hipengine.llm import SamplingParams
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts as ex
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_layer as gl
-    from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv as gk
-    from hipengine.kernels.hip_gfx1100.quant import gguf_q4_k_gemv as gq
 
-    orig_k_launch = gk._launch
-    orig_q4_k_selected = gq._launch_selected
-    orig_experts_rows = ex.gemma4_project_experts_rows
-    orig_selected = ex.gemma4_project_experts_selected
+    orig_project = gl.gemma4_project
+    orig_experts_forward = gl.gemma4_experts_forward_bf16
     orig_attention = gl.gemma4_attention_prefill_bf16
     orig_router = gl.gemma4_router_topk_bf16
     elementwise_names = [
@@ -111,28 +108,33 @@ def main() -> int:
         if hasattr(module, name)
     }
 
-    skip: set[str] = set()
     mode = ""
 
-    def spy_k_launch(quant, symbol, *a, **kw):
-        if mode == "k_launch" and ("*" in skip or any(str(symbol).startswith(s) for s in skip)):
+    def _is_q8_0(weight: object) -> bool:
+        spec = getattr(weight, "spec", None)
+        return str(getattr(spec, "quant_key", "")).startswith("gguf_q8_0")
+
+    def spy_project(x_ptr, weight, out_ptr, *a, **kw):
+        # Spying on the layer's own `gemma4_project` rather than on a leaf
+        # launcher is what keeps this arm honest: the dense route goes through
+        # `launch_gguf_linear`, not `gguf_k_gemv._launch`, so a leaf-level spy
+        # silently misses every dense projection and reports that they cost
+        # nothing. The layer calls `gemma4_project` as a module global, so
+        # patching it here covers whichever leaf the dispatch picks.
+        if mode == "all_gemv":
             return None
-        return orig_k_launch(quant, symbol, *a, **kw)
-
-    def spy_q4_k_selected(symbol, *a, **kw):
-        if mode == "k_launch" and ("*" in skip or any(str(symbol).startswith(s) for s in skip)):
+        if mode == "dense_q8" and _is_q8_0(weight):
             return None
-        return orig_q4_k_selected(symbol, *a, **kw)
+        return orig_project(x_ptr, weight, out_ptr, *a, **kw)
 
-    def spy_experts_rows(*a, **kw):
+    def spy_experts_forward(*a, **kw):
+        # Same reasoning: the T16 gate/up route landed after this probe was
+        # written, and the internal leaves it used to spy on are no longer the
+        # live path. `gemma4_experts_forward_bf16` is the layer's single entry
+        # and covers every internal expert route.
         if mode == "experts":
-            return "skipped"
-        return orig_experts_rows(*a, **kw)
-
-    def spy_selected(weight, x_ptr, selected_ptr, out_ptr, *a, **kw):
-        if mode == "experts":
-            return True
-        return orig_selected(weight, x_ptr, selected_ptr, out_ptr, *a, **kw)
+            return None
+        return orig_experts_forward(*a, **kw)
 
     def spy_attention(*a, **kw):
         if mode == "attention":
@@ -160,10 +162,8 @@ def main() -> int:
 
         return spy
 
-    gk._launch = spy_k_launch
-    gq._launch_selected = spy_q4_k_selected
-    ex.gemma4_project_experts_rows = spy_experts_rows
-    ex.gemma4_project_experts_selected = spy_selected
+    gl.gemma4_project = spy_project
+    gl.gemma4_experts_forward_bf16 = spy_experts_forward
     gl.gemma4_attention_prefill_bf16 = spy_attention
     gl.gemma4_router_topk_bf16 = spy_router
     for name in elementwise_names:
@@ -184,9 +184,8 @@ def main() -> int:
 
     results = []
     try:
-        for name, arm_mode, symbols in _arms():
+        for name, arm_mode, _symbols in _arms():
             mode = arm_mode
-            skip = set(symbols)
             times = [wall() for _ in range(args.repeats)]
             seconds = statistics.median(times)
             row = {
@@ -199,7 +198,6 @@ def main() -> int:
             print(f"{name:22s} prefill {seconds:7.3f} s  {row['prefill_tps']:8.1f} tok/s")
     finally:
         mode = ""
-        skip = set()
 
     baseline = next(r for r in results if r["arm"] == "baseline")
     print("\n--- share of the baseline prefill ---")
