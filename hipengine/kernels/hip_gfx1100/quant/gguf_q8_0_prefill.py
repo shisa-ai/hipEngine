@@ -29,8 +29,10 @@ _OUTPUT_NAME = "gguf_q8_0_prefill.so"
 _ALLOWED_TILES = {
     (16, 16),
     (16, 32),
+    (16, 64),
     (32, 16),
     (32, 32),
+    (32, 64),
     (64, 16),
     (64, 32),
 }
@@ -85,13 +87,36 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
     gemma4's dense projections and the qwen35moe shapes the previous rules
     were written for -- found ``tile_m=64`` best or within run-to-run noise
     on every one of them, and the previous ``(32, 32)`` fallback best on
-    none. ``tile_n`` stays 32 because it is the token-side tile: a block
-    covers ``AWQ_TILE_N`` tokens and the weight tile is dequantized once per
-    (block, weight element), so ``tile_n`` is the dimension that trades
-    weight traffic against registers. 32 is the largest value whose
-    accumulator and activation registers fit.
+    none. A follow-up sweep added the ``tile_n=64`` points, which the first
+    one never reached, and they move the family again: ``(32, 64)`` is the
+    fastest tile on three of gemma4's four dense prefill geometries and the
+    family total drops 4.121 -> 3.639 ms.
 
-    Selected measurements (rows=512, bf16 in, bf16 out, ms, median of 5):
+    ``tile_n`` is the token-side tile: a block covers ``AWQ_TILE_N`` tokens
+    and the weight tile is dequantized once per (block, weight element), so
+    it is the dimension that trades weight traffic against registers. It is
+    NOT register-symmetric with ``tile_m``. ``my_out[TM]`` is only an index
+    array, but ``my_token[TN]`` and the activation gather are per-TN, so the
+    VGPR cost of the two directions differs -- measured on gfx1151:
+    ``(64, 32)`` 127 VGPRs against ``(32, 64)`` 143. That is why the wider
+    token tile was assumed unaffordable and never swept; the real difference
+    is 16 registers, not a resource wall.
+
+    Selected measurements from the ``tile_n=64`` sweep (rows=512, bf16 in,
+    bf16 out, ms, best of 8):
+
+    * ``(in=2816, out=4096)`` dense ffn gate/up: ``32x64`` 0.939 against
+      ``64x32`` 1.116, ``32x32`` 1.307, ``16x64`` 1.370.
+    * ``(in=2816, out=2816)`` o proj: ``32x64`` 0.684 against ``64x32``
+      0.795, ``16x64`` 0.883, ``32x32`` 1.347.
+    * ``(in=4096, out=2816)`` dense ffn down: ``32x64`` 1.482 against
+      ``16x64`` 1.663, ``64x32`` 1.712, ``32x32`` 2.500.
+    * ``(in=2816, out=2112)`` swa k/v: the one shape where ``64x32`` leads,
+      0.498 against ``32x64`` 0.534. The gap is 7 percent on one of four
+      shapes, about 1 percent of the family total, so a single tile is kept
+      rather than a shape ladder.
+
+    Earlier measurements, on shapes the ``(32, 64)`` sweep did not cover:
 
     * ``(in=2816, out=2048)`` swa k/v: ``64x32`` 0.459 against ``16x32``
       0.798 and ``32x32`` 0.931.
@@ -104,9 +129,10 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
     * ``(in=2048, out=8192)`` qwen35moe qkv: ``64x32`` 2.494 against
       ``16x32`` 2.755 -- the shape the previous rule gave ``16``, so that
       rule was picking the slower tile here too.
-    * ``(in=8192, out=2816)`` and ``(in=4096, out=2816)`` are the only two
-      where a narrow tile measured ahead, by 1.1 and 0.9 percent, which is
-      inside the run-to-run spread for the same shape and tile.
+    * ``(in=8192, out=2816)`` and ``(in=4096, out=2816)`` were the only two
+      of the eleven where a narrow tile measured ahead in the first sweep,
+      by 1.1 and 0.9 percent; the ``tile_n=64`` sweep then put ``32x64``
+      ahead on ``(in=4096, out=2816)`` by 15.5 percent.
 
     The previous rules were tuned on gfx1100 with the qwen35moe shapes and
     preferred ``(16, 32)`` for ``(in<=2048, out>=4096)`` and ``(32, 32)``
@@ -116,8 +142,9 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
     worse than no rule.
 
     All tiles produce bit-identical output on the shapes checked (three
-    gemma4 dense shapes, six tiles each), so this is a performance choice
-    with no numerical consequence. See
+    gemma4 dense shapes, six tiles each; then four gemma4 dense shapes, six
+    tiles each, for the ``tile_n=64`` sweep -- maxdiff 0.000e+00 throughout),
+    so this is a performance choice with no numerical consequence. See
     ``tests/test_gpu_gguf_q8_0_wmma_prefill.py`` for dispatch pinning tests.
     """
 
@@ -130,8 +157,8 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
         if tile not in _ALLOWED_TILES:
             raise ValueError(f"unsupported Q8_0 WMMA tile override: {tile}")
         return tile
-    tile_n = 32 if rows >= 32 else 16
-    tile_m = 64 if out_features >= 64 else 16
+    tile_n = 64 if rows >= 64 else (32 if rows >= 32 else 16)
+    tile_m = 32 if out_features >= 32 else 16
     return tile_m, tile_n
 
 
