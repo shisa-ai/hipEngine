@@ -1,7 +1,7 @@
 {
   "kind": "flags",
   "meta": {
-    "names": 755,
+    "names": 756,
     "roots": "hipengine, scripts, tests, benchmarks"
   },
   "rows": [
@@ -439,8 +439,8 @@
           "hipengine/loading/qwen35_gguf_policy.py:52",
           "hipengine/loading/qwen35_gguf_policy.py:184",
           "hipengine/loading/qwen35_gguf_policy.py:219",
-          "hipengine/runtime/gguf_linear.py:8067",
-          "hipengine/runtime/qwen35_gguf_runner.py:11743"
+          "hipengine/runtime/qwen35_gguf_runner.py:11743",
+          "hipengine/runtime/gguf_linear.py:8067"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -458,7 +458,7 @@
         ]
       },
       "id": "flag/HIPENGINE_C8_Q5_PLANAR_DP4A",
-      "evidence_hash": "a73dac6f383f"
+      "evidence_hash": "18331b534bb6"
     },
     {
       "kind": "flag",
@@ -2541,6 +2541,40 @@
     },
     {
       "kind": "flag",
+      "key": "HIPENGINE_GEMMA4_MOE_DOWN_MMQ",
+      "title": "HIPENGINE_GEMMA4_MOE_DOWN_MMQ",
+      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:168",
+      "evidence": {
+        "default": "unknown",
+        "sites_by_root": {
+          "hipengine": 2
+        },
+        "runtime_sites": [
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:168",
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:181"
+        ],
+        "in_refactor_ledger": true,
+        "in_envs_doc": true
+      },
+      "signals": [],
+      "hints": {
+        "anchor": "env",
+        "refs": [
+          "HIPENGINE_GEMMA4_MOE_DOWN_MMQ"
+        ],
+        "tokens": [
+          "down",
+          "gemma4",
+          "hipengine",
+          "mmq",
+          "moe"
+        ]
+      },
+      "id": "flag/HIPENGINE_GEMMA4_MOE_DOWN_MMQ",
+      "evidence_hash": "a8dfd014d2d8"
+    },
+    {
+      "kind": "flag",
       "key": "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ",
       "title": "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ",
       "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:163",
@@ -2554,7 +2588,7 @@
         "runtime_sites": [
           "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:163",
           "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:167",
-          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:179"
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:197"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -2574,7 +2608,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ",
-      "evidence_hash": "f3939d881294"
+      "evidence_hash": "afa08abc8ba2"
     },
     {
       "kind": "flag",
@@ -2654,9 +2688,9 @@
       "evidence": {
         "default": "off",
         "sites_by_root": {
-          "hipengine": 382,
+          "hipengine": 383,
           "scripts": 511,
-          "tests": 850
+          "tests": 851
         },
         "runtime_sites": [
           "hipengine/generation/qwen36_gguf_gfx1100_profiles.py:22",
@@ -2673,7 +2707,7 @@
       },
       "signals": [
         "reads as default-off",
-        "read at 382 runtime sites \u2014 branching is spread out"
+        "read at 383 runtime sites \u2014 branching is spread out"
       ],
       "hints": {
         "anchor": "env",
@@ -2686,7 +2720,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_",
-      "evidence_hash": "ded80c140c73"
+      "evidence_hash": "433e686a65a1"
     },
     {
       "kind": "flag",
@@ -10268,14 +10302,15 @@
       "evidence": {
         "default": "unknown",
         "sites_by_root": {
-          "hipengine": 6,
+          "hipengine": 7,
           "scripts": 9,
-          "tests": 15
+          "tests": 16
         },
         "runtime_sites": [
           "hipengine/generation/qwen4_exp_profiles.py:485",
           "hipengine/generation/qwen35_gguf.py:718",
           "hipengine/runtime/prefill.py:68",
+          "hipengine/runtime/gemma4.py:422",
           "hipengine/runtime/gguf_linear.py:150",
           "hipengine/runtime/gguf_linear.py:1784",
           "hipengine/runtime/gguf_linear.py:3111"
@@ -10283,7 +10318,9 @@
         "in_refactor_ledger": true,
         "in_envs_doc": true
       },
-      "signals": [],
+      "signals": [
+        "read at 7 runtime sites \u2014 branching is spread out"
+      ],
       "hints": {
         "anchor": "env",
         "refs": [
@@ -10297,7 +10334,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_WMMA_PREFILL",
-      "evidence_hash": "b7177919c78c"
+      "evidence_hash": "14fdf1aebd3d"
     },
     {
       "kind": "flag",
@@ -10344,7 +10381,7 @@
         "sites_by_root": {
           "benchmarks": 16,
           "hipengine": 11,
-          "scripts": 185,
+          "scripts": 187,
           "tests": 62
         },
         "runtime_sites": [
@@ -10377,7 +10414,7 @@
         ]
       },
       "id": "flag/HIPENGINE_HIP_ARCH",
-      "evidence_hash": "e05a382b9b22"
+      "evidence_hash": "f76b347188fa"
     },
     {
       "kind": "flag",
