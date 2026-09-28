@@ -109,6 +109,46 @@ Our rows mix the pre-unroll anchor (dense, HC, GDN, attention, reduce) with
 the post-unroll MoE capture; `elementwise_norm` and the remainder are omitted,
 so the rows do not sum exactly to the post-unroll total.
 
+### 1.3 Current attribution checkpoint — 2026-09-28 UTC
+
+The [current-owner packet](../benchmarks/results/2026-09-28-qwen4exp-current-attribution/README.md)
+uses `2789c19d6`, the host/model/quant named above, BF16 KV, chunk1024 and
+production manifest `35e57360e648bcc8ce8f21d89bf5583a0b4217061b306ec96616b2607cc6e565`.
+It replaces historical costs for prioritizing short-context experiments, not
+for claiming speedup. The section headings below still identify their dated
+anchors; the packet supplies current symbols, roles and layer engagement.
+
+One `code-p4096` capture attributes 10,708/10,708 launches and 15,741.963 ms
+kernel union in a 16,319.888 ms request; unprofiled wall is 16,334.447 ms.
+Current buckets are routed gate/up + down 5,605.754 ms, dense 4,553.007 ms,
+HC 2,587.665 ms, attention 1,040.374 ms, GDN 844.295 ms, router/reduce
+763.833 ms, norms 319.494 ms, indexer 17.520 ms and PLE 9.834 ms.
+Thus routed experts, dense and HC remain the first bounded owner screens;
+these costs do not imply additive or fully recoverable savings. F16 staging
+casts total 131.001 ms, a measured ceiling for DP-5 before fusion costs.
+Sparse attention is 24 launches / 455.080 ms; full attention is 36 /
+438.971 ms. Do not reuse historical launch counts with these timings.
+
+A supplemental copy trace reconciles 15,600.436 ms kernels plus 2.711 ms
+observed device copies to a 15,603.147 ms interval union inside 16,159.403 ms.
+Reset memset kernels are counted. HIP API host durations overlap device work;
+the residual is not exclusively recoverable launch overhead.
+
+Fixed-live4097 decode has 53.701–54.777 ms device time across three repeats.
+Repeat 1 owners: MoE 24.625 ms, linear 23.121, QSA 2.594, GDN 2.386,
+GR read 0.851, boundary 0.478 and PLE 0.034. Gate/up alone is 14.055 ms,
+Q5_1 down 5.447 ms. Profiled wall varies 59–239 ms and unprofiled wall
+124–141 ms, so serving-wrapper costs and throughput remain unqualified.
+Prefill logits/manifest and decode token/state hashes agree across runs;
+allocation growth and post-close live allocations are zero.
+
+X-5 finds profiler scratch sizes 36 bytes (GDN) and 92 bytes (dense-wide).
+Queue scratch allocations occur before, not during, the measured prefill.
+Decode kernels report zero scratch. Metadata/disassembly and ordered
+trigger/victim A/B remain necessary; neither throttling nor its absence is
+proven. X-11 receives engagement evidence only, not repair-oracle/task coverage.
+
+
 ## 2. Arithmetic policy and kernel mechanisms
 
 ### 2.1 What the fast engines compute
@@ -172,8 +212,8 @@ strict F32 teacher at our calibrated envelope.
 | --- | --- | --- | --- | --- |
 | X-1 | **Competitor arithmetic and local error localization.** Preserve packet `E10` separately from whole-model comparison | STATUS §2.6 supplies only a simulated BF16 bound; no competitor has a same-teacher full-model certificate | First score the already-captured identical-operand MMB packet against F64 using the replay bridge. Separately align exact token IDs, vocabulary, KV policy and teacher-forced contexts for the canonical 12 cases plus heldouts; report mean/p95/p99/max KL and category top-1. A pass or failure describes that engine/configuration only; local candidates still need their own gate | OPEN — informative, not a prerequisite for all arithmetic work |
 | X-2 | **Same-host reproduction of the new comparators** (`E0` refresh) | gufo and halo-box master / PR #91 rows are author-reported; halo-box's use `llama-bench` synthetic tokens (confound C3) | Pin builds matching each claimed row (the listed PR #91 rate pin differs from the later review pin), including gufo `fee9d2a`, halo-box HIP/Vulkan, upstream and pwilkin controls; keep Myhacsint/Halogen scope limits from the external review. Preflight known HIP gather/BF16-graph incompatibilities before long runs. Run the canonical exact-token fixture with processed-token/cache verification, serial AR and MTP separate, and BF16/F16 KV explicitly labeled. For kernel comparisons define shared dtype/layout/input/output and complete-operation boundaries before using `scripts/qwen4exp_comparator_role_map.py` (gufo mapping still needed); charge build/load/cold-capture separately | OPEN |
-| X-3 | **Fresh attribution on the current default** | The family table in §1.2 predates the repair unroll, the F16 activation staging and both full-attention promotions | One role-marked `rocprofv3` capture of `code-p4096` at HEAD, 1x authority from `role-analysis.json` (§8 rule 1), reconciled to kernel interval union, copy/reset time and unprofiled request wall. Re-rank §4 from it; sample other categories/shapes when owner populations differ | OPEN — cheapest re-ranking step |
-| X-4 | **Current-default decode attribution** (was `CC-2`) | Last split is September 9 (`R6`, 54.6 ms wall / 49.3 ms device) on a composition the September 14 recovery changed | Re-run the `R6` split at HEAD before ranking any §5 row | **PREREQ for §5** |
+| X-3 | **Fresh attribution on the current default** | The family table in §1.2 predates the repair unroll, the F16 activation staging and both full-attention promotions | One role-marked `rocprofv3` capture of `code-p4096` at HEAD, 1x authority from `role-analysis.json` (§8 rule 1), reconciled to kernel interval union, copy/reset time and unprofiled request wall. Re-rank §4 from it; sample other categories/shapes when owner populations differ | CAPTURED at `2789c19d6` — current checkpoint above; additional category/shape populations remain candidate-specific |
+| X-4 | **Current-default decode attribution** (was `CC-2`) | Last split is September 9 (`R6`, 54.6 ms wall / 49.3 ms device) on a composition the September 14 recovery changed | Re-run the `R6` split at HEAD before ranking any §5 row | DEVICE SPLIT CAPTURED at `2789c19d6`; stable wall and serving-wrapper attribution still OPEN under X-10/DE-5 |
 | X-5 | **Scratch-throttle audit** | halo-box PR #87: after a kernel with a private segment runs (`flash_attn_ext_f16<256>`, 252 B/lane), the command processor throttled every later scratch-enabled dispatch ~3.3x; their Q5_1 expert-down GEMV went 220 → 67 µs by replacing `volatile` float rounding barriers with a register-only `asm` barrier, bit-identical | List `private_segment_fixed_size` for every Qwen4Exp kernel in the prefill and decode census. Any non-zero scratch on a hot kernel warrants disassembly and ordered warm-process A/B: test the suspected trigger followed by the same victim, compare against a fresh process, and verify clocks and scratch allocation. A register-only barrier is a candidate only where it preserves the rounding boundary; prove parity rather than infer it from the source idiom | OPEN — audit first; benefit and parity unproven |
 | X-6 | **Qualification accounting** (was `CC-7`) | `scripts/execution_profile_q8_wmma_prefill_layers_gate.py:426` claims qualification with no coverage term; `--case-id`, `--limit`, `--decode-steps`, `--repeat-runs` can shrink a run; `--prefill-chunk-size` defaults to 1024 | Add the coverage term; re-run any gate at a new chunk size | OPEN, prevention; see `X-10` for journey `R30` |
 | X-7 | **Missing qualification evidence for promoted 16-47** (was `CC-8`) | No heldout, candidate-local teacher, no isolation/graph/lifecycle, task or BF16-relative verdicts | Close before extending the admitted scope | OPEN, prerequisite |
