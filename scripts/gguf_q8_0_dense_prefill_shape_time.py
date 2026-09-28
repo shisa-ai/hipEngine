@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 
 import numpy as np
 
@@ -99,6 +100,20 @@ def main() -> int:
               f"{flops / 1e9 / t.mean():>8.2f}")
         print(f"{'':>6} {'':>6} first q{args.iters//4} {first:.3f}  last q{args.iters//4} "
               f"{last:.3f}  drift {last / first:>6.3f}")
+
+        # Host-side dispatch cost: launch the same kernel back to back with no
+        # intervening synchronize and time the wall clock of the loop. If the
+        # host takes longer than the GPU work it queues, the engine is
+        # host-bound; if it is much faster, the in-situ gap is elsewhere.
+        runtime.stream_synchronize(stream)
+        t0 = time.perf_counter()
+        for _ in range(args.iters):
+            prefill(x_dev.ptr, w_dev.ptr, out_dev.ptr, args.rows, in_features,
+                    out_features, tile_m=args.tile_m, tile_n=args.tile_n, stream=stream)
+        host_ms = (time.perf_counter() - t0) * 1e3 / args.iters
+        runtime.stream_synchronize(stream)
+        print(f"{'':>6} {'':>6} host dispatch {host_ms:.4f} ms/launch  "
+              f"gpu {t.mean():.4f} ms/launch  host/gpu {host_ms / t.mean():.3f}")
 
     return 0
 
