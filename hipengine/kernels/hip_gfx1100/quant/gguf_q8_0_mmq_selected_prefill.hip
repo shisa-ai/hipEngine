@@ -79,9 +79,30 @@ __device__ __forceinline__ int dot4_s8_s8(uint32_t a, uint32_t b, int acc) {
 
 constexpr int ROWS_PER_PASS = 16;
 
+// The DS4 activation block comes in two layouts that differ only in how the
+// four (scale, sum) pairs are stored: fp16 for a hidden-state input, and fp32
+// for a post-SiLU one. Both put the eight pairs first and the 128 int8 quants
+// after them, so the offsets are shared and only the stride and the scale read
+// change. The fp16 layout cannot hold a scale above 65504, and a down
+// projection's input is a GeGLU output whose magnitude is a property of the
+// model rather than of this route, so the fp32 layout is the correct one there.
+constexpr int DS4_BLOCK_BYTES = 16 + Q8_1_MMQ_BLOCK;
+constexpr int DS4_F32_BLOCK_BYTES = 32 + Q8_1_MMQ_BLOCK;
+
+template <bool F32_SCALES>
+__device__ __forceinline__ float x_block_scale(const uint8_t* x_block,
+                                               int index) {
+  if (F32_SCALES) {
+    return reinterpret_cast<const float*>(x_block)[index];
+  }
+  return fp16_bits_to_float(
+      reinterpret_cast<const uint16_t*>(x_block)[index]);
+}
+
+template <bool F32_SCALES>
 __global__ __launch_bounds__(128, 4)
 void q8_0_mmq_ds4_selected_prefill_kernel(
-    const block_q8_1_mmq_ds4* __restrict__ x_ds4,
+    const uint8_t* __restrict__ x_ds4,
     const int64_t* __restrict__ expert_start,
     const uint8_t* __restrict__ qweight,
     uint16_t* __restrict__ out,
@@ -96,6 +117,8 @@ void q8_0_mmq_ds4_selected_prefill_kernel(
   // of the 128-wide DS4 block still needs its trailing block read, and flooring
   // here is what silently dropped the last 64 of a 704-wide expert projection.
   const int64_t ds4_blocks = (in_features + Q8_1_MMQ_BLOCK - 1) / Q8_1_MMQ_BLOCK;
+  const int64_t x_block_bytes =
+      F32_SCALES ? DS4_F32_BLOCK_BYTES : DS4_BLOCK_BYTES;
   for (int64_t expert = blockIdx.y; expert < num_experts; expert += gridDim.y) {
     const int64_t start = expert_start[expert];
     const int64_t end = expert_start[expert + 1];
@@ -132,13 +155,13 @@ void q8_0_mmq_ds4_selected_prefill_kernel(
           const float d =
               fp16_bits_to_float(*reinterpret_cast<const uint16_t*>(w_sub));
           for (int plane = 0; plane < planes; ++plane) {
-            const block_q8_1_mmq_ds4* x_base =
-                x_ds4 + static_cast<int64_t>(plane) * compact_rows * ds4_blocks +
-                row_base * ds4_blocks + kb;
+            const uint8_t* x_base = x_ds4 +
+                (static_cast<int64_t>(plane) * compact_rows * ds4_blocks +
+                 row_base * ds4_blocks + kb) * x_block_bytes;
             for (int r = 0; r < rcount; ++r) {
-              const block_q8_1_mmq_ds4* x_block = x_base + r * ds4_blocks;
-              const int32_t* xw =
-                  reinterpret_cast<const int32_t*>(x_block->qs + sub * 32);
+              const uint8_t* x_block = x_base + r * ds4_blocks * x_block_bytes;
+              const int32_t* xw = reinterpret_cast<const int32_t*>(
+                  x_block + (F32_SCALES ? 32 : 16) + sub * 32);
               const int32_t* ww =
                   reinterpret_cast<const int32_t*>(w_sub + 2);
               int dot = 0;
@@ -148,7 +171,7 @@ void q8_0_mmq_ds4_selected_prefill_kernel(
                     static_cast<uint32_t>(ww[w]),
                     static_cast<uint32_t>(xw[w]), dot);
               }
-              const float xd = fp16_bits_to_float(x_block->ds4[2 * sub]);
+              const float xd = x_block_scale<F32_SCALES>(x_block, 2 * sub);
               acc[r] += d * xd * static_cast<float>(dot);
             }
           }
@@ -186,9 +209,41 @@ extern "C" int hipengine_q8_0_mmq_ds4_selected_prefill_bf16_bf16_out(
   const unsigned int expert_grid = num_experts > 512u ? 512u
       : static_cast<unsigned int>(num_experts);
   hipLaunchKernelGGL(
-      (q8_0_mmq_ds4_selected_prefill_kernel),
+      (q8_0_mmq_ds4_selected_prefill_kernel<false>),
       dim3(out_tiles, expert_grid), dim3(128), 0, stream,
-      static_cast<const block_q8_1_mmq_ds4*>(x_ds4), expert_start, qweight,
+      static_cast<const uint8_t*>(x_ds4), expert_start, qweight,
+      out, compact_rows, num_experts, in_features, out_features,
+      static_cast<int>(planes));
+  return static_cast<int>(hipGetLastError());
+}
+
+// The fp32-activation-scale twin. A down projection's input is a GeGLU output,
+// so it is the one that belongs on the expert down route; see DS4_BLOCK_BYTES.
+extern "C" int hipengine_q8_0_mmq_ds4_f32_selected_prefill_bf16_bf16_out(
+    const void* x_ds4,
+    const int64_t* expert_start,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t planes,
+    hipStream_t stream) {
+  if (x_ds4 == nullptr || expert_start == nullptr || qweight == nullptr ||
+      out == nullptr || compact_rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || (in_features % QK8_0) != 0 ||
+      out_features <= 0 || planes <= 0 || planes > 3) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const unsigned int out_tiles =
+      static_cast<unsigned int>((out_features + 127) / 128);
+  const unsigned int expert_grid = num_experts > 512u ? 512u
+      : static_cast<unsigned int>(num_experts);
+  hipLaunchKernelGGL(
+      (q8_0_mmq_ds4_selected_prefill_kernel<true>),
+      dim3(out_tiles, expert_grid), dim3(128), 0, stream,
+      static_cast<const uint8_t*>(x_ds4), expert_start, qweight,
       out, compact_rows, num_experts, in_features, out_features,
       static_cast<int>(planes));
   return static_cast<int>(hipGetLastError());

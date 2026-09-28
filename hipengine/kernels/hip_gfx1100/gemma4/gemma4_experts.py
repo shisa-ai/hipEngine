@@ -94,6 +94,17 @@ _F32_BYTES = 4
 # through the variant policy so the plane gate can resolve it, then run that gate.
 _MMQ_ACTIVATION_PASSES = 1
 
+# DS4 activation block strides. The fp16 layout is for a hidden-state input and
+# the fp32 one for a post-SiLU input; see gemma4_project_experts_down_mmq.
+_DS4_BLOCK_BYTES = 16 + 128
+_DS4_F32_BLOCK_BYTES = 32 + 128
+
+
+def _ds4_block_count(width: int) -> int:
+    """DS4 blocks for ``width``, rounding up for a partial trailing block."""
+
+    return (width + 127) // 128
+
 # Grouped-prefill family: one launch covers every expert, reading each expert's
 # weight matrix once and reusing it across that expert's contiguous row slice.
 # The ABI is (input, expert_start, weights, out, compact_rows, num_experts,
@@ -320,8 +331,10 @@ class Gemma4ExpertScratch:
             # point of paying for them; _MMQ_ACTIVATION_PASSES records why that
             # count is 1 today and what would lift it.
             "mmq_workspace": lanes
-            * (max(self.hidden_size, self.intermediate) // 128)
-            * 144
+            * max(
+                _ds4_block_count(self.hidden_size) * _DS4_BLOCK_BYTES,
+                _ds4_block_count(self.intermediate) * _DS4_F32_BLOCK_BYTES,
+            )
             * _MMQ_ACTIVATION_PASSES,
             "mmq_identity": lanes * _I64_BYTES,
             # One 32-row tile per entry; a tile-per-expert bound is exact when
@@ -926,6 +939,14 @@ def gemma4_project_experts_down_mmq(
     # that quantizes a layer's expert down differently from its siblings -- Gemma
     # 4 26B-A4B UD-Q4_K_XL ships 29 Q5_1 layers and one Q8_0 -- would otherwise
     # send that one layer to the fp32 grouped family at 8x the cost.
+    # The down projection's input is a GeGLU output, so it uses the range-safe
+    # fp32 DS4 activation layout rather than the fp16 one the gate/up route
+    # packs from a hidden state. An fp16 scale tops out at 65504 and the scale
+    # is amax/127, so the fp16 layout runs out at amax of about 8.3e6 -- and a
+    # small model's GeGLU output reaches past that. The consumer then evaluates
+    # d * inf * dot, which is inf where the dot is nonzero and NaN where it is
+    # zero, and a NaN here flows through the residual stream into the next
+    # layer's router.
     quant_key = getattr(weight.spec, "quant_key", None)
     if quant_key == "gguf_q5_1":
         from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_mmq_selected_prefill import (
@@ -946,11 +967,11 @@ def gemma4_project_experts_down_mmq(
 
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
         build_gguf_q4_k_q8_1_selected_prefill,
-        gguf_q8_1_mmq_ds4_pack_bf16 as pack_activations,
+        gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3 as pack_activations,
     )
 
     workspace = scratch.buffer("mmq_workspace")
-    needed = compact_rows * ((in_features + 127) // 128) * 144 * _MMQ_ACTIVATION_PASSES
+    needed = compact_rows * _ds4_block_count(in_features) * _DS4_F32_BLOCK_BYTES
     if workspace.nbytes < needed:
         return False
 
@@ -962,6 +983,7 @@ def gemma4_project_experts_down_mmq(
         workspace.ptr,
         compact_rows,
         in_features,
+        residual_passes=_MMQ_ACTIVATION_PASSES,
         library=build_gguf_q4_k_q8_1_selected_prefill(load=True),
         **kwargs,
     )
@@ -976,6 +998,7 @@ def gemma4_project_experts_down_mmq(
         out_features,
         _MMQ_ACTIVATION_PASSES,
         library=build_consumer(load=True),
+        f32_scales=True,
         **kwargs,
     )
     return True
