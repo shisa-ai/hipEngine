@@ -408,6 +408,11 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
     q_shared[dim] = query[q_offset + dim];
   }
   if constexpr (PRECOMPUTE_TOKEN_OFFSETS) {
+    // One entry per token. The table is deliberately not compressed to one entry
+    // per block: rebuilding an address from an incrementally tracked (block,
+    // offset) pair puts the address on a serial recurrence that every load
+    // depends on, and measured 1.41x slower even with twice the occupancy. See
+    // the campaign worklog entry and docs/REFACTOR.md.
     for (int64_t token = threadIdx.x; token < context_len; token += blockDim.x) {
       const int64_t logical_block = token / block_size;
       const int64_t block_offset = token - logical_block * block_size;
@@ -435,42 +440,53 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
   };
 
   float local_max = -3.4028234663852886e38f;
-  if constexpr (QK_TOKENS == 2) {
-    // Two tokens per iteration give the dot-product and shuffle chains a second
-    // independent chain to overlap. Each token keeps its original arithmetic:
-    // same dimension order, same reduction tree, and the per-warp max fold stays
-    // order-independent. The exp/sum pass keeps its own token-to-warp map, so the
-    // denominator is unchanged and the result stays byte-identical.
-    for (int64_t token = static_cast<int64_t>(warp_id) * 2; token < context_len;
-         token += static_cast<int64_t>(num_warps) * 2) {
-      const bool have_second = (token + 1) < context_len;
-      const int64_t token_b = have_second ? (token + 1) : token;
-      const int64_t k_offset_a = token_offset_of(token) + kv_head * head_dim;
-      const int64_t k_offset_b = token_offset_of(token_b) + kv_head * head_dim;
-      float acc_a = 0.0f;
-      float acc_b = 0.0f;
+  if constexpr (QK_TOKENS >= 2) {
+    // Score QK_TOKENS tokens per iteration so the dot-product and shuffle chains
+    // have that many independent chains to overlap. Each token keeps its original
+    // arithmetic: same dimension order, same reduction tree, and the per-warp max
+    // fold stays order-independent. The exp/sum pass keeps its own token-to-warp
+    // map, so the denominator is unchanged and the result stays byte-identical.
+    constexpr int QK_N = QK_TOKENS;
+    static_assert(QK_N == 2 || QK_N == 4, "QK_TOKENS supports 2 or 4");
+    const int64_t qk_stride = static_cast<int64_t>(num_warps) * QK_N;
+    const int64_t token_first = static_cast<int64_t>(warp_id) * QK_N;
+    for (int64_t token = token_first; token < context_len; token += qk_stride) {
+      int64_t k_offset[QK_N];
+#pragma unroll
+      for (int i = 0; i < QK_N; ++i) {
+        // Tokens past the end still address a live cache line so the read is in
+        // bounds; the lane discards their scores below.
+        const int64_t t = ((token + i) < context_len) ? (token + i) : token;
+        k_offset[i] = token_offset_of(t) + kv_head * head_dim;
+      }
+      float acc[QK_N];
+#pragma unroll
+      for (int i = 0; i < QK_N; ++i) {
+        acc[i] = 0.0f;
+      }
       for (int64_t dim = lane_id * 4; dim < head_dim; dim += warpSize * 4) {
-        acc_a += q_shared[dim + 0] * bf16_bits_to_float(key_cache[k_offset_a + dim + 0]);
-        acc_b += q_shared[dim + 0] * bf16_bits_to_float(key_cache[k_offset_b + dim + 0]);
-        acc_a += q_shared[dim + 1] * bf16_bits_to_float(key_cache[k_offset_a + dim + 1]);
-        acc_b += q_shared[dim + 1] * bf16_bits_to_float(key_cache[k_offset_b + dim + 1]);
-        acc_a += q_shared[dim + 2] * bf16_bits_to_float(key_cache[k_offset_a + dim + 2]);
-        acc_b += q_shared[dim + 2] * bf16_bits_to_float(key_cache[k_offset_b + dim + 2]);
-        acc_a += q_shared[dim + 3] * bf16_bits_to_float(key_cache[k_offset_a + dim + 3]);
-        acc_b += q_shared[dim + 3] * bf16_bits_to_float(key_cache[k_offset_b + dim + 3]);
+#pragma unroll
+        for (int i = 0; i < QK_N; ++i) {
+          acc[i] += q_shared[dim + 0] * bf16_bits_to_float(key_cache[k_offset[i] + dim + 0]);
+          acc[i] += q_shared[dim + 1] * bf16_bits_to_float(key_cache[k_offset[i] + dim + 1]);
+          acc[i] += q_shared[dim + 2] * bf16_bits_to_float(key_cache[k_offset[i] + dim + 2]);
+          acc[i] += q_shared[dim + 3] * bf16_bits_to_float(key_cache[k_offset[i] + dim + 3]);
+        }
       }
       for (int offset = warpSize / 2; offset > 0; offset /= 2) {
-        acc_a += __shfl_down(acc_a, offset);
-        acc_b += __shfl_down(acc_b, offset);
+#pragma unroll
+        for (int i = 0; i < QK_N; ++i) {
+          acc[i] += __shfl_down(acc[i], offset);
+        }
       }
       if (lane_id == 0) {
-        const float score_a = acc_a * scale;
-        scores[token] = score_a;
-        local_max = fmaxf(local_max, score_a);
-        if (have_second) {
-          const float score_b = acc_b * scale;
-          scores[token_b] = score_b;
-          local_max = fmaxf(local_max, score_b);
+#pragma unroll
+        for (int i = 0; i < QK_N; ++i) {
+          if ((token + i) < context_len) {
+            const float score = acc[i] * scale;
+            scores[token + i] = score;
+            local_max = fmaxf(local_max, score);
+          }
         }
       }
     }
@@ -6399,8 +6415,8 @@ extern "C" int hipengine_qwen35_fullattn_context_offsets_fit_int32(
 //   * the per-token physical-offset table is stored as int32 instead of int64,
 //     which drops the dynamic shared-memory request from 25,607 to 17,223 bytes
 //     at max_context_len 2048 and lifts residency from 2 to 3 blocks per CU;
-//   * the QK phase scores two tokens per iteration so the dot-product and
-//     shuffle chains each have a second independent chain to overlap.
+//   * the QK phase scores four tokens per iteration so the dot-product and
+//     shuffle chains each have four independent chains to overlap.
 //
 // Neither lever changes any floating-point operation: each token keeps its
 // original dimension order and reduction tree, the per-warp max fold stays
@@ -6450,7 +6466,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed2
 #define HIPENGINE_FULLATTN_PROMOTED_LAUNCH(VV, OFFSET_T, SHARED)                          \
   hipLaunchKernelGGL(                                                                    \
       (qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, VV, false,         \
-                                                                 OFFSET_T, 2>),           \
+                                                                 OFFSET_T, 4>),           \
       grid, block, SHARED, stream, query, key_cache, value_cache, base_offsets,           \
       live_counts, out, rows, max_context_len, block_size, block_table_len, num_q_heads,   \
       num_kv_heads, head_dim, scale)
@@ -6468,6 +6484,71 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed2
     }
   }
 #undef HIPENGINE_FULLATTN_PROMOTED_LAUNCH
+  return static_cast<int>(hipGetLastError());
+}
+
+// Measurement-only selector for the QK unroll depth. Each variant is a separate
+// compile-time instantiation so the microbench can compare them in one session
+// without adding one exported symbol per depth. The winning depth is folded into
+// the promoted route and this entry point is removed; see docs/REFACTOR.md.
+extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_experiment_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t variant,
+    hipStream_t stream) {
+  if (rows <= 0 || !valid_paged_attn_shape(max_context_len, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  constexpr int max_warps = threads / 32;
+  constexpr int value_groups = 1;
+  const size_t float_bytes = static_cast<size_t>(
+      max_context_len + max_warps + head_dim + value_groups * head_dim) *
+      sizeof(float);
+  const size_t shared_int32 =
+      float_bytes + 7u + static_cast<size_t>(max_context_len) * sizeof(int32_t);
+  const size_t shared_int64 =
+      float_bytes + 7u + static_cast<size_t>(max_context_len) * sizeof(int64_t);
+  const dim3 grid(static_cast<unsigned int>(num_q_heads),
+                  static_cast<unsigned int>(rows));
+  const dim3 block(threads);
+  const bool even_head_dim = (head_dim % 2) == 0;
+#define HIPENGINE_FULLATTN_QK_EXPERIMENT_LAUNCH(VV, OFFSET_T, QK_TOKENS, SHARED)          \
+  hipLaunchKernelGGL(                                                                    \
+      (qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, VV, false,         \
+                                                                 OFFSET_T, QK_TOKENS>),   \
+      grid, block, SHARED, stream, query, key_cache, value_cache, base_offsets,           \
+      live_counts, out, rows, max_context_len, block_size, block_table_len, num_q_heads,   \
+      num_kv_heads, head_dim, scale)
+  if (!even_head_dim) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  switch (variant) {
+    case 0:  // two-token unroll, int32 offsets
+      HIPENGINE_FULLATTN_QK_EXPERIMENT_LAUNCH(2, int32_t, 2, shared_int32);
+      break;
+    case 1:  // four-token unroll, int32 offsets: the promoted route
+      HIPENGINE_FULLATTN_QK_EXPERIMENT_LAUNCH(2, int32_t, 4, shared_int32);
+      break;
+    case 2:  // four-token unroll, int64 offsets
+      HIPENGINE_FULLATTN_QK_EXPERIMENT_LAUNCH(2, int64_t, 4, shared_int64);
+      break;
+    default:
+      return static_cast<int>(hipErrorInvalidValue);
+  }
+#undef HIPENGINE_FULLATTN_QK_EXPERIMENT_LAUNCH
   return static_cast<int>(hipGetLastError());
 }
 

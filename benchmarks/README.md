@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-27 UTC**
+Last updated: **2026-09-28 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -31,21 +31,24 @@ gfx1151, UD-Q4_K_XL, BF16 KV, block_size 256, 1024-token chunks, code-p4096
 prefill, three repetitions, both arms in one session.
 
 The full-attention decode-context leaf now uses an int32 per-token offset table
-and a two-token QK unroll. Both changes leave every floating-point operation
-alone, so the route is byte-identical to the one it replaces.
+and a four-token QK unroll. Both changes leave every floating-point operation
+alone, so the route is byte-identical to the one it replaces. A per-block base
+table was implemented and rejected: it halves the shared-memory request and
+doubles residency, but measured 1.41x slower.
 
 | Metric | Before | After | Change |
 | --- | ---: | ---: | ---: |
-| Category mean p4096, tokens/s | 248.109 | 253.350 | +2.11% |
-| Prefill wall median, code-p4096 (s) | 16.6865 | 16.3325 | -354.0 ms (-2.12%) |
-| Largest launch, 1024 rows at `max_context_len` 2048 (ms) | 54.731 | 31.562 | 1.734x |
-| Three per-layer context launches (ms) | 67.740 | 40.766 | 1.662x |
+| Category mean p4096, tokens/s | 248.487 | 255.066 | +2.65% |
+| Prefill wall median, code-p4096 (s) | 16.6015 | 16.2027 | -398.8 ms (-2.40%) |
+| Largest launch, 1024 rows at `max_context_len` 2048 (ms) | 54.611 | 28.563 | 1.912x |
 
-All four mtp-bench categories at p4096 improve, from +1.72% to +2.63%. Output is
+All four mtp-bench categories at p4096 improve, from +2.23% to +3.47%. Output is
 byte-identical (`maxdiff = 0.000e+00` over the full 1024 x 24 x 256 output), so
 no KL or top-1 envelope applies. The 512- and 1024-token prompt lengths were not
 re-measured for this change.
-[Protocol, lever isolation and artifacts](results/2026-09-27-fullattn-context-promoted/README.md).
+[Protocol, lever isolation, the rejected lever and artifacts](results/2026-09-28-fullattn-qk4-promoted/README.md).
+The superseded two-lever route is in
+[its own artifact](results/2026-09-27-fullattn-context-promoted/README.md).
 
 ## Root README performance summary
 
