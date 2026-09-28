@@ -1071,7 +1071,7 @@ __global__ void gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_kernel(
 // of the 16 required by a literal two-wave mapping. WMITER remains one,
 // matching Vulkan's K-quant pressure control.
 template <int WEIGHT_LAYOUT, int ACTIVATION_PASSES, bool COLLECT_RISKS,
-          bool FUSED_EXPERT_LAYOUT = false>
+          bool FUSED_EXPERT_LAYOUT = false, int MMQ_K = 32>
 __device__ __forceinline__ void
 gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
     const block_q8_1_mmq_ds4* __restrict__ x_q8,
@@ -1096,7 +1096,14 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
     q4_k_mmq32_cache* __restrict__ weight_tile,
     q8_1_mmq32_cache* __restrict__ activation_tile) {
   constexpr int MMQ_N = 32;
-  constexpr int MMQ_K = 32;
+  // K elements staged per pass. 32 is one Q4_K subblock and one ds4 group; 64,
+  // 128 and 256 span several. KSUB is how many 32-element subblocks a pass
+  // covers, and it is what the tile arrays are indexed by, so a wider pass
+  // needs no new struct -- q4_k_mmq32_cache already holds exactly one
+  // subblock. MMQ_K is a template parameter rather than a constant so that 32
+  // stays the default for every existing call site.
+  static_assert(MMQ_K % 32 == 0, "MMQ_K must be a whole number of Q4_K subblocks");
+  constexpr int KSUB = MMQ_K / 32;
   constexpr int THREADS = 128;
   constexpr int TM = 1;
   constexpr int WNITER = 8;
