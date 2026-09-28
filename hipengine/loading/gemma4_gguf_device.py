@@ -148,11 +148,25 @@ def _plan_one(slot_path: str, source: GGUFTensorInfo) -> Gemma4GGUFWeightSpec:
     # A rank-3 expert tensor is *not* split per expert: the per-expert gather is
     # the kernel's job, and the dispatch selects the expert by index. Splitting
     # here would multiply the allocation count by 128 for no benefit.
+    quant_key = f"gguf_{source.ggml_type_name.lower()}"
+    allocation_names = ("raw",)
+    if quant_key == "gguf_q4_k" and len(source.shape) == 3 and source.shape[1] % 32 == 0:
+        # A stacked Q4_K expert tensor also carries its Q4T16 tiles, because the
+        # expert gate/up and down prefill routes read that layout and it is
+        # 2.78 percent larger than the raw blocks rather than a second copy of
+        # the tensor. Rank-3 is what makes a tensor an expert stack; a dense Q4_K
+        # matrix has no route that reads tiles, so it does not pay for them.
+        #
+        # The gate/up tensor is stored gate-rows-first *per expert*, and the T16
+        # leaf takes two independent tile pointers with no expert stride, so the
+        # two halves are repacked separately rather than as one fused slab.
+        allocation_names = ("raw", "t16_gate", "t16_up")
     return Gemma4GGUFWeightSpec(
         slot_path=slot_path,
         source=source,
-        quant_key=f"gguf_{source.ggml_type_name.lower()}",
+        quant_key=quant_key,
         layout=LAYOUT_RAW_GGUF,
+        allocation_names=allocation_names,
     )
 
 
@@ -215,15 +229,47 @@ def plan_gemma4_gguf_resident_specs(
 def resident_bytes(specs: tuple[Gemma4GGUFWeightSpec, ...]) -> int:
     """Return the device bytes ``specs`` would occupy, without allocating.
 
-    The total is the stored representation, not a dequantized one. It is also
-    exactly the artifact's own byte count for every layout the planner now hands
-    out, since each one stores the tensor as it came out of the file.
+    The total is the stored representation, not a dequantized one. For a spec
+    whose only allocation is ``raw`` that is exactly the artifact's own byte
+    count, since the tensor is stored as it came out of the file. A spec that
+    declares a derived layout is charged for it as well, so the figure stays an
+    allocation total rather than a file-size total.
     """
 
     total = 0
     for spec in specs:
         total += int(spec.source.nbytes)
+        for name in spec.allocation_names:
+            if name != "raw":
+                total += derived_allocation_bytes(spec, name)
     return total
+
+
+def derived_allocation_bytes(spec: Gemma4GGUFWeightSpec, name: str) -> int:
+    """Return the device bytes one derived allocation of ``spec`` needs."""
+
+    if name not in ("t16_gate", "t16_up"):
+        raise ValueError(f"{spec.slot_path}: unknown derived allocation {name!r}")
+    if spec.quant_key != "gguf_q4_k" or len(spec.source.shape) != 3:
+        raise ValueError(
+            f"{spec.slot_path}: a t16 allocation needs a rank-3 Q4_K expert tensor, "
+            f"not {spec.quant_key} rank {len(spec.source.shape)}"
+        )
+    from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16_tile_bytes
+
+    return repack_gguf_q4_k_tile16_tile_bytes(derived_half_shape(spec))
+
+
+def derived_half_shape(spec: Gemma4GGUFWeightSpec) -> tuple[int, int, int]:
+    """Return the byte shape of one half of a fused rank-3 Q4_K expert tensor."""
+
+    experts, out_features, bytes_per_row = spec.source.shape
+    if int(out_features) % 2:
+        raise ValueError(
+            f"{spec.slot_path}: {out_features} output rows do not split into a "
+            "gate half and an up half"
+        )
+    return (int(experts), int(out_features) // 2, int(bytes_per_row))
 
 
 
@@ -265,6 +311,27 @@ def materialize_gemma4_gguf_device_weight(
         allocator=allocator,
     )
     allocations["raw"] = allocation
+    for name in spec.allocation_names:
+        if name == "raw":
+            continue
+        import numpy as np
+
+        from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
+
+        experts, half_rows, _ = derived_half_shape(spec)
+        first = name == "t16_gate"
+        start = 0 if first else half_rows
+        stacked = np.asarray(raw).reshape(experts, 2 * half_rows, -1)
+        tiles = repack_gguf_q4_k_tile16(stacked[:, start : start + half_rows, :]).tiles
+        allocations[name] = load_host_array_to_device_as_dtype(
+            f"{spec.source.name}.{name}",
+            tiles,
+            DType.INT8,
+            source_dtype="I8",
+            device=device,
+            runtime=runtime,
+            allocator=allocator,
+        )
     return Gemma4GGUFDeviceWeight(
         spec=spec,
         allocations=allocations,
