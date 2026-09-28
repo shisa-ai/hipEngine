@@ -117,29 +117,37 @@ def test_gguf_q8_0_wmma_prefill_registry_and_build_plan() -> None:
 
 
 def test_gguf_q8_0_wmma_prefill_default_tiles_match_paro_heuristic() -> None:
-    """P9.C1 tuned heuristic: shape-aware (tile_m, tile_n) defaults.
+    """The tuned (tile_m, tile_n) defaults, re-measured on gfx1151.
 
-    Pinning test for the per-shape dispatch decision. Each assertion below
-    is anchored to a microbench-best tile measured on RX 7900 XTX / gfx1100
-    at rows=512, BF16/BF16. Changing the heuristic must also change these
-    assertions deliberately (with new microbench evidence).
+    Pinning test for the per-shape dispatch decision. Each assertion below is
+    anchored to a microbench tile measured at rows=512, BF16/BF16, and the
+    header records the ms behind each. Changing the heuristic must also
+    change these assertions deliberately, with new microbench evidence.
+
+    The 2026-09-28 gfx1151 sweep replaced the gfx1100 shape ladder with a
+    single tile_m because the ladder's branches were selecting the slower
+    tile on every shape tested, including the qwen35moe shapes it was
+    written for. The assertions below are the ladder's shapes, so the change
+    is visible where it bites.
     """
 
-    # P9.C1 sweep: at rows=512 the optimal TN is 32 across all out_features.
-    # rows < 32 falls back to TN=16 because the bigger TN under-utilises the
-    # WMMA tile.
-    assert _default_tiles(rows=512, in_features=2048, out_features=8192) == (16, 32)
-    assert _default_tiles(rows=512, in_features=2048, out_features=4096) == (16, 32)
+    # tile_n is 32 at rows >= 32 across all out_features; rows < 32 falls
+    # back to 16 because the bigger TN under-utilises the WMMA tile.
+    assert _default_tiles(rows=512, in_features=2048, out_features=8192) == (64, 32)
+    assert _default_tiles(rows=512, in_features=2048, out_features=4096) == (64, 32)
     assert _default_tiles(rows=512, in_features=4096, out_features=2048) == (64, 32)
-    assert _default_tiles(rows=512, in_features=2048, out_features=2048) == (32, 32)
-    assert _default_tiles(rows=512, in_features=2048, out_features=512) == (16, 32)
-    assert _default_tiles(rows=32, in_features=2048, out_features=8192) == (16, 32)
+    assert _default_tiles(rows=512, in_features=2048, out_features=2048) == (64, 32)
+    assert _default_tiles(rows=512, in_features=2048, out_features=512) == (64, 32)
+    assert _default_tiles(rows=32, in_features=2048, out_features=8192) == (64, 32)
     assert _default_tiles(rows=32, in_features=4096, out_features=2048) == (64, 32)
-    assert _default_tiles(rows=31, in_features=2048, out_features=8192) == (16, 16)
+    assert _default_tiles(rows=31, in_features=2048, out_features=8192) == (64, 16)
     assert _default_tiles(rows=31, in_features=4096, out_features=2048) == (64, 16)
-    assert _default_tiles(rows=8, in_features=2048, out_features=2048) == (32, 16)
-    # tile_m falls back to 16 when out_features < 32 (rare; lm_head etc.).
+    assert _default_tiles(rows=8, in_features=2048, out_features=2048) == (64, 16)
+    # tile_m falls back to 16 when out_features < 64 (rare; lm_head etc.),
+    # because a 64-wide output tile would launch mostly out-of-range columns.
     assert _default_tiles(rows=512, in_features=2048, out_features=16) == (16, 32)
+    assert _default_tiles(rows=512, in_features=2048, out_features=63) == (16, 32)
+    assert _default_tiles(rows=512, in_features=2048, out_features=64) == (64, 32)
 
     for tm, tn in _ALLOWED_TILES:
         assert tm in {16, 32, 64}
