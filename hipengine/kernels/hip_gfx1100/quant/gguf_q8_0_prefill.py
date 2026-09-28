@@ -81,22 +81,44 @@ def _symbol(variant: str) -> str:
 def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int, int]:
     """Heuristic default for (tile_m, tile_n) when the caller does not override.
 
-    P9.C1 tuning (microbench on RX 7900 XTX / gfx1100, rows=512, BF16/BF16)
-    is shape-specific; ``out_features`` alone was too coarse for qwen35moe:
+    A 2026-09-28 sweep on gfx1151 (Radeon 8060S) over eleven shapes --
+    gemma4's dense projections and the qwen35moe shapes the previous rules
+    were written for -- found ``tile_m=64`` best or within run-to-run noise
+    on every one of them, and the previous ``(32, 32)`` fallback best on
+    none. ``tile_n`` stays 32 because it is the token-side tile: a block
+    covers ``AWQ_TILE_N`` tokens and the weight tile is dequantized once per
+    (block, weight element), so ``tile_n`` is the dimension that trades
+    weight traffic against registers. 32 is the largest value whose
+    accumulator and activation registers fit.
 
-    * ``(in=2048, out=8192)`` (linear-attention qkv and full-attn q+gate):
-      ``(16,32)`` is the fastest measured tile (`~0.54 ms` synthetic). The
-      previous broad ``out>=4096 -> (64,32)`` rule over-tiled this shape.
-    * ``(in=2048, out=4096)`` (linear-attention gate): ``(16,32)`` slightly
-      wins over ``(64,32)`` and is retained to keep the large-input family
-      consistent.
-    * ``(in=4096, out=2048)`` (ssm/shared down): ``(64,32)`` is best.
-    * ``out<=512`` (full-attn k/v): ``(16,32)`` is best.
-    * Other medium shapes keep the stable P8/P9 ``(32,32)`` default.
-    * ``rows < 32``: drop ``tile_n`` to 16 (the kernel still launches but
-      the bigger TN under-utilises the WMMA tile).
+    Selected measurements (rows=512, bf16 in, bf16 out, ms, median of 5):
 
-    See ``tests/test_gpu_gguf_q8_0_wmma_prefill.py`` for dispatch pinning tests.
+    * ``(in=2816, out=2048)`` swa k/v: ``64x32`` 0.459 against ``16x32``
+      0.798 and ``32x32`` 0.931.
+    * ``(in=2816, out=2112)`` dense ffn gate/up: ``64x32`` 0.634 against
+      ``16x32`` 1.163 and ``32x32`` 1.187.
+    * ``(in=4096, out=2048)`` qwen35moe ssm down: ``64x32`` 0.967 against
+      ``16x32`` 1.722 and ``32x32`` 1.997.
+    * ``(in=2816, out=8192)`` global q_proj: ``64x32`` 2.885 against
+      ``16x32`` 3.736 and ``32x32`` 3.828.
+    * ``(in=2048, out=8192)`` qwen35moe qkv: ``64x32`` 2.494 against
+      ``16x32`` 2.755 -- the shape the previous rule gave ``16``, so that
+      rule was picking the slower tile here too.
+    * ``(in=8192, out=2816)`` and ``(in=4096, out=2816)`` are the only two
+      where a narrow tile measured ahead, by 1.1 and 0.9 percent, which is
+      inside the run-to-run spread for the same shape and tile.
+
+    The previous rules were tuned on gfx1100 with the qwen35moe shapes and
+    preferred ``(16, 32)`` for ``(in<=2048, out>=4096)`` and ``(32, 32)``
+    otherwise. Both were re-measured here; the replacement is a single tile
+    rather than a shape ladder because the ladder's branches were selecting
+    the slower tile, and a rule that cannot be cleared by measurement is
+    worse than no rule.
+
+    All tiles produce bit-identical output on the shapes checked (three
+    gemma4 dense shapes, six tiles each), so this is a performance choice
+    with no numerical consequence. See
+    ``tests/test_gpu_gguf_q8_0_wmma_prefill.py`` for dispatch pinning tests.
     """
 
     override_m = os.environ.get("HIPENGINE_GGUF_Q8_0_WMMA_TILE_M")
@@ -109,16 +131,7 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
             raise ValueError(f"unsupported Q8_0 WMMA tile override: {tile}")
         return tile
     tile_n = 32 if rows >= 32 else 16
-    if out_features <= 512:
-        tile_m = 16
-    elif in_features >= 4096 and out_features >= 2048:
-        tile_m = 64
-    elif in_features <= 2048 and out_features >= 4096:
-        tile_m = 16
-    elif out_features >= 32:
-        tile_m = 32
-    else:
-        tile_m = 16
+    tile_m = 64 if out_features >= 64 else 16
     return tile_m, tile_n
 
 

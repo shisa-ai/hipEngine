@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11117,
-    "current": 3885,
+    "entries": 11120,
+    "current": 3888,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1213,
+    "rows": 1216,
     "by_rule": {
       "dependency": 40,
       "legacy-next": 109,
-      "status": 1064
+      "status": 1067
     }
   },
   "rows": [
@@ -44124,14 +44124,14 @@
         "written": "2026-09-27",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "- Repoint `scripts/gemma4_llamacpp_reference_bench.py` (`DEFAULT_SERVER`,\n  `DEFAULT_SOURCE`) and `scripts/gemma4_llamacpp_compare.py` (`ARTIFACT`) away\n  from `/mnt/nvme1/llama-gemma4`, then compare each arm's greedy token at 16, 24\n  and 96 ids under the probe corpus against this build.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260927T063013.481503Z-lhl-gemma4-llamacpp-comparator-path-02df31.md",
@@ -44149,7 +44149,7 @@
         ]
       },
       "id": "worklog/20260927T063013.481503Z-lhl-gemma4-llamacpp-comparator-path-02df31",
-      "evidence_hash": "5bfdbc8a04ea"
+      "evidence_hash": "db191bf584c2"
     },
     {
       "kind": "worklog",
@@ -44791,14 +44791,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 4,
         "open_text": "Measure the grouped down family at `704 -> 2816` across row counts. That needs a\ndown weight at the true shape -- `(128, 2816, 704)` Q4_K, roughly 142 MB -- so it\nis a heavier setup than the gate/up cases, but it is the same shape of test and\nit decides whether production is affected.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "3 later entries by the same worker share this topic prefix"
+        "4 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T060604.266787Z-lhl-gemma4-down-scope-live-504ced.md",
@@ -44816,7 +44816,7 @@
         ]
       },
       "id": "worklog/20260928T060604.266787Z-lhl-gemma4-down-scope-live-504ced",
-      "evidence_hash": "dfc0de4e7f24"
+      "evidence_hash": "4409864f8fed"
     },
     {
       "kind": "worklog",
@@ -45474,14 +45474,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "1. **The same pattern in the sibling kernels.** `load_qs_bytes` and its four-byte\n   or-chain appear across `kernels/hip_gfx1100/quant/`; the Q4_K gate_up kernel\n   and the Q8_0 dense route were not checked for it. The gate_up is the larger\n   block and the Q8_0 WMMA kernel is the single hottest kernel in the trace at\n   379.9 ms, so it is worth the grep.\n2. **The down is still 1.29x behind the gate_up per byte.** The remaining gap is\n   the Q5_1 five-bit format's extra `dot_h` pass, which is real work rather than\n   waste, so what is left is the gate_up's LDS staging that the down does not do",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T081634.604650Z-lhl-gemma4-down-mmq-load-width-397816.md",
@@ -45503,7 +45503,7 @@
         ]
       },
       "id": "worklog/20260928T081634.604650Z-lhl-gemma4-down-mmq-load-width-397816",
-      "evidence_hash": "5f147ede51ee"
+      "evidence_hash": "76dc8dc30a20"
     },
     {
       "kind": "worklog",
@@ -45517,14 +45517,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "1. **The gate_up is now the larger expert half at 175.2 ms and has no equivalent\n   defect** -- it reads its weights from LDS caches -- so the remaining lever\n   there is its 32-wide column tile or its dequant, not its memory traffic.\n2. **The dense block at 277.6 ms is the second-largest and was not checked.** Its\n   Q8_0 WMMA kernel dequantizes with 16 scalar byte loads per column per K-block\n   from a 34-byte-stride stream, so the same class of defect may be present; the\n   block stride makes 16-byte alignment unprovable there, so the fix would need\n   `__builtin_memcpy` rather than a cast,",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T082248.307663Z-lhl-gemma4-down-mmq-canonical-ab-c97f4d.md",
@@ -45542,7 +45542,7 @@
         ]
       },
       "id": "worklog/20260928T082248.307663Z-lhl-gemma4-down-mmq-canonical-ab-c97f4d",
-      "evidence_hash": "122ff86a2504"
+      "evidence_hash": "1473e7b27193"
     },
     {
       "kind": "worklog",
@@ -45586,6 +45586,91 @@
     },
     {
       "kind": "worklog",
+      "key": "20260928T082900.252322Z-lhl-gemma4-down-mmq-trace-crosscheck-6eb69b",
+      "title": "a kernel trace independently confirms the down MMQ at minus 23 percent with the gate up kernel as a flat control",
+      "location": "worklog/entries/20260928T082900.252322Z-lhl-gemma4-down-mmq-trace-crosscheck-6eb69b.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-down-mmq-trace-crosscheck",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "1. **The gate_up is now the larger expert half** at 313.2 ms of the traced\n   prefill against the down's 239.5, and it has no equivalent memory-traffic\n   defect because it stages through LDS caches. Its remaining levers are its\n   32-wide column tile and its dequant.\n2. **The dense block.** `gguf_q8_0_prefill_wmma_kernel<32>` is the single hottest\n   kernel in the trace at 386.8 ms over 350 dispatches, and its dequant reads 16\n   consecutive int8 quants as 16 scalar byte loads from a 34-byte-stride stream.\n   The same class of defect may be present; the stride makes 16-byte alignment\n   unpro",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T082900.252322Z-lhl-gemma4-down-mmq-trace-crosscheck-6eb69b.md",
+        "refs": [],
+        "tokens": [
+          "confirms",
+          "control",
+          "down",
+          "flat",
+          "gate",
+          "independently",
+          "kernel",
+          "minus",
+          "mmq",
+          "percent",
+          "trace"
+        ]
+      },
+      "id": "worklog/20260928T082900.252322Z-lhl-gemma4-down-mmq-trace-crosscheck-6eb69b",
+      "evidence_hash": "967e42417237"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T083314.113487Z-lhl-gemma4-llamacpp-kernel-split-c6ae51",
+      "title": "llama cpp traces at 495 ms of device time against our 830 and the whole gap is two numbers attention at 6x and the gemms at 1.5x",
+      "location": "worklog/entries/20260928T083314.113487Z-lhl-gemma4-llamacpp-kernel-split-c6ae51.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-llamacpp-kernel-split",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "1. **Query-tile the prefill attention.** One block should own a tile of query\n   rows and stream key tiles through LDS, so the KV is read once per query tile\n   instead of once per query row. That is the 147 ms, and it grows with context\n   -- the 2026-09-27 baseline already showed our prefill falling from 257 to 230\n   tok/s between 512 and 1024 prompt tokens while llama.cpp rises from 909 to\n   1183. This is a real kernel, and the previous tiled attempt's 3a/3b\n   correctness split is the part to get right.\n2. **The dense q8_0 path is the GEMM gap**: 277.7 ms against llama.cpp's 105.6 on\n   ",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T083314.113487Z-lhl-gemma4-llamacpp-kernel-split-c6ae51.md",
+        "refs": [],
+        "tokens": [
+          "495",
+          "830",
+          "against",
+          "attention",
+          "cpp",
+          "device",
+          "gap",
+          "llama",
+          "numbers",
+          "our",
+          "time",
+          "traces",
+          "two",
+          "whole"
+        ]
+      },
+      "id": "worklog/20260928T083314.113487Z-lhl-gemma4-llamacpp-kernel-split-c6ae51",
+      "evidence_hash": "86ce8c2c925a"
+    },
+    {
+      "kind": "worklog",
       "key": "20260928T083619.552837Z-lhl-gemma4-expert-route-dispatch-a7c4e1",
       "title": "pack8 was already measured as a decode route and loses by 2.73x so my candidate framing was wrong",
       "location": "worklog/entries/20260928T083619.552837Z-lhl-gemma4-expert-route-dispatch-a7c4e1.md:8",
@@ -45623,6 +45708,46 @@
       },
       "id": "worklog/20260928T083619.552837Z-lhl-gemma4-expert-route-dispatch-a7c4e1",
       "evidence_hash": "58ac215a6ad4"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T084150.706656Z-lhl-gemma4-q8-0-tile-heuristic-35630d",
+      "title": "the dense q8_0 tile heuristic was picking a tile that is never the best and fixing it is 10 percent of prefill",
+      "location": "worklog/entries/20260928T084150.706656Z-lhl-gemma4-q8-0-tile-heuristic-35630d.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-q8-0-tile-heuristic",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "1. **The dense Q8_0 family is now 213.3 ms per prefill against llama.cpp's\n   105.6 for the same weights -- 2.0x, down from 2.6x.** The remaining gap is\n   structural: llama.cpp's RDNA3.5 MMQ config is `nthreads=256, I=128, J=128`\n   against our 32-thread block and 64x32 tile, so it re-reads weights 4x less.\n   Reaching J=128 needs `TN=8`, whose 8 float8 accumulators plus 8 half16\n   activations do not fit in registers at `TM>=1`; `TN=4` (tile_n 64) is the\n   reachable step and was not in `_ALLOWED_TILES`.\n2. Attention remains 178.8 ms per prefill against llama.cpp's 28.8. The traffic\n   ablat",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T084150.706656Z-lhl-gemma4-q8-0-tile-heuristic-35630d.md",
+        "refs": [],
+        "tokens": [
+          "best",
+          "dense",
+          "fixing",
+          "heuristic",
+          "never",
+          "percent",
+          "picking",
+          "prefill",
+          "q8_0",
+          "tile"
+        ]
+      },
+      "id": "worklog/20260928T084150.706656Z-lhl-gemma4-q8-0-tile-heuristic-35630d",
+      "evidence_hash": "4551b03865bc"
     },
     {
       "kind": "worklog",

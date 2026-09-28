@@ -7481,7 +7481,7 @@
         },
         "runtime_sites": [
           "hipengine/generation/qwen4_exp_profiles.py:570",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:102"
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:124"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -7502,7 +7502,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_Q8_0_WMMA_TILE_M",
-      "evidence_hash": "b719677f9240"
+      "evidence_hash": "54a1151cfac2"
     },
     {
       "kind": "flag",
@@ -7517,7 +7517,7 @@
         },
         "runtime_sites": [
           "hipengine/generation/qwen4_exp_profiles.py:571",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:103"
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:125"
         ],
         "in_refactor_ledger": false,
         "in_envs_doc": true
@@ -7539,7 +7539,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_Q8_0_WMMA_TILE_N",
-      "evidence_hash": "17e1437bf51c"
+      "evidence_hash": "40f9cc528141"
     },
     {
       "kind": "flag",
