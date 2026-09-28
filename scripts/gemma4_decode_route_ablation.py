@@ -102,6 +102,14 @@ def main() -> int:
     orig_k_launch = gk._launch
     orig_q4_k_selected = gq._launch_selected
     orig_selected = ex.gemma4_project_experts_selected
+    # The decode route does not go through ``_selected``. The traffic census
+    # counts the launches that actually run and labels them ``expert-mmq
+    # gate_up`` and ``expert-mmq down``, so the expert work reaches these two
+    # entry points instead. Skipping only ``_selected`` measured an arm that
+    # moved no bytes, which is why its saving was impossible for the 1324.8 MB
+    # the census attributes to the expert path.
+    orig_experts_gate_up_mmq = ex.gemma4_project_experts_gate_up_mmq
+    orig_experts_down_mmq = ex.gemma4_project_experts_down_mmq
     orig_attention = gl.gemma4_attention_prefill_bf16
     orig_router = gl.gemma4_router_topk_bf16
     elementwise_names = [
@@ -143,6 +151,16 @@ def main() -> int:
             return True
         return orig_selected(weight, x_ptr, selected_ptr, out_ptr, *a, **kw)
 
+    def spy_experts_gate_up_mmq(weight, *a, **kw):
+        if mode == "experts":
+            return None
+        return orig_experts_gate_up_mmq(weight, *a, **kw)
+
+    def spy_experts_down_mmq(weight, *a, **kw):
+        if mode == "experts":
+            return None
+        return orig_experts_down_mmq(weight, *a, **kw)
+
     def spy_attention(*a, **kw):
         if mode == "attention":
             return None
@@ -172,6 +190,8 @@ def main() -> int:
     gk._launch = spy_k_launch
     gq._launch_selected = spy_q4_k_selected
     ex.gemma4_project_experts_selected = spy_selected
+    ex.gemma4_project_experts_gate_up_mmq = spy_experts_gate_up_mmq
+    ex.gemma4_project_experts_down_mmq = spy_experts_down_mmq
     gl.gemma4_attention_prefill_bf16 = spy_attention
     gl.gemma4_router_topk_bf16 = spy_router
     for name in elementwise_names:
