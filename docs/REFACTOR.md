@@ -4,6 +4,35 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## Gemma 4 expert pack8 layout — gate whose clearing experiment cannot be run (2026-09-28)
+
+`pack8_layout_enabled()` in `hipengine/loading/gemma4_gguf_device.py` defaults off
+and documents its cause: enabling it measured decode at 21.03 tok/s against 7.64,
+and costs 19.2 GB. The flag is honest about *why* it is off. What it does not say is
+that **the path it gates cannot be selected at any shape where its byte trade is
+favourable**, so the experiment the docstring proposes cannot be run.
+
+The gate/up selection at `hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:486`
+takes the MMQ32 route whenever `gemma4_moe_prefill_route_enabled(lanes, num_experts)`
+holds, and that predicate is a threshold at `_PREFILL_MIN_LANES_PER_EXPERT = 1`. The
+ladder that contains `pack8_selected` is consulted only below it. Prefill always has
+more than one lane per expert, so `pack8_selected` is reachable **only** in the decode
+regime — which is the one regime where it was measured slower.
+
+Measured with `HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT=1` at `--prompt 512 --output 128`:
+prefill **692 tok/s against 693**, decode 27.87 against 28.06, load time **116.6 s
+against 1.1 s**, and the engine's own counters still report `gate_up_mmq32` and
+`down_mmq32` for both projections. The docstring's clearing condition ("a large-batch
+decode where `rows` exceeds the expert count") is in tension with the threshold: 4096
+rows over 128 experts is 32 lanes each, which selects `grouped_prefill`, not pack8.
+
+**Clearing condition:** either retire the expert pack8 layout and
+`_PACK8_ALLOCATION_NAMES` planning along with it, or make the layout selectable at a
+row count that favours it — which needs a route decision above `grouped_prefill`, not
+a flag. Removing the layout also removes the 116 s repack from the load path whenever
+anyone enables it. Evidence and commands:
+`worklog/entries/20260928T100641.455507Z-lhl-gemma4-pack8-unreachable-prefill-5fb2bf.md`.
+
 ## Gemma attention legacy slice-count ABI (2026-09-26)
 
 The default two-pass decode attention in
