@@ -49,6 +49,7 @@ from hipengine.core.memory import (
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
     build_qwen35_paged_attn_decode,
+    qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_experiment_spans,
     qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_promoted_spans,
     qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans,
 )
@@ -160,6 +161,28 @@ def replay(args, rt, lib) -> int:
         print(f"  promoted [{route}]: {ms:8.3f} ms  {base_ms / ms:5.3f}x  "
               f"{delta:+6.2f}%  bit_exact={exact}  maxdiff={maxdiff:.3e}")
 
+    def make_qk(v):
+        def run_qk():
+            qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_experiment_spans(
+                qb.ptr, kb.ptr, vb.ptr, out.ptr, spans, rows, max_ctx, block_size,
+                nqh, nkv, hd, SCALE, v, library=lib, runtime=rt,
+            )
+        return run_qk
+
+    for v in [int(x) for x in args.qk_variants.split(",") if x.strip()]:
+        run_qk = make_qk(v)
+        out_ref = np.zeros(rows * nqh * hd, np.float32)
+        copy_host_to_device(out, host_array_ptr(out_ref), nbytes, runtime=rt)
+        run_qk()
+        rt.device_synchronize()
+        copy_device_to_host(host_array_ptr(got), out, nbytes, runtime=rt)
+        exact = bool(np.array_equal(got.view(np.uint32), ref.view(np.uint32)))
+        maxdiff = float(np.max(np.abs(got - ref)))
+        ms = bench(rt, run_qk, args.repetitions, args.warmup)
+        delta = (base_ms / ms - 1.0) * 100.0
+        print(f"  qk variant {v}: {ms:8.3f} ms  {base_ms / ms:5.3f}x  "
+              f"{delta:+6.2f}%  bit_exact={exact}  maxdiff={maxdiff:.3e}")
+
     for b in bufs:
         free(b, runtime=rt)
     return 0
@@ -181,6 +204,9 @@ def main() -> int:
     p.add_argument("--capacities", default="0,auto",
                    help="KV capacities to try on the promoted route; 'auto' uses "
                         "the captured cache size, 0 forces the int64 fallback")
+    p.add_argument("--qk-variants", default="",
+                   help="comma-separated QK unroll experiment ids (0=2-token "
+                        "int32, 1=4-token int32, 2=4-token int64)")
     p.add_argument("--repetitions", type=int, default=30)
     p.add_argument("--warmup", type=int, default=5)
     args = p.parse_args()

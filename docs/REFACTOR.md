@@ -7489,3 +7489,44 @@ generic `..._batch_spans` route remains the default for the non-fixed256 case.
 Removal trigger: the promoted route has held as the default across a full
 category suite and the runtime thread-width sweep is retired, at which point the
 fixed256 pair, its `__init__` exports, and the microbench reference path go away.
+
+## Full-attention context leaf: QK unroll depth selector
+
+`hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_experiment_spans`
+(`hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip`) selects a QK
+unroll depth by an integer `variant` argument, so the microbench can compare
+depths in one session without adding one exported symbol per depth:
+
+| variant | QK tokens | addressing |
+| --- | ---: | --- |
+| 0 | 2 | per-token int32 offset table |
+| 1 | 4 | per-token int32 offset table |
+| 2 | 4 | per-token int64 offset table |
+
+Nothing in `hipengine/` dispatches to it; only
+`scripts/qwen4exp_fullattn_prefill_microbench.py` and the worklog entries for this
+campaign call it.
+
+Removal trigger: the unroll depth stops being a live tuning axis - for example
+once the leaf's per-token offset table itself is replaced - at which point this
+symbol, its Python wrapper, its `__init__` export, and the microbench
+`--qk-variants` path all go away.
+
+## Full-attention context leaf: rejected per-block base table
+
+Do not re-attempt compressing the per-token offset table. Replacing it with one
+int64 element offset per logical block, rebuilt in-loop from an incrementally
+tracked (block, offset-in-block) pair, cuts the shared-memory request from 18,471
+to 10,423 bytes and doubles residency from 3 to 6 blocks per CU, and measured
+**1.41x slower** (40.38 ms against 28.59 ms) on the p4096 prefill launch.
+
+The reason is that the table is not overhead but a precomputed address stream:
+reading the next address from shared memory lets the hardware issue independent
+loads, whereas the incremental tracker puts the address on a serial recurrence
+every load depends on. The same effect explains the int64 variant's 1.38x
+regression at only one fewer block per CU.
+
+An earlier revision of this ledger listed this as the next lever to implement; it
+was implemented, measured, and rejected. The kernel now carries a comment at the
+precompute loop recording why the table is per-token. Full measurements are in
+the campaign worklog entry and `benchmarks/results/`.

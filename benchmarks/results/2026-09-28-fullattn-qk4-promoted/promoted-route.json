@@ -1,0 +1,153 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_fullattn_context_qk4_promoted",
+  "date": "2026-09-28",
+  "host": {
+    "physical_host_id": "55ea6c509d0b49eea8de7094a1023668",
+    "device": "AMD Radeon 8060S",
+    "arch": "gfx1151",
+    "rocm": "TheRock ROCm 10.0.0",
+    "env": "HIPENGINE_HIP_ARCH=gfx1151"
+  },
+  "model": {
+    "name": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL",
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "bf16",
+    "block_size": 256
+  },
+  "workload": {
+    "harness": "scripts/qwen4exp_profile_gap.py",
+    "mode": "prefill",
+    "case_id": "code-p4096",
+    "prompt_tokens": 4096,
+    "prefill_chunk_size": 1024,
+    "repetitions": 3
+  },
+  "kernel": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
+  "supersedes": "benchmarks/results/2026-09-27-fullattn-context-promoted/promoted-route.json",
+  "levers": {
+    "int32_token_offsets": "carried over: shared_bytes 26,663 -> 18,471 B at max_context_len 2048; residency 2 -> 3 blocks/CU",
+    "qk_four_token_unroll": "new: four independent dot-product and shuffle chains per warp iteration instead of two"
+  },
+  "bit_exact": true,
+  "maxdiff": 0.0,
+  "microbench_replay": {
+    "artifact": "/tmp/fullattn-launch.npz",
+    "repetitions": 15,
+    "shipped_fixed256_ms": 54.611,
+    "promoted_int32_qk4_ms": 28.563,
+    "promoted_int32_speedup": 1.912,
+    "ns_per_row_head_token": 0.7565,
+    "shipped_ns_per_row_head_token": 1.4462
+  },
+  "unroll_depth_sweep": {
+    "protocol": "same replay, same session, 15 repetitions, byte-equality asserted before timing",
+    "rows": [
+      {
+        "variant": "per-token int32, QK=2",
+        "shared_bytes": 18471,
+        "blocks_per_cu": 3,
+        "ms": 31.292,
+        "speedup": 1.744,
+        "bit_exact": true
+      },
+      {
+        "variant": "per-token int32, QK=4",
+        "shared_bytes": 18471,
+        "blocks_per_cu": 3,
+        "ms": 28.522,
+        "speedup": 1.913,
+        "bit_exact": true
+      },
+      {
+        "variant": "per-token int64, QK=4",
+        "shared_bytes": 26663,
+        "blocks_per_cu": 2,
+        "ms": 39.554,
+        "speedup": 1.38,
+        "bit_exact": true
+      }
+    ],
+    "conclusion": "The four-token unroll is 1.097x over the two-token unroll with identical shared memory, so the gain is instruction-level parallelism and not occupancy."
+  },
+  "rejected_lever": {
+    "name": "per-block base table replacing the per-token offset table",
+    "mechanism": "one int64 element offset per logical block, rebuilt in-loop from an incrementally tracked (logical block, offset-in-block) pair",
+    "shared_bytes": 10423,
+    "blocks_per_cu": 6,
+    "rows": [
+      {
+        "variant": "block-base, QK=4",
+        "ms": 40.384,
+        "speedup": 1.352,
+        "bit_exact": true
+      },
+      {
+        "variant": "block-base, QK=2",
+        "ms": 42.513,
+        "speedup": 1.285,
+        "bit_exact": true
+      }
+    ],
+    "regression_vs_promoted": 1.414,
+    "conclusion": "Rejected. Halving the shared-memory request and doubling residency from 3 to 6 blocks per CU made the launch 1.41x slower. The per-token table is not overhead: it is a precomputed address stream, so the hardware issues independent loads. The incremental tracker instead puts the address on a serial recurrence that every load depends on. The int64 variant's 1.38x regression at one fewer block per CU is the same effect read the other way, which is why the int32 table sits between two worse extremes.",
+    "prediction_this_falsifies": "The prior unit listed this as the next lever and estimated 1.2-1.4x on top of the then-promoted route. The estimate was wrong in sign and was not retained."
+  },
+  "same_session_ab": {
+    "protocol": "scripts/qwen4exp_profile_gap.py, --mode prefill --case-id <cat>-p4096 --repetitions 3 --prefill-chunk-size 1024, arm selected by HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY",
+    "legacy_definition": "HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY=1 routes the dense full-attention chunk to the pre-campaign fixed256 launcher"
+  },
+  "category_suite": {
+    "cases": {
+      "code": {
+        "legacy_tok_s": 246.54,
+        "promoted_tok_s": 252.835,
+        "legacy_median_s": 16.6015,
+        "promoted_median_s": 16.2027,
+        "delta_pct": 2.55
+      },
+      "general_en": {
+        "legacy_tok_s": 247.942,
+        "promoted_tok_s": 256.542,
+        "legacy_median_s": 16.5203,
+        "promoted_median_s": 15.9619,
+        "delta_pct": 3.47
+      },
+      "general_ja": {
+        "legacy_tok_s": 250.862,
+        "promoted_tok_s": 256.457,
+        "legacy_median_s": 16.3243,
+        "promoted_median_s": 15.9645,
+        "delta_pct": 2.23
+      },
+      "mixed_ja_en": {
+        "legacy_tok_s": 248.605,
+        "promoted_tok_s": 254.432,
+        "legacy_median_s": 16.4751,
+        "promoted_median_s": 16.0917,
+        "delta_pct": 2.34
+      }
+    },
+    "mean_tok_s": {
+      "legacy": 248.487,
+      "promoted": 255.066
+    },
+    "mean_delta_pct": 2.65,
+    "all_categories_improve": true,
+    "prior_unit_mean_delta_pct": 2.11,
+    "code_wall_median_s": {
+      "legacy": 16.6015,
+      "promoted": 16.2027,
+      "delta_ms": -398.8
+    }
+  },
+  "gate": {
+    "type": "byte_equality",
+    "test": "tests/test_gpu_fullattn_context_promoted_route.py",
+    "note": "No KL/top-1 envelope applies: neither lever changes a floating-point operation. The promoted route is byte-identical to the shipped route over the full 1024x24x256 production output."
+  },
+  "source": {
+    "kernel": "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip",
+    "refactor": "docs/REFACTOR.md"
+  }
+}
