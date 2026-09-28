@@ -38,7 +38,13 @@ path `hipengine.LLM.generate()` reaches.
   dense projection Q8_0, tied Q8_0 `token_embd` as the lm_head (262144 × 2816).
   30 layers: 25 sliding-window (head_dim 256, window 1024, 8 KV heads) and 5
   global (head_dim 512, 2 KV heads, K and V share one projection).
-- hipEngine `gemma4` at `df867de1f`, BF16 KV, default production route.
+- hipEngine `gemma4`, BF16 KV, default production route. The tables below were
+  taken at `df867de1f` and reproduced at `6d886f473` -- 8 commits later, none of
+  them touching `hipengine/` -- by
+  `benchmarks/results/2026-09-28-gemma4-scoreboard-baseline.json`, which is the
+  artifact every later optimization is compared against. See
+  [Baseline at HEAD](#baseline-at-head) for what reproduced and the one row that
+  did not.
 - llama.cpp upstream `a97cce8`, HIP build with `-DAMDGPU_TARGETS=gfx1100
   -DGGML_NATIVE=OFF`, flags `-ngl 99 -fa 1 -ctk bf16 -ctv bf16 -b 4096 -ub 1024`.
 - Measured 2026-09-28 with both GPUs otherwise idle.
@@ -62,6 +68,47 @@ llama.cpp's come from `llama-bench -r 3`. The MTP row is described under
 On the W7900 on 2026-09-27, hipEngine measured 1759.5 prefill / 38.79 decode
 against llama.cpp's 4377.0 / 70.1 at 1024 tokens. That comparison is recorded in
 `worklog/entries/20260927T174143.751391Z-lhl-gemma4-gemma4-three-engine-comparison-632e87.md`.
+
+### Baseline at HEAD
+
+`benchmarks/results/2026-09-28-gemma4-scoreboard-baseline.json`, captured on
+the XTX at `6d886f473` by `scripts/gemma4_scoreboard_snapshot.py --gpu 1
+--tag baseline`. It bundles both halves, four per-run artifacts
+(`-topline-{1024,4096}-baseline.json`, `-family-{1024,4096}-baseline.json`),
+the exact commands, the prompt-token hash and the toolchain (HIP 7.2.53211).
+Two runs 112 s apart agreed to within 0.4% on every row, so this artifact is the
+reference a landed change is diffed against.
+
+| Measurement | Baseline | Table above | Delta |
+| --- | ---: | ---: | ---: |
+| Prefill 1024 (tok/s) | 1979.7 | 1977 | +0.1% |
+| Prefill 4096 (tok/s) | 1061.6 | 1060 | +0.2% |
+| Decode at 1024 (tok/s) | 43.87 | 43.15 | +1.7% |
+| Decode at 4096 (tok/s) | 40.19 | 39.79 | +1.0% |
+| Prefill busy 1024 (ms) | 483.1 | 480.6 | +0.5% |
+| Prefill busy 4096 (ms) | 3751.8 | 3747.9 | +0.1% |
+| Decode busy at 1024 (ms) | **19.47** | 21.30 | **−8.6%** |
+| Decode busy at 4096 (ms) | 21.56 | 21.59 | −0.1% |
+| Launches per decode token | 1146 | 1146 | 0 |
+
+Every prefill family reproduces within 0.4% and decode at 4096 within 1%. One
+row does not: decode at 1024 measures 19.47 ms of device busy against the
+table's 21.30. The whole difference sits in `moe.gate_up` (4.79 against 5.42),
+`attn.sliding` (3.65 against 4.28), `moe.down` (2.64 against 2.83) and
+`lm_head` (0.97 against 1.15) -- and in this baseline every one of those is the
+same at 1024 as at 4096, which is what their inputs predict, since none of them
+reads the context. Only `attn.global` moves between the two lengths (0.75 ->
+2.82), as it must. The published 1024 and 4096 columns for those families
+differ where they should not, and this baseline's own 4096 column matches the
+published 4096 column to 1%. Launch counts are identical (1146 per token), so
+what moved is time per launch, not work. Treat it as clock or thermal state in
+the older 1024 trace.
+
+**Use this artifact, not the table's 1024 decode column, as the hipEngine decode
+baseline.** The paired table keeps its cells: its llama.cpp column was measured
+in the same session as its hipEngine column, and replacing half a pair from an
+unpaired run would break the pairing the head-to-head rests on. Re-pairing that
+row needs a fresh llama.cpp trace, which this baseline does not include.
 
 ### Prefill families (RX 7900 XTX, milliseconds per prefill)
 
@@ -114,6 +161,12 @@ occupancy or a measurement of recoverable host overhead.
 | **Unprofiled step** | **23.17** | **11.84** | | **25.13** | **12.24** | | |
 | **Launches / token** | **1146** | ≈1330 | | 1146 | ≈1330 | | |
 
+The hipEngine `@1024` column is the older, slower of the two hipEngine traces:
+[Baseline at HEAD](#baseline-at-head) re-measures it at 19.47 ms busy against
+the 21.30 below, with the difference sitting entirely in families whose cost
+does not depend on context. Keep the cells paired as measured; diff changes
+against the baseline artifact instead.
+
 Reading the decode table:
 
 - **Four families account for 11.3 ms of the 11.65 ms busy gap:**
@@ -139,6 +192,25 @@ Reading the decode table:
   removes the conversion (85.82 tok/s).
 
 ### How to regenerate
+
+hipEngine's two tables come from one command, so a landed optimization refreshes
+both halves against a paired baseline:
+
+```bash
+# From the gemma4 worktree. 1 = XTX primary lane, 0 = W7900.
+.venv/bin/python scripts/gemma4_scoreboard_snapshot.py --gpu 1 --tag p14
+```
+
+It warms the JIT cache, runs the campaign bench at each prompt length, traces the
+same driver under `rocprofv3 --kernel-trace`, rolls the trace up by family, and
+writes `<date>-gemma4-{topline,family,scoreboard}-<prompt>-<tag>.json` under
+`benchmarks/results/`. Compare a candidate artifact against the `baseline`-tagged
+one: same protocol, same GPU, same commit range. Raw traces land in `/tmp` and
+are not committed.
+
+The llama.cpp comparator is not in the script. The block below is the manual
+recipe for both engines, still valid, and is what reproduces the llama.cpp
+columns:
 
 ```bash
 # From the gemma4 worktree. N = physical GPU (1 = XTX, 0 = W7900).
