@@ -16,13 +16,14 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
     GenerationRequest,
+    GenerationStreamChunk,
     register_text_generator,
 )
 from hipengine.kernels.backends import resolve_backend
@@ -61,6 +62,8 @@ class Gemma4GGUFGenerator:
     _load_seconds: float | None = field(default=None, init=False, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
+    _speculative_provider: Any | None = field(default=None, init=False, repr=False)
+    _speculative_max_logits_rows: int = field(default=0, init=False, repr=False)
 
     # No ``supports_speculative_mtp`` here. This generator does not implement the
     # legacy ``generate_speculative_mtp_detailed`` protocol, but the engine also
@@ -72,6 +75,10 @@ class Gemma4GGUFGenerator:
     # accurate: ``engine_loop`` treats a missing attribute as "no legacy
     # method" and still routes through the staged check, which reports False
     # until the runner grows the hooks.
+    #
+    # ``attach_speculative_provider`` is the *public* route and it is the one
+    # this generator implements: ``LLM`` resolves a provider from the
+    # speculative registry and attaches it here before materialization.
     supports_stream_many = False
     supports_resident_session_kv = False
     supports_stream_logprobs = False
@@ -259,7 +266,16 @@ class Gemma4GGUFGenerator:
         started = time.perf_counter()
         weights = load_gemma4_device_weights(self.reader, backend=self.backend)
         try:
-            runner = Gemma4Runner(weights=weights, capacity=self.context_length)
+            # A speculative verify reads one logits row per verified position, so
+            # the projection buffer is sized for the attached provider's verifier
+            # rows. The default of one row is what keeps a wide prefill from
+            # sizing its logits scratch for the whole block, so this only grows
+            # when a provider actually asked for it.
+            runner = Gemma4Runner(
+                weights=weights,
+                capacity=self.context_length,
+                max_logits_rows=max(1, int(self._speculative_max_logits_rows)),
+            )
         except BaseException:
             weights.free()
             raise
@@ -267,6 +283,95 @@ class Gemma4GGUFGenerator:
         self._runner = runner
         self._load_seconds = time.perf_counter() - started
         return self._runner
+
+    # --- speculative provider -------------------------------------------
+
+    @property
+    def supports_speculative(self) -> bool:
+        return self._speculative_provider is not None
+
+    # ``supports_speculative_mtp`` is deliberately still absent. It is not that
+    # this generator cannot do speculative MTP -- it can, and
+    # ``generate_speculative_mtp_detailed`` below is the route -- but a declared
+    # attribute here is what
+    # ``tests/test_unit_gemma4_speculative_wiring.py`` pins against: any class
+    # level declaration short-circuits ``engine_loop`` before it consults the
+    # runner's staged hooks. ``engine_loop`` treats a missing attribute as "no
+    # legacy declaration" and still finds the method, so leaving it off is both
+    # accurate and the only form that keeps the staged route reachable.
+
+    def attach_speculative_provider(self, provider: Any) -> None:
+        """Attach one registry-resolved provider before target materialization.
+
+        The provider is built against this generator, and it needs the backbone's
+        embedding and output norm to construct the assistant head, so it must
+        attach before the weights exist rather than after. What it may set here
+        is the verifier row bound the runner is later constructed with.
+        """
+
+        if provider is None:
+            raise TypeError("speculative provider must not be None")
+        for name in ("generate_detailed", "stream_detailed", "capabilities", "close"):
+            if not callable(getattr(provider, name, None)):
+                raise TypeError(f"speculative provider must implement {name}()")
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Gemma 4 generator is closed")
+            if self._weights is not None:
+                raise RuntimeError(
+                    "speculative provider must attach before target materialization"
+                )
+            if self._speculative_provider is not None:
+                raise RuntimeError("a speculative provider is already attached")
+            declared = provider.capabilities().get("max_verifier_rows", 1)
+            try:
+                rows = int(declared)
+            except (TypeError, ValueError) as error:
+                raise TypeError(
+                    "speculative provider max_verifier_rows must be an integer"
+                ) from error
+            if rows < 1:
+                raise ValueError(
+                    "speculative provider max_verifier_rows must be positive"
+                )
+            self._speculative_max_logits_rows = rows
+            self._speculative_provider = provider
+
+    def speculative_capabilities(self) -> dict[str, Any]:
+        provider = self._speculative_provider
+        return {} if provider is None else dict(provider.capabilities())
+
+    def generate_speculative_detailed(
+        self,
+        request: GenerationRequest,
+    ) -> list[GenerationOutput]:
+        provider = self._speculative_provider
+        if provider is None:
+            raise NotImplementedError("Gemma 4 speculative provider is not configured")
+        return list(provider.generate_detailed(request))
+
+    def generate_speculative_mtp_detailed(
+        self,
+        request: GenerationRequest,
+    ) -> list[GenerationOutput]:
+        """The name ``engine_loop`` routes speculative MTP through.
+
+        ``generate_speculative_detailed`` is the name the provider protocol and
+        the ``LLM`` attach path use; this is the one the engine loop's capability
+        probe looks for. Both delegate to the same provider.
+        """
+
+        return self.generate_speculative_detailed(request)
+
+    def stream_speculative_detailed(
+        self,
+        request: GenerationRequest,
+    ) -> Iterator[GenerationStreamChunk]:
+        provider = self._speculative_provider
+        if provider is None:
+            raise NotImplementedError("Gemma 4 speculative provider is not configured")
+        for chunk in provider.stream_detailed(request):
+            yield GenerationStreamChunk.from_value(chunk)
 
     def _validate_request(self, request: GenerationRequest) -> None:
         blockers: list[str] = []
