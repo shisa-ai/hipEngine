@@ -151,3 +151,36 @@ def test_a_sliding_window_does_not_lift_the_ceiling(monkeypatch) -> None:
         _construct(
             _config(head_dim=512, window=1024), 15_617, monkeypatch
         )
+
+
+def test_the_generator_refuses_before_loading_any_weights(monkeypatch) -> None:
+    """The refusal must not cost a multi-gigabyte load to reach.
+
+    ``_ensure_runner`` loads the artifact and then constructs the runner, and the
+    runner is where the ceiling was originally enforced. The geometry the ceiling
+    depends on comes from metadata alone, so the generator now checks it first. This
+    asserts that ordering: the load is stubbed to fail the test if it is reached, so
+    a regression that moves the check back after the load is caught rather than
+    quietly costing the user a load before the refusal.
+    """
+
+    import hipengine.generation.gemma4_gguf as module
+    from hipengine.generation.gemma4_gguf import Gemma4GGUFGenerator
+
+    def _load(*args, **kwargs):
+        raise AssertionError("weights must not be loaded before the ceiling check")
+
+    monkeypatch.setattr(module, "load_gemma4_device_weights", _load)
+    monkeypatch.setattr(
+        module,
+        "gemma4_text_config_from_reader",
+        lambda *a, **k: _config(head_dim=512, window=None),
+    )
+
+    generator = Gemma4GGUFGenerator(
+        "/unused.gguf", object(), object(), context_length=32_768
+    )
+    generator._reader = object()
+
+    with pytest.raises(NotImplementedError):
+        generator._ensure_runner()
