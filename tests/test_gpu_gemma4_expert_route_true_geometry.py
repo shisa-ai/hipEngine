@@ -300,3 +300,77 @@ def test_fused_gate_up_mmq_route_holds_at_the_true_projection_geometry(
     assert normalized_mean < _MEAN_ENVELOPE, (
         f"fused MMQ gate_up exceeded the envelope ({context})"
     )
+
+
+# The scratch is documented as "a capacity, not an identity: the caller sizes it
+# for the widest block it will run and then runs narrower blocks through it."
+# The cases below are that property, which the envelope cases above do not
+# exercise: they hold the live width and the capacity equal (factor 1), so a
+# route that read its capacity instead of its live width would pass them all.
+#
+# The real call always runs with capacity far above live -- the expert scratch is
+# sized for the decode block's 64 tokens times top_k, while a prefill chunk or a
+# speculative verify runs a handful of lanes through it -- so this is the regime
+# production is actually in.
+
+_EQUAL_WIDTH_COUNTS = np.ones(_NUM_EXPERTS, dtype=np.int64)
+_ONE_WIDER_COUNTS = np.concatenate(
+    [np.asarray([2], dtype=np.int64), np.ones(_NUM_EXPERTS - 1, dtype=np.int64)]
+)
+
+
+def test_mmq_route_does_not_read_its_scratch_capacity(
+    _weights: tuple[np.ndarray, np.ndarray, np.ndarray],
+) -> None:
+    """Widening the scratch must not change the result for the same live rows."""
+
+    fused_raw, _, _ = _weights
+    counts = _EQUAL_WIDTH_COUNTS
+    rows = int(counts.sum())
+    hidden_bits = _to_bf16_bits(_activations("gaussian", rows, 20260927))
+
+    narrow = _run_route(fused_raw, hidden_bits, counts, capacity_factor=1)
+    wide = _run_route(fused_raw, hidden_bits, counts, capacity_factor=8)
+
+    difference = float(np.abs(narrow - wide).max())
+    scale = float(np.abs(narrow).max())
+    assert difference == 0.0, (
+        "the MMQ gate_up route read its scratch capacity rather than its live "
+        f"width: the same {rows} live rows differ by {difference:.4g} "
+        f"(scale {scale:.4g}) when the scratch is widened from 1x to 8x"
+    )
+
+
+def test_mmq_route_row_zero_is_invariant_under_an_appended_row(
+    _weights: tuple[np.ndarray, np.ndarray, np.ndarray],
+) -> None:
+    """One extra row must not move the rows that were already there.
+
+    ``_activations`` fills row-major from a fixed seed, so row 0 is the same row
+    in both calls; expert 0 takes the extra row, and compaction places expert 0's
+    rows first, so compact row 0 is that same source row in both.
+    """
+
+    fused_raw, _, _ = _weights
+    narrow_counts = _EQUAL_WIDTH_COUNTS
+    wide_counts = _ONE_WIDER_COUNTS
+    narrow_rows = int(narrow_counts.sum())
+    wide_rows = int(wide_counts.sum())
+
+    narrow_bits = _to_bf16_bits(_activations("gaussian", narrow_rows, 20260927))
+    wide_bits = _to_bf16_bits(_activations("gaussian", wide_rows, 20260927))
+    assert np.array_equal(narrow_bits[0], wide_bits[0]), (
+        "this case assumes row 0 is identical across the two row counts; the "
+        "activation helper no longer guarantees it, so the case is vacuous"
+    )
+
+    narrow = _run_route(fused_raw, narrow_bits, narrow_counts)
+    wide = _run_route(fused_raw, wide_bits, wide_counts)
+
+    difference = float(np.abs(narrow[0] - wide[0]).max())
+    scale = float(np.abs(narrow[0]).max())
+    assert difference == 0.0, (
+        f"compact row 0 moved by {difference:.4g} (scale {scale:.4g}) when one "
+        f"row was appended at the true geometry ({narrow_rows} -> {wide_rows} "
+        "live rows)"
+    )
