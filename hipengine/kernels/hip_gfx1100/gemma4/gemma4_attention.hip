@@ -235,6 +235,12 @@ __global__ void gemma4_attention_prefill_kernel(
     if (j < first_kept) {
       j = gemma4_attn_stride_first(first_kept, j, 8);
     }
+    // Two keys per iteration. The mask test is per key, not per lane, so the
+    // branch is warp-uniform and the two iterations are independent: the
+    // compiler can interleave two shuffle chains instead of serializing one.
+    // No pair of values is added in a different order, so the logits are
+    // unchanged.
+#pragma unroll 2
     for (; j < keys; j += 8) {
       float logit = -INFINITY;
       if (mask_row[j] != 0) {
