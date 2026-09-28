@@ -9346,3 +9346,31 @@ The duplication the flag enabled was 19.2 GB on the 26B artifact: 60 rank-3 expe
 tensors at 14.4 GB raw expanding by 1.33x. It was affordable against the measured
 124 GiB device ceiling, which was never the reason the flag was off. Evidence:
 `benchmarks/results/2026-09-27-gemma4-gfx1151-pack8-expert-route-measured.json`.
+
+## The 128-wide MMQ32 K pass is implemented, correct and unwired (open 2026-09-28)
+
+`gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_kernel` stages four Q4_K
+subblocks per pass instead of one, taking the gate/up projection from 88 staging iterations
+and 176 `__syncthreads()` to 22 and 44 at identical arithmetic. It is exported as
+`hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_bf16_bf16_out` with a
+Python wrapper, and `tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py` checks it **bitwise**
+against the 32-wide route on three geometries plus the CPU reference. Nothing routes to it.
+
+**It is unwired because it was measured and did not earn the place.** On the leaf bench
+(`scripts/gemma4_mmq_k_width_leaf_bench.py`) the wide pass was 0.986x at `in_features` 512,
+0.897x at 1024, and 0.914x at 2816 -- and the 2816 medians moved between runs (narrow 138.2
+then 159.5 us) while the minima sat within 4% of each other, so at the production K depth it
+is a wash. The barrier count was worth a factor of 1.36 in the earlier estimate; it is worth
+about 10% at best and nothing at 2816.
+
+Two things would clear it, and either is enough:
+
+- **Re-measure at the production geometry.** The bench could not reach `out_features` 1408
+  because the synthetic weight generator overflows `uint8` past 128, so every point above runs
+  at 128 output features and a quarter of the intended arithmetic intensity.
+- **Wire it and take an end-to-end number.** That requires an `in_features % 128 == 0`
+  dispatch condition, which the narrow route does not need.
+
+If neither happens, delete the kernel, its `extern "C"` launcher, its Python symbol and its
+three test parameters. The `KSUB` template machinery underneath stays either way: it is a
+verified no-op at `KSUB = 1` and it is what made the experiment cheap.

@@ -1163,7 +1163,11 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
   const int load_weight_col = tid >> 2;
   const int load_activation_part = tid & 3;
   const int load_activation_row = tid >> 2;
-  const int k32_iters = static_cast<int>(in_features / MMQ_K);
+  // The staging loop walks one Q4_K subblock per iteration, so its trip count is
+  // fixed by the subblock width and NOT by MMQ_K. MMQ_K controls how many
+  // subblocks a pass accumulates before it syncs and consumes them.
+  constexpr int SUBBLOCK_K = 32;
+  const int k32_iters = static_cast<int>(in_features / SUBBLOCK_K);
 
   for (int k32 = 0; k32 < k32_iters; ++k32) {
     const int weight_block = k32 >> 3;
@@ -1177,7 +1181,7 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
 #pragma unroll
     for (int col_offset = load_weight_col;
          col_offset < MMQ_M;
-         col_offset += THREADS * 8 / MMQ_K) {
+         col_offset += THREADS * 8 / SUBBLOCK_K) {
       const int64_t local_col = local_col_base + col_offset;
       const bool valid_col = local_col < local_out_features;
       uint32_t packed_q4 = 0;
@@ -1477,6 +1481,7 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel(
       activation_tile);
 }
 
+template <int KSUB = 1>
 __launch_bounds__(128, 2)
 __global__ void gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel(
     const block_q8_1_mmq_ds4* __restrict__ x_q8,
@@ -1493,10 +1498,13 @@ __global__ void gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel(
     int64_t out_features_b,
     int64_t num_experts,
     int64_t mmq_total_rows) {
-  __shared__ q4_k_mmq32_cache weight_tile[32];
-  __shared__ q8_1_mmq32_cache activation_tile[32];
+  // KSUB subblocks of 32 K elements are staged into shared memory before the
+  // pass syncs, so the tile arrays hold KSUB times as much. KSUB == 1 is the
+  // original narrow pass and its code generation is unchanged.
+  __shared__ q4_k_mmq32_cache weight_tile[32 * KSUB];
+  __shared__ q8_1_mmq32_cache activation_tile[32 * KSUB];
   gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body<
-      Q4_K_LAYOUT_RAW, 1, false>(
+      Q4_K_LAYOUT_RAW, 1, false, false, 32 * KSUB>(
       x_q8,
       compact_to_source,
       expert_start_compact,
@@ -5020,7 +5028,8 @@ template <
     int WEIGHT_LAYOUT,
     int ACTIVATION_PASSES = 1,
     bool COLLECT_RISKS = false,
-    bool FUSED_EXPERT_LAYOUT = false>
+    bool FUSED_EXPERT_LAYOUT = false,
+    int MMQ_K = 32>
 int launch_selected_dual_q8_1_ds4_mmq32_compact32(
     const block_q8_1_mmq_ds4* x_q8,
     const int64_t* compact_to_source,
@@ -5163,8 +5172,14 @@ int launch_selected_dual_q8_1_ds4_mmq32_compact32(
         num_experts,
         mmq_total_rows);
   } else {
+    // Only the raw layout carries a wide K pass; the packed layouts (x8, t16,
+    // t16-fused) stage through their own kernels, which are fixed at 32.
+    static_assert(
+        MMQ_K == 32 || WEIGHT_LAYOUT == Q4_K_LAYOUT_RAW,
+        "a wide K pass is implemented for the raw weight layout only");
     hipLaunchKernelGGL(
-        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel,
+        (gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel<
+            MMQ_K / 32>),
         grid,
         block,
         0,
@@ -7099,6 +7114,50 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact3
     int64_t mmq_total_rows,
     hipStream_t stream) {
   return launch_selected_dual_q8_1_ds4_mmq32_compact32<Q4_K_LAYOUT_RAW>(
+      reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+// The 128-wide K pass of the same kernel: four Q4_K subblocks are staged per
+// pass, so the gate/up projection runs 22 iterations and 44 __syncthreads()
+// instead of 88 and 176, with identical arithmetic. It requires in_features to
+// be a whole number of 128-element groups, which is a dispatch condition rather
+// than a kernel precondition: the narrow route stays the default.
+extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  if ((in_features % 128) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  return launch_selected_dual_q8_1_ds4_mmq32_compact32<
+      Q4_K_LAYOUT_RAW, 1, false, false, 128>(
       reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
       compact_to_source,
       expert_start_compact,
