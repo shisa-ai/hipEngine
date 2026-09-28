@@ -1,23 +1,41 @@
 """The Gemma 4 assistant (MTP) head forward, against a real backbone.
 
-The oracle is the head's own training objective. An MTP head is trained so that
-``nextn_proj_post @ cur`` predicts the *target model's* hidden state one position
-ahead, so a correct forward makes ``h_next`` track the backbone's own hidden state
-at the next position. That is a much stronger check than "the logits look
-plausible": it exercises the pre-projection, all four blocks, the shared-KV
-attention, both post-norms, and the output projection, and a sign error or a
-missing ``wo`` moves it.
+The head's job is to draft the token the target is about to produce, so the
+oracle is functional: run the target one more step, take its own next token, and
+require the head to draft exactly that. A second test chains four draft steps and
+compares the head's top three candidates at each step against the list
+``llama.cpp`` prints for the same prompt under ``--verbose`` -- an external
+implementation's answer, not this one's.
 
-The comparison is a cosine similarity rather than an exact match. The head is an
-approximation of the target by construction -- four blocks against thirty -- so
-the bar is "clearly tracking", not "equal". A wrong forward scores near zero or
-negative.
+Neither test compares the head's projected state against the backbone's hidden
+state, which an earlier version of this file did. ``nextn_proj_post`` does not
+reconstruct the target's hidden state: fed the verified step-0 input, the head's
+output sits at cosine -0.02 from the backbone's post-norm hidden at the position
+it represents, while the backbone's own hidden rows sit at +0.41 from each other.
+Three independent implementations -- this forward, a NumPy reading of
+llama.cpp's graph, and transformers' own ``Gemma4AssistantForCausalLM`` -- agree
+on that, and the same forward reproduces llama.cpp's candidate lists exactly, so
+the projection is a recurrence state rather than a prediction of the target's
+activations.
 
-The head's input hidden state has to be preserved across the extra backbone step
-that produces the target, because ``Gemma4Runner`` reuses one hidden buffer.
-It is staged into its own device buffer here; passing ``runner.hidden_state()``
-after the second forward would silently hand the head the *target* as its input,
-which would make the comparison meaningless and would pass.
+The head's input contract, all of it read off ``common/speculative.cpp``:
+
+* ``pending_h`` is documented as the "pair (h_p, x_{p+1}) at MTP pos p+1" and
+  ``verify_h``'s row 0 as "the sampled token", so step 0 is fed the token the
+  target just sampled together with the hidden row that *produced* it.
+* ``dp.n_past`` is the query position: one past the last row the target wrote, so
+  the query's own K/V is not in the shared cache and the views are taken before
+  the extra forward that would add it.
+* The ``is_mem_shared`` branch -- which Gemma 4 assistants take -- adds every
+  later draft token at the same ``dp.n_past``, citing the Hugging Face doc's
+  "the position_ids value are constant".
+* Each later step is fed the token it just drafted together with the head's own
+  projected state, which is why the recurrent state lives on the head.
+
+The seed hidden state is the target's **post-output-norm** state, not the raw
+last-block residual stream: llama.cpp's backbone sets ``res->t_h_nextn`` *after*
+``build_norm(cur, model.output_norm, ...)`` and calls it "the LM-head input
+feature" handed to the drafter "as the recurrent h input".
 
 Guarded on both artifacts and on HIP.
 """
@@ -55,10 +73,38 @@ _needs = pytest.mark.skipif(
     reason="the Gemma 4 backbone, the MTP head, and HIP are all required",
 )
 
-# A short prompt with repeated structure. The head's prediction is a function of
-# the backbone's hidden state, so a degenerate prompt would make the comparison
-# vacuous.
-PROMPT = [2, 818, 5279, 529, 7001, 108, 818, 5279, 529, 22172, 108, 107]
+# A short synthetic prompt with repeated structure. Not asserted on: the head
+# disagrees with its own backbone here (see the first test's docstring). Kept
+# because the disagreement is the sharpest available example of what the head is
+# not, and because a future change that makes the head agree here is a real
+# improvement worth noticing.
+DEGENERATE_PROMPT = [2, 818, 5279, 529, 7001, 108, 818, 5279, 529, 22172, 108, 107]
+
+# The same sentence under Gemma 4's chat template, which is what llama.cpp's
+# server actually feeds. 66 tokens, matching the ``prompt_n`` in the timings of
+# the run the candidate lists below were read from.
+TEMPLATED = [
+    2, 105, 9731, 107, 98, 107, 106, 107, 105, 2364, 107, 818, 4083, 529, 506,
+    10995, 23436, 55462, 919, 1082, 496, 13460, 1518, 236764, 6534, 607, 506,
+    37813, 529, 506, 3207, 529, 13706, 528, 506, 35186, 7691, 19339, 532, 16548,
+    607, 506, 3798, 529, 506, 16425, 38613, 528, 506, 15778, 7691, 7747, 236761,
+    799, 1534, 236764, 13706, 13958, 699, 496, 1944, 106, 107, 105, 4368, 107,
+]
+
+# llama.cpp's ``--verbose`` MTP log for that prompt, one line per draft step:
+#
+#   D spec draft: - seq_id 0, draft candidate 0, pos 0:  45518 (   1.000) 'thought'
+#   D spec draft: - seq_id 0, draft candidate 1, pos 0:   3305 (   0.000) ' thought'
+#   D spec draft: - seq_id 0, draft candidate 2, pos 0:  44027 (   0.000) ' thoughtful'
+#
+# and likewise for pos 1, 2 and 3. The head's own top three, in order, must match.
+LLAMACPP_CANDIDATES = [
+    [45518, 3305, 44027],
+    [108, 107, 236768],
+    [236829, 236775, 818],
+    [139, 3729, 623],
+]
+
 BACKBONE_WIDTH = 2816
 VOCAB = 262144
 
@@ -76,84 +122,134 @@ def _to_float32(buffer) -> np.ndarray:
     return (raw.astype(np.uint32) << 16).view(np.float32)
 
 
-def _cosine(a: np.ndarray, b: np.ndarray) -> float:
-    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+def _to_bf16(values: np.ndarray) -> np.ndarray:
+    as_int = np.asarray(values, dtype=np.float32).view(np.uint32)
+    return (
+        (as_int + np.uint32(0x7FFF) + ((as_int >> 16) & np.uint32(1))) >> 16
+    ).astype(np.uint16)
+
+
+def _stage(host_bf16: np.ndarray):
+    buffer = malloc(host_bf16.nbytes)
+    copy_host_array_to_device(buffer, np.ascontiguousarray(host_bf16).view(np.uint8))
+    return buffer
+
+
+class _Session:
+    """A loaded backbone and head, plus the seeding the draft loop needs."""
+
+    def __init__(self, prompt: list[int]):
+        self.reader = GGUFReader(str(BACKBONE))
+        self.backbone_weights = load_gemma4_device_weights(self.reader)
+        self.runner = Gemma4Runner(weights=self.backbone_weights, capacity=128)
+        self.head_weights = None
+        self.head = None
+        self.staged = None
+        self.prompt = list(prompt)
+
+    def __enter__(self) -> "_Session":
+        logits = self.runner.forward(self.prompt, apply_softcap=False)
+        rows = len(self.prompt)
+        # Stage the row that produced the sampled token. It has to survive the
+        # extra forward that produces the oracle, which reuses the runner's
+        # hidden buffer.
+        self.staged = _stage(_to_bf16(_to_float32(self.runner.hidden_state(row=rows - 1))))
+        self.sampled = int(np.argmax(logits))
+        # The query position is one past the last row the target wrote, and the
+        # extra forward below would extend the live count, so the views are taken
+        # here.
+        self.position = self.runner.position
+        self.shared = {
+            index: self.runner.shared_kv(index) for index in range(self.runner.layer_count)
+        }
+        self.head_weights = load_gemma4_assistant_device_weights(str(HEAD))
+        self.head = Gemma4AssistantHead(
+            weights=self.head_weights,
+            backbone=gemma4_gguf_config_from_metadata(scan_gguf(BACKBONE)),
+            backbone_embedding=self.backbone_weights.embed_tokens,
+            backbone_output_norm=self.backbone_weights.final_norm.buffer,
+            capacity=128,
+            eps=1e-6,
+        )
+        self.head.prime(self.staged)
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        if self.head is not None:
+            self.head.close()
+        if self.head_weights is not None:
+            self.head_weights.free()
+        if self.staged is not None:
+            free(self.staged)
+        self.runner.close()
+        self.backbone_weights.free()
+
+    def target_next_token(self, token: int) -> int:
+        """Advance the target by ``token`` and return its own next token."""
+
+        return int(np.argmax(self.runner.forward([token], apply_softcap=False)))
 
 
 @_needs
-def test_the_head_predicts_the_backbones_next_hidden_state() -> None:
-    """The forward's end-to-end correctness signal."""
+def test_the_head_drafts_the_token_the_backbone_would_generate() -> None:
+    """The end-to-end correctness signal: the draft is the target's next token.
 
-    backbone_reader = GGUFReader(str(BACKBONE))
-    backbone_weights = load_gemma4_device_weights(backbone_reader)
-    runner = Gemma4Runner(weights=backbone_weights, capacity=64)
-    head = None
-    head_weights = None
-    staged = None
-    try:
-        runner.forward(PROMPT, apply_softcap=False)
-        position = runner.position
+    This runs on the chat-templated prompt, where the continuation is decided, and
+    the head's first draft is the token the target itself goes on to produce.
 
-        # Stage the head's input hidden state into its own buffer, and pin the KV
-        # read views at this live count. The views stay valid across the next
-        # forward because the cache is append-only and the extra position lies
-        # beyond `live`, so the mask still excludes it.
-        source_hidden = _to_float32(runner.hidden_state())
-        shared = {index: runner.shared_kv(index) for index in range(runner.layer_count)}
-        staged = malloc(BACKBONE_WIDTH * 2)
-        as_int = np.asarray(source_hidden, dtype=np.float32).view(np.uint32)
-        bf16 = (
-            (as_int + np.uint32(0x7FFF) + ((as_int >> 16) & np.uint32(1))) >> 16
-        ).astype(np.uint16)
-        copy_host_array_to_device(staged, np.ascontiguousarray(bf16).view(np.uint8))
+    It is deliberately not asserted on every prompt. The head is four blocks
+    approximating a thirty-block target, and it does sometimes disagree: on the
+    short synthetic prompt ``PROMPT`` below it drafts 5279 where the backbone
+    drafts 236772. That disagreement is head quality, not a wiring defect -- the
+    reference implementation (transformers' own ``Gemma4AssistantForCausalLM``
+    over the same GGUF, fed the same seed) also drafts 5279 there, and the same
+    forward reproduces llama.cpp's candidates exactly in the test below.
+    """
 
-        # Advance the backbone by one token to obtain what the head is trained to
-        # predict. This overwrites the runner's hidden buffer, which is why the
-        # input was staged above.
-        runner.forward([PROMPT[-1]], apply_softcap=False)
-        target_hidden = _to_float32(runner.hidden_state())
-
-        assert not np.allclose(source_hidden, target_hidden), (
-            "the two hidden states are identical, so this test could not detect a "
-            "forward that returns its input"
-        )
-
-        backbone_config = gemma4_gguf_config_from_metadata(scan_gguf(BACKBONE))
-        head_weights = load_gemma4_assistant_device_weights(str(HEAD))
-        head = Gemma4AssistantHead(
-            weights=head_weights,
-            backbone=backbone_config,
-            backbone_embedding=backbone_weights.embed_tokens,
-            capacity=64,
-            eps=1e-6,
-        )
-
-        logits, h_next = head.forward(
-            PROMPT[-1],
-            position=position - 1,
-            backbone_hidden=staged,
-            shared_kv=shared,
+    with _Session(TEMPLATED) as session:
+        expected = session.target_next_token(session.sampled)
+        logits, h_next = session.head.forward(
+            session.sampled, position=session.position, shared_kv=session.shared
         )
 
         assert logits.shape == (VOCAB,)
         assert np.isfinite(logits).all()
-        assert np.isfinite(h_next).all()
         assert h_next.shape == (BACKBONE_WIDTH,)
-        assert np.abs(h_next).max() > 0, "the head produced an all-zero hidden state"
+        assert np.isfinite(h_next).all()
+        assert np.abs(h_next).max() > 0, "the head produced an all-zero recurrent state"
 
-        cosine = _cosine(np.asarray(h_next, dtype=np.float32), target_hidden)
-        assert cosine > 0.5, (
-            f"the head's predicted hidden state does not track the backbone's: "
-            f"cosine {cosine:.4f}. A correct MTP forward should be well above 0.5; "
-            f"a missing wo, a wrong norm order, or reading the head's own "
-            f"token_embd for the input scores near zero or negative."
+        drafted = int(np.argmax(logits))
+        assert drafted == expected, (
+            f"the head drafted {drafted} where the backbone's own next token is "
+            f"{expected}. A forward that reads the head's own token_embd for the "
+            f"input, skips the target's final norm on the seed state, or binds the "
+            f"blocks to the wrong shared layers misses this."
         )
-    finally:
-        if head is not None:
-            head.close()
-        if head_weights is not None:
-            head_weights.free()
-        if staged is not None:
-            free(staged)
-        runner.close()
-        backbone_weights.free()
+
+
+@_needs
+def test_the_draft_chain_reproduces_llamacpps_candidates() -> None:
+    """Four chained steps against llama.cpp's own candidate lists.
+
+    The recurrence is where a wiring bug hides: step 0 uses the target's seed
+    state and every later step uses the head's own projected state at a constant
+    position. Asserting the top three at each step, rather than only the top one,
+    makes an implementation that re-seeds or re-norms partway through fail.
+    """
+
+    with _Session(TEMPLATED) as session:
+        drafted = []
+        token = session.sampled
+        for step, expected in enumerate(LLAMACPP_CANDIDATES):
+            logits, _h_next = session.head.forward(
+                token, position=session.position, shared_kv=session.shared
+            )
+            top = [int(index) for index in np.argsort(logits)[::-1][:3]]
+            assert top == expected, (
+                f"draft step {step}: the head's candidates are {top}, llama.cpp's "
+                f"are {expected}"
+            )
+            token = top[0]
+            drafted.append(token)
+
+        assert drafted == [row[0] for row in LLAMACPP_CANDIDATES]

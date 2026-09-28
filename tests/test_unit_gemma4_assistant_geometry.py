@@ -67,8 +67,8 @@ def test_geometry_binds_three_sliding_blocks_to_layer_28_and_one_to_29() -> None
     # schedule and the full block has its own.
     assert geometry[0].rope == geometry[1].rope == geometry[2].rope
     assert geometry[0].rope != geometry[3].rope
-    assert geometry[0].rope.rotated_pairs == 128
-    assert geometry[3].rope.rotated_pairs == 64
+    assert geometry[0].rope.rope_angles == 128
+    assert geometry[3].rope.rope_angles == 64
 
 
 @_needs_artifacts
