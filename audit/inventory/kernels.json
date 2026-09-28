@@ -7039,7 +7039,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".hip",
-        "lines": 290,
+        "lines": 297,
         "referrers": 8,
         "runtime_referrers": [
           "hipengine/runtime/qwen4_exp_runner.py"
@@ -7066,7 +7066,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q5_1_mmq_selected_prefill.hip",
-      "evidence_hash": "066ebd0e5734"
+      "evidence_hash": "472511eee473"
     },
     {
       "kind": "kernel",

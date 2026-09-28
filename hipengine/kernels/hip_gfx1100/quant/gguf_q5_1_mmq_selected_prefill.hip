@@ -78,7 +78,14 @@ __device__ __forceinline__ uint32_t expand_hi_bits(uint32_t bits4) {
       ((bits4 & 8u) << 21);
 }
 
-constexpr int ROWS_PER_PASS = 16;
+// Rows each weight unpack is amortized over. The weight side of the dot product
+// is unpacked once per pass, so this is the weight-reuse factor: a pass reads
+// every weight row it covers once, and a row pass costs the same whether it is
+// one row or ROWS_PER_PASS. An expert averaging 32 rows therefore reads its
+// weights twice at 16 and once at 32. The cost is one accumulator per row and
+// one row of activation loads per sub-block; the accumulators are the register
+// pressure, which is why this is not simply the largest value that compiles.
+constexpr int ROWS_PER_PASS = 32;
 
 // The DS4 activation block comes in two layouts that differ only in how the
 // four (scale, sum) pairs are stored: fp16 for a hidden-state input, and fp32

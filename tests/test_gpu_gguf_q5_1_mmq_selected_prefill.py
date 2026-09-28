@@ -56,7 +56,21 @@ def _make_q5_1_weight(rng: np.random.Generator, out_features: int, in_features: 
         704,  # Gemma 4 26B-A4B's expert down width: 5 full blocks + a 64 tail
     ],
 )
-def test_q5_1_mmq_ds4_selected_prefill_bounded_and_deterministic(in_features: int) -> None:
+@pytest.mark.parametrize(
+    "counts",
+    [
+        [4, 7, 0, 12, 1, 3, 0, 6],
+        # The row loop's blocking factor is ROWS_PER_PASS, so an expert's row
+        # count decides how many times its weight rows are re-read. Every expert
+        # above fits in one pass; these cross the boundary at 32 and 64, and one
+        # count sits exactly on it.
+        [31, 32, 33, 0, 1, 64, 65, 2],
+    ],
+    ids=["single-row-pass", "crosses-row-pass-boundary"],
+)
+def test_q5_1_mmq_ds4_selected_prefill_bounded_and_deterministic(
+    in_features: int, counts: list[int]
+) -> None:
     from hipengine.core.memory import (
         copy_device_to_host,
         copy_host_to_device,
@@ -78,7 +92,7 @@ def test_q5_1_mmq_ds4_selected_prefill_bounded_and_deterministic(in_features: in
 
     rng = np.random.default_rng(31)
     experts, out_features = 8, 512
-    counts = np.array([4, 7, 0, 12, 1, 3, 0, 6], dtype=np.int64)
+    counts = np.array(counts, dtype=np.int64)
     compact_rows = int(counts.sum())
     expert_start = np.zeros(experts + 1, dtype=np.int64)
     expert_start[1:] = np.cumsum(counts)
