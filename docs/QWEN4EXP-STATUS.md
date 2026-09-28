@@ -16,15 +16,22 @@
 model; the `QWEN4EXP-*` and `QWEN3.8-FLASH-NEXT-*` campaign documents are dated
 records and are not edited to reflect new state.** Every number below carries a
 pointer to the artifact that owns it. Where a number is derived rather than
-measured, or is an interpolation rather than a measurement, it says so.
+measured, or is an interpolation rather than a measurement, it says so. Open
+work — every optimization still worth trying, with its measured cost, first
+bounded experiment and deciding gate — lives in the
+[optimization ledger](QWEN4EXP-OPTIMIZATION-LEDGER.md).
 
 The wide-route promotion and the repair-loop unroll are supported improvements.
-Next, validate the opt-in F16 activation binding, remeasure chunk sizes, then
-optimize routed MoE, QSA and hyper-connections (§5). The activation packet estimates 0.591 s from
+The F16 activation binding is validated and on by default (§5); the remaining
+order — chunk remeasurement, routed MoE, QSA, then hyper-connections — is kept
+in the [optimization ledger](QWEN4EXP-OPTIMIZATION-LEDGER.md). The activation packet estimates 0.591 s from
 standalone timings and assumed reuse; it has not measured an engine saving.
 Dense scopes 12-47 and 8-47 fail their local numerical gates. Further scope
 search is deferred, not proved impossible: those failures neither establish a
-monotone boundary nor exclude selective layers or roles.
+monotone boundary nor exclude selective layers or roles. A measurement dated
+2026-09-27, after this document's status date, orders seven scopes into a smooth
+global-mean drift budget rather than a cliff; it does not guarantee unmeasured
+scopes or per-category monotonicity (§4).
 
 The main family table is measured at `42ce71156`, **before** the repair unroll
 in `7804517a2`. The later capture reduces repair from 1420.9 to 1239.8 ms (§1.4).
@@ -615,6 +622,11 @@ the missing applicable production gates. §5's qualification prerequisite record
 what must be closed before claiming full qualification or extending admission.
 
 ## 5. What is left
+
+The ranked open-work list, with each row's measured owner cost and first bounded
+experiment, is the
+[optimization ledger](QWEN4EXP-OPTIMIZATION-LEDGER.md). This section keeps the
+qualification prerequisites and the current priority order behind it.
 
 ### Measurement and qualification prerequisites
 

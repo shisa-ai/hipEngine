@@ -1123,7 +1123,10 @@ Phase-0 targets (driven by the current research focus):
 | **sansho** (custom) | (your arch; see `/home/lhl/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
 
 Qwen3.8-Flash-Next priority (September 13): follow the
-[Strix journey plan and punchlist](QWEN4EXP-STRIX-JOURNEY-CAMPAIGN.md).
+[Strix journey plan and punchlist](QWEN4EXP-STRIX-JOURNEY-CAMPAIGN.md) for the
+dated campaign record and the
+[optimization ledger](QWEN4EXP-OPTIMIZATION-LEDGER.md) for live open work and
+its ranking.
 Keep UD-Q4_K_XL, the existing Q8_0 draft and BF16 KV fixed. Compare pwilkin's
 integration/transfer sources with halo-box HEAD `65480351` in HIP and Vulkan;
 their IQ4_NL/FP16 headlines are not this model configuration. Exclude the

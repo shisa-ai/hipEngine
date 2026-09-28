@@ -1,6 +1,9 @@
 # Journey Remaining Experiments
 
-> Current state: [`QWEN4EXP-STATUS.md`](QWEN4EXP-STATUS.md). This file is the dated execution inventory of the September 15 journey.
+> Current state: [`QWEN4EXP-STATUS.md`](QWEN4EXP-STATUS.md). Live open work:
+> [`QWEN4EXP-OPTIMIZATION-LEDGER.md`](QWEN4EXP-OPTIMIZATION-LEDGER.md), which
+> carries the still-live rows below by their `R`-ID. This file is the dated
+> execution inventory of the September 15 journey and is not updated.
 
 Resumed September 15, 2026 JST, from `394da3289`. This is the execution
 inventory for [the journey](QWEN4EXP-STRIX-JOURNEY-CAMPAIGN.md) and
