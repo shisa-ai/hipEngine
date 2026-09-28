@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11169,
-    "current": 3937,
+    "entries": 11170,
+    "current": 3938,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1240,
+    "rows": 1241,
     "by_rule": {
       "dependency": 42,
       "legacy-next": 109,
-      "status": 1089
+      "status": 1090
     }
   },
   "rows": [
@@ -44042,14 +44042,14 @@
         "written": "2026-09-26",
         "age_days": 2,
         "open_by": "dependency",
-        "continuation_entries": 14,
+        "continuation_entries": 15,
         "open_text": "- The remaining prefill budget at 512 tokens, measured by route: `Q4_K` gate/up\n  1156 ms (its fastest route is the gated MMQ path, waiting on the lead's\n  `kl_max` call), `Q8_0` dense 694 ms, `Q5_1` down 651 ms, layer 29's `Q5_K`\n  246 ms, attention ~330 ms after this unit.\n- **Do not chase the `Q8_0` dense route with less traffic.** A row-grouped\n  variant that moves 4.56 GB instead of 9.30 GB is not faster (21.23 ms against\n  22.13 ms): achieved bandwidth falls from 428 to 220 GB/s, so the kernel is\n  limited by 1-byte weight load transactions rather than by DRAM. The lever is\n  fewer, wide",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "Next names a dependency: 'waiting on'",
-        "14 later entries by the same worker share this topic prefix"
+        "15 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260926T235136.556498Z-lhl-gemma4-attention-prefill-register-tree-9b5a7b.md",
@@ -44070,7 +44070,7 @@
         ]
       },
       "id": "worklog/20260926T235136.556498Z-lhl-gemma4-attention-prefill-register-tree-9b5a7b",
-      "evidence_hash": "67f614604f05"
+      "evidence_hash": "3449e6c58c88"
     },
     {
       "kind": "worklog",
@@ -44516,14 +44516,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 9,
+        "continuation_entries": 10,
         "open_text": "Probe `gemma4_scale_bf16` and `gemma4_rmsnorm_f32w_bf16` at rows 1 against rows\n2 on one input, then the experts. The embedding gather is in the same probe as\nthe scale since they run back to back into the same buffer.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "9 later entries by the same worker share this topic prefix"
+        "10 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T054943.321307Z-lhl-gemma4-attention-and-mask-cleared-fa9bff.md",
@@ -44542,7 +44542,7 @@
         ]
       },
       "id": "worklog/20260928T054943.321307Z-lhl-gemma4-attention-and-mask-cleared-fa9bff",
-      "evidence_hash": "f851dbf401b1"
+      "evidence_hash": "1ce665d3881d"
     },
     {
       "kind": "worklog",
@@ -46415,14 +46415,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 7,
+        "continuation_entries": 8,
         "open_text": "1. **The strict kernel is still the default and still the prefill cost** -- 24.5\n   percent of prefill at 512 tokens, at 465 GFLOP/s on the 256d layers.\n2. **Wiring the tiled kernel in is worth doing for the full-attention layers only**\n   (5 of 30, 512d), where it is 19 percent faster at 512 tokens and 29 percent at\n   4096, and is bit-exact at every context this model's window admits. That is\n   about 6 ms of 150 at the benchmarked shape -- real but small.\n3. **The load-bound question is still open** and now needs a probe that varies\n   bytes without varying arithmetic.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "7 later entries by the same worker share this topic prefix"
+        "8 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T094251.149323Z-lhl-gemma4-attention-tiled-ab-4e3747.md",
@@ -46444,7 +46444,7 @@
         ]
       },
       "id": "worklog/20260928T094251.149323Z-lhl-gemma4-attention-tiled-ab-4e3747",
-      "evidence_hash": "b2373ab5b349"
+      "evidence_hash": "b69105733e06"
     },
     {
       "kind": "worklog",
@@ -46541,14 +46541,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 6,
+        "continuation_entries": 7,
         "open_text": "1. **`gguf_q8_0_prefill_wmma_kernel<tt,32,64>` is the largest prefill block at 24.8\n   percent and has not been examined.** It is a tensor-core kernel, so its headroom\n   question is a tile/occupancy question rather than a traffic one, and its tile was\n   last changed in iteration 215.\n2. **The MoE gate/up at prefill** is 21 percent at 7568 workgroups; the thin-block\n   reading does not apply, so its prefill cost needs its own attribution.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "6 later entries by the same worker share this topic prefix"
+        "7 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T095630.988278Z-lhl-gemma4-attention-traffic-clean-430194.md",
@@ -46567,7 +46567,7 @@
         ]
       },
       "id": "worklog/20260928T095630.988278Z-lhl-gemma4-attention-traffic-clean-430194",
-      "evidence_hash": "8fb8fad2a599"
+      "evidence_hash": "af0fbba57e72"
     },
     {
       "kind": "worklog",
@@ -46747,14 +46747,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "- **Get a per-loop dynamic attribution before changing the kernel again.** The\n  two inert edits above are the second and third time this session that a\n  plausible source-level change moved the instruction count by nothing, and the\n  scalar-bound finding deserves a measurement that can name the loop rather than\n  a fourth guess. `rocprofv3`'s `--pc-sampling` with the ISA dump maps samples to\n  instructions; that is the tool for this, and it should be pointed at the\n  full-512d launch first because it has the largest scalar stream at 6.89e9.\n- Only after that, the candidates in the order the p",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T121320.567216Z-lhl-gemma4-attention-scalar-source-04f604.md",
@@ -46776,7 +46776,7 @@
         ]
       },
       "id": "worklog/20260928T121320.567216Z-lhl-gemma4-attention-scalar-source-04f604",
-      "evidence_hash": "e847ef6816d3"
+      "evidence_hash": "9f47db48f620"
     },
     {
       "kind": "worklog",
@@ -46867,14 +46867,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "- **Attribute the pass-1 loop body, line 431, line by line.** It is 400 instructions\n  per key against about 55 accounted for, and it is one source line, so the excess is\n  inside `gemma4_warp_key_logit`'s fully unrolled 16 leaves and the mask branch. The\n  `.loc` directives do not separate an inlined callee's lines from the caller's, so\n  the next step is to compile the helper with `__attribute__((noinline))` in a\n  scratch copy purely to get its instructions attributed separately, or to expand it\n  by hand in a scratch copy and re-attribute. Neither ships; both are measurements.\n- Use the tw",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T130200.000000Z-lhl-gemma4-attention-per-line-attribution-3b7e9d.md",
@@ -46892,7 +46892,48 @@
         ]
       },
       "id": "worklog/20260928T130200.000000Z-lhl-gemma4-attention-per-line-attribution-3b7e9d",
-      "evidence_hash": "4b50cf73c4dc"
+      "evidence_hash": "ce7accf243af"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T131200.000000Z-lhl-gemma4-attention-sass-extraction-fix-5c8a1e",
+      "title": "the SASS counts were whole-file: the strict kernel is 1520 instructions and its prologue is 45 percent of them",
+      "location": "worklog/entries/20260928T131200.000000Z-lhl-gemma4-attention-sass-extraction-fix-5c8a1e.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-attention-sass-extraction-fix",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- **A static extraction needs a boundary check before it is quoted.** Every count in\n  this branch's SASS work went through a split that matched nothing and silently\n  returned the whole file, and nothing in the numbers looked wrong -- 32,630\n  instructions is a plausible size for a kernel. The check is one line: assert that\n  the extraction found the number of kernels the file declares. Put it in whatever\n  script the next unit uses rather than re-deriving it by hand.\n- **The per-line instrument is now correct and usable.** The strict kernel's hot\n  regions are lines 265 (the warp key loop, 5",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T131200.000000Z-lhl-gemma4-attention-sass-extraction-fix-5c8a1e.md",
+        "refs": [],
+        "tokens": [
+          "1520",
+          "counts",
+          "file",
+          "instructions",
+          "kernel",
+          "percent",
+          "prologue",
+          "sass",
+          "strict",
+          "them",
+          "whole"
+        ]
+      },
+      "id": "worklog/20260928T131200.000000Z-lhl-gemma4-attention-sass-extraction-fix-5c8a1e",
+      "evidence_hash": "54fecdff269d"
     }
   ]
 }
