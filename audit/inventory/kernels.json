@@ -8719,7 +8719,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".hip",
-        "lines": 2310,
+        "lines": 2428,
         "referrers": 19,
         "runtime_referrers": [
           "hipengine/loading/gguf_selected_contract.py",
@@ -8748,7 +8748,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/qwen4_exp_q5_1.hip",
-      "evidence_hash": "0fd60cb4a768"
+      "evidence_hash": "1d3370dd3486"
     },
     {
       "kind": "kernel",
@@ -8758,7 +8758,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 1136,
+        "lines": 1214,
         "referrers": 19,
         "runtime_referrers": [
           "hipengine/loading/gguf_selected_contract.py",
@@ -8786,7 +8786,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/qwen4_exp_q5_1.py",
-      "evidence_hash": "73b9e556aea3"
+      "evidence_hash": "1325700cf438"
     },
     {
       "kind": "kernel",
@@ -9113,7 +9113,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 1005,
-        "referrers": 1002,
+        "referrers": 1003,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
@@ -9145,7 +9145,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/runtime/state.hip",
-      "evidence_hash": "8960fc360e01"
+      "evidence_hash": "0cc06f1c9e56"
     },
     {
       "kind": "kernel",
@@ -9156,7 +9156,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 1247,
-        "referrers": 1002,
+        "referrers": 1003,
         "runtime_referrers": [
           "hipengine/chat_cli.py",
           "hipengine/llm.py",
@@ -9187,7 +9187,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/runtime/state.py",
-      "evidence_hash": "5de1bf69bed3"
+      "evidence_hash": "0d21dfafe245"
     },
     {
       "kind": "kernel",
@@ -10507,7 +10507,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 62,
-        "referrers": 459,
+        "referrers": 460,
         "runtime_referrers": [
           "hipengine/execution_profiles.py",
           "hipengine/llm.py",
@@ -10538,7 +10538,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/vibevoice/registered.py",
-      "evidence_hash": "531d10f8725c"
+      "evidence_hash": "67f9dd5af22d"
     },
     {
       "kind": "kernel",
