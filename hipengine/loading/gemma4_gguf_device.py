@@ -43,6 +43,10 @@ __all__ = [
 
 LAYOUT_RAW_GGUF = "raw_gguf"
 LAYOUT_DENSE_F32 = "dense_f32"
+# A dense Q8_0 leaf stored as Q8T16 tiles. The value matches the qwen35
+# materializer's constant of the same name so the shared consumer-surface route
+# table resolves the same rows for both loaders.
+LAYOUT_GGUF_Q8_0_T16 = "gguf_q8_0_t16_v1"
 
 
 # The quant types this artifact is built from, plus the f32 norms. This is the
@@ -161,6 +165,47 @@ def _plan_one(slot_path: str, source: GGUFTensorInfo) -> Gemma4GGUFWeightSpec:
         # leaf takes two independent tile pointers with no expert stride, so the
         # two halves are repacked separately rather than as one fused slab.
         allocation_names = ("raw", "t16_gate", "t16_up")
+    elif (
+        quant_key == "gguf_q8_0"
+        and len(source.shape) == 2
+        and slot_path.startswith("layers.")
+    ):
+        # A dense Q8_0 leaf is stored as Q8T16 tiles and *only* as tiles.
+        #
+        # The reason is a capability gap, not a preference: the raw gguf_q8_0
+        # key's one WMMA prefill is iu8_wmma_prefill_f32_f32_out, i.e. f32 ->
+        # f32 output, and these are hidden projections with bf16 output. The T16
+        # key carries the whole wmma_prefill_* family including the admitted
+        # two-wave and four-wave schedules
+        # (worklog/entries/20260929T153000). At rows=512 the four-wave schedule
+        # measures 12.2-15.5 TFLOP/s against this route's ~8.5, a 1.4-1.8x
+        # lever on the largest single prefill term (20260929T163000).
+        #
+        # Tiles replace raw rather than accompanying it, unlike the Q4_K expert
+        # precedent above. Q4_K keeps both because its expert routes read either
+        # layout; nothing here reads the raw blocks once the T16 route is
+        # selected, and the repack is a pure permutation -- 16 columns * 34
+        # bytes per tile row equals 16 raw Q8_0 blocks of 34 bytes -- so
+        # tiles-only costs exactly 1.0x what raw cost (e4583bb8c).
+        #
+        # The layout is what selects the launch ABI, not the quant key:
+        # resolve_gguf_linear_dispatch passes spec.layout as the first argument
+        # of resolve_linear_consumer_contract, so a tiles-only spec that kept
+        # LAYOUT_RAW_GGUF matched the raw rows, got abi "raw", and crashed in
+        # _launch_wmma_raw asking for an allocation it correctly does not have
+        # (20260929T183000).
+        #
+        # Rank-2 plus the `layers.` prefix is what makes this a dense leaf: the
+        # rank-3 expert stacks are Q4_K and take the branch above, and the
+        # embedding and lm head are outside the prefix and stay raw because they
+        # are GEMV-shaped.
+        return Gemma4GGUFWeightSpec(
+            slot_path=slot_path,
+            source=source,
+            quant_key="gguf_q8_0_t16_v1",
+            layout=LAYOUT_GGUF_Q8_0_T16,
+            allocation_names=("tiles",),
+        )
     return Gemma4GGUFWeightSpec(
         slot_path=slot_path,
         source=source,
@@ -238,7 +283,11 @@ def resident_bytes(specs: tuple[Gemma4GGUFWeightSpec, ...]) -> int:
 
     total = 0
     for spec in specs:
-        total += int(spec.source.nbytes)
+        # The raw blocks are charged only when the spec keeps them. A tiles-only
+        # spec replaced raw rather than adding to it, so charging source.nbytes
+        # as well would report double the memory it actually uses.
+        if "raw" in spec.allocation_names:
+            total += int(spec.source.nbytes)
         for name in spec.allocation_names:
             if name != "raw":
                 total += derived_allocation_bytes(spec, name)
@@ -248,6 +297,17 @@ def resident_bytes(specs: tuple[Gemma4GGUFWeightSpec, ...]) -> int:
 def derived_allocation_bytes(spec: Gemma4GGUFWeightSpec, name: str) -> int:
     """Return the device bytes one derived allocation of ``spec`` needs."""
 
+    if name == "tiles":
+        # A dense Q8_0 leaf's Q8T16 slab: [out // 16, blocks_per_row, 544].
+        # This is exactly the source byte count -- 16 columns * 34 bytes per
+        # tile row equals 16 raw Q8_0 blocks of 34 bytes -- which is why the
+        # repack is memory-neutral rather than costing a second tensor.
+        if spec.layout != LAYOUT_GGUF_Q8_0_T16 or len(spec.source.shape) != 2:
+            raise ValueError(
+                f"{spec.slot_path}: a tiles allocation needs a rank-2 Q8T16 tensor, "
+                f"not {spec.layout} rank {len(spec.source.shape)}"
+            )
+        return int(spec.source.nbytes)
     if name not in ("t16_gate", "t16_up"):
         raise ValueError(f"{spec.slot_path}: unknown derived allocation {name!r}")
     if spec.quant_key != "gguf_q4_k" or len(spec.source.shape) != 3:
@@ -298,31 +358,48 @@ def materialize_gemma4_gguf_device_weight(
         dtype, source_dtype = DType.INT8, "I8"
     elif spec.layout == LAYOUT_DENSE_F32:
         dtype, source_dtype = DType.FP32, "F32"
+    elif spec.layout == LAYOUT_GGUF_Q8_0_T16:
+        # The tiles are uint8 blocks exactly like the raw form, so the storage
+        # view is the same; only the arrangement differs.
+        dtype, source_dtype = DType.INT8, "I8"
     else:
         raise ValueError(f"unsupported resident layout {spec.layout!r}")
 
-    allocation = load_host_array_to_device_as_dtype(
-        spec.source.name,
-        raw,
-        dtype,
-        source_dtype=source_dtype,
-        device=device,
-        runtime=runtime,
-        allocator=allocator,
-    )
-    allocations["raw"] = allocation
+    # The raw blocks are uploaded only when the spec asks for them. A
+    # tiles-only spec -- the dense Q8_0 leaves -- still reads ``raw`` for the
+    # repack below, but must not *retain* it: nothing reads those blocks once the
+    # T16 route is selected, and keeping them would double the leaves' resident
+    # memory for no benefit.
+    if "raw" in spec.allocation_names:
+        allocations["raw"] = load_host_array_to_device_as_dtype(
+            spec.source.name,
+            raw,
+            dtype,
+            source_dtype=source_dtype,
+            device=device,
+            runtime=runtime,
+            allocator=allocator,
+        )
     for name in spec.allocation_names:
         if name == "raw":
             continue
         import numpy as np
 
-        from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
+        if spec.layout == LAYOUT_GGUF_Q8_0_T16:
+            # A dense Q8_0 leaf: one flat tile slab, no expert or half
+            # dimension, so neither ``derived_half_shape`` nor the Q4_K repack
+            # below applies.
+            from hipengine.quant.gguf_t16 import repack_gguf_q8_0_tile16
 
-        experts, half_rows, _ = derived_half_shape(spec)
-        first = name == "t16_gate"
-        start = 0 if first else half_rows
-        stacked = np.asarray(raw).reshape(experts, 2 * half_rows, -1)
-        tiles = repack_gguf_q4_k_tile16(stacked[:, start : start + half_rows, :]).tiles
+            tiles = repack_gguf_q8_0_tile16(np.asarray(raw)).tiles
+        else:
+            from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
+
+            experts, half_rows, _ = derived_half_shape(spec)
+            first = name == "t16_gate"
+            start = 0 if first else half_rows
+            stacked = np.asarray(raw).reshape(experts, 2 * half_rows, -1)
+            tiles = repack_gguf_q4_k_tile16(stacked[:, start : start + half_rows, :]).tiles
         allocations[name] = load_host_array_to_device_as_dtype(
             f"{spec.source.name}.{name}",
             tiles,

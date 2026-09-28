@@ -3341,7 +3341,7 @@ def launch_gguf_linear(
         has_raw_weight_sidecar = False
     raw_weight_ptr = (
         int(weight.allocation("raw").tensor.ptr)
-        if weight.spec.layout == LAYOUT_RAW_GGUF
+        if "raw" in weight.spec.allocation_names
         else None
     )
     cache_key = (
