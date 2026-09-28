@@ -568,7 +568,17 @@ class Gemma4AssistantHead:
                 # kernel treat the query as position 0 and attend to almost
                 # nothing.
                 row_offset=int(position),
-                window=0 if block.sliding_window is None else int(block.sliding_window),
+                # A global block's window is the whole live cache, and saying
+                # so rather than leaving it at 0 is what lets the kernel trim
+                # the trailing masked run: `window > 0` is the promise that the
+                # mask is sliding-causal, which is zero above the query's own
+                # position too. The single query here sits at `position`, so
+                # `keys` is exactly the sliding-causal mask with an unbounded
+                # window. This is a no-op when the query is the last live token,
+                # which is the ordinary decode step.
+                window=int(view.live)
+                if block.sliding_window is None
+                else int(block.sliding_window),
                 scratch=scratch.attention,
                 **kwargs,
             )

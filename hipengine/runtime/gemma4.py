@@ -934,6 +934,7 @@ class Gemma4Runner:
                     _keep_mask(attention, start, rows),
                 )
                 masks[attention.sliding_window] = mask_buf
+            key_begin = _sliding_read_range(attention, start, rows)
             gemma4_layer_forward_bf16(
                 self._hidden.ptr,
                 cos_buf.ptr,
@@ -949,12 +950,25 @@ class Gemma4Runner:
                 ),
                 rows=rows,
                 eps=config.rms_norm_eps,
-                key_begin=_sliding_read_range(attention, start, rows),
+                key_begin=key_begin,
                 # The same window the mask above was built with, so a row may
                 # skip the rest of its own masked prefix and not just the keys
                 # every row of the block masks. Both are read from the one
                 # geometry, so they cannot drift apart.
-                window=0
+                #
+                # A global layer's window is the whole context, and saying so
+                # rather than leaving it at 0 is what lets the kernel trim the
+                # *trailing* masked run the way it already trims a sliding
+                # layer's leading one. `window > 0` is the promise that the
+                # mask is sliding-causal, and such a mask is zero above a row's
+                # own position as well as below its window. `_keep_mask` builds
+                # `keep = key_positions <= queries` and ANDs a window in only
+                # when one exists, so a global layer's mask is exactly the
+                # sliding-causal mask with an unbounded window: this describes
+                # the mask that was built rather than promising anything new
+                # about it, and `start + rows - key_begin` is the `keys` the
+                # kernel is handed below.
+                window=start + rows - key_begin
                 if attention.sliding_window is None
                 else int(attention.sliding_window),
             )
