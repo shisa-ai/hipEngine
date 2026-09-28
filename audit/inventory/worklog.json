@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11000,
-    "current": 3768,
+    "entries": 11002,
+    "current": 3770,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1177,
@@ -43877,14 +43877,14 @@
         "written": "2026-09-26",
         "age_days": 2,
         "open_by": "status",
-        "continuation_entries": 12,
+        "continuation_entries": 13,
         "open_text": "- Cut instructions per weight element in both expert kernels. The cheapest\n  bit-exact step is hoisting the staged activations into registers outside the\n  output-tile loop (8 shared loads per weight element become 8 per k), which by\n  instruction count is worth ~1.5x on kernels that are ~97% of prefill.\n- Beyond that the remaining wins change arithmetic (int8 dot products, larger\n  output tiles) and therefore need the production execution-profile gate rather\n  than bit-exactness.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "12 later entries by the same worker share this topic prefix"
+        "13 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260926T213133.282176Z-lhl-gemma4-prefill-attribution-sweep-memo-3724ef.md",
@@ -43903,7 +43903,7 @@
         ]
       },
       "id": "worklog/20260926T213133.282176Z-lhl-gemma4-prefill-attribution-sweep-memo-3724ef",
-      "evidence_hash": "e2893d97bc16"
+      "evidence_hash": "e65f2f936ac3"
     },
     {
       "kind": "worklog",
@@ -43917,14 +43917,14 @@
         "written": "2026-09-26",
         "age_days": 2,
         "open_by": "status",
-        "continuation_entries": 11,
+        "continuation_entries": 12,
         "open_text": "Wire Gemma 4's gate/up projection to the in-tree int8-dp4a MMQ dual kernel; the\nspike in the following entry measures 5.6x at this geometry and records the recipe.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "11 later entries by the same worker share this topic prefix"
+        "12 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260926T213604.731742Z-lhl-gemma4-prefill-fp32-exhausted-mmq-route-380fbe.md",
@@ -43945,7 +43945,7 @@
         ]
       },
       "id": "worklog/20260926T213604.731742Z-lhl-gemma4-prefill-fp32-exhausted-mmq-route-380fbe",
-      "evidence_hash": "5a1a7e34922a"
+      "evidence_hash": "b754abd215d7"
     },
     {
       "kind": "worklog",
@@ -44200,14 +44200,14 @@
         "written": "2026-09-27",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 6,
+        "continuation_entries": 7,
         "open_text": "- Sweep the prefill attention kernel's tile in both directions, then profile\n  again to confirm the line moved. `gemma4_attention_prefill_kernel` is 15.0% of\n  the prefill at 512 tokens and grows with length, and its tile is currently a\n  fixed constant with no selection logic.\n- Then layer 29, which is one launch and one missing fast kernel for 5.5%.\n- Decode needs its own profile before any tuning; the matmul levers are closed.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "6 later entries by the same worker share this topic prefix"
+        "7 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260927T154851.180637Z-lhl-gemma4-prefill-next-unit-9b8480.md",
@@ -44223,7 +44223,7 @@
         ]
       },
       "id": "worklog/20260927T154851.180637Z-lhl-gemma4-prefill-next-unit-9b8480",
-      "evidence_hash": "b8eda08034cd"
+      "evidence_hash": "9b45489308fe"
     },
     {
       "kind": "worklog",
@@ -44237,7 +44237,7 @@
         "written": "2026-09-27",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "- Find the launch mismatch. The kernel's own guards are the place to look:\n  `valid_selected_dual_common` is defined at `gguf_q5_k_q8_1_selected_prefill.hip`\n  line 549 and takes `tile_m=64, tile_n=16`, so it is worth checking whether it\n  constrains `num_experts` (gemma4 has 128, the Qwen model may not) or\n  `compact_rows` in a way the tile map's padded total violates.\n- Then `HIPENGINE_GEMMA4_MOE_GATE_UP_Q5K_IU8=1`, confirm the route runs, and check\n  it is bit-identical to the strict row4 owner before considering the flag's\n  removal.\n- `tests/test_gpu_gemma4_expert_route_true_geometry.py` ",
         "paths_missing": [],
         "flags_unread": [
@@ -44246,7 +44246,7 @@
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix",
+        "2 later entries by the same worker share this topic prefix",
         "names flag(s) no code reads: HIPENGINE_GEMMA4_MOE_GATE_UP_Q5K_IU8"
       ],
       "hints": {
@@ -44269,7 +44269,7 @@
         ]
       },
       "id": "worklog/20260927T160339.051045Z-lhl-gemma4-q5k-iu8-wired-0edbbf",
-      "evidence_hash": "1c608a2ad31b"
+      "evidence_hash": "0dfabea4c8c5"
     },
     {
       "kind": "worklog",
