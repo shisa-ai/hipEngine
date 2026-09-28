@@ -1,0 +1,686 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_scratch_metadata_and_ordered_pilot",
+  "source_commit": "44c904624",
+  "performance_claim": false,
+  "model_scope": "Qwen3.8-Flash-Next GDN geometry only; synthetic FP32 operands, no model weights or quant loaded",
+  "hardware": "Framework Radeon 8060S gfx1151",
+  "metadata": {
+    "rows": [
+      {
+        "family": "gdn",
+        "symbol": "(anonymous namespace)::qwen4_exp_gdn_decode_f32_kernel(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)",
+        "mangled": "_ZN12_GLOBAL__N_131qwen4_exp_gdn_decode_f32_kernelEPKfS1_S1_S1_S1_S1_S1_PfS2_llll",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "gdn",
+        "symbol": "(anonymous namespace)::qwen4_exp_gdn_prefill_prepare_f32_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
+        "mangled": "_ZN12_GLOBAL__N_140qwen4_exp_gdn_prefill_prepare_f32_kernelEPKfS1_S1_S1_S1_PfS2_S2_S2_S2_lllll",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "gdn",
+        "symbol": "(anonymous namespace)::qwen4_exp_gdn_prefill_sigmoid_gate_f32_kernel(float*, float const*, float const*, long, long, long)",
+        "mangled": "_ZN12_GLOBAL__N_145qwen4_exp_gdn_prefill_sigmoid_gate_f32_kernelEPfPKfS2_lll",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "gdn",
+        "symbol": "(anonymous namespace)::qwen4_exp_gdn_state_transpose_f32_kernel(float const*, float*, long, long, long, bool)",
+        "mangled": "_ZN12_GLOBAL__N_140qwen4_exp_gdn_state_transpose_f32_kernelEPKfPflllb",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "gdn",
+        "symbol": "(anonymous namespace)::qwen4_exp_gdn_decode_transposed_f32_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)",
+        "mangled": "_ZN12_GLOBAL__N_142qwen4_exp_gdn_decode_transposed_f32_kernelEPKfS1_S1_S1_S1_PfS2_llll",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "gdn",
+        "symbol": "(anonymous namespace)::qwen4_exp_gdn_state_transpose_inplace_f32_kernel(float*, long, long)",
+        "mangled": "_ZN12_GLOBAL__N_148qwen4_exp_gdn_state_transpose_inplace_f32_kernelEPfll",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "gdn",
+        "symbol": "(anonymous namespace)::qwen4_exp_gdn_core_norm_gate_f32_kernel(float*, float const*, float const*, long, long, long, long)",
+        "mangled": "_ZN12_GLOBAL__N_139qwen4_exp_gdn_core_norm_gate_f32_kernelEPfPKfS2_llll",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "gdn",
+        "symbol": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<false, false>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "mangled": "_ZN12_GLOBAL__N_132qwen4_exp_gdn_prefill_f32_kernelILb0ELb0EEEvPKfS2_S2_S2_S2_S2_S2_PfS3_lllll",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "gdn",
+        "symbol": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, false>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "mangled": "_ZN12_GLOBAL__N_132qwen4_exp_gdn_prefill_f32_kernelILb1ELb0EEEvPKfS2_S2_S2_S2_S2_S2_PfS3_lllll",
+        "private_segment_fixed_size": 24,
+        "scratch_instructions": 7,
+        "scratch_mnemonics": [
+          "scratch_load_b32",
+          "scratch_load_b64",
+          "scratch_store_b32",
+          "scratch_store_b64"
+        ],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "gdn",
+        "symbol": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "mangled": "_ZN12_GLOBAL__N_132qwen4_exp_gdn_prefill_f32_kernelILb1ELb1EEEvPKfS2_S2_S2_S2_S2_S2_PfS3_lllll",
+        "private_segment_fixed_size": 36,
+        "scratch_instructions": 11,
+        "scratch_mnemonics": [
+          "scratch_load_b32",
+          "scratch_load_b64",
+          "scratch_store_b32",
+          "scratch_store_b64"
+        ],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "gdn",
+        "symbol": "void (anonymous namespace)::qwen4_exp_gdn_prefill_columnwarps_f32_kernel<4, 4>(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "mangled": "_ZN12_GLOBAL__N_144qwen4_exp_gdn_prefill_columnwarps_f32_kernelILi4ELi4EEEvPKfS2_S2_S2_S2_PfS3_lllll",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "gdn",
+        "symbol": "void (anonymous namespace)::qwen4_exp_gdn_prefill_tiled_f32_kernel<16, 16, 4, 1>(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "mangled": "_ZN12_GLOBAL__N_138qwen4_exp_gdn_prefill_tiled_f32_kernelILi16ELi16ELi4ELi1EEEvPKfS2_S2_S2_S2_PfS3_lllll",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "gdn",
+        "symbol": "void (anonymous namespace)::qwen4_exp_gdn_prefill_columnwarps_f32_kernel<32, 4>(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+        "mangled": "_ZN12_GLOBAL__N_144qwen4_exp_gdn_prefill_columnwarps_f32_kernelILi32ELi4EEEvPKfS2_S2_S2_S2_PfS3_lllll",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "dense-wide",
+        "symbol": "(anonymous namespace)::q8_0_f32_to_f16_kernel(float const*, _Float16*, long)",
+        "mangled": "_ZN12_GLOBAL__N_122q8_0_f32_to_f16_kernelEPKfPDF16_l",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "dense-wide",
+        "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<float, 128, 256, 64, 64, true>(float const*, unsigned char const*, float*, int, int, int)",
+        "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIfLi128ELi256ELi64ELi64ELb1EEEvPKT_PKhPfiii",
+        "private_segment_fixed_size": 92,
+        "scratch_instructions": 40,
+        "scratch_mnemonics": [
+          "scratch_load_b32",
+          "scratch_load_b96",
+          "scratch_store_b32",
+          "scratch_store_b96"
+        ],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "dense-wide",
+        "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<float, 128, 256, 64, 64, false>(float const*, unsigned char const*, float*, int, int, int)",
+        "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIfLi128ELi256ELi64ELi64ELb0EEEvPKT_PKhPfiii",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "dense-wide",
+        "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<float, 64, 256, 32, 64, true>(float const*, unsigned char const*, float*, int, int, int)",
+        "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIfLi64ELi256ELi32ELi64ELb1EEEvPKT_PKhPfiii",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "dense-wide",
+        "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<float, 64, 256, 32, 64, false>(float const*, unsigned char const*, float*, int, int, int)",
+        "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIfLi64ELi256ELi32ELi64ELb0EEEvPKT_PKhPfiii",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "dense-wide",
+        "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<float, 128, 128, 64, 32, true>(float const*, unsigned char const*, float*, int, int, int)",
+        "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIfLi128ELi128ELi64ELi32ELb1EEEvPKT_PKhPfiii",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "dense-wide",
+        "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<float, 128, 128, 64, 32, false>(float const*, unsigned char const*, float*, int, int, int)",
+        "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIfLi128ELi128ELi64ELi32ELb0EEEvPKT_PKhPfiii",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "dense-wide",
+        "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<float, 64, 128, 32, 32, true>(float const*, unsigned char const*, float*, int, int, int)",
+        "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIfLi64ELi128ELi32ELi32ELb1EEEvPKT_PKhPfiii",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "dense-wide",
+        "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<float, 64, 128, 32, 32, false>(float const*, unsigned char const*, float*, int, int, int)",
+        "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIfLi64ELi128ELi32ELi32ELb0EEEvPKT_PKhPfiii",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "dense-wide",
+        "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, true>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+        "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIDF16_Li128ELi256ELi64ELi64ELb1EEEvPKT_PKhPfiii",
+        "private_segment_fixed_size": 92,
+        "scratch_instructions": 38,
+        "scratch_mnemonics": [
+          "scratch_load_b128",
+          "scratch_load_b32",
+          "scratch_store_b128",
+          "scratch_store_b32"
+        ],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "dense-wide",
+        "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, false>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+        "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIDF16_Li128ELi256ELi64ELi64ELb0EEEvPKT_PKhPfiii",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "dense-wide",
+        "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 128, 64, 32, true>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+        "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIDF16_Li128ELi128ELi64ELi32ELb1EEEvPKT_PKhPfiii",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      },
+      {
+        "family": "dense-wide",
+        "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 128, 64, 32, false>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+        "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIDF16_Li128ELi128ELi64ELi32ELb0EEEvPKT_PKhPfiii",
+        "private_segment_fixed_size": 0,
+        "scratch_instructions": 0,
+        "scratch_mnemonics": [],
+        "disassembly_symbol_found": true
+      }
+    ],
+    "raw_hashes": {
+      "gdn-notes.txt": "e6e1b5b3a66febdfcd0bc35f32c093f54fc9ec1c575902b63711be1a8482ae67",
+      "gdn-disassembly.txt": "245a3369f7c7ccc9f51a8b873a13e01c2d6fae6f4217218a09d85d1813e182c5",
+      "dense-path.txt": "7d0d608e2ec3b27913c6899db18582565c80e44f8ef7b310f1daa751581a5cf1",
+      "dense-notes.txt": "7fb587eb3d285e23caf81ec21fbb084eb7762a1f16166d98024d0f06b71b33e1",
+      "dense-disassembly.txt": "806e6bed654e4f9db7a0f3c27a8534845c8cb7ae4017faa302a04989f941fab0",
+      "dense-wide-notes.txt": "fff7208067af86d2a3fb15d59ad2aae405581c583071407a9b1e339f469601c3",
+      "dense-wide-disassembly.txt": "6a9231738162d37a0d4005e90cb0dab566b2e5c580d0e478a08abdc29126d499"
+    },
+    "library_sha256": {
+      "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-3d97211ffad0e4c1/qwen4_exp_gdn.so": "1e39f1cdad1bac1ed7b1a0b7357f68073486c5436b84bc6a567c9a5d546ba291",
+      "/home/lhl/.cache/hipengine/build/gguf_q8_0_dense_wide-607dcca699485493/gguf_q8_0_dense_wide.so": "734fea59ed643644014c9e57c85371bd3c5c3508908acb84245a9c2aa98cfd99"
+    }
+  },
+  "pilots": [
+    {
+      "schema": 1,
+      "kind": "qwen4exp_gdn_ordered_scratch_pilot",
+      "command": [
+        "scripts/qwen4exp_scratch_order_probe.py",
+        "--arm",
+        "sham",
+        "--tokens",
+        "64",
+        "--repeats",
+        "21",
+        "--output",
+        "/tmp/qwen4exp-scratch-audit/order-0-sham.json"
+      ],
+      "arm": "sham",
+      "shape": {
+        "tokens": 64,
+        "Hk": 16,
+        "Hv": 48,
+        "Dk": 128,
+        "Dv": 128
+      },
+      "victim": "qwen4_exp_gdn_prefill_f32",
+      "trigger": "qwen4_exp_gdn_prefill_f32",
+      "before_ms": [
+        2.607546091079712,
+        2.592708110809326,
+        2.5907039642333984,
+        2.603048086166382,
+        2.608741044998169,
+        2.5905070304870605,
+        2.5910680294036865,
+        2.592190980911255,
+        2.606337070465088,
+        2.608109951019287,
+        2.590517044067383,
+        2.588273048400879,
+        2.588874101638794,
+        2.6030209064483643,
+        2.61075496673584,
+        2.5903658866882324,
+        2.5894041061401367,
+        2.5906059741973877,
+        2.605954885482788,
+        2.614772081375122,
+        2.60208797454834
+      ],
+      "after_ms": [
+        2.6047348976135254,
+        2.592932939529419,
+        2.5938949584960938,
+        2.6009879112243652,
+        2.6104860305786133,
+        2.591330051422119,
+        2.591249942779541,
+        2.5924930572509766,
+        2.6065990924835205,
+        2.611527919769287,
+        2.590167999267578,
+        2.589569091796875,
+        2.59265398979187,
+        2.604917049407959,
+        2.609966993331909,
+        2.5911710262298584,
+        2.592773914337158,
+        2.5904500484466553,
+        2.606600046157837,
+        2.6233010292053223,
+        2.5918920040130615
+      ],
+      "trigger_ms": 2.592971086502075,
+      "after_over_before": 1.000086715785381,
+      "output_and_state_exact": true,
+      "hashes": [
+        "aaf361f0438989bdd3673cf924f0e76d1227fb66836b71a35483cc90a729bea8",
+        "597e31b64c8026b44fdde3a82fc13d03c89f5de65a6f79396e03ca3fe100da7a"
+      ],
+      "build": {
+        "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-3d97211ffad0e4c1/qwen4_exp_gdn.so",
+        "sha256": "1e39f1cdad1bac1ed7b1a0b7357f68073486c5436b84bc6a567c9a5d546ba291"
+      },
+      "host": {
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "uname": [
+          "Linux",
+          "gfx1151",
+          "7.1.6-1-cachyos",
+          "#1 SMP PREEMPT_DYNAMIC Mon, 03 Aug 2026 16:03:35 +0000",
+          "x86_64"
+        ]
+      },
+      "performance_claim": false,
+      "limits": [
+        "scratch-free GDN victim only",
+        "not a serving or model benchmark",
+        "clocks and scratch allocation require separate telemetry/trace"
+      ]
+    },
+    {
+      "schema": 1,
+      "kind": "qwen4exp_gdn_ordered_scratch_pilot",
+      "command": [
+        "scripts/qwen4exp_scratch_order_probe.py",
+        "--arm",
+        "scratch",
+        "--tokens",
+        "64",
+        "--repeats",
+        "21",
+        "--output",
+        "/tmp/qwen4exp-scratch-audit/order-1-scratch.json"
+      ],
+      "arm": "scratch",
+      "shape": {
+        "tokens": 64,
+        "Hk": 16,
+        "Hv": 48,
+        "Dk": 128,
+        "Dv": 128
+      },
+      "victim": "qwen4_exp_gdn_prefill_f32",
+      "trigger": "qwen4_exp_gdn_wave_norm_prefill_f32",
+      "before_ms": [
+        2.5930209159851074,
+        2.5936620235443115,
+        2.5958259105682373,
+        2.613960027694702,
+        2.6128320693969727,
+        2.586944103240967,
+        2.5927939414978027,
+        2.597443103790283,
+        2.604537010192871,
+        2.6128408908843994,
+        2.594686985015869,
+        2.6027019023895264,
+        2.604365110397339,
+        2.606750011444092,
+        2.6118791103363037,
+        2.6068968772888184,
+        2.6035211086273193,
+        2.5968990325927734,
+        2.6050338745117188,
+        2.612168073654175,
+        2.592690944671631
+      ],
+      "after_ms": [
+        2.5998129844665527,
+        2.599112033843994,
+        2.6032400131225586,
+        2.632694959640503,
+        2.5971789360046387,
+        2.6020379066467285,
+        2.6059560775756836,
+        2.612328052520752,
+        2.591609001159668,
+        2.593050956726074,
+        2.5956668853759766,
+        2.603961944580078,
+        2.61189603805542,
+        2.5993030071258545,
+        2.594144105911255,
+        2.5974299907684326,
+        2.6097729206085205,
+        2.6137800216674805,
+        2.593381881713867,
+        2.5953450202941895,
+        2.597028970718384
+      ],
+      "trigger_ms": 1.0966320037841797,
+      "after_over_before": 0.9983798473968629,
+      "output_and_state_exact": true,
+      "hashes": [
+        "aaf361f0438989bdd3673cf924f0e76d1227fb66836b71a35483cc90a729bea8",
+        "597e31b64c8026b44fdde3a82fc13d03c89f5de65a6f79396e03ca3fe100da7a"
+      ],
+      "build": {
+        "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-3d97211ffad0e4c1/qwen4_exp_gdn.so",
+        "sha256": "1e39f1cdad1bac1ed7b1a0b7357f68073486c5436b84bc6a567c9a5d546ba291"
+      },
+      "host": {
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "uname": [
+          "Linux",
+          "gfx1151",
+          "7.1.6-1-cachyos",
+          "#1 SMP PREEMPT_DYNAMIC Mon, 03 Aug 2026 16:03:35 +0000",
+          "x86_64"
+        ]
+      },
+      "performance_claim": false,
+      "limits": [
+        "scratch-free GDN victim only",
+        "not a serving or model benchmark",
+        "clocks and scratch allocation require separate telemetry/trace"
+      ]
+    },
+    {
+      "schema": 1,
+      "kind": "qwen4exp_gdn_ordered_scratch_pilot",
+      "command": [
+        "scripts/qwen4exp_scratch_order_probe.py",
+        "--arm",
+        "scratch",
+        "--tokens",
+        "64",
+        "--repeats",
+        "21",
+        "--output",
+        "/tmp/qwen4exp-scratch-audit/order-2-scratch.json"
+      ],
+      "arm": "scratch",
+      "shape": {
+        "tokens": 64,
+        "Hk": 16,
+        "Hv": 48,
+        "Dk": 128,
+        "Dv": 128
+      },
+      "victim": "qwen4_exp_gdn_prefill_f32",
+      "trigger": "qwen4_exp_gdn_wave_norm_prefill_f32",
+      "before_ms": [
+        2.5980470180511475,
+        2.5962440967559814,
+        2.606592893600464,
+        2.6064629554748535,
+        2.608553886413574,
+        2.59476900100708,
+        2.5934860706329346,
+        2.598896026611328,
+        2.6062710285186768,
+        2.6088030338287354,
+        2.593374013900757,
+        2.5958189964294434,
+        2.5987839698791504,
+        2.6072399616241455,
+        2.610366106033325,
+        2.596179962158203,
+        2.595339059829712,
+        2.600066900253296,
+        2.60575795173645,
+        2.6081628799438477,
+        2.5952579975128174
+      ],
+      "after_ms": [
+        2.605412006378174,
+        2.596024990081787,
+        2.600032091140747,
+        2.608928918838501,
+        2.609971046447754,
+        2.595423936843872,
+        2.5947420597076416,
+        2.5991899967193604,
+        2.6071650981903076,
+        2.609649896621704,
+        2.5937020778656006,
+        2.594101905822754,
+        2.599713087081909,
+        2.6067259311676025,
+        2.6096909046173096,
+        2.594702959060669,
+        2.5978689193725586,
+        2.601196050643921,
+        2.608367919921875,
+        2.6102519035339355,
+        2.594261884689331
+      ],
+      "trigger_ms": 1.0859030485153198,
+      "after_over_before": 1.0004371335050677,
+      "output_and_state_exact": true,
+      "hashes": [
+        "aaf361f0438989bdd3673cf924f0e76d1227fb66836b71a35483cc90a729bea8",
+        "597e31b64c8026b44fdde3a82fc13d03c89f5de65a6f79396e03ca3fe100da7a"
+      ],
+      "build": {
+        "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-3d97211ffad0e4c1/qwen4_exp_gdn.so",
+        "sha256": "1e39f1cdad1bac1ed7b1a0b7357f68073486c5436b84bc6a567c9a5d546ba291"
+      },
+      "host": {
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "uname": [
+          "Linux",
+          "gfx1151",
+          "7.1.6-1-cachyos",
+          "#1 SMP PREEMPT_DYNAMIC Mon, 03 Aug 2026 16:03:35 +0000",
+          "x86_64"
+        ]
+      },
+      "performance_claim": false,
+      "limits": [
+        "scratch-free GDN victim only",
+        "not a serving or model benchmark",
+        "clocks and scratch allocation require separate telemetry/trace"
+      ]
+    },
+    {
+      "schema": 1,
+      "kind": "qwen4exp_gdn_ordered_scratch_pilot",
+      "command": [
+        "scripts/qwen4exp_scratch_order_probe.py",
+        "--arm",
+        "sham",
+        "--tokens",
+        "64",
+        "--repeats",
+        "21",
+        "--output",
+        "/tmp/qwen4exp-scratch-audit/order-3-sham.json"
+      ],
+      "arm": "sham",
+      "shape": {
+        "tokens": 64,
+        "Hk": 16,
+        "Hv": 48,
+        "Dk": 128,
+        "Dv": 128
+      },
+      "victim": "qwen4_exp_gdn_prefill_f32",
+      "trigger": "qwen4_exp_gdn_prefill_f32",
+      "before_ms": [
+        2.59368896484375,
+        2.5912840366363525,
+        2.5933279991149902,
+        2.6030259132385254,
+        2.6100881099700928,
+        2.5890491008758545,
+        2.588286876678467,
+        2.5886070728302,
+        2.6036360263824463,
+        2.6096980571746826,
+        2.5901811122894287,
+        2.590420961380005,
+        2.5895800590515137,
+        2.6030850410461426,
+        2.6104989051818848,
+        2.589668035507202,
+        2.5887460708618164,
+        2.5903899669647217,
+        2.603734016418457,
+        2.609184980392456,
+        2.590229034423828
+      ],
+      "after_ms": [
+        2.5988340377807617,
+        2.589556932449341,
+        2.5908799171447754,
+        2.6038639545440674,
+        2.6089529991149902,
+        2.5894370079040527,
+        2.5875139236450195,
+        2.5899579524993896,
+        2.6043450832366943,
+        2.609795093536377,
+        2.590604066848755,
+        2.5887598991394043,
+        2.5904040336608887,
+        2.603627920150757,
+        2.611844062805176,
+        2.5938498973846436,
+        2.5927679538726807,
+        2.5894808769226074,
+        2.6038689613342285,
+        2.609438896179199,
+        2.5898020267486572
+      ],
+      "trigger_ms": 2.587985038757324,
+      "after_over_before": 1.0005726571133646,
+      "output_and_state_exact": true,
+      "hashes": [
+        "aaf361f0438989bdd3673cf924f0e76d1227fb66836b71a35483cc90a729bea8",
+        "597e31b64c8026b44fdde3a82fc13d03c89f5de65a6f79396e03ca3fe100da7a"
+      ],
+      "build": {
+        "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-3d97211ffad0e4c1/qwen4_exp_gdn.so",
+        "sha256": "1e39f1cdad1bac1ed7b1a0b7357f68073486c5436b84bc6a567c9a5d546ba291"
+      },
+      "host": {
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "uname": [
+          "Linux",
+          "gfx1151",
+          "7.1.6-1-cachyos",
+          "#1 SMP PREEMPT_DYNAMIC Mon, 03 Aug 2026 16:03:35 +0000",
+          "x86_64"
+        ]
+      },
+      "performance_claim": false,
+      "limits": [
+        "scratch-free GDN victim only",
+        "not a serving or model benchmark",
+        "clocks and scratch allocation require separate telemetry/trace"
+      ]
+    }
+  ],
+  "raw_directory": "/tmp/qwen4exp-scratch-audit",
+  "limits": [
+    "not a complete census of all model kernels",
+    "scratch-free GDN victim only; not a scratch-enabled victim experiment",
+    "no clock series or scratch-allocation trace for pilot",
+    "X-5 remains open"
+  ],
+  "environment": {
+    "ENV_PREFIX": "/home/lhl/miniforge3/envs/therock10-staging-20260828",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/qwen4exp-ledger-20260928-current/hipcc-version.txt"
+  }
+}
