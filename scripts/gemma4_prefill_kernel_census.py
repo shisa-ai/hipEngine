@@ -55,7 +55,17 @@ _LAYER_KERNELS = (
 
 # Expert-block leaves. ``gemma4_project_experts_rows`` is the outer entry point
 # and calls one of the others, so it is not patched: timing it would nest inside
-# the block and double-count. These are the innermost launches.
+# the block and double-count.
+#
+# ``gemma4_project_experts_gate_up_mmq`` is NOT innermost despite its name. It is
+# the gate/up router: it holds the MMQ32 path inline and calls out to the Q4T16
+# leaf for the other branch, so its span is the whole gate/up block and says
+# nothing about which of the two kernels filled it. Both run on the same prefill
+# (232 T16 against 240 MMQ32 at a 4096-token prompt), and they are different
+# arithmetic, so a report that folds them into one number cannot locate the
+# critical path. The T16 leaf is patched as well; its time is nested inside the
+# router's, so read the split as ``router`` total and ``t16`` share, with the
+# MMQ32 share being the difference.
 _EXPERT_LEAVES = (
     "gemma4_project_experts_gate_up_mmq",
     "gemma4_project_experts_down_mmq",
@@ -64,6 +74,19 @@ _EXPERT_LEAVES = (
     "gemma4_project_experts_selected",
     "gemma4_project_experts_by_offset",
 )
+
+# Measured, but nested inside one of the leaves above rather than beside it.
+# These are reported and must NOT be subtracted from the block: the router
+# already contains them, so subtracting both counts the T16 time twice and drove
+# the glue line to -1007 ms when the split was first added.
+_NESTED_EXPERT_LEAVES = (
+    "_gemma4_project_experts_gate_up_wmma_t16",
+)
+
+# Short labels for the nested leaves, whose full names overflow the column.
+_NESTED_EXPERT_LABELS = {
+    "_gemma4_project_experts_gate_up_wmma_t16": "t16 gate/up leaf",
+}
 
 
 def main() -> int:
@@ -138,7 +161,7 @@ def main() -> int:
     patch(ga, "gemma4_attention_prefill_bf16")
     patch(gaw, "gemma4_attention_prefill_wmma_bf16")
     patch(gawf, "gemma4_attention_prefill_wmma_full_bf16")
-    for name in _EXPERT_LEAVES:
+    for name in _EXPERT_LEAVES + _NESTED_EXPERT_LEAVES:
         patch(ex, name)
     for name in ("launch_gguf_embedding",):
         patch(ge, name)
@@ -179,6 +202,8 @@ def main() -> int:
 
     step_ms = seconds * 1000.0
     expert_ms = totals.get("gemma4_experts_forward_bf16", 0.0)
+    # Only the top-level leaves are subtracted from the block; the nested ones
+    # are already inside a top-level leaf's span.
     expert_leaf_ms = sum(
         totals.get(name, 0.0)
         for name in _EXPERT_LEAVES
@@ -187,16 +212,24 @@ def main() -> int:
     # The expert leaves are inside the expert block, so they are reported as a
     # breakdown of it and not added to the total. Summing them would count the
     # block twice, which an earlier revision of this probe did -- it printed
-    # 134 percent of the step.
+    # 134 percent of the step. The nested leaves are inside the block too, so
+    # they are excluded from the total for the same reason.
+    _expert_reported = set(_EXPERT_LEAVES) | set(_NESTED_EXPERT_LEAVES)
     accounted = sum(
-        ms for name, ms in totals.items() if name not in _EXPERT_LEAVES
+        ms for name, ms in totals.items() if name not in _expert_reported
     )
 
     print(f"\nprefill wall {seconds:.3f} s  ({args.prompt / seconds:.1f} tok/s)")
     print(f"\n{'kernel':40s} {'n':>6s} {'ms':>10s} {'ms/call':>9s} {'share':>7s}")
     for name, ms in sorted(totals.items(), key=lambda kv: -kv[1]):
-        # Indent the expert leaves: they are inside the block above them.
-        label = ("  " + name) if name in _EXPERT_LEAVES else name
+        # Indent the expert leaves: they are inside the block above them, and the
+        # nested ones are inside another leaf.
+        if name in _EXPERT_LEAVES:
+            label = "  " + name
+        elif name in _NESTED_EXPERT_LEAVES:
+            label = "    " + _NESTED_EXPERT_LABELS.get(name, name)
+        else:
+            label = name
         print(
             f"{label:40s} {calls[name]:6d} {ms:10.2f} {ms / calls[name]:9.3f} "
             f"{100.0 * ms / step_ms:6.1f}%"
