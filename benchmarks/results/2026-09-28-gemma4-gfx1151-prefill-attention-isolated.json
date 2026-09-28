@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "date": "2026-09-28",
+  "host_arch": "gfx1151",
+  "command": "env -u ROCR_VISIBLE_DEVICES PYTHONPATH=. .venv/bin/python scripts/gemma4_attention_prefill_bench.py --tokens 2048",
+  "script_sha256": "13cf81fab7ece9de52c955e9780780c2522d1016f751a78f3d2c39c5ea46f984",
+  "tokens": 2048,
+  "iters": 5,
+  "cases": [
+    {
+      "case": "swa 256d 16q/8kv window=1024",
+      "ms_per_launch": 62.23,
+      "gflops": 414.2,
+      "layers": 25,
+      "total_ms": 1555.9
+    },
+    {
+      "case": "swa 256d 16q/8kv window=0 (probe only)",
+      "ms_per_launch": 77.48,
+      "gflops": 443.7,
+      "layers": null,
+      "total_ms": 1937.0
+    },
+    {
+      "case": "full 512d 16q/2kv window=0",
+      "ms_per_launch": 130.27,
+      "gflops": 527.8,
+      "layers": 5,
+      "total_ms": 651.4
+    }
+  ],
+  "model_30_layer_total_ms": 2207.2,
+  "in_situ_route_ablation_ms": 2295,
+  "gfx1100_campaign_record_ms": 133.02,
+  "ratio_vs_gfx1100": 16.59,
+  "hw_ratio_note": "gfx1100 96 CU / ~960 GB/s vs gfx1151 ~40 CU / ~256 GB/s -> 2.4x CU, 3.75x BW"
+}
