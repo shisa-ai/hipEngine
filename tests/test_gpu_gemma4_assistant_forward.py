@@ -141,7 +141,13 @@ class _Session:
     def __init__(self, prompt: list[int]):
         self.reader = GGUFReader(str(BACKBONE))
         self.backbone_weights = load_gemma4_device_weights(self.reader)
-        self.runner = Gemma4Runner(weights=self.backbone_weights, capacity=128)
+        # max_logits_rows sizes the logits projection buffers. The default of one
+        # row is what keeps a wide prefill from sizing its scratch for the whole
+        # block, but the adapter's verify reads several rows in one call, so the
+        # session is built with room for a full draft plus its bonus.
+        self.runner = Gemma4Runner(
+            weights=self.backbone_weights, capacity=128, max_logits_rows=8
+        )
         self.head_weights = None
         self.head = None
         self.staged = None
@@ -303,3 +309,77 @@ def test_the_drafter_proposes_tokens_the_backbone_accepts() -> None:
             f"overall draft acceptance is {overall:.3f} over {sum(reached)} drafts "
             f"({matched}); a working chain measures about 0.78"
         )
+
+
+def test_the_adapter_cycle_agrees_with_a_token_by_token_decode() -> None:
+    """The adapter's batch verify must decide what a one-at-a-time walk decides.
+
+    ``Gemma4SpeculativeAdapter`` replaces the manual loop above with a single
+    target forward over the whole draft, reading ``logits_rows`` so every drafted
+    position gets the target's own distribution. That is an arithmetic change:
+    the verify reads the target at several rows at once where the loop reads one
+    row at a time.
+
+    The property that has to hold is therefore that the batch verify agrees with
+    the token-by-token decode -- the same batch-composition invariance
+    ``20260928T062754`` fixed in the expert route, and the reason a verify can be
+    trusted to accept exactly what a decode would have produced. It is also what
+    the loop above quietly assumes: it walks the draft one token at a time and
+    never checks that the batched path would say the same thing.
+
+    The oracle here is the same ``target_next_token`` the other tests use, so
+    agreement is against the target's own single-step answer rather than against
+    the adapter's own arithmetic.
+    """
+
+    from hipengine.runtime.gemma4_speculative import Gemma4SpeculativeAdapter
+
+    rounds = 4
+    per_round = 4
+    with _Session(TEMPLATED) as session:
+        drafter = Gemma4MtpDrafter(
+            head=session.head, runner=session.runner, max_drafts=per_round
+        )
+        adapter = Gemma4SpeculativeAdapter(runner=session.runner, drafter=drafter)
+        token = session.sampled
+
+        for round_index in range(rounds):
+            start = session.runner.position
+            draft = adapter.draft(token)
+
+            # Oracle: the target's own next token at each position, one at a
+            # time. This advances the runner, so it is rewound before the
+            # adapter's verify writes the same positions.
+            oracle_accepted: list[int] = []
+            consumed = token
+            for candidate in draft:
+                expected = session.target_next_token(consumed)
+                if int(candidate) != int(expected):
+                    break
+                oracle_accepted.append(int(candidate))
+                consumed = int(candidate)
+            oracle_bonus = int(session.target_next_token(consumed))
+            session.runner.rewind(start)
+
+            cycle = adapter.verify_and_accept(token, draft, start_position=start)
+
+            assert cycle.accepted == oracle_accepted, (
+                f"round {round_index}: the batched verify accepted "
+                f"{cycle.accepted} where a token-by-token decode accepts "
+                f"{oracle_accepted} for the same draft {draft}. The verify's "
+                "multi-row read is not agreeing with the single-row one."
+            )
+            assert cycle.bonus == oracle_bonus, (
+                f"round {round_index}: the batched verify's bonus token is "
+                f"{cycle.bonus} where the one-at-a-time walk gives {oracle_bonus}"
+            )
+            assert session.runner.position == start + len(cycle.accepted), (
+                f"round {round_index}: after the cycle the runner is at "
+                f"{session.runner.position}, expected {start + len(cycle.accepted)}"
+            )
+
+            token = cycle.bonus if cycle.bonus is not None else oracle_bonus
+            # The verify appended the seed plus the whole draft and rewound to
+            # start + agreed, so the accepted prefix is already in the cache and
+            # only the bonus has to be appended. The next round drafts from it.
+            session.runner.forward([token])
