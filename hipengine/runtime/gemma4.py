@@ -513,6 +513,7 @@ class Gemma4Runner:
     capacity: int
     max_block: int = 0
     max_logits_rows: int = 1
+    prefill_attention_variant: str | None = None
     rng: np.random.Generator = field(default_factory=lambda: np.random.default_rng(0))
     _buffers: list[DeviceBuffer] = field(default_factory=list, repr=False)
     _scratches: list[Gemma4LayerScratch] = field(default_factory=list, repr=False)
@@ -971,6 +972,7 @@ class Gemma4Runner:
                 window=start + rows - key_begin
                 if attention.sliding_window is None
                 else int(attention.sliding_window),
+                prefill_attention_variant=self.prefill_attention_variant,
             )
             if capture_layers is not None:
                 residual = np.empty((rows, hidden), dtype=np.uint16)
