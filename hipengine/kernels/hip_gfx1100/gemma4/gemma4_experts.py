@@ -442,6 +442,22 @@ def gemma4_experts_forward_bf16(
     # 1. Group the lanes by expert. `counts` must be zeroed by the caller.
     _zero(counts, **kwargs)
     qwen35_moe_group_count(selected_experts_ptr, counts.ptr, lanes, num_experts, **kwargs)
+    # Which compactor runs is a registered backend capability, not a correctness
+    # question. The serial kernel launches one block of 256 threads (dim3(1)) to
+    # compact every lane and was the largest single piece of this block's glue
+    # at 12.354 ms of a 656 ms prefill (worklog/entries/20260929T103000); the
+    # parallel sibling launches one block per expert and is bit-identical to it
+    # at tokens 1/512/4096/777 with top_k 8/8/8/4
+    # (scripts/gemma4_group_compact_equivalence.py). Both hip_gfx1100 and
+    # hip_gfx1151 declare "parallel", so resolving the capability turns it on
+    # without a backend branch here; "serial" stays the rollback and needs no
+    # new flag. The accessor still carries the name of the model whose MoE
+    # group-scatter this machinery was first built for.
+    from hipengine.runtime.laguna_moe import resolve_laguna_group_compact_mode
+
+    compact_parallel = (
+        resolve_laguna_group_compact_mode(gate_up_proj.backend) == "parallel"
+    )
     qwen35_moe_group_prefix_active(
         counts.ptr,
         expert_start.ptr,
@@ -461,6 +477,7 @@ def gemma4_experts_forward_bf16(
         sorted_weights.ptr,
         lanes,
         num_experts,
+        parallel=compact_parallel,
         **kwargs,
     )
 
