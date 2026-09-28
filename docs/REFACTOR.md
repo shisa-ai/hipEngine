@@ -8948,3 +8948,32 @@ compensated variants the prefill route unconditionally, and delete the plain
 variants and the diagnostic modes with them. If it does apply, delete the Gemma
 wiring for both WMMA owner variants and their `compensated` plumbing instead, and
 keep the kernels registered for callers that only need their own parity contract.
+
+## Gemma 4 gate/up split allocation (resolved 2026-09-27)
+
+`materialize_gemma4_gguf_device_weight` used to upload the fused
+`ffn_gate_up_exps` stack **and** two per-expert `gate`/`up` copies, because the
+Q4_K int8 MMQ32 leaf derived each expert's weight stride from its own output
+width and so could not address a fused stack. `Gemma4GGUFWeightSpec.split_gate_up`,
+`_mmq_split_requested`, `_is_fused_expert_gate_up` and the
+`_MMQ_DUAL_WEIGHTS_ARE_SPLIT` refusal in `gemma4_experts_forward_bf16` carried
+the condition. The duplicate cost 8.04 GiB plus allocator overhead: peak device
+use at `--prompt 1024` was 32.35 GB, and Gemma 4 stopped loading on the 24 GB
+RX 7900 XTX with `HIP error 2: out of memory`.
+
+Removed rather than completed. The leaf takes an explicit `expert_stride_rows`
+(0 keeps the old per-half behavior for every other caller), Gemma 4 passes the
+fused width, and the fused allocation is the only copy again. Peak device use
+on the W7900 is 22.06 GiB (49.0% of 45.0 GiB) and the XTX loads and runs. None
+of the symbols above exist any more, so there is nothing left in this ledger's
+sense to delete; this row records the removal and closes it.
+
+Evidence: `worklog/entries/20260927T081858.830497Z-lhl-gemma4-mmq-fused-stride-242422.md`;
+iteration 152 in `docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md`;
+`tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py`
+(`test_q4_k_q8_1_ds4_mmq32_fused_stride_matches_split_tensors` -- fused output
+bit-identical to split, with a negative control proving the comparison cannot
+pass on an ignored stride); and
+`benchmarks/results/2026-09-29-gemma4-moe-fused-stride-gate-w7900.json`
+(the campaign gate at `--prompt 2048 --prefill 1024`: `passed: true`,
+`kl_max` 7.7e-04 against a 0.05 bar, 0 of 1023 top-1 flips).
