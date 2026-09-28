@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 10992,
-    "current": 3760,
+    "entries": 11000,
+    "current": 3768,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1176,
+    "rows": 1177,
     "by_rule": {
       "dependency": 40,
       "legacy-next": 109,
-      "status": 1027
+      "status": 1028
     }
   },
   "rows": [
@@ -43877,14 +43877,14 @@
         "written": "2026-09-26",
         "age_days": 2,
         "open_by": "status",
-        "continuation_entries": 11,
+        "continuation_entries": 12,
         "open_text": "- Cut instructions per weight element in both expert kernels. The cheapest\n  bit-exact step is hoisting the staged activations into registers outside the\n  output-tile loop (8 shared loads per weight element become 8 per k), which by\n  instruction count is worth ~1.5x on kernels that are ~97% of prefill.\n- Beyond that the remaining wins change arithmetic (int8 dot products, larger\n  output tiles) and therefore need the production execution-profile gate rather\n  than bit-exactness.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "11 later entries by the same worker share this topic prefix"
+        "12 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260926T213133.282176Z-lhl-gemma4-prefill-attribution-sweep-memo-3724ef.md",
@@ -43903,7 +43903,7 @@
         ]
       },
       "id": "worklog/20260926T213133.282176Z-lhl-gemma4-prefill-attribution-sweep-memo-3724ef",
-      "evidence_hash": "b5d5ea64efc1"
+      "evidence_hash": "e2893d97bc16"
     },
     {
       "kind": "worklog",
@@ -43917,14 +43917,14 @@
         "written": "2026-09-26",
         "age_days": 2,
         "open_by": "status",
-        "continuation_entries": 10,
+        "continuation_entries": 11,
         "open_text": "Wire Gemma 4's gate/up projection to the in-tree int8-dp4a MMQ dual kernel; the\nspike in the following entry measures 5.6x at this geometry and records the recipe.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "10 later entries by the same worker share this topic prefix"
+        "11 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260926T213604.731742Z-lhl-gemma4-prefill-fp32-exhausted-mmq-route-380fbe.md",
@@ -43945,7 +43945,7 @@
         ]
       },
       "id": "worklog/20260926T213604.731742Z-lhl-gemma4-prefill-fp32-exhausted-mmq-route-380fbe",
-      "evidence_hash": "37b824952cfd"
+      "evidence_hash": "5a1a7e34922a"
     },
     {
       "kind": "worklog",
@@ -44200,14 +44200,14 @@
         "written": "2026-09-27",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 5,
+        "continuation_entries": 6,
         "open_text": "- Sweep the prefill attention kernel's tile in both directions, then profile\n  again to confirm the line moved. `gemma4_attention_prefill_kernel` is 15.0% of\n  the prefill at 512 tokens and grows with length, and its tile is currently a\n  fixed constant with no selection logic.\n- Then layer 29, which is one launch and one missing fast kernel for 5.5%.\n- Decode needs its own profile before any tuning; the matmul levers are closed.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "5 later entries by the same worker share this topic prefix"
+        "6 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260927T154851.180637Z-lhl-gemma4-prefill-next-unit-9b8480.md",
@@ -44223,7 +44223,7 @@
         ]
       },
       "id": "worklog/20260927T154851.180637Z-lhl-gemma4-prefill-next-unit-9b8480",
-      "evidence_hash": "f9a3a7f90835"
+      "evidence_hash": "b8eda08034cd"
     },
     {
       "kind": "worklog",
@@ -44309,6 +44309,46 @@
       },
       "id": "worklog/20260927T160840.284441Z-lhl-gemma4-decode-pack-launches-5a144c",
       "evidence_hash": "a3c64f3aed66"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T011304.865805Z-lhl-gemma4-assistant-forward-checkpoint-1b52bb",
+      "title": "the assistant head forward runs end to end but does not yet track its target",
+      "location": "worklog/entries/20260928T011304.865805Z-lhl-gemma4-assistant-forward-checkpoint-1b52bb.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-assistant-forward-checkpoint",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "1. **Find the remaining divergence.** The cosine is near zero rather than\n   strongly negative, so this looks like a stage that contributes noise rather\n   than a sign flip. The most efficient next step is to stop comparing the final\n   output and start comparing stages: run the backbone, then check whether the\n   head's *logits* argmax is a plausible next token at all, and whether\n   `nextn_pre_projection` alone tracks anything. A CPU reference for the head\n   (four blocks, numpy) would localize it in one pass and is probably the right\n   investment before more GPU round-trips.\n2. **Then** th",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T011304.865805Z-lhl-gemma4-assistant-forward-checkpoint-1b52bb.md",
+        "refs": [],
+        "tokens": [
+          "assistant",
+          "but",
+          "does",
+          "end",
+          "forward",
+          "head",
+          "runs",
+          "target",
+          "track",
+          "yet"
+        ]
+      },
+      "id": "worklog/20260928T011304.865805Z-lhl-gemma4-assistant-forward-checkpoint-1b52bb",
+      "evidence_hash": "c5f6449d15f6"
     }
   ]
 }
