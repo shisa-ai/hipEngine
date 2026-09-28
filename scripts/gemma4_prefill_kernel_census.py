@@ -60,7 +60,6 @@ _EXPERT_LEAVES = (
     "gemma4_project_experts_grouped_prefill",
     "gemma4_project_experts_grouped_row4",
     "gemma4_project_experts_selected",
-    "gemma4_project_experts_pack8",
     "gemma4_project_experts_by_offset",
 )
 

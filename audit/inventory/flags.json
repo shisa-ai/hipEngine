@@ -1,7 +1,7 @@
 {
   "kind": "flags",
   "meta": {
-    "names": 756,
+    "names": 755,
     "roots": "hipengine, scripts, tests, benchmarks"
   },
   "rows": [
@@ -2504,40 +2504,6 @@
       },
       "id": "flag/HIPENGINE_GEMMA4_ARTIFACT",
       "evidence_hash": "a511c28f9dbd"
-    },
-    {
-      "kind": "flag",
-      "key": "HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT",
-      "title": "HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT",
-      "location": "hipengine/loading/gemma4_gguf_device.py:89",
-      "evidence": {
-        "default": "unknown",
-        "sites_by_root": {
-          "hipengine": 1,
-          "tests": 6
-        },
-        "runtime_sites": [
-          "hipengine/loading/gemma4_gguf_device.py:89"
-        ],
-        "in_refactor_ledger": true,
-        "in_envs_doc": true
-      },
-      "signals": [],
-      "hints": {
-        "anchor": "env",
-        "refs": [
-          "HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT"
-        ],
-        "tokens": [
-          "expert",
-          "gemma4",
-          "hipengine",
-          "layout",
-          "pack8"
-        ]
-      },
-      "id": "flag/HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT",
-      "evidence_hash": "61add8cbab05"
     },
     {
       "kind": "flag",

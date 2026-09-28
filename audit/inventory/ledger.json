@@ -4801,24 +4801,33 @@
     },
     {
       "kind": "ledger",
-      "key": "gemma-4-s-pack8-expert-layout-is-off-by-default-c9fd59658c28",
-      "title": "Gemma 4's pack8 expert layout is off by default",
+      "key": "gemma-4-s-pack8-expert-layout-is-deleted-settled-a-540bbc0b2966",
+      "title": "Gemma 4's pack8 expert layout is deleted (settled and removed 2026-09-28)",
       "location": "docs/REFACTOR.md:9264",
       "evidence": {
         "paths_named": [
           "benchmarks/results/2026-09-27-gemma4-gfx1151-pack8-expert-route-measured.json",
           "benchmarks/results/2026-09-28-gemma4-gfx1151-expert-pack8-layout-settlement.json",
+          "docs/ENVS.md",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+          "hipengine/loading/gemma4_gguf_device.py",
+          "scripts/gemma4_prefill_kernel_census.py",
+          "tests/test_unit_gemma4_expert_route.py",
           "tests/test_unit_gemma4_gguf_device.py"
         ],
         "paths_missing": [],
         "flags_named": [
           "HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT"
         ],
-        "flags_unread": [],
+        "flags_unread": [
+          "HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT"
+        ],
         "age_days": 0,
-        "body_chars": 2426
+        "body_chars": 3123
       },
       "signals": [
+        "heading marked resolved",
+        "names flag(s) no code reads: HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT",
         "states no removal condition"
       ],
       "hints": {
@@ -4827,19 +4836,26 @@
           "HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT",
           "benchmarks/results/2026-09-27-gemma4-gfx1151-pack8-expert-route-measured.json",
           "benchmarks/results/2026-09-28-gemma4-gfx1151-expert-pack8-layout-settlement.json",
+          "docs/ENVS.md",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py",
+          "hipengine/loading/gemma4_gguf_device.py",
+          "scripts/gemma4_prefill_kernel_census.py",
+          "tests/test_unit_gemma4_expert_route.py",
           "tests/test_unit_gemma4_gguf_device.py"
         ],
         "tokens": [
-          "default",
+          "2026",
+          "deleted",
           "expert",
           "gemma",
           "layout",
-          "off",
-          "pack8"
+          "pack8",
+          "removed",
+          "settled"
         ]
       },
-      "id": "ledger/gemma-4-s-pack8-expert-layout-is-off-by-default-c9fd59658c28",
-      "evidence_hash": "529aeb6dfee0"
+      "id": "ledger/gemma-4-s-pack8-expert-layout-is-deleted-settled-a-540bbc0b2966",
+      "evidence_hash": "81f99329bfb4"
     },
     {
       "kind": "ledger",
