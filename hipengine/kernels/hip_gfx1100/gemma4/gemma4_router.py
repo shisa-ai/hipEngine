@@ -55,6 +55,8 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w,
+    qwen35_router_logits_bf16_f32w_token_tile_8,
+    qwen35_router_logits_bf16_f32w_token_tile_16,
     qwen35_router_select,
 )
 
@@ -133,6 +135,7 @@ def gemma4_router_topk_bf16(
     scratch: Gemma4RouterScratch,
     eps: float = 1e-6,
     stream: int = 0,
+    backend: str | None = None,
 ) -> None:
     """Route ``tokens`` rows of BF16 hidden state to ``top_k`` of ``num_experts``.
 
@@ -191,16 +194,50 @@ def gemma4_router_topk_bf16(
         root_size=hidden_size**-0.5,
         stream=stream,
     )
-    qwen35_router_logits_bf16_f32w(
+    # Which logits schedule runs is a registered backend capability, not a
+    # correctness question. The untiled kernel launches one block per
+    # (expert-row, token), so it reads each F32 weight row once per token; an
+    # N-token tiling launches one block per (expert-row, N tokens) and reads each
+    # weight row once per N. gfx1151 declares "token_tile_8", so resolving the
+    # capability turns it on without a backend branch. The router is 17.5 ms of
+    # the prefill (worklog/entries/20260929T083000).
+    #
+    # EXACTNESS IS PER SCHEDULE, MEASURED, AND NOT UNIFORM
+    # (scripts/gemma4_router_tile_equivalence.py):
+    #   token_tile_8   bit-identical to the untiled kernel at tokens
+    #                  1/512/777/4096 and an unrelated geometry.
+    #   token_tile_16  NOT bit-identical -- 7.2e-07 max absolute delta on the
+    #                  same inputs, so it reassociates. It runs when asked for by
+    #                  name, and being asked for by name is the whole reason it is
+    #                  reachable here; no backend declares it as a default.
+    #   token_tile_4   the baseline, and has no tiled kernel -- the untiled
+    #                  launch is what it denotes.
+    # The logits feed top-k selection, so a changed logit can change which experts
+    # a token routes to. That is why each schedule's exactness is recorded here
+    # rather than assumed from the family.
+    from hipengine.runtime.laguna_moe import resolve_laguna_router_logits_mode
+
+    # The resolver rejects an unknown mode and the tiled schedules are named
+    # explicitly, so a mode this cannot serve is a named miss rather than a
+    # silent fall back to the untiled kernel.
+    mode = resolve_laguna_router_logits_mode(
+        backend if backend is not None else "hip_gfx1100"
+    )
+    logits_kernel = {
+        "token_tile_4": qwen35_router_logits_bf16_f32w,
+        "token_tile_8": qwen35_router_logits_bf16_f32w_token_tile_8,
+        "token_tile_16": qwen35_router_logits_bf16_f32w_token_tile_16,
+    }[mode]
+    logits_kernel(
         prescaled.ptr,
         proj_ptr,
         logits.ptr,
         tokens,
         hidden_size,
         num_experts,
+        threads=512,
         stream=stream,
-    )
-    # logits_stride is num_experts: Gemma 4 has no shared-expert gate column.
+    )    # logits_stride is num_experts: Gemma 4 has no shared-expert gate column.
     qwen35_router_select(
         logits.ptr,
         selected_ptr,

@@ -61,6 +61,9 @@ def main() -> int:
     # defining module leaves the consumer's already-bound reference untouched.
     # Patch the consumer instead -- the same trap the route ablation hit.
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts as gexp
+    # The router selects its logits kernel through a dict keyed on the registered
+    # mode, so both names must be patched to see whichever one runs.
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_router as grtr
     from hipengine.kernels.hip_gfx1100.quant import gguf_q4_k_q8_1_selected_prefill as q4sel
     from hipengine.kernels.hip_gfx1100.quant import gguf_q5_1_mmq_selected_prefill as q5down
     from hipengine.kernels.hip_gfx1100.quant import gguf_q5_k_q8_1_selected_prefill as q5k
@@ -119,6 +122,9 @@ def main() -> int:
         (gexp, "gemma4_moe_lane_to_row_i32", "lane -> row"),
         (gexp, "gemma4_moe_weighted_accumulate_bf16", "weighted accumulate"),
         (gexp, "gemma4_gelu_tanh_mul_bf16", "gelu tanh mul"),
+        (grtr, "qwen35_router_logits_bf16_f32w", "router logits (untiled)"),
+        (grtr, "qwen35_router_logits_bf16_f32w_token_tile_8", "router logits (tile8)"),
+        (grtr, "qwen35_router_logits_bf16_f32w_token_tile_16", "router logits (tile16)"),
         (memory_mod, "copy_device_to_host", "device->host readback"),
     ]
     originals = []
