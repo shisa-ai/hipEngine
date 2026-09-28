@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+
 import numpy as np
 import pytest
 
@@ -428,6 +430,23 @@ def test_gguf_q4_k_q8_1_selected_prefill_wrapper_validates_common_contract() -> 
         gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
             **{**mmq32_kwargs, "expert_stride_rows": 16}
         )
+
+    # X8 and T16 are thin forwards onto that same leaf. If they do not carry the
+    # stride themselves a fused ``gate | up`` stack silently degrades to split
+    # reads on those layouts, which is exactly the defect the stride exists to
+    # remove -- so the contract has to hold at every entry point.
+    for entry in (
+        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+        gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+        gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+    ):
+        param = inspect.signature(entry).parameters["expert_stride_rows"]
+        assert param.kind is inspect.Parameter.KEYWORD_ONLY
+        assert param.default == 0
+        with pytest.raises(ValueError, match="expert_stride_rows must not be negative"):
+            entry(**{**mmq32_kwargs, "expert_stride_rows": -1})
+        with pytest.raises(ValueError, match="expert_stride_rows must span both halves"):
+            entry(**{**mmq32_kwargs, "expert_stride_rows": 16})
 
 
 # ---------------------------------------------------------------------------

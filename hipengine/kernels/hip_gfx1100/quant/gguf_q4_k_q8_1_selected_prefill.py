@@ -1765,11 +1765,16 @@ def gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
     num_experts: int,
     mmq_total_rows: int,
     *,
+    expert_stride_rows: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch MMQ32 against byte-exact Q4_K X8 replacement weights."""
+    """Launch MMQ32 against byte-exact Q4_K X8 replacement weights.
+
+    ``expert_stride_rows`` is forwarded to the shared leaf, where its meaning
+    and validation are documented.
+    """
 
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
         x_q8_ptr,
@@ -1786,6 +1791,7 @@ def gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
         out_features_b,
         num_experts,
         mmq_total_rows,
+        expert_stride_rows=expert_stride_rows,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -1809,11 +1815,16 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
     num_experts: int,
     mmq_total_rows: int,
     *,
+    expert_stride_rows: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch MMQ32 directly against resident Q4_K T16 weights."""
+    """Launch MMQ32 directly against resident Q4_K T16 weights.
+
+    ``expert_stride_rows`` is forwarded to the shared leaf, where its meaning
+    and validation are documented.
+    """
 
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
         x_q8_ptr,
@@ -1830,6 +1841,7 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
         out_features_b,
         num_experts,
         mmq_total_rows,
+        expert_stride_rows=expert_stride_rows,
         stream=stream,
         library=library,
         runtime=runtime,
