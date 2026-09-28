@@ -75,7 +75,7 @@ From `llama.cpp@17252c769`, `src/models/gemma4-assistant.cpp`. `n_embd_backbone`
 is 2816, `n_embd` is 1024.
 
 ```
-x  = token_embd[token]              # [2816]   the *target* model's embedding
+x  = backbone_tok_embd[token]       # [2816]   the *target* model's embedding
 x  = x * sqrt(n_embd_backbone)      # 2816 ** 0.5
 xh = concat(x, h_backbone)          # [5632]   h_backbone is the target's hidden state
 cur = nextn_proj_pre @ xh           # [1024]
@@ -85,15 +85,16 @@ for il in 0 .. 3:
     n_embd_head  = 256 if is_swa else 512
     freq_base    = 1e4 if is_swa else 1e6
     n_rot        = 256 if is_swa else 512
-    freq_factors = None if is_swa else rope_freqs[il]
+    freq_factors = None if is_swa else rope_freqs
 
     normed = rmsnorm(cur, attn_norm)
     Q      = wq @ normed                        # [16 * n_embd_head]
     Q      = reshape(Q, n_embd_head, 16)
     Q      = rmsnorm(Q, attn_q_norm)            # per head, over n_embd_head
-    Q      = rope(Q, pos, freq_factors, n_rot, freq_base, freq_scale=1.0)
+    Q      = rope(Q, pos, freq_factors, n_rot, freq_base, freq_scale)
 
     attn     = attention(Q, K, V, scale = 1.0)  # K, V are the backbone's; see below
+    attn     = wo @ attn                        # [n_embd]
     attn     = rmsnorm(attn, post_attention_norm)
     attn_out = attn + cur
 
@@ -104,11 +105,11 @@ for il in 0 .. 3:
     cur = (ffn + attn_out) * layer_output_scale[il]
 
 cur    = rmsnorm(cur, output_norm)
-logits = token_embd @ cur           # [262144]
+logits = head_token_embd @ cur      # [262144]
 h_next = nextn_proj_post @ cur      # [2816]  the next-token hidden state
 ```
 
-Three details that are easy to get wrong:
+Five details that are easy to get wrong:
 
 - **`f_attention_scale = 1.0f`.** The head does *not* apply `1/sqrt(head_dim)`;
   the reference sets the scale explicitly in `load_arch_hparams`.
@@ -118,6 +119,18 @@ Three details that are easy to get wrong:
   pre-norms.
 - **`attn_q_norm` is applied to Q only**, per head, over `n_embd_head`. There is
   no K norm.
+- **`wo` sits between the attention and `attn_post_norm`.** The `attn_output`
+  tensor is `[n_embd_head*n_head, n_embd]`, so the projection contracts the
+  concatenated heads back to `n_embd` *before* `post_attention_norm` (which is
+  `[n_embd]`) sees it. Applying the norm to the unconcatenated `[n_head*n_embd_head]`
+  attention output would be a shape error against a `[n_embd]` weight.
+- **The input embedding and the output projection are different tables.** The
+  graph reads `model_other->tok_embd` -- the *backbone's* embedding, width 2816 --
+  for its input, and uses the head's own `token_embd` (width 1024, duplicated as
+  `output`) only for the logits. The head's `token_embd.weight` is never used as
+  an input embedding. So the forward needs the backbone's embedding table *and*
+  the head's, and a port that gathers the head's own table for the input would
+  produce a `[1024]` vector where `[2816]` is required.
 
 ## KV binding — the resolved question
 
@@ -155,6 +168,46 @@ the backbone's KV layer buffers, which means the backbone runner has to expose
 them by layer index, and the draft step has to be positioned at the same token
 position the backbone last wrote.
 
+**The shared cache needs no GQA adaptation, and that is checkable.** The head's
+`attention.head_count_kv` is `[8, 8, 8, 2]` per block, and the backbone's
+per-layer pattern is `[8, 8, 8, 8, 8, 2]` repeating over its 30 layers. Layer 28
+is `28 mod 6 == 4`, so 8 KV heads and sliding-window; layer 29 is
+`29 mod 6 == 5`, so 2 KV heads and full attention. The head's three SWA blocks
+read layer 28 and ask for 8 KV heads; its full block reads layer 29 and asks for
+2. Both sides also carry `head_count = 16` with `key_length` 512 and
+`key_length_swa` 256.
+
+So for the two layers the head reads, the head's attention geometry is
+**identical** to the backbone layer's -- same Q head count, same KV head count,
+same head width. The head's attention can therefore call the backbone's own
+attention kernel against the backbone's KV buffers with no head remapping and no
+head-count conversion. A port that treated `head_count_kv` as a property of the
+head alone would be free to pick a value the cache does not carry; the equality
+above is what makes 8 and 2 correct rather than arbitrary, and a test should
+assert it against both artifacts rather than trusting this paragraph.
+
+**The rope geometry is likewise recoverable, not assumed.** The head's
+`rope_freqs.weight` is 256 entries: the first **64** are exactly `1.0` and the
+remaining 192 are `1e30`. That is the same span-marker encoding the backbone's
+artifact uses, which `gemma4_rotated_pair_count` already decodes -- so the
+full-attention block rotates **64** pairs of its 256 with the exponent scale of
+`head_dim = 512` (`rope_type="proportional"`), and the three SWA blocks rotate
+all **128** of their 128 pairs at `head_dim = 256`. A reading that treated
+`freq_factors` as a multiplier rather than a span marker would divide the
+inverse frequencies by `1e30` and silently produce a table that matches
+rotation-by-zero only by accident.
+
+**The head's rope configs are the backbone layers' own, verified against both
+artifacts.** Decoding the backbone gives layer 28 as
+`(default, head_dim=256, rotated_pairs=128, freq_base=1e4)` and layer 29 as
+`(proportional, head_dim=512, rotated_pairs=64, freq_base=1e6)`. Decoding the
+head's own metadata and `rope_freqs` independently gives exactly those two
+configs. So the head does not merely *tolerate* the backbone's tables -- it wants
+the same ones, and a port can build each head block's rope from the backbone's
+`rope_for_layer` for the layer it reads instead of deriving a second schedule.
+The equality is also the check: if the two ever disagree, one of them is wrong,
+and it is cheaper to notice that here than in an acceptance-rate number.
+
 ## What is implemented
 
 `hipengine/loading/gemma4_assistant_gguf.py` (311 lines, landed in b42a56c20):
@@ -162,10 +215,26 @@ the config decoder, `expected_gemma4_assistant_shapes`, the required-tensor-name
 list, `validate_gemma4_assistant_tensor_map`, and `build_gemma4_assistant_tensor_map`.
 It follows `hipengine/loading/qwen35_gguf_nextn.py` as the template.
 
+`hipengine/loading/gemma4_assistant_device.py` (landed in 8bb1c31c1): the
+device-residency half. `plan_gemma4_assistant_device_specs` plans all 49
+tensors, `materialize_gemma4_assistant_device_weights` uploads them
+all-or-nothing, and `load_gemma4_assistant_device_weights` does both from a
+path. Every tensor is reachable by a forward slot (`blocks.2.attn_q`,
+`nextn_pre_projection`), so the forward does not build GGUF names. The real
+461.8 MB head loads to 440.5 MB of device allocations, 23 raw Q8_0 blocks and 26
+dense F32, with the planned total equal to the artifact's own tensor bytes.
+
 ## What is not
 
 1. **The forward.** Four dense blocks at width 1024 with the step order above.
-   Every primitive exists in this engine; nothing here needs a new kernel.
+   Every primitive exists in this engine; nothing here needs a new kernel. The
+   head's blocks are not `gemma4_layer_forward_bf16` -- that does pre-norm with a
+   KV write and a `1/sqrt(head_dim)` scale, where this does post-norm with a
+   shared-KV read and scale 1.0 -- so the forward composes
+   `launch_gguf_linear`, `gemma4_rmsnorm_f32w_bf16`, the rope tables and the
+   attention kernel directly. It also needs the *backbone's* embedding table for
+   its input and its own for the logits, and the backbone's layer-28/29 rope
+   tables, both of which the backbone runner has to expose.
 2. **The KV read path.** Exposing backbone layer 28/29 K and V to the head and
    making the draft step's position agree with them.
 3. **The draft/verify loop.** Draft k tokens with the head, verify the whole
