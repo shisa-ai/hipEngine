@@ -293,9 +293,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/gemma4_gguf.py:110",
+      "key": "hipengine/generation/gemma4_gguf.py:121",
       "title": "unimplemented: raise NotImplementedError(\"Gemma 4 server tool-call parsing is not implemented\")",
-      "location": "hipengine/generation/gemma4_gguf.py:110",
+      "location": "hipengine/generation/gemma4_gguf.py:121",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -306,7 +306,7 @@
       "hints": {
         "anchor": "hipengine/generation/gemma4_gguf.py",
         "refs": [
-          "hipengine/generation/gemma4_gguf.py:110"
+          "hipengine/generation/gemma4_gguf.py:121"
         ],
         "tokens": [
           "call",
@@ -320,14 +320,14 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/gemma4_gguf.py:110",
-      "evidence_hash": "80694c10e3be"
+      "id": "stub/hipengine/generation/gemma4_gguf.py:121",
+      "evidence_hash": "b249896d58da"
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/gemma4_gguf.py:285",
+      "key": "hipengine/generation/gemma4_gguf.py:304",
       "title": "unimplemented: raise NotImplementedError(\"Gemma 4 basic runner: \" + \"; \".join(blockers))",
-      "location": "hipengine/generation/gemma4_gguf.py:285",
+      "location": "hipengine/generation/gemma4_gguf.py:304",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -338,7 +338,7 @@
       "hints": {
         "anchor": "hipengine/generation/gemma4_gguf.py",
         "refs": [
-          "hipengine/generation/gemma4_gguf.py:285"
+          "hipengine/generation/gemma4_gguf.py:304"
         ],
         "tokens": [
           "basic",
@@ -351,8 +351,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/gemma4_gguf.py:285",
-      "evidence_hash": "3b6dde697a59"
+      "id": "stub/hipengine/generation/gemma4_gguf.py:304",
+      "evidence_hash": "fab9a4ec0e44"
     },
     {
       "kind": "stub",

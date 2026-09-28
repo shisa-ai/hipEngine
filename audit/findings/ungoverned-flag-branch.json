@@ -344,9 +344,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/generation/gemma4_gguf.py:303:HIPENGINE_HIP_ARCH",
+      "key": "hipengine/generation/gemma4_gguf.py:322:HIPENGINE_HIP_ARCH",
       "title": "runtime branch on HIPENGINE_HIP_ARCH: default-off with no removal condition recorded",
-      "location": "hipengine/generation/gemma4_gguf.py:303",
+      "location": "hipengine/generation/gemma4_gguf.py:322",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_HIP_ARCH to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_HIP_ARCH`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -364,7 +364,7 @@
       "hints": {
         "anchor": "hipengine/generation/gemma4_gguf.py",
         "refs": [
-          "hipengine/generation/gemma4_gguf.py:303:HIPENGINE_HIP_ARCH"
+          "hipengine/generation/gemma4_gguf.py:322:HIPENGINE_HIP_ARCH"
         ],
         "tokens": [
           "branch",
@@ -377,8 +377,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/generation/gemma4_gguf.py:303:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "8d11900b1ec4"
+      "id": "ungoverned-flag-branch/hipengine/generation/gemma4_gguf.py:322:HIPENGINE_HIP_ARCH",
+      "evidence_hash": "8248bba3ddcc"
     },
     {
       "kind": "ungoverned-flag-branch",
