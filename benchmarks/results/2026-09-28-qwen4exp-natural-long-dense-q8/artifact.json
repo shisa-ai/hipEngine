@@ -1,0 +1,1548 @@
+{
+  "status": "captured_requires_manual_review",
+  "command": [
+    "scripts/qwen4exp_q8_repair_tasks.py",
+    "--model-root",
+    "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/qwen4exp-ledger-20260928-current/hipcc-version.txt",
+    "--output",
+    "/tmp/qwen4exp-natural-long-dense-q8.json",
+    "--candidate",
+    "production_dense_q8_restore",
+    "--max-tokens",
+    "2048",
+    "--extra-prompts",
+    "benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl",
+    "--prompt-id",
+    "long_code_booking_merge",
+    "--prompt-id",
+    "long_general_en_release_decision",
+    "--prompt-id",
+    "long_general_ja_retention_review",
+    "--prompt-id",
+    "long_mixed_ja_en_acceptance"
+  ],
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "576363cbd50e130fde2a942f73d0564718d36b37",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "It seems that tuned daemon is not running, preset profile is not activated.\nPreset profile: accelerator-performance",
+    "cpu_governors": {
+      "powersave": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "protocol": "Capture complete paired task outputs for manual non-inferiority review.\n\nPredeclared review: each prompt must preserve requested facts, constraints,\ncode behavior and language. No per-prompt degradation versus strict allowed.\nTruncated responses require further review, never an automatic pass.\n",
+  "prompts": [
+    {
+      "id": "long_code_booking_merge",
+      "category": "code",
+      "prompt": "Implement a pure Python function reconcile(events) for a room-booking service. Return only executable Python code including focused assert-based tests. Each event is a dictionary with keys booking_id, revision, room, start, end, and cancelled. booking_id and room are strings; revision, start and end are integers; cancelled is a boolean. Inputs are already type-checked and every interval has start < end. Times are integer minutes and intervals are half-open. The function must not mutate the input list or any event dictionary. Events can arrive out of revision order. First choose exactly one winning event for each booking_id: the largest revision wins, and when revisions tie the event appearing later in the input wins. This selection happens before any cancellation or overlap processing. A winning cancellation deletes that booking even if an earlier revision was active. A cancelled event must never reserve time or block another booking.\n\nThen process all surviving bookings in ascending order of (start, end, booking_id), independent of their original arrival order. Accept a booking unless it overlaps a previously accepted booking in the same room. Reject the whole booking on overlap; do not clip, merge or reschedule it. A booking rejected because of an overlap must not block later bookings. Adjacent bookings where one end equals the next start do not overlap. Different rooms are independent. Return a dictionary with accepted and rejected fields, each containing a list of booking IDs in processing order. Deleted bookings appear in neither list. Empty input returns two empty lists. Clarity matters more than asymptotic performance; a straightforward quadratic implementation is acceptable.\n\nInclude tests demonstrating out-of-order revisions, equal-revision last-arrival selection, cancellation of an earlier active booking, adjacency, room independence, and the fact that a rejected booking does not block a later one. For the last case use one room with A=[0,5), B=[3,10), C=[5,7); A and C must be accepted and B rejected. Also test that a deep copy of the input still equals the original after the function returns. Do not use external libraries or access files, clocks or networks.",
+      "source": {
+        "id": "long_code_booking_merge",
+        "category": "code",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Implement a pure Python function reconcile(events) for a room-booking service. Return only executable Python code including focused assert-based tests. Each event is a dictionary with keys booking_id, revision, room, start, end, and cancelled. booking_id and room are strings; revision, start and end are integers; cancelled is a boolean. Inputs are already type-checked and every interval has start < end. Times are integer minutes and intervals are half-open. The function must not mutate the input list or any event dictionary. Events can arrive out of revision order. First choose exactly one winning event for each booking_id: the largest revision wins, and when revisions tie the event appearing later in the input wins. This selection happens before any cancellation or overlap processing. A winning cancellation deletes that booking even if an earlier revision was active. A cancelled event must never reserve time or block another booking.\n\nThen process all surviving bookings in ascending order of (start, end, booking_id), independent of their original arrival order. Accept a booking unless it overlaps a previously accepted booking in the same room. Reject the whole booking on overlap; do not clip, merge or reschedule it. A booking rejected because of an overlap must not block later bookings. Adjacent bookings where one end equals the next start do not overlap. Different rooms are independent. Return a dictionary with accepted and rejected fields, each containing a list of booking IDs in processing order. Deleted bookings appear in neither list. Empty input returns two empty lists. Clarity matters more than asymptotic performance; a straightforward quadratic implementation is acceptable.\n\nInclude tests demonstrating out-of-order revisions, equal-revision last-arrival selection, cancellation of an earlier active booking, adjacency, room independence, and the fact that a rejected booking does not block a later one. For the last case use one room with A=[0,5), B=[3,10), C=[5,7); A and C must be accepted and B rejected. Also test that a deep copy of the input still equals the original after the function returns. Do not use external libraries or access files, clocks or networks."
+          }
+        ]
+      },
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl"
+    },
+    {
+      "id": "long_general_en_release_decision",
+      "category": "general_en",
+      "prompt": "Write a release decision memo using only the incident notes below. Keep it under 250 words, with sections Decision, Evidence, Actions, and Unknowns. Separate observed facts from possible causes. Do not invent measurements, approvals, deadlines or a completed rollback. The audience is the on-call engineer taking over at 10:30 UTC.\n\nAt 09:40 UTC a new API build began receiving 20% of traffic in the east region. The old build retained the other 80%. The west region received no new build. During the next ten minutes the new-build cohort had p99 latency of 940 ms and a 1.8% error rate; the old-build cohort in east had p99 latency of 410 ms and a 0.2% error rate. West had p99 latency of 430 ms and a 0.3% error rate. These are cohort measurements, not a comparison of identical requests. The new cohort contained more large payloads, so these numbers alone cannot establish a causal effect of the build. At 09:55 UTC the rollout controller paused further expansion. Pausing did not remove the new build from service; its 20% traffic share remained unchanged.\n\nAt 10:05 UTC database connection-pool wait time was elevated on two east hosts, one running each build. No pool-wait measurements are available for west. At 10:12 UTC an operator proposed increasing the pool limit, but this was not executed. At 10:20 UTC the database owner warned that increasing total connections could worsen contention and requested a bounded experiment before any global change. At 10:25 UTC the on-call engineer verified that the previous API image was still available. No rollback had been performed and no post-rollback metrics existed at handover.\n\nThe release policy says expansion requires an error rate below 0.5% and p99 below 600 ms for the new-build cohort for fifteen consecutive minutes. Neither condition has been demonstrated. Recommend whether to expand now. State what traffic remains exposed, what evidence should be preserved before changes, how to investigate the payload-mix confounder, and how to assess containment or rollback without claiming it already succeeded. Do not recommend an unbounded connection-pool increase. Explicitly identify the missing causal and recovery evidence.",
+      "source": {
+        "id": "long_general_en_release_decision",
+        "category": "general_en",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Write a release decision memo using only the incident notes below. Keep it under 250 words, with sections Decision, Evidence, Actions, and Unknowns. Separate observed facts from possible causes. Do not invent measurements, approvals, deadlines or a completed rollback. The audience is the on-call engineer taking over at 10:30 UTC.\n\nAt 09:40 UTC a new API build began receiving 20% of traffic in the east region. The old build retained the other 80%. The west region received no new build. During the next ten minutes the new-build cohort had p99 latency of 940 ms and a 1.8% error rate; the old-build cohort in east had p99 latency of 410 ms and a 0.2% error rate. West had p99 latency of 430 ms and a 0.3% error rate. These are cohort measurements, not a comparison of identical requests. The new cohort contained more large payloads, so these numbers alone cannot establish a causal effect of the build. At 09:55 UTC the rollout controller paused further expansion. Pausing did not remove the new build from service; its 20% traffic share remained unchanged.\n\nAt 10:05 UTC database connection-pool wait time was elevated on two east hosts, one running each build. No pool-wait measurements are available for west. At 10:12 UTC an operator proposed increasing the pool limit, but this was not executed. At 10:20 UTC the database owner warned that increasing total connections could worsen contention and requested a bounded experiment before any global change. At 10:25 UTC the on-call engineer verified that the previous API image was still available. No rollback had been performed and no post-rollback metrics existed at handover.\n\nThe release policy says expansion requires an error rate below 0.5% and p99 below 600 ms for the new-build cohort for fifteen consecutive minutes. Neither condition has been demonstrated. Recommend whether to expand now. State what traffic remains exposed, what evidence should be preserved before changes, how to investigate the payload-mix confounder, and how to assess containment or rollback without claiming it already succeeded. Do not recommend an unbounded connection-pool increase. Explicitly identify the missing causal and recovery evidence."
+          }
+        ]
+      },
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl"
+    },
+    {
+      "id": "long_general_ja_retention_review",
+      "category": "general_ja",
+      "prompt": "次の運用記録だけを使い、日本語で引き継ぎメモを作成してください。見出しは「結論」「対象別の扱い」「未確認事項」の三つとし、本文は簡潔にしてください。規程の適用対象を混同せず、削除済みであると推測しないでください。\n\n社内の保存規程では、通常のアクセスログは作成日から30日を過ぎた後の夜間処理で削除対象になります。ただし、調査保全フラグが付いたログは期限を過ぎても自動削除しません。フラグ解除には調査責任者の承認が必要です。顧客が明示的に依頼したエクスポートは、アクセスログとは別の保管庫に置き、作成日から7日を過ぎた後に削除対象になります。エクスポートの期限を元ログへ適用してはいけません。バックアップは別の復元用領域にあり、保存期間は90日です。通常領域の削除が完了しても、バックアップから同時に消えるわけではありません。\n\n本日の確認で、ログAは作成から35日、保全フラグなしでした。ログBは40日経過していますが保全フラグがあり、承認記録はありません。ログCは20日経過し、保全フラグはありません。エクスポートDは9日経過しています。Dの元になったログCは上記と同じものです。バックアップEは45日経過しています。夜間処理の実行予定はありますが、まだ完了報告はなく、削除件数の監査記録も確認できていません。担当者はBの保全解除を口頭で提案しましたが、申請も承認もまだ行われていません。\n\nAからEまで、それぞれ現時点で削除対象か保持対象かを理由付きで示してください。Dが削除対象であることからCも削除対象だと結論付けないでください。Bを自動削除の対象へ移すための条件と、削除を実施済みと報告する前に確認すべき証跡も記してください。日時や責任者名を補わず、予定、提案、承認、実行完了を区別してください。",
+      "source": {
+        "id": "long_general_ja_retention_review",
+        "category": "general_ja",
+        "messages": [
+          {
+            "role": "user",
+            "content": "次の運用記録だけを使い、日本語で引き継ぎメモを作成してください。見出しは「結論」「対象別の扱い」「未確認事項」の三つとし、本文は簡潔にしてください。規程の適用対象を混同せず、削除済みであると推測しないでください。\n\n社内の保存規程では、通常のアクセスログは作成日から30日を過ぎた後の夜間処理で削除対象になります。ただし、調査保全フラグが付いたログは期限を過ぎても自動削除しません。フラグ解除には調査責任者の承認が必要です。顧客が明示的に依頼したエクスポートは、アクセスログとは別の保管庫に置き、作成日から7日を過ぎた後に削除対象になります。エクスポートの期限を元ログへ適用してはいけません。バックアップは別の復元用領域にあり、保存期間は90日です。通常領域の削除が完了しても、バックアップから同時に消えるわけではありません。\n\n本日の確認で、ログAは作成から35日、保全フラグなしでした。ログBは40日経過していますが保全フラグがあり、承認記録はありません。ログCは20日経過し、保全フラグはありません。エクスポートDは9日経過しています。Dの元になったログCは上記と同じものです。バックアップEは45日経過しています。夜間処理の実行予定はありますが、まだ完了報告はなく、削除件数の監査記録も確認できていません。担当者はBの保全解除を口頭で提案しましたが、申請も承認もまだ行われていません。\n\nAからEまで、それぞれ現時点で削除対象か保持対象かを理由付きで示してください。Dが削除対象であることからCも削除対象だと結論付けないでください。Bを自動削除の対象へ移すための条件と、削除を実施済みと報告する前に確認すべき証跡も記してください。日時や責任者名を補わず、予定、提案、承認、実行完了を区別してください。"
+          }
+        ]
+      },
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl"
+    },
+    {
+      "id": "long_mixed_ja_en_acceptance",
+      "category": "mixed_ja_en",
+      "prompt": "以下の変更要求を読み、日本語の短い受入判定メモを作成してください。API名と英語のステータス値は原文のまま残してください。見出しは「判定」「確認済み」「不足する検証」とします。仕様を変更する提案ではなく、提出された証拠が仕様を満たしているかを判断してください。\n\nThe POST /exports endpoint accepts an Idempotency-Key scoped to the authenticated account. Within the retention window, the same account, key and canonical request body must return the original job_id without creating another job. Reusing that key with a different canonical body must return HTTP 409. Different accounts may use the same key independently. Canonicalization ignores object-key order but preserves array order. A timeout at the client does not prove that the server rejected the request. A retry after a timeout must use the same key and body when the caller intends to recover the original operation. The key record must become durable before a successful response is sent.\n\nA job has one of three states: queued, running, or complete. Receiving HTTP 202 means the request has been accepted, not that the export file is complete. A download link is available only in complete. The release checklist requires sequential retry tests, concurrent identical-request tests, conflicting-body tests, cross-account isolation tests, and a process-restart test proving durability. All five groups must pass before release.\n\n提出されたテスト報告には、同じアカウントで同じキーと同じ本文を順番に二回送信し、同じjob_idを受け取ったとあります。また、オブジェクト内のキー順を変更しても同じjob_idだったことが確認されています。配列の順序を変えたケースは未実施です。異なる本文での409、複数アカウント間の分離、同時送信、応答直後のプロセス再起動については結果がありません。画面の担当者は202を受け取ると「ダウンロード可能」と表示していますが、報告中のジョブ状態はqueuedです。クライアントのタイムアウト後に新しいキーを発行する実装も提案されていますが、まだ採用されていません。\n\nこの証拠でリリースを承認できるかを明示し、確認できた範囲を過大評価しないでください。未実施の必須テストと、配列順の扱いを確認するケースを挙げてください。画面表示の問題と、タイムアウト後に元の処理を回復したい場合の正しいキーの使い方も説明してください。再起動試験に合格したと推測したり、202とcompleteを同一視したりしないでください。",
+      "source": {
+        "id": "long_mixed_ja_en_acceptance",
+        "category": "mixed_ja_en",
+        "messages": [
+          {
+            "role": "user",
+            "content": "以下の変更要求を読み、日本語の短い受入判定メモを作成してください。API名と英語のステータス値は原文のまま残してください。見出しは「判定」「確認済み」「不足する検証」とします。仕様を変更する提案ではなく、提出された証拠が仕様を満たしているかを判断してください。\n\nThe POST /exports endpoint accepts an Idempotency-Key scoped to the authenticated account. Within the retention window, the same account, key and canonical request body must return the original job_id without creating another job. Reusing that key with a different canonical body must return HTTP 409. Different accounts may use the same key independently. Canonicalization ignores object-key order but preserves array order. A timeout at the client does not prove that the server rejected the request. A retry after a timeout must use the same key and body when the caller intends to recover the original operation. The key record must become durable before a successful response is sent.\n\nA job has one of three states: queued, running, or complete. Receiving HTTP 202 means the request has been accepted, not that the export file is complete. A download link is available only in complete. The release checklist requires sequential retry tests, concurrent identical-request tests, conflicting-body tests, cross-account isolation tests, and a process-restart test proving durability. All five groups must pass before release.\n\n提出されたテスト報告には、同じアカウントで同じキーと同じ本文を順番に二回送信し、同じjob_idを受け取ったとあります。また、オブジェクト内のキー順を変更しても同じjob_idだったことが確認されています。配列の順序を変えたケースは未実施です。異なる本文での409、複数アカウント間の分離、同時送信、応答直後のプロセス再起動については結果がありません。画面の担当者は202を受け取ると「ダウンロード可能」と表示していますが、報告中のジョブ状態はqueuedです。クライアントのタイムアウト後に新しいキーを発行する実装も提案されていますが、まだ採用されていません。\n\nこの証拠でリリースを承認できるかを明示し、確認できた範囲を過大評価しないでください。未実施の必須テストと、配列順の扱いを確認するケースを挙げてください。画面表示の問題と、タイムアウト後に元の処理を回復したい場合の正しいキーの使い方も説明してください。再起動試験に合格したと推測したり、202とcompleteを同一視したりしないでください。"
+          }
+        ]
+      },
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl"
+    }
+  ],
+  "arms": {
+    "strict": {
+      "manifest": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed",
+      "overrides": {},
+      "cases": [
+        {
+          "id": "long_code_booking_merge",
+          "category": "code",
+          "input_tokens": 438,
+          "dispatch_observations": [
+            {
+              "prefill": {
+                "calls": 0,
+                "shapes": []
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": false,
+              "candidate_observed": null,
+              "gpu_engagement_certified": false
+            },
+            {
+              "prefill": {
+                "calls": 0,
+                "shapes": []
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": false,
+              "candidate_observed": null,
+              "gpu_engagement_certified": false
+            }
+          ],
+          "deterministic": true,
+          "output": "```python\ndef reconcile(events):\n    \"\"\"\n    Reconcile room booking events.\n    \n    Args:\n        events: List of event dictionaries with keys:\n            - booking_id (str)\n            - revision (int)\n            - room (str)\n            - start (int)\n            - end (int)\n            - cancelled (bool)\n    \n    Returns:\n        Dictionary with 'accepted' and 'rejected' lists of booking IDs.\n    \"\"\"\n    # Step 1: Choose winning event for each booking_id\n    # Largest revision wins; ties broken by later appearance in input\n    winners = {}  # booking_id -> (revision, index, event)\n    \n    for idx, event in enumerate(events):\n        bid = event['booking_id']\n        rev = event['revision']\n        \n        if bid not in winners:\n            winners[bid] = (rev, idx, event)\n        else:\n            old_rev, old_idx, old_event = winners[bid]\n            # Larger revision wins; if tie, later index wins\n            if rev > old_rev or (rev == old_rev and idx > old_idx):\n                winners[bid] = (rev, idx, event)\n    \n    # Step 2: Filter out cancelled winning events\n    surviving = []\n    for bid, (rev, idx, event) in winners.items():\n        if not event['cancelled']:\n            surviving.append(event)\n    \n    # Step 3: Sort surviving bookings by (start, end, booking_id)\n    surviving.sort(key=lambda e: (e['start'], e['end'], e['booking_id']))\n    \n    # Step 4: Process bookings, accepting unless overlap in same room\n    accepted = []\n    rejected = []\n    \n    # Track accepted bookings per room for overlap checking\n    # For each room, keep list of accepted intervals (start, end)\n    room_intervals = {}  # room -> list of (start, end)\n    \n    for event in surviving:\n        room = event['room']\n        start = event['start']\n        end = event['end']\n        bid = event['booking_id']\n        \n        if room not in room_intervals:\n            room_intervals[room] = []\n        \n        # Check for overlap with any previously accepted booking in the same room\n        # Overlap occurs if intervals intersect: not (end <= other_start or start >= other_end)\n        # i.e., start < other_end and other_start < end\n        has_overlap = False\n        for other_start, other_end in room_intervals[room]:\n            if start < other_end and other_start < end:\n                has_overlap = True\n                break\n        \n        if has_overlap:\n            rejected.append(bid)\n        else:\n            accepted.append(bid)\n            room_intervals[room].append((start, end))\n    \n    return {'accepted': accepted, 'rejected': rejected}\n\n\n# Tests\ndef test_out_of_order_revisions():\n    \"\"\"Test that out-of-order revisions are handled correctly.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 2, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Revision 2 wins, so A with [0,10) is accepted\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == []\n\n\ndef test_equal_revision_last_arrival():\n    \"\"\"Test that when revisions tie, the later arrival wins.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 10, 'end': 15, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Second event (later arrival) wins, so A with [10,15) is accepted\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == []\n\n\ndef test_cancellation_of_earlier_active():\n    \"\"\"Test that a cancelled winning event deletes the booking.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 2, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': True},\n    ]\n    result = reconcile(events)\n    # Revision 2 wins and is cancelled, so A is deleted\n    assert result['accepted'] == []\n    assert result['rejected'] == []\n\n\ndef test_adjacency():\n    \"\"\"Test that adjacent bookings (end == start) do not overlap.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 10, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Both should be accepted since they are adjacent\n    assert result['accepted'] == ['A', 'B']\n    assert result['rejected'] == []\n\n\ndef test_room_independence():\n    \"\"\"Test that different rooms are independent.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R2', 'start': 0, 'end': 10, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Both should be accepted since they are in different rooms\n    assert result['accepted'] == ['A', 'B']\n    assert result['rejected'] == []\n\n\ndef test_rejected_does_not_block():\n    \"\"\"Test that a rejected booking does not block later bookings.\"\"\"\n    # A=[0,5), B=[3,10), C=[5,7) in same room\n    # A accepted, B rejected (overlaps A), C accepted (adjacent to A, doesn't overlap A)\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 3, 'end': 10, 'cancelled': False},\n        {'booking_id': 'C', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 7, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Processing order by (start, end, booking_id): A(0,5), B(3,10), C(5,7)\n    # A accepted, B rejected (overlaps A), C accepted (adjacent to A, no overlap with A)\n    assert result['accepted'] == ['A', 'C']\n    assert result['rejected'] == ['B']\n\n\ndef test_empty_input():\n    \"\"\"Test that empty input returns empty lists.\"\"\"\n    result = reconcile([])\n    assert result['accepted'] == []\n    assert result['rejected'] == []\n\n\ndef test_no_mutation():\n    \"\"\"Test that the input is not mutated.\"\"\"\n    import copy\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 15, 'cancelled': False},\n    ]\n    original = copy.deepcopy(events)\n    reconcile(events)\n    assert events == original\n\n\ndef test_multiple_bookings_same_room_overlap():\n    \"\"\"Test overlapping bookings in same room.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 15, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # A accepted, B rejected (overlaps A)\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == ['B']\n\n\ndef test_cancelled_does_not_block():\n    \"\"\"Test that a cancelled booking does not block others.\"\"\"\n    events = [\n        {'booking_id': 'A",
+          "repeat_summaries": [
+            {
+              "tokens": 2048,
+              "finish_reason": "length",
+              "ids_sha256": "3d464a45dfd0a197ddfabffb3481e1bda10d04fd1d656e8fac68e4b7c82bd9e0",
+              "text_sha256": "2c68a00b432cb5b70517fb8fe1f4e625761a68153aff3eea935975bdb5d24096"
+            },
+            {
+              "tokens": 2048,
+              "finish_reason": "length",
+              "ids_sha256": "3d464a45dfd0a197ddfabffb3481e1bda10d04fd1d656e8fac68e4b7c82bd9e0",
+              "text_sha256": "2c68a00b432cb5b70517fb8fe1f4e625761a68153aff3eea935975bdb5d24096"
+            }
+          ]
+        },
+        {
+          "id": "long_general_en_release_decision",
+          "category": "general_en",
+          "input_tokens": 508,
+          "dispatch_observations": [
+            {
+              "prefill": {
+                "calls": 0,
+                "shapes": []
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": false,
+              "candidate_observed": null,
+              "gpu_engagement_certified": false
+            },
+            {
+              "prefill": {
+                "calls": 0,
+                "shapes": []
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": false,
+              "candidate_observed": null,
+              "gpu_engagement_certified": false
+            }
+          ],
+          "deterministic": true,
+          "output": "**Decision**\nDo not expand traffic. The new build fails release policy criteria (error rate >0.5%, p99 >600 ms). Maintain the current 20% traffic split in the east region. Do not execute the proposed unbounded connection-pool increase.\n\n**Evidence**\n*Observed Facts:*\n*   **East Region:** New build (20% traffic) shows p99 940 ms and 1.8% error rate. Old build (80% traffic) shows p99 410 ms and 0.2% error rate.\n*   **West Region:** p99 430 ms, 0.3% error rate (no new build deployed).\n*   **Infrastructure:** Elevated DB connection-pool wait times on two east hosts (one per build) at 10:05 UTC.\n*   **Status:** Rollout paused at 09:55 UTC; traffic share remains unchanged. Previous API image is available. No rollback has occurred.\n\n*Possible Causes (Unconfirmed):*\n*   Build regression vs. payload-mix confounder (new cohort had more large payloads).\n*   DB contention exacerbated by payload size or build behavior.\n\n**Actions**\n1.  **Preserve Evidence:** Capture current metrics and logs for the new-build cohort before any configuration changes.\n2.  **Investigate Confounder:** Analyze request payload sizes for the new-build cohort to determine if latency/errors correlate with payload size rather than code changes.\n3.  **DB Assessment:** Conduct a bounded experiment on DB pool limits only if strictly necessary, adhering to the DB owner’s warning against global changes.\n4.  **Prepare Rollback:** Verify rollback procedures are ready, but do not execute without further data.\n\n**Unknowns**\n*   Causal link between the build and performance degradation (confounded by payload mix).\n*   West region DB pool wait times (no data available).\n*   Post-rollback metrics (rollback not performed).\n*   Whether the new build is the sole cause of DB contention.<|im_end|>",
+          "repeat_summaries": [
+            {
+              "tokens": 448,
+              "finish_reason": "eos",
+              "ids_sha256": "18c37ebc2d6ef54c09059d0257bbd64b9ecc2ef44728813f77d7e8251cbb80ae",
+              "text_sha256": "1152a0884ae804d43b33e8fe1718c375e7d4b6e7222c866fdc891e2e75c33386"
+            },
+            {
+              "tokens": 448,
+              "finish_reason": "eos",
+              "ids_sha256": "18c37ebc2d6ef54c09059d0257bbd64b9ecc2ef44728813f77d7e8251cbb80ae",
+              "text_sha256": "1152a0884ae804d43b33e8fe1718c375e7d4b6e7222c866fdc891e2e75c33386"
+            }
+          ]
+        },
+        {
+          "id": "long_general_ja_retention_review",
+          "category": "general_ja",
+          "input_tokens": 424,
+          "dispatch_observations": [
+            {
+              "prefill": {
+                "calls": 0,
+                "shapes": []
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": false,
+              "candidate_observed": null,
+              "gpu_engagement_certified": false
+            },
+            {
+              "prefill": {
+                "calls": 0,
+                "shapes": []
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": false,
+              "candidate_observed": null,
+              "gpu_engagement_certified": false
+            }
+          ],
+          "deterministic": true,
+          "output": "# 結論\nログA、エクスポートD、バックアップEは削除対象です。ログB、ログCは保持対象です。夜間処理の完了報告および監査記録が未確認のため、削除実施済みとは報告できません。\n\n# 対象別の扱い\n*   **ログA（35日経過・フラグなし）**：削除対象。通常ログの30日経過ルールに該当します。\n*   **ログB（40日経過・フラグあり）**：保持対象。調査保全フラグにより自動削除されません。口頭提案のみで承認記録がないため、解除手続きは未完了です。\n*   **ログC（20日経過・フラグなし）**：保持対象。通常ログの30日経過ルールに該当していません。エクスポートDの削除期限を適用してはいけません。\n*   **エクスポートD（9日経過）**：削除対象。エクスポート専用の7日経過ルールに該当します。元ログCの保存期間とは無関係です。\n*   **バックアップE（45日経過）**：削除対象。バックアップの90日経過ルールには該当していませんが、通常領域の削除完了とバックアップの消去は連動しないため、個別の削除対象として扱います（※注：90日未満のため本来は保持対象ですが、文脈上「削除対象か保持対象か」の二択で問われている場合、通常領域の削除完了報告がないため「保持対象」が正確です。しかし、問題文の「バックアップは別の復元用領域にあり、保存期間は90日です」という記述から、45日経過では削除対象にはなりません。したがって、**バックアップEは保持対象**です。ここを訂正します。）\n\n**【訂正後の対象別の扱い】**\n*   **ログA**：削除対象。通常ログの30日経過ルールに該当します。\n*   **ログB**：保持対象。調査保全フラグにより自動削除されません。承認記録がないため解除不可です。\n*   **ログC**：保持対象。通常ログの30日経過ルールに該当していません。エクスポートDの期限を適用してはいけません。\n*   **エクスポートD**：削除対象。エクスポート専用の7日経過ルールに該当します。元ログCの保存期間とは無関係です。\n*   **バックアップE**：保持対象。バックアップの保存期間90日に達していません。\n\n# 未確認事項\n*   **Bの自動削除への移行条件**：調査責任者による正式な承認記録の取得が必要です。口頭提案では不十分です。\n*   **削除実施済みの報告前に確認すべき証跡**：夜間処理の完了報告書、および削除件数を示す監査記録です。これらが確認できるまで、削除完了を報告してはいけません。<|im_end|>",
+          "repeat_summaries": [
+            {
+              "tokens": 633,
+              "finish_reason": "eos",
+              "ids_sha256": "6bfa2a54b83ae58dc8ca02ba1dd01096f85998e0c0c4e5596a5d2852cc5d4334",
+              "text_sha256": "9036ed069cb46b4bc773c7753b980c413243b8973d838850584c24495f7411a1"
+            },
+            {
+              "tokens": 633,
+              "finish_reason": "eos",
+              "ids_sha256": "6bfa2a54b83ae58dc8ca02ba1dd01096f85998e0c0c4e5596a5d2852cc5d4334",
+              "text_sha256": "9036ed069cb46b4bc773c7753b980c413243b8973d838850584c24495f7411a1"
+            }
+          ]
+        },
+        {
+          "id": "long_mixed_ja_en_acceptance",
+          "category": "mixed_ja_en",
+          "input_tokens": 512,
+          "dispatch_observations": [
+            {
+              "prefill": {
+                "calls": 0,
+                "shapes": []
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": false,
+              "candidate_observed": null,
+              "gpu_engagement_certified": false
+            },
+            {
+              "prefill": {
+                "calls": 0,
+                "shapes": []
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": false,
+              "candidate_observed": null,
+              "gpu_engagement_certified": false
+            }
+          ],
+          "deterministic": true,
+          "output": "# 判定\n\nリリース承認不可。\n\n# 確認済み\n\n*   同一アカウント・同一キー・同一正規化本文での再送時に、元の `job_id` が返却されること（逐次再試行）。\n*   オブジェクトのキー順が異なっても正規化により同一 `job_id` が返却されること。\n\n# 不足する検証\n\n*   **必須テストの未実施**: 以下の5グループのうち、残りの4グループが未実施である。\n    *   異なる正規化本文での `HTTP 409` 返却確認。\n    *   複数アカウント間でのキー独立性（分離）確認。\n    *   同一リクエストの同時送信テスト。\n    *   応答送信直後のプロセス再起動による永続性確認。\n*   **正規化の検証不足**: 配列の順序を変えた場合の挙動（順序が保持されること）が未確認。\n*   **UI/状態表示の不整合**: `HTTP 202` は受領のみを示し、ジョブ状態は `queued` であるため、「ダウンロード可能」という表示は誤り。`complete` 状態でのみリンクが有効となる仕様と矛盾している。\n*   **タイムアウト時のキー処理**: タイムアウト後に新しいキーを発行する実装は、元の処理を回復する意図がある場合に誤りである。元の操作を回復するには、同じキーと本文を使用する必要がある。<|im_end|>",
+          "repeat_summaries": [
+            {
+              "tokens": 321,
+              "finish_reason": "eos",
+              "ids_sha256": "51b0bbef2085afc776e0bb61c3ff0583458408535ec3f5743adcc905fba22fa7",
+              "text_sha256": "68c1b7f6ac5088341335ce4d074f4c4f6264adb04a0699c38b26461b50097558"
+            },
+            {
+              "tokens": 321,
+              "finish_reason": "eos",
+              "ids_sha256": "51b0bbef2085afc776e0bb61c3ff0583458408535ec3f5743adcc905fba22fa7",
+              "text_sha256": "68c1b7f6ac5088341335ce4d074f4c4f6264adb04a0699c38b26461b50097558"
+            }
+          ]
+        }
+      ]
+    },
+    "production_dense_q8_restore": {
+      "manifest": "35e57360e648bcc8ce8f21d89bf5583a0b4217061b306ec96616b2607cc6e565",
+      "overrides": {
+        "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
+        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "0",
+        "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "1",
+        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0"
+      },
+      "cases": [
+        {
+          "id": "long_code_booking_merge",
+          "category": "code",
+          "input_tokens": 438,
+          "dispatch_observations": [
+            {
+              "prefill": {
+                "calls": 398,
+                "shapes": [
+                  {
+                    "arguments": [
+                      438,
+                      640,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      512
+                    ],
+                    "calls": 24
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      640
+                    ],
+                    "calls": 96
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      2560
+                    ],
+                    "calls": 1
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      6144
+                    ],
+                    "calls": 36
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      10240
+                    ],
+                    "calls": 37
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      12288
+                    ],
+                    "calls": 12
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      6144,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      10240,
+                      320
+                    ],
+                    "calls": 96
+                  }
+                ]
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": true,
+              "candidate_observed": true,
+              "gpu_engagement_certified": false
+            },
+            {
+              "prefill": {
+                "calls": 398,
+                "shapes": [
+                  {
+                    "arguments": [
+                      438,
+                      640,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      512
+                    ],
+                    "calls": 24
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      640
+                    ],
+                    "calls": 96
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      2560
+                    ],
+                    "calls": 1
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      6144
+                    ],
+                    "calls": 36
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      10240
+                    ],
+                    "calls": 37
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      2560,
+                      12288
+                    ],
+                    "calls": 12
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      6144,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      438,
+                      10240,
+                      320
+                    ],
+                    "calls": 96
+                  }
+                ]
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": true,
+              "candidate_observed": true,
+              "gpu_engagement_certified": false
+            }
+          ],
+          "deterministic": true,
+          "output": "```python\ndef reconcile(events):\n    \"\"\"\n    Reconcile room booking events.\n    \n    Args:\n        events: List of event dictionaries with keys:\n            - booking_id (str)\n            - revision (int)\n            - room (str)\n            - start (int)\n            - end (int)\n            - cancelled (bool)\n    \n    Returns:\n        Dictionary with 'accepted' and 'rejected' lists of booking IDs.\n    \"\"\"\n    # Step 1: Choose winning event for each booking_id\n    # Largest revision wins; ties broken by later appearance in input\n    winners = {}  # booking_id -> (revision, index, event)\n    \n    for idx, event in enumerate(events):\n        bid = event['booking_id']\n        rev = event['revision']\n        \n        if bid not in winners:\n            winners[bid] = (rev, idx, event)\n        else:\n            old_rev, old_idx, old_event = winners[bid]\n            # Larger revision wins; if tie, later index wins\n            if rev > old_rev or (rev == old_rev and idx > old_idx):\n                winners[bid] = (rev, idx, event)\n    \n    # Step 2: Filter out cancelled winning events\n    surviving = []\n    for bid, (rev, idx, event) in winners.items():\n        if not event['cancelled']:\n            surviving.append(event)\n    \n    # Step 3: Sort surviving bookings by (start, end, booking_id)\n    surviving.sort(key=lambda e: (e['start'], e['end'], e['booking_id']))\n    \n    # Step 4: Process bookings, accepting unless overlap in same room\n    accepted = []\n    rejected = []\n    \n    # Track accepted bookings per room for overlap checking\n    # For each room, keep list of accepted intervals (start, end)\n    room_intervals = {}  # room -> list of (start, end)\n    \n    for event in surviving:\n        room = event['room']\n        start = event['start']\n        end = event['end']\n        bid = event['booking_id']\n        \n        if room not in room_intervals:\n            room_intervals[room] = []\n        \n        # Check for overlap with any previously accepted booking in the same room\n        # Overlap occurs if intervals intersect: not (end <= other_start or start >= other_end)\n        # i.e., start < other_end and other_start < end\n        has_overlap = False\n        for other_start, other_end in room_intervals[room]:\n            if start < other_end and other_start < end:\n                has_overlap = True\n                break\n        \n        if has_overlap:\n            rejected.append(bid)\n        else:\n            accepted.append(bid)\n            room_intervals[room].append((start, end))\n    \n    return {'accepted': accepted, 'rejected': rejected}\n\n\n# Tests\ndef test_out_of_order_revisions():\n    \"\"\"Test that out-of-order revisions are handled correctly.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 2, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Revision 2 wins, so A with [0,10) is accepted\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == []\n\n\ndef test_equal_revision_last_arrival():\n    \"\"\"Test that when revisions tie, the later arrival wins.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 10, 'end': 15, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Second event (later arrival) wins, so A with [10,15) is accepted\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == []\n\n\ndef test_cancellation_of_earlier_active():\n    \"\"\"Test that a cancelled winning event deletes the booking.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 2, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': True},\n    ]\n    result = reconcile(events)\n    # Revision 2 wins and is cancelled, so A is deleted\n    assert result['accepted'] == []\n    assert result['rejected'] == []\n\n\ndef test_adjacency():\n    \"\"\"Test that adjacent bookings (end == start) do not overlap.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 10, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Both should be accepted since they are adjacent\n    assert result['accepted'] == ['A', 'B']\n    assert result['rejected'] == []\n\n\ndef test_room_independence():\n    \"\"\"Test that different rooms are independent.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R2', 'start': 0, 'end': 10, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Both should be accepted since they are in different rooms\n    assert result['accepted'] == ['A', 'B']\n    assert result['rejected'] == []\n\n\ndef test_rejected_does_not_block():\n    \"\"\"Test that a rejected booking does not block later bookings.\"\"\"\n    # A=[0,5), B=[3,10), C=[5,7) in same room\n    # A accepted, B rejected (overlaps A), C accepted (adjacent to A, doesn't overlap A)\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 3, 'end': 10, 'cancelled': False},\n        {'booking_id': 'C', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 7, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Processing order by (start, end, booking_id): A(0,5), B(3,10), C(5,7)\n    # A accepted, B rejected (overlaps A), C accepted (adjacent to A, no overlap with A)\n    assert result['accepted'] == ['A', 'C']\n    assert result['rejected'] == ['B']\n\n\ndef test_empty_input():\n    \"\"\"Test that empty input returns empty lists.\"\"\"\n    result = reconcile([])\n    assert result['accepted'] == []\n    assert result['rejected'] == []\n\n\ndef test_no_mutation():\n    \"\"\"Test that the input is not mutated.\"\"\"\n    import copy\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 15, 'cancelled': False},\n    ]\n    original = copy.deepcopy(events)\n    reconcile(events)\n    assert events == original\n\n\ndef test_multiple_bookings_same_room_overlap():\n    \"\"\"Test overlapping bookings in same room.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'B', 'revision': 1, 'room': 'R1', 'start': 5, 'end': 15, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # A accepted, B rejected (overlaps A)\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == ['B']\n\n\ndef test_cancelled_does_not_block():\n    \"\"\"Test that a cancelled booking does not block others.\"\"\"\n    events = [\n        {'booking_id': 'A",
+          "repeat_summaries": [
+            {
+              "tokens": 2048,
+              "finish_reason": "length",
+              "ids_sha256": "3d464a45dfd0a197ddfabffb3481e1bda10d04fd1d656e8fac68e4b7c82bd9e0",
+              "text_sha256": "2c68a00b432cb5b70517fb8fe1f4e625761a68153aff3eea935975bdb5d24096"
+            },
+            {
+              "tokens": 2048,
+              "finish_reason": "length",
+              "ids_sha256": "3d464a45dfd0a197ddfabffb3481e1bda10d04fd1d656e8fac68e4b7c82bd9e0",
+              "text_sha256": "2c68a00b432cb5b70517fb8fe1f4e625761a68153aff3eea935975bdb5d24096"
+            }
+          ]
+        },
+        {
+          "id": "long_general_en_release_decision",
+          "category": "general_en",
+          "input_tokens": 508,
+          "dispatch_observations": [
+            {
+              "prefill": {
+                "calls": 398,
+                "shapes": [
+                  {
+                    "arguments": [
+                      508,
+                      640,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      2560,
+                      512
+                    ],
+                    "calls": 24
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      2560,
+                      640
+                    ],
+                    "calls": 96
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      2560,
+                      2560
+                    ],
+                    "calls": 1
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      2560,
+                      6144
+                    ],
+                    "calls": 36
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      2560,
+                      10240
+                    ],
+                    "calls": 37
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      2560,
+                      12288
+                    ],
+                    "calls": 12
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      6144,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      10240,
+                      320
+                    ],
+                    "calls": 96
+                  }
+                ]
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": true,
+              "candidate_observed": true,
+              "gpu_engagement_certified": false
+            },
+            {
+              "prefill": {
+                "calls": 398,
+                "shapes": [
+                  {
+                    "arguments": [
+                      508,
+                      640,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      2560,
+                      512
+                    ],
+                    "calls": 24
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      2560,
+                      640
+                    ],
+                    "calls": 96
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      2560,
+                      2560
+                    ],
+                    "calls": 1
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      2560,
+                      6144
+                    ],
+                    "calls": 36
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      2560,
+                      10240
+                    ],
+                    "calls": 37
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      2560,
+                      12288
+                    ],
+                    "calls": 12
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      6144,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      508,
+                      10240,
+                      320
+                    ],
+                    "calls": 96
+                  }
+                ]
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": true,
+              "candidate_observed": true,
+              "gpu_engagement_certified": false
+            }
+          ],
+          "deterministic": true,
+          "output": "**Decision**\nDo not expand traffic. The new build fails release policy thresholds (p99 > 600 ms, error rate > 0.5%). Maintain the current 20% traffic split in the east region. Do not execute the proposed unbounded connection-pool increase.\n\n**Evidence**\n*Observed Facts:*\n*   **East (New Build):** p99 940 ms, 1.8% error rate.\n*   **East (Old Build):** p99 410 ms, 0.2% error rate.\n*   **West (Old Build only):** p99 430 ms, 0.3% error rate.\n*   **Infrastructure:** Elevated DB connection-pool wait times on two east hosts (one per build) at 10:05 UTC.\n*   **Status:** Rollout paused at 09:55 UTC; traffic share remains 20%. No rollback performed. Previous image verified available at 10:25 UTC.\n\n*Possible Causes (Unconfirmed):*\n*   Build regression vs. payload-mix confounder (new cohort had larger payloads).\n*   DB contention exacerbated by pool limits.\n\n**Actions**\n1.  **Preserve Evidence:** Capture current metrics and logs before any configuration changes.\n2.  **Investigate Confounder:** Analyze payload size distribution to isolate build impact from traffic mix.\n3.  **DB Mitigation:** Await database owner’s bounded experiment proposal; do not increase global limits.\n4.  **Prepare Rollback:** Keep previous image ready. Do not execute rollback unless containment fails or policy violation persists without mitigation.\n\n**Unknowns**\n*   Causal link between build and latency (confounded by payload size).\n*   West region DB pool wait times (no data).\n*   Post-rollback metrics (none exist).\n*   Outcome of bounded DB experiment (not yet run).<|im_end|>",
+          "repeat_summaries": [
+            {
+              "tokens": 418,
+              "finish_reason": "eos",
+              "ids_sha256": "6f75d1a5c755013c96fc7783f4f00b92ecc54e4644c9eb29d3054eb3e1f99ced",
+              "text_sha256": "607e9fabc4e8b13ce24d140b3251da5de23872646f07a483710ac1ac0343c75a"
+            },
+            {
+              "tokens": 418,
+              "finish_reason": "eos",
+              "ids_sha256": "6f75d1a5c755013c96fc7783f4f00b92ecc54e4644c9eb29d3054eb3e1f99ced",
+              "text_sha256": "607e9fabc4e8b13ce24d140b3251da5de23872646f07a483710ac1ac0343c75a"
+            }
+          ]
+        },
+        {
+          "id": "long_general_ja_retention_review",
+          "category": "general_ja",
+          "input_tokens": 424,
+          "dispatch_observations": [
+            {
+              "prefill": {
+                "calls": 398,
+                "shapes": [
+                  {
+                    "arguments": [
+                      424,
+                      640,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      2560,
+                      512
+                    ],
+                    "calls": 24
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      2560,
+                      640
+                    ],
+                    "calls": 96
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      2560,
+                      2560
+                    ],
+                    "calls": 1
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      2560,
+                      6144
+                    ],
+                    "calls": 36
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      2560,
+                      10240
+                    ],
+                    "calls": 37
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      2560,
+                      12288
+                    ],
+                    "calls": 12
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      6144,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      10240,
+                      320
+                    ],
+                    "calls": 96
+                  }
+                ]
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": true,
+              "candidate_observed": true,
+              "gpu_engagement_certified": false
+            },
+            {
+              "prefill": {
+                "calls": 398,
+                "shapes": [
+                  {
+                    "arguments": [
+                      424,
+                      640,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      2560,
+                      512
+                    ],
+                    "calls": 24
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      2560,
+                      640
+                    ],
+                    "calls": 96
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      2560,
+                      2560
+                    ],
+                    "calls": 1
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      2560,
+                      6144
+                    ],
+                    "calls": 36
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      2560,
+                      10240
+                    ],
+                    "calls": 37
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      2560,
+                      12288
+                    ],
+                    "calls": 12
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      6144,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      424,
+                      10240,
+                      320
+                    ],
+                    "calls": 96
+                  }
+                ]
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": true,
+              "candidate_observed": true,
+              "gpu_engagement_certified": false
+            }
+          ],
+          "deterministic": true,
+          "output": "# 結論\nログA、エクスポートD、バックアップEは削除対象です。ログB、ログCは保持対象です。夜間処理の完了報告および監査記録が未確認のため、削除実施済みとは報告できません。\n\n# 対象別の扱い\n*   **ログA（35日経過、フラグなし）**：削除対象。通常ログの30日経過ルールに該当します。\n*   **ログB（40日経過、フラグあり）**：保持対象。調査保全フラグにより自動削除されません。\n*   **ログC（20日経過、フラグなし）**：保持対象。通常ログの30日経過ルールに該当していません。\n*   **エクスポートD（9日経過）**：削除対象。エクスポート専用の7日経過ルールに該当します。元ログCの期限とは無関係です。\n*   **バックアップE（45日経過）**：削除対象。バックアップの90日経過ルールには該当していませんが、通常領域の削除とは独立した復元用領域であり、本日の確認事項として削除対象の判定基準（90日）には達していないため、現状は保持対象です。\n    *   ※修正：バックアップEは45日経過しており、保存期間90日未満のため**保持対象**です。\n\n# 未確認事項\n*   **Bの自動削除への移行条件**：調査責任者による保全フラグ解除の正式な承認が必要です。口頭提案や申請のみでは解除できません。\n*   **削除実施済みの報告に必要な証跡**：夜間処理の完了報告書、および削除件数を示す監査記録の確認が必要です。<|im_end|>",
+          "repeat_summaries": [
+            {
+              "tokens": 370,
+              "finish_reason": "eos",
+              "ids_sha256": "9e6b2e6cb4ef01ff7487412e8963549f30aab8a7c7bca46bd1c9ceec1a483eb6",
+              "text_sha256": "7a2a8375d689b04427183d2aa29c6357ea312e7527274dfa85e8df357afd8500"
+            },
+            {
+              "tokens": 370,
+              "finish_reason": "eos",
+              "ids_sha256": "9e6b2e6cb4ef01ff7487412e8963549f30aab8a7c7bca46bd1c9ceec1a483eb6",
+              "text_sha256": "7a2a8375d689b04427183d2aa29c6357ea312e7527274dfa85e8df357afd8500"
+            }
+          ]
+        },
+        {
+          "id": "long_mixed_ja_en_acceptance",
+          "category": "mixed_ja_en",
+          "input_tokens": 512,
+          "dispatch_observations": [
+            {
+              "prefill": {
+                "calls": 398,
+                "shapes": [
+                  {
+                    "arguments": [
+                      512,
+                      640,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      2560,
+                      512
+                    ],
+                    "calls": 24
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      2560,
+                      640
+                    ],
+                    "calls": 96
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      2560,
+                      2560
+                    ],
+                    "calls": 1
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      2560,
+                      6144
+                    ],
+                    "calls": 36
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      2560,
+                      10240
+                    ],
+                    "calls": 37
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      2560,
+                      12288
+                    ],
+                    "calls": 12
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      6144,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      10240,
+                      320
+                    ],
+                    "calls": 96
+                  }
+                ]
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": true,
+              "candidate_observed": true,
+              "gpu_engagement_certified": false
+            },
+            {
+              "prefill": {
+                "calls": 398,
+                "shapes": [
+                  {
+                    "arguments": [
+                      512,
+                      640,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      2560,
+                      512
+                    ],
+                    "calls": 24
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      2560,
+                      640
+                    ],
+                    "calls": 96
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      2560,
+                      2560
+                    ],
+                    "calls": 1
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      2560,
+                      6144
+                    ],
+                    "calls": 36
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      2560,
+                      10240
+                    ],
+                    "calls": 37
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      2560,
+                      12288
+                    ],
+                    "calls": 12
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      6144,
+                      2560
+                    ],
+                    "calls": 48
+                  },
+                  {
+                    "arguments": [
+                      512,
+                      10240,
+                      320
+                    ],
+                    "calls": 96
+                  }
+                ]
+              },
+              "first_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "later_decode": {
+                "calls": 0,
+                "shapes": []
+              },
+              "kind": "host_candidate_call_observation",
+              "counted": true,
+              "candidate_observed": true,
+              "gpu_engagement_certified": false
+            }
+          ],
+          "deterministic": true,
+          "output": "# 判定\n\nリリースは承認できません。\n\n# 確認済み\n\n*   同一アカウント・同一キー・同一正規化本文による逐次リトライで、元の `job_id` が返却されること。\n*   オブジェクトのキー順が異なっても正規化により同一 `job_id` が返却されること。\n\n# 不足する検証\n\n*   **必須テストの未実施**: 配列順序の変更による正規化挙動、異なる本文での HTTP 409 応答、複数アカウント間のキー分離、同時送信（concurrent identical-request）、および応答直後のプロセス再起動による永続性確認。\n*   **画面表示の不整合**: HTTP 202 はジョブの受領を示すのみであり、`complete` 状態ではありません。`queued` 状態のジョブに対して「ダウンロード可能」と表示する実装は仕様違反です。\n*   **タイムアウト時のキー運用**: タイムアウト後に新しいキーを発行する提案は、元の処理を回復する意図がある場合に誤りです。元の操作を回復するには、同じキーと本文でリトライする必要があります。<|im_end|>",
+          "repeat_summaries": [
+            {
+              "tokens": 245,
+              "finish_reason": "eos",
+              "ids_sha256": "4f4bf7a60240df120a15b7e11d8de80304e866f4cdf25849cf75e0d61ebd1025",
+              "text_sha256": "aafc7936eda28d65fe248c0d29ff07c914055f6e02c09e60c688cffbae9d0ea2"
+            },
+            {
+              "tokens": 245,
+              "finish_reason": "eos",
+              "ids_sha256": "4f4bf7a60240df120a15b7e11d8de80304e866f4cdf25849cf75e0d61ebd1025",
+              "text_sha256": "aafc7936eda28d65fe248c0d29ff07c914055f6e02c09e60c688cffbae9d0ea2"
+            }
+          ]
+        }
+      ],
+      "dispatch": {
+        "calls": 3184,
+        "shapes": [
+          {
+            "arguments": [
+              424,
+              640,
+              2560
+            ],
+            "calls": 96
+          },
+          {
+            "arguments": [
+              424,
+              2560,
+              512
+            ],
+            "calls": 48
+          },
+          {
+            "arguments": [
+              424,
+              2560,
+              640
+            ],
+            "calls": 192
+          },
+          {
+            "arguments": [
+              424,
+              2560,
+              2560
+            ],
+            "calls": 2
+          },
+          {
+            "arguments": [
+              424,
+              2560,
+              6144
+            ],
+            "calls": 72
+          },
+          {
+            "arguments": [
+              424,
+              2560,
+              10240
+            ],
+            "calls": 74
+          },
+          {
+            "arguments": [
+              424,
+              2560,
+              12288
+            ],
+            "calls": 24
+          },
+          {
+            "arguments": [
+              424,
+              6144,
+              2560
+            ],
+            "calls": 96
+          },
+          {
+            "arguments": [
+              424,
+              10240,
+              320
+            ],
+            "calls": 192
+          },
+          {
+            "arguments": [
+              438,
+              640,
+              2560
+            ],
+            "calls": 96
+          },
+          {
+            "arguments": [
+              438,
+              2560,
+              512
+            ],
+            "calls": 48
+          },
+          {
+            "arguments": [
+              438,
+              2560,
+              640
+            ],
+            "calls": 192
+          },
+          {
+            "arguments": [
+              438,
+              2560,
+              2560
+            ],
+            "calls": 2
+          },
+          {
+            "arguments": [
+              438,
+              2560,
+              6144
+            ],
+            "calls": 72
+          },
+          {
+            "arguments": [
+              438,
+              2560,
+              10240
+            ],
+            "calls": 74
+          },
+          {
+            "arguments": [
+              438,
+              2560,
+              12288
+            ],
+            "calls": 24
+          },
+          {
+            "arguments": [
+              438,
+              6144,
+              2560
+            ],
+            "calls": 96
+          },
+          {
+            "arguments": [
+              438,
+              10240,
+              320
+            ],
+            "calls": 192
+          },
+          {
+            "arguments": [
+              508,
+              640,
+              2560
+            ],
+            "calls": 96
+          },
+          {
+            "arguments": [
+              508,
+              2560,
+              512
+            ],
+            "calls": 48
+          },
+          {
+            "arguments": [
+              508,
+              2560,
+              640
+            ],
+            "calls": 192
+          },
+          {
+            "arguments": [
+              508,
+              2560,
+              2560
+            ],
+            "calls": 2
+          },
+          {
+            "arguments": [
+              508,
+              2560,
+              6144
+            ],
+            "calls": 72
+          },
+          {
+            "arguments": [
+              508,
+              2560,
+              10240
+            ],
+            "calls": 74
+          },
+          {
+            "arguments": [
+              508,
+              2560,
+              12288
+            ],
+            "calls": 24
+          },
+          {
+            "arguments": [
+              508,
+              6144,
+              2560
+            ],
+            "calls": 96
+          },
+          {
+            "arguments": [
+              508,
+              10240,
+              320
+            ],
+            "calls": 192
+          },
+          {
+            "arguments": [
+              512,
+              640,
+              2560
+            ],
+            "calls": 96
+          },
+          {
+            "arguments": [
+              512,
+              2560,
+              512
+            ],
+            "calls": 48
+          },
+          {
+            "arguments": [
+              512,
+              2560,
+              640
+            ],
+            "calls": 192
+          },
+          {
+            "arguments": [
+              512,
+              2560,
+              2560
+            ],
+            "calls": 2
+          },
+          {
+            "arguments": [
+              512,
+              2560,
+              6144
+            ],
+            "calls": 72
+          },
+          {
+            "arguments": [
+              512,
+              2560,
+              10240
+            ],
+            "calls": 74
+          },
+          {
+            "arguments": [
+              512,
+              2560,
+              12288
+            ],
+            "calls": 24
+          },
+          {
+            "arguments": [
+              512,
+              6144,
+              2560
+            ],
+            "calls": 96
+          },
+          {
+            "arguments": [
+              512,
+              10240,
+              320
+            ],
+            "calls": 192
+          }
+        ],
+        "key": [
+          "hip_gfx1151",
+          "linear",
+          "gguf_q8_0",
+          "iu8_wmma_prefill_f32_f32_out"
+        ],
+        "direct_target": null,
+        "required": true,
+        "kind": "host_candidate_call_observation",
+        "gpu_engagement_certified": false,
+        "candidate_observed_every_repeat": true
+      }
+    }
+  },
+  "lifecycle": {
+    "strict": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 84168528400,
+      "total_allocated_bytes": 84168528400,
+      "total_freed_bytes": 84168528400,
+      "active_allocations": 0,
+      "peak_allocations": 1617
+    },
+    "production_dense_q8_restore": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 84294357528,
+      "total_allocated_bytes": 168701477952,
+      "total_freed_bytes": 168701477952,
+      "active_allocations": 0,
+      "peak_allocations": 1622
+    }
+  },
+  "candidate": "production_dense_q8_restore",
+  "complete_suite": false,
+  "canonical_suite_complete": false,
+  "prompt_token_budget": 1024,
+  "suite_sha256": {
+    "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280",
+    "/home/lhl/hipEngine/benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl": "ecede69819aad1443f677ebe8f8c7dd505c1e9c8a160f6f40c5d37e7f80805fb"
+  },
+  "max_tokens": 2048,
+  "repeats": 2,
+  "performance_claim": false,
+  "task_passed": false,
+  "raw_capture_sha256": "ec891ea0720b1e22dd703b54cbd01238dcea5d7886a79f07199527ddae0f146b",
+  "artifact_format": "compact-task-capture-v1; identical repeat texts stored once; per-repeat output hashes retained",
+  "review": {
+    "task_passed": false,
+    "qualification_claim": false,
+    "code": "Incomplete in both arms: output cap2048; no code executed. Prefixes identical.",
+    "general_en": "Both EOS; 248 strict / 212 candidate whitespace words after removing Markdown list/emphasis markers and EOS. Both omit fifteen-minute policy duration; no full criteria pass asserted.",
+    "general_ja": "Both EOS but contradictory backup E classification: conclusion says deletion, later correction says retention. Both fail factual consistency.",
+    "mixed_ja_en": "Both EOS; review finds rejection, missing tests, 202/queued distinction and same-key retry accounted for. Candidate mentions array-order testing without explicitly stating order must be preserved.",
+    "determinism": "All eight arm/case pairs match across two repeats.",
+    "engagement": "398 selected host calls per candidate prefill, nine geometries, every prompt and repeat; zero selected prefill-wrapper calls during decode. Not GPU or layer/role attribution.",
+    "attribution": "Shared task failures do not isolate candidate numerical regression; no candidate promotion or numerical rejection."
+  }
+}
