@@ -719,6 +719,7 @@ class Gemma4Runner:
         *,
         apply_softcap: bool = True,
         logits_rows: int = 1,
+        capture_layers: list[np.ndarray] | None = None,
     ) -> np.ndarray:
         """Run ``token_ids`` through the model and return the last row's logits.
 
@@ -750,6 +751,14 @@ class Gemma4Runner:
         same computation a single-token forward would produce for that position:
         the mask is built from absolute positions, so a row never depends on how
         many rows accompany it.
+
+        ``capture_layers`` appends the residual stream after each block, as a
+        ``(rows, hidden)`` BF16 array, to the list it is given. The residual
+        after a layer is the only place a per-layer divergence is visible from
+        outside, and a whole-block hidden comparison cannot say which layer
+        introduced one. It is a diagnostic, in the same spirit as
+        ``apply_softcap``: it costs a device-to-host copy per layer, so it is
+        not something a generation path passes.
         """
 
         if self._closed:
@@ -796,7 +805,10 @@ class Gemma4Runner:
             # scripts/gemma4_teacher_forced_gate.py at --prefill 256.
             with _gemma4_block_wmma_session(len(block) == self.max_block):
                 logits = self._forward_block(
-                    block, apply_softcap=apply_softcap, logits_rows=block_rows
+                    block,
+                    apply_softcap=apply_softcap,
+                    logits_rows=block_rows,
+                    capture_layers=capture_layers,
                 )
         assert logits is not None
         return logits
@@ -807,6 +819,7 @@ class Gemma4Runner:
         *,
         apply_softcap: bool = True,
         logits_rows: int = 1,
+        capture_layers: list[np.ndarray] | None = None,
     ) -> np.ndarray:
         """Run one block of at most ``max_block`` tokens; see :meth:`forward`."""
 
@@ -905,6 +918,12 @@ class Gemma4Runner:
                 if attention.sliding_window is None
                 else int(attention.sliding_window),
             )
+            if capture_layers is not None:
+                residual = np.empty((rows, hidden), dtype=np.uint16)
+                copy_device_to_host(
+                    host_array_ptr(residual), self._hidden, residual.nbytes
+                )
+                capture_layers.append(residual)
 
         # --- final norm and lm head -----------------------------------------
         # The default is one row: the caller wants the next-token distribution
