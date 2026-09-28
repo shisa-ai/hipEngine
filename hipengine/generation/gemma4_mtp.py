@@ -229,14 +229,21 @@ class Gemma4MTPTextProvider:
 
         while len(generated) < request.max_tokens and reason != "eos":
             raise_if_generation_deadline_expired(request)
-            budget = min(self.candidate_budget, request.max_tokens - len(generated))
-            drafter.max_drafts = budget
+            remaining = request.max_tokens - len(generated)
+            # A cycle commits `accepted + 1` tokens: the accepted drafts plus the
+            # row at `accepted`, which is always kept. Capping only the drafts at
+            # `remaining` therefore lets the final cycle commit one token past
+            # `max_tokens`. Leaving a row of headroom bounds the commit by
+            # construction, and `remaining == 1` falls through to a zero-draft
+            # cycle, which is a plain single-token verify.
+            budget = min(self.candidate_budget, remaining - 1)
+            drafter.max_drafts = budget if budget > 0 else 1
             start_position = int(runner.position)
 
             proposal_started = time.perf_counter()
-            drafts = drafter.draft(token, hidden_row=seed_row)
+            drafts = drafter.draft(token, hidden_row=seed_row) if budget > 0 else []
             record("proposal", proposal_started)
-            if not drafts:
+            if not drafts and budget > 0:
                 break
 
             # One forward for the whole draft. `drafts[i]` is tested against
