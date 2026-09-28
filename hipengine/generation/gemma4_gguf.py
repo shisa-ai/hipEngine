@@ -60,7 +60,16 @@ class Gemma4GGUFGenerator:
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
 
-    supports_speculative_mtp = False
+    # No ``supports_speculative_mtp`` here. This generator does not implement the
+    # legacy ``generate_speculative_mtp_detailed`` protocol, but the engine also
+    # accepts a *staged* protocol implemented on the runner
+    # (``speculative_capability`` plus ``execute_target_frontier`` or
+    # ``execute_speculative_cycle``). Declaring the legacy miss as a class
+    # attribute made ``engine_loop`` return False before it ever consulted those
+    # staged hooks, so the runner could not opt in. Leaving the attribute off is
+    # accurate: ``engine_loop`` treats a missing attribute as "no legacy
+    # method" and still routes through the staged check, which reports False
+    # until the runner grows the hooks.
     supports_stream_many = False
     supports_resident_session_kv = False
     supports_stream_logprobs = False
