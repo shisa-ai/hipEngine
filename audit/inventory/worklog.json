@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11124,
-    "current": 3892,
+    "entries": 11127,
+    "current": 3895,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1220,
+    "rows": 1223,
     "by_rule": {
       "dependency": 40,
       "legacy-next": 109,
-      "status": 1071
+      "status": 1074
     }
   },
   "rows": [
@@ -45721,14 +45721,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "1. **The dense Q8_0 family is now 213.3 ms per prefill against llama.cpp's\n   105.6 for the same weights -- 2.0x, down from 2.6x.** The remaining gap is\n   structural: llama.cpp's RDNA3.5 MMQ config is `nthreads=256, I=128, J=128`\n   against our 32-thread block and 64x32 tile, so it re-reads weights 4x less.\n   Reaching J=128 needs `TN=8`, whose 8 float8 accumulators plus 8 half16\n   activations do not fit in registers at `TM>=1`; `TN=4` (tile_n 64) is the\n   reachable step and was not in `_ALLOWED_TILES`.\n2. Attention remains 178.8 ms per prefill against llama.cpp's 28.8. The traffic\n   ablat",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T084150.706656Z-lhl-gemma4-q8-0-tile-heuristic-35630d.md",
@@ -45747,7 +45747,7 @@
         ]
       },
       "id": "worklog/20260928T084150.706656Z-lhl-gemma4-q8-0-tile-heuristic-35630d",
-      "evidence_hash": "fc7ea382b055"
+      "evidence_hash": "7a1805f0cbd2"
     },
     {
       "kind": "worklog",
@@ -45846,14 +45846,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "1. **Template the MMQ body on the row tile and add a small-row instantiation**,\n   selected by the live padded row count. The tile map\n   (`qwen35_moe_mmq32_tile_map`), the scratch sizing, and the launcher's\n   `row_tiles` all move with it. Measure bit-exactness against the current tile\n   first, as `2cf3a0a5f` did.\n2. **`mmq_total_rows` being a static upper bound** means the down projection's\n   grid is sized for the runner's capacity on every call. That is a launch cost\n   rather than a work cost, but it is the same 1,199-launches-per-token budget.\n3. Decode remains 19 percent launch gap; se",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T084954.654212Z-lhl-gemma4-moe-decode-row-padding-2b23d4.md",
@@ -45875,7 +45875,7 @@
         ]
       },
       "id": "worklog/20260928T084954.654212Z-lhl-gemma4-moe-decode-row-padding-2b23d4",
-      "evidence_hash": "0390e8ce8a77"
+      "evidence_hash": "c55f3439ca83"
     },
     {
       "kind": "worklog",
@@ -45928,14 +45928,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 0,
-        "open_text": "1. **`(64, 64)` was not swept** -- it would need 4 x 4 x 8 = 128 accumulator\n   registers before the per-TN index arrays, so it is genuinely out of reach,\n   unlike `(32, 64)`. Worth confirming with the compiler rather than asserting.\n2. **The dense Q8_0 family is still 213 -> ~190 ms against llama.cpp's\n   105.6**, so the family remains roughly 1.8x behind after this change. The\n   remaining lever is the same one: llama.cpp's RDNA3.5 MMQ config runs\n   `I=128, J=128` against our `32 x 64`, and the sweep's shape shows the\n   tile dimensions are worth more than any other dense-kernel change tri",
+        "continuation_entries": 1,
+        "open_text": "1. **Separate ``out/rows`` from ``out``.** Eight shapes separate at\n   ``out/rows = 5``, but all eight are at ``rows = 512``. Re-run the qwen35moe\n   pair (2048x2048, 2048x8192) and the gemma4 k/v pair at ``rows`` 256 and\n   1024. If the boundary moves with ``rows`` the rule is the ratio; if it\n   stays at ``out = 2560`` it is not. Only then is a shape branch justified --\n   and if it holds, it recovers the gemma4 k/v projection's 7 percent and\n   makes the module default correct for both model families.\n2. **The qwen35moe profile pin at ``qwen4_exp_profiles.py:570``/``:571``**\n   encodes the ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T085917.175442Z-lhl-gemma4-q8-tile-n64-96aaed.md",
@@ -45956,7 +45956,132 @@
         ]
       },
       "id": "worklog/20260928T085917.175442Z-lhl-gemma4-q8-tile-n64-96aaed",
-      "evidence_hash": "d200e972a271"
+      "evidence_hash": "0541326c3341"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T090426.577409Z-lhl-gemma4-q8-tile-domain-62b15b",
+      "title": "the q8 tile is a two dimensional function of rows and out features and the existing heuristic is already near optimal",
+      "location": "worklog/entries/20260928T090426.577409Z-lhl-gemma4-q8-tile-domain-62b15b.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-q8-tile-domain",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "1. **A fill floor plus a traffic model is the shape of the right selector**,\n   but both constants are unfitted and the map is only 33 cells. Fitting them\n   needs the `rows=1024/2048` and `out=1024` regions, which are cheap to\n   measure and would roughly triple the data.\n2. **The `rows < 128` region is where the current rule is worst** (1.448x at\n   `rows=64 out=2048`). A rule that improves it without regressing elsewhere\n   was not found by an exhaustive search over two-axis ladders, so it needs\n   either more data or the fill floor.\n3. **`qwen4_exp_profiles.py:570`/`:571` still pin `(64,32",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T090426.577409Z-lhl-gemma4-q8-tile-domain-62b15b.md",
+        "refs": [],
+        "tokens": [
+          "already",
+          "dimensional",
+          "existing",
+          "features",
+          "function",
+          "heuristic",
+          "near",
+          "optimal",
+          "out",
+          "rows",
+          "tile",
+          "two"
+        ]
+      },
+      "id": "worklog/20260928T090426.577409Z-lhl-gemma4-q8-tile-domain-62b15b",
+      "evidence_hash": "391b176a9133"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T090630.044819Z-lhl-gemma4-moe-padding-refuted-3c8273",
+      "title": "the moe row padding skips its own arithmetic so the smaller tile fix is withdrawn and the geometry does not reconcile",
+      "location": "worklog/entries/20260928T090630.044819Z-lhl-gemma4-moe-padding-refuted-3c8273.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-moe-padding-refuted",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "1. **Resolve the geometry.** Read the fused tensor's shape and the binding of\n   `intermediate` at `gemma4_experts.py:1212`. One fact decides whether the\n   decode gate_up's grid is 44 by 8 with 5588 x-blocks early-outing on\n   `global_col_base >= out_features_total`, or something else.\n2. **Then attack the weight stream's parallelism, not the row tile.** The\n   gate_up reads 17.8 MB per layer in ~244 us; the dense GEMV beside it reads\n   the same order of bytes at 199 GB/s.\n3. **`20260928T084954`'s grid reading stands** -- `grid.y = mmq_total_rows/32`\n   is 8 for 8 experts at one row each -- ",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T090630.044819Z-lhl-gemma4-moe-padding-refuted-3c8273.md",
+        "refs": [],
+        "tokens": [
+          "arithmetic",
+          "does",
+          "fix",
+          "geometry",
+          "moe",
+          "own",
+          "padding",
+          "reconcile",
+          "row",
+          "skips",
+          "smaller",
+          "tile",
+          "withdrawn"
+        ]
+      },
+      "id": "worklog/20260928T090630.044819Z-lhl-gemma4-moe-padding-refuted-3c8273",
+      "evidence_hash": "37905eff412c"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T090757.530826Z-lhl-gemma4-gateup-grid-open-88e2cf",
+      "title": "the gate up caller passes the per expert width so grid x should be 44 and the trace says 5632",
+      "location": "worklog/entries/20260928T090757.530826Z-lhl-gemma4-gateup-grid-open-88e2cf.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-gateup-grid-open",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "1. **Re-run the trace and get a CSV.** The invocation used\n   `rocprofv3 --kernel-trace -d <dir> -o t -- .venv/bin/python -c ...` and\n   produced no file; the 08:46 trace that worked used a different form. Fix the\n   invocation first, then read `grid_size_x` for\n   `mmq32_fused_prefill_compact32`.\n2. **If 5632 is real, remove the over-launch.** Either the launcher should not\n   multiply by `num_experts`, or the early-out should be hoisted so the\n   redundant blocks cost a single comparison. Measure the gate/up's 244 us\n   before and after.\n3. **If 44 is real, the fix is the weight stream's par",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T090757.530826Z-lhl-gemma4-gateup-grid-open-88e2cf.md",
+        "refs": [],
+        "tokens": [
+          "5632",
+          "caller",
+          "expert",
+          "gate",
+          "grid",
+          "passes",
+          "per",
+          "says",
+          "trace",
+          "width"
+        ]
+      },
+      "id": "worklog/20260928T090757.530826Z-lhl-gemma4-gateup-grid-open-88e2cf",
+      "evidence_hash": "78050d4fd83e"
     },
     {
       "kind": "worklog",
