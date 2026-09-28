@@ -2548,6 +2548,7 @@
         "default": "unknown",
         "sites_by_root": {
           "hipengine": 2,
+          "scripts": 2,
           "tests": 1
         },
         "runtime_sites": [
@@ -2572,7 +2573,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GEMMA4_MOE_DOWN_MMQ",
-      "evidence_hash": "35f3aeb7aab0"
+      "evidence_hash": "011243ce9866"
     },
     {
       "kind": "flag",
@@ -2583,7 +2584,7 @@
         "default": "unknown",
         "sites_by_root": {
           "hipengine": 3,
-          "scripts": 6,
+          "scripts": 9,
           "tests": 7
         },
         "runtime_sites": [
@@ -2609,7 +2610,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ",
-      "evidence_hash": "719f57d1ccc2"
+      "evidence_hash": "49f3dfd5fd49"
     },
     {
       "kind": "flag",

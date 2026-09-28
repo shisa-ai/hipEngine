@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11136,
-    "current": 3904,
+    "entries": 11137,
+    "current": 3905,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1230,
@@ -45846,14 +45846,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "1. **Template the MMQ body on the row tile and add a small-row instantiation**,\n   selected by the live padded row count. The tile map\n   (`qwen35_moe_mmq32_tile_map`), the scratch sizing, and the launcher's\n   `row_tiles` all move with it. Measure bit-exactness against the current tile\n   first, as `2cf3a0a5f` did.\n2. **`mmq_total_rows` being a static upper bound** means the down projection's\n   grid is sized for the runner's capacity on every call. That is a launch cost\n   rather than a work cost, but it is the same 1,199-launches-per-token budget.\n3. Decode remains 19 percent launch gap; se",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T084954.654212Z-lhl-gemma4-moe-decode-row-padding-2b23d4.md",
@@ -45875,7 +45875,7 @@
         ]
       },
       "id": "worklog/20260928T084954.654212Z-lhl-gemma4-moe-decode-row-padding-2b23d4",
-      "evidence_hash": "c55f3439ca83"
+      "evidence_hash": "bd9448c488f5"
     },
     {
       "kind": "worklog",
@@ -46012,14 +46012,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "1. **Resolve the geometry.** Read the fused tensor's shape and the binding of\n   `intermediate` at `gemma4_experts.py:1212`. One fact decides whether the\n   decode gate_up's grid is 44 by 8 with 5588 x-blocks early-outing on\n   `global_col_base >= out_features_total`, or something else.\n2. **Then attack the weight stream's parallelism, not the row tile.** The\n   gate_up reads 17.8 MB per layer in ~244 us; the dense GEMV beside it reads\n   the same order of bytes at 199 GB/s.\n3. **`20260928T084954`'s grid reading stands** -- `grid.y = mmq_total_rows/32`\n   is 8 for 8 experts at one row each -- ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T090630.044819Z-lhl-gemma4-moe-padding-refuted-3c8273.md",
@@ -46041,7 +46041,7 @@
         ]
       },
       "id": "worklog/20260928T090630.044819Z-lhl-gemma4-moe-padding-refuted-3c8273",
-      "evidence_hash": "37905eff412c"
+      "evidence_hash": "5c9ff4805809"
     },
     {
       "kind": "worklog",

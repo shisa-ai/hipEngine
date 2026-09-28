@@ -259,7 +259,7 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 807,
-        "referrers": 111,
+        "referrers": 112,
         "runtime_referrers": [
           "hipengine/chat/gemma4.py",
           "hipengine/generation/__init__.py",
@@ -289,7 +289,7 @@
         ]
       },
       "id": "kernel/cpu_reference/gemma4.py",
-      "evidence_hash": "d45bc3a01ac6"
+      "evidence_hash": "47be7c8fdc94"
     },
     {
       "kind": "kernel",
@@ -3612,7 +3612,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 1497,
-        "referrers": 19,
+        "referrers": 20,
         "runtime_referrers": [],
         "test_referrers": [
           "tests/test_unit_gemma4_gpu_kernels.py",
@@ -3638,7 +3638,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_experts.py",
-      "evidence_hash": "cb731c953ac8"
+      "evidence_hash": "a2e21b07e857"
     },
     {
       "kind": "kernel",
@@ -3692,7 +3692,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".hip",
         "lines": 282,
-        "referrers": 15,
+        "referrers": 16,
         "runtime_referrers": [
           "hipengine/runtime/gemma4_assistant.py"
         ],
@@ -3720,7 +3720,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_moe.hip",
-      "evidence_hash": "a536495e0090"
+      "evidence_hash": "a3bde8c23dae"
     },
     {
       "kind": "kernel",
@@ -3731,7 +3731,7 @@
         "backend": "hip_gfx1100",
         "suffix": ".py",
         "lines": 234,
-        "referrers": 15,
+        "referrers": 16,
         "runtime_referrers": [
           "hipengine/runtime/gemma4_assistant.py"
         ],
@@ -3756,7 +3756,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/gemma4/gemma4_moe.py",
-      "evidence_hash": "0f58789ebf46"
+      "evidence_hash": "7c68afe6927c"
     },
     {
       "kind": "kernel",
