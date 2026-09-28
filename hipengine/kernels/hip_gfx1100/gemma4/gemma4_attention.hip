@@ -310,6 +310,15 @@ __global__ void gemma4_attention_prefill_kernel(
 
   // Pass 3: weighted sum of V, then the normalise. Reads the weight pass 2
   // stored over its logit rather than recomputing expf.
+  //
+  // A four-key manual unroll with all four loads issued before the first is
+  // consumed was tried here and measured neutral (4.90 against 4.66 ms/launch
+  // on the sliding case, with the window=0 probe moving the other way), so the
+  // loop below is unchanged. Pass 3's global load is therefore not the exposed
+  // latency the 3.4 percent issue figure was read as; the compiler's own
+  // "loop not unrolled" warning on pass 1's `#pragma unroll 2` is the open
+  // thread, since that interleave was written deliberately and is not
+  // happening.
   for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
     float acc = 0.0f;
     for (int64_t j = first_kept; j < keys; ++j) {
