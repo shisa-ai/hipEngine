@@ -28,6 +28,13 @@ _SYMBOL_ATTN_FWD_COMPACT_VARLEN_GQA_PER_Q_HEAD = "hipengine_aotriton_attn_fwd_co
 
 AOTRITON_DTYPE_FP32 = 1
 AOTRITON_DTYPE_FP16 = 2
+
+# AOTRITON_NS::v3::flash::WindowValue::BottomRightAligned (0x80000002). The
+# default for the window bounds below, matching what aotriton_wrap.cc hardcoded
+# before those became parameters -- so the default path is unchanged.
+_WINDOW_BOTTOM_RIGHT = -2147483646
+# WindowValue::TopLeftAligned (0x80000001), the other sentinel.
+_WINDOW_TOP_LEFT = -2147483647
 AOTRITON_DTYPE_BF16 = 3
 AOTRITON_DTYPE_INT32 = 12
 AOTRITON_DTYPE_INT64 = 13
@@ -185,12 +192,21 @@ def aotriton_attn_fwd_v3_compact_varlen(
     max_seqlen_k: int,
     sm_scale: float,
     is_causal: bool = True,
+    window_left: int = _WINDOW_BOTTOM_RIGHT,
+    window_right: int = _WINDOW_BOTTOM_RIGHT,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
     home_root: str | Path | None = None,
 ) -> None:
-    """Launch AOTriton V3 compact-varlen forward attention through the C shim."""
+    """Launch AOTriton V3 compact-varlen forward attention through the C shim.
+
+    ``window_left`` / ``window_right`` default to AOTriton's
+    ``WindowValue::BottomRightAligned`` sentinel, which is exactly what the
+    shim used to hardcode -- so every existing caller keeps its previous
+    behaviour. Passing integers gives the kernel a real window bound, which is
+    the one configuration the window-alignment investigation has never run.
+    """
 
     if max_seqlen_q <= 0 or max_seqlen_k <= 0:
         raise ValueError("max_seqlen_q and max_seqlen_k must be positive")
@@ -212,6 +228,8 @@ def aotriton_attn_fwd_v3_compact_varlen(
         ctypes.c_void_p,
         ctypes.c_float,
         ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_int32,
         ctypes.c_void_p,
     ]
     fn.restype = ctypes.c_int
@@ -228,6 +246,8 @@ def aotriton_attn_fwd_v3_compact_varlen(
         ctypes.c_void_p(persistent_atomic_counter_ptr),
         ctypes.c_float(sm_scale),
         ctypes.c_int32(1 if is_causal else 0),
+        ctypes.c_int32(window_left),
+        ctypes.c_int32(window_right),
         ctypes.c_void_p(stream),
     )
     _check_hip(runtime, err)
