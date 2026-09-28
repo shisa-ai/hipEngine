@@ -321,15 +321,33 @@ def derived_allocation_bytes(spec: Gemma4GGUFWeightSpec, name: str) -> int:
 
 
 def derived_half_shape(spec: Gemma4GGUFWeightSpec) -> tuple[int, int, int]:
-    """Return the byte shape of one half of a fused rank-3 Q4_K expert tensor."""
+    """Return the byte shape of one half of a fused rank-3 Q4_K expert tensor.
 
-    experts, out_features, bytes_per_row = spec.source.shape
+    The third element is a row's *block bytes*, not its element count. GGUF
+    reports a tensor's shape in elements -- ``ffn_gate_up_exps`` is
+    ``(experts, 2 * intermediate, hidden)`` -- while the repack and its size
+    formula take byte shapes and validate the row against the quant's block
+    size. Reading ``shape[2]`` as a byte count left every real Q4_K expert
+    stack unpriced: ``hidden`` is a multiple of 256 but not of the 144-byte Q4_K
+    block, so ``resident_bytes`` raised rather than returning a total. The row
+    length is derived from the tensor's own byte count instead, which is exact
+    for any block type the loader carries.
+    """
+
+    experts, out_features, _ = spec.source.shape
     if int(out_features) % 2:
         raise ValueError(
             f"{spec.slot_path}: {out_features} output rows do not split into a "
             "gate half and an up half"
         )
-    return (int(experts), int(out_features) // 2, int(bytes_per_row))
+    rows = int(experts) * int(out_features)
+    nbytes = int(spec.source.nbytes)
+    if rows <= 0 or nbytes <= 0 or nbytes % rows:
+        raise ValueError(
+            f"{spec.slot_path}: {nbytes} stored bytes do not divide into {rows} "
+            "rows, so one row's block bytes cannot be derived"
+        )
+    return (int(experts), int(out_features) // 2, nbytes // rows)
 
 
 

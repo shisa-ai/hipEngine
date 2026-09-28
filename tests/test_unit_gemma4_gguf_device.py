@@ -24,6 +24,11 @@ from hipengine.loading.gemma4_gguf_device import (
 )
 from hipengine.loading.gguf import GGUFReader
 from hipengine.quant.gguf import GGMLQuantizationType
+from hipengine.quant.gguf_q4_k import (
+    GGUF_Q4_K_BLOCK_BYTES,
+    GGUF_Q4_K_TILE16_BLOCK_BYTES,
+    GGUF_Q4_K_TILE16_COLS,
+)
 from tests._rocm_guard import hip_runtime_available
 from tests._gemma4_gguf_fixture import (
     default_fixture_tensors,
@@ -167,14 +172,58 @@ def test_resident_bytes_is_the_artifact_bytes(reader: GGUFReader) -> None:
         if spec.allocation_names == ("raw",):
             assert spec.layout != LAYOUT_GGUF_Q8_0_T16, spec.slot_path
 
-    # The aggregate cannot be compared to the artifact bytes on this fixture:
-    # its rank-3 Q4_K expert is smaller than one Q4T16 tile row, so
-    # derived_allocation_bytes raises for that spec rather than returning a
-    # number. That is a fixture/planner mismatch predating this change, so the
-    # raw-only specs are summed directly instead of asserting weakly.
+    # The specs that keep only raw are summed on their own, so a planner that
+    # charged the artifact bytes twice could not satisfy this and the aggregate
+    # check below at the same time.
     raw_only = [s for s in specs if s.quant_key != "gguf_q4_k"]
     assert resident_bytes(tuple(raw_only)) == sum(int(s.source.nbytes) for s in raw_only)
     assert resident_bytes(tuple(raw_only)) <= artifact
+
+
+def test_expert_tiles_are_priced_from_the_stored_bytes(reader: GGUFReader) -> None:
+    """A Q4_K expert stack is charged for both tile halves, and the price is computable.
+
+    ``resident_bytes`` is the loader's pre-allocation total, so it has to answer
+    for the artifact the loader actually materializes. A Q4_K expert tensor is
+    stored as raw blocks whose row is ``in_features / 256`` Q4_K blocks, not
+    ``in_features`` elements, and the fused width splits at ``out_features // 2``.
+    Pricing the tiles from the logical row length instead raises on every real
+    artifact, so the figure is derived from the tensor's own byte count here and
+    cross-checked against the layout arithmetic rather than against the planner.
+    """
+
+    specs = plan_gemma4_gguf_resident_specs(reader)
+    stacked = [spec for spec in specs if "t16_gate" in spec.allocation_names]
+    assert stacked, "fixture has no rank-3 Q4_K expert stack to check"
+
+    artifact = sum(
+        tensor.nbytes for tensor in reader.info.tensors if tensor.name != "rope_freqs.weight"
+    )
+    tiled = 0
+    for spec in stacked:
+        experts, out_features, _ = spec.source.shape
+        assert int(out_features) % 2 == 0, spec.slot_path
+        assert int(out_features) // 2 % GGUF_Q4_K_TILE16_COLS == 0, spec.slot_path
+        blocks_per_row = int(spec.source.nbytes) // (
+            int(experts) * int(out_features) * GGUF_Q4_K_BLOCK_BYTES
+        )
+        assert blocks_per_row > 0, spec.slot_path
+        expected = (
+            int(experts)
+            * (int(out_features) // 2 // GGUF_Q4_K_TILE16_COLS)
+            * blocks_per_row
+            * GGUF_Q4_K_TILE16_BLOCK_BYTES
+        )
+        # A tile block is 2368 bytes where the 16 Q4_K blocks it replaces are
+        # 2304, so the tiles cost more than the raw bytes they are built from.
+        assert expected > int(spec.source.nbytes) // 2, spec.slot_path
+        assert derived_allocation_bytes(spec, "t16_gate") == expected, spec.slot_path
+        assert derived_allocation_bytes(spec, "t16_up") == expected, spec.slot_path
+        tiled += 2 * expected
+
+    # Residency is the artifact's stored bytes plus the tiles, and nothing else:
+    # the dense Q8_0 leaves' tiles are a permutation that replaces raw.
+    assert resident_bytes(specs) == artifact + tiled
 
 
 def test_an_unsupported_quant_type_names_the_type(reader: GGUFReader) -> None:
