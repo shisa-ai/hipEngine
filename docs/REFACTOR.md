@@ -4,7 +4,7 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
-## Gemma 4's WMMA prefill attention is on with its teacher-forced gate outstanding (found 2026-09-29)
+## Gemma 4's WMMA prefill attention is on; the teacher-forced KL gate is met, the wider promotion set is not (found 2026-09-29)
 
 `gemma4_wmma_flash` and `gemma4_wmma_flash_full` are the `production` profile's
 selections for Gemma 4's prefill attention -- the sliding geometry (head_dim
@@ -30,16 +30,37 @@ ladder is measured in all three arms at four prompt lengths:
 | 2048 | 570.0 | 804.6 | 1007 | 1067.14 |
 | 4096 | 456.1 | 628.2 | 973 | 1039.85 |
 
-**What is outstanding is the production numerical gate** in
-`docs/EXECUTION-PROFILES.md` §6: the KL envelope over full-vocabulary
-teacher-forced rows (mean <= 1e-3, p95 <= 5e-3, p99 <= 2e-2, max <= 5e-2,
-top-1 >= 99% overall and >= 97% per scope). Twelve identical greedy rows at
-four prompt lengths are a screen, not that gate. Both routes are T2 association
-candidates, so the gate is what their promotion evidence is made of.
+**The production numerical gate is met.**
+`benchmarks/results/2026-09-29-gemma4-teacher-forced-gate-prefill-attention.json`
+records the `docs/EXECUTION-PROFILES.md` §6 verdict on the shipping path against
+a frozen strict baseline over the campaign chain (2048 prompt tokens, 1024
+prefilled, 1023 scored rows, vocab 262144): mean KL 4.68e-06, p95 1.09e-05, p99
+5.21e-05, max 1.74e-03 against limits 1e-3 / 5e-3 / 2e-2 / 5e-2, and top-1 100
+percent with zero flips. `passed: true`, `failed: []`, with the decode split
+observed on 30690 launches over keys 1024-2047. The first run of this gate
+failed with `no_decode_launches_observed` and a 1.39e-02 max KL, which is how
+the selection bug below was found.
+
+**What is still outstanding is the rest of the promotion set**: this evaluator
+is a single teacher-forced chain, so it supplies no category, isolation or task
+gates, and 1023 rows on one chain is not the 500-1000 *paired* row standard.
+Both routes are T2 association candidates, so that set is what their promotion
+evidence is made of. It is tracked in
+`docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md`, not here.
 
 The lever is the profile, not an env var: `HIPENGINE_EXECUTION_PROFILE=strict`
-restores `gemma4_plain` everywhere. This entry is removed when the gate verdict
-is on file.
+restores `gemma4_plain` everywhere. Remove it when either candidate is
+superseded, or once the promotion set above is complete and the candidates
+carry default evidence.
+
+This candidate's routing is worth one note for whoever reads it next. The
+variant is selected by head geometry **and block width**: a one-token block is a
+decode step and keeps the strict kernel, because the candidates tile 16 query
+rows wide and the strict path has a dedicated decode kernel. A first cut matched
+on geometry alone, so decode ran the prefill tiling on all 30 layers and lost 10
+percent; `scripts/gemma4_teacher_forced_gate.py`'s route check is what caught it,
+because it asserts on observed launcher selections rather than the requested
+policy. A change that routes decode off the strict path re-fires it.
 
 ## Gemma prefill attention tiled variant is a dead route (found 2026-09-28)
 

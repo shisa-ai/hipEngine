@@ -553,6 +553,7 @@ def _select_prefill_attention(
     num_heads: int,
     num_kv_heads: int,
     head_dim: int,
+    tokens: int | None = None,
 ) -> PrefillAttentionSelection:
     """Resolve a prefill-attention variant for one head geometry.
 
@@ -561,6 +562,14 @@ def _select_prefill_attention(
     candidate is admitted only where it declares the geometry implemented; the
     first that matches wins. Every other input keeps the strict kernel, which
     covers every geometry the family serves.
+
+    ``tokens`` is the query-block width of the call being served, and a block of
+    one is a decode step. The candidates are prefill kernels: their tiling is 16
+    query rows wide, so one row wastes fifteen sixteenths of every WMMA op, and
+    the strict path has a dedicated decode kernel for exactly that case (see
+    :func:`gemma4_attention_prefill_bf16`). A one-token block therefore keeps the
+    strict kernel whatever geometry it has. ``None`` means the caller is asking
+    about the geometry alone and accepts the multi-row answer.
     """
 
     requests = _requested_variants(requested_variant)
@@ -570,6 +579,16 @@ def _select_prefill_attention(
             launcher=gemma4_attention_prefill_bf16,
             requested_variant=requested_variant,
             reason="strict",
+        )
+    if tokens is not None and tokens <= 1:
+        return PrefillAttentionSelection(
+            variant=PREFILL_ATTENTION_PLAIN,
+            launcher=gemma4_attention_prefill_bf16,
+            requested_variant=requested_variant,
+            reason=(
+                f"decode: a {tokens}-token block routes to the decode kernel, "
+                "and the requested variants are multi-row prefill kernels"
+            ),
         )
     refusals: list[str] = []
     for request in requests:
@@ -655,11 +674,14 @@ def select_prefill_attention(
     num_heads: int,
     num_kv_heads: int,
     head_dim: int,
+    tokens: int | None = None,
 ) -> PrefillAttentionSelection:
     """Resolve a prefill-attention variant for one head geometry, and report it.
 
     The selection itself is :func:`_select_prefill_attention`; this wrapper adds
-    the one-shot diagnostic the log env var turns on.
+    the one-shot diagnostic the log env var turns on. ``tokens`` is passed
+    through: see that function for why a one-token block keeps the strict
+    kernel.
     """
 
     selection = _select_prefill_attention(
@@ -667,6 +689,7 @@ def select_prefill_attention(
         num_heads=num_heads,
         num_kv_heads=num_kv_heads,
         head_dim=head_dim,
+        tokens=tokens,
     )
     if os.environ.get(PREFILL_ATTENTION_LOG_ENV, "").strip():
         marker = (selection.variant, int(head_dim))

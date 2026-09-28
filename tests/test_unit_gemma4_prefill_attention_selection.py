@@ -322,3 +322,48 @@ def test_the_production_plan_carries_one_selection_per_geometry():
         assert tuple(dict.fromkeys(sorted(row["selected_variant"] for row in rows))) == expected
         for row in rows:
             assert row["strict_fallback_variant"] == PREFILL_ATTENTION_PLAIN
+
+
+def test_a_one_token_block_keeps_the_strict_kernel():
+    """A decode step is not a prefill, however well its geometry matches.
+
+    The candidates tile 16 query rows wide. Serving one row with that tiling
+    wastes fifteen sixteenths of every WMMA op, and the strict path already has
+    a decode kernel for this case -- so the variant must not be selected, and
+    the reason has to say why rather than looking like a capability miss.
+    """
+
+    for geometry in (SLIDING, FULL):
+        selection = select_prefill_attention(
+            requested_variant=PRODUCTION, tokens=1, **geometry
+        )
+
+        assert selection.variant == PREFILL_ATTENTION_PLAIN
+        assert selection.launcher is gemma4_attention_prefill_bf16
+        assert selection.is_strict
+        assert selection.reason.startswith("decode:")
+
+
+def test_the_decode_rule_is_the_block_width_and_not_the_geometry():
+    """Both sides of the boundary, and a width unrelated to it.
+
+    Two rows is already a block the tiling can use, and the token count that
+    matters is 1, not any geometry constant -- so 2 and 512 must both select the
+    variant, and a wide block must not be treated as a decode step.
+    """
+
+    for tokens in (2, 7, 512):
+        selection = select_prefill_attention(
+            requested_variant=PRODUCTION, tokens=tokens, **SLIDING
+        )
+
+        assert selection.variant == PREFILL_ATTENTION_WMMA_FLASH, tokens
+        assert selection.reason == "capability match"
+
+
+def test_an_unconstrained_request_still_answers_on_geometry_alone():
+    """``tokens=None`` is the geometry question, and it keeps its old answer."""
+
+    selection = select_prefill_attention(requested_variant=PRODUCTION, **SLIDING)
+
+    assert selection.variant == PREFILL_ATTENTION_WMMA_FLASH

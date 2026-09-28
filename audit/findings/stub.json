@@ -293,9 +293,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/gemma4_gguf.py:128",
+      "key": "hipengine/generation/gemma4_gguf.py:133",
       "title": "unimplemented: raise NotImplementedError(\"Gemma 4 server tool-call parsing is not implemented\")",
-      "location": "hipengine/generation/gemma4_gguf.py:128",
+      "location": "hipengine/generation/gemma4_gguf.py:133",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -306,7 +306,7 @@
       "hints": {
         "anchor": "hipengine/generation/gemma4_gguf.py",
         "refs": [
-          "hipengine/generation/gemma4_gguf.py:128"
+          "hipengine/generation/gemma4_gguf.py:133"
         ],
         "tokens": [
           "call",
@@ -320,38 +320,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/gemma4_gguf.py:128",
-      "evidence_hash": "bb804e0c291e"
-    },
-    {
-      "kind": "stub",
-      "key": "hipengine/generation/gemma4_gguf.py:364",
-      "title": "unimplemented: raise NotImplementedError(\"Gemma 4 speculative provider is not configured\")",
-      "location": "hipengine/generation/gemma4_gguf.py:364",
-      "evidence": {
-        "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
-        "why": "NotImplementedError in runtime code"
-      },
-      "signals": [
-        "NotImplementedError in runtime code"
-      ],
-      "hints": {
-        "anchor": "hipengine/generation/gemma4_gguf.py",
-        "refs": [
-          "hipengine/generation/gemma4_gguf.py:364"
-        ],
-        "tokens": [
-          "configured",
-          "gemma",
-          "notimplementederror",
-          "provider",
-          "raise",
-          "speculative",
-          "unimplemented"
-        ]
-      },
-      "id": "stub/hipengine/generation/gemma4_gguf.py:364",
-      "evidence_hash": "094c30542762"
+      "id": "stub/hipengine/generation/gemma4_gguf.py:133",
+      "evidence_hash": "ac6246c4b11d"
     },
     {
       "kind": "stub",
@@ -385,9 +355,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/gemma4_gguf.py:423",
-      "title": "unimplemented: raise NotImplementedError(\"Gemma 4 basic runner: \" + \"; \".join(blockers))",
-      "location": "hipengine/generation/gemma4_gguf.py:423",
+      "key": "hipengine/generation/gemma4_gguf.py:408",
+      "title": "unimplemented: raise NotImplementedError(\"Gemma 4 speculative provider is not configured\")",
+      "location": "hipengine/generation/gemma4_gguf.py:408",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -398,7 +368,37 @@
       "hints": {
         "anchor": "hipengine/generation/gemma4_gguf.py",
         "refs": [
-          "hipengine/generation/gemma4_gguf.py:423"
+          "hipengine/generation/gemma4_gguf.py:408"
+        ],
+        "tokens": [
+          "configured",
+          "gemma",
+          "notimplementederror",
+          "provider",
+          "raise",
+          "speculative",
+          "unimplemented"
+        ]
+      },
+      "id": "stub/hipengine/generation/gemma4_gguf.py:408",
+      "evidence_hash": "29bfbc8045f7"
+    },
+    {
+      "kind": "stub",
+      "key": "hipengine/generation/gemma4_gguf.py:445",
+      "title": "unimplemented: raise NotImplementedError(\"Gemma 4 basic runner: \" + \"; \".join(blockers))",
+      "location": "hipengine/generation/gemma4_gguf.py:445",
+      "evidence": {
+        "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
+        "why": "NotImplementedError in runtime code"
+      },
+      "signals": [
+        "NotImplementedError in runtime code"
+      ],
+      "hints": {
+        "anchor": "hipengine/generation/gemma4_gguf.py",
+        "refs": [
+          "hipengine/generation/gemma4_gguf.py:445"
         ],
         "tokens": [
           "basic",
@@ -411,8 +411,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/gemma4_gguf.py:423",
-      "evidence_hash": "24a254b8f612"
+      "id": "stub/hipengine/generation/gemma4_gguf.py:445",
+      "evidence_hash": "013e9d5fcffc"
     },
     {
       "kind": "stub",
@@ -1749,9 +1749,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:234",
+      "key": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:238",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:234",
+      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:238",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -1762,7 +1762,7 @@
       "hints": {
         "anchor": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py",
         "refs": [
-          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:234"
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:238"
         ],
         "tokens": [
           "notimplementederror",
@@ -1770,8 +1770,60 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:234",
-      "evidence_hash": "eb363bd868b7"
+      "id": "stub/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:238",
+      "evidence_hash": "32d9cd2e36a1"
+    },
+    {
+      "kind": "stub",
+      "key": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.py:171",
+      "title": "unimplemented: raise NotImplementedError(",
+      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.py:171",
+      "evidence": {
+        "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
+        "why": "NotImplementedError in runtime code"
+      },
+      "signals": [
+        "NotImplementedError in runtime code"
+      ],
+      "hints": {
+        "anchor": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.py",
+        "refs": [
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.py:171"
+        ],
+        "tokens": [
+          "notimplementederror",
+          "raise",
+          "unimplemented"
+        ]
+      },
+      "id": "stub/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.py:171",
+      "evidence_hash": "274b5ccdeabb"
+    },
+    {
+      "kind": "stub",
+      "key": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py:175",
+      "title": "unimplemented: raise NotImplementedError(",
+      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py:175",
+      "evidence": {
+        "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
+        "why": "NotImplementedError in runtime code"
+      },
+      "signals": [
+        "NotImplementedError in runtime code"
+      ],
+      "hints": {
+        "anchor": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py",
+        "refs": [
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py:175"
+        ],
+        "tokens": [
+          "notimplementederror",
+          "raise",
+          "unimplemented"
+        ]
+      },
+      "id": "stub/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py:175",
+      "evidence_hash": "92cbcf3e91d0"
     },
     {
       "kind": "stub",
