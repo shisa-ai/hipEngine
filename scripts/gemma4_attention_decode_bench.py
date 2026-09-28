@@ -42,6 +42,8 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     build_gemma4_attention,
+    decode_selection,
+    decode_slices,
     gemma4_attention_prefill_bf16,
 )
 
@@ -101,6 +103,14 @@ def run_case(library, runtime, *, keys: int, geometry: str, mask_mode: str, iter
         for buf in buffers:
             free(buf)
 
+    # Which decode path the launcher took, read back rather than inferred. The
+    # three are numerically close by design, so a timing or a parity test cannot
+    # distinguish them; without this the row does not say what it measured. It is
+    # also the only way to see whether ``slices`` engaged, which is the question
+    # the block-count lever turns on.
+    selection = decode_selection(library)
+    slices = decode_slices(keys, head_dim)
+
     per_launch_us = (time.perf_counter() - started) / iters * 1e6
     unique_kv = tokens * keys * num_kv_heads * head_dim * 2 * 2  # K+V bf16, read once
     issued_kv = tokens * keys * num_heads * head_dim * 2 * 2 * 3  # per query head, 3 passes
@@ -109,6 +119,9 @@ def run_case(library, runtime, *, keys: int, geometry: str, mask_mode: str, iter
         "tokens": tokens,
         "keys": keys,
         "mask": mask_mode,
+        "selection": selection,
+        "slices": slices,
+        "blocks": tokens * num_heads,
         "per_launch_us": per_launch_us,
         "unique_kv_mb": unique_kv / 1e6,
         "unique_kv_gbps": unique_kv / (per_launch_us * 1e-6) / 1e9,
@@ -146,6 +159,7 @@ def main() -> int:
             rows.append(row)
             print(
                 f"{row['geometry']:8s} tokens={row['tokens']:2d} keys={row['keys']:5d} mask={row['mask']:4s} "
+                f"sel={row['selection']} slices={row['slices']} blocks={row['blocks']:3d} "
                 f"{row['per_launch_us']:9.1f} us/launch  "
                 f"unique-KV {row['unique_kv_mb']:6.2f} MB -> {row['unique_kv_gbps']:6.1f} GB/s  "
                 f"issued {row['issued_kv_mb']:7.2f} MB -> {row['issued_kv_gbps']:6.1f} GB/s",
