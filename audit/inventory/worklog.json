@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11144,
-    "current": 3912,
+    "entries": 11145,
+    "current": 3913,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1235,
@@ -46663,14 +46663,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "dependency",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "1. **Profile the MMQ32 gate/up with stall attribution.** Every routing lever is now\n   measured and closed; the 4x is inside the kernel.\n2. **Record the docstring/threshold tension in `docs/REFACTOR.md`** if this reaches\n   another unit: the pack8 expert layout currently cannot be selected at any shape\n   where its byte trade is favourable, so it is a flag whose clearing experiment\n   cannot be run.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "Next names a dependency: 'cannot be'",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T100641.455507Z-lhl-gemma4-pack8-unreachable-prefill-5fb2bf.md",
@@ -46692,7 +46692,7 @@
         ]
       },
       "id": "worklog/20260928T100641.455507Z-lhl-gemma4-pack8-unreachable-prefill-5fb2bf",
-      "evidence_hash": "ca8c7082ffb5"
+      "evidence_hash": "f984dfca2230"
     }
   ]
 }
