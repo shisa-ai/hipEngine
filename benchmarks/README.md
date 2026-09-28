@@ -1875,15 +1875,16 @@ rule as the rest rather than falling to a slower fallback.
 
 | Workload | Prefill | Decode | Public wall |
 | --- | ---: | ---: | ---: |
-| 512/128 | **712.8 tok/s** | 28.13 tok/s | **5.243 s** |
+| 512/128 | **746.6 tok/s** | 27.91 tok/s | **5.210 s** |
 
 The previous published row for this workload was 121.90 tok/s prefill, 21.14
 tok/s decode and a 10.240 s wall. The intervening work was the int8 MMQ expert
 routes becoming the default, the Q5_1 down projection's inner-loop memory
-traffic, and layer 29 reaching its siblings' routes. Prefill-only kernel time at
-512 tokens divides into the routed experts at 44.0%, the dense projections and
-lm head at 25.4%, and attention at 23.9%. At 2048 tokens attention is 48.3% and
-the expert block 29.9%, so attention is the only term that grows with prompt
+traffic, layer 29 reaching its siblings' routes, and prefill attention no longer
+walking the columns its own causal mask zeroes. Prefill-only kernel time at
+512 tokens divides into the routed experts at 46.8%, the dense projections and
+lm head at 26.9%, and attention at 19.2%. At 2048 tokens attention is 46.2% and
+the expert block 31.1%, so attention is the only term that grows with prompt
 length and past the sliding window it becomes the largest single one.
 
 The projection kernels are fetch-bound, not weight-bound: with the weight reuse
