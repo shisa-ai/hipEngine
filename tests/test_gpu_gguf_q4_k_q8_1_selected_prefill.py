@@ -2549,3 +2549,95 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
     assert np.mean(
         fixture.reference.argmax(axis=-1) == actual.argmax(axis=-1)
     ) >= 0.9
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("tokens", "top_k", "hidden"),
+    [(4, 8, 256), (3, 2, 512), (5, 4, 128)],
+)
+def test_q8_1_mmq_gather_ds4_pack_is_byte_exact_to_gather_then_pack(
+    tokens: int, top_k: int, hidden: int
+) -> None:
+    """The fused gather+pack must match gather-then-pack byte for byte.
+
+    ``gemma4_experts_forward_bf16`` runs ``qwen35_moe_gather_packed_hidden_lowp``
+    and then ``gguf_q8_1_mmq_ds4_pack_bf16``, and on the MMQ route nothing reads
+    the BF16 ``packed_hidden`` in between: the pack is its only consumer. The
+    fused kernel skips that write-then-read by quantizing straight out of the
+    source rows. Because the gather is a bit copy, reading ``hidden_states``
+    through the same lane index must reproduce the exact float the unfused pack
+    saw, so the whole pipeline has to stay byte-identical -- a fused variant that
+    only approximately agrees would change expert arithmetic.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+        gguf_q8_1_mmq_gather_ds4_pack_bf16,
+    )
+
+    rng = np.random.default_rng(20260928)
+    lanes = tokens * top_k
+
+    def _bf16_bits(values: np.ndarray) -> np.ndarray:
+        """Round float32 to BF16 bits (nearest-even), the storage the kernels read."""
+
+        u = np.ascontiguousarray(values, dtype=np.float32).view(np.uint32)
+        u = u + ((((u >> np.uint32(16)) & np.uint32(1))) + np.uint32(0x7FFF))
+        return (u >> np.uint32(16)).astype(np.uint16)
+
+    # Activation-scale values rather than uniform random bits: the CPU oracle
+    # stores scale and sum as float16, so bits encoding 1e30+ would overflow it
+    # to inf and desync from the GPU for reasons unrelated to the fusion.
+    hidden_bits = _bf16_bits(rng.standard_normal((tokens, hidden)) * 4.0)
+    # A permutation of lane ids so every source row is used exactly once, with a
+    # few lanes invalidated to exercise the gather's bounds path (it writes 0).
+    order = rng.permutation(lanes).astype(np.int64)
+    order[: max(1, lanes // 7)] = -1
+
+    # Unfused reference: gather on the host, then the existing CPU pack oracle.
+    packed = np.zeros((lanes, hidden), dtype=np.uint16)
+    ok = order >= 0
+    source = np.where(ok, order, 0)
+    token_idx = source // top_k
+    ok &= (token_idx >= 0) & (token_idx < tokens)
+    packed[ok] = hidden_bits[token_idx[ok]]
+    expected = pack_q8_1_mmq_ds4_from_bf16(packed)
+
+    actual = np.zeros_like(expected)
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    bufs = []
+    try:
+        hidden_dev = malloc(hidden_bits.nbytes, runtime=runtime)
+        lanes_dev = malloc(order.nbytes, runtime=runtime)
+        out_dev = malloc(actual.nbytes, runtime=runtime)
+        bufs.extend((hidden_dev, lanes_dev, out_dev))
+        copy_host_to_device(
+            hidden_dev,
+            host_array_ptr(np.ascontiguousarray(hidden_bits)),
+            runtime=runtime,
+        )
+        copy_host_to_device(
+            lanes_dev,
+            host_array_ptr(np.ascontiguousarray(order)),
+            runtime=runtime,
+        )
+        gguf_q8_1_mmq_gather_ds4_pack_bf16(
+            hidden_dev.ptr,
+            lanes_dev.ptr,
+            out_dev.ptr,
+            lanes,
+            hidden,
+            tokens,
+            top_k,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(actual), out_dev, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(actual, expected)

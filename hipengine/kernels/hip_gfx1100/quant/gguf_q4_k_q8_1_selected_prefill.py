@@ -47,6 +47,7 @@ _SYMBOL_DS4_WMMA32_LDSPACK_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wm
 _SYMBOL_DS4_WMMA32_LDS_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_wmma32_lds_prefill_compact32_bf16_bf16_out"
 _SYMBOL_WMMA_I8_PROBE = "hipengine_gguf_q4_k_q8_1_wmma_i8_probe_16x16"
 _SYMBOL_DS4_PACK_BF16 = "hipengine_gguf_q8_1_mmq_ds4_pack_bf16"
+_SYMBOL_DS4_GATHER_PACK_BF16 = "hipengine_gguf_q8_1_mmq_gather_ds4_pack_bf16"
 _SYMBOL_DS4X3_PACK_BF16 = "hipengine_gguf_q8_1_mmq_ds4_pack_bf16_d4x3"
 _SYMBOL_DS4_F32_PACK_BF16 = {
     1: "hipengine_gguf_q8_1_mmq_ds4_f32_pack_bf16_d4",
@@ -401,6 +402,66 @@ def gguf_q8_1_mmq_ds4_pack_bf16(
         ctypes.c_void_p(out_q8_ptr),
         ctypes.c_int64(rows),
         ctypes.c_int64(hidden),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q8_1_mmq_gather_ds4_pack_bf16(
+    hidden_bf16_ptr: int,
+    sorted_lanes_ptr: int,
+    out_q8_ptr: int,
+    rows: int,
+    hidden: int,
+    tokens: int,
+    top_k: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Gather the routed rows and pack them to DS4 ``block_q8_1_mmq`` in one pass.
+
+    ``rows`` is the packed lane count (``tokens * top_k``), not the token count:
+    it indexes ``sorted_lanes`` exactly as ``qwen35_moe_gather_packed_hidden_lowp``
+    does. The output is byte-identical to gathering into BF16 first and running
+    ``gguf_q8_1_mmq_ds4_pack_bf16`` over that buffer, because the gather is a bit
+    copy -- so use it only where nothing reads the BF16 staging buffer in between,
+    which is the whole point: dropping that write and its read is worth 45.9 MB
+    per (block, layer) at the real artifact's shape.
+    """
+
+    _check_positive(rows, "rows")
+    _check_positive(hidden, "hidden")
+    _check_positive(tokens, "tokens")
+    _check_positive(top_k, "top_k")
+    if hidden % _Q8_1_MMQ_BLOCK != 0:
+        raise ValueError(
+            "hidden must be divisible by DS4 Q8_1 MMQ block size 128"
+        )
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_DS4_GATHER_PACK_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_bf16_ptr),
+        ctypes.c_void_p(sorted_lanes_ptr),
+        ctypes.c_void_p(out_q8_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(top_k),
         ctypes.c_void_p(stream),
     )
     if int(err) != HIP_SUCCESS:
