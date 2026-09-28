@@ -181,8 +181,14 @@ scratch allocation. Four fresh sham/scratch/scratch/sham ratios are
 0.97503/0.99101/0.99345/0.99916 with byte-identical outputs. The cached profiler
 confirms baseline Q5_1 calls precede the first 1,638,400-byte allocation and the
 36-byte GDN trigger; subsequent Q5_1 calls use the same queue. No large penalty
-appears for this pair. Dense-wide as first trigger and other decode owners are
-not covered; no broad throttle-clearance or speedup claim follows.
+appears for this pair. The subsequent
+[dense-wide first-trigger screen](../benchmarks/results/2026-09-28-qwen4exp-decode-dense-scratch/README.md)
+also shows no large persistent Q5_1 penalty: scratch ratios 0.99501/1.00294
+versus sham 0.98817/0.98892, exact victim outputs and a passing dense CPU
+reference. Its trace verifies the first 3,932,160-byte allocation follows
+baseline Q5_1 calls and precedes the 92-byte dense-wide trigger, with no GDN
+execution. Gate/up and Q8 decode victims remain uncovered; no broad
+throttle-clearance or speedup claim follows.
 
 
 ## 2. Arithmetic policy and kernel mechanisms
