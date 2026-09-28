@@ -1,0 +1,163 @@
+[
+  {
+    "module": "hipengine.kernels.hip_gfx1100.attention.paged_attn_decode",
+    "function": "plan_qwen35_paged_attn_decode_build",
+    "source": "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip",
+    "path": "/home/lhl/.cache/hipengine/build/qwen35_paged_attn_decode-9b0fa322178b0cfa/qwen35_paged_attn_decode.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.attention.paged_kv_write",
+    "function": "plan_qwen35_paged_kv_write_build",
+    "source": "hipengine/kernels/hip_gfx1100/attention/paged_kv_write.hip",
+    "path": "/home/lhl/.cache/hipengine/build/qwen35_paged_kv_write-982af3bf4b8918cd/qwen35_paged_kv_write.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa",
+    "function": "plan_qwen4_exp_qsa_build",
+    "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.hip",
+    "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.convert.cast",
+    "function": "plan_cast_build",
+    "source": "hipengine/kernels/hip_gfx1100/convert/cast.hip",
+    "path": "/home/lhl/.cache/hipengine/build/cast-3837db24bc38fa21/cast.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.fused.paro_combine",
+    "function": "plan_paro_combine_build",
+    "source": "hipengine/kernels/hip_gfx1100/fused/paro_combine.hip",
+    "path": "/home/lhl/.cache/hipengine/build/paro_combine-a8df9a82c6954dab/paro_combine.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.fused.paro_silu",
+    "function": "plan_paro_silu_build",
+    "source": "hipengine/kernels/hip_gfx1100/fused/paro_silu.hip",
+    "path": "/home/lhl/.cache/hipengine/build/paro_silu-ad8c3304eedd4192/paro_silu.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr",
+    "function": "plan_qwen4_exp_gr_build",
+    "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.hip",
+    "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_gr-0e109dc6e514c7d9/qwen4_exp_gr.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple",
+    "function": "plan_qwen4_exp_ple_build",
+    "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_ple.hip",
+    "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_ple-b93fb6ba1faaa50e/qwen4_exp_ple.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.linear.dense_gemv",
+    "function": "plan_dense_gemv_build",
+    "source": "hipengine/kernels/hip_gfx1100/linear/dense_gemv.hip",
+    "path": "/home/lhl/.cache/hipengine/build/dense_gemv-bbababaae8f8edb2/dense_gemv.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.linear.lm_head",
+    "function": "plan_lm_head_build",
+    "source": "hipengine/kernels/hip_gfx1100/linear/lm_head.hip",
+    "path": "/home/lhl/.cache/hipengine/build/lm_head-2ab80f573de6082a/lm_head.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.linear_attn.conv",
+    "function": "plan_qwen35_linear_attn_conv_build",
+    "source": "hipengine/kernels/hip_gfx1100/linear_attn/conv.hip",
+    "path": "/home/lhl/.cache/hipengine/build/qwen35_linear_attn_conv-2cbc3608de3dba82/qwen35_linear_attn_conv.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn",
+    "function": "plan_qwen4_exp_gdn_build",
+    "source": "hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.hip",
+    "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-3d97211ffad0e4c1/qwen4_exp_gdn.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.moe.group_scatter",
+    "function": "plan_qwen35_moe_group_scatter_build",
+    "source": "hipengine/kernels/hip_gfx1100/moe/group_scatter.hip",
+    "path": "/home/lhl/.cache/hipengine/build/qwen35_moe_group_scatter-203366d4c085ea29/qwen35_moe_group_scatter.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.moe.router",
+    "function": "plan_qwen35_router_build",
+    "source": "hipengine/kernels/hip_gfx1100/moe/router.hip",
+    "path": "/home/lhl/.cache/hipengine/build/qwen35_router-ba04595500289b40/qwen35_router.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv",
+    "function": "plan_gguf_iq_gemv_build",
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip",
+    "path": "/home/lhl/.cache/hipengine/build/gguf_iq_gemv-b78777d64f5b247d/gguf_iq_gemv.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv",
+    "function": "plan_gguf_k_gemv_build",
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip",
+    "path": "/home/lhl/.cache/hipengine/build/gguf_k_gemv-a51526e64ebf8258/gguf_k_gemv.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv",
+    "function": "plan_gguf_q4_k_gemv_build",
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip",
+    "path": "/home/lhl/.cache/hipengine/build/gguf_q4_k_gemv-4ae2caa94c057a84/gguf_q4_k_gemv.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill",
+    "function": "plan_gguf_q4_k_selected_prefill_build",
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip",
+    "path": "/home/lhl/.cache/hipengine/build/gguf_q4_k_selected_prefill-e0921ef05b2f8eac/gguf_q4_k_selected_prefill.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill",
+    "function": "plan_gguf_q5_k_q8_1_selected_prefill_build",
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_q8_1_selected_prefill.hip",
+    "path": "/home/lhl/.cache/hipengine/build/gguf_q5_k_q8_1_selected_prefill-ffb6bd32b561c6c6/gguf_q5_k_q8_1_selected_prefill.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding",
+    "function": "plan_gguf_q6_k_embedding_build",
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.hip",
+    "path": "/home/lhl/.cache/hipengine/build/gguf_q6_k_embedding-8c83f05ff0e8657e/gguf_q6_k_embedding.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide",
+    "function": "plan_gguf_q8_0_dense_wide_build",
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dense_wide.hip",
+    "path": "/home/lhl/.cache/hipengine/build/gguf_q8_0_dense_wide-607dcca699485493/gguf_q8_0_dense_wide.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill",
+    "function": "plan_gguf_q8_0_prefill_build",
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip",
+    "path": "/home/lhl/.cache/hipengine/build/gguf_q8_0_prefill-9de92a2ef001ef8c/gguf_q8_0_prefill.so",
+    "exists": true
+  },
+  {
+    "module": "hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1",
+    "function": "plan_qwen4_exp_q5_1_build",
+    "source": "hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip",
+    "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_q5_1-cfb1aee6a67ad685/qwen4_exp_q5_1.so",
+    "exists": true
+  }
+]
