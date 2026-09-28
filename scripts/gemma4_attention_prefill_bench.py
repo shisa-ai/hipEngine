@@ -31,6 +31,15 @@ def main() -> int:
     ap.add_argument("--tokens", type=int, default=2048)
     ap.add_argument("--iters", type=int, default=5)
     ap.add_argument("--warmup", type=int, default=2)
+    ap.add_argument(
+        "--mask",
+        choices=("keep", "zero"),
+        default="keep",
+        help="'zero' runs the same shapes with an all-zero keep-mask, which skips "
+             "every K/V load while leaving the key loop and the reductions intact. "
+             "The gap between the two modes is the load share of the cost, and it "
+             "is what separates a traffic-bound kernel from a latency-bound one.",
+    )
     args = ap.parse_args()
 
     import numpy as np
@@ -60,7 +69,7 @@ def main() -> int:
         ("full 512d 16q/2kv window=0", 16, 2, 512, 0, 5, True),
     ]
 
-    print(f"tokens={tokens} iters={args.iters}")
+    print(f"tokens={tokens} iters={args.iters} mask={args.mask}")
     print(f"{'case':32s} {'ms/launch':>10s} {'GFLOP/s':>10s} {'all layers':>11s}")
 
     total_ms = 0.0
@@ -75,6 +84,8 @@ def main() -> int:
             lo = 0 if window <= 0 else max(0, t - window + 1)
             mask[t, :lo] = 0
             mask[t, t + 1 :] = 0
+        if args.mask == "zero":
+            mask[:] = 0
 
         def bf16(a):
             bits = np.ascontiguousarray(a, dtype=np.float32).view(np.uint32)
