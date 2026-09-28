@@ -39,6 +39,17 @@ def main() -> int:
              "that tracks the grid, since --tokens scales both and --keys scales "
              "only the loop.",
     )
+    ap.add_argument(
+        "--dtype",
+        choices=("bf16", "f32"),
+        default="bf16",
+        help="Storage width for q/k/v. The two run identical arithmetic over the same "
+             "shapes and differ only in bytes moved, so comparing them is a traffic "
+             "ablation that does not also remove the work -- which the --mask zero "
+             "ablation does, since the masked branch contains both the load and the "
+             "dot. A time ratio near 2.0 means the kernel is paying for bytes; near "
+             "1.0 means it is not.",
+    )
     ap.add_argument("--iters", type=int, default=5)
     ap.add_argument("--warmup", type=int, default=2)
     ap.add_argument(
@@ -79,7 +90,7 @@ def main() -> int:
         ("full 512d 16q/2kv window=0", 16, 2, 512, 0, 5, True),
     ]
 
-    print(f"tokens={tokens} iters={args.iters} mask={args.mask}")
+    print(f"tokens={tokens} iters={args.iters} mask={args.mask} dtype={args.dtype}")
     print(f"{'case':32s} {'ms/launch':>10s} {'GFLOP/s':>10s} {'all layers':>11s}")
 
     total_ms = 0.0
@@ -105,6 +116,13 @@ def main() -> int:
 
         qb, kb, vb = bf16(q), bf16(k), bf16(v)
         out = np.zeros((tokens, n_head, head_dim), dtype=np.uint16)
+        prefill = ga.gemma4_attention_prefill_bf16
+        if args.dtype == "f32":
+            qb = np.ascontiguousarray(q, dtype=np.float32)
+            kb = np.ascontiguousarray(k, dtype=np.float32)
+            vb = np.ascontiguousarray(v, dtype=np.float32)
+            out = np.zeros((tokens, n_head, head_dim), dtype=np.float32)
+            prefill = ga.gemma4_attention_prefill_f32
 
         bufs = [
             malloc(qb.nbytes),
@@ -118,7 +136,7 @@ def main() -> int:
                 copy_host_array_to_device(buf, arr)
 
             def once():
-                ga.gemma4_attention_prefill_bf16(
+                prefill(
                     bufs[0].ptr,
                     bufs[1].ptr,
                     bufs[2].ptr,
