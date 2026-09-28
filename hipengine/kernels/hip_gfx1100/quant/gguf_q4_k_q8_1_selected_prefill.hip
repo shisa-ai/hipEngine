@@ -1168,6 +1168,11 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
   for (int k32 = 0; k32 < k32_iters; ++k32) {
     const int weight_block = k32 >> 3;
     const int subblock = k32 & 7;
+    // Which 32-element slot inside the wide pass this iteration fills. A pass of
+    // KSUB slots stages KSUB subblocks into shared memory and only then syncs
+    // and consumes them, so the __syncthreads() count divides by KSUB while the
+    // arithmetic is unchanged.
+    const int kslot = k32 % KSUB;
 
 #pragma unroll
     for (int col_offset = load_weight_col;
@@ -1267,10 +1272,10 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
               dmin * static_cast<float>(min));
         }
       }
-      weight_tile[col_offset].qs[load_weight_part] = packed_q4;
+      weight_tile[col_offset * KSUB + kslot].qs[load_weight_part] = packed_q4;
       if (load_weight_part == 0) {
-        weight_tile[col_offset].dm[0] = packed_scale;
-        weight_tile[col_offset].dm[1] = packed_min;
+        weight_tile[col_offset * KSUB + kslot].dm[0] = packed_scale;
+        weight_tile[col_offset * KSUB + kslot].dm[1] = packed_min;
       }
     }
 
@@ -1297,76 +1302,82 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
                 load_activation_part * 8);
 #pragma unroll
         for (int word = 0; word < 2; ++word) {
-          activation_tile[load_activation_row]
+          activation_tile[load_activation_row * KSUB + kslot]
               .qs[load_activation_part * 2 + word] = x_words[word];
         }
         if (load_activation_part == 0) {
-          activation_tile[load_activation_row].ds[0] =
+          activation_tile[load_activation_row * KSUB + kslot].ds[0] =
               xb.ds4[2 * ds4_idx + 0];
-          activation_tile[load_activation_row].ds[1] =
+          activation_tile[load_activation_row * KSUB + kslot].ds[1] =
               xb.ds4[2 * ds4_idx + 1];
         }
       } else {
 #pragma unroll
         for (int word = 0; word < 2; ++word) {
-          activation_tile[load_activation_row]
+          activation_tile[load_activation_row * KSUB + kslot]
               .qs[load_activation_part * 2 + word] = 0;
         }
         if (load_activation_part == 0) {
-          activation_tile[load_activation_row].ds[0] = 0;
-          activation_tile[load_activation_row].ds[1] = 0;
+          activation_tile[load_activation_row * KSUB + kslot].ds[0] = 0;
+          activation_tile[load_activation_row * KSUB + kslot].ds[1] = 0;
         }
+      }
+      // Every slot of the wide pass must have landed before any thread reads
+      // one, so the sync and the consume happen on the last slot only. The slots
+      // live in shared memory and survive the intervening iterations.
+      if (kslot != KSUB - 1) {
+        continue;
       }
       __syncthreads();
 
       q4_k_mmq32_cache weight_cache[TM];
-#pragma unroll
-      for (int cr = 0; cr < TM; ++cr) {
-        weight_cache[cr] = weight_tile[tiwr * TM + cr];
-      }
 
 #pragma unroll
       for (int wsic = 0; wsic < WNITER; ++wsic) {
         if (wsic * 4 + tiwc >= valid_rows) continue;
-        const q8_1_mmq32_cache activation_cache =
-            activation_tile[wsic * 4 + tiwc];
-        const float xd =
-            fp16_bits_to_float(activation_cache.ds[0]);
-        const float xsum =
-            fp16_bits_to_float(activation_cache.ds[1]);
 #pragma unroll
-        for (int cr = 0; cr < TM; ++cr) {
-          int dot = 0;
+        for (int s = 0; s < KSUB; ++s) {
+          const q8_1_mmq32_cache activation_cache =
+              activation_tile[(wsic * 4 + tiwc) * KSUB + s];
+          const float xd =
+              fp16_bits_to_float(activation_cache.ds[0]);
+          const float xsum =
+              fp16_bits_to_float(activation_cache.ds[1]);
 #pragma unroll
-          for (int qword = 0; qword < 8; ++qword) {
-            const uint32_t q4_word =
-                (weight_cache[cr].qs[qword >> 1] >>
-                 ((qword & 1) * 4)) &
-                0x0F0F0F0Fu;
-            dot = gguf_q4_k_mmq_dp4a(
-                q4_word,
-                static_cast<uint32_t>(
-                    activation_cache.qs[qword]),
-                dot);
-          }
-          const float dscale =
-              fp16_bits_to_float(weight_cache[cr].dm[0]);
-          const float dmin =
-              fp16_bits_to_float(weight_cache[cr].dm[1]);
-          acc[wsic * TM + cr] +=
-              xd * dscale * static_cast<float>(dot);
-          // The Q4_K weight is ``d*scale*q - dmin*min``, so its min offset
-          // contributes ``-dmin*min*sum_k x[k]`` over the activation. That is a
-          // property of the activation, not of an activation plane: only the
-          // first plane stores the activation's own sum, and later planes store
-          // their residuals' sums. Applying the term once per plane over-counts
-          // it by about the size of the error the extra planes exist to remove,
-          // which is why three planes measured 1.08x better than one rather than
-          // 22x. Take it from the first plane only. With ACTIVATION_PASSES == 1
-          // this is the original expression, so the one-plane routes are
-          // unchanged.
-          if (activation_pass == 0) {
-            acc[wsic * TM + cr] -= dmin * xsum;
+          for (int cr = 0; cr < TM; ++cr) {
+            weight_cache[cr] = weight_tile[(tiwr * TM + cr) * KSUB + s];
+            int dot = 0;
+#pragma unroll
+            for (int qword = 0; qword < 8; ++qword) {
+              const uint32_t q4_word =
+                  (weight_cache[cr].qs[qword >> 1] >>
+                   ((qword & 1) * 4)) &
+                  0x0F0F0F0Fu;
+              dot = gguf_q4_k_mmq_dp4a(
+                  q4_word,
+                  static_cast<uint32_t>(
+                      activation_cache.qs[qword]),
+                  dot);
+            }
+            const float dscale =
+                fp16_bits_to_float(weight_cache[cr].dm[0]);
+            const float dmin =
+                fp16_bits_to_float(weight_cache[cr].dm[1]);
+            acc[wsic * TM + cr] +=
+                xd * dscale * static_cast<float>(dot);
+            // The Q4_K weight is ``d*scale*q - dmin*min``, so its min offset
+            // contributes ``-dmin*min*sum_k x[k]`` over the activation. That is a
+            // property of the activation, not of an activation plane: only the
+            // first plane stores the activation's own sum, and later planes store
+            // their residuals' sums. Applying the term once per plane over-counts
+            // it by about the size of the error the extra planes exist to remove,
+            // which is why three planes measured 1.08x better than one rather than
+            // 22x. Take it from the first plane only. With ACTIVATION_PASSES == 1
+            // this is the original expression, so the one-plane routes are
+            // unchanged.
+            if (activation_pass == 0) {
+              acc[wsic * TM + cr] -= dmin * xsum;
+            }
           }
         }
       }
