@@ -1604,6 +1604,163 @@ def test_fused_gate_up_mmq_route_holds_at_the_model_geometry_and_every_fragmenta
 
 
 @_needs_hip
+@pytest.mark.parametrize(
+    "quant_key, make_weight",
+    [("gguf_q5_1", make_q5_1_weight), ("gguf_q8_0", make_q8_0_weight)],
+)
+def test_expert_down_mmq_route_holds_at_gemma4_s_own_down_geometry(
+    quant_key, make_weight
+) -> None:
+    """The DS4 DP4A down route at 704 -> 2816 for both quants it accepts.
+
+    Gemma 4 26B-A4B UD-Q4_K_XL quantizes 29 of its 30 expert down projections
+    Q5_1 and the last one Q8_0, so a route that accepts only Q5_1 sends exactly
+    one layer of thirty to the fp32 grouped family -- measured at 43.85 ms of a
+    873 ms 512-token prefill against 5.30 ms for a sibling at the same shape.
+    Both consumers share the DS4 activation pack and differ only in the weight
+    decode, so both are held here to the same envelope the Q4_K gate/up MMQ
+    route runs at: this route quantizes the block's activations, so its error is
+    bounded by that step rather than by reassociation. The oracle is an
+    independent dequantized reference rather than another of our own kernels,
+    which is what ``gemma4_project_experts_rows`` falls back to for these two
+    quants -- neither registers a ``grouped_row4`` owner.
+
+    704 is the width that makes this shape interesting. It is 5 x 128 + 64, so
+    the trailing DS4 block is partial, and flooring the block count instead of
+    rounding it up silently drops those last 64 columns.
+    """
+
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        copy_host_array_to_device,
+        free,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        gemma4_project_experts_down_mmq,
+    )
+    from hipengine.quant.gguf import dequantize_gguf_data
+
+    backend = _grouped_backend(quant_key)
+    num_experts = 8
+    in_features = 704
+    out_features = 2816
+    counts = np.full(num_experts, 4, dtype=np.int64)
+    rows = int(counts.sum())
+
+    rng = np.random.default_rng(20260928)
+    raw = np.concatenate(
+        [make_weight(out_features, in_features) for _ in range(num_experts)]
+    )
+    weights_buf = malloc(raw.nbytes)
+    hidden = rng.standard_normal((rows, in_features)).astype(np.float32)
+    hidden_bits = _to_bf16_bits(hidden)
+    hidden_buf = malloc(hidden_bits.nbytes)
+    starts = np.zeros(num_experts + 1, dtype=np.int64)
+    starts[1:] = np.cumsum(counts)
+    starts_buf = malloc(starts.nbytes)
+    out_bytes = rows * out_features * 2
+    route_buf = malloc(out_bytes)
+    scratch = Gemma4ExpertScratch(
+        tokens=rows,
+        top_k=1,
+        hidden_size=out_features,
+        intermediate=in_features,
+        num_experts=num_experts,
+    )
+    try:
+        copy_host_array_to_device(weights_buf, raw)
+        copy_host_array_to_device(hidden_buf, hidden_bits)
+        copy_host_array_to_device(starts_buf, starts)
+        weight = _ResidentWeight(
+            backend=backend, quant_key=quant_key, ptr=weights_buf.ptr
+        )
+        ggml_type = (
+            GGMLQuantizationType.Q5_1 if quant_key == "gguf_q5_1"
+            else GGMLQuantizationType.Q8_0
+        )
+
+        served = gemma4_project_experts_down_mmq(
+            weight,
+            hidden_buf.ptr,
+            route_buf.ptr,
+            SimpleNamespace(ptr=starts_buf.ptr),
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+            scratch=scratch,
+        )
+        assert served is True, (
+            f"the {quant_key} DS4 down route declined Gemma 4's own down "
+            f"geometry, so that layer runs the fp32 grouped fallback"
+        )
+
+        # The reference reads the bf16-rounded activations the kernel reads, and
+        # each expert's own rows, dequantized exactly. A second reference drops
+        # the last 64 contraction columns -- the partial trailing DS4 block --
+        # so the route can be shown to be closer to the full one than to that.
+        rounded = _from_bf16_bits(hidden_bits)
+        expected = np.zeros((rows, out_features), dtype=np.float32)
+        truncated = np.zeros((rows, out_features), dtype=np.float32)
+        tail_start = (in_features // 128) * 128
+        start = 0
+        for expert, count in enumerate(counts):
+            if count == 0:
+                continue
+            dequantized = np.asarray(
+                dequantize_gguf_data(
+                    raw[expert * out_features : (expert + 1) * out_features],
+                    ggml_type,
+                ),
+                dtype=np.float32,
+            )
+            block = rounded[start : start + count]
+            expected[start : start + count] = block @ dequantized.T
+            truncated[start : start + count] = (
+                block[:, :tail_start] @ dequantized[:, :tail_start].T
+            )
+            start += int(count)
+
+        def read(buf):
+            out = np.empty((rows, out_features), dtype=np.uint16)
+            copy_device_to_host(
+                int(out.ctypes.data), DeviceBuffer(ptr=buf.ptr, nbytes=out.nbytes)
+            )
+            return _from_bf16_bits(out)
+
+        got = read(route_buf)
+        scale = float(np.abs(expected).max())
+        difference = np.abs(got - expected)
+        assert float(difference.max()) < 2e-2 * scale, (
+            f"{quant_key}: normalized max "
+            f"{float(difference.max()) / scale:.4g} against scale {scale:.4g}"
+        )
+        assert float(difference.mean()) < 2e-3 * scale, (
+            f"{quant_key}: normalized mean "
+            f"{float(difference.mean()) / scale:.4g}"
+        )
+        # 704 is 5 * 128 + 64, so flooring the DS4 block count instead of
+        # rounding it up drops the last 64 of the contraction. This is the
+        # failure the Q5_1 route already hit once, so the test proves it can see
+        # it: the route must be closer to the full reference than to the one
+        # with the tail removed.
+        full_error = float(np.abs(got - expected).max())
+        tail_error = float(np.abs(got - truncated).max())
+        assert tail_error > full_error, (
+            f"{quant_key}: the route is as close to a reference with the "
+            f"trailing {in_features - tail_start} contraction columns removed "
+            f"({tail_error:.4g}) as to the full one ({full_error:.4g}), so the "
+            f"partial trailing DS4 block is not being read"
+        )
+    finally:
+        scratch.free()
+        for buffer in (weights_buf, hidden_buf, starts_buf, route_buf):
+            free(buffer)
+
+
+@_needs_hip
 def test_fused_gate_up_iu8_route_holds_at_gemma4_s_own_half_width() -> None:
     """The Q5_K iu8-WMMA gate/up route at the half width this artifact ships.
 

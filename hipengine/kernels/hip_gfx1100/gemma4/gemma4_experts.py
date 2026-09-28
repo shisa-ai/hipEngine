@@ -892,7 +892,7 @@ def gemma4_project_experts_down_mmq(
     stream: int = 0,
     runtime: object | None = None,
 ) -> bool:
-    """Run the DS4 DP4A MMQ route over a Q5_1 expert down projection.
+    """Run the DS4 DP4A MMQ route over a Q5_1 or Q8_0 expert down projection.
 
     The down projection is the largest single route in gfx1151 prefill. Without
     this route it has no MMQ path at all -- :func:`gemma4_project_experts_gate_up_mmq`
@@ -910,15 +910,34 @@ def gemma4_project_experts_down_mmq(
     step, not by reassociation. It is the same envelope the Q4_K gate/up route
     already runs at, measured in ``tests/test_unit_gemma4_expert_route.py``.
 
-    The Q5_1 consumer tiles ``in_features`` in 128-wide DS4 blocks and reads one
-    Q5_1 block per 32 columns, so a width that is not a multiple of 128 is a
-    partial trailing block rather than a refusal -- which is what lets Gemma 4
-    26B-A4B's 704-wide expert down projection use this route at all.
+    Both consumers tile ``in_features`` in 128-wide DS4 blocks and read one
+    32-wide weight block per sub-block, so a width that is not a multiple of 128
+    is a partial trailing block rather than a refusal -- which is what lets Gemma
+    4 26B-A4B's 704-wide expert down projection use this route at all. Q5_1 and
+    Q8_0 share the DS4 activation pack and differ only in the weight decode:
+    Q5_1 carries a min and a fifth bit, Q8_0 a single scale and 32 signed bytes.
     """
 
     if isinstance(weight, int):
         return False
-    if getattr(weight.spec, "quant_key", None) != "gguf_q5_1":
+    # The two consumers are the same DP4A structure over the same DS4 activation
+    # pack and differ only in the weight decode, so the quant key selects the
+    # consumer rather than deciding whether the route runs at all. An artifact
+    # that quantizes a layer's expert down differently from its siblings -- Gemma
+    # 4 26B-A4B UD-Q4_K_XL ships 29 Q5_1 layers and one Q8_0 -- would otherwise
+    # send that one layer to the fp32 grouped family at 8x the cost.
+    quant_key = getattr(weight.spec, "quant_key", None)
+    if quant_key == "gguf_q5_1":
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_mmq_selected_prefill import (
+            build_gguf_q5_1_mmq_selected_prefill as build_consumer,
+            gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out as mmq_down,
+        )
+    elif quant_key == "gguf_q8_0":
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_selected_prefill import (
+            build_gguf_q8_0_mmq_selected_prefill as build_consumer,
+            gguf_q8_0_mmq_ds4_selected_prefill_bf16_bf16_out as mmq_down,
+        )
+    else:
         return False
     if in_features <= 0 or in_features % 32:
         return False
@@ -928,10 +947,6 @@ def gemma4_project_experts_down_mmq(
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
         build_gguf_q4_k_q8_1_selected_prefill,
         gguf_q8_1_mmq_ds4_pack_bf16 as pack_activations,
-    )
-    from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_mmq_selected_prefill import (
-        build_gguf_q5_1_mmq_selected_prefill,
-        gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out as mmq_down,
     )
 
     workspace = scratch.buffer("mmq_workspace")
@@ -960,7 +975,7 @@ def gemma4_project_experts_down_mmq(
         in_features,
         out_features,
         _MMQ_ACTIVATION_PASSES,
-        library=build_gguf_q5_1_mmq_selected_prefill(load=True),
+        library=build_consumer(load=True),
         **kwargs,
     )
     return True
