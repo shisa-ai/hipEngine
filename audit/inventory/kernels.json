@@ -259,7 +259,7 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 807,
-        "referrers": 106,
+        "referrers": 107,
         "runtime_referrers": [
           "hipengine/chat/gemma4.py",
           "hipengine/generation/__init__.py",
@@ -269,10 +269,10 @@
           "hipengine/loading/gemma4_gguf_device.py"
         ],
         "test_referrers": [
+          "tests/test_gpu_gguf_q8_0_wmma_prefill.py",
           "tests/_gemma4_gguf_fixture.py",
           "tests/test_gpu_gemma4_attention_geometry.py",
-          "tests/test_gpu_gemma4_weight_geometry.py",
-          "tests/test_gpu_gguf_q5_1_selected_pack8_gemv_decode.py"
+          "tests/test_gpu_gemma4_weight_geometry.py"
         ]
       },
       "signals": [],
@@ -289,7 +289,7 @@
         ]
       },
       "id": "kernel/cpu_reference/gemma4.py",
-      "evidence_hash": "e4f707b7ffcb"
+      "evidence_hash": "647596fcb613"
     },
     {
       "kind": "kernel",
@@ -495,7 +495,7 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 3006,
-        "referrers": 290,
+        "referrers": 291,
         "runtime_referrers": [
           "hipengine/benchmark/session_replay.py",
           "hipengine/benchmark/speculative.py",
@@ -525,7 +525,7 @@
         ]
       },
       "id": "kernel/cpu_reference/ops.py",
-      "evidence_hash": "2947c0cbb2e9"
+      "evidence_hash": "c3b52c9dcea6"
     },
     {
       "kind": "kernel",
@@ -8020,7 +8020,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".hip",
-        "lines": 927,
+        "lines": 931,
         "referrers": 18,
         "runtime_referrers": [
           "hipengine/runtime/qwen4_exp_runner.py",
@@ -8049,7 +8049,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_prefill.hip",
-      "evidence_hash": "3218c1b8d0e8"
+      "evidence_hash": "9442cfaa727c"
     },
     {
       "kind": "kernel",
@@ -8059,7 +8059,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 547,
+        "lines": 574,
         "referrers": 18,
         "runtime_referrers": [
           "hipengine/runtime/qwen4_exp_runner.py",
@@ -8087,7 +8087,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_prefill.py",
-      "evidence_hash": "9e77ce95eb7f"
+      "evidence_hash": "fd2a88bafffc"
     },
     {
       "kind": "kernel",

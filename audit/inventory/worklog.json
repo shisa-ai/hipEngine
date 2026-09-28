@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11123,
-    "current": 3891,
+    "entries": 11124,
+    "current": 3892,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1219,
+    "rows": 1220,
     "by_rule": {
       "dependency": 40,
       "legacy-next": 109,
-      "status": 1070
+      "status": 1071
     }
   },
   "rows": [
@@ -45721,14 +45721,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "1. **The dense Q8_0 family is now 213.3 ms per prefill against llama.cpp's\n   105.6 for the same weights -- 2.0x, down from 2.6x.** The remaining gap is\n   structural: llama.cpp's RDNA3.5 MMQ config is `nthreads=256, I=128, J=128`\n   against our 32-thread block and 64x32 tile, so it re-reads weights 4x less.\n   Reaching J=128 needs `TN=8`, whose 8 float8 accumulators plus 8 half16\n   activations do not fit in registers at `TM>=1`; `TN=4` (tile_n 64) is the\n   reachable step and was not in `_ALLOWED_TILES`.\n2. Attention remains 178.8 ms per prefill against llama.cpp's 28.8. The traffic\n   ablat",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T084150.706656Z-lhl-gemma4-q8-0-tile-heuristic-35630d.md",
@@ -45747,7 +45747,7 @@
         ]
       },
       "id": "worklog/20260928T084150.706656Z-lhl-gemma4-q8-0-tile-heuristic-35630d",
-      "evidence_hash": "4551b03865bc"
+      "evidence_hash": "fc7ea382b055"
     },
     {
       "kind": "worklog",
@@ -45915,6 +45915,48 @@
       },
       "id": "worklog/20260928T085207.334890Z-lhl-gemma4-decode-target-provenance-2c9a4f",
       "evidence_hash": "248b0cd11617"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T085917.175442Z-lhl-gemma4-q8-tile-n64-96aaed",
+      "title": "the token side tile was never swept because an unmeasured register assumption said it would not fit",
+      "location": "worklog/entries/20260928T085917.175442Z-lhl-gemma4-q8-tile-n64-96aaed.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-q8-tile-n64",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "1. **`(64, 64)` was not swept** -- it would need 4 x 4 x 8 = 128 accumulator\n   registers before the per-TN index arrays, so it is genuinely out of reach,\n   unlike `(32, 64)`. Worth confirming with the compiler rather than asserting.\n2. **The dense Q8_0 family is still 213 -> ~190 ms against llama.cpp's\n   105.6**, so the family remains roughly 1.8x behind after this change. The\n   remaining lever is the same one: llama.cpp's RDNA3.5 MMQ config runs\n   `I=128, J=128` against our `32 x 64`, and the sweep's shape shows the\n   tile dimensions are worth more than any other dense-kernel change tri",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T085917.175442Z-lhl-gemma4-q8-tile-n64-96aaed.md",
+        "refs": [],
+        "tokens": [
+          "assumption",
+          "because",
+          "fit",
+          "never",
+          "register",
+          "said",
+          "side",
+          "swept",
+          "tile",
+          "token",
+          "unmeasured",
+          "would"
+        ]
+      },
+      "id": "worklog/20260928T085917.175442Z-lhl-gemma4-q8-tile-n64-96aaed",
+      "evidence_hash": "d200e972a271"
     },
     {
       "kind": "worklog",

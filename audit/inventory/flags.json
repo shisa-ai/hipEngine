@@ -7481,7 +7481,7 @@
         },
         "runtime_sites": [
           "hipengine/generation/qwen4_exp_profiles.py:570",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:124"
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:151"
         ],
         "in_refactor_ledger": true,
         "in_envs_doc": true
@@ -7502,7 +7502,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_Q8_0_WMMA_TILE_M",
-      "evidence_hash": "54a1151cfac2"
+      "evidence_hash": "f51163351069"
     },
     {
       "kind": "flag",
@@ -7517,7 +7517,7 @@
         },
         "runtime_sites": [
           "hipengine/generation/qwen4_exp_profiles.py:571",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:125"
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:152"
         ],
         "in_refactor_ledger": false,
         "in_envs_doc": true
@@ -7539,7 +7539,7 @@
         ]
       },
       "id": "flag/HIPENGINE_GGUF_Q8_0_WMMA_TILE_N",
-      "evidence_hash": "40f9cc528141"
+      "evidence_hash": "0de3ed7886f4"
     },
     {
       "kind": "flag",
@@ -12001,21 +12001,21 @@
       "kind": "flag",
       "key": "HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA",
       "title": "HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA",
-      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:447",
+      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:449",
       "evidence": {
         "default": "unknown",
         "sites_by_root": {
-          "hipengine": 8
+          "hipengine": 10
         },
         "runtime_sites": [
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:447",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:464",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:465",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:449",
           "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:466",
           "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:467",
           "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:468",
           "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:469",
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:470"
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:470",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:471",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:472"
         ],
         "in_refactor_ledger": false,
         "in_envs_doc": false
@@ -12023,7 +12023,7 @@
       "signals": [
         "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
         "not documented in docs/ENVS.md",
-        "read at 8 runtime sites \u2014 branching is spread out"
+        "read at 10 runtime sites \u2014 branching is spread out"
       ],
       "hints": {
         "anchor": "env",
@@ -12038,7 +12038,7 @@
         ]
       },
       "id": "flag/HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA",
-      "evidence_hash": "4732a96aca5c"
+      "evidence_hash": "1d5dbebef8a9"
     },
     {
       "kind": "flag",
@@ -12048,7 +12048,7 @@
       "evidence": {
         "default": "unknown",
         "sites_by_root": {
-          "hipengine": 8
+          "hipengine": 10
         },
         "runtime_sites": [
           "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip:268",
@@ -12066,7 +12066,7 @@
       "signals": [
         "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
         "not documented in docs/ENVS.md",
-        "read at 8 runtime sites \u2014 branching is spread out"
+        "read at 10 runtime sites \u2014 branching is spread out"
       ],
       "hints": {
         "anchor": "env",
@@ -12080,7 +12080,7 @@
         ]
       },
       "id": "flag/HIPENGINE_LAUNCH_Q8_0_WMMA",
-      "evidence_hash": "3e7125cb40a6"
+      "evidence_hash": "d1dfc1cb0e60"
     },
     {
       "kind": "flag",

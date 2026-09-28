@@ -646,9 +646,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:125:HIPENGINE_GGUF_Q8_0_WMMA_TILE_N",
+      "key": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:152:HIPENGINE_GGUF_Q8_0_WMMA_TILE_N",
       "title": "runtime branch on HIPENGINE_GGUF_Q8_0_WMMA_TILE_N: default-off with no removal condition recorded",
-      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:125",
+      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:152",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_GGUF_Q8_0_WMMA_TILE_N to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_GGUF_Q8_0_WMMA_TILE_N`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -665,7 +665,7 @@
       "hints": {
         "anchor": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py",
         "refs": [
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:125:HIPENGINE_GGUF_Q8_0_WMMA_TILE_N"
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:152:HIPENGINE_GGUF_Q8_0_WMMA_TILE_N"
         ],
         "tokens": [
           "branch",
@@ -678,8 +678,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:125:HIPENGINE_GGUF_Q8_0_WMMA_TILE_N",
-      "evidence_hash": "95afdef9a764"
+      "id": "ungoverned-flag-branch/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:152:HIPENGINE_GGUF_Q8_0_WMMA_TILE_N",
+      "evidence_hash": "48ae6985fd06"
     },
     {
       "kind": "ungoverned-flag-branch",
