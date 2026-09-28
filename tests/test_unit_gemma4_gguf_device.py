@@ -15,7 +15,9 @@ import pytest
 
 from hipengine.loading.gemma4_gguf_device import (
     LAYOUT_DENSE_F32,
+    LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_RAW_GGUF,
+    derived_allocation_bytes,
     materialize_gemma4_gguf_device_weight,
     plan_gemma4_gguf_resident_specs,
     resident_bytes,
@@ -76,14 +78,14 @@ def test_quant_keys_follow_the_artifact(reader: GGUFReader) -> None:
             and source.ggml_type == GGMLQuantizationType.Q8_0
             and spec.slot_path.startswith("layers.")
         ):
-            # Still raw: this loader has no Q8_0 repack step, so a dense Q8_0
-            # leaf keeps the artifact's own key. Recorded here rather than left
-            # implicit because it is the reason the dense term cannot reach the
-            # registered Q8T16 wave schedules -- see
-            # worklog/entries/20260929T143000.
-            assert spec.layout == LAYOUT_RAW_GGUF, name
-            assert spec.quant_key == "gguf_q8_0", name
-            assert spec.allocation_names == ("raw",), name
+            # A dense Q8_0 leaf is stored as Q8T16 tiles, and only as tiles.
+            # The slot path is what decides this, not the tensor name: the
+            # token embedding and lm head are also rank-2 Q8_0 but are
+            # GEMV-shaped and stay raw. The layout matters as much as the key --
+            # it is what selects the launch ABI.
+            assert spec.layout == LAYOUT_GGUF_Q8_0_T16, name
+            assert spec.quant_key == "gguf_q8_0_t16_v1", name
+            assert spec.allocation_names == ("tiles",), name
             continue
         else:
             assert spec.layout == LAYOUT_RAW_GGUF, name
@@ -151,20 +153,25 @@ def test_resident_bytes_is_the_artifact_bytes(reader: GGUFReader) -> None:
         tensor.nbytes for tensor in reader.info.tensors if tensor.name != "rope_freqs.weight"
     )
 
-    # Every spec is charged the artifact's own bytes, and only a spec that
-    # declares a derived layout is charged more. That is the property this test
-    # exists for: residency is the stored representation, not a dequantized one.
+    # A dense Q8_0 leaf is stored only as Q8T16 tiles, and the tile slab is
+    # exactly the artifact bytes. This is the property that makes the change
+    # memory-neutral, so it is asserted per leaf rather than in aggregate.
+    q8_leaves = [s for s in specs if s.layout == LAYOUT_GGUF_Q8_0_T16]
+    assert q8_leaves, "fixture has no dense Q8_0 leaf to check"
+    for spec in q8_leaves:
+        assert spec.allocation_names == ("tiles",), spec.slot_path
+        assert derived_allocation_bytes(spec, "tiles") == int(spec.source.nbytes), spec.slot_path
+
+    # And a leaf that keeps raw must not also be charged for tiles.
     for spec in specs:
-        if spec.quant_key == "gguf_q4_k":
-            continue
-        assert spec.allocation_names == ("raw",), spec.slot_path
+        if spec.allocation_names == ("raw",):
+            assert spec.layout != LAYOUT_GGUF_Q8_0_T16, spec.slot_path
 
     # The aggregate cannot be compared to the artifact bytes on this fixture:
     # its rank-3 Q4_K expert is smaller than one Q4T16 tile row, so
     # derived_allocation_bytes raises for that spec rather than returning a
-    # number. That is a fixture/planner mismatch predating this test's last
-    # edit, and asserting it weakly here would hide it, so the raw-only specs
-    # are summed directly instead.
+    # number. That is a fixture/planner mismatch predating this change, so the
+    # raw-only specs are summed directly instead of asserting weakly.
     raw_only = [s for s in specs if s.quant_key != "gguf_q4_k"]
     assert resident_bytes(tuple(raw_only)) == sum(int(s.source.nbytes) for s in raw_only)
     assert resident_bytes(tuple(raw_only)) <= artifact
