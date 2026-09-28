@@ -1864,21 +1864,27 @@ numeric 128K row is carried forward. Evidence:
 
 ### Radeon 8060S: Gemma 4 26B-A4B `UD-Q4_K_XL`
 
-Prefill projects the routed experts' rows by reading each expert's weight row
-once and reusing it across that expert's rows, instead of re-reading the whole
-expert weight matrix once per row. The two expert projections are **84.8% of
-prefill kernel time** on this artifact (`Q4_K` gate/up 53.40%, `Q5_1` down
-31.40%), which is what makes that reuse the whole prefill budget. The reuse is
-bit-exact — it is a different launch geometry over the selected path's own
-per-row reduction — so prefill rises with no change to the arithmetic, the
-decoded tokens, or the decode rate.
+Prefill runs the routed experts through int8 MMQ routes. The fused gate/up
+projection and the down projection each pack the block's activations to Q8_1
+blocks and contract them with `dp4a`, reading an expert's weight row once per
+pass and reusing it across that expert's rows. Every layer takes both routes:
+they match the model's mixed quantization against the shapes they declare — 29
+layers of `Q4_K` gate/up with `Q5_1` down, and layer 29 of `Q5_K` with `Q8_0` —
+so the layer whose quantization differs from its siblings is routed by the same
+rule as the rest rather than falling to a slower fallback.
 
 | Workload | Prefill | Decode | Public wall |
 | --- | ---: | ---: | ---: |
-| 512/128 | **121.90 tok/s** (92.28 per-row) | 21.14 tok/s (21.10) | **10.240 s** (11.629) |
+| 512/128 | **712.8 tok/s** | 28.13 tok/s | **5.243 s** |
 
-Both rows of that pair ran on the same tree in one session, with the kernel
-files under test as the only difference between the arms.
+The previous published row for this workload was 121.90 tok/s prefill, 21.14
+tok/s decode and a 10.240 s wall. The intervening work was the int8 MMQ expert
+routes becoming the default, the Q5_1 down projection's inner-loop memory
+traffic, and layer 29 reaching its siblings' routes. Prefill-only kernel time at
+512 tokens divides into the routed experts at 44.0%, the dense projections and
+lm head at 25.4%, and attention at 23.9%. At 2048 tokens attention is 48.3% and
+the expert block 29.9%, so attention is the only term that grows with prompt
+length and past the sliding window it becomes the largest single one.
 
 The projection kernels are fetch-bound, not weight-bound: with the weight reuse
 in place the two expert projections were still 68% of prefill kernel time while
@@ -1889,17 +1895,12 @@ Staging the expert's activation rows in shared memory and hoisting each column's
 exact rewrite of the same expressions, so it is **2.07x** on that kernel with 0
 of 5,767,168 bf16 outputs differing.
 
-This file mixes quants — 29 layers are `Q4_K` gate/up with `Q5_1` down and
-layer 29 is `Q5_K` with `Q8_0` — so 58 of the 60 expert projections per prefill
-block take the reusing route and the remaining two keep the per-row pass, since
-no grouped family is registered for `Q5_K` or `Q8_0` with this ABI. The `Q5_1`
-down projection has not yet had the staged treatment — it needs the 256-thread
-shared-tree reduction its route uses — and is 23.0% of prefill kernel time;
-Q8_0 dense projections (12.5%) and attention prefill (12.2%) follow. Routing the
-`Q4_K` gate/up through the row-batched WMMA prefill instead reaches **111.43
-tok/s** but exceeds the production `kl_max` limit at 0.167959 on 2 of 1023
-teacher-forced rows (both rows keep their top-1 token; the divergence is a
-compressed tail), so it is not shipped. Evidence:
+Routing the `Q4_K` gate/up through the row-batched WMMA prefill instead exceeds
+the production `kl_max` limit at 0.167959 on 2 of 1023 teacher-forced rows (both
+rows keep their top-1 token; the divergence is a compressed tail), so it is not
+shipped. Evidence:
+[public-path row](results/2026-09-28-gemma4-q5-1-down-mmq-load-width-accepted.json);
+[prefill census](results/2026-09-28-gemma4-gfx1151-prefill-census-layer29-closed.json);
 [`Q5_1` down reuse](results/2026-09-27-gemma4-moe-prefill-grouped-accepted.json);
 [`Q4_K` gate/up reuse](results/2026-09-27-gemma4-moe-prefill-q4k-grouped-accepted.json);
 [`Q4_K` staged fetch](results/2026-09-27-gemma4-moe-prefill-q4k-staged-accepted.json);
