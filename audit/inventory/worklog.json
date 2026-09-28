@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11140,
-    "current": 3908,
+    "entries": 11141,
+    "current": 3909,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1231,
+    "rows": 1232,
     "by_rule": {
       "dependency": 40,
       "legacy-next": 109,
-      "status": 1082
+      "status": 1083
     }
   },
   "rows": [
@@ -44042,14 +44042,14 @@
         "written": "2026-09-26",
         "age_days": 2,
         "open_by": "dependency",
-        "continuation_entries": 7,
+        "continuation_entries": 8,
         "open_text": "- The remaining prefill budget at 512 tokens, measured by route: `Q4_K` gate/up\n  1156 ms (its fastest route is the gated MMQ path, waiting on the lead's\n  `kl_max` call), `Q8_0` dense 694 ms, `Q5_1` down 651 ms, layer 29's `Q5_K`\n  246 ms, attention ~330 ms after this unit.\n- **Do not chase the `Q8_0` dense route with less traffic.** A row-grouped\n  variant that moves 4.56 GB instead of 9.30 GB is not faster (21.23 ms against\n  22.13 ms): achieved bandwidth falls from 428 to 220 GB/s, so the kernel is\n  limited by 1-byte weight load transactions rather than by DRAM. The lever is\n  fewer, wide",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "Next names a dependency: 'waiting on'",
-        "7 later entries by the same worker share this topic prefix"
+        "8 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260926T235136.556498Z-lhl-gemma4-attention-prefill-register-tree-9b5a7b.md",
@@ -44070,7 +44070,7 @@
         ]
       },
       "id": "worklog/20260926T235136.556498Z-lhl-gemma4-attention-prefill-register-tree-9b5a7b",
-      "evidence_hash": "9110e932ef85"
+      "evidence_hash": "1a4996c8a64a"
     },
     {
       "kind": "worklog",
@@ -44516,14 +44516,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 3,
         "open_text": "Probe `gemma4_scale_bf16` and `gemma4_rmsnorm_f32w_bf16` at rows 1 against rows\n2 on one input, then the experts. The embedding gather is in the same probe as\nthe scale since they run back to back into the same buffer.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "3 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T054943.321307Z-lhl-gemma4-attention-and-mask-cleared-fa9bff.md",
@@ -44542,7 +44542,7 @@
         ]
       },
       "id": "worklog/20260928T054943.321307Z-lhl-gemma4-attention-and-mask-cleared-fa9bff",
-      "evidence_hash": "92b020e42842"
+      "evidence_hash": "645defa5dc39"
     },
     {
       "kind": "worklog",
@@ -46415,14 +46415,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "1. **The strict kernel is still the default and still the prefill cost** -- 24.5\n   percent of prefill at 512 tokens, at 465 GFLOP/s on the 256d layers.\n2. **Wiring the tiled kernel in is worth doing for the full-attention layers only**\n   (5 of 30, 512d), where it is 19 percent faster at 512 tokens and 29 percent at\n   4096, and is bit-exact at every context this model's window admits. That is\n   about 6 ms of 150 at the benchmarked shape -- real but small.\n3. **The load-bound question is still open** and now needs a probe that varies\n   bytes without varying arithmetic.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T094251.149323Z-lhl-gemma4-attention-tiled-ab-4e3747.md",
@@ -46444,7 +46444,7 @@
         ]
       },
       "id": "worklog/20260928T094251.149323Z-lhl-gemma4-attention-tiled-ab-4e3747",
-      "evidence_hash": "601d12cf45df"
+      "evidence_hash": "b0c8ae016947"
     },
     {
       "kind": "worklog",
@@ -46528,6 +46528,46 @@
       },
       "id": "worklog/20260928T095039.064220Z-lhl-gemma4-moe-grid-contradiction-2e19f2",
       "evidence_hash": "77c7cb107147"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T095630.988278Z-lhl-gemma4-attention-traffic-clean-430194",
+      "title": "the dtype ablation is the clean traffic probe and it says prefill attention is not paying for bytes",
+      "location": "worklog/entries/20260928T095630.988278Z-lhl-gemma4-attention-traffic-clean-430194.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-attention-traffic-clean",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "1. **`gguf_q8_0_prefill_wmma_kernel<tt,32,64>` is the largest prefill block at 24.8\n   percent and has not been examined.** It is a tensor-core kernel, so its headroom\n   question is a tile/occupancy question rather than a traffic one, and its tile was\n   last changed in iteration 215.\n2. **The MoE gate/up at prefill** is 21 percent at 7568 workgroups; the thin-block\n   reading does not apply, so its prefill cost needs its own attribution.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T095630.988278Z-lhl-gemma4-attention-traffic-clean-430194.md",
+        "refs": [],
+        "tokens": [
+          "ablation",
+          "attention",
+          "bytes",
+          "clean",
+          "dtype",
+          "paying",
+          "prefill",
+          "probe",
+          "says",
+          "traffic"
+        ]
+      },
+      "id": "worklog/20260928T095630.988278Z-lhl-gemma4-attention-traffic-clean-430194",
+      "evidence_hash": "ee64ea0c3a9b"
     }
   ]
 }
