@@ -252,3 +252,83 @@ def test_close_after_constructor_failure_does_not_double_free(
 
     assert len(allocator.freed) == len(allocator.allocated)
     assert len({buffer.ptr for buffer in allocator.freed}) == len(allocator.freed)
+
+
+def test_multi_block_forward_takes_the_head_only_on_the_final_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the last block's logits survive ``forward``, so only that block needs a head.
+
+    ``forward`` forwards a prompt as consecutive blocks and returns the logits of
+    the final one. Every earlier block still ran the final norm, a vocab-wide
+    projection and a device-to-host copy whose result the loop overwrites on the
+    next iteration -- a head launch per block that nobody reads. On the real
+    artifact that is 1 wasted launch at 1024 tokens and 7 at 4096.
+    """
+
+    from contextlib import contextmanager
+
+    base = _config(num_layers=2, hidden_size=16)
+    # A namespace rather than the dataclass: the forward path reads ``embed_scale``
+    # and the CPU reference config does not declare it.
+    config = SimpleNamespace(
+        attention=base.attention,
+        hidden_size=base.hidden_size,
+        intermediate_size=base.intermediate_size,
+        moe_intermediate_size=base.moe_intermediate_size,
+        num_experts=base.num_experts,
+        top_k_experts=base.top_k_experts,
+        rms_norm_eps=base.rms_norm_eps,
+        vocab_size=base.vocab_size,
+        embed_scale=1.0,
+        final_logit_softcapping=0.0,
+    )
+    runner, _ = _make_runner(monkeypatch, capacity=64, max_block=8, config=config)
+
+    # Empty so the layer loop costs nothing here; this pins the head, not the stack.
+    runner.weights.layers = []
+    embedding = SimpleNamespace(buffer=DeviceBuffer(ptr=0x9000, nbytes=16))
+    runner.weights.embed_tokens = embedding
+    runner.weights.lm_head = embedding
+    runner.weights.final_norm = SimpleNamespace(
+        buffer=DeviceBuffer(ptr=0x9100, nbytes=16)
+    )
+
+    @contextmanager
+    def _no_session(self: object) -> object:
+        yield
+
+    monkeypatch.setattr(
+        gemma4_module.Gemma4Runner, "_q8_mmq_prefill_session", _no_session
+    )
+    for name in (
+        "copy_host_to_device",
+        "copy_device_to_host",
+        "host_array_ptr",
+        "launch_gguf_embedding",
+        "gemma4_scale_bf16",
+    ):
+        monkeypatch.setattr(gemma4_module, name, lambda *args, **kwargs: None)
+
+    norms: list[tuple] = []
+    heads: list[tuple] = []
+    monkeypatch.setattr(
+        gemma4_module,
+        "gemma4_rmsnorm_f32w_bf16",
+        lambda *args, **kwargs: norms.append(args),
+    )
+    monkeypatch.setattr(
+        gemma4_module, "launch_gguf_linear", lambda *args, **kwargs: heads.append(args)
+    )
+
+    logits = runner.forward(list(range(1, 17)))  # 16 tokens over two 8-token blocks
+
+    assert logits.shape == (config.vocab_size,)
+    assert len(norms) == 1, (
+        f"the final norm ran {len(norms)} times across 2 blocks; only the block "
+        "whose logits are returned can need it"
+    )
+    assert len(heads) == 1, (
+        f"lm_head ran {len(heads)} times across 2 blocks; the loop overwrites "
+        "every block but the last, so the earlier projections are unread work"
+    )

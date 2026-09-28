@@ -686,9 +686,15 @@ class Gemma4Runner:
                 raise ValueError(f"token id {token} is outside the vocabulary of {vocab}")
 
         logits = None
+        last_start = ((rows - 1) // self.max_block) * self.max_block
         for start in range(0, rows, self.max_block):
             logits = self._forward_block(
-                tokens[start : start + self.max_block], apply_softcap=apply_softcap
+                tokens[start : start + self.max_block],
+                apply_softcap=apply_softcap,
+                # Only this loop's last block's logits are returned; every
+                # earlier block's copy is overwritten on the next iteration, so
+                # its final norm, projection and device-to-host copy are unread.
+                needs_logits=start == last_start,
             )
         assert logits is not None
         return logits
@@ -747,17 +753,30 @@ class Gemma4Runner:
             yield
 
     def _forward_block(
-        self, tokens: Sequence[int], *, apply_softcap: bool = True
+        self,
+        tokens: Sequence[int],
+        *,
+        apply_softcap: bool = True,
+        needs_logits: bool = True,
     ) -> np.ndarray:
         """Run one block of at most ``max_block`` tokens; see :meth:`forward`."""
 
         with self._q8_mmq_prefill_session():
-            return self._forward_block_inner(tokens, apply_softcap=apply_softcap)
+            return self._forward_block_inner(
+                tokens, apply_softcap=apply_softcap, needs_logits=needs_logits
+            )
 
     def _forward_block_inner(
-        self, tokens: Sequence[int], *, apply_softcap: bool = True
+        self,
+        tokens: Sequence[int],
+        *,
+        apply_softcap: bool = True,
+        needs_logits: bool = True,
     ) -> np.ndarray:
-        """The block body, run under whatever session :meth:`_forward_block` set."""
+        """The block body, run under whatever session :meth:`_forward_block` set.
+
+        ``needs_logits`` is False for a block whose output ``forward`` discards.
+        """
 
         config = self.weights.config
         rows = len(tokens)
@@ -854,6 +873,14 @@ class Gemma4Runner:
             )
 
         # --- final norm and lm head -----------------------------------------
+        # The caller wants one next-token distribution, so only the final block
+        # computes one. Skipping it here drops a norm, a vocab-wide projection
+        # and a device-to-host copy per discarded block: 1 at 1024 tokens and 7
+        # at 4096 under the default 512-token block.
+        if not needs_logits:
+            self._position += rows
+            return np.empty(0, dtype=np.float32)
+
         # Only the last row is needed: the caller wants the next-token
         # distribution, and the earlier rows' logits are never read.
         last = (rows - 1) * hidden * _BF16_BYTES
