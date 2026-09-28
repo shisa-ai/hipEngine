@@ -119,6 +119,15 @@ def _run_both_symbols(library, *, dtype, num_heads, num_kv_heads, head_dim, keys
     elif mask_mode == "holes":
         mask = (rng.random((1, keys)) < 0.7).astype(np.uint8)
         mask[0, 0] = 1  # at least one live key, as decode always keeps position 0's row
+    elif mask_mode == "window":
+        # A contiguous live span that starts after key 0 and ends before the
+        # last key, so *both* of the class kernel's mask-derived bounds are
+        # non-trivial. This is the mask the pass-3 lower bound reads:
+        # ``keep`` begins at key 0 and ``holes`` is never a contiguous span,
+        # so neither exercises a first kept key above 0.
+        span = np.arange(keys, dtype=np.int64)
+        mask = ((span >= keys // 4) & (span <= keys - 1 - keys // 8)).astype(np.uint8)
+        assert mask.any(), "window mask must keep at least one key"
     elif mask_mode == "none":
         mask = np.zeros((1, keys), dtype=np.uint8)
     else:  # pragma: no cover - defensive
@@ -162,7 +171,7 @@ def _run_both_symbols(library, *, dtype, num_heads, num_kv_heads, head_dim, keys
 
 
 @pytest.mark.parametrize("dtype", ["f32", "bf16"])
-@pytest.mark.parametrize("mask_mode", ["keep", "holes"])
+@pytest.mark.parametrize("mask_mode", ["keep", "holes", "window"])
 @pytest.mark.parametrize("num_heads,num_kv_heads,head_dim,keys", _SHAPES)
 def test_decode_symbol_bit_matches_prefill_symbol(
     attention_library, dtype, mask_mode, num_heads, num_kv_heads, head_dim, keys
