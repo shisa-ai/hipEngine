@@ -259,7 +259,7 @@
         "backend": "cpu_reference",
         "suffix": ".py",
         "lines": 807,
-        "referrers": 113,
+        "referrers": 114,
         "runtime_referrers": [
           "hipengine/chat/gemma4.py",
           "hipengine/generation/__init__.py",
@@ -269,10 +269,10 @@
           "hipengine/loading/gemma4_gguf_materialize.py"
         ],
         "test_referrers": [
+          "tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py",
           "tests/test_gpu_gguf_q8_0_wmma_prefill.py",
           "tests/_gemma4_gguf_fixture.py",
-          "tests/test_gpu_gemma4_attention_geometry.py",
-          "tests/test_gpu_gemma4_weight_geometry.py"
+          "tests/test_gpu_gemma4_attention_geometry.py"
         ]
       },
       "signals": [],
@@ -289,7 +289,7 @@
         ]
       },
       "id": "kernel/cpu_reference/gemma4.py",
-      "evidence_hash": "ae19b92f34c0"
+      "evidence_hash": "37e3646fc337"
     },
     {
       "kind": "kernel",
@@ -6669,7 +6669,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".hip",
-        "lines": 7431,
+        "lines": 7551,
         "referrers": 21,
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
@@ -6700,7 +6700,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.hip",
-      "evidence_hash": "ecd96c344c08"
+      "evidence_hash": "94f1814f11a9"
     },
     {
       "kind": "kernel",
@@ -6710,7 +6710,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".py",
-        "lines": 2564,
+        "lines": 2617,
         "referrers": 20,
         "runtime_referrers": [
           "hipengine/runtime/laguna_gguf_runner.py",
@@ -6740,7 +6740,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py",
-      "evidence_hash": "f9d4126689c6"
+      "evidence_hash": "e6aa00d4bbff"
     },
     {
       "kind": "kernel",

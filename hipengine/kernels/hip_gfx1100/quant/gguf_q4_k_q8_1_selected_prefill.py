@@ -35,6 +35,9 @@ _SYMBOL_X8_DS4_MMQ32_BF16 = (
 _SYMBOL_T16_DS4_MMQ32_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 )
+_SYMBOL_T16_FUSED_DS4_MMQ32_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out"
+)
 _SYMBOL_T16_DS4X3_MMQ32_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out"
 )
@@ -1947,6 +1950,56 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
         library=library,
         runtime=runtime,
         _symbol=_SYMBOL_T16_DS4_MMQ32_BF16,
+    )
+
+
+def gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    compact_to_source_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq32_ptr: int,
+    mmq_tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch MMQ32 against resident T16 weights in a fused gate | up row block.
+
+    Both changes at once: the weights are 16-wide output tiles rather than raw
+    GGUF blocks, and the two weight pointers address the gate and up slices of
+    one per-expert row block, so the tile run covers the fused width and the up
+    half's tiles start after the gate half's.
+    """
+
+    gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+        x_q8_ptr,
+        compact_to_source_ptr,
+        expert_start_compact_ptr,
+        expert_start_mmq32_ptr,
+        mmq_tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        _symbol=_SYMBOL_T16_FUSED_DS4_MMQ32_BF16,
     )
 
 

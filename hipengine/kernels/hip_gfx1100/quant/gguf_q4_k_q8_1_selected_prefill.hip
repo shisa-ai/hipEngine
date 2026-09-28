@@ -1188,9 +1188,18 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
               col_in_pack;
           block = qweight + x8_block * Q4_K_BLOCK_BYTES;
         } else if constexpr (WEIGHT_LAYOUT == Q4_K_LAYOUT_T16) {
-          const int64_t out_tiles =
-              local_out_features / Q4_K_TILE16_COLS;
-          const int64_t out_tile = local_col / Q4_K_TILE16_COLS;
+          // A fused per-expert row block (gate | up) is packed as one run of
+          // 16-wide output tiles, so the tile count is the fused width and the
+          // second half's tiles start after the first half's. Without this the
+          // T16 branch would index each half as though it were its own expert.
+          const int64_t out_tiles = FUSED_EXPERT_LAYOUT
+              ? (out_features_a + out_features_b) / Q4_K_TILE16_COLS
+              : local_out_features / Q4_K_TILE16_COLS;
+          const int64_t tile_base = FUSED_EXPERT_LAYOUT && use_b
+              ? out_features_a / Q4_K_TILE16_COLS
+              : 0;
+          const int64_t out_tile =
+              tile_base + local_col / Q4_K_TILE16_COLS;
           t16_col =
               static_cast<int>(local_col % Q4_K_TILE16_COLS);
           const int64_t tile_index =
@@ -1581,6 +1590,54 @@ __global__ void gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_ker
       risk_tiles,
       max_risks,
       risk_threshold,
+      weight_tile,
+      activation_tile);
+}
+
+// T16 twin of the fused raw instantiation. The body's T16 branch carries the
+// fused tile indexing, so this is the same body with the resident layout
+// selected instead of the raw one.
+template <int ACTIVATION_PASSES>
+__launch_bounds__(128, 2)
+__global__ void
+ gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel(
+    const block_q8_1_mmq_ds4* __restrict__ x_q8,
+    const int64_t* __restrict__ compact_to_source,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ expert_start_mmq32,
+    const int64_t* __restrict__ tile_expert,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    uint16_t* __restrict__ out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows) {
+  __shared__ q4_k_mmq32_cache weight_tile[32];
+  __shared__ q8_1_mmq32_cache activation_tile[32];
+  gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body<
+      Q4_K_LAYOUT_T16, ACTIVATION_PASSES, false, true>(
+      x_q8,
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      nullptr,
+      nullptr,
+      0,
+      0.0f,
       weight_tile,
       activation_tile);
 }
@@ -5015,6 +5072,29 @@ int launch_selected_dual_q8_1_ds4_mmq32_compact32(
         out_features_b,
         num_experts,
         mmq_total_rows);
+  } else if constexpr (WEIGHT_LAYOUT == Q4_K_LAYOUT_T16 &&
+                       FUSED_EXPERT_LAYOUT) {
+    hipLaunchKernelGGL(
+        (gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel<
+            ACTIVATION_PASSES>),
+        grid,
+        block,
+        0,
+        stream,
+        x_q8,
+        compact_to_source,
+        expert_start_compact,
+        expert_start_mmq32,
+        tile_expert,
+        qweight_a,
+        qweight_b,
+        out,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows);
   } else if constexpr (WEIGHT_LAYOUT == Q4_K_LAYOUT_T16) {
     hipLaunchKernelGGL(
         (gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel<
@@ -6885,6 +6965,46 @@ hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf
     hipStream_t stream) {
   return launch_selected_dual_q8_1_ds4_mmq32_compact32<
       Q4_K_LAYOUT_RAW, 1, false, true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      stream);
+}
+
+// Resident-layout twin of the fused instantiation above: the same body and the
+// same activation layout with the weights in 16-wide output tiles. The fused
+// tile indexing lives in the body, so this entry point only selects the layout.
+extern "C" int
+hipengine_gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_q8_1_ds4_mmq32_compact32<
+      Q4_K_LAYOUT_T16, 1, false, true>(
       reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
       compact_to_source,
       expert_start_compact,
