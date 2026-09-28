@@ -1195,12 +1195,15 @@ def _gemma4_project_experts_gate_up_wmma_iu8(
     ``tests/test_unit_gemma4_expert_route.py`` checks.
     """
 
-    # The iu8-WMMA kernel tiles out_features in 128-column units, so an
-    # expert intermediate that is not a multiple of 128 cannot be tiled at all
-    # - Gemma 4 26B-A4B's is 704. That is a property of the kernel, so this
-    # route declines and the strict grouped owner runs, rather than the kernel
-    # failing its own argument guard at launch.
-    if intermediate % 128:
+    # The leaf's column block is 128 wide but it resolves the gate/up half per
+    # *column*, so a block straddling the seam at ``intermediate`` already reads
+    # the right weight for each of its columns and a half does not have to be a
+    # multiple of 128. Gemma 4 26B-A4B's 704 (5 x 128 + 64) therefore runs; the
+    # fused width 1408 is 11 x 128, so the grid has no partial block either.
+    # What the leaf does need is the fused expert stride, because this artifact
+    # stores one ``ffn_gate_up_exps`` tensor per layer with the gate rows first
+    # *per expert* rather than two per-expert-contiguous halves.
+    if intermediate % 16:
         return False
 
     from hipengine.core.hip import get_hip_runtime
@@ -1287,6 +1290,7 @@ def _gemma4_project_experts_gate_up_wmma_iu8(
         intermediate,
         num_experts,
         total_rows,
+        expert_stride=2 * intermediate,
         library=library,
         **kwargs,
     )
@@ -1304,6 +1308,7 @@ def _gemma4_project_experts_gate_up_wmma_iu8(
         intermediate,
         intermediate,
         num_experts,
+        expert_stride=2 * intermediate,
         library=library,
         **kwargs,
     )

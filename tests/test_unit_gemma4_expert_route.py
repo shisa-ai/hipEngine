@@ -1603,6 +1603,143 @@ def test_fused_gate_up_mmq_route_holds_at_the_model_geometry_and_every_fragmenta
         free(weights_buf)
 
 
+@_needs_hip
+def test_fused_gate_up_iu8_route_holds_at_gemma4_s_own_half_width() -> None:
+    """The Q5_K iu8-WMMA gate/up route at the half width this artifact ships.
+
+    Gemma 4 26B-A4B's expert intermediate is 704, which is 5 x 128 + 64. The
+    Q5_K iu8 route used to decline on ``intermediate % 128`` because its leaf
+    walks output columns as ``blockIdx.x * 128``, so 704 would put the gate/up
+    seam in the middle of a column block. The seam is not a problem the kernel
+    has to solve at the block level -- it resolves the half per *column*, so a
+    straddling block already reads the right weight for each of its columns.
+
+    What the guard was hiding is the expert stride. The Q4_K route and this one
+    both pass ``weight_ptr`` and ``weight_ptr + intermediate * row_bytes``, but
+    Gemma 4 stores ``ffn_gate_up_exps`` as ``(num_experts, 2 * intermediate,
+    hidden)`` with the gate rows first *per expert*, so an expert's stride is
+    the fused width. A leaf that strides by its own half width reads the wrong
+    expert's rows from the second expert on, which the 128 guard kept out of
+    reach rather than surfacing.
+
+    This holds the route to the strict ``grouped_row4`` owner at the artifact's
+    own width, bit for bit, which is the contract the route's docstring claims.
+    """
+
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        copy_host_array_to_device,
+        free,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        gemma4_project_experts_grouped_row4,
+    )
+
+    backend = _grouped_backend("gguf_q5_k")
+    num_experts = 8
+    in_features = 2816
+    # Gemma 4 26B-A4B's own expert intermediate: 704 = 5 * 128 + 64.
+    intermediate = 704
+    fused_width = 2 * intermediate
+    counts = np.full(num_experts, 4, dtype=np.int64)
+    rows = int(counts.sum())
+
+    rng = np.random.default_rng(20260928)
+    gate_raw = np.concatenate(
+        [make_q5_k_weight(intermediate, in_features) for _ in range(num_experts)]
+    )
+    up_raw = np.concatenate(
+        [make_q5_k_weight(intermediate, in_features) for _ in range(num_experts)]
+    ).copy()
+    # The synthetic fixture is deterministic, so the two halves would otherwise
+    # be byte-identical and a wrong-half read would return the right values.
+    up_raw[:, 1::2] ^= np.uint8(0x04)
+    fused_raw = np.concatenate(
+        [
+            gate_raw.reshape(num_experts, intermediate, -1),
+            up_raw.reshape(num_experts, intermediate, -1),
+        ],
+        axis=1,
+    ).reshape(num_experts * fused_width, -1)
+
+    weights_buf = malloc(fused_raw.nbytes)
+    hidden = rng.standard_normal((rows, in_features)).astype(np.float32)
+    hidden_bits = _to_bf16_bits(hidden)
+    hidden_buf = malloc(hidden_bits.nbytes)
+    starts = np.zeros(num_experts + 1, dtype=np.int64)
+    starts[1:] = np.cumsum(counts)
+    starts_buf = malloc(starts.nbytes)
+    out_bytes = rows * fused_width * 2
+    route_buf = malloc(out_bytes)
+    owner_buf = malloc(out_bytes)
+    scratch = Gemma4ExpertScratch(
+        tokens=rows,
+        top_k=1,
+        hidden_size=in_features,
+        intermediate=intermediate,
+        num_experts=num_experts,
+    )
+    try:
+        copy_host_array_to_device(weights_buf, fused_raw)
+        copy_host_array_to_device(hidden_buf, hidden_bits)
+        copy_host_array_to_device(starts_buf, starts)
+        weight = _ResidentWeight(
+            backend=backend, quant_key="gguf_q5_k", ptr=weights_buf.ptr
+        )
+
+        owner_served = gemma4_project_experts_grouped_row4(
+            weight,
+            hidden_buf.ptr,
+            starts_buf.ptr,
+            owner_buf.ptr,
+            rows,
+            num_experts,
+            in_features,
+            fused_width,
+        )
+        assert owner_served is True, "the strict row4 owner declined a Q5_K weight"
+
+        served = gemma4_project_experts_gate_up_mmq(
+            weight,
+            hidden_buf.ptr,
+            route_buf.ptr,
+            SimpleNamespace(ptr=starts_buf.ptr),
+            rows,
+            num_experts,
+            in_features,
+            intermediate,
+            scratch=scratch,
+        )
+        assert served is True, (
+            "the Q5_K iu8 gate/up route declined the artifact's own 704-wide "
+            "expert half, so this layer runs the fp32 grouped fallback"
+        )
+
+        def read(buf):
+            out = np.empty((rows, fused_width), dtype=np.uint16)
+            copy_device_to_host(
+                int(out.ctypes.data), DeviceBuffer(ptr=buf.ptr, nbytes=out.nbytes)
+            )
+            return _from_bf16_bits(out)
+
+        got, want = read(route_buf), read(owner_buf)
+        differing = int(np.count_nonzero(got != want))
+        scale = float(np.abs(want).max())
+        assert differing == 0, (
+            f"the iu8 route differs from the strict row4 owner at "
+            f"{differing} of {got.size} outputs; normalized max "
+            f"{float(np.abs(got - want).max()) / scale:.4g} against scale "
+            f"{scale:.4g}. A non-zero difference that grows with the expert "
+            f"index is the fused-stride read."
+        )
+    finally:
+        scratch.free()
+        for buffer in (weights_buf, hidden_buf, starts_buf, route_buf, owner_buf):
+            free(buffer)
+
+
 @pytest.mark.parametrize(
     "quant_key, in_features, intermediate",
     [

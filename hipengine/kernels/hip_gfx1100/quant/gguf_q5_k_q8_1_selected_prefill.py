@@ -138,6 +138,7 @@ def _launch_wmma_iu8_risk(
     num_experts: int,
     wmma_total_rows: int,
     *,
+    expert_stride: int = 0,
     stream: int,
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
@@ -179,6 +180,7 @@ def _launch_wmma_iu8_risk(
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
+        ctypes.c_int64,
         ctypes.c_void_p,
     ]
     fn.restype = ctypes.c_int
@@ -198,6 +200,7 @@ def _launch_wmma_iu8_risk(
         ctypes.c_int64(in_features),
         ctypes.c_int64(out_features_a),
         ctypes.c_int64(out_features_b),
+        ctypes.c_int64(expert_stride),
         ctypes.c_int64(num_experts),
         ctypes.c_int64(wmma_total_rows),
         ctypes.c_void_p(stream),
@@ -221,6 +224,7 @@ def _launch_sparse_exact_repair(
     out_features_b: int,
     num_experts: int,
     *,
+    expert_stride: int = 0,
     grid_blocks: int = 1024,
     stream: int,
     library: ctypes.CDLL | None,
@@ -244,7 +248,7 @@ def _launch_sparse_exact_repair(
     library = library or build_gguf_q5_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_SPARSE_EXACT_REPAIR_BF16)
-    fn.argtypes = [ctypes.c_void_p] * 7 + [ctypes.c_int64] * 7 + [ctypes.c_void_p]
+    fn.argtypes = [ctypes.c_void_p] * 7 + [ctypes.c_int64] * 8 + [ctypes.c_void_p]
     fn.restype = ctypes.c_int
     err = fn(
         ctypes.c_void_p(input_ptr),
@@ -259,6 +263,7 @@ def _launch_sparse_exact_repair(
         ctypes.c_int64(in_features),
         ctypes.c_int64(out_features_a),
         ctypes.c_int64(out_features_b),
+        ctypes.c_int64(expert_stride),
         ctypes.c_int64(num_experts),
         ctypes.c_int64(grid_blocks),
         ctypes.c_void_p(stream),
@@ -286,6 +291,7 @@ def gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out(
     num_experts: int,
     wmma_total_rows: int,
     *,
+    expert_stride: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -310,6 +316,7 @@ def gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out(
         out_features_b,
         num_experts,
         wmma_total_rows,
+        expert_stride=expert_stride,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -331,6 +338,7 @@ def gguf_q5_k_selected_dual_sparse_exact_repair_bf16(
     out_features_b: int,
     num_experts: int,
     *,
+    expert_stride: int = 0,
     grid_blocks: int = 1024,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
@@ -352,6 +360,7 @@ def gguf_q5_k_selected_dual_sparse_exact_repair_bf16(
         out_features_a,
         out_features_b,
         num_experts,
+        expert_stride=expert_stride,
         grid_blocks=grid_blocks,
         stream=stream,
         library=library,
