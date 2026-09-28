@@ -305,6 +305,51 @@ def gemma4_text_config_from_gguf(
     )
 
 
+def gemma4_text_config_from_reader(
+    reader: GGUFReader,
+    *,
+    hf_config: Mapping[str, Any] | None = None,
+) -> Gemma4TextConfig:
+    """Derive the text config from artifact metadata, loading no tensor.
+
+    Split out of :func:`load_gemma4_device_weights` so the attention geometry is
+    available before any weight is resident. The geometry is what decides whether
+    a requested context length is servable, and a caller that discovers that only
+    after loading the artifact has already paid the load.
+    """
+
+    if hf_config is not None:
+        return gemma4_text_config_from_hf(hf_config)
+    info = reader.info
+    tensor_names = tuple(t.name for t in info.tensors)
+    gguf = gemma4_gguf_config_from_metadata(info)
+    return gemma4_text_config_from_gguf(gguf, tensor_names=tensor_names)
+
+
+def gemma4_require_context_capacity(config: Gemma4TextConfig, capacity: int) -> None:
+    """Raise if the attention kernel cannot serve ``capacity`` positions.
+
+    ``gemma4_attention_shared_bytes`` holds one logit per live key in LDS, so the
+    key count it accepts is bounded by the shared-memory budget. The runner's
+    ``capacity`` is the number of positions its cache holds, and a windowless
+    layer's key count is the whole context, so that budget is a ceiling on how
+    long a context the model can be configured for.
+
+    The check is on ``capacity`` and not on any live count, so a sliding window
+    does not lift it: the runner validates the configured context, not the keys a
+    particular query attends to.
+
+    This is a capability refusal and it is deliberately loud and named. It is also
+    deliberately callable without weights, so a caller can raise it before paying
+    for a load rather than after.
+    """
+
+    for attention in config.attention:
+        gemma4_attention_shared_bytes(
+            head_dim=attention.head_dim, keys=int(capacity)
+        )
+
+
 def load_gemma4_device_weights(
     reader: GGUFReader,
     *,
@@ -318,13 +363,7 @@ def load_gemma4_device_weights(
     conversion the GGUF metadata cannot describe.
     """
 
-    info = reader.info
-    tensor_names = tuple(t.name for t in info.tensors)
-    if hf_config is not None:
-        config = gemma4_text_config_from_hf(hf_config)
-    else:
-        gguf = gemma4_gguf_config_from_metadata(info)
-        config = gemma4_text_config_from_gguf(gguf, tensor_names=tensor_names)
+    config = gemma4_text_config_from_reader(reader, hf_config=hf_config)
     specs = plan_gemma4_gguf_resident_specs(reader)
     by_slot = {spec.slot_path: spec for spec in specs}
 
@@ -496,9 +535,10 @@ class Gemma4Runner:
             raise ValueError("max_logits_rows must be positive")
         if self.max_logits_rows > self.max_block:
             raise ValueError("max_logits_rows must not exceed max_block")
-        for attention in config.attention:
-            gemma4_attention_shared_bytes(head_dim=attention.head_dim, keys=self.capacity)
-
+        # A capability refusal, raised here rather than at request time. Callers
+        # that can reach the geometry without loading weights should call
+        # gemma4_require_context_capacity first so the refusal costs nothing.
+        gemma4_require_context_capacity(config, self.capacity)
         hidden = config.hidden_size
         # Each layer's dense MLP can have its own width. Use the per-layer
         # widths the loader recorded from the artifact; a synthetic weights

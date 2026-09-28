@@ -31,6 +31,8 @@ from hipengine.loading.safetensors import WeightIndex
 from hipengine.runtime.gemma4 import (
     Gemma4DeviceWeights,
     Gemma4Runner,
+    gemma4_require_context_capacity,
+    gemma4_text_config_from_reader,
     load_gemma4_device_weights,
 )
 from hipengine.tokenization.gguf import Gemma4GGUFTokenizer
@@ -246,6 +248,14 @@ class Gemma4GGUFGenerator:
     def _ensure_runner(self) -> Gemma4Runner:
         if self._runner is not None:
             return self._runner
+        # Refuse an unservable context before loading the artifact. The attention
+        # geometry comes from metadata alone, and the ceiling depends only on that
+        # geometry and on context_length, so discovering it after a multi-gigabyte
+        # load would charge the user for the refusal. Gemma4Runner repeats the
+        # check when it is constructed; this is the same check, earlier.
+        gemma4_require_context_capacity(
+            gemma4_text_config_from_reader(self.reader), self.context_length
+        )
         started = time.perf_counter()
         weights = load_gemma4_device_weights(self.reader, backend=self.backend)
         try:

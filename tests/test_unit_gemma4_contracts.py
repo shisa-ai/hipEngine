@@ -79,6 +79,14 @@ def test_failed_runner_construction_releases_loaded_weights(monkeypatch):
     released = []
     weights = SimpleNamespace(free=lambda: released.append(True))
     monkeypatch.setattr(module, "load_gemma4_device_weights", lambda *a, **k: weights)
+    # The context ceiling is checked from metadata before the load, so it needs a
+    # config. This test's subject is weight release, not config derivation, so the
+    # derivation is stubbed with a geometry-free config that passes the check.
+    monkeypatch.setattr(
+        module,
+        "gemma4_text_config_from_reader",
+        lambda *a, **k: SimpleNamespace(attention=()),
+    )
 
     def fail(**kwargs):
         raise MemoryError("fixture allocation failure")
