@@ -25,6 +25,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q4_k_t16_selected_dual_sparse_exact_correct_bf16,
     gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_bf16_bf16_out,
@@ -1244,6 +1245,14 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
         qweight_a = fixture.qweight_a
         qweight_b = fixture.qweight_b
         launcher = gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
+    elif layout == "raw_k128":
+        # The 128-wide K pass: same weights and same arithmetic as ``raw``, four
+        # Q4_K subblocks staged per pass instead of one.
+        qweight_a = fixture.qweight_a
+        qweight_b = fixture.qweight_b
+        launcher = (
+            gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_bf16_bf16_out
+        )
     elif layout == "x8":
         qweight_a = repack_gguf_q4_k_x8(fixture.qweight_a).tiles
         qweight_b = repack_gguf_q4_k_x8(fixture.qweight_b).tiles
@@ -1474,6 +1483,53 @@ def test_q4_k_q8_1_ds4_mmq32_selected_prefill_bf16_matches_ds4_cpu_reference(
     assert float(
         np.mean(np.argmax(expected, axis=-1) == np.argmax(actual, axis=-1))
     ) >= 0.9
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("counts", "in_features", "out_features_a", "out_features_b", "source_remap"),
+    [
+        pytest.param([4, 0, 5], 256, 32, 32, False, id="empty-middle-tail"),
+        pytest.param(
+            [0, 17, 31],
+            512,
+            32,
+            64,
+            True,
+            id="empty-first-multi-block-source-remap",
+        ),
+        pytest.param([6, 3], 768, 64, 32, False, id="six-128-groups-uneven"),
+    ],
+)
+def test_q4_k_q8_1_ds4_mmq32x128_selected_prefill_matches_mmq32(
+    counts: list[int],
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    source_remap: bool,
+) -> None:
+    """The 128-wide K pass is the same arithmetic with four times fewer passes.
+
+    It is checked against the 32-wide route *bitwise*, not just against the
+    reference: the accumulation order into each output element is unchanged, so
+    any difference is a staging bug rather than rounding. The reference check
+    then confirms both are correct rather than merely equal.
+    """
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=in_features,
+        out_features_a=out_features_a,
+        out_features_b=out_features_b,
+        dtype="bf16",
+        seed=23,
+    )
+    narrow = _run_q8_1_ds4_mmq32_selected_dual_gpu(fixture, source_remap=source_remap)
+    wide = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture, source_remap=source_remap, layout="raw_k128"
+    )
+    np.testing.assert_array_equal(wide, narrow)
+    expected = _q8_1_ds4_selected_reference(fixture)
+    np.testing.assert_allclose(wide, expected, **_TOLERANCE_BF16)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
