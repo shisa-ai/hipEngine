@@ -214,6 +214,27 @@ __global__ void gemma4_attention_prefill_kernel(
   // KV cache (tokens == 1, keys == live context).
   const uint8_t* mask_row = keep_mask + token * keys;
   const int64_t first_kept = gemma4_attn_first_kept(window, row_offset, token);
+  // The last column this row can keep. `window > 0` already promises the mask
+  // is sliding-causal -- the same promise `gemma4_attn_first_kept` spends on
+  // the leading run -- and a sliding-causal mask is zero above the row's own
+  // position as well as below its window. Column 0 is key `key_begin`, so the
+  // row's position is `row_offset + token`, and every column past it is zero.
+  //
+  // Walking those columns costs what walking real ones costs: pass 1 loads a
+  // key row and runs the whole warp-key reduction to produce -infinity, and
+  // passes 2 and 3 read the shared logit it left behind. `first_kept` trims
+  // the leading masked run; this trims the trailing one, which the same
+  // promise licenses.
+  //
+  // Dropping a column whose logit is -infinity cannot change a result: it does
+  // not move `running_max`, and expf(-infinity - max) is 0, so it contributes
+  // nothing to the denominator or the numerator. The output is bit-identical,
+  // not merely close. The tests that pass an arbitrary mask use `window == 0`,
+  // which is the documented "caller makes no such promise" case and keeps the
+  // full walk, so this cannot trim a column those shapes need.
+  const int64_t walk_end = (window > 0 && row_offset + token + 1 < keys)
+                               ? (row_offset + token + 1)
+                               : keys;
 
   // Pass 1: logits and their running maximum. A masked-out key is -inf so it
   // contributes nothing to either the denominator or the numerator.
@@ -241,7 +262,7 @@ __global__ void gemma4_attention_prefill_kernel(
     // No pair of values is added in a different order, so the logits are
     // unchanged.
 #pragma unroll 2
-    for (; j < keys; j += 8) {
+    for (; j < walk_end; j += 8) {
       float logit = -INFINITY;
       if (mask_row[j] != 0) {
         const scalar_t* k_row = key + (j * num_kv_heads + kv_head) * head_dim;
@@ -258,7 +279,7 @@ __global__ void gemma4_attention_prefill_kernel(
       running_max = fmaxf(running_max, logit);
     }
   } else {
-    for (int64_t j = first_kept; j < keys; ++j) {
+    for (int64_t j = first_kept; j < walk_end; ++j) {
       float logit = -INFINITY;
       if (mask_row[j] != 0) {
         const scalar_t* k_row = key + (j * num_kv_heads + kv_head) * head_dim;
@@ -300,7 +321,7 @@ __global__ void gemma4_attention_prefill_kernel(
   if (j < first_kept) {
     j = gemma4_attn_stride_first(first_kept, j, threads);
   }
-  for (; j < keys; j += threads) {
+  for (; j < walk_end; j += threads) {
     const float weight = expf(logits_s[j] - row_max);
     local_sum += weight;
     logits_s[j] = weight;
@@ -321,7 +342,7 @@ __global__ void gemma4_attention_prefill_kernel(
   // happening.
   for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
     float acc = 0.0f;
-    for (int64_t j = first_kept; j < keys; ++j) {
+    for (int64_t j = first_kept; j < walk_end; ++j) {
       const float weight = logits_s[j];
       if (weight == 0.0f) {
         continue;
