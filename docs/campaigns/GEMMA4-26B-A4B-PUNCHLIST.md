@@ -45,6 +45,15 @@ path `hipengine.LLM.generate()` reaches.
   artifact every later optimization is compared against. See
   [Baseline at HEAD](#baseline-at-head) for what reproduced and the one row that
   did not.
+- The prefill columns now carry
+  `benchmarks/results/2026-09-28-gemma4-scoreboard-p14fix.json`, captured after
+  P14 landed (the class kernel's pass 3 walks only `[first_active,
+  last_active + 1)` instead of starting at key 0). Every non-sliding prefill
+  family moves by at most 1.4% against the baseline artifact -- the one larger
+  figure is 0.1 ms of copy/fill, 2.1% of 1.0 ms -- so those cells remain
+  interchangeable with the values measured alongside llama.cpp. The intended
+  change is `attn.sliding` at 4096, -18.1%. Decode columns are untouched, since
+  P14 does not run during decode.
 - llama.cpp upstream `a97cce8`, HIP build with `-DAMDGPU_TARGETS=gfx1100
   -DGGML_NATIVE=OFF`, flags `-ngl 99 -fa 1 -ctk bf16 -ctv bf16 -b 4096 -ub 1024`.
 - Measured 2026-09-28 with both GPUs otherwise idle.
@@ -53,8 +62,8 @@ path `hipengine.LLM.generate()` reaches.
 
 | Shape | hipEngine | llama.cpp | hipEngine as % |
 | --- | ---: | ---: | ---: |
-| Prefill, 1024 tokens (tok/s) | 1977 | 4969 | 39.8% |
-| Prefill, 4096 tokens (tok/s) | 1060 | 4505 | 23.5% |
+| Prefill, 1024 tokens (tok/s) | 1983 | 4969 | 39.9% |
+| Prefill, 4096 tokens (tok/s) | 1146 | 4505 | 25.4% |
 | Decode at 1024 context (tok/s) | 43.15 | 84.45 | 51.1% |
 | Decode at 4096 context (tok/s) | 39.79 | 81.67 | 48.7% |
 | Decode with MTP assistant, draft 3 (tok/s) | not implemented | 164.6 | — |
@@ -79,21 +88,25 @@ the exact commands, the prompt-token hash and the toolchain (HIP 7.2.53211).
 Two runs 112 s apart agreed to within 0.4% on every row, so this artifact is the
 reference a landed change is diffed against.
 
-| Measurement | Baseline | Table above | Delta |
+| Measurement | Baseline (pre-P14) | Table above | Delta |
 | --- | ---: | ---: | ---: |
-| Prefill 1024 (tok/s) | 1979.7 | 1977 | +0.1% |
-| Prefill 4096 (tok/s) | 1061.6 | 1060 | +0.2% |
+| Prefill 1024 (tok/s) | 1979.7 | 1983 | +0.2% |
+| Prefill 4096 (tok/s) | 1061.6 | 1146 | +7.9% |
 | Decode at 1024 (tok/s) | 43.87 | 43.15 | +1.7% |
 | Decode at 4096 (tok/s) | 40.19 | 39.79 | +1.0% |
-| Prefill busy 1024 (ms) | 483.1 | 480.6 | +0.5% |
-| Prefill busy 4096 (ms) | 3751.8 | 3747.9 | +0.1% |
+| Prefill busy 1024 (ms) | 483.1 | 479.4 | −0.8% |
+| Prefill busy 4096 (ms) | 3751.8 | 3474.4 | −7.4% |
 | Decode busy at 1024 (ms) | **19.47** | 21.30 | **−8.6%** |
 | Decode busy at 4096 (ms) | 21.56 | 21.59 | −0.1% |
 | Launches per decode token | 1146 | 1146 | 0 |
 
-Every prefill family reproduces within 0.4% and decode at 4096 within 1%. One
-row does not: decode at 1024 measures 19.47 ms of device busy against the
-table's 21.30. The whole difference sits in `moe.gate_up` (4.79 against 5.42),
+At capture time every prefill family reproduced within 0.4% and decode at 4096
+within 1%. P14 has since landed, so the prefill rows above now read as P14's
+effect rather than as reproduction error -- `attn.sliding` at 4096 supplies
+essentially all of the +7.9% headline delta, and the decode rows, which P14
+does not touch, still carry the reproduction check. One row never reproduced:
+decode at 1024 measures 19.47 ms of device busy against the table's 21.30. The
+whole difference sits in `moe.gate_up` (4.79 against 5.42),
 `attn.sliding` (3.65 against 4.28), `moe.down` (2.64 against 2.83) and
 `lm_head` (0.97 against 1.15) -- and in this baseline every one of those is the
 same at 1024 as at 4096, which is what their inputs predict, since none of them
@@ -110,34 +123,44 @@ in the same session as its hipEngine column, and replacing half a pair from an
 unpaired run would break the pairing the head-to-head rests on. Re-pairing that
 row needs a fresh llama.cpp trace, which this baseline does not include.
 
+The prefill columns are the exception, and now carry the `p14fix` artifact:
+every non-sliding family moved at most 1.4% against this baseline, so the
+substituted cells are interchangeable with their paired originals at that
+tolerance, while the one row that does move is the change being published.
+Decode does not get that latitude -- its unexplained spread is 8.6%, so its
+pairing stays intact until a fresh llama.cpp trace exists to re-pair it with.
+
 ### Prefill families (RX 7900 XTX, milliseconds per prefill)
 
 These are device-busy sums from `rocprofv3 --kernel-trace`. hipEngine uses its
 steady-state (second) prefill. llama.cpp uses the per-run average of two
-`llama-bench` runs. "Gap" is hipEngine minus llama.cpp.
+`llama-bench` runs. "Gap" is hipEngine minus llama.cpp. hipEngine's columns are
+`benchmarks/results/2026-09-28-gemma4-scoreboard-p14fix.json`, taken after P14
+landed; the pre-P14 reproduction of these same cells is recorded under
+[Baseline at HEAD](#baseline-at-head).
 
 | Family | hipEngine 1024 | llama.cpp 1024 | Gap 1024 | hipEngine 4096 | llama.cpp 4096 | Gap 4096 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| attn.sliding (25 layers) | 29.9 | 12.3 | +17.6 | **1478.7** | 84.0 | **+1394.7** |
-| attn.global (5 layers) | 39.2 | 6.7 | +32.4 | **610.4** | 85.7 | **+524.7** |
-| dense.q8_0 (q/k/v/o, shared MLP) | 115.6 | 59.0 | +56.6 | 461.6 | 233.4 | +228.2 |
-| moe.gate_up (Q4_K, 29 layers) | 112.6 | 49.4 | +63.2 | 453.9 | 194.2 | +259.7 |
-| moe.down (Q5_1, 29 layers) | 46.8 | 30.2 | +16.6 | 191.4 | 120.4 | +71.0 |
-| moe.l29_experts (Q5_K / Q8_0) | **66.2** | 2.6 | **+63.6** | 273.1 | 10.4 | +262.7 |
-| moe.route_glue (schedule, gather, combine) | 34.5 | 10.5 | +24.0 | 137.5 | 41.2 | +96.3 |
-| moe.router_gemm (router logits, prescale) | 13.6 | 4.0 | +9.6 | 53.3 | 15.5 | +37.8 |
-| moe.act_quant (Q8_1 activation pack) | 5.7 | 1.5 | +4.1 | 22.8 | 6.0 | +16.9 |
-| norm | 9.0 | 11.9 | −2.9 | 35.8 | 46.8 | −11.0 |
-| elementwise (rope, GEGLU, adds) | 4.6 | 4.2 | +0.4 | 18.5 | 16.5 | +2.0 |
+| attn.sliding (25 layers) | 29.6 | 12.3 | +17.3 | **1211.3** | 84.0 | **+1127.3** |
+| attn.global (5 layers) | 38.7 | 6.7 | +32.0 | **612.2** | 85.7 | **+526.5** |
+| dense.q8_0 (q/k/v/o, shared MLP) | 115.1 | 59.0 | +56.1 | 458.7 | 233.4 | +225.3 |
+| moe.gate_up (Q4_K, 29 layers) | 112.3 | 49.4 | +62.9 | 451.4 | 194.2 | +257.2 |
+| moe.down (Q5_1, 29 layers) | 46.9 | 30.2 | +16.7 | 190.4 | 120.4 | +70.0 |
+| moe.l29_experts (Q5_K / Q8_0) | **66.9** | 2.6 | **+64.3** | 272.7 | 10.4 | +262.3 |
+| moe.route_glue (schedule, gather, combine) | 34.1 | 10.5 | +23.6 | 137.0 | 41.2 | +95.8 |
+| moe.router_gemm (router logits, prescale) | 13.4 | 4.0 | +9.4 | 53.1 | 15.5 | +37.6 |
+| moe.act_quant (Q8_1 activation pack) | 5.6 | 1.5 | +4.1 | 22.7 | 6.0 | +16.7 |
+| norm | 9.0 | 11.9 | −2.9 | 35.5 | 46.8 | −11.3 |
+| elementwise (rope, GEGLU, adds) | 4.6 | 4.2 | +0.4 | 18.4 | 16.5 | +1.9 |
 | attn.kv_write | in attention | 2.0 | −2.0 | in attention | 9.2 | −9.2 |
-| lm_head | 1.9 | 1.1 | +0.9 | 7.8 | 1.1 | +6.7 |
+| lm_head | 2.0 | 1.1 | +0.9 | 7.8 | 1.1 | +6.7 |
 | runtime copy / fill | 1.1 | 1.3 | −0.2 | 3.0 | 1.7 | +1.3 |
-| **Device busy** | **480.6** | **196.7** | **+283.9** | **3747.9** | **866.2** | **+2881.7** |
+| **Device busy** | **479.4** | **196.7** | **+282.7** | **3474.4** | **866.2** | **+2608.2** |
 
 llama.cpp runs a second HIP stream during prefill. Its shared-expert MLP branch
 overlaps the MoE branch, so its busy total (≈187 ms in a warm run) fits into a
 ≈140 ms span. hipEngine's single-stream kernel-busy fraction is about 94%
-(480.6 ms busy in a 511.3 ms span). This is a timeline fraction, not hardware
+(479.4 ms busy in a 510.0 ms span). This is a timeline fraction, not hardware
 occupancy or a measurement of recoverable host overhead.
 
 ### Decode families (RX 7900 XTX, milliseconds per token)
