@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11243,
-    "current": 4011,
+    "entries": 11245,
+    "current": 4013,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1303,
+    "rows": 1304,
     "by_rule": {
       "dependency": 42,
       "legacy-next": 109,
-      "status": 1152
+      "status": 1153
     }
   },
   "rows": [
@@ -47297,7 +47297,7 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 5,
         "open_text": "- **The repack unit, if it is taken, should start by finding where the decode path\n  builds its T16 row tiles.** `q4_t16_physical_extra_rowtiles_session` is the consumer;\n  its producer is the repack the prefill route needs, and reusing it is the difference\n  between a loader change and a new subsystem.\n- **Re-measure the design margin on the production geometry before doing the repack.**\n  The harness fixture is 5504 wide against the gate/up projection's 1408 and cannot be\n  reduced (`--out-features-b 0` is rejected). A repack is a large unit to start on a\n  number measured at the wrong width",
         "paths_missing": [],
         "flags_unread": []
@@ -47305,7 +47305,7 @@
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
         "Next also names a dependency: 'cannot be'",
-        "3 later entries by the same worker share this topic prefix"
+        "5 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T162000.000000Z-lhl-gemma4-t16-route-scope-4f2d8b.md",
@@ -47322,7 +47322,7 @@
         ]
       },
       "id": "worklog/20260928T162000.000000Z-lhl-gemma4-t16-route-scope-4f2d8b",
-      "evidence_hash": "2122ee92edbc"
+      "evidence_hash": "005537d0c35b"
     },
     {
       "kind": "worklog",
@@ -48055,14 +48055,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 4,
         "open_text": "- **The assignment's premise should be corrected, not re-derived.** Anything that\n  starts from \"the T16 gate/up route is dead code\" is reading the tree at\n  `02e2780fa` or earlier. `a8b59363b` is the wiring commit and `20260929T050000`\n  is its entry.\n- **The \"+2.78 percent\" cost claim is wrong as a resident figure** (7.92 GB of\n  tiles added to 16.995 GB of artifact bytes; the raw copy is kept). It is\n  recorded in the wiring entry, which is immutable, so the correction belongs in\n  whatever document carries the next summary of this change.\n- **The down projection is still on MMQ32** (103.9 ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "4 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T223413.377532Z-lhl-gemma4-t16-gate-up-verified-49417f.md",
@@ -48080,7 +48080,7 @@
         ]
       },
       "id": "worklog/20260928T223413.377532Z-lhl-gemma4-t16-gate-up-verified-49417f",
-      "evidence_hash": "ac3b1a2146d1"
+      "evidence_hash": "c6da2c8c2b6e"
     },
     {
       "kind": "worklog",
@@ -48239,6 +48239,45 @@
       },
       "id": "worklog/20260928T233500.000000Z-lhl-gemma4-expert-mmq-three-washes-8d1f5b",
       "evidence_hash": "9945709dcd3b"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T234111.469697Z-lhl-gemma4-t16-gate-up-dram-bound-b8c595",
+      "title": "correction to the T16 leaf demand paragraph, and the verified in-situ call geometry",
+      "location": "worklog/entries/20260928T234111.469697Z-lhl-gemma4-t16-gate-up-dram-bound-b8c595.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-t16-gate-up-dram-bound",
+        "written": "2026-09-28",
+        "age_days": 1,
+        "open_by": "status",
+        "continuation_entries": 2,
+        "open_text": "- Unchanged from the superseded entry: the lever on this leaf is instructions per byte, not bytes.\n  The 91 percent cache-served fraction is a further reason a byte-level change cannot help - only\n  277 MB of 3,068 MB demanded reaches memory, and even the DRAM term is below the irreducible weight\n  pass.\n- Resolving the 16.0 MB gap is a source-level exercise, not a new measurement: count the distinct\n  128-byte lines the kernel's per-lane tile access actually touches against the 2368-byte layout. It\n  is worth doing only because a tile access that skips bytes is a tile access that wastes the r",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "2 later entries by the same worker share this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T234111.469697Z-lhl-gemma4-t16-gate-up-dram-bound-b8c595.md",
+        "refs": [],
+        "tokens": [
+          "call",
+          "correction",
+          "demand",
+          "geometry",
+          "leaf",
+          "paragraph",
+          "situ",
+          "t16",
+          "verified"
+        ]
+      },
+      "id": "worklog/20260928T234111.469697Z-lhl-gemma4-t16-gate-up-dram-bound-b8c595",
+      "evidence_hash": "428e1959fa01"
     },
     {
       "kind": "worklog",
