@@ -531,7 +531,15 @@ def test_launch_gguf_linear_wmma_prefill_matches_cpu_reference() -> None:
 
         # Minimal weight-shape fake matching the runtime's expectations.
         weight = SimpleNamespace(
-            spec=SimpleNamespace(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0"),
+            spec=SimpleNamespace(
+                layout=LAYOUT_RAW_GGUF,
+                quant_key="gguf_q8_0",
+                # The generic dispatch reads this to decide whether a raw sidecar
+                # exists (gguf_linear.py:3344). Real specs carry it; this stub
+                # did not, so the dispatch-integration test raised AttributeError
+                # and had been dead since that read was added.
+                allocation_names=("raw",),
+            ),
             allocation=lambda name="raw": SimpleNamespace(
                 tensor=SimpleNamespace(ptr=qw_dev.ptr)
             ),
