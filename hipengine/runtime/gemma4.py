@@ -473,6 +473,7 @@ class Gemma4Runner:
     weights: Gemma4DeviceWeights
     capacity: int
     max_block: int = 0
+    max_logits_rows: int = 1
     rng: np.random.Generator = field(default_factory=lambda: np.random.default_rng(0))
     _buffers: list[DeviceBuffer] = field(default_factory=list, repr=False)
     _scratches: list[Gemma4LayerScratch] = field(default_factory=list, repr=False)
@@ -491,6 +492,10 @@ class Gemma4Runner:
             self.max_block = min(self.capacity, DEFAULT_PREFILL_BLOCK)
         if self.max_block > self.capacity:
             raise ValueError("max_block must not exceed capacity")
+        if self.max_logits_rows <= 0:
+            raise ValueError("max_logits_rows must be positive")
+        if self.max_logits_rows > self.max_block:
+            raise ValueError("max_logits_rows must not exceed max_block")
         for attention in config.attention:
             gemma4_attention_shared_bytes(head_dim=attention.head_dim, keys=self.capacity)
 
@@ -515,8 +520,10 @@ class Gemma4Runner:
         try:
             self._token_ids = self._alloc(self.max_block * _I64_BYTES)
             self._hidden = self._alloc(self.max_block * hidden * _BF16_BYTES)
-            self._normalized = self._alloc(hidden * _BF16_BYTES)
-            self._logits = self._alloc(int(config.vocab_size or 0) * _F32_BYTES)
+            self._normalized = self._alloc(self.max_logits_rows * hidden * _BF16_BYTES)
+            self._logits = self._alloc(
+                self.max_logits_rows * int(config.vocab_size or 0) * _F32_BYTES
+            )
 
             for index, attention in enumerate(config.attention):
                 self._scratches.append(
@@ -706,7 +713,13 @@ class Gemma4Runner:
             nbytes=hidden * _BF16_BYTES,
         )
 
-    def forward(self, token_ids: Sequence[int], *, apply_softcap: bool = True) -> np.ndarray:
+    def forward(
+        self,
+        token_ids: Sequence[int],
+        *,
+        apply_softcap: bool = True,
+        logits_rows: int = 1,
+    ) -> np.ndarray:
         """Run ``token_ids`` through the model and return the last row's logits.
 
         The tokens append to the sequence at the current position, so calling
@@ -726,6 +739,17 @@ class Gemma4Runner:
         distribution and so is applied by default; the raw values are exposed
         because a saturated cap destroys the ordering information a parity
         comparison needs.
+
+        ``logits_rows=k`` returns the last ``k`` rows' logits as a ``(k, vocab)``
+        array instead of one row, which is what a speculative verify pass reads:
+        it forwards a draft in one call and needs the target's own distribution
+        at every drafted position, not just the last. ``k`` is bounded by
+        ``max_logits_rows``, the constructor's bound on the projection buffers,
+        because the default of one row is what keeps a 512-wide prefill from
+        sizing its logits scratch for the whole block. Each returned row is the
+        same computation a single-token forward would produce for that position:
+        the mask is built from absolute positions, so a row never depends on how
+        many rows accompany it.
         """
 
         if self._closed:
@@ -745,9 +769,19 @@ class Gemma4Runner:
             if not 0 <= token < vocab:
                 raise ValueError(f"token id {token} is outside the vocabulary of {vocab}")
 
+        wanted = int(logits_rows)
+        if not 1 <= wanted <= self.max_logits_rows:
+            raise ValueError(
+                f"logits_rows {wanted} is outside 1..{self.max_logits_rows}, the "
+                f"runner's projection buffer bound"
+            )
+
         logits = None
         for start in range(0, rows, self.max_block):
             block = tokens[start : start + self.max_block]
+            # Only the final block can hold the rows the caller asked for; an
+            # earlier block's logits are overwritten before they are read.
+            block_rows = wanted if start + len(block) == rows else 1
             # The WMMA dense prefill is 2.16x faster at the kernel and 19 percent
             # end-to-end on a full block, and it is a different arithmetic path:
             # it narrows the activation to f16 where the exact tiled route keeps
@@ -761,12 +795,18 @@ class Gemma4Runner:
             # Clearing command: fix the partial-block path, then rerun
             # scripts/gemma4_teacher_forced_gate.py at --prefill 256.
             with _gemma4_block_wmma_session(len(block) == self.max_block):
-                logits = self._forward_block(block, apply_softcap=apply_softcap)
+                logits = self._forward_block(
+                    block, apply_softcap=apply_softcap, logits_rows=block_rows
+                )
         assert logits is not None
         return logits
 
     def _forward_block(
-        self, tokens: Sequence[int], *, apply_softcap: bool = True
+        self,
+        tokens: Sequence[int],
+        *,
+        apply_softcap: bool = True,
+        logits_rows: int = 1,
     ) -> np.ndarray:
         """Run one block of at most ``max_block`` tokens; see :meth:`forward`."""
 
@@ -867,14 +907,23 @@ class Gemma4Runner:
             )
 
         # --- final norm and lm head -----------------------------------------
-        # Only the last row is needed: the caller wants the next-token
-        # distribution, and the earlier rows' logits are never read.
-        last = (rows - 1) * hidden * _BF16_BYTES
+        # The default is one row: the caller wants the next-token distribution
+        # and the earlier rows' logits are never read, so a 512-wide prefill
+        # would otherwise size this projection for the whole block. A verify
+        # pass asks for the trailing rows instead, bounded by the constructor's
+        # max_logits_rows, and gets each one from the same norm and head the
+        # single-row path runs.
+        projected = int(logits_rows)
+        if not 1 <= projected <= rows:
+            raise ValueError(
+                f"logits_rows {projected} is outside 1..{rows}, this block's rows"
+            )
+        first = (rows - projected) * hidden * _BF16_BYTES
         gemma4_rmsnorm_f32w_bf16(
-            self._hidden.ptr + last,
+            self._hidden.ptr + first,
             self.weights.final_norm.buffer.ptr,
             self._normalized.ptr,
-            1,
+            projected,
             hidden,
             config.rms_norm_eps,
         )
@@ -883,13 +932,14 @@ class Gemma4Runner:
             head,
             self._normalized.ptr,
             self._logits.ptr,
-            1,
+            projected,
             hidden,
             vocab,
             output_dtype="f32",
         )
 
-        logits = np.empty(vocab, dtype=np.float32)
+        shape = (projected, vocab) if projected > 1 else (vocab,)
+        logits = np.empty(shape, dtype=np.float32)
         copy_device_to_host(host_array_ptr(logits), self._logits, logits.nbytes)
         self._position += rows
         self._last_rows = rows
@@ -901,6 +951,41 @@ class Gemma4Runner:
             cap = np.float32(cap)
             logits = (np.tanh(logits / cap) * cap).astype(np.float32)
         return logits
+
+    def rewind(self, position: int) -> None:
+        """Drop back to an earlier position without clearing the cache.
+
+        A speculative verify pass appends a whole draft and then accepts only a
+        prefix of it, so the cache has to give back the rejected tail. The K/V
+        written past ``position`` is left in place rather than cleared: the next
+        forward overwrites a position before reading it, so clearing would cost
+        the same write as the token that replaces it.
+
+        ``_last_rows`` deliberately survives, because the hidden rows of the
+        forward that was just rewound are still in the scratch buffer and are
+        still the rows the accepted prefix was computed from. That is what lets
+        a caller draft from the last accepted position after rewinding: the row
+        that produced an accepted token is indexed from the verify pass, not
+        from a forward that has not happened yet. The next forward replaces
+        both, so a draft must not be taken across one.
+        """
+
+        if self._closed:
+            raise RuntimeError("runner is closed")
+        target = int(position)
+        if not 0 <= target <= self._position:
+            raise ValueError(
+                f"cannot rewind to {target} from position {self._position}"
+            )
+        self._position = target
+        for index in range(len(self._kv)):
+            entry = self._kv[index]
+            self._kv[index] = Gemma4LayerKV(
+                key_cache=entry.key_cache,
+                value_cache=entry.value_cache,
+                capacity=self.capacity,
+                write_offset=target,
+            )
 
     def _stage_upload(self, name: str, values: np.ndarray) -> DeviceBuffer:
         """Copy ``values`` into the reusable staging buffer for ``name``."""
