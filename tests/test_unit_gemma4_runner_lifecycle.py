@@ -252,3 +252,87 @@ def test_close_after_constructor_failure_does_not_double_free(
 
     assert len(allocator.freed) == len(allocator.allocated)
     assert len({buffer.ptr for buffer in allocator.freed}) == len(allocator.freed)
+
+
+def test_shared_kv_view_reports_geometry_and_live_positions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The assistant head's read view, without a device.
+
+    The head allocates no KV and attends against the backbone's last two layers,
+    so what it needs from the runner is the two buffer addresses, the live
+    position count, and the geometry to index them. This checks the view is built
+    from the config and the caches rather than from constants, and that a layer
+    index outside the model is refused instead of silently wrapping.
+    """
+
+    config = _config(num_layers=4)
+    runner, _ = _make_runner(monkeypatch, config=config, capacity=64, max_block=8)
+    try:
+        assert runner.layer_count == 4
+        # Nothing has run, so a reader sees zero live positions.
+        assert runner.shared_kv(0).live == 0
+
+        for index in range(4):
+            view = runner.shared_kv(index)
+            attention = config.attention[index]
+            assert view.layer_index == index
+            assert view.key_cache == runner._kv[index].key_cache
+            assert view.value_cache == runner._kv[index].value_cache
+            assert view.capacity == 64
+            assert view.num_kv_heads == attention.num_kv_heads
+            assert view.head_dim == attention.head_dim
+            assert view.kv_width == attention.num_kv_heads * attention.head_dim
+            assert view.live_bytes == 0
+
+        # Each layer's view names its own buffers.
+        assert len({runner.shared_kv(i).key_cache for i in range(4)}) == 4
+
+        for bad in (4, -1, 99):
+            with pytest.raises(IndexError):
+                runner.shared_kv(bad)
+
+        # A write offset is not reachable through the view: the head reads.
+        assert not hasattr(runner.shared_kv(0), "write_offset")
+    finally:
+        runner.close()
+
+
+def test_hidden_state_row_indexing_uses_the_last_forward_not_the_position(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Row indexing must not accumulate across forwards.
+
+    A prefill of many rows followed by a decode of one leaves exactly one valid
+    hidden row. Indexing against the accumulated position count would hand back
+    stale hidden state from before the decode, which for the assistant head means
+    a draft step conditioned on the wrong token's activations.
+
+    ``_last_rows`` is set directly here because a real forward needs a device;
+    the GPU-guarded runner test asserts a real prefill-then-decode through this
+    same accessor.
+    """
+
+    runner, _ = _make_runner(monkeypatch, config=_config(num_layers=2), max_block=8)
+    try:
+        with pytest.raises(ValueError):
+            runner.hidden_state()
+
+        runner._last_rows = 3
+        runner._position = 513  # accumulated, and deliberately not the row count
+        rows = [runner.hidden_state(i) for i in range(3)]
+        assert len({row.ptr for row in rows}) == 3
+        # Rows are consecutive and one hidden width apart.
+        width = int(runner.weights.config.hidden_size) * 2
+        assert [row.ptr for row in rows] == [rows[0].ptr + i * width for i in range(3)]
+        assert all(row.nbytes == width for row in rows)
+
+        # -1 is the last row of the last forward, not the 513th position.
+        assert runner.hidden_state(-1).ptr == rows[-1].ptr
+        assert runner.hidden_state(-3).ptr == rows[0].ptr
+
+        for bad in (3, -4, 512):
+            with pytest.raises(IndexError):
+                runner.hidden_state(bad)
+    finally:
+        runner.close()
