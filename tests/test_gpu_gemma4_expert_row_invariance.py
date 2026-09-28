@@ -183,42 +183,68 @@ def _hidden(weights):
     return _bf16(np.random.default_rng(0).normal(0, 1, size=(4, weights.config.hidden_size)))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="the whole expert forward is not row-count invariant; see the two stage tests",
-)
-def test_expert_forward_row_zero_is_invariant_under_appended_rows(expert_context) -> None:
-    """Appending distinct rows must not change row 0's expert output."""
-
-    runner, weights = expert_context
-    hidden = _hidden(weights)
-    narrow = _forward_row_zero(runner, weights, hidden, rows=1)
-    wide = _forward_row_zero(runner, weights, hidden, rows=2)
-    assert np.array_equal(
-        narrow.view(np.uint32), wide.view(np.uint32)
-    ), f"row 0 moved by {float(np.abs(narrow - wide).max()):.4f} when a row was appended"
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "The down projection diverges across row counts even with the MMQ gate/up "
-        "route disabled, so disabling that route does not restore the property."
-    ),
-)
-def test_expert_forward_row_zero_is_invariant_with_the_mmq_route_disabled(
+def test_expert_forward_row_zero_is_invariant_with_both_mmq_routes_disabled(
     expert_context, monkeypatch
 ) -> None:
-    """Row-count invariance must not depend on which gate/up route is enabled."""
+    """Row-count invariance holds when neither MMQ route can be selected.
+
+    Both routes have their own lever and their own lane-count crossover, so
+    disabling one leaves the other free to change route between the two calls.
+    With both off, the whole forward is one execution profile and row 0 is a
+    function of row 0.
+    """
 
     monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ", "0")
+    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_DOWN_MMQ", "0")
     runner, weights = expert_context
     hidden = _hidden(weights)
     narrow = _forward_row_zero(runner, weights, hidden, rows=1)
     wide = _forward_row_zero(runner, weights, hidden, rows=2)
     assert np.array_equal(
         narrow.view(np.uint32), wide.view(np.uint32)
-    ), f"row 0 moved by {float(np.abs(narrow - wide).max()):.4f} with the MMQ route disabled"
+    ), (
+        f"row 0 moved by {float(np.abs(narrow - wide).max()):.4f} with both MMQ "
+        "routes disabled, so the divergence is not route selection alone"
+    )
+
+
+def test_the_lane_count_selects_the_mmq_route(expert_context) -> None:
+    """The MMQ gates are the live lane count, so a row change can change route.
+
+    This is why the two cases above exist. ``lanes = tokens * top_k``, so
+    appending a row moves the lane count, and past the gate the fused MMQ
+    route runs instead of the fp32 grouped family. The two are different
+    execution profiles -- an int8-dp4a accumulation against an fp32 one -- and
+    ``docs/EXECUTION-PROFILES.md`` does not contract bit-exactness between a
+    strict path and a reassociating production candidate. Invariance is a
+    within-route property, and this test pins where the route boundary is so a
+    change to the gate is visible rather than silent.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        gemma4_moe_prefill_route_enabled,
+    )
+
+    _, weights = expert_context
+    num_experts = weights.config.num_experts
+    top_k = _TOP_K_ROUTING.shape[1]
+
+    # One row and two rows, at this fixture's expert count: the lane count is
+    # rows * top_k, and the gate opens exactly at the expert count, so the two
+    # row counts the other cases use land on different sides of it.
+    assert not gemma4_moe_prefill_route_enabled(
+        lanes=num_experts - 1, num_experts=num_experts
+    )
+    assert gemma4_moe_prefill_route_enabled(lanes=num_experts, num_experts=num_experts)
+    assert gemma4_moe_prefill_route_enabled(
+        lanes=num_experts + 1, num_experts=num_experts
+    )
+
+    # And the transition is reachable from the row counts, not just in theory.
+    assert not gemma4_moe_prefill_route_enabled(
+        lanes=1 * top_k, num_experts=num_experts
+    )
+    assert gemma4_moe_prefill_route_enabled(lanes=2 * top_k, num_experts=num_experts)
 
 
 def test_gate_up_stage_is_invariant_for_two_experts_with_the_mmq_route_disabled(
