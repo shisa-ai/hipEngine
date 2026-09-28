@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11160,
-    "current": 3928,
+    "entries": 11163,
+    "current": 3931,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1236,
+    "rows": 1237,
     "by_rule": {
       "dependency": 41,
       "legacy-next": 109,
-      "status": 1086
+      "status": 1087
     }
   },
   "rows": [
@@ -44042,14 +44042,14 @@
         "written": "2026-09-26",
         "age_days": 2,
         "open_by": "dependency",
-        "continuation_entries": 10,
+        "continuation_entries": 13,
         "open_text": "- The remaining prefill budget at 512 tokens, measured by route: `Q4_K` gate/up\n  1156 ms (its fastest route is the gated MMQ path, waiting on the lead's\n  `kl_max` call), `Q8_0` dense 694 ms, `Q5_1` down 651 ms, layer 29's `Q5_K`\n  246 ms, attention ~330 ms after this unit.\n- **Do not chase the `Q8_0` dense route with less traffic.** A row-grouped\n  variant that moves 4.56 GB instead of 9.30 GB is not faster (21.23 ms against\n  22.13 ms): achieved bandwidth falls from 428 to 220 GB/s, so the kernel is\n  limited by 1-byte weight load transactions rather than by DRAM. The lever is\n  fewer, wide",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "Next names a dependency: 'waiting on'",
-        "10 later entries by the same worker share this topic prefix"
+        "13 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260926T235136.556498Z-lhl-gemma4-attention-prefill-register-tree-9b5a7b.md",
@@ -44070,7 +44070,7 @@
         ]
       },
       "id": "worklog/20260926T235136.556498Z-lhl-gemma4-attention-prefill-register-tree-9b5a7b",
-      "evidence_hash": "b2cda8ef6731"
+      "evidence_hash": "5a83892906a6"
     },
     {
       "kind": "worklog",
@@ -44516,14 +44516,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 5,
+        "continuation_entries": 8,
         "open_text": "Probe `gemma4_scale_bf16` and `gemma4_rmsnorm_f32w_bf16` at rows 1 against rows\n2 on one input, then the experts. The embedding gather is in the same probe as\nthe scale since they run back to back into the same buffer.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "5 later entries by the same worker share this topic prefix"
+        "8 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T054943.321307Z-lhl-gemma4-attention-and-mask-cleared-fa9bff.md",
@@ -44542,7 +44542,7 @@
         ]
       },
       "id": "worklog/20260928T054943.321307Z-lhl-gemma4-attention-and-mask-cleared-fa9bff",
-      "evidence_hash": "73d2840ab47c"
+      "evidence_hash": "b425ee00edeb"
     },
     {
       "kind": "worklog",
@@ -46415,14 +46415,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 6,
         "open_text": "1. **The strict kernel is still the default and still the prefill cost** -- 24.5\n   percent of prefill at 512 tokens, at 465 GFLOP/s on the 256d layers.\n2. **Wiring the tiled kernel in is worth doing for the full-attention layers only**\n   (5 of 30, 512d), where it is 19 percent faster at 512 tokens and 29 percent at\n   4096, and is bit-exact at every context this model's window admits. That is\n   about 6 ms of 150 at the benchmarked shape -- real but small.\n3. **The load-bound question is still open** and now needs a probe that varies\n   bytes without varying arithmetic.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "3 later entries by the same worker share this topic prefix"
+        "6 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T094251.149323Z-lhl-gemma4-attention-tiled-ab-4e3747.md",
@@ -46444,7 +46444,7 @@
         ]
       },
       "id": "worklog/20260928T094251.149323Z-lhl-gemma4-attention-tiled-ab-4e3747",
-      "evidence_hash": "8cbcac3251da"
+      "evidence_hash": "f68e07fa221c"
     },
     {
       "kind": "worklog",
@@ -46541,14 +46541,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 5,
         "open_text": "1. **`gguf_q8_0_prefill_wmma_kernel<tt,32,64>` is the largest prefill block at 24.8\n   percent and has not been examined.** It is a tensor-core kernel, so its headroom\n   question is a tile/occupancy question rather than a traffic one, and its tile was\n   last changed in iteration 215.\n2. **The MoE gate/up at prefill** is 21 percent at 7568 workgroups; the thin-block\n   reading does not apply, so its prefill cost needs its own attribution.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "5 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T095630.988278Z-lhl-gemma4-attention-traffic-clean-430194.md",
@@ -46567,7 +46567,7 @@
         ]
       },
       "id": "worklog/20260928T095630.988278Z-lhl-gemma4-attention-traffic-clean-430194",
-      "evidence_hash": "d237427c1c0a"
+      "evidence_hash": "a60d7de2750e"
     },
     {
       "kind": "worklog",
@@ -46734,6 +46734,49 @@
       },
       "id": "worklog/20260928T115240.106458Z-lhl-gemma4-prefill-census-refresh-ef4af9",
       "evidence_hash": "19612b8e431a"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T121320.567216Z-lhl-gemma4-attention-scalar-source-04f604",
+      "title": "strength-reducing the row pointers is inert: LLVM already does it, so the scalar stream comes from somewhere else",
+      "location": "worklog/entries/20260928T121320.567216Z-lhl-gemma4-attention-scalar-source-04f604.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-attention-scalar-source",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- **Get a per-loop dynamic attribution before changing the kernel again.** The\n  two inert edits above are the second and third time this session that a\n  plausible source-level change moved the instruction count by nothing, and the\n  scalar-bound finding deserves a measurement that can name the loop rather than\n  a fourth guess. `rocprofv3`'s `--pc-sampling` with the ISA dump maps samples to\n  instructions; that is the tool for this, and it should be pointed at the\n  full-512d launch first because it has the largest scalar stream at 6.89e9.\n- Only after that, the candidates in the order the p",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T121320.567216Z-lhl-gemma4-attention-scalar-source-04f604.md",
+        "refs": [],
+        "tokens": [
+          "already",
+          "comes",
+          "does",
+          "else",
+          "inert",
+          "llvm",
+          "pointers",
+          "reducing",
+          "row",
+          "scalar",
+          "somewhere",
+          "stream",
+          "strength"
+        ]
+      },
+      "id": "worklog/20260928T121320.567216Z-lhl-gemma4-attention-scalar-source-04f604",
+      "evidence_hash": "e41e14efd121"
     }
   ]
 }
