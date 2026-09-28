@@ -292,6 +292,21 @@ def _pack_q4_k_scale_min(scales: np.ndarray, mins: np.ndarray) -> np.ndarray:
     return packed
 
 
+def repack_gguf_q4_k_tile16_tile_bytes(shape: Any) -> int:
+    """Return the byte count ``repack_gguf_q4_k_tile16`` produces for ``shape``.
+
+    The raw tensor has byte shape ``[experts, out_features, bytes_per_row]`` and
+    the tiles have ``[experts, out_features // 16, blocks_per_row, 2368]``, so
+    the total is that product rather than a second tensor's worth of bytes: the
+    tiles are 2.78 percent larger than the raw blocks they replace.
+    """
+
+    experts, out_features, bytes_per_row = Q4_K_T16_SHAPE.validate(shape)
+    blocks_per_row = bytes_per_row // GGUF_Q4_K_BLOCK_BYTES
+    out_tiles = out_features // GGUF_Q4_K_TILE16_COLS
+    return int(experts) * int(out_tiles) * int(blocks_per_row) * GGUF_Q4_K_TILE16_BLOCK_BYTES
+
+
 def repack_gguf_q4_k_tile16(raw_qweight: Any) -> GGUFQ4KTile16:
     """Repack rank-3 raw GGUF Q4_K expert weights into Q4T16 tiles.
 

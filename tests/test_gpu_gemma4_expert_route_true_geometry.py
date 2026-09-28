@@ -28,6 +28,7 @@ import pytest
 
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
     Gemma4ExpertScratch,
+    gemma4_moe_expert_route_counts,
     gemma4_project_experts_down_mmq,
     gemma4_project_experts_gate_up_mmq,
 )
@@ -181,6 +182,8 @@ def _run_route(
     hidden_bits: np.ndarray,
     counts: np.ndarray,
     capacity_factor: int = 1,
+    *,
+    tiles: bool = False,
 ):
     """Run the route with the live row count and a scratch of its own width.
 
@@ -188,6 +191,11 @@ def _run_route(
     documented way it is used: the caller sizes one scratch for the widest block
     it will run and then runs narrower blocks through it. A factor of 1 makes
     capacity and live width equal, which is what the rest of the coverage does.
+
+    ``tiles`` gives the weight the Q4T16 gate and up allocations that the T16 WMMA
+    route reads, which is how the loader hands a stacked Q4_K expert tensor to it
+    in production. Without them the route declines and the DS4 MMQ32 route serves
+    the call, so both arms are reachable from this one harness.
     """
 
     from hipengine.core.memory import (
@@ -197,6 +205,7 @@ def _run_route(
         free,
         malloc,
     )
+    from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
 
     rows = int(counts.sum())
     fused_width = 2 * _INTERMEDIATE
@@ -207,17 +216,33 @@ def _run_route(
     weights_buf = malloc(fused_raw.nbytes)
     starts_buf = malloc(starts.nbytes)
     out_buf = malloc(rows * fused_width * 2)
+    tile_bufs: list = []
     scratch = None
     try:
         copy_host_array_to_device(hidden_buf, hidden_bits)
         copy_host_array_to_device(weights_buf, fused_raw)
         copy_host_array_to_device(starts_buf, starts)
 
+        allocations = {
+            "raw": SimpleNamespace(buffer=SimpleNamespace(ptr=weights_buf.ptr))
+        }
+        if tiles:
+            stacked = fused_raw.reshape(_NUM_EXPERTS, fused_width, -1)
+            for name, start in (("t16_gate", 0), ("t16_up", _INTERMEDIATE)):
+                packed = repack_gguf_q4_k_tile16(
+                    stacked[:, start : start + _INTERMEDIATE, :]
+                ).tiles
+                buf = malloc(packed.nbytes)
+                tile_bufs.append(buf)
+                copy_host_array_to_device(buf, packed)
+                allocations[name] = SimpleNamespace(
+                    buffer=SimpleNamespace(ptr=buf.ptr)
+                )
+
         weight = SimpleNamespace(
             spec=SimpleNamespace(quant_key="gguf_q4_k"),
-            allocation=lambda name: SimpleNamespace(
-                buffer=SimpleNamespace(ptr=weights_buf.ptr)
-            ),
+            allocations=allocations,
+            allocation=lambda name: allocations[name],
         )
         scratch = Gemma4ExpertScratch(
             tokens=rows * capacity_factor,
@@ -249,7 +274,7 @@ def _run_route(
     finally:
         if scratch is not None:
             scratch.free()
-        for buffer in (hidden_buf, weights_buf, starts_buf, out_buf):
+        for buffer in (hidden_buf, weights_buf, starts_buf, out_buf, *tile_bufs):
             free(buffer)
 
 
@@ -300,6 +325,65 @@ def test_fused_gate_up_mmq_route_holds_at_the_true_projection_geometry(
     )
     assert normalized_mean < _MEAN_ENVELOPE, (
         f"fused MMQ gate_up exceeded the envelope ({context})"
+    )
+
+
+@_needs_hip
+@pytest.mark.parametrize("profile", ["gaussian", "outlier"])
+@pytest.mark.parametrize("counts_kind", ["fragmented", "skewed"])
+def test_fused_gate_up_t16_route_holds_at_the_true_projection_geometry(
+    _weights: tuple[np.ndarray, np.ndarray, np.ndarray],
+    profile: str,
+    counts_kind: str,
+) -> None:
+    """The Q4T16 WMMA gate_up route holds the same envelope as the MMQ32 one.
+
+    This is the route the loader hands a stacked Q4_K expert tensor to once it
+    carries the Q4T16 gate and up allocations, and it is a different arithmetic
+    path: it quantizes no activations, so its error is the bf16 input rounding
+    and the Q4_K weight rounding rather than an activation step. A route that
+    quantizes nothing must not be the less accurate of the two, so it is held to
+    the same envelope rather than a looser one.
+    """
+
+    fused_raw, gate_raw, up_raw = _weights
+    counts = (
+        _SHORT_PREFILL if counts_kind == "fragmented"
+        else _skewed_prefill(_SKEWED_LANES, 20260927)
+    )
+    assert len(counts) == _NUM_EXPERTS
+    rows = int(counts.sum())
+
+    hidden_bits = _to_bf16_bits(_activations(profile, rows, 20260927))
+    expected = _reference(hidden_bits, gate_raw, up_raw, counts)
+    before = gemma4_moe_expert_route_counts().get("gate_up_t16", 0)
+    got = _run_route(fused_raw, hidden_bits, counts, tiles=True)
+    # Without this the arm passes whenever *either* route serves the call, and the
+    # MMQ32 arm would satisfy it on its own.
+    after = gemma4_moe_expert_route_counts().get("gate_up_t16", 0)
+    assert after == before + 1, (
+        "the Q4T16 route did not serve the call; the tiled weight fell through to "
+        "another route, so this arm does not cover the route it names"
+    )
+
+    scale = float(np.abs(expected).max())
+    assert scale > 0
+    difference = np.abs(got - expected)
+    normalized_max = float(difference.max()) / scale
+    normalized_mean = float(difference.mean()) / scale
+    worst_row = int(np.argmax(difference.max(axis=1)))
+    context = (
+        f"profile {profile!r}, {counts_kind} counts at the true geometry with "
+        f"Q4T16 tiles (live {rows} rows, peak {int(counts.max())} rows on one "
+        f"expert): normalized max {normalized_max:.4g} at compact row "
+        f"{worst_row}, normalized mean {normalized_mean:.4g}, against scale "
+        f"{scale:.4g}"
+    )
+    assert normalized_max < _MAX_ENVELOPE, (
+        f"fused T16 gate_up exceeded the envelope ({context})"
+    )
+    assert normalized_mean < _MEAN_ENVELOPE, (
+        f"fused T16 gate_up exceeded the envelope ({context})"
     )
 
 
