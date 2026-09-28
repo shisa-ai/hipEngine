@@ -3,7 +3,7 @@
 Assembles the router from kernels that are each tested on their own:
 
     weightless RMSNorm * scale * hidden_size**-0.5   gemma4_router_prescale_bf16
-    logits (BF16 hidden, F32 weights)                qwen35_router_logits_bf16_f32w
+    logits (BF16 hidden, F32 weights)                qwen35_router_logits_bf16_f32w_token_tile_16
     top-k + softmax + renormalise                    qwen35_router_select
     per-expert scale                                 gemma4_expert_weight_scale_f32
 
@@ -37,8 +37,11 @@ dummy column is needed.
 The router projection is F32 while the activation is BF16. **The prescale
 output is BF16, not F32** — ``gemma4_router_prescale_kernel`` is templated on
 ``scalar_t`` for both its input and its output, so the ``_bf16`` symbol writes
-BF16. That makes ``qwen35_router_logits_bf16_f32w`` the matching logits variant;
-pairing a BF16 prescale buffer with the F32-hidden variant reads the bf16 row as
+BF16. That makes the ``qwen35_router_logits_bf16_f32w`` family the matching
+logits variant; the route takes its ``token_tile_16`` specialization at
+``threads=256``, which is the same arithmetic class with a tile that fits this
+shape -- see the call site for the measurement. Pairing a BF16 prescale buffer
+with the F32-hidden variant reads the bf16 row as
 f32 pairs and produces uncorrelated logits. Rounding the prescaled row to BF16
 costs about 0.4% relative on values that are O(0.01) after ``root_size``, which
 is the standard low-precision router path here.
@@ -55,11 +58,31 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w,
+    qwen35_router_logits_bf16_f32w_token_tile_16,
     qwen35_router_select,
 )
 
 _BF16_BYTES = 2
 _F32_BYTES = 4
+
+# Size-based logits variant selection, the same shape of dispatch the C layer
+# already does inside ``launch_qwen35_router_logits`` (``tokens >= 4`` picks
+# the token tile over the untiled kernel). Measured on the production shape
+# (hidden 2816, 128 experts) with ``scripts/
+# gemma4_router_logits_variant_bench.py`` and the token sweep in the P8 worklog
+# entry:
+#
+#   tokens   bf16_f32w   token_tile_16   winner
+#        1     5.16 us      6.98 us      base
+#       16     8.88 us      9.94 us      base
+#       20    16.60 us     10.30 us      token_tile_16
+#      512   183.68 us    94.06 us      token_tile_16
+#
+# Decode therefore takes the untiled path and prefill takes the tile. Choosing
+# the tile unconditionally costs about 0.6% of decode throughput (30 layers x
+# 1.8 us per step) for the prefill win; the crossover sits between 16 and 20
+# tokens and 32 keeps clear of both sides of it.
+_TOKEN_TILE_16_MIN_TOKENS = 32
 
 
 @dataclass
@@ -191,7 +214,23 @@ def gemma4_router_topk_bf16(
         root_size=hidden_size**-0.5,
         stream=stream,
     )
-    qwen35_router_logits_bf16_f32w(
+    # Prefill-size token counts take token_tile_16 at threads=256 rather than
+    # the generic bf16_f32w entry point, which defaults to threads=512 with a
+    # four-token tile. At this shape (hidden 2816) that leaves threads 352..511
+    # with no K range at all, so 31% of every block idles behind a nine-round
+    # barrier tree for 64 FLOPs of work per useful thread. Measured on the
+    # production shape: 0.2309 ms -> 0.0982 ms per launch (1.60 -> 3.76
+    # TFLOP/s), 2.35x, and both land on the same 2.861e-06 max drift against a
+    # float64 reference. Smaller token counts keep the untiled path -- see
+    # ``_TOKEN_TILE_16_MIN_TOKENS``.
+    # Outputs are not bit-identical between the two -- the tiling changes the
+    # reduction -- so the teacher-forced gate gates this.
+    logits_variant = (
+        qwen35_router_logits_bf16_f32w_token_tile_16
+        if tokens >= _TOKEN_TILE_16_MIN_TOKENS
+        else qwen35_router_logits_bf16_f32w
+    )
+    logits_variant(
         prescaled.ptr,
         proj_ptr,
         logits.ptr,
