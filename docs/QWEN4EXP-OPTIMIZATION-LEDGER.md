@@ -274,6 +274,13 @@ candidates report unknown rather than false engagement. These are Python-call
 counts, not GPU execution certificates (graph replay may bypass them), and
 lack role/layer attribution. Long natural tasks and route-resolved GPU evidence
 are still required by X-11; this instrumentation alone qualifies no candidate.
+Supplemental natural-task JSONL files can be added with `--extra-prompts`;
+canonical suites are always loaded, and `canonical_suite_complete` is separate
+from completeness of the combined selection. Reports hash all suite files.
+`--prompt-token-budget` reserves input capacity in addition to the output cap
+and rejects oversized chat-formatted inputs before prefill. The default remains
+1024 input tokens with chunk size 1024; a larger budget is not evidence that a
+candidate ran or that a new shape passed its numerical gate.
 
 Implementation classes are T0 (reference-preserving), T1 (local arithmetic
 drift), T2 (association/layout drift), and T3 (representation or algorithm
