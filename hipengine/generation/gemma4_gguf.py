@@ -51,11 +51,11 @@ class Gemma4GGUFGenerator:
     model_plugin: Any
     backend: str = "hip_gfx1100"
     context_length: int = _GEMMA4_DEFAULT_CONTEXT
-    # The prefill-attention variant this run requests, or ``None`` for the
-    # strict kernel. The execution profile supplies it before the runner is
-    # built; the layer still matches it against each layer's own head geometry
+    # The prefill-attention variants this run requests, or ``None`` for the
+    # strict kernel. The execution profile supplies them before the runner is
+    # built; the layer still matches each against its own layer's head geometry
     # and keeps the strict kernel on a capability miss.
-    prefill_attention_variant: str | None = None
+    prefill_attention_variants: tuple[str, ...] | None = None
     last_generation_outputs: tuple[GenerationOutput, ...] = field(
         default=(), init=False, repr=False
     )
@@ -257,21 +257,21 @@ class Gemma4GGUFGenerator:
                 self._weights.free()
                 self._weights = None
 
-    def _resolve_prefill_attention_variant(self) -> str | None:
-        """The prefill-attention variant the execution profile selects, if any.
+    def _resolve_prefill_attention_variants(self) -> tuple[str, ...] | None:
+        """The prefill-attention variants the execution profile selects, if any.
 
         Resolved once, before the runner exists, so a profile decision cannot
         change between two prefill blocks of the same request. An explicit
         attribute set by a caller or by a profile binder wins.
         """
 
-        if self.prefill_attention_variant is not None:
-            return self.prefill_attention_variant
+        if self.prefill_attention_variants is not None:
+            return self.prefill_attention_variants
         from hipengine.generation.gemma4_gguf_profiles import (
-            resolve_gemma4_prefill_attention_variant,
+            resolve_gemma4_prefill_attention_variants,
         )
 
-        return resolve_gemma4_prefill_attention_variant(backend=self.backend)
+        return resolve_gemma4_prefill_attention_variants(backend=self.backend) or None
 
     def _ensure_runner(self) -> Gemma4Runner:
         if self._runner is not None:
@@ -296,7 +296,7 @@ class Gemma4GGUFGenerator:
                 weights=weights,
                 capacity=self.context_length,
                 max_logits_rows=max(1, int(self._speculative_max_logits_rows)),
-                prefill_attention_variant=self._resolve_prefill_attention_variant(),
+                prefill_attention_variants=self._resolve_prefill_attention_variants(),
             )
         except BaseException:
             weights.free()

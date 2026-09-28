@@ -2,14 +2,15 @@
 
 Three contracts, and they are separate ones:
 
-* **Capability.** The WMMA variant implements the sliding geometry (head_dim
-  256, GQA ratio 2) and nothing else. A request for it anywhere else keeps the
-  strict kernel and says why. This is a capability match, so it is exercised on
-  values on both sides of the boundary and on values unrelated to it, rather
-  than at the boundary alone.
-* **Profile.** ``production`` requests the variant, ``strict`` does not, and an
-  unset profile resolves to the shipped default. Registering both plans is what
-  makes that default ``production``.
+* **Capability.** Each WMMA variant implements one geometry: ``gemma4_wmma_flash``
+  the sliding one (head_dim 256, GQA ratio 2) and ``gemma4_wmma_flash_full`` the
+  full one (head_dim 512, GQA ratio 8), and nothing else. A request for either
+  anywhere else keeps the strict kernel and says why. This is a capability
+  match, so it is exercised on values on both sides of the boundary and on
+  values unrelated to it, rather than at the boundary alone.
+* **Profile.** ``production`` requests both variants, ``strict`` requests
+  neither, and an unset profile resolves to the shipped default. Registering
+  both plans is what makes that default ``production``.
 * **Fallback.** An unknown variant name, a missing plan, or an unregistered
   backend must reach the strict kernel rather than raise, because a profile is a
   performance decision and not a licence to fail a request.
@@ -25,11 +26,14 @@ from hipengine.generation.gemma4_gguf_profiles import (
     GEMMA4_GGUF_MODEL,
     GEMMA4_GGUF_QUANT,
     PREFILL_ATTENTION_PLAIN,
+    PREFILL_ATTENTION_PRODUCTION_VARIANTS,
     PREFILL_ATTENTION_SCOPE,
+    PREFILL_ATTENTION_SCOPE_FULL,
     PREFILL_ATTENTION_WMMA_FLASH,
+    PREFILL_ATTENTION_WMMA_FLASH_FULL,
     gemma4_gguf_profiles_registered,
     register_gemma4_gguf_profiles,
-    resolve_gemma4_prefill_attention_variant,
+    resolve_gemma4_prefill_attention_variants,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     gemma4_attention_prefill_bf16,
@@ -38,10 +42,16 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_prefill_wmma import (
     gemma4_attention_prefill_wmma_bf16,
 )
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_prefill_wmma_full import (
+    gemma4_attention_prefill_wmma_full_bf16,
+)
 
 # The sliding geometry, the full geometry, and shapes unrelated to either.
 SLIDING = dict(num_heads=16, num_kv_heads=8, head_dim=256)
 FULL = dict(num_heads=16, num_kv_heads=2, head_dim=512)
+# What a production run requests, taken from the module that declares it so the
+# resolver and the constant cannot drift apart.
+PRODUCTION = PREFILL_ATTENTION_PRODUCTION_VARIANTS
 
 
 def test_an_unrequested_variant_is_the_strict_kernel():
@@ -63,11 +73,37 @@ def test_the_sliding_geometry_gets_the_wmma_variant():
     assert "capability match" in selection.describe()
 
 
+def test_the_full_geometry_gets_the_full_wmma_variant():
+    selection = select_prefill_attention(
+        requested_variant=PREFILL_ATTENTION_WMMA_FLASH_FULL, **FULL
+    )
+
+    assert selection.variant == PREFILL_ATTENTION_WMMA_FLASH_FULL
+    assert selection.launcher is gemma4_attention_prefill_wmma_full_bf16
+    assert not selection.is_strict
+    assert "capability match" in selection.describe()
+
+
+def test_a_production_request_covers_both_geometries():
+    """One request list, one layer at a time: each geometry gets its own variant.
+
+    This is the contract that matters in production, where both geometries occur
+    in the same model and the layer -- not the profile -- is what knows which
+    one it is.
+    """
+
+    sliding = select_prefill_attention(requested_variant=PRODUCTION, **SLIDING)
+    full = select_prefill_attention(requested_variant=PRODUCTION, **FULL)
+
+    assert sliding.variant == PREFILL_ATTENTION_WMMA_FLASH
+    assert sliding.launcher is gemma4_attention_prefill_wmma_bf16
+    assert full.variant == PREFILL_ATTENTION_WMMA_FLASH_FULL
+    assert full.launcher is gemma4_attention_prefill_wmma_full_bf16
+
+
 @pytest.mark.parametrize(
     "geometry",
     [
-        # The full layers: head_dim 512 and a GQA ratio of 8, both wrong.
-        FULL,
         # Each half of the sliding geometry, wrong on its own. A selection that
         # checked only head_dim would admit the first and only the ratio the
         # second.
@@ -93,6 +129,44 @@ def test_a_geometry_the_variant_does_not_implement_keeps_the_strict_kernel(geome
     assert str(geometry["head_dim"]) in selection.reason
 
 
+@pytest.mark.parametrize(
+    "geometry",
+    [
+        # The sliding geometry: head_dim 256 and a GQA ratio of 2, both wrong.
+        SLIDING,
+        # Each half of the full geometry, wrong on its own.
+        dict(num_heads=16, num_kv_heads=8, head_dim=512),
+        dict(num_heads=16, num_kv_heads=2, head_dim=256),
+        # Unrelated shapes, so the check is exercised away from its boundary.
+        dict(num_heads=8, num_kv_heads=1, head_dim=64),
+        dict(num_heads=32, num_kv_heads=8, head_dim=512),
+        dict(num_heads=16, num_kv_heads=2, head_dim=1024),
+    ],
+)
+def test_a_geometry_the_full_variant_does_not_implement_keeps_the_strict_kernel(geometry):
+    selection = select_prefill_attention(
+        requested_variant=PREFILL_ATTENTION_WMMA_FLASH_FULL, **geometry
+    )
+
+    assert selection.variant == PREFILL_ATTENTION_PLAIN
+    assert selection.launcher is gemma4_attention_prefill_bf16
+    assert "capability miss" in selection.reason
+    assert str(geometry["head_dim"]) in selection.reason
+
+
+def test_a_production_request_keeps_the_strict_kernel_off_both_geometries():
+    """A geometry neither variant implements still runs, and says both misses."""
+
+    selection = select_prefill_attention(
+        requested_variant=PRODUCTION, num_heads=8, num_kv_heads=1, head_dim=64
+    )
+
+    assert selection.variant == PREFILL_ATTENTION_PLAIN
+    assert selection.launcher is gemma4_attention_prefill_bf16
+    assert PREFILL_ATTENTION_WMMA_FLASH in selection.reason
+    assert PREFILL_ATTENTION_WMMA_FLASH_FULL in selection.reason
+
+
 def test_an_unknown_variant_name_keeps_the_strict_kernel():
     selection = select_prefill_attention(requested_variant="no_such_variant", **SLIDING)
 
@@ -100,20 +174,32 @@ def test_an_unknown_variant_name_keeps_the_strict_kernel():
     assert "unknown variant" in selection.reason
 
 
+def test_an_unknown_name_ahead_of_a_known_one_does_not_shadow_it():
+    """The request list is tried in order, so a bad name is not a hard failure."""
+
+    selection = select_prefill_attention(
+        requested_variant=("no_such_variant", PREFILL_ATTENTION_WMMA_FLASH), **SLIDING
+    )
+
+    assert selection.variant == PREFILL_ATTENTION_WMMA_FLASH
+
+
 def test_the_two_launchers_accept_the_same_call_site_arguments():
-    """The layer passes one argument list, so both must accept all of it.
+    """The layer passes one argument list, so all three must accept all of it.
 
     ``scratch`` is the one that differs in substance: the strict kernel
-    materialises logits and needs a caller-owned buffer, and the WMMA variant
-    stages its K/V tile in LDS instead. It has to be accepted all the same.
+    materialises logits and needs a caller-owned buffer, and the WMMA variants
+    stage their K/V tile in LDS instead. It has to be accepted all the same.
     """
 
     import inspect
 
     strict = set(inspect.signature(gemma4_attention_prefill_bf16).parameters)
-    candidate = set(inspect.signature(gemma4_attention_prefill_wmma_bf16).parameters)
+    sliding = set(inspect.signature(gemma4_attention_prefill_wmma_bf16).parameters)
+    full = set(inspect.signature(gemma4_attention_prefill_wmma_full_bf16).parameters)
 
-    assert strict <= candidate, f"the candidate is missing {sorted(strict - candidate)}"
+    assert strict <= sliding, f"the candidate is missing {sorted(strict - sliding)}"
+    assert strict <= full, f"the full candidate is missing {sorted(strict - full)}"
 
 
 def test_the_profiles_register_and_make_production_the_default():
@@ -134,33 +220,23 @@ def test_the_profiles_register_and_make_production_the_default():
 @pytest.mark.parametrize(
     ("requested", "expected"),
     [
-        (ExecutionProfile.STRICT, PREFILL_ATTENTION_PLAIN),
-        (ExecutionProfile.PRODUCTION, PREFILL_ATTENTION_WMMA_FLASH),
-        (None, PREFILL_ATTENTION_WMMA_FLASH),
+        (ExecutionProfile.STRICT, (PREFILL_ATTENTION_PLAIN,)),
+        (ExecutionProfile.PRODUCTION, PRODUCTION),
+        (None, PRODUCTION),
     ],
 )
-def test_the_profile_selects_the_variant(requested, expected):
-    assert (
-        resolve_gemma4_prefill_attention_variant(requested_profile=requested)
-        == expected
-    )
+def test_the_profile_selects_the_variants(requested, expected):
+    assert resolve_gemma4_prefill_attention_variants(requested_profile=requested) == expected
 
 
-def test_the_environment_variable_selects_the_variant():
-    assert (
-        resolve_gemma4_prefill_attention_variant(environ={"HIPENGINE_EXECUTION_PROFILE": "strict"})
-        == PREFILL_ATTENTION_PLAIN
-    )
-    assert (
-        resolve_gemma4_prefill_attention_variant(
-            environ={"HIPENGINE_EXECUTION_PROFILE": "production"}
-        )
-        == PREFILL_ATTENTION_WMMA_FLASH
-    )
-    assert (
-        resolve_gemma4_prefill_attention_variant(environ={})
-        == PREFILL_ATTENTION_WMMA_FLASH
-    )
+def test_the_environment_variable_selects_the_variants():
+    assert resolve_gemma4_prefill_attention_variants(
+        environ={"HIPENGINE_EXECUTION_PROFILE": "strict"}
+    ) == (PREFILL_ATTENTION_PLAIN,)
+    assert resolve_gemma4_prefill_attention_variants(
+        environ={"HIPENGINE_EXECUTION_PROFILE": "production"}
+    ) == PRODUCTION
+    assert resolve_gemma4_prefill_attention_variants(environ={}) == PRODUCTION
 
 
 def test_an_unregistered_backend_keeps_the_strict_kernel():
@@ -170,11 +246,11 @@ def test_an_unregistered_backend_keeps_the_strict_kernel():
     strict kernel is what it has always run.
     """
 
-    assert resolve_gemma4_prefill_attention_variant(backend="hip_gfx1100") is None
-    assert resolve_gemma4_prefill_attention_variant(backend="cpu_reference") is None
+    assert resolve_gemma4_prefill_attention_variants(backend="hip_gfx1100") == ()
+    assert resolve_gemma4_prefill_attention_variants(backend="cpu_reference") == ()
 
 
-def test_the_selected_variant_is_the_one_the_registry_holds():
+def test_the_selected_variants_are_the_ones_the_registry_holds():
     """A plan may only name a variant the registry can actually resolve.
 
     ``resolve_runtime_profile`` enforces this, and the check is repeated here
@@ -186,14 +262,18 @@ def test_the_selected_variant_is_the_one_the_registry_holds():
 
     register_gemma4_gguf_profiles()
 
-    for variant in (PREFILL_ATTENTION_PLAIN, PREFILL_ATTENTION_WMMA_FLASH):
+    for variant in (
+        PREFILL_ATTENTION_PLAIN,
+        PREFILL_ATTENTION_WMMA_FLASH,
+        PREFILL_ATTENTION_WMMA_FLASH_FULL,
+    ):
         assert is_registered(
             KernelKey(GEMMA4_GGUF_BACKEND, "prefill_attention", GEMMA4_GGUF_QUANT, variant)
         ), f"{variant} is not registered for {GEMMA4_GGUF_BACKEND}"
 
 
-def test_the_selection_scope_is_the_one_the_plan_declares():
-    """The layer's scope string and the plan's have to be the same one."""
+def test_the_selection_scopes_are_the_ones_the_plan_declares():
+    """The layer's scope strings and the plan's have to be the same ones."""
 
     from hipengine.execution_profiles import resolve_runtime_profile
 
@@ -210,3 +290,35 @@ def test_the_selection_scope_is_the_one_the_plan_declares():
     }
 
     assert ("prefill_attention", PREFILL_ATTENTION_SCOPE) in scopes
+    assert ("prefill_attention", PREFILL_ATTENTION_SCOPE_FULL) in scopes
+
+
+def test_the_production_plan_carries_one_selection_per_geometry():
+    """Both geometries have to be named, or the full layers have no stated intent."""
+
+    from hipengine.execution_profiles import resolve_runtime_profile
+
+    register_gemma4_gguf_profiles()
+    for profile, expected in (
+        (ExecutionProfile.PRODUCTION, PRODUCTION),
+        (ExecutionProfile.STRICT, (PREFILL_ATTENTION_PLAIN,)),
+    ):
+        resolved = resolve_runtime_profile(
+            model=GEMMA4_GGUF_MODEL,
+            backend=GEMMA4_GGUF_BACKEND,
+            quant=GEMMA4_GGUF_QUANT,
+            profile=profile,
+        )
+        rows = [
+            selection
+            for selection in resolved.manifest["selections"]
+            if selection["layer"] == "prefill_attention"
+        ]
+        assert len(rows) == 2, f"{profile} declares {len(rows)} attention selections"
+        assert {row["scope"] for row in rows} == {
+            PREFILL_ATTENTION_SCOPE,
+            PREFILL_ATTENTION_SCOPE_FULL,
+        }
+        assert tuple(dict.fromkeys(sorted(row["selected_variant"] for row in rows))) == expected
+        for row in rows:
+            assert row["strict_fallback_variant"] == PREFILL_ATTENTION_PLAIN

@@ -29,7 +29,7 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.ctypes_cache import signed_kernel_fn
@@ -498,18 +498,29 @@ def register_gemma4_attention_kernels(*, replace: bool = False) -> None:
 
 # --- prefill-attention variant selection -----------------------------------
 #
-# The strict kernel is the family's only unconditional entry point. A second
-# variant exists (``gemma4_wmma_flash``, a BF16 WMMA flash prefill for the
-# sliding geometry) and an execution profile may select it. Selection is a
-# capability match against what the variant declares it implements -- never a
-# model name, artifact path, hash, or an enumerated list of known-good inputs --
-# and a miss falls back to the strict kernel with a reason rather than raising,
-# because a profile is a performance decision and not a licence to fail a
-# request.
+# The strict kernel is the family's only unconditional entry point. Two WMMA
+# flash prefills exist (``gemma4_wmma_flash`` for the sliding geometry and
+# ``gemma4_wmma_flash_full`` for the full one) and an execution profile may
+# select either. Selection is a capability match against what each variant
+# declares it implements -- never a model name, artifact path, hash, or an
+# enumerated list of known-good inputs -- and a miss falls back to the strict
+# kernel with a reason rather than raising, because a profile is a performance
+# decision and not a licence to fail a request.
 
 PREFILL_ATTENTION_PLAIN = "gemma4_plain"
 PREFILL_ATTENTION_WMMA_FLASH = "gemma4_wmma_flash"
+PREFILL_ATTENTION_WMMA_FLASH_FULL = "gemma4_wmma_flash_full"
 PREFILL_ATTENTION_QUANTS = ("gguf_q4_k_m", "gguf_q4_k_xl", "gguf_q8_0", "gguf")
+
+
+def _requested_variants(requested: str | Sequence[str] | None) -> tuple[str, ...]:
+    """Normalise a profile request into an ordered tuple of variant names."""
+
+    if requested is None:
+        return ()
+    if isinstance(requested, str):
+        return (requested,) if requested else ()
+    return tuple(str(name) for name in requested if name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -518,7 +529,7 @@ class PrefillAttentionSelection:
 
     variant: str
     launcher: Callable[..., int]
-    requested_variant: str | None
+    requested_variant: str | Sequence[str] | None
     reason: str
 
     @property
@@ -528,71 +539,106 @@ class PrefillAttentionSelection:
     def describe(self) -> str:
         """One line naming the variant and the reason, for diagnostics."""
 
-        requested = self.requested_variant or PREFILL_ATTENTION_PLAIN
-        return f"prefill_attention={self.variant} requested={requested} ({self.reason})"
+        requested = _requested_variants(self.requested_variant)
+        return (
+            f"prefill_attention={self.variant} "
+            f"requested={','.join(requested) or PREFILL_ATTENTION_PLAIN} "
+            f"({self.reason})"
+        )
 
 
 def _select_prefill_attention(
     *,
-    requested_variant: str | None = None,
+    requested_variant: str | Sequence[str] | None = None,
     num_heads: int,
     num_kv_heads: int,
     head_dim: int,
 ) -> PrefillAttentionSelection:
     """Resolve a prefill-attention variant for one head geometry.
 
-    ``requested_variant`` is what an execution profile selected, or ``None``
-    for the strict kernel. The variant is admitted only where it declares the
-    geometry implemented; every other input keeps the strict kernel, which
+    ``requested_variant`` is what an execution profile selected -- one variant
+    name or an ordered tuple of them, or ``None`` for the strict kernel. Each
+    candidate is admitted only where it declares the geometry implemented; the
+    first that matches wins. Every other input keeps the strict kernel, which
     covers every geometry the family serves.
     """
 
-    if requested_variant in (None, "", PREFILL_ATTENTION_PLAIN):
+    requests = _requested_variants(requested_variant)
+    if not requests or requests == (PREFILL_ATTENTION_PLAIN,):
         return PrefillAttentionSelection(
             variant=PREFILL_ATTENTION_PLAIN,
             launcher=gemma4_attention_prefill_bf16,
             requested_variant=requested_variant,
             reason="strict",
         )
-    if requested_variant != PREFILL_ATTENTION_WMMA_FLASH:
-        return PrefillAttentionSelection(
-            variant=PREFILL_ATTENTION_PLAIN,
-            launcher=gemma4_attention_prefill_bf16,
-            requested_variant=requested_variant,
-            reason=f"unknown variant {requested_variant!r}",
-        )
-    # Imported here so the candidate's module -- and the build of its .so -- is
-    # only reached once something actually asks for it.
-    from .gemma4_attention_prefill_wmma import (
-        gemma4_attention_prefill_wmma_bf16,
-        gemma4_attention_prefill_wmma_supported,
-    )
+    refusals: list[str] = []
+    for request in requests:
+        if request == PREFILL_ATTENTION_PLAIN:
+            return PrefillAttentionSelection(
+                variant=PREFILL_ATTENTION_PLAIN,
+                launcher=gemma4_attention_prefill_bf16,
+                requested_variant=requested_variant,
+                reason="strict",
+            )
+        if request == PREFILL_ATTENTION_WMMA_FLASH:
+            # Imported here so the candidate's module -- and the build of its
+            # .so -- is only reached once something actually asks for it.
+            from .gemma4_attention_prefill_wmma import (
+                gemma4_attention_prefill_wmma_bf16,
+                gemma4_attention_prefill_wmma_supported,
+            )
 
-    if not gemma4_attention_prefill_wmma_supported(
-        num_heads=num_heads, num_kv_heads=num_kv_heads, head_dim=head_dim
-    ):
-        return PrefillAttentionSelection(
-            variant=PREFILL_ATTENTION_PLAIN,
-            launcher=gemma4_attention_prefill_bf16,
-            requested_variant=requested_variant,
-            reason=(
-                f"capability miss: {PREFILL_ATTENTION_WMMA_FLASH} implements head_dim "
-                f"{HEAD_DIM_WMMA} with GQA ratio {GQA_RATIO_WMMA}, got head_dim {head_dim} "
-                f"with {num_heads}q/{num_kv_heads}kv"
-            ),
-        )
+            if gemma4_attention_prefill_wmma_supported(
+                num_heads=num_heads, num_kv_heads=num_kv_heads, head_dim=head_dim
+            ):
+                return PrefillAttentionSelection(
+                    variant=PREFILL_ATTENTION_WMMA_FLASH,
+                    launcher=gemma4_attention_prefill_wmma_bf16,
+                    requested_variant=requested_variant,
+                    reason="capability match",
+                )
+            refusals.append(
+                f"{PREFILL_ATTENTION_WMMA_FLASH} implements head_dim "
+                f"{HEAD_DIM_WMMA} with GQA ratio {GQA_RATIO_WMMA}, got head_dim "
+                f"{head_dim} with {num_heads}q/{num_kv_heads}kv"
+            )
+            continue
+        if request == PREFILL_ATTENTION_WMMA_FLASH_FULL:
+            from .gemma4_attention_prefill_wmma_full import (
+                gemma4_attention_prefill_wmma_full_bf16,
+                gemma4_attention_prefill_wmma_full_supported,
+            )
+
+            if gemma4_attention_prefill_wmma_full_supported(
+                num_heads=num_heads, num_kv_heads=num_kv_heads, head_dim=head_dim
+            ):
+                return PrefillAttentionSelection(
+                    variant=PREFILL_ATTENTION_WMMA_FLASH_FULL,
+                    launcher=gemma4_attention_prefill_wmma_full_bf16,
+                    requested_variant=requested_variant,
+                    reason="capability match",
+                )
+            refusals.append(
+                f"{PREFILL_ATTENTION_WMMA_FLASH_FULL} implements head_dim "
+                f"{HEAD_DIM_WMMA_FULL} with GQA ratio {GQA_RATIO_WMMA_FULL}, got "
+                f"head_dim {head_dim} with {num_heads}q/{num_kv_heads}kv"
+            )
+            continue
+        refusals.append(f"unknown variant {request!r}")
     return PrefillAttentionSelection(
-        variant=PREFILL_ATTENTION_WMMA_FLASH,
-        launcher=gemma4_attention_prefill_wmma_bf16,
+        variant=PREFILL_ATTENTION_PLAIN,
+        launcher=gemma4_attention_prefill_bf16,
         requested_variant=requested_variant,
-        reason="capability match",
+        reason="capability miss: " + "; ".join(refusals),
     )
 
 
-# The candidate's declared geometry, mirrored so the refusal above can name it
+# Each candidate's declared geometry, mirrored so the refusals above can name it
 # without importing the candidate's module.
 HEAD_DIM_WMMA = 256
 GQA_RATIO_WMMA = 2
+HEAD_DIM_WMMA_FULL = 512
+GQA_RATIO_WMMA_FULL = 8
 
 # One line per distinct (variant, head_dim), on stderr, when asked. The profile
 # resolves to a *request*; only the layer knows the geometry, so this is the
@@ -605,7 +651,7 @@ _logged_selections: set[tuple[str, int]] = set()
 
 def select_prefill_attention(
     *,
-    requested_variant: str | None = None,
+    requested_variant: str | Sequence[str] | None = None,
     num_heads: int,
     num_kv_heads: int,
     head_dim: int,

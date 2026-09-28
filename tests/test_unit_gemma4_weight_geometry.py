@@ -17,6 +17,7 @@ with the device allocator faked out. No device, no kernel, no ROCm import.
 
 from __future__ import annotations
 
+import importlib
 from types import SimpleNamespace
 
 import pytest
@@ -247,7 +248,6 @@ def _install_layer_dispatch_recorder(
         "gemma4_rmsnorm_weightless_bf16",
         "gemma4_head_rmsnorm_f32w_bf16",
         "gemma4_partial_rotary_bf16",
-        "gemma4_attention_prefill_bf16",
         "gemma4_add_rmsnorm_scale_bf16",
         "gemma4_gelu_tanh_mul_split_bf16",
         "gemma4_router_topk_bf16",
@@ -255,6 +255,15 @@ def _install_layer_dispatch_recorder(
         "gemma4_branch_add_bf16",
     ):
         monkeypatch.setattr(layer_module, name, lambda *args, **kwargs: None)
+    # Attention is not a module-scope name on the layer any more: the layer
+    # resolves a launcher through the variant selection, and an unrequested
+    # variant resolves to the strict kernel's own global in the attention
+    # module. Patching it there is what reaches the call.
+    monkeypatch.setattr(
+        importlib.import_module("hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention"),
+        "gemma4_attention_prefill_bf16",
+        lambda *args, **kwargs: None,
+    )
 
     next_ptr = 0x30000
 

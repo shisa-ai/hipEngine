@@ -71,6 +71,17 @@ def main() -> int:
              "anything in the production path. Geometry it does not implement "
              "(the head_dim-512 full layers, f32 storage) reports n/a.",
     )
+    ap.add_argument(
+        "--compare-wmma-full",
+        action="store_true",
+        help="Additionally time the BF16 WMMA full-layer prefill candidate "
+             "(gemma4_attention_prefill_wmma_full) on the same device buffers as "
+             "the strict row above it, and print its rate and the ratio. Additive "
+             "and independent of --compare-wmma: the strict rows are unchanged, "
+             "and the candidate is not selected by anything in the production "
+             "path. It implements the head_dim-512, 16q/2kv full layers only; "
+             "any other geometry or f32 storage reports n/a.",
+    )
     args = ap.parse_args()
 
     import numpy as np
@@ -83,6 +94,9 @@ def main() -> int:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as ga
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention_prefill_wmma as gw
+    from hipengine.kernels.hip_gfx1100.gemma4 import (
+        gemma4_attention_prefill_wmma_full as gwf,
+    )
 
     def time_launch(launch, iters: int, warmup: int) -> float:
         """Median wall time of one launch, device-synchronized, in milliseconds."""
@@ -157,6 +171,7 @@ def main() -> int:
             malloc(out.nbytes),
         ]
         wmma_ms = None
+        wmma_full_ms = None
         try:
             for buf, arr in zip(bufs, (qb, kb, vb, mask, out)):
                 copy_host_array_to_device(buf, arr)
@@ -205,6 +220,36 @@ def main() -> int:
                     )
 
                 wmma_ms = time_launch(once_wmma, args.iters, args.warmup)
+
+            # Same buffers, same shapes, same mask, same argument list: the
+            # full-layer candidate's row is the strict row's row with one
+            # kernel swapped. It is a separate flag from --compare-wmma because
+            # the two candidates cover disjoint geometries.
+            if (
+                args.compare_wmma_full
+                and args.dtype == "bf16"
+                and gwf.gemma4_attention_prefill_wmma_full_supported(
+                    num_heads=n_head, num_kv_heads=n_kv, head_dim=head_dim
+                )
+            ):
+                def once_wmma_full():
+                    gwf.gemma4_attention_prefill_wmma_full_bf16(
+                        bufs[0].ptr,
+                        bufs[1].ptr,
+                        bufs[2].ptr,
+                        bufs[3].ptr,
+                        bufs[4].ptr,
+                        tokens=tokens,
+                        num_heads=n_head,
+                        num_kv_heads=n_kv,
+                        head_dim=head_dim,
+                        scale=1.0,
+                        keys=key_count,
+                        window=window,
+                        row_offset=0,
+                    )
+
+                wmma_full_ms = time_launch(once_wmma_full, args.iters, args.warmup)
         finally:
             for buf in bufs:
                 free(buf)
@@ -236,6 +281,17 @@ def main() -> int:
                 print(
                     f"{'  + wmma (candidate)':32s} {wmma_ms:10.2f} {wmma_gflops:10.1f}"
                     f" {wmma_ms * layers:9.1f} ms   {ms / wmma_ms:6.2f}x vs strict"
+                )
+        if args.compare_wmma_full:
+            if wmma_full_ms is None:
+                reason = "f32 storage" if args.dtype != "bf16" else "unsupported geometry"
+                print(f"{'  + wmma-full (candidate)':32s} {'n/a':>10s} {reason:>10s}")
+            else:
+                wmma_full_gflops = flops / (wmma_full_ms / 1000.0) / 1e9
+                print(
+                    f"{'  + wmma-full (candidate)':32s} {wmma_full_ms:10.2f}"
+                    f" {wmma_full_gflops:10.1f}"
+                    f" {wmma_full_ms * layers:9.1f} ms   {ms / wmma_full_ms:6.2f}x vs strict"
                 )
 
     print(

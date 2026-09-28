@@ -220,12 +220,18 @@ def _ref_identity(refs: set[str]) -> set[str]:
     below. The referent is the same code, so identity must not depend on the line
     number: without this, adding a method to a scanned file un-triaged every finding
     beneath it and the budget gate failed on a shift nobody decided anything about.
+
+    Not every ref ends with the line: a doc-path-drift row is
+    ``path:line:subject``, with the missing path last. The line segment is dropped
+    wherever it sits, or editing a scanned *document* above those rows orphans
+    every one of them.
     """
 
     return {_LINE_REF.sub("", ref) for ref in refs}
 
 
-_LINE_REF = re.compile(r":\d+$")
+#  ``path:123`` and ``path:123:subject`` both have a line to drop.
+_LINE_REF = re.compile(r":\d+(?=:|$)")
 
 
 def similarity(a: dict[str, Any], b: dict[str, Any]) -> float:

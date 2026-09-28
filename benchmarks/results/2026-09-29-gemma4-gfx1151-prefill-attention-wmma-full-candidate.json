@@ -1,0 +1,177 @@
+{
+  "kind": "gemma4_gfx1151_prefill_attention_wmma_full_candidate",
+  "performance_claim": true,
+  "recorded": "2026-09-29, gfx1151 Strix Halo (zbook, AMD Radeon 8060S, 126976 MiB), ROCm SDK via ~/miniforge3 site-packages",
+  "why": "The 4096-token prefill census attributed 61.0 percent of the step to prefill attention at 276 GFLOP/s, about 1 percent of this part's BF16 rate, and 36 percent of the attention FLOPs are in the five head_dim-512 full layers. The sliding candidate covers the other 25 layers; this row measures a BF16 WMMA replacement for the full layers on the same device buffers, shapes, mask and arguments as the strict row it is compared against.",
+  "status": "on the default path under the production execution profile",
+  "promotion": "The production profile requests both candidates and the layer matches each against its own head geometry, so this kernel serves the five full layers on a real request. The strict kernel remains the registered fallback for any geometry neither candidate implements. The changed-arithmetic gate in docs/EXECUTION-PROFILES.md has not been run and is not claimed; docs/REFACTOR.md records it as outstanding for both candidates.",
+  "candidate": {
+    "kernel": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.hip",
+    "wrapper": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py",
+    "test": "tests/test_gpu_gemma4_attention_prefill_wmma_full.py",
+    "geometry": "head_dim 512, 16 query heads, 2 KV heads, GQA ratio 8, no sliding window, causal -- the full layers, 5 of 30 (indices 5, 11, 17, 23, 29)",
+    "tiling": "QUERY_ROWS 16 x GQA_HEADS 2 = 32 WMMA columns, 128 threads (4 waves: 2 column groups of 16 columns x 2 output-dimension groups of 256), K_BATCH 16, 49,920 bytes of LDS (Q tile 33,280 + K/V tile 16,640)",
+    "resources": "VGPRs 256 (the wave32 ISA ceiling), TotalSGPRs 128, ScratchSize 60 bytes/lane, LDS 49,920 bytes, 1 block per compute unit",
+    "unsupported": "head_dim 256 or any GQA ratio other than 8 raises NotImplementedError rather than running a different geometry",
+    "arithmetic": "changed -- the score dot is reassociated through the 16x16x16 BF16 matrix unit and the softmax weights are rounded to BF16 before the P*V dot. Not claimed bit-exact."
+  },
+  "measurement": {
+    "instrument": "scripts/gemma4_attention_prefill_bench.py --compare-wmma-full, median of 5 launches after 2 warmups, device-synchronized per launch",
+    "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gemma4_attention_prefill_bench.py --tokens 4096 --iters 5 --compare-wmma-full",
+    "comparability": "both rows are timed on the same device buffers with the same shapes, the same keep mask and the same arguments, and both GFLOP/s figures divide by the same causal pair count",
+    "tokens_4096": {
+      "full_512d_16q_2kv_window_0": {
+        "strict_ms": [629.98, 638.11, 639.10],
+        "strict_gflops": [436.4, 430.9, 430.2],
+        "candidate_ms": [62.73, 62.82, 63.69],
+        "candidate_gflops": [4383.1, 4376.5, 4316.9],
+        "ratio": [10.04, 10.16, 10.03],
+        "note": "three separate runs of the same command on the frozen source; the median ratio is 10.04x"
+      },
+      "swa_256d_16q_8kv_window_1024": {
+        "strict_ms": 128.37,
+        "candidate_ms": 9.28,
+        "ratio": 13.67,
+        "note": "the sliding layers, served by the sibling candidate; unchanged by this unit and shown only so the two attention kernels are on one page"
+      }
+    },
+    "repeatability": "candidate 62.73/62.82/63.69 ms and strict 629.98/638.11/639.10 ms across three runs in one clock state. Run-to-run spread on this host is up to 10 percent between separate invocations, which is why the ratio and not the millisecond count is the headline; the two rows of each run are measured back to back on the same buffers.",
+    "gflops_arithmetic": "the same causal pair count the bench divides both rows by: tokens * heads * keys/2 * (2 * head_dim) * 2, over the wall time of one launch. The candidate's raw matrix-unit work runs at 1.5x that count, because the two dimension-group waves of a column group each issue the full score dot."
+  },
+  "in_situ": {
+    "instrument": "scripts/gemma4_prefill_kernel_census.py --prompt 4096 --repeats 3 --warmup 1, one HIP event pair around every kernel the layer launches",
+    "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GEMMA4_PREFILL_ATTENTION_LOG=1 .venv/bin/python scripts/gemma4_prefill_kernel_census.py --prompt 4096 --repeats 3 --warmup 1",
+    "prefill_wall_s": 4.277,
+    "prefill_tps": 957.8,
+    "attention": {
+      "gemma4_attention_prefill_wmma_bf16": {"calls": 200, "ms": 348.40, "share": 0.081},
+      "gemma4_attention_prefill_wmma_full_bf16": {"calls": 40, "ms": 231.08, "share": 0.054},
+      "total_ms": 579.48,
+      "total_share": 0.135,
+      "before_this_unit_ms": 5520.70,
+      "before_this_unit_share": 0.610
+    },
+    "everything_else": {
+      "gemma4_experts_forward_bf16": {"ms": 2342.58, "share": 0.548},
+      "launch_gguf_linear": {"ms": 972.93, "share": 0.228},
+      "gemma4_router_topk_bf16": {"ms": 118.91, "share": 0.028},
+      "norms_rotary_and_elementwise_ms": 149.20,
+      "accounted": "97.3 percent of the step",
+      "note": "the 40 full-layer calls are 8 chunked prefill launches of 512 rows for each of the 5 full layers; the 200 sliding calls are the same for the 25 sliding layers"
+    },
+    "census_route_note": "the census spies on every attention launcher a profile can select, and prints a warning when it intercepts none of them, so a step that routes attention elsewhere is reported as unaccounted rather than as free"
+  },
+  "end_to_end": {
+    "instrument": "scripts/gemma4_campaign_bench.py --prompt {512,1024,2048,4096} --output 128 --samples 3 --warmup 1 --expect-gpu 8060S, the untouched public generate path, greedy, fixed length",
+    "command": "env -u HIP_VISIBLE_DEVICES HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python scripts/gemma4_campaign_bench.py --prompt 4096 --output 128 --samples 3 --warmup 1 --expect-gpu 8060S",
+    "prefill_tps": {
+      "512": {"strict_only": 870.0, "sliding_candidate": 1012.8, "both_candidates": 1078},
+      "1024": {"strict_only": 707.2, "sliding_candidate": 925.1, "both_candidates": 1042},
+      "2048": {"strict_only": 570.0, "sliding_candidate": 804.6, "both_candidates": 1007},
+      "4096": {"strict_only": 456.1, "sliding_candidate": 628.2, "both_candidates": 977.8}
+    },
+    "llamacpp_reference_tps": {"512": 1012.98, "1024": 1057.48, "2048": 1067.14, "4096": 1039.85},
+    "ratio_to_reference": {"512": 1.064, "1024": 0.985, "2048": 0.944, "4096": 0.941},
+    "prefill_seconds_at_4096": {
+      "strict_only": 8.980,
+      "both_candidates": 4.189,
+      "note": "the same campaign-bench arm at each end, 4096 prompt tokens and 128 output tokens; the strict arm re-run for this unit measured 8.965 s, reproducing the recorded 8.980 s"
+    },
+    "reference_note": "llama-bench -p 512,1024,2048,4096 -n 128 -r 3 -ngl 99 on this host and artifact, from the recorded baseline artifact; not re-run for this unit",
+    "arm_identity": "the strict arm and the production arm generated the same 128 greedy token ids at 4096 tokens (identical, first divergence: none), and the strict arm reproduced its recorded 456.9 tok/s, so the two arms are the same workload"
+  },
+  "correctness": {
+    "oracle": "the strict gemma4_attention_prefill_bf16 kernel, driven through ctypes on the same device buffers with the same arguments, so the only difference between the outputs is the arithmetic",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run --no-sync pytest tests/test_gpu_gemma4_attention_prefill_wmma_full.py",
+    "result": "19 passed, 0 skipped, 0 failed",
+    "cases": "real full geometry at 512 and 1024 tokens; the production frame gemma4_layer passes for a full layer (window = keys); chunked prefill at (512, 1024, 512), (256, 4096, 3840), (64, 200, 136), (100, 100, 0) and (257, 257, 0), the last three of which end on a short final key batch and a mask width that is not a multiple of K_BATCH; window == 0 with random, blocky and fully-masked-row masks; tokens < QUERY_ROWS at (1,1), (5,8), (15,16) and (17,32), two of which are below the vector mask read's width; scale 0.25; the launcher refusing head_dim 256; and the production profile routing each geometry to its own candidate",
+    "tolerance": "RTOL 7.9e-3 relative to each case's output peak (about four BF16 ulps) plus exact NaN-placement equality; the measured worst ratio is 3.4e-3, so the bound carries about 2.3x margin",
+    "agreement": "98.0-99.0 percent of output BF16 bit patterns are identical across every case; the worst absolute difference is 1.562e-2, one BF16 ulp at the largest output magnitude",
+    "not_verified": "no float64 CPU reference and no quality metric; the comparison is against the strict kernel only"
+  },
+  "optimization": {
+    "harness": "an uncommitted local driver that builds one .hip variant and times it on the same buffers as the bench, median of 5 launches. Its run-to-run spread is up to 10 percent between invocations, so only shares measured inside one batch of runs are quoted as shares.",
+    "landed": [
+      {
+        "change": "stage_tile issues all eight 16-byte K/V loads before the first LDS store consumes one, instead of load-store-advance per row",
+        "measured_ms": {"before": 97.93, "after": 68.37},
+        "note": "the single largest win in the kernel; the staging loop's eight independent global reads were serialising behind their own stores"
+      },
+      {
+        "change": "the keep-mask batch is read as one 16-byte vector per lane per key batch instead of eight scattered byte loads",
+        "measured_ms": {"after": 62.16},
+        "note": "eight byte loads per lane per batch were the same eight cache sectors eight times over, and the dependent compare put the load latency on the batch's critical path"
+      }
+    ],
+    "ablation_shares_on_the_finished_kernel": {
+      "K/V staging global load removed": 0.25,
+      "V fragment LDS read removed": 0.20,
+      "K fragment LDS read removed": 0.14,
+      "Q fragment LDS read removed": 0.135,
+      "keep-mask vector read removed": 0.02,
+      "note": "wrong-answer ablations that keep the control flow and the LDS stores; measured in one batch of runs against a base of 68.32 ms"
+    },
+    "rejected": [
+      {
+        "change": "eight waves (2 column groups x 4 dimension groups) instead of four, to get two waves per SIMD",
+        "measured_ms": 82.08,
+        "why": "the extra dimension split duplicates the score dot and every Q and K fragment load; the latency hiding does not pay for it"
+      },
+      {
+        "change": "a four-deep staging buffer instead of eight",
+        "measured_ms": 93.47,
+        "why": "fewer loads in flight is worse than the register pressure it saves"
+      },
+      {
+        "change": "a per-element fallback branch for mask rows shorter than one K-batch",
+        "measured_ms": "neutral within spread",
+        "why": "replaced by assembling the four mask words once per batch from byte reads, which removes the branch from the inner loop"
+      }
+    ],
+    "remaining": "the fragment LDS reads are 47 percent of the kernel between them and the staging global load is another 25 percent, at 1 wave per SIMD with 256 VGPRs and 60 bytes of spill, so the kernel is latency-bound rather than issue- or bandwidth-bound: its 2.4 billion instructions issue at roughly 15 percent of the SIMD issue capacity. Storing V transposed would turn the 16 scalar column reads per dimension tile into two 16-byte ones, but the transposing write is 32-way bank conflicted, so it is not the cheap win it looks like."
+  },
+  "not_verified": [
+    "The production numerical gate in docs/EXECUTION-PROFILES.md section 6 (KL envelope over full-vocabulary teacher-forced rows). Twelve identical greedy rows are a screen, not that gate.",
+    "Throughput across reboots, clock states, thermal states or a second device. Every number here is one host in one session.",
+    "The decode path: this kernel is prefill only, and decode still uses the strict attention kernel."
+  ],
+  "next": "The remaining 6 percent to the reference at 4096 tokens is not attention any more: the routed experts are 54.8 percent of the step and the dense projections 22.8 percent, both already linear in token count, so the next unit is one of those. Within this kernel the next lever is the fragment read pattern, not more waves.",
+  "provenance": {
+    "git_commit": "e68e1eacb9209daf150928bedc3045283e695b67",
+    "git_dirty_files": [
+      "audit/budget.json",
+      "audit/findings/doc-path-drift.json",
+      "audit/findings/stub.json",
+      "audit/findings/ungoverned-flag-branch.json",
+      "audit/hipaudit/core.py",
+      "audit/inventory/flags.json",
+      "audit/inventory/kernels.json",
+      "audit/inventory/ledger.json",
+      "audit/inventory/meta.json",
+      "audit/inventory/worklog.json",
+      "audit/tests/test_audit_core.py",
+      "audit/triage/doc-path-drift.jsonl",
+      "audit/triage/kernel.jsonl",
+      "audit/triage/stub.jsonl",
+      "audit/triage/ungoverned-flag-branch.jsonl",
+      "docs/KERNELS.md",
+      "docs/REFACTOR.md",
+      "hipengine/generation/gemma4_gguf.py",
+      "hipengine/generation/gemma4_gguf_profiles.py",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.hip",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_layer.py",
+      "hipengine/runtime/gemma4.py",
+      "scripts/gemma4_attention_prefill_bench.py",
+      "scripts/gemma4_prefill_kernel_census.py",
+      "tests/test_gpu_gemma4_attention_prefill_wmma_full.py",
+      "tests/test_unit_gemma4_prefill_attention_selection.py"
+    ],
+    "artifact": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "artifact_head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+    "backend": "hip_gfx1151",
+    "env": {"HIPENGINE_HIP_ARCH": "gfx1151"},
+    "worklog_entry": "worklog/entries/20260928T203205.309813Z-lhl-gemma4-full-layer-prefill-attention-wmma-ecc8b4.md"
+  }
+}

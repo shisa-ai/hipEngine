@@ -38,8 +38,10 @@ from pathlib import Path
 
 # Names patched on the ``gemma4_layer`` module. Every one is a kernel wrapper the
 # layer calls directly, so patching the module attribute reaches the call.
+# Attention is not here: the layer reaches it through the variant selection,
+# which resolves a launcher from the attention modules instead. See the patch
+# loop below.
 _LAYER_KERNELS = (
-    "gemma4_attention_prefill_bf16",
     "gemma4_experts_forward_bf16",
     "gemma4_gelu_tanh_mul_split_bf16",
     "gemma4_add_rmsnorm_scale_bf16",
@@ -81,6 +83,13 @@ def main() -> int:
 
     from hipengine.core.hip import get_hip_runtime
     from hipengine.llm import SamplingParams
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as ga
+    from hipengine.kernels.hip_gfx1100.gemma4 import (
+        gemma4_attention_prefill_wmma as gaw,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4 import (
+        gemma4_attention_prefill_wmma_full as gawf,
+    )
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts as ex
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_layer as gl
     from hipengine.runtime import gemma4 as g4
@@ -119,6 +128,16 @@ def main() -> int:
 
     for name in _LAYER_KERNELS:
         patch(gl, name)
+    # Attention is reached through the variant selection, not through a
+    # module-scope name on the layer, so every launcher a profile can select is
+    # patched where the selection resolves it: the strict kernel is a global of
+    # the attention module, and the two candidates are imported inside the
+    # selection, which looks them up on their own modules at call time. A tree
+    # that routes attention somewhere else reports attention as unaccounted
+    # rather than as free, which is the failure mode this guards against.
+    patch(ga, "gemma4_attention_prefill_bf16")
+    patch(gaw, "gemma4_attention_prefill_wmma_bf16")
+    patch(gawf, "gemma4_attention_prefill_wmma_full_bf16")
     for name in _EXPERT_LEAVES:
         patch(ex, name)
     for name in ("launch_gguf_embedding",):
@@ -195,6 +214,20 @@ def main() -> int:
         f"host and unmeasured {step_ms - accounted:.1f} ms "
         f"({100.0 * (step_ms - accounted) / step_ms:.1f}% of the step)"
     )
+    # A census that intercepts no attention at all is reporting a routing bug,
+    # not a free step. Every attention launcher a profile can select is spied
+    # on above, so zero calls across all of them means the call site moved.
+    attention_names = (
+        "gemma4_attention_prefill_bf16",
+        "gemma4_attention_prefill_wmma_bf16",
+        "gemma4_attention_prefill_wmma_full_bf16",
+    )
+    if not any(calls.get(name) for name in attention_names):
+        print(
+            "\nWARNING: no attention launcher was intercepted "
+            f"({', '.join(attention_names)}). The step above charges attention "
+            "to host and unmeasured time."
+        )
 
     payload = {
         "kind": "gemma4_prefill_kernel_census",
