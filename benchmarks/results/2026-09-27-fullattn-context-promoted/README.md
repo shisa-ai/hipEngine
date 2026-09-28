@@ -53,7 +53,7 @@ single case carries the result:
 
 1. **The per-token physical-offset table is int32 instead of int64.** It is the
    dominant term in the dynamic shared-memory request, so this drops the request
-   from 25,607 to 17,223 bytes at `max_context_len` 2048 and lifts residency
+   from 26,663 to 18,471 bytes at `max_context_len` 2048 and lifts residency
    from 2 to 3 blocks per CU.
 2. **The QK phase scores two tokens per warp iteration.** Each iteration was one
    serial dot-product plus five-step-shuffle chain; the second token gives the
