@@ -31,8 +31,10 @@ python3 scripts/worklog.py new \
 ```
 
 Optional `--topic` supplies the lowercase filename/frontmatter topic. Without
-it, the title is slugged. `WORKLOG_WORKER`, Git `user.name`, and the OS user are
-the fallback worker sources, in that order.
+it, the title is slugged. **It is truncated to 48 characters**, so a longer topic
+silently stops matching its own filename and the entry is rejected with a
+filename-metadata error -- keep topics short. `WORKLOG_WORKER`, Git `user.name`,
+and the OS user are the fallback worker sources, in that order.
 
 The command prints a collision-resistant path such as:
 
