@@ -22,12 +22,12 @@
     "source": "docs/REFACTOR.md",
     "headings": 413
   },
-  "generated": "2026-09-28T09:28:35+00:00",
-  "commit": "fa84350ff",
+  "generated": "2026-09-28T09:31:59+00:00",
+  "commit": "87c33bc3c",
   "worklog": {
     "source": "worklog/entries",
-    "entries": 11132,
-    "current": 3900,
+    "entries": 11133,
+    "current": 3901,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1227,

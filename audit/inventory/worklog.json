@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11132,
-    "current": 3900,
+    "entries": 11133,
+    "current": 3901,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1227,
@@ -46255,14 +46255,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "1. **Find why `llm.generate` does not select the speculative route.** Read the\n   path from `LLM.generate` through the engine loop; the answer is a specific\n   branch, and the last attempt shows guessing at declarations does not find it.\n2. **Add a test that pins the route**, not just the provider: that a generator\n   with an attached provider and a greedy request reaches\n   `execution_path == \"gemma4_mtp_batched_exact_verify\"`.\n3. **Bit-exactness is the reason this can land enabled by default.** The cycle\n   reproduces plain greedy exactly, so promotion does not need the\n   arithmetic-change ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T092503.055565Z-lhl-gemma4-mtp-provider-1cad49.md",
@@ -46283,7 +46283,7 @@
         ]
       },
       "id": "worklog/20260928T092503.055565Z-lhl-gemma4-mtp-provider-1cad49",
-      "evidence_hash": "7d5a58f57cf4"
+      "evidence_hash": "7697de9f9015"
     },
     {
       "kind": "worklog",
