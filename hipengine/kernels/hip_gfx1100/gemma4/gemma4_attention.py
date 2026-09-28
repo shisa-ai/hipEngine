@@ -639,6 +639,8 @@ def gemma4_attention_prefill_aotriton(
     head_dim: int,
     scale: float,
     keys: int | None = None,
+    window_left: int | None = None,
+    window_right: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -740,6 +742,15 @@ def gemma4_attention_prefill_aotriton(
         # which is what a query block that is a suffix of the attended range
         # needs. The persistent atomic counter is zeroed by the shim before the
         # launch.
+        # Window bounds are forwarded only when the caller supplies them. With
+        # neither set nothing extra is passed and the wrapper's own defaults
+        # apply, so the production path is unchanged by this signature.
+        window_kwargs: dict[str, int] = {}
+        if window_left is not None:
+            window_kwargs["window_left"] = window_left
+        if window_right is not None:
+            window_kwargs["window_right"] = window_right
+
         aotriton_attn_fwd_v3_compact_varlen(
             q_tensor,
             k_tensor,
@@ -753,6 +764,7 @@ def gemma4_attention_prefill_aotriton(
             max_seqlen_k=key_count,
             sm_scale=float(scale),
             is_causal=True,
+            **window_kwargs,
             stream=stream,
             library=library,
             runtime=runtime,
