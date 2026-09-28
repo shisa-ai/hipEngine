@@ -22,19 +22,19 @@
     "source": "docs/REFACTOR.md",
     "headings": 413
   },
-  "generated": "2026-09-28T09:35:40+00:00",
-  "commit": "a2ab3293f",
+  "generated": "2026-09-28T09:40:47+00:00",
+  "commit": "b7d65d583",
   "worklog": {
     "source": "worklog/entries",
-    "entries": 11134,
-    "current": 3902,
+    "entries": 11135,
+    "current": 3903,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1228,
+    "rows": 1229,
     "by_rule": {
       "dependency": 40,
       "legacy-next": 109,
-      "status": 1079
+      "status": 1080
     }
   }
 }
