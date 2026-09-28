@@ -145,5 +145,71 @@
     },
     "execution_profile_note": "the route quantizes activations to DS4 Q8_1 over _MMQ_ACTIVATION_PASSES = 1 plane, the same plane count and the same envelope as the Q4_K gate_up route. Raising the plane count changes a production default's arithmetic and still needs its own gate; that is unchanged and unaddressed here.",
     "not_a_regression_check_that_matters": "the model generates degenerate text on this branch -- see the separate finding. Both route settings produce the same degenerate ids, so this change neither caused nor masked it."
+  },
+  "teacher_forced_gate_2048_1024": {
+    "baseline": "/tmp/gemma4-gate-strict-gfx1151.npz (frozen strict gfx1151 capture, prompt 2048, prefill 1024)",
+    "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/gemma4_teacher_forced_gate.py gate --baseline /tmp/gemma4-gate-strict-gfx1151.npz --prompt 2048 --prefill 1024",
+    "thresholds": {
+      "kl_max": 0.05,
+      "kl_mean": 0.001,
+      "kl_p95": 0.005,
+      "kl_p99": 0.02,
+      "top1_rate": 0.99
+    },
+    "arms": {
+      "all_routes_on": {
+        "passed": false,
+        "kl_mean": 0.000317257,
+        "kl_p95": 1.4353305e-05,
+        "kl_p99": 0.000179085,
+        "kl_max": 0.137246,
+        "top1_rate": 1.0,
+        "top1_flips": 0
+      },
+      "down_mmq_off": {
+        "passed": false,
+        "kl_mean": 0.000231,
+        "kl_p99": 0.000109,
+        "kl_max": 0.170633,
+        "top1_rate": 1.0,
+        "top1_flips": 0
+      },
+      "wmma_prefill_off": {
+        "passed": false,
+        "kl_mean": 0.000232,
+        "kl_p99": 0.000152,
+        "kl_max": 0.167806,
+        "top1_rate": 1.0,
+        "top1_flips": 0
+      },
+      "both_off": {
+        "passed": false,
+        "kl_mean": 0.000165,
+        "kl_p99": 0.0002,
+        "kl_max": 0.156917,
+        "top1_rate": 1.0,
+        "top1_flips": 0
+      },
+      "gate_up_off_down_on": {
+        "passed": false,
+        "kl_mean": 9.9e-05,
+        "kl_p95": 9.28e-06,
+        "kl_p99": 0.000112,
+        "kl_max": 0.058154,
+        "top1_rate": 1.0,
+        "top1_flips": 0
+      },
+      "gate_up_off_down_off": {
+        "passed": false,
+        "kl_mean": 0.000229,
+        "kl_p95": 1.38e-05,
+        "kl_p99": 0.00013,
+        "kl_max": 0.180016,
+        "top1_rate": 1.0,
+        "top1_flips": 0
+      }
+    },
+    "determinism": "all_routes_on was run twice and reproduced to six decimal places (kl_mean 0.000317, kl_p99 0.000179, kl_max 0.137246), so the over-bar is deterministic rather than a tail draw.",
+    "reading": "Every configuration fails the 0.05 kl_max bar. Disabling the Q5_1 down MMQ route makes kl_max worse in every configuration measured (0.1706 against 0.1372 with the gate_up route on; 0.1800 against 0.0582 with it off), so the route is a strict numerical improvement over the fp32 grouped owner it replaces, not a source of the over-bar. Isolating the confounder by setting HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=0 gives the cleanest arm: down MMQ on measures kl_mean 0.000099 and kl_max 0.0582, while the fp32 grouped owner measures kl_mean 0.000229 and kl_max 0.1800 -- 3.6x over the bar. The bar is therefore not met by the incumbent path either at this shape, so it does not discriminate on the down projection. All-on reproduces to six decimal places across runs."
   }
 }

@@ -9209,6 +9209,58 @@ path, and its correctness tests stay in place. Evidence:
 `benchmarks/results/2026-09-27-gemma4-mmq-gate-up-three-arm-attribution.json`,
 `benchmarks/results/2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json`.
 
+## Gemma 4 Q5_1 expert down prefill is the default; the flag is a rollback lever (open 2026-09-28)
+
+`HIPENGINE_GEMMA4_MOE_DOWN_MMQ` selects the Q5_1 DS4 DP4A MMQ route for Gemma 4's
+expert down projection. Before it, Q5_1 had no MMQ path at all --
+`gemma4_project_experts_gate_up_mmq` accepts only `gguf_q4_k` and `gguf_q5_k` -- so
+the down projection ran the fp32 grouped family at **8.6 GB/s** where the Q4_K
+gate/up MMQ on the same layer ran at **67 GB/s**, 11.8x per FLOP. It measures
+**7.191 s -> 5.213 s on the 2048-token prefill (+38.0%)**, and the expert share of
+prefill falls from 43.4% to 11.0%. On the loop's 512/128 shape the prefill goes
+from 1.52 s to 1.01 s.
+
+**The route is now the default path.** `HIPENGINE_GEMMA4_MOE_DOWN_MMQ=0` restores
+the fp32 grouped route, and unset means on. `tests/test_unit_gemma4_expert_route.py`
+and `tests/test_gpu_gguf_q5_1_mmq_selected_prefill.py` pin the route.
+
+**Why the width constraint had to be lifted, not worked around.** The Q5_1 MMQ
+kernel tiled `in_features` in 128-wide DS4 blocks and computed
+`ds4_blocks = in_features / 128` with integer division, so a width that is not a
+multiple of 128 silently dropped its tail; its `in_features % 128` guard existed to
+prevent exactly that. Gemma 4 26B-A4B's expert down width is **704**, which is
+`5 x 128 + 64`. The route now rounds `ds4_blocks` up and skips the Q5_1 sub-blocks
+a trailing group does not have, and the DS4 activation pack rounds `blocks_per_row`
+up and reads `0.0` past `hidden`. **This is exact, not an approximation:** the
+elements past `hidden` are zero, and a zero cannot raise a `max_abs` or move a sum,
+so the scale the real elements get is the one they would have got without the
+padding.
+
+**Numerical envelope, measured.** At the model's own geometry -- 4096 compact rows,
+128 experts, 704 -> 2816, one plane -- against the fp32 grouped owner and against an
+exact dequant oracle: grouped vs oracle max 0.00789 / mean 0.000712; MMQ vs oracle
+max 0.01297 / mean 0.001336; MMQ vs grouped max 0.01218 / mean 0.001110. That is the
+same envelope the Q4_K gate/up route above already runs at, and it uses the same
+plane count (`_MMQ_ACTIVATION_PASSES = 1`) for the same reason.
+
+**It is over the 0.05 `kl_max` bar on the 2048/1024 teacher-forced gate, and that
+over-bar is not this route's.** Measured 2026-09-28 against
+`/tmp/gemma4-gate-strict-gfx1151.npz`: all routes on gives `kl_max` 0.137246 with
+`kl_mean` 0.000317, `kl_p99` 0.000179, `top1_rate` 1.0 and 0 flips; with this route
+off it is **0.170633**; with the WMMA dense prefill off it is 0.167806; with both off
+it is 0.156917. Every configuration fails the bar and turning this route off makes it
+*worse*, so the over-bar is the pre-existing property of the Q4_K gate/up MMQ route
+recorded in the section above -- over the bar at 7 of 13 frozen-campaign prefill
+lengths -- and not something this route introduced. All-on also reproduces to six
+decimal places across runs, so the result is deterministic rather than a tail draw.
+
+Remove it once a teacher-forced gate against the campaign's frozen evaluator
+has been recorded for the new default and its verdict is on file. Note that
+`capture` must run with `HIPENGINE_GEMMA4_MOE_DOWN_MMQ=0` to freeze the incumbent
+fp32 path, for the same reason the gate/up entry gives. The implementation, its
+registered launch path, and its correctness tests stay in place. Evidence:
+`benchmarks/results/2026-09-28-gemma4-prefill-expert-down-route-attribution.json`.
+
 ## Gemma 4's pack8 expert layout is off by default
 
 **SETTLED 2026-09-28: the packed layout is never ahead, so the deletion below is
