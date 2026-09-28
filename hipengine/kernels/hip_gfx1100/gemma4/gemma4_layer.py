@@ -311,6 +311,26 @@ def _append_kv(
     )
 
 
+def _layer_backend(layer: Gemma4LayerPointers) -> str | None:
+    """The backend of whichever projection carries resident quantized weights.
+
+    ``router_proj`` is always a raw f32 pointer, so the router cannot read a
+    backend off its own weight. Any quantized projection in the same layer is on
+    the same backend, and a bf16 artifact has none -- the caller falls back to
+    the kernel tree's own backend, which is what ``gguf_embedding`` does.
+    """
+
+    for projection in (
+        layer.mlp_gate_proj,
+        layer.experts_gate_up_proj,
+        layer.q_proj,
+    ):
+        value = getattr(projection, "backend", None)
+        if value is not None:
+            return str(value)
+    return None
+
+
 def gemma4_layer_forward_bf16(
     hidden_ptr: int,
     cos_ptr: int,
@@ -572,6 +592,7 @@ def gemma4_layer_forward_bf16(
         scratch=scratch.router,
         eps=eps,
         stream=stream,
+        backend=_layer_backend(layer),
     )
     gemma4_rmsnorm_f32w_bf16(
         buf("hidden"),
