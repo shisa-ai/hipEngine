@@ -5353,7 +5353,7 @@ record, not permission to reset unrelated work or weaken correctness.
 
   What actually runs, from ``gemma4_attention.hip``:
 
-  - ``gemma4_decode_class_launch`` (line 877) puts **one 512-thread block on each
+  - ``gemma4_decode_class_launch`` (line 956) puts **one 512-thread block on each
     (token, head)** pair -- ``grid = tokens * num_heads`` -- and each of the 16
     warps owns two of every 32 keys (``kKeysPerTile`` 2).
   - Pass 1 computes each key's logit with an intra-warp shuffle tree over
@@ -5381,9 +5381,9 @@ record, not permission to reset unrelated work or weaken correctness.
   ``-fa on`` is that kernel; the 25 sliding-window layers (``head_dim`` 256) use
   its WMMA FP16 path and the 5 global layers (``head_dim`` 512) use the tile path.
 
-  Evidence: ``gemma4_attention.hip`` (``gemma4_decode_class_launch`` line 877,
-  ``gemma4_attention_decode_class_kernel`` line 434,
-  ``launch_gemma4_attention_decode`` line 970); the kernel trace and cost share in
+  Evidence: ``gemma4_attention.hip`` (``gemma4_decode_class_launch`` line 956,
+  ``gemma4_attention_decode_class_kernel`` line 444,
+  ``launch_gemma4_attention_decode`` line 1051); the kernel trace and cost share in
   the comparison section above; ``gemma4.attention.head_count`` 16,
   ``head_count_kv`` 8 and 2, ``key_length_swa`` 256, ``key_length`` 512,
   ``sliding_window`` 1024 in the artifact.
