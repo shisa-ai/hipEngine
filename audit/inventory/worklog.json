@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11142,
-    "current": 3910,
+    "entries": 11143,
+    "current": 3911,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1233,
+    "rows": 1234,
     "by_rule": {
       "dependency": 40,
       "legacy-next": 109,
-      "status": 1084
+      "status": 1085
     }
   },
   "rows": [
@@ -44749,14 +44749,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "Add a row-count case to `tests/test_gpu_gemma4_expert_route_true_geometry.py`,\nwhich already builds the true 2816/1408 geometry. That answers the scope\nquestion above in one measurement: if the true geometry is invariant, the defect\nis a toy-shape bug and the fix is narrow; if it is not, the MMQ route's default\nis implicated and the fix is a precondition for keeping it on.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T060351.045060Z-lhl-gemma4-mmq-fix-envelope-bad920.md",
@@ -44777,7 +44777,7 @@
         ]
       },
       "id": "worklog/20260928T060351.045060Z-lhl-gemma4-mmq-fix-envelope-bad920",
-      "evidence_hash": "47e5dcded95a"
+      "evidence_hash": "f4566664d4c3"
     },
     {
       "kind": "worklog",
@@ -46609,6 +46609,47 @@
       },
       "id": "worklog/20260928T095821.925570Z-lhl-gemma4-q8-0-wmma-attribution-595fe7",
       "evidence_hash": "3d332ade96b4"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T100023.812940Z-lhl-gemma4-mmq-barrier-refuted-889099",
+      "title": "the mmq barrier hypothesis is refuted by the down kernel and both mmq kernels sit at 50 gb per second",
+      "location": "worklog/entries/20260928T100023.812940Z-lhl-gemma4-mmq-barrier-refuted-889099.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-mmq-barrier-refuted",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "1. **Profile the gate/up with stall attribution** rather than inferring its limit from\n   structure. The question is what the MMQ path pays that pack8 GEMV does not.\n2. **Alternatively, test the dense path's representation on an expert projection** --\n   the pack8 expert layout was measured slower at 2.75x, but that repack is 1.33x the\n   bytes, so it does not answer whether the *dp4a arithmetic* is the cost.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T100023.812940Z-lhl-gemma4-mmq-barrier-refuted-889099.md",
+        "refs": [],
+        "tokens": [
+          "barrier",
+          "both",
+          "down",
+          "hypothesis",
+          "kernel",
+          "kernels",
+          "mmq",
+          "per",
+          "refuted",
+          "second",
+          "sit"
+        ]
+      },
+      "id": "worklog/20260928T100023.812940Z-lhl-gemma4-mmq-barrier-refuted-889099",
+      "evidence_hash": "148ffd26aa23"
     }
   ]
 }
