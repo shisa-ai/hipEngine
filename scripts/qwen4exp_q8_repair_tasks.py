@@ -6,6 +6,7 @@ Truncated responses require further review, never an automatic pass.
 """
 
 import argparse
+from collections import Counter
 from contextlib import ExitStack
 import fcntl
 import json
@@ -55,9 +56,22 @@ def select_task_prompts(prompts, requested):
     return selected, len(selected) == len(prompts)
 
 
-def completion(runner, tokenizer, ids, max_tokens):
+def completion(runner, tokenizer, ids, max_tokens, *, counter=None, observation=None):
+    phases = {name: {'calls': 0, 'shapes': Counter()}
+              for name in ('prefill', 'first_decode', 'later_decode')}
+
+    def observed_call(phase, fn, *args):
+        if counter is None:
+            return fn(*args)
+        before_calls = counter['calls']
+        before_shapes = counter['shapes'].copy()
+        result = fn(*args)
+        phases[phase]['calls'] += counter['calls'] - before_calls
+        phases[phase]['shapes'].update(counter['shapes'] - before_shapes)
+        return result
+
     runner.reset()
-    result = runner.prefill(ids)
+    result = observed_call('prefill', runner.prefill, ids)
     output = []
     reason = "length"
     for step in range(max_tokens):
@@ -67,7 +81,18 @@ def completion(runner, tokenizer, ids, max_tokens):
             reason = "eos"
             break
         if step + 1 < max_tokens:
-            result = runner.step(token)
+            result = observed_call('first_decode' if step == 0 else 'later_decode',
+                                   runner.step, token)
+    if observation is not None:
+        observation.update({name: {'calls': values['calls'], 'shapes': shape_records(values)}
+                            for name, values in phases.items()})
+        observation.update(
+            kind='host_candidate_call_observation',
+            counted=counter is not None,
+            candidate_observed=(any(value['calls'] for value in phases.values())
+                                if counter is not None else None),
+            gpu_engagement_certified=False,
+        )
     return dict(ids=output, finish_reason=reason,
                 text=tokenizer.decode(output, skip_special=False))
 
@@ -126,11 +151,18 @@ def main():
                 for prompt in prompts:
                     ids = build_chat_prompt(generator.tokenizer, prompt["prompt"])
                     repeats = []
+                    observations = []
                     for repeat in range(2):
-                        repeats.append(completion(generator.runner, generator.tokenizer,
-                                                  ids, args.max_tokens))
+                        observation = {}
+                        repeats.append(completion(
+                            generator.runner, generator.tokenizer, ids, args.max_tokens,
+                            counter=(counter if name != 'strict' and
+                                     candidate.requires_dispatch_count else None),
+                            observation=observation))
+                        observations.append(observation)
                     report["arms"][name]["cases"].append(dict(
                         id=prompt["id"], category=prompt["category"], repeats=repeats,
+                        input_tokens=len(ids), dispatch_observations=observations,
                         deterministic=repeats[0] == repeats[1]))
                     args.output.write_text(json.dumps(report, indent=2) + "\n")
                     print(name, prompt["id"], len(repeats[0]["ids"]),
@@ -141,6 +173,13 @@ def main():
                         "key": candidate.candidate_key,
                         "direct_target": candidate.direct_dispatch_target,
                         "required": candidate.requires_dispatch_count,
+                        "kind": "host_candidate_call_observation",
+                        "gpu_engagement_certified": False,
+                        "candidate_observed_every_repeat": (
+                            all(observation['candidate_observed']
+                                for case in report['arms'][name]['cases']
+                                for observation in case['dispatch_observations'])
+                            if candidate.requires_dispatch_count else None),
                     }
                     if candidate.requires_dispatch_count and counter["calls"] == 0:
                         raise ValueError("task candidate never dispatched")

@@ -266,6 +266,15 @@ strict F32 teacher at our calibrated envelope.
 
 ### 3.1 Common decision gates
 
+The task collector now records input-token counts and candidate host-call
+observations per prompt, repeat and phase (`prefill`, `first_decode`,
+`later_decode`). Arm-wide calls no longer hide which cases were inactive.
+Observations are separate from output determinism comparisons; uncounted
+candidates report unknown rather than false engagement. These are Python-call
+counts, not GPU execution certificates (graph replay may bypass them), and
+lack role/layer attribution. Long natural tasks and route-resolved GPU evidence
+are still required by X-11; this instrumentation alone qualifies no candidate.
+
 Implementation classes are T0 (reference-preserving), T1 (local arithmetic
 drift), T2 (association/layout drift), and T3 (representation or algorithm
 change), as defined in EXECUTION-PROFILES. Track labels describe the proposed
