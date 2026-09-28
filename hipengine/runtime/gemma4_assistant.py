@@ -39,8 +39,8 @@ otherwise use different arithmetic. See
 
 from __future__ import annotations
 
-
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -70,6 +70,9 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rotary import gemma4_partial_ro
 from hipengine.loading.gemma4_assistant_device import Gemma4AssistantDeviceWeights
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import launch_gguf_linear
+
+if TYPE_CHECKING:
+    from hipengine.runtime.gemma4 import Gemma4Runner
 
 from hipengine.loading.gemma4_assistant_gguf import Gemma4AssistantConfig
 from hipengine.loading.gemma4_gguf import Gemma4GGUFConfig
@@ -687,10 +690,63 @@ class Gemma4AssistantHead:
         self._owned.clear()
 
 
+@dataclass
+class Gemma4MtpDrafter:
+    """Chains a :class:`Gemma4AssistantHead` into a multi-token draft.
+
+    The head drafts one token per call, so a draft of *n* tokens is *n* calls and
+    the head's recurrent state carries the chain. What this class adds is the
+    part that is easy to get wrong from outside:
+
+    * the seed. :meth:`draft` primes the head from the backbone's own last hidden
+      row, so it must be called straight after the forward that produced
+      ``token`` and before any later one. ``Gemma4Runner.hidden_state``
+      documents the same constraint from the other side.
+    * the views. ``Gemma4Runner.shared_kv`` captures the live position count when
+      it is called, so the views are taken once per draft, before the verify pass
+      extends the cache. Taking them per step, or after the verify, would either
+      re-read a moved count or expose the query's own K/V to the head.
+    * the position. Every step of one draft uses the same ``n_past``; the head's
+      blocks are all shared-KV, which is llama.cpp's ``is_mem_shared`` case.
+
+    This proposes tokens; it does not accept them. Acceptance is the caller's
+    verify pass against the target's own logits.
+    """
+
+    head: Gemma4AssistantHead
+    runner: Gemma4Runner
+    max_drafts: int = 4
+
+    def __post_init__(self) -> None:
+        if self.max_drafts <= 0:
+            raise ValueError("max_drafts must be positive")
+
+    def draft(self, token: int, *, hidden_row: int = -1) -> list[int]:
+        """Propose up to ``max_drafts`` tokens to follow ``token``.
+
+        ``token`` is the token the backbone just sampled, not the last token it
+        processed: the head's first step is fed the sampled token together with
+        the hidden row that produced it.
+        """
+
+        self.head.prime(self.runner.hidden_state(row=hidden_row))
+        shared = {
+            index: self.runner.shared_kv(index) for index in range(self.runner.layer_count)
+        }
+        position = self.runner.position
+        drafts: list[int] = []
+        for _ in range(self.max_drafts):
+            logits, _h_next = self.head.forward(token, position=position, shared_kv=shared)
+            token = int(np.argmax(logits))
+            drafts.append(token)
+        return drafts
+
+
 __all__ = [
     "Gemma4AssistantGeometry",
     "Gemma4AssistantHead",
     "Gemma4AssistantScratch",
+    "Gemma4MtpDrafter",
     "gemma4_assistant_geometry",
     "gemma4_assistant_keep_mask",
 ]
