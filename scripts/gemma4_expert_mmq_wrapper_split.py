@@ -55,6 +55,12 @@ def main() -> int:
     from hipengine.llm import SamplingParams
     from hipengine.core import memory as memory_mod
     from hipengine.kernels.hip_gfx1100.moe import group_scatter as gs
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_moe as gmoe
+    # The expert forward binds the group-scatter and elementwise kernels into its
+    # own namespace at import time (``from ... import name``), so patching the
+    # defining module leaves the consumer's already-bound reference untouched.
+    # Patch the consumer instead -- the same trap the route ablation hit.
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts as gexp
     from hipengine.kernels.hip_gfx1100.quant import gguf_q4_k_q8_1_selected_prefill as q4sel
     from hipengine.kernels.hip_gfx1100.quant import gguf_q5_1_mmq_selected_prefill as q5down
     from hipengine.kernels.hip_gfx1100.quant import gguf_q5_k_q8_1_selected_prefill as q5k
@@ -102,7 +108,17 @@ def main() -> int:
         (q5k, "gguf_q5_k_selected_dual_sparse_exact_repair_bf16", "q5_k exact repair"),
         (q4sel, "gguf_q8_1_mmq_ds4_pack_bf16", "activation pack (gate_up)"),
         (q4sel, "gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3", "activation pack (down)"),
-        (gs, "qwen35_moe_mmq32_tile_map", "tile map (gate_up)"),
+        # The expert block's remaining glue. The census puts 30.32 ms in
+        # ``gemma4_experts_forward_bf16`` outside its two MMQ leaves, and the
+        # readback and the pack above account for only 3.9 ms of it. These are
+        # the kernels that run in between; before this they were unpriced.
+        (gexp, "qwen35_moe_group_count", "group count"),
+        (gexp, "qwen35_moe_group_prefix_active", "group prefix (active)"),
+        (gexp, "qwen35_moe_group_compact_active", "group compact (active)"),
+        (gexp, "qwen35_moe_gather_packed_hidden_lowp", "gather packed hidden"),
+        (gexp, "gemma4_moe_lane_to_row_i32", "lane -> row"),
+        (gexp, "gemma4_moe_weighted_accumulate_bf16", "weighted accumulate"),
+        (gexp, "gemma4_gelu_tanh_mul_bf16", "gelu tanh mul"),
         (memory_mod, "copy_device_to_host", "device->host readback"),
     ]
     originals = []
