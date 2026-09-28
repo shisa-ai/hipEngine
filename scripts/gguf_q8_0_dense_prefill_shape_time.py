@@ -91,10 +91,14 @@ def main() -> int:
 
         t = np.array(times)
         flops = 2.0 * args.rows * in_features * out_features
+        q = max(1, args.iters // 4)
+        first, last = t[:q].mean(), t[-q:].mean()
         print(f"{in_features:>6} {out_features:>6} {t.mean():>9.3f} "
               f"{np.median(t):>9.3f} {t.min():>9.3f} {t.max():>9.3f} "
               f"{t.mean() / t.min():>9.3f} "
               f"{flops / 1e9 / t.mean():>8.2f}")
+        print(f"{'':>6} {'':>6} first q{args.iters//4} {first:.3f}  last q{args.iters//4} "
+              f"{last:.3f}  drift {last / first:>6.3f}")
 
     return 0
 
