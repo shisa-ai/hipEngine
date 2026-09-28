@@ -61,6 +61,7 @@ def main() -> int:
     orig_dense = ggl.launch_gguf_linear
     orig_selected = ex.gemma4_project_experts_selected
     orig_mmq = ex.gemma4_project_experts_gate_up_mmq
+    orig_mmq_down = ex.gemma4_project_experts_down_mmq
     orig_rows = ex.gemma4_project_experts_rows
     orig_grouped = ex.gemma4_project_experts_grouped_prefill
 
@@ -85,8 +86,10 @@ def main() -> int:
             quant = weight.spec.quant_key
             name = f"expert-selected {quant}"
             counts[name] += 1
-            # Signature: (x, selected, qweight, out, x_rows, rows, num_experts,
-            # in_features, out_features). A per-row selected block reads one
+            # Signature: (weight, x_ptr, selected_ptr, out_ptr, x_rows, rows,
+            # num_experts, in_features, out_features). The spy binds the first
+            # four, so a is (x_rows, rows, num_experts, in_features,
+            # out_features) and a[1] is rows. A per-row selected block reads one
             # weight row per (out_col, lane), so weight bytes are rows *
             # out_features * in_features, and the x row is re-read per block.
             rows, num_experts, in_features, out_features = a[1], a[2], a[3], a[4]
@@ -95,9 +98,36 @@ def main() -> int:
         return orig_selected(weight, x_ptr, selected_ptr, out_ptr, *a, **kw)
 
     def spy_mmq(weight, *a, **kw):
+        # Signature: (weight, x_ptr, out_ptr, expert_start, compact_rows,
+        # num_experts, in_features, intermediate, *, scratch, stream, runtime).
+        # a begins after ``weight``, so a[3] is compact_rows, a[4] num_experts,
+        # a[5] in_features and a[6] intermediate. Each compact row is matched
+        # against its own expert's gate and up matrices, so the weight traffic is
+        # two matrices of in_features x intermediate per row.
         if enabled["on"] and not isinstance(weight, int):
-            counts["expert-mmq gate_up"] += 1
+            quant = weight.spec.quant_key
+            name = f"expert-mmq gate_up {quant}"
+            counts[name] += 1
+            compact_rows, in_features, intermediate = a[3], a[5], a[6]
+            bytes_in[name] += 2 * compact_rows * in_features * intermediate * bpe(quant)
+            bytes_in[name] += compact_rows * in_features * 2
+            bytes_out[name] += compact_rows * 2 * intermediate * 2
         return orig_mmq(weight, *a, **kw)
+
+    def spy_mmq_down(weight, *a, **kw):
+        # Signature: (weight, x_ptr, out_ptr, expert_start, compact_rows,
+        # num_experts, in_features, out_features, *, scratch, stream, runtime).
+        # Identical to the gate_up hook but the trailing width is out_features,
+        # and one matrix is read per compact row rather than two.
+        if enabled["on"] and not isinstance(weight, int):
+            quant = weight.spec.quant_key
+            name = f"expert-mmq down {quant}"
+            counts[name] += 1
+            compact_rows, in_features, out_features = a[3], a[5], a[6]
+            bytes_in[name] += compact_rows * in_features * out_features * bpe(quant)
+            bytes_in[name] += compact_rows * in_features * 2
+            bytes_out[name] += compact_rows * out_features * 2
+        return orig_mmq_down(weight, *a, **kw)
 
     def spy_rows(*a, **kw):
         route = orig_rows(*a, **kw)
@@ -113,6 +143,7 @@ def main() -> int:
     ggl.launch_gguf_linear = spy_dense
     ex.gemma4_project_experts_selected = spy_selected
     ex.gemma4_project_experts_gate_up_mmq = spy_mmq
+    ex.gemma4_project_experts_down_mmq = spy_mmq_down
     ex.gemma4_project_experts_rows = spy_rows
     ex.gemma4_project_experts_grouped_prefill = spy_grouped
 
