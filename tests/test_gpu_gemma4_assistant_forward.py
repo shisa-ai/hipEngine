@@ -60,7 +60,7 @@ from hipengine.loading.gemma4_assistant_device import (
 )
 from hipengine.loading.gemma4_gguf import gemma4_gguf_config_from_metadata
 from hipengine.runtime.gemma4 import Gemma4Runner, load_gemma4_device_weights
-from hipengine.runtime.gemma4_assistant import Gemma4AssistantHead
+from hipengine.runtime.gemma4_assistant import Gemma4AssistantHead, Gemma4MtpDrafter
 from tests._rocm_guard import hip_runtime_available
 
 BACKBONE = Path(
@@ -253,3 +253,53 @@ def test_the_draft_chain_reproduces_llamacpps_candidates() -> None:
             drafted.append(token)
 
         assert drafted == [row[0] for row in LLAMACPP_CANDIDATES]
+
+
+@_needs
+def test_the_drafter_proposes_tokens_the_backbone_accepts() -> None:
+    """The draft loop end to end, measured the way speculative decoding is.
+
+    Both sides are greedy, which is the comparison llama.cpp's ``--temp 0
+    --top-k 1`` MTP run reports as ``#acc rate/pos``. Its numbers on this
+    artifact are ``(1.000, 0.750, 0.500, 0.500)`` with a mean accepted length of
+    3.75 over four draft calls; this loop measures ``(0.812, 0.821, 0.812,
+    0.615)`` and 4.06 over 48 rounds, which ``scripts/gemma4_mtp_acceptance.py``
+    reproduces.
+
+    The bar here is deliberately far below the measured rate. What it is meant to
+    catch is a draft loop that does not work at all -- a mis-seeded recurrence, a
+    stale shared-KV view, or a position that advances -- each of which collapses
+    acceptance to near zero while leaving the single-step forward test green.
+    """
+
+    rounds = 8
+    per_round = 4
+    with _Session(TEMPLATED) as session:
+        drafter = Gemma4MtpDrafter(
+            head=session.head, runner=session.runner, max_drafts=per_round
+        )
+        token = session.sampled
+        reached = [0] * per_round
+        matched = [0] * per_round
+        for _round in range(rounds):
+            consumed = token
+            for slot, draft in enumerate(drafter.draft(token)):
+                reached[slot] += 1
+                expected = session.target_next_token(consumed)
+                if draft != expected:
+                    token = expected
+                    break
+                matched[slot] += 1
+                consumed = draft
+            else:
+                token = session.target_next_token(consumed)
+
+        overall = sum(matched) / sum(reached)
+        assert matched[0] >= rounds * 0.5, (
+            f"the drafter's first proposal was right in only {matched[0]} of {rounds} "
+            f"rounds; a working chain measures about 0.81"
+        )
+        assert overall >= 0.5, (
+            f"overall draft acceptance is {overall:.3f} over {sum(reached)} drafts "
+            f"({matched}); a working chain measures about 0.78"
+        )
