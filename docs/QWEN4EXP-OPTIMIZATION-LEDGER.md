@@ -157,6 +157,16 @@ This is not the scratch-enabled victim test: X-5 still requires the full kernel
 metadata census, dense-wide trigger, representative victims and clock/allocation
 telemetry before a causal conclusion.
 
+The [scratch-growth screen](../benchmarks/results/2026-09-28-qwen4exp-scratch-growth/README.md)
+then tests wave-norm GDN as a scratch-enabled victim after dense-wide. Four
+fresh sham/scratch/scratch/sham processes give after/before ratios
+0.99604/0.99747/0.99856/1.00402, with exact GDN output/state and a passing dense
+CPU F16 reference. A separate trace confirms queue scratch grows from
+1,638,400 to 3,932,160 bytes and the 36→92→36-byte dispatch order on one queue.
+Boundary clock snapshots are stable. No large growth-induced penalty appears
+in this synthetic screen; it does not test a pristine first-scratch transition
+or representative decode victims, and X-5 remains open.
+
 
 ## 2. Arithmetic policy and kernel mechanisms
 
