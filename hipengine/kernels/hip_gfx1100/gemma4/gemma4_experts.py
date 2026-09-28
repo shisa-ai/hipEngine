@@ -2,7 +2,7 @@
 
 Assembles the expert block from kernels that are each tested on their own:
 
-    compact lanes per expert   qwen35_moe_group_count / _prefix_active / _compact_active
+    compact lanes per expert   qwen35_moe_group_compact_active (parallel)
     gather hidden rows         qwen35_moe_gather_packed_hidden_lowp
     per-expert gate_up GEMV    dense_gemv_out_bf16
     GeGLU                      gemma4_gelu_tanh_mul_bf16
@@ -38,8 +38,6 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16
 from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_gather_packed_hidden_lowp,
     qwen35_moe_group_compact_active,
-    qwen35_moe_group_count,
-    qwen35_moe_group_prefix_active,
 )
 
 _BF16_BYTES = 2
@@ -220,7 +218,6 @@ def gemma4_experts_forward_bf16(
     if runtime is not None:
         kwargs["runtime"] = runtime
 
-    counts = scratch.buffer("counts")
     expert_start = scratch.buffer("expert_start")
     active_experts = scratch.buffer("active_experts")
     active_count = scratch.buffer("active_count")
@@ -233,17 +230,10 @@ def gemma4_experts_forward_bf16(
     activated = scratch.buffer("activated")
     expert_out = scratch.buffer("expert_out")
 
-    # 1. Group the lanes by expert. `counts` must be zeroed by the caller.
-    _zero(counts, **kwargs)
-    qwen35_moe_group_count(selected_experts_ptr, counts.ptr, lanes, num_experts, **kwargs)
-    qwen35_moe_group_prefix_active(
-        counts.ptr,
-        expert_start.ptr,
-        active_experts.ptr,
-        active_count.ptr,
-        num_experts,
-        **kwargs,
-    )
+    # 1. Group the lanes by expert. The parallel compaction issues its own
+    #    count, prefix and scatter stages internally, so the caller-side
+    #    group_count / group_prefix_active passes are redundant -- they added
+    #    two launches per MoE block and nothing reads `counts` afterwards.
     qwen35_moe_group_compact_active(
         selected_experts_ptr,
         routing_weights_ptr,
@@ -1378,20 +1368,6 @@ def gemma4_project_experts_by_offset(
             out_features,
             stream=stream,
         )
-
-
-def _zero(buffer: DeviceBuffer, **kwargs: object) -> None:
-    """Zero a device buffer through the HIP runtime.
-
-    ``qwen35_moe_group_count`` accumulates into ``counts``, so the caller must
-    supply a zeroed buffer; doing it here keeps that requirement next to the
-    kernel that has it.
-    """
-
-    from hipengine.core.hip import get_hip_runtime
-
-    runtime = kwargs.get("runtime") or get_hip_runtime()
-    runtime.memset(buffer.ptr, 0, buffer.nbytes)
 
 
 def _read_int64(buffer: DeviceBuffer, count: int):
