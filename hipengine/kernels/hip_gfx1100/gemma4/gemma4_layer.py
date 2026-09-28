@@ -486,11 +486,18 @@ def gemma4_layer_forward_bf16(
     # geometry: the sliding layers are head_dim 256 with a GQA ratio of 2 and
     # the full layers are head_dim 512 with a ratio of 8, and each WMMA variant
     # implements one of the two.
+    #
+    # `rows` goes with it because a one-token block is a decode step, and the
+    # variants are multi-row prefill kernels. Before this was passed, decode ran
+    # the prefill tiling for all 30 layers and never reached the decode kernel
+    # the strict path routes to: 30 launches at tokens=1 per step, 0 to
+    # `_launch_prefill`, and 10 percent off decode throughput.
     attention = select_prefill_attention(
         requested_variant=prefill_attention_variants,
         num_heads=num_heads,
         num_kv_heads=num_kv_heads,
         head_dim=head_dim,
+        tokens=rows,
     )
 
     attention.launcher(
