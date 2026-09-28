@@ -132,6 +132,19 @@ __device__ inline float bf16_rounding_boundary_distance(float value) {
       fminf(value - lower_boundary, upper_boundary - value));
 }
 
+// fp16's largest finite value. A DS4 block stores its per-32 scale and its
+// block sum as fp16, and a value past this range converts to inf. The consumer
+// then evaluates `d * inf * dot`, which is inf where the dot is nonzero and NaN
+// where it is zero -- and a NaN here does not stay local to this projection: it
+// propagates through the residual stream and the next layer's router turns the
+// whole sequence into its no-expert sentinel. Clamping before the conversion
+// makes the quantized value saturate instead, so the reconstruction stays
+// finite and its error stays bounded by the quantization step, which is the
+// contract the MMQ family claims. Reachable in practice: a down projection's
+// input is a GeGLU output, and a small model's can exceed this range while the
+// fp32 grouped fallback it replaces stays perfectly finite.
+constexpr float kDs4Fp16Max = 65504.0f;
+
 __device__ inline uint16_t float_to_fp16_bits(float value) {
   union {
     half_t f16;
@@ -566,8 +579,12 @@ __global__ void gguf_q8_1_mmq_ds4_pack_bf16_kernel(
     const float sum = wave32_sum(residual);
     const float max_abs = wave32_max(fabsf(residual));
     if (lane == 0) {
-      scale_shared[ds4_idx] = max_abs / 127.0f;
-      sum_shared[ds4_idx] = sum;
+      // Both fields are fp16 and both must stay finite; see kDs4Fp16Max. The
+      // scale feeds the quantization below as well as the consumer, so clamping
+      // it here is what makes the saturated `q` and the stored scale agree.
+      scale_shared[ds4_idx] = fminf(kDs4Fp16Max, max_abs / 127.0f);
+      sum_shared[ds4_idx] =
+          fminf(kDs4Fp16Max, fmaxf(-kDs4Fp16Max, sum));
     }
     __syncthreads();
 
@@ -609,15 +626,22 @@ __global__ void gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel(
   const int tid = threadIdx.x;
   const int ds4_idx = tid >> 5;
   const int lane = tid & 31;
-  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  // Round up, as the fp16 DS4 pack does. A down projection's contraction is
+  // rarely a multiple of 128 -- Gemma 4 26B-A4B's expert intermediate width is
+  // 704 = 5 * 128 + 64 -- and flooring here drops those last 64 columns of the
+  // contraction, which is a silently wrong answer rather than a refusal. The
+  // elements past `hidden` are zero, so they cannot raise the block's max or
+  // move its sum: the real elements get the scale they would have got anyway.
+  const int64_t blocks_per_row =
+      (hidden + Q8_1_MMQ_BLOCK - 1) / Q8_1_MMQ_BLOCK;
   if (row >= rows || q8_block >= blocks_per_row) return;
   static_assert(
       !Q6_HALF_SUMS || residual_passes == 1,
       "Q6 half-sum packing supports the one-plane D4 path");
 
-  const int64_t in_idx =
-      row * hidden + q8_block * Q8_1_MMQ_BLOCK + tid;
-  float residual = bf16_bits_to_float(x[in_idx]);
+  const int64_t column = q8_block * Q8_1_MMQ_BLOCK + tid;
+  float residual =
+      column < hidden ? bf16_bits_to_float(x[row * hidden + column]) : 0.0f;
 
   __shared__ float scale_shared[4];
   __shared__ float sum_shared[4];
@@ -2638,7 +2662,8 @@ int launch_q8_1_mmq_ds4_f32_pack_bf16(
   if (!valid_q8_1_mmq_ds4_pack(x, out, rows, hidden)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  const int64_t blocks_per_row =
+      (hidden + Q8_1_MMQ_BLOCK - 1) / Q8_1_MMQ_BLOCK;
   hipLaunchKernelGGL(
       (gguf_q8_1_mmq_ds4_f32_pack_bf16_kernel<
           residual_passes,

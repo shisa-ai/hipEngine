@@ -473,12 +473,17 @@ def gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Pack BF16 rows as three residual DS4 planes with FP32 metadata."""
+    """Pack BF16 rows as ``residual_passes`` DS4 planes with FP32 metadata.
+
+    The name says d4x3 because three planes is what this family was built for,
+    but ``residual_passes`` selects the plane count and 1 is the one-plane D4
+    case the expert down route uses.
+    """
 
     _check_positive(rows, "rows")
     _check_positive(hidden, "hidden")
-    if hidden % _Q8_1_MMQ_BLOCK != 0:
-        raise ValueError("hidden must be divisible by DS4 Q8_1 MMQ block size 128")
+    if hidden % 32 != 0:
+        raise ValueError("hidden must be a multiple of the 32-wide weight block")
     if residual_passes not in _SYMBOL_DS4_F32_PACK_BF16:
         raise ValueError("residual_passes must be 1, 2, or 3")
     if split16 and residual_passes != 1:

@@ -12,6 +12,7 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("gguf_q5_1_mmq_selected_prefill.hip")
 _OUTPUT_NAME = "gguf_q5_1_mmq_selected_prefill.so"
 _SYMBOL = "hipengine_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out"
+_SYMBOL_F32 = "hipengine_q5_1_mmq_ds4_f32_selected_prefill_bf16_bf16_out"
 VARIANT = "q5_1_mmq_ds4_selected_prefill_bf16_bf16_out"
 
 _ARGS = (
@@ -94,11 +95,18 @@ def gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
     out_features: int,
     planes: int = 3,
     *,
+    f32_scales: bool = False,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Run the raw Q5_1 DP4A MMQ consumer over compact expert-sorted rows."""
+    """Run the raw Q5_1 DP4A MMQ consumer over compact expert-sorted rows.
+
+    ``f32_scales`` selects the activation block layout. The fp16 one is for a
+    hidden-state input; the fp32 one is for a post-SiLU input such as a down
+    projection's, whose magnitude can exceed what an fp16 scale or block sum
+    holds.
+    """
 
     if compact_rows <= 0 or num_experts <= 0:
         raise ValueError("compact_rows and num_experts must be positive")
@@ -114,7 +122,7 @@ def gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
         raise ValueError("planes must be in 1..3")
     library = library or build_gguf_q5_1_mmq_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL)
+    fn = getattr(library, _SYMBOL_F32 if f32_scales else _SYMBOL)
     fn.argtypes = list(_ARGS) + [ctypes.c_void_p]
     fn.restype = ctypes.c_int
     error = fn(

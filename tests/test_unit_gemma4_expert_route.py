@@ -1761,6 +1761,140 @@ def test_expert_down_mmq_route_holds_at_gemma4_s_own_down_geometry(
 
 
 @_needs_hip
+@pytest.mark.parametrize(
+    "quant_key, make_weight",
+    [("gguf_q5_1", make_q5_1_weight), ("gguf_q8_0", make_q8_0_weight)],
+)
+def test_expert_down_mmq_route_holds_past_the_fp16_scale_range(
+    quant_key, make_weight
+) -> None:
+    """The DS4 down route must stay accurate where an fp16 scale cannot.
+
+    A DS4 block stores its per-32 scale and its block sum as fp16, and the scale
+    is ``amax/127``, so the format runs out at ``amax`` of 65504 * 127, about
+    8.3e6. Q5_1 runs out far sooner, because its extra ``m * sum`` term needs
+    the *block sum* to fit fp16 as well: 32 values of 2048 already overflow it.
+
+    A down projection's input is a GeGLU output, and this is not hypothetical.
+    The gemma4 test fixture's own activations reach 7.6e7, which is 9x past the
+    Q8_0 limit, and before the pack clamped its scale the route turned that into
+    NaN. A NaN there is not local: it flows through the residual stream and the
+    next layer's router returns its -1 no-expert sentinel for every lane, which
+    makes the following gate/up call see an empty expert range and raise.
+
+    The fp32 layout is exact here rather than merely finite, so this asserts the
+    same envelope the in-range case does. Finiteness alone would pass a route
+    that saturates: an fp16 pack with its scale clamped to 65504 stays finite
+    and is wrong by 90 percent, which the 5 percent tolerance the runner tests
+    use against a fp32 reference rejects.
+    """
+
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        copy_host_array_to_device,
+        free,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        gemma4_project_experts_down_mmq,
+    )
+    from hipengine.quant.gguf import dequantize_gguf_data
+
+    backend = _grouped_backend(quant_key)
+    num_experts = 8
+    in_features = 704
+    out_features = 2816
+    counts = np.full(num_experts, 4, dtype=np.int64)
+    rows = int(counts.sum())
+
+    rng = np.random.default_rng(20260928)
+    raw = np.concatenate(
+        [make_weight(out_features, in_features) for _ in range(num_experts)]
+    )
+    weights_buf = malloc(raw.nbytes)
+    # 7.6e7 is the measured peak of the fixture's own GeGLU output at its tiny
+    # geometry, and it is 9x past what the DS4 fp16 scale can hold.
+    hidden = (rng.standard_normal((rows, in_features)) * 2.5e7).astype(np.float32)
+    hidden_bits = _to_bf16_bits(hidden)
+    hidden_buf = malloc(hidden_bits.nbytes)
+    starts = np.zeros(num_experts + 1, dtype=np.int64)
+    starts[1:] = np.cumsum(counts)
+    starts_buf = malloc(starts.nbytes)
+    route_buf = malloc(rows * out_features * 2)
+    scratch = Gemma4ExpertScratch(
+        tokens=rows,
+        top_k=1,
+        hidden_size=out_features,
+        intermediate=in_features,
+        num_experts=num_experts,
+    )
+    try:
+        copy_host_array_to_device(weights_buf, raw)
+        copy_host_array_to_device(hidden_buf, hidden_bits)
+        copy_host_array_to_device(starts_buf, starts)
+        weight = _ResidentWeight(
+            backend=backend, quant_key=quant_key, ptr=weights_buf.ptr
+        )
+        served = gemma4_project_experts_down_mmq(
+            weight,
+            hidden_buf.ptr,
+            route_buf.ptr,
+            SimpleNamespace(ptr=starts_buf.ptr),
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+            scratch=scratch,
+        )
+        assert served is True
+
+        out = np.empty((rows, out_features), dtype=np.uint16)
+        copy_device_to_host(
+            int(out.ctypes.data), DeviceBuffer(ptr=route_buf.ptr, nbytes=out.nbytes)
+        )
+        got = _from_bf16_bits(out)
+        assert np.isfinite(got).all(), (
+            f"{quant_key}: {int(np.isnan(got).sum())} NaN and "
+            f"{int(np.isinf(got).sum())} inf of {got.size} outputs past the fp16 "
+            f"scale range, which poisons the residual stream"
+        )
+        ggml_type = (
+            GGMLQuantizationType.Q5_1 if quant_key == "gguf_q5_1"
+            else GGMLQuantizationType.Q8_0
+        )
+        rounded = _from_bf16_bits(hidden_bits)
+        expected = np.zeros((rows, out_features), dtype=np.float32)
+        start = 0
+        for expert, count in enumerate(counts):
+            if count == 0:
+                continue
+            dequantized = np.asarray(
+                dequantize_gguf_data(
+                    raw[expert * out_features : (expert + 1) * out_features],
+                    ggml_type,
+                ),
+                dtype=np.float32,
+            )
+            expected[start : start + count] = (
+                rounded[start : start + count] @ dequantized.T
+            )
+            start += int(count)
+        scale = float(np.abs(expected).max())
+        difference = np.abs(got - expected)
+        assert float(difference.max()) < 2e-2 * scale, (
+            f"{quant_key}: normalized max {float(difference.max()) / scale:.4g} "
+            f"past the fp16 scale range, where an fp16 activation layout can only "
+            f"saturate"
+        )
+        assert float(difference.mean()) < 2e-3 * scale
+    finally:
+        scratch.free()
+        for buffer in (weights_buf, hidden_buf, starts_buf, route_buf):
+            free(buffer)
+
+
+@_needs_hip
 def test_fused_gate_up_iu8_route_holds_at_gemma4_s_own_half_width() -> None:
     """The Q5_K iu8-WMMA gate/up route at the half width this artifact ships.
 
