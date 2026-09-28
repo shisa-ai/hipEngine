@@ -1,10 +1,12 @@
 """Prefill expert-route selection for Gemma 4 MoE (unit tier).
 
 ``HIPENGINE_GEMMA4_MOE_PREFILL`` pins which prefill owner the MoE projections
-use. ``auto`` is the production default and must keep the exact routes: the
-grouped owner where a quant registers one and the selected GEMV otherwise. Both
-were measured bit-identical to the strict teacher-forced reference, which is
-what the campaign logits gate requires.
+use. ``auto`` is the production default and selects the grouped int8 MMQ
+route, which ``gemma4_experts`` documents as the production path measured at
+the campaign recipe. ``grouped`` and ``selected`` pin the exact routes instead --
+both measured bit-identical to the strict teacher-forced reference, which is
+what the campaign logits gate requires -- and stay reachable as the rollback
+levers.
 
 The WMMA owners are 2.7x faster on a 1024-token prefill but breach the
 campaign's absolute ``kl_max`` bar on 1 of 1023 rows, so they stay off the
@@ -33,10 +35,13 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
 )
 
 
-def test_auto_keeps_the_exact_routes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_auto_selects_the_production_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `auto` has been the grouped int8 MMQ route since that route became the
+    # production default. The exact routes are selected by pinning them, which
+    # the next test covers.
     monkeypatch.delenv(_PREFILL_MODE_ENV, raising=False)
     assert _prefill_mode() == "auto"
-    assert _prefill_route_flags("auto") == (False, False, False)
+    assert _prefill_route_flags("auto") == (False, False, True)
 
 
 def test_pinned_exact_modes_never_probe_wmma() -> None:
