@@ -175,6 +175,15 @@ This establishes current-build metadata consistency, not historical loaded
 binary identity (the captures did not hash loaded libraries). X-5 still needs
 representative decode-victim and first-scratch causality evidence.
 
+The [Q5_1 first-scratch screen](../benchmarks/results/2026-09-28-qwen4exp-decode-scratch/README.md)
+now verifies the real layer0 down/combine owner before and after the first GDN
+scratch allocation. Four fresh sham/scratch/scratch/sham ratios are
+0.97503/0.99101/0.99345/0.99916 with byte-identical outputs. The cached profiler
+confirms baseline Q5_1 calls precede the first 1,638,400-byte allocation and the
+36-byte GDN trigger; subsequent Q5_1 calls use the same queue. No large penalty
+appears for this pair. Dense-wide as first trigger and other decode owners are
+not covered; no broad throttle-clearance or speedup claim follows.
+
 
 ## 2. Arithmetic policy and kernel mechanisms
 
