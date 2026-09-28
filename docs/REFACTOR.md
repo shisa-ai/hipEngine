@@ -6,28 +6,36 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 
 ## Gemma 4's WMMA prefill attention is on with its teacher-forced gate outstanding (found 2026-09-29)
 
-`gemma4_wmma_flash` is the `production` profile's selection for Gemma 4's
-sliding prefill attention (head_dim 256, 16 query heads, 8 KV heads, 25 of 30
-layers) and is therefore on by default. The five head_dim-512 full layers keep
-`gemma4_plain` in every profile, because the variant declares that geometry
-unimplemented and the layer falls back on a capability miss rather than raising.
+`gemma4_wmma_flash` and `gemma4_wmma_flash_full` are the `production` profile's
+selections for Gemma 4's prefill attention -- the sliding geometry (head_dim
+256, 16 query heads, 8 KV heads, 25 of 30 layers) and the full geometry
+(head_dim 512, 16 query heads, 2 KV heads, 5 of 30 layers) respectively -- and
+are therefore on by default. The layer matches each request against its own head
+geometry, so the two candidates cover all 30 layers between them; any geometry
+neither implements falls back to `gemma4_plain` on a capability miss rather than
+raising.
 
-It is a changed-arithmetic path: the score dot is reassociated through the
+Both are changed-arithmetic paths: the score dot is reassociated through the
 16x16x16 F16 matrix unit and the softmax weights are rounded to FP16 before the
-P*V dot. `benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-attention-wmma-candidate.json`
-carries the kernel's own evidence (13.64x the strict kernel at 4096 tokens on
-the same bench row, 20/20 correctness cases against the strict kernel at a
-declared four-BF16-ulp bound). The end-to-end ladder is measured in both arms:
-prefill 870.0 -> 1012.8 tok/s at 512 tokens (llama.cpp's 1012.98), 707.2 ->
-925.1 at 1024, 570.0 -> 804.6 at 2048, 456.1 -> 628.2 at 4096, and all twelve
-greedy generations are token-identical between the arms.
+P*V dot. Each candidate's evidence artifact carries its own kernel row against
+the strict kernel on the same bench buffers (13.64x at 4096 tokens for the
+sliding geometry, 9.19x for the full one) and its correctness cases at a
+declared four-BF16-ulp bound (20 and 19 cases respectively). The end-to-end
+ladder is measured in all three arms at four prompt lengths:
+
+| prompt | strict only | sliding candidate | both candidates | llama.cpp |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 870.0 | 1012.8 | 1078 | 1012.98 |
+| 1024 | 707.2 | 925.1 | 1042 | 1057.48 |
+| 2048 | 570.0 | 804.6 | 1007 | 1067.14 |
+| 4096 | 456.1 | 628.2 | 973 | 1039.85 |
 
 **What is outstanding is the production numerical gate** in
 `docs/EXECUTION-PROFILES.md` §6: the KL envelope over full-vocabulary
 teacher-forced rows (mean <= 1e-3, p95 <= 5e-3, p99 <= 2e-2, max <= 5e-2,
 top-1 >= 99% overall and >= 97% per scope). Twelve identical greedy rows at
-four prompt lengths are a screen, not that gate. The route is a T2 association
-candidate, so the gate is what its promotion evidence is made of.
+four prompt lengths are a screen, not that gate. Both routes are T2 association
+candidates, so the gate is what their promotion evidence is made of.
 
 The lever is the profile, not an env var: `HIPENGINE_EXECUTION_PROFILE=strict`
 restores `gemma4_plain` everywhere. This entry is removed when the gate verdict

@@ -29,6 +29,7 @@ hipengine/kernels/
 │   ├── convert/                # Casts and row gathers
 │   ├── dispatch/               # Native launch dispatch
 │   ├── fused/                  # Composite and elementwise operations
+│   ├── gemma4/                 # Gemma 4 layers, attention, rotary, router, experts
 │   ├── linear/                 # Dense projections and output heads
 │   ├── linear_attn/            # Convolution and gated delta recurrence
 │   ├── moe/                    # Routing, grouping, and expert combination
@@ -308,6 +309,7 @@ strict fallback; backend packages supply shape-specific choices. See
 | Qwen4Exp sparse attention | `strict_rows_spans`, exact ordered decode variants | `production_wave32_h128_spans`, `production_rows_wave32_h128_spans` | `attention/qwen4_exp_qsa` |
 | Laguna FP16 | Scalar/tiled projections and strict attention | Matrix-tiled projections, flash prefill, and fused attention/output gate | `linear/laguna_f16_projection`, `attention/laguna_kv_attention`, `attention/laguna_flash_attention_prefill` |
 | Moonshine FP16 | Separate projection, activation, residual, and norm | Fused MLP/residual/norm; optional CUDA CUTLASS attention | `linear/moonshine_projection`, `fused/moonshine_*`, `norm/moonshine_layernorm`, CUDA `attention/moonshine_attention_cutlass` |
+| Gemma 4 GGUF `gguf_q4_k_m` prefill attention | Scalar per-(token, head) prefill attention, exact against the decode twin | BF16 WMMA flash prefill, one candidate per attention geometry: `gemma4_wmma_flash` (sliding, head_dim 256) and `gemma4_wmma_flash_full` (full, head_dim 512) | `gemma4/gemma4_attention_prefill_wmma`, `gemma4/gemma4_attention_prefill_wmma_full` |
 | VibeVoice BF16 | `strict` primitives and incremental prefill | Fused depthwise convolution, matrix-tiled frontend, and library prefill | `vibevoice/encoder`, `vibevoice/registered.py` |
 | TimesFM | FP32 attention | FP16 matrix-tiled flash attention | `timesfm/timesfm` |
 | YuE2 autoregressive BF16 | Row-by-row dense GEMV prefill | FP16-converted hipBLASLt batched prefill | Shared `linear/dense_gemv`, `hipengine/runtime/yue2_ar.py` |

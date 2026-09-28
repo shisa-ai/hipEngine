@@ -156,6 +156,39 @@ class Rebinding(unittest.TestCase):
         self.assertEqual([(m[0], m[1]) for m in moved], [(before.id, after.id)])
         self.assertEqual(decisions[after.id].rebound_from, before.id)
 
+    def test_a_finding_whose_line_sits_mid_ref_keeps_its_decision(self):
+        """A doc-path-drift ref is ``path:line:subject``, line in the middle.
+
+        Editing a scanned document above those rows moves every one of them, and
+        the same line-shift rule has to apply: the row is the missing path in
+        that document, not the line number it was noticed on.
+        """
+
+        def finding(line, subject):
+            return core.Row(
+                kind="doc-path-drift",
+                key=f"docs/KERNELS.md:{line}:{subject}",
+                title=f"names `{subject}`, which is actually at `kernels/{subject}`",
+                location=f"docs/KERNELS.md:{line}",
+                evidence={"path": "docs/KERNELS.md", "line": line},
+                signals=["documented path does not exist, but the file is present elsewhere"],
+                hints={
+                    "anchor": "docs/KERNELS.md",
+                    "refs": [f"docs/KERNELS.md:{line}:{subject}"],
+                    "tokens": sorted(f"names which is actually at {subject}".lower().split()),
+                },
+            )
+
+        before = finding(127, "convert/cast.hip")
+        decisions = {before.id: decide(before)}
+        decisions[before.id].hints = before.hints
+        after = finding(128, "convert/cast.hip")
+
+        moved = core.rebind([after], decisions)
+
+        self.assertEqual([(m[0], m[1]) for m in moved], [(before.id, after.id)])
+        self.assertEqual(decisions[after.id].rebound_from, before.id)
+
     def test_a_different_finding_in_the_same_file_is_not_claimed(self):
         def finding(line, message):
             return core.Row(
