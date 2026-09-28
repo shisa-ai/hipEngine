@@ -28,6 +28,7 @@ import pytest
 
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
     Gemma4ExpertScratch,
+    gemma4_project_experts_down_mmq,
     gemma4_project_experts_gate_up_mmq,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
@@ -373,4 +374,135 @@ def test_mmq_route_row_zero_is_invariant_under_an_appended_row(
         f"compact row 0 moved by {difference:.4g} (scale {scale:.4g}) when one "
         f"row was appended at the true geometry ({narrow_rows} -> {wide_rows} "
         "live rows)"
+    )
+
+
+# The down projection's route disposition is the same shape as the gate/up's, not
+# the general path: the fixture's `ffn_down_exps` is Q8_0, and
+# `gemma4_project_experts_down_mmq` handles Q5_1 or Q8_0, so this artifact takes
+# the down MMQ accelerator. It is measured here at the real 2816 out / 704 in
+# shape, which Q8_0's 32-element blocks divide exactly (704 = 22 x 32), so no
+# substitution is needed.
+#
+# The expert count is small so the weight is a few megabytes rather than 142, and
+# both row counts are kept at or above the expert count so both take the MMQ
+# route rather than crossing the grouped/selected crossover.
+
+_DOWN_EXPERTS = 4
+_DOWN_IN = _INTERMEDIATE
+_DOWN_OUT = _IN_FEATURES
+
+
+def _down_counts(extra: int) -> np.ndarray:
+    counts = np.ones(_DOWN_EXPERTS, dtype=np.int64)
+    counts[0] += extra
+    return counts
+
+
+def _run_down_mmq(down_raw: np.ndarray, hidden_bits: np.ndarray, counts: np.ndarray) -> np.ndarray:
+    """Run the down MMQ route over ``counts`` and return the F32 output."""
+
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        copy_host_array_to_device,
+        free,
+        malloc,
+    )
+
+    rows = int(counts.sum())
+    starts = np.zeros(_DOWN_EXPERTS + 1, dtype=np.int64)
+    starts[1:] = np.cumsum(counts)
+
+    hidden_buf = malloc(hidden_bits.nbytes)
+    weights_buf = malloc(down_raw.nbytes)
+    starts_buf = malloc(starts.nbytes)
+    out_buf = malloc(rows * _DOWN_OUT * 2)
+    scratch = None
+    try:
+        copy_host_array_to_device(hidden_buf, hidden_bits)
+        copy_host_array_to_device(weights_buf, down_raw)
+        copy_host_array_to_device(starts_buf, starts)
+
+        weight = SimpleNamespace(
+            backend="hip_gfx1100",
+            spec=SimpleNamespace(quant_key="gguf_q8_0"),
+            allocation=lambda name: SimpleNamespace(
+                buffer=SimpleNamespace(ptr=weights_buf.ptr)
+            ),
+        )
+        scratch = Gemma4ExpertScratch(
+            tokens=rows,
+            top_k=1,
+            hidden_size=_DOWN_IN,
+            intermediate=_DOWN_OUT,
+            num_experts=_DOWN_EXPERTS,
+        )
+        served = gemma4_project_experts_down_mmq(
+            weight,
+            hidden_buf.ptr,
+            out_buf.ptr,
+            SimpleNamespace(ptr=starts_buf.ptr),
+            rows,
+            _DOWN_EXPERTS,
+            _DOWN_IN,
+            _DOWN_OUT,
+            scratch=scratch,
+        )
+        assert served is True, "the down MMQ route declined a Q8_0 weight"
+
+        got = np.empty((rows, _DOWN_OUT), dtype=np.uint16)
+        copy_device_to_host(
+            int(got.ctypes.data),
+            DeviceBuffer(ptr=out_buf.ptr, nbytes=got.nbytes),
+            got.nbytes,
+        )
+        return _from_bf16_bits(got)
+    finally:
+        if scratch is not None:
+            scratch.free()
+        for buffer in (hidden_buf, weights_buf, starts_buf, out_buf):
+            free(buffer)
+
+
+@_needs_hip
+def test_down_mmq_route_row_zero_is_invariant_under_an_appended_row() -> None:
+    """The down MMQ accelerator must not move row 0 when a row is appended."""
+
+    from tests._gguf_synthetic_weights import make_q8_0_weight
+
+    down_raw = np.concatenate(
+        [make_q8_0_weight(_DOWN_OUT, _DOWN_IN) for _ in range(_DOWN_EXPERTS)], axis=0
+    )
+    narrow_counts = _down_counts(0)
+    wide_counts = _down_counts(1)
+    narrow_rows = int(narrow_counts.sum())
+    wide_rows = int(wide_counts.sum())
+
+    # standard_normal fills row-major from a fixed seed, so row 0 is the same row
+    # at both row counts.
+    narrow_bits = _to_bf16_bits(
+        np.random.default_rng(20260927)
+        .standard_normal((narrow_rows, _DOWN_IN))
+        .astype(np.float32)
+    )
+    wide_bits = _to_bf16_bits(
+        np.random.default_rng(20260927)
+        .standard_normal((wide_rows, _DOWN_IN))
+        .astype(np.float32)
+    )
+    assert np.array_equal(narrow_bits[0], wide_bits[0]), (
+        "this case assumes row 0 is identical across the two row counts; the "
+        "activation helper no longer guarantees it, so the case is vacuous"
+    )
+
+    narrow = _run_down_mmq(down_raw, narrow_bits, narrow_counts)
+    wide = _run_down_mmq(down_raw, wide_bits, wide_counts)
+
+    difference = float(np.abs(narrow[0] - wide[0]).max())
+    scale = float(np.abs(narrow[0]).max())
+    assert difference == 0.0, (
+        f"compact row 0 moved by {difference:.4g} (scale {scale:.4g}) when one "
+        f"row was appended at the true down shape ({narrow_rows} -> {wide_rows} "
+        "live rows, down MMQ route)"
     )
