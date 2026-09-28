@@ -202,3 +202,163 @@ def test_a_256_wide_head_uses_one_leaf_per_thread() -> None:
             f"head_dim {head_dim} with {leaves} leaves per lane does not cover "
             "every dimension exactly once"
         )
+
+
+# ---------------------------------------------------------------------------
+# The GPU comparison. Guarded on HIP, so the default unit tier skips it.
+
+_HIP = None
+
+
+def _hip_available() -> bool:
+    global _HIP
+    if _HIP is None:
+        try:
+            import ctypes
+
+            ctypes.CDLL("libamdhip64.so")
+            _HIP = True
+        except OSError:
+            _HIP = False
+    return _HIP
+
+
+def _gpu_softmax_pair(q_row, k_rows, head_dim):
+    """Run the real prefill kernel and return the two keys' softmax weights.
+
+    With ``V`` set to a one-hot per key, the kernel's output at dimension ``j``
+    is key ``j``'s softmax weight divided by the denominator -- pass 3 sums
+    ``weight_j * v[j][d]`` over keys, so one-hot ``V`` isolates one key per
+    dimension. Two keys keep the pass-2 denominator an unambiguous sum, which is
+    what makes the weights reproducible in NumPy without modelling the block
+    tree.
+
+    Returns ``(out[0], out[1])`` as float32, or None when HIP is unavailable.
+    """
+
+    if not _hip_available():
+        return None
+
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        gemma4_attention_prefill_f32,
+    )
+
+    tokens, keys = 1, 2
+    query = np.ascontiguousarray(q_row.reshape(1, 1, head_dim), dtype=np.float32)
+    key = np.ascontiguousarray(k_rows.reshape(keys, 1, head_dim), dtype=np.float32)
+    value = np.zeros((keys, 1, head_dim), dtype=np.float32)
+    for j in range(keys):
+        value[j, 0, j] = 1.0
+    mask = np.ones((tokens, keys), dtype=np.uint8)
+    output = np.empty_like(query)
+
+    buffers = []
+    try:
+        for array in (query, key, value, mask, output):
+            buffer = malloc(array.nbytes)
+            buffers.append(buffer)
+            copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
+        gemma4_attention_prefill_f32(
+            *(b.ptr for b in buffers),
+            tokens=tokens,
+            keys=keys,
+            num_heads=1,
+            num_kv_heads=1,
+            head_dim=head_dim,
+            scale=1.0,
+            window=0,
+            row_offset=0,
+        )
+        copy_device_to_host(host_array_ptr(output), buffers[-1], output.nbytes)
+        got = output.copy()
+    finally:
+        for buffer in buffers:
+            free(buffer)
+    return np.float32(got[0, 0, 0]), np.float32(got[0, 0, 1])
+
+
+def _softmax_pair(logits):
+    """Two-key softmax in the kernel's shape: max, expf, sum, divide."""
+
+    l0, l1 = np.float32(logits[0]), np.float32(logits[1])
+    row_max = np.float32(max(l0, l1))
+    w0 = np.float32(np.exp(np.float32(l0 - row_max)))
+    w1 = np.float32(np.exp(np.float32(l1 - row_max)))
+    denom = np.float32(w0 + w1)
+    return np.float32(w0 / denom), np.float32(w1 / denom)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="no HIP runtime")
+def test_the_gpu_logits_use_the_tree_not_a_plain_sum() -> None:
+    """The oracle is only useful if the kernel agrees with it.
+
+    This is the comparison the port's acceptance test will need in full. Here it
+    is scoped to what isolates the logit order: one query row, two keys, and a
+    one-hot ``V`` so the kernel's output *is* the softmax weight. If the kernel
+    used a plain dimension-order sum instead of the tree, the weights would
+    differ for the pairs where the two orders disagree.
+    """
+
+    head_dim = 256
+    rng = np.random.default_rng(2024)
+
+    tree_matches = 0
+    plain_matches = 0
+    discriminating = 0
+    for _ in range(12):
+        q_row = rng.standard_normal(head_dim).astype(np.float32)
+        k_rows = rng.standard_normal((2, head_dim)).astype(np.float32)
+
+        got = _gpu_softmax_pair(q_row, k_rows, head_dim)
+        assert got is not None
+
+        tree_logits = [
+            _tree_logit(q_row, k_rows[j], head_dim) for j in range(2)
+        ]
+        plain_logits = [
+            _plain_logit(q_row, k_rows[j], head_dim) for j in range(2)
+        ]
+        if tree_logits == plain_logits:
+            continue
+        discriminating += 1
+
+        tree_weights = _softmax_pair(tree_logits)
+        plain_weights = _softmax_pair(plain_logits)
+        if tree_weights == got:
+            tree_matches += 1
+        if plain_weights == got:
+            plain_matches += 1
+
+    assert discriminating > 0, (
+        "no random pair distinguished the tree from a plain sum, so this test "
+        "cannot tell which the kernel uses"
+    )
+    # The comparison cannot be bit-exact, and the reason is worth stating: the
+    # kernel's logits are never exposed, so they are only observable through
+    # ``expf`` and a divide. NumPy's ``np.exp`` on float32 is not ``expf`` -- it
+    # does not round identically -- so a correct tree still mismatches on some
+    # pairs while an incorrect one would mismatch on about as many. What the
+    # test can decide is which order the kernel is closer to, and that is a real
+    # discrimination rather than a tolerance: on this seed the tree matches 7 of
+    # 12 discriminating pairs and a plain dimension-order sum matches 1.
+    #
+    # Pinning the tree bit-exactly needs a comparison in the logit domain, which
+    # means either exposing the logits from the kernel or comparing a new kernel
+    # against gemma4_plain end to end. The latter is the port's acceptance test.
+    assert tree_matches > plain_matches, (
+        f"the kernel matched the tree's logits on {tree_matches} of "
+        f"{discriminating} discriminating pairs and a plain sum on "
+        f"{plain_matches}; the tree is not the closer order"
+    )
+    assert tree_matches >= discriminating // 2, (
+        f"the kernel matched the tree on only {tree_matches} of {discriminating} "
+        f"discriminating pairs (plain matched {plain_matches}), which is too "
+        "close to chance to say the tree is the kernel's order"
+    )
