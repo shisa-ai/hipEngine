@@ -1,0 +1,121 @@
+{
+ "engine": "hipengine",
+ "trace": "/tmp/g4_scoreboard_p14fix/trace_1024/run_kernel_trace.csv",
+ "prefill": {
+  "busy_ms": 479.3926,
+  "span_ms": 510.0339,
+  "families": {
+   "dense.q8_0": {
+    "ms": 115.1475,
+    "launches": 412.0
+   },
+   "moe.gate_up": {
+    "ms": 112.2819,
+    "launches": 58.0
+   },
+   "moe.l29_experts": {
+    "ms": 66.8614,
+    "launches": 4.0
+   },
+   "moe.down": {
+    "ms": 46.8727,
+    "launches": 58.0
+   },
+   "attn.global": {
+    "ms": 38.7461,
+    "launches": 10.0
+   },
+   "moe.route_glue": {
+    "ms": 34.136,
+    "launches": 600.0
+   },
+   "attn.sliding": {
+    "ms": 29.6122,
+    "launches": 50.0
+   },
+   "moe.router_gemm": {
+    "ms": 13.4458,
+    "launches": 120.0
+   },
+   "norm": {
+    "ms": 9.0219,
+    "launches": 602.0
+   },
+   "moe.act_quant": {
+    "ms": 5.6386,
+    "launches": 58.0
+   },
+   "elementwise": {
+    "ms": 4.6055,
+    "launches": 242.0
+   },
+   "lm_head": {
+    "ms": 1.9584,
+    "launches": 2.0
+   },
+   "runtime_copy_fill": {
+    "ms": 1.0646,
+    "launches": 282.0
+   }
+  },
+  "other_top": {}
+ },
+ "decode_per_token": {
+  "busy_ms": 19.5585,
+  "span_ms": 25.8596,
+  "families": {
+   "moe.gate_up": {
+    "ms": 4.7945,
+    "launches": 29.0
+   },
+   "attn.sliding": {
+    "ms": 3.6475,
+    "launches": 50.0
+   },
+   "dense.q8_0": {
+    "ms": 2.9631,
+    "launches": 206.0
+   },
+   "moe.down": {
+    "ms": 2.6409,
+    "launches": 29.0
+   },
+   "norm": {
+    "ms": 1.5076,
+    "launches": 301.0
+   },
+   "moe.route_glue": {
+    "ms": 1.2778,
+    "launches": 240.0
+   },
+   "lm_head": {
+    "ms": 0.9644,
+    "launches": 1.0
+   },
+   "attn.global": {
+    "ms": 0.7488,
+    "launches": 10.0
+   },
+   "moe.router_gemm": {
+    "ms": 0.3149,
+    "launches": 60.0
+   },
+   "moe.l29_experts": {
+    "ms": 0.2383,
+    "launches": 2.0
+   },
+   "runtime_copy_fill": {
+    "ms": 0.2312,
+    "launches": 97.0
+   },
+   "elementwise": {
+    "ms": 0.2295,
+    "launches": 121.0
+   }
+  },
+  "other_top": {}
+ },
+ "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/g4_scoreboard_p14fix/trace_1024 -o run -- /home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_family_census.py drive --prompt 1024 --decode 64 --prefill-repeats 2",
+ "trace_kernel_rows": 90392,
+ "prefill_prompt_tokens": 1024
+}

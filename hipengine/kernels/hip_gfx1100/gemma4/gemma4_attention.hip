@@ -369,6 +369,15 @@ __device__ inline float gemma4_decode_tree1(
 // serialises at memory latency (iteration 22 measured 34 GB/s unique against
 // 493 GB/s for the same loop with the loads removed). The pipeline only changes
 // *when* a load is issued; the accumulation order is untouched.
+//
+// ``keys_begin`` is the first key that can carry a non-zero weight, read out of
+// the caller's mask. Everything below it is masked, so its weight is the 0 the
+// ``weight == 0`` skip already dropped -- which is why starting there removes V
+// loads without removing an accumulated term, and why the surviving keys are
+// still visited ascending over the same values. The pipe originates at
+// ``keys_begin`` for the same reason: it changes which loads are issued and
+// nothing else. Callers with no mask-derived bound pass 0 and get the original
+// loop back.
 template <int kDimsPerLane, int kPrefetch, typename scalar_t>
 __device__ __forceinline__ void gemma4_decode_pass3(
     const float* __restrict__ logits_s,
@@ -376,6 +385,7 @@ __device__ __forceinline__ void gemma4_decode_pass3(
     scalar_t* __restrict__ out_row,
     int64_t v_row_stride,
     int64_t head_dim,
+    int64_t keys_begin,
     int64_t keys,
     float denominator,
     unsigned int threads,
@@ -385,14 +395,14 @@ __device__ __forceinline__ void gemma4_decode_pass3(
     gemma4_pair2<scalar_t> pipe[kPrefetch];
 #pragma unroll
     for (int n = 0; n < kPrefetch; ++n) {
-      const int64_t jn = n;
+      const int64_t jn = keys_begin + n;
       pipe[n] = jn < keys
           ? gemma4_load_v<kDimsPerLane>(v_base + jn * v_row_stride + d0)
           : gemma4_pair2<scalar_t>{static_cast<scalar_t>(0), static_cast<scalar_t>(0)};
     }
     float acc_lo = 0.0f;
     float acc_hi = 0.0f;
-    for (int64_t j = 0; j < keys; ++j) {
+    for (int64_t j = keys_begin; j < keys; ++j) {
       const gemma4_pair2<scalar_t> v_cur = pipe[0];
 #pragma unroll
       for (int n = 0; n < kPrefetch - 1; ++n) {
@@ -621,16 +631,40 @@ __global__ void gemma4_attention_decode_class_kernel(
   const int64_t v_row_stride = num_kv_heads * head_dim;
   const scalar_t* v_base = value + kv_head * head_dim;
   scalar_t* out_row = out + head_index * head_dim;
-  // Pass 3 walks every key for each of this row's dimensions, but the tail past
-  // the last key the mask keeps contributes weight 0 to every one of them -- the
-  // same argument key_begin's docstring makes for shortening the range of a
-  // one-row block. The mask is the caller's, causal on the full layers and
-  // windowed on the sliding ones, so the bound is read out of it rather than
-  // assumed. max_s is free here: row_max was reduced from it before pass 2, and
-  // pass 2's tree barriers have retired every read of it.
+  // Pass 3 walks this row's keys once per dimension, and *both* ends of that
+  // walk are dead weight. The tail past the last key the mask keeps
+  // contributes weight 0 to every dimension -- the same argument key_begin's
+  // docstring makes for shortening the range of a one-row block -- and so does
+  // the head before the first key the mask keeps: a masked key's weight is
+  // expf(-INFINITY - row_max) == 0, which the walk's own ``weight == 0`` skip
+  // already drops. Cutting the head removes V loads without removing a single
+  // accumulated term, and the survivors are still visited ascending over the
+  // same values, so the output is bit-for-bit what it was. That is the same
+  // claim ``last_active`` already makes, extended to the other end, which is
+  // why this is legal on the default path rather than merely fast.
+  //
+  // This is the whole remaining win for sliding rows: a causal row's first kept
+  // key is key 0, so only the windowed layers gain, and at 4096 tokens a row at
+  // the end of its window walks 1024 keys instead of 4096. Pass 1 already
+  // skips fully masked tiles and pass 2 measures as free (its own comment:
+  // skipping it entirely saves no time), so this is the only bound left that
+  // costs anything to leave in place.
+  //
+  // Storage: `max_s` holds exactly one slot per warp and no more, so the
+  // first-key bound goes in `partial`, whose 512 slots are free once
+  // `denominator` is in a register. Both bounds are written under one barrier
+  // -- the first `__syncthreads()` below, which is new, and which retires the
+  // ``denominator = partial[0]`` reads before this bookkeeping reuses the
+  // region pass 2's tree wrote -- and read under the second, the one that has
+  // always published `last_active`.
+  int local_first = -1;
   int local_last = -1;
   for (int64_t j = static_cast<int64_t>(tid); j < keys; j += threads) {
     if (mask_row[j] != 0) {
+      // j ascends within a lane, so the first hit is this lane's minimum.
+      if (local_first < 0) {
+        local_first = static_cast<int>(j);
+      }
       local_last = static_cast<int>(j);
     }
   }
@@ -638,24 +672,68 @@ __global__ void gemma4_attention_decode_class_kernel(
   for (int offset = 16; offset > 0; offset >>= 1) {
     const int other = __shfl_down(local_last, offset);
     local_last = other > local_last ? other : local_last;
+    const int other_first = __shfl_down(local_first, offset);
+    if (other_first >= 0 && (local_first < 0 || other_first < local_first)) {
+      local_first = other_first;
+    }
   }
+  __syncthreads();
   if ((tid & 31u) == 0u) {
     max_s[tid >> 5] = static_cast<float>(local_last);
+    partial[tid >> 5] = static_cast<float>(local_first);
   }
   __syncthreads();
   int last_active = -1;
+  // -1 means this warp saw no live key, so the block minimum ignores it and
+  // `first_active` stays -1 only when the whole row is dead.
+  int first_active = -1;
   for (unsigned int w = 0; w < (threads >> 5); ++w) {
     const int per_warp = static_cast<int>(max_s[w]);
     last_active = per_warp > last_active ? per_warp : last_active;
+    const int per_first = static_cast<int>(partial[w]);
+    if (per_first >= 0 && (first_active < 0 || per_first < first_active)) {
+      first_active = per_first;
+    }
   }
   const int64_t pass3_keys =
       static_cast<int64_t>(last_active) + 1 < keys ? static_cast<int64_t>(last_active) + 1 : keys;
+  // A dead row keeps the empty range it had before this bound existed.
+  const int64_t pass3_begin =
+      first_active >= 0 && static_cast<int64_t>(first_active) < pass3_keys
+      ? static_cast<int64_t>(first_active)
+      : 0;
+  // Pass 3's lower bound has to reach it as a literal on the path that does not
+  // use it. Measured: with `keys_begin` a runtime value this loop costs about
+  // +50% per iteration -- isolated by a variant carrying a runtime bound and
+  // none of the bookkeeping above, so the bookkeeping is not responsible, and
+  // identical in the binary to the fixed form (same VGPR and SGPR counts, zero
+  // stack frame, same shared bytes and grid, actually *fewer* instructions).
+  // Inferred cause, not measured: a compile-time-0 start lets the compiler fold
+  // the loop start and the prefetched V addresses into the same addressing it
+  // would have used without a lower bound at all, where a runtime start makes
+  // them depend on a value that only exists in a register.
+  //
+  // Every causal row has first_active == 0, so the literal spelling covers
+  // exactly the rows that would otherwise pay for a trim they never get, and
+  // the runtime branch is left to windowed rows, where the span they cut is far
+  // larger than that penalty. first_active is block-wide, so the branch is
+  // never divergent.
   if (head_dim >= 2 * static_cast<int64_t>(threads)) {
-    gemma4_decode_pass3<2, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, pass3_keys,
-                              denominator, threads, tid);
+    if (pass3_begin == 0) {
+      gemma4_decode_pass3<2, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, 0,
+                                pass3_keys, denominator, threads, tid);
+    } else {
+      gemma4_decode_pass3<2, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, pass3_begin,
+                                pass3_keys, denominator, threads, tid);
+    }
   } else {
-    gemma4_decode_pass3<1, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, pass3_keys,
-                              denominator, threads, tid);
+    if (pass3_begin == 0) {
+      gemma4_decode_pass3<1, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, 0,
+                                pass3_keys, denominator, threads, tid);
+    } else {
+      gemma4_decode_pass3<1, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, pass3_begin,
+                                pass3_keys, denominator, threads, tid);
+    }
   }
 }
 
@@ -713,7 +791,8 @@ __global__ void gemma4_attention_decode_dimension_kernel(
   __syncthreads();
   gemma4_decode_pass3<1, 4>(
       weights_s, value + kv_head * head_dim, out + head_index * head_dim,
-      num_kv_heads * head_dim, head_dim, keys, header[head_index * 2],
+      num_kv_heads * head_dim, head_dim, /*keys_begin=*/0, keys,
+      header[head_index * 2],
       blockDim.x * dimension_blocks, partition * blockDim.x + threadIdx.x);
 }
 
