@@ -638,95 +638,6 @@ _SELECTED_VARIANT = "selected_gemv_bf16_bf16_out"
 # for eight outputs instead of one.
 _SELECTED_PACK8_VARIANT = "selected_pack8_gemv_bf16_bf16_out"
 
-# The pack8 expert GEMV family. It is the same per-lane selected shape as
-# ``_SELECTED_VARIANT`` but reads a layout that has the per-32-value scale and min
-# terms already decoded, so the kernel does not re-decode raw Q4_K block metadata
-# on every weight read.
-#
-# It registers under the ``moe_linear`` layer, not ``linear``. That is not a
-# detail to route around: the layer names which family of kernels a key belongs
-# to, and a lookup under the wrong layer simply misses. Resolving the correct
-# layer here is the whole of the fix for a weight that was carrying the packed
-# layout while the dispatch never asked for it.
-_PACK8_LAYER = "moe_linear"
-_PACK8_VARIANT = "expert_pack8_selected_bf16_bf16_out"
-
-
-def gemma4_project_experts_pack8(
-    weight: Gemma4Projection,
-    x_ptr: int,
-    selected_ptr: int,
-    out_ptr: int,
-    x_rows: int,
-    rows: int,
-    num_experts: int,
-    in_features: int,
-    out_features: int,
-    *,
-    stream: int = 0,
-) -> bool:
-    """Run the pack8 per-lane projection, if this weight carries that layout.
-
-    ``selected_ptr`` is ``int64`` with one expert index per compact row, the same
-    input the ``selected_gemv`` route takes, so this is a drop-in for that route
-    on a weight whose packed arrays were planned.
-
-    Returns ``False`` when the weight has no packed arrays or no kernel serves
-    it, which keeps the caller's ladder intact: a weight without the layout falls
-    through to ``selected_gemv`` on its raw blocks, and a quant type with no
-    pack8 family falls through the same way. That is a check on the weight's
-    storage form, not on a quant name.
-
-    ``qweight_high`` is passed null. The kernel requires it only for q5_k and
-    q6_k, where it carries the extra bits those formats have; for q4_k the read
-    path uses only the packed quants plus the scale and min, which is exactly
-    what the repack produces.
-    """
-
-    if isinstance(weight, int):
-        return False
-    if not weight.has_allocation("qweight"):
-        return False
-    for name in ("scales", "mins"):
-        if not weight.has_allocation(name):
-            return False
-
-    from hipengine.kernels.hip_gfx1100.quant.gguf_expert_pack8_gemv import (
-        register_gguf_expert_pack8_gemv_kernels,
-    )
-    from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
-
-    # Registration runs at module import, but a registry plan test can clear
-    # global registrations and leave the lazy import a no-op, so re-register
-    # rather than trusting import alone.
-    register_gguf_expert_pack8_gemv_kernels()
-    key = KernelKey(weight.backend, _PACK8_LAYER, weight.spec.quant_key, _PACK8_VARIANT)
-    try:
-        fn = resolve(
-            backend=key.backend,
-            layer=key.layer,
-            quant=key.quant,
-            variant=key.variant,
-        )
-    except MissingKernelError:
-        return False
-    fn(
-        x_ptr,
-        selected_ptr,
-        weight.allocation("qweight").buffer.ptr,
-        None,
-        weight.allocation("scales").buffer.ptr,
-        weight.allocation("mins").buffer.ptr,
-        out_ptr,
-        x_rows,
-        rows,
-        num_experts,
-        in_features,
-        out_features,
-        stream=stream,
-    )
-    return True
-
 
 def gemma4_project_experts_selected(
     weight: Gemma4Projection,
@@ -1388,20 +1299,21 @@ def gemma4_project_experts_rows(
        expert's weight row once and reuses it across that expert's rows. Only
        when the block has at least one row per expert *and* the weight's quant
        key registers a grouped family.
-    2. ``pack8_selected`` -- the per-lane selected GEMV over a weight that
-       carries the packed layout, which skips the raw block metadata decode.
-       Reached only for a weight the planner gave the packed arrays.
-    3. ``selected_gemv`` -- one block per (out_col, lane), one weight read per
+    2. ``selected_gemv`` -- one block per (out_col, lane), one weight read per
        lane, over the raw blocks.
-    4. ``per_expert_offset`` -- the fallback for a weight with no selected
+    3. ``per_expert_offset`` -- the fallback for a weight with no selected
        kernel, which costs a device-to-host read of the row counts.
 
-    Routes 2 and 3 are the same launch shape over the same arithmetic, differing
-    only in which representation of the weight they read, so their outputs are
-    compared directly by ``tests/test_unit_gemma4_gguf_device.py``. Routes 1 and 3
-    are bit-exact against each other wherever both are registered (pinned by
-    ``tests/test_unit_gemma4_expert_route.py``). Route 4 is reached only where
-    route 3 is absent, which is the bf16 case.
+    The ladder used to carry a ``pack8_selected`` rung ahead of ``selected_gemv``,
+    for a weight the planner had given the packed arrays. The packed layout was
+    removed on 2026-09-28: it was measured never ahead (prefill 343.2 against
+    340.0 tok/s, decode 21.24 against 7.78) and the planner gave it out only below
+    the one-row-per-expert threshold, so the rung was unreachable. The settlement
+    is in ``docs/REFACTOR.md``.
+
+    Routes 1 and 2 are bit-exact against each other wherever both are registered
+    (pinned by ``tests/test_unit_gemma4_expert_route.py``). Route 3 is reached
+    only where route 2 is absent, which is the bf16 case.
     """
 
     if gemma4_moe_prefill_route_enabled(
@@ -1430,19 +1342,6 @@ def gemma4_project_experts_rows(
         stream=stream,
     ):
         return "grouped_row4"
-    if gemma4_project_experts_pack8(
-        weight,
-        x_ptr,
-        selected_ptr,
-        out_ptr,
-        compact_rows,
-        compact_rows,
-        num_experts,
-        in_features,
-        out_features,
-        stream=stream,
-    ):
-        return "pack8_selected"
     if gemma4_project_experts_selected(
         weight,
         x_ptr,
