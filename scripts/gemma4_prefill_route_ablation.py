@@ -39,6 +39,11 @@ def _arms() -> list[tuple[str, str, tuple[str, ...]]]:
         ("no_dense_q8", "dense_q8", ()),
         ("no_all_gemv", "all_gemv", ()),
         ("no_experts", "experts", ()),
+        # The expert block split. Both dispatchers gate a fallback through their
+        # return value, so these arms report "handled" rather than declining.
+        # They are self-checking: gate_up plus down must account for no_experts.
+        ("no_experts_gate_up", "experts_gate_up", ()),
+        ("no_experts_down", "experts_down", ()),
         ("no_attention", "attention", ()),
         ("no_router", "router", ()),
         ("no_norm_rope", "norm_rope", ()),
@@ -85,6 +90,8 @@ def main() -> int:
 
     orig_project = gl.gemma4_project
     orig_experts_forward = gl.gemma4_experts_forward_bf16
+    orig_gate_up_mmq = ex.gemma4_project_experts_gate_up_mmq
+    orig_down_mmq = ex.gemma4_project_experts_down_mmq
     orig_attention = gl.gemma4_attention_prefill_bf16
     orig_router = gl.gemma4_router_topk_bf16
     elementwise_names = [
@@ -136,6 +143,22 @@ def main() -> int:
             return None
         return orig_experts_forward(*a, **kw)
 
+    def spy_gate_up_mmq(*a, **kw):
+        # `gemma4_experts_forward_bf16` calls this as `cond and
+        # gemma4_project_experts_gate_up_mmq(...)` and runs
+        # `gemma4_project_experts_rows` when the whole expression is falsy. A
+        # skip must therefore report HANDLED: returning False would fall through
+        # to the row route, which does the same work by another leaf, and the arm
+        # would measure nothing.
+        if mode == "experts_gate_up":
+            return True
+        return orig_gate_up_mmq(*a, **kw)
+
+    def spy_down_mmq(*a, **kw):
+        if mode == "experts_down":
+            return True
+        return orig_down_mmq(*a, **kw)
+
     def spy_attention(*a, **kw):
         if mode == "attention":
             return None
@@ -164,6 +187,8 @@ def main() -> int:
 
     gl.gemma4_project = spy_project
     gl.gemma4_experts_forward_bf16 = spy_experts_forward
+    ex.gemma4_project_experts_gate_up_mmq = spy_gate_up_mmq
+    ex.gemma4_project_experts_down_mmq = spy_down_mmq
     gl.gemma4_attention_prefill_bf16 = spy_attention
     gl.gemma4_router_topk_bf16 = spy_router
     for name in elementwise_names:
