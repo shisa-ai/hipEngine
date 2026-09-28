@@ -4,6 +4,37 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## Gemma prefill attention tiled variant is a dead route (found 2026-09-28)
+
+`gemma4_attention_prefill_tiled_kernel` is exported as
+`hipengine_gemma4_attention_prefill_tiled_{bf16,f32}` and has no Python wrapper.
+It was written to make the shared-memory footprint independent of context -- the
+strict kernel materialises one logit per key, so its shared array is
+`(head_dim + keys + 256) * 4` bytes and occupancy falls from 16 blocks per CU at
+512 keys to 3 at 4096 -- on the theory that this is what limits the strict
+kernel. It is not what limits it.
+
+Measured with `scripts/gemma4_attention_prefill_tiled_ab.py`, both kernels
+driven through ctypes on the same device buffers, 5 iters and 2 warmups:
+
+| tokens | head_dim | strict | tiled | ratio |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 256 | 150.5 ms | 150.65 ms | 1.00 |
+| 2048 | 256 | 46.72 ms | 67.21 ms | **1.44 (slower)** |
+| 2048 | 512 | 88.83 ms | 95.52 ms | **1.075 (slower)** |
+
+and the outputs are **bit-identical** at every one of those sizes -- 0
+mismatched elements out of 8,388,608 and 16,777,216, max abs diff 0, max rel
+diff 0. The two kernels are not two arithmetic contracts; they are one contract
+with two schedules, and the schedule that costs a 1.44x slowdown is the one
+whose only justification was the occupancy theory the measurement refutes.
+
+Removal condition: delete `gemma4_attention_prefill_tiled_kernel`,
+`launch_gemma4_attention_prefill_tiled`, and the two exported symbols, and drop
+`scripts/gemma4_attention_prefill_tiled_ab.py`. Nothing selects them, so there
+is no behaviour to preserve. Keep the strict kernel, which is both faster and
+the one the decode-parity contract is written against.
+
 ## Gemma attention legacy slice-count ABI (2026-09-26)
 
 The default two-pass decode attention in
