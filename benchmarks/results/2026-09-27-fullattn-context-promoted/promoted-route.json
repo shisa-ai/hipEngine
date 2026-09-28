@@ -25,7 +25,7 @@
   },
   "kernel": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
   "levers": {
-    "int32_token_offsets": "shared_bytes 25,607 -> 17,223 B at max_context_len 2048; residency 2 -> 3 blocks/CU",
+    "int32_token_offsets": "shared_bytes 26,663 -> 18,471 B at max_context_len 2048; residency 2 -> 3 blocks/CU",
     "qk_two_token_unroll": "second independent dot/shuffle chain per warp iteration"
   },
   "bit_exact": true,
@@ -144,5 +144,21 @@
     },
     "mean_delta_pct": 2.11,
     "all_categories_improve": true
+  },
+  "shared_memory_bytes": {
+    "formula": "(max_context_len + max_warps + head_dim + value_groups*head_dim)*4 + 7 + max_context_len*sizeof(OffsetT)",
+    "launch_rows1024_ctx1024": {
+      "int64": 14375,
+      "int32": 10279,
+      "blocks_per_cu_int64": 4,
+      "blocks_per_cu_int32": 6
+    },
+    "launch_rows1024_ctx2048": {
+      "int64": 26663,
+      "int32": 18471,
+      "blocks_per_cu_int64": 2,
+      "blocks_per_cu_int32": 3
+    },
+    "correction": "An earlier revision of this artifact quoted 25,607 / 17,223 bytes; those used the c1_exact launcher's float_bytes formula (max_context_len + threads) and omitted max_warps + head_dim. Residency conclusions are unchanged."
   }
 }
