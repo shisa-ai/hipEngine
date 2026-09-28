@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11241,
-    "current": 4009,
+    "entries": 11242,
+    "current": 4010,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1303,
@@ -47418,14 +47418,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 10,
+        "continuation_entries": 11,
         "open_text": "- **The two slow shapes are the dense term's addressable part, and neither has been run\n  in isolation.** `4096 -> 2816` at 25 calls and `8192 -> 2816` at 5 calls are 62.9 ms at\n  6.5 TFLOP/s against 11.90 elsewhere in the same family. A shape sweep on\n  `scripts/gguf_q8_0_dense_bw_microbench.py` would say whether the rate is a property of\n  the shape or of the call site -- the two differ in which layer they come from, and 25\n  against 5 calls is the full-attention against sliding-window split.\n- **Do not spend time on the lm head.** It is at 87 percent of DRAM peak for the traffic\n  it must m",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "10 later entries by the same worker share this topic prefix"
+        "11 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T172000.000000Z-lhl-gemma4-dense-prefill-floor-6b2e9f.md",
@@ -47442,7 +47442,7 @@
         ]
       },
       "id": "worklog/20260928T172000.000000Z-lhl-gemma4-dense-prefill-floor-6b2e9f",
-      "evidence_hash": "972a0daa730f"
+      "evidence_hash": "7d0dc2e93221"
     },
     {
       "kind": "worklog",
@@ -47456,14 +47456,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 9,
+        "continuation_entries": 10,
         "open_text": "- **Read the Q8_0 dense prefill kernel's tiling and count its tiles for `4096 -> 2816`\n  against `2816 -> 4096`.** Those two are the same weight count and differ 1.5x in rate,\n  which is the sharpest available contrast and it isolates orientation from size. If the\n  tile counts differ, the mechanism is tiling and the lever is a tile choice; if they do\n  not, the ratio correlation is a coincidence and this line should be dropped.\n- **Do not read the ratio as a law.** It is a fit to nine shapes at two prompt lengths.\n  The two-orientation contrast above is the experiment that would make it a mec",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "9 later entries by the same worker share this topic prefix"
+        "10 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T174000.000000Z-lhl-gemma4-dense-shape-rate-7d3f2a.md",
@@ -47480,7 +47480,7 @@
         ]
       },
       "id": "worklog/20260928T174000.000000Z-lhl-gemma4-dense-shape-rate-7d3f2a",
-      "evidence_hash": "41874dcdfad2"
+      "evidence_hash": "963d2e8285a4"
     },
     {
       "kind": "worklog",
@@ -47494,14 +47494,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 8,
+        "continuation_entries": 9,
         "open_text": "- **Separate the statistic from the environment.** Re-run the isolated microbench reporting\n  the mean instead of the best-of-8. Whatever survives is the environment, and the\n  environment is where the money is: at 15 percent it is about 28 ms of the dense term,\n  against the orientation effect's 22 ms, and it is not confined to three shapes.\n- **Do not change the tile.** `(32, 64)` is the swept optimum on three of four gemma4\n  geometries and `_default_tiles` does not even consider `in_features`. The sweep is in the\n  docstring, with the alternatives' numbers.\n- **The orientation effect has a",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "8 later entries by the same worker share this topic prefix"
+        "9 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T180000.000000Z-lhl-gemma4-dense-tile-and-insitu-gap-8e4b1c.md",
@@ -47522,7 +47522,7 @@
         ]
       },
       "id": "worklog/20260928T180000.000000Z-lhl-gemma4-dense-tile-and-insitu-gap-8e4b1c",
-      "evidence_hash": "fef7a8214223"
+      "evidence_hash": "fc387b2dac8b"
     },
     {
       "kind": "worklog",
@@ -47536,14 +47536,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 7,
+        "continuation_entries": 8,
         "open_text": "- **Identify what the environment costs.** The penalty is uniform at ~20 percent, so the\n  experiment is to add one resident kernel at a time to the isolated harness and see which\n  one reproduces it. The candidates in launch order are the expert gate/up and down MMQ\n  routes, the attention kernel, and the MoE elementwise; the expert routes are the ones\n  streaming weights at 49 GB/s and so the ones most likely to be taking the bandwidth.\n- **A cheaper first cut: measure the achieved DRAM bandwidth during the in-situ dense\n  shapes.** If the dense shapes are bandwidth-starved in situ, the pena",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "7 later entries by the same worker share this topic prefix"
+        "8 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T182000.000000Z-lhl-gemma4-dense-insitu-penalty-9f5d3b.md",
@@ -47557,7 +47557,7 @@
         ]
       },
       "id": "worklog/20260928T182000.000000Z-lhl-gemma4-dense-insitu-penalty-9f5d3b",
-      "evidence_hash": "cf17fed48a61"
+      "evidence_hash": "690706f04fcc"
     },
     {
       "kind": "worklog",
@@ -47735,14 +47735,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 6,
+        "continuation_entries": 7,
         "open_text": "- **The occupancy hypothesis is the one to test, and it is testable cheaply.** The kernel's\n  tile is already swept, but the sweep varied `tile_m` and `tile_n` -- the *workgroup* size\n  is fixed at 32. A variant with two or four warps per block on the same tile would separate\n  \"the tile is wrong\" from \"the block is too narrow\", and `(32, 64)` was chosen from a sweep\n  that never changed that.\n- **Then the MoE plumbing, 51.6 ms.** Router logits at 14.7 ms over 26 layers is 0.57 ms per\n  layer for a projection the size of a small dense layer; group compact plus gather is\n  another 21 ms of inde",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "6 later entries by the same worker share this topic prefix"
+        "7 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T194000.000000Z-lhl-gemma4-dense-occupancy-4c8f1a.md",
@@ -47762,7 +47762,7 @@
         ]
       },
       "id": "worklog/20260928T194000.000000Z-lhl-gemma4-dense-occupancy-4c8f1a",
-      "evidence_hash": "2cb2b503ba42"
+      "evidence_hash": "bffb18e319aa"
     },
     {
       "kind": "worklog",
@@ -47776,14 +47776,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 5,
+        "continuation_entries": 6,
         "open_text": "- **Stop working the in-situ gap.** Four iterations, three refuted hypotheses, no positive\n  finding, and it is a discrepancy between two of our own measurements rather than a term in\n  the step.\n- **The MoE plumbing is 51.6 ms, 7.6 percent, and has never been examined.** Router logits\n  alone is 14.7 ms over 26 layers -- 0.57 ms per layer for a projection the size of a small\n  dense layer -- and group compact plus gather is another 21 ms of index work. It is the\n  largest unexamined block in the step.\n- **The attention term is 134.7 ms, 19.8 percent, and has not been priced against a floor**\n",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "5 later entries by the same worker share this topic prefix"
+        "6 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T200000.000000Z-lhl-gemma4-dense-occupancy-refuted-5e2d7b.md",
@@ -47806,7 +47806,7 @@
         ]
       },
       "id": "worklog/20260928T200000.000000Z-lhl-gemma4-dense-occupancy-refuted-5e2d7b",
-      "evidence_hash": "cbecf6aef325"
+      "evidence_hash": "5d8f160135c0"
     },
     {
       "kind": "worklog",
