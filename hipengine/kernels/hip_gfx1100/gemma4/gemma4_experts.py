@@ -246,6 +246,16 @@ def gemma4_moe_prefill_route_enabled(*, lanes: int, num_experts: int) -> bool:
     reuses it across that expert's rows. The crossover is one lane per expert:
     below it most experts are empty, so a grouped launch's per-expert grid would
     spend its blocks on nothing and the per-lane GEMV grid is cheaper.
+
+    ``lanes`` is the width the *runner* was built for, not the width of the call
+    in flight. The two routes are different arithmetic -- an int8-dp4a
+    accumulation against an fp32 one -- so choosing between them by live row
+    count would make a token's output depend on how many tokens happened to
+    share its call, and that difference compounds through the KV cache. Passing
+    the declared capacity instead makes the route a property of the runner, so a
+    runner's prefill and its single-token decodes take the same path. Callers
+    that genuinely have no declared width, such as the grouped family's own
+    internal dispatcher, may pass their live row count.
     """
 
     if int(num_experts) <= 0:
@@ -471,9 +481,13 @@ def gemma4_experts_forward_bf16(
     #    halves in one launch and returns False when the weight or the geometry
     #    does not qualify, in which case the fp32 grouped route runs instead.
     fused = 2 * intermediate
+    # The MMQ gate reads the runner's declared width rather than this call's lane
+    # count: the two routes are different arithmetic, so selecting by live width
+    # would make a token's output depend on the batch it arrived in.
+    route_width = scratch.tokens
     if not (
         gemma4_moe_gate_up_mmq_enabled()
-        and gemma4_moe_prefill_route_enabled(lanes=lanes, num_experts=num_experts)
+        and gemma4_moe_prefill_route_enabled(lanes=route_width, num_experts=num_experts)
         and gemma4_project_experts_gate_up_mmq(
             gate_up_proj,
             packed_hidden.ptr,
@@ -510,7 +524,7 @@ def gemma4_experts_forward_bf16(
     # fallback, and it is also what every non-Q5_1 down weight takes.
     if not (
         gemma4_moe_down_mmq_enabled()
-        and gemma4_moe_prefill_route_enabled(lanes=lanes, num_experts=num_experts)
+        and gemma4_moe_prefill_route_enabled(lanes=route_width, num_experts=num_experts)
         and gemma4_project_experts_down_mmq(
             down_proj,
             activated.ptr,
