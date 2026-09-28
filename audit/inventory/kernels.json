@@ -8168,7 +8168,7 @@
       "evidence": {
         "backend": "hip_gfx1100",
         "suffix": ".hip",
-        "lines": 931,
+        "lines": 940,
         "referrers": 20,
         "runtime_referrers": [
           "hipengine/runtime/qwen4_exp_runner.py",
@@ -8197,7 +8197,7 @@
         ]
       },
       "id": "kernel/hip_gfx1100/quant/gguf_q8_0_prefill.hip",
-      "evidence_hash": "11f8dbdd9dd3"
+      "evidence_hash": "d3a0c77d6a8d"
     },
     {
       "kind": "kernel",
