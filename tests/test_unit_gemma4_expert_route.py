@@ -393,8 +393,17 @@ def test_rows_prefers_the_grouped_family_over_the_selected_gemv() -> None:
 
     grouped_calls: list[tuple] = []
     selected_calls: list[tuple] = []
+    pack8_calls: list[tuple] = []
     register(_GROUPED_KEY, lambda *args, **kwargs: grouped_calls.append(args), replace=True)
     register(_SELECTED_KEY, lambda *args, **kwargs: selected_calls.append(args), replace=True)
+    # Both selected variant keys, not just the scalar one. The dispatcher prefers
+    # the pack8 sibling wherever it is registered, so a fixture that pins only
+    # the scalar key stops pinning the route the moment a quant gains the
+    # sibling -- and these pointers are placeholders, so an unpinned route is a
+    # real launch on garbage rather than a recorded call.
+    register(
+        _SELECTED_PACK8_KEY, lambda *args, **kwargs: pack8_calls.append(args), replace=True
+    )
 
     route = gemma4_project_experts_rows(
         _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1"),
@@ -411,6 +420,7 @@ def test_rows_prefers_the_grouped_family_over_the_selected_gemv() -> None:
     assert route == "grouped_prefill"
     assert len(grouped_calls) == 1
     assert selected_calls == []
+    assert pack8_calls == []
 
 
 def test_rows_falls_back_to_the_selected_gemv_without_a_grouped_family(monkeypatch) -> None:
@@ -460,6 +470,11 @@ def test_rows_keeps_the_selected_gemv_below_one_lane_per_expert() -> None:
     grouped_calls: list[tuple] = []
     register(_GROUPED_KEY, lambda *args, **kwargs: grouped_calls.append(args), replace=True)
     register(_SELECTED_KEY, lambda *args, **kwargs: None, replace=True)
+    # Both selected variant keys, for the reason the test above gives. This test
+    # used to reach the real pack8 kernel once Q5_1 registered a sibling, and
+    # faulted on the placeholder pointers below; the route decision it is about
+    # is the same either way, so both variants are recorded and neither runs.
+    register(_SELECTED_PACK8_KEY, lambda *args, **kwargs: None, replace=True)
 
     route = gemma4_project_experts_rows(
         _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1"),
@@ -757,22 +772,32 @@ def test_selected_falls_back_when_the_width_is_not_eight_wide() -> None:
 def test_selected_falls_back_when_no_pack8_sibling_is_registered() -> None:
     """A quant that declares no pack8 sibling keeps the arithmetic it had.
 
-    Q5_1 is that quant in this tree: its compact pack8 kernel is registered for
-    the MoE expert route, not for the plain linear layer, and it reassociates.
+    Q5_1 used to be that quant in this tree, and this test used to borrow it.
+    Q5_1 registers a pack8 sibling on the linear layer now, so the state is
+    constructed here instead. That is what the test was asserting all along: a
+    quant with a scalar selected route and no pack8 sibling takes the scalar
+    route rather than reaching for a kernel that is not there.
     """
 
-    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
-
-    unregister(_SELECTED_PACK8_KEY)
-    _ensure_linear_kernel_registered(_SELECTED_PACK8_KEY)
-    assert not is_registered(_SELECTED_PACK8_KEY), (
+    quant = "gguf_q4_0"
+    scalar_key = KernelKey(
+        "hip_gfx1100", "linear", quant, "selected_gemv_bf16_bf16_out"
+    )
+    pack8_key = KernelKey(
+        "hip_gfx1100", "linear", quant, "selected_pack8_gemv_bf16_bf16_out"
+    )
+    assert not is_registered(pack8_key), (
         "this test needs a quant with no pack8 sibling on the linear layer"
     )
 
     selected_calls: list[tuple] = []
-    register(_SELECTED_KEY, lambda *a, **k: selected_calls.append(a), replace=True)
-
-    ran = _run_selected(_ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_1"), 2816)
+    register(scalar_key, lambda *a, **k: selected_calls.append(a), replace=True)
+    try:
+        ran = _run_selected(
+            _ResidentWeight(backend="hip_gfx1100", quant_key=quant), 2816
+        )
+    finally:
+        unregister(scalar_key)
 
     assert ran is True
     assert len(selected_calls) == 1
@@ -800,13 +825,15 @@ def test_selected_reports_a_quant_that_registers_neither_variant() -> None:
 
 # The pack8 sibling has to be bit-exact with the single-output owner, because the
 # route prefers it without a numerical gate. These are the artifact's own expert
-# shapes: Q4_K and Q5_K gate/up at 1408 out, Q4_K up at 2816 out, and the odd
-# layer's Q8_0 down at 2816 out.
+# shapes: Q4_K and Q5_K gate/up at 1408 out, Q4_K up at 2816 out, the odd layer's
+# Q8_0 down at 2816 out, and the Q5_1 down projection at its 704-wide input -- the
+# shape the pack8 route exists for, since 704 is a multiple of 32 but not of 256.
 _PACK8_SELECTED_CASES = [
     ("gguf_q4_k", 1408, 2816),
     ("gguf_q4_k", 2816, 2816),
     ("gguf_q5_k", 1408, 2816),
     ("gguf_q8_0", 2816, 704),
+    ("gguf_q5_1", 2816, 704),
 ]
 
 
@@ -869,6 +896,7 @@ def test_pack8_selected_is_bit_exact_against_the_single_output_owner(
             in_features,
             out_features,
         )
+        resolved = {}
         for variant, out_buf in (
             ("selected_pack8_gemv_bf16_bf16_out", out_pack8),
             ("selected_gemv_bf16_bf16_out", out_owner),
@@ -876,7 +904,20 @@ def test_pack8_selected_is_bit_exact_against_the_single_output_owner(
             fn = resolve(
                 backend=backend, layer="linear", quant=quant, variant=variant
             )
+            resolved[variant] = fn
             fn(*args[:3], out_buf.ptr, *args[3:])
+
+        # Two keys that resolve to one function would make this test compare a
+        # route with itself and report agreement. The Q4_K gate/up landing hit
+        # exactly that shape when its harnesses selected both arms through the
+        # same helper, so the identity is asserted rather than assumed.
+        assert (
+            resolved["selected_pack8_gemv_bf16_bf16_out"]
+            is not resolved["selected_gemv_bf16_bf16_out"]
+        ), (
+            f"the {quant} pack8 and single-output variants resolved to the same "
+            f"kernel, so this comparison is vacuous"
+        )
 
         pack8_bits = np.empty(rows * out_features, dtype=np.uint16)
         owner_bits = np.empty(rows * out_features, dtype=np.uint16)
