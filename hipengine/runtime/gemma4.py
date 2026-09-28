@@ -77,6 +77,37 @@ from hipengine.runtime.gguf_linear import (
 )
 
 _BF16_BYTES = 2
+
+
+@dataclass(frozen=True)
+class Gemma4SharedKV:
+    """A read view of one layer's KV cache, for a consumer that shares it.
+
+    The assistant head attends against this model's KV rather than holding its
+    own, so it needs the two buffer addresses and the live position count, but
+    must not be able to append. This type is that capability: it carries no
+    write offset and no reference to the runner.
+    """
+
+    layer_index: int
+    key_cache: int
+    value_cache: int
+    capacity: int
+    live: int
+    num_kv_heads: int
+    head_dim: int
+
+    @property
+    def kv_width(self) -> int:
+        """Elements per position: ``num_kv_heads * head_dim``."""
+
+        return self.num_kv_heads * self.head_dim
+
+    @property
+    def live_bytes(self) -> int:
+        """BF16 bytes of the live region, which is the readable span."""
+
+        return self.live * self.kv_width * _BF16_BYTES
 _F32_BYTES = 4
 _I64_BYTES = 8
 
@@ -449,6 +480,7 @@ class Gemma4Runner:
     _caches: list[DeviceBuffer] = field(default_factory=list, repr=False)
     _staging: dict[str, tuple[DeviceBuffer, int]] = field(default_factory=dict, repr=False)
     _position: int = field(default=0, repr=False)
+    _last_rows: int = field(default=0, repr=False)
     _closed: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -564,6 +596,7 @@ class Gemma4Runner:
         """Rewind to an empty sequence without freeing the cache."""
 
         self._position = 0
+        self._last_rows = 0
         for index in range(len(self._kv)):
             self._kv[index] = Gemma4LayerKV(
                 key_cache=self._kv[index].key_cache,
@@ -599,6 +632,79 @@ class Gemma4Runner:
     @property
     def position(self) -> int:
         return self._position
+
+    @property
+    def layer_count(self) -> int:
+        """Number of blocks this runner holds KV for."""
+
+        return len(self._kv)
+
+    def shared_kv(self, layer_index: int) -> Gemma4SharedKV:
+        """Return a read view of one layer's KV cache.
+
+        The Gemma 4 assistant (MTP) head allocates no KV of its own: each of its
+        four blocks attends against one of this model's last two layers, sharing
+        the buffers written here rather than receiving a copy. This is the read
+        side of that binding -- a consumer gets the two buffer addresses, how
+        many positions are live, and the geometry it needs to index them, and
+        has no way to append.
+
+        ``live`` is the position count after the most recent forward, which is
+        what a shared reader must attend over. A consumer that reads while a
+        forward is in flight would see the previous count, so the draft step is
+        expected to run between forwards rather than concurrently with one.
+        """
+
+        if not 0 <= layer_index < len(self._kv):
+            raise IndexError(
+                f"layer {layer_index} is out of range for a model with "
+                f"{len(self._kv)} blocks"
+            )
+        attention = self.weights.config.attention[layer_index]
+        entry = self._kv[layer_index]
+        return Gemma4SharedKV(
+            layer_index=int(layer_index),
+            key_cache=int(entry.key_cache),
+            value_cache=int(entry.value_cache),
+            capacity=int(self.capacity),
+            live=int(self._position),
+            num_kv_heads=int(attention.num_kv_heads),
+            head_dim=int(attention.head_dim),
+        )
+
+    def hidden_state(self, row: int = -1) -> DeviceBuffer:
+        """Return the hidden state after the last block, for one row.
+
+        This is the tensor the assistant head's pre-projection consumes as
+        ``h_backbone``. ``row`` defaults to the last row of the most recent
+        forward, which is the position the next draft step predicts from; a
+        negative index counts back from that row and a positive one from the
+        start of the block.
+
+        The row count is the most recent forward's, not the accumulated position
+        count: a prefill of 512 followed by a decode of 1 leaves one valid row,
+        and indexing the 513 accumulated positions would read stale hidden state
+        from before the decode.
+
+        The buffer is BF16 and ``hidden_size`` wide, and is the runner's own
+        scratch: it is valid until the next forward pass overwrites it.
+        """
+
+        hidden = int(self.weights.config.hidden_size)
+        rows = int(self._last_rows)
+        if rows <= 0:
+            raise ValueError("no forward pass has run, so there is no hidden state")
+        index = int(row)
+        if index < 0:
+            index += rows
+        if not 0 <= index < rows:
+            raise IndexError(
+                f"row {row} is out of range for the last forward's {rows} rows"
+            )
+        return DeviceBuffer(
+            ptr=int(self._hidden.ptr) + index * hidden * _BF16_BYTES,
+            nbytes=hidden * _BF16_BYTES,
+        )
 
     def forward(self, token_ids: Sequence[int], *, apply_softcap: bool = True) -> np.ndarray:
         """Run ``token_ids`` through the model and return the last row's logits.
@@ -786,6 +892,7 @@ class Gemma4Runner:
         logits = np.empty(vocab, dtype=np.float32)
         copy_device_to_host(host_array_ptr(logits), self._logits, logits.nbytes)
         self._position += rows
+        self._last_rows = rows
         # Applied here rather than in the sampler so that every consumer of the
         # model's output sees the distribution the model defines. Both the dense
         # and the streaming CPU references do the same.
