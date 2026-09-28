@@ -1077,6 +1077,9 @@ These names appear in the tree but must not be confused with env knobs:
 - Argument *metavars* that name an artifact slot rather than a variable:
   `HIPENGINE_JSON` (`scripts/yue2_ar_matched_timing.py`,
   `scripts/yue2_stage_matched_timing.py`).
+- Shell-local variables inside the `scripts/*_ab.sh` A/B harnesses, read as
+  `$NAME` and assigned in the same script, not process env vars: `BENCH`,
+  `FILE`, `FILES`.
 - Placeholder names used in doc/test examples and generic metavars
   (`HIPENGINE_FOO`, `HIPENGINE_ZZZ`, `HIPENGINE_AAA`, `HIPENGINE_EXAMPLE`,
   `HIPENGINE_SOMETHING_ELSE`, `HIPENGINE_STALE_FLAG`, `HIPENGINE_ONE`,
