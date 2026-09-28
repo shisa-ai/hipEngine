@@ -156,14 +156,25 @@ def _plan_one(slot_path: str, source: GGUFTensorInfo) -> Gemma4GGUFWeightSpec:
     allocation_names = ("raw",)
     if quant_key == "gguf_q4_k" and len(source.shape) == 3 and source.shape[1] % 32 == 0:
         # A stacked Q4_K expert tensor also carries its Q4T16 tiles, because the
-        # expert gate/up and down prefill routes read that layout and it is
-        # 2.78 percent larger than the raw blocks rather than a second copy of
-        # the tensor. Rank-3 is what makes a tensor an expert stack; a dense Q4_K
-        # matrix has no route that reads tiles, so it does not pay for them.
+        # expert gate/up prefill route reads that layout and it is 2.78 percent
+        # larger than the raw blocks rather than a second copy of the tensor.
+        # Rank-3 is what makes a tensor an expert stack; a dense Q4_K matrix has
+        # no route that reads tiles, so it does not pay for them.
         #
         # The gate/up tensor is stored gate-rows-first *per expert*, and the T16
         # leaf takes two independent tile pointers with no expert stride, so the
         # two halves are repacked separately rather than as one fused slab.
+        #
+        # The down projection has no route that reads tiles, and cannot have one
+        # in this layout: a Q4T16 tile is one 16-column tile per 256-element K
+        # superblock, so it needs ``in_features % 256 == 0``, while the expert
+        # down projection reduces a 704-wide intermediate -- 704 is 5 x 128 + 64.
+        # No K-family quant can store a 704-wide row at all, so this branch never
+        # fires for a down tensor; a half-split of its 2816 output rows would be
+        # an arbitrary cut rather than a gate/up one. The branch is also
+        # unreachable for Gemma 4 26B-A4B UD-Q4_K_XL for a second reason: its
+        # expert down projections are Q5_1 (29 layers) and Q8_0 (1 layer), so
+        # they take the ``("raw",)`` default above.
         allocation_names = ("raw", "t16_gate", "t16_up")
     elif (
         quant_key == "gguf_q8_0"

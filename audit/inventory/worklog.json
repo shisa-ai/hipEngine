@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11242,
-    "current": 4010,
+    "entries": 11243,
+    "current": 4011,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1303,
@@ -44791,14 +44791,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 17,
+        "continuation_entries": 18,
         "open_text": "Measure the grouped down family at `704 -> 2816` across row counts. That needs a\ndown weight at the true shape -- `(128, 2816, 704)` Q4_K, roughly 142 MB -- so it\nis a heavier setup than the gate/up cases, but it is the same shape of test and\nit decides whether production is affected.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "17 later entries by the same worker share this topic prefix"
+        "18 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T060604.266787Z-lhl-gemma4-down-scope-live-504ced.md",
@@ -44816,7 +44816,7 @@
         ]
       },
       "id": "worklog/20260928T060604.266787Z-lhl-gemma4-down-scope-live-504ced",
-      "evidence_hash": "931650e8496f"
+      "evidence_hash": "4894c147e5d4"
     },
     {
       "kind": "worklog",
@@ -45474,14 +45474,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 15,
+        "continuation_entries": 16,
         "open_text": "1. **The same pattern in the sibling kernels.** `load_qs_bytes` and its four-byte\n   or-chain appear across `kernels/hip_gfx1100/quant/`; the Q4_K gate_up kernel\n   and the Q8_0 dense route were not checked for it. The gate_up is the larger\n   block and the Q8_0 WMMA kernel is the single hottest kernel in the trace at\n   379.9 ms, so it is worth the grep.\n2. **The down is still 1.29x behind the gate_up per byte.** The remaining gap is\n   the Q5_1 five-bit format's extra `dot_h` pass, which is real work rather than\n   waste, so what is left is the gate_up's LDS staging that the down does not do",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "15 later entries by the same worker share this topic prefix"
+        "16 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T081634.604650Z-lhl-gemma4-down-mmq-load-width-397816.md",
@@ -45503,7 +45503,7 @@
         ]
       },
       "id": "worklog/20260928T081634.604650Z-lhl-gemma4-down-mmq-load-width-397816",
-      "evidence_hash": "7234afabf4f0"
+      "evidence_hash": "f48f70ed19ea"
     },
     {
       "kind": "worklog",
@@ -45517,14 +45517,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 14,
+        "continuation_entries": 15,
         "open_text": "1. **The gate_up is now the larger expert half at 175.2 ms and has no equivalent\n   defect** -- it reads its weights from LDS caches -- so the remaining lever\n   there is its 32-wide column tile or its dequant, not its memory traffic.\n2. **The dense block at 277.6 ms is the second-largest and was not checked.** Its\n   Q8_0 WMMA kernel dequantizes with 16 scalar byte loads per column per K-block\n   from a 34-byte-stride stream, so the same class of defect may be present; the\n   block stride makes 16-byte alignment unprovable there, so the fix would need\n   `__builtin_memcpy` rather than a cast,",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "14 later entries by the same worker share this topic prefix"
+        "15 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T082248.307663Z-lhl-gemma4-down-mmq-canonical-ab-c97f4d.md",
@@ -45542,7 +45542,7 @@
         ]
       },
       "id": "worklog/20260928T082248.307663Z-lhl-gemma4-down-mmq-canonical-ab-c97f4d",
-      "evidence_hash": "e91d2c0ffc28"
+      "evidence_hash": "b454a10e0320"
     },
     {
       "kind": "worklog",
@@ -45596,14 +45596,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 13,
+        "continuation_entries": 14,
         "open_text": "1. **The gate_up is now the larger expert half** at 313.2 ms of the traced\n   prefill against the down's 239.5, and it has no equivalent memory-traffic\n   defect because it stages through LDS caches. Its remaining levers are its\n   32-wide column tile and its dequant.\n2. **The dense block.** `gguf_q8_0_prefill_wmma_kernel<32>` is the single hottest\n   kernel in the trace at 386.8 ms over 350 dispatches, and its dequant reads 16\n   consecutive int8 quants as 16 scalar byte loads from a 34-byte-stride stream.\n   The same class of defect may be present; the stride makes 16-byte alignment\n   unpro",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "13 later entries by the same worker share this topic prefix"
+        "14 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T082900.252322Z-lhl-gemma4-down-mmq-trace-crosscheck-6eb69b.md",
@@ -45623,7 +45623,7 @@
         ]
       },
       "id": "worklog/20260928T082900.252322Z-lhl-gemma4-down-mmq-trace-crosscheck-6eb69b",
-      "evidence_hash": "eab7b6c5e5ed"
+      "evidence_hash": "8bea4acb6353"
     },
     {
       "kind": "worklog",
@@ -47027,14 +47027,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 6,
+        "continuation_entries": 7,
         "open_text": "- **Read `q5_1_mmq_ds4_selected_prefill_kernel` and find what is re-read 171 times.**\n  The specific question: for a tile of rows that all belong to one expert, does the\n  kernel's grid cover the expert's full out-feature range (correct, one pass over that\n  expert's 1.487 MB) or the full weight set (171 passes)? The expert's weights are\n  contiguous at `(expert * out + row)`, so the index arithmetic is the place to look.\n- **The same test applies to the gate/up kernel**\n  (`gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel`, 29,080 MB\n  of fetches against a 7.71 GB weight ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "6 later entries by the same worker share this topic prefix"
+        "7 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T141000.000000Z-lhl-gemma4-down-projection-fixed-cost-8e2d4a.md",
@@ -47052,7 +47052,7 @@
         ]
       },
       "id": "worklog/20260928T141000.000000Z-lhl-gemma4-down-projection-fixed-cost-8e2d4a",
-      "evidence_hash": "3c76953d5007"
+      "evidence_hash": "0e0295f23bb0"
     },
     {
       "kind": "worklog",
@@ -47066,14 +47066,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 5,
+        "continuation_entries": 6,
         "open_text": "- **The prefill gap is 26 percent and the down projection is 12.8 percent of the\n  step, so the next unit has to be a term that is large or a term that is shared.**\n  The gate/up kernel and the dense Q8_0 WMMA path are the other two large terms.\n- **When a counter is collected over N iterations, divide by N before comparing it to\n  a single-call quantity.** This is the sixth measurement error on the branch and the\n  second in two iterations; the first was caught by arithmetic before a commit, this\n  one by reading the source afterwards. Both were unit mismatches rather than wrong\n  measurement",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "5 later entries by the same worker share this topic prefix"
+        "6 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T142500.000000Z-lhl-gemma4-down-projection-fixed-cost-correction-1f7b3c.md",
@@ -47091,7 +47091,7 @@
         ]
       },
       "id": "worklog/20260928T142500.000000Z-lhl-gemma4-down-projection-fixed-cost-correction-1f7b3c",
-      "evidence_hash": "41dd4b13d8ba"
+      "evidence_hash": "2ea0f2458326"
     },
     {
       "kind": "worklog",
@@ -47142,14 +47142,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 4,
+        "continuation_entries": 5,
         "open_text": "- **The shape lever on the down projection is closed.** Do not revisit `ROWS_PER_PASS`;\n  32 is optimal at 512 tokens and the only way past it is a prompt long enough to\n  average more rows per expert.\n- **The next question is the shared 49 GB/s, and the activation load path is the\n  candidate.** Each thread reads 704 activation bytes per row from a 32-row, 22.5 KB\n  block working set, which fits L1 -- so the question is whether those reads are\n  vectorised and issued independently or serialised behind the weight unpack. A\n  counter that separates L1 traffic from L2-to-CU traffic would answer ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "4 later entries by the same worker share this topic prefix"
+        "5 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T150000.000000Z-lhl-gemma4-down-rows-per-pass-6d3e8c.md",
@@ -47167,7 +47167,7 @@
         ]
       },
       "id": "worklog/20260928T150000.000000Z-lhl-gemma4-down-rows-per-pass-6d3e8c",
-      "evidence_hash": "227c3ec1ad80"
+      "evidence_hash": "6a254022d456"
     },
     {
       "kind": "worklog",
@@ -47181,14 +47181,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 4,
         "open_text": "- **The Q4_K gate/up kernel is 156.5 ms against the down projection's 103.9, and Q4_K\n  has its own unpacking cost.** Taking its instruction mix the same way is the obvious\n  next measurement, and it is one compile: if its bit-manipulation ratio is similar,\n  the 49 GB/s shared rate has a shared explanation and the two kernels are one problem.\n- **The layout change is a real candidate but not a small one.** A five-bit-contiguous\n  weight layout would remove `expand_hi_bits` from the hot path entirely, which is 30\n  percent of the kernel's instructions and about two per dp4a. It needs a repack ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "3 later entries by the same worker share this topic prefix"
+        "4 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T152000.000000Z-lhl-gemma4-down-instruction-mix-7c4a2e.md",
@@ -47205,7 +47205,7 @@
         ]
       },
       "id": "worklog/20260928T152000.000000Z-lhl-gemma4-down-instruction-mix-7c4a2e",
-      "evidence_hash": "9bb1c1860f2f"
+      "evidence_hash": "3a6b195d03ca"
     },
     {
       "kind": "worklog",
@@ -48172,14 +48172,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 3,
         "open_text": "- **Port the pre-aligned nibble layout to the Q5_1 down projection.** It is the larger fetch\n  term, it has no such route, and the layout is worth about 16 percent where it exists. The\n  cost is a load-time repack, which `docs/REFACTOR.md` already prices for the Q4_K case.\n- **Do not widen the row tile to save weight traffic.** It is measured free; the 4x sweep is\n  the evidence and it should not be re-derived.\n- **Gate any change here on the census terms, not on a leaf rate.** The leaf rate can move\n  without the 320.25 ms moving, which is what the last four iterations showed.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "3 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T231000.000000Z-lhl-gemma4-down-mmq-not-bandwidth-bound-6c2e4a.md",
@@ -48199,7 +48199,7 @@
         ]
       },
       "id": "worklog/20260928T231000.000000Z-lhl-gemma4-down-mmq-not-bandwidth-bound-6c2e4a",
-      "evidence_hash": "367616a26d71"
+      "evidence_hash": "e2ceac51c934"
     },
     {
       "kind": "worklog",
