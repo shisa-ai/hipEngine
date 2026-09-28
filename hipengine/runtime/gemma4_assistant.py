@@ -270,12 +270,28 @@ class Gemma4AssistantHead:
     input embedding is the *backbone's* table, not the head's own, which is the
     output projection.
 
+    ``backbone_output_norm`` is the target's final norm weight, applied to the
+    hidden state the caller seeds with. The head's recurrent input is the target's
+    **post-output-norm** state, not its raw last-block output: llama.cpp's
+    backbone assigns ``res->t_h_nextn`` *after* ``build_norm(cur,
+    model.output_norm, ...)`` and describes it as "the LM-head input feature"
+    handed to the drafter "as the recurrent h input". Passing the raw residual
+    stream instead is a whole-vector substitution, not a rounding difference.
+
+    The recurrent state is owned by the head. :meth:`prime` seeds it from the
+    target's raw hidden state at the last position the target wrote; each
+    :meth:`forward` consumes it and replaces it with the head's own projected
+    state, which is the input the next draft step wants. Only the seed goes
+    through the target's final norm -- later steps must not re-norm a value the
+    head produced.
+
     The head allocates no KV: :meth:`forward` takes the backbone's read views.
     """
 
     weights: Gemma4AssistantDeviceWeights
     backbone: object
     backbone_embedding: object
+    backbone_output_norm: object
     capacity: int
     eps: float
     stream: int = 0
@@ -304,9 +320,13 @@ class Gemma4AssistantHead:
         backbone_width = int(config.n_embd_backbone)
         self._xh = self._alloc((2 * backbone_width) * _BF16_BYTES)
         self._x = self._alloc(backbone_width * _BF16_BYTES)
+        # One buffer is both the recurrent input and the projected output. The
+        # input half is copied to host for the concat before any layer runs, and
+        # the output is written after the last one, so the overlap is safe and
+        # saves the device-to-device copy that core/memory.py cannot do.
+        self._recurrent = self._alloc(backbone_width * _BF16_BYTES)
         self._cur = self._alloc(hidden * _BF16_BYTES)
         self._logits = self._alloc(262144 * _F32_BYTES)
-        self._h_next = self._alloc(backbone_width * _BF16_BYTES)
 
     @property
     def geometry(self) -> tuple[Gemma4AssistantGeometry, ...]:
@@ -351,19 +371,48 @@ class Gemma4AssistantHead:
             stream=self.stream,
         )
 
+    def prime(self, backbone_hidden: DeviceBuffer) -> None:
+        """Seed the recurrent state from the target's raw hidden state.
+
+        ``backbone_hidden`` is the target's last-block hidden state at the last
+        position it wrote -- the row that produced the token about to be drafted.
+        This method applies the target's final norm, which is what makes it the
+        state the head was trained to consume. The backbone's own eps is used
+        rather than the head's, because the norm is the target's.
+        """
+
+        if self._closed:
+            raise RuntimeError("the assistant head is closed")
+        gemma4_rmsnorm_f32w_bf16(
+            backbone_hidden.ptr,
+            int(self.backbone_output_norm.ptr),
+            self._recurrent.ptr,
+            1,
+            int(self.backbone.hidden_size),
+            float(self.backbone.rms_norm_eps),
+            stream=self.stream,
+            runtime=get_hip_runtime(),
+        )
+
     def forward(
         self,
         token_id: int,
         *,
         position: int,
-        backbone_hidden: DeviceBuffer,
         shared_kv: dict,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Run one draft step and return ``(logits, h_next)``.
 
         ``logits`` is F32 of the head's vocabulary width; ``h_next`` is the
-        head's predicted next hidden state in the *backbone's* width, which is
-        what a verify pass compares against the target's own hidden state.
+        head's projected state in the *backbone's* width. The head's recurrent
+        state is advanced in place, so successive calls chain: the state returned
+        by one step is the state consumed by the next.
+
+        ``position`` is the draft query's absolute position, which is one past
+        the last row the target wrote and stays constant across a draft round:
+        llama.cpp's ``common/speculative.cpp`` takes the ``is_mem_shared`` branch
+        for Gemma 4 assistants and adds every draft token at ``dp.n_past``, citing
+        the Hugging Face doc's "the position_ids value are constant".
         """
 
         if self._closed:
@@ -405,7 +454,7 @@ class Gemma4AssistantHead:
             **kwargs,
         )
 
-        # --- concat(x, h_backbone) ----------------------------------------
+        # --- concat(x, recurrent state) ------------------------------------
         # Host-side: 2 * 2816 BF16 is 11 KB, and core/memory.py has no
         # device-to-device copy. The gather above wrote x to the first half of
         # xh's staging buffer, so only the hidden half is copied per step.
@@ -413,7 +462,7 @@ class Gemma4AssistantHead:
         copy_device_to_host(host_array_ptr(host_x), self._x, host_x.nbytes, runtime=runtime)
         host_h = np.empty(backbone_width, dtype=np.uint16)
         copy_device_to_host(
-            host_array_ptr(host_h), backbone_hidden, host_h.nbytes, runtime=runtime
+            host_array_ptr(host_h), self._recurrent, host_h.nbytes, runtime=runtime
         )
         copy_host_array_to_device(
             self._xh, np.concatenate((host_x, host_h)).view(np.uint8)
@@ -607,14 +656,14 @@ class Gemma4AssistantHead:
         self._linear(
             "nextn_post_projection",
             self._cur.ptr,
-            self._h_next.ptr,
+            self._recurrent.ptr,
             1,
             hidden,
             backbone_width,
         )
         host_next = np.empty(backbone_width, dtype=np.uint16)
         copy_device_to_host(
-            host_array_ptr(host_next), self._h_next, host_next.nbytes, runtime=runtime
+            host_array_ptr(host_next), self._recurrent, host_next.nbytes, runtime=runtime
         )
         return logits, _bf16_to_float32(host_next)
 
