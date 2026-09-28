@@ -57,6 +57,7 @@ def main() -> int:
     from hipengine.kernels.hip_gfx1100.moe import group_scatter as gs
     from hipengine.kernels.hip_gfx1100.quant import gguf_q4_k_q8_1_selected_prefill as q4sel
     from hipengine.kernels.hip_gfx1100.quant import gguf_q5_1_mmq_selected_prefill as q5down
+    from hipengine.kernels.hip_gfx1100.quant import gguf_q5_k_q8_1_selected_prefill as q5k
 
     runtime = get_hip_runtime()
     # A mutable holder, not a plain bool: ``timed`` would need ``global`` to
@@ -88,8 +89,17 @@ def main() -> int:
         (
             q5down,
             "gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out",
-            "q5_1 down MMQ kernel",
+            "q5_1 down MMQ (dp4a)",
         ),
+        # Layer 29's experts are Q5_K and that path takes the WMMA iu8 route while
+        # the Q4_K path takes the scalar dp4a one. Timing both at the same
+        # geometry is the direct comparison between the two instruction sets.
+        (
+            q5k,
+            "gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+            "q5_k gate_up WMMA iu8 (layer 29)",
+        ),
+        (q5k, "gguf_q5_k_selected_dual_sparse_exact_repair_bf16", "q5_k exact repair"),
         (q4sel, "gguf_q8_1_mmq_ds4_pack_bf16", "activation pack (gate_up)"),
         (q4sel, "gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3", "activation pack (down)"),
         (gs, "qwen35_moe_mmq32_tile_map", "tile map (gate_up)"),
