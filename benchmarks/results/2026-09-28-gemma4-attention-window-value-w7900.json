@@ -1,0 +1,81 @@
+{
+  "label": "gemma4-attention-window-value",
+  "performance_claim": false,
+  "command": "python3 scripts/gemma4_attention_window_value_probe.py --mode sweep --json benchmarks/results/2026-09-28-gemma4-attention-window-value-w7900.json",
+  "warmup": 3,
+  "reps": 7,
+  "result": {
+    "mode": "sweep",
+    "shape": {
+      "rows": 512,
+      "keys": 4096,
+      "heads": 16,
+      "window": 1024
+    },
+    "blocks": [
+      {
+        "start": 0,
+        "keys": 512,
+        "causal_sliding_ms": 1.8304791301488876,
+        "windowed_sliding_ms": 1.9542714580893517,
+        "causal_global_ms": 2.462640404701233
+      },
+      {
+        "start": 512,
+        "keys": 1024,
+        "causal_sliding_ms": 5.816980265080929,
+        "windowed_sliding_ms": 5.87663147598505,
+        "causal_global_ms": 7.338951341807842
+      },
+      {
+        "start": 1024,
+        "keys": 1536,
+        "causal_sliding_ms": 9.662390686571598,
+        "windowed_sliding_ms": 8.480710908770561,
+        "causal_global_ms": 11.941581033170223
+      },
+      {
+        "start": 1536,
+        "keys": 2048,
+        "causal_sliding_ms": 13.511921279132366,
+        "windowed_sliding_ms": 9.915350005030632,
+        "causal_global_ms": 17.667481675744057
+      },
+      {
+        "start": 2048,
+        "keys": 2560,
+        "causal_sliding_ms": 17.25005079060793,
+        "windowed_sliding_ms": 11.875880882143974,
+        "causal_global_ms": 22.332441061735153
+      },
+      {
+        "start": 2560,
+        "keys": 3072,
+        "causal_sliding_ms": 21.206782199442387,
+        "windowed_sliding_ms": 13.789260759949684,
+        "causal_global_ms": 26.7478721216321
+      },
+      {
+        "start": 3072,
+        "keys": 3584,
+        "causal_sliding_ms": 24.337192066013813,
+        "windowed_sliding_ms": 15.564309433102608,
+        "causal_global_ms": 30.77222127467394
+      },
+      {
+        "start": 3584,
+        "keys": 4096,
+        "causal_sliding_ms": 27.570870704948902,
+        "windowed_sliding_ms": 17.3947811126709,
+        "causal_global_ms": 34.95633229613304
+      }
+    ],
+    "totals": {
+      "causal_sliding": 121.18666712194681,
+      "windowed_sliding": 84.85119603574276,
+      "causal_global": 154.2195212095976
+    },
+    "window_saving_pct": 29.983059976095113,
+    "window_speedup": 1.428225797440711
+  }
+}
