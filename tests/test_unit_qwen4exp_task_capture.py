@@ -80,6 +80,33 @@ def test_completion_without_counter_marks_engagement_unknown():
     assert observation['first_decode'] == {'calls': 0, 'shapes': []}
 
 
+def test_supplemental_task_selection_keeps_canonical_coverage_separate(monkeypatch):
+    from scripts import qwen4exp_q8_repair_tasks as tasks
+    from pathlib import Path
+
+    canonical = [{'id': 'a'}, {'id': 'b'}]
+    extra = Path('long.jsonl')
+    monkeypatch.setattr(tasks, '_load_suites', lambda paths:
+                        canonical + ([{'id': 'long'}] if extra in paths else []))
+    rows, complete, canonical_complete = tasks.task_prompt_selection([extra], ['long'])
+    assert rows == [{'id': 'long'}]
+    assert not complete and not canonical_complete
+    rows, complete, canonical_complete = tasks.task_prompt_selection([extra], ['a', 'b'])
+    assert not complete and canonical_complete
+    rows, complete, canonical_complete = tasks.task_prompt_selection([extra], None)
+    assert complete and canonical_complete and len(rows) == 3
+
+
+def test_task_prompt_budget_is_checked_before_execution():
+    from scripts.qwen4exp_q8_repair_tasks import check_prompt_budget
+
+    check_prompt_budget([1] * 2048, 2048)
+    with pytest.raises(ValueError, match='prompt token budget'):
+        check_prompt_budget([1] * 2049, 2048)
+    with pytest.raises(ValueError, match='positive'):
+        check_prompt_budget([1], 0)
+
+
 def test_task_dispatch_uses_declared_registry_and_restores_on_error():
     from scripts import qwen4exp_q8_repair_tasks as tasks
     from hipengine.kernels.registry import KernelKey, register, resolve

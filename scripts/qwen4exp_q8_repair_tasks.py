@@ -9,6 +9,7 @@ import argparse
 from collections import Counter
 from contextlib import ExitStack
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -54,6 +55,22 @@ def select_task_prompts(prompts, requested):
     if not selected:
         raise ValueError("empty task prompt selection")
     return selected, len(selected) == len(prompts)
+
+
+def task_prompt_selection(extra_paths, requested):
+    canonical = _load_suites(DEFAULT_PROMPTS)
+    prompts = (_load_suites((*DEFAULT_PROMPTS, *extra_paths))
+               if extra_paths else canonical)
+    selected, complete = select_task_prompts(prompts, requested)
+    canonical_complete = {row['id'] for row in canonical} <= {row['id'] for row in selected}
+    return selected, complete, canonical_complete
+
+
+def check_prompt_budget(ids, budget):
+    if budget <= 0:
+        raise ValueError('prompt token budget must be positive')
+    if len(ids) > budget:
+        raise ValueError(f'input has {len(ids)} tokens, exceeds prompt token budget {budget}')
 
 
 def completion(runner, tokenizer, ids, max_tokens, *, counter=None, observation=None):
@@ -106,15 +123,19 @@ def main():
     parser.add_argument("--candidate", choices=tuple(CANDIDATES),
                         default="production_q8_fallback")
     parser.add_argument("--prompt-id", action="append")
+    parser.add_argument("--extra-prompts", type=Path, action="append", default=[],
+                        help="Supplemental JSONL tasks; canonical suites are always loaded")
+    parser.add_argument("--prompt-token-budget", type=int, default=1024,
+                        help="Maximum chat-formatted input tokens; reserved in sequence capacity")
     args = parser.parse_args()
     check_host()
     source = _git_metadata(ROOT)
     if not source["tracked_clean"]:
         parser.error("task capture requires a clean committed tracked tree")
-    if args.max_tokens <= 0:
-        parser.error("max-tokens must be positive")
+    if args.max_tokens <= 0 or args.prompt_token_budget <= 0:
+        parser.error("max-tokens and prompt-token-budget must be positive")
     args.prefill_chunk_size = 1024
-    args.max_sequence_length = args.max_tokens + 1024
+    args.max_sequence_length = args.max_tokens + args.prompt_token_budget
     os.environ["HIPENGINE_HIP_ARCH"] = "gfx1151"
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     from hipengine.core.memory import memory_stats, reset_memory_stats
@@ -126,13 +147,17 @@ def main():
         register_gfx1151_kernels(replace=True)
         register_qwen4_exp_gfx1151_profiles()
         reset_memory_stats()
-        prompts, complete_suite = select_task_prompts(
-            _load_suites(DEFAULT_PROMPTS), args.prompt_id)
+        prompts, complete_suite, canonical_complete = task_prompt_selection(
+            args.extra_prompts, args.prompt_id)
         candidate_name, candidate = task_candidate(args.candidate)
         report = dict(status="running", command=sys.argv, source=source,
                       host=_host_metadata(), model=model_identity(args.model_root),
                       protocol=__doc__, prompts=prompts, arms={}, lifecycle={},
                       candidate=args.candidate, complete_suite=complete_suite,
+                      canonical_suite_complete=canonical_complete,
+                      prompt_token_budget=args.prompt_token_budget,
+                      suite_sha256={str(path.resolve()): hashlib.sha256(path.read_bytes()).hexdigest()
+                                    for path in (*DEFAULT_PROMPTS, *args.extra_prompts)},
                       max_tokens=args.max_tokens, repeats=2,
                       performance_claim=False, task_passed=False)
         for name, profile in (("strict", "strict"), (candidate_name, candidate.base_profile)):
@@ -150,6 +175,7 @@ def main():
                     generator.runner.configure_mmq_prefill_resources()
                 for prompt in prompts:
                     ids = build_chat_prompt(generator.tokenizer, prompt["prompt"])
+                    check_prompt_budget(ids, args.prompt_token_budget)
                     repeats = []
                     observations = []
                     for repeat in range(2):
