@@ -396,6 +396,55 @@ overhead.
 Artifacts: `benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-ladder-and-attention-share.json`,
 `worklog/entries/20260930T020000.000000Z-lhl-gemma4-prefill-gap-is-entirely-attention-7c1e5a.md`.
 
+## Current prefill status — 2026-09-29, gfx1151 (the sliding layers are fixed; 512 tokens matches the reference)
+
+The kernel identified above was replaced for the 25 sliding layers by a BF16
+WMMA flash prefill that removes the per-key reduction instead of rescheduling
+it: a 16x16x16 matrix tile consumes sixteen keys at once, so the cross-lane
+shuffle tree the strict kernel's cost was made of does not exist. It measures
+**13.64x** the strict kernel on the same bench row at 4096 tokens (9.58 ms
+against 130.63 ms, 6279.6 GFLOP/s against 460.4).
+
+The kernel is on by default under the `production` execution profile, which is
+the shipped default, and `HIPENGINE_EXECUTION_PROFILE=strict` restores the old
+path. Measured end to end, three samples per point, both arms:
+
+| prompt | strict | production | gain | gap vs llama.cpp |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 870.0 tok/s | **1012.8** | 1.16x | 1.16x -> **1.00x** |
+| 1024 | 707.2 | 925.1 | 1.31x | 1.50x -> 1.14x |
+| 2048 | 570.0 | 804.6 | 1.41x | 1.88x -> 1.33x |
+| 4096 | 456.1 | **628.2** | 1.38x | 2.29x -> **1.66x** |
+
+At 512 tokens the engine now matches the reference (1012.8 against 1012.98). The
+strict arm reproduces the previously recorded ladder within 2 percent at every
+point. All twelve greedy generations (four lengths, three samples, 128 tokens
+each) are token-identical between the arms.
+
+The isolated 13.64x is 1.38x end to end, and that attenuation is arithmetic
+rather than a shortfall: the sliding layers are about 52 percent of attention
+FLOPs, attention was 61 percent of the step, and the production path is chunked
+at 512 rows against a growing KV rather than the bench's single 4096-row launch.
+`0.683 + 0.317/13.6 = 0.706`, i.e. 1.42x, against 1.38x measured.
+
+**The remaining 1.66x at 4096 tokens is the five head_dim-512 full layers.** The
+step decomposes exactly: 3534 ms of non-attention terms, about 200 ms of sliding
+attention, and **2799 ms of full-layer attention**, against 6520 ms measured.
+Those five layers are 43 percent of the step at 431.6 GFLOP/s, and they are the
+subject of the current unit. They are a different structure rather than a
+parameter change: head_dim 512 is twice the accumulator per column, and 64 KB of
+LDS per workgroup does not hold a K and a V tile of `K_BATCH * 512 * 2` bytes
+each.
+
+What this does **not** have is the `docs/EXECUTION-PROFILES.md` section 6
+teacher-forced numerical gate. Twelve token-identical greedy rows are a screen,
+not that gate. Recorded in `docs/REFACTOR.md` with the profile as the lever.
+
+Artifacts: `benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-attention-wmma-candidate.json`
+(the kernel in isolation), `benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-wmma-attention-production-ladder.json`
+(the end-to-end ladder), `worklog/entries/20260928T193803.559998Z-lhl-gemma4-gemma4-wmma-prefill-candidate-85c4b9.md`,
+`worklog/entries/20260928T200104.021462Z-lhl-gemma4-gemma4-wmma-prefill-attention-on-by-default-6a0640.md`.
+
 ## Current correctness status — 2026-09-26
 
 The key-slice attention implementation failed the corrected teacher-forced
