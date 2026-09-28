@@ -281,6 +281,10 @@ from completeness of the combined selection. Reports hash all suite files.
 and rejects oversized chat-formatted inputs before prefill. The default remains
 1024 input tokens with chunk size 1024; a larger budget is not evidence that a
 candidate ran or that a new shape passed its numerical gate.
+The supplemental [natural long tasks](../benchmarks/prompts/qwen4exp-natural-long-tasks-v1.md)
+cover all four categories with predeclared review criteria. Their measured
+chat-formatted lengths are 438/508/424/512 tokens on the target tokenizer;
+lengths alone establish neither active dispatch nor task quality.
 
 Implementation classes are T0 (reference-preserving), T1 (local arithmetic
 drift), T2 (association/layout drift), and T3 (representation or algorithm
