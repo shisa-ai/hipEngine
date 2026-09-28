@@ -268,6 +268,20 @@ def _plan_one(slot_path: str, source: GGUFTensorInfo) -> Gemma4GGUFWeightSpec:
     )
 
 
+def plan_gguf_weight_spec(slot_path: str, source: GGUFTensorInfo) -> Gemma4GGUFWeightSpec:
+    """Plan one resident spec for a GGUF tensor, raw blocks or dense F32.
+
+    Public because the assistant head's device loader plans its tensors through
+    the same function the backbone's planner uses, and the two must not disagree
+    about how a GGUF block type becomes a resident layout. The block types this
+    accepts are the ones this loader carries, so a head whose linear weights are
+    a type outside that set fails at plan time with the slot named rather than
+    at first launch.
+    """
+
+    return _plan_one(slot_path, source)
+
+
 def plan_gemma4_gguf_resident_specs(
     reader: GGUFReader,
     *,
