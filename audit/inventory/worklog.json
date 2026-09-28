@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11127,
-    "current": 3895,
+    "entries": 11129,
+    "current": 3897,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1223,
+    "rows": 1225,
     "by_rule": {
       "dependency": 40,
       "legacy-next": 109,
-      "status": 1074
+      "status": 1076
     }
   },
   "rows": [
@@ -46055,14 +46055,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 2,
         "open_text": "1. **Re-run the trace and get a CSV.** The invocation used\n   `rocprofv3 --kernel-trace -d <dir> -o t -- .venv/bin/python -c ...` and\n   produced no file; the 08:46 trace that worked used a different form. Fix the\n   invocation first, then read `grid_size_x` for\n   `mmq32_fused_prefill_compact32`.\n2. **If 5632 is real, remove the over-launch.** Either the launcher should not\n   multiply by `num_experts`, or the early-out should be hoisted so the\n   redundant blocks cost a single comparison. Measure the gate/up's 244 us\n   before and after.\n3. **If 44 is real, the fix is the weight stream's par",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T090757.530826Z-lhl-gemma4-gateup-grid-open-88e2cf.md",
@@ -46081,7 +46081,81 @@
         ]
       },
       "id": "worklog/20260928T090757.530826Z-lhl-gemma4-gateup-grid-open-88e2cf",
-      "evidence_hash": "78050d4fd83e"
+      "evidence_hash": "1f0bcf2fc370"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T091201.085835Z-lhl-gemma4-gateup-grid-settled-b8bcd6",
+      "title": "the gate up grid is 44 by 8 and the traces 5632 was grid x times the block size",
+      "location": "worklog/entries/20260928T091201.085835Z-lhl-gemma4-gateup-grid-settled-b8bcd6.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-gateup-grid-settled",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 1,
+        "open_text": "The gate/up's 73 GB/s. **Load more per block per K-iteration.** The column\ntile is fixed at 32 by `grid.x = out_features_total / 32`, but the *rows* are\nnot: a block could take more than one 32-row tile, which would read the same\nweight tile once for more rows and would raise bytes-per-barrier without\nchanging the grid. That is the same move `20260928T084954` proposed for the\ndecode path and it is worth trying here with the padding geometry in hand --\nwith one real row per tile the arithmetic stays free, so the only question is\nwhether the extra rows are free too.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "1 later entry by the same worker share this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T091201.085835Z-lhl-gemma4-gateup-grid-settled-b8bcd6.md",
+        "refs": [],
+        "tokens": [
+          "5632",
+          "block",
+          "gate",
+          "grid",
+          "size",
+          "times",
+          "traces"
+        ]
+      },
+      "id": "worklog/20260928T091201.085835Z-lhl-gemma4-gateup-grid-settled-b8bcd6",
+      "evidence_hash": "b3fcbd0a4f10"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T091229.657019Z-lhl-gemma4-gateup-not-at-ceiling-f82694",
+      "title": "the gate up at 73 GB/s is not at the one row ceiling and the dense path proves it",
+      "location": "worklog/entries/20260928T091229.657019Z-lhl-gemma4-gateup-not-at-ceiling-f82694.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-gateup-not-at-ceiling",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "1. **Establish whether a 1-token decode can reach the per-lane GEMV route**, and\n   what it measures. Read `_gemma4_project_experts_gate_up_*` and the route gate\n   together; the MMQ's 58 launches per decode say the current answer is no, and\n   the reason is worth knowing before writing anything.\n2. If the GEMV route is reachable, measure it on the decode shape and compare\n   against the MMQ's 7.09 ms per token for the same bytes.\n3. Only then consider a packed-layout gate/up, which is the expensive option and\n   needs repacking 128 experts' weights.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T091229.657019Z-lhl-gemma4-gateup-not-at-ceiling-f82694.md",
+        "refs": [],
+        "tokens": [
+          "ceiling",
+          "dense",
+          "gate",
+          "one",
+          "path",
+          "proves",
+          "row"
+        ]
+      },
+      "id": "worklog/20260928T091229.657019Z-lhl-gemma4-gateup-not-at-ceiling-f82694",
+      "evidence_hash": "fdb025da00b9"
     },
     {
       "kind": "worklog",
