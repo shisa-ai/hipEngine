@@ -399,7 +399,7 @@ differs.
 | Engine | Prefill 1024 | Decode at 1024/128 |
 | --- | ---: | ---: |
 | llama.cpp HIP `8cfc315`, same GGUF | **3910** | **68.92** |
-| hipEngine | 2039.1 | 43.82 |
+| hipEngine | 2040.9 | 43.80 |
 
 On the same GPU and with llama.cpp rebuilt at build `8cfc315` for native HIP, a
 separately measured comparator row at `-fa on -b 4096 -ub 1024` reports 4124

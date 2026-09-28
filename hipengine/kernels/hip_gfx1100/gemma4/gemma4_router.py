@@ -84,6 +84,24 @@ _F32_BYTES = 4
 # tokens and 32 keeps clear of both sides of it.
 _TOKEN_TILE_16_MIN_TOKENS = 32
 
+# Thread width for the token tile at this shape, and it is not the 256 the
+# binding defaults to. Grid and tile are fixed, so width only sets the K
+# stride (blockDim.x * 8) and the reduction shape -- but the effect on time is
+# large and non-monotone. Three warmed passes over hidden 2816 / 128 experts /
+# 512 tokens, in milliseconds:
+#
+#   threads   1st      steady   TFLOP/s
+#       64   0.0927   0.0927     3.98
+#      128   0.0938   0.0666     5.43
+#      256   0.0991   0.0943     3.72   <- the binding default
+#      512   0.1546   0.1546     2.39
+#
+# 128 is the peak: every thread still owns a full K slice (all 128 are within
+# the 352 vectors hidden 2816 needs) while each carries 2.75 vector steps
+# instead of 1.4. At 64 the blocks starve, at 256 the threads go thin, at 512
+# a third of them have no K range at all.
+_TOKEN_TILE_16_THREADS = 128
+
 
 @dataclass
 class Gemma4RouterScratch:
@@ -214,31 +232,39 @@ def gemma4_router_topk_bf16(
         root_size=hidden_size**-0.5,
         stream=stream,
     )
-    # Prefill-size token counts take token_tile_16 at threads=256 rather than
+    # Prefill-size token counts take token_tile_16 at 128 threads rather than
     # the generic bf16_f32w entry point, which defaults to threads=512 with a
     # four-token tile. At this shape (hidden 2816) that leaves threads 352..511
     # with no K range at all, so 31% of every block idles behind a nine-round
     # barrier tree for 64 FLOPs of work per useful thread. Measured on the
-    # production shape: 0.2309 ms -> 0.0982 ms per launch (1.60 -> 3.76
-    # TFLOP/s), 2.35x, and both land on the same 2.861e-06 max drift against a
-    # float64 reference. Smaller token counts keep the untiled path -- see
-    # ``_TOKEN_TILE_16_MIN_TOKENS``.
-    # Outputs are not bit-identical between the two -- the tiling changes the
-    # reduction -- so the teacher-forced gate gates this.
-    logits_variant = (
-        qwen35_router_logits_bf16_f32w_token_tile_16
-        if tokens >= _TOKEN_TILE_16_MIN_TOKENS
-        else qwen35_router_logits_bf16_f32w
-    )
-    logits_variant(
-        prescaled.ptr,
-        proj_ptr,
-        logits.ptr,
-        tokens,
-        hidden_size,
-        num_experts,
-        stream=stream,
-    )
+    # production shape: 0.2309 ms -> 0.0666 ms per launch (1.60 -> 5.43
+    # TFLOP/s), 3.5x, and both land within 4e-06 of a float64 reference.
+    # Smaller token counts keep the untiled path -- see
+    # ``_TOKEN_TILE_16_MIN_TOKENS`` -- and the width is not the binding's
+    # default of 256 -- see ``_TOKEN_TILE_16_THREADS``.
+    # Neither choice is bit-identical to what it replaces: the tiling and the
+    # width both change the reduction, so the teacher-forced gate gates this.
+    if tokens >= _TOKEN_TILE_16_MIN_TOKENS:
+        qwen35_router_logits_bf16_f32w_token_tile_16(
+            prescaled.ptr,
+            proj_ptr,
+            logits.ptr,
+            tokens,
+            hidden_size,
+            num_experts,
+            threads=_TOKEN_TILE_16_THREADS,
+            stream=stream,
+        )
+    else:
+        qwen35_router_logits_bf16_f32w(
+            prescaled.ptr,
+            proj_ptr,
+            logits.ptr,
+            tokens,
+            hidden_size,
+            num_experts,
+            stream=stream,
+        )
     # logits_stride is num_experts: Gemma 4 has no shared-expert gate column.
     qwen35_router_select(
         logits.ptr,
