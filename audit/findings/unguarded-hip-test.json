@@ -1514,6 +1514,35 @@
     },
     {
       "kind": "unguarded-hip-test",
+      "key": "tests/test_unit_rocprof_phase_split.py",
+      "title": "test_unit_rocprof_phase_split.py touches the ROCm runtime with no availability guard",
+      "location": "tests/test_unit_rocprof_phase_split.py:8",
+      "evidence": {
+        "fix": "Add an explicit guard \u2014 `ctypes.CDLL(\"libamdhip64.so\")` in a try/except with `pytest.skip` \u2014 so a no-ROCm runner skips instead of failing release validation.",
+        "why": "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      },
+      "signals": [
+        "AGENTS.md 'During Work' requires a HIP-availability guard on GPU tests"
+      ],
+      "hints": {
+        "anchor": "tests/test_unit_rocprof_phase_split.py",
+        "refs": [
+          "tests/test_unit_rocprof_phase_split.py"
+        ],
+        "tokens": [
+          "availability",
+          "guard",
+          "rocm",
+          "runtime",
+          "test_unit_rocprof_phase_split",
+          "touches"
+        ]
+      },
+      "id": "unguarded-hip-test/tests/test_unit_rocprof_phase_split.py",
+      "evidence_hash": "16d9d016890a"
+    },
+    {
+      "kind": "unguarded-hip-test",
       "key": "tests/test_unit_scripts_gguf_mtp_verifier_rocprof.py",
       "title": "test_unit_scripts_gguf_mtp_verifier_rocprof.py touches the ROCm runtime with no availability guard",
       "location": "tests/test_unit_scripts_gguf_mtp_verifier_rocprof.py:210",
