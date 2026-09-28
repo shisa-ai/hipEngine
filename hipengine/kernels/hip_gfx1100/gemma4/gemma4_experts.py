@@ -259,17 +259,9 @@ def gemma4_experts_forward_bf16(
     )
 
     # 2. Pull the hidden rows into compact order so each expert's rows are a
-    #    contiguous slice of `packed_hidden`.
-    qwen35_moe_gather_packed_hidden_lowp(
-        hidden_ptr,
-        sorted_lanes.ptr,
-        packed_hidden.ptr,
-        lanes * hidden_size,
-        tokens,
-        top_k,
-        hidden_size,
-        **kwargs,
-    )
+    #    contiguous slice of `packed_hidden`. This happens after the route flags
+    #    below rather than here, because the MMQ gate_up gathers straight out of
+    #    the source rows and leaves `packed_hidden` untouched.
 
     # 3. One gate_up projection for every compact row, then GeGLU over the whole
     #    compact buffer in a single launch. The WMMA owners need a padded tile
@@ -303,9 +295,27 @@ def gemma4_experts_forward_bf16(
         wmma_rows = _build_wmma_tile_plan(
             scratch, expert_start.ptr, lanes, stream=stream, runtime=runtime
         )
+    # 2'. Gather the hidden rows into compact order, unless the MMQ gate_up
+    #     below is taking the route -- it gathers and packs in one kernel, and
+    #     on that route `packed_hidden` has no other reader, so staging it here
+    #     would write and immediately re-read `lanes * hidden_size * 2` bytes.
+    if not (use_mmq and mmq_rows) or not _mmq_dual_route(
+        gate_up_proj, lanes, hidden_size, intermediate, num_experts
+    ):
+        qwen35_moe_gather_packed_hidden_lowp(
+            hidden_ptr,
+            sorted_lanes.ptr,
+            packed_hidden.ptr,
+            lanes * hidden_size,
+            tokens,
+            top_k,
+            hidden_size,
+            **kwargs,
+        )
     if use_mmq and mmq_rows and gemma4_project_experts_mmq_dual(
         gate_up_proj,
-        packed_hidden.ptr,
+        hidden_ptr,
+        sorted_lanes.ptr,
         expert_start.ptr,
         scratch,
         gate_up_out.ptr,
@@ -315,6 +325,8 @@ def gemma4_experts_forward_bf16(
         intermediate,
         fused,
         mmq_rows,
+        tokens=tokens,
+        top_k=top_k,
         stream=stream,
         runtime=runtime,
     ):
@@ -910,9 +922,35 @@ def _build_mmq_tile_plan(
     return lanes + 31 * scratch.num_experts
 
 
+def _mmq_dual_route(
+    weight: Gemma4Projection | int,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+) -> bool:
+    """True when :func:`gemma4_project_experts_mmq_dual` will take the route.
+
+    Pure: the same guards the projection itself returns ``False`` on, lifted so
+    the caller can decide *before* the gather whether ``packed_hidden`` will have
+    a reader at all. Keeping them in one place is what makes that decision safe.
+    """
+
+    if isinstance(weight, int):
+        return False
+    if weight.spec.quant_key != _MMQ_DUAL_QUANT_KEY:
+        return False
+    if in_features % _DS4_BLOCK_VALUES or out_features % 32:
+        return False
+    if compact_rows < _GROUPED_PREFILL_MIN_LANES_PER_EXPERT * num_experts:
+        return False
+    return True
+
+
 def gemma4_project_experts_mmq_dual(
     weight: Gemma4Projection,
-    x_ptr: int,
+    hidden_ptr: int,
+    sorted_lanes_ptr: int,
     expert_start_ptr: int,
     scratch: Gemma4ExpertScratch,
     out_ptr: int,
@@ -923,6 +961,8 @@ def gemma4_project_experts_mmq_dual(
     fused_width: int,
     mmq_total_rows: int,
     *,
+    tokens: int,
+    top_k: int,
     stream: int = 0,
     library: object | None = None,
     runtime: object | None = None,
@@ -945,33 +985,40 @@ def gemma4_project_experts_mmq_dual(
     its expert stride with ``up`` addressed one half into the same allocation,
     which is how the fused layout is read without a second resident copy.
 
+    Takes ``hidden_ptr`` (the un-gathered ``(tokens, hidden_size)`` rows) plus
+    ``sorted_lanes``, and gathers them to DS4 ``block_q8_1_mmq`` in a single
+    kernel rather than staging a BF16 ``packed_hidden`` row in between: on this
+    route that buffer has no other reader, so folding the two drops a write and
+    a read of ``compact_rows * in_features * 2`` bytes per call. The result is
+    byte-identical to gathering first, which
+    ``test_q8_1_mmq_gather_ds4_pack_is_byte_exact_to_gather_then_pack`` pins.
+
     Returns ``False`` when the weight is not a Q4_K expert stack or the shape is
     not one the leaf serves, which leaves the grouped and selected owners to
     handle it.
     """
 
-    if isinstance(weight, int):
-        return False
-    if weight.spec.quant_key != _MMQ_DUAL_QUANT_KEY:
-        return False
-    if in_features % _DS4_BLOCK_VALUES or out_features % 32:
-        return False
-    if compact_rows < _GROUPED_PREFILL_MIN_LANES_PER_EXPERT * num_experts:
+    if not _mmq_dual_route(
+        weight, compact_rows, in_features, out_features, num_experts
+    ):
         return False
 
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
         build_gguf_q4_k_q8_1_selected_prefill,
         gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
-        gguf_q8_1_mmq_ds4_pack_bf16,
+        gguf_q8_1_mmq_gather_ds4_pack_bf16,
     )
 
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     ds4 = scratch.buffer("ds4_q8")
-    gguf_q8_1_mmq_ds4_pack_bf16(
-        x_ptr,
+    gguf_q8_1_mmq_gather_ds4_pack_bf16(
+        hidden_ptr,
+        sorted_lanes_ptr,
         ds4.ptr,
         compact_rows,
         in_features,
+        tokens,
+        top_k,
         stream=stream,
         library=library,
         runtime=runtime,

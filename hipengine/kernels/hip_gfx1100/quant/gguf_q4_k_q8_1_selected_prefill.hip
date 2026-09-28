@@ -590,6 +590,84 @@ __global__ void gguf_q8_1_mmq_ds4_pack_bf16_kernel(
   }
 }
 
+// Fused gather + DS4 Q8_1 pack.
+//
+// On the Gemma4 MMQ route `gemma4_experts_forward_bf16` runs
+// qwen35_moe_gather_packed_hidden_lowp and then this pack's unfused sibling
+// with nothing reading `packed_hidden` in between -- the BF16 staging row is
+// written once and read once for nothing, 45.9 MB per (block, layer) at the
+// real artifact's shape. This reads the source row through the same lane index
+// the gather used and quantizes in place.
+//
+// The gather is a bit copy of uint16, so every float here is the one the
+// unfused pack saw and the output stays byte-identical; the bounds rule is
+// copied verbatim from qwen35_moe_gather_packed_hidden_kernel, where a lane
+// outside range stages uint16 zero (+0.0f).
+template <int residual_passes>
+__global__ void gguf_q8_1_mmq_gather_ds4_pack_bf16_kernel(
+    const uint16_t* __restrict__ hidden_states,
+    const int64_t* __restrict__ sorted_lanes,
+    block_q8_1_mmq_ds4* __restrict__ out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t tokens,
+    int64_t top_k) {
+  const int64_t q8_block = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int ds4_idx = tid >> 5;
+  const int lane = tid & 31;
+  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  if (row >= rows || q8_block >= blocks_per_row) return;
+
+  // Gather half. `gather_lane` keeps the pack's `lane` (tid & 31) unshadowed.
+  uint16_t bits = 0;
+  const int64_t gather_lane = sorted_lanes[row];
+  if (gather_lane >= 0) {
+    const int64_t token_idx = gather_lane / top_k;
+    if (token_idx >= 0 && token_idx < tokens) {
+      bits = hidden_states
+          [token_idx * hidden + q8_block * Q8_1_MMQ_BLOCK + tid];
+    }
+  }
+  float residual = bf16_bits_to_float(bits);
+
+  __shared__ float scale_shared[4];
+  __shared__ float sum_shared[4];
+#pragma unroll
+  for (int pass = 0; pass < residual_passes; ++pass) {
+    const float sum = wave32_sum(residual);
+    const float max_abs = wave32_max(fabsf(residual));
+    if (lane == 0) {
+      scale_shared[ds4_idx] = max_abs / 127.0f;
+      sum_shared[ds4_idx] = sum;
+    }
+    __syncthreads();
+
+    const float scale = scale_shared[ds4_idx];
+    int q = 0;
+    if (scale > 0.0f) {
+      const float qf =
+          fminf(127.0f, fmaxf(-127.0f, rintf(residual / scale)));
+      q = static_cast<int>(qf);
+    }
+    const int64_t plane_blocks = rows * blocks_per_row;
+    block_q8_1_mmq_ds4* __restrict__ out_block =
+        out + static_cast<int64_t>(pass) * plane_blocks +
+        row * blocks_per_row + q8_block;
+    out_block->qs[tid] = static_cast<int8_t>(q);
+    const uint16_t scale_bits = float_to_fp16_bits(scale);
+    if (lane == 0) {
+      out_block->ds4[2 * ds4_idx + 0] = scale_bits;
+      out_block->ds4[2 * ds4_idx + 1] =
+          float_to_fp16_bits(sum_shared[ds4_idx]);
+    }
+    residual = fmaf(
+        -static_cast<float>(q), fp16_bits_to_float(scale_bits), residual);
+    __syncthreads();
+  }
+}
+
 template <
     int residual_passes,
     bool Q6_HALF_SUMS = false>
@@ -800,6 +878,19 @@ bool valid_q8_1_mmq_ds4_pack(
     int64_t hidden) {
   return x != nullptr && out != nullptr && rows > 0 && hidden > 0 &&
       (hidden % Q8_1_MMQ_BLOCK) == 0;
+}
+
+bool valid_q8_1_mmq_gather_ds4_pack(
+    const void* hidden_states,
+    const void* sorted_lanes,
+    const void* out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t tokens,
+    int64_t top_k) {
+  return hidden_states != nullptr && sorted_lanes != nullptr && out != nullptr &&
+      rows > 0 && hidden > 0 && (hidden % Q8_1_MMQ_BLOCK) == 0 &&
+      tokens > 0 && top_k > 0;
 }
 
 bool valid_q8_1_selected_dual_common(
@@ -2563,6 +2654,37 @@ int launch_q8_1_mmq_ds4_pack_bf16(
       out,
       rows,
       hidden);
+  return static_cast<int>(hipGetLastError());
+}
+
+template <int residual_passes>
+int launch_q8_1_mmq_gather_ds4_pack_bf16(
+    const uint16_t* hidden_states,
+    const int64_t* sorted_lanes,
+    block_q8_1_mmq_ds4* out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t tokens,
+    int64_t top_k,
+    hipStream_t stream) {
+  if (!valid_q8_1_mmq_gather_ds4_pack(
+          hidden_states, sorted_lanes, out, rows, hidden, tokens, top_k)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  hipLaunchKernelGGL(
+      (gguf_q8_1_mmq_gather_ds4_pack_bf16_kernel<residual_passes>),
+      dim3(static_cast<unsigned int>(blocks_per_row), static_cast<unsigned int>(rows)),
+      dim3(128),
+      0,
+      stream,
+      hidden_states,
+      sorted_lanes,
+      out,
+      rows,
+      hidden,
+      tokens,
+      top_k);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -5068,6 +5190,26 @@ extern "C" int hipengine_gguf_q8_1_mmq_ds4_pack_bf16(
       reinterpret_cast<block_q8_1_mmq_ds4*>(out),
       rows,
       hidden,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q8_1_mmq_gather_ds4_pack_bf16(
+    const uint16_t* hidden_states,
+    const int64_t* sorted_lanes,
+    void* out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t tokens,
+    int64_t top_k,
+    hipStream_t stream) {
+  return launch_q8_1_mmq_gather_ds4_pack_bf16<1>(
+      hidden_states,
+      sorted_lanes,
+      reinterpret_cast<block_q8_1_mmq_ds4*>(out),
+      rows,
+      hidden,
+      tokens,
+      top_k,
       stream);
 }
 
