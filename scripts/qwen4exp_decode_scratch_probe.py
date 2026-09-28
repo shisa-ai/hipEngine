@@ -26,6 +26,8 @@ from hipengine.core.memory import free
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from scripts.qwen4exp_moe_gemv_decode_screen import _bf16_bits
 from tests.test_gpu_qwen4_exp_pf3_moe_schedules import _upload, _alloc, _download
+from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_dense_wide as dw
+from tests.test_gpu_gguf_q8_0_dense_wide import make_q8_0_weight, _dequantize_weight, _f16_reference
 from tests.test_gpu_qwen4exp_gdn_register import Fixture
 
 
@@ -43,6 +45,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model-root', type=Path, required=True)
     parser.add_argument('--arm', choices=('sham', 'scratch'), required=True)
+    parser.add_argument('--trigger', choices=('gdn', 'dense-wide'), default='gdn')
     parser.add_argument('--repeats', type=int, default=31)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
@@ -71,6 +74,17 @@ def main():
         routing /= routing.sum()
         rates = _upload(routing, rt, allocations)
         output = _alloc(2560, np.uint16, rt, allocations)
+        dense_library = None
+        dense_check = None
+        if args.trigger == 'dense-wide':
+            # Prepare but never launch scratch before the baseline window.
+            dense_library = dw.build_gguf_q8_0_dense_wide(load=True)
+            dense_x = rng.normal(0, .1, (257, 256)).astype(np.float32)
+            dense_w = make_q8_0_weight(256, 256)
+            dense_ref = _f16_reference(dense_x, _dequantize_weight(dense_w, 256))
+            dense_dx = _upload(dense_x, rt, allocations)
+            dense_dw = _upload(dense_w, rt, allocations)
+            dense_out = _alloc(257 * 256, np.float32, rt, allocations)
 
         def launch_victim():
             rt.event_record(start)
@@ -86,7 +100,12 @@ def main():
         clocks['before'] = snapshot()
         before = [launch_victim() for _ in range(args.repeats)]
         clocks['pre-trigger'] = snapshot()
-        if args.arm == 'scratch':
+        if args.arm == 'scratch' and args.trigger == 'dense-wide':
+            dw.gguf_q8_0_dense_wide256_f32_f32_out(
+                dense_dx.ptr, dense_dw.ptr, dense_out.ptr,
+                257, 256, 256, library=dense_library, runtime=rt)
+            rt.device_synchronize()
+        elif args.arm == 'scratch':
             gdn.qwen4_exp_gdn_wave_norm_prefill_f32(
                 *[p.ptr for p in f.inputs], f.states[1].ptr, f.outputs[1].ptr,
                 64, 16, 48, 128, 128, library=f.library, runtime=rt)
@@ -99,7 +118,14 @@ def main():
         actual = _download(output, (2560,), np.uint16, rt)
         np.testing.assert_array_equal(actual, expected)
         trigger_exact = None
-        if args.arm == 'scratch':
+        if args.arm == 'scratch' and args.trigger == 'dense-wide':
+            dense_actual = _download(dense_out, (257, 256), np.float32, rt)
+            error = float(np.max(np.abs(dense_actual - dense_ref)))
+            scale = float(np.max(np.abs(dense_ref)))
+            assert np.isfinite(error) and error <= 1e-3 * scale
+            dense_check = {'f16_reference_pass': True, 'max_abs_error': error,
+                           'reference_scale': scale, 'shape': [257, 256, 256]}
+        elif args.arm == 'scratch':
             # Reference launch only AFTER both windows: never poisons baseline.
             f.run(False)
             for got, ref in zip(f.result(True), f.result(False)):
@@ -111,14 +137,16 @@ def main():
             'tensor': name, 'quant': info.ggml_type_name,
             'tensor_sha256': hashlib.sha256(raw).hexdigest(),
             'geometry': {'experts': 512, 'top_k': 10, 'in': 640, 'out': 2560},
-            'victim': down.__name__, 'trigger': 'wave_norm_gdn' if args.arm == 'scratch' else 'victim',
+            'victim': down.__name__,
+            'trigger': args.trigger if args.arm == 'scratch' else 'victim',
+            'requested_trigger': args.trigger, 'dense_reference_check': dense_check,
             'before_ms': before, 'after_ms': after,
             'after_over_before': statistics.median(after) / statistics.median(before),
             'victim_repeat_exact': True, 'trigger_parent_exact': trigger_exact,
             'output_sha256': hashlib.sha256(actual.tobytes()).hexdigest(),
             'clocks': clocks,
             'libraries': {lib._name: hashlib.sha256(Path(lib._name).read_bytes()).hexdigest()
-                          for lib in (library, f.library)},
+                          for lib in (library, f.library, dense_library) if lib is not None},
             'host': {'machine_id': Path('/etc/machine-id').read_text().strip(), 'uname': list(os.uname())},
             'performance_claim': False,
             'limits': ['single real-weight Q5_1 layer, synthetic activations/routes',
