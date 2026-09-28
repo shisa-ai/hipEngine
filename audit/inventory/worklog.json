@@ -2,8 +2,8 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11146,
-    "current": 3914,
+    "entries": 11148,
+    "current": 3916,
     "legacy": 7232,
     "unparsable": 0,
     "rows": 1235,
@@ -44673,14 +44673,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 5,
+        "continuation_entries": 6,
         "open_text": "Build the per-expert view and compare each route's gate/up and down products\nagainst `launch_gguf_linear` for one expert and one lane. That names the wrong\nroute in one measurement. If the view turns out to be awkward to construct, the\nfallback is a numpy reference: the blocks are quantized, but one expert's row is\nsmall enough to dequantize by hand.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "5 later entries by the same worker share this topic prefix"
+        "6 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T055459.268456Z-lhl-gemma4-expert-route-oracle-needed-daf68f.md",
@@ -44697,7 +44697,7 @@
         ]
       },
       "id": "worklog/20260928T055459.268456Z-lhl-gemma4-expert-route-oracle-needed-daf68f",
-      "evidence_hash": "4ae40b381022"
+      "evidence_hash": "3f89cad62021"
     },
     {
       "kind": "worklog",
@@ -45314,14 +45314,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 4,
+        "continuation_entries": 5,
         "open_text": "1. Extend the probe to the MMQ entry points (`gemma4_project_experts_gate_up_mmq`\n   and `_down_mmq`), since those are the decode default and their isolated\n   ceiling is unmeasured.\n2. Treat the expert GEMV as a kernel problem. The access pattern is the first\n   suspect: `selected_pack8` beats `selected` by 1.25x on identical shapes, and\n   the per-row read of 8 scattered expert matrices has little to coalesce across.\n3. Do not spend effort on launch-count reduction for the expert family. The\n   isolated result excludes starvation as the cause.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "4 later entries by the same worker share this topic prefix"
+        "5 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T075802.559471Z-lhl-gemma4-expert-gemv-bandwidth-c4d1b8.md",
@@ -45339,7 +45339,7 @@
         ]
       },
       "id": "worklog/20260928T075802.559471Z-lhl-gemma4-expert-gemv-bandwidth-c4d1b8",
-      "evidence_hash": "173ae141729d"
+      "evidence_hash": "ebfeabb78cf2"
     },
     {
       "kind": "worklog",
@@ -45392,14 +45392,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 4,
         "open_text": "1. **The down kernel's 2x.** It is 18.1 percent of the step and the only measured\n   route running at half a sibling's rate on the same rows. The structural\n   difference is rank-1-per-thread with no LDS against a tiled kernel with LDS;\n   the next step is to separate the tile shape from the staging, most cheaply by\n   giving the down a 32-row tile in the same style as the gate_up.\n2. **Whether the gate_up's own ceiling is the tile or the dequant.** It is flat in\n   rows from 32 to 64, so it is not row-bound, and 54.4 GB/s is under half of what\n   the dense family reaches; the `mmq32` body deq",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "3 later entries by the same worker share this topic prefix"
+        "4 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T081118.644190Z-lhl-gemma4-expert-down-mmq-outlier-31796e.md",
@@ -45420,7 +45420,7 @@
         ]
       },
       "id": "worklog/20260928T081118.644190Z-lhl-gemma4-expert-down-mmq-outlier-31796e",
-      "evidence_hash": "1d8719310d56"
+      "evidence_hash": "6dd1ae4569bc"
     },
     {
       "kind": "worklog",
@@ -45434,14 +45434,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 3,
         "open_text": "1. Measure `pack8_selected` as a decode route against the MMQ default, using the\n   same single-variable A/B that settled the grouped question in `ba97b2cd6`.\n   That is the decision this entry sets up, and it is the objective's kind of\n   measurement.\n2. If it wins, the work is in the planner: nothing on the runtime path builds the\n   packed expert layout today.\n3. The device-to-host read in the MMQ gate/up path is worth its own look\n   regardless of which route wins, since it is a synchronisation in a\n   latency-sensitive step.",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "3 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T081147.903518Z-lhl-gemma4-expert-gemv-bandwidth-e5a2c7.md",
@@ -45460,7 +45460,7 @@
         ]
       },
       "id": "worklog/20260928T081147.903518Z-lhl-gemma4-expert-gemv-bandwidth-e5a2c7",
-      "evidence_hash": "ac52e16eed90"
+      "evidence_hash": "2c988e900017"
     },
     {
       "kind": "worklog",
@@ -45556,14 +45556,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "1. This is cleanup debt of exactly the kind `docs/REFACTOR.md` tracks: a\n   documented dispatch order with no caller. Either wire `rows` in as the decode\n   route's entry point, or delete it and let the route-specific calls stand as the\n   real contract. Deciding which is the prerequisite for the A/B, because\n   \"measure pack8 against MMQ\" means different work in each case.\n2. Then run `pack8_selected` as a decode route against the MMQ default with the\n   single-variable A/B that settled the grouped question in `ba97b2cd6`.\n3. The `copy_device_to_host` in the MMQ gate/up path remains worth its",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T082433.771204Z-lhl-gemma4-expert-route-dispatch-f6b9d3.md",
@@ -45582,7 +45582,7 @@
         ]
       },
       "id": "worklog/20260928T082433.771204Z-lhl-gemma4-expert-route-dispatch-f6b9d3",
-      "evidence_hash": "714b855fdbfc"
+      "evidence_hash": "7c82a0d5caf8"
     },
     {
       "kind": "worklog",
@@ -45681,14 +45681,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "1. The pack8 question is closed. Do not re-open it without new evidence that the\n   route-level regression has changed; the recorded artifact is the reference.\n2. The expert-family lever remains what `22d80e1c7` found: the kernels reach\n   17-21% of peak in isolation, so the 5.9x headroom on gate/up is the target, and\n   the access pattern is the first suspect. That is a kernel problem and it is not\n   solved by choosing a different weight layout.\n3. `20260928T082433`'s suggestion to decide the `rows` dispatcher's fate first is\n   still right, but as cleanup rather than as a prerequisite for a",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T083619.552837Z-lhl-gemma4-expert-route-dispatch-a7c4e1.md",
@@ -45707,7 +45707,7 @@
         ]
       },
       "id": "worklog/20260928T083619.552837Z-lhl-gemma4-expert-route-dispatch-a7c4e1",
-      "evidence_hash": "58ac215a6ad4"
+      "evidence_hash": "a128dfca1a4a"
     },
     {
       "kind": "worklog",
