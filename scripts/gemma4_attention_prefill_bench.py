@@ -29,6 +29,16 @@ def main() -> int:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--tokens", type=int, default=2048)
+    ap.add_argument(
+        "--keys",
+        type=int,
+        default=None,
+        help="KV length, independent of the query token count. Defaults to --tokens, "
+             "which is the dense-prefill geometry. Setting it separately is what "
+             "separates a cost that tracks the number of key iterations from one "
+             "that tracks the grid, since --tokens scales both and --keys scales "
+             "only the loop.",
+    )
     ap.add_argument("--iters", type=int, default=5)
     ap.add_argument("--warmup", type=int, default=2)
     ap.add_argument(
@@ -75,11 +85,12 @@ def main() -> int:
     total_ms = 0.0
     total_layers = 0
     for label, n_head, n_kv, head_dim, window, layers, counts in cases:
+        key_count = tokens if args.keys is None else args.keys
         rng = np.random.default_rng(20260930)
         q = rng.standard_normal((tokens, n_head, head_dim)).astype(np.float32)
-        k = rng.standard_normal((tokens, n_kv, head_dim)).astype(np.float32)
-        v = rng.standard_normal((tokens, n_kv, head_dim)).astype(np.float32)
-        mask = np.ones((tokens, tokens), dtype=np.uint8)
+        k = rng.standard_normal((key_count, n_kv, head_dim)).astype(np.float32)
+        v = rng.standard_normal((key_count, n_kv, head_dim)).astype(np.float32)
+        mask = np.ones((tokens, key_count), dtype=np.uint8)
         for t in range(tokens):
             lo = 0 if window <= 0 else max(0, t - window + 1)
             mask[t, :lo] = 0
@@ -118,7 +129,7 @@ def main() -> int:
                     num_kv_heads=n_kv,
                     head_dim=head_dim,
                     scale=1.0,
-                    keys=tokens,
+                    keys=key_count,
                     window=window,
                     row_offset=0,
                 )
@@ -138,11 +149,15 @@ def main() -> int:
             for buf in bufs:
                 free(buf)
 
-        # Causal pairs, windowed where a window applies.
+        # Causal pairs, windowed where a window applies. The kept range is
+        # [lo, min(t + 1, key_count)) -- the same range the mask above encodes --
+        # so it must use key_count and not tokens. Using tokens here silently
+        # reported the flops for a different geometry whenever --keys differed.
         pairs = 0
         for t in range(tokens):
             lo = 0 if window <= 0 else max(0, t - window + 1)
-            pairs += t + 1 - lo
+            hi = min(t + 1, key_count)
+            pairs += max(0, hi - lo)
         flops = 4.0 * pairs * n_head * head_dim
         gflops = flops / (ms / 1000.0) / 1e9
         if counts:
