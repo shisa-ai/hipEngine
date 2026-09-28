@@ -124,28 +124,33 @@
    "calls": 232,
    "read_mb_per_call": 277.45,
    "write_mb_per_call": 45.52,
-   "counter_ms_per_call": 4.77,
    "census_ms_per_call": 4.997,
-   "gbps": 58.2,
    "census_leaf_ms_total": 1159.3,
    "prefill_wall_s": 4.353,
-   "prefill_tps": 941.1
+   "prefill_tps": 941.1,
+   "counter_ms_per_call_mean": 4.842,
+   "counter_ms_per_call_median": 4.77,
+   "gbps_mean_duration": 57.3,
+   "gbps_median_duration": 58.2
   },
   "run2": {
    "calls": 232,
    "read_mb_per_call": 277.18,
    "write_mb_per_call": 45.52,
-   "counter_ms_per_call": 4.721,
    "census_ms_per_call": 4.951,
-   "gbps": 58.7,
    "census_leaf_ms_total": 1148.55,
    "prefill_wall_s": 4.322,
-   "prefill_tps": 947.7
+   "prefill_tps": 947.7,
+   "counter_ms_per_call_mean": 4.792,
+   "counter_ms_per_call_median": 4.721,
+   "gbps_mean_duration": 57.8,
+   "gbps_median_duration": 58.7
   },
   "repeatability_pct": 0.1,
   "row_tiles_per_call_mean": 300.1,
   "row_tiles_uniform_32_would_be": 256,
-  "share_of_step_pct": 26.6
+  "share_of_step_pct": 26.6,
+  "duration_statistic_note": "Two central statistics are carried because they answer different questions. The headline rate uses the MEAN duration, which is the aggregate rate over the run (total bytes / total time). The median is carried beside it and is what the standalone sweep's proportionality argument uses, because one dispatch in the rows/expert-32 run landed 40 percent high. They differ by 1.5 percent on run 1 (4.842 vs 4.77 ms) and 1.5 percent on run 2 (4.792 vs 4.721 ms), so no conclusion turns on the choice."
  },
  "irreducible_bytes": {
   "tile_bytes_once": 293404672,
