@@ -61,6 +61,16 @@ def main() -> int:
              "The gap between the two modes is the load share of the cost, and it "
              "is what separates a traffic-bound kernel from a latency-bound one.",
     )
+    ap.add_argument(
+        "--compare-wmma",
+        action="store_true",
+        help="Additionally time the BF16 WMMA prefill candidate "
+             "(gemma4_attention_prefill_wmma) on the same device buffers as the "
+             "strict row above it, and print its rate and the ratio. Additive: "
+             "the strict rows are unchanged and the candidate is not selected by "
+             "anything in the production path. Geometry it does not implement "
+             "(the head_dim-512 full layers, f32 storage) reports n/a.",
+    )
     args = ap.parse_args()
 
     import numpy as np
@@ -72,6 +82,21 @@ def main() -> int:
     )
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as ga
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention_prefill_wmma as gw
+
+    def time_launch(launch, iters: int, warmup: int) -> float:
+        """Median wall time of one launch, device-synchronized, in milliseconds."""
+
+        for _ in range(warmup):
+            launch()
+        runtime.device_synchronize()
+        samples = []
+        for _ in range(iters):
+            started = time.perf_counter()
+            launch()
+            runtime.device_synchronize()
+            samples.append(time.perf_counter() - started)
+        return statistics.median(samples) * 1000.0
 
     runtime = get_hip_runtime()
     tokens = args.tokens
@@ -131,6 +156,7 @@ def main() -> int:
             malloc(mask.nbytes),
             malloc(out.nbytes),
         ]
+        wmma_ms = None
         try:
             for buf, arr in zip(bufs, (qb, kb, vb, mask, out)):
                 copy_host_array_to_device(buf, arr)
@@ -152,17 +178,33 @@ def main() -> int:
                     row_offset=0,
                 )
 
-            for _ in range(args.warmup):
-                once()
-            runtime.device_synchronize()
+            ms = time_launch(once, args.iters, args.warmup)
 
-            times = []
-            for _ in range(args.iters):
-                started = time.perf_counter()
-                once()
-                runtime.device_synchronize()
-                times.append(time.perf_counter() - started)
-            ms = statistics.median(times) * 1000.0
+            # Same buffers, same shapes, same mask: the candidate's row is the
+            # strict row's row with one kernel swapped, so the two rates are
+            # directly comparable. The strict timing above is already complete,
+            # so overwriting `out` here cannot change it.
+            if args.compare_wmma and args.dtype == "bf16" and gw.gemma4_attention_prefill_wmma_supported(
+                num_heads=n_head, num_kv_heads=n_kv, head_dim=head_dim
+            ):
+                def once_wmma():
+                    gw.gemma4_attention_prefill_wmma_bf16(
+                        bufs[0].ptr,
+                        bufs[1].ptr,
+                        bufs[2].ptr,
+                        bufs[3].ptr,
+                        bufs[4].ptr,
+                        tokens=tokens,
+                        num_heads=n_head,
+                        num_kv_heads=n_kv,
+                        head_dim=head_dim,
+                        scale=1.0,
+                        keys=key_count,
+                        window=window,
+                        row_offset=0,
+                    )
+
+                wmma_ms = time_launch(once_wmma, args.iters, args.warmup)
         finally:
             for buf in bufs:
                 free(buf)
@@ -185,6 +227,16 @@ def main() -> int:
             f"{label:32s} {ms:10.2f} {gflops:10.1f} {ms * layers:9.1f} ms"
             + ("" if counts else "   (probe, not in the total)")
         )
+        if args.compare_wmma:
+            if wmma_ms is None:
+                reason = "f32 storage" if args.dtype != "bf16" else "unsupported geometry"
+                print(f"{'  + wmma (candidate)':32s} {'n/a':>10s} {reason:>10s}")
+            else:
+                wmma_gflops = flops / (wmma_ms / 1000.0) / 1e9
+                print(
+                    f"{'  + wmma (candidate)':32s} {wmma_ms:10.2f} {wmma_gflops:10.1f}"
+                    f" {wmma_ms * layers:9.1f} ms   {ms / wmma_ms:6.2f}x vs strict"
+                )
 
     print(
         f"\nthe model's {total_layers} attention layers: {total_ms:.1f} ms  "
