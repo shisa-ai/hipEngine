@@ -167,6 +167,14 @@ Boundary clock snapshots are stable. No large growth-induced penalty appears
 in this synthetic screen; it does not test a pristine first-scratch transition
 or representative decode victims, and X-5 remains open.
 
+The [current code-object census](../benchmarks/results/2026-09-28-qwen4exp-scratch-census/README.md)
+reconciles all 70 traced project symbols against 23 current cached libraries:
+only the above GDN/dense-wide symbols have nonzero private segments, and all
+sizes match the traces. Two ROCm copy/fill symbols remain runtime-unresolved.
+This establishes current-build metadata consistency, not historical loaded
+binary identity (the captures did not hash loaded libraries). X-5 still needs
+representative decode-victim and first-scratch causality evidence.
+
 
 ## 2. Arithmetic policy and kernel mechanisms
 

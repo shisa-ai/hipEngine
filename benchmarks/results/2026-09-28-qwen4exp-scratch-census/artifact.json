@@ -1,0 +1,1310 @@
+{
+  "rows": [
+    {
+      "symbol": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_120argmax_stage1_kernelEPKfPfPll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          "library": "/home/lhl/.cache/hipengine/build/lm_head-2ab80f573de6082a/lm_head.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_120argmax_stage2_kernelEPKfPKllPlPf",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+          "library": "/home/lhl/.cache/hipengine/build/lm_head-2ab80f573de6082a/lm_head.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_118bf16_to_f32_kernelEPKtPfl",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "library": "/home/lhl/.cache/hipengine/build/cast-3837db24bc38fa21/cast.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::dense_gemv_f32_bf16w_f32_out_kernel(float const*, unsigned short const*, float*, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_135dense_gemv_f32_bf16w_f32_out_kernelEPKfPKtPflll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::dense_gemv_f32_bf16w_f32_out_kernel(float const*, unsigned short const*, float*, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/dense_gemv-bbababaae8f8edb2/dense_gemv.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_118f32_to_bf16_kernelEPKfPtl",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "library": "/home/lhl/.cache/hipengine/build/cast-3837db24bc38fa21/cast.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::gated_mean_sigmoid_f32_kernel(float const*, float*, float*, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_129gated_mean_sigmoid_f32_kernelEPKfPfS2_ll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::gated_mean_sigmoid_f32_kernel(float const*, float*, float*, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_gr-0e109dc6e514c7d9/qwen4_exp_gr.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::gguf_q4_k_selected_dual_sparse_exact_repair_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_155gguf_q4_k_selected_dual_sparse_exact_repair_bf16_kernelEPKtPKlPKhS5_PtPKiS8_llllll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::gguf_q4_k_selected_dual_sparse_exact_repair_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_q4_k_selected_prefill-e0921ef05b2f8eac/gguf_q4_k_selected_prefill.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::gguf_q5_k_selected_dual_sparse_exact_repair_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_155gguf_q5_k_selected_dual_sparse_exact_repair_bf16_kernelEPKtPKlPKhS5_PtPKiS8_llllll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::gguf_q5_k_selected_dual_sparse_exact_repair_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_q5_k_q8_1_selected_prefill-ffb6bd32b561c6c6/gguf_q5_k_q8_1_selected_prefill.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::gr_write_bf16_f32_kernel(unsigned short const*, float const*, float const*, unsigned short*, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_124gr_write_bf16_f32_kernelEPKtPKfS3_Ptll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::gr_write_bf16_f32_kernel(unsigned short const*, float const*, float const*, unsigned short*, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_gr-0e109dc6e514c7d9/qwen4_exp_gr.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::grouped_rmsnorm_bf16_f32_kernel(unsigned short const*, float const*, float*, long, long, float)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_131grouped_rmsnorm_bf16_f32_kernelEPKtPKfPfllf",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::grouped_rmsnorm_bf16_f32_kernel(unsigned short const*, float const*, float*, long, long, float)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_gr-0e109dc6e514c7d9/qwen4_exp_gr.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::grouped_rmsnorm_f32_kernel(float const*, float const*, float*, long, long, float)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_126grouped_rmsnorm_f32_kernelEPKfS1_Pfllf",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::grouped_rmsnorm_f32_kernel(float const*, float const*, float*, long, long, float)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_gr-0e109dc6e514c7d9/qwen4_exp_gr.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::ple_add_delta_bf16_f32_kernel(unsigned short const*, float const*, float const*, unsigned short*, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_129ple_add_delta_bf16_f32_kernelEPKtPKfS3_Ptl",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::ple_add_delta_bf16_f32_kernel(unsigned short const*, float const*, float const*, unsigned short*, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_ple-b93fb6ba1faaa50e/qwen4_exp_ple.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::ple_dilated_depthwise_conv_f32_kernel(float const*, float const*, float*, float*, long, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_137ple_dilated_depthwise_conv_f32_kernelEPKfS1_PfS2_lllll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::ple_dilated_depthwise_conv_f32_kernel(float const*, float const*, float*, float*, long, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_ple-b93fb6ba1faaa50e/qwen4_exp_ple.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::ple_repeat_gated_value_f32_kernel(float const*, float const*, float*, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_133ple_repeat_gated_value_f32_kernelEPKfS1_Pfll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::ple_repeat_gated_value_f32_kernel(float const*, float const*, float*, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_ple-b93fb6ba1faaa50e/qwen4_exp_ple.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::ple_signed_sqrt_gate_f32_kernel(float const*, float const*, float*, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_131ple_signed_sqrt_gate_f32_kernelEPKfS1_Pfl",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::ple_signed_sqrt_gate_f32_kernel(float const*, float const*, float*, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_ple-b93fb6ba1faaa50e/qwen4_exp_ple.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::q5_1_selected_sparse_exact_repair_row_publish_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_152q5_1_selected_sparse_exact_repair_row_publish_kernelEPKtPKlPKhPtPKiS8_lllll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::q5_1_selected_sparse_exact_repair_row_publish_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_q5_1-cfb1aee6a67ad685/qwen4_exp_q5_1.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_kernel(unsigned short const*, long const*, unsigned char const*, float const*, unsigned short*, long, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_158q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_kernelEPKtPKlPKhPKfPtlllll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_kernel(unsigned short const*, long const*, unsigned char const*, float const*, unsigned short*, long, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_q5_1-cfb1aee6a67ad685/qwen4_exp_q5_1.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::q8_0_f32_to_f16_kernel(float const*, _Float16*, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_122q8_0_f32_to_f16_kernelEPKfPDF16_l",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::q8_0_f32_to_f16_kernel(float const*, _Float16*, long)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_q8_0_dense_wide-607dcca699485493/gguf_q8_0_dense_wide.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::q8_0_selected_sparse_repair_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int const*, int const*, int, int, int, int)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_134q8_0_selected_sparse_repair_kernelEPKtPKlPKhPtPKiS8_iiii",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::q8_0_selected_sparse_repair_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int const*, int const*, int, int, int, int)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_q8_0_prefill-9de92a2ef001ef8c/gguf_q8_0_prefill.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qsa_gate_context_f32_kernel(float const*, float const*, float*, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_127qsa_gate_context_f32_kernelEPKfS1_Pfl",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qsa_gate_context_f32_kernel(float const*, float const*, float*, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qsa_pool_norm_rope_f32_kernel(float const*, int const*, long const*, float const*, float*, long, long, long, float, float)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_129qsa_pool_norm_rope_f32_kernelEPKfPKiPKlS1_Pflllff",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qsa_pool_norm_rope_f32_kernel(float const*, int const*, long const*, float const*, float*, long, long, long, float, float)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qsa_scatter_index_keys_f32_kernel(float const*, float*, int const*, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_133qsa_scatter_index_keys_f32_kernelEPKfPfPKillll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qsa_scatter_index_keys_f32_kernel(float const*, float*, int const*, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qsa_score_f32_kernel(float const*, float const*, float*, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_120qsa_score_f32_kernelEPKfS1_Pflll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qsa_score_f32_kernel(float const*, float const*, float*, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qsa_sparse_attention_paged_bf16_ordered_coefficients_v2_f32_kernel(float*, float*, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_166qsa_sparse_attention_paged_bf16_ordered_coefficients_v2_f32_kernelEPfS0_l",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qsa_sparse_attention_paged_bf16_ordered_coefficients_v2_f32_kernel(float*, float*, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qsa_sparse_attention_paged_bf16_ordered_scores_v2_f32_kernel(float const*, unsigned short const*, long const*, int const*, float*, long, long, long, long, long, long, float)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_160qsa_sparse_attention_paged_bf16_ordered_scores_v2_f32_kernelEPKfPKtPKlPKiPfllllllf",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qsa_sparse_attention_paged_bf16_ordered_scores_v2_f32_kernel(float const*, unsigned short const*, long const*, int const*, float*, long, long, long, long, long, long, float)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qsa_sparse_attention_paged_bf16_ordered_values_v2_f32_kernel(unsigned short const*, long const*, int const*, float const*, float const*, float*, long, long, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_160qsa_sparse_attention_paged_bf16_ordered_values_v2_f32_kernelEPKtPKlPKiPKfS7_Pfllllll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qsa_sparse_attention_paged_bf16_ordered_values_v2_f32_kernel(unsigned short const*, long const*, int const*, float const*, float const*, float*, long, long, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qsa_topk_expand_f32_i64_kernel(float const*, long const*, long*, int*, long, long, long, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_130qsa_topk_expand_f32_i64_kernelEPKfPKlPlPilllllll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qsa_topk_expand_f32_i64_kernel(float const*, long const*, long*, int*, long, long, long, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qwen35_linear_attn_conv_decode_kernel(float const*, float*, float const*, float*, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_137qwen35_linear_attn_conv_decode_kernelEPKfPfS1_S2_ll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qwen35_linear_attn_conv_decode_kernel(float const*, float*, float const*, float*, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen35_linear_attn_conv-2cbc3608de3dba82/qwen35_linear_attn_conv.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_state_kernel(float const*, float*, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_144qwen35_linear_attn_conv_prefill_state_kernelEPKfPflll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_state_kernel(float const*, float*, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen35_linear_attn_conv-2cbc3608de3dba82/qwen35_linear_attn_conv.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_129qwen35_moe_group_count_kernelEPKlPill",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen35_moe_group_scatter-203366d4c085ea29/qwen35_moe_group_scatter.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_130qwen35_moe_group_prefix_kernelEPKiPiPlS3_ll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen35_moe_group_scatter-203366d4c085ea29/qwen35_moe_group_scatter.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_138qwen35_moe_group_scatter_gather_kernelEPKtPKlPKfS3_PiPlS7_PfPtllll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen35_moe_group_scatter-203366d4c085ea29/qwen35_moe_group_scatter.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_131qwen35_moe_wmma_tile_map_kernelEPKlPlS2_S2_lll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen35_moe_group_scatter-203366d4c085ea29/qwen35_moe_group_scatter.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_127qwen35_router_select_kernelEPKfPlPflll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen35_router-ba04595500289b40/qwen35_router.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qwen35_write_paged_kv_position_tensor_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_144qwen35_write_paged_kv_position_tensor_kernelEPKfS1_PtS2_PKiPKlllll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qwen35_write_paged_kv_position_tensor_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen35_paged_kv_write-982af3bf4b8918cd/qwen35_paged_kv_write.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qwen4_exp_gdn_decode_f32_kernel(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_131qwen4_exp_gdn_decode_f32_kernelEPKfS1_S1_S1_S1_S1_S1_PfS2_llll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qwen4_exp_gdn_decode_f32_kernel(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-3d97211ffad0e4c1/qwen4_exp_gdn.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::qwen4_exp_linear_attn_conv_prefill_exact_kernel(float const*, float const*, float const*, float*, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_147qwen4_exp_linear_attn_conv_prefill_exact_kernelEPKfS1_S1_Pfll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::qwen4_exp_linear_attn_conv_prefill_exact_kernel(float const*, float const*, float const*, float*, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen35_linear_attn_conv-2cbc3608de3dba82/qwen35_linear_attn_conv.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::repeat_bf16_branches_kernel(unsigned short const*, unsigned short*, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_127repeat_bf16_branches_kernelEPKtPtlll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::repeat_bf16_branches_kernel(unsigned short const*, unsigned short*, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_gr-0e109dc6e514c7d9/qwen4_exp_gr.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::scaled_silu_f32_kernel(float const*, float*, long, float)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_122scaled_silu_f32_kernelEPKfPflf",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::scaled_silu_f32_kernel(float const*, float*, long, float)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_gr-0e109dc6e514c7d9/qwen4_exp_gr.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::silu_mul_f32_kernel(float const*, float const*, float*, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_119silu_mul_f32_kernelEPKfS1_Pfl",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::silu_mul_f32_kernel(float const*, float const*, float*, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_gr-0e109dc6e514c7d9/qwen4_exp_gr.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_129weighted_lanes_inverse_kernelEPKlPll",
+          "private_segment_fixed_size": 0,
+          "symbol": "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)",
+          "library": "/home/lhl/.cache/hipengine/build/paro_combine-a8df9a82c6954dab/paro_combine.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "__amd_rocclr_copyBuffer",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [],
+      "status": "runtime-unresolved"
+    },
+    {
+      "symbol": "__amd_rocclr_fillBufferUnAligned",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [],
+      "status": "runtime-unresolved"
+    },
+    {
+      "symbol": "gguf_q8_0_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_Z35gguf_q8_0_embedding_bf16_out_kernelPKlPKhPtiii",
+          "private_segment_fixed_size": 0,
+          "symbol": "gguf_q8_0_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_q6_k_embedding-8c83f05ff0e8657e/gguf_q6_k_embedding.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::dense_gemv_out_kernel<float, float, false>(float const*, float const*, float const*, float*, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_121dense_gemv_out_kernelIffLb0EEEvPKT_S3_S3_PT0_lll",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::dense_gemv_out_kernel<float, float, false>(float const*, float const*, float const*, float*, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/dense_gemv-bbababaae8f8edb2/dense_gemv.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<float, float, 8>(float const*, unsigned char const*, float*, int, int, int, int)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_131gguf_k_pack8_prefill_out_kernelIffLi8EEEvPKT_PKhPT0_iiii",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<float, float, 8>(float const*, unsigned char const*, float*, int, int, int, int)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_k_gemv-a51526e64ebf8258/gguf_k_gemv.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::gguf_k_prefill_out_coltile_rowbatch_kernel<float, float, 8, 8, 4, true>(float const*, unsigned char const*, float*, int, int, int)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_142gguf_k_prefill_out_coltile_rowbatch_kernelIffLi8ELi8ELi4ELb1EEEvPKT_PKhPT0_iii",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::gguf_k_prefill_out_coltile_rowbatch_kernel<float, float, 8, 8, 4, true>(float const*, unsigned char const*, float*, int, int, int)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_k_gemv-a51526e64ebf8258/gguf_k_gemv.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_134gguf_k_selected_prefill_out_kernelIttLi5EEEvPKT_PKlPKhPT0_iiiii",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_k_gemv-a51526e64ebf8258/gguf_k_gemv.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_134gguf_k_selected_prefill_out_kernelIttLi8EEEvPKT_PKlPKhPT0_iiiii",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_k_gemv-a51526e64ebf8258/gguf_k_gemv.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::gguf_q4_k_selected_dual_silu_logical128_t64_kernel<unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_150gguf_q4_k_selected_dual_silu_logical128_t64_kernelItEEvPKT_PKlPKhS7_Ptiiiii",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::gguf_q4_k_selected_dual_silu_logical128_t64_kernel<unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_q4_k_gemv-4ae2caa94c057a84/gguf_q4_k_gemv.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short, 3, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_152gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernelItLi3ELi16EEEvPKT_PKlS5_S5_PKhS7_PS1_PiS9_lfllllll",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short, 3, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_q4_k_selected_prefill-e0921ef05b2f8eac/gguf_q4_k_selected_prefill.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_152gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_kernelItEEvPKT_PKlS5_S5_PKhS7_PS1_PiS9_lfllllll",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_q5_k_q8_1_selected_prefill-ffb6bd32b561c6c6/gguf_q5_k_q8_1_selected_prefill.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::q5_1_selected_wmma_iu8_risk_prefill_kernel<16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_142q5_1_selected_wmma_iu8_risk_prefill_kernelILi16EEEvPKtPKlS4_S4_PKhPtPiS8_lflllll",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::q5_1_selected_wmma_iu8_risk_prefill_kernel<16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_q5_1-cfb1aee6a67ad685/qwen4_exp_q5_1.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, false>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIDF16_Li128ELi256ELi64ELi64ELb0EEEvPKT_PKhPfiii",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, false>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_q8_0_dense_wide-607dcca699485493/gguf_q8_0_dense_wide.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, true>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+      "observed_scratch_bytes": [
+        92
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_122q8_0_dense_wide_kernelIDF16_Li128ELi256ELi64ELi64ELb1EEEvPKT_PKhPfiii",
+          "private_segment_fixed_size": 92,
+          "symbol": "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, true>(_Float16 const*, unsigned char const*, float*, int, int, int)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_q8_0_dense_wide-607dcca699485493/gguf_q8_0_dense_wide.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<true>(float const*, unsigned char const*, float const*, float*, float*, int, int, int, int)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_161q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernelILb1EEEvPKfPKhS2_PfS5_iiii",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<true>(float const*, unsigned char const*, float const*, float*, float*, int, int, int, int)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_k_gemv-a51526e64ebf8258/gguf_k_gemv.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel<32, 16, true, true>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long, int*, int*)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_151q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernelILi32ELi16ELb1ELb1EEEvPKtPKlS4_S4_PKhPtlllllPiS8_",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel<32, 16, true, true>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long, int*, int*)",
+          "library": "/home/lhl/.cache/hipengine/build/gguf_q8_0_prefill-9de92a2ef001ef8c/gguf_q8_0_prefill.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::qsa_norm_rope_f32_kernel<false>(float const*, float const*, long const*, float*, long, long, float, float)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_124qsa_norm_rope_f32_kernelILb0EEEvPKfS2_PKlPfllff",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::qsa_norm_rope_f32_kernel<false>(float const*, float const*, long const*, float*, long, long, float, float)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::qsa_norm_rope_rows_f32_kernel<false>(float const*, float const*, long const*, float*, long, long, long, long, float, float)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_129qsa_norm_rope_rows_f32_kernelILb0EEEvPKfS2_PKlPfllllff",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::qsa_norm_rope_rows_f32_kernel<false>(float const*, float const*, long const*, float*, long, long, long, long, float, float)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::qsa_sparse_attention_h256_wave_rows_f32_kernel<true, 4>(float const*, unsigned short const*, unsigned short const*, long const*, int const*, int const*, float*, long, long, long, long, long, long, float)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_146qsa_sparse_attention_h256_wave_rows_f32_kernelILb1ELi4EEEvPKfPKtS4_PKlPKiS8_Pfllllllf",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::qsa_sparse_attention_h256_wave_rows_f32_kernel<true, 4>(float const*, unsigned short const*, unsigned short const*, long const*, int const*, int const*, float*, long, long, long, long, long, long, float)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::qsa_split_norm_rope_f32_kernel<false>(float const*, float const*, float const*, float const*, long const*, float*, float*, float*, long, long, long, long, float, float)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_130qsa_split_norm_rope_f32_kernelILb0EEEvPKfS2_S2_S2_PKlPfS5_S5_llllff",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::qsa_split_norm_rope_f32_kernel<false>(float const*, float const*, float const*, float const*, long const*, float*, float*, float*, long, long, long, long, float, float)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::qsa_split_norm_rope_rows_f32_kernel<false>(float const*, float const*, float const*, float const*, long const*, float*, float*, float*, long, long, long, long, long, float, float)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_135qsa_split_norm_rope_rows_f32_kernelILb0EEEvPKfS2_S2_S2_PKlPfS5_S5_lllllff",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::qsa_split_norm_rope_rows_f32_kernel<false>(float const*, float const*, float const*, float const*, long const*, float*, float*, float*, long, long, long, long, long, float, float)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false, int, 4>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_157qwen35_paged_full_attn_decode_context_tensor_batch_kernelILb1ELi2ELb0EiLi4EEEvPKfPKtS4_PKiPKlPflllllllf",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false, int, 4>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen35_paged_attn_decode-9b0fa322178b0cfa/qwen35_paged_attn_decode.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>(float const*, float const*, float*, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_154qwen35_router_logits_f32_token_tile_dense_exact_kernelILi4EEEvPKfS2_Pflll",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>(float const*, float const*, float*, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen35_router-ba04595500289b40/qwen35_router.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<float>(float const*, float const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_163qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernelIfEEvPKfPKT_PtS6_PKiPKllllll",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<float>(float const*, float const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen35_paged_kv_write-982af3bf4b8918cd/qwen35_paged_kv_write.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+      "observed_scratch_bytes": [
+        36
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_132qwen4_exp_gdn_prefill_f32_kernelILb1ELb1EEEvPKfS2_S2_S2_S2_S2_S2_PfS3_lllll",
+          "private_segment_fixed_size": 36,
+          "symbol": "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-3d97211ffad0e4c1/qwen4_exp_gdn.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::shared_gate_combine_batch_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, float const*, unsigned short*, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_136shared_gate_combine_batch_out_kernelItEEvPKT_S3_PKfPS1_ll",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::shared_gate_combine_batch_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, float const*, unsigned short*, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/paro_combine-a8df9a82c6954dab/paro_combine.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::shared_gate_combine_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, float const*, unsigned short*, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_130shared_gate_combine_out_kernelItEEvPKT_S3_PKfPS1_l",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::shared_gate_combine_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, float const*, unsigned short*, long)",
+          "library": "/home/lhl/.cache/hipengine/build/paro_combine-a8df9a82c6954dab/paro_combine.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::silu_mul_dual_out_kernel<unsigned short>(unsigned short const*, unsigned short*, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_124silu_mul_dual_out_kernelItEEvPKT_PS1_ll",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::silu_mul_dual_out_kernel<unsigned short>(unsigned short const*, unsigned short*, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/paro_silu-ad8c3304eedd4192/paro_silu.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_128silu_mul_separate_out_kernelItEEvPKT_S3_PS1_ll",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/paro_silu-ad8c3304eedd4192/paro_silu.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_129weighted_lanes_sum_out_kernelItEEvPKT_PKfPKlPS1_lll",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/paro_combine-a8df9a82c6954dab/paro_combine.so"
+        }
+      ],
+      "status": "match"
+    },
+    {
+      "symbol": "void (anonymous namespace)::weighted_sum_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short*, long, long)",
+      "observed_scratch_bytes": [
+        0
+      ],
+      "metadata": [
+        {
+          "mangled": "_ZN12_GLOBAL__N_123weighted_sum_out_kernelItfEEvPKT_PKT0_PS1_ll",
+          "private_segment_fixed_size": 0,
+          "symbol": "void (anonymous namespace)::weighted_sum_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short*, long, long)",
+          "library": "/home/lhl/.cache/hipengine/build/paro_combine-a8df9a82c6954dab/paro_combine.so"
+        }
+      ],
+      "status": "match"
+    }
+  ],
+  "project_metadata_complete": true,
+  "all_metadata_complete": false,
+  "schema": 1,
+  "libraries": [
+    {
+      "module": "hipengine.kernels.hip_gfx1100.attention.paged_attn_decode",
+      "function": "plan_qwen35_paged_attn_decode_build",
+      "source": "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip",
+      "path": "/home/lhl/.cache/hipengine/build/qwen35_paged_attn_decode-9b0fa322178b0cfa/qwen35_paged_attn_decode.so",
+      "exists": true,
+      "sha256": "55d66abe11f791c4b38465ec41077add72d3f4da2beb10f0ceeec897d68612ed",
+      "code_object_sha256": "fcb6ab7cff09348e4eed7356cc13cfd8d2f8c173a940db2faf63b81fb1b72e0c",
+      "notes_sha256": "a8cdca60d6ea22614863ce02f39c9ef0b0f98df6178ad799715135e224c496c5"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.attention.paged_kv_write",
+      "function": "plan_qwen35_paged_kv_write_build",
+      "source": "hipengine/kernels/hip_gfx1100/attention/paged_kv_write.hip",
+      "path": "/home/lhl/.cache/hipengine/build/qwen35_paged_kv_write-982af3bf4b8918cd/qwen35_paged_kv_write.so",
+      "exists": true,
+      "sha256": "3960b2474d04d3cc624914d13e761f661d478149f9f42903c449c21fda4ce1f4",
+      "code_object_sha256": "03a7426ee6f77877788ef6d4553aff2d25235323ae195fbe1893f1d60ab96eab",
+      "notes_sha256": "b36e7202b25f71c1d51b54b5751a5a3e1f00153e7458bb3f613f7edff9c4e4d6"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa",
+      "function": "plan_qwen4_exp_qsa_build",
+      "source": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.hip",
+      "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_qsa-788b70371447fe53/qwen4_exp_qsa.so",
+      "exists": true,
+      "sha256": "fc0c8026df257bf4a2a37c2a888ea3741f7e85bd779a6b31aaf49a4abb005a9c",
+      "code_object_sha256": "4002671b142b8b53372b47e54bf3a5290d8206eaa0ca8ef7679082931c093f3c",
+      "notes_sha256": "abea893dd40d293c3e39de405f40fd66fce8e0dc752e83e0fa322168866c208d"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.convert.cast",
+      "function": "plan_cast_build",
+      "source": "hipengine/kernels/hip_gfx1100/convert/cast.hip",
+      "path": "/home/lhl/.cache/hipengine/build/cast-3837db24bc38fa21/cast.so",
+      "exists": true,
+      "sha256": "48c2daa6f3f01ef4799ca3061714d03e16911fad8f7e8272d4df79e2b69fa7f5",
+      "code_object_sha256": "527a6421608a04372325015bba06a79b891d15db1ede415d8561ab867e5c30d3",
+      "notes_sha256": "25b9ad255dd3b7b2492dd48febfa80a292a2a859014be6621d2ffcb7a8434dfa"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.fused.paro_combine",
+      "function": "plan_paro_combine_build",
+      "source": "hipengine/kernels/hip_gfx1100/fused/paro_combine.hip",
+      "path": "/home/lhl/.cache/hipengine/build/paro_combine-a8df9a82c6954dab/paro_combine.so",
+      "exists": true,
+      "sha256": "58d9286f8fa99f5e02a9999f1a07057a5452aab77e35e153e35a87b05fa5331e",
+      "code_object_sha256": "9ea2299be88a29a73e6491f5f638d52768d675e9b47e667bedecc1f27303b021",
+      "notes_sha256": "2b50cbec266f846128108e4888f3883831e2f5e092f9fb0bf29fc77dda2c7aeb"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.fused.paro_silu",
+      "function": "plan_paro_silu_build",
+      "source": "hipengine/kernels/hip_gfx1100/fused/paro_silu.hip",
+      "path": "/home/lhl/.cache/hipengine/build/paro_silu-ad8c3304eedd4192/paro_silu.so",
+      "exists": true,
+      "sha256": "5f194b8c805443257010c8c3cc545c9a2e1229e1a8ad42a2be335035f6b2b348",
+      "code_object_sha256": "3b8b6e356f8ba22dcefb9f7609cfc2b804b42056f73daf8c91493c7358c4d135",
+      "notes_sha256": "90cfc5bc4b1a687d6404a94520f15a860c379d6acab12f141be2b4ce0ad51c53"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr",
+      "function": "plan_qwen4_exp_gr_build",
+      "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_gr.hip",
+      "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_gr-0e109dc6e514c7d9/qwen4_exp_gr.so",
+      "exists": true,
+      "sha256": "22a3e1439166ff7adf89e1d049249f87b831d729fd1f6883451e5cab6cd45d41",
+      "code_object_sha256": "9788a0b0132673574ef6e99794805534a0ec5b98d7a5b929e64429f0795b861a",
+      "notes_sha256": "e07b65a1e2a09c6fac8b324b411f9cdcd659dbf7c6f661914a5b2e72c89bee61"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple",
+      "function": "plan_qwen4_exp_ple_build",
+      "source": "hipengine/kernels/hip_gfx1100/fused/qwen4_exp_ple.hip",
+      "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_ple-b93fb6ba1faaa50e/qwen4_exp_ple.so",
+      "exists": true,
+      "sha256": "68603c17c61c994b3fbd87237e823b422af3b68555e25014809e17b21e458497",
+      "code_object_sha256": "3d9541f49d0926752972834d4058d5d1013213d24dc3bd6bc938967af9b38e17",
+      "notes_sha256": "824c0745d4ad1c94fd1f7af91f341b0d465dfbb1bff75b4ac9544d288cb81cb5"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.linear.dense_gemv",
+      "function": "plan_dense_gemv_build",
+      "source": "hipengine/kernels/hip_gfx1100/linear/dense_gemv.hip",
+      "path": "/home/lhl/.cache/hipengine/build/dense_gemv-bbababaae8f8edb2/dense_gemv.so",
+      "exists": true,
+      "sha256": "26cf2abd66514557e6370dc9aeacb34d5c8869383f31dce809b9ae666b66a717",
+      "code_object_sha256": "bb0f3ed6384edc5f0d181ac8b67c807c77ba1d65d29990d89a4e2424670298df",
+      "notes_sha256": "249724f0362555dbf95e6f2716245d5284fd40fd328ea42d4246bb6c2571398c"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.linear.lm_head",
+      "function": "plan_lm_head_build",
+      "source": "hipengine/kernels/hip_gfx1100/linear/lm_head.hip",
+      "path": "/home/lhl/.cache/hipengine/build/lm_head-2ab80f573de6082a/lm_head.so",
+      "exists": true,
+      "sha256": "25fd6ed6571587a3deebb41b1d55f44a8781ae4ef26b453f440becba13f978f1",
+      "code_object_sha256": "720bfe0c20ad7c5fca3da60687638b7ef2453c7686ba68dfb31fbfdd7ecc3f95",
+      "notes_sha256": "25ecc186c994c10f6c81780cd30d663465f60b522bd09887c3793ca93a37231a"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.linear_attn.conv",
+      "function": "plan_qwen35_linear_attn_conv_build",
+      "source": "hipengine/kernels/hip_gfx1100/linear_attn/conv.hip",
+      "path": "/home/lhl/.cache/hipengine/build/qwen35_linear_attn_conv-2cbc3608de3dba82/qwen35_linear_attn_conv.so",
+      "exists": true,
+      "sha256": "83ce692f118df1b25138a6d6e408ac41b8fa93a6d2fd6246475787909e98da96",
+      "code_object_sha256": "46c1d7810827945646594c7bab2b85253740b022d0c39faee4c201cd9bfb47fe",
+      "notes_sha256": "d0dabc4e1ceb831a0fda5f1d120cd7c94c1244a8dfb5228cdedc975db984ca62"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn",
+      "function": "plan_qwen4_exp_gdn_build",
+      "source": "hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.hip",
+      "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_gdn-3d97211ffad0e4c1/qwen4_exp_gdn.so",
+      "exists": true,
+      "sha256": "1e39f1cdad1bac1ed7b1a0b7357f68073486c5436b84bc6a567c9a5d546ba291",
+      "code_object_sha256": "b02f6fa17b9abaa3de0c7fbf5b55242bf3d35a92969aebd7bcbb553d12d21db2",
+      "notes_sha256": "249df3938c3b159b133aaa2052a62688bd52451479490ead5bb9e013f747c47b"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.moe.group_scatter",
+      "function": "plan_qwen35_moe_group_scatter_build",
+      "source": "hipengine/kernels/hip_gfx1100/moe/group_scatter.hip",
+      "path": "/home/lhl/.cache/hipengine/build/qwen35_moe_group_scatter-203366d4c085ea29/qwen35_moe_group_scatter.so",
+      "exists": true,
+      "sha256": "b2dd79afae99216b2bbb14cb4e48d02c9d7a0f1799fc2a5762742995e99c90f2",
+      "code_object_sha256": "d885c6b6526ec148d2f3bd4579c11b1a681759608c7cc01f1fd7bccbf1aefdcb",
+      "notes_sha256": "7a0e8ca8d8205f78a659295e0e4cf6fdd58be0db3c680f783a1f816d77583857"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.moe.router",
+      "function": "plan_qwen35_router_build",
+      "source": "hipengine/kernels/hip_gfx1100/moe/router.hip",
+      "path": "/home/lhl/.cache/hipengine/build/qwen35_router-ba04595500289b40/qwen35_router.so",
+      "exists": true,
+      "sha256": "d4de8546de5c731ac127552c83b8e9cedbb464bee1c79df85f875bbee2e0ca5f",
+      "code_object_sha256": "f01f83b06173e97d6e771f3459503ce8e2545ef5d2c40104083b192f23a7125c",
+      "notes_sha256": "668baba19ad1d2e0e47baadc642a7f863bd7209523ce834723278005ed7013d0"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv",
+      "function": "plan_gguf_iq_gemv_build",
+      "source": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip",
+      "path": "/home/lhl/.cache/hipengine/build/gguf_iq_gemv-b78777d64f5b247d/gguf_iq_gemv.so",
+      "exists": true,
+      "sha256": "209dfd6aa342c81e6958fde06d5578ddff0e36c43038735125fba797f2f6b7c0",
+      "code_object_sha256": "0b85d8345f01169e8ff0654069f52c0ff0b17e8fd5a21b2f411665daf0b688f2",
+      "notes_sha256": "2d34029b5706ec23c2dcd8b274aa2f4f414b87f051b28f0d9767952ac4f2f305"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv",
+      "function": "plan_gguf_k_gemv_build",
+      "source": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip",
+      "path": "/home/lhl/.cache/hipengine/build/gguf_k_gemv-a51526e64ebf8258/gguf_k_gemv.so",
+      "exists": true,
+      "sha256": "b51b6af85195485da2bd73e36fe22c236ddcba2803c5d294a8801d2a9c387437",
+      "code_object_sha256": "2a8141df69f25be907df2541f480f6ed9d3fe5c3ef17ee5da2744c893e1959b0",
+      "notes_sha256": "03d3e67a890ae69d330c13182df99729c9f709cea417d526e2c54c0972f54047"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv",
+      "function": "plan_gguf_q4_k_gemv_build",
+      "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip",
+      "path": "/home/lhl/.cache/hipengine/build/gguf_q4_k_gemv-4ae2caa94c057a84/gguf_q4_k_gemv.so",
+      "exists": true,
+      "sha256": "0f335773de5fff83c114895eb29309ecefcaee454d758b35d9890df70efedb26",
+      "code_object_sha256": "8ac9b7d9bca6398fbece908ffe9c02a9ccc8a241d35d6741e70d1abb8ddaffb4",
+      "notes_sha256": "07223c78c852dc30807116dcf74afe3ae3a15df3769a0aa0de7687d15ba46ca1"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill",
+      "function": "plan_gguf_q4_k_selected_prefill_build",
+      "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip",
+      "path": "/home/lhl/.cache/hipengine/build/gguf_q4_k_selected_prefill-e0921ef05b2f8eac/gguf_q4_k_selected_prefill.so",
+      "exists": true,
+      "sha256": "b6c2823966c9a67b9179f9d759c9adab8d909d7311135172d6d567ac06fc58dc",
+      "code_object_sha256": "e44a7bfc1ff720e332cda27bec2791815d576eb81bd0742626174301ef601bf8",
+      "notes_sha256": "bde8e586f6c743db12e50a66438c1a808f27af455cd760b43a5042c67a566cd8"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill",
+      "function": "plan_gguf_q5_k_q8_1_selected_prefill_build",
+      "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_q8_1_selected_prefill.hip",
+      "path": "/home/lhl/.cache/hipengine/build/gguf_q5_k_q8_1_selected_prefill-ffb6bd32b561c6c6/gguf_q5_k_q8_1_selected_prefill.so",
+      "exists": true,
+      "sha256": "4f309425b1a3013cc6a7aa6daa35169aa3a527813d1b77ca7497092705bfadaf",
+      "code_object_sha256": "7855c3c3faabb85bdadb00143a029e5bd154530ea83735a177a0a08502540e7a",
+      "notes_sha256": "9959954d114ae968d791fbda87b459994e3bd9f8482a16827001e4ae648fb7b0"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding",
+      "function": "plan_gguf_q6_k_embedding_build",
+      "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.hip",
+      "path": "/home/lhl/.cache/hipengine/build/gguf_q6_k_embedding-8c83f05ff0e8657e/gguf_q6_k_embedding.so",
+      "exists": true,
+      "sha256": "91491ce3a2442a61cf56ffa7a4086eb3eb641e58e3ed5107065c9d776866ceae",
+      "code_object_sha256": "9f939eecc525195940bfe488270d54d4682f19a538b24d24171857b0a968b6c1",
+      "notes_sha256": "c8477b8d8fd167a15def038079307c9af9b313684e3b327a987bc1d9d423e394"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide",
+      "function": "plan_gguf_q8_0_dense_wide_build",
+      "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dense_wide.hip",
+      "path": "/home/lhl/.cache/hipengine/build/gguf_q8_0_dense_wide-607dcca699485493/gguf_q8_0_dense_wide.so",
+      "exists": true,
+      "sha256": "734fea59ed643644014c9e57c85371bd3c5c3508908acb84245a9c2aa98cfd99",
+      "code_object_sha256": "681c268711db65bb591344eb50ebc1fdc94fadcbf8767d6ab3e1cc1a3ef668bf",
+      "notes_sha256": "9e8b1cbd2ab937dbea589c16d6a9cc9d7522cf72b8d87a8c5589a06145199584"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill",
+      "function": "plan_gguf_q8_0_prefill_build",
+      "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip",
+      "path": "/home/lhl/.cache/hipengine/build/gguf_q8_0_prefill-9de92a2ef001ef8c/gguf_q8_0_prefill.so",
+      "exists": true,
+      "sha256": "f9125c4eb6f991a134b93402abdee263ee492daf6f47b6038dba9b259e7aea1a",
+      "code_object_sha256": "c9d1887f7c77df84f9328bc9dba37b0310963f8666b2ed6376dcb0a498c3a87e",
+      "notes_sha256": "1c221c10ef9bfb21e2d10910fdc7b00b180e17a001a6e9e4ccdfe157d4c140bb"
+    },
+    {
+      "module": "hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1",
+      "function": "plan_qwen4_exp_q5_1_build",
+      "source": "hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip",
+      "path": "/home/lhl/.cache/hipengine/build/qwen4_exp_q5_1-cfb1aee6a67ad685/qwen4_exp_q5_1.so",
+      "exists": true,
+      "sha256": "a184e605ddb2ee9da8540fae4da541f1f647268ecd5e0e6a319c9849022ed70d",
+      "code_object_sha256": "39f589b583a6dfc5220d177036d12d52cd98665c05f6dddd5884c536409c3472",
+      "notes_sha256": "9a5793f2b99fc69d31b0be6beb9eca6e65317f9ece9e31d0f720bd430198fe54"
+    }
+  ],
+  "traces": {
+    "/tmp/qwen4exp-ledger-20260928-current/role-trace/gfx1151/3033290_kernel_trace.csv": "16222c0c3b232b3522eaa843fc5c3ea7b90cd48377faa7dd62c647106fa38b78",
+    "/tmp/qwen4exp-ledger-20260928-current/decode-trace/gfx1151/3039091_kernel_trace.csv": "635b99edf0dd3be20f02610ae6186af345ac3a706a87f025413f1def376eecc5"
+  },
+  "loaded_library_provenance_verified": false
+}
