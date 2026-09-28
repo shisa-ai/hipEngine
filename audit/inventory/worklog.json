@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11141,
-    "current": 3909,
+    "entries": 11142,
+    "current": 3910,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1232,
+    "rows": 1233,
     "by_rule": {
       "dependency": 40,
       "legacy-next": 109,
-      "status": 1083
+      "status": 1084
     }
   },
   "rows": [
@@ -45721,14 +45721,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 3,
         "open_text": "1. **The dense Q8_0 family is now 213.3 ms per prefill against llama.cpp's\n   105.6 for the same weights -- 2.0x, down from 2.6x.** The remaining gap is\n   structural: llama.cpp's RDNA3.5 MMQ config is `nthreads=256, I=128, J=128`\n   against our 32-thread block and 64x32 tile, so it re-reads weights 4x less.\n   Reaching J=128 needs `TN=8`, whose 8 float8 accumulators plus 8 half16\n   activations do not fit in registers at `TM>=1`; `TN=4` (tile_n 64) is the\n   reachable step and was not in `_ALLOWED_TILES`.\n2. Attention remains 178.8 ms per prefill against llama.cpp's 28.8. The traffic\n   ablat",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "3 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T084150.706656Z-lhl-gemma4-q8-0-tile-heuristic-35630d.md",
@@ -45747,7 +45747,7 @@
         ]
       },
       "id": "worklog/20260928T084150.706656Z-lhl-gemma4-q8-0-tile-heuristic-35630d",
-      "evidence_hash": "7a1805f0cbd2"
+      "evidence_hash": "1e39c5ff54a7"
     },
     {
       "kind": "worklog",
@@ -45928,14 +45928,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 1,
+        "continuation_entries": 2,
         "open_text": "1. **Separate ``out/rows`` from ``out``.** Eight shapes separate at\n   ``out/rows = 5``, but all eight are at ``rows = 512``. Re-run the qwen35moe\n   pair (2048x2048, 2048x8192) and the gemma4 k/v pair at ``rows`` 256 and\n   1024. If the boundary moves with ``rows`` the rule is the ratio; if it\n   stays at ``out = 2560`` it is not. Only then is a shape branch justified --\n   and if it holds, it recovers the gemma4 k/v projection's 7 percent and\n   makes the module default correct for both model families.\n2. **The qwen35moe profile pin at ``qwen4_exp_profiles.py:570``/``:571``**\n   encodes the ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "1 later entry by the same worker share this topic prefix"
+        "2 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T085917.175442Z-lhl-gemma4-q8-tile-n64-96aaed.md",
@@ -45956,7 +45956,7 @@
         ]
       },
       "id": "worklog/20260928T085917.175442Z-lhl-gemma4-q8-tile-n64-96aaed",
-      "evidence_hash": "0541326c3341"
+      "evidence_hash": "73bc2fe7263b"
     },
     {
       "kind": "worklog",
@@ -45970,14 +45970,14 @@
         "written": "2026-09-28",
         "age_days": 0,
         "open_by": "status",
-        "continuation_entries": 0,
+        "continuation_entries": 1,
         "open_text": "1. **A fill floor plus a traffic model is the shape of the right selector**,\n   but both constants are unfitted and the map is only 33 cells. Fitting them\n   needs the `rows=1024/2048` and `out=1024` regions, which are cheap to\n   measure and would roughly triple the data.\n2. **The `rows < 128` region is where the current rule is worst** (1.448x at\n   `rows=64 out=2048`). A rule that improves it without regressing elsewhere\n   was not found by an exhaustive search over two-axis ladders, so it needs\n   either more data or the fill floor.\n3. **`qwen4_exp_profiles.py:570`/`:571` still pin `(64,32",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "no later entry by the same worker shares this topic prefix"
+        "1 later entry by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T090426.577409Z-lhl-gemma4-q8-tile-domain-62b15b.md",
@@ -45998,7 +45998,7 @@
         ]
       },
       "id": "worklog/20260928T090426.577409Z-lhl-gemma4-q8-tile-domain-62b15b",
-      "evidence_hash": "391b176a9133"
+      "evidence_hash": "9bb4d998c0f0"
     },
     {
       "kind": "worklog",
@@ -46568,6 +46568,47 @@
       },
       "id": "worklog/20260928T095630.988278Z-lhl-gemma4-attention-traffic-clean-430194",
       "evidence_hash": "ee64ea0c3a9b"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260928T095821.925570Z-lhl-gemma4-q8-0-wmma-attribution-595fe7",
+      "title": "the q8_0 wmma prefill tile is already swept and the kernel is register limited at 22 percent occupancy",
+      "location": "worklog/entries/20260928T095821.925570Z-lhl-gemma4-q8-0-wmma-attribution-595fe7.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-q8-0-wmma-attribution",
+        "written": "2026-09-28",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "1. **Attribute the MoE gate/up at prefill**, where the decode finding does not apply.\n   It is 21 percent at 54 GB/s and has ample parallelism, so the question is what its\n   per-workgroup cost actually is.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260928T095821.925570Z-lhl-gemma4-q8-0-wmma-attribution-595fe7.md",
+        "refs": [],
+        "tokens": [
+          "already",
+          "kernel",
+          "limited",
+          "occupancy",
+          "percent",
+          "prefill",
+          "q8_0",
+          "register",
+          "swept",
+          "tile",
+          "wmma"
+        ]
+      },
+      "id": "worklog/20260928T095821.925570Z-lhl-gemma4-q8-0-wmma-attribution-595fe7",
+      "evidence_hash": "3d332ade96b4"
     }
   ]
 }
