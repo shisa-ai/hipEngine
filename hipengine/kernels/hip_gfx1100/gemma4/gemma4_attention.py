@@ -25,7 +25,11 @@ ROCm until a wrapper is called.
 from __future__ import annotations
 
 import ctypes
+import os
+import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.ctypes_cache import signed_kernel_fn
@@ -484,9 +488,148 @@ def gemma4_attention_prefill_f32(
 def register_gemma4_attention_kernels(*, replace: bool = False) -> None:
     """Register the Gemma 4 prefill attention family against the four-axis registry."""
 
-    for quant in ("gguf_q4_k_m", "gguf_q4_k_xl", "gguf_q8_0", "gguf"):
+    for quant in PREFILL_ATTENTION_QUANTS:
         register(
-            KernelKey("hip_gfx1100", "prefill_attention", quant, "gemma4_plain"),
+            KernelKey("hip_gfx1100", "prefill_attention", quant, PREFILL_ATTENTION_PLAIN),
             gemma4_attention_prefill_bf16,
             replace=replace,
         )
+
+
+# --- prefill-attention variant selection -----------------------------------
+#
+# The strict kernel is the family's only unconditional entry point. A second
+# variant exists (``gemma4_wmma_flash``, a BF16 WMMA flash prefill for the
+# sliding geometry) and an execution profile may select it. Selection is a
+# capability match against what the variant declares it implements -- never a
+# model name, artifact path, hash, or an enumerated list of known-good inputs --
+# and a miss falls back to the strict kernel with a reason rather than raising,
+# because a profile is a performance decision and not a licence to fail a
+# request.
+
+PREFILL_ATTENTION_PLAIN = "gemma4_plain"
+PREFILL_ATTENTION_WMMA_FLASH = "gemma4_wmma_flash"
+PREFILL_ATTENTION_QUANTS = ("gguf_q4_k_m", "gguf_q4_k_xl", "gguf_q8_0", "gguf")
+
+
+@dataclass(frozen=True, slots=True)
+class PrefillAttentionSelection:
+    """One resolved prefill-attention launcher plus why it was chosen."""
+
+    variant: str
+    launcher: Callable[..., int]
+    requested_variant: str | None
+    reason: str
+
+    @property
+    def is_strict(self) -> bool:
+        return self.variant == PREFILL_ATTENTION_PLAIN
+
+    def describe(self) -> str:
+        """One line naming the variant and the reason, for diagnostics."""
+
+        requested = self.requested_variant or PREFILL_ATTENTION_PLAIN
+        return f"prefill_attention={self.variant} requested={requested} ({self.reason})"
+
+
+def _select_prefill_attention(
+    *,
+    requested_variant: str | None = None,
+    num_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+) -> PrefillAttentionSelection:
+    """Resolve a prefill-attention variant for one head geometry.
+
+    ``requested_variant`` is what an execution profile selected, or ``None``
+    for the strict kernel. The variant is admitted only where it declares the
+    geometry implemented; every other input keeps the strict kernel, which
+    covers every geometry the family serves.
+    """
+
+    if requested_variant in (None, "", PREFILL_ATTENTION_PLAIN):
+        return PrefillAttentionSelection(
+            variant=PREFILL_ATTENTION_PLAIN,
+            launcher=gemma4_attention_prefill_bf16,
+            requested_variant=requested_variant,
+            reason="strict",
+        )
+    if requested_variant != PREFILL_ATTENTION_WMMA_FLASH:
+        return PrefillAttentionSelection(
+            variant=PREFILL_ATTENTION_PLAIN,
+            launcher=gemma4_attention_prefill_bf16,
+            requested_variant=requested_variant,
+            reason=f"unknown variant {requested_variant!r}",
+        )
+    # Imported here so the candidate's module -- and the build of its .so -- is
+    # only reached once something actually asks for it.
+    from .gemma4_attention_prefill_wmma import (
+        gemma4_attention_prefill_wmma_bf16,
+        gemma4_attention_prefill_wmma_supported,
+    )
+
+    if not gemma4_attention_prefill_wmma_supported(
+        num_heads=num_heads, num_kv_heads=num_kv_heads, head_dim=head_dim
+    ):
+        return PrefillAttentionSelection(
+            variant=PREFILL_ATTENTION_PLAIN,
+            launcher=gemma4_attention_prefill_bf16,
+            requested_variant=requested_variant,
+            reason=(
+                f"capability miss: {PREFILL_ATTENTION_WMMA_FLASH} implements head_dim "
+                f"{HEAD_DIM_WMMA} with GQA ratio {GQA_RATIO_WMMA}, got head_dim {head_dim} "
+                f"with {num_heads}q/{num_kv_heads}kv"
+            ),
+        )
+    return PrefillAttentionSelection(
+        variant=PREFILL_ATTENTION_WMMA_FLASH,
+        launcher=gemma4_attention_prefill_wmma_bf16,
+        requested_variant=requested_variant,
+        reason="capability match",
+    )
+
+
+# The candidate's declared geometry, mirrored so the refusal above can name it
+# without importing the candidate's module.
+HEAD_DIM_WMMA = 256
+GQA_RATIO_WMMA = 2
+
+# One line per distinct (variant, head_dim), on stderr, when asked. The profile
+# resolves to a *request*; only the layer knows the geometry, so this is the
+# only place that can report what actually ran. A path that silently falls back
+# while passing its own targeted test is a defect, and this is what makes the
+# fallback visible.
+PREFILL_ATTENTION_LOG_ENV = "HIPENGINE_GEMMA4_PREFILL_ATTENTION_LOG"
+_logged_selections: set[tuple[str, int]] = set()
+
+
+def select_prefill_attention(
+    *,
+    requested_variant: str | None = None,
+    num_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+) -> PrefillAttentionSelection:
+    """Resolve a prefill-attention variant for one head geometry, and report it.
+
+    The selection itself is :func:`_select_prefill_attention`; this wrapper adds
+    the one-shot diagnostic the log env var turns on.
+    """
+
+    selection = _select_prefill_attention(
+        requested_variant=requested_variant,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+    )
+    if os.environ.get(PREFILL_ATTENTION_LOG_ENV, "").strip():
+        marker = (selection.variant, int(head_dim))
+        if marker not in _logged_selections:
+            _logged_selections.add(marker)
+            print(
+                f"[gemma4-attention] {selection.describe()} "
+                f"{num_heads}q/{num_kv_heads}kv head_dim={head_dim}",
+                file=sys.stderr,
+                flush=True,
+            )
+    return selection

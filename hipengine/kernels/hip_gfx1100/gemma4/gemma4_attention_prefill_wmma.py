@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import ctypes
 from pathlib import Path
+from typing import Any
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.ctypes_cache import signed_kernel_fn
@@ -143,12 +144,18 @@ def gemma4_attention_prefill_wmma_bf16(
     runtime: HipRuntime | None = None,
     window: int = 0,
     row_offset: int = 0,
+    scratch: Any = None,
 ) -> None:
     """Launch the WMMA prefill candidate. Signature matches the strict kernel.
 
     ``tokens`` is the query block's row count and ``keys`` the mask's column
     count, which may exceed ``tokens`` for a chunked prefill. See the module
     docstring for the mask and offset frame.
+
+    ``scratch`` is accepted and ignored: the strict kernel needs a caller-owned
+    scratch buffer because it materialises logits, and this one stages its K/V
+    tile in LDS instead. It is in the signature so the two launchers are
+    interchangeable at a call site that passes the strict kernel's arguments.
     """
 
     tokens = int(tokens)

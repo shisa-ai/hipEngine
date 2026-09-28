@@ -41,6 +41,7 @@ from hipengine.core.memory import DeviceBuffer, free as hip_free, malloc
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     Gemma4AttentionScratch,
     gemma4_attention_prefill_bf16,
+    select_prefill_attention,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
     Gemma4ExpertScratch,
@@ -345,6 +346,7 @@ def gemma4_layer_forward_bf16(
     rotary_dim: int | None = None,
     key_begin: int = 0,
     window: int = 0,
+    prefill_attention_variant: str | None = None,
     stream: int = 0,
 ) -> int:
     """Run one Gemma 4 decoder layer over a block of tokens, in place.
@@ -478,7 +480,20 @@ def gemma4_layer_forward_bf16(
     if key_begin and kv is None:
         raise ValueError("key_begin requires a cache to skip into")
 
-    gemma4_attention_prefill_bf16(
+    # The prefill-attention variant is chosen by capability against this layer's
+    # own head geometry, so a layer whose geometry the selected variant does not
+    # implement keeps the strict kernel instead of raising. Resolved here rather
+    # than at the call site because only this function knows the geometry: the
+    # sliding layers are head_dim 256 and the full layers are head_dim 512, and
+    # the variant implements the first and not the second.
+    attention = select_prefill_attention(
+        requested_variant=prefill_attention_variant,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+    )
+
+    attention.launcher(
         buf("q_rot"),
         (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
         if kv is not None

@@ -51,6 +51,11 @@ class Gemma4GGUFGenerator:
     model_plugin: Any
     backend: str = "hip_gfx1100"
     context_length: int = _GEMMA4_DEFAULT_CONTEXT
+    # The prefill-attention variant this run requests, or ``None`` for the
+    # strict kernel. The execution profile supplies it before the runner is
+    # built; the layer still matches it against each layer's own head geometry
+    # and keeps the strict kernel on a capability miss.
+    prefill_attention_variant: str | None = None
     last_generation_outputs: tuple[GenerationOutput, ...] = field(
         default=(), init=False, repr=False
     )
@@ -252,6 +257,22 @@ class Gemma4GGUFGenerator:
                 self._weights.free()
                 self._weights = None
 
+    def _resolve_prefill_attention_variant(self) -> str | None:
+        """The prefill-attention variant the execution profile selects, if any.
+
+        Resolved once, before the runner exists, so a profile decision cannot
+        change between two prefill blocks of the same request. An explicit
+        attribute set by a caller or by a profile binder wins.
+        """
+
+        if self.prefill_attention_variant is not None:
+            return self.prefill_attention_variant
+        from hipengine.generation.gemma4_gguf_profiles import (
+            resolve_gemma4_prefill_attention_variant,
+        )
+
+        return resolve_gemma4_prefill_attention_variant(backend=self.backend)
+
     def _ensure_runner(self) -> Gemma4Runner:
         if self._runner is not None:
             return self._runner
@@ -275,6 +296,7 @@ class Gemma4GGUFGenerator:
                 weights=weights,
                 capacity=self.context_length,
                 max_logits_rows=max(1, int(self._speculative_max_logits_rows)),
+                prefill_attention_variant=self._resolve_prefill_attention_variant(),
             )
         except BaseException:
             weights.free()
@@ -511,6 +533,18 @@ for _backend, _factory in (
         quant=_GEMMA4_QUANT,
         factory=_factory,
     )
+
+# Register the execution-profile plans with the generators they belong to.
+# ``LLM`` resolves a profile before it constructs a generator, so a plan that is
+# registered any later than this import is a plan the engine never sees. Doing
+# it here also keeps the two in step: whoever can build the generator can
+# resolve its profile. Idempotent, and it registers nothing for a combination
+# that has no plan.
+from hipengine.generation.gemma4_gguf_profiles import (  # noqa: E402
+    register_gemma4_gguf_profiles as _register_gemma4_gguf_profiles,
+)
+
+_register_gemma4_gguf_profiles()
 
 
 __all__ = [

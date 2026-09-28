@@ -461,6 +461,17 @@ def _resolve_generator(artifact: Path, context: int) -> tuple[Any, Any, dict[str
     resolution = {}
     for attribute in ("_resolved_backend", "_resolved_quant", "_resolved_execution_profile"):
         value = getattr(llm, attribute, None)
+        profile = getattr(value, "profile", None)
+        if profile is not None and hasattr(profile, "value"):
+            # A resolved runtime profile is an object, not a name. Record the
+            # name plus the manifest hash that pins its variant selections, so
+            # the artifact says which kernels the run was allowed to pick.
+            resolution[attribute] = {
+                "profile": profile.value,
+                "manifest_sha256": getattr(value, "manifest_sha256", None),
+                "fell_back_to_strict": getattr(value, "fell_back_to_strict", None),
+            }
+            continue
         resolution[attribute] = getattr(value, "value", value)
     resolution["generator_type"] = type(generator).__name__
     return llm, runner, {
