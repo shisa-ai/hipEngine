@@ -148,6 +148,15 @@ Decode kernels report zero scratch. Metadata/disassembly and ordered
 trigger/victim A/B remain necessary; neither throttling nor its absence is
 proven. X-11 receives engagement evidence only, not repair-oracle/task coverage.
 
+The [scratch metadata/pilot packet](../benchmarks/results/2026-09-28-qwen4exp-scratch-pilot/README.md)
+confirms 36-byte GDN and 92-byte dense-wide private segments in the cached
+code objects, with scratch loads/stores in disassembly. Four fresh ordered
+GDN pilots (sham/scratch/scratch/sham) preserve outputs/state and show no large
+persistent penalty on the scratch-free GDN victim (after/before 0.99838–1.00057).
+This is not the scratch-enabled victim test: X-5 still requires the full kernel
+metadata census, dense-wide trigger, representative victims and clock/allocation
+telemetry before a causal conclusion.
+
 
 ## 2. Arithmetic policy and kernel mechanisms
 
