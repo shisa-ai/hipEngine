@@ -1,0 +1,77 @@
+{
+  "schema": "hipengine.qwen4exp.de1.dp4a_e2e.v1",
+  "kind": "perf_measurement",
+  "date": "2026-09-29",
+  "status": "retained",
+  "candidate": "decode_dp4a_linear (HIPENGINE_QWEN4_EXP_Q4_DP4A64)",
+  "host": "gfx1151 (Radeon 8060S), ROCm therock10-staging-20260828",
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "workload": {
+    "case_id": "code-p4096",
+    "live_count": 4097,
+    "repetitions": 3,
+    "prefill_chunk_size": 1024,
+    "decode_steps_per_rep": 1
+  },
+  "protocol": "scripts/qwen4exp_context_decode_profile.py --profile --role-markers under rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --output-format csv rocpd; kernel rows sliced to the qwen4exp_decode_live4097_rep{0,1,2} ROCTX windows and divided by 3",
+  "command_baseline": "rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --output-format csv rocpd -d <dir> -o e2ebase -- python3 scripts/qwen4exp_context_decode_profile.py --model-root <root> --case-id code-p4096 --live-count 4097 --repetitions 3 --prefill-chunk-size 1024 --hip-arch gfx1151 --require-cached-build --compiler-version-file <f> --profile --role-markers --output trace-baseline.json",
+  "command_candidate": "same, with --override HIPENGINE_QWEN4_EXP_Q4_DP4A64=1 and -o e2edp4a",
+  "engagement": {
+    "check": "raw kernel-name grep in the two kernel traces",
+    "baseline_dp4a_dispatches": 0,
+    "candidate_dp4a_dispatches": 210,
+    "baseline_owner_kernel": "gguf_q4_k_selected_dual_silu_logical128_t64_kernel",
+    "candidate_owner_kernel": "gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64_kernel",
+    "warmup_state_sha256_baseline": "34663131238493dde27e60060936b216c6679a44695a0bf4b74debaaea8c2382",
+    "warmup_state_sha256_candidate": "418c337476f80788fb442e6c4617143248d5c362b6475d41b3361a9706f724b5",
+    "note": "the two arms differ in arithmetic, so the route genuinely ran; this family previously reported a pass on a route that never ran"
+  },
+  "decode_kernel_ms_per_step": {
+    "baseline": {
+      "total": 54.603,
+      "owner_exact": 14.155,
+      "owner_dp4a": 0.0,
+      "owner_total": 14.155
+    },
+    "candidate": {
+      "total": 47.359,
+      "owner_exact": 1.486,
+      "owner_dp4a": 5.422,
+      "owner_total": 6.908
+    }
+  },
+  "result": {
+    "owner_speedup": 2.049,
+    "saved_ms_per_step": 7.244,
+    "pct_of_decode_kernel_time": 13.27
+  },
+  "collateral": {
+    "non_owner_sum_baseline_ms": 40.448,
+    "non_owner_sum_candidate_ms": 40.451,
+    "max_single_kernel_delta_ms": 0.019,
+    "pct_difference": 0.007
+  },
+  "wall_cross_check": {
+    "note": "the unprofiled end-to-end wall (bg-81) is valid but cannot resolve this win",
+    "baseline_median_s": 0.14553,
+    "candidate_median_s": 0.14971,
+    "baseline_spread_s": 0.01342,
+    "between_arm_difference_s": 0.00418
+  },
+  "owner_residual_note": "1.486 ms/step of the exact kernel remains because HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS covers 43 of 48 layers; the 5 uncovered layers keep the exact route",
+  "gates": {
+    "numerical": "pass",
+    "determinism": "pass",
+    "isolation": "pass",
+    "task_quality": "pass",
+    "artifacts": [
+      "2026-09-29-qwen4exp-decode-dp4a-linear-gate",
+      "2026-09-29-qwen4exp-de1-code-cross-validation",
+      "2026-09-29-qwen4exp-de1-decode-gemv-screen"
+    ]
+  },
+  "source": {
+    "tracked_clean": true,
+    "commit": "44343aafc"
+  }
+}
