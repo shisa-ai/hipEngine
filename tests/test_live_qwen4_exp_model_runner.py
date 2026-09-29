@@ -6,7 +6,7 @@ import pytest
 
 from hipengine.kernels.cpu_reference.qwen4_exp import PLEHashState
 from hipengine.runtime.qwen4_exp_runner import Qwen4ExpGGUFResidentModelRunner
-from tests.test_live_qwen4_exp_gguf_config import _info
+from tests._qwen4_exp_gguf_fixtures import _info
 from hipengine.loading.qwen4_exp_gguf import qwen4_exp_gguf_config_from_metadata
 
 
