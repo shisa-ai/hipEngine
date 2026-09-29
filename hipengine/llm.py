@@ -174,6 +174,10 @@ class SamplingParams:
         compare=False,
         repr=False,
     )
+    # User-facing explicit request (M7): when true, generate() takes the
+    # model-owned speculative MTP route instead of plain autoregressive
+    # decoding, and an unsupported model fails rather than downgrading.
+    speculative_mtp: bool = False
     speculative_mtp_static_eligibility: SpeculativeMTPStaticEligibility | None = None
     logprobs: bool = False
     top_logprobs: int = 0
@@ -430,6 +434,12 @@ class LLM:
         prompt_tuple = _normalize_prompts(prompts)
         if not prompt_tuple:
             return []
+        if sampling_params is not None and bool(getattr(sampling_params, "speculative_mtp", False)):
+            # An explicit request runs the MTP route or raises naming the
+            # capability; it is never folded back into plain autoregressive
+            # decoding, which would give the caller a silently different
+            # result from the one it asked for.
+            return self.generate_speculative_mtp_detailed(prompt_tuple, sampling_params)
         generator = self._get_text_generator()
         request = _generation_request(prompt_tuple, sampling_params or SamplingParams())
         detailed = getattr(generator, "generate_detailed", None)
