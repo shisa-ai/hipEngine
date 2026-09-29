@@ -16,7 +16,18 @@
   source-pinned; remove duplicated donor plumbing once a qualified replacement
   covers state, lifetime, memory and matched performance.
 - `_configure_prefill_workspace_selection` is a private, default-disabled
-  selector over already prepared owners. It allocates nothing, rejects owners
+  selector over already prepared owners. **As of `20260929T` the two largest
+  reasons it was parked are cleared by measurement**: the chunk-4096 canonical
+  numerical gate passes bit-identically to chunk 1024 (`X-6`), and chunk 1024 vs
+  4096 publishes identical `logits_sha256` on 12 of 12 canonical cases, so the
+  change is arithmetic-neutral. The p512 short-request loss that motivated the
+  1024 default does not reproduce (**+0.46%, smaller than the within-arm
+  spread**). The remaining requirements are unchanged and still binding:
+  measure short/long requests **on the same prepared owners** (every measurement
+  so far used one process per arm), qualify full state/lifetime and c2 on the
+  selection path, account for all owners and host staging in public
+  construction, and add allocation/lifetime gates. See
+  `benchmarks/results/2026-09-29-qwen4exp-rt1-blocker-status/`. It allocates nothing, rejects owners
   beyond original staging capacity, and restores borrowed fields on failure.
   Its CPU tests pass; automatic selection has no GPU or performance
   qualification yet. The reserve check is not public memory admission.
