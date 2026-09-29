@@ -425,7 +425,7 @@ shares from the 18323.2 ms comparison. Use §2.2 for the measured wide-route
 composition, §1.4 for the repair update, and §5 for current priorities.
 
 **Read the "our state" column with care.** For `gguf_ud_q4_k_xl` the production
-binder zeroes fifteen `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS` and then restores
+binder zeroes sixteen `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS` and then restores
 six `PRODUCTION_Q8_QSA_RESTORED_FLAGS`, so this quant's arithmetic comes from
 the production **selection table** (keyed on rows and quant) rather than from
 those flags. Reading the flag map therefore gives the wrong layer scope for
