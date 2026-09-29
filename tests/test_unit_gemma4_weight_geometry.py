@@ -253,6 +253,14 @@ def _install_layer_dispatch_recorder(
         "gemma4_router_topk_bf16",
         "gemma4_experts_forward_bf16",
         "gemma4_branch_add_bf16",
+        # Added when the fused q/k/v projection landed: this recorder fakes
+        # malloc to hand out pointers in the 0x30000 range, so any kernel that
+        # actually launches writes to unmapped GPU memory. Every other real
+        # kernel in the forward is already no-op'd here; the split joined the
+        # forward later and was missed, which surfaced as a teardown-time
+        # "Memory access fault ... on address 0x31000" -- the second fake
+        # buffer -- rather than as a failing assertion.
+        "gemma4_qkv_split_bf16",
     ):
         monkeypatch.setattr(layer_module, name, lambda *args, **kwargs: None)
 

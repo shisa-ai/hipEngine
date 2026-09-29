@@ -2458,3 +2458,88 @@ def test_layer_incremental_decode_matches_a_dense_prefill():
         assert np.abs(_from_bf16_bits(cached[prompt:])).sum() > 0, "decode wrote no keys"
     finally:
         scratch.free()
+
+
+def test_qkv_split_rejects_an_unknown_part_count() -> None:
+    """A part count the kernel cannot address must fail before any launch.
+
+    ``parts`` decides the fused stride, so a value other than 2 or 3 would make
+    the derived stride disagree with the buffer actually allocated. The check
+    runs before the library is built, so this holds on machines with no ROCm.
+    """
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import gemma4_qkv_split_bf16
+
+    with pytest.raises(ValueError, match="2 or 3"):
+        gemma4_qkv_split_bf16(0, 0, 0, 0, 4, 4, 4, 5)
+
+
+@_needs_hip
+def test_qkv_split_separates_a_fused_projection_output(device) -> None:
+    """P6's split must reproduce exactly what three projections would write.
+
+    The fused projection emits one row-major
+    ``[rows, q_width + 2 * kv_width]`` buffer; the attention path reads three separate buffers. This is the
+    correctness half of P6's gate, asserted **bitwise**: the split only moves
+    BF16 bits, so any difference at all is a layout error rather than rounding,
+    and an allclose here would mask precisely the class of bug it must catch.
+    """
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import gemma4_qkv_split_bf16
+
+    rows, q_width, kv_width, parts = 7, 12, 5, 3
+    stride = q_width + (parts - 1) * kv_width
+    fused = (np.arange(rows * stride, dtype=np.uint32) * 40503 % 65536).astype(np.uint16)
+
+    src = device.put(fused)
+    q_out = device.out((rows, q_width), np.uint16)
+    k_out = device.out((rows, kv_width), np.uint16)
+    v_out = device.out((rows, kv_width), np.uint16)
+
+    gemma4_qkv_split_bf16(src, q_out, k_out, v_out, rows, q_width, kv_width, parts)
+
+    block = fused.reshape(rows, stride)
+    np.testing.assert_array_equal(
+        device.get(q_out, (rows, q_width), np.uint16), block[:, :q_width]
+    )
+    np.testing.assert_array_equal(
+        device.get(k_out, (rows, kv_width), np.uint16),
+        block[:, q_width : q_width + kv_width],
+    )
+    np.testing.assert_array_equal(
+        device.get(v_out, (rows, kv_width), np.uint16), block[:, q_width + kv_width :]
+    )
+
+
+@_needs_hip
+def test_qkv_split_on_a_k_eq_v_layer_leaves_v_untouched(device) -> None:
+    """On a k_eq_v layer the split writes q and k and never addresses v.
+
+    Those artifacts carry no ``attn_v``, so the fused weight is only
+    ``q_width + kv_width`` wide and ``v`` keeps whatever already lives in its
+    buffer (the layer reuses K for V there). A kernel that wrote v anyway would
+    corrupt it, so the buffer is pre-filled with a sentinel and must come back
+    unchanged.
+    """
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import gemma4_qkv_split_bf16
+
+    rows, q_width, kv_width, parts = 5, 8, 4, 2
+    stride = q_width + (parts - 1) * kv_width
+    fused = (np.arange(rows * stride, dtype=np.uint32) * 7919 % 65536).astype(np.uint16)
+    sentinel = np.full((rows, kv_width), 0xDEAD, dtype=np.uint16)
+
+    src = device.put(fused)
+    q_out = device.out((rows, q_width), np.uint16)
+    k_out = device.out((rows, kv_width), np.uint16)
+    v_out = device.put(sentinel)
+
+    gemma4_qkv_split_bf16(src, q_out, k_out, v_out, rows, q_width, kv_width, parts)
+
+    block = fused.reshape(rows, stride)
+    np.testing.assert_array_equal(
+        device.get(q_out, (rows, q_width), np.uint16), block[:, :q_width]
+    )
+    np.testing.assert_array_equal(
+        device.get(k_out, (rows, kv_width), np.uint16), block[:, q_width:]
+    )
+    np.testing.assert_array_equal(
+        device.get(v_out, (rows, kv_width), np.uint16), sentinel
+    )

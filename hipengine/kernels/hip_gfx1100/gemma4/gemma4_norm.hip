@@ -266,7 +266,87 @@ __global__ void gemma4_scale_kernel(
   }
 }
 
+// Splits one fused q/k/v projection output -- a row-major
+// [rows, q_width + (parts - 1) * kv_width] buffer -- into the separate q, k
+// and v buffers the attention path already reads. P6 fuses the three projections
+// into one resident weight and one gemma4_project launch; this is the
+// device-side split that keeps every consumer on its existing ABI, which is
+// exactly what route (b) of #41 chose over widening the attention, norm,
+// rotary and cache-append signatures.
+//
+// parts == 2 covers k_eq_v layers, whose artifact carries no attn_v: the
+// third region is simply never addressed and ``v`` stays untouched. The
+// launcher rejects any stride that disagrees with (parts, q_width, kv_width)
+// so a mis-sized fused buffer cannot silently land in the wrong array.
+__global__ void gemma4_qkv_split_bf16_kernel(
+    const uint16_t* fused,
+    int64_t stride,
+    int64_t rows,
+    int64_t q_width,
+    int64_t kv_width,
+    int parts,
+    uint16_t* q,
+    uint16_t* k,
+    uint16_t* v) {
+  const int64_t total = rows * stride;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const int64_t row = idx / stride;
+    const int64_t col = idx - row * stride;
+    const uint16_t value = fused[idx];
+    if (col < q_width) {
+      q[row * q_width + col] = value;
+    } else {
+      const int64_t kv_col = col - q_width;
+      if (kv_col < kv_width) {
+        k[row * kv_width + kv_col] = value;
+      } else if (parts == 3) {
+        v[row * kv_width + kv_col - kv_width] = value;
+      }
+    }
+  }
+}
+
 }  // namespace
+
+extern "C" int hipengine_gemma4_qkv_split_bf16(
+    const uint16_t* fused,
+    int64_t stride,
+    int64_t rows,
+    int64_t q_width,
+    int64_t kv_width,
+    int parts,
+    uint16_t* q,
+    uint16_t* k,
+    uint16_t* v,
+    hipStream_t stream) {
+  if (rows <= 0 || q_width <= 0 || kv_width <= 0 ||
+      (parts != 2 && parts != 3) ||
+      stride != q_width + static_cast<int64_t>(parts - 1) * kv_width) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = rows * stride;
+  const int threads = 256;
+  const int64_t blocks = (total + threads - 1) / threads;
+  const int64_t capped = blocks > 65535 ? 65535 : blocks;
+  hipLaunchKernelGGL(
+      gemma4_qkv_split_bf16_kernel,
+      dim3(static_cast<unsigned int>(capped)),
+      dim3(threads),
+      0,
+      stream,
+      fused,
+      stride,
+      rows,
+      q_width,
+      kv_width,
+      parts,
+      q,
+      k,
+      v);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_gemma4_rmsnorm_f32w_bf16(
     const uint16_t* hidden_states,

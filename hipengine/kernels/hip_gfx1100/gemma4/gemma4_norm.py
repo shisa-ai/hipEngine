@@ -79,6 +79,20 @@ _ARGTYPES_SCALE = (
     ctypes.c_void_p,
 )
 
+# fused, stride, rows, q_width, kv_width, parts, q, k, v, stream
+_ARGTYPES_QKV_SPLIT = (
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+)
+
 _SOURCE = Path(__file__).with_name("gemma4_norm.hip")
 _OUTPUT_NAME = "gemma4_norm.so"
 
@@ -91,6 +105,7 @@ _SYMBOL_ADD_RMSNORM_SCALE_BF16 = "hipengine_gemma4_add_rmsnorm_scale_bf16"
 _SYMBOL_EXPERT_WEIGHT_SCALE_F32 = "hipengine_gemma4_expert_weight_scale_f32"
 _SYMBOL_BRANCH_ADD_BF16 = "hipengine_gemma4_branch_add_bf16"
 _SYMBOL_SCALE_BF16 = "hipengine_gemma4_scale_bf16"
+_SYMBOL_QKV_SPLIT = "hipengine_gemma4_qkv_split_bf16"
 
 
 def plan_gemma4_norm_build(
@@ -129,6 +144,58 @@ def build_gemma4_norm(
         load=load,
         require_cached=require_cached,
     )
+
+
+def gemma4_qkv_split_bf16(
+    fused_ptr: int,
+    q_ptr: int,
+    k_ptr: int,
+    v_ptr: int,
+    rows: int,
+    q_width: int,
+    kv_width: int,
+    parts: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Split one fused q/k/v projection output into the three attention buffers.
+
+    ``fused_ptr`` is the row-major
+    ``[rows, q_width + (parts - 1) * kv_width]`` result of a single fused ``gemma4_project`` call, which is how P6 replaces
+    three projection launches with one. ``parts`` is 2 on k_eq_v layers -- their
+    artifact carries no ``attn_v`` -- and 3 otherwise; with ``parts == 2`` the
+    ``v_ptr`` region is never addressed.
+
+    The device launcher re-derives ``stride`` from the three widths and
+    rejects a mismatch, so a fused buffer sized wrongly fails loudly instead of
+    landing in the wrong array. Values are copied as raw BF16 bits, so the
+    split is bitwise transparent: this cannot change a single output element,
+    which is what makes an end-to-end bitwise gate against the unfused path a
+    meaningful gate rather than a tolerance check.
+    """
+    if parts not in (2, 3):
+        raise ValueError(f"parts must be 2 or 3, got {parts!r}")
+    _check_positive_shape(rows, q_width)
+    if kv_width <= 0:
+        raise ValueError("kv width must be positive")
+    library = library or build_gemma4_norm(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, _SYMBOL_QKV_SPLIT, _ARGTYPES_QKV_SPLIT, ctypes.c_int)
+    err = fn(
+        fused_ptr,
+        q_width + (parts - 1) * kv_width,
+        rows,
+        q_width,
+        kv_width,
+        parts,
+        q_ptr,
+        k_ptr,
+        v_ptr,
+        stream,
+    )
+    _check_launch(runtime, err)
 
 
 def gemma4_rmsnorm_f32w_bf16(

@@ -63,6 +63,7 @@ from hipengine.loading.gemma4_gguf import Gemma4GGUFConfig, gemma4_gguf_config_f
 from hipengine.loading.gemma4_gguf_device import (
     Gemma4GGUFDeviceWeight,
     Gemma4GGUFWeightSpec,
+    can_fuse_gguf_device_weights,
     materialize_fused_gguf_device_weight,
     materialize_gemma4_gguf_device_weight,
     plan_gemma4_gguf_resident_specs,
@@ -260,6 +261,7 @@ _PROJECTION_FIELDS = (
     "q_proj",
     "k_proj",
     "v_proj",
+    "qkv_proj",
     "o_proj",
     "mlp_gate_up_proj",
     "mlp_down_proj",
@@ -505,7 +507,34 @@ def _build_layer(
         owned.append(fused)
         fields[fused_field] = fused
 
+    # Attention projections: one resident q|k|v weight and one launch instead
+    # of three, whenever the artifact's storage can express it (see
+    # ``can_fuse_gguf_device_weights``).
+    #
+    # Deliberately *not* fused on k_eq_v layers. Those run two projections
+    # today (q and k -- there is no attn_v), and fusing them would be one
+    # projection plus the post-projection split: still two launches, so the
+    # split's 5.7-19.7 us and the transient fused buffer would be bought for
+    # no reduction at all. Measured on the fixture geometry in the P6 split
+    # investigation; re-check that number if the split's cost moves.
+    fused_slots: frozenset[str] = frozenset()
+    qkv_candidates = [by_slot.get(prefix + slot) for slot in ("attn_q", "attn_k", "attn_v")]
+    if (
+        not config.geometry(index).k_eq_v
+        and all(spec is not None for spec in qkv_candidates)
+    ):
+        qkv_specs = tuple(spec for spec in qkv_candidates if spec is not None)
+        if can_fuse_gguf_device_weights(qkv_specs):
+            qkv = materialize_fused_gguf_device_weight(reader, qkv_specs, backend=backend)
+            owned.append(qkv)
+            fields["qkv_proj"] = qkv
+            fused_slots = frozenset({"attn_q", "attn_k", "attn_v"})
+
     for slot, field_name in _SLOT_TO_FIELD.items():
+        if slot in fused_slots:
+            # Already carried by the fused weight above; materialising them
+            # again would hold two copies of the same rows resident.
+            continue
         spec = by_slot.get(prefix + slot)
         if spec is None:
             # v_proj genuinely does not exist on attention_k_eq_v layers; the

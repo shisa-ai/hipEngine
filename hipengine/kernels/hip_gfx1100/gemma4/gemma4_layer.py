@@ -60,6 +60,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
     gemma4_add_rmsnorm_scale_bf16,
     gemma4_branch_add_bf16,
     gemma4_head_rmsnorm_f32w_bf16,
+    gemma4_qkv_split_bf16,
     gemma4_rmsnorm_f32w_bf16,
     gemma4_rmsnorm_weightless_bf16,
 )
@@ -118,6 +119,12 @@ class Gemma4LayerPointers:
     post_feedforward_layernorm: int
     v_proj: Gemma4Projection = 0
     layer_scalar: int = 0
+    # One resident q|k|v weight, set only when the artifact's storage let the
+    # loader fuse all three and the layer is not k_eq_v. ``0`` means "project
+    # the three separately", which is the unfused path every artifact could
+    # always take; the layer picks the path from this value rather than from a
+    # flag, so what actually runs is decided by what was loaded.
+    qkv_proj: Gemma4Projection = 0
 
 
 def gemma4_project(
@@ -286,6 +293,13 @@ class Gemma4LayerScratch:
         sizes = {
             "normalized": rows * hidden * _BF16_BYTES,
             "q": rows * q_width * _BF16_BYTES,
+            # Transient fused projection output. The fused weight writes one
+            # [rows, q + 2*kv] buffer and the split copies it out to q/k/v, so
+            # this is what the extra launch costs in memory: it doubles the
+            # q/k/v region. In-place rearrangement does not avoid it -- writing
+            # the packed blocks clobbers source rows not yet read -- which the
+            # P6 split investigation checked directly.
+            "qkv": rows * (q_width + 2 * kv_width) * _BF16_BYTES,
             "k": rows * kv_width * _BF16_BYTES,
             "k_normed": rows * kv_width * _BF16_BYTES,
             "v": rows * kv_width * _BF16_BYTES,
@@ -539,8 +553,35 @@ def gemma4_layer_forward_bf16(
         hidden_ptr, layer.input_layernorm, buf("normalized"), rows, hidden_size, eps, **kwargs
     )
 
-    gemma4_project(buf("normalized"), layer.q_proj, buf("q"), rows, hidden_size, q_width, **kwargs)
-    gemma4_project(buf("normalized"), layer.k_proj, buf("k"), rows, hidden_size, kv_width, **kwargs)
+    if layer.qkv_proj:
+        # P6: one launch projects q|k|v into the transient fused buffer, then
+        # the split separates them into the buffers every consumer below
+        # already reads -- so no consumer's ABI changes. Non-k_eq_v only: the
+        # loader never sets this on a k_eq_v layer, where it would not reduce
+        # the launch count (2 projections become projection + split = 2).
+        gemma4_project(
+            buf("normalized"),
+            layer.qkv_proj,
+            buf("qkv"),
+            rows,
+            hidden_size,
+            q_width + 2 * kv_width,
+            **kwargs,
+        )
+        gemma4_qkv_split_bf16(
+            buf("qkv"),
+            buf("q"),
+            buf("k"),
+            buf("v"),
+            rows,
+            q_width,
+            kv_width,
+            3,
+            **kwargs,
+        )
+    else:
+        gemma4_project(buf("normalized"), layer.q_proj, buf("q"), rows, hidden_size, q_width, **kwargs)
+        gemma4_project(buf("normalized"), layer.k_proj, buf("k"), rows, hidden_size, kv_width, **kwargs)
 
     # `attention_k_eq_v` layers have no v_proj: the reference binds V to the *raw*
     # K projection and normalises a separate `key` array. So K is never normed in
@@ -552,9 +593,12 @@ def gemma4_layer_forward_bf16(
             buf("k"), buf("v"), rows * num_kv_heads, head_dim, eps, **kwargs
         )
     else:
-        gemma4_project(
-            buf("normalized"), layer.v_proj, buf("v"), rows, hidden_size, kv_width, **kwargs
-        )
+        if not layer.qkv_proj:
+            # On the fused path the split already wrote buf("v"); only the
+            # unfused path needs its own V projection.
+            gemma4_project(
+                buf("normalized"), layer.v_proj, buf("v"), rows, hidden_size, kv_width, **kwargs
+            )
         # V is normalised weightlessly and never rotated.
         gemma4_rmsnorm_weightless_bf16(
             buf("v"), buf("v"), rows * num_kv_heads, head_dim, eps, **kwargs
