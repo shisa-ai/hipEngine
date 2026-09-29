@@ -72,6 +72,43 @@ fails. `tests/test_unit_qwen4exp_wmma_gate_route_arms.py` also pins that the two
 arms differ **only** in the WMMA selector, so the measured drift stays
 attributable to this route alone.
 
+## Re-certified at HEAD, bit-identically
+
+With the fix in place, `artifact-control-wmma16-47-vs-exact-dwcleared.json`
+reproduces the 2026-09-16 certification exactly:
+
+| | teacher | candidate | mean KL | outliers |
+|---|---|---|---|---|
+| 2026-09-16 | `550bb9b8` | `65370710` | 3.796e-4 | 0 |
+| HEAD now | `550bb9b8` | `65370710` | 3.79552e-4 | 0 |
+
+Same teacher hash, same candidate hash, same KL to four digits, every gate
+passing, `measurement_valid: true`, zero outliers. The teacher hash was checked
+directly rather than inferred from the KL, since an identical candidate/teacher
+pair is the exact failure this file documents and it has now occurred twice.
+
+So the route's arithmetic has **not** drifted since 2026-09-16. Only its gate was
+broken. The 16-47 certification is reproducible at HEAD again.
+
+## The composed run's outlier attribution is restored
+
+This run is also the **valid** control the staged-f32 outlier review needed. Both
+runs share the same teacher (`550bb9b8`), so they are directly comparable:
+
+| arm | teacher | candidate | mean KL | outliers |
+|---|---|---|---|---|
+| WMMA 16-47 alone | `550bb9b8` | `65370710` | 3.796e-4 | **0** |
+| + staged 13-15 | `550bb9b8` | `87dbf445` | 5.443e-4 | **2** |
+
+The control isolates WMMA@16-47 at zero outliers; adding the staged tile
+introduces both. **The composed run's 2 outliers are attributable to the staged
+tile**, which is what an earlier turn withdrew when the control turned out to be
+a false pass. The attribution is sound now because engagement is verified - the
+teacher hash is the exact chain and the candidate differs - rather than assumed.
+
+This also means the outliers are a real property of the staged tile rather than
+an artifact of the measurement, and they remain an open item against promotion.
+
 ## What this does not affect
 
 The staged-f32 results are unaffected, and the composed certificate is
