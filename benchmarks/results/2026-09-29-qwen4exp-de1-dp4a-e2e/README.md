@@ -80,6 +80,24 @@ it to `"1"`; the blanket arithmetic-recovery sweep was the only thing suppressin
 The gate's conservative base legitimately keeps the flag at `0`, so the recovery and
 conservative lists remain equal.
 
+## Headroom closure
+
+The bandwidth gate localized DE-1's headroom by charging this owner's 888.83 MB/step
+at the in-block comparator's 184.66 GB/s. Re-charging the promoted owner:
+
+| | baseline | promoted |
+| --- | ---: | ---: |
+| owner bandwidth | 62.79 GB/s | **164.48 GB/s** |
+| as % of comparator | 34.0% | **89.1%** |
+| gap to comparator | 2.94x | **1.12x** |
+| headroom | 9.342 ms/step | **0.591 ms/step** |
+
+**93.7% of the identified headroom is consumed**, leaving 0.591 ms/step = 1.25% of the
+new 47.390 ms/step kernel sum. The remaining work the ledger row asks for — an
+*exact-activation* warp256 variant — is now chasing at most ~0.6 ms/step on this owner
+rather than the ~10 ms/step that motivated it. That does not close it (the row's ask is
+an exact-activation structure, which this promotion is not), but it changes its ranking.
+
 ## Scope
 
 The warp256 dp4a variant's historical failure (max KL 0.121–0.431) is a **different
