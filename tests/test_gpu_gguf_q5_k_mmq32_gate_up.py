@@ -1,50 +1,63 @@
-"""RED: the grouped rowbatch gate_up owner has no Q5_K entry.
+"""RED: the int8 MMQ32 gate_up leaf has no Q5_K tile loader.
 
-Punchlist P3 (``docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md``). Layer 29 carries
-the artifact's only Q5_K gate_up (``scripts/gemma4_family_census.py:53``), and
-while every other layer's gate_up runs the grouped rowbatch leaf,
-``gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out``
-(6 launches / 66.501 ms in the recorded 1024-token trace), that owner was
-registered for ``gguf_q4_k`` only. Q5_K therefore resolved no dual owner on
-Gemma 4's dispatch and fell through to the per-row GEMV.
+Punchlist P3 Step 2 (``docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md``). Layer 29
+carries the artifact's only Q5_K gate_up (``scripts/gemma4_family_census.py:53``),
+which today runs the BF16 grouped rowbatch owner at 21.9 ms / 1024 tokens, while
+llama.cpp runs the same projection through its ordinary MMQ in 2.6 ms.
 
-Gemma 4's dispatch asks for
-``selected_dual_wmma_prefill_compact_bf16_bf16_out`` and, when that is absent,
-the selected GEMV -- it never selects a variant name that Q5_K provides. The
-down half of this row was a routing defect and is fixed (``7a91b5735``); this
-half is a genuinely missing owner, so the row never reaches a grouped owner at
-all.
+The fast path exists and is measured: ``gemma4_project_experts_mmq_dual`` packs
+activations to llama.cpp-style DS4 ``block_q8_1_mmq`` and runs the 32x32
+packed-dot int8 leaf, whose docstring records it at **2.07x** the BF16 WMMA owner
+at the Gemma4 MoE shape (2.00x even paying the packing cost). But its route guard
+rejects everything except Q4_K:
+
+    # gemma4_experts.py:_mmq_dual_route
+    if weight.spec.quant_key != _MMQ_DUAL_QUANT_KEY:   # "gguf_q4_k"
+        return False
+
+So the leaf resolves on the ``gguf_q4_k`` axis and raises ``MissingKernelError``
+on ``gguf_q5_k``. Verified directly: after importing
+``hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill``, the
+key ``(hip_gfx1100, moe_linear, gguf_q4_k, selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out)``
+resolves to a function, while the identical key under ``gguf_q5_k`` raises.
 
 The registry is four-axis -- ``(backend, layer, quant, variant)`` -- so the leaf
-does not need a new variant *name*: it needs to be reachable with
-``quant="gguf_q5_k"``. That is what this test asserts.
+does not need a new variant *name*: it needs a Q5_K tile loader reachable with
+``quant="gguf_q5_k"``, and then the route guard widened. That is what this test
+asserts, and it is the RED half of RED/GREEN: it fails while the loader is absent
+and passes once the port lands.
 
-Scope note (an earlier revision of this task targeted the MMQ32 leaf instead;
-``selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out`` appears in
-neither the registry inventory nor the punchlist's named target, so the
-assertion was retargeted here). Q5_K already has ``mmq32_q8_1_*`` and
-``mmq_i128_j128_k256_*`` registrations -- it was never devoid of MMQ kernels.
+Q5_K carries an extra ``qh[32]`` plane over Q4_K -- each weight's fifth bit sits
+in the block's ``qh`` slab and the superblock is 176 bytes against Q4_K's 144 --
+which is why widening the guard alone would misdecode rather than merely run
+slow. This is a source port from ``gguf_q5_k_q8_1_selected_prefill.hip``, not a
+guard change. Scope and pre-flight are in worklog entry
+``20260929T195035.482780Z-lhl-gemma4-q5k-gateup-mmq32-preflight-1447a7.md``.
 
 What GREEN must add (recorded here so the numerical gate cannot be quietly
-dropped): drive the owner with Q5_K weights and hold it to the
+dropped): drive the leaf with Q5_K weights and hold it to the
 ``docs/OPTIMIZATION.md`` §4.2 outer floor against the CPU reference.
 
   - weight fixture: ``make_q5_k_weight`` from
     ``tests.test_gpu_gguf_k_gemv`` (raw GGUF ``block_q5_K`` bytes)
+  - activation packing: ``pack_q8_1_mmq_ds4_from_bf16``, which is
+    quant-agnostic -- it packs activations, not weights
   - oracle: ``hipengine.kernels.cpu_reference.gguf_q5_k_gemv``
     (``ops.py:499``), an exact ``dequantize`` + ``np.matmul`` over the raw bytes
   - thresholds: ``np.testing.assert_allclose(..., _TOLERANCE_BF16)`` plus
     max-softmax-KL ``<= 0.05`` and argmax agreement ``>= 0.9``, exactly the
-    assertions the Q4_K sibling already applies
+    assertions ``test_q4_k_q8_1_ds4_mmq32_selected_prefill_bf16_matches_ds4_cpu_reference``
+    already applies to the Q4_K leaf
   - §8 also requires a ``rocprofv3 --kernel-trace`` smoke showing the kernel
     runs under its expected name with a plausible ``DurationNs``
 
-Q5_K carries an extra ``qh[32]`` plane over Q4_K: its fifth weight bit comes
-from the block's ``qh`` slab and its superblock stride is 176 bytes against
-Q4_K's 144. The shared kernel already encodes this behind its ``Q5K`` template
-parameter, which is why the owner is one symbol in one translation unit rather
-than a source port. Pre-flight and scope are in worklog entry
-``20260929T195035.482780Z-lhl-gemma4-q5k-gateup-mmq32-preflight-1447a7.md``.
+Scope note: an interim revision of this test retargeted it to
+``selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out``. That was a
+false negative -- the grouped variant family was checked without importing
+``gguf_q4_k_q8_1_selected_prefill``, and registration here is import-time and
+lazy, so a pre-import ``resolve`` returns nothing whether or not the key exists.
+Gate_up also does not need a grouped owner: P3's own evidence says it already
+runs one. The target below is restored to the MMQ32 leaf.
 """
 
 from __future__ import annotations
@@ -53,7 +66,7 @@ import ctypes
 
 import pytest
 
-_GATE_UP_VARIANT = "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out"
+_MMQ32_VARIANT = "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 _BACKEND = "hip_gfx1100"
 _LAYER = "moe_linear"
 _QUANT = "gguf_q5_k"
@@ -69,36 +82,34 @@ def _hip_available() -> bool:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_q5_k_gate_up_reaches_the_grouped_rowbatch_owner() -> None:
-    """RED: the grouped rowbatch gate_up owner must resolve for ``gguf_q5_k``.
+def test_q5_k_gate_up_reaches_the_mmq32_leaf() -> None:
+    """RED: the MMQ32 gate_up leaf must resolve for ``gguf_q5_k``.
 
-    The registry keys kernels on ``(backend, layer, quant, variant)``, so a
-    successful lookup under ``gguf_q5_k`` is precisely the contract P3
-    establishes. ``missing="none"`` is used rather than a static import so this
-    module still *collects* while the owner is absent -- the missing leaf then
-    fails as an assertion instead of an ImportError, which keeps the failure
-    legible as a genuine RED.
-    Registration is import-time and lazy, so importing the owning module is
-    what makes the key visible to ``resolve`` -- without it a pre-import lookup
-    returns ``None`` whether or not the owner exists.
+    The registry keys kernels on ``(backend, layer, quant, variant)``, so the
+    same lookup that succeeds for ``gguf_q4_k`` must succeed for
+    ``gguf_q5_k``. Importing the owning module is load-bearing: registration is
+    import-time and lazy, so without it ``resolve`` returns ``None`` whether or
+    not the leaf exists. ``missing="none"`` keeps this module *collectable*
+    while it is absent, so the failure reads as a genuine RED assertion rather
+    than an ImportError.
     """
-    import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill  # noqa: F401
+    import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill  # noqa: F401
     from hipengine.kernels.registry import resolve
 
     leaf = resolve(
         backend=_BACKEND,
         layer=_LAYER,
         quant=_QUANT,
-        variant=_GATE_UP_VARIANT,
+        variant=_MMQ32_VARIANT,
         missing="none",
     )
 
     assert leaf is not None, (
-        f"no {_QUANT} owner for ({_BACKEND}, {_LAYER}, {_GATE_UP_VARIANT}): the "
-        "grouped rowbatch gate_up owner is registered for gguf_q4_k only, so "
-        "layer 29's Q5_K gate_up has no dual owner and falls through to the "
-        "slow per-row GEMV. Add the Q5_K symbol to "
-        "gguf_q4_k_selected_prefill.hip launching the grouped kernel with "
-        "Q5K=true, expose its sibling function in the module, and register it "
-        "under quant axis 'gguf_q5_k'."
+        f"no {_QUANT} owner for ({_BACKEND}, {_LAYER}, {_MMQ32_VARIANT}): the "
+        "int8 MMQ32 gate_up leaf has no Q5_K tile loader, so layer 29's Q5_K "
+        "gate_up stays on the BF16 grouped owner at 21.9 ms / 1024 instead of "
+        "the int8 leaf measured at 2.07x it. Port the Q5_K decode (qh slab, "
+        "176-byte superblock) from gguf_q5_k_q8_1_selected_prefill.hip, then "
+        "widen _mmq_dual_route's _MMQ_DUAL_QUANT_KEY guard in "
+        "gemma4_experts.py."
     )
