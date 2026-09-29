@@ -1,0 +1,256 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_dense_projection_identical_operand_ab",
+ "performance_claim": false,
+ "status": "diagnostic",
+ "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "tensor_suffix": "attn_qkv.weight",
+ "in_features": 2560,
+ "out_features": 10240,
+ "quant": "Q8_0",
+ "layers": [
+  0,
+  9,
+  22,
+  34,
+  46
+ ],
+ "row_cases": [
+  1024
+ ],
+ "repetitions": 20,
+ "production_variant": "coltile8_rowbatch4_wave_scale_f32_f32_out",
+ "superseded_variant": "coltile8_rowbatch4_f32_f32_out",
+ "production_variant_basis": "Template argument list in the role-marked rocprofv3 trace: float, float, 8, 8, 4, true (COL_TILE=8, ROW_BATCH=4, WAVE_SCALE=true).",
+ "fp32_fma_peak_gflops": 61300.0,
+ "activation_note": "Per-layer deterministic standard normal scaled by 0.5. Real activation ranges from a boundary capture are a follow-up; this run separates kernel variants on identical operands, which is what the variant comparison needs.",
+ "notes": [
+  "Every variant runs the same arithmetic class (scalar FP32 FMA over Q8_0 weights) with a different tile shape.",
+  "Layers rotate across the sweep so the weight matrix does not stay cache-resident.",
+  "Compilation happens before any timed region.",
+  "bit_identical_to_production is reported because a different tile shape changes the accumulation order even when the formula is unchanged.",
+  "The production variant is already the fastest of the registered family; this sweep bounds the tile-shape design space rather than finding a candidate."
+ ],
+ "results": [
+  {
+   "layer": 0,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_wave_scale_f32_f32_out",
+   "ms": 17.3214,
+   "gflops": 53.7,
+   "achieved_gflops": 3099.5,
+   "share_of_fp32_peak_pct": 5.06,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 0,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+   "ms": 16.1587,
+   "gflops": 53.7,
+   "achieved_gflops": 3322.5,
+   "share_of_fp32_peak_pct": 5.42,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 0,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_pipelined_f32_f32_out",
+   "ms": 18.6172,
+   "gflops": 53.7,
+   "achieved_gflops": 2883.7,
+   "share_of_fp32_peak_pct": 4.7,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 0,
+   "rows": 1024,
+   "variant": "coltile4_rowbatch8_pipelined_f32_f32_out",
+   "ms": 17.2272,
+   "gflops": 53.7,
+   "achieved_gflops": 3116.4,
+   "share_of_fp32_peak_pct": 5.08,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 9,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_wave_scale_f32_f32_out",
+   "ms": 17.3089,
+   "gflops": 53.7,
+   "achieved_gflops": 3101.7,
+   "share_of_fp32_peak_pct": 5.06,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 9,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+   "ms": 16.1447,
+   "gflops": 53.7,
+   "achieved_gflops": 3325.4,
+   "share_of_fp32_peak_pct": 5.42,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 9,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_pipelined_f32_f32_out",
+   "ms": 18.5938,
+   "gflops": 53.7,
+   "achieved_gflops": 2887.4,
+   "share_of_fp32_peak_pct": 4.71,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 9,
+   "rows": 1024,
+   "variant": "coltile4_rowbatch8_pipelined_f32_f32_out",
+   "ms": 17.2298,
+   "gflops": 53.7,
+   "achieved_gflops": 3115.9,
+   "share_of_fp32_peak_pct": 5.08,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 22,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_wave_scale_f32_f32_out",
+   "ms": 17.3108,
+   "gflops": 53.7,
+   "achieved_gflops": 3101.4,
+   "share_of_fp32_peak_pct": 5.06,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 22,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+   "ms": 16.1359,
+   "gflops": 53.7,
+   "achieved_gflops": 3327.2,
+   "share_of_fp32_peak_pct": 5.43,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 22,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_pipelined_f32_f32_out",
+   "ms": 18.6073,
+   "gflops": 53.7,
+   "achieved_gflops": 2885.3,
+   "share_of_fp32_peak_pct": 4.71,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 22,
+   "rows": 1024,
+   "variant": "coltile4_rowbatch8_pipelined_f32_f32_out",
+   "ms": 17.208,
+   "gflops": 53.7,
+   "achieved_gflops": 3119.9,
+   "share_of_fp32_peak_pct": 5.09,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 34,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_wave_scale_f32_f32_out",
+   "ms": 17.334,
+   "gflops": 53.7,
+   "achieved_gflops": 3097.2,
+   "share_of_fp32_peak_pct": 5.05,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 34,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+   "ms": 16.1411,
+   "gflops": 53.7,
+   "achieved_gflops": 3326.1,
+   "share_of_fp32_peak_pct": 5.43,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 34,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_pipelined_f32_f32_out",
+   "ms": 18.5723,
+   "gflops": 53.7,
+   "achieved_gflops": 2890.7,
+   "share_of_fp32_peak_pct": 4.72,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 34,
+   "rows": 1024,
+   "variant": "coltile4_rowbatch8_pipelined_f32_f32_out",
+   "ms": 17.192,
+   "gflops": 53.7,
+   "achieved_gflops": 3122.8,
+   "share_of_fp32_peak_pct": 5.09,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 46,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_wave_scale_f32_f32_out",
+   "ms": 17.3341,
+   "gflops": 53.7,
+   "achieved_gflops": 3097.2,
+   "share_of_fp32_peak_pct": 5.05,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 46,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+   "ms": 16.1043,
+   "gflops": 53.7,
+   "achieved_gflops": 3333.7,
+   "share_of_fp32_peak_pct": 5.44,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 46,
+   "rows": 1024,
+   "variant": "coltile8_rowbatch4_pipelined_f32_f32_out",
+   "ms": 18.5678,
+   "gflops": 53.7,
+   "achieved_gflops": 2891.4,
+   "share_of_fp32_peak_pct": 4.72,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  },
+  {
+   "layer": 46,
+   "rows": 1024,
+   "variant": "coltile4_rowbatch8_pipelined_f32_f32_out",
+   "ms": 17.1794,
+   "gflops": 53.7,
+   "achieved_gflops": 3125.1,
+   "share_of_fp32_peak_pct": 5.1,
+   "max_abs_diff_vs_production": 0.0,
+   "bit_identical_to_production": true
+  }
+ ]
+}

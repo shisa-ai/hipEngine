@@ -1,0 +1,204 @@
+{
+  "schema": 1,
+  "date": "2026-09-29",
+  "date_basis": "UTC",
+  "kind": "qwen4exp_q8_coltile_pipeline_promotion",
+  "status": "promoted_exact_prefill",
+  "performance_claim": true,
+  "scope": "linear/prefill_exact_q8_f32_coltile",
+  "raw_packet_sha256": "8d18319831e80f11027b3b18de9bad751494eb64e14e5c7f05127a5182dfa199",
+  "raw_packet_path": "benchmarks/results/2026-09-29-qwen4exp-q8-coltile-pipeline/packet.json",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "1f9b80cceafe9f4bec69ba43698460392adafba9",
+    "branch": "qwen3.8-flash-next"
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "It seems that tuned daemon is not running, preset profile is not activated.\nPreset profile: accelerator-performance",
+    "cpu_governors": {
+      "powersave": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model": {
+    "path": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "quant": "Q8_0",
+    "tensor_suffix": "attn_qkv.weight"
+  },
+  "workload": {
+    "rows": [
+      1024
+    ],
+    "in_features": 2560,
+    "out_features": 10240,
+    "layers": [
+      0,
+      9,
+      22,
+      34,
+      46
+    ],
+    "repetitions": 20,
+    "note": "Per-layer deterministic standard normal scaled by 0.5. Real activation ranges from a boundary capture are a follow-up; this run separates kernel variants on identical operands, which is what the variant comparison needs."
+  },
+  "variants": {
+    "promoted": "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+    "rollback_wave_scale_parent": "coltile8_rowbatch4_wave_scale_f32_f32_out",
+    "strict_exact_parent": "coltile8_rowbatch4_f32_f32_out",
+    "candidate_basis": "Software-pipelined sibling of the production wave-scale coltile: the next K iteration issues its Q8_0 weight-block and activation loads before the current iteration's FMAs retire. Arithmetic, per-output FMA order, wave shuffle tree and four-wave publication are unchanged, so the kernel is bit-identical to its parent."
+  },
+  "result": {
+    "mean_parent_ms": 17.3218,
+    "mean_candidate_ms": 16.1369,
+    "mean_delta_pct": -6.841,
+    "max_abs_diff_all_cases": 0.0,
+    "per_layer": [
+      {
+        "layer": 0,
+        "parent_ms": 17.3214,
+        "candidate_ms": 16.1587,
+        "delta_pct": -6.713,
+        "max_abs_diff": 0.0
+      },
+      {
+        "layer": 9,
+        "parent_ms": 17.3089,
+        "candidate_ms": 16.1447,
+        "delta_pct": -6.726,
+        "max_abs_diff": 0.0
+      },
+      {
+        "layer": 22,
+        "parent_ms": 17.3108,
+        "candidate_ms": 16.1359,
+        "delta_pct": -6.787,
+        "max_abs_diff": 0.0
+      },
+      {
+        "layer": 34,
+        "parent_ms": 17.334,
+        "candidate_ms": 16.1411,
+        "delta_pct": -6.882,
+        "max_abs_diff": 0.0
+      },
+      {
+        "layer": 46,
+        "parent_ms": 17.3341,
+        "candidate_ms": 16.1043,
+        "delta_pct": -7.095,
+        "max_abs_diff": 0.0
+      }
+    ]
+  },
+  "correctness_gate": {
+    "test_file": "tests/test_gpu_qwen4exp_q8_coltile_pipeline.py",
+    "tests_passed": 13,
+    "comparison": "uint32-view bit equality against the wave-scale parent",
+    "shapes": [
+      "1x32x8",
+      "5x32x8",
+      "7x96x24",
+      "3x160x32",
+      "17x2560x32",
+      "129x2560x256",
+      "512x2560x6144",
+      "1023x2560x10240"
+    ],
+    "covers": [
+      "partial row tile",
+      "single K iteration",
+      "K not a multiple of the 128-thread stride",
+      "single column tile",
+      "production shape"
+    ],
+    "repeat_determinism": true,
+    "cpu_reference_gate": {
+      "max_kl": 0.05,
+      "top1_agreement_floor": 0.9,
+      "observed": "exact; top-1 agreement 1.0 on the narrow shapes"
+    },
+    "sibling_variants": [
+      "coltile8_rowbatch4_pipelined",
+      "coltile4_rowbatch8_pipelined"
+    ]
+  },
+  "routing_gate": {
+    "unit_tests_passed": 61,
+    "files": [
+      "tests/test_unit_qwen4_exp_profiles.py",
+      "tests/test_unit_qwen4exp_q8_wave_route.py",
+      "tests/test_unit_qwen4exp_dense_wide_dispatch.py",
+      "tests/test_unit_qwen4exp_iu8_scope.py",
+      "tests/test_unit_qwen4exp_role_map_dense_routes.py",
+      "tests/test_unit_qwen4exp_journey_localize.py"
+    ],
+    "dispatch_step": "_raw_k_coltile_pipelined_dispatch (last in the launch chain)",
+    "registered_fallback_retained": true
+  },
+  "limits": [
+    "Per-kernel microbenchmark with synthetic activations, not a full-engine rate.",
+    "One host (gfx1151 / Radeon 8060S); not comparable to other hosts absolute rates.",
+    "The default-state gate confirms exactness and routing end-to-end; it is not a rate measurement."
+  ],
+  "command": "flock -n /tmp/hipengine-gfx1151-benchmark.lock \"$ENV_PREFIX/bin/python\" scripts/qwen4exp_dense_projection_ab.py --model-root /home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/qwen4exp-ledger-20260928-current/hipcc-version.txt --rows 1024 --repetitions 20 --output /tmp/dp8-ab-result.json",
+  "default_state_gate": {
+    "status": "passed",
+    "exact": true,
+    "raw_path": "/tmp/qwen4exp-dp8-pipeline-default-state.json",
+    "raw_sha256": "7251e83c54d9a5893c3ea7c04195e3352b0d4737a95e316da80826dd1c4d18d8",
+    "command": "flock -n /tmp/hipengine-gfx1151-benchmark.lock \"$ENV_PREFIX/bin/python\" scripts/qwen4exp_row4_state_gate.py --model-root /home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/qwen4exp-ledger-20260928-current/hipcc-version.txt --route-package q8-wave-scale --case-id code-p4096 --full-kv --output /tmp/qwen4exp-dp8-pipeline-default-state.json",
+    "case_id": "code-p4096",
+    "profile_after": {
+      "manifest_sha256": "a55324f919900c20b244b65605e37d8e12623fe20ff9b076bc3573f11edf3786",
+      "strict_manifest_sha256": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed",
+      "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1"
+    },
+    "arms": [
+      {
+        "enabled": "0",
+        "candidate_calls": 0,
+        "candidate_prefill_calls": 0,
+        "candidate_decode_calls": 0,
+        "state_sha256": "34663131238493dde27e60060936b216c6679a44695a0bf4b74debaaea8c2382",
+        "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+        "prefill_logits_sha256": "7270a972da43ff4642e557b1dd0015405210547348ecf2fb657d6a55831cb2c4",
+        "step_logits_sha256": "0300f3aa95e0e34e40cc0234c9d11b1f2d7a45275a7aefdfbe22e42d33d280b5",
+        "full_kv_sha256": "717582a23507755e5abd8b042c442d778417239dd50451d4fc8f1acde9d10187"
+      },
+      {
+        "enabled": "1",
+        "candidate_calls": 1072,
+        "candidate_prefill_calls": 1072,
+        "candidate_decode_calls": 0,
+        "state_sha256": "34663131238493dde27e60060936b216c6679a44695a0bf4b74debaaea8c2382",
+        "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+        "prefill_logits_sha256": "7270a972da43ff4642e557b1dd0015405210547348ecf2fb657d6a55831cb2c4",
+        "step_logits_sha256": "0300f3aa95e0e34e40cc0234c9d11b1f2d7a45275a7aefdfbe22e42d33d280b5",
+        "full_kv_sha256": "717582a23507755e5abd8b042c442d778417239dd50451d4fc8f1acde9d10187"
+      },
+      {
+        "enabled": "0",
+        "candidate_calls": 0,
+        "candidate_prefill_calls": 0,
+        "candidate_decode_calls": 0,
+        "state_sha256": "34663131238493dde27e60060936b216c6679a44695a0bf4b74debaaea8c2382",
+        "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+        "prefill_logits_sha256": "7270a972da43ff4642e557b1dd0015405210547348ecf2fb657d6a55831cb2c4",
+        "step_logits_sha256": "0300f3aa95e0e34e40cc0234c9d11b1f2d7a45275a7aefdfbe22e42d33d280b5",
+        "full_kv_sha256": "717582a23507755e5abd8b042c442d778417239dd50451d4fc8f1acde9d10187"
+      }
+    ],
+    "all_arms_identical": true,
+    "engaged_leaf": "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+    "engaged_calls": 1072,
+    "scope": "full logits and snapshot decode buffers/PLE/attention positions/index counts; full KV payload included",
+    "memory_after_close_active_allocations": 0
+  }
+}

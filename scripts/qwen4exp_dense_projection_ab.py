@@ -59,6 +59,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (  # noqa: E402
     gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out,
     gguf_q8_0_gemv_coltile16_rowbatch4_f32_f32_out,
     gguf_q8_0_gemv_coltile32_rowbatch1_f32_f32_out,
+    gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out,
+    gguf_q8_0_gemv_coltile8_rowbatch4_pipelined_f32_f32_out,
+    gguf_q8_0_gemv_coltile4_rowbatch8_pipelined_f32_f32_out,
 )
 from hipengine.loading.gguf import (  # noqa: E402
     GGUFReader,
@@ -91,6 +94,15 @@ VARIANTS: dict[str, Any] = {
     "coltile16_rowbatch2_f32_f32_out": gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out,
     "coltile16_rowbatch4_f32_f32_out": gguf_q8_0_gemv_coltile16_rowbatch4_f32_f32_out,
     "coltile32_rowbatch1_f32_f32_out": gguf_q8_0_gemv_coltile32_rowbatch1_f32_f32_out,
+    "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": (
+        gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out
+    ),
+    "coltile8_rowbatch4_pipelined_f32_f32_out": (
+        gguf_q8_0_gemv_coltile8_rowbatch4_pipelined_f32_f32_out
+    ),
+    "coltile4_rowbatch8_pipelined_f32_f32_out": (
+        gguf_q8_0_gemv_coltile4_rowbatch8_pipelined_f32_f32_out
+    ),
 }
 
 

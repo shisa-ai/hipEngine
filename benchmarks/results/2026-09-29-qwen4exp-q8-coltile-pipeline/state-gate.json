@@ -1,0 +1,106 @@
+{
+  "status": "passed",
+  "allocated_chunk_size": 512,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "1f9b80cceafe9f4bec69ba43698460392adafba9",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "It seems that tuned daemon is not running, preset profile is not activated.\nPreset profile: accelerator-performance",
+    "cpu_governors": {
+      "powersave": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_row4_state_gate.py",
+    "--model-root",
+    "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/qwen4exp-ledger-20260928-current/hipcc-version.txt",
+    "--route-package",
+    "q8-wave-scale",
+    "--case-id",
+    "code-p4096",
+    "--full-kv",
+    "--output",
+    "/tmp/qwen4exp-dp8-pipeline-default-state.json"
+  ],
+  "manifest_sha256": "a55324f919900c20b244b65605e37d8e12623fe20ff9b076bc3573f11edf3786",
+  "strict_manifest_sha256": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "cases": [
+    {
+      "id": "code-p4096",
+      "exact": true,
+      "captures": [
+        {
+          "enabled": "0",
+          "state_sha256": "34663131238493dde27e60060936b216c6679a44695a0bf4b74debaaea8c2382",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "7270a972da43ff4642e557b1dd0015405210547348ecf2fb657d6a55831cb2c4",
+          "step_logits_sha256": "0300f3aa95e0e34e40cc0234c9d11b1f2d7a45275a7aefdfbe22e42d33d280b5",
+          "candidate_calls": 0,
+          "candidate_prefill_calls": 0,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.4457551878876984
+          ],
+          "full_kv_sha256": "717582a23507755e5abd8b042c442d778417239dd50451d4fc8f1acde9d10187"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "34663131238493dde27e60060936b216c6679a44695a0bf4b74debaaea8c2382",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "7270a972da43ff4642e557b1dd0015405210547348ecf2fb657d6a55831cb2c4",
+          "step_logits_sha256": "0300f3aa95e0e34e40cc0234c9d11b1f2d7a45275a7aefdfbe22e42d33d280b5",
+          "candidate_calls": 1072,
+          "candidate_prefill_calls": 1072,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.14176070084795356
+          ],
+          "full_kv_sha256": "717582a23507755e5abd8b042c442d778417239dd50451d4fc8f1acde9d10187"
+        },
+        {
+          "enabled": "0",
+          "state_sha256": "34663131238493dde27e60060936b216c6679a44695a0bf4b74debaaea8c2382",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "7270a972da43ff4642e557b1dd0015405210547348ecf2fb657d6a55831cb2c4",
+          "step_logits_sha256": "0300f3aa95e0e34e40cc0234c9d11b1f2d7a45275a7aefdfbe22e42d33d280b5",
+          "candidate_calls": 0,
+          "candidate_prefill_calls": 0,
+          "candidate_decode_calls": 0,
+          "qsa_candidate_calls": 0,
+          "step_seconds": [
+            0.13955770712345839
+          ],
+          "full_kv_sha256": "717582a23507755e5abd8b042c442d778417239dd50451d4fc8f1acde9d10187"
+        }
+      ]
+    }
+  ],
+  "route_package": "q8-wave-scale",
+  "decode_steps": 1,
+  "full_kv": true,
+  "scope": "full logits and snapshot decode buffers/PLE/attention positions/index counts; full KV payload included",
+  "timing_scope": "diagnostic per-step wall; host logit copies between steps; first arm not warmed",
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 83614540552,
+    "total_allocated_bytes": 83666969360,
+    "total_freed_bytes": 83666969360,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+  }
+}

@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-28 UTC**
+Last updated: **2026-09-29 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -983,6 +983,18 @@ GDN layers and row counts 1 to 1024: the production instantiation is already the
 fastest, and the next best is 12-14% slower. The kernel has no spills and sits
 at the register-only occupancy maximum.
 
+**Scheduling, not tiling, is where the time is.** Keeping the same tile shape
+and issuing the next K iteration's Q8_0 weight-block and activation loads before
+the current iteration's FMAs retire takes the exact Q8 prefill leaf from
+17.322 ms to 16.137 ms on `attn_qkv` (2560 -> 10240, 1024 rows) on `gfx1151`,
+**-6.84%**, with the output bit-identical on all five measured layers. That is
+6.71% to 7.09% per layer and agrees with the memory-latency diagnosis above:
+the arithmetic and the accumulation order are untouched, only the load issue
+point moves. The promoted kernel is
+`coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out`; the wave-scale parent and
+the unscaled exact parent both stay registered as the rollback chain.
+[Promotion, gate and artifacts](results/2026-09-29-qwen4exp-q8-coltile-pipeline/README.md).
+
 The limit is therefore not the tile shape. A probe holding the projection's own
 instruction mix (40 FMA and 105 integer instructions per iteration, from its
 disassembly) sustains **16467 GFLOP/s, 57.7% of the measured FP32 peak**. The
@@ -1040,6 +1052,11 @@ First result, `layers.8.attn_qkv`, rows=1024, K=2560, M=10240, 53.69 GFLOP, on
 | hipEngine production | `coltile8_rowbatch4_wave_scale_f32_f32_out` | 17.361 | 3.09 | fused |
 | hipEngine strict | `coltile8_rowbatch4_f32_f32_out` | 19.716 | 2.72 | fused |
 | comparator | `mmb_dense_kernel<128, 256, 64, 64, 1>` | **1.492** | **35.99** | 0.149 |
+
+The production row is the leaf as it stood in this replay packet. The leaf is
+now the pipelined sibling of the same tile shape at **16.137 ms** on the same
+operation, a further 6.84% below the number in this table; see the scheduling
+result above.
 
 hipEngine takes 11.70x the comparator's time on this operation. Its replay
 reproduces the captured output bit-exactly, and hipEngine tracks the exact

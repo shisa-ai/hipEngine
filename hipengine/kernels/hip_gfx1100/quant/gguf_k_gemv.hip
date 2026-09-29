@@ -743,6 +743,184 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
   }
 }
 
+// One K iteration's operands for the pipelined coltile chain: the dequantized
+// weights for every column tile and the activation value for every row in the
+// batch. Split out so the pipelined kernel can issue it for iteration k+1 while
+// iteration k is still being accumulated. The arithmetic is identical to the
+// inline form in gguf_k_prefill_out_coltile_rowbatch_kernel; only the point at
+// which the loads are issued differs.
+template <typename scalar_t, int qtype, int COL_TILE, int ROW_BATCH,
+          bool WAVE_SCALE>
+__device__ __forceinline__ void gguf_k_coltile_load_stage(
+    float (&w)[COL_TILE],
+    float (&xv)[ROW_BATCH],
+    const uint8_t* const (&weight_rows)[COL_TILE],
+    const scalar_t* __restrict__ x,
+    const bool (&row_ok)[ROW_BATCH],
+    int row_base,
+    int in_features,
+    int k) {
+#pragma unroll
+  for (int col = 0; col < COL_TILE; ++col) {
+    if constexpr (qtype == 8) {
+      w[col] = WAVE_SCALE ? q8_0_weight_wave_scale(weight_rows[col], k)
+                          : q8_0_weight(weight_rows[col], k);
+    } else if constexpr (qtype == 5) {
+      w[col] = q5_k_weight(weight_rows[col], k);
+    } else {
+      w[col] = q6_k_weight(weight_rows[col], k);
+    }
+  }
+#pragma unroll
+  for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+    xv[row_idx] = row_ok[row_idx]
+        ? scalar_to_float<scalar_t>(
+              x[static_cast<int64_t>(row_base + row_idx) * in_features + k])
+        : 0.0f;
+  }
+}
+
+// Two-stage software pipeline over K for the exact coltile chain. The only
+// difference from gguf_k_prefill_out_coltile_rowbatch_kernel is that the next
+// iteration's weight and activation loads are issued before the current
+// iteration's FMAs retire, so the global-load latency overlaps arithmetic
+// instead of stalling the wave. Per-output arithmetic is untouched: each
+// accumulator still receives its FMAs in ascending k order, the wave shuffle
+// tree and the ordered four-wave publication are the same.
+template <
+    typename scalar_t,
+    typename out_t,
+    int qtype,
+    int COL_TILE,
+    int ROW_BATCH, bool WAVE_SCALE = false>
+__launch_bounds__(128, 2)
+__global__ void gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features) {
+  static_assert(
+      COL_TILE * ROW_BATCH == 32 || COL_TILE * ROW_BATCH == 64,
+      "exact coltile screens require 32 or 64 accumulators");
+  const int out_col_base = static_cast<int>(blockIdx.x) * COL_TILE;
+  const int row_base = static_cast<int>(blockIdx.y) * ROW_BATCH;
+  const int tid = threadIdx.x;
+  if (out_col_base >= out_features || row_base >= rows) return;
+
+  int row_bytes = 0;
+  if constexpr (qtype == 8) {
+    row_bytes = (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  } else if constexpr (qtype == 5) {
+    row_bytes = (in_features / QK_K) * Q5_K_BLOCK_BYTES;
+  } else {
+    row_bytes = (in_features / QK_K) * Q6_K_BLOCK_BYTES;
+  }
+  const uint8_t* weight_rows[COL_TILE];
+#pragma unroll
+  for (int col = 0; col < COL_TILE; ++col) {
+    weight_rows[col] =
+        qweight + static_cast<int64_t>(out_col_base + col) * row_bytes;
+  }
+
+  // Row validity does not depend on k, so it is decided once. Invalid rows keep
+  // a zero activation and their accumulators are never published.
+  bool row_ok[ROW_BATCH];
+#pragma unroll
+  for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+    row_ok[row_idx] = (row_base + row_idx) < rows;
+  }
+
+  float acc[ROW_BATCH][COL_TILE] = {};
+  float wa[COL_TILE];
+  float xa[ROW_BATCH];
+  float wb[COL_TILE];
+  float xb[ROW_BATCH];
+
+  const int stride = static_cast<int>(blockDim.x);
+  int k = tid;
+  bool have_a = k < in_features;
+  if (have_a) {
+    gguf_k_coltile_load_stage<scalar_t, qtype, COL_TILE, ROW_BATCH, WAVE_SCALE>(
+        wa, xa, weight_rows, x, row_ok, row_base, in_features, k);
+  }
+  while (have_a) {
+    const int k_b = k + stride;
+    const bool have_b = k_b < in_features;
+    if (have_b) {
+      gguf_k_coltile_load_stage<
+          scalar_t, qtype, COL_TILE, ROW_BATCH, WAVE_SCALE>(
+          wb, xb, weight_rows, x, row_ok, row_base, in_features, k_b);
+    }
+#pragma unroll
+    for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+#pragma unroll
+      for (int col = 0; col < COL_TILE; ++col) {
+        acc[row_idx][col] = fmaf(xa[row_idx], wa[col], acc[row_idx][col]);
+      }
+    }
+    if (!have_b) break;
+
+    const int k_a = k_b + stride;
+    const bool have_a_next = k_a < in_features;
+    if (have_a_next) {
+      gguf_k_coltile_load_stage<
+          scalar_t, qtype, COL_TILE, ROW_BATCH, WAVE_SCALE>(
+          wa, xa, weight_rows, x, row_ok, row_base, in_features, k_a);
+    }
+#pragma unroll
+    for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+#pragma unroll
+      for (int col = 0; col < COL_TILE; ++col) {
+        acc[row_idx][col] = fmaf(xb[row_idx], wb[col], acc[row_idx][col]);
+      }
+    }
+    k = k_a;
+    have_a = have_a_next;
+  }
+
+#pragma unroll
+  for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+#pragma unroll
+    for (int col = 0; col < COL_TILE; ++col) {
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        acc[row_idx][col] += __shfl_down(acc[row_idx][col], offset);
+      }
+    }
+  }
+  __shared__ float wave_sums[4][ROW_BATCH][COL_TILE];
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  if (lane == 0) {
+#pragma unroll
+    for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+#pragma unroll
+      for (int col = 0; col < COL_TILE; ++col) {
+        wave_sums[wave][row_idx][col] = acc[row_idx][col];
+      }
+    }
+  }
+  __syncthreads();
+
+  if (tid < ROW_BATCH * COL_TILE) {
+    const int row_idx = tid / COL_TILE;
+    const int col = tid - row_idx * COL_TILE;
+    const int row = row_base + row_idx;
+    if (row < rows) {
+      float total = 0.0f;
+#pragma unroll
+      for (int wave_idx = 0; wave_idx < 4; ++wave_idx) {
+        total += wave_sums[wave_idx][row_idx][col];
+      }
+      store_output<out_t>(
+          out,
+          static_cast<int64_t>(row) * out_features + out_col_base + col,
+          total);
+    }
+  }
+}
+
 // Qwen4Exp GR up projection plus sigmoid-gated branch mean. Every output keeps
 // the retained Q8 coltile8/rowbatch4 K ownership, FMA order, wave shuffle, and
 // serial wave publication. The eight output slots are remapped to two hidden
@@ -4606,6 +4784,47 @@ int launch_gguf_k_gemv_coltile_rowbatch_out(
   return static_cast<int>(hipGetLastError());
 }
 
+template <
+    typename scalar_t,
+    typename out_t,
+    int qtype,
+    int COL_TILE,
+    int ROW_BATCH, bool WAVE_SCALE = false>
+int launch_gguf_k_gemv_coltile_rowbatch_pipelined_out(
+    const scalar_t* x,
+    const uint8_t* qweight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  const bool valid_shape = (qtype == 8) ? ((in_features % Q8_0_BLOCK) == 0)
+                                        : ((in_features % QK_K) == 0);
+  if (x == nullptr || qweight == nullptr || out == nullptr || rows <= 0 ||
+      in_features <= 0 || !valid_shape || out_features <= 0 ||
+      (out_features % COL_TILE) != 0 || threads != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / COL_TILE),
+      static_cast<unsigned int>((rows + ROW_BATCH - 1) / ROW_BATCH));
+  gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel<
+      scalar_t,
+      out_t,
+      qtype,
+      COL_TILE,
+      ROW_BATCH, WAVE_SCALE><<<grid, block, 0, stream>>>(
+      x,
+      qweight,
+      out,
+      static_cast<int>(rows),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename out_t, int COL_TILE, int ROW_BATCH>
 int launch_gguf_q6_k_gemv_coltile_rowbatch_dpp_wave_reduction_out(
     const uint16_t* x,
@@ -5140,6 +5359,30 @@ extern "C" int hipengine_gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_ou
     const float* x, const uint8_t* qweight, float* out, int64_t rows,
     int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
   return launch_gguf_k_gemv_coltile_rowbatch_out<float, float, 8, 8, 4, true>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out(
+    const float* x, const uint8_t* qweight, float* out, int64_t rows,
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_gguf_k_gemv_coltile_rowbatch_pipelined_out<
+      float, float, 8, 8, 4, true>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_gemv_coltile8_rowbatch4_pipelined_f32_f32_out(
+    const float* x, const uint8_t* qweight, float* out, int64_t rows,
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_gguf_k_gemv_coltile_rowbatch_pipelined_out<
+      float, float, 8, 8, 4, false>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_gemv_coltile4_rowbatch8_pipelined_f32_f32_out(
+    const float* x, const uint8_t* qweight, float* out, int64_t rows,
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_gguf_k_gemv_coltile_rowbatch_pipelined_out<
+      float, float, 8, 4, 8, false>(
       x, qweight, out, rows, in_features, out_features, threads, stream);
 }
 
