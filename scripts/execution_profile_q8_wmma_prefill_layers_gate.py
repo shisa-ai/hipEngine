@@ -77,14 +77,49 @@ DEFAULT_MODEL_ROOT = Path(
 DEFAULT_FIXTURE = Path(
     "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json"
 )
+# The category-heldout suite: 18 natural-length prompts across the same four
+# categories, with the same per-case schema. This is the fixture that can supply
+# the canonical protocol's first missing admission certificate.
+ADMISSION_FIXTURE = Path(
+    "benchmarks/fixtures/qwen4exp_admission_suite_18prompt.json"
+)
+ADMISSION_FIXTURE_SHA256 = (
+    "005196cbf06f747350b0f35a02febb4aad3cd85a1251af1bfe9c152f95aadbfb"
+)
+# Both layer-scoped routes decline at ``rows <= 256``, so a fixture whose longest
+# prompt is at or below this cannot exercise either one. Recorded here because
+# the heldout suite is *short*: its 18 prompts run 39-71 tokens. Pointing this
+# gate at it produces a bit-identical candidate/teacher pair and a KL of exactly
+# zero - the same false-pass shape as the engagement defects recorded in
+# ``benchmarks/results/2026-09-29-q8-staged-f32-dense-prefill-layers-gate/WMMA-ROUTE-FALSE-PASS.md``.
+# The ledger's X-11 says the same thing from the other side: "39-71-token task
+# prompts never enter >256-row candidates. Inactive short-task passes are
+# controls, not qualification." So the row floor is a *check*, not a note.
+ROUTE_ROW_FLOOR = 256
 
 
-def qualification_coverage(*, captures, fixture_sha256: str, prefill_chunk_size: int):
+def _fixture_kind(fixture_sha256: str) -> str:
+    """Classify a fixture so the two protocols can never be confused."""
+
+    if fixture_sha256 == CANONICAL_FIXTURE_SHA256:
+        return "canonical"
+    if fixture_sha256 == ADMISSION_FIXTURE_SHA256:
+        return "category_heldout"
+    return "unknown"
+
+
+def qualification_coverage(
+    *, captures, fixture_sha256: str, prefill_chunk_size: int, fixture_rows=()
+):
     """Account for actual trajectories, not requested CLI counts.
 
     This is the frozen canonical D128 numerical protocol, not the full profile
     admission protocol. A changed fixture requires explicit protocol review.
     A complete run at one chunk size never qualifies another chunk size.
+
+    A category-heldout fixture produces a **separate** record and never sets
+    ``complete`` here: the two protocols are not interchangeable, and a run of
+    one must not be readable as the other.
     """
     expected = {
         f"{category}-p{shape}": category
@@ -92,8 +127,9 @@ def qualification_coverage(*, captures, fixture_sha256: str, prefill_chunk_size:
         for shape in (512, 1024, 4096)
     }
     ids = [capture.prompt_id for capture in captures]
+    kind = _fixture_kind(fixture_sha256)
     checks = {
-        "canonical_fixture_identity": fixture_sha256 == CANONICAL_FIXTURE_SHA256,
+        "canonical_fixture_identity": kind == "canonical",
         "canonical_cases_once_each": len(ids) == len(expected) and set(ids) == set(expected),
         "canonical_categories": all(expected.get(c.prompt_id) == c.category for c in captures),
         "teacher_d128": bool(captures) and all(len(c.strict) == 129 for c in captures),
@@ -104,14 +140,87 @@ def qualification_coverage(*, captures, fixture_sha256: str, prefill_chunk_size:
         ),
         "positive_chunk_size": prefill_chunk_size > 0,
     }
-    return {
+    record = {
         "protocol": "canonical_12_case_d128_three_repeat_numerical_v1",
         "complete": all(checks.values()), "checks": checks,
         "required_fixture_sha256": CANONICAL_FIXTURE_SHA256,
         "observed_fixture_sha256": fixture_sha256,
+        "fixture_kind": kind,
         "observed_case_ids": ids,
         "observed_teacher_rows": sum(len(c.strict) for c in captures),
         "prefill_chunk_size": prefill_chunk_size,
+        "scope": "this route/layer set, manifest and chunk size only",
+    }
+    heldout = _heldout_coverage(
+        captures, fixture_sha256=fixture_sha256, fixture_rows=fixture_rows
+    )
+    if heldout is not None:
+        record["category_heldout"] = heldout
+    return record
+
+
+def _heldout_coverage(captures, *, fixture_sha256: str, fixture_rows=()):
+    """Coverage for the category-heldout protocol, or ``None`` if not run.
+
+    The engagement check is the load-bearing one. A heldout suite that cannot
+    reach the route's row floor produces a flawless-looking comparison between
+    two runs of the *same* kernel - bit-identical logits, KL exactly zero,
+    ``measurement_valid: true`` - so ``complete`` must stay ``False`` and the
+    blocker must stay open. That is what the current suite does: 18 prompts of
+    39-71 tokens against a 256-row floor.
+    """
+    if fixture_sha256 != ADMISSION_FIXTURE_SHA256:
+        return None
+    expected_ids = {
+        "code_merge_intervals", "code_topological_sort", "code_lru_cache",
+        "code_markdown_table", "general_en_plan", "general_en_explain",
+        "general_ja_plan", "general_ja_explain", "mixed_ja_en_translate",
+        "mixed_ja_en_review", "heldout_code_rate_limiter",
+        "heldout_code_interval_schedule", "heldout_general_en_incident",
+        "heldout_general_en_quant", "heldout_general_ja_migration",
+        "heldout_general_ja_speculative", "heldout_mixed_summary",
+        "heldout_mixed_review",
+    }
+    ids = [capture.prompt_id for capture in captures]
+    # Taken from the fixture rather than the capture: ``PromptCalibrationCapture``
+    # is shared by ten other gates and carries no row count, and adding a
+    # required field to it would change all of them for one gate's check.
+    rows = [int(value) for value in fixture_rows]
+    longest = max(rows) if rows else 0
+    checks = {
+        "heldout_fixture_identity": fixture_sha256 == ADMISSION_FIXTURE_SHA256,
+        "heldout_cases_once_each": len(ids) == len(expected_ids) and set(ids) == set(expected_ids),
+        "heldout_categories": len({c.category for c in captures}) == 4,
+        "teacher_d128": bool(captures) and all(len(c.strict) == 129 for c in captures),
+        "candidate_d128_three_repeats": bool(captures) and all(
+            len(c.candidate_runs.get("candidate", ())) >= 3
+            and all(len(run) == 129 for run in c.candidate_runs.get("candidate", ()))
+            for c in captures
+        ),
+        # Not a formality: without it this protocol certifies a route that
+        # never ran. See the module note above ROUTE_ROW_FLOOR.
+        "heldout_prompts_exceed_route_row_floor": longest > ROUTE_ROW_FLOOR,
+    }
+    return {
+        "protocol": "category_heldout_natural_length_d128_three_repeat_v1",
+        "complete": all(checks.values()),
+        "checks": checks,
+        "required_fixture_sha256": ADMISSION_FIXTURE_SHA256,
+        "observed_fixture_sha256": fixture_sha256,
+        "observed_case_ids": ids,
+        "observed_prompt_rows": rows,
+        "longest_prompt_rows": longest,
+        "route_row_floor": ROUTE_ROW_FLOOR,
+        "blocked_reason": (
+            None
+            if longest > ROUTE_ROW_FLOOR
+            else (
+                f"longest heldout prompt is {longest} rows, at or below the "
+                f"{ROUTE_ROW_FLOOR}-row floor both layer-scoped routes decline "
+                "at, so the route cannot have engaged and this run is a "
+                "control rather than qualification"
+            )
+        ),
         "scope": "this route/layer set, manifest and chunk size only",
     }
 
@@ -124,9 +233,16 @@ def qualification_verdict(coverage, *, quality_passed, deterministic, clean):
         "execution-affecting worktree provenance": clean,
     }
     numerical = all(checks.values())
-    # This collector does not produce these independent admission certificates.
-    missing = [
-        "category-heldout numerical evidence",
+    heldout = coverage.get("category_heldout")
+    heldout_complete = bool(heldout and heldout["complete"])
+    # Each entry is emitted only when this collector has not produced that
+    # certificate. A blocker is dropped by producing evidence, never by
+    # asserting it - and the heldout entry in particular is dropped only when
+    # the run both completed and reached the route's row floor.
+    missing = []
+    if not heldout_complete:
+        missing.append("category-heldout numerical evidence")
+    missing += [
         "strict-teacher and applicable BF16-relative evidence",
         "exact control/isolation/graph/lifecycle evidence",
         "task-quality evidence",
@@ -136,6 +252,7 @@ def qualification_verdict(coverage, *, quality_passed, deterministic, clean):
         "status": "complete" if numerical else "invalid_or_screen_only",
         "measurement_valid": numerical,
         "canonical_numerical_qualification_claim": numerical,
+        "category_heldout_qualification_claim": heldout_complete,
         "profile_qualification_claim": False,
         "qualification_blockers": [name for name, ok in checks.items() if not ok] + missing,
     }
@@ -629,6 +746,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
     coverage = qualification_coverage(
         captures=captures, fixture_sha256=fixture_sha256,
         prefill_chunk_size=int(args.prefill_chunk_size),
+        fixture_rows=[int(row["prompt_tokens"]) for row in cases],
     )
     verdict = qualification_verdict(
         coverage, quality_passed=quality_passed, deterministic=deterministic, clean=clean,
