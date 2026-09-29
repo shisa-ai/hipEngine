@@ -79,3 +79,46 @@ Both were caught by reading the artifact rather than the summary line.
 - **Qualification: open, with a named failure.** The route fails per-scope KL at
   the prefill→c1 transition on heldout data. X-7's remaining blockers are
   unchanged.
+
+## Follow-on: the same scope behaves 500,000x differently between the protocols
+
+Reading the per-scope breakdown of both runs side by side produces a discrepancy
+that is not a threshold artifact and is not yet explained.
+
+| scope | canonical (512/1024/4096 tok, 128 trans) | heldout (39-71 tok, 24 trans) |
+|---|---|---|
+| `shape=prefill_last` / `transition=prefill_to_c1` | **4.41452e-09** (12 rows) | **2.06179e-03** (18 rows) |
+| `shape=c1` / `transition=steady` | 3.82518e-04 (1536 rows) | 1.99214e-04 (432 rows) |
+
+`teacher_step == 0` is trajectory index 0, i.e. the **post-prefill** logits
+(`scripts/execution_profile_gdn_calibration.py:190-203`), and the route under
+test is prefill-only: `_wmma_prefill_dispatch` declines at `rows <= 1`, so it
+cannot touch a decode step.
+
+That makes the canonical column hard to read. Its post-prefill logits are
+identical to the exact chain's to f32 precision (4.4e-09, max 2.6e-08), while its
+decode logits differ by 3.8e-04. But a prefill-only route can only reach the
+decode steps **through** the prefill - through the KV cache and hidden state it
+produces. If the prefill output were truly identical, the decode steps it feeds
+would be identical too.
+
+So one of these is true, and they are not equivalent:
+
+- the canonical post-prefill row is not actually comparing the two arms (an
+  accounting defect, which would mean the canonical `prefill_to_c1` scope has
+  never measured the candidate); or
+- the post-prefill *logits* coincide while the post-prefill *hidden state*
+  differs, so the row is a real measurement of a quantity that happens not to
+  move.
+
+The heldout column cannot distinguish them: there the post-prefill logits do
+differ (2.06e-03), consistent with either story.
+
+**Not resolved here.** Distinguishing them needs the prefill hidden state
+compared directly, or the canonical post-prefill row re-derived from the
+candidate's own runner rather than from the trajectory arrays. Recorded rather
+than guessed at, because the first possibility would invalidate a scope the
+canonical protocol has been reporting as passing.
+
+What is *not* in doubt: the heldout run engages, is complete, and fails the
+per-scope KL gate at the prefill->c1 transition.
