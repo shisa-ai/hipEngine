@@ -7659,3 +7659,37 @@ composed question - adding the two drifts is a summed-KL budget, and this
 packet's own ladders show scope contributions are neither additive nor
 monotonic (0-7's mean exceeds 0-47's; 15-47's max exceeds both 14-47's and
 16-47's).
+
+
+## Dispatch memoization key: three routes, one defect class, two occurrences
+
+`launch_gguf_linear` only reaches the dispatch chain inside `if cached is None:`.
+Any route whose **decision inputs** are absent from that key can be replayed
+across configurations that should differ. Two occurrences have been measured, and
+both failed *silently* - the symptom is a KL of exactly zero and a green status,
+not a wrong answer:
+
+- **staged-f32** (`_staged_f32_key`, fixed). A gate's two arms are the same
+  shapes on the same weight pointers and differ only in the selector, so the
+  teacher arm replayed the candidate's exact-chain dispatch.
+- **f16 WMMA** (`_wmma_scope_key`, fixed). `use_wmma` is in the key as a boolean
+  but the layer scope is applied through a context-local weight filter, which the
+  key cannot see. The certified 16-47 configuration run at HEAD returned
+  bit-identical candidate/teacher hashes with `measurement_valid: true`.
+
+**Check for this whenever you add or touch a layer-scoped route.** The key must
+carry the enable flag, the scope, **and** the owning layer index - the last
+because otherwise the first resolution for a shape is replayed for every layer
+and the scope becomes an artifact of cache-fill order.
+
+Two consequences worth knowing:
+
+- A test that observes cache *misses* cannot detect the omission. The registry
+  `generation()` is the first key element and lazy kernel registration inside the
+  call bumps it, so every call misses for an unrelated reason. Record the key
+  tuple instead; both `tests/test_unit_qwen4exp_staged_f32_route.py` and
+  `tests/test_unit_qwen4exp_wmma_route_cache_key.py` do this.
+- **A gate's green status does not prove its route ran.** `measurement_valid`
+  and `qualification_coverage()` verify the protocol, not engagement. Check that
+  the candidate and teacher logits hashes differ before reading any KL; an
+  identical pair is a failed run regardless of the summary statistics.
