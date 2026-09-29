@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_de1_moe_bandwidth_gate",
+  "performance_claim": false,
+  "measurement_class": "derived_from_profiled_capture_diagnostic",
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "attribution": "/home/lhl/hipEngine/benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/attribution.json",
+  "traffic_model": {
+    "layers": 48,
+    "experts_used": 10,
+    "experts_total": 512,
+    "routed_bytes_all_layers": 77017907200,
+    "shared_bytes_all_layers": 250675200,
+    "router_bytes_all_layers": 251658240,
+    "routed_bytes_per_step": 1504256000.0,
+    "moe_bytes_per_step": 2006589440.0
+  },
+  "measured": {
+    "moe_family": "moe:expert_gate",
+    "moe_ms_per_step": 24.55039366666666,
+    "moe_kernels_per_step": 583.0,
+    "us_per_kernel": 42.11045225843338,
+    "moe_achieved_gbps": 81.73349345206022,
+    "moe_fraction_of_documented_roof": 0.36983481200027246,
+    "total_kernel_ms_per_step": 54.21806799999987
+  },
+  "comparator": {
+    "family": "linear:root.lm_head",
+    "bytes": 675430400,
+    "ms_per_step": 2.9797646666666666,
+    "kernels_per_step": 1.0,
+    "achieved_gbps": 226.67239717140973,
+    "fraction_of_documented_roof": 1.0256669555267408
+  },
+  "result": {
+    "moe_vs_comparator_ratio": 2.7733110087159267,
+    "floor_ms_at_comparator_rate": 8.852376668000808,
+    "headroom_ms_per_step": 15.698016998665853,
+    "headroom_pct_of_kernel_sum": 28.953479121878505,
+    "bandwidth_bound": false,
+    "verdict": "The MoE block is NOT bandwidth-bound: it reaches 81.73 GB/s while a single dense GEMV in the same capture reaches 226.67 GB/s (2.77x)."
+  },
+  "limits": [
+    "Derived from a PROFILED capture; the artifact's own limits state the wall and per-kernel times are diagnostic, not a performance measurement.",
+    "The traffic model assumes each selected expert's full weights are read once per token. True for a GEMV, and the 1.5 GB working set far exceeds cache, so it is a DRAM read.",
+    "If the kernels additionally stage or dequantize into wider buffers, actual DRAM traffic EXCEEDS the model, making the achieved rate a lower bound.",
+    "One case (code-p4096), one live count (4097), one model, one host."
+  ]
+}
