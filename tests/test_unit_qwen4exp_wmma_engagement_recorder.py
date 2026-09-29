@@ -140,6 +140,38 @@ def test_each_decline_condition_reports_itself():
         assert record["engaged"] is False
 
 
+def test_summary_does_not_claim_arm_isolation():
+    """A name that promises more than the check delivers is this packet's bug.
+
+    Measured on the canonical single case: the route engaged 264 times at 512
+    rows and the post-prefill output was still bit-identical (5.8014e-12), so the
+    drift this gate reports comes from the *other* selectors `use_wmma` gates -
+    `f_rowtile`, `enabled=not use_wmma`, `use_rowtile`, the rows-2-8 batch-decode
+    session. The recorder cannot see any of them, so it must not report that the
+    arms are isolated.
+    """
+
+    gate = _gate()
+    summary = gate._summarise_engagement(
+        {
+            "teacher": [{"reason": "use_wmma_false", "engaged": False, "rows": 512}],
+            "candidate": [
+                {
+                    "reason": "engaged",
+                    "engaged": True,
+                    "rows": 512,
+                    "variant_out": "wmma_prefill_q8_0_f32_f32_out",
+                }
+            ],
+        }
+    )
+    assert "arms_isolated" not in summary, (
+        "the flag was renamed because it promised isolation this check cannot "
+        "establish; reintroducing the name reintroduces the misreading"
+    )
+    assert summary["covers_other_use_wmma_selectors"] is False
+
+
 def test_summary_flags_a_route_that_never_engaged():
     """The verdict must refuse to attribute drift to a route that did not run."""
 
@@ -153,7 +185,7 @@ def test_summary_flags_a_route_that_never_engaged():
         }
     )
     assert summary["candidate_route_engaged"] is False
-    assert summary["arms_isolated"] is False
+    assert summary["wmma_route_engaged_candidate_only"] is False
     assert "must not be attributed" in summary["verdict"]
     assert summary["candidate"]["decline_reasons"] == {"raw_abi_not_eligible": 1}
 
@@ -175,8 +207,11 @@ def test_summary_accepts_a_correctly_isolated_pair():
     )
     assert summary["candidate_route_engaged"] is True
     assert summary["teacher_route_engaged"] is False
-    assert summary["arms_isolated"] is True
-    assert summary["verdict"] == "candidate engaged and teacher cleared"
+    assert summary["wmma_route_engaged_candidate_only"] is True
+    # The flag must not promise arm isolation, because it cannot deliver it.
+    assert "arms_isolated" not in summary
+    assert summary["covers_other_use_wmma_selectors"] is False
+    assert "does NOT mean the arms are isolated" in summary["verdict"]
 
 
 def test_summary_rejects_a_teacher_arm_that_also_engaged():
@@ -207,5 +242,5 @@ def test_summary_rejects_a_teacher_arm_that_also_engaged():
             ],
         }
     )
-    assert summary["arms_isolated"] is False
+    assert summary["wmma_route_engaged_candidate_only"] is False
     assert "not against the cleared chain" in summary["verdict"]

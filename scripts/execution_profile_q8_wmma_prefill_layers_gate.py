@@ -346,7 +346,18 @@ def _summarise_engagement(
     teacher_engaged = bool(summary.get("teacher", {}).get("engaged_launches"))
     summary["candidate_route_engaged"] = candidate_engaged
     summary["teacher_route_engaged"] = teacher_engaged
-    summary["arms_isolated"] = candidate_engaged and not teacher_engaged
+    # Deliberately **not** called ``arms_isolated``. It was, and the name was
+    # wrong: it says only that this route engaged in one arm and not the other.
+    # It does not say the arms differ *only* in this route, and they do not -
+    # ``use_wmma`` also gates ``f_rowtile``, ``enabled=not use_wmma``,
+    # ``use_rowtile`` and the rows-2-8 native batch-decode session, none of which
+    # the recorder can see. Measured on the canonical single case: the route
+    # engaged 264 times at 512 rows and the post-prefill output was still
+    # bit-identical (5.8e-12), so the drift this gate reports comes from those
+    # other selectors. A name promising more than the check delivers is how this
+    # packet's four misattributions happened.
+    summary["wmma_route_engaged_candidate_only"] = candidate_engaged and not teacher_engaged
+    summary["covers_other_use_wmma_selectors"] = False
     if not candidate_engaged:
         summary["verdict"] = (
             "the candidate route never engaged; any drift measured here belongs "
@@ -358,7 +369,12 @@ def _summarise_engagement(
             "against the cleared chain"
         )
     else:
-        summary["verdict"] = "candidate engaged and teacher cleared"
+        summary["verdict"] = (
+            "this route engaged in the candidate arm only - which does NOT mean "
+            "the arms are isolated: use_wmma also gates f_rowtile, "
+            "enabled=not use_wmma, use_rowtile and the rows-2-8 native "
+            "batch-decode session, and this recorder cannot observe those"
+        )
     return summary
 
 
