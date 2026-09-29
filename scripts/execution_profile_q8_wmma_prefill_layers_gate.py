@@ -65,6 +65,12 @@ WMMA_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"
 DENSE_WIDE_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"
 DENSE_WIDE_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"
 STAGED_F32_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS"
+# The certified f16 WMMA scope, written as the comma-joined list these selectors
+# actually parse. A "16-47" range string is accepted by ``--layers`` (which runs
+# it through ``_parse_layers``) but **not** by the selectors themselves, which
+# split on commas and call ``int``. Passing the range form here fails at the
+# first prefill with ``invalid literal for int() with base 10: '16-47'``.
+WMMA_CERTIFIED_SCOPE = ",".join(str(layer) for layer in range(16, 48))
 DEFAULT_MODEL_ROOT = Path(
     "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL"
 )
@@ -329,13 +335,13 @@ SELECTORS: dict[str, Route] = {
         ),
         candidate_chain="wmma_prefill_f32_f32_out + staged_f32_bm128_bn64_bk32",
         candidate_env={
-            WMMA_LAYERS_ENV: "16-47",
+            WMMA_LAYERS_ENV: WMMA_CERTIFIED_SCOPE,
             DENSE_WIDE_ENV: "0",
             DENSE_WIDE_LAYERS_ENV: "",
             STAGED_F32_LAYERS_ENV: "{layers}",
         },
         teacher_env={
-            WMMA_LAYERS_ENV: "16-47",
+            WMMA_LAYERS_ENV: WMMA_CERTIFIED_SCOPE,
             DENSE_WIDE_ENV: "0",
             DENSE_WIDE_LAYERS_ENV: "",
             STAGED_F32_LAYERS_ENV: "",

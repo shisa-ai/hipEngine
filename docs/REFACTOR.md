@@ -7633,3 +7633,29 @@ Two things to know before touching this:
 
 Do not leave this route on by default without the gate. The whole reason it is
 registered-but-off is that its arithmetic differs from the leaf it replaces.
+
+### Gate gotcha: `--layers` takes ranges, the env selectors do not
+
+`--layers 16-47` works because the gate runs it through `_parse_layers`, which
+expands ranges into a comma-joined list before substituting it into a route's
+`{layers}` placeholder. The **selectors themselves** split on commas and call
+`int`, so a route that hardcodes a scope in its own env mapping must write the
+comma form. Writing `WMMA_LAYERS_ENV: "16-47"` fails at the first prefill with
+`ValueError: invalid literal for int() with base 10: '16-47'`, after the model
+has loaded.
+
+`WMMA_CERTIFIED_SCOPE` exists so the `staged_f32_over_wmma` route does not
+repeat that mistake. If you add a route with a fixed scope, use the same form.
+
+### Why the composed route exists at all
+
+`staged_f32` clears WMMA in **both** arms, so its numbers certify "staged on the
+named scope with no WMMA anywhere". That is not production: WMMA owns 16-47, so
+a staged scope of 13-15 would only ever replace the exact chain on 13-15.
+`staged_f32_over_wmma` uses **current production** (WMMA@16-47) as its teacher,
+so its measured drift is the marginal cost of the staged tile rather than a
+composition that does not exist. Do not reuse the plain route's numbers for the
+composed question - adding the two drifts is a summed-KL budget, and this
+packet's own ladders show scope contributions are neither additive nor
+monotonic (0-7's mean exceeds 0-47's; 15-47's max exceeds both 14-47's and
+16-47's).
