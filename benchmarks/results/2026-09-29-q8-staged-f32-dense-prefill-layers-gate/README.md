@@ -11,13 +11,36 @@ max 5e-2, top-1 0.99.
 | Scope | Rows | Mean KL | p95 KL | p99 KL | Max KL | Top-1 | Verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | layers 0-47 | 1548 | 1.269e-3 | 6.663e-3 | 1.620e-2 | 2.925e-2 | 0.98385 | **fail** |
-| layers 8-47 | 1548 | 8.818e-4 | 3.843e-3 | 1.302e-2 | 6.441e-2 | 0.98837 | **fail** |
-| layers 12-47 | 1548 | 6.593e-4 | 3.469e-3 | 9.765e-3 | 3.482e-2 | 0.98837 | **fail** |
-| layers 16-47 | 1548 | 3.236e-4 | 1.629e-3 | 4.843e-3 | 1.610e-2 | 0.99483 | **pass** |
 | layers 0-15 | 1548 | 1.177e-3 | 6.121e-3 | 1.371e-2 | 4.905e-2 | 0.98643 | **fail** |
 | layers 0-11 | 1548 | 1.274e-3 | 6.585e-3 | 1.686e-2 | 4.686e-2 | 0.98643 | **fail** |
 | layers 0-7 | 1548 | 1.354e-3 | 6.613e-3 | 1.929e-2 | 6.988e-2 | 0.98902 | **fail** |
+| layers 8-47 | 1548 | 8.818e-4 | 3.843e-3 | 1.302e-2 | 6.441e-2 | 0.98837 | **fail** |
+| layers 12-47 | 1548 | 6.593e-4 | 3.469e-3 | 9.765e-3 | 3.482e-2 | 0.98837 | **fail** |
+| layers 13-47 | 1548 | 5.167e-4 | 2.716e-3 | 8.329e-3 | 2.504e-2 | 0.99419 | **pass** |
+| layers 14-47 | 1548 | 4.367e-4 | 2.109e-3 | 6.332e-3 | 1.835e-2 | 0.99225 | **pass** |
+| layers 15-47 | 1548 | 4.453e-4 | 1.961e-3 | 6.538e-3 | 6.349e-2 | 0.99548 | **fail** |
+| layers 16-47 | 1548 | 3.236e-4 | 1.629e-3 | 4.843e-3 | 1.610e-2 | 0.99483 | **pass** |
 | limit | | 1e-3 | 5e-3 | 2e-2 | 5e-2 | 0.99 | |
+
+**Deepest passing scope: layers 13-47**, three layers beyond the currently
+certified 16-47, with roughly 2x headroom on every gate (mean 1.94x, p95 1.84x,
+p99 2.40x, max 2.00x).
+
+## 13-47 passing does not yet establish production value
+
+Every scope above is measured with **WMMA cleared in both arms**, so what these
+rows certify is *staged on the named scope with no WMMA anywhere*. Production is
+not that: the f16 WMMA route owns layers 16-47, so a staged scope of 13-15 would
+only ever replace the **exact chain** on 13-15, with WMMA still running from 16.
+
+The marginal cost of that composition cannot be read off this table. Adding
+WMMA's 16-47 drift to the staged 13-15 increment would be a summed-KL budget,
+and this packet's own ladders show that is invalid - see the non-monotonicity
+section below. It needs its own gate against a WMMA@16-47 teacher, which is what
+`staged_f32_over_wmma` measures.
+
+## Narrowing the exact-chain region makes it worse, not better
+
 
 ## The only passing scope has no marginal value
 
