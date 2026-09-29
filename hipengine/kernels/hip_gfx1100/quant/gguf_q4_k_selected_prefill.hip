@@ -2650,49 +2650,6 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgr
   return static_cast<int>(hipGetLastError());
 }
 
-// Q5_K's expertgrid64 dual owner: the same grouped kernel, the same
-// PAIR_BLOCK_WEIGHTS handling and the same 64-CTA worker cap as the Q4_K entry
-// above, with ``Q5K`` selecting each weight's fifth bit from the block's ``qh``
-// slab and the 176-byte superblock stride in place of Q4_K's 144. Added so
-// layer 29's Q5_K gate_up can run this owner instead of falling back to the
-// per-row selected GEMV; the strides stay 0 because this entry is the
-// non-amortized loop nest.
-extern "C" int hipengine_gguf_q5_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
-    const void* input,
-    const void* expert_start,
-    const void* qweight_a,
-    const void* qweight_b,
-    void* output_a,
-    void* output_b,
-    int64_t compact_rows,
-    int64_t num_experts,
-    int64_t in_features,
-    int64_t out_features,
-    hipStream_t stream) {
-  if (!input || !expert_start || !qweight_a || !qweight_b || !output_a ||
-      !output_b || compact_rows <= 0 || num_experts <= 0 || in_features <= 0 ||
-      (in_features % QK_K) || out_features <= 0) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  constexpr int row_batch = 8;
-  constexpr int out_batch = 4;
-  constexpr int expert_workers = 64;
-  constexpr int threads = 128;
-  const int64_t worker_count = num_experts < expert_workers ? num_experts : expert_workers;
-  hipLaunchKernelGGL(
-      (gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<row_batch, out_batch, true, false, false, true>),
-      dim3(static_cast<uint32_t>((out_features + out_batch - 1) / out_batch),
-           static_cast<uint32_t>(worker_count)),
-      dim3(threads), 0, stream,
-      static_cast<const uint16_t*>(input),
-      static_cast<const int64_t*>(expert_start),
-      static_cast<const uint8_t*>(qweight_a),
-      static_cast<const uint8_t*>(qweight_b),
-      static_cast<uint16_t*>(output_a), static_cast<uint16_t*>(output_b),
-      compact_rows, num_experts, in_features, out_features, 0, 0);
-  return static_cast<int>(hipGetLastError());
-}
-
 extern "C" int hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out(
     const void* input, const void* expert_start,
     const void* qweight_a, const void* qweight_b, void* output_a, void* output_b,
