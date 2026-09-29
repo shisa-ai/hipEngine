@@ -346,10 +346,11 @@ def _summarise_engagement(
             else:
                 bucket["inactive"] += 1
             rows_seen.add(int(record.get("rows", 0)))
-            by_selector.setdefault(selector, {})[arm] = bool(
-                by_selector.setdefault(selector, {}).get(arm)
-                or record.get("engaged")
-            )
+            # Keep the counts, not a collapsed boolean. A boolean threw away the
+            # very difference this is looking for: measured on the canonical
+            # case, q4k_rowtile was active 1654/1654 in the teacher arm and
+            # 2730/3522 in the candidate arm, and both collapsed to True.
+            by_selector.setdefault(selector, {})[arm] = bucket
         summary[arm] = {
             "launches": len(records),
             "engaged_launches": sum(engaged.values()),
@@ -358,17 +359,30 @@ def _summarise_engagement(
             "rows_seen": sorted(rows_seen),
             "per_selector": {k: v for k, v in sorted(per_selector.items())},
         }
-    # A selector "differs" only when both arms were observed and disagree. An
-    # unobserved selector is not evidence of isolation, so it is reported
-    # separately rather than counted either way.
-    differing = sorted(
-        selector
-        for selector, arms in by_selector.items()
-        if len(arms) == 2 and arms["teacher"] != arms["candidate"]
-    )
-    unobserved = sorted(
-        selector for selector, arms in by_selector.items() if len(arms) < 2
-    )
+    # Compare engagement *rates*, not counts: the candidate arm runs its repeats
+    # and so has a different launch total. A rate is comparable across arms,
+    # a count is not.
+    def _rate(bucket: dict[str, int]) -> float:
+        total = bucket.get("active", 0) + bucket.get("inactive", 0)
+        return (bucket.get("active", 0) / total) if total else 0.0
+
+    selector_states: dict[str, dict[str, Any]] = {}
+    differing: list[str] = []
+    unobserved: list[str] = []
+    for selector, arms in sorted(by_selector.items()):
+        if len(arms) < 2:
+            unobserved.append(selector)
+            continue
+        teacher_rate = _rate(arms["teacher"])
+        candidate_rate = _rate(arms["candidate"])
+        selector_states[selector] = {
+            "teacher_engaged_rate": round(teacher_rate, 6),
+            "candidate_engaged_rate": round(candidate_rate, 6),
+            "differs": teacher_rate != candidate_rate,
+        }
+        if teacher_rate != candidate_rate:
+            differing.append(selector)
+    summary["selector_states"] = selector_states
     summary["selectors_differing_between_arms"] = differing
     summary["selectors_observed_in_one_arm_only"] = unobserved
     summary["attribution"] = (
@@ -378,10 +392,22 @@ def _summarise_engagement(
         else "no selector was observed to differ between the arms, so any drift "
         "measured here is unexplained"
     )
-    candidate_engaged = bool(summary.get("candidate", {}).get("engaged_launches"))
-    teacher_engaged = bool(summary.get("teacher", {}).get("engaged_launches"))
-    summary["candidate_route_engaged"] = candidate_engaged
-    summary["teacher_route_engaged"] = teacher_engaged
+
+    # These two are about **the route the gate is named for**, not about every
+    # selector the recorder observes. Deriving them from total engagement made
+    # the teacher arm read as engaged whenever q4k_rowtile was active in it -
+    # which it always is, and which is correct - and so reported "the teacher
+    # arm also engaged the route" on a run where the route's teacher count was
+    # exactly zero.
+    route = "wmma_prefill"
+    route_arms = by_selector.get(route, {})
+    candidate_route_engaged = _rate(route_arms.get("candidate", {})) > 0.0
+    teacher_route_engaged = _rate(route_arms.get("teacher", {})) > 0.0
+    summary["candidate_route_engaged"] = candidate_route_engaged
+    summary["teacher_route_engaged"] = teacher_route_engaged
+    summary["route"] = route
+    candidate_engaged = candidate_route_engaged
+    teacher_engaged = teacher_route_engaged
     # Deliberately **not** called ``arms_isolated``. It was, and the name was
     # wrong: it says only that this route engaged in one arm and not the other.
     # It does not say the arms differ *only* in this route, and they do not -
