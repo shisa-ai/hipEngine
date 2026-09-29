@@ -1,0 +1,167 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_chunk_invariance_class",
+  "performance_claim": false,
+  "created_at": "2026-09-29T18:47:12.369588+00:00",
+  "finding": "the chunk-invariance class is exactly {1024,2048,4096}; chunk 256 is OUTSIDE it",
+  "cases_compared": 12,
+  "identical_1024_vs_4096": 12,
+  "identical_256_vs_4096": 0,
+  "token_id_identical_all": true,
+  "per_case": [
+    {
+      "case": "code-p1024",
+      "chunk1024": "34ae3f27c558cfeb8290a0de0522a55b66d2929779f693522f81d58ca25c89c9",
+      "chunk256": "05052e4a34588c323de1179cd57b46da3aaefb2e8a25401bb022168f56524946",
+      "chunk4096": "34ae3f27c558cfeb8290a0de0522a55b66d2929779f693522f81d58ca25c89c9",
+      "identical_1024_vs_4096": true,
+      "identical_256_vs_4096": false,
+      "token_id_1024": 248068,
+      "token_id_256": 248068,
+      "token_id_4096": 248068
+    },
+    {
+      "case": "code-p4096",
+      "chunk1024": "7270a972da43ff4642e557b1dd0015405210547348ecf2fb657d6a55831cb2c4",
+      "chunk256": "e717076fe080c887618e65e3810d039bc4fe7356e9b88d9ec6f64d265189a0b7",
+      "chunk4096": "7270a972da43ff4642e557b1dd0015405210547348ecf2fb657d6a55831cb2c4",
+      "identical_1024_vs_4096": true,
+      "identical_256_vs_4096": false,
+      "token_id_1024": 248068,
+      "token_id_256": 248068,
+      "token_id_4096": 248068
+    },
+    {
+      "case": "code-p512",
+      "chunk1024": "e15dce7949b5402d2ef6dbee51528561228ce05f13080d60cd618f6e016bc46b",
+      "chunk256": "9705d513d5949f473150c3d0f5dacc5baea4f0c5d4643b06cd1bd5b094f1ce35",
+      "chunk4096": "e15dce7949b5402d2ef6dbee51528561228ce05f13080d60cd618f6e016bc46b",
+      "identical_1024_vs_4096": true,
+      "identical_256_vs_4096": false,
+      "token_id_1024": 248068,
+      "token_id_256": 248068,
+      "token_id_4096": 248068
+    },
+    {
+      "case": "general_en-p1024",
+      "chunk1024": "76d6a7cc8d7b27e232e0dd01643604ff721ba8a7d642d88be74e00c552cc6bec",
+      "chunk256": "45e71e3d22506a15e949009f8b236b900f92cd63466ff8e1d08a6f221aab7231",
+      "chunk4096": "76d6a7cc8d7b27e232e0dd01643604ff721ba8a7d642d88be74e00c552cc6bec",
+      "identical_1024_vs_4096": true,
+      "identical_256_vs_4096": false,
+      "token_id_1024": 248068,
+      "token_id_256": 248068,
+      "token_id_4096": 248068
+    },
+    {
+      "case": "general_en-p4096",
+      "chunk1024": "fd63efd47a4752d69440885c0c207e108f93b89f2ec06ce7b8523c2ec7a0d1c9",
+      "chunk256": "4f95b80832883386ccdbd47a1b2c0548a2448aebc6478290c3f227abb3c8e648",
+      "chunk4096": "fd63efd47a4752d69440885c0c207e108f93b89f2ec06ce7b8523c2ec7a0d1c9",
+      "identical_1024_vs_4096": true,
+      "identical_256_vs_4096": false,
+      "token_id_1024": 248068,
+      "token_id_256": 248068,
+      "token_id_4096": 248068
+    },
+    {
+      "case": "general_en-p512",
+      "chunk1024": "a3f3e3de7a29e6daaca2abf2d599b0e91f9ec488cec035a2892094161124013f",
+      "chunk256": "2fa480d8d7ceaf7c589e577b1c0c57f523f59df5742e3b9acb980457c9b3acd0",
+      "chunk4096": "a3f3e3de7a29e6daaca2abf2d599b0e91f9ec488cec035a2892094161124013f",
+      "identical_1024_vs_4096": true,
+      "identical_256_vs_4096": false,
+      "token_id_1024": 248068,
+      "token_id_256": 248068,
+      "token_id_4096": 248068
+    },
+    {
+      "case": "general_ja-p1024",
+      "chunk1024": "08dda177c706330aa91eafdd23c8a1a90d40ed3d6754617c214158ec7aad93fd",
+      "chunk256": "27faa992ed430b8bf1d1a2b0c361a5fa22ba0b90833132e96d8ff48eb1ca25fd",
+      "chunk4096": "08dda177c706330aa91eafdd23c8a1a90d40ed3d6754617c214158ec7aad93fd",
+      "identical_1024_vs_4096": true,
+      "identical_256_vs_4096": false,
+      "token_id_1024": 248068,
+      "token_id_256": 248068,
+      "token_id_4096": 248068
+    },
+    {
+      "case": "general_ja-p4096",
+      "chunk1024": "12e11123976c6c2b21b17ddfd161aff04ddc34ce59978af4a672ca20e16e6b10",
+      "chunk256": "6c340226d6d7e4373639e51181bb4d0239a1ec4c9bb1100fa3ae0cab0750adfd",
+      "chunk4096": "12e11123976c6c2b21b17ddfd161aff04ddc34ce59978af4a672ca20e16e6b10",
+      "identical_1024_vs_4096": true,
+      "identical_256_vs_4096": false,
+      "token_id_1024": 248068,
+      "token_id_256": 248068,
+      "token_id_4096": 248068
+    },
+    {
+      "case": "general_ja-p512",
+      "chunk1024": "090602c2cccb61d2fff0b9159665fb44565b39c7c21bd5b07e669cff351b61cb",
+      "chunk256": "9a866f2aa9fef37cc871486da542fa61ae499cdb367c8c2fa49ced0c1206ab23",
+      "chunk4096": "090602c2cccb61d2fff0b9159665fb44565b39c7c21bd5b07e669cff351b61cb",
+      "identical_1024_vs_4096": true,
+      "identical_256_vs_4096": false,
+      "token_id_1024": 248068,
+      "token_id_256": 248068,
+      "token_id_4096": 248068
+    },
+    {
+      "case": "mixed_ja_en-p1024",
+      "chunk1024": "d80feab0eaa9974db67e15d5b902d2a5d95532e289fe49e1dd81a4dc55731d24",
+      "chunk256": "ceb1830e9bffd90f057c4c17de93a7c3dec24c852ac77af2d5d2c905e6ecc43d",
+      "chunk4096": "d80feab0eaa9974db67e15d5b902d2a5d95532e289fe49e1dd81a4dc55731d24",
+      "identical_1024_vs_4096": true,
+      "identical_256_vs_4096": false,
+      "token_id_1024": 248068,
+      "token_id_256": 248068,
+      "token_id_4096": 248068
+    },
+    {
+      "case": "mixed_ja_en-p4096",
+      "chunk1024": "a4263f7283c656ca6738918b0ff8626e96263014ab5f8ba078bf61478de6a111",
+      "chunk256": "bc83b207b3e3123b05275e4b3599b11eac0e9ad229c8c1ffe65dbe75eea5e06b",
+      "chunk4096": "a4263f7283c656ca6738918b0ff8626e96263014ab5f8ba078bf61478de6a111",
+      "identical_1024_vs_4096": true,
+      "identical_256_vs_4096": false,
+      "token_id_1024": 248068,
+      "token_id_256": 248068,
+      "token_id_4096": 248068
+    },
+    {
+      "case": "mixed_ja_en-p512",
+      "chunk1024": "691b0653f5596dd3396152060afd7ed552e7742c1052bd3a8ef30d144e986fbb",
+      "chunk256": "4175b4e420d996c99d33ec4cd18704ae8d80892c27d69fe8e9329e6eebc7408d",
+      "chunk4096": "691b0653f5596dd3396152060afd7ed552e7742c1052bd3a8ef30d144e986fbb",
+      "identical_1024_vs_4096": true,
+      "identical_256_vs_4096": false,
+      "token_id_1024": 248068,
+      "token_id_256": 248068,
+      "token_id_4096": 248068
+    }
+  ],
+  "three_point_code_p4096": [
+    {
+      "chunk": 1024,
+      "logits_sha256": "7270a972da43ff4642e557b1dd0015405210547348ecf2fb657d6a55831cb2c4",
+      "token_id": 248068
+    },
+    {
+      "chunk": 2048,
+      "logits_sha256": "7270a972da43ff4642e557b1dd0015405210547348ecf2fb657d6a55831cb2c4",
+      "token_id": 248068
+    },
+    {
+      "chunk": 4096,
+      "logits_sha256": "7270a972da43ff4642e557b1dd0015405210547348ecf2fb657d6a55831cb2c4",
+      "token_id": 248068
+    }
+  ],
+  "sources": [
+    "benchmarks/results/2026-09-29-qwen4exp-rt1-256-vs-1024",
+    "benchmarks/results/2026-09-29-qwen4exp-rt1-serving-suite",
+    "benchmarks/results/2026-09-29-qwen4exp-rt1-chunk-remeasure"
+  ]
+}
