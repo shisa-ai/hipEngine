@@ -112,6 +112,96 @@ _I64_BYTES = 8
 # max_block is min(capacity, this). 1024 stays while the measurement holds.
 DEFAULT_PREFILL_BLOCK = 1024
 
+
+# Headroom kept free above the computed resident set: allocator rounding,
+# per-forward temporaries the layers do not name as scratch, and the kernel
+# image. Half a gigabyte against a 3.29 GB difference between the two blocks.
+_FIT_RESERVE_BYTES = 512 * 1024 * 1024
+
+
+def _resident_bytes(
+    *,
+    block: int,
+    capacity: int,
+    hidden: int,
+    config: Any,
+    dense_widths: Sequence[int],
+) -> int:
+    """Bytes the runner holds for a prefill block of ``block`` rows.
+
+    Everything except the weights, which are already resident by the time the
+    runner is constructed: the runner's own buffers, the per-layer KV cache, and
+    every scratch buffer the layers can take. Asking a scratch its size
+    allocates no device memory, because every buffer in one is created on first
+    use. The scratch sum is deliberately an upper bound over its whole table
+    rather than over the names one path touches.
+    """
+    total = (
+        block * _I64_BYTES
+        + block * hidden * _BF16_BYTES
+        + hidden * _BF16_BYTES
+        + int(config.vocab_size or 0) * _F32_BYTES
+    )
+    for index, attention in enumerate(config.attention):
+        scratch = Gemma4LayerScratch(
+            tokens=block,
+            hidden_size=hidden,
+            dense_intermediate=dense_widths[index],
+            geometry=_layer_geometry(attention),
+            num_experts=config.num_experts,
+            top_k=config.top_k_experts,
+            expert_intermediate=config.moe_intermediate_size,
+        )
+        total += scratch.resident_bytes()
+        total += (
+            capacity * attention.num_kv_heads * attention.head_dim * _BF16_BYTES * 2
+        )
+    return total
+
+
+def _fit_prefill_block(
+    block: int,
+    *,
+    capacity: int,
+    hidden: int,
+    config: Any,
+    dense_widths: Sequence[int],
+) -> int:
+    """Shrink ``block`` until the resident set fits free device memory.
+
+    Scratch scales with the block and is taken lazily on the first forward, so a
+    block that does not fit does not fail at load -- it fails as an out of memory
+    error partway through decode, after the model has already loaded and long
+    after anything could diagnose it. Sizing against ``hipMemGetInfo`` keeps the
+    larger block on cards that can hold it and steps down where they cannot:
+    automatic selection between two working block sizes, not a flag and not a
+    blanket revert. A runtime that will not answer the query returns the block
+    unchanged, because a missing measurement is not a reason to refuse to run.
+    """
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    mem_get_info = getattr(runtime, "mem_get_info", None)
+    if not callable(mem_get_info):
+        return block
+    try:
+        free_bytes, _total_bytes = mem_get_info()
+    except Exception:
+        return block
+    budget = max(0, int(free_bytes) - _FIT_RESERVE_BYTES)
+    while block > 1:
+        needed = _resident_bytes(
+            block=block,
+            capacity=capacity,
+            hidden=hidden,
+            config=config,
+            dense_widths=dense_widths,
+        )
+        if needed <= budget:
+            return block
+        block //= 2
+    return 1
+
 # Which layer field each artifact slot feeds. The slot names are the loader's;
 # the fields are the layer's. Kept as one table so the two cannot drift apart
 # silently.
@@ -534,7 +624,11 @@ class Gemma4Runner:
         config = self.weights.config
         if self.capacity <= 0:
             raise ValueError("capacity must be positive")
-        if self.max_block <= 0:
+        # Remember whether the block was chosen here rather than handed in, so
+        # the fit check below may shrink only the block we picked. An explicit
+        # block is the caller's request and fails loudly if it does not fit.
+        auto_block = self.max_block <= 0
+        if auto_block:
             self.max_block = min(self.capacity, DEFAULT_PREFILL_BLOCK)
         if self.max_block > self.capacity:
             raise ValueError("max_block must not exceed capacity")
@@ -552,6 +646,14 @@ class Gemma4Runner:
             raise ValueError(
                 f"weights carry {len(dense_widths)} dense widths but the config "
                 f"has {len(config.attention)} layers"
+            )
+        if auto_block:
+            self.max_block = _fit_prefill_block(
+                self.max_block,
+                capacity=self.capacity,
+                hidden=hidden,
+                config=config,
+                dense_widths=dense_widths,
             )
         # Every buffer taken below is owned by this runner, so a failure
         # partway through construction must release the ones already taken

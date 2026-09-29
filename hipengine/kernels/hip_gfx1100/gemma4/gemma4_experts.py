@@ -121,7 +121,12 @@ class Gemma4ExpertScratch:
         self._buffers.clear()
         self._by_name.clear()
 
-    def _size_of(self, name: str) -> int:
+    def _sizes(self) -> dict[str, int]:
+        """Byte size of every buffer this scratch can hold.
+
+        One table shared by ``_size_of`` and ``resident_bytes`` so the
+        allocator and the memory planner cannot drift apart.
+        """
         lanes = self.total_lanes
         # Widths follow the group-scatter ABI exactly: `counts` is int32 and
         # `sorted_weights` is float, but `selected_experts`, `expert_start`,
@@ -158,10 +163,17 @@ class Gemma4ExpertScratch:
             "ds4_q8": lanes * (-(-self.hidden_size // 128)) * _DS4_BLOCK_BYTES,
             "compact_to_source": lanes * _I64_BYTES,
         }
+        return sizes
+
+    def _size_of(self, name: str) -> int:
         try:
-            return sizes[name]
+            return self._sizes()[name]
         except KeyError:
             raise KeyError(f"unknown expert scratch buffer {name!r}") from None
+
+    def resident_bytes(self) -> int:
+        """Upper bound on every device buffer this scratch can take."""
+        return sum(self._sizes().values())
 
 
 def gemma4_experts_forward_bf16(
