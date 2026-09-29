@@ -3339,9 +3339,17 @@ def launch_gguf_linear(
         has_raw_weight_sidecar = int(weight.allocation("raw").tensor.ptr) > 0
     except KeyError:
         has_raw_weight_sidecar = False
+    # Read the declared allocations through a default rather than assuming the
+    # attribute exists. It is declared on five concrete spec types (laguna,
+    # qwen35 x2, qwen4_exp, gemma4) and on no common base, so the generic
+    # dispatch was reading something that is not part of any interface: a spec
+    # that does not define it raised AttributeError here instead of taking the
+    # no-raw-sidecar path. An absent declaration means no raw allocation, which
+    # is what the empty tuple below says -- the semantics for a spec that does
+    # declare it are unchanged.
     raw_weight_ptr = (
         int(weight.allocation("raw").tensor.ptr)
-        if "raw" in weight.spec.allocation_names
+        if "raw" in getattr(weight.spec, "allocation_names", ())
         else None
     )
     cache_key = (
