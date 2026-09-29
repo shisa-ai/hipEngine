@@ -1125,7 +1125,13 @@ void q8_0_iu8_wmma_prefill_f32_f32_kernel(
   }
 }
 
-template <bool WAVE_SCALE = false>
+// WRITE_GATE=false suppresses the ``gate`` store only. The gate values are
+// already in registers and already feed ``mixed``, so ``mixed`` is bit-identical
+// either way: this is a strict variant, not a T1/T2 arithmetic change. It exists
+// because no production consumer reads the GR result's gate field (census in
+// ``docs/QWEN4EXP-OPTIMIZATION-LEDGER.md`` HC-3); the only reader in the tree is
+// a unit test on a synthetic result.
+template <bool WAVE_SCALE = false, bool WRITE_GATE = true>
 __launch_bounds__(128, 2)
 __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
     const float* __restrict__ x,
@@ -1227,7 +1233,9 @@ __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
         const int64_t index = static_cast<int64_t>(row) * BRANCHES * hidden
             + branch * hidden + hidden_base + col;
         const float sigmoid_gate = 1.0f / (1.0f + expf(-total));
-        gate[index] = sigmoid_gate;
+        if (WRITE_GATE) {
+          gate[index] = sigmoid_gate;
+        }
         value += normalized[index] * sigmoid_gate;
       }
       mixed[static_cast<int64_t>(row) * hidden + hidden_base + col] =
@@ -5287,7 +5295,7 @@ HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(32)
 
 #undef HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT
 
-template <bool WAVE_SCALE>
+template <bool WAVE_SCALE, bool WRITE_GATE = true>
 int launch_q8_gr_up_scale(
     const float* x,
     const uint8_t* qweight,
@@ -5301,13 +5309,14 @@ int launch_q8_gr_up_scale(
     int64_t threads,
     hipStream_t stream) {
   if (x == nullptr || qweight == nullptr || normalized == nullptr ||
-      gate == nullptr || mixed == nullptr || rows <= 0 || in_features <= 0 ||
+      (WRITE_GATE && gate == nullptr) || mixed == nullptr || rows <= 0 ||
+      in_features <= 0 ||
       in_features % Q8_0_BLOCK != 0 || branches != 4 || hidden <= 0 ||
       hidden % 2 != 0 || threads != 128) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
-      (q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<WAVE_SCALE>),
+      (q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<WAVE_SCALE, WRITE_GATE>),
       dim3(
           static_cast<unsigned int>(hidden / 2),
           static_cast<unsigned int>((rows + 3) / 4)),
@@ -5326,15 +5335,18 @@ int launch_q8_gr_up_scale(
   return static_cast<int>(hipGetLastError());
 }
 
-#define Q8_GR_SCALE_ENTRY(NAME, WAVE) \
+#define Q8_GR_SCALE_ENTRY(NAME, WAVE, GATE) \
 extern "C" int NAME(const float* x, const uint8_t* qweight, const float* normalized, \
     float* gate, float* mixed, int64_t rows, int64_t in_features, int64_t branches, \
     int64_t hidden, int64_t threads, hipStream_t stream) { \
-  return launch_q8_gr_up_scale<WAVE>(x, qweight, normalized, gate, mixed, rows, \
+  return launch_q8_gr_up_scale<WAVE, GATE>(x, qweight, normalized, gate, mixed, rows, \
       in_features, branches, hidden, threads, stream); \
 }
-Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32, false)
-Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32, true)
+Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32, false, true)
+Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32, true, true)
+// Strict no-gate variant: identical arithmetic and identical ``mixed``, with the
+// dead gate store removed. ``gate`` may be null.
+Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32, false, false)
 #undef Q8_GR_SCALE_ENTRY
 
 #define HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(COL_TILE, ROW_BATCH) \
