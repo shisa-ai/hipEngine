@@ -187,12 +187,44 @@ def _record_wmma_prefill_dispatch(
         return
     records.append(
         {
+            "selector": "wmma_prefill",
             "variant_in": dispatch.key.variant,
             "abi_in": dispatch.abi,
             "rows": int(rows),
             "variant_out": variant_out,
             "engaged": variant_out is not None,
             "reason": reason,
+        }
+    )
+
+
+def _record_selector(
+    selector: str,
+    *,
+    rows: int,
+    active: bool,
+    detail: object = None,
+) -> None:
+    """Record a selector that ``use_wmma`` moves but that is not the route.
+
+    ``use_wmma`` is not a WMMA-route flag. It also forces ``f_rowtile`` off,
+    which drags ``use_rowtile`` with it, flips ``enabled`` on one path, and
+    disables the rows-2-8 native batch-decode session. Those are *decode*
+    decisions, and they move at row counts the WMMA route itself refuses - which
+    is why a gate named ``wmma`` can report real drift that the WMMA route did
+    not cause. Recording them is what turns "not this route" into a name.
+    """
+
+    records = _wmma_prefill_dispatch_records.get()
+    if records is None:
+        return
+    records.append(
+        {
+            "selector": selector,
+            "rows": int(rows),
+            "engaged": bool(active),
+            "reason": "active" if active else "inactive",
+            "detail": detail,
         }
     )
 
@@ -3886,6 +3918,35 @@ def launch_gguf_linear(
     if use_wmma and wmma_filter is not None:
         use_wmma = bool(wmma_filter(weight))
     f_rowtile = (not use_wmma) and _resolve_use_q4k_rowtile(None)
+    _record_selector(
+        "q4k_rowtile",
+        rows=rows,
+        active=bool(f_rowtile),
+        detail={"use_wmma": bool(use_wmma)},
+    )
+    # ``use_wmma`` appears in this guard, and this is a *decode* path: it is
+    # reached at rows 2-8, which the WMMA prefill route refuses. So binding the
+    # WMMA route silently turns this session off, and a gate measuring the WMMA
+    # env surface reports the resulting drift as the route's. Record the decision
+    # and name ``use_wmma`` as the blocker when it is the one that blocked it.
+    _record_selector(
+        "native_batch_decode_session",
+        rows=rows,
+        active=bool(
+            _native_batch_decode_session_enabled
+            and (2 <= rows <= 8)
+            and not use_q4_pack8_wmma
+            and registered_variant is None
+            and threads == 0
+            and activation_dtype == GGUF_ACTIVATION_BF16
+            and output_dtype == GGUF_OUTPUT_BF16
+        ),
+        detail={
+            "use_wmma_blocked": bool(use_wmma),
+            "in_row_window": bool(2 <= rows <= 8),
+            "session_enabled": bool(_native_batch_decode_session_enabled),
+        },
+    )
     if (
         _native_batch_decode_session_enabled
         and (2 <= rows <= 8)
