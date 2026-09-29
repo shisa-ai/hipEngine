@@ -217,6 +217,7 @@ def schedule_c1_control_records(
     graph_bucket: str,
     rng_seed: int = 0,
     kv_base_offset: int = 0,
+    step_offset: int = 0,
 ) -> tuple[ControlRecord, ...]:
     """Independently derive the expected c1 control records from a schedule spec.
 
@@ -225,6 +226,12 @@ def schedule_c1_control_records(
     ``teacher_token_ids[k - 1]`` at position ``prompt_len - 1 + k``. The live
     producer reads the same primitives from the resident session; the two paths
     are separate so ownership drift in a candidate diverges here.
+
+    ``step_offset`` places this request's records inside a larger sequential
+    scenario: several prompts sharing one ``scenario_id`` must occupy distinct
+    ``scenario_step`` values or their (default) physical slot 0 records collide
+    at every shared step number. The default 0 keeps single-request schedules
+    exactly as before.
     """
 
     prompt_len = len(tuple(prompt_ids))
@@ -233,10 +240,12 @@ def schedule_c1_control_records(
         raise ValueError("schedule prompt_ids must be non-empty")
     if not teacher:
         raise ValueError("schedule teacher_token_ids must be non-empty")
+    if step_offset < 0:
+        raise ValueError("schedule step_offset must be non-negative")
     primitives: list[RowControlPrimitives] = [
         RowControlPrimitives(
             scenario_id=scenario_id,
-            scenario_step=0,
+            scenario_step=step_offset + 0,
             request_id=request_id,
             input_token_id=int(prompt_ids[-1]),
             position=prompt_len - 1,
@@ -251,7 +260,7 @@ def schedule_c1_control_records(
         primitives.append(
             RowControlPrimitives(
                 scenario_id=scenario_id,
-                scenario_step=step,
+                scenario_step=step_offset + step,
                 request_id=request_id,
                 input_token_id=int(input_token_id),
                 position=prompt_len - 1 + step,
