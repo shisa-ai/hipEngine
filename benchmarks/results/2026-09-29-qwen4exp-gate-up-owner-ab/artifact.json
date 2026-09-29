@@ -1,0 +1,283 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_gate_up_owner_ab",
+  "performance_claim": false,
+  "question": "Between the two registered owners of the Q4_K routed gate/up route - the production default (dual wmma iu8-risk, one output column per lane) and the strict default / production fallback (dual grouped rowbatch8, cooperative LDS metadata staging) - which is faster on the main kernel at the real geometry, and is that comparison already archived?",
+  "protocol": {
+    "experts": 512,
+    "hidden": 2560,
+    "ffn": 640,
+    "row_bytes": 1440,
+    "wmma_tile_rows": 16,
+    "repetitions": 15,
+    "max_risks": 0,
+    "timing": "median of per-launch HIP event pairs, 2 primed launches",
+    "weights": "synthesized at the real shapes and byte layout; the access pattern and byte counts are representative, the values are not",
+    "scope": "main kernel only; no risk queue writes, no repair pass, no packing, no engine work, no correctness claim"
+  },
+  "rows": {
+    "balanced-512": {
+      "distribution": "balanced",
+      "rows": 512,
+      "padded_rows": 8096,
+      "active_experts": 506,
+      "max_expert_rows": 2,
+      "arms": {
+        "dual_wmma_iu8_risk_prefill": {
+          "median_ms": 8.5388,
+          "repeated_last_ms": 8.5341
+        },
+        "dual_grouped_rowbatch8_out4_expertgrid64": {
+          "median_ms": 10.2136
+        }
+      },
+      "grouped_vs_wmma_pct": 19.6132,
+      "wmma_repeat_drift_pct": -0.056
+    },
+    "balanced-1024": {
+      "distribution": "balanced",
+      "rows": 1024,
+      "padded_rows": 8192,
+      "active_experts": 512,
+      "max_expert_rows": 3,
+      "arms": {
+        "dual_wmma_iu8_risk_prefill": {
+          "median_ms": 8.7742,
+          "repeated_last_ms": 8.788
+        },
+        "dual_grouped_rowbatch8_out4_expertgrid64": {
+          "median_ms": 10.7845
+        }
+      },
+      "grouped_vs_wmma_pct": 22.9114,
+      "wmma_repeat_drift_pct": 0.1575
+    },
+    "balanced-4096": {
+      "distribution": "balanced",
+      "rows": 4096,
+      "padded_rows": 8192,
+      "active_experts": 512,
+      "max_expert_rows": 12,
+      "arms": {
+        "dual_wmma_iu8_risk_prefill": {
+          "median_ms": 9.0361,
+          "repeated_last_ms": 8.9606
+        },
+        "dual_grouped_rowbatch8_out4_expertgrid64": {
+          "median_ms": 25.01
+        }
+      },
+      "grouped_vs_wmma_pct": 176.7801,
+      "wmma_repeat_drift_pct": -0.8355
+    },
+    "balanced-10240": {
+      "distribution": "balanced",
+      "rows": 10240,
+      "padded_rows": 13696,
+      "active_experts": 512,
+      "max_expert_rows": 30,
+      "arms": {
+        "dual_wmma_iu8_risk_prefill": {
+          "median_ms": 14.8834,
+          "repeated_last_ms": 14.8227
+        },
+        "dual_grouped_rowbatch8_out4_expertgrid64": {
+          "median_ms": 57.9842
+        }
+      },
+      "grouped_vs_wmma_pct": 289.59,
+      "wmma_repeat_drift_pct": -0.4077
+    },
+    "sparse-512": {
+      "distribution": "sparse",
+      "rows": 512,
+      "padded_rows": 2048,
+      "active_experts": 128,
+      "max_expert_rows": 4,
+      "arms": {
+        "dual_wmma_iu8_risk_prefill": {
+          "median_ms": 2.3714,
+          "repeated_last_ms": 2.3803
+        },
+        "dual_grouped_rowbatch8_out4_expertgrid64": {
+          "median_ms": 3.9783
+        }
+      },
+      "grouped_vs_wmma_pct": 67.7637,
+      "wmma_repeat_drift_pct": 0.3764
+    },
+    "sparse-1024": {
+      "distribution": "sparse",
+      "rows": 1024,
+      "padded_rows": 2048,
+      "active_experts": 128,
+      "max_expert_rows": 8,
+      "arms": {
+        "dual_wmma_iu8_risk_prefill": {
+          "median_ms": 2.4097,
+          "repeated_last_ms": 2.3266
+        },
+        "dual_grouped_rowbatch8_out4_expertgrid64": {
+          "median_ms": 5.4455
+        }
+      },
+      "grouped_vs_wmma_pct": 125.983,
+      "wmma_repeat_drift_pct": -3.4493
+    },
+    "sparse-4096": {
+      "distribution": "sparse",
+      "rows": 4096,
+      "padded_rows": 4096,
+      "active_experts": 128,
+      "max_expert_rows": 32,
+      "arms": {
+        "dual_wmma_iu8_risk_prefill": {
+          "median_ms": 4.6279,
+          "repeated_last_ms": 4.5568
+        },
+        "dual_grouped_rowbatch8_out4_expertgrid64": {
+          "median_ms": 20.7738
+        }
+      },
+      "grouped_vs_wmma_pct": 348.8851,
+      "wmma_repeat_drift_pct": -1.5362
+    },
+    "sparse-10240": {
+      "distribution": "sparse",
+      "rows": 10240,
+      "padded_rows": 10240,
+      "active_experts": 128,
+      "max_expert_rows": 80,
+      "arms": {
+        "dual_wmma_iu8_risk_prefill": {
+          "median_ms": 11.0458,
+          "repeated_last_ms": 11.0205
+        },
+        "dual_grouped_rowbatch8_out4_expertgrid64": {
+          "median_ms": 54.0405
+        }
+      },
+      "grouped_vs_wmma_pct": 389.2424,
+      "wmma_repeat_drift_pct": -0.2289
+    },
+    "single-512": {
+      "distribution": "single",
+      "rows": 512,
+      "padded_rows": 512,
+      "active_experts": 1,
+      "max_expert_rows": 512,
+      "arms": {
+        "dual_wmma_iu8_risk_prefill": {
+          "median_ms": 0.7341,
+          "repeated_last_ms": 0.6259
+        },
+        "dual_grouped_rowbatch8_out4_expertgrid64": {
+          "median_ms": 4.616
+        }
+      },
+      "grouped_vs_wmma_pct": 528.8137,
+      "wmma_repeat_drift_pct": -14.7332
+    },
+    "single-1024": {
+      "distribution": "single",
+      "rows": 1024,
+      "padded_rows": 1024,
+      "active_experts": 1,
+      "max_expert_rows": 1024,
+      "arms": {
+        "dual_wmma_iu8_risk_prefill": {
+          "median_ms": 1.1333,
+          "repeated_last_ms": 1.1303
+        },
+        "dual_grouped_rowbatch8_out4_expertgrid64": {
+          "median_ms": 9.1723
+        }
+      },
+      "grouped_vs_wmma_pct": 709.3565,
+      "wmma_repeat_drift_pct": -0.2679
+    },
+    "single-4096": {
+      "distribution": "single",
+      "rows": 4096,
+      "padded_rows": 4096,
+      "active_experts": 1,
+      "max_expert_rows": 4096,
+      "arms": {
+        "dual_wmma_iu8_risk_prefill": {
+          "median_ms": 4.415,
+          "repeated_last_ms": 4.3786
+        },
+        "dual_grouped_rowbatch8_out4_expertgrid64": {
+          "median_ms": 36.8348
+        }
+      },
+      "grouped_vs_wmma_pct": 734.3111,
+      "wmma_repeat_drift_pct": -0.8254
+    },
+    "single-10240": {
+      "distribution": "single",
+      "rows": 10240,
+      "padded_rows": 10240,
+      "active_experts": 1,
+      "max_expert_rows": 10240,
+      "arms": {
+        "dual_wmma_iu8_risk_prefill": {
+          "median_ms": 10.9223,
+          "repeated_last_ms": 10.8766
+        },
+        "dual_grouped_rowbatch8_out4_expertgrid64": {
+          "median_ms": 138.9092
+        }
+      },
+      "grouped_vs_wmma_pct": 1171.7981,
+      "wmma_repeat_drift_pct": -0.4178
+    }
+  },
+  "summary": {
+    "cases": 12,
+    "grouped_slower_cases": 12,
+    "grouped_faster_cases": 0,
+    "grouped_vs_wmma_pct_median": 319.2375,
+    "grouped_vs_wmma_pct_min": 19.6132,
+    "grouped_vs_wmma_pct_max": 1171.7981,
+    "max_abs_repeat_drift_pct": 14.7332,
+    "reading": "positive grouped_vs_wmma_pct means the grouped owner is slower than the production default"
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "gpu": "AMD Radeon 8060S (gfx1151)",
+    "rocm": "TheRock therock10-staging-20260828",
+    "note": "same physical host as the 2026-09-29 ED-1 artifacts"
+  },
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "11099302d56bf9e6fb3d888c20f4911ae48aaf6d",
+    "tracked_clean": false
+  },
+  "command": {
+    "argv": [
+      "/home/lhl/miniforge3/envs/therock10-staging-20260828/bin/python3",
+      "scripts/qwen4exp_gate_up_owner_ab.py",
+      "--output",
+      "benchmarks/results/2026-09-29-qwen4exp-gate-up-owner-ab/artifact.json",
+      "--rows",
+      "512,1024,4096,10240",
+      "--distribution",
+      "balanced,sparse,single",
+      "--repetitions",
+      "15"
+    ],
+    "env": {
+      "PATH": "$ROCK/_rocm_sdk_devel/bin:$ROCK/_rocm_sdk_core/bin:$PATH",
+      "HIP_PATH": "$ROCK/_rocm_sdk_devel",
+      "LD_LIBRARY_PATH": "$ROCK/_rocm_sdk_devel/lib:$ROCK/_rocm_sdk_core/lib:$LD_LIBRARY_PATH"
+    }
+  },
+  "correctness_gate": {
+    "run": false,
+    "note": "No output was compared between the two owners. This packet is a main-kernel timing comparison and makes no numerical or correctness claim; it cannot promote or reject either owner on correctness grounds."
+  },
+  "scope_note": "The risk machinery of the production default is not fully charged: max_risks=0 means the risk queue is never written and no repair pass is timed."
+}
