@@ -86,19 +86,31 @@ _I64_BYTES = 8
 # Tokens per prefill pass. This is the ubatch equivalent: a prompt wider than
 # this is forwarded as consecutive blocks.
 #
-# Raising this to 1024 to match llama.cpp's ubatch was measured and does not pay.
-# The argument for it was weight reuse -- a 1024-token block routes about 64
-# tokens per expert against 32, halving the number of passes over the expert
-# weights. But the int8 MMQ path is compute-bound on the WMMA units rather than
-# memory-bound on those weights, so halving the reads buys almost nothing:
+# Raising this to 1024 to match llama.cpp's ubatch was measured in an earlier
+# pass and did not pay: the weight-reuse argument (64 tokens per expert against
+# 32) was expected to help, but the int8 MMQ path was compute-bound on the WMMA
+# units rather than memory-bound on those weights, so halving the reads bought
+# almost nothing. That pass recorded prompt 1024 at 1373/1367/1367 (512) against
+# 1351/1397/1397 (1024) and called it a wash, so 512 stayed.
 #
-#     prompt 1024   block 512: 1373/1367/1367     block 1024: 1351/1397/1397
-#     prompt 2048   block 512: 1118/1119          block 1024: 1141/1131  (+1.5%)
-#     decode        block 512: 38.86-39.09        block 1024: 37.96-38.15  (-2%)
+# Re-tested on 2026-09-29 (GEMMA4-26B-A4B-PUNCHLIST P13) after the Q5_K depth-16
+# kernel, the lm_head final-block fix, the Q5_K plan-override removal, the packed
+# Q4_K gate_up, the int8 scratch-contract fix and the two-stream MoE branch had
+# all landed. The conclusion reversed:
 #
-# That is a wash, and it costs a larger per-layer scratch, so 512 stays. The
-# reuse argument would apply to a memory-bound prefill owner, not this one.
-DEFAULT_PREFILL_BLOCK = 512
+#     prompt 1024   block 512:  prefill 456.9 ms (2241 tok/s)  decode 40.99
+#                   block 1024: prefill 417.3 ms (2454 tok/s)  decode 40.78
+#     prompt 2048   block 512:  prefill 1293.3 ms (1584)       decode 39.62
+#                   block 1024: prefill 1218.7 ms (1681)       decode 39.55
+#
+# Prefill improves 9.5% and 6.1%; decode moves 0.5% and 0.2%, i.e. it is flat,
+# not the 2% regression the earlier pass measured. End-to-end at prompt 1024
+# plus 64 new tokens is 1987 ms against 2018 ms. The cost is the per-layer
+# scratch, which scales with the block: 6.58 GB against 3.29 GB, so a resident
+# context goes from 22.14 GB to 25.43 GB -- still inside the 48 GB the real
+# 26B UD-Q4_K_XL artifact already needs room for, and self-limiting because
+# max_block is min(capacity, this). 1024 stays while the measurement holds.
+DEFAULT_PREFILL_BLOCK = 1024
 
 # Which layer field each artifact slot feeds. The slot names are the loader's;
 # the fields are the layer's. Kept as one table so the two cannot drift apart
