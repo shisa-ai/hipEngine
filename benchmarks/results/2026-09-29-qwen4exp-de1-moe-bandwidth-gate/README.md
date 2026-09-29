@@ -148,3 +148,42 @@ The same trace also shows the router as a separate, much wider kernel:
 execution from inter-kernel gaps at step granularity here, and no claim is made that changing the
 decomposition recovers the gap. This addendum only names the owner kernel, its fusion structure and
 its launch geometry, so the next screen starts from the real shape rather than from the family name.
+
+## Addendum 2: the gap is inside the kernels, not between them
+
+The step-segmentation question left open in Addendum 1 is answerable from the capture already in
+the tree, because `x4decode_marker_api_trace.csv` carries the `qwen4exp_decode_live4097_rep{0,1,2}`
+ROCTX ranges. Segmenting the kernel trace by those ranges gives **exactly 1,771 dispatches per
+rep** - matching the attributed kernels/step - and reproduces the attributed kernel sum:
+
+| rep | kernels | kernel sum | span | total gap | **median gap** | max gap |
+|---|---:|---:|---:|---:|---:|---:|
+| rep0 | 1,771 | 54.721 ms | 227.470 ms | 172.749 ms | **53.60 us** | 7,857.7 us |
+| rep1 | 1,771 | 54.671 ms | 225.228 ms | 170.558 ms | **58.46 us** | 1,217.7 us |
+| rep2 | 1,771 | 54.173 ms | 81.685 ms | 27.512 ms | **2.28 us** | 514.0 us |
+
+### This answers the launch/tail question
+
+**The per-family figures are sums of kernel *durations*** - the 30 families total exactly 54.218 ms -
+so **inter-kernel gaps are not in them.** The MoE block's 24.5504 ms is GPU-resident execution time,
+not queueing or launch latency. **Therefore the 2.77x bandwidth gap is inside the kernels, not
+between them.** Launch/tail overhead is excluded as the explanation, and `DE-1`'s structural lever
+("the structure, not the dp4a arithmetic") is aimed at the right target.
+
+### And it independently corroborates the DE-5 correction
+
+The kernel work is **stable across all three reps** (54.72 / 54.67 / 54.17 ms - a 1.0% spread) while
+the step **span** varies 2.8x (227.5 / 225.2 / 81.7 ms). **The wall varies entirely through
+inter-kernel gaps, with a median gap that swings 23x between reps (53.60 vs 2.28 us).** A stable
+kernel sum under an unstable wall is exactly the signature described in
+`../2026-09-29-qwen4exp-de5-host-overhead-correction/README.md`: the harness's step wall is not a
+serving-path number, and the engine's kernel work is what it is.
+
+### Limits
+
+Same profiled capture as everything above, and the same one-case/one-model/one-host scope. The gap
+statistics describe **this profiled harness**, not the engine's steady-state scheduling: a median
+gap of 53.60 us between consecutive kernels is far above a normal device-side kernel-to-kernel
+latency, and the reps differ by 23x, so these gaps are dominated by harness/profiler interaction
+rather than by engine behavior. **No gap figure here should be read as an engine property.** The
+conclusion drawn from them is only the negative one: gaps are *not* what the 24.5504 ms consists of.
