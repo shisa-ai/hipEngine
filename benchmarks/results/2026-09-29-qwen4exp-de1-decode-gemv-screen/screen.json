@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_de1_decode_gemv_screen",
+  "performance_claim": true,
+  "claim_scope": "kernel-level screen at the real decode gate+up shape; not an end-to-end decode speedup",
+  "shape": {
+    "x_rows": 1,
+    "selected_rows": 10,
+    "experts": 512,
+    "in_features": 2560,
+    "out_features": 640,
+    "per_dispatch_bytes": 18432000.0
+  },
+  "protocol": {
+    "warmup": 5,
+    "reps": 30,
+    "statistic": "min"
+  },
+  "arms": {
+    "unfused_reference": {
+      "ms": 0.3191479481756687,
+      "gbps": 57.75377878931081
+    },
+    "exact_logical128_t64": {
+      "kernel": "gguf_q4_k_selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+      "ms": 0.2380567602813244,
+      "gbps": 77.42691271702564,
+      "fraction_of_roof": 0.35034802134400744
+    },
+    "q8_1_dp4a_logical128_t64": {
+      "kernel": "gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out",
+      "quantize_ms": 0.015147961676120758,
+      "matvec_ms": 0.10488694533705711,
+      "ms": 0.12003490701317787,
+      "gbps": 153.55533201668135,
+      "fraction_of_roof": 0.6948205068628115
+    }
+  },
+  "correctness": {
+    "exact_bitexact_vs_unfused": true,
+    "dp4a_bitexact_vs_unfused": false,
+    "dp4a_rows_matching_unfused": 0.0
+  },
+  "result": {
+    "dp4a_speedup_vs_exact": 1.9832294305454798,
+    "exact_share_of_dp4a_total": 0.12619630450047134,
+    "quantize_overhead_pct": 12.619630450047135
+  },
+  "limits": [
+    "Kernel-level screen only. No profile gate, no end-to-end decode run, and no claim that the DP4A variant is admissible under the production numerical envelope.",
+    "Single shape: one token, ten selected experts of 512, 2560 -> 640. Other layers in this model are dynamically quantized and may differ.",
+    "Synthetic weights, not the model's own tensors.",
+    "One host (gfx1151)."
+  ]
+}

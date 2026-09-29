@@ -418,6 +418,32 @@ CANDIDATES["router_warp_reduce"] = CandidateSpec(
 )
 
 
+CANDIDATES["decode_dp4a_linear"] = CandidateSpec(
+    name="decode_dp4a_linear",
+    classification="T1",
+    mechanism=(
+        "Q8_1 DP4A logical128/t64 decode gate+up restored on the calibrated "
+        "safe-43 layers. The 2026-09-14 arithmetic recovery zeroed this flag as "
+        "part of a blanket sweep of PRODUCTION_ARITHMETIC_RECOVERY_FLAGS, while "
+        "its own triggering candidate (production_q8_fallback) declared 'other "
+        "production paths unchanged' and failed on task quality rather than on "
+        "this route. The route has its own passing acceptance from 2026-08-29 "
+        "(accepted_explicit_production_profile, mean KL 2.72e-4, max KL 5.77e-3), "
+        "and a kernel-level screen at the real decode gate+up shape measures it "
+        "~2.0x faster than the exact logical128/t64 variant that production runs "
+        "today (benchmarks/results/2026-09-29-qwen4exp-de1-decode-gemv-screen/)."
+    ),
+    environment={"HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1"},
+    base_profile="production",
+    scenario_id="qwen4exp-ud-q4-k-xl-decode-dp4a-linear",
+    candidate_key=("hip_gfx1151", "linear", "gguf_q4_k",
+                   "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out"),
+    fallback_key=("hip_gfx1151", "linear", "gguf_q4_k",
+                  "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out"),
+    count_registered_dispatch=True,
+)
+
+
 class GateError(RuntimeError):
     """Raised when the profile gate cannot be evaluated safely."""
 
