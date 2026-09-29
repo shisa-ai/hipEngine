@@ -1,0 +1,118 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_hc7_stream_census",
+ "source_artifact": "benchmarks/results/2026-09-28-qwen4exp-current-attribution/artifact.json",
+ "source_case": "code-p4096",
+ "prefill_chunk_size": 1024,
+ "note_on_windows": "This artifact holds two captures of the same code-p4096 prefill. The family taxonomy comes from audit.prefill.windows[0]; the copy and host-API rows come from supplemental_memory_capture.window. They are separate runs with separate kernel unions (15741.96 ms and 15600.44 ms) and must not be mixed in one ratio. Every ratio below is computed within one window and says which.",
+ "audit_window": {
+  "kernel_union_ms": 15741.963266,
+  "window_ms": 16319.888103,
+  "outside_kernel_union_ms": 577.924837,
+  "historical_symbol_taxonomy_ms": {
+   "dense_projection": 4553.0066099999995,
+   "expert_gate_up": 3375.634323,
+   "hyper_connection": 2587.664926,
+   "expert_down": 2230.119851,
+   "qsa_attention": 1040.374394,
+   "gdn": 844.295434,
+   "moe_reduce": 763.8329840000001,
+   "elementwise_norm": 319.49366599999996,
+   "indexer": 17.519872000000003,
+   "ple": 9.833573,
+   "other": 0.187633
+  },
+  "elementwise_norm_share_of_kernel_union_pct": 2.03
+ },
+ "memory_window": {
+  "kernel_union_ms": 15600.435818,
+  "window_ms": 16159.402771,
+  "outside_kernel_union_ms": 558.966953,
+  "outside_kernel_and_copy_union_ms": 556.25562,
+  "device_copy_rows": 5,
+  "device_copy_ms": 2.711333,
+  "hip_api_host_intervals_ms": {
+   "__hipPopCallConfiguration": {
+    "calls": 9622,
+    "sum_ms": 3.477631,
+    "union_ms": 3.477631
+   },
+   "__hipPushCallConfiguration": {
+    "calls": 9622,
+    "sum_ms": 3.274521,
+    "union_ms": 3.274521
+   },
+   "hipDeviceSynchronize": {
+    "calls": 2,
+    "sum_ms": 11.001551,
+    "union_ms": 11.001551
+   },
+   "hipGetLastError": {
+    "calls": 9622,
+    "sum_ms": 2.580836,
+    "union_ms": 2.580836
+   },
+   "hipLaunchKernel": {
+    "calls": 9622,
+    "sum_ms": 338.078356,
+    "union_ms": 338.078356
+   },
+   "hipMemcpy": {
+    "calls": 246,
+    "sum_ms": 14086.593953,
+    "union_ms": 14086.593953
+   },
+   "hipMemcpyAsync": {
+    "calls": 48,
+    "sum_ms": 1.85691,
+    "union_ms": 1.85691
+   },
+   "hipMemset": {
+    "calls": 777,
+    "sum_ms": 24.984675,
+    "union_ms": 24.984675
+   },
+   "hipMemsetAsync": {
+    "calls": 20,
+    "sum_ms": 1.481082,
+    "union_ms": 1.481082
+   }
+  }
+ },
+ "scratch_inventory": {
+  "Qwen4ExpGRScratch": [
+   "normalized",
+   "low_rank",
+   "gate",
+   "inject_logits",
+   "mixed"
+  ],
+  "Qwen4ExpQSALayerScratch": [
+   "attention_gr",
+   "qsa",
+   "ffn_gr",
+   "moe",
+   "after_attention",
+   "moe_f32",
+   "output"
+  ],
+  "Qwen4ExpGDNLayerScratch": [
+   "attention_gr",
+   "gdn",
+   "ffn_gr",
+   "moe",
+   "after_attention",
+   "moe_f32",
+   "output"
+  ],
+  "Qwen4ExpMoEScratch_field_count": 37
+ },
+ "findings": [
+  "The prefill is kernel-bound: in the memory window 15600.44 ms of kernels sit in a 16159.40 ms window, leaving 558.97 ms outside. In the audit window the same shape holds.",
+  "The 246 hipMemcpy calls summing to 14086.59 ms of HOST time are not device copy cost. Only 5 device copy rows exist in the memory window, totalling 2.711 ms. Adding copies to the union moves the outside time by 2.71 ms (558.97 -> 556.26), so the host interval is blocking-on-stream-drain, not transfer. Do not cite the 14086 ms as reclaimable.",
+  "elementwise_norm, the family holding every stream elementwise and conversion kernel, is 319.494 ms of a 15741.963 ms kernel union = 2.03% of the prefill. That is the ceiling for the whole stream-boundary class HC-7 is about.",
+  "One redundant intermediate found: scratch.moe_f32. run_qwen4_exp_qsa_prefill_layer (and its GDN twin) runs bf16_to_f32(moe.output -> moe_f32) and then qwen4_exp_gr_write_bf16_f32(after_attention, moe_f32, inject_logits -> output). moe_f32 is read only by that combine, so the pair can fuse into one kernel reading moe.output bf16 inline. Bit-identical: block_output enters gr_write_bf16_f32_kernel only as a read multiplied by scatter, so converting inline yields the same f32 operand.",
+  "Priced: at rows=1024, hidden=2560 the round trip is 1024*2560*8 B = 21.0 MB per layer-step; 48 layers = 1.0 GB per chunk, about 4.0 GB per code-p4096 prefill, roughly 16 ms at 250 GB/s = 0.10% of the prefill. Below the measurement floor of this protocol."
+ ],
+ "verdict": "HC-7 has a low ceiling. The class ceiling is 2.05% of prefill, and the one redundant intermediate found is priced at 0.10%. Implement it only as a free bit-identical cleanup, never as a performance claim."
+}
