@@ -90,11 +90,12 @@ export PATH="$E/_rocm_sdk_devel/bin:$E/_rocm_sdk_core/bin:$PATH"
 export HIP_PATH="$E/_rocm_sdk_devel"
 export LD_LIBRARY_PATH="$E/_rocm_sdk_devel/lib:$E/_rocm_sdk_core/lib:$LD_LIBRARY_PATH"
 /home/lhl/miniforge3/envs/therock10-staging-20260828/bin/python3 \
-  scripts/qwen4exp_gate_up_owner_ab.py \
+  scripts/qwen4exp_moe_owner_ab.py \
+  --route gate-up \
   --output benchmarks/results/2026-09-29-qwen4exp-gate-up-owner-ab/artifact.json \
   --rows 512,1024,4096,10240 --distribution balanced,sparse,single --repetitions 15
 ```
 
-The harness shares its geometry constants, count synthesizers, tile-map builder and timing
+The harness (now `scripts/qwen4exp_moe_owner_ab.py`, which also covers the down route) shares its geometry constants, count synthesizers, tile-map builder and timing
 routine with `scripts/qwen4exp_moe_main_kernel_cost.py`, so the numbers are comparable with
 that packet's.
