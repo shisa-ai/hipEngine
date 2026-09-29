@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_de3_output_pair_screen",
+  "performance_claim": true,
+  "created_at": "2026-09-29T18:17:39.827960+00:00",
+  "boundary": "q8_0 GEMV output-tile sweep at decode width (rows=1); kernel-level only, excludes attention and MoE",
+  "shape": {
+    "in_features": 2560,
+    "out_features": 10240
+  },
+  "rows_measured": 1,
+  "reps": 40,
+  "warmups": 8,
+  "results": [
+    {
+      "variant": "pack8_decode_baseline",
+      "out_cols_per_block": 8,
+      "us": 63.705,
+      "blocks": 1280
+    },
+    {
+      "variant": "coltile4_rowbatch8",
+      "out_cols_per_block": 4,
+      "us": 110.52250000000001,
+      "speedup_vs_baseline": 0.5763984708995905
+    },
+    {
+      "variant": "coltile8_rowbatch4",
+      "out_cols_per_block": 8,
+      "us": 80.466,
+      "speedup_vs_baseline": 0.7917008425919022
+    },
+    {
+      "variant": "coltile8_rowbatch8",
+      "out_cols_per_block": 8,
+      "us": 110.226,
+      "speedup_vs_baseline": 0.577948941266126
+    },
+    {
+      "variant": "coltile16_rowbatch2",
+      "out_cols_per_block": 16,
+      "us": 77.0145,
+      "speedup_vs_baseline": 0.8271818943186023
+    },
+    {
+      "variant": "coltile16_rowbatch4",
+      "out_cols_per_block": 16,
+      "us": 211.93200000000002,
+      "speedup_vs_baseline": 0.3005916992242795
+    },
+    {
+      "variant": "coltile32_rowbatch1",
+      "out_cols_per_block": 32,
+      "us": 133.691,
+      "speedup_vs_baseline": 0.4765092638995893
+    }
+  ]
+}
