@@ -65,3 +65,6 @@ third_party/
 benchmarks/results/**/role-trace/
 benchmarks/results/**/*_kernel_trace.csv
 benchmarks/results/**/*_agent_info.csv
+benchmarks/results/**/*_hip_api_trace.csv
+benchmarks/results/**/*_marker_api_trace.csv
+benchmarks/results/**/*_results.db
