@@ -205,36 +205,47 @@ __device__ inline int pack_q4_t16_u8x4(
   return static_cast<int>(out);
 }
 
+// Decode one B fragment of the compact32 tile.
+//
+// The nibble is taken with a shift amount that is a per-lane loop invariant
+// rather than a two-way select: ``(col & 1) ? (packed >> 4) : (packed & 0x0Fu)``
+// and ``(packed >> (4 * (col & 1))) & 0x0Fu`` are the same function of
+// ``packed`` and ``col``, but the second form lets the compiler hoist the shift
+// out of the unrolled K loop and drop a select per value.
+//
+// There is deliberately no column-validity branch.  A lane whose columns are
+// out of range still decodes from a clamped tile pointer (see the callers) and
+// produces values that the store loop's own range test discards, so no stored
+// output depends on it.  Keeping the branch out of the inner loop is what lets
+// the compiler batch the sixteen byte loads.
 template <bool qmicro = false>
 __device__ inline void load_q4_t16_b_reg(
     const uint8_t* __restrict__ tile,
     int subblock,
     int kt,
     int col,
-    bool valid_col,
+    int q_shift,
     half16_t& b_reg) {
-  if (valid_col) {
-    constexpr int d_offset = qmicro ? Q4_QMICRO_T16_D_OFFSET : Q4_T16_D_OFFSET;
-    constexpr int dmin_offset = qmicro ? Q4_QMICRO_T16_DMIN_OFFSET : Q4_T16_DMIN_OFFSET;
-    const float d_f = fp16_bytes_to_float(tile + d_offset + col * 2);
-    const float dmin_f = fp16_bytes_to_float(tile + dmin_offset + col * 2);
-    const uint8_t scale = qmicro
-        ? qmicro_coefficient(tile, 0, subblock, col)
-        : tile[Q4_T16_SCALE_OFFSET + subblock * T16_COLS + col];
-    const uint8_t minv = qmicro
-        ? qmicro_coefficient(tile, 1, subblock, col)
-        : tile[Q4_T16_MIN_OFFSET + subblock * T16_COLS + col];
-    const float scale_f = d_f * static_cast<float>(scale);
-    const float min_f = dmin_f * static_cast<float>(minv);
+  constexpr int q_offset = qmicro ? Q4_QMICRO_T16_Q_OFFSET : Q4_T16_Q_OFFSET;
+  constexpr int d_offset = qmicro ? Q4_QMICRO_T16_D_OFFSET : Q4_T16_D_OFFSET;
+  constexpr int dmin_offset = qmicro ? Q4_QMICRO_T16_DMIN_OFFSET : Q4_T16_DMIN_OFFSET;
+  const float d_f = fp16_bytes_to_float(tile + d_offset + col * 2);
+  const float dmin_f = fp16_bytes_to_float(tile + dmin_offset + col * 2);
+  const uint8_t scale = qmicro
+      ? qmicro_coefficient(tile, 0, subblock, col)
+      : tile[Q4_T16_SCALE_OFFSET + subblock * T16_COLS + col];
+  const uint8_t minv = qmicro
+      ? qmicro_coefficient(tile, 1, subblock, col)
+      : tile[Q4_T16_MIN_OFFSET + subblock * T16_COLS + col];
+  const float scale_f = d_f * static_cast<float>(scale);
+  const float min_f = dmin_f * static_cast<float>(minv);
+  const uint8_t* __restrict__ q_row = tile + q_offset + subblock * Q4_SUBBLOCK * (T16_COLS / 2) +
+      (kt * K_TILE) * (T16_COLS / 2) + (col >> 1);
 #pragma unroll
-    for (int kk = 0; kk < 16; ++kk) {
-      const int lane32 = kt * K_TILE + kk;
-      const uint8_t q = q4_t16_quant<qmicro>(tile, subblock, lane32, col);
-      b_reg[kk] = static_cast<half_t>(scale_f * static_cast<float>(q) - min_f);
-    }
-  } else {
-#pragma unroll
-    for (int kk = 0; kk < 16; ++kk) b_reg[kk] = static_cast<half_t>(0.0f);
+  for (int kk = 0; kk < 16; ++kk) {
+    const uint8_t packed = q_row[kk * (T16_COLS / 2)];
+    const uint8_t q = static_cast<uint8_t>((packed >> q_shift) & 0x0Fu);
+    b_reg[kk] = static_cast<half_t>(scale_f * static_cast<float>(q) - min_f);
   }
 }
 
@@ -260,6 +271,17 @@ bool valid_selected_dual_t16_common(
       (in_features % QK_K) == 0;
 }
 
+// Production compact32 kernel: one 16-row output tile, both 16-column halves,
+// over a shared activation fragment.
+//
+// Three things are hoisted out of the K loop that the original formulation
+// recomputed once per (subblock, k-tile, half) triple: the weight tile pointer,
+// the activation row's validity test, and the nibble shift amount.  The column
+// validity predicate is gone entirely -- an out-of-range half is redirected to
+// the first half's tile and its columns are discarded by the store loop's own
+// range test, so no stored output can observe it.  Each accumulator still sees
+// exactly the same sequence of WMMA operations over exactly the same operands,
+// so the result is bit-identical to the original formulation.
 template <typename scalar_t, bool qmicro = false>
 __launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel(
@@ -291,62 +313,76 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel(
 
   const int64_t compact_base = expert_start_compact[expert_id];
   const int64_t expert_count = expert_start_compact[expert_id + 1] - compact_base;
-  const int64_t wmma_base = expert_start_wmma[expert_id];
-  const int64_t row_start_in_wmma = static_cast<int64_t>(row_tile) * 16;
-  const int64_t tile_row_in_expert = row_start_in_wmma - wmma_base;
-
+  const int64_t tile_row_in_expert = static_cast<int64_t>(row_tile) * 16 - expert_start_wmma[expert_id];
   const int64_t blocks_per_row = in_features / QK_K;
+  constexpr int tile_bytes = qmicro ? Q4_QMICRO_T16_BLOCK_BYTES : Q4_T16_BLOCK_BYTES;
 
+  // Loop-invariant per lane.  A row outside the expert reads row 0 instead; its
+  // accumulator row is dropped by the store loop, and a WMMA row of A feeds only
+  // the matching row of C, so no in-range output can see it.
+  const int64_t local_row = tile_row_in_expert + lane16;
+  const int64_t compact_row = (local_row < expert_count) ? (compact_base + local_row) : 0;
+  const int q_shift = (lane16 & 1) * 4;
+
+  const uint8_t* __restrict__ tile_base[2];
+  int64_t out_col[2];
+  bool stored[2];
 #pragma unroll
   for (int tm = 0; tm < 2; ++tm) {
     const int64_t global_col_base = col_start + tm * 16;
-    if (global_col_base >= out_features_total) continue;
-
     const bool use_b = global_col_base >= out_features_a;
     const int64_t local_col_base = use_b ? (global_col_base - out_features_a) : global_col_base;
     const int64_t local_out_features = use_b ? out_features_b : out_features_a;
-    const int64_t local_col = local_col_base + lane16;
-    const bool valid_col = (global_col_base + lane16) < out_features_total &&
-        local_col < local_out_features;
     const int64_t out_tiles = local_out_features / T16_COLS;
-    const int64_t out_tile = local_col_base / T16_COLS;
+    int64_t out_tile = local_col_base / T16_COLS;
+    stored[tm] = global_col_base < out_features_total && out_tile < out_tiles;
+    if (out_tile >= out_tiles) out_tile = out_tiles - 1;
     const uint8_t* __restrict__ tiles = use_b ? tiles_b : tiles_a;
+    const uint8_t* __restrict__ base = q4_t16_tile_ptr<qmicro>(
+        tiles, expert_id, out_tile, 0, out_tiles, blocks_per_row);
+    // An out-of-range half re-reads the first half's tile rather than branching.
+    // Its columns are all past ``out_features_total`` and are never stored, and
+    // the first half is always in range for a block that reaches this point.
+    tile_base[tm] = stored[tm] ? base : tile_base[0];
+    out_col[tm] = global_col_base + lane16;
+  }
 
-    float8_t acc = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+  float8_t acc[2] = {
+      {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
+      {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
+  };
 
-    for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
-      const int64_t g_k_base = blk * QK_K;
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile0 = tile_base[0] + blk * tile_bytes;
+    const uint8_t* __restrict__ tile1 = tile_base[1] + blk * tile_bytes;
+    const int64_t g_k_base = blk * QK_K;
 #pragma unroll
-      for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+    for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
 #pragma unroll
-        for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
-          const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
-          const int64_t k_base = g_k_base + k_off;
-          const int64_t local_row = tile_row_in_expert + lane16;
-          const bool valid_row = local_row < expert_count;
-          const int64_t compact_row = valid_row ? (compact_base + local_row) : 0;
-          const half16_t a_reg = load_compact_row_half16<scalar_t>(
-              x, compact_row, in_features, k_base, valid_row);
-          const uint8_t* __restrict__ tile = valid_col
-              ? q4_t16_tile_ptr<qmicro>(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row)
-              : tiles;
-          half16_t b_reg;
-          load_q4_t16_b_reg<qmicro>(tile, sb, kt, lane16, valid_col, b_reg);
-          acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc);
-        }
+      for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
+        const int64_t k_base = g_k_base + sb * Q4_SUBBLOCK + kt * K_TILE;
+        const half16_t a_reg = load_compact_row_half16<scalar_t>(
+            x, compact_row, in_features, k_base, true);
+        half16_t b_reg;
+        load_q4_t16_b_reg<qmicro>(tile0, sb, kt, lane16, q_shift, b_reg);
+        acc[0] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc[0]);
+        load_q4_t16_b_reg<qmicro>(tile1, sb, kt, lane16, q_shift, b_reg);
+        acc[1] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc[1]);
       }
     }
+  }
 
-    const int64_t global_out_col = global_col_base + lane16;
-    if (global_out_col >= out_features_total) continue;
+#pragma unroll
+  for (int tm = 0; tm < 2; ++tm) {
+    if (out_col[tm] >= out_features_total) continue;
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
       const int64_t local_out_row = tile_row_in_expert + half_id + j * 2;
       if (local_out_row < expert_count) {
         const int64_t compact_out_row = compact_base + local_out_row;
         if (compact_out_row < compact_rows) {
-          out[compact_out_row * out_features_total + global_out_col] =
-              float_to_scalar<scalar_t>(acc[j]);
+          out[compact_out_row * out_features_total + out_col[tm]] =
+              float_to_scalar<scalar_t>(acc[tm][j]);
         }
       }
     }
@@ -435,7 +471,7 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kern
                     tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row)
               : tiles;
           half16_t b_reg;
-          load_q4_t16_b_reg(tile, sb, kt, lane16, valid_col, b_reg);
+          load_q4_t16_b_reg(tile, sb, kt, lane16, (lane16 & 1) * 4, b_reg);
           acc[tm] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
               a_reg, b_reg, acc[tm]);
         }
