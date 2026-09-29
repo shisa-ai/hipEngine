@@ -162,6 +162,7 @@ def register_builtin_generators() -> None:
     # these idempotent plans even after the model modules have been imported so
     # a prior LLM lifecycle test cannot make later profile resolution depend on
     # collection order.
+    from hipengine.generation.gemma4_profiles import register_gemma4_gguf_profiles
     from hipengine.generation.qwen36_gguf_gfx1100_profiles import (
         register_qwen36_dense_gguf_gfx1100_profiles,
         register_qwen36_moe_gguf_gfx1100_profiles,
@@ -176,6 +177,7 @@ def register_builtin_generators() -> None:
         register_qwen4_exp_gfx1151_profiles,
     )
 
+    register_gemma4_gguf_profiles()
     register_qwen36_dense_gguf_gfx1100_profiles()
     register_qwen36_moe_gguf_gfx1100_profiles()
     register_qwen36_gguf_gfx1151_profiles()
