@@ -20,9 +20,10 @@ def test_default_restores_guarded_q8_and_qualified_qsa_paths(monkeypatch):
         "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out")
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"] == "quad"
-    for flag in ("Q8_MMQ_PREFILL", "GDN_COLWARPS_PREFILL", "Q4_DP4A64",
+    for flag in ("Q8_MMQ_PREFILL", "GDN_COLWARPS_PREFILL",
                  "QSA_FLASH_PREFILL", "Q8_IU8_WMM", "GR_IU8", "GR_IU8_DOWN"):
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2"] == "1"
     selected = {(r["layer"], r["scope"]): r["selected_variant"]

@@ -67,6 +67,7 @@ _ARITHMETIC_RECOVERY_EVIDENCE = (
     "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json"
 )
 PRODUCTION_Q8_QSA_RESTORED_FLAGS = {
+    "Q4_DP4A64": "1",
     "Q8_0_SELECTED_WMMA_DOWN": "1",
     "Q8_DOWN_VARIANT": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
     "QSA_H256_WAVE_PREFILL": "page256",
