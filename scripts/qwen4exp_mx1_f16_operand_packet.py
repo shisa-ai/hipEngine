@@ -251,6 +251,116 @@ def part_b(
     }
 
 
+def part_c(
+    readers: list[GGUFReader],
+    capture_path: Path,
+    *,
+    max_experts: int | None,
+    layers: set[int] | None = None,
+) -> dict[str, Any]:
+    """The gate/up pair on real activations: SwiGLU output, F16 operands vs F32.
+
+    Both projections read the same MoE block input, so one capture covers the
+    pair. The comparison is on the SwiGLU result ``silu(gate) * up`` because
+    that is the tensor the down projection consumes, not the two raw outputs.
+    """
+    capture = np.load(capture_path, allow_pickle=True)
+    x_bits = capture["x_bits"]
+    expert_start = capture["expert_start"]
+    if x_bits.dtype != np.uint16:
+        raise ValueError(f"expected uint16 BF16 bits, got {x_bits.dtype}")
+    x = (x_bits.astype(np.uint32) << 16).view(np.float32)
+    case_id = str(capture["case_id"])
+    n_experts = len(expert_start) - 1
+
+    per_quant: dict[str, list[dict]] = {}
+    for layer in _gate_up_layers(readers):
+        if layers is not None and layer not in layers:
+            continue
+        entries: dict[str, Any] = {"layer": layer, "rows_measured": 0}
+        exact_parts, cand_parts, counts = [], [], []
+        quant_name = None
+        for suffix in ("ffn_gate_exps", "ffn_up_exps"):
+            name = f"blk.{layer}.{suffix}.weight"
+            reader = _reader_for(readers, name)
+            info = reader.tensor_info(name)
+            quant_name = info.ggml_type_name
+            quant = QUANT_NAMES[quant_name]
+            raw = reader.tensor_data(name)
+            n_exp, per_expert_rows = _expert_shape(info, quant)
+            block_bytes = raw.nbytes // (n_exp * per_expert_rows)
+            data = raw.reshape(n_exp, per_expert_rows, block_bytes)
+            if int(info.ggml_shape[0]) != x.shape[1]:
+                raise ValueError(f"{name}: K does not match the capture")
+            limit = n_exp if max_experts is None else min(max_experts, n_exp)
+            outputs_exact, outputs_cand = [], []
+            for expert in range(limit):
+                start, stop = int(expert_start[expert]), int(expert_start[expert + 1])
+                if stop <= start:
+                    continue
+                rows = x[start:stop]
+                weight = np.asarray(
+                    dequantize_gguf_data(data[expert], quant), dtype=np.float32
+                )
+                outputs_exact.append(rows @ weight.T)
+                outputs_cand.append(
+                    rows.astype(np.float16).astype(np.float32)
+                    @ weight.astype(np.float16).astype(np.float32).T
+                )
+                if suffix == "ffn_up_exps":
+                    counts.append(stop - start)
+            exact_parts.append(outputs_exact)
+            cand_parts.append(outputs_cand)
+        exact_gate, exact_up = exact_parts
+        cand_gate, cand_up = cand_parts
+        exact = np.concatenate([_swiglu(g, u) for g, u in zip(exact_gate, exact_up)])
+        cand = np.concatenate([_swiglu(g, u) for g, u in zip(cand_gate, cand_up)])
+        floor = _bf16_round(exact)
+        entry = {
+            "layer": layer,
+            "quant": quant_name,
+            "experts_measured": len(counts),
+            "rows_measured": int(sum(counts)),
+            "swiglu_error_f16_vs_f32": _error_stats(exact, cand),
+            "swiglu_error_bf16_floor_vs_f32": _error_stats(exact, floor),
+        }
+        entry["candidate_below_bf16_floor"] = (
+            entry["swiglu_error_f16_vs_f32"]["rms_abs"]
+            <= entry["swiglu_error_bf16_floor_vs_f32"]["rms_abs"]
+        )
+        per_quant.setdefault(quant_name, []).append(entry)
+    return {
+        "capture": str(capture_path),
+        "capture_sha256": hashlib.sha256(capture_path.read_bytes()).hexdigest(),
+        "case_id": case_id,
+        "rows": int(x.shape[0]),
+        "in_features": int(x.shape[1]),
+        "experts": n_experts,
+        "activation_source": (
+            "real natural-input prefill capture of the MoE block input, "
+            "BF16 bits decoded to float32"
+        ),
+        "activation_bf16_exact": bool(np.array_equal(_bf16_round(x), x)),
+        "activation_max_magnitude": float(np.abs(x).max()),
+        "activation_overflow_count": int(np.count_nonzero(np.abs(x) > F16_MAX)),
+        "comparison": "SwiGLU result silu(gate) * up",
+        "per_quant": per_quant,
+    }
+
+
+def _swiglu(gate: np.ndarray, up: np.ndarray) -> np.ndarray:
+    return (gate / (1.0 + np.exp(-gate))) * up
+
+
+def _gate_up_layers(readers: list[GGUFReader]) -> list[int]:
+    layers = set()
+    for reader in readers:
+        for tensor in reader.info.tensors:
+            if tensor.name.endswith(".ffn_gate_exps.weight"):
+                layers.add(int(tensor.name.split(".")[1]))
+    return sorted(layers)
+
+
 def _down_layers(readers: list[GGUFReader]) -> list[int]:
     layers = set()
     for reader in readers:
@@ -286,6 +396,12 @@ def main() -> None:
     )
     parser.add_argument("--seed", type=int, default=20260929)
     parser.add_argument("--skip-part-b", action="store_true")
+    parser.add_argument(
+        "--gate-up-capture",
+        type=Path,
+        default=None,
+        help="capture of the MoE block input; enables part C (gate/up SwiGLU)",
+    )
     args = parser.parse_args()
 
     readers = [GGUFReader(path) for path in discover_gguf_files(args.model_root)]
@@ -308,6 +424,17 @@ def main() -> None:
         report["part_b_real_activation_down"] = part_b(
             readers,
             args.capture,
+            max_experts=args.max_experts,
+            layers=(
+                {int(v) for v in args.layers.split(",") if v.strip()}
+                if args.layers
+                else None
+            ),
+        )
+    if args.gate_up_capture is not None:
+        report["part_c_real_activation_gate_up"] = part_c(
+            readers,
+            args.gate_up_capture,
             max_experts=args.max_experts,
             layers=(
                 {int(v) for v in args.layers.split(",") if v.strip()}
@@ -342,6 +469,21 @@ def _summary(report: dict[str, Any]) -> dict[str, Any]:
                 for entry in entries
             ]
             for quant, entries in part_b["per_quant"].items()
+        }
+    part_c = report.get("part_c_real_activation_gate_up")
+    if part_c:
+        out["part_c"] = {
+            quant: [
+                {
+                    "layer": entry["layer"],
+                    "rows": entry["rows_measured"],
+                    "rms_abs": entry["swiglu_error_f16_vs_f32"]["rms_abs"],
+                    "bf16_floor_rms_abs": entry["swiglu_error_bf16_floor_vs_f32"]["rms_abs"],
+                    "below_floor": entry["candidate_below_bf16_floor"],
+                }
+                for entry in entries
+            ]
+            for quant, entries in part_c["per_quant"].items()
         }
     return out
 

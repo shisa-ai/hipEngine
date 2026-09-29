@@ -9,10 +9,10 @@ pass. This packet answers the numerical question that has to come first:
 > Does decoding the real expert weights to F16, and casting the real activations
 > to F16, stay inside the error the path already carries?
 
-**Yes.** The operand change costs 8.0x to 9.5x less than the BF16 rounding the
+**Yes.** The operand change costs 5.6x to 10.9x less than the BF16 rounding the
 path already applies, on real natural-input activations, for every one of the 48
-expert_down layers and every expert quant in the model. There is no F16 overflow
-anywhere.
+expert_down layers and every measured gate/up layer, across every expert quant in
+the model. There is no F16 overflow anywhere.
 
 ## Comparison basis
 
@@ -56,6 +56,21 @@ error is 8.0x below the BF16 rounding even in the least favourable layer.
 Activation magnitude peaks at 13.44 against the F16 maximum of 65504, so **no
 activation overflows**, and the cast is finite everywhere.
 
+## Part C — gate/up SwiGLU on real activations
+
+A second natural-input `general_en-p4096` capture, this one of the MoE block
+input that both gate and up read (10,240 rows, K=2560, 512 experts), covers the
+Q4_K pair. The comparison is on the SwiGLU result `silu(gate) * up`, because
+that is the tensor the down projection consumes.
+
+| Quant | Layers | Candidate RMS | BF16 floor RMS | Ratio |
+| --- | ---: | ---: | ---: | ---: |
+| Q4_K | 13 | 1.00e-5 to 1.41e-5 | 5.62e-5 to 8.60e-5 | 0.092 to 0.179 |
+
+Every measured layer is below the floor; the worst ratio is **0.179**, so the
+candidate error is 5.6x below the BF16 rounding even in the least favourable
+layer. Activation magnitude peaks at 7.438 against 65504: no overflow.
+
 ## Why this matters
 
 The two expert families hold **4,610.1 ms of the 12,973 ms gap** against the
@@ -70,9 +85,9 @@ the comparison needs no work.
 
 - Part A samples 8 of 512 experts per tensor. It bounds the per-element decode
   error, not the whole tensor.
-- Part B covers `expert_down` only. `expert_gate_up` (Q4_K) has Part A weight
-  coverage but no real gate/up input capture, so its activation-cast term is
-  unmeasured; the next unit should capture one.
+- Part C covers 13 of the 48 gate/up layers (all Q4_K). The two Q5_K gate/up
+  tensors are not in the real-activation sample, though Part A covers their
+  weight decode.
 - The BF16 floor is computed per expert-output value, not on the final combined
   MoE output that the real path actually rounds.
 - This is an operand-error budget. It does **not** replace the production
@@ -88,7 +103,12 @@ python3 scripts/qwen4exp_mx1_f16_operand_packet.py \
   --model-root /home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL \
   --capture /home/lhl/tmp/q51-down-input-general_en-p4096.npz \
   --experts-sampled 8 --output /tmp/mx1-packet-full.json
+python3 scripts/qwen4exp_mx1_f16_operand_packet.py \
+  --model-root /home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL \
+  --skip-part-b --gate-up-capture /tmp/q4k-gate-up-input-general_en-p4096.npz \
+  --layers 0,1,3,5,8,12,16,20,24,32,40,45,47 --output /tmp/mx1-partc-full.json
 ```
 
-CPU-only, about 6.5 minutes. The capture is produced by
-`scripts/qwen4exp_q51_down_input_capture.py`.
+CPU-only, about 6.5 minutes for parts A and B and 2.3 minutes for part C. The
+captures are produced by `scripts/qwen4exp_q51_down_input_capture.py` and
+`scripts/qwen4exp_q4k_gate_up_input_capture.py`.

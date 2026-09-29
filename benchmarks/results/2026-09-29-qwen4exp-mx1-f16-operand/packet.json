@@ -5261,5 +5261,270 @@
         }
       ]
     }
-  }
+  },
+  "part_c_real_activation_gate_up": {
+    "capture": "/tmp/q4k-gate-up-input-general_en-p4096.npz",
+    "capture_sha256": "bbdc4c085bde10034bf4a29baf0ec1a91427553032f9358b0a305099362648fd",
+    "case_id": "general_en-p4096",
+    "rows": 10240,
+    "in_features": 2560,
+    "experts": 512,
+    "activation_source": "real natural-input prefill capture of the MoE block input, BF16 bits decoded to float32",
+    "activation_bf16_exact": true,
+    "activation_max_magnitude": 7.4375,
+    "activation_overflow_count": 0,
+    "comparison": "SwiGLU result silu(gate) * up",
+    "per_quant": {
+      "Q4_K": [
+        {
+          "layer": 0,
+          "quant": "Q4_K",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "swiglu_error_f16_vs_f32": {
+            "max_abs": 0.000835418701171875,
+            "rms_abs": 1.2852167386645677e-05,
+            "max_rel": 3266.3684081538804,
+            "rms_rel": 1.3526586115991006
+          },
+          "swiglu_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0304412841796875,
+            "rms_abs": 0.00014017241128114639,
+            "max_rel": 0.003890932300247881,
+            "rms_rel": 0.0016588718333435247
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 1,
+          "quant": "Q4_K",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "swiglu_error_f16_vs_f32": {
+            "max_abs": 0.0002556443214416504,
+            "rms_abs": 1.0647751521139834e-05,
+            "max_rel": 1279.9351515811427,
+            "rms_rel": 0.6164761604598762
+          },
+          "swiglu_error_bf16_floor_vs_f32": {
+            "max_abs": 0.006613492965698242,
+            "rms_abs": 6.853699865680993e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016591899355854608
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 3,
+          "quant": "Q4_K",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "swiglu_error_f16_vs_f32": {
+            "max_abs": 0.00015598535537719727,
+            "rms_abs": 1.007308101386509e-05,
+            "max_rel": 607.9920165467491,
+            "rms_rel": 0.49111706865741656
+          },
+          "swiglu_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019382238388061523,
+            "rms_abs": 6.100862010505515e-05,
+            "max_rel": 0.003890932300247881,
+            "rms_rel": 0.0016588079246764311
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 5,
+          "quant": "Q4_K",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "swiglu_error_f16_vs_f32": {
+            "max_abs": 0.0002315044403076172,
+            "rms_abs": 1.0122298835436706e-05,
+            "max_rel": 4260.484497142164,
+            "rms_rel": 1.9390490901410116
+          },
+          "swiglu_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0031555891036987305,
+            "rms_abs": 5.903993065092083e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016579265879185386
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 8,
+          "quant": "Q4_K",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "swiglu_error_f16_vs_f32": {
+            "max_abs": 0.00019916892051696777,
+            "rms_abs": 1.0519992912581379e-05,
+            "max_rel": 4754.235952337573,
+            "rms_rel": 2.2713834180589814
+          },
+          "swiglu_error_bf16_floor_vs_f32": {
+            "max_abs": 0.003815770149230957,
+            "rms_abs": 6.395281615044417e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016578938317827747
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 12,
+          "quant": "Q4_K",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "swiglu_error_f16_vs_f32": {
+            "max_abs": 0.00015909969806671143,
+            "rms_abs": 1.0078885050699806e-05,
+            "max_rel": 4282.847680662451,
+            "rms_rel": 1.8775902041984707
+          },
+          "swiglu_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019292831420898438,
+            "rms_abs": 5.780812733763889e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016584740281340485
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 16,
+          "quant": "Q4_K",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "swiglu_error_f16_vs_f32": {
+            "max_abs": 0.00013571977615356445,
+            "rms_abs": 1.000562967861586e-05,
+            "max_rel": 11237.138472252129,
+            "rms_rel": 4.430943401104759
+          },
+          "swiglu_error_bf16_floor_vs_f32": {
+            "max_abs": 0.001947641372680664,
+            "rms_abs": 5.618323258871224e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016589124309499797
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 20,
+          "quant": "Q4_K",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "swiglu_error_f16_vs_f32": {
+            "max_abs": 0.00015345215797424316,
+            "rms_abs": 1.0538475348629175e-05,
+            "max_rel": 1717.8102469941211,
+            "rms_rel": 0.8360430323376902
+          },
+          "swiglu_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0020923614501953125,
+            "rms_abs": 6.018927386346009e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016589504511456323
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 24,
+          "quant": "Q4_K",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "swiglu_error_f16_vs_f32": {
+            "max_abs": 0.00013691186904907227,
+            "rms_abs": 1.0075285795214062e-05,
+            "max_rel": 3257.4565655651295,
+            "rms_rel": 1.3501469799875567
+          },
+          "swiglu_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019396543502807617,
+            "rms_abs": 5.87600951145905e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.001659263248138054
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 32,
+          "quant": "Q4_K",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "swiglu_error_f16_vs_f32": {
+            "max_abs": 0.00014913082122802734,
+            "rms_abs": 1.0459768433009702e-05,
+            "max_rel": 2304.46277715824,
+            "rms_rel": 1.0095316324175894
+          },
+          "swiglu_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0018903613090515137,
+            "rms_abs": 5.8496685702599644e-05,
+            "max_rel": 0.0038909313761870535,
+            "rms_rel": 0.0016587523719559238
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 40,
+          "quant": "Q4_K",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "swiglu_error_f16_vs_f32": {
+            "max_abs": 0.00017505884170532227,
+            "rms_abs": 1.1577003364274933e-05,
+            "max_rel": 8679.714746017165,
+            "rms_rel": 4.095231083939328
+          },
+          "swiglu_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019268989562988281,
+            "rms_abs": 6.521560328290608e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016588795681287813
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 45,
+          "quant": "Q4_K",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "swiglu_error_f16_vs_f32": {
+            "max_abs": 0.00018644332885742188,
+            "rms_abs": 1.1177466904369727e-05,
+            "max_rel": 5673.563986457252,
+            "rms_rel": 2.3320741085811876
+          },
+          "swiglu_error_bf16_floor_vs_f32": {
+            "max_abs": 0.001942276954650879,
+            "rms_abs": 6.396257009027861e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016589560288387776
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 47,
+          "quant": "Q4_K",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "swiglu_error_f16_vs_f32": {
+            "max_abs": 0.0005835294723510742,
+            "rms_abs": 1.4055462799457679e-05,
+            "max_rel": 529.9199030655852,
+            "rms_rel": 0.4659387058357317
+          },
+          "swiglu_error_bf16_floor_vs_f32": {
+            "max_abs": 0.00386965274810791,
+            "rms_abs": 8.595040260908136e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016588310389016184
+          },
+          "candidate_below_bf16_floor": true
+        }
+      ]
+    }
+  },
+  "part_c_capture": "/tmp/q4k-gate-up-input-general_en-p4096.npz"
 }
