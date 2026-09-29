@@ -1,0 +1,29 @@
+strict tests:    11 ['test_adjacency', 'test_cancellation_of_earlier_active', 'test_cancelled_does_not_block', 'test_empty_input', 'test_equal_revision_last_arrival', 'test_multiple_bookings_same_room_overlap', 'test_no_mutation', 'test_out_of_order_revisions', 'test_rejected_does_not_block', 'test_revision_tie_with_cancellation', 'test_room_independence']
+candidate tests: 0 []
+union:           11
+
+test                                         owner        strict  candidate
+---------------------------------------------------------------------------
+test_adjacency                               strict         True       True
+test_cancellation_of_earlier_active          strict         True      False
+test_cancelled_does_not_block                strict         True      False
+test_empty_input                             strict         True       True
+test_equal_revision_last_arrival             strict         True      False
+test_multiple_bookings_same_room_overlap     strict         True      False
+test_no_mutation                             strict         True       True
+test_out_of_order_revisions                  strict         True      False
+test_rejected_does_not_block                 strict         True      False
+test_revision_tie_with_cancellation          strict         True      False
+test_room_independence                       strict         True       True
+
+failures:      7
+  candidate  test_cancellation_of_earlier_active: AssertionError
+  candidate  test_cancelled_does_not_block: AssertionError
+  candidate  test_equal_revision_last_arrival: AssertionError
+  candidate  test_multiple_bookings_same_room_overlap: AssertionError
+  candidate  test_out_of_order_revisions: AssertionError
+  candidate  test_rejected_does_not_block: AssertionError
+  candidate  test_revision_tie_with_cancellation: AssertionError
+disagreements: 7 ['test_cancellation_of_earlier_active', 'test_cancelled_does_not_block', 'test_equal_revision_last_arrival', 'test_multiple_bookings_same_room_overlap', 'test_out_of_order_revisions', 'test_rejected_does_not_block', 'test_revision_tie_with_cancellation']
+
+verdict: review
