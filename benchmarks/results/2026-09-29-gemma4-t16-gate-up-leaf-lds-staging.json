@@ -1,0 +1,88 @@
+{
+ "kind": "gemma4_campaign_candidate",
+ "verdict": "accepted and promoted (bit-identical, default path)",
+ "recorded": "2026-09-29, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL, 512 prompt / 128 output",
+ "candidate": "stage the T16 gate/up leaf's Q4_K weight tile in LDS and read one weight fragment per 128-bit load. The tile is repacked K-major -- a pure permutation that puts the byte for (byte column p, K value k) at p * 16 + (k % 16) inside its 128-byte K tile -- so the sixteen K values one lane needs for its byte column become one contiguous 16-byte block. Each sub-block's 512 staged bytes are copied by one coalesced 128-bit load per lane, published with a barrier, and read back as one 128-bit LDS load per fragment.",
+ "reason": "a memory-operation change, not an arithmetic one. The repack writes the same bytes in a different order and the tile size is unchanged; the kernel decodes the same byte, with the same nibble shift, the same scale and the same minimum, and `b_reg[i]` still holds K value `k_base + i`. Only where the bytes are read from changes, and the output is bit-identical and measured so.",
+ "geometry": {
+  "route": "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out, reached through hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py `_gemma4_project_experts_gate_up_wmma_t16`",
+  "shape": "128 experts, in_features 2816, out_features 2 x 704 (gate and up), 4096 compact rows at a 512-token prompt, one launch per Q4_K layer over 29 layers",
+  "launch": "grid (out_features/32, row_tiles), 32 threads, 512 bytes of LDS, __launch_bounds__(32, 1) at 172 VGPRs with no spill",
+  "static_code": "3982 to 3174 instructions in the unrolled body, 32 WMMA either side: 124.4 to 99.2 per WMMA (1.254x fewer)",
+  "memory_operations_per_k_block": "512 scalar global byte loads and 32 128-bit global loads to 8 128-bit global loads (the staging fill), 8 128-bit LDS stores, 32 128-bit LDS loads and 36 header loads",
+  "route_share": "86.62 ms of a 405 ms prefill (21.4%) after the change, against 118.52 ms (26.9%) before, from scripts/gemma4_prefill_kernel_census.py"
+ },
+ "performance": {
+  "platform": "gfx1151 Strix Halo (Radeon 8060S, zbook), ROCm, bf16 activations",
+  "protocol": "one declared same-host protocol measuring both arms in the same session, alternating between the committed kernel and the candidate with only the kernel, its wrapper, its route and its loader repack differing, rebuilt into separate cache entries. The HEAD arm was measured first and re-measured last, and reproduced to within 0.7 percent.",
+  "primary": {
+   "row": "512 prompt / 128 output, public path, scripts/gemma4_campaign_bench.py --samples 3 --warmup 1",
+   "incumbent_s": 0.45,
+   "incumbent_tps": 1147,
+   "candidate_s": 0.41,
+   "candidate_tps": 1242,
+   "delta": "-0.04 s (1.0828x, +8.3%), medians of three samples per arm"
+  },
+  "decode": {
+   "incumbent_tps": 28.3739,
+   "candidate_tps": 28.9242,
+   "delta": "+1.9%, because gemma4_moe_prefill_route_enabled keys on the runner's declared width, so a 512-token runner's single-token decodes take this same kernel"
+  },
+  "wall": {
+   "incumbent_s": 4.86,
+   "candidate_s": 4.38,
+   "delta": "-0.48 s (1.1096x)",
+   "path_parity": "true in both arms"
+  },
+  "in_situ_leaf": {
+   "instrument": "scripts/gemma4_prefill_kernel_census.py, which reports the leaf's own call count and total HIP-event time",
+   "prompt_512": {
+    "calls": 29,
+    "incumbent_ms": 118.52,
+    "candidate_ms": 86.62,
+    "incumbent_ms_per_call": 4.087,
+    "candidate_ms_per_call": 2.987,
+    "delta": "1.368x",
+    "prefill_wall_incumbent_s": 0.440,
+    "prefill_wall_candidate_s": 0.405,
+    "prefill_tps_incumbent": 1162.7,
+    "prefill_tps_candidate": 1265.0
+   },
+   "prompt_4096": {
+    "calls": 232,
+    "incumbent_ms": 967.45,
+    "candidate_ms": 712.78,
+    "incumbent_ms_per_call": 4.170,
+    "candidate_ms_per_call": 3.0723,
+    "delta": "1.357x",
+    "prefill_wall_incumbent_s": 3.979,
+    "prefill_wall_candidate_s": 3.7132,
+    "prefill_tps_incumbent": 1029.4,
+    "prefill_tps_candidate": 1103.1
+   }
+  }
+ },
+ "correctness": {
+  "bit_identity": "the repack is a pure permutation of the same tile bytes, so the K-major route reproduces the row-major route's output exactly. tests/test_gpu_gguf_q4_k_t16_selected_wmma_prefill.py asserts it directly in test_q4_k_t16_column_major_tiles_match_baseline_bytes, and its qmicro and shared_x byte-equality contracts cover the sibling instantiations of the same template.",
+  "targeted_tests": "python3 -m pytest tests/test_unit_gguf_q4_k_tile16_repack.py tests/test_gpu_gguf_q4_k_t16_selected_wmma_prefill.py -q -> 30 passed"
+ },
+ "why_the_direct_read_is_slower_and_the_staged_one_is_not": {
+  "statement": "Reading the same K-major fragment straight from global memory is 1.98x slower than the row-major kernel it replaces, and the reason is the register budget rather than the instruction count.",
+  "evidence": [
+   "The direct K-major read gives the compiler one 128-bit load per fragment to batch where the row-major decode gives it sixteen scalar byte loads. To hide L2 latency with one load instead of sixteen it keeps far more fragments in flight: the instantiation asks for 256 VGPRs -- the ISA maximum -- and spills 202 instructions, against the row-major path's 175 VGPRs and no spill. Measured in situ at 4096 it is 9.9161 ms per call against 5.0157 for the pre-hoist row-major in its own session (1.98x slower), and against 4.136-4.170 for the hoisted one.",
+   "Staging the same bytes in LDS makes the read short-latency, so no batching is needed and the register budget drops below the spill cliff: 172 VGPRs, no spill, and 99.2 instructions per WMMA.",
+   "The staging window size is the tuning knob and it is not monotone. One sub-block: 172 VGPRs, no spill. Two sub-blocks: 256 VGPRs, 83 spills. Four sub-blocks: 256 VGPRs, 196 spills. The barrier that publishes a fill is also a scheduling fence, so everything decoded between two barriers is live at once, and a wider window buys fewer barriers at the cost of more live state.",
+   "The prior unit's attempts on this leaf -- a row-paired geometry with 2.35x fewer static instructions per WMMA, a byte-pair-packing decode, and a sweep of launch-bounds floors -- all lost. They reduced instructions or load registers while leaving the fragment's latency where it was; this one changes the latency of the read itself."
+  ]
+ },
+ "selection": {
+  "landed": "the K-major path is the one the Gemma-4 route binds. The row-major symbol, the row-major repack default and the row-major decode remain in the tree, and every other consumer of the repack is unchanged.",
+  "removed": "the direct-global K-major read was replaced in place rather than left registered as a slower alternate; the kernel has one K-major path, not two.",
+  "clearing_command": "not applicable: nothing was gated. The row-major route remains reachable by not repacking K-major, which is what every other caller of repack_gguf_q4_k_tile16 does."
+ },
+ "leaves_open": [
+  "The staging fill is 8 of the K loop's 76 global memory operations and the 36 header loads (d, dmin, scale, minv) are the next largest group. They are per (sub-block, column) rather than per K value, so staging them too is a smaller win than the fragment read was.",
+  "The window is one sub-block because two already spill. A double-buffered window would let the next fill issue before the current window's barrier, which is the scheduling fence that costs the register budget; it was not built.",
+  "The fp16 instantiation of the same template is now also instantiated K-major and is not on the Gemma-4 route."
+ ]
+}
