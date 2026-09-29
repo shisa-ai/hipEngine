@@ -935,6 +935,18 @@ def _mmq_dual_route(
         return False
     if compact_rows < _GROUPED_PREFILL_MIN_LANES_PER_EXPERT * num_experts:
         return False
+    # The leaf sizes its 32-row plan as ``compact_rows + 31 * num_experts`` (see
+    # the bound computed above) and ``_check_mmq32_common`` raises on a total
+    # that is not a multiple of 32. Without this guard the route is selected
+    # anyway and the projection raises ``ValueError: mmq_total_rows must be a
+    # multiple of 32`` mid-prefill, which surfaces through ``LLM.generate()`` as
+    # a GenerationExecutionFailed. For a 128-expert stack the 31 * 128 term is
+    # 3968, itself a multiple of 32, so the condition reduces to
+    # ``compact_rows % 32`` -- and with top_k = 8 routed lanes per token that is
+    # ``tokens % 4``. Refusing here is what the docstring promises: the grouped
+    # and selected owners below serve any row count.
+    if (compact_rows + 31 * num_experts) % 32:
+        return False
     return True
 
 
