@@ -86,16 +86,29 @@ ADMISSION_FIXTURE = Path(
 ADMISSION_FIXTURE_SHA256 = (
     "005196cbf06f747350b0f35a02febb4aad3cd85a1251af1bfe9c152f95aadbfb"
 )
-# Both layer-scoped routes decline at ``rows <= 256``, so a fixture whose longest
-# prompt is at or below this cannot exercise either one. Recorded here because
-# the heldout suite is *short*: its 18 prompts run 39-71 tokens. Pointing this
-# gate at it produces a bit-identical candidate/teacher pair and a KL of exactly
-# zero - the same false-pass shape as the engagement defects recorded in
-# ``benchmarks/results/2026-09-29-q8-staged-f32-dense-prefill-layers-gate/WMMA-ROUTE-FALSE-PASS.md``.
-# The ledger's X-11 says the same thing from the other side: "39-71-token task
-# prompts never enter >256-row candidates. Inactive short-task passes are
-# controls, not qualification." So the row floor is a *check*, not a note.
-ROUTE_ROW_FLOOR = 256
+# Each route declines below its own row count, and the values differ by more than
+# an order of magnitude, so this is a per-route property (``Route.min_engaging_rows``)
+# and never a shared constant. Getting it wrong in either direction is a silent
+# defect: too low certifies a route that never ran, too high refuses a valid
+# certificate. Both are reachable, and the first version of this check took
+# ``_q8_iu8_wmma_dispatch``'s 256-row floor and applied it to the f16 WMMA route,
+# whose floor is 2 - so it refused a heldout run that had actually engaged and
+# passed. Each value below is read from its dispatch's own guard:
+#
+#   ``_wmma_prefill_dispatch``       ``if not use_wmma or rows <= 1``   -> 2
+#   ``_q8_dense_wide_dispatch``      ``or rows <= 256``                 -> 257
+#   ``_raw_k_staged_f32_dispatch``   no row guard at all                -> 1
+#   ``_raw_k_staged_f32_dispatch``   no row guard at all                -> 1
+#
+# A composed route takes the highest floor among its components: the staged tile
+# runs at any row count but the WMMA rewrite it layers over still needs rows > 1.
+ROUTE_ROW_FLOORS = {
+    "wmma": 2,
+    "dense_wide": 257,
+    "staged_f32": 1,
+    "staged_f32_composed_vs_exact": 1,
+    "staged_f32_over_wmma": 2,
+}
 
 
 def _fixture_kind(fixture_sha256: str) -> str:
@@ -115,6 +128,7 @@ def qualification_coverage(
     prefill_chunk_size: int,
     fixture_rows=(),
     heldout_decode_steps: int | None = None,
+    min_engaging_rows: int = 1,
 ):
     """Account for actual trajectories, not requested CLI counts.
 
@@ -161,6 +175,7 @@ def qualification_coverage(
         fixture_sha256=fixture_sha256,
         fixture_rows=fixture_rows,
         decode_steps=heldout_decode_steps,
+        min_engaging_rows=min_engaging_rows,
     )
     if heldout is not None:
         record["category_heldout"] = heldout
@@ -168,7 +183,12 @@ def qualification_coverage(
 
 
 def _heldout_coverage(
-    captures, *, fixture_sha256: str, fixture_rows=(), decode_steps: int | None = None
+    captures,
+    *,
+    fixture_sha256: str,
+    fixture_rows=(),
+    decode_steps: int | None = None,
+    min_engaging_rows: int = 1,
 ):
     """Coverage for the category-heldout protocol, or ``None`` if not run.
 
@@ -219,8 +239,8 @@ def _heldout_coverage(
             for c in captures
         ),
         # Not a formality: without it this protocol certifies a route that
-        # never ran. See the module note above ROUTE_ROW_FLOOR.
-        "heldout_prompts_exceed_route_row_floor": longest > ROUTE_ROW_FLOOR,
+        # never ran. See the module note above ROUTE_ROW_FLOORS.
+        "heldout_prompts_exceed_route_row_floor": longest >= min_engaging_rows,
     }
     return {
         "protocol": "category_heldout_natural_length_d128_three_repeat_v1",
@@ -231,19 +251,20 @@ def _heldout_coverage(
         "observed_case_ids": ids,
         "observed_prompt_rows": rows,
         "longest_prompt_rows": longest,
+        "route_min_engaging_rows": min_engaging_rows,
         "decode_steps": decode_steps,
         "observed_rows_per_trajectory": (
             len(captures[0].strict) if captures else 0
         ),
-        "route_row_floor": ROUTE_ROW_FLOOR,
+        "route_row_floor": min_engaging_rows,
         "blocked_reason": (
             None
-            if longest > ROUTE_ROW_FLOOR
+            if longest >= min_engaging_rows
             else (
-                f"longest heldout prompt is {longest} rows, at or below the "
-                f"{ROUTE_ROW_FLOOR}-row floor both layer-scoped routes decline "
-                "at, so the route cannot have engaged and this run is a "
-                "control rather than qualification"
+                f"longest heldout prompt is {longest} rows, below the "
+                f"{min_engaging_rows}-row floor this route engages at, so it "
+                "cannot have run and this is a control rather than "
+                "qualification"
             )
         ),
         "scope": "this route/layer set, manifest and chunk size only",
@@ -376,6 +397,9 @@ class Route:
     candidate_env: Mapping[str, str]
     teacher_env: Mapping[str, str]
     surface: str
+    # Smallest ``rows`` at which this route engages. Read from its dispatch's own
+    # guard, not inferred: see ROUTE_ROW_FLOORS.
+    min_engaging_rows: int = 1
 
     def env_for(self, *, candidate: bool, layers: str) -> dict[str, str]:
         bindings = self.candidate_env if candidate else self.teacher_env
@@ -424,6 +448,7 @@ SELECTORS: dict[str, Route] = {
             f"post-binder {WMMA_LAYERS_ENV}; "
             f"{DENSE_WIDE_ENV} cleared in both arms"
         ),
+        min_engaging_rows=ROUTE_ROW_FLOORS["wmma"],
     ),
     "dense_wide": Route(
         kind="hipengine_execution_profile_q8_dense_wide_prefill_layers_gate",
@@ -445,6 +470,7 @@ SELECTORS: dict[str, Route] = {
             f"post-binder {DENSE_WIDE_ENV} + {DENSE_WIDE_LAYERS_ENV}; "
             f"{WMMA_LAYERS_ENV} cleared in both arms"
         ),
+        min_engaging_rows=ROUTE_ROW_FLOORS["dense_wide"],
     ),
     # The LDS-staged f32 tile. Unlike the other two routes this one does not
     # claim a dispatch the wide or WMMA route would otherwise take: it replaces
@@ -555,6 +581,7 @@ SELECTORS: dict[str, Route] = {
             f"post-binder {STAGED_F32_LAYERS_ENV} over a {WMMA_LAYERS_ENV}=16-47 "
             f"teacher; {DENSE_WIDE_ENV} cleared in both arms"
         ),
+        min_engaging_rows=ROUTE_ROW_FLOORS["staged_f32_over_wmma"],
     ),
 }
 
@@ -773,6 +800,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         prefill_chunk_size=int(args.prefill_chunk_size),
         fixture_rows=[int(row["prompt_tokens"]) for row in cases],
         heldout_decode_steps=decode_steps,
+        min_engaging_rows=int(route.min_engaging_rows),
     )
     verdict = qualification_verdict(
         coverage, quality_passed=quality_passed, deterministic=deterministic, clean=clean,
