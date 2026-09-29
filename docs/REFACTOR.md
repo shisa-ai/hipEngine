@@ -35,6 +35,35 @@
   into the top of the seconds-recoverable list, or if a default chunk change
   makes the ownership split load-bearing. The private route and its tests stay
   in place; nothing else depends on it.
+  - **Resume condition met; premises partly falsified (2026-09-29).** One of the
+    two named resume conditions - "a default chunk change makes the ownership
+    split load-bearing" - is now live: the serving path's chunk default is
+    **256** (`EngineLoopConfig.max_prefill_chunk_tokens`), not the 1024 these
+    tradeoffs assume, and that default is the thing under review.
+    Both parked premises were re-measured on `code-p4096` and across the 12-case
+    fixture (`benchmarks/results/2026-09-29-qwen4exp-rt1-serving-suite/`,
+    `.../2026-09-29-qwen4exp-rt1-chunk-remeasure/`):
+    - **The short-request regression does not reproduce.** A 512-token request is
+      byte-identical in wall time *and* peak allocation at chunk 1024 vs 4096
+      (+0.20%, 0.08x the within-arm spread, arms overlapping), because the
+      workspace is already shape-aware: `rows = min(chunk_size,
+      max_sequence_length)` and the harness sets `max_sequence_length =
+      max(768, prompt_tokens + 1)`, so both chunk sizes resolve to 768 rows. The
+      recorded 0.18-0.40% is not reproduced here.
+    - **The 2.32-3.94% magnitude is correct for 1024 -> 4096** (we measure
+      -4.94%, same order) - the park was not wrong about that comparison. What
+      was never measured is the **256** baseline the serving path actually uses:
+      256 -> 4096 is **-28.2% to -37.6%** across all 12 cases, monotone in prompt
+      size and flat across category, 12/12 completely separated.
+    So the lever is larger than the park assumed and its cost is confined to peak
+    memory (+0.77/+1.24/+6.20 GB at p512/p1024/p4096), not short-request latency.
+    **Still not enabled.** The qualification prerequisites below are unchanged and
+    unmet: full state/lifetime and c2 behavior, accounting for all owners and host
+    staging in public construction, preserving strict setup, and short/long
+    requests on the same prepared owners. The reserve check is still not public
+    memory admission. The 256 -> 1024 step is the one to measure next, in a single
+    run, because `REFACTOR.md` forbids claiming a direct comparison from separate
+    runs.
 
 ## Qualified Chunk Tradeoffs
 
