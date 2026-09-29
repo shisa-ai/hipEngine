@@ -174,9 +174,11 @@ def test_summary_does_not_claim_arm_isolation():
     gate = _gate()
     summary = gate._summarise_engagement(
         {
-            "teacher": [{"reason": "use_wmma_false", "engaged": False, "rows": 512}],
+            "teacher": [{"selector": "wmma_prefill", "reason": "use_wmma_false",
+                         "engaged": False, "rows": 512}],
             "candidate": [
                 {
+                    "selector": "wmma_prefill",
                     "reason": "engaged",
                     "engaged": True,
                     "rows": 512,
@@ -289,13 +291,93 @@ def test_selector_observed_in_one_arm_only_is_not_called_isolated():
     assert "q4k_rowtile" not in summary["selectors_differing_between_arms"]
 
 
+def test_route_engagement_is_about_the_route_not_every_selector():
+    """The teacher arm always has q4k_rowtile active, and that is not the route.
+
+    Measured on the canonical case: the teacher arm's wmma_prefill count was
+    exactly 0, yet the verdict read "the teacher arm also engaged the route"
+    because the flag was derived from total engagement across every selector.
+    q4k_rowtile is active in the teacher arm by design, so that derivation made
+    the flag unconditionally true and the verdict unconditionally wrong.
+    """
+
+    gate = _gate()
+    summary = gate._summarise_engagement(
+        {
+            "teacher": [
+                {"selector": "wmma_prefill", "reason": "use_wmma_false",
+                 "engaged": False, "rows": 512},
+                {"selector": "q4k_rowtile", "reason": "active",
+                 "engaged": True, "rows": 512},
+            ],
+            "candidate": [
+                {"selector": "wmma_prefill", "reason": "engaged", "engaged": True,
+                 "rows": 512, "variant_out": "wmma_prefill_f32_f32_out"},
+                {"selector": "q4k_rowtile", "reason": "active",
+                 "engaged": True, "rows": 512},
+            ],
+        }
+    )
+    assert summary["teacher_route_engaged"] is False, (
+        "the teacher's route count is zero; a true flag here makes the verdict "
+        "unconditionally wrong"
+    )
+    assert summary["candidate_route_engaged"] is True
+    assert "teacher arm also engaged" not in summary["verdict"]
+
+
+def test_differing_selector_is_found_even_when_both_arms_engage_it():
+    """A collapsed boolean hides a real difference.
+
+    Measured on the canonical case: q4k_rowtile was active 1654/1654 in the
+    teacher arm and 2730/3522 in the candidate arm. Both are "active at least
+    once", so a boolean comparison calls them equal and the drift gets attributed
+    to a selector that did not move.
+    """
+
+    gate = _gate()
+    summary = gate._summarise_engagement(
+        {
+            "teacher": [
+                {"selector": "q4k_rowtile", "reason": "active",
+                 "engaged": True, "rows": 512} for _ in range(100)
+            ]
+            + [
+                {"selector": "wmma_prefill", "reason": "use_wmma_false",
+                 "engaged": False, "rows": 512} for _ in range(100)
+            ],
+            "candidate": [
+                {"selector": "q4k_rowtile", "reason": "active",
+                 "engaged": True, "rows": 512} for _ in range(80)
+            ]
+            + [
+                {"selector": "q4k_rowtile", "reason": "inactive",
+                 "engaged": False, "rows": 512} for _ in range(20)
+            ]
+            + [
+                {"selector": "wmma_prefill", "reason": "engaged", "engaged": True,
+                 "rows": 512, "variant_out": "wmma_prefill_f32_f32_out"}
+                for _ in range(100)
+            ],
+        }
+    )
+    assert "q4k_rowtile" in summary["selectors_differing_between_arms"], (
+        "both arms engaged it at least once, but at different rates; a boolean "
+        "comparison would call this isolated"
+    )
+    state = summary["selector_states"]["q4k_rowtile"]
+    assert state["teacher_engaged_rate"] == 1.0
+    assert state["candidate_engaged_rate"] == 0.8
+
+
 def test_summary_flags_a_route_that_never_engaged():
     """The verdict must refuse to attribute drift to a route that did not run."""
 
     gate = _gate()
     summary = gate._summarise_engagement(
         {
-            "teacher": [{"reason": "use_wmma_false", "engaged": False, "rows": 512}],
+            "teacher": [{"selector": "wmma_prefill", "reason": "use_wmma_false",
+                         "engaged": False, "rows": 512}],
             "candidate": [
                 {"reason": "raw_abi_not_eligible", "engaged": False, "rows": 512}
             ],
@@ -311,9 +393,11 @@ def test_summary_accepts_a_correctly_isolated_pair():
     gate = _gate()
     summary = gate._summarise_engagement(
         {
-            "teacher": [{"reason": "use_wmma_false", "engaged": False, "rows": 512}],
+            "teacher": [{"selector": "wmma_prefill", "reason": "use_wmma_false",
+                         "engaged": False, "rows": 512}],
             "candidate": [
                 {
+                    "selector": "wmma_prefill",
                     "reason": "engaged",
                     "engaged": True,
                     "rows": 512,
@@ -343,6 +427,7 @@ def test_summary_rejects_a_teacher_arm_that_also_engaged():
         {
             "teacher": [
                 {
+                    "selector": "wmma_prefill",
                     "reason": "engaged",
                     "engaged": True,
                     "rows": 512,
@@ -351,6 +436,7 @@ def test_summary_rejects_a_teacher_arm_that_also_engaged():
             ],
             "candidate": [
                 {
+                    "selector": "wmma_prefill",
                     "reason": "engaged",
                     "engaged": True,
                     "rows": 512,
