@@ -1,0 +1,123 @@
+{
+  "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipcc_version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/cen4096_fix -o run -- .venv/bin/python scripts/gemma4_family_census.py drive --prompt 4096 --decode 64",
+  "decode_per_token": {
+    "busy_ms": 21.4964,
+    "families": {
+      "attn.global": {
+        "launches": 10.0,
+        "ms": 2.7951
+      },
+      "attn.sliding": {
+        "launches": 50.0,
+        "ms": 3.6057
+      },
+      "dense.q8_0": {
+        "launches": 176.0,
+        "ms": 2.8039
+      },
+      "elementwise": {
+        "launches": 121.0,
+        "ms": 0.2297
+      },
+      "lm_head": {
+        "launches": 1.0,
+        "ms": 0.9658
+      },
+      "moe.down": {
+        "launches": 29.0,
+        "ms": 2.6075
+      },
+      "moe.gate_up": {
+        "launches": 29.0,
+        "ms": 4.7373
+      },
+      "moe.l29_experts": {
+        "launches": 2.0,
+        "ms": 0.2358
+      },
+      "moe.route_glue": {
+        "launches": 240.0,
+        "ms": 1.1506
+      },
+      "moe.router_gemm": {
+        "launches": 60.0,
+        "ms": 0.6945
+      },
+      "norm": {
+        "launches": 301.0,
+        "ms": 1.5263
+      },
+      "runtime_copy_fill": {
+        "launches": 67.0,
+        "ms": 0.1444
+      }
+    },
+    "other_top": {},
+    "span_ms": 25.4568
+  },
+  "engine": "hipengine",
+  "label": "family-4096-after-prefill-block-fit",
+  "note": "Taken after 0ad19dbf0 sized the prefill block to the card. This lane (RX 7900 XTX, 24 GB) selects block 512, the same block the 2026-09-29 p2 artifact used, so the two are comparable.",
+  "prefill": {
+    "busy_ms": 2805.2387,
+    "families": {
+      "attn.global": {
+        "launches": 40.0,
+        "ms": 100.9824
+      },
+      "attn.sliding": {
+        "launches": 200.0,
+        "ms": 1215.7107
+      },
+      "dense.q8_0": {
+        "launches": 1408.0,
+        "ms": 458.3093
+      },
+      "elementwise": {
+        "launches": 968.0,
+        "ms": 29.0844
+      },
+      "lm_head": {
+        "launches": 1.0,
+        "ms": 0.9874
+      },
+      "moe.act_quant": {
+        "launches": 232.0,
+        "ms": 25.2958
+      },
+      "moe.down": {
+        "launches": 232.0,
+        "ms": 192.7604
+      },
+      "moe.gate_up": {
+        "launches": 232.0,
+        "ms": 454.2828
+      },
+      "moe.l29_experts": {
+        "launches": 16.0,
+        "ms": 94.7942
+      },
+      "moe.route_glue": {
+        "launches": 2168.0,
+        "ms": 74.3308
+      },
+      "moe.router_gemm": {
+        "launches": 480.0,
+        "ms": 113.1568
+      },
+      "norm": {
+        "launches": 2401.0,
+        "ms": 39.0235
+      },
+      "runtime_copy_fill": {
+        "launches": 788.0,
+        "ms": 6.52
+      }
+    },
+    "other_top": {},
+    "span_ms": 2723.5463
+  },
+  "prefill_prompt_tokens": 4096,
+  "trace": "/tmp/cen4096_fix/run_kernel_trace.csv",
+  "trace_kernel_rows": 106076
+}
