@@ -24,9 +24,9 @@
    "staged_mean_ms": 13.1121,
    "speedup": 1.2336,
    "time_reduction_pct": 18.94,
+   "relative_l2_max": null,
    "max_abs_diff": 1.049041748046875e-05,
    "bit_identical": false,
-   "best_variant_every_layer": true,
    "layers_where_best": 5
   },
   {
@@ -37,9 +37,9 @@
    "staged_mean_ms": 7.3819,
    "speedup": 1.3305,
    "time_reduction_pct": 24.84,
+   "relative_l2_max": null,
    "max_abs_diff": 1.33514404296875e-05,
    "bit_identical": false,
-   "best_variant_every_layer": true,
    "layers_where_best": 5
   },
   {
@@ -50,22 +50,59 @@
    "staged_mean_ms": 7.236,
    "speedup": 1.2785,
    "time_reduction_pct": 21.78,
+   "relative_l2_max": null,
    "max_abs_diff": 2.2411346435546875e-05,
    "bit_identical": false,
-   "best_variant_every_layer": true,
+   "layers_where_best": 5
+  },
+  {
+   "tensor": "ffn_gate_shexp",
+   "shape": "640x2560",
+   "gflops_at_1024_rows": 3.36,
+   "leaf_mean_ms": 1.0028,
+   "staged_mean_ms": 0.7251,
+   "speedup": 1.383,
+   "time_reduction_pct": 27.7,
+   "relative_l2_max": 9.11560788978673e-07,
+   "max_abs_diff": 7.62939453125e-06,
+   "bit_identical": false,
+   "layers_where_best": 5
+  },
+  {
+   "tensor": "ffn_up_shexp",
+   "shape": "640x2560",
+   "gflops_at_1024_rows": 3.36,
+   "leaf_mean_ms": 1.006,
+   "staged_mean_ms": 0.7217,
+   "speedup": 1.3939,
+   "time_reduction_pct": 28.26,
+   "relative_l2_max": 9.133503350598844e-07,
+   "max_abs_diff": 6.198883056640625e-06,
+   "bit_identical": false,
+   "layers_where_best": 5
+  },
+  {
+   "tensor": "ffn_down_shexp",
+   "shape": "2560x640",
+   "gflops_at_1024_rows": 3.36,
+   "leaf_mean_ms": 1.6486,
+   "staged_mean_ms": 0.744,
+   "speedup": 2.2158,
+   "time_reduction_pct": 54.87,
+   "relative_l2_max": 4.622152788221635e-07,
+   "max_abs_diff": 1.2516975402832031e-06,
+   "bit_identical": false,
    "layers_where_best": 5
   }
  ],
  "total": {
-  "leaf_mean_ms": 35.2481,
-  "staged_mean_ms": 27.73,
-  "speedup": 1.2711,
-  "time_reduction_pct": 21.33
+  "leaf_mean_ms": 38.9055,
+  "staged_mean_ms": 29.9208,
+  "speedup": 1.3003,
+  "time_reduction_pct": 23.09
  },
- "unmeasured_suffixes": [
-  "ffn_gate_shexp.weight (640x2560)",
-  "ffn_up_shexp.weight (640x2560)",
-  "ffn_down_shexp.weight (2560x640)"
- ],
- "extrapolation_warning": "Do NOT scale these per-layer-step figures by a layer count to get a prefill share. The three measured tensors total 35.25 ms at rows=1024; naive scaling by 16 exact-chain layers gives 564 ms, and by 48 layers 1692 ms, but the attribution puts the ENTIRE dense_projection family at 4553.007 ms of a 15741.963 ms prefill. Any scaling that is consistent with that total implies a row count or a per-step multiplicity this measurement does not establish. The per-tensor speedups are solid; the prefill share is not derivable from this data."
+ "unmeasured_suffixes": [],
+ "extrapolation_warning": "Do NOT scale the per-layer-step total by a layer count to get a prefill share. The six tensors total 38.906 ms at rows=1024 and 29.921 ms staged; the attribution puts the ENTIRE dense_projection family at 4553.007 ms of a 15741.963 ms prefill, and the anchor splits it into 3262.5 ms at layers 0-15 (exact chain) and 1404.2 ms at 16-47 (wide route). 4553.007/38.906 = 117 and 3262.5/38.906 = 84, neither of which matches 16, 48 or 192 layer-steps. The per-step multiplicity or row count in the profiled forward pass is therefore NOT established, and the prefill share remains underivable from this data.",
+ "coverage": "All six Q8_0 dense projections of a layer step. Best variant in 30/30 (layer, tensor) cases.",
+ "relative_error_note": "relative_l2_vs_production is available only for the three ffn_*_shexp runs; the earlier three artifacts predate the field and are null here. Measured range 4.622e-07 to 9.134e-07, i.e. 4-8 f32 ulp (eps=1.19e-07). For comparison the f16 WMMA sibling route measures relative L2 4.709e-05 on the GR shape, roughly 50-100x worse. This is the relative figure the earlier packets said was missing."
 }
