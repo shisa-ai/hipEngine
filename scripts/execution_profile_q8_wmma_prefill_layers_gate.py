@@ -64,6 +64,7 @@ CANONICAL_FIXTURE_SHA256 = "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb
 WMMA_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"
 DENSE_WIDE_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"
 DENSE_WIDE_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"
+STAGED_F32_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS"
 DEFAULT_MODEL_ROOT = Path(
     "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL"
 )
@@ -270,6 +271,36 @@ SELECTORS: dict[str, Route] = {
         surface=(
             f"post-binder {DENSE_WIDE_ENV} + {DENSE_WIDE_LAYERS_ENV}; "
             f"{WMMA_LAYERS_ENV} cleared in both arms"
+        ),
+    ),
+    # The LDS-staged f32 tile. Unlike the other two routes this one does not
+    # claim a dispatch the wide or WMMA route would otherwise take: it replaces
+    # the leaf of the *exact* coltile chain, and its dispatch declines any
+    # variant the other routes have already rewritten. So both wide selectors
+    # must be cleared in both arms, or the candidate arm would resolve to a
+    # wide/WMMA variant and the staged tile would never be selected at all -
+    # the run would silently measure the exact chain against itself.
+    "staged_f32": Route(
+        kind="hipengine_execution_profile_q8_staged_f32_prefill_layers_gate",
+        scenario_prefix=(
+            "qwen4exp-ud-q4-k-xl-q8-staged-f32-dense-prefill-layers"
+        ),
+        candidate_chain="staged_f32_bm128_bn64_bk32",
+        candidate_env={
+            WMMA_LAYERS_ENV: "",
+            DENSE_WIDE_ENV: "0",
+            DENSE_WIDE_LAYERS_ENV: "",
+            STAGED_F32_LAYERS_ENV: "{layers}",
+        },
+        teacher_env={
+            WMMA_LAYERS_ENV: "",
+            DENSE_WIDE_ENV: "0",
+            DENSE_WIDE_LAYERS_ENV: "",
+            STAGED_F32_LAYERS_ENV: "",
+        },
+        surface=(
+            f"post-binder {STAGED_F32_LAYERS_ENV}; "
+            f"{WMMA_LAYERS_ENV} and {DENSE_WIDE_ENV} cleared in both arms"
         ),
     ),
 }
