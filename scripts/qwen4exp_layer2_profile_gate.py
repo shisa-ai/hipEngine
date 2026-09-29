@@ -226,6 +226,26 @@ CANDIDATES = {
 }
 
 
+CANDIDATES["pack8_gemv_wide_256"] = CandidateSpec(
+    name="pack8_gemv_wide_256",
+    classification="T2",
+    mechanism=(
+        "decode-shaped pack8 GEMV at a 256-wide block instead of the 128-wide "
+        "launcher default where out_features <= 640; same kernel body, wider "
+        "block, so the K-reduction tree differs and the result is not byte-exact"
+    ),
+    environment={"HIPENGINE_GGUF_PACK8_GEMV_WIDE": "1"},
+    base_profile="production",
+    scenario_id="qwen4exp-ud-q4-k-xl-pack8-gemv-wide-256",
+    # This candidate changes a launch parameter, not a registry key, so there is
+    # no swapped key to count. Engagement is established separately from the
+    # kernel trace (the three narrow shapes move from wg=128 to wg=256 with
+    # identical workgroup counts) and from strict_and_candidate_bytes_equal,
+    # which must be false for this run to mean anything.
+    candidate_key=None,
+    fallback_key=None,
+)
+
 CANDIDATES["q8_blockscale_mmq"] = replace(
     CANDIDATES["q8_blockscale"],
     name="q8_blockscale_mmq", scenario_id="qwen4exp-q8-blockscale-mmq",
