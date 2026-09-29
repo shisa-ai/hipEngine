@@ -44,11 +44,12 @@ def _call(*, rows: int = 1, out_features: int, variant: str = _DECODE_VARIANT, t
     )
 
 
-def test_flag_is_default_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No env opt-in means no behaviour change anywhere."""
-    assert not gguf_linear._pack8_gemv_wide_threads_enabled()
+def test_lever_is_default_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The T2 profile gate passed, so the lever is the default path."""
+    monkeypatch.delenv(_PACK8_GEMV_WIDE_ENV, raising=False)
+    assert gguf_linear._pack8_gemv_wide_threads_enabled()
     for out in (320, 512, 640):
-        assert _call(out_features=out) == 0
+        assert _call(out_features=out) == _PACK8_GEMV_WIDE_THREADS
 
 
 def test_enabled_at_or_below_the_knee(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -103,13 +104,18 @@ def test_only_the_decode_shaped_pack8_family(monkeypatch: pytest.MonkeyPatch) ->
         assert _call(out_features=320, variant=variant) == 0, variant
 
 
-@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", "On"])
-def test_truthy_env_spellings(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", "On", "2", "maybe"])
+def test_non_falsy_env_spellings(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    """Only explicit falsy spellings disable the lever; anything else keeps it."""
     monkeypatch.setenv(_PACK8_GEMV_WIDE_ENV, value)
     assert _call(out_features=320) == _PACK8_GEMV_WIDE_THREADS
 
 
-@pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "2", "maybe"])
-def test_falsy_env_spellings(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+@pytest.mark.parametrize("value", ["0", "false", "FALSE", "no", "off", "Off"])
+def test_falsy_env_spellings_disable_the_lever(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """The documented opt-out restores the 128-wide launcher default."""
     monkeypatch.setenv(_PACK8_GEMV_WIDE_ENV, value)
+    assert not gguf_linear._pack8_gemv_wide_threads_enabled()
     assert _call(out_features=320) == 0

@@ -7840,9 +7840,10 @@ Two consequences worth knowing:
 
 ## `HIPENGINE_GGUF_PACK8_GEMV_WIDE` (DE-3 narrow-projection block size)
 
-- Added 2026-09-30, default OFF while the production numerical envelope is
-  measured. The decode-shaped pack8 GEMV launches `out_features / 8` workgroups,
-  so a narrow projection cannot fill the device: measured on gfx1100, out=320
+- Added 2026-09-30; **default ON since 2026-09-30** after the production numerical
+  envelope passed. The flag is now an opt-out (`=0`) retained for rollback and
+  bisection, not an opt-in. The decode-shaped pack8 GEMV launches
+  `out_features / 8` workgroups, so a narrow projection cannot fill the device: measured on gfx1100, out=320
   runs 40 workgroups at 92.4 GB/s (42% of the 221 GB/s roof) and out=640 runs 80
   at 121.5 GB/s (55%), while every shape at 2560 or more output features is
   already at 90.8-102.9%. Raising the block from 128 to 256 at the starved shapes
@@ -7851,14 +7852,32 @@ Two consequences worth knowing:
   Artifact: `benchmarks/results/2026-09-30-qwen4exp-de3-threads-lever/`.
 - **This changes arithmetic.** 256 threads per 8-output workgroup means 32
   threads per output rather than 16, so the K-reduction tree differs; measured
-  divergence is max relative 2.6e-7. It is a T1/T2 arithmetic change and must
-  pass the production numerical envelope before it becomes the default.
-- Removal condition: once the envelope passes and the gate is removed, delete the
-  env flag, `_pack8_gemv_wide_threads_enabled`, and the falsy-spelling tests, and
-  keep only the shape-boundary cases in
-  `tests/test_unit_gguf_pack8_gemv_wide_threads.py`. If the envelope fails, delete
-  the helper, both `launch_gguf_*` call sites, and the test file together.
-- Only `gguf_q8_0` was measured. The rule is deliberately gated on grid size
-  rather than on the quantization scheme because the reason is occupancy, so the
-  other quants in the decode-shaped pack8 family inherit it; that inheritance is
-  reasoned, not measured, and should be measured before the default flips.
+  divergence is max relative 2.6e-7.
+- **Envelope PASSED on 2026-09-30** via
+  `scripts/qwen4exp_layer2_profile_gate.py --candidate pack8_gemv_wide_256` on
+  Qwen3.8-Flash-Next-UD-Q4_K_XL: `kl_mean` 0.000287 (bound 0.001), `kl_p99`
+  0.004831 (0.02), `kl_max` 0.018131 (0.05), top-1 0.99778 (0.99), all four
+  categories above their 0.97 per-scope floor, three repeat runs bit-identical,
+  clean lifecycle. The `prefill_last` scope scores `kl_mean = 6.9e-14`, so
+  prefill is untouched and the lever is confined to decode. Artifact:
+  `benchmarks/results/2026-09-30-qwen4exp-de3-threads-lever/kl-envelope-gate-qwen4exp.json`.
+- Removal condition: once the wide block has survived a release cycle without a
+  rollback, delete the env flag, `_pack8_gemv_wide_threads_enabled`, and the
+  falsy-spelling tests, and keep only the shape-boundary cases in
+  `tests/test_unit_gguf_pack8_gemv_wide_threads.py`.
+- Only `gguf_q8_0` was measured end to end. The rule is deliberately gated on
+  grid size rather than on the quantization scheme because the reason is
+  occupancy, so the other quants in the decode-shaped pack8 family inherit it;
+  that inheritance is still reasoned rather than measured.
+
+## `scripts/execution_profile_gguf_c1_pack8_wide_gate.py` (superseded harness)
+
+- Added 2026-09-30 (`e5f43ce21`) to measure this lever's KL envelope, and
+  superseded the same day by `scripts/qwen4exp_layer2_profile_gate.py`.
+- The adapted gate drove the Qwen3.6-35B-A3B model, whose decode never dispatches
+  the `pack8_gemv_*` family at all. Its run therefore produced bit-identical
+  arms (`strict_and_candidate_bytes_equal` on all 18 prompts) and a vacuously
+  green quality status. See `scripts/qwen4exp_de3_route_probe.py` for the
+  measurement that established this.
+- Removal condition: delete the file once no other worker is using it as a
+  generic c1 threads gate; the Qwen4Exp gate covers this lever's requirement.

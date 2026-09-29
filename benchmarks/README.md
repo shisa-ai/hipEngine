@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-29 UTC**
+Last updated: **2026-09-30 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -312,6 +312,21 @@ ms/step (-13.27%), with every other kernel unchanged (non-owner sum 40.448 vs
 max KL 6.14e-3 (gate 5e-2), top-1 0.9911, deterministic across three repeats, and
 task quality cross-validated on the `code` category. This is a decode kernel-time
 result, not a serving throughput claim. [Evidence](results/2026-09-29-qwen4exp-de1-dp4a-e2e/e2e.json).
+
+**Qwen3.8 Flash Next decode narrow-projection block size (gfx1151, UD-Q4_K_XL).**
+The decode-shaped pack8 GEMV launches one workgroup per eight output features, so a
+narrow projection cannot fill the device: on gfx1100, `out=320` runs 40 workgroups at
+92.4 GB/s (42% of the 221 GB/s roof) and `out=640` runs 80 at 121.5 GB/s, while every
+shape at 2560 or more output features already sits at 90.8-102.9%. Raising the block
+from 128 to 256 threads at the starved shapes gains 19.4-32.4% of kernel time there and
+is neutral within 2% above the knee, so the change is gated at `out_features <= 640`.
+The production numerical envelope holds on the full 18-prompt / 450-row suite: mean KL
+0.000287 (gate 0.001), p99 0.004831 (0.02), max 0.018131 (0.05), top-1 0.99778 (0.99),
+all four categories above their 0.97 per-scope floor, three repeats bit-identical, and a
+clean lifecycle. The `prefill_last` scope scores mean KL 6.9e-14, so the lever is
+confined to decode and prefill is untouched. This is a per-kernel projection from a
+microbenchmark, not an end-to-end serving claim. Set `HIPENGINE_GGUF_PACK8_GEMV_WIDE=0`
+to restore the 128-wide default. [Evidence](results/2026-09-30-qwen4exp-de3-threads-lever/kl-envelope-gate-qwen4exp.json).
 
 W7900 Qwen3.6 enables automatic MTP only for its qualified single-request and
 capacity-2/two-request keys. **On W7900, Qwen3.8-27B `Q4_K_M` uses ordinary AR by default
