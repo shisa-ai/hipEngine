@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11246,
-    "current": 4014,
+    "entries": 11249,
+    "current": 4017,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1304,
+    "rows": 1305,
     "by_rule": {
       "dependency": 42,
       "legacy-next": 109,
-      "status": 1153
+      "status": 1154
     }
   },
   "rows": [
@@ -46255,14 +46255,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 2,
+        "continuation_entries": 3,
         "open_text": "1. **Find why `llm.generate` does not select the speculative route.** Read the\n   path from `LLM.generate` through the engine loop; the answer is a specific\n   branch, and the last attempt shows guessing at declarations does not find it.\n2. **Add a test that pins the route**, not just the provider: that a generator\n   with an attached provider and a greedy request reaches\n   `execution_path == \"gemma4_mtp_batched_exact_verify\"`.\n3. **Bit-exactness is the reason this can land enabled by default.** The cycle\n   reproduces plain greedy exactly, so promotion does not need the\n   arithmetic-change ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "2 later entries by the same worker share this topic prefix"
+        "3 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T092503.055565Z-lhl-gemma4-mtp-provider-1cad49.md",
@@ -46283,7 +46283,7 @@
         ]
       },
       "id": "worklog/20260928T092503.055565Z-lhl-gemma4-mtp-provider-1cad49",
-      "evidence_hash": "067994f72cf2"
+      "evidence_hash": "13060c886353"
     },
     {
       "kind": "worklog",
@@ -47297,7 +47297,7 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 6,
+        "continuation_entries": 8,
         "open_text": "- **The repack unit, if it is taken, should start by finding where the decode path\n  builds its T16 row tiles.** `q4_t16_physical_extra_rowtiles_session` is the consumer;\n  its producer is the repack the prefill route needs, and reusing it is the difference\n  between a loader change and a new subsystem.\n- **Re-measure the design margin on the production geometry before doing the repack.**\n  The harness fixture is 5504 wide against the gate/up projection's 1408 and cannot be\n  reduced (`--out-features-b 0` is rejected). A repack is a large unit to start on a\n  number measured at the wrong width",
         "paths_missing": [],
         "flags_unread": []
@@ -47305,7 +47305,7 @@
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
         "Next also names a dependency: 'cannot be'",
-        "6 later entries by the same worker share this topic prefix"
+        "8 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T162000.000000Z-lhl-gemma4-t16-route-scope-4f2d8b.md",
@@ -47322,7 +47322,7 @@
         ]
       },
       "id": "worklog/20260928T162000.000000Z-lhl-gemma4-t16-route-scope-4f2d8b",
-      "evidence_hash": "8987eb6170bc"
+      "evidence_hash": "c16b18bb27e1"
     },
     {
       "kind": "worklog",
@@ -48055,14 +48055,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 5,
+        "continuation_entries": 7,
         "open_text": "- **The assignment's premise should be corrected, not re-derived.** Anything that\n  starts from \"the T16 gate/up route is dead code\" is reading the tree at\n  `02e2780fa` or earlier. `a8b59363b` is the wiring commit and `20260929T050000`\n  is its entry.\n- **The \"+2.78 percent\" cost claim is wrong as a resident figure** (7.92 GB of\n  tiles added to 16.995 GB of artifact bytes; the raw copy is kept). It is\n  recorded in the wiring entry, which is immutable, so the correction belongs in\n  whatever document carries the next summary of this change.\n- **The down projection is still on MMQ32** (103.9 ",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "5 later entries by the same worker share this topic prefix"
+        "7 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T223413.377532Z-lhl-gemma4-t16-gate-up-verified-49417f.md",
@@ -48080,7 +48080,7 @@
         ]
       },
       "id": "worklog/20260928T223413.377532Z-lhl-gemma4-t16-gate-up-verified-49417f",
-      "evidence_hash": "7cbeb6e3fec6"
+      "evidence_hash": "b6db67f15497"
     },
     {
       "kind": "worklog",
@@ -48252,14 +48252,14 @@
         "written": "2026-09-28",
         "age_days": 1,
         "open_by": "status",
-        "continuation_entries": 3,
+        "continuation_entries": 5,
         "open_text": "- Unchanged from the superseded entry: the lever on this leaf is instructions per byte, not bytes.\n  The 91 percent cache-served fraction is a further reason a byte-level change cannot help - only\n  277 MB of 3,068 MB demanded reaches memory, and even the DRAM term is below the irreducible weight\n  pass.\n- Resolving the 16.0 MB gap is a source-level exercise, not a new measurement: count the distinct\n  128-byte lines the kernel's per-lane tile access actually touches against the 2368-byte layout. It\n  is worth doing only because a tile access that skips bytes is a tile access that wastes the r",
         "paths_missing": [],
         "flags_unread": []
       },
       "signals": [
         "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
-        "3 later entries by the same worker share this topic prefix"
+        "5 later entries by the same worker share this topic prefix"
       ],
       "hints": {
         "anchor": "worklog/entries/20260928T234111.469697Z-lhl-gemma4-t16-gate-up-dram-bound-b8c595.md",
@@ -48277,7 +48277,7 @@
         ]
       },
       "id": "worklog/20260928T234111.469697Z-lhl-gemma4-t16-gate-up-dram-bound-b8c595",
-      "evidence_hash": "1c42c072cec5"
+      "evidence_hash": "bfdf755f6aaa"
     },
     {
       "kind": "worklog",
@@ -48394,6 +48394,43 @@
       },
       "id": "worklog/20260929T010000.000000Z-lhl-gemma4-line-bound-retracted-7f4a1b",
       "evidence_hash": "46ef3934f1b5"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260929T011350.715845Z-lhl-gemma4-t16-gate-up-leaf-lds-staging-correction-751bf9",
+      "title": "Correction: the LDS staging entry's baseline reproduction bound",
+      "location": "worklog/entries/20260929T011350.715845Z-lhl-gemma4-t16-gate-up-leaf-lds-staging-correction-751bf9.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-t16-gate-up-leaf-lds-staging-correction",
+        "written": "2026-09-29",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 2,
+        "open_text": "- None. The unit's numbers, its kernel and its route stand; only the stated\n  reproduction bound was corrected.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "2 later entries by the same worker share this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260929T011350.715845Z-lhl-gemma4-t16-gate-up-leaf-lds-staging-correction-751bf9.md",
+        "refs": [],
+        "tokens": [
+          "baseline",
+          "bound",
+          "correction",
+          "entry",
+          "lds",
+          "reproduction",
+          "staging"
+        ]
+      },
+      "id": "worklog/20260929T011350.715845Z-lhl-gemma4-t16-gate-up-leaf-lds-staging-correction-751bf9",
+      "evidence_hash": "06226b746bca"
     },
     {
       "kind": "worklog",
