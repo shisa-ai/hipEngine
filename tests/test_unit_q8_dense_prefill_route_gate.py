@@ -38,10 +38,13 @@ from scripts.execution_profile_q8_wmma_prefill_layers_gate import (  # noqa: E40
 LAYERS = "16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47"
 
 
-def test_both_layer_scoped_routes_are_selectable():
-    assert set(SELECTORS) == {"wmma", "dense_wide"}
-    assert _select_route("wmma") is SELECTORS["wmma"]
-    assert _select_route("dense_wide") is SELECTORS["dense_wide"]
+def test_every_layer_scoped_route_is_selectable():
+    assert set(SELECTORS) == {
+        "wmma", "dense_wide", "staged_f32",
+        "staged_f32_over_wmma", "staged_f32_composed_vs_exact",
+    }
+    for name in SELECTORS:
+        assert _select_route(name) is SELECTORS[name]
 
 
 def test_unknown_route_is_rejected_rather_than_defaulted():
@@ -54,12 +57,23 @@ def test_unknown_route_is_rejected_rather_than_defaulted():
 
 
 def test_the_wmma_arms_are_unchanged_for_the_certified_figures():
-    """The 16-47 certification was produced by these exact bindings."""
+    """The 16-47 certification was produced by these exact bindings.
+
+    The wide route is cleared in BOTH arms: leaving it bound let it claim the
+    dispatch either way, so both arms resolved to ``dense_wide256_f32_f32_out``
+    and the gate reported bit-identical logits with KL exactly 0.0 and
+    ``measurement_valid: true`` over a route that never ran.
+    """
 
     route = SELECTORS["wmma"]
+    cleared = {DENSE_WIDE_ENV: "0", DENSE_WIDE_LAYERS_ENV: ""}
 
-    assert route.env_for(candidate=True, layers=LAYERS) == {WMMA_LAYERS_ENV: LAYERS}
-    assert route.env_for(candidate=False, layers=LAYERS) == {WMMA_LAYERS_ENV: ""}
+    assert route.env_for(candidate=True, layers=LAYERS) == {
+        WMMA_LAYERS_ENV: LAYERS, **cleared,
+    }
+    assert route.env_for(candidate=False, layers=LAYERS) == {
+        WMMA_LAYERS_ENV: "", **cleared,
+    }
     assert route.candidate_chain == "wmma_prefill_f32_f32_out"
 
 
