@@ -1,8 +1,8 @@
 {
   "kind": "candidates",
   "meta": {
-    "campaign_docs_scanned": 62,
-    "candidates": 225
+    "campaign_docs_scanned": 63,
+    "candidates": 235
   },
   "rows": [
     {
@@ -38,6 +38,513 @@
       },
       "id": "candidate/concurrency2-gfx1151-mtp-tuning-x-t4-3-dflash2-closed-pa-93d3d0babce8",
       "evidence_hash": "354490b62b81"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-optimization-5-8-choose-wmma-by-usefu-d3a3557a613b",
+      "title": "| 5.8 Choose WMMA by useful tile occupancy | Measured as an arm, not adopted: 61 \u2014 GEMMA4-26B-A4B-OPTIMIZATION.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md:6261",
+      "evidence": {
+        "verdict_word": "blocked",
+        "measurements": [
+          "611.4 tok/s"
+        ],
+        "excerpt": "| 5.8 Choose WMMA by useful tile occupancy | Measured as an arm, not adopted: 611.4 tok/s against 382.2 on the same lane. Blocked on the promotion gate, iteration 67. |"
+      },
+      "signals": [
+        "recorded as 'blocked' while citing a measurement",
+        "recorded as blocked \u2014 check whether the blocker still holds"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md",
+        "refs": [
+          "611.4 tok/s"
+        ],
+        "tokens": [
+          "382",
+          "611",
+          "adopted",
+          "against",
+          "arm",
+          "choose",
+          "lane",
+          "measured",
+          "occupancy",
+          "same",
+          "tile",
+          "tok",
+          "useful",
+          "wmma"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-optimization-5-8-choose-wmma-by-usefu-d3a3557a613b",
+      "evidence_hash": "a2508c8910cb"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-dimension-partition-deco-3d57af5d9b1a",
+      "title": "| Dimension-partition decode attention, prefetch 16 | \u22129.7% decode (41.31 agains \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:477",
+      "evidence": {
+        "verdict_word": "rejected",
+        "measurements": [
+          "9.7%"
+        ],
+        "excerpt": "| Dimension-partition decode attention, prefetch 16 | \u22129.7% decode (41.31 against 45.75), `kl_max` 0.0 | iteration 55, `\u2026-dimension-prefetch16-rejected.json` |"
+      },
+      "signals": [
+        "recorded as 'rejected' while citing a measurement"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "9.7%"
+        ],
+        "tokens": [
+          "agains",
+          "against",
+          "attention",
+          "decode",
+          "dimension",
+          "iteration",
+          "json",
+          "kl_max",
+          "partition",
+          "prefetch",
+          "prefetch16",
+          "rejected"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-dimension-partition-deco-3d57af5d9b1a",
+      "evidence_hash": "ed60b352753b"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-dimension-partition-deco-7007cdceba31",
+      "title": "| Dimension-partition decode attention, four-key tiled value pass | \u221210.8% decod \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:478",
+      "evidence": {
+        "verdict_word": "rejected",
+        "measurements": [
+          "10.8%"
+        ],
+        "excerpt": "| Dimension-partition decode attention, four-key tiled value pass | \u221210.8% decode (40.92 against 45.86), `kl_max` 0.0 | iteration 57, `\u2026-dimension-tiled-rejected.json` |"
+      },
+      "signals": [
+        "recorded as 'rejected' while citing a measurement"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "10.8%"
+        ],
+        "tokens": [
+          "against",
+          "attention",
+          "decod",
+          "decode",
+          "dimension",
+          "four",
+          "iteration",
+          "key",
+          "kl_max",
+          "partition",
+          "pass",
+          "rejected",
+          "tiled",
+          "value"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-dimension-partition-deco-7007cdceba31",
+      "evidence_hash": "23e0324867d0"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-dimension-partition-deco-e87ff6af52aa",
+      "title": "| Dimension-partition decode attention, full grid | \u22124.4% decode (43.73 against  \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:476",
+      "evidence": {
+        "verdict_word": "rejected",
+        "measurements": [
+          "4.4%"
+        ],
+        "excerpt": "| Dimension-partition decode attention, full grid | \u22124.4% decode (43.73 against 45.75), `kl_max` 0.0 | `2026-09-26-gemma4-dimension-full-grid-rejected.json` |"
+      },
+      "signals": [
+        "recorded as 'rejected' while citing a measurement"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "4.4%"
+        ],
+        "tokens": [
+          "2026",
+          "against",
+          "attention",
+          "decode",
+          "dimension",
+          "full",
+          "gemma4",
+          "grid",
+          "json",
+          "kl_max",
+          "partition",
+          "rejected"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-dimension-partition-deco-e87ff6af52aa",
+      "evidence_hash": "53bd74f1f0e5"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-fp64-accumulation-in-the-225c2beb9a6f",
+      "title": "| FP64 accumulation in the decode slice kernel | **Numerical failure**: `kl_max` \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:479",
+      "evidence": {
+        "verdict_word": "rejected",
+        "measurements": [
+          "100%"
+        ],
+        "excerpt": "| FP64 accumulation in the decode slice kernel | **Numerical failure**: `kl_max` 0.166 against a 0.05 bar, despite 100% top-1 agreement | iteration 51, `\u2026-fp64-slice-rejected.json` |"
+      },
+      "signals": [
+        "recorded as 'rejected' while citing a measurement"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "100%"
+        ],
+        "tokens": [
+          "100",
+          "166",
+          "accumulation",
+          "against",
+          "bar",
+          "decode",
+          "despite",
+          "failure",
+          "fp64",
+          "kernel",
+          "kl_max",
+          "numerical",
+          "slice",
+          "top"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-fp64-accumulation-in-the-225c2beb9a6f",
+      "evidence_hash": "f7e8dd773d20"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-p1-a9b354018ab9",
+      "title": "P1 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:347",
+      "evidence": {
+        "verdict_word": "blocked",
+        "measurements": [
+          "1478.7 ms",
+          "39.5%",
+          "84 ms",
+          "1300 ms",
+          "1600 tok/s",
+          "18%"
+        ],
+        "excerpt": "| P1 | attn.sliding | **Windowed AOTriton for sliding chunks past the window.** The vendored AOTriton 0.11.2b already ships `CausalType::WindowedAttention` images (`FONLY__*bf16@16_256_*_3_0`) and takes integer `window_left` / `window_right`. `aotriton_wrap.cc` passes only the bottom-right-aligned sentinels, so `aotriton_prefill_admits` refuses every block once the 1024-token window binds, and tho"
+      },
+      "signals": [
+        "recorded as 'blocked' while citing a measurement",
+        "same row also mentions promotion \u2014 may already be resolved",
+        "recorded as blocked \u2014 check whether the blocker still holds"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "1228.9 tok/s",
+          "1300 ms",
+          "1478.7 ms",
+          "1600 tok/s",
+          "18%",
+          "39.5%",
+          "84 ms"
+        ],
+        "tokens": [
+          "already",
+          "aotriton",
+          "attn",
+          "causaltype",
+          "chunks",
+          "fonly__",
+          "images",
+          "past",
+          "ships",
+          "sliding",
+          "vendored",
+          "window",
+          "windowed",
+          "windowedattention"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-p1-a9b354018ab9",
+      "evidence_hash": "6565cc73c42f"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-p14-a445c31a5aa4",
+      "title": "P14 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:360",
+      "evidence": {
+        "verdict_word": "removed",
+        "measurements": [
+          "5%",
+          "13.50 ms",
+          "29.9%",
+          "2.29x",
+          "2.50x",
+          "1211.3 ms"
+        ],
+        "excerpt": "| P14 | attn.sliding | **Exploit the mask's lower bound in pass 3 of the multi-row exact kernel.** Pass 3 already derives `last_active` from the mask row (a byte walk plus a warp max-reduce) and walks `[0, last_active + 1)`. The *first* kept key is never computed, so a sliding row still starts at key 0 and walks the whole causal triangle. Add the mirror reduction (`first_active`, one more comparis"
+      },
+      "signals": [
+        "recorded as 'removed' while citing a measurement",
+        "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate",
+        "same row also mentions promotion \u2014 may already be resolved"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "0.1%",
+          "1145.8 tok/s",
+          "12.0%",
+          "1211.3 ms",
+          "125.96 ms",
+          "127.95 ms",
+          "13.50 ms",
+          "17.8%",
+          "18.1%",
+          "189.46 ms",
+          "2.29x",
+          "2.50x",
+          "29.9%",
+          "3474.4 ms",
+          "40.2 tok/s",
+          "41.1%",
+          "49.9%",
+          "5%",
+          "60.33 ms",
+          "612.2 ms",
+          "7.4%",
+          "7.9%",
+          "862.3 ms",
+          "98.15 ms"
+        ],
+        "tokens": [
+          "already",
+          "attn",
+          "bound",
+          "derives",
+          "exact",
+          "exploit",
+          "kernel",
+          "lower",
+          "mask",
+          "multi",
+          "p14",
+          "pass",
+          "row",
+          "sliding"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-p14-a445c31a5aa4",
+      "evidence_hash": "6cc20233f6ac"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-p2-3777e396bfb8",
+      "title": "P2 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:348",
+      "evidence": {
+        "verdict_word": "blocked",
+        "measurements": [
+          "6.7 ms",
+          "39.2 ms",
+          "8.1%",
+          "610.4 ms",
+          "85.7 ms",
+          "32 ms"
+        ],
+        "excerpt": "| P2 | attn.global | **Tiled flash attention at head_dim 512** for the 5 global layers. **This kernel is also P1's alternative route**: a4c7cdfc8's entry credits it with removing the past-window sliding fallback as well as serving these five layers, so the port pays twice and P1's blocked plumbing route is not the only way that gap closes. Options: (a) port llama.cpp's `flash_attn_tile<512,512,4,8"
+      },
+      "signals": [
+        "recorded as 'blocked' while citing a measurement",
+        "same row also mentions promotion \u2014 may already be resolved",
+        "recorded as blocked \u2014 check whether the blocker still holds"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "0.0091 ms",
+          "0.0107 ms",
+          "0.0245 ms",
+          "0.0374 ms",
+          "0.0817 ms",
+          "0.4087 ms",
+          "1.0%",
+          "32 ms",
+          "39.2 ms",
+          "4 x",
+          "525 ms",
+          "6.6%",
+          "6.7 ms",
+          "610.4 ms",
+          "8.1%",
+          "85.7 ms"
+        ],
+        "tokens": [
+          "512",
+          "a4c7cdfc8",
+          "also",
+          "alternative",
+          "attention",
+          "attn",
+          "entry",
+          "flash",
+          "global",
+          "head_dim",
+          "kernel",
+          "layers",
+          "route",
+          "tiled"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-p2-3777e396bfb8",
+      "evidence_hash": "88c60a44bc0f"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-p8-09912cd65c51",
+      "title": "P8 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:354",
+      "evidence": {
+        "verdict_word": "rejected",
+        "measurements": [
+          "31%",
+          "0.2309 ms",
+          "0.0666 ms",
+          "3.5x",
+          "6.2 ms",
+          "24.8 ms"
+        ],
+        "excerpt": "| P8 | moe.router_gemm | **Router logits through WMMA or hipBLASLt, with the prescale fused in.** **Variant selection shipped 2026-09-28 and is measured**: the route called the generic `qwen35_router_logits_bf16_f32w`, which defaults to `threads=512` with a four-token tile -- at hidden 2816 that leaves threads 352..511 with no K range at all, so 31% of every block idles behind a nine-round barrier"
+      },
+      "signals": [
+        "recorded as 'rejected' while citing a measurement"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "0.0198 ms",
+          "0.0666 ms",
+          "0.0913 ms",
+          "0.0927 ms",
+          "0.2091 ms",
+          "0.22 ms",
+          "0.2309 ms",
+          "0.2375 ms",
+          "0.75x",
+          "0.994 ms",
+          "000x",
+          "13 ms",
+          "14.152 ms",
+          "153.1 us",
+          "16 ms",
+          "2 ms",
+          "2.2 us",
+          "22%",
+          "24.8 ms",
+          "28.4 ms",
+          "3 ms",
+          "3.5x",
+          "31%",
+          "31.4 us",
+          "34%",
+          "4.0 ms",
+          "4.6 ms",
+          "469 ms",
+          "6.2 ms",
+          "6.9%",
+          "68.905 ms",
+          "7.2 ms",
+          "71%"
+        ],
+        "tokens": [
+          "2026",
+          "fused",
+          "hipblaslt",
+          "logits",
+          "measured",
+          "moe",
+          "prescale",
+          "router",
+          "router_gemm",
+          "selection",
+          "shipped",
+          "through",
+          "variant",
+          "wmma"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-p8-09912cd65c51",
+      "evidence_hash": "0fb058d5923a"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-v1-7850dd9a693c",
+      "title": "V1 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:326",
+      "evidence": {
+        "verdict_word": "removed",
+        "measurements": [
+          "512 x",
+          "4.35x",
+          "0.94%",
+          "0.56%"
+        ],
+        "excerpt": "| V1 | attention | **Extend the campaign gate past the window: `--prompt 5120 --prefill 4096 --context 8192`** (1023 scored rows, the campaign row-count standard). The gate requires `prefill < prompt - 1`; capture the baseline and candidate with matching prompt, prefill, context, and block geometry. `capture_chain()` discards the prefill return value and scores subsequent single-token forwards, so"
+      },
+      "signals": [
+        "recorded as 'removed' while citing a measurement",
+        "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate",
+        "same row also mentions promotion \u2014 may already be resolved"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "0.56%",
+          "0.94%",
+          "4.35x",
+          "512 x"
+        ],
+        "tokens": [
+          "1023",
+          "4096",
+          "5120",
+          "8192",
+          "attention",
+          "campaign",
+          "context",
+          "extend",
+          "gate",
+          "past",
+          "prefill",
+          "prompt",
+          "scored",
+          "window"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-v1-7850dd9a693c",
+      "evidence_hash": "85281b42b97e"
     },
     {
       "kind": "candidate",

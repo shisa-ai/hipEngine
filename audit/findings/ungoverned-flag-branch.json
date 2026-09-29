@@ -83,44 +83,6 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/core/build.py:110:HIPENGINE_HIP_ARCH",
-      "title": "runtime branch on HIPENGINE_HIP_ARCH: default-off with no removal condition recorded",
-      "location": "hipengine/core/build.py:110",
-      "evidence": {
-        "fix": "Decide the flag's fate: promote HIPENGINE_HIP_ARCH to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_HIP_ARCH`.",
-        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
-        "flag": "HIPENGINE_HIP_ARCH",
-        "default": "off",
-        "flag_signals": [
-          "reads as default-off",
-          "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
-          "read at 10 runtime sites \u2014 branching is spread out"
-        ]
-      },
-      "signals": [
-        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
-      ],
-      "hints": {
-        "anchor": "hipengine/core/build.py",
-        "refs": [
-          "hipengine/core/build.py:110:HIPENGINE_HIP_ARCH"
-        ],
-        "tokens": [
-          "branch",
-          "condition",
-          "default",
-          "hipengine_hip_arch",
-          "off",
-          "recorded",
-          "removal",
-          "runtime"
-        ]
-      },
-      "id": "ungoverned-flag-branch/hipengine/core/build.py:110:HIPENGINE_HIP_ARCH",
-      "evidence_hash": "23ad51bf853c"
-    },
-    {
-      "kind": "ungoverned-flag-branch",
       "key": "hipengine/core/build.py:17:HIPENGINE_HIP_ARCH",
       "title": "runtime branch on HIPENGINE_HIP_ARCH: default-off with no removal condition recorded",
       "location": "hipengine/core/build.py:17",
@@ -159,9 +121,47 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/core/build.py:581:HIPENGINE_PREFILL_MCUMODE",
+      "key": "hipengine/core/build.py:225:HIPENGINE_HIP_ARCH",
+      "title": "runtime branch on HIPENGINE_HIP_ARCH: default-off with no removal condition recorded",
+      "location": "hipengine/core/build.py:225",
+      "evidence": {
+        "fix": "Decide the flag's fate: promote HIPENGINE_HIP_ARCH to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_HIP_ARCH`.",
+        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
+        "flag": "HIPENGINE_HIP_ARCH",
+        "default": "off",
+        "flag_signals": [
+          "reads as default-off",
+          "no docs/REFACTOR.md entry \u2014 no recorded removal condition",
+          "read at 10 runtime sites \u2014 branching is spread out"
+        ]
+      },
+      "signals": [
+        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
+      ],
+      "hints": {
+        "anchor": "hipengine/core/build.py",
+        "refs": [
+          "hipengine/core/build.py:225:HIPENGINE_HIP_ARCH"
+        ],
+        "tokens": [
+          "branch",
+          "condition",
+          "default",
+          "hipengine_hip_arch",
+          "off",
+          "recorded",
+          "removal",
+          "runtime"
+        ]
+      },
+      "id": "ungoverned-flag-branch/hipengine/core/build.py:225:HIPENGINE_HIP_ARCH",
+      "evidence_hash": "424467e6d8b3"
+    },
+    {
+      "kind": "ungoverned-flag-branch",
+      "key": "hipengine/core/build.py:748:HIPENGINE_PREFILL_MCUMODE",
       "title": "runtime branch on HIPENGINE_PREFILL_MCUMODE: default-off with no removal condition recorded",
-      "location": "hipengine/core/build.py:581",
+      "location": "hipengine/core/build.py:748",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_PREFILL_MCUMODE to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_PREFILL_MCUMODE`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -178,7 +178,7 @@
       "hints": {
         "anchor": "hipengine/core/build.py",
         "refs": [
-          "hipengine/core/build.py:581:HIPENGINE_PREFILL_MCUMODE"
+          "hipengine/core/build.py:748:HIPENGINE_PREFILL_MCUMODE"
         ],
         "tokens": [
           "branch",
@@ -191,14 +191,14 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/core/build.py:581:HIPENGINE_PREFILL_MCUMODE",
-      "evidence_hash": "02884b8b6cd9"
+      "id": "ungoverned-flag-branch/hipengine/core/build.py:748:HIPENGINE_PREFILL_MCUMODE",
+      "evidence_hash": "c4e959f31f2a"
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/core/build.py:595:HIPENGINE_DISABLE_UNROLL600",
+      "key": "hipengine/core/build.py:762:HIPENGINE_DISABLE_UNROLL600",
       "title": "runtime branch on HIPENGINE_DISABLE_UNROLL600: default-off with no removal condition recorded",
-      "location": "hipengine/core/build.py:595",
+      "location": "hipengine/core/build.py:762",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_DISABLE_UNROLL600 to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_DISABLE_UNROLL600`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -215,7 +215,7 @@
       "hints": {
         "anchor": "hipengine/core/build.py",
         "refs": [
-          "hipengine/core/build.py:595:HIPENGINE_DISABLE_UNROLL600"
+          "hipengine/core/build.py:762:HIPENGINE_DISABLE_UNROLL600"
         ],
         "tokens": [
           "branch",
@@ -228,8 +228,82 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/core/build.py:595:HIPENGINE_DISABLE_UNROLL600",
-      "evidence_hash": "1d1ac7cfa68b"
+      "id": "ungoverned-flag-branch/hipengine/core/build.py:762:HIPENGINE_DISABLE_UNROLL600",
+      "evidence_hash": "fe2d9d1b8ffe"
+    },
+    {
+      "kind": "ungoverned-flag-branch",
+      "key": "hipengine/core/build.py:96:HIPENGINE_PREFILL_MCUMODE",
+      "title": "runtime branch on HIPENGINE_PREFILL_MCUMODE: default-off with no removal condition recorded",
+      "location": "hipengine/core/build.py:96",
+      "evidence": {
+        "fix": "Decide the flag's fate: promote HIPENGINE_PREFILL_MCUMODE to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_PREFILL_MCUMODE`.",
+        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
+        "flag": "HIPENGINE_PREFILL_MCUMODE",
+        "default": "off",
+        "flag_signals": [
+          "reads as default-off",
+          "no docs/REFACTOR.md entry \u2014 no recorded removal condition"
+        ]
+      },
+      "signals": [
+        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
+      ],
+      "hints": {
+        "anchor": "hipengine/core/build.py",
+        "refs": [
+          "hipengine/core/build.py:96:HIPENGINE_PREFILL_MCUMODE"
+        ],
+        "tokens": [
+          "branch",
+          "condition",
+          "default",
+          "hipengine_prefill_mcumode",
+          "off",
+          "recorded",
+          "removal",
+          "runtime"
+        ]
+      },
+      "id": "ungoverned-flag-branch/hipengine/core/build.py:96:HIPENGINE_PREFILL_MCUMODE",
+      "evidence_hash": "cf162d66f182"
+    },
+    {
+      "kind": "ungoverned-flag-branch",
+      "key": "hipengine/core/build.py:97:HIPENGINE_DISABLE_UNROLL600",
+      "title": "runtime branch on HIPENGINE_DISABLE_UNROLL600: default-off with no removal condition recorded",
+      "location": "hipengine/core/build.py:97",
+      "evidence": {
+        "fix": "Decide the flag's fate: promote HIPENGINE_DISABLE_UNROLL600 to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_DISABLE_UNROLL600`.",
+        "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
+        "flag": "HIPENGINE_DISABLE_UNROLL600",
+        "default": "off",
+        "flag_signals": [
+          "reads as default-off",
+          "no docs/REFACTOR.md entry \u2014 no recorded removal condition"
+        ]
+      },
+      "signals": [
+        "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition"
+      ],
+      "hints": {
+        "anchor": "hipengine/core/build.py",
+        "refs": [
+          "hipengine/core/build.py:97:HIPENGINE_DISABLE_UNROLL600"
+        ],
+        "tokens": [
+          "branch",
+          "condition",
+          "default",
+          "hipengine_disable_unroll600",
+          "off",
+          "recorded",
+          "removal",
+          "runtime"
+        ]
+      },
+      "id": "ungoverned-flag-branch/hipengine/core/build.py:97:HIPENGINE_DISABLE_UNROLL600",
+      "evidence_hash": "318efca8f3d7"
     },
     {
       "kind": "ungoverned-flag-branch",
@@ -534,9 +608,9 @@
     },
     {
       "kind": "ungoverned-flag-branch",
-      "key": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:103:HIPENGINE_GGUF_Q8_0_WMMA_TILE_N",
+      "key": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:112:HIPENGINE_GGUF_Q8_0_WMMA_TILE_N",
       "title": "runtime branch on HIPENGINE_GGUF_Q8_0_WMMA_TILE_N: default-off with no removal condition recorded",
-      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:103",
+      "location": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:112",
       "evidence": {
         "fix": "Decide the flag's fate: promote HIPENGINE_GGUF_Q8_0_WMMA_TILE_N to the default and keep it only as a rollback lever, or delete the branch. Either way add a docs/REFACTOR.md entry naming the removal condition. See `audit.py show flag/HIPENGINE_GGUF_Q8_0_WMMA_TILE_N`.",
         "why": "AGENTS.md 'Flags are a cost, not a feature': default-off with no recorded removal condition",
@@ -553,7 +627,7 @@
       "hints": {
         "anchor": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py",
         "refs": [
-          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:103:HIPENGINE_GGUF_Q8_0_WMMA_TILE_N"
+          "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:112:HIPENGINE_GGUF_Q8_0_WMMA_TILE_N"
         ],
         "tokens": [
           "branch",
@@ -566,8 +640,8 @@
           "runtime"
         ]
       },
-      "id": "ungoverned-flag-branch/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:103:HIPENGINE_GGUF_Q8_0_WMMA_TILE_N",
-      "evidence_hash": "f14e7c334d60"
+      "id": "ungoverned-flag-branch/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py:112:HIPENGINE_GGUF_Q8_0_WMMA_TILE_N",
+      "evidence_hash": "ceed05a154d1"
     },
     {
       "kind": "ungoverned-flag-branch",

@@ -2097,6 +2097,103 @@ def test_layer_forward_matches_the_reference(k_eq_v):
     )
 
 
+def test_layer_forward_routes_head_dim_512_to_the_tiled_prefill_kernel():
+    """The global layers must actually execute the tiled kernel, not the fallback.
+
+    A fast kernel that exists but is never selected buys nothing, and finite
+    output alone cannot tell you which kernel ran. So this asserts the selected
+    route by name through the production entry point and checks the result
+    against the two things that make "it ran the fast path" meaningful: the
+    output the established block kernel produces for the same inputs, and the
+    CPU reference.
+
+    The reference half runs with every expert selected. The router is compared
+    in bf16 on the GPU against f32 on the CPU, so a row whose third- and
+    fourth-ranked logits tie inside bf16 rounding selects a different expert and
+    differs by a whole expert's output -- measured on row 19 of this fixture.
+    That is a property of the router's precision, not of attention, so routing
+    is made irrelevant here rather than absorbed into a looser tolerance.
+    """
+
+    tokens, hidden_size = 128, 256
+    geometry = (16, 2, 512)  # Gemma 4's global-layer shape: 16 query / 2 kv heads
+    dense_intermediate, num_experts, expert_intermediate = 48, 8, 32
+    rng = np.random.default_rng(11)
+    hidden = (rng.standard_normal((tokens, hidden_size)) * 0.5).astype(np.float32)
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
+        _select_prefill_route,
+        last_prefill_attention_route,
+    )
+
+    # (a) The production entry point selects the tiled kernel for this shape.
+    weights, config, attn_geometry = _layer_fixture(
+        4242, tokens, hidden_size, geometry,
+        dense_intermediate, num_experts, 3, expert_intermediate,
+        k_eq_v=False,
+    )
+    _run_layer_on_gpu(weights, config, attn_geometry, hidden, tokens, k_eq_v=False, seed=11)
+    assert last_prefill_attention_route() == "tiled", (
+        "head_dim 512 with a multiple-of-128 key count must select the tiled "
+        f"kernel, got {last_prefill_attention_route()!r}"
+    )
+
+    # (b) With routing neutralized, the tiled-routed layer matches the CPU
+    #     reference -- so the tiled attention sits correctly in the pipeline.
+    weights, config, attn_geometry = _layer_fixture(
+        4242, tokens, hidden_size, geometry,
+        dense_intermediate, num_experts, num_experts, expert_intermediate,
+        k_eq_v=False,
+    )
+    got = _run_layer_on_gpu(
+        weights, config, attn_geometry, hidden, tokens, k_eq_v=False, seed=11
+    )
+    assert last_prefill_attention_route() == "tiled"
+    want = _run_layer_reference(weights, config, attn_geometry, hidden, tokens)
+    diff = np.abs(got - want)
+    scale_ref = np.abs(want).max()
+    # Measured on this geometry: 4.6% for the tiled route and 4.7% for the
+    # fallback -- the two agree to 0.5%, so this is bf16 rounding accumulated
+    # over ~ten chained stages at head_dim 512, not an attention error. The
+    # reference test documents the same effect at 1.2-1.4% for its much smaller
+    # shape. A structural mistake (a dropped stage, a wrong mask) lands an order
+    # of magnitude higher, so 8% still separates the two.
+    assert diff.max() / scale_ref < 0.08, (
+        f"tiled-routed layer output differs by {diff.max():.5g} against scale "
+        f"{scale_ref:.4g} (relative {diff.max() / scale_ref:.4f})"
+    )
+
+    # (c) The tiled kernel is a drop-in for the established block kernel: forcing
+    #     the fallback route over the same inputs must reproduce it. This is the
+    #     claim the parity suite makes at the attention level, restated through
+    #     the path production actually takes.
+    routed = {}
+    original = _select_prefill_route
+
+    def forced(choice):
+        def pick(**_kwargs):
+            return choice
+
+        return pick
+
+    import hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer as layer_module
+
+    for chosen in ("tiled", "exact"):
+        layer_module._select_prefill_route = forced(chosen)
+        try:
+            routed[chosen] = _run_layer_on_gpu(
+                weights, config, attn_geometry, hidden, tokens, k_eq_v=False, seed=11
+            )
+            assert last_prefill_attention_route() == chosen
+        finally:
+            layer_module._select_prefill_route = original
+    gap = np.abs(routed["tiled"] - routed["exact"]).max()
+    # Measured 0.0029 absolute / 0.54% relative: the two formulations round
+    # differently but agree to bf16 precision. A wrong mask or a dropped term in
+    # the tiled kernel would separate them by an order of magnitude more.
+    assert gap < 0.02, f"tiled and exact routes disagree by {gap:.5g}"
+
+
 def test_layer_forward_applies_the_layer_scalar():
     """The trained per-layer output scale must actually be applied.
 
