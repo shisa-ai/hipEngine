@@ -436,14 +436,74 @@ parameter change: head_dim 512 is twice the accumulator per column, and 64 KB of
 LDS per workgroup does not hold a K and a V tile of `K_BATCH * 512 * 2` bytes
 each.
 
+The full-layer kernel exists and those five layers are closed. It is the same
+tiled flash structure at 32 WMMA columns per block (16 query rows x 2 GQA heads),
+8 keys per 32-lane warp, `K_BATCH` 16 and 49,920 bytes of LDS, reading its K and
+V tiles at the offset that skips the rotary half. On the same bench row at 4096
+tokens it measures **10.04x** the strict kernel, **62.82 ms against 638.11 ms**
+over three runs, at 4376.5 GFLOP/s against 430.9. In the step itself the five
+layers fall from **2799 ms to 231.08 ms** across their 40 chunked launches, and
+attention as a whole goes from **61.0 to 13.5 percent** of the 4.277 s prefill.
+The gap to the sliding kernel's 6279.6 GFLOP/s is register pressure rather than
+structure: 256 VGPRs is the wave32 ceiling, so a column group's two
+dimension-group waves each issue the full score dot and the raw matrix-unit work
+is 1.5x the causal pair count both rows are divided by. End to end at 4096 tokens
+the prefill reads **977.8 tok/s against llama.cpp's 1039.85 (0.941x)**, from
+628.2 with the sliding candidate alone and 456.1 on the strict path, and the
+four-length ladder is 1078 / 1042 / 1007 / 977.8 -- flat within 10 percent where
+the strict ladder falls from 870.0 to 456.1. The strict full-layer kernel stays
+registered and `HIPENGINE_EXECUTION_PROFILE=strict` selects it.
+
 What this does **not** have is the `docs/EXECUTION-PROFILES.md` section 6
 teacher-forced numerical gate. Twelve token-identical greedy rows are a screen,
-not that gate. Recorded in `docs/REFACTOR.md` with the profile as the lever.
+not that gate. Recorded in `docs/REFACTOR.md` for both candidates, with the
+profile as the lever.
 
 Artifacts: `benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-attention-wmma-candidate.json`
-(the kernel in isolation), `benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-wmma-attention-production-ladder.json`
-(the end-to-end ladder), `worklog/entries/20260928T193803.559998Z-lhl-gemma4-gemma4-wmma-prefill-candidate-85c4b9.md`,
-`worklog/entries/20260928T200104.021462Z-lhl-gemma4-gemma4-wmma-prefill-attention-on-by-default-6a0640.md`.
+(the sliding kernel in isolation),
+`benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-attention-wmma-full-candidate.json`
+(the full-layer kernel in isolation, the 4096-token census, the four-length ladder),
+`benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-wmma-attention-production-ladder.json`
+(the end-to-end ladder),
+`worklog/entries/20260928T193803.559998Z-lhl-gemma4-gemma4-wmma-prefill-candidate-85c4b9.md`,
+`worklog/entries/20260928T200104.021462Z-lhl-gemma4-gemma4-wmma-prefill-attention-on-by-default-6a0640.md`,
+`worklog/entries/20260928T203205.309813Z-lhl-gemma4-gemma4-full-layer-prefill-attention-wmma-ecc8b4.md`.
+
+## Current prefill status — 2026-09-29, gfx1151 (prefill beats the reference at every length)
+
+The expert gate/up Q4T16 WMMA leaf was the last large term. It is issue-bound,
+not bandwidth-bound. Measured with the validated GL2C DRAM read counter it reads
+**277.3 MB against 316.5 MB irreducible** for the same work, so it already moves
+less than the floor for its own work and no byte-level change can help. The time
+goes to instruction issue: `us_per_block` is flat at ~0.47 across a 6x range of
+block counts while DRAM bytes per block fall 2.4x, occupancy is 96.5 percent of
+the hardware ceiling (1235.3 of 1280 waves), and the kernel spends roughly 150
+instructions per WMMA against a target of about 20.
+
+Two bit-identical units took it from **5.025 to 3.144 ms/call (1.598x)**. The
+first hoisted four K-loop invariants and removed two redundant branches. The
+second repacks the tile K-major and stages each sub-block's Q region in LDS, so
+the sixteen K values one lane needs are one contiguous 16-byte block read as a
+single 128-bit load. Reading the same fragment straight from global instead is
+1.98x slower: it lands at 256 VGPRs, the wave32 ceiling, with 202 spilled
+instructions, against 172 VGPRs and no spill through LDS.
+
+End to end, `scripts/gemma4_campaign_bench.py --prompt P --output 128 --samples 3`:
+
+| prompt | hipEngine | llama.cpp | ratio |
+| ---: | ---: | ---: | ---: |
+| 512 | 1243 | 1012.98 | **1.227x** |
+| 1024 | 1205 | 1057.48 | **1.140x** |
+| 2048 | 1164 | 1067.14 | **1.091x** |
+| 4096 | 1119 | 1039.85 | **1.076x** |
+
+At 4096 that is 1119 tok/s against 977.8 when the full-layer attention landed and
+456.1 on the strict path. The 1012.98 quoted in the previous section is the
+512-token baseline, not the 4096 one; 0.941x there was already against 1039.85.
+
+Artifacts: `benchmarks/results/2026-09-29-gemma4-t16-gate-up-dram-counter-measurement.json`,
+`worklog/entries/20260928T233806.520482Z-lhl-gemma4-t16-gate-up-dram-bound-0619de.md`,
+`worklog/entries/20260928T234111.469697Z-lhl-gemma4-t16-gate-up-dram-bound-b8c595.md`.
 
 ## Current correctness status — 2026-09-26
 
