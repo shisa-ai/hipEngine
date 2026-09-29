@@ -261,6 +261,24 @@ def test_every_budget_stops_exactly_at_max_tokens_and_matches_greedy() -> None:
             assert run.finish_reason == "length"
 
 
+def test_softcap_saturation_uses_plain_greedy_tie_breaking(monkeypatch) -> None:
+    original = _FakeRunner.forward
+    cap = np.float32(30.0)
+    raw = np.array([20 * cap, 21 * cap], dtype=np.float32)
+    expected = int(np.argmax(np.tanh(raw / cap) * cap))
+    assert expected == 0 and int(np.argmax(raw)) == 1
+
+    def saturating_forward(self, tokens, *, apply_softcap=True, **kwargs):
+        logits = original(self, tokens, apply_softcap=apply_softcap, **kwargs)
+        logits[...] = -1000.0
+        logits[..., :2] = raw
+        return np.tanh(logits / cap) * cap if apply_softcap else logits
+
+    monkeypatch.setattr(_FakeRunner, "forward", saturating_forward)
+    run = _run_cycle(budget=6, max_tokens=8)
+    assert run.tokens == [expected] * 8
+
+
 def test_mtp_marks_verification_but_not_prompt_prefill() -> None:
     run = _run_cycle(budget=6, max_tokens=16)
     assert run.runner.verification_calls[0] is False

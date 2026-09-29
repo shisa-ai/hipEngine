@@ -233,7 +233,7 @@ class Gemma4MTPTextProvider:
         # whole design rests on -- the batched verify reproduces a single-token
         # forward *for this request's own context*.
         runner.reset()
-        logits = runner.forward(token_ids, apply_softcap=False)
+        logits = runner.forward(token_ids)
         record("target_prefill", prefill_started)
 
         token = int(np.argmax(logits))
@@ -270,7 +270,6 @@ class Gemma4MTPTextProvider:
             verify_started = time.perf_counter()
             rows = runner.forward(
                 [token, *drafts],
-                apply_softcap=False,
                 logits_rows=len(drafts) + 1,
                 verification=True,
             )
