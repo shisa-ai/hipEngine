@@ -263,3 +263,70 @@ def test_task_gate_requires_repeatability_and_flags_cross_route_divergence() -> 
     assert result["strict_exact_count"] == 0
     assert result["status"] == "requires_review"
     assert result["divergences"][0]["id"] == "a"
+
+
+def test_gr_up_staged_candidate_targets_the_registered_hc1_variant() -> None:
+    """HC-1's gate candidate must name the variant the kernel module registers.
+
+    The staged-f32 GR-up tile is default-off and not bit-exact with its exact
+    parent, so the production gate is the only thing that can select it. A
+    rename on either side would silently turn the gate into a control: the
+    candidate key would fail to resolve, or the counted dispatch would no
+    longer be the declared implementation.
+    """
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+        register_gguf_k_gemv_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_gr_staged_f32 import (
+        GR_STAGED_F32_VARIANT,
+        register_gr_staged_f32_kernel,
+    )
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from hipengine.kernels.registry import is_registered, KernelKey
+
+    # Both source keys are registered by module-level calls that do not re-run
+    # once the module is imported, and ``tests/conftest.py`` restores the
+    # registry to its collection-time baseline after every test. Calling the
+    # two module registrars explicitly is what a fresh process gets from the
+    # imports, and it keeps this test independent of collection order.
+    register_gguf_k_gemv_kernels(replace=True)
+    register_gr_staged_f32_kernel(replace=True)
+    register_gfx1151_kernels(replace=True)
+
+    module = _load_script()
+    spec = module.CANDIDATES["production_gr_up_staged"]
+
+    assert spec.classification == "T1"
+    # The variant name lives in the kernel module, not in this script, so a
+    # rename there must fail here rather than silently retarget the gate.
+    assert spec.candidate_key == (
+        "hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0", GR_STAGED_F32_VARIANT,
+    )
+    assert spec.fallback_key == (
+        "hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
+        "coltile2_branch4_rowbatch4_f32_exact",
+    )
+    assert is_registered(KernelKey(*spec.candidate_key))
+    assert is_registered(KernelKey(*spec.fallback_key))
+
+    # The candidate must turn the competing GR routes off, or the gate would
+    # measure whichever selector wins rather than the staged tile.
+    assert spec.environment["HIPENGINE_QWEN4_EXP_GR_STAGED"] == "1"
+    for competing in (
+        "HIPENGINE_QWEN4_EXP_GR_WIDE",
+        "HIPENGINE_QWEN4_EXP_GR_IU8",
+        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN",
+    ):
+        assert spec.environment[competing] == "0", competing
+
+    # The counted dispatch must be the declared implementation. This is the
+    # check that catches a rename in either module, and it is what the gate
+    # relies on to prove the route engaged rather than merely being selected.
+    from importlib import import_module
+
+    called = getattr(import_module(spec.direct_dispatch_target[0]),
+                     spec.direct_dispatch_target[1])
+    defined = getattr(import_module(spec.direct_dispatch_reference[0]),
+                      spec.direct_dispatch_reference[1])
+    assert called is defined
