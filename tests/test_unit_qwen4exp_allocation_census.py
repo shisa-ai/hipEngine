@@ -21,7 +21,7 @@ def test_owner_census_counts_roots_once_and_ignores_nonowning_views():
 
 def test_real_recipes_close_without_loading_gpu_and_preserve_outer_stats():
     from hipengine.loading.qwen4_exp_gguf import qwen4_exp_gguf_config_from_metadata
-    from tests.test_live_qwen4_exp_gguf_config import _info
+    from tests._qwen4_exp_gguf_fixtures import _info
 
     config = qwen4_exp_gguf_config_from_metadata(_info())
     before = memory_stats()

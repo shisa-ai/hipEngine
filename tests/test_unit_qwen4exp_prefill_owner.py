@@ -8,7 +8,7 @@ from hipengine.loading.qwen4_exp_scratch import qwen4_exp_scratch_breakdown
 from hipengine.runtime.qwen4_exp_runner import Qwen4ExpPrefillWorkspace
 from scripts.qwen4exp_allocation_census import census, simulated_runner
 from scripts.qwen4exp_chunk_workspace import capture_workspace, use_workspace
-from tests.test_live_qwen4_exp_gguf_config import _info
+from tests._qwen4_exp_gguf_fixtures import _info
 
 
 def config():
