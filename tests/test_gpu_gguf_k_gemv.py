@@ -427,6 +427,91 @@ def test_q8_0_pack8_f32_matches_scalar_gemv_bits() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [2, 3, 4, 5, 6, 7, 8])
+def test_q8_0_coltile8_rowbatch4_is_width_invariant_to_serial_c1(rows: int) -> None:
+    """MT-1: the rows<=8 body pass must equal serial c1 decode, per row.
+
+    Two links are already tested independently:
+
+    * ``test_q8_0_pack8_f32_matches_scalar_gemv_bits`` - the c1 decode kernel
+      (``pack8``) equals the scalar GEMV, bit for bit, at rows=1;
+    * ``test_q8_0_f32_rowbatch32_matches_scalar_prefill_bits`` - the
+      coltile/rowbatch factorizations equal the scalar GEMV, bit for bit, at
+      rows=37.
+
+    Neither composes them, and link 2 is only checked at a single batch width.
+    The property MT-1 actually needs is batch-composition invariance: row ``i``
+    of a batched launch must equal what serial c1 decode produced for that row,
+    for every batch width. That is asserted here directly, against the serial
+    c1 kernel, with no scalar-GEMV intermediary.
+
+    RED-first: this is the contract a width-invariant verifier body must meet.
+    """
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+
+    in_features, out_features = 256, 32
+    rng = np.random.default_rng(20260929 + rows)
+    x = np.ascontiguousarray(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    weight = np.ascontiguousarray(make_q8_0_weight(out_features, in_features))
+    runtime = get_hip_runtime()
+    library = build_gguf_k_gemv(load=True)
+    buffers = []
+    try:
+        x_dev = malloc(x.nbytes, runtime=runtime)
+        w_dev = malloc(weight.nbytes, runtime=runtime)
+        copy_host_to_device(x_dev, host_array_ptr(x), runtime=runtime)
+        copy_host_to_device(w_dev, host_array_ptr(weight), runtime=runtime)
+        buffers.extend((x_dev, w_dev))
+
+        batched_dev = malloc(rows * out_features * 4, runtime=runtime)
+        buffers.append(batched_dev)
+        gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out(
+            x_dev.ptr, w_dev.ptr, batched_dev.ptr,
+            rows, in_features, out_features, library=library, runtime=runtime,
+        )
+
+        # Serial c1: one row at a time through the decode kernel, reusing a
+        # single-row staging buffer so each launch sees exactly one row.
+        row_dev = malloc(out_features * 4, runtime=runtime)
+        buffers.append(row_dev)
+        serial = np.empty((rows, out_features), dtype=np.float32)
+        for row in range(rows):
+            x_row_dev = malloc(in_features * 4, runtime=runtime)
+            buffers.append(x_row_dev)
+            copy_host_to_device(
+                x_row_dev, host_array_ptr(np.ascontiguousarray(x[row : row + 1])),
+                runtime=runtime,
+            )
+            gguf_q8_0_pack8_gemv_f32_f32_out(
+                x_row_dev.ptr, w_dev.ptr, row_dev.ptr,
+                1, in_features, out_features, library=library, runtime=runtime,
+            )
+            runtime.device_synchronize()
+            copy_device_to_host(
+                host_array_ptr(serial[row : row + 1]), row_dev,
+                out_features * 4, runtime=runtime,
+            )
+
+        runtime.device_synchronize()
+        batched = np.empty((rows, out_features), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(batched), batched_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(batched, serial)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_q8_0_dual_f32_matches_two_single_gemvs() -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import (

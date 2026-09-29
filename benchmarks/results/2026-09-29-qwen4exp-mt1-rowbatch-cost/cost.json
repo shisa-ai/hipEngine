@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_mt1_rowbatch_cost",
+  "performance_claim": true,
+  "created_at": "2026-09-29T18:12:10.471751+00:00",
+  "boundary": "q8_0 GEMV kernel pair only (DE-3 linear family); excludes MoE DE-1, attention, and end-to-end verifier",
+  "shape": {
+    "in_features": 2560,
+    "out_features": 10240
+  },
+  "reps": 30,
+  "warmups": 5,
+  "rows": [
+    {
+      "rows": 1,
+      "batched_us": 81.35749999999999,
+      "serial_c1_us": 65.9235,
+      "speedup": 0.8102940724579788,
+      "per_row_batched_us": 81.35749999999999,
+      "per_row_serial_us": 65.9235
+    },
+    {
+      "rows": 2,
+      "batched_us": 94.668,
+      "serial_c1_us": 108.389,
+      "speedup": 1.1449380994633878,
+      "per_row_batched_us": 47.334,
+      "per_row_serial_us": 54.1945
+    },
+    {
+      "rows": 4,
+      "batched_us": 115.622,
+      "serial_c1_us": 192.1505,
+      "speedup": 1.6618852813478404,
+      "per_row_batched_us": 28.9055,
+      "per_row_serial_us": 48.037625
+    },
+    {
+      "rows": 8,
+      "batched_us": 198.1015,
+      "serial_c1_us": 365.9615,
+      "speedup": 1.8473434072937358,
+      "per_row_batched_us": 24.7626875,
+      "per_row_serial_us": 45.7451875
+    }
+  ]
+}
