@@ -1,29 +1,35 @@
-# Q5_1 expert-down owners: an unselected registered owner is faster on the main kernel, and the repair it needs is not timed here
+# Q5_1 expert-down owners: the production route is the measured-fastest of its three owners
 
 The three registered owners of `moe_linear` /
 `prefill_rows_ge512_k640_exact_grouped_q5_1_down` are timed against each other on the main
-kernel. **`selected_wmma_iu8_risk_prefill_bf16_bf16_out` - which no manifest entry selects -
-is faster than the production default in all 12 cases, median -50.4%.** The strict default
-is slower in all 12, median +272.6%.
+kernel. **The owner production actually runs is faster than both alternatives in all 12
+cases**: -21.0% to -79.2% against the owner it replaced (median -50.4%), and +82.5% to
++562.0% against the strict default.
 
-**This is not a promotion candidate as it stands.** The winning arm is an
-approximate-then-repair design and the repair pass is **not timed here**, so the number
-below is the whole owner cost for the production default and only part of it for the wmma
-owner. The section "What the repair costs" sizes that gap and shows it is most of the
-effect. No correctness gate was run and no default changed.
+So this is a **validation, not an opportunity**. No promotion is available here: the route
+is already the measured-best of its three owners.
+
+**Correction to this packet's first version.** It originally read as "a registered owner that
+no manifest entry selects is faster than the production default". That was **wrong**. The
+variant is selected by no `_selection()` entry, but production does run it, because
+`hipengine/generation/qwen4_exp_profiles.py:712` binds
+`"HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT": "1" if production else "0"` and
+`hipengine/runtime/qwen4_exp_runner.py:4574` then takes the `q51_iu8_exact` branch, which
+calls `q51_iu8_risk_down` and **bypasses the variant-selection path entirely**. Scanning
+`_selection()` blocks alone cannot see an env-gated route - a manifest-reading trap worth
+remembering. The measurements below were unaffected; only the interpretation was.
 
 ## The three owners
 
-| owner | design | selected for this shape? |
+| owner | design | what runs it |
 | --- | --- | --- |
-| `selected_grouped_prefill_pair2_row_publish_bf16_bf16_out` | exact; no risk/repair arguments at all | **production default** |
+| `selected_wmma_iu8_risk_prefill_bf16_bf16_out` | approximate iu8 WMMA; carries `risk_count` / `risk_indices`, repaired by `selected_sparse_exact_repair_row_publish` | **production** - via `HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT=1`, set by the production profile, not by a `_selection()` entry |
+| `selected_grouped_prefill_pair2_row_publish_bf16_bf16_out` | exact; no risk/repair arguments at all | the `_selection()` entry, i.e. the strict path and the pre-iu8 production owner |
 | `selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out` | exact | strict default and production fallback |
-| `selected_wmma_iu8_risk_prefill_bf16_bf16_out` | approximate iu8 WMMA; carries `risk_count` / `risk_indices` | **no manifest entry selects it** |
 
-The third owner is registered (`KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1",
-"selected_wmma_iu8_risk_prefill_bf16_bf16_out")`) and is the family the 2026-09-29 ED-1
-artifacts screened for LDS staging. **ED-1 compared staged prototypes against that owner but
-never against the owner production actually selects for this shape.**
+The first owner is the family the 2026-09-29 ED-1 artifacts screened for LDS staging. **ED-1
+compared staged prototypes against that owner but never against the `pair2` owner it
+replaced, which is what this packet supplies.**
 
 ## Result
 
@@ -48,21 +54,25 @@ primary arm is measured again last to expose drift.
 | single-4096 | 9.582 | 61.781 | 2.560 | +544.8% | **-73.3%** | -0.13% |
 | single-10240 | 30.640 | 202.825 | 6.365 | +562.0% | **-79.2%** | -0.17% |
 
-Two things this establishes independent of the repair question:
+What this establishes:
 
-- **The production default is a good choice against its own fallback.** The strict default /
-  production fallback is slower in 12 of 12 cases by +82.5% to +562.0%. That is a measured
-  justification for the promotion that the archived evidence
-  (`2026-09-07-framework-qwen4exp-q4-iu8-exact-production.json`) did not supply for this
-  route, since its arms compared against `selected_gemv_bf16_bf16_out`.
+- **Both production choices on this route are validated by direct measurement.** The iu8
+  owner beats the `pair2` owner it replaced by 21.0-79.2% on the main kernel, and the `pair2`
+  owner beats the strict fallback by 82.5-562.0%.
+- **The main-kernel gap explains the recorded operation-complete gain.** The 2026-09-08
+  promotion `a57a3e418` recorded +1.9-3.0% prefill per case over 12 cases with 72/72
+  trajectories exact and a 12/12 bit-identical state gate. **The difference between -50.4%
+  main-kernel and +1.9-3.0% operation-complete is the repair**, which this packet excludes
+  and production does pay.
 - **The owners of this route had never been put in an arms pair**, so none of this was
   previously recorded.
 
-## What the repair costs, and why the headline number is not the whole story
+## What the repair costs, and why the main-kernel gap is not a route saving
 
-The production default is exact and has **no repair pass**; the wmma owner is approximate
-and its correctness depends on one. Its repair is not timed here, so the -50.4% is not a
-route-level saving.
+The `pair2` owner is exact and has **no repair pass**; the iu8 owner is approximate and its
+correctness depends on the sparse repair the runner launches after it. That repair is not
+timed here, so the -50.4% is not a route-level saving - and it is why the operation-complete
+figure is +1.9-3.0% rather than ~50%.
 
 Sizing it from recorded numbers, and labelling every step:
 
@@ -80,9 +90,11 @@ main-kernel figure, and built on two uncertain terms.
 rate; that rate has never been observed for q5_1, and the risk rate is a property of the
 arithmetic and activations, not of the main kernel, so it may or may not hold.
 
-**What would settle it:** measuring the wmma owner end-to-end including its repair at real
-routing, with the q5_1 risk rate observed rather than assumed. That is a bounded
-experiment and the only thing that can turn this into a promotion candidate.
+**What would settle it:** measuring the iu8 owner end-to-end including its repair at real
+routing, with the q5_1 risk rate observed rather than assumed. **This is confirmation, not a
+promotion path** - the CHANGELOG already records the operation-complete result, so the
+experiment would only quantify the repair. A future down-route lever would have to attack
+the repair cost itself, which is `EG-3`'s subject and is closed there.
 
 ## Limits
 

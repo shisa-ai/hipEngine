@@ -9,7 +9,7 @@
     "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
     "selected_wmma_iu8_risk_prefill_bf16_bf16_out"
   ],
-  "question": "Among the registered owners of the down route, which is fastest on the main kernel at the real geometry, and is that comparison already archived?",
+  "question": "Among the three registered owners of the q5_1 expert-down route, which is fastest on the main kernel - and is the owner production actually runs the fastest of them?",
   "protocol": {
     "experts": 512,
     "in_features": 640,
@@ -313,10 +313,16 @@
   },
   "repair_excluded": {
     "applies_to": "selected_wmma_iu8_risk_prefill_bf16_bf16_out",
-    "note": "The wmma owner's correctness depends on a sparse repair pass that is NOT timed here (max_risks=0). The production default is exact and has no repair. So the measured ratio is the whole owner cost for the production default and only part of it for the wmma owner.",
+    "note": "The iu8 owner's correctness depends on a sparse repair pass that is NOT timed here (max_risks=0); production pays it. The gap between the -50.4% main-kernel figure and the recorded +1.9-3.0% operation-complete prefill gain from the 2026-09-08 promotion a57a3e418 is that repair.",
     "recorded_q51_fast_ms": 1482.958,
     "recorded_q51_repair_ms": 661.21,
     "repair_is_inference": true,
     "provenance": "benchmarks/results/2026-09-29-qwen4exp-repair-rate/repair-rate.json"
-  }
+  },
+  "owner_roles": {
+    "selected_wmma_iu8_risk_prefill_bf16_bf16_out": "PRODUCTION - reached via HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT=1 (qwen4_exp_profiles.py:712) and the q51_iu8_exact branch (qwen4_exp_runner.py:4574), which bypasses variant selection. Approximate iu8 WMMA + sparse exact repair; the repair is NOT timed here.",
+    "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": "the _selection() entry: strict path and the pre-iu8 production owner. Exact, no repair.",
+    "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": "strict default and production fallback. Exact, no repair."
+  },
+  "correction": "This packet first read as 'a registered owner that no manifest entry selects is faster than production'. WRONG: no _selection() entry names the variant, but production runs it through the env binding at qwen4_exp_profiles.py:712 plus qwen4_exp_runner.py:4574. The measurements are unaffected; the interpretation is corrected. Nothing to promote - the production route is the measured-fastest owner."
 }
