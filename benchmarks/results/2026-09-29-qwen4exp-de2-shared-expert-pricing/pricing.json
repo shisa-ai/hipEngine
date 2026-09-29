@@ -1,0 +1,45 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp-de2-shared-expert-pricing",
+ "performance_claim": false,
+ "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "layers": 48,
+ "shared_tensors": 192,
+ "shared_bytes_per_step": 251166720,
+ "shared_mb_per_step": 251.16672,
+ "shared_bytes_per_layer": 5232640.0,
+ "types": {
+  "Q8_0": 144,
+  "F32": 48
+ },
+ "by_suffix": {
+  "ffn_down_shexp.weight": {
+   "count": 48,
+   "bytes": 83558400
+  },
+  "ffn_gate_inp_shexp.weight": {
+   "count": 48,
+   "bytes": 491520
+  },
+  "ffn_gate_shexp.weight": {
+   "count": 48,
+   "bytes": 83558400
+  },
+  "ffn_up_shexp.weight": {
+   "count": 48,
+   "bytes": 83558400
+  }
+ },
+ "moe_family_ms_per_step": 24.55039366666666,
+ "routed_gate_up_ms_per_step": 14.012587,
+ "routed_down_ms_per_step": 5.444,
+ "non_routed_remainder_ms_per_step": 5.093806666666661,
+ "remainder_bytes_per_step": 502824960.0,
+ "remainder_implied_gbps": 98.71300441974643,
+ "shared_ms_at_comparator_rate": 1.3601576952236543,
+ "shared_ms_at_implied_rate": 2.54441369175627,
+ "shared_upper_bound_pct_of_decode_kernel_sum": 4.692931668000055,
+ "shared_at_comparator_pct_of_decode_kernel_sum": 2.508682900925254,
+ "decode_kernel_sum_ms": 54.218,
+ "result": "The shared expert is a Q8_0 block, not Q4_K: 3 x [2560,640] Q8_0 matrices plus a 2560-wide F32 gate per layer. Its per-step weight traffic is bounded by the measured non-routed moe remainder, so its cost is at most the remainder itself and at least the traffic at the in-block comparator's rate. A perfect shared expert therefore recovers at most the remainder; a realistic fused gate+up recovers a fraction of it."
+}
