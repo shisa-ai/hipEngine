@@ -44,6 +44,11 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     gemma4_attention_prefill_aotriton,
     gemma4_attention_prefill_bf16,
 )
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_tiled import (
+    Gemma4AttentionTiledUnsupported,
+    gemma4_attention_prefill_tiled,
+    gemma4_attention_tiled_admits,
+)
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
     Gemma4ExpertScratch,
     gemma4_experts_forward_bf16,
@@ -324,6 +329,78 @@ def _append_kv(
     )
 
 
+_last_prefill_route: str | None = None
+
+
+def last_prefill_attention_route() -> str | None:
+    """Which prefill kernel the most recent layer forward selected.
+
+    Routing is a per-block capability decision, so the only honest way to
+    confirm which path executed is to read what was selected: finite output
+    proves the layer ran, not that it ran the kernel you intended. This is
+    diagnostic state -- nothing reads it to decide anything -- and ``None``
+    before the first call.
+    """
+
+    return _last_prefill_route
+
+
+def _select_prefill_route(
+    *,
+    rows: int,
+    keys: int,
+    num_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    sliding_window: int | None,
+    mask_is_causal: bool,
+) -> str:
+    """Pick a prefill kernel by what the request *is*, never by where it came from.
+
+    Three routes, each admitted by arithmetic on the dimensions themselves:
+
+    ``tiled``
+        head_dim 512 with a key count that is a multiple of 128 and head counts
+        that tile evenly -- Gemma 4's five global layers. A flash formulation
+        with an online softmax, ported from llama.cpp's fattn-tile.
+    ``aotriton``
+        head_dim 256 with a mask the flash kernel can re-derive itself. The
+        vendored image set covers the sliding layers only.
+    ``exact``
+        everything else: the correctness-first three-pass block kernel, which
+        accepts any shape.
+
+    The two specialized sets are disjoint today (256 vs 512), so priority never
+    has to choose between them, but the order is still stated: a working path
+    takes the cheaper formulation, and a shape no specialized kernel can execute
+    falls through to ``exact`` instead of being refused. Nothing here consults a
+    model name, a file, a hash, or whether a combination has been benchmarked.
+    """
+
+    try:
+        gemma4_attention_tiled_admits(
+            tokens=rows,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            keys=keys,
+        )
+    except Gemma4AttentionTiledUnsupported:
+        pass
+    else:
+        return "tiled"
+
+    if aotriton_prefill_admits(
+        rows=rows,
+        keys=keys,
+        head_dim=head_dim,
+        sliding_window=sliding_window,
+        mask_is_causal=mask_is_causal,
+    ):
+        return "aotriton"
+    return "exact"
+
+
 def gemma4_layer_forward_bf16(
     hidden_ptr: int,
     cos_ptr: int,
@@ -364,6 +441,8 @@ def gemma4_layer_forward_bf16(
 
     Returns ``hidden_ptr`` so the call reads as a pipeline stage.
     """
+
+    global _last_prefill_route
 
     # The block size is an argument, not a property of the scratch. A scratch is
     # sized for the widest block its owner will run, so inferring the row count
@@ -467,13 +546,39 @@ def gemma4_layer_forward_bf16(
         raise ValueError("key_begin requires a cache to skip into")
 
     key_count = rows if kv is None else kv.write_offset + rows - key_begin
-    if aotriton_prefill_admits(
+    route = _select_prefill_route(
         rows=rows,
         keys=key_count,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
         head_dim=head_dim,
         sliding_window=geometry.sliding_window,
         mask_is_causal=attention_mask_is_causal,
-    ):
+    )
+    _last_prefill_route = route
+    if route == "tiled":
+        # head_dim 512: Gemma 4's five global layers. The tiled kernel stages
+        # its own dtype buffers inside the HIP source, so unlike the other two
+        # routes it takes no scratch arena.
+        gemma4_attention_prefill_tiled(
+            buf("q_rot"),
+            (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
+            if kv is not None
+            else buf("k_rot"),
+            (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
+            if kv is not None
+            else buf("v"),
+            keep_mask_ptr + key_begin,
+            buf("context"),
+            tokens=rows,
+            keys=key_count,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            scale=geometry.scale,
+            **kwargs,
+        )
+    elif route == "aotriton":
         gemma4_attention_prefill_aotriton(
             buf("q_rot"),
             (kv.key_cache + key_begin * kv_width * _BF16_BYTES)

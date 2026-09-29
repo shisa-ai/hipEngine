@@ -775,11 +775,27 @@ def gemma4_attention_prefill_aotriton(
 
 
 def register_gemma4_attention_kernels(*, replace: bool = False) -> None:
-    """Register the Gemma 4 prefill attention family against the four-axis registry."""
+    """Register the Gemma 4 prefill attention family against the four-axis registry.
+
+    ``gemma4_plain`` is the correctness-first block kernel, which accepts any
+    shape; ``gemma4_tiled`` is the head_dim 512 flash path. The two are
+    disjoint by shape, so registration order never decides between them -- the
+    layer routes by capability and falls back to ``gemma4_plain`` for anything
+    the tiled kernel cannot execute.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_tiled import (
+        gemma4_attention_prefill_tiled,
+    )
 
     for quant in ("gguf_q4_k_m", "gguf_q4_k_xl", "gguf_q8_0", "gguf"):
         register(
             KernelKey("hip_gfx1100", "prefill_attention", quant, "gemma4_plain"),
             gemma4_attention_prefill_bf16,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "prefill_attention", quant, "gemma4_tiled"),
+            gemma4_attention_prefill_tiled,
             replace=replace,
         )
