@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import pytest
-import torch
+
+from tests._rocm_guard import torch_or_skip
+
+torch = torch_or_skip(__name__, module_level=True)
 
 from scripts.qwen38_dms_objectives import (
     fold_affine_importance_into_eviction,
