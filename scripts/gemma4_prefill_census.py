@@ -165,9 +165,9 @@ def main() -> int:
 
     # The int8 MMQ leaf is the first arm of the gate_up chain (mmq_dual ->
     # wmma_dual -> grouped_dual -> selected) and was the only one unwrapped,
-    # so the fastest gate_up route ran uncounted inside `unattributed`. Its
-    # quant is pinned by _MMQ_DUAL_QUANT_KEY, so this label also shows whether
-    # the pinned key is what the artifact actually carries.
+    # so the fastest gate_up route ran uncounted inside `unattributed`. The
+    # route no longer pins a quant name -- it resolves an mmq32 owner -- so
+    # this label is what tells us which quant actually took it.
     def mmq_dual_label(weight: Any, *a: Any, **kw: Any) -> str:
         return f"moe_mmq_dual:{quant_of(weight)}"
 

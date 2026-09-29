@@ -632,7 +632,14 @@ _WMMA_PREFILL_VARIANT = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
 # Grouped int8 MMQ prefill. The leaf is Q4_K-specific and consumes DS4-packed
 # activations, so it is a route of its own rather than a variant of the grouped
 # owners, which take BF16 activations and dequantize the weights.
-_MMQ_DUAL_QUANT_KEY = "gguf_q4_k"
+# The mmq32 prefill leaf is registered per (backend, layer, quant), so the
+# route asks a capability question -- can this quant resolve the leaf? --
+# rather than matching a list of quant names. Q4_K and Q5_K both have owners;
+# admitting a further quant means registering an owner for it, never editing a
+# branch here. See AGENTS.md "Never key admission on identity".
+_MMQ32_PREFILL_VARIANT = (
+    "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
+)
 # The down projection is a single Q5_1 matrix, so its MMQ leaf needs no split.
 _MMQ_DOWN_QUANT_KEY = "gguf_q5_1"
 # The grouped int8 MMQ leaf reads the fused ``ffn_gate_up_exps`` stack directly
@@ -925,6 +932,50 @@ def _build_mmq_tile_plan(
     return lanes + 31 * scratch.num_experts
 
 
+def _mmq32_leaf_owner(
+    weight: Gemma4Projection | int,
+):
+    """Resolve the mmq32 prefill leaf for ``weight``'s quant, or ``None``.
+
+    Capability, not identity: the registry is keyed ``(backend, layer, quant,
+    variant)``, so a quant is admitted exactly when an owner for it exists.
+    Returns ``None`` for an absent owner so callers fall back to the grouped
+    route instead of raising mid-prefill.
+
+    ``is_registered`` first, then this leaf's own registrar, because two things
+    conspire against a bare ``resolve``: registration is import-time and lazy,
+    and ``tests/conftest.py`` restores a collection-time baseline after every
+    test, so an owner registered during one test is gone by the next. The
+    shared ``gguf_linear`` battery does not cover this variant either. Probing
+    first keeps a test's deliberate fixture registration intact.
+    """
+    from hipengine.kernels.registry import (
+        KernelKey,
+        MissingKernelError,
+        is_registered,
+        resolve,
+    )
+
+    key = KernelKey(
+        weight.backend, "moe_linear", weight.spec.quant_key, _MMQ32_PREFILL_VARIANT
+    )
+    if not is_registered(key):
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+            register_gguf_q4_k_q8_1_selected_prefill_kernels,
+        )
+
+        register_gguf_q4_k_q8_1_selected_prefill_kernels()
+    try:
+        return resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+    except MissingKernelError:
+        return None
+
+
 def _mmq_dual_route(
     weight: Gemma4Projection | int,
     compact_rows: int,
@@ -941,7 +992,7 @@ def _mmq_dual_route(
 
     if isinstance(weight, int):
         return False
-    if weight.spec.quant_key != _MMQ_DUAL_QUANT_KEY:
+    if not _mmq32_leaf_owner(weight):
         return False
     if in_features % _DS4_BLOCK_VALUES or out_features % 32:
         return False
@@ -1020,9 +1071,15 @@ def gemma4_project_experts_mmq_dual(
 
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
         build_gguf_q4_k_q8_1_selected_prefill,
-        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
         gguf_q8_1_mmq_gather_ds4_pack_bf16,
     )
+
+    # Resolved by capability rather than by name: whichever quant owns the
+    # mmq32 leaf runs it, so Q4_K and Q5_K share this path with no branch on
+    # quant_key. ``_mmq_dual_route`` already checked the owner exists.
+    leaf = _mmq32_leaf_owner(weight)
+    if leaf is None:
+        return False
 
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     ds4 = scratch.buffer("ds4_q8")
@@ -1045,7 +1102,7 @@ def gemma4_project_experts_mmq_dual(
     # starts one half into that expert's block and the leaf strides experts by
     # the fused width.
     half_bytes = weight.expert_stride_bytes // 2
-    gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+    leaf(
         ds4.ptr,
         scratch.buffer("compact_to_source").ptr,
         expert_start_ptr,
