@@ -703,6 +703,20 @@ ms/token), device argmax (`20260831T153159`).
    author-reported rows never share a ratio. `llama-bench` prompts are
    synthetic tokens, so their MoE routing and PLE locality are not our
    fixture's (confound C3).
+9. **Three prefill-window denominators are in use, and they are not
+   interchangeable.** A percentage of "the window" means one of:
+   **22,698.6 ms** (`role-analysis.json` at `725794c3f`, the 1x authority of
+   rule 1, 9,652 kernel rows - MR-1, QA-5); **16,319.9 ms** (the 2026-09-28
+   `qwen4exp-current-attribution` capture at `2789c19d6`, which is the
+   reconciliation capture X-3's status names); and **15,742.0 ms** (that same
+   capture's family-taxonomy union, which excludes time outside the taxonomy -
+   HC-7). The spread between the largest and smallest is **44%**, so a share
+   quoted against one base is **not** comparable to a share quoted against
+   another. This is not an error in any row: each is internally consistent and
+   each states its own basis. It is a reading hazard - when comparing two rows'
+   shares, **check the denominator first**, and when quoting a new share, name
+   the base. Rule 1 remains the ranking authority; the other two exist for
+   reconciliation against the interval union and the taxonomy.
 
 ## 9. Cadence
 
