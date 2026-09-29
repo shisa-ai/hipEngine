@@ -39,6 +39,7 @@ __all__ = [
     "Gemma4GGUFDeviceWeight",
     "Gemma4GGUFWeightSpec",
     "materialize_fused_gguf_device_weight",
+    "can_fuse_gguf_device_weights",
     "materialize_gemma4_gguf_device_weight",
     "plan_gemma4_gguf_resident_specs",
     "resident_bytes",
@@ -249,6 +250,33 @@ def materialize_gemma4_gguf_device_weight(
             )
         },
         backend=backend,
+    )
+
+
+def can_fuse_gguf_device_weights(specs: Sequence[Gemma4GGUFWeightSpec]) -> bool:
+    """Whether ``materialize_fused_gguf_device_weight`` would accept these specs.
+
+    Fusion is a capability of the artifact's *storage*: the rows must be
+    uint8 block storage and every weight must have the same column width, or
+    concatenating along axis 0 would not describe a valid weight. A caller that
+    needs to fall back to separate projections therefore has to ask first, and
+    cannot do it by catching the materializer's ``ValueError`` -- that would
+    also swallow a genuine loading failure and silently split weights that
+    should have fused.
+
+    This is what keeps the fused path capability-gated rather than gated on
+    anything about the model's identity: an artifact the kernels can fuse
+    fuses, whatever it is called, and one that cannot keeps the separate
+    weights it always had.
+    """
+    if len(specs) < 2:
+        return False
+    widths = {int(spec.source.byte_shape[1]) for spec in specs}
+    if len(widths) != 1:
+        return False
+    return all(
+        quant_layout(int(spec.source.ggml_type)).storage_dtype == "uint8_blocks"
+        for spec in specs
     )
 
 
