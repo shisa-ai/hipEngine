@@ -3857,9 +3857,23 @@ def launch_gguf_linear(
         _dense_wide_scope,
         _weight_layer_index(weight) if _dense_wide_scope is not None else None,
     )
+    # Same contract for the staged-f32 route, and it is load-bearing for a
+    # different reason: its two arms are the same shapes with the same weight
+    # pointers and differ only in this selector, so a key that omits it lets the
+    # teacher arm's exact-chain dispatch be replayed for the candidate arm. The
+    # measured symptom is not a wrong answer but a *silent* one - bit-identical
+    # candidate/teacher logits and a KL of exactly zero, which reads as a
+    # flawless pass. The layer index is in the key for the reason above: without
+    # it the scope becomes an artifact of cache-fill order.
+    _staged_f32_scope = _q8_staged_f32_layers()
+    _staged_f32_key = (
+        _staged_f32_scope,
+        _weight_layer_index(weight) if _staged_f32_scope is not None else None,
+    )
     cache_key = (
         generation(),
         _dense_wide_key,
+        _staged_f32_key,
         weight.spec.layout,
         weight.spec.quant_key,
         rows,

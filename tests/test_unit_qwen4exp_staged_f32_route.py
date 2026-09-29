@@ -211,3 +211,89 @@ def test_dispatch_swaps_only_inside_the_named_scope():
         os.environ.pop(env, None)
         if saved is not None:
             os.environ[env] = saved
+
+
+def test_selector_participates_in_the_dispatch_memoization_key():
+    """The regression that produced a false gate pass.
+
+    The two arms of a numerical gate are the same shapes on the same weight
+    pointers and differ **only** in this selector. When the selector is absent
+    from the dispatch memoization key, the teacher arm's exact-chain dispatch is
+    replayed for the candidate arm. The symptom is not a wrong answer but a
+    silent one: bit-identical candidate/teacher logits and a KL of exactly zero,
+    which reads as a flawless pass.
+
+    This records the key the real ``launch_gguf_linear`` actually uses rather
+    than observing cache misses. Observing misses does **not** work here: the
+    registry ``generation()`` is the first key element and the lazy kernel
+    registration inside the call bumps it, so every call misses for an unrelated
+    reason and a test written that way passes with the term removed.
+    """
+
+    from hipengine.runtime import gguf_linear
+
+    env = gguf_linear._Q8_STAGED_F32_LAYERS_ENV
+    saved = os.environ.get(env)
+    recorded: list[tuple] = []
+
+    class _Recording(dict):
+        def get(self, key, default=None):
+            recorded.append(key)
+            return super().get(key, default)
+
+    class _Spec:
+        layout = "raw_gguf"
+        quant_key = "gguf_q8_0"
+        slot_path = "layers.3.attn_qkv.weight"
+
+    class _Allocation:
+        class tensor:  # noqa: N801 - mirrors the resident-weight attribute path
+            ptr = 4096
+
+    class _Weight:
+        spec = _Spec()
+        backend = "hip_gfx1151"
+
+        @staticmethod
+        def allocation(name):
+            assert name == "raw"
+            return _Allocation()
+
+    def _key_for(selector: str) -> tuple:
+        recorded.clear()
+        os.environ[env] = selector
+        try:
+            gguf_linear.launch_gguf_linear(
+                _Weight(), 0, 0, 1024, 2560, 10240, libraries={}
+            )
+        except Exception:
+            # The launch cannot succeed on synthetic pointers. The memoization
+            # key is computed before any of that, which is the part under test.
+            pass
+        assert recorded, (
+            "the call never reached the dispatch memoization; the test did not "
+            "exercise the path under test"
+        )
+        return recorded[-1]
+
+    original = gguf_linear._DISPATCH_RESOLVE_CACHE
+    try:
+        gguf_linear._DISPATCH_RESOLVE_CACHE = _Recording()
+        teacher = _key_for("")
+        candidate = _key_for("3")
+        assert teacher != candidate, (
+            "the staged-f32 selector does not participate in the dispatch "
+            "memoization key, so a gate's teacher arm can be replayed for its "
+            "candidate arm and report a KL of exactly zero as a pass"
+        )
+        # And the scope must move the key too, or the first resolution for a
+        # shape is replayed for every layer and the scope becomes an artifact
+        # of cache-fill order rather than a contract.
+        assert _key_for("3") != _key_for("4"), (
+            "the layer scope does not participate in the memoization key"
+        )
+    finally:
+        gguf_linear._DISPATCH_RESOLVE_CACHE = original
+        os.environ.pop(env, None)
+        if saved is not None:
+            os.environ[env] = saved
