@@ -1,0 +1,114 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_kv_reset_memset_bandwidth",
+ "performance_claim": false,
+ "promotion_claim": false,
+ "purpose": "Determine whether RT-4's ~220 GB/s reset rate is the hardware memset limit or a property of the memset call, which decides between a contract change and a cheaper memset fix.",
+ "command": [
+  "scripts/qwen4exp_kv_reset_memset_bandwidth.py",
+  "--repeats",
+  "7",
+  "--warmups",
+  "2",
+  "--output",
+  "benchmarks/results/2026-09-29-qwen4exp-kv-reset-memset-bandwidth/bandwidth.json"
+ ],
+ "rt4_reference": {
+  "bytes_per_token": 24576,
+  "capacity_tokens": 131072,
+  "bytes_cleared_per_reset": 6442450944,
+  "recorded_reset_ms": 29.182,
+  "recorded_effective_gbs": 220.7679714892742
+ },
+ "cases": [
+  {
+   "nbytes": 1048576,
+   "gib": 0.0009765625,
+   "median_ms": 0.010901130735874176,
+   "gbs": 96.18965457860948,
+   "samples_ms": [
+    0.02349400892853737,
+    0.01820409670472145,
+    0.0111311674118042,
+    0.010901130735874176,
+    0.010880175977945328,
+    0.010849907994270325,
+    0.010830815881490707
+   ],
+   "ratio_vs_rt4": 0.4357047534102235
+  },
+  {
+   "nbytes": 67108864,
+   "gib": 0.0625,
+   "median_ms": 0.30735693871974945,
+   "gbs": 218.34178945018192,
+   "samples_ms": [
+    0.3705550916492939,
+    0.3082877956330776,
+    0.3075269050896168,
+    0.30735693871974945,
+    0.3039110451936722,
+    0.3006341867148876,
+    0.30202604830265045
+   ],
+   "ratio_vs_rt4": 0.9890102625723942
+  },
+  {
+   "nbytes": 805306368,
+   "gib": 0.75,
+   "median_ms": 3.6582360044121742,
+   "gbs": 220.1351599592605,
+   "samples_ms": [
+    3.641595132648945,
+    3.580460324883461,
+    3.7101032212376595,
+    3.7006260827183723,
+    3.7578833289444447,
+    3.6582360044121742,
+    3.65435890853405
+   ],
+   "ratio_vs_rt4": 0.9971335899598803
+  },
+  {
+   "nbytes": 6442450944,
+   "gib": 6.0,
+   "median_ms": 29.45605618879199,
+   "gbs": 218.71396845214292,
+   "samples_ms": [
+    29.476996045559645,
+    29.536498244851828,
+    29.1405338793993,
+    29.44847196340561,
+    29.261941090226173,
+    29.56223487854004,
+    29.45605618879199
+   ],
+   "ratio_vs_rt4": 0.990696100420386
+  },
+  {
+   "nbytes": 12884901888,
+   "gib": 12.0,
+   "median_ms": 58.53097606450319,
+   "gbs": 220.13816878434397,
+   "samples_ms": [
+    58.386375196278095,
+    58.70724795386195,
+    58.36800066754222,
+    58.706826996058226,
+    58.51850286126137,
+    58.53097606450319,
+    58.71528293937445
+   ],
+   "ratio_vs_rt4": 0.9971472188620403
+  }
+ ],
+ "best_gbs": 220.13816878434397,
+ "six_gib_gbs": 218.71396845214292,
+ "verdict": {
+  "rt4_effective_gbs": 220.7679714892742,
+  "best_measured_gbs": 220.13816878434397,
+  "headroom_factor": 0.9971472188620403,
+  "is_hardware_limit": true,
+  "six_gib_ms_if_at_best": 29.265488032251596
+ }
+}
