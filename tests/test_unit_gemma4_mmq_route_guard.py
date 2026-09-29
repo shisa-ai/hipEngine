@@ -146,6 +146,32 @@ def test_a_quant_without_an_owner_falls_back_to_the_grouped_route() -> None:
     )
 
 
+def test_the_route_resolves_the_leaf_that_owns_each_quant() -> None:
+    """Dispatch identity: each quant must reach its own wrapper.
+
+    Widening the guard without resolving would have fed Q5_K bytes to the
+    Q4_K kernel. Both wrappers have identical signatures, so a wrong pick
+    compiles, routes and runs -- it just returns wrong numbers. Pairing this
+    with the leaf's numeric gate closes the chain: the route picks the right
+    function, and that function is verified.
+    """
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import _mmq32_leaf_owner
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+        gguf_q5_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+    )
+
+    assert _mmq32_leaf_owner(_Weight("gguf_q4_k")) is (
+        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
+    )
+    assert _mmq32_leaf_owner(_Weight("gguf_q5_k")) is (
+        gguf_q5_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
+    )
+    assert _mmq32_leaf_owner(_Weight("gguf_q8_0")) is None, (
+        "no owner: the projection must fall back to the grouped route"
+    )
+
+
 def test_lane_floor_still_applies_to_aligned_rows() -> None:
     """Aligned rows below the floor stay off the path, so the two guards are
     independent rather than one subsuming the other."""
