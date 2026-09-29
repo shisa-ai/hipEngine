@@ -14,6 +14,9 @@ max 5e-2, top-1 0.99.
 | layers 8-47 | 1548 | 8.818e-4 | 3.843e-3 | 1.302e-2 | 6.441e-2 | 0.98837 | **fail** |
 | layers 12-47 | 1548 | 6.593e-4 | 3.469e-3 | 9.765e-3 | 3.482e-2 | 0.98837 | **fail** |
 | layers 16-47 | 1548 | 3.236e-4 | 1.629e-3 | 4.843e-3 | 1.610e-2 | 0.99483 | **pass** |
+| layers 0-15 | 1548 | 1.177e-3 | 6.121e-3 | 1.371e-2 | 4.905e-2 | 0.98643 | **fail** |
+| layers 0-11 | 1548 | 1.274e-3 | 6.585e-3 | 1.686e-2 | 4.686e-2 | 0.98643 | **fail** |
+| layers 0-7 | 1548 | 1.354e-3 | 6.613e-3 | 1.929e-2 | 6.988e-2 | 0.98902 | **fail** |
 | limit | | 1e-3 | 5e-3 | 2e-2 | 5e-2 | 0.99 | |
 
 ## The only passing scope has no marginal value
@@ -38,6 +41,31 @@ is what runs where the wide route does not.
 
 That is the real question, and it is what the 0-15 / 0-11 / 0-7 ladder measures.
 A pass at 16-47 is not a win and is recorded as such.
+
+## Narrowing the exact-chain region makes it worse, not better
+
+The three scopes that cover layers the wide route does **not** run - the only
+scopes where the staged tile could beat anything - all fail, and the trend is
+backwards:
+
+| Scope | Layers | Mean KL |
+| --- | ---: | ---: |
+| 0-47 | 48 | 1.269e-3 |
+| 0-15 | 16 | 1.177e-3 |
+| 0-11 | 12 | 1.274e-3 |
+| 0-7 | 8 | **1.354e-3** |
+
+**0-7 has a higher mean KL than 0-47.** Eight layers produce more whole-model
+divergence than forty-eight. The drift is therefore **not cumulative over
+layers** - it is concentrated in the earliest layers, which are exactly the
+layers with marginal value, since the wide route starts at 16.
+
+This is an observation, not an explained mechanism. The same non-monotonicity
+appears in the upper ladder, where 8-47's `max_kl` (6.441e-2) exceeds 0-47's
+(2.925e-2) while its mean is lower. Two independent directions of non-monotonic
+behaviour mean no scope's numbers can be extrapolated from a neighbour's, and it
+is the strongest single argument against the summed-KL budgeting the ledger
+already warns about.
 
 ## Failure shape
 
