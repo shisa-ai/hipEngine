@@ -124,6 +124,40 @@
 - **Disposition:** keep the selector and its unit test while the layer-scoped
   gate is built; remove the flag and the dispatch branch if that gate rejects
   the route, or promote it (and delete the flag) if it passes.
+- **`20260929T`: the blocker above is specific to the LAYER-SCOPED gate and does
+  not block the whole-route gate, which already qualifies GR candidates.**
+  `scripts/qwen4exp_layer2_profile_gate.py` compares a whole-profile candidate
+  against its strict parent over 18 prompts x prefill-last plus 24 c1 rows (450
+  full-vocabulary rows, three candidate repeats, state fingerprints, free
+  outputs) and already carries `production_gr_up_restore` and
+  `production_gr_up_wide` for this exact route - both bind GR selectors with no
+  layer scope, because the layer2 gate's scope is the route, not a layer range.
+  The `run_qwen4_exp_gr_read`-takes-no-layer-index objection therefore applies
+  to `execution_profile_q8_wmma_prefill_layers_gate.py` only. The staged-f32
+  route is now registered as `production_gr_up_staged` in the layer2 gate and
+  its production gate is runnable; the dense sibling's layer-scoped result still
+  does not transfer to this route.
+- **Registration trap, recorded because it silently turns a gate into a control:**
+  the GR staged variant is registered only by the module-level
+  `register_gr_staged_f32_kernel()` call in
+  `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_gr_staged_f32.py`, and
+  `register_gfx1151_kernels` reaches that module through `import_module`, which
+  is a no-op once the module is imported. `hip_gfx1100/__init__.py` exposes no
+  `register_backend_kernels`, so no backend-package entry point can re-create
+  the key either. Consequence: after `tests/conftest.py` restores the registry
+  to its collection-time baseline, neither `register_gfx1151_kernels` nor
+  `load_backend_kernel_package` can restore the gfx1151 alias. Production is
+  unaffected (the registry is never wiped) and the gate is fail-closed
+  (`count_candidate_dispatch` raises `ValueError` when the key is unregistered),
+  but it makes registration order-dependent. This is the same root cause as the
+  pre-existing cross-file failure
+  `tests/test_unit_qwen4exp_gr_staged_dispatch.py` +
+  `tests/test_unit_qwen4exp_layer2_profile_gate.py`
+  (`test_gfx1151_registry_contains_layer2_candidate_and_strict_fallback` fails
+  when both files run together, and passes when the layer2 file runs alone -
+  reproduced at `2812d8789` with no other changes). Cleanup: give the staged GR
+  module a registration hook the gfx1100 and gfx1151 packages call explicitly,
+  as `gguf_k_gemv` already does via `register_gguf_k_gemv_kernels`.
 
 ## Qualified Chunk Tradeoffs
 

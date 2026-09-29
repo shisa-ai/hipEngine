@@ -340,6 +340,36 @@ CANDIDATES["production_gr_up_wide"] = CandidateSpec(
         "gguf_q8_0_dense_wide256_f32_f32_out"),
     dispatch_shape_positions=(3, 4, 5),
 )
+CANDIDATES["production_gr_up_staged"] = CandidateSpec(
+    name="production_gr_up_staged", classification="T1",
+    mechanism=(
+        "GR-up LDS-staged f32 tile (BM=128 x BN=64 x BK=32, 256 threads, f32 FMA "
+        "on f32 operands) keeping the dense_wide256 tiling and LDS staging, plus "
+        "the retained exact sigmoid/gated-mean epilogue; dense and GR-down off. "
+        "The only arithmetic difference from the fused exact parent is the "
+        "summation order, so this is a T1 production-gate candidate, not a strict "
+        "one (HC-1)"
+    ),
+    environment={
+        "HIPENGINE_QWEN4_EXP_GR_STAGED": "1",
+        "HIPENGINE_QWEN4_EXP_GR_WIDE": "0",
+        "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
+        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "0",
+        "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "0",
+        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+    },
+    base_profile="production", scenario_id="qwen4exp-gr-up-staged-f32",
+    candidate_key=("hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
+                   "coltile2_branch4_rowbatch4_staged_f32"),
+    fallback_key=("hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
+                  "coltile2_branch4_rowbatch4_f32_exact"),
+    direct_dispatch_target=("hipengine.runtime.qwen4_exp_runner",
+                            "gr_staged_f32_up"),
+    direct_dispatch_reference=(
+        "hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_gr_staged_f32",
+        "gr_staged_f32_up"),
+    dispatch_shape_positions=(3, 4, 5),
+)
 CANDIDATES["production_gr_down_restore"] = replace(
     CANDIDATES["production_gr_up_restore"], name="production_gr_down_restore",
     mechanism="GR-down three-plane IU8 projection; dense and GR-up off",
