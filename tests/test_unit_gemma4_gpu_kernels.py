@@ -1249,6 +1249,7 @@ def test_expert_scratch_rejects_nonpositive_shapes() -> None:
 # --------------------------------------------------------------------------
 
 
+@_needs_hip
 def test_router_topk_matches_the_reference():
     """The assembled router reproduces gemma4_router_topk end to end."""
 
@@ -1352,6 +1353,7 @@ def test_router_topk_matches_the_reference():
     np.testing.assert_allclose(got_weights, want_weights, atol=4 * perturbation, rtol=0)
 
 
+@_needs_hip
 def test_router_topk_selection_is_ordered_by_descending_logit():
     """Selected experts must be ordered best-first, not by expert index."""
 
@@ -1612,6 +1614,7 @@ def _run_prefill_head_dim_256(dtype):
 
 
 @pytest.mark.parametrize("dtype", ["f32", "bf16"])
+@_needs_hip
 def test_attention_prefill_head_dim_256_is_bit_identical_to_recorded_outputs(dtype):
     """head_dim=256 prefill keeps every output bit it had before the rewrite.
 
@@ -1633,6 +1636,7 @@ def test_attention_prefill_head_dim_256_is_bit_identical_to_recorded_outputs(dty
 
 
 @pytest.mark.parametrize("dtype", ["f32", "bf16"])
+@_needs_hip
 def test_attention_prefill_head_dim_256_follows_its_reduction_association(dtype):
     """The head_dim=256 prefill path sums the pairs its association names.
 
@@ -1673,6 +1677,7 @@ def test_attention_prefill_head_dim_256_follows_its_reduction_association(dtype)
     np.testing.assert_allclose(got, want, atol=5e-7, rtol=0.0)
 
 
+@_needs_hip
 def test_attention_prefill_f32_matches_the_reference():
     """The f32 entry point reproduces masked GQA attention exactly."""
 
@@ -1713,6 +1718,7 @@ def test_attention_prefill_f32_matches_the_reference():
     np.testing.assert_allclose(got, want, atol=1e-5, rtol=1e-5)
 
 
+@_needs_hip
 def test_attention_prefill_applies_the_mask_it_is_given():
     """A masked-out key must contribute nothing, including when it is recent.
 
@@ -1772,6 +1778,7 @@ def test_attention_prefill_applies_the_mask_it_is_given():
         np.testing.assert_allclose(got[0, head], value[0, kv_head], atol=1e-5)
 
 
+@_needs_hip
 def test_attention_prefill_scale_is_not_assumed():
     """The kernel multiplies by the scale it is given, not head_dim**-0.5.
 
@@ -1824,6 +1831,7 @@ def test_attention_prefill_scale_is_not_assumed():
     np.testing.assert_allclose(got, want, atol=1e-5, rtol=1e-5)
 
 
+@_needs_hip
 def test_attention_prefill_bf16_tracks_the_f32_path():
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
         gemma4_attention_prefill_bf16,
@@ -2068,6 +2076,7 @@ def _run_layer_reference(weights, config, attn_geometry, hidden, tokens):
 
 
 @pytest.mark.parametrize("k_eq_v", [False, True])
+@_needs_hip
 def test_layer_forward_matches_the_reference(k_eq_v):
     """The whole decoder layer reproduces gemma4_decoder_layer_forward."""
 
@@ -2105,6 +2114,7 @@ def test_layer_forward_matches_the_reference(k_eq_v):
     )
 
 
+@_needs_hip
 def test_layer_forward_applies_the_layer_scalar():
     """The trained per-layer output scale must actually be applied.
 
@@ -2138,6 +2148,7 @@ def test_layer_forward_applies_the_layer_scalar():
     )
 
 
+@_needs_hip
 def test_attention_prefill_serves_a_decode_step_over_a_kv_cache():
     """`keys` may exceed `tokens`: one query row attending over a KV cache.
 
@@ -2199,6 +2210,7 @@ def test_attention_prefill_serves_a_decode_step_over_a_kv_cache():
     )
 
 
+@_needs_hip
 def test_layer_incremental_decode_matches_a_dense_prefill():
     """Decoding one token at a time through a KV cache matches a dense prefill.
 
