@@ -167,6 +167,15 @@ def main() -> int:
 
     census.wrap(gemma4_experts, "gemma4_project_experts_mmq_dual", mmq_dual_label)
 
+    # The down projection's int8 MMQ leaf, labelled to pair with `moe_wmma`
+    # (the WMMA owner it is ordered behind in the down chain). Without this
+    # wrap its cost falls into `unattributed`, so the leaf can never be A/B'd
+    # against the WMMA row it would have to beat.
+    def mmq_down_label(weight: Any, *a: Any, **kw: Any) -> str:
+        return f"moe_mmq:{quant_of(weight)}"
+
+    census.wrap(gemma4_experts, "gemma4_project_experts_mmq", mmq_down_label)
+
     def wmma_dual_label(weight: Any, x_ptr: int, expert_start_ptr: int, expert_start_wmma_ptr: int, tile_expert_ptr: int, out_ptr: int, compact_rows: int, num_experts: int, in_features: int, out_features: int, wmma_total_rows: int, **kw: Any) -> str:
         return f"moe_wmma_dual:{quant_of(weight)}"
 
