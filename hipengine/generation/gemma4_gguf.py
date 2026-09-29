@@ -409,11 +409,13 @@ class Gemma4GGUFGenerator:
         for chunk in provider.stream_detailed(request):
             yield GenerationStreamChunk.from_value(chunk)
 
-    def _validate_request(self, request: GenerationRequest) -> None:
+    @staticmethod
+    def _validate_request(request: GenerationRequest, *, greedy_top_k: bool = False) -> None:
         blockers: list[str] = []
         if request.temperature != 0.0:
             blockers.append("temperature must be 0")
-        if request.top_p != 1.0 or request.top_k != 0 or request.min_p != 0.0:
+        allowed_top_k = (0, 1) if greedy_top_k else (0,)
+        if request.top_p != 1.0 or request.top_k not in allowed_top_k or request.min_p != 0.0:
             blockers.append("top-p/top-k/min-p sampling is not implemented")
         if (
             request.repetition_penalty != 1.0

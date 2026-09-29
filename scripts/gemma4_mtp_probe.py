@@ -1,24 +1,18 @@
-"""Run Gemma 4 MTP the way a user reaches it: through ``hipengine.LLM``.
+"""Compare Gemma 4 greedy AR and MTP through the public LLM API.
 
-The existing ``gemma4_mtp_e2e_speedup.py`` calls ``LLM(model=...)`` with no
-``speculative_provider`` and no ``draft_model``, and ``llm.py`` only enters the
-provider-resolution block when ``speculative_provider is not None`` -- so that
-script can only ever report ``supports_speculative_mtp: False``. This probe
-supplies both, then checks the two things the objective asks for:
-
-* does the speculative route run at all, and
-* is its output the same tokens plain greedy decoding produces.
-
-Usage::
-
-    HIPENGINE_HIP_ARCH=gfx1151 ROCR_VISIBLE_DEVICES=0 PYTHONPATH=. \
-        .venv/bin/python scripts/gemma4_mtp_probe.py --tokens 64 --budget 2
+Rates count emitted tokens over the whole call, including prefill. This is not
+an isolated decode benchmark. Exit nonzero for missing token IDs, unequal
+outputs, invalid lengths, or runtime errors. A single prompt is diagnostic;
+use category suites and heldouts before making a general speedup claim.
 """
-
 from __future__ import annotations
 
 import argparse
+import json
+import math
 import os
+from pathlib import Path
+import sys
 import time
 
 import hipengine
@@ -30,132 +24,139 @@ DEFAULT_DRAFT = f"{MODEL_DIR}/mtp-gemma-4-26B-A4B-it-Q8_0.gguf"
 DEFAULT_PROMPT = "Explain in a few sentences why the sky is blue."
 
 
+def compare_outputs(plain, spec, *, requested_tokens: int, plain_s: float, spec_s: float) -> dict:
+    """Validate a paired result before publishing its rate ratio."""
+    ids = [getattr(value, "generated_token_ids", None) for value in (plain, spec)]
+    reasons = [getattr(getattr(value, "finish_details", None), "reason", None)
+               for value in (plain, spec)]
+    errors = []
+    counts = [None if tokens is None else len(tokens) for tokens in ids]
+    for name, count, reason in zip(("plain", "spec"), counts, reasons):
+        if count is None:
+            errors.append(f"{name}: missing generated_token_ids")
+        elif count <= 0 or count > requested_tokens:
+            errors.append(f"{name}: invalid emitted count {count} for limit {requested_tokens}")
+        elif count < requested_tokens and reason not in ("eos", "stop"):
+            errors.append(f"{name}: short output without EOS or stop")
+    tokens_equal = all(tokens is not None for tokens in ids) and tuple(ids[0]) == tuple(ids[1])
+    text_equal = plain.text == spec.text
+    if not tokens_equal:
+        errors.append("generated token IDs differ or are missing")
+    if not text_equal:
+        errors.append("decoded text differs")
+    if reasons[0] != reasons[1]:
+        errors.append("finish reasons differ")
+    valid_time = all(math.isfinite(t) and t > 0 for t in (plain_s, spec_s))
+    if not valid_time:
+        errors.append("wall times must be finite and positive")
+    return {
+        "timing_scope": "whole_public_call_including_prefill",
+        "requested_tokens": requested_tokens,
+        "plain_tokens": counts[0], "spec_tokens": counts[1],
+        "plain_token_ids": None if ids[0] is None else list(ids[0]),
+        "spec_token_ids": None if ids[1] is None else list(ids[1]),
+        "plain_finish_reason": reasons[0], "spec_finish_reason": reasons[1],
+        "plain_s": plain_s, "spec_s": spec_s,
+        "plain_tok_s": counts[0] / plain_s if valid_time and counts[0] is not None else None,
+        "spec_tok_s": counts[1] / spec_s if valid_time and counts[1] is not None else None,
+        "tokens_identical": tokens_equal, "text_identical": text_equal,
+        "fixed_length_complete": counts == [requested_tokens, requested_tokens],
+        "speedup": plain_s / spec_s if not errors else None,
+        "passed": not errors, "errors": errors,
+    }
+
+
+def load_cases(paths: list[Path], prompt: str) -> list[dict]:
+    if not paths:
+        return [{"id": "single_prompt", "category": "diagnostic", "prompt": prompt}]
+    cases = []
+    for path in paths:
+        for line in path.read_text().splitlines():
+            if not line.strip():
+                continue
+            case = json.loads(line)
+            case["source"] = str(path)
+            if not case.get("id") or not case.get("category"):
+                raise ValueError(f"{path}: each case needs id and category")
+            if not case.get("messages") and not case.get("prompt"):
+                raise ValueError(f"{path}: {case['id']} needs messages or prompt")
+            cases.append(case)
+    if not cases:
+        raise ValueError("prompt suites are empty")
+    return cases
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--artifact", default=DEFAULT_ARTIFACT)
     ap.add_argument("--draft", default=DEFAULT_DRAFT)
     ap.add_argument("--prompt", default=DEFAULT_PROMPT)
+    ap.add_argument("--suite", type=Path, action="append", default=[],
+                    help="JSONL prompts with id/category and messages or prompt; repeat for heldouts")
     ap.add_argument("--tokens", type=int, default=64)
     ap.add_argument("--budget", type=int, default=2)
+    ap.add_argument("--samples", type=int, default=1)
     ap.add_argument("--provider", default="gemma4_mtp")
+    ap.add_argument("--json", type=Path, help="write paired results and full model provenance")
     args = ap.parse_args()
-
+    if args.tokens <= 0 or args.budget <= 0 or args.samples <= 0:
+        ap.error("tokens, budget, and samples must be positive")
     if not os.path.exists(args.draft):
-        raise SystemExit(f"assistant sidecar missing: {args.draft}")
-
-    llm = hipengine.LLM(
-        model=args.artifact,
-        speculative_provider=args.provider,
-        draft_model=args.draft,
-        speculative_candidate_budget=args.budget,
-    )
+        ap.error(f"assistant sidecar missing: {args.draft}")
+    cases = load_cases(args.suite, args.prompt)
+    llm = hipengine.LLM(model=args.artifact, speculative_provider=args.provider,
+                        draft_model=args.draft, speculative_candidate_budget=args.budget)
     generator = llm._get_text_generator()
-    supports = getattr(generator, "supports_speculative_mtp", None)
-    print(f"provider                : {args.provider}")
-    print(f"draft_model             : {args.draft}")
-    print(f"candidate_budget        : {args.budget}")
-    print(f"generator               : {type(generator).__name__}")
-    print(f"supports_speculative_mtp: {supports}")
-    print(f"speculative_mtp_serving : {llm.speculative_mtp_serving}")
-
-    params = SamplingParams(max_tokens=args.tokens, temperature=0.0)
-
-    # Both routes are warmed before either is timed. The first generate() on a
-    # fresh process pays the kernel JIT and the first-touch of every weight, and
-    # that cost lands entirely on whichever route runs first -- measuring a cold
-    # plain call against a warm speculative one reports the JIT, not the speedup.
-    print("warming both routes...")
-    llm.generate([args.prompt], SamplingParams(max_tokens=8, temperature=0.0))
-    try:
-        llm.generate_speculative_mtp_detailed(
-            [args.prompt], SamplingParams(max_tokens=8, temperature=0.0)
-        )
-    except Exception as exc:  # noqa: BLE001 - report the refusal verbatim
-        print(f"generate_speculative_mtp_detailed: NOT SUPPORTED -- {exc}")
-        return 1
-
-    started = time.perf_counter()
-    # `generate_detailed` is the same call `generate` makes -- `generate` is
-    # `[output.text for output in self.generate_detailed(...)]` -- and it is the
-    # one that returns the token IDs. The plain route has to come back as an
-    # output object, or its tokens cannot be compared with the speculative
-    # route's and the divergence can only be read off character lengths.
-    plain = llm.generate_detailed([args.prompt], params)
-    plain_s = time.perf_counter() - started
-    plain_text = plain[0].text if hasattr(plain[0], "text") else str(plain[0])
-    print(f"plain generate()        : {args.tokens / plain_s:7.2f} tok/s  ({plain_s:.2f}s)")
-
-    try:
-        started = time.perf_counter()
-        spec = llm.generate_speculative_mtp_detailed([args.prompt], params)
-        spec_s = time.perf_counter() - started
-    except Exception as exc:  # noqa: BLE001 - report the refusal verbatim
-        print(f"generate_speculative_mtp_detailed: NOT SUPPORTED -- {exc}")
-        return 1
-
-    spec_text = spec[0].text if hasattr(spec[0], "text") else str(spec[0])
-    print(f"generate_speculative_mtp_detailed: {args.tokens / spec_s:7.2f} tok/s  ({spec_s:.2f}s)")
-    # `GenerationOutput` carries `generated_token_ids`, not `token_ids`. An
-    # earlier version of this probe asked for the latter, got `None`, and printed
-    # no token counts at all -- and it read the plain route through `generate`,
-    # which returns bare strings, so the guard could never be satisfied. The token
-    # sequences are the thing that can actually be compared.
-    plain_tokens = getattr(plain[0], "generated_token_ids", None)
-    spec_tokens = getattr(spec[0], "generated_token_ids", None)
-    if plain_tokens is not None and spec_tokens is not None:
-        print(
-            f"tokens emitted          : plain {len(plain_tokens)}, "
-            f"spec {len(spec_tokens)}  (max_tokens={args.tokens})"
-        )
-        # The two rates above divide the *requested* token count by the wall time,
-        # which is the protocol the recorded baseline used. A route that stopped
-        # early -- an EOS, or a cycle that committed fewer tokens than requested --
-        # therefore reports a rate for tokens it never produced, and the ratio can
-        # come out far above any real speedup. Say so instead of leaving it to be
-        # noticed.
-        for name, tokens in (("plain", plain_tokens), ("spec", spec_tokens)):
-            if len(tokens) != args.tokens:
-                print(
-                    f"  {name} emitted {len(tokens)} of {args.tokens} requested "
-                    f"tokens ({name} tok/s and the speedup above are computed over "
-                    f"the request, not over what ran)"
-                )
-        if tuple(plain_tokens) != tuple(spec_tokens):
-            shared = 0
-            for plain_id, spec_id in zip(plain_tokens, spec_tokens):
-                if plain_id != spec_id:
-                    break
-                shared += 1
-            print(
-                f"  shared token prefix   : {shared} of "
-                f"{min(len(plain_tokens), len(spec_tokens))}"
-            )
-            if shared < min(len(plain_tokens), len(spec_tokens)):
-                print(
-                    f"  first divergent token : index {shared}: "
-                    f"plain {plain_tokens[shared]!r} vs spec {spec_tokens[shared]!r}"
-                )
-    print(f"speedup                 : {plain_s / spec_s:7.3f}x")
-    print(f"outputs identical       : {plain_text == spec_text}")
-    if plain_text != spec_text:
-        # A commit cycle ends on a whole group, so hitting max_tokens mid-cycle
-        # stops the speculative route at a different point than plain AR. That is
-        # a token-count artefact, not a wrong token -- so test the property that
-        # separates them: the shorter output must be an exact prefix of the
-        # longer, with every shared character equal.
-        n = min(len(plain_text), len(spec_text))
-        longer = "spec" if len(spec_text) > len(plain_text) else "plain"
-        print(
-            f"  lengths               : plain {len(plain_text)}, spec {len(spec_text)} chars"
-            f"  (longer: {longer})"
-        )
-        print(f"  common prefix equal   : {plain_text[:n] == spec_text[:n]}")
-        if plain_text[:n] != spec_text[:n]:
-            for i in range(n):
-                if plain_text[i] != spec_text[i]:
-                    print(f"  first divergence at char {i}: {plain_text[i]!r} vs {spec_text[i]!r}")
-                    break
-    return 0
+    print(f"provider: {args.provider}; candidate_budget: {args.budget}")
+    print("timing scope: whole public call including prefill; emitted-token denominator")
+    results = []
+    for case in cases:
+        prompt = (generator.render_chat_prompt(case["messages"])
+                  if "messages" in case else case["prompt"])
+        params = SamplingParams(max_tokens=args.tokens, temperature=0.0)
+        warmup = SamplingParams(max_tokens=min(8, args.tokens), temperature=0.0)
+        try:
+            # Plain first deliberately leaves state for MTP to reset. Do not
+            # reset the private runner here: that would hide request leakage.
+            llm.generate([prompt], warmup)
+            llm.generate_speculative_mtp_detailed([prompt], warmup)
+            for sample in range(args.samples):
+                started = time.perf_counter()
+                plain = llm.generate_detailed([prompt], params)
+                plain_s = time.perf_counter() - started
+                started = time.perf_counter()
+                spec = llm.generate_speculative_mtp_detailed([prompt], params)
+                spec_s = time.perf_counter() - started
+                if len(plain) != 1 or len(spec) != 1:
+                    raise ValueError("one prompt must produce exactly one output per arm")
+                row = compare_outputs(plain[0], spec[0], requested_tokens=args.tokens,
+                                      plain_s=plain_s, spec_s=spec_s)
+                row.update(id=case["id"], category=case["category"], sample=sample,
+                           source=case.get("source"), prompt=prompt)
+                results.append(row)
+                print(json.dumps({k: v for k, v in row.items()
+                                  if k not in ("plain_token_ids", "spec_token_ids", "prompt")}), flush=True)
+        except Exception as exc:
+            results.append({"id": case["id"], "category": case["category"],
+                            "passed": False, "errors": [f"{type(exc).__name__}: {exc}"]})
+            print(f"{case['id']}: failed: {type(exc).__name__}: {exc}", flush=True)
+    passed = bool(results) and all(row["passed"] for row in results)
+    report = {"schema": "hipengine.gemma4.mtp_probe.v1", "performance_claim": False,
+              "passed": passed, "candidate_budget": args.budget, "results": results,
+              "limitations": ["Whole-call timing is not isolated decode throughput.",
+                              "Token equality is a greedy self-consistency check, not a task-quality gate.",
+                              "Plain-first ordering checks inherited state but is not order-balanced timing."]}
+    if args.json:
+        from hipengine.benchmark.provenance import collect_artifact_provenance, collect_model_identity
+        report["provenance"] = collect_artifact_provenance(
+            repo_root=Path(__file__).resolve().parents[1], model_path=args.artifact,
+            quant=None, kv_dtype="bf16", command=[sys.executable, *sys.argv],
+            timing_protocol="plain-first whole public call including prefill; emitted tokens",
+            warmups=1, repetitions=args.samples)
+        report["draft_provenance"] = collect_model_identity(args.draft)
+        args.json.parent.mkdir(parents=True, exist_ok=True)
+        args.json.write_text(json.dumps(report, indent=2) + "\n")
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":

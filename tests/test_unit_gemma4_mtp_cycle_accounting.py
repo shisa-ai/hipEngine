@@ -29,6 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+import pytest
 
 from hipengine.generation.gemma4_mtp import Gemma4MTPTextProvider
 from hipengine.generation.registry import GenerationRequest
@@ -156,11 +157,19 @@ def _run_cycle(
     max_tokens: int,
     incoming_position: int = 0,
     wrong_at: int | None = None,
+    eos_token: int = _EOS,
+    ignore_eos: bool = True,
+    tokenizer_stops: tuple[int, ...] | None = None,
+    request_options: dict | None = None,
 ) -> _Run:
     runner = _FakeRunner(position=incoming_position)
     drafter = _FakeDrafter(runner=runner, wrong_at=wrong_at)
+    generator = _FakeGenerator(runner)
+    generator.tokenizer.eos_token_id = eos_token
+    if tokenizer_stops is not None:
+        generator.tokenizer.stop_token_ids = tokenizer_stops
     provider = Gemma4MTPTextProvider(
-        target_generator=_FakeGenerator(runner),
+        target_generator=generator,
         config=SpeculativeProviderConfig(
             provider="gemma4_mtp",
             draft_model="/nonexistent/sidecar.gguf",
@@ -172,8 +181,8 @@ def _run_cycle(
         prompts=(_PROMPT,),
         max_tokens=max_tokens,
         temperature=0.0,
-        top_p=1.0,
-        ignore_eos=True,
+        ignore_eos=ignore_eos,
+        **({"top_p": 1.0} | (request_options or {})),
     )
     output = provider.generate_detailed(request)[0]
     return _Run(
@@ -239,7 +248,7 @@ def test_every_budget_stops_exactly_at_max_tokens_and_matches_greedy() -> None:
     that do not, at token counts on both sides of a cycle boundary.
     """
 
-    for budget in (1, 2, 3, 4, 6, 8):
+    for budget in range(1, 9):
         for max_tokens in (1, 2, 5, 6, 8, 9, 16, 17):
             run = _run_cycle(budget=budget, max_tokens=max_tokens)
             assert run.tokens == _greedy_reference(len(_PROMPT), max_tokens), (
@@ -247,6 +256,53 @@ def test_every_budget_stops_exactly_at_max_tokens_and_matches_greedy() -> None:
                 f"reproduce greedy decoding"
             )
             assert run.finish_reason == "length"
+
+
+def test_accepted_draft_eos_stops_before_later_candidates() -> None:
+    reference = _greedy_reference(len(_PROMPT), 8)
+    for index in range(8):
+        run = _run_cycle(budget=6, max_tokens=16,
+                         eos_token=reference[index], ignore_eos=False)
+        assert run.tokens == reference[:index + 1]
+        assert run.finish_reason == "stop"
+        assert run.runner.position == len(_PROMPT) + index
+
+
+def test_ignored_draft_eos_does_not_stop_generation() -> None:
+    reference = _greedy_reference(len(_PROMPT), 16)
+    run = _run_cycle(budget=6, max_tokens=16,
+                     eos_token=reference[2], ignore_eos=True)
+    assert run.tokens == reference
+    assert run.finish_reason == "length"
+
+
+def test_explicit_stops_apply_even_when_eos_is_ignored() -> None:
+    reference = _greedy_reference(len(_PROMPT), 8)
+    run = _run_cycle(budget=6, max_tokens=16, ignore_eos=True,
+                     request_options={"stop_token_ids": (reference[2],)})
+    assert run.tokens == reference[:3]
+    assert run.finish_reason == "stop"
+
+
+def test_default_stop_set_and_eos_override_match_plain_semantics() -> None:
+    reference = _greedy_reference(len(_PROMPT), 8)
+    run = _run_cycle(budget=6, max_tokens=16, ignore_eos=False,
+                     tokenizer_stops=(reference[2], reference[5]))
+    assert run.tokens == reference[:3]
+    overridden = _run_cycle(budget=6, max_tokens=16, ignore_eos=False,
+                            tokenizer_stops=(reference[2],),
+                            request_options={"eos_token_id": reference[5]})
+    assert overridden.tokens == reference[:6]
+
+
+@pytest.mark.parametrize("options", [
+    {"logit_bias": {1: 1.0}}, {"suppress_token_ids": (1,)},
+    {"repetition_penalty": 1.1}, {"min_tokens": 1, "eos_token_id": 1},
+    {"stop_token_sequences": ((1, 2),)}, {"top_p": 0.9},
+])
+def test_mtp_rejects_unsupported_request_controls(options) -> None:
+    with pytest.raises(NotImplementedError):
+        _run_cycle(budget=2, max_tokens=8, request_options=options)
 
 
 def test_a_rejected_draft_does_not_break_the_greedy_sequence() -> None:
