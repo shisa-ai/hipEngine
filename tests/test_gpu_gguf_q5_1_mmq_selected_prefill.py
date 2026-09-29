@@ -170,3 +170,115 @@ def test_q5_1_mmq_ds4_selected_prefill_bounded_and_deterministic() -> None:
     abs_vs_owner = np.abs(mmq - owner) / row_scale
     assert float(abs_vs_owner.max()) < 5e-2
     assert int((mmq.argmax(1) == owner.argmax(1)).sum()) >= compact_rows - 1
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q5_1_mmq_ds4_serves_in_features_not_divisible_by_128() -> None:
+    """The down projection's K=704 is not a multiple of the 128-value DS4 block.
+
+    ``blk.27.ffn_down_exps.weight`` is ``(128, 2816, 704)``: 22 Q5_1 blocks of
+    32, but 5.5 DS4 blocks of 128. The pack, the workspace sizing and the
+    consumer all floor that division, which would cover 640 of 704 inputs and
+    drop the trailing 64 values silently -- which is why the route's own gate
+    refuses the shape outright today.
+
+    Zero-filling the trailing lanes is exact: a zero activation contributes 0
+    to ``dot4``, to the block sum, and therefore to the ``m`` offset, so a
+    partial final block must reproduce the strict float-dequant owner rather
+    than merely stay inside its buffer.
+    """
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+        # Match the production route: the consumer runs planes=3, so the pack
+        # must write all three planes (d4x3 = residual_passes 3).
+        gguf_q8_1_mmq_ds4_pack_bf16_d4x3 as gguf_q8_1_mmq_ds4_pack_bf16,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_mmq_selected_prefill import (
+        build_gguf_q5_1_mmq_selected_prefill,
+        ds4_workspace_nbytes,
+        gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out,
+    )
+
+    rng = np.random.default_rng(704)
+    experts, in_features, out_features = 4, 704, 256
+    assert in_features % 32 == 0 and in_features % 128 != 0
+    counts = np.array([5, 3, 0, 6], dtype=np.int64)
+    compact_rows = int(counts.sum())
+    expert_start = np.zeros(experts + 1, dtype=np.int64)
+    expert_start[1:] = np.cumsum(counts)
+
+    raw_weights, weights = _make_q5_1_weight(rng, experts * out_features, in_features)
+    host_w = np.frombuffer(raw_weights, dtype=np.uint8)
+    rows_f32 = (rng.standard_normal((compact_rows, in_features)) * 0.4).astype(np.float32)
+    rows_bf16 = _bf16_bits(rows_f32).reshape(compact_rows, in_features)
+    row_owner = np.empty((compact_rows, out_features), dtype=np.uint16)
+
+    runtime = get_hip_runtime()
+    library = build_gguf_q5_1_mmq_selected_prefill(load=True)
+    allocations = []
+    try:
+        w_dev = malloc(host_w.nbytes, runtime=runtime)
+        rows_dev = malloc(rows_bf16.nbytes, runtime=runtime)
+        # Raises today: in_features % 128 != 0 is rejected outright.
+        ds4_dev = malloc(
+            ds4_workspace_nbytes(compact_rows, in_features, 3), runtime=runtime
+        )
+        start_dev = malloc(expert_start.nbytes, runtime=runtime)
+        out_dev = malloc(row_owner.nbytes, runtime=runtime)
+        allocations += [w_dev, rows_dev, ds4_dev, start_dev, out_dev]
+        copy_host_to_device(w_dev, host_array_ptr(host_w), runtime=runtime)
+        copy_host_to_device(
+            rows_dev, host_array_ptr(np.ascontiguousarray(rows_bf16)), runtime=runtime
+        )
+        copy_host_to_device(start_dev, host_array_ptr(expert_start), runtime=runtime)
+
+        gguf_q8_1_mmq_ds4_pack_bf16(
+            rows_dev.ptr,
+            ds4_dev.ptr,
+            compact_rows,
+            in_features,
+            runtime=runtime,
+        )
+        gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
+            ds4_dev.ptr,
+            start_dev.ptr,
+            w_dev.ptr,
+            out_dev.ptr,
+            compact_rows,
+            experts,
+            in_features,
+            out_features,
+            3,
+            runtime=runtime,
+            library=library,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(row_owner), out_dev, runtime=runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    mmq = _bf16_to_float(row_owner)
+    oracle = np.empty_like(mmq)
+    row_f32 = _bf16_to_float(rows_bf16)
+    for expert in range(experts):
+        for row in range(expert_start[expert], expert_start[expert + 1]):
+            weight = weights[expert * out_features : (expert + 1) * out_features]
+            oracle[row] = row_f32[row] @ weight.T
+
+    # Dropping the trailing 64 inputs moves every output cell, so this is the
+    # assertion that pins the contract rather than a tolerance on noise.
+    row_scale = np.maximum(np.abs(oracle).max(axis=1, keepdims=True), 1e-3)
+    abs_err = np.abs(mmq - oracle) / row_scale
+    assert float(abs_err.max()) < 2e-2, (
+        f"max scaled error {float(abs_err.max()):.4f} -- the final 64 inputs "
+        f"of K={in_features} are not reaching the kernel"
+    )
+    assert float(abs_err.mean()) < 2e-3
+    assert int((mmq.argmax(1) == oracle.argmax(1)).sum()) >= compact_rows - 1

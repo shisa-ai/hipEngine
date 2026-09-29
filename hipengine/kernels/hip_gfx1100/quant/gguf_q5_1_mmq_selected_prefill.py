@@ -14,6 +14,9 @@ _OUTPUT_NAME = "gguf_q5_1_mmq_selected_prefill.so"
 _SYMBOL = "hipengine_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out"
 VARIANT = "q5_1_mmq_ds4_selected_prefill_bf16_bf16_out"
 
+# Activation lanes per DS4 block. Must match Q8_1_MMQ_BLOCK in the .hip.
+Q8_1_MMQ_BLOCK = 128
+
 _ARGS = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -25,11 +28,16 @@ _ARGS = (
 def ds4_workspace_nbytes(compact_rows: int, in_features: int, planes: int = 3) -> int:
     """Device bytes for the multi-plane ds4 activation workspace."""
 
-    if compact_rows <= 0 or in_features <= 0 or in_features % 128:
-        raise ValueError("compact_rows must be positive and in_features % 128 == 0")
+    if compact_rows <= 0 or in_features <= 0:
+        raise ValueError("compact_rows and in_features must be positive")
     if planes <= 0 or planes > 3:
         raise ValueError("planes must be in 1..3")
-    return planes * compact_rows * (in_features // 128) * 144
+    # Ceil, not floor: the down projection's K=704 is 5.5 DS4 blocks, and the
+    # trailing lanes of the partial block are zero-filled by the pack so the
+    # padding contributes exactly 0 to dot4, to the block sum, and to the m
+    # offset. Flooring here would allocate 640 of 704 inputs' worth of blocks.
+    blocks = -(-in_features // Q8_1_MMQ_BLOCK)
+    return planes * compact_rows * blocks * 144
 
 
 def plan_gguf_q5_1_mmq_selected_prefill_build(
@@ -89,8 +97,12 @@ def gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
 
     if compact_rows <= 0 or num_experts <= 0:
         raise ValueError("compact_rows and num_experts must be positive")
-    if in_features <= 0 or in_features % 128:
-        raise ValueError("in_features must be a positive multiple of 128")
+    if in_features <= 0 or in_features % 32:
+        # Q5_1 weights are stored as 32-value blocks, so the weight row needs
+        # an exact division by 32. A multiple of 128 is NOT required: the DS4
+        # pack zero-fills the partial final block (the down projection is
+        # K=704 = 22 Q5_1 blocks = 5.5 DS4 blocks).
+        raise ValueError("in_features must be a positive multiple of 32")
     if out_features <= 0:
         raise ValueError("out_features must be positive")
     if planes <= 0 or planes > 3:

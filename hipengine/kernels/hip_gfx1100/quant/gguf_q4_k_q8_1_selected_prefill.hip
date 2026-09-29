@@ -548,11 +548,18 @@ __global__ void gguf_q8_1_mmq_ds4_pack_bf16_kernel(
   const int tid = threadIdx.x;
   const int ds4_idx = tid >> 5;
   const int lane = tid & 31;
-  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  // Ceil, so a K that is not a multiple of 128 still gets its trailing lanes
+  // packed. The down projection is K=704 = 5.5 DS4 blocks.
+  const int64_t blocks_per_row =
+      (hidden + Q8_1_MMQ_BLOCK - 1) / Q8_1_MMQ_BLOCK;
   if (row >= rows || q8_block >= blocks_per_row) return;
 
-  const int64_t in_idx = row * hidden + q8_block * Q8_1_MMQ_BLOCK + tid;
-  float residual = bf16_bits_to_float(x[in_idx]);
+  const int64_t col = q8_block * Q8_1_MMQ_BLOCK + tid;
+  const int64_t in_idx = row * hidden + col;
+  // A lane past the row's end reads 0, so the partial block's trailing
+  // sub-blocks get scale 0 and sum 0 and contribute exactly nothing to dot4,
+  // to the block sum, or to the m offset downstream.
+  float residual = col < hidden ? bf16_bits_to_float(x[in_idx]) : 0.0f;
 
   __shared__ float scale_shared[4];
   __shared__ float sum_shared[4];
@@ -876,8 +883,7 @@ bool valid_q8_1_mmq_ds4_pack(
     const void* out,
     int64_t rows,
     int64_t hidden) {
-  return x != nullptr && out != nullptr && rows > 0 && hidden > 0 &&
-      (hidden % Q8_1_MMQ_BLOCK) == 0;
+  return x != nullptr && out != nullptr && rows > 0 && hidden > 0;
 }
 
 bool valid_q8_1_mmq_gather_ds4_pack(
@@ -2643,7 +2649,10 @@ int launch_q8_1_mmq_ds4_pack_bf16(
   if (!valid_q8_1_mmq_ds4_pack(x, out, rows, hidden)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int64_t blocks_per_row = hidden / Q8_1_MMQ_BLOCK;
+  // Ceil to match the kernel: a K that is not a multiple of 128 still needs
+  // its trailing lanes packed (the down projection is K=704 = 5.5 blocks).
+  const int64_t blocks_per_row =
+      (hidden + Q8_1_MMQ_BLOCK - 1) / Q8_1_MMQ_BLOCK;
   hipLaunchKernelGGL(
       (gguf_q8_1_mmq_ds4_pack_bf16_kernel<residual_passes>),
       dim3(static_cast<unsigned int>(blocks_per_row), static_cast<unsigned int>(rows)),
