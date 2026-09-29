@@ -197,6 +197,13 @@ class Gemma4LayerScratch:
     experts: Gemma4ExpertScratch | None = field(default=None, repr=False)
     router: Gemma4RouterScratch | None = field(default=None, repr=False)
     attention: Gemma4AttentionScratch = field(default_factory=Gemma4AttentionScratch, repr=False)
+    # Pair of HIP events gating the parallel MoE branch: one recorded on the
+    # main stream after attention so the branch cannot read `hidden` early, one
+    # recorded on the branch stream so the combine cannot run ahead of it.
+    # Created on first use, because a per-forward event would cost a
+    # hipEventCreate per layer per step.
+    _moe_entry_event: int | None = field(default=None, repr=False)
+    _moe_exit_event: int | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -247,6 +254,14 @@ class Gemma4LayerScratch:
         return buf
 
     def free(self) -> None:
+        from hipengine.core.hip import get_hip_runtime
+
+        runtime = get_hip_runtime()
+        for event in (self._moe_entry_event, self._moe_exit_event):
+            if event is not None:
+                runtime.event_destroy(event)
+        self._moe_entry_event = None
+        self._moe_exit_event = None
         self.attention.close()
         if self.experts is not None:
             self.experts.free()
@@ -279,6 +294,11 @@ class Gemma4LayerScratch:
             "dense_gate_up": rows * 2 * self.dense_intermediate * _BF16_BYTES,
             "dense_act": rows * self.dense_intermediate * _BF16_BYTES,
             "dense": rows * hidden * _BF16_BYTES,
+            # The dense and MoE branches run on separate streams, so the MoE
+            # branch's pre-FFN normalisation gets its own buffer rather than
+            # sharing `normalized` with the dense branch. Sharing would race:
+            # both write it from `hidden` and read it for their projections.
+            "moe_normalized": rows * hidden * _BF16_BYTES,
             "experts": rows * hidden * _BF16_BYTES,
             "selected": rows * self.top_k * _I64_BYTES,
             "routing": rows * self.top_k * _F32_BYTES,
@@ -331,6 +351,20 @@ def _append_kv(
 
 
 _last_prefill_route: str | None = None
+
+# The second stream the parallel MoE branch runs on, created once per process.
+# Deliberately module-level rather than per-runner: HIP streams are cheap and
+# this mirrors the single default stream the rest of the layer already assumes.
+_moe_stream_cache: int | None = None
+
+
+def _moe_stream() -> int:
+    global _moe_stream_cache
+    if _moe_stream_cache is None:
+        from hipengine.core.hip import get_hip_runtime
+
+        _moe_stream_cache = get_hip_runtime().stream_create(nonblocking=True)
+    return _moe_stream_cache
 
 
 def last_prefill_attention_route() -> str | None:
@@ -417,6 +451,10 @@ def gemma4_layer_forward_bf16(
     key_begin: int = 0,
     attention_mask_is_causal: bool = False,
     stream: int = 0,
+    # -1 (the default) selects a second stream so the MoE branch overlaps the
+    # dense branch. Passing ``stream_moe=stream`` restores the single-stream
+    # order, which is both the rollback lever and the A/B control.
+    stream_moe: int = -1,
 ) -> int:
     """Run one Gemma 4 decoder layer over a block of tokens, in place.
 
@@ -463,6 +501,12 @@ def gemma4_layer_forward_bf16(
     q_width = num_heads * head_dim
     kv_width = num_kv_heads * head_dim
     kwargs = {"stream": stream}
+    # P11: the shared-expert MLP and the MoE experts are independent -- both
+    # read `hidden` and write their own buffer, and neither consumes the
+    # other's result until the combine -- so they overlap on two streams.
+    moe_stream = _moe_stream() if int(stream_moe) < 0 else int(stream_moe)
+    moe_kwargs = {"stream": moe_stream}
+    parallel = moe_stream != stream
 
     def buf(name: str) -> int:
         return scratch.buffer(name).ptr
@@ -635,6 +679,20 @@ def gemma4_layer_forward_bf16(
         **kwargs,
     )
 
+    # The MoE branch may run concurrently with the dense branch below, so it
+    # needs an entry barrier: record on the main stream *before* the dense
+    # branch is dispatched (recording after would make the branch wait for the
+    # dense work too, deleting the overlap this exists to create).
+    if parallel:
+        from hipengine.core.hip import get_hip_runtime
+
+        runtime = get_hip_runtime()
+        if scratch._moe_entry_event is None:
+            scratch._moe_entry_event = runtime.event_create()
+            scratch._moe_exit_event = runtime.event_create()
+        runtime.event_record(scratch._moe_entry_event, stream)
+        runtime.stream_wait_event(moe_stream, scratch._moe_entry_event)
+
     # --- dense branch (parallel with the MoE branch) ------------------------
     gemma4_rmsnorm_f32w_bf16(
         buf("hidden"),
@@ -696,19 +754,19 @@ def gemma4_layer_forward_bf16(
         top_k=scratch.top_k,
         scratch=scratch.router,
         eps=eps,
-        stream=stream,
+        stream=moe_stream,
     )
     gemma4_rmsnorm_f32w_bf16(
         buf("hidden"),
         layer.pre_feedforward_layernorm_2,
-        buf("normalized"),
+        buf("moe_normalized"),
         rows,
         hidden_size,
         eps,
-        **kwargs,
+        **moe_kwargs,
     )
     gemma4_experts_forward_bf16(
-        buf("normalized"),
+        buf("moe_normalized"),
         buf("selected"),
         buf("routing"),
         layer.experts_gate_up_proj,
@@ -716,7 +774,7 @@ def gemma4_layer_forward_bf16(
         buf("experts"),
         scratch=scratch.experts,
         rows=rows,
-        stream=stream,
+        stream=moe_stream,
     )
     gemma4_rmsnorm_f32w_bf16(
         buf("experts"),
@@ -725,8 +783,13 @@ def gemma4_layer_forward_bf16(
         rows,
         hidden_size,
         eps,
-        **kwargs,
+        **moe_kwargs,
     )
+
+    # Exit barrier: the combine below reads `experts` from the main stream.
+    if parallel:
+        runtime.event_record(scratch._moe_exit_event, moe_stream)
+        runtime.stream_wait_event(stream, scratch._moe_exit_event)
 
     # --- combine ------------------------------------------------------------
     gemma4_branch_add_bf16(
