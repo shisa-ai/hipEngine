@@ -1,13 +1,12 @@
-# The `wmma` route produces a false pass at HEAD
+# The `wmma` route produced a false pass at HEAD
 
-**Status: confirmed defect. Cause NOT established.** An earlier revision of this
-file named the dispatch memoization key as the verified cause. That was wrong,
-and the correction is recorded below rather than quietly edited, because the
-wrong claim was published in a worklog entry and a ledger row.
+**Status: cause established and fixed.** This file has been revised twice; the
+history is kept rather than edited away because the first revision published a
+wrong cause in a worklog entry and a ledger row.
 
 ## Symptom, reproduced twice
 
-`--route wmma --layers 16-47` (the certified configuration) reports:
+`--route wmma --layers 16-47` (the certified configuration) reported:
 
 ```
 strict_logits_sha256    = 83732d4542e1847fd8975ca6...
@@ -17,56 +16,65 @@ candidate_logits_sha256 = 83732d4542e1847fd8975ca6...
 Identical. KL exactly `0.0` on every statistic, `top1 1.0`, and
 **`status: complete`, `measurement_valid: true`, `requires_outlier_review: false`**.
 
-`83732d45...` is the WMMA@16-47 hash - byte-identical to the teacher hash of the
-composed staged runs, whose teacher arm binds `WMMA_LAYERS_ENV` to 16-47. The
-exact chain is `550bb9b8...`. The teacher arm, recorded as
-`teacher_selector: "cleared"`, did not resolve to the exact chain.
+The 2026-09-16 certification of the same route had a genuine exact-chain teacher
+(`550bb9b8...` against candidate `65370710...`), mean KL 3.796e-4. So this was a
+regression, and it meant **the 16-47 certification was not reproducible at HEAD**:
+a re-run returned KL exactly 0.0 and a green status.
 
-- `artifact-control-wmma16-47-vs-exact.json` - first occurrence.
-- `artifact-control-wmma16-47-vs-exact-fixed.json` - **same result with the
-  dispatch-key fix in place.**
+## Cause
 
-## It is a regression
+The `wmma` route cleared **only** its own selector. It never cleared
+`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE`, which the certified plan binds to 16-47 -
+the same window this route is gated at. `_q8_dense_wide_claims_parent` accepts
+**both** the exact parent (`raw`) and the WMMA-rewritten parent (`wmma_<parent>`
+under ABI `wmma_raw`), and the wide route runs later in the launch chain. So it
+claimed the dispatch whichever way the WMMA selector was set, both arms resolved
+to `dense_wide256_f32_f32_out`, and the gate compared one configuration against
+itself.
 
-The 2026-09-16 certification of this route had a genuine exact-chain teacher
-(`550bb9b8...` against candidate `65370710...`), mean KL 3.796e-4.
+The reciprocal clearing was already understood and documented - the
+`dense_wide` route clears the WMMA selector in both arms, and the `Route`
+docstring explains exactly why ("the two routes would contend for the window
+under test"). It was simply never added in the other direction.
 
-**The WMMA 16-47 gate cannot be re-run at HEAD to reproduce its certification.**
-A re-run returns KL exactly 0.0 and a green status.
+## Confirmed by elimination, not assumed
 
-## Corrected cause analysis
+`83732d45...` is the wide route's output, and the elimination is what shows it:
 
-**Withdrawn:** that the dispatch memoization key was the cause. The key genuinely
-lacked a WMMA layer-scope term and that was a real latent defect (fixed in
-`a7ad30e5f`, with a RED test), but the false pass reproduces unchanged with the
-term present. A latent defect is not the same as the cause, and stating it as
-"verified" was an over-claim.
+| configuration | teacher | candidate |
+|---|---|---|
+| `wmma` route (wide bound, WMMA cleared vs 16-47) | `83732d45` | `83732d45` |
+| composed route (wide **cleared**, WMMA 16-47 + staged 13-15) | `550bb9b8` | `87dbf445` |
 
-**Leading hypothesis, not confirmed:** `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE` is
-bound to 16-47 by the certified plan, and `_q8_dense_wide_claims_parent` accepts
-**both** the exact parent (`raw`) and the WMMA-rewritten parent
-(`wmma_<parent>` under ABI `wmma_raw`). The wide route also runs later in the
-launch chain. If it claims the parent in both arms, the final variant is
-`dense_wide256_f32_f32_out` regardless of whether WMMA ran, so the WMMA layer
-selector cannot change the arithmetic for 16-47 and both arms are the same
-kernel. Its own docstring supports this: the production default binds the WMMA
-route to 16-47, "which is the window this route is scoped to".
+With the wide route bound, the two arms differ only in the WMMA selector and
+produce identical logits - so the selector is provably inert. With it cleared,
+the WMMA arm produces `87dbf445...` against an exact-chain teacher of
+`550bb9b8...`, so WMMA does change the arithmetic when it is the only route
+bound. The artifact's own recorded env settles it directly: the composed run's
+provenance carries `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE: '0'`, and the `wmma`
+route's carries no wide key at all.
 
-**Why it is not confirmed:** the probe used to test the cache key cannot settle
-this. A synthetic weight resolves to `exact_prefill_tile16x4_bf16_bf16_out`,
-which is not in `_Q8_DENSE_WIDE_EXACT_PARENTS`, so the wide route declines and
-the real dispatch path is never reached. Confirming it needs a real resident
-weight, or an instrumented run of the gate itself.
+## A wrong cause was published first, and is withdrawn
+
+The first revision named the **dispatch memoization key** as the verified cause.
+That was wrong. The key genuinely lacked a WMMA layer-scope term - a real latent
+defect, fixed in `a7ad30e5f` with a RED test, and that fix stands - but the false
+pass reproduced **unchanged** with the term present
+(`artifact-control-wmma16-47-vs-exact-fixed.json`). Establishing that a suspected
+cause is *present* is not establishing that it is *the* cause.
+
+## Fix
+
+The `wmma` route now clears `DENSE_WIDE_ENV` and `DENSE_WIDE_LAYERS_ENV` in both
+arms, matching what the composed and staged routes already did. RED/GREEN
+verified: with the fix reverted, `test_wmma_route_clears_the_wide_route_in_both_arms`
+fails. `tests/test_unit_qwen4exp_wmma_gate_route_arms.py` also pins that the two
+arms differ **only** in the WMMA selector, so the measured drift stays
+attributable to this route alone.
 
 ## What this does not affect
 
-The staged-f32 results are unaffected: every staged run's teacher hash was
-verified to be `550bb9b8...` (the exact chain) and every candidate hash verified
-to differ. The composed end-to-end certificate has teacher `550bb9b8...`,
-candidate `87dbf445...`.
-
-It does mean the composed run's **WMMA@16-47 component is not independently
-re-verified at HEAD**; it is inherited from the 2026-09-16 certification, and
-that certification is currently not reproducible. If the leading hypothesis
-holds, that component is really `dense_wide` at HEAD and the composition's
-arithmetic differs from what its evidence describes.
+The staged-f32 results are unaffected, and the composed certificate is
+**exonerated rather than damaged**: the composed run cleared the wide route in
+both arms, so its WMMA@16-47 component really was WMMA and its teacher really was
+the exact chain. Its hashes are in the table above.
