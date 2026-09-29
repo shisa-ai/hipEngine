@@ -357,3 +357,56 @@ dp4a variant that was reverted.
 decode dp4a logical128 owner under the current production envelope - a gate run, no kernel work; and
 (2) build the exact-activation warp256 variant the row actually asks for - real kernel work. Neither
 is licensed by this addendum.
+
+## Addendum 5: the authoritative family split, and the shared-expert upper bound
+
+Joining the harness's renamed decode dispatches to `rocpd_info_kernel_symbol` also yields the full
+family breakdown, which sums **exactly** to the published kernel sum:
+
+| family | ms/step | kernels/step |
+|---|---:|---:|
+| **moe** | **24.550** | 583 |
+| **linear** | **23.166** | 545 |
+| qsa_decode | 2.621 | 120 |
+| gdn | 2.401 | 72 |
+| gr_read | 0.935 | 292 |
+| decode_boundary | 0.508 | 151 |
+| ple | 0.036 | 8 |
+| **total** | **54.218** | **1,771** |
+
+### A correction this forces
+
+`gguf_k_pack8_prefill_out_kernel<float,float,8>` totals **23.997 ms/step across 497 kernels/step**,
+of which **22.184 ms/step is the `linear` family** and only 1.812 ms/step is inside `moe`. So it is
+predominantly **DE-3's** owner, not a shared-expert kernel. An earlier draft of this artifact
+considered it a shared-expert candidate; the family split excludes that.
+
+### The shared-expert upper bound (for DE-2)
+
+Inside `moe`, the two routed owners are named and charged to exact GGUF payloads:
+
+- routed gate+up `gguf_q4_k_selected_dual_silu_logical128_t64` — **14.013 ms/step** (888.83 MB)
+- routed down `q5_1_selected_weighted_sum_logical256_t64` — **5.444 ms/step** (615.42 MB)
+
+**Therefore the entire remainder of the moe family — shared expert gate/up/down AND the router GEMV
+AND the top-k select AND the combine/norm/misc kernels — is 24.550 - 14.013 - 5.444 = 5.093
+ms/step.** The shared expert moves 250.75 MB/step and the router 251.66 MB/step, so that remainder
+moves **~502.41 MB in ≤5.093 ms → ≥98.6 GB/s**.
+
+**DE-2 records the shared block alone at 6.19 ms/token, which is larger than the measured cost of
+shared + router + every other non-routed kernel in the block.** That does not prove the record wrong —
+the two figures come from different days, models and compositions — but it does mean the record
+cannot be used as-is to size a screen.
+
+### What is still missing for DE-2
+
+Which specific kernels serve `ffn_gate_shexp` / `ffn_up_shexp` / `ffn_down_shexp` versus the router.
+The per-kernel names do not say, and the candidate kernels
+(`gguf_k_pack8_prefill_out_kernel` 1.812, `gguf_k_selected_prefill_out_kernel` 0.871 + 0.474,
+`dense_gemv_out_kernel` 1.363) are not resolvable by name alone. **A name-to-tensor mapping, or a
+scoped marker around the shared-expert call, is what the row still needs.**
+
+Shared work *is* present in the capture: `shared_gate_combine_out_kernel` runs **48 times/step
+(1 per layer) at 0.067 ms/step**, inside `moe:layers.N.expert_gate`. The earlier note that the shared
+expert "has NO role in the decode capture at all" is correct about **role names** but too strong as a
+conclusion — it is located, and bounded above as above.
