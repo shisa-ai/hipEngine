@@ -88,14 +88,28 @@ def test_q5_k_gate_up_reaches_the_mmq32_leaf() -> None:
 
     The registry keys kernels on ``(backend, layer, quant, variant)``, so the
     same lookup that succeeds for ``gguf_q4_k`` must succeed for
-    ``gguf_q5_k``. Importing the owning module is load-bearing: registration is
-    import-time and lazy, so without it ``resolve`` returns ``None`` whether or
-    not the leaf exists. ``missing="none"`` keeps this module *collectable*
-    while it is absent, so the failure reads as a genuine RED assertion rather
-    than an ImportError.
+    ``gguf_q5_k``.
+
+    Importing the owning module is **not** sufficient, and the earlier version
+    of this docstring said it was. Registration happens once, at first import;
+    ``tests/conftest.py`` snapshots the registry at collection time and
+    restores that baseline after *every* test, so a registration made during a
+    previous test is wiped -- and a repeat ``import`` is a no-op because the
+    module is already in ``sys.modules``, so nothing re-registers it. The
+    failure surfaced as soon as another test file ran first. Probing
+    ``is_registered`` and registering on demand is what actually makes this
+    order-independent, and it is the same mechanism ``_mmq32_leaf_owner`` uses
+    in production.
     """
     import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill  # noqa: F401
-    from hipengine.kernels.registry import resolve
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+        register_gguf_q4_k_q8_1_selected_prefill_kernels,
+    )
+    from hipengine.kernels.registry import KernelKey, is_registered, resolve
+
+    key = KernelKey(_BACKEND, _LAYER, _QUANT, _MMQ32_VARIANT)
+    if not is_registered(key):
+        register_gguf_q4_k_q8_1_selected_prefill_kernels()
 
     leaf = resolve(
         backend=_BACKEND,
