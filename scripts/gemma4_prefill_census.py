@@ -113,6 +113,22 @@ def main() -> int:
         "gemma4_attention_prefill_bf16",
         lambda *a, **k: "attention_prefill",
     )
+    # The three prefill routes are labelled separately, so the census shows
+    # which kernel actually ran rather than only that attention cost
+    # something. Without these two the default path is invisible: global
+    # layers go to the tiled kernel and sliding layers to AOTriton, so
+    # neither reaches the exact-kernel wrap above and both fall into
+    # `unattributed`.
+    census.wrap(
+        gemma4_layer,
+        "gemma4_attention_prefill_tiled",
+        lambda *a, **k: "attention_prefill_tiled",
+    )
+    census.wrap(
+        gemma4_layer,
+        "gemma4_attention_prefill_aotriton",
+        lambda *a, **k: "attention_prefill_aotriton",
+    )
 
     def dense_label(x_ptr: int, weight: Any, out_ptr: int, rows: int, in_features: int, out_features: int, **kw: Any) -> str:
         return f"dense:{quant_of(weight)}"
