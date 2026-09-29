@@ -53,19 +53,31 @@ REPO = Path(__file__).resolve().parents[1]
 # (family, regex) — first match wins. Layer 29 carries the artifact's only
 # Q5_K gate_up / Q8_0 down experts and is reported separately.
 ENGINE_FAMILIES: tuple[tuple[str, str], ...] = (
-    ("moe.l29_experts", r"gguf_q4_k_selected_dual_grouped_rowbatch|gguf_k_selected_prefill_out_kernel"),
+    # q8_0_selected_grouped_wmma_prefill is P3's newly-bound Q8_0 down owner,
+    # which runs only for layer 29 (the sole Q8_0 expert down in the artifact);
+    # without it the fix lands in `other` and layer 29 reads as improved by a
+    # sum that no longer includes its own kernel.
+    ("moe.l29_experts", r"gguf_q4_k_selected_dual_grouped_rowbatch|gguf_k_selected_prefill_out_kernel|q8_0_selected_grouped_wmma_prefill"),
     ("moe.gate_up", r"q4_k_selected"),
     ("moe.down", r"q5_1_selected"),
     ("moe.act_quant", r"q8_1_mmq_ds4_pack|q8_1_mmq_gather_ds4_pack"),
     ("moe.route_glue", r"qwen35_moe_|gemma4_moe_|gemma4_expert_weight_scale|qwen35_router_select"),
     ("moe.router_gemm", r"router_logits|gemma4_router_prescale"),
     ("attn.sliding", r"^attn_fwd|gemma4_attention_decode_class_kernel<unsigned short, 1|^dim_sliding:"),
-    ("attn.global", r"gemma4_attention_decode_class_kernel<unsigned short, 2|^dim_global:"),
+    # flash_attn_tile<512 is P2's tiled head_dim-512 prefill port. It replaced
+    # gemma4_attention_decode_class_kernel<...,2,...>, which is the only symbol
+    # this rule used to match, so post-P2 runs reported attn.global as 0.00 ms
+    # on zero launches while the kernel sat in `other`.
+    ("attn.global", r"gemma4_attention_decode_class_kernel<unsigned short, 2|flash_attn_tile<512|^dim_global:"),
     ("lm_head", r"gguf_k_pack8_prefill_out_kernel<unsigned short, float"),
     ("dense.q8_0", r"gguf_q8_0|gguf_k_pack8_prefill_out_kernel|mmq128_prefill"),
     ("norm", r"rmsnorm"),
     ("elementwise", r"rotary|gelu|branch_add|gemma4_scale|embedding"),
-    ("runtime_copy_fill", r"__amd_rocclr"),
+    # The k_*_to_* converters are P2's dtype staging (Q bf16->f32, KV bf16->f16,
+    # mask u8->f16, out f32->bf16). They are conversions, so runtime_copy_fill
+    # is their honest bucket; leaving them in `other` hides the staging cost
+    # that P2's row exists to weigh against the kernel's win.
+    ("runtime_copy_fill", r"__amd_rocclr|k_kv_bf16_to_f16|k_q_bf16_to_f32|k_f32_to_bf16|k_mask_u8_to_f16"),
 )
 # ggml types: 7 Q5_1, 8 Q8_0, 12 Q4_K, 13 Q5_K.
 LLAMACPP_FAMILIES: tuple[tuple[str, str], ...] = (
