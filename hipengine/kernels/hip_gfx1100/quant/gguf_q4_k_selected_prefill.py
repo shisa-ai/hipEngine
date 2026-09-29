@@ -41,6 +41,9 @@ _SYMBOL_GROUPED_ROW8_OUT4_EXPERTGRID64_BF16 = (
 _SYMBOL_GROUPED_ROW8_OUT4_EXPERTGRID64_M1_BF16 = (
     "hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_m1_bf16_bf16_out"
 )
+_SYMBOL_GROUPED_ROW8_OUT4_EXPERTGRID64_Q5K_BF16 = (
+    "hipengine_gguf_q5_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out"
+)
 _SYMBOL_DUAL_BF16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out"
 _SYMBOL_DUAL_COMP_BF16 = (
     "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_comp_bf16_bf16_out"
@@ -474,6 +477,63 @@ def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
 def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out(*args, **kwargs):
     gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
         *args, **kwargs, _bundle=True)
+
+
+def gguf_q5_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    output_a_ptr: int,
+    output_b_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact row8/output4 Q5_K over a fixed 64-CTA expert grid.
+
+    This is the Q5_K sibling of
+    :func:`gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out`
+    and shares its grouped kernel and 64-CTA worker cap. The ``Q5K`` template
+    parameter takes each weight's fifth bit from the block's ``qh`` slab and
+    walks the 176-byte Q5_K superblock instead of Q4_K's 144. The symbol lives
+    in the same ``gguf_q4_k_selected_prefill.hip`` translation unit as the
+    amortized Q5_K owner that already ships.
+    """
+    for value, name in (
+        (compact_rows, "compact_rows"),
+        (num_experts, "num_experts"),
+        (in_features, "in_features"),
+        (out_features, "out_features"),
+    ):
+        _check_positive(value, name)
+    if in_features % _Q4_K_BLOCK:
+        raise ValueError("in_features must be divisible by GGUF Q4_K block size 256")
+    library = library or build_gguf_q4_k_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GROUPED_ROW8_OUT4_EXPERTGRID64_Q5K_BF16)
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        x_ptr,
+        expert_start_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        output_a_ptr,
+        output_b_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
 
 
 def gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out(*args, **kwargs):
@@ -1628,6 +1688,16 @@ def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
         ),
         gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_k",
+            "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+        ),
+        gguf_q5_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out,
         replace=replace,
     )
     register(
