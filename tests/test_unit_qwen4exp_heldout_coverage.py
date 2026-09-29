@@ -1,4 +1,4 @@
-"""Category-heldout coverage must refuse to certify a route that never ran.
+"""Category-heldout coverage must certify engagement, and only engagement.
 
 X-7 is the ledger's declared prerequisite ("Close before extending the admitted
 scope") and lists category-heldout numerical evidence as its first missing
@@ -6,18 +6,27 @@ certificate. Before this, the gate hardcoded one canonical fixture hash, so a
 heldout run could not be expressed at all and the blocker was unfalsifiable from
 the artifact.
 
-The trap this file guards: the heldout suite is **short**. Its 18 prompts run
-39-71 tokens, and both layer-scoped routes decline at ``rows <= 256``. Pointing
-the gate at it produces a flawless-looking comparison between two runs of the
-*same* kernel - bit-identical candidate/teacher logits, a KL of exactly zero,
-``measurement_valid: true``. The ledger's X-11 says the same thing from the other
-side: "39-71-token task prompts never enter >256-row candidates. Inactive
-short-task passes are controls, not qualification."
+The heldout suite is **short**: its 18 prompts run 39-71 tokens. Whether that
+engages a route depends on the route, and the floors differ by more than an order
+of magnitude:
 
-So the row floor is a check, not a note, and these tests pin both directions: it
-refuses a suite that cannot engage the route, and it certifies one that can.
+    ``_wmma_prefill_dispatch``       ``if not use_wmma or rows <= 1``   -> 2
+    ``_q8_dense_wide_dispatch``      ``or rows <= 256``                 -> 257
+    ``_raw_k_staged_f32_dispatch``   no row guard at all                -> 1
+
+So the floor is a per-route property and never a shared constant. **Both**
+directions of error are silent: too low certifies a route that never ran (the
+false pass recorded in the sibling packet), too high refuses a certificate that
+is actually valid. The first version of this check made the second mistake - it
+took ``_q8_iu8_wmma_dispatch``'s 256-row floor, applied it to the f16 WMMA route
+whose floor is 2, and refused a heldout run that had genuinely engaged and
+passed every numerical gate.
+
+These tests pin both directions, and pin that the check discriminates between
+routes rather than returning one answer for all of them.
 """
 
+import hashlib
 import importlib.util
 import json
 import pathlib
@@ -29,7 +38,6 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 GATE = REPO / "scripts" / "execution_profile_q8_wmma_prefill_layers_gate.py"
 ADMISSION = REPO / "benchmarks" / "fixtures" / "qwen4exp_admission_suite_18prompt.json"
 
-# The 18 heldout case ids and their categories, in the fixture's own order.
 HELDOUT_CASES = (
     ("code_merge_intervals", "code"),
     ("code_topological_sort", "code"),
@@ -51,6 +59,9 @@ HELDOUT_CASES = (
     ("heldout_mixed_review", "mixed_ja_en"),
 )
 
+# The admission suite declares 24 transitions, not the canonical 128.
+HELDOUT_DECODE_STEPS = 24
+
 
 def _gate():
     if not GATE.exists():
@@ -62,16 +73,7 @@ def _gate():
     return module
 
 
-# The admission suite declares 24 transitions, not the canonical 128. A hardcoded
-# 129 here made the trajectory checks fail and left the blocker open for the
-# wrong reason - a misleading accounting defect rather than the honest row-floor
-# one - so the count is read from the fixture and passed through.
-HELDOUT_DECODE_STEPS = 24
-
-
 class _Capture:
-    """The minimum shape ``qualification_coverage`` reads."""
-
     def __init__(self, prompt_id: str, category: str):
         self.prompt_id = prompt_id
         self.category = category
@@ -88,14 +90,49 @@ def _captures():
     return [_Capture(i, c) for i, c in HELDOUT_CASES]
 
 
-def _coverage(gate, rows):
+def _rows():
+    return [int(c["prompt_tokens"]) for c in json.loads(ADMISSION.read_text())["cases"]]
+
+
+def _coverage(gate, rows, floor):
     return gate.qualification_coverage(
         captures=_captures(),
         fixture_sha256=gate.ADMISSION_FIXTURE_SHA256,
         prefill_chunk_size=1024,
         fixture_rows=list(rows),
         heldout_decode_steps=HELDOUT_DECODE_STEPS,
+        min_engaging_rows=floor,
     )
+
+
+def _verdict(gate, rows, floor):
+    return gate.qualification_verdict(
+        _coverage(gate, rows, floor),
+        quality_passed=True,
+        deterministic=True,
+        clean=True,
+    )
+
+
+def test_route_row_floors_are_per_route_and_match_the_dispatches():
+    """A shared constant is the bug; these values are read from the guards."""
+
+    gate = _gate()
+    assert gate.ROUTE_ROW_FLOORS["wmma"] == 2, (
+        "_wmma_prefill_dispatch declines at rows <= 1, so it engages at 2"
+    )
+    assert gate.ROUTE_ROW_FLOORS["dense_wide"] == 257, (
+        "_q8_dense_wide_dispatch declines at rows <= 256, so it engages at 257"
+    )
+    assert gate.ROUTE_ROW_FLOORS["staged_f32"] == 1, (
+        "_raw_k_staged_f32_dispatch has no row guard, so it engages at 1"
+    )
+    # The floors must actually be wired onto the routes, not just tabulated.
+    for name, route in gate.SELECTORS.items():
+        assert route.min_engaging_rows == gate.ROUTE_ROW_FLOORS[name], (
+            f"{name} does not carry its own floor; a route gated with another "
+            "route's floor is silently wrong in one direction or the other"
+        )
 
 
 def test_fixture_kind_separates_the_two_protocols():
@@ -106,13 +143,9 @@ def test_fixture_kind_separates_the_two_protocols():
 
 
 def test_heldout_fixture_hash_matches_the_file_on_disk():
-    """A rotated fixture must not silently keep certifying under the old hash."""
-
     gate = _gate()
     if not ADMISSION.exists():
         pytest.skip(f"heldout fixture not present: {ADMISSION}")
-    import hashlib
-
     observed = hashlib.sha256(ADMISSION.read_bytes()).hexdigest()
     assert observed == gate.ADMISSION_FIXTURE_SHA256, (
         "the heldout fixture changed on disk; the gate would classify it as "
@@ -123,14 +156,13 @@ def test_heldout_fixture_hash_matches_the_file_on_disk():
 def test_heldout_run_does_not_claim_canonical_coverage():
     """The two protocols are not interchangeable.
 
-    A heldout run that could be read as canonical coverage would let one
-    certificate stand in for the other, which is the accounting defect X-6
-    records rather than a missing measurement.
+    A heldout run readable as canonical coverage would let one certificate stand
+    in for the other, which is the accounting defect X-6 records rather than a
+    missing measurement.
     """
 
     gate = _gate()
-    rows = [int(c["prompt_tokens"]) for c in json.loads(ADMISSION.read_text())["cases"]]
-    coverage = _coverage(gate, rows)
+    coverage = _coverage(gate, _rows(), gate.ROUTE_ROW_FLOORS["wmma"])
     assert coverage["fixture_kind"] == "category_heldout"
     assert coverage["complete"] is False, (
         "a heldout run must never set the canonical protocol's complete flag"
@@ -138,83 +170,80 @@ def test_heldout_run_does_not_claim_canonical_coverage():
     assert coverage["checks"]["canonical_fixture_identity"] is False
 
 
-def test_short_heldout_suite_is_refused_as_a_control_not_a_qualification():
-    """The false-pass guard, against the real suite on disk.
-
-    This is the state the ledger is actually in: the suite exists and is
-    complete, and it still cannot qualify the route, because 71 rows does not
-    reach a 256-row floor.
-    """
-
-    gate = _gate()
-    rows = [int(c["prompt_tokens"]) for c in json.loads(ADMISSION.read_text())["cases"]]
-    assert max(rows) <= gate.ROUTE_ROW_FLOOR, (
-        "the heldout suite now exceeds the row floor; this test's premise is "
-        "stale and the blocker may genuinely be closable"
-    )
-    heldout = _coverage(gate, rows)["category_heldout"]
-    assert heldout["checks"]["heldout_prompts_exceed_route_row_floor"] is False
-    assert heldout["complete"] is False
-    assert "control rather than qualification" in heldout["blocked_reason"]
-
-    verdict = gate.qualification_verdict(
-        _coverage(gate, rows), quality_passed=True, deterministic=True, clean=True
-    )
-    assert verdict["category_heldout_qualification_claim"] is False
-    assert "category-heldout numerical evidence" in verdict["qualification_blockers"]
-
-
 def test_heldout_uses_the_fixture_declared_transition_count():
     """The heldout protocol is not the canonical 128-step one.
 
-    The admission suite declares 24 transitions. Assuming 128 made the
-    trajectory checks fail, which left the blocker open for the wrong reason:
-    the artifact would have blamed the trajectories instead of the row shortfall.
+    Assuming 128 made the trajectory checks fail, which would have left the
+    blocker open for the wrong reason - blaming trajectories instead of the row
+    shortfall.
     """
 
     gate = _gate()
-    rows = [int(c["prompt_tokens"]) for c in json.loads(ADMISSION.read_text())["cases"]]
-    heldout = _coverage(gate, rows)["category_heldout"]
+    heldout = _coverage(gate, _rows(), gate.ROUTE_ROW_FLOORS["wmma"])["category_heldout"]
     assert heldout["decode_steps"] == HELDOUT_DECODE_STEPS
     assert heldout["observed_rows_per_trajectory"] == HELDOUT_DECODE_STEPS + 1
-    assert heldout["checks"]["heldout_teacher_rows"] is True, (
-        "the trajectory check must pass on correctly-shaped heldout captures, or "
-        "it masks the real blocker"
-    )
+    assert heldout["checks"]["heldout_teacher_rows"] is True
     assert heldout["checks"]["heldout_candidate_three_repeats"] is True
-    # ...and the only failing check is the one that matters here.
-    assert heldout["checks"]["heldout_prompts_exceed_route_row_floor"] is False
 
 
-def test_row_floor_check_is_not_vacuous():
-    """It must certify when the evidence exists, or it proves nothing.
+def test_the_real_heldout_suite_qualifies_the_wmma_route():
+    """The finding this file exists for.
 
-    A check that is always ``False`` would keep the blocker open forever while
-    looking like diligence. Both directions are pinned here, including the
-    boundary: exactly at the floor is refused, because the routes decline at
-    ``rows <= 256`` rather than ``rows < 256``.
+    The suite's 39-71 tokens clear the WMMA route's 2-row floor, so a complete
+    heldout run against it is a genuine certificate and the blocker must drop.
+    The first version of this check refused it by applying the wrong route's
+    floor.
     """
 
     gate = _gate()
-    floor = gate.ROUTE_ROW_FLOOR
+    rows = _rows()
+    floor = gate.ROUTE_ROW_FLOORS["wmma"]
+    assert max(rows) >= floor, "premise stale: the suite no longer clears the floor"
 
-    long_form = _coverage(gate, [floor + 256] * len(HELDOUT_CASES))
-    heldout = long_form["category_heldout"]
+    heldout = _coverage(gate, rows, floor)["category_heldout"]
     assert heldout["checks"]["heldout_prompts_exceed_route_row_floor"] is True
     assert heldout["complete"] is True
     assert heldout["blocked_reason"] is None
 
-    verdict = gate.qualification_verdict(
-        long_form, quality_passed=True, deterministic=True, clean=True
-    )
+    verdict = _verdict(gate, rows, floor)
     assert verdict["category_heldout_qualification_claim"] is True
     assert "category-heldout numerical evidence" not in verdict["qualification_blockers"], (
         "producing the evidence must drop the blocker, or the accounting can "
         "never be closed by measurement"
     )
 
-    at_floor = _coverage(gate, [floor] * len(HELDOUT_CASES))["category_heldout"]
-    assert at_floor["checks"]["heldout_prompts_exceed_route_row_floor"] is False, (
-        "the routes decline at rows <= 256, so exactly-at-floor is not "
-        "engagement and must not be certified"
+
+def test_the_same_suite_does_not_qualify_the_dense_wide_route():
+    """The check must discriminate, or it is a rubber stamp.
+
+    Same fixture, same captures, different route: 71 rows clears 2 but not 257.
+    A check that returned the same answer for every route would be worthless in
+    both directions at once.
+    """
+
+    gate = _gate()
+    rows = _rows()
+    floor = gate.ROUTE_ROW_FLOORS["dense_wide"]
+    assert max(rows) < floor, "premise stale: the suite now clears the wide floor"
+
+    heldout = _coverage(gate, rows, floor)["category_heldout"]
+    assert heldout["checks"]["heldout_prompts_exceed_route_row_floor"] is False
+    assert heldout["complete"] is False
+    assert "below the" in heldout["blocked_reason"]
+
+    verdict = _verdict(gate, rows, floor)
+    assert verdict["category_heldout_qualification_claim"] is False
+    assert "category-heldout numerical evidence" in verdict["qualification_blockers"]
+
+
+def test_row_floor_boundary_is_inclusive():
+    """Engagement is ``longest >= floor``, because the guards are ``<=``."""
+
+    gate = _gate()
+    floor = gate.ROUTE_ROW_FLOORS["wmma"]
+    at_floor = _coverage(gate, [floor] * len(HELDOUT_CASES), floor)["category_heldout"]
+    assert at_floor["checks"]["heldout_prompts_exceed_route_row_floor"] is True, (
+        "a prompt exactly at the engaging row count does run the route"
     )
+    below = _coverage(gate, [floor - 1] * len(HELDOUT_CASES), floor)["category_heldout"]
+    assert below["checks"]["heldout_prompts_exceed_route_row_floor"] is False
