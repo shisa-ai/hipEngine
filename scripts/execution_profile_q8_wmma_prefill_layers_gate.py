@@ -109,7 +109,12 @@ def _fixture_kind(fixture_sha256: str) -> str:
 
 
 def qualification_coverage(
-    *, captures, fixture_sha256: str, prefill_chunk_size: int, fixture_rows=()
+    *,
+    captures,
+    fixture_sha256: str,
+    prefill_chunk_size: int,
+    fixture_rows=(),
+    heldout_decode_steps: int | None = None,
 ):
     """Account for actual trajectories, not requested CLI counts.
 
@@ -152,14 +157,19 @@ def qualification_coverage(
         "scope": "this route/layer set, manifest and chunk size only",
     }
     heldout = _heldout_coverage(
-        captures, fixture_sha256=fixture_sha256, fixture_rows=fixture_rows
+        captures,
+        fixture_sha256=fixture_sha256,
+        fixture_rows=fixture_rows,
+        decode_steps=heldout_decode_steps,
     )
     if heldout is not None:
         record["category_heldout"] = heldout
     return record
 
 
-def _heldout_coverage(captures, *, fixture_sha256: str, fixture_rows=()):
+def _heldout_coverage(
+    captures, *, fixture_sha256: str, fixture_rows=(), decode_steps: int | None = None
+):
     """Coverage for the category-heldout protocol, or ``None`` if not run.
 
     The engagement check is the load-bearing one. A heldout suite that cannot
@@ -187,14 +197,25 @@ def _heldout_coverage(captures, *, fixture_sha256: str, fixture_rows=()):
     # required field to it would change all of them for one gate's check.
     rows = [int(value) for value in fixture_rows]
     longest = max(rows) if rows else 0
+    # The heldout protocol is **not** the canonical 128-step one: the admission
+    # suite declares 24 transitions. Hardcoding 129 here made the trajectory
+    # checks fail and left the blocker open for the wrong reason - a misleading
+    # accounting defect rather than the honest row-floor one.
+    expected_rows = (int(decode_steps) + 1) if decode_steps else None
     checks = {
         "heldout_fixture_identity": fixture_sha256 == ADMISSION_FIXTURE_SHA256,
         "heldout_cases_once_each": len(ids) == len(expected_ids) and set(ids) == set(expected_ids),
         "heldout_categories": len({c.category for c in captures}) == 4,
-        "teacher_d128": bool(captures) and all(len(c.strict) == 129 for c in captures),
-        "candidate_d128_three_repeats": bool(captures) and all(
+        "heldout_declared_transitions": expected_rows is not None,
+        "heldout_teacher_rows": bool(captures) and all(
+            len(c.strict) == expected_rows for c in captures
+        ),
+        "heldout_candidate_three_repeats": bool(captures) and all(
             len(c.candidate_runs.get("candidate", ())) >= 3
-            and all(len(run) == 129 for run in c.candidate_runs.get("candidate", ()))
+            and all(
+                len(run) == expected_rows
+                for run in c.candidate_runs.get("candidate", ())
+            )
             for c in captures
         ),
         # Not a formality: without it this protocol certifies a route that
@@ -210,6 +231,10 @@ def _heldout_coverage(captures, *, fixture_sha256: str, fixture_rows=()):
         "observed_case_ids": ids,
         "observed_prompt_rows": rows,
         "longest_prompt_rows": longest,
+        "decode_steps": decode_steps,
+        "observed_rows_per_trajectory": (
+            len(captures[0].strict) if captures else 0
+        ),
         "route_row_floor": ROUTE_ROW_FLOOR,
         "blocked_reason": (
             None
@@ -747,6 +772,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         captures=captures, fixture_sha256=fixture_sha256,
         prefill_chunk_size=int(args.prefill_chunk_size),
         fixture_rows=[int(row["prompt_tokens"]) for row in cases],
+        heldout_decode_steps=decode_steps,
     )
     verdict = qualification_verdict(
         coverage, quality_passed=quality_passed, deterministic=deterministic, clean=clean,
