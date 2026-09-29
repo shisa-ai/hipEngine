@@ -43,6 +43,26 @@ def _gate():
     return module
 
 
+class _SyntheticWeight:
+    """Minimal resident-weight shape; only ``spec``/``backend`` are read early."""
+
+    class _Spec:
+        layout = "raw_gguf"
+        quant_key = "gguf_q8_0"
+        slot_path = "layers.20.attn_qkv.weight"
+
+    spec = _Spec()
+    backend = "hip_gfx1151"
+
+    @staticmethod
+    def allocation(name):
+        class _Alloc:
+            class tensor:
+                ptr = 4096
+
+        return _Alloc()
+
+
 def _dispatch(variant, abi):
     from hipengine.kernels.registry import KernelKey
 
@@ -170,6 +190,103 @@ def test_summary_does_not_claim_arm_isolation():
         "establish; reintroducing the name reintroduces the misreading"
     )
     assert summary["covers_other_use_wmma_selectors"] is False
+
+
+def test_recorder_captures_the_other_selectors_use_wmma_moves():
+    """`use_wmma` is not a WMMA-route flag.
+
+    It also forces `f_rowtile` off, which drags `use_rowtile` with it, and
+    disables the rows-2-8 native batch-decode session. Those are decode
+    decisions taken at row counts the WMMA route refuses, which is how a gate
+    named `wmma` reports real drift the route did not cause. Recording them is
+    what turns "not this route" into a name.
+    """
+
+    module = _gguf_linear()
+    records: list[dict] = []
+    with module.wmma_prefill_dispatch_recorder(records):
+        try:
+            module.launch_gguf_linear(
+                _SyntheticWeight(), 0, 0, 4, 2560, 10240, libraries={}
+            )
+        except Exception:
+            # Synthetic pointers cannot launch. The records are appended before
+            # any of that, which is the part under test.
+            pass
+    selectors = {record["selector"] for record in records}
+    assert {"wmma_prefill", "q4k_rowtile", "native_batch_decode_session"} <= selectors, (
+        f"only {sorted(selectors)} were recorded; the other use_wmma-gated "
+        "selectors are what the gate's drift actually comes from"
+    )
+    rowtile = [r for r in records if r["selector"] == "q4k_rowtile"]
+    assert rowtile, "the rowtile decision was not recorded"
+    assert "use_wmma" in rowtile[0]["detail"], (
+        "the record must say whether use_wmma is what moved it"
+    )
+
+
+def test_summary_names_the_selectors_that_differ_between_arms():
+    """Positive attribution: a drift can only come from a selector that differs.
+
+    The WMMA route engaging is not sufficient - the canonical case engages 264
+    times and its post-prefill output is still bit-identical. So the useful
+    output is the list of selectors that actually disagree between the arms.
+    """
+
+    gate = _gate()
+    summary = gate._summarise_engagement(
+        {
+            "teacher": [
+                {"selector": "wmma_prefill", "reason": "use_wmma_false",
+                 "engaged": False, "rows": 512},
+                {"selector": "q4k_rowtile", "reason": "active",
+                 "engaged": True, "rows": 512},
+                {"selector": "native_batch_decode_session", "reason": "inactive",
+                 "engaged": False, "rows": 4},
+            ],
+            "candidate": [
+                {"selector": "wmma_prefill", "reason": "engaged", "engaged": True,
+                 "rows": 512, "variant_out": "wmma_prefill_f32_f32_out"},
+                {"selector": "q4k_rowtile", "reason": "inactive",
+                 "engaged": False, "rows": 512},
+                {"selector": "native_batch_decode_session", "reason": "inactive",
+                 "engaged": False, "rows": 4},
+            ],
+        }
+    )
+    assert summary["selectors_differing_between_arms"] == [
+        "q4k_rowtile",
+        "wmma_prefill",
+    ]
+    assert "q4k_rowtile" in summary["attribution"]
+    # A selector that agrees between the arms cannot be the source.
+    assert "native_batch_decode_session" not in summary["attribution"]
+
+
+def test_selector_observed_in_one_arm_only_is_not_called_isolated():
+    """Absence of a record is not evidence that a selector agreed.
+
+    Counting an unobserved selector as "not differing" would manufacture the
+    same false isolation this whole recorder exists to prevent.
+    """
+
+    gate = _gate()
+    summary = gate._summarise_engagement(
+        {
+            "teacher": [
+                {"selector": "wmma_prefill", "reason": "use_wmma_false",
+                 "engaged": False, "rows": 512},
+            ],
+            "candidate": [
+                {"selector": "wmma_prefill", "reason": "engaged", "engaged": True,
+                 "rows": 512, "variant_out": "wmma_prefill_f32_f32_out"},
+                {"selector": "q4k_rowtile", "reason": "inactive",
+                 "engaged": False, "rows": 512},
+            ],
+        }
+    )
+    assert summary["selectors_observed_in_one_arm_only"] == ["q4k_rowtile"]
+    assert "q4k_rowtile" not in summary["selectors_differing_between_arms"]
 
 
 def test_summary_flags_a_route_that_never_engaged():

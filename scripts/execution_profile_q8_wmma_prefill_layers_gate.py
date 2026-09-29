@@ -325,23 +325,59 @@ def _summarise_engagement(
     """
 
     summary: dict[str, Any] = {}
+    # selector -> arm -> active?, so the two arms can be compared per selector.
+    # The WMMA route is not the only thing ``use_wmma`` moves, so the question
+    # worth answering is not "did the route run" but "which selectors differ
+    # between the arms at all" - a drift can only come from one of those.
+    by_selector: dict[str, dict[str, bool]] = {}
     for arm, records in engagement.items():
         reasons: dict[str, int] = {}
         engaged: dict[str, int] = {}
         rows_seen: set[int] = set()
+        per_selector: dict[str, dict[str, int]] = {}
         for record in records:
             reasons[str(record["reason"])] = reasons.get(str(record["reason"]), 0) + 1
+            selector = str(record.get("selector", "unknown"))
+            bucket = per_selector.setdefault(selector, {"active": 0, "inactive": 0})
             if record.get("engaged"):
                 out = str(record.get("variant_out"))
                 engaged[out] = engaged.get(out, 0) + 1
+                bucket["active"] += 1
+            else:
+                bucket["inactive"] += 1
             rows_seen.add(int(record.get("rows", 0)))
+            by_selector.setdefault(selector, {})[arm] = bool(
+                by_selector.setdefault(selector, {}).get(arm)
+                or record.get("engaged")
+            )
         summary[arm] = {
             "launches": len(records),
             "engaged_launches": sum(engaged.values()),
             "engaged_variants": engaged,
             "decline_reasons": dict(sorted(reasons.items())),
             "rows_seen": sorted(rows_seen),
+            "per_selector": {k: v for k, v in sorted(per_selector.items())},
         }
+    # A selector "differs" only when both arms were observed and disagree. An
+    # unobserved selector is not evidence of isolation, so it is reported
+    # separately rather than counted either way.
+    differing = sorted(
+        selector
+        for selector, arms in by_selector.items()
+        if len(arms) == 2 and arms["teacher"] != arms["candidate"]
+    )
+    unobserved = sorted(
+        selector for selector, arms in by_selector.items() if len(arms) < 2
+    )
+    summary["selectors_differing_between_arms"] = differing
+    summary["selectors_observed_in_one_arm_only"] = unobserved
+    summary["attribution"] = (
+        "the drift this run measures can only come from "
+        + ", ".join(differing)
+        if differing
+        else "no selector was observed to differ between the arms, so any drift "
+        "measured here is unexplained"
+    )
     candidate_engaged = bool(summary.get("candidate", {}).get("engaged_launches"))
     teacher_engaged = bool(summary.get("teacher", {}).get("engaged_launches"))
     summary["candidate_route_engaged"] = candidate_engaged
