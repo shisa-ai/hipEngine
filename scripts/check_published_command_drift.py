@@ -57,6 +57,13 @@ CITATION = re.compile(r"([A-Za-z0-9._-]+\.json)(?!l)")
 # artifact was fixed (or the row was re-measured); leaving one that no longer matches fails the
 # gate, which is intentional, so stale exemptions get pruned.
 EXCEPTIONS: dict[str, str] = {
+    "2026-09-21-zbook-fast-cpu-gpu-sampling.json::SCRIPT-NOT-IN-REPO::"
+    "/home/lhl/hipEngine-main/scripts/gguf_native_sampler_gate.py": (
+        "2026-09-30 gemma4 lane: the recorded command names the script by its "
+        "absolute path in a sibling worktree (hipEngine-main); the same script "
+        "ships in this repo as scripts/gguf_native_sampler_gate.py. Not rewritten "
+        "here because a published row's provenance belongs to its author."
+    ),
     "2026-08-09-cuda-sm120a-maple-splitk-global-decode-retained.json::SCRIPT-NOT-IN-REPO::"
     "/tmp/hipengine-maple-splitk-clean/scripts/maple_c1_bench.py": (
         "2026-08-09 cuda-sm120a lane: the recorded command invoked a script that lived only "

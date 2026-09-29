@@ -1,0 +1,347 @@
+{
+  "combination": [
+    "gemma4_gguf",
+    "hip_gfx1100",
+    "gguf_q4_k_m"
+  ],
+  "commits": {
+    "packet": "3dc815031 add the Gemma4 execution-profile control-smoke packet producer",
+    "plans": "daf7fa458 register gemma4 strict and production execution-profile plans"
+  },
+  "date": "2026-09-30",
+  "gates": {
+    "bf16_noninferiority": {
+      "binding": false,
+      "category_smoke": {
+        "mean_kl_delta": -0.0007392912724779425,
+        "passed": true,
+        "production_vs_bf16": {
+          "kl_max": 0.5819002767007269,
+          "kl_mean": 0.00947086609331288,
+          "kl_p95": 0.04666023637435511,
+          "top1_agreement": 0.9704918032786886
+        },
+        "rows": 610,
+        "strict_vs_bf16": {
+          "kl_max": 0.4101757390502954,
+          "kl_mean": 0.010210157365790822,
+          "kl_p95": 0.058530223932011516,
+          "top1_agreement": 0.9721311475409836
+        },
+        "top1_delta": -0.0016393442622950616
+      },
+      "logits_sha256": "e129ce955faf288134c5498ae5f7c6e5123efee2b5a1a56bc5f99864320becb6",
+      "prompts_failed": [
+        "prompt-code_markdown_table",
+        "prompt-code_merge_intervals",
+        "prompt-general_en_plan",
+        "prompt-general_ja_plan",
+        "prompt-mixed_ja_en_translate"
+      ],
+      "protocol": "scripts/gemma4_bf16_teacher.py prepare|finalize with scripts/quant_quality/gemma4_teacher_logits.cpp over the original google/gemma-4-26B-A4B-it weights converted to a 50.5G F16 GGUF, run by llama.cpp HIP (27/31 layers on GPU0)",
+      "shape": [
+        610,
+        262144
+      ],
+      "teacher_argmax_agreement_vs_strict_labels": 0.9721311475409836,
+      "teacher_softcap": {
+        "config_value": 30.0,
+        "note": "raw_max_abs above the model's final_logit_softcapping means the teacher tool did not apply the cap the engine applies",
+        "raw_max_abs": 29.990253448486328,
+        "violation": false
+      }
+    },
+    "campaign_recipe_teacher_forced": {
+      "direction": "kl(baseline || candidate)",
+      "kl_max": 0.005354265441462154,
+      "kl_mean": 1.2609563514312411e-05,
+      "kl_p95": 1.6178258770234095e-05,
+      "kl_p99": 0.00011023083595237695,
+      "kl_rows_over_limit": 0,
+      "npz_sha256": {
+        "production": "96e8c0b0cd8cab20eaad4707a5689238381b13f9a8f6855f5c6cf60aab129dcf",
+        "strict": "e7d88ca7b006bfb2a1deac339d1859f38bf4f7f475cc75ad1fa6ae7208135687"
+      },
+      "passed": true,
+      "protocol": "scripts/gemma4_teacher_forced_gate.py capture|gate --prompt 2048 --prefill 1024 (frozen campaign corpus cycled to 2048; arms = HIPENGINE_EXECUTION_PROFILE=strict vs =production, both pins verified in the recorded provenance)",
+      "rows": 1023,
+      "top1_flips": 0,
+      "top1_rate": 1.0
+    },
+    "control_smoke_packet": {
+      "by_shape": {
+        "c1": {
+          "kl_max": 0.12269740303379252,
+          "kl_mean": 0.0032311607401985703,
+          "kl_p95": 0.01889181894101659,
+          "kl_p99": 0.052747975212404,
+          "passed": false,
+          "rows": 600,
+          "top1_agreement": 0.985
+        },
+        "prefill_last": {
+          "kl_max": 0.06105926527730432,
+          "kl_mean": 0.00734340489914342,
+          "kl_p95": 0.038675988674380254,
+          "kl_p99": 0.05658260995671952,
+          "passed": false,
+          "rows": 10,
+          "top1_agreement": 1.0
+        }
+      },
+      "decision": {
+        "binding_gates_passed": false,
+        "eligible_for_automatic_admission": false,
+        "status": "failed"
+      },
+      "deterministic_regeneration": "produced twice in independent processes with digit-identical quality numbers (all five KL statistics and top-1 agreement)",
+      "protocol": "scripts/gemma4_control_smoke.py --limit 10 --decode-steps 60, prompts cycled to the campaign gate chain width 2048, production replay forced by the strict chain (template protocol: generated-continuation rows)",
+      "quality": {
+        "kl_max": 0.12269740303379252,
+        "kl_mean": 0.0032985745788697974,
+        "kl_p95": 0.01931002828965312,
+        "kl_p99": 0.05844475028152208,
+        "passed": false,
+        "top1_agreement": 0.9852459016393442
+      },
+      "rows": 610,
+      "structure": {
+        "controls": true,
+        "determinism": true,
+        "generated_id_equality": false,
+        "isolation": true,
+        "tasks_identity": false
+      },
+      "verdict_sha256": {
+        "with_bf16": "6b2e5e573e986317c7a5b93e6942a4d1c6a832d7d58d3f0095bc434fcad524f2",
+        "without_bf16": "40cb108b39f51208e519387dbbf0524e1404fc03ebeca47c89feea7dc8e1caf6"
+      },
+      "width": {
+        "route_min": 256,
+        "source": "campaign-gate-chain (route min 256)",
+        "target": 2048
+      }
+    }
+  },
+  "gpu": "AMDGPU device 0 (W7900 lane, ROCR_VISIBLE_DEVICES=0)",
+  "head": "3dc8150311876bd9b0bde1a9f8b3298ee12e6c5b",
+  "host": "epyc",
+  "kind": "gemma4-execution-profile-registration-evidence",
+  "manifests": {
+    "production": {
+      "backend": "hip_gfx1100",
+      "execution_profile": "production",
+      "graph_policy": "serial_eager",
+      "kind": "hipengine_execution_profile_manifest",
+      "kv_policy": "paged_bf16",
+      "model": "gemma4_gguf",
+      "quant": "gguf_q4_k_m",
+      "schema_version": 1,
+      "selections": [
+        {
+          "evidence_artifact": null,
+          "layer": "embedding",
+          "registry_quant": "gguf_q8_0",
+          "scope": "lookup_q8_0",
+          "selected_variant": "lookup_bf16_out",
+          "strict_fallback_variant": "lookup_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "linear",
+          "registry_quant": "gguf_q8_0",
+          "scope": "dense_decode_q8_0",
+          "selected_variant": "pack8_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "pack8_gemv_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "linear",
+          "registry_quant": "gguf_q8_0",
+          "scope": "dense_prefill_q8_0",
+          "selected_variant": "wmma_prefill_bf16_bf16_out",
+          "strict_fallback_variant": "wmma_prefill_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "linear",
+          "registry_quant": "gguf_q8_0",
+          "scope": "lm_head_f32_q8_0",
+          "selected_variant": "pack8_gemv_bf16_f32_out",
+          "strict_fallback_variant": "pack8_gemv_bf16_f32_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "linear",
+          "registry_quant": "gguf_q4_k",
+          "scope": "moe_decode_q4_k",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "linear",
+          "registry_quant": "gguf_q5_1",
+          "scope": "moe_decode_q5_1",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "linear",
+          "registry_quant": "gguf_q5_k",
+          "scope": "moe_decode_q5_k",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "linear",
+          "registry_quant": "gguf_q8_0",
+          "scope": "moe_selected_q8_0",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "moe_linear",
+          "registry_quant": "gguf_q5_1",
+          "scope": "down_q5_1",
+          "selected_variant": "selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "moe_linear",
+          "registry_quant": "gguf_q4_k",
+          "scope": "gate_up_q4_k",
+          "selected_variant": "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "moe_linear",
+          "registry_quant": "gguf_q5_k",
+          "scope": "gate_up_q5_k",
+          "selected_variant": "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
+        }
+      ]
+    },
+    "strict": {
+      "backend": "hip_gfx1100",
+      "execution_profile": "strict",
+      "graph_policy": "serial_eager",
+      "kind": "hipengine_execution_profile_manifest",
+      "kv_policy": "paged_bf16",
+      "model": "gemma4_gguf",
+      "quant": "gguf_q4_k_m",
+      "schema_version": 1,
+      "selections": [
+        {
+          "evidence_artifact": null,
+          "layer": "embedding",
+          "registry_quant": "gguf_q8_0",
+          "scope": "lookup_q8_0",
+          "selected_variant": "lookup_bf16_out",
+          "strict_fallback_variant": "lookup_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "linear",
+          "registry_quant": "gguf_q8_0",
+          "scope": "dense_decode_q8_0",
+          "selected_variant": "pack8_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "pack8_gemv_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "linear",
+          "registry_quant": "gguf_q8_0",
+          "scope": "dense_prefill_q8_0",
+          "selected_variant": "wmma_prefill_bf16_bf16_out",
+          "strict_fallback_variant": "wmma_prefill_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "linear",
+          "registry_quant": "gguf_q8_0",
+          "scope": "lm_head_f32_q8_0",
+          "selected_variant": "pack8_gemv_bf16_f32_out",
+          "strict_fallback_variant": "pack8_gemv_bf16_f32_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "linear",
+          "registry_quant": "gguf_q4_k",
+          "scope": "moe_decode_q4_k",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "linear",
+          "registry_quant": "gguf_q5_1",
+          "scope": "moe_decode_q5_1",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "linear",
+          "registry_quant": "gguf_q5_k",
+          "scope": "moe_decode_q5_k",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "linear",
+          "registry_quant": "gguf_q8_0",
+          "scope": "moe_selected_q8_0",
+          "selected_variant": "selected_gemv_bf16_bf16_out",
+          "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "moe_linear",
+          "registry_quant": "gguf_q5_1",
+          "scope": "down_q5_1",
+          "selected_variant": "selected_grouped_prefill_pair2_fold128_bf16_bf16_out",
+          "strict_fallback_variant": "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "moe_linear",
+          "registry_quant": "gguf_q4_k",
+          "scope": "gate_up_q4_k",
+          "selected_variant": "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "moe_linear",
+          "registry_quant": "gguf_q5_k",
+          "scope": "gate_up_q5_k",
+          "selected_variant": "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out",
+          "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
+        }
+      ]
+    }
+  },
+  "model_artifact": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "notes": [
+    "The two quality results are different protocols over the same strict-vs-production plans: the campaign recipe scores cycled-corpus tokens fed as decode after a 1024-token prefill and passes; the control-smoke template scores forced generated-continuation rows after a full-prompt prefill and misses the calibrated envelope. Neither number re-runs the other.",
+    "bf16_noninferiority is reported by the gate; it is not one of the decision's required_checks."
+  ],
+  "profile_probe": {
+    "omitted_default": "ExecutionProfile.PRODUCTION",
+    "production_fell_back": false,
+    "production_manifest_sha256": "94f72773fba4a983bc329613eed07a5563329c104f4ac31a3f7b90cd3996dedf",
+    "production_profile": "ExecutionProfile.PRODUCTION",
+    "strict_fell_back": false,
+    "strict_manifest_sha256": "a24f0e75a63a31db01888c9f99e614ba91e4bcaf518102d65b45c3f363e27730",
+    "strict_profile": "ExecutionProfile.STRICT"
+  },
+  "schema": 1
+}

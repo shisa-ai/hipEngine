@@ -142,6 +142,7 @@ does not erase a candidate improvement.
 registered strict plan and a certified production plan. A combination with no
 registered plan keeps the migration path, which remains tracked for removal in
 [`REFACTOR.md`](REFACTOR.md). The registered combinations are
+`gemma4_gguf`/`hip_gfx1100`/`gguf_q4_k_m`,
 `qwen3_5_gguf`/`hip_gfx1100`/`gguf_q4_k_m`,
 `qwen3_5_gguf`/`hip_gfx1151`/`gguf_q4_k_m`,
 `qwen3_5_moe_gguf`/`hip_gfx1100`/`gguf_q4_k_m`,
@@ -453,6 +454,59 @@ capability admits it, it is reachable normally.
 The contract is capability-based execution with evidence-backed claims and
 promotion. Capability decides what runs. Evidence decides which path we prefer
 among working ones, what we may claim, and what we promote.
+
+### 2.10 Gemma 4 gfx1100 Q4_K_XL production MMQ-grouped decision
+
+The W7900 `gemma4_gguf`/`hip_gfx1100`/`gguf_q4_k_m` plan pair is registered
+(`hipengine/generation/gemma4_profiles.py`). Production runs the grouped int8
+MMQ owner for the Q4_K `gate_up` projections with the WMMA owner for `down`;
+strict pins the exact grouped/selected chain, every scope the one does not
+cover resolves to the other's registered owner, and neither direction refuses.
+This is T2 implementation arithmetic: the model representation, algorithm,
+layer and kernel ownership, and acceptance policy are unchanged.
+
+Three artifacts cover the registration, and they do not all read the same
+number because they do not score the same rows:
+
+- **The campaign recipe passes.** `gemma4_teacher_forced_gate.py capture|gate
+  --prompt 2048 --prefill 1024` over the frozen cycled corpus, with the arms
+  resolved through `HIPENGINE_EXECUTION_PROFILE=strict` and `=production` and
+  both pins verified in the recorded provenance: 1023 paired rows at
+  mean/p95/p99/max KL `1.26e-5/1.62e-5/1.10e-4/0.005354`, top-1 100%, and 0
+  rows over the `0.05` ceiling.
+- **The control-smoke packet passes structure and misses the quality
+  envelope.** `gemma4_control_smoke.py --limit 10 --decode-steps 60` at the
+  same 2048-token chain width: expected-control ownership, an independent
+  repeat, and isolation neighbor substitution all pass, and a second process
+  reproduces every quality statistic digit for digit. The template protocol
+  scores *forced generated-continuation rows* after a full-prompt prefill;
+  there the arms diverge at mean/p95/p99/max KL
+  `0.0033/0.0193/0.0584/0.1227` with 9/610 top-1 flips, outside the
+  calibrated envelope on all five limits. The campaign recipe scores
+  *cycled-corpus tokens fed as decode* after a 1024-token prefill and passes
+  at the numbers above. These are different row populations of one plan pair,
+  not re-runs of one another; registration records both instead of tuning the
+  chain width or corpus toward either verdict, and reconciling the template
+  protocol's envelope expectation stays open.
+- **BF16-relative non-inferiority reports within budget.** An aligned 610-row
+  teacher cache from the original `google/gemma-4-26B-A4B-it` weights
+  (converted to a 50.5G F16 GGUF, run by llama.cpp HIP) puts strict at
+  mean/max KL `0.0102/0.410` against BF16 and production at
+  `0.00947/0.582`, so production consumes no additional mean budget:
+  `mean_kl_delta` `-7.4e-4`, `top1_delta` `-0.0016`, category gate pass, with
+  `code_markdown_table` the one per-prompt miss. The teacher's argmax matches
+  the packet's strict labels on 97.2% of rows and its logits saturate inside
+  the model's softcap (max 29.99 of 30.0). The gate reports this section; it
+  is not one of the decision's `required_checks`.
+
+An omitted `HIPENGINE_EXECUTION_PROFILE` resolves to `production` for this
+combination with no migration path, and explicit `strict` and `production`
+both resolve without falling back. The strict/production manifest hashes are
+`a24f0e75a63a31db01888c9f99e614ba91e4bcaf518102d65b45c3f363e27730` and
+`94f72773fba4a983bc329613eed07a5563329c104f4ac31a3f7b90cd3996dedf`; since
+[2.9](#29-capability-admits-evidence-selects-and-promotes) they identify the
+measured build rather than gate admission.
+Evidence: [`Gemma4 registration packet`](../benchmarks/results/2026-09-30-gemma4-execution-profile-registration.json).
 
 ## 3. Profile is orthogonal to model representation
 
