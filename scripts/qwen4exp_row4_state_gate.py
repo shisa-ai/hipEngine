@@ -178,7 +178,7 @@ def main():
                         "strict_ordered_three_pass_v2_spans")
     if args.route_package == "q8-wave-scale":
         key = KernelKey("hip_gfx1151", "linear", "gguf_q8_0",
-                        "coltile8_rowbatch4_wave_scale_f32_f32_out")
+                        "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out")
     if args.route_package == "gr-wave-scale":
         key = KernelKey("hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
                         "coltile2_branch4_rowbatch4_wave_scale_f32_exact")

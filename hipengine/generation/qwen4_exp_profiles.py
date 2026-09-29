@@ -373,9 +373,10 @@ def _production_selections(*, dpp: bool = False, recovery: bool = False) -> tupl
         ),
         _selection(
             "linear", "prefill_exact_q8_f32_coltile",
-            "coltile8_rowbatch4_wave_scale_f32_f32_out", "coltile8_rowbatch4_f32_f32_out",
+            "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+            "coltile8_rowbatch4_f32_f32_out",
             "gguf_q8_0",
-            evidence="benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale-production.json",
+            evidence="benchmarks/results/2026-09-29-qwen4exp-q8-coltile-pipeline/artifact.json",
         ),
         _selection(
             "gdn_recurrence_norm_gate", "prefill_rows_ge2_serial_gdn_hk16_hv48_d128",
