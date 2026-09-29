@@ -122,3 +122,29 @@ TH=/home/lhl/miniforge3/envs/therock10-staging-20260828
 $TH/bin/python scripts/qwen4exp_de1_moe_bandwidth_gate.py \
   --output benchmarks/results/2026-09-29-qwen4exp-de1-moe-bandwidth-gate/gate.json
 ```
+
+## Addendum: identifying the owner kernels from the existing trace
+
+The capture's raw kernel trace (`../2026-09-29-qwen4exp-x4-decode-split/rocprof/x4decode_kernel_trace.csv`,
+18,941 dispatches) spans **68 s** of prefill + warmup + measured steps, so it cannot segment a
+single decode step without redoing the join that `attribution.json` already performs. Two structural
+facts are nevertheless readable from it, and both matter for `DE-1`'s next cut.
+
+**The expert GEMM owner is `gguf_q4_k_selected_dual_wmma_iu8_risk_*`.** The `selected` refers to
+*selected experts* (MoE routing), and **`dual` confirms gate and up are fused into a single kernel**.
+It appears 188 times in the capture totaling 2,709.02 ms, at **`grid = 1280`, `workgroup = 128`**.
+
+**1,280 is exactly the gate+up output row count for one expert** (640 gate rows + 640 up rows). So the
+decomposition is **one workgroup per output row, each reducing over 2,560 input columns** - a
+128-thread workgroup spanning the full reduction axis. That is a plausible source of the 2.77x gap
+and it is a *structural* property, which is precisely what `DE-1`'s action targets ("the structure,
+not the dp4a arithmetic").
+
+The same trace also shows the router as a separate, much wider kernel:
+`qwen35_router_logits_f32_token_tile_de*` at `grid = 131072`, `workgroup = 256` (192 dispatches,
+617.19 ms) - the 251.66 MB/step router term in the traffic model above.
+
+**Not concluded:** whether the per-row decomposition is the cause. The trace cannot separate
+execution from inter-kernel gaps at step granularity here, and no claim is made that changing the
+decomposition recovers the gap. This addendum only names the owner kernel, its fusion structure and
+its launch geometry, so the next screen starts from the real shape rather than from the family name.
