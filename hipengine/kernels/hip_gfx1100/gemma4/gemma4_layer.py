@@ -54,7 +54,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
     gemma4_experts_forward_bf16,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import (
-    gemma4_gelu_tanh_mul_split_bf16,
+    gemma4_gelu_tanh_mul_bf16,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
     gemma4_add_rmsnorm_scale_bf16,
@@ -105,8 +105,7 @@ class Gemma4LayerPointers:
     k_norm: int
     post_attention_layernorm: int
     pre_feedforward_layernorm: int
-    mlp_gate_proj: Gemma4Projection
-    mlp_up_proj: Gemma4Projection
+    mlp_gate_up_proj: Gemma4Projection
     mlp_down_proj: Gemma4Projection
     post_feedforward_layernorm_1: int
     router_scale: int
@@ -274,8 +273,10 @@ class Gemma4LayerScratch:
             "context": rows * q_width * _BF16_BYTES,
             "attn_out": rows * hidden * _BF16_BYTES,
             "hidden": rows * hidden * _BF16_BYTES,
-            "dense_gate": rows * self.dense_intermediate * _BF16_BYTES,
-            "dense_up": rows * self.dense_intermediate * _BF16_BYTES,
+            # One buffer holds both halves: the fused weight projects into
+            # (rows, 2 * intermediate) in a single launch, and the fused GeGLU
+            # reads it the way the expert path reads its stacked gate/up.
+            "dense_gate_up": rows * 2 * self.dense_intermediate * _BF16_BYTES,
             "dense_act": rows * self.dense_intermediate * _BF16_BYTES,
             "dense": rows * hidden * _BF16_BYTES,
             "experts": rows * hidden * _BF16_BYTES,
@@ -646,29 +647,20 @@ def gemma4_layer_forward_bf16(
     )
     gemma4_project(
         buf("normalized"),
-        layer.mlp_gate_proj,
-        buf("dense_gate"),
+        layer.mlp_gate_up_proj,
+        buf("dense_gate_up"),
         rows,
         hidden_size,
-        scratch.dense_intermediate,
+        2 * scratch.dense_intermediate,
         **kwargs,
     )
-    gemma4_project(
-        buf("normalized"),
-        layer.mlp_up_proj,
-        buf("dense_up"),
-        rows,
-        hidden_size,
-        scratch.dense_intermediate,
-        **kwargs,
-    )
-    # The dense MLP's gate and up are separate tensors in the artifact, so this
-    # uses the split GeGLU rather than the fused expert-path kernel.
-    gemma4_gelu_tanh_mul_split_bf16(
-        buf("dense_gate"),
-        buf("dense_up"),
+    # Both halves live in one resident weight, so the fused GeGLU reads them
+    # from a single buffer -- the form the expert path already uses.
+    gemma4_gelu_tanh_mul_bf16(
+        buf("dense_gate_up"),
         buf("dense_act"),
-        rows * scratch.dense_intermediate,
+        rows,
+        scratch.dense_intermediate,
         **kwargs,
     )
     gemma4_project(

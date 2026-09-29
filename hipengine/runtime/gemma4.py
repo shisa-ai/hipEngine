@@ -63,6 +63,7 @@ from hipengine.loading.gemma4_gguf import Gemma4GGUFConfig, gemma4_gguf_config_f
 from hipengine.loading.gemma4_gguf_device import (
     Gemma4GGUFDeviceWeight,
     Gemma4GGUFWeightSpec,
+    materialize_fused_gguf_device_weight,
     materialize_gemma4_gguf_device_weight,
     plan_gemma4_gguf_resident_specs,
 )
@@ -102,6 +103,13 @@ DEFAULT_PREFILL_BLOCK = 512
 # Which layer field each artifact slot feeds. The slot names are the loader's;
 # the fields are the layer's. Kept as one table so the two cannot drift apart
 # silently.
+#
+# ``ffn_gate`` and ``ffn_up`` are deliberately absent: both read the same
+# normalized hidden state and are numerically separable, so they are fused into
+# one resident weight and one launch (see ``_GATE_UP_FUSION``). The artifact
+# still stores them as two tensors, so both slots remain required.
+_GATE_UP_FUSION = ("ffn_gate", "ffn_up", "mlp_gate_up_proj")
+
 _SLOT_TO_FIELD = {
     "attn_norm": "input_layernorm",
     "attn_q": "q_proj",
@@ -112,8 +120,6 @@ _SLOT_TO_FIELD = {
     "attn_k_norm": "k_norm",
     "post_attention_norm": "post_attention_layernorm",
     "ffn_norm": "pre_feedforward_layernorm",
-    "ffn_gate": "mlp_gate_proj",
-    "ffn_up": "mlp_up_proj",
     "ffn_down": "mlp_down_proj",
     "post_ffw_norm": "post_feedforward_layernorm",
     "ffn_gate_inp": "router_proj",
@@ -153,8 +159,7 @@ _PROJECTION_FIELDS = (
     "k_proj",
     "v_proj",
     "o_proj",
-    "mlp_gate_proj",
-    "mlp_up_proj",
+    "mlp_gate_up_proj",
     "mlp_down_proj",
     "experts_gate_up_proj",
     "experts_down_proj",
@@ -381,6 +386,22 @@ def _build_layer(
     prefix = f"layers.{index}."
     fields: dict[str, Any] = {}
     missing: list[str] = []
+
+    gate_slot, up_slot, fused_field = _GATE_UP_FUSION
+    gate_spec = by_slot.get(prefix + gate_slot)
+    up_spec = by_slot.get(prefix + up_slot)
+    if gate_spec is None or up_spec is None:
+        # Both halves are required. A layer missing either is a real gap and is
+        # reported by name rather than defaulted to a split projection.
+        for slot, spec in ((gate_slot, gate_spec), (up_slot, up_spec)):
+            if spec is None:
+                missing.append(slot)
+    else:
+        fused = materialize_fused_gguf_device_weight(
+            reader, (gate_spec, up_spec), backend=backend
+        )
+        owned.append(fused)
+        fields[fused_field] = fused
 
     for slot, field_name in _SLOT_TO_FIELD.items():
         spec = by_slot.get(prefix + slot)

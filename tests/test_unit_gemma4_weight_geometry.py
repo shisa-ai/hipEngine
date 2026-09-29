@@ -249,7 +249,7 @@ def _install_layer_dispatch_recorder(
         "gemma4_partial_rotary_bf16",
         "gemma4_attention_prefill_bf16",
         "gemma4_add_rmsnorm_scale_bf16",
-        "gemma4_gelu_tanh_mul_split_bf16",
+        "gemma4_gelu_tanh_mul_bf16",
         "gemma4_router_topk_bf16",
         "gemma4_experts_forward_bf16",
         "gemma4_branch_add_bf16",
@@ -302,12 +302,11 @@ def test_layer_forward_dispatches_the_layers_own_dense_width(
         runner.close()
 
     for index, layer in enumerate(weights.layers):
-        gate = [call for call in calls if call[0] is layer.mlp_gate_proj]
-        up = [call for call in calls if call[0] is layer.mlp_up_proj]
+        gate_up = [call for call in calls if call[0] is layer.mlp_gate_up_proj]
         down = [call for call in calls if call[0] is layer.mlp_down_proj]
-        assert gate, f"layer {index} never dispatched its gate projection"
-        assert up, f"layer {index} never dispatched its up projection"
+        assert gate_up, f"layer {index} never dispatched its fused gate/up projection"
         assert down, f"layer {index} never dispatched its down projection"
-        assert gate[0][2] == widths[index]
-        assert up[0][2] == widths[index]
+        # One launch carries both halves, so its out_features spans twice the
+        # layer's dense width while the down projection still reads that width.
+        assert gate_up[0][2] == 2 * widths[index]
         assert down[0][1] == widths[index]

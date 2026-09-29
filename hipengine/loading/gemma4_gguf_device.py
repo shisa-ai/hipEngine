@@ -20,8 +20,10 @@ than a prerequisite for running.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
+
+import numpy as np
 
 from hipengine.core.dtype import DType
 from hipengine.loading.gguf import GGUFReader, GGUFTensorInfo, MissingGGUFTensorError
@@ -36,6 +38,7 @@ __all__ = [
     "LAYOUT_RAW_GGUF",
     "Gemma4GGUFDeviceWeight",
     "Gemma4GGUFWeightSpec",
+    "materialize_fused_gguf_device_weight",
     "materialize_gemma4_gguf_device_weight",
     "plan_gemma4_gguf_resident_specs",
     "resident_bytes",
@@ -240,6 +243,119 @@ def materialize_gemma4_gguf_device_weight(
                 raw,
                 dtype,
                 source_dtype=source_dtype,
+                device=device,
+                runtime=runtime,
+                allocator=allocator,
+            )
+        },
+        backend=backend,
+    )
+
+
+def materialize_fused_gguf_device_weight(
+    reader: GGUFReader,
+    specs: Sequence[Gemma4GGUFWeightSpec],
+    *,
+    device=None,
+    runtime=None,
+    backend: str = "hip_gfx1100",
+    allocator=None,
+) -> Gemma4GGUFDeviceWeight:
+    """Upload several same-shaped weights as one contiguous resident block.
+
+    The dense MLP's gate and up projections both read the same input and are
+    numerically separable, so one resident weight carries both and one launch
+    computes both.
+
+    Block-quantized GGUF storage is row-contiguous -- each row is a whole
+    number of block bytes -- so concatenating the raw blocks along axis 0
+    yields exactly the fused ``(sum(rows), bytes_per_row)`` layout. The bytes
+    and their order are unchanged: this arranges existing bytes in memory and
+    does no reblocking, no dequantization, and no arithmetic.
+
+    The fused spec's ``source`` is synthesized rather than read from the file,
+    because the artifact stores the members as separate tensors. Nothing
+    resolves ``source.name`` back through the reader for a fused weight --
+    :func:`materialize_fused_gguf_device_weight` reads each member's name
+    before it is replaced -- and the quantized linear dispatch keys only on
+    ``spec.layout`` and ``spec.quant_key``.
+    """
+
+    if not specs:
+        raise ValueError("fused materialization requires at least one weight")
+
+    head = specs[0]
+    if head.layout != LAYOUT_RAW_GGUF:
+        raise ValueError(
+            f"{head.slot_path}: fused resident weights support only the raw GGUF "
+            f"layout, got {head.layout!r}"
+        )
+    for other in specs[1:]:
+        if other.layout != head.layout or other.quant_key != head.quant_key:
+            raise ValueError(
+                f"{other.slot_path}: fused weights must share one layout and quant "
+                f"key with {head.slot_path}, got {other.layout}/{other.quant_key} "
+                f"against {head.layout}/{head.quant_key}"
+            )
+        if (
+            other.source.ggml_type != head.source.ggml_type
+            or other.source.shape[1] != head.source.shape[1]
+            or other.source.byte_shape[1] != head.source.byte_shape[1]
+        ):
+            raise ValueError(
+                f"{other.slot_path}: fused weights must share a quant type, "
+                f"in_features, and bytes-per-row with {head.slot_path}, got "
+                f"{other.source.ggml_type_name}/shape {other.source.shape}/"
+                f"byte_shape {other.source.byte_shape} against "
+                f"{head.source.ggml_type_name}/shape {head.source.shape}/"
+                f"byte_shape {head.source.byte_shape}"
+            )
+
+    storage = quant_layout(int(head.source.ggml_type)).storage_dtype
+    if storage != "uint8_blocks":
+        raise ValueError(
+            f"{head.slot_path}: fused residency expects uint8 block storage, "
+            f"got {storage!r}"
+        )
+
+    arrays = [reader.tensor_data(spec.source.name) for spec in specs]
+    raw = arrays[0] if len(arrays) == 1 else np.concatenate(arrays, axis=0)
+    expected = (
+        sum(int(spec.source.byte_shape[0]) for spec in specs),
+        head.source.byte_shape[1],
+    )
+    if tuple(raw.shape) != expected:
+        raise ValueError(
+            f"{head.slot_path}: fused blocks landed at shape {tuple(raw.shape)}, "
+            f"expected {expected}"
+        )
+
+    source = replace(
+        head.source,
+        name="+".join(spec.source.name for spec in specs),
+        shape=(sum(spec.source.shape[0] for spec in specs), *head.source.shape[1:]),
+        ggml_shape=(
+            head.source.ggml_shape[0],
+            sum(spec.source.ggml_shape[1] for spec in specs),
+        ),
+        n_elements=sum(int(spec.source.n_elements) for spec in specs),
+        nbytes=sum(int(spec.source.nbytes) for spec in specs),
+        byte_shape=expected,
+    )
+    spec = replace(
+        head,
+        slot_path="+".join(spec.slot_path for spec in specs),
+        source=source,
+    )
+
+    return Gemma4GGUFDeviceWeight(
+        spec=spec,
+        allocations={
+            "raw": load_host_array_to_device_as_dtype(
+                spec.source.name,
+                raw,
+                DType.INT8,
+                source_dtype="I8",
                 device=device,
                 runtime=runtime,
                 allocator=allocator,

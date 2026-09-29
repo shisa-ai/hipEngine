@@ -422,3 +422,113 @@ def test_selected_expert_dispatch_matches_the_bf16_offset_path(reader: GGUFReade
         w_ptr.free()
         sel_ptr.free()
         quantized.free()
+
+
+# --------------------------------------------------------------------------
+# Fused residency: gate and up become one resident weight
+# --------------------------------------------------------------------------
+
+
+def _gate_up_specs(reader: GGUFReader) -> list:
+    """The first layer's gate and up specs, in the order they must be fused."""
+
+    by_slot = {spec.slot_path: spec for spec in plan_gemma4_gguf_resident_specs(reader)}
+    return [by_slot["layers.0.ffn_gate"], by_slot["layers.0.ffn_up"]]
+
+
+def test_gate_and_up_are_fusible_as_stored(reader: GGUFReader) -> None:
+    """The fusion's precondition holds in the artifact, not just in theory.
+
+    Fusing requires a shared layout, quant type, in_features and bytes-per-row.
+    Those are properties of the file, so they are asserted against the file
+    rather than assumed from the model's architecture.
+    """
+
+    gate, up = _gate_up_specs(reader)
+    assert gate.layout == up.layout == LAYOUT_RAW_GGUF
+    assert gate.quant_key == up.quant_key
+    assert gate.source.ggml_type == up.source.ggml_type
+    assert gate.source.shape == up.source.shape
+    assert gate.source.byte_shape == up.source.byte_shape
+
+
+def test_fused_materialization_rejects_a_width_mismatch(reader: GGUFReader) -> None:
+    """A mismatched member is refused by name, before any device upload.
+
+    Members whose bytes cannot sit in one tensor must not be silently
+    concatenated, so the error names the offending slot and both byte shapes.
+    """
+
+    from dataclasses import replace
+
+    from hipengine.loading.gemma4_gguf_device import materialize_fused_gguf_device_weight
+
+    gate, up = _gate_up_specs(reader)
+    narrower = replace(
+        up,
+        source=replace(
+            up.source,
+            shape=(up.source.shape[0], up.source.shape[1] // 2),
+            byte_shape=(up.source.byte_shape[0], up.source.byte_shape[1] // 2),
+        ),
+    )
+    with pytest.raises(ValueError, match="ffn_up") as excinfo:
+        materialize_fused_gguf_device_weight(reader, [gate, narrower])
+    assert str(narrower.source.shape) in str(excinfo.value)
+
+
+@pytest.mark.skipif(
+    not hip_runtime_available(), reason="HIP runtime unavailable; skipping fused residency test"
+)
+def test_fused_blocks_are_the_members_bytes_in_order(reader: GGUFReader) -> None:
+    """The fused buffer is the members' bytes concatenated, in order.
+
+    This is the whole claim behind fusing gate and up: the concatenation of the
+    raw blocks *is* the fused tensor's storage, so no reblocking, dequantization
+    or arithmetic happens anywhere. Comparing the device buffer against a fresh
+    concatenation of the reader's byte views tests that directly, and a spec
+    that described anything other than the concatenation would fail it.
+    """
+
+    from hipengine.core.memory import DeviceBuffer, copy_device_to_host
+    from hipengine.loading.gemma4_gguf_device import materialize_fused_gguf_device_weight
+    from hipengine.loading.materialize import host_array_ptr
+
+    gate, up = _gate_up_specs(reader)
+    weight = materialize_fused_gguf_device_weight(reader, [gate, up])
+    try:
+        source = weight.spec.source
+        assert source.shape == (
+            gate.source.shape[0] + up.source.shape[0],
+            gate.source.shape[1],
+        )
+        assert source.nbytes == gate.source.nbytes + up.source.nbytes
+        assert source.byte_shape == (
+            gate.source.byte_shape[0] + up.source.byte_shape[0],
+            gate.source.byte_shape[1],
+        )
+        assert source.ggml_shape == (
+            gate.source.ggml_shape[0],
+            gate.source.ggml_shape[1] + up.source.ggml_shape[1],
+        )
+        # Both members share the slot, so the fused path names both.
+        assert "ffn_gate" in source.name and "ffn_up" in source.name
+
+        nbytes = int(weight.allocation("raw").buffer.nbytes)
+        assert nbytes == source.nbytes
+
+        host = np.empty(nbytes, dtype=np.uint8)
+        copy_device_to_host(
+            host_array_ptr(host),
+            DeviceBuffer(ptr=weight.allocation("raw").buffer.ptr, nbytes=nbytes),
+            nbytes,
+        )
+        expected = np.concatenate(
+            [
+                np.frombuffer(reader.tensor_data(name), dtype=np.uint8)
+                for name in (gate.source.name, up.source.name)
+            ]
+        )
+        np.testing.assert_array_equal(host, expected, err_msg="fused residency")
+    finally:
+        weight.free()

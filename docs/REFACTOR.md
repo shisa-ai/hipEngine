@@ -4,6 +4,28 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## The split dense GeGLU wrapper lost its only caller when gate/up fused (found 2026-09-29)
+
+The dense MLP's gate and up projections are fused into one resident weight
+(`mlp_gate_up_proj`) by `_build_layer` in `hipengine/runtime/gemma4.py`, so
+`gemma4_layer.py` reads both halves from a single `(rows, 2 * intermediate)`
+buffer and calls `gemma4_gelu_tanh_mul_bf16` -- the form the expert path already
+uses. `gemma4_gelu_tanh_mul_split_bf16`
+(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_moe.py`) existed only because the
+artifact stored `ffn_gate` and `ffn_up` as distinct tensors, which its own
+docstring states, so it now has no production caller. It is still exported from
+the gemma4 package and its HIP symbol is still built.
+
+Remove the Python wrapper, `_SYMBOL_GELU_SPLIT`, the
+`gemma4_gelu_tanh_mul_split_bf16` export in `gemma4/__init__.py`, and the HIP
+kernel, in that order. Do not remove the kernel first: the wrapper's existence
+is what keeps the symbol referenced.
+
+Clearing condition: `grep -rn gemma4_gelu_tanh_mul_split_bf16 hipengine/ tests/ scripts/`
+returns only the definition, the package export, and this entry, and the Gemma 4
+unit tier plus one public `LLM.generate()` request pass after the wrapper is
+gone. Removal should be its own unit, separate from the fusion that stranded it.
+
 ## Dense Q8 MMQ prefill branch is unreachable behind the WMMA rewrite (found 2026-09-26)
 
 The dense branch of `_q8_mmq_prefill_dispatch`
