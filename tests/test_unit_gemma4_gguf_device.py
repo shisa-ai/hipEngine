@@ -214,8 +214,17 @@ def test_expert_tiles_are_priced_from_the_stored_bytes(reader: GGUFReader) -> No
             * blocks_per_row
             * GGUF_Q4_K_TILE16_BLOCK_BYTES
         )
-        # A tile block is 2368 bytes where the 16 Q4_K blocks it replaces are
-        # 2304, so the tiles cost more than the raw bytes they are built from.
+        # A tile block is 2368 bytes where the 16 Q4_K blocks it is built from
+        # are 2304, and the raw blocks are kept rather than replaced, so the two
+        # tile halves are 1.02778 times the tensor's raw bytes and the tensor
+        # holds 2.02778 times raw. That ratio is what the loader's planner
+        # comment and the repack's size docstring state, so it is pinned here
+        # against the block constants instead of restated there.
+        raw_block = GGUF_Q4_K_TILE16_COLS * GGUF_Q4_K_BLOCK_BYTES
+        assert (int(spec.source.nbytes) + 2 * expected) * raw_block == int(
+            spec.source.nbytes
+        ) * (raw_block + GGUF_Q4_K_TILE16_BLOCK_BYTES), spec.slot_path
+        assert round(2 * expected / int(spec.source.nbytes), 5) == 1.02778, spec.slot_path
         assert expected > int(spec.source.nbytes) // 2, spec.slot_path
         assert derived_allocation_bytes(spec, "t16_gate") == expected, spec.slot_path
         assert derived_allocation_bytes(spec, "t16_up") == expected, spec.slot_path
