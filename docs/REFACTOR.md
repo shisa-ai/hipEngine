@@ -137,8 +137,7 @@
   route is now registered as `production_gr_up_staged` in the layer2 gate and
   its production gate is runnable; the dense sibling's layer-scoped result still
   does not transfer to this route.
-- **Registration trap, recorded because it silently turns a gate into a control:**
-  the GR staged variant is registered only by the module-level
+- **Registration trap, recorded because it silently turns a gate into a control:**  the GR staged variant is registered only by the module-level
   `register_gr_staged_f32_kernel()` call in
   `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_gr_staged_f32.py`, and
   `register_gfx1151_kernels` reaches that module through `import_module`, which
@@ -158,6 +157,28 @@
   reproduced at `2812d8789` with no other changes). Cleanup: give the staged GR
   module a registration hook the gfx1100 and gfx1151 packages call explicitly,
   as `gguf_k_gemv` already does via `register_gguf_k_gemv_kernels`.
+- **`20260929T`: the layer2 gate's DEFAULT prompt suites cannot engage any GR
+  route, and this is the second half of the blocker above.** All four GR
+  selectors (`_qwen4_exp_gr_up_sigmoid_mean_enabled`, `_qwen4_exp_gr_iu8_enabled`,
+  `_qwen4_exp_gr_wide_enabled`, `_qwen4_exp_gr_staged_enabled`) require
+  `rows > 256`, but `qwen4exp_layer2_profile_gate.py`'s default suites
+  (`mtpbench-code-general-ja.jsonl` plus `gdn-prefill-category-heldouts.jsonl`)
+  produce 18 prompts of **39-71 tokens**, so the prefill is a single 39-71 row
+  call and every GR route declines. Measured: the first `production_gr_up_staged`
+  run returned `candidate_dispatch_calls: 0` with `measurement_valid: false` and
+  `status: failed` while every individual quality gate read `true` and all 18
+  trajectories were bit-identical - a green-looking artifact describing a
+  comparison of one configuration against itself. **The gate is fail-closed and
+  caught it**: `measurement_valid` requires `counter["calls"] > 0` whenever the
+  candidate declares a dispatch target, so the false pass was refused rather
+  than certified. The fix is to pass the long-form suite as well:
+  `--prompts benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl`
+  (438/508/424/512 chat-formatted tokens covering all four required categories,
+  written for exactly this row floor). Consequence for the record: the two
+  pre-existing GR candidates (`production_gr_up_restore`,
+  `production_gr_up_wide`) have **no gate artifact in `benchmarks/results/`**, and
+  a default-suite run of either would be a control for the same reason - so
+  neither route has measured numerical qualification from this gate.
 
 ## Qualified Chunk Tradeoffs
 
