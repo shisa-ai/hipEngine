@@ -254,9 +254,34 @@ SELECTORS: dict[str, Route] = {
         kind=KIND,
         scenario_prefix="qwen4exp-ud-q4-k-xl-q8-wmma-dense-prefill-layers",
         candidate_chain="wmma_prefill_f32_f32_out",
-        candidate_env={WMMA_LAYERS_ENV: "{layers}"},
-        teacher_env={WMMA_LAYERS_ENV: ""},
-        surface=f"post-binder {WMMA_LAYERS_ENV}",
+        # The wide route must be cleared in **both** arms, for the reciprocal
+        # reason the ``dense_wide`` route clears this one: the certified plan
+        # binds ``dense_wide`` to 16-47, the same window this route is gated at,
+        # and ``_q8_dense_wide_claims_parent`` accepts the WMMA-rewritten parent
+        # as well as the exact parent. So with the wide route left bound it
+        # claims the dispatch whichever way this selector is set, both arms
+        # resolve to ``dense_wide256_f32_f32_out``, and the gate reports
+        # bit-identical candidate/teacher logits with a KL of exactly zero and
+        # ``measurement_valid: true`` - a green status covering a route that
+        # never ran. Measured, not theoretical: the certified 16-47
+        # configuration returned exactly that at HEAD, while the 2026-09-16
+        # certification of the same route had a genuine exact-chain teacher and
+        # mean KL 3.796e-4. See
+        # ``benchmarks/results/2026-09-29-q8-staged-f32-dense-prefill-layers-gate/WMMA-ROUTE-FALSE-PASS.md``.
+        candidate_env={
+            WMMA_LAYERS_ENV: "{layers}",
+            DENSE_WIDE_ENV: "0",
+            DENSE_WIDE_LAYERS_ENV: "",
+        },
+        teacher_env={
+            WMMA_LAYERS_ENV: "",
+            DENSE_WIDE_ENV: "0",
+            DENSE_WIDE_LAYERS_ENV: "",
+        },
+        surface=(
+            f"post-binder {WMMA_LAYERS_ENV}; "
+            f"{DENSE_WIDE_ENV} cleared in both arms"
+        ),
     ),
     "dense_wide": Route(
         kind="hipengine_execution_profile_q8_dense_wide_prefill_layers_gate",
