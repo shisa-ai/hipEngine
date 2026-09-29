@@ -12,6 +12,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
     gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out,
     gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_fp16_fp16_out,
@@ -161,6 +162,7 @@ def _run_t16_selected_dual_gpu(
     *,
     shared_x: bool = False,
     qmicro: bool = False,
+    column_major: bool = False,
     raw_bits: bool = False,
 ) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
@@ -169,9 +171,13 @@ def _run_t16_selected_dual_gpu(
     library = build_gguf_q4_k_t16_selected_prefill(load=True)
     if shared_x and qmicro:
         raise ValueError("shared_x and qmicro are mutually exclusive test routes")
+    if column_major and (shared_x or qmicro or dtype != "bf16"):
+        raise ValueError("the K-major decode is bf16 row-major-route only")
     if dtype == "bf16":
         wrapper = (
-            gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out
+            gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out
+            if column_major
+            else gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out
             if qmicro
             else gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out
             if shared_x
@@ -190,7 +196,10 @@ def _run_t16_selected_dual_gpu(
         (fixture.compact_rows, fixture.out_features_a + fixture.out_features_b),
         dtype=out_dtype,
     )
-    repack = repack_gguf_q4_k_tile16_qmicro if qmicro else repack_gguf_q4_k_tile16
+    if qmicro:
+        repack = repack_gguf_q4_k_tile16_qmicro
+    else:
+        repack = lambda raw: repack_gguf_q4_k_tile16(raw, column_major=column_major)  # noqa: E731
     tiles_a = repack(fixture.qweight_a).tiles
     tiles_b = repack(fixture.qweight_b).tiles
     if not qmicro:
@@ -359,6 +368,28 @@ def test_q4_k_t16_shared_x_candidate_matches_baseline_bytes(dtype: str) -> None:
     )
     baseline = _run_t16_selected_dual_gpu(fixture, dtype, raw_bits=True)
     candidate = _run_t16_selected_dual_gpu(fixture, dtype, shared_x=True, raw_bits=True)
+    np.testing.assert_array_equal(candidate, baseline)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q4_k_t16_column_major_tiles_match_baseline_bytes() -> None:
+    """The K-major repack and decode are a pure permutation of the row-major pair.
+
+    Same tile bytes, same tile size, same decoded values, so the two launches
+    must agree bit for bit.  The fixture exercises a partial row tile (17 rows),
+    a one-row expert, an empty expert and a short final column tile.
+    """
+
+    fixture = _build_compact_fixture(
+        counts=[0, 16, 17, 31],
+        in_features=512,
+        out_features_a=48,
+        out_features_b=64,
+        dtype="bf16",
+        seed=17,
+    )
+    baseline = _run_t16_selected_dual_gpu(fixture, "bf16", raw_bits=True)
+    candidate = _run_t16_selected_dual_gpu(fixture, "bf16", column_major=True, raw_bits=True)
     np.testing.assert_array_equal(candidate, baseline)
 
 

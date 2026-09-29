@@ -1875,20 +1875,36 @@ rule as the rest rather than falling to a slower fallback.
 
 | Workload | Prefill | Decode | Public wall |
 | --- | ---: | ---: | ---: |
-| 512/128 | **1139.1 tok/s** | 28.70 tok/s | **4.651 s** |
+| 512/128 | **1242 tok/s** | 28.92 tok/s | **4.38 s** |
 
 Both arms of that row were measured in one session with only the Q4_K gate/up
-leaf's source file differing: **1064.2 to 1139.1 tok/s prefill, 28.314 to 28.697
-tok/s decode, 4.9306 to 4.6510 s public wall**, path parity true in both. The
-leaf itself goes **4.936 to 4.114 ms per call at 512 tokens and 4.997 to 4.136
-at 4096**, 29 and 232 calls respectively, and the output is bit-identical.
+leaf's source file, its wrapper, its route and its loader repack differing:
+**1147 to 1242 tok/s prefill, 28.374 to 28.924 tok/s decode, 4.86 to 4.38 s
+public wall**, path parity true in both. The leaf itself goes **4.087 to 2.987 ms
+per call at 512 tokens and 4.170 to 3.0723 at 4096**, 29 and 232 calls
+respectively, and the output is bit-identical.
+
+The leaf reads its weight tile through LDS now. The tile is repacked K-major, a
+pure permutation that puts the byte for (byte column `p`, K value `k`) at
+`p * 16 + (k % 16)` inside its 128-byte K tile, so the sixteen K values one lane
+needs for its byte column become one contiguous 16-byte block. Each sub-block's
+512 staged bytes are copied by one coalesced 128-bit load per lane and read back
+as one 128-bit LDS load per weight fragment, replacing sixteen scalar global byte
+loads. Reading the same fragment straight from global memory instead is **1.98x
+slower**: one load per fragment leaves the compiler nothing to batch, so it keeps
+more fragments in flight to hide L2 latency and asks for 256 VGPRs -- the ISA
+maximum -- with 202 spilled instructions, against the row-major decode's 175
+VGPRs and no spill. The LDS read is short-latency enough not to need batching,
+and the budget lands at **172 VGPRs with no spill and 99.2 instructions per
+WMMA** against the row-major decode's 124.4.
 
 An earlier published row for this workload was 121.90 tok/s prefill, 21.14
 tok/s decode and a 10.240 s wall. The intervening work was the int8 MMQ expert
 routes becoming the default, the Q5_1 down projection's inner-loop memory
 traffic, layer 29 reaching its siblings' routes, prefill attention no longer
-walking the columns its own causal mask zeroes, and the Q4_K gate/up leaf's
-per-(sub-block, k-tile, half) bookkeeping moving out of its K loop. Prefill-only
+walking the columns its own causal mask zeroes, the Q4_K gate/up leaf's
+per-(sub-block, k-tile, half) bookkeeping moving out of its K loop, and now that
+leaf reading its tile through LDS. Prefill-only
 kernel time at 512 tokens divides into the routed experts at 46.8%, the dense
 projections and lm head at 26.9%, and attention at 19.2%. At 2048 tokens
 attention is 46.2% and the expert block 31.1%, so attention is the only term

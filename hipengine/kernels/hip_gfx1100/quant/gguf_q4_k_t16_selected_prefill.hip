@@ -52,6 +52,20 @@ constexpr int Q4_QMICRO_T16_META_OFFSET = Q4_QMICRO_T16_DMIN_OFFSET + T16_COLS *
 constexpr int Q4_QMICRO_T16_Q_OFFSET = Q4_QMICRO_T16_META_OFFSET + 2 * Q4_SUBBLOCKS * (T16_COLS / 4) * 3;
 constexpr int Q4_QMICRO_T16_BLOCK_BYTES = Q4_QMICRO_T16_Q_OFFSET + Q4_SUBBLOCKS * Q4_SUBBLOCK * (T16_COLS / 2);
 
+// LDS staging window for the K-major decode.  One window holds the Q region of
+// ``Q4_T16_STAGE_SUBBLOCKS`` consecutive sub-blocks for both 16-column halves
+// of a block.  Both halves are staged because every lane reads both of them.
+//
+// The window is deliberately one sub-block.  The barrier that publishes a fill
+// is also a scheduling fence, so everything decoded between two barriers is
+// live at once; at two sub-blocks the K-major path asks for 256 VGPRs and spills
+// 83 instructions, at four it spills 196.  At one it asks for 172 VGPRs with no
+// spills, below the row-major path's 175, and the whole block's staging is 512
+// bytes.
+constexpr int Q4_T16_STAGE_SUBBLOCKS = 1;
+constexpr int Q4_T16_STAGE_HALF_BYTES = Q4_T16_STAGE_SUBBLOCKS * Q4_SUBBLOCK * (T16_COLS / 2);
+constexpr int Q4_T16_STAGE_BYTES = 2 * Q4_T16_STAGE_HALF_BYTES;
+
 __device__ inline float bf16_bits_to_float(uint16_t value) {
   union {
     uint32_t u32;
@@ -249,6 +263,56 @@ __device__ inline void load_q4_t16_b_reg(
   }
 }
 
+// Decode one B fragment of a K-major tile.
+//
+// The K-major Q region stores the byte for (byte column ``p``, K value ``k``)
+// at ``p * 16 + (k % 16)`` inside its 128-byte K tile, so the sixteen K values
+// one lane needs for its byte column are one contiguous 16-byte block.  One
+// 128-bit load replaces the row-major form's sixteen scalar byte loads, and the
+// warp's eight byte columns cover 128 bytes -- four fully used sectors instead
+// of one sector per K value, sixteen times over.
+//
+// The decoded values are identical to ``load_q4_t16_b_reg``: the same byte, the
+// same nibble shift, the same scale and minimum, and ``b_reg[i]`` still holds
+// K value ``k_base + i`` so the activation fragment pairs with it unchanged.
+// Only the order of the Q-region bytes in memory differs, and the repack that
+// writes them is the matching pure permutation.
+//
+// ``q_tile`` is the 128-byte K tile for this (subblock, k-tile), which is either
+// a global address inside ``tile`` or the same bytes staged in LDS.  ``tile``
+// itself always addresses the global header, which the staging does not cover.
+template <bool qmicro = false>
+__device__ inline void load_q4_t16_b_reg_column_major(
+    const uint8_t* __restrict__ tile,
+    const uint8_t* __restrict__ q_tile,
+    int subblock,
+    int col,
+    int q_shift,
+    half16_t& b_reg) {
+  constexpr int d_offset = qmicro ? Q4_QMICRO_T16_D_OFFSET : Q4_T16_D_OFFSET;
+  constexpr int dmin_offset = qmicro ? Q4_QMICRO_T16_DMIN_OFFSET : Q4_T16_DMIN_OFFSET;
+  const float d_f = fp16_bytes_to_float(tile + d_offset + col * 2);
+  const float dmin_f = fp16_bytes_to_float(tile + dmin_offset + col * 2);
+  const uint8_t scale = qmicro
+      ? qmicro_coefficient(tile, 0, subblock, col)
+      : tile[Q4_T16_SCALE_OFFSET + subblock * T16_COLS + col];
+  const uint8_t minv = qmicro
+      ? qmicro_coefficient(tile, 1, subblock, col)
+      : tile[Q4_T16_MIN_OFFSET + subblock * T16_COLS + col];
+  const float scale_f = d_f * static_cast<float>(scale);
+  const float min_f = dmin_f * static_cast<float>(minv);
+  const uint8_t* __restrict__ q_row = q_tile + (col >> 1) * K_TILE;
+#pragma unroll
+  for (int j = 0; j < 4; ++j) {
+    const uint32_t word = *reinterpret_cast<const uint32_t*>(q_row + 4 * j);
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      const uint32_t q = (word >> (8 * i + q_shift)) & 0x0Fu;
+      b_reg[4 * j + i] = static_cast<half_t>(scale_f * static_cast<float>(q) - min_f);
+    }
+  }
+}
+
 bool valid_selected_dual_t16_common(
     const void* x,
     const void* expert_start_compact,
@@ -282,7 +346,11 @@ bool valid_selected_dual_t16_common(
 // range test, so no stored output can observe it.  Each accumulator still sees
 // exactly the same sequence of WMMA operations over exactly the same operands,
 // so the result is bit-identical to the original formulation.
-template <typename scalar_t, bool qmicro = false>
+//
+// ``column_major`` selects the K-major weight decode, which requires the
+// matching K-major repack.  It changes only how the same tile bytes are read,
+// so a K-major run is bit-identical to a row-major run on the matching tiles.
+template <typename scalar_t, bool qmicro = false, bool column_major = false>
 __launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel(
     const scalar_t* __restrict__ x,
@@ -316,6 +384,13 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel(
   const int64_t tile_row_in_expert = static_cast<int64_t>(row_tile) * 16 - expert_start_wmma[expert_id];
   const int64_t blocks_per_row = in_features / QK_K;
   constexpr int tile_bytes = qmicro ? Q4_QMICRO_T16_BLOCK_BYTES : Q4_T16_BLOCK_BYTES;
+  constexpr int q_offset = qmicro ? Q4_QMICRO_T16_Q_OFFSET : Q4_T16_Q_OFFSET;
+  constexpr int q_subblock_bytes = Q4_SUBBLOCK * (T16_COLS / 2);
+  constexpr int q_ktile_bytes = K_TILE * (T16_COLS / 2);
+
+  // K-major staging buffer.  Only the K-major path uses it; the row-major
+  // instantiation never touches it and allocates no group segment.
+  __shared__ uint8_t q_stage[Q4_T16_STAGE_BYTES];
 
   // Loop-invariant per lane.  A row outside the expert reads row 0 instead; its
   // accumulator row is dropped by the store loop, and a WMMA row of A feeds only
@@ -358,15 +433,52 @@ __global__ void gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel(
     const int64_t g_k_base = blk * QK_K;
 #pragma unroll
     for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+      if constexpr (column_major) {
+        // Refill the window once every ``Q4_T16_STAGE_SUBBLOCKS`` sub-blocks.
+        // The first barrier retires the previous window's readers before its
+        // slot is overwritten; the second publishes the new bytes.  Both are
+        // uniform across the block.  The fill assignment is independent of the
+        // lane's decode role: lanes 0-15 stage the first half's tile and lanes
+        // 16-31 the second, each covering a contiguous run, so the block reads
+        // one 128-bit chunk per lane per half from a single 512-byte span.
+        if ((sb % Q4_T16_STAGE_SUBBLOCKS) == 0) {
+          __builtin_amdgcn_s_barrier();
+          const int fill_half = tid >> 4;
+          const uint8_t* __restrict__ fill_tile = fill_half ? tile1 : tile0;
+          const uint8_t* __restrict__ fill_src = fill_tile + q_offset +
+              sb * q_subblock_bytes + (tid & 15) * (Q4_T16_STAGE_HALF_BYTES / 16);
+          uint8_t* __restrict__ fill_dst = q_stage + fill_half * Q4_T16_STAGE_HALF_BYTES +
+              (tid & 15) * (Q4_T16_STAGE_HALF_BYTES / 16);
+#pragma unroll
+          for (int c = 0; c < Q4_T16_STAGE_HALF_BYTES / 16; c += 16) {
+            const uint4 chunk = *reinterpret_cast<const uint4*>(fill_src + c);
+            *reinterpret_cast<uint4*>(fill_dst + c) = chunk;
+          }
+          __builtin_amdgcn_s_barrier();
+        }
+      }
 #pragma unroll
       for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
         const int64_t k_base = g_k_base + sb * Q4_SUBBLOCK + kt * K_TILE;
         const half16_t a_reg = load_compact_row_half16<scalar_t>(
             x, compact_row, in_features, k_base, true);
         half16_t b_reg;
-        load_q4_t16_b_reg<qmicro>(tile0, sb, kt, lane16, q_shift, b_reg);
+        if constexpr (column_major) {
+          const uint8_t* __restrict__ window = q_stage +
+              (sb % Q4_T16_STAGE_SUBBLOCKS) * q_subblock_bytes + kt * q_ktile_bytes;
+          load_q4_t16_b_reg_column_major<qmicro>(tile0, window, sb, lane16, q_shift, b_reg);
+        } else {
+          load_q4_t16_b_reg<qmicro>(tile0, sb, kt, lane16, q_shift, b_reg);
+        }
         acc[0] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc[0]);
-        load_q4_t16_b_reg<qmicro>(tile1, sb, kt, lane16, q_shift, b_reg);
+        if constexpr (column_major) {
+          const uint8_t* __restrict__ window = q_stage +
+              Q4_T16_STAGE_HALF_BYTES + (sb % Q4_T16_STAGE_SUBBLOCKS) * q_subblock_bytes +
+              kt * q_ktile_bytes;
+          load_q4_t16_b_reg_column_major<qmicro>(tile1, window, sb, lane16, q_shift, b_reg);
+        } else {
+          load_q4_t16_b_reg<qmicro>(tile1, sb, kt, lane16, q_shift, b_reg);
+        }
         acc[1] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc[1]);
       }
     }
@@ -627,7 +739,7 @@ __global__ void gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_ke
   }
 }
 
-template <typename scalar_t, bool qmicro = false>
+template <typename scalar_t, bool qmicro = false, bool column_major = false>
 int launch_selected_dual_t16_compact32(
     const scalar_t* x,
     const int64_t* expert_start_compact,
@@ -666,7 +778,7 @@ int launch_selected_dual_t16_compact32(
       static_cast<unsigned int>((out_features_total + 31) / 32),
       static_cast<unsigned int>(row_tiles));
   hipLaunchKernelGGL(
-      (gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<scalar_t, qmicro>),
+      (gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<scalar_t, qmicro, column_major>),
       grid,
       block,
       0,
@@ -845,6 +957,38 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16
     int64_t wmma_total_rows,
     hipStream_t stream) {
   return launch_selected_dual_t16_compact32<uint16_t>(
+      x,
+      expert_start_compact,
+      expert_start_wmma,
+      tile_expert,
+      tiles_a,
+      tiles_b,
+      out,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      wmma_total_rows,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma,
+    const int64_t* tile_expert,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_t16_compact32<uint16_t, false, true>(
       x,
       expert_start_compact,
       expert_start_wmma,

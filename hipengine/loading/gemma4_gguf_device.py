@@ -428,7 +428,14 @@ def materialize_gemma4_gguf_device_weight(
             first = name == "t16_gate"
             start = 0 if first else half_rows
             stacked = np.asarray(raw).reshape(experts, 2 * half_rows, -1)
-            tiles = repack_gguf_q4_k_tile16(stacked[:, start : start + half_rows, :]).tiles
+            # K-major Q region, staged through LDS: the kernel copies each
+            # sub-block's 512 bytes into shared memory with one coalesced
+            # 128-bit load per lane and reads one weight fragment per 128-bit
+            # LDS load, instead of sixteen scalar global byte loads.  Same tile
+            # size, same decoded values, and only this route reads these tiles.
+            tiles = repack_gguf_q4_k_tile16(
+                stacked[:, start : start + half_rows, :], column_major=True
+            ).tiles
         allocations[name] = load_host_array_to_device_as_dtype(
             f"{spec.source.name}.{name}",
             tiles,

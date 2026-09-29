@@ -1232,7 +1232,8 @@ def _gemma4_project_experts_gate_up_wmma_t16(
     )
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
         build_gguf_q4_k_t16_selected_prefill,
-        gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out as wmma_gate_up,
+        gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_column_major_bf16_bf16_out
+        as wmma_gate_up,
     )
 
     import numpy as np
