@@ -1575,6 +1575,77 @@ def test_attention_prefill_applies_the_mask_it_is_given():
         np.testing.assert_allclose(got[0, head], value[0, kv_head], atol=1e-5)
 
 
+@pytest.mark.parametrize("start,rows,window", [(0, 4, 2), (0, 6, 3), (10, 1, 4), (0, 5, None)])
+def test_attention_prefill_matches_the_reference_through_the_production_mask(start, rows, window):
+    """Production keep-mask -> HIP kernel -> naive reference, end to end.
+
+    V2's hole was a composition gap. Two bindings existed independently: the
+    kernel was checked against a naive reference using a mask the *test* built,
+    and nothing checked the mask production builds (``_keep_mask``) against the
+    HuggingFace-gated ``gemma4_attention_mask``. Each could pass while the real
+    path was wrong, because neither exercised the pair the runtime actually
+    issues -- this closes that seam by feeding the production mask straight
+    through the kernel and comparing to numpy.
+
+    ``start > 0`` matters: that is the decode/paged shape where the key range
+    runs ahead of the query rows, and it is the geometry the causal-only tests
+    never construct.
+    """
+    from hipengine.kernels.cpu_reference.gemma4 import (
+        FULL_ATTENTION,
+        SLIDING_ATTENTION,
+        Gemma4AttentionGeometry,
+        Gemma4RopeConfig,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        gemma4_attention_prefill_f32,
+    )
+    from hipengine.runtime.gemma4 import _keep_mask
+
+    geometry = Gemma4AttentionGeometry(
+        layer_type=SLIDING_ATTENTION if window is not None else FULL_ATTENTION,
+        num_heads=4,
+        num_kv_heads=2,
+        head_dim=16,
+        rope=Gemma4RopeConfig(rope_theta=10000.0, head_dim=16, rope_angles=8, rope_type=1),
+        sliding_window=window,
+        k_eq_v=False,
+    )
+
+    num_heads, num_kv_heads, head_dim = 4, 2, 16
+    keys = start + rows
+    keep = _keep_mask(geometry, start, rows)
+    assert keep.shape == (rows, keys)
+
+    rng = np.random.default_rng(20260929)
+    query = (rng.standard_normal((rows, num_heads, head_dim)) * 0.5).astype(np.float32)
+    key = (rng.standard_normal((keys, num_kv_heads, head_dim)) * 0.5).astype(np.float32)
+    value = (rng.standard_normal((keys, num_kv_heads, head_dim)) * 0.5).astype(np.float32)
+
+    device = _Device()
+    q_ptr, k_ptr, v_ptr = device.put(query), device.put(key), device.put(value)
+    m_ptr = device.put(keep)
+    out_ptr = device.out((rows, num_heads, head_dim), np.float32)
+
+    gemma4_attention_prefill_f32(
+        q_ptr, k_ptr, v_ptr, m_ptr, out_ptr,
+        tokens=rows,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        scale=1.0,
+        keys=keys,
+    )
+    got = device.get(out_ptr, (rows, num_heads, head_dim), np.float32)
+    want = _reference_attention(
+        query, key, value, keep, num_heads=num_heads, num_kv_heads=num_kv_heads
+    )
+    np.testing.assert_allclose(
+        got, want, atol=1e-5, rtol=1e-5,
+        err_msg=f"production-mask path disagreed at start={start} rows={rows} window={window}",
+    )
+
+
 def test_attention_prefill_scale_is_not_assumed():
     """The kernel multiplies by the scale it is given, not head_dim**-0.5.
 
