@@ -145,6 +145,58 @@ _WMMA_PREFILL_ENV = "HIPENGINE_GGUF_WMMA_PREFILL"
 # ``None`` until set, so the env var still controls the default for plain
 # bench/diagnostic invocations.
 _wmma_prefill_session_enabled: bool | None = None
+# Engagement recorder for the f16 WMMA prefill route. ``None`` by default, so the
+# hot path pays one ``ContextVar.get`` and nothing else.
+#
+# This exists because a numerical gate cannot tell "the route ran and moved the
+# output" from "the route never ran and something else moved the output" - both
+# produce a nonzero KL. Four times in one packet that ambiguity produced a
+# measurement attributed to a route that had not engaged: two bit-identical
+# false passes, a qualification claim asserted on a failing run, and a gate named
+# ``wmma`` whose post-prefill output is identical to f32 precision (5.8e-12)
+# while its entire drift sits on the decode path. The last one is only visible
+# because the row was isolated; nothing in the artifact said which variant ran.
+#
+# So record the decision at the dispatch: the incoming variant, the outgoing
+# variant, and, when it declines, which condition declined it.
+_wmma_prefill_dispatch_records: ContextVar[
+    list[dict[str, object]] | None
+] = ContextVar("gguf_wmma_prefill_dispatch_records", default=None)
+
+
+@contextlib.contextmanager
+def wmma_prefill_dispatch_recorder(records: list[dict[str, object]]):
+    """Collect per-launch WMMA prefill dispatch decisions into ``records``."""
+
+    token = _wmma_prefill_dispatch_records.set(records)
+    try:
+        yield records
+    finally:
+        _wmma_prefill_dispatch_records.reset(token)
+
+
+def _record_wmma_prefill_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    variant_out: str | None,
+    reason: str,
+) -> None:
+    records = _wmma_prefill_dispatch_records.get()
+    if records is None:
+        return
+    records.append(
+        {
+            "variant_in": dispatch.key.variant,
+            "abi_in": dispatch.abi,
+            "rows": int(rows),
+            "variant_out": variant_out,
+            "engaged": variant_out is not None,
+            "reason": reason,
+        }
+    )
+
+
 _wmma_prefill_weight_filter: ContextVar[
     Callable[[GGUFDeviceWeight], bool] | None
 ] = ContextVar("gguf_wmma_prefill_weight_filter", default=None)
@@ -8563,11 +8615,25 @@ def _wmma_prefill_dispatch(
     """
 
     if not use_wmma or rows <= 1:
+        _record_wmma_prefill_dispatch(
+            dispatch, rows=rows, variant_out=None,
+            reason="use_wmma_false" if not use_wmma else "rows_le_1",
+        )
         return dispatch
     if dispatch.abi == "raw":
         if not _dispatch_can_use_wmma_prefill(dispatch, rows=rows, in_features=in_features):
+            # The commonest decline in practice, and the one that was invisible:
+            # the predicate requires a ``prefill_`` variant, and the exact
+            # coltile leaf never has one.
+            _record_wmma_prefill_dispatch(
+                dispatch, rows=rows, variant_out=None,
+                reason="raw_abi_not_eligible",
+            )
             return dispatch
         variant = dispatch.key.variant
+        _record_wmma_prefill_dispatch(
+            dispatch, rows=rows, variant_out=f"wmma_{variant}", reason="engaged",
+        )
         return GGUFLinearDispatch(
             KernelKey(
                 dispatch.key.backend,
@@ -8579,6 +8645,10 @@ def _wmma_prefill_dispatch(
         )
     if dispatch.abi == "t16":
         if not _dispatch_can_use_t16_wmma_prefill(dispatch, rows=rows, in_features=in_features):
+            _record_wmma_prefill_dispatch(
+                dispatch, rows=rows, variant_out=None,
+                reason="t16_abi_not_eligible",
+            )
             return dispatch
         # The T16 decode variant is named ``t16_gemv_decode_<in>_<out>_out``;
         # the rewrite swaps that for ``t16_wmma_prefill_<in>_<out>_out`` while
@@ -8586,8 +8656,16 @@ def _wmma_prefill_dispatch(
         # signature, additional (tile_m, tile_n) kwargs).
         variant = dispatch.key.variant
         if not variant.startswith("t16_gemv_decode_"):
+            _record_wmma_prefill_dispatch(
+                dispatch, rows=rows, variant_out=None,
+                reason="t16_variant_not_gemv_decode",
+            )
             return dispatch
         suffix = variant[len("t16_gemv_decode_") :]
+        _record_wmma_prefill_dispatch(
+            dispatch, rows=rows,
+            variant_out=f"t16_wmma_prefill_{suffix}", reason="engaged",
+        )
         return GGUFLinearDispatch(
             KernelKey(
                 dispatch.key.backend,
@@ -8597,6 +8675,9 @@ def _wmma_prefill_dispatch(
             ),
             "t16",
         )
+    _record_wmma_prefill_dispatch(
+        dispatch, rows=rows, variant_out=None, reason=f"unsupported_abi:{dispatch.abi}",
+    )
     return dispatch
 
 
@@ -8929,4 +9010,5 @@ __all__ = [
     "set_wmma_prefill_enabled",
     "wmma_prefill_session",
     "wmma_prefill_weight_filter_session",
+    "wmma_prefill_dispatch_recorder",
 ]

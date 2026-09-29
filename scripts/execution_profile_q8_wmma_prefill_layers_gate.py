@@ -52,6 +52,8 @@ from hipengine.execution_profiles import (
     build_variant_manifest,
     resolve_runtime_profile,
 )
+from hipengine.runtime.gguf_linear import wmma_prefill_dispatch_recorder
+
 from scripts.execution_profile_gdn_calibration import (
     CalibrationError,
     PromptCalibrationCapture,
@@ -309,6 +311,55 @@ def qualification_verdict(coverage, *, quality_passed, deterministic, clean):
         "profile_qualification_claim": False,
         "qualification_blockers": [name for name, ok in checks.items() if not ok] + missing,
     }
+
+
+def _summarise_engagement(
+    engagement: Mapping[str, Sequence[Mapping[str, Any]]],
+) -> dict[str, Any]:
+    """Turn raw dispatch records into the answer a reader actually needs.
+
+    The question is never "how many records" but "did the candidate route run,
+    and if not, what declined it". Both arms are summarised because the teacher
+    arm is supposed to be the cleared one: if *it* engages, the comparison is
+    not against the exact chain and the run is invalid regardless of its KL.
+    """
+
+    summary: dict[str, Any] = {}
+    for arm, records in engagement.items():
+        reasons: dict[str, int] = {}
+        engaged: dict[str, int] = {}
+        rows_seen: set[int] = set()
+        for record in records:
+            reasons[str(record["reason"])] = reasons.get(str(record["reason"]), 0) + 1
+            if record.get("engaged"):
+                out = str(record.get("variant_out"))
+                engaged[out] = engaged.get(out, 0) + 1
+            rows_seen.add(int(record.get("rows", 0)))
+        summary[arm] = {
+            "launches": len(records),
+            "engaged_launches": sum(engaged.values()),
+            "engaged_variants": engaged,
+            "decline_reasons": dict(sorted(reasons.items())),
+            "rows_seen": sorted(rows_seen),
+        }
+    candidate_engaged = bool(summary.get("candidate", {}).get("engaged_launches"))
+    teacher_engaged = bool(summary.get("teacher", {}).get("engaged_launches"))
+    summary["candidate_route_engaged"] = candidate_engaged
+    summary["teacher_route_engaged"] = teacher_engaged
+    summary["arms_isolated"] = candidate_engaged and not teacher_engaged
+    if not candidate_engaged:
+        summary["verdict"] = (
+            "the candidate route never engaged; any drift measured here belongs "
+            "to another selector and must not be attributed to this route"
+        )
+    elif teacher_engaged:
+        summary["verdict"] = (
+            "the teacher arm also engaged the route, so the comparison is not "
+            "against the cleared chain"
+        )
+    else:
+        summary["verdict"] = "candidate engaged and teacher cleared"
+    return summary
 
 
 def _load_fixture(path: Path) -> tuple[dict[str, Any], str]:
@@ -701,6 +752,11 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
 
     captures: list[PromptCalibrationCapture] = []
     prompt_manifest: list[dict[str, Any]] = []
+    # Engagement evidence, collected at the dispatch rather than inferred from a
+    # KL. A nonzero KL is equally consistent with "the route ran" and "something
+    # else moved the output"; four times in one packet that ambiguity produced a
+    # measurement attributed to a route that had not engaged.
+    engagement: dict[str, list[dict[str, Any]]] = {"teacher": [], "candidate": []}
     command = ["python3", str(Path(__file__).resolve().relative_to(REPO_ROOT)), *sys.argv[1:]]
     try:
         for position, row in enumerate(cases):
@@ -708,14 +764,16 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
             tokens = [int(t) for t in row["prompt_token_ids"]]
             _apply_route_env(route, candidate=False, layers="")
             _warm(runner, tokens)
-            teacher = _strict_trajectory(runner, tokens, decode_steps)
+            with wmma_prefill_dispatch_recorder(engagement["teacher"]):
+                teacher = _strict_trajectory(runner, tokens, decode_steps)
             forced = [step["token_id"] for step in teacher[:-1]]
             _apply_route_env(route, candidate=True, layers=candidate_layers)
             _warm(runner, tokens)
-            runs = tuple(
-                _forced_trajectory(runner, tokens, forced)
-                for _ in range(int(args.repeat_runs))
-            )
+            with wmma_prefill_dispatch_recorder(engagement["candidate"]):
+                runs = tuple(
+                    _forced_trajectory(runner, tokens, forced)
+                    for _ in range(int(args.repeat_runs))
+                )
             captures.append(
                 PromptCalibrationCapture(
                     prompt_id=prompt_id,
@@ -855,6 +913,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         "strict_logits_sha256": evaluated["strict_logits_sha256"],
         "candidate_logits_sha256": evaluated["candidate_logits_sha256"],
         "variant_manifests": {"candidate_evidentiary": manifest},
+        "route_engagement": _summarise_engagement(engagement),
         "prompts": prompt_manifest,
         "provenance": provenance,
     }
