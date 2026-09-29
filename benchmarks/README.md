@@ -32,17 +32,24 @@ cached build. Three repetitions per arm, one process per arm.
 
 | Prefill chunk | Wall median (s) | Change | Peak allocation |
 | ---: | ---: | ---: | ---: |
-| 1024 (default) | 15.625 | — | 84.44 GB |
+| 1024 | 15.625 | — | 84.44 GB |
 | 4096 | 14.854 | **-771.9 ms (-4.94%)** | 89.40 GB |
+
+The comparison basis is **1024**, the benchmark protocol's chunk size. The
+serving path's default is **256** (`EngineLoopConfig.max_prefill_chunk_tokens`),
+so the -4.94% describes 1024 -> 4096 under this protocol and is **not** the size
+of the production change, which is unmeasured.
 
 The separation between medians is 5.70x the larger within-arm spread and the
 arms do not overlap. `token_id` and `logits_sha256` are identical on every arm
 at every repetition. Chunk 4096 costs +4.96 GB peak (+5.9%).
 
-Not promoted: the numerical gate must be re-run at the new chunk size, and
-`RT-3` records that short-request costs historically kept 1024 as the default,
-so the right form is a shape-based policy rather than a blanket flip. One case,
-prefill only.
+Not promoted. The numerical gate now passes at chunk 4096 and reproduces the
+chunk-1024 certification bit-identically, and a short request (`code-p512`) is
+unaffected in both time and memory because the workspace is already shape-aware
+(`min(chunk, max_sequence_length)`). What remains is a single memory-admission
+question on long prompts, plus the unmeasured 256 -> 4096 serving comparison.
+One case, prefill only.
 [Protocol, cost and limits](results/2026-09-29-qwen4exp-rt1-chunk-remeasure/README.md).
 
 ## Qwen3.8 Flash Next full-attention context route

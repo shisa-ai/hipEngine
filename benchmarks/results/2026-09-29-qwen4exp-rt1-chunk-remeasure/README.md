@@ -198,3 +198,43 @@ cost imposed on short ones.
 **Still not promoted.** No default changed. This section removes one blocker and
 narrows the remaining one to a single memory-admission question; it does not
 settle it.
+
+---
+
+# Qualification: the "default" in this packet is the harness's, not the server's
+
+Everything above compares **1024 -> 4096**, because 1024 is what the benchmark
+protocol uses and what the recorded command in the attribution artifact passed.
+That is a valid measurement of the protocol it ran, but it is **not a description
+of the production change**, and the difference matters.
+
+The engine has more than one chunk-size default:
+
+| site | value | governs |
+|---|---:|---|
+| `EngineLoopConfig.max_prefill_chunk_tokens` (`DEFAULT_MAX_PREFILL_CHUNK_TOKENS`) | **256** | the serving/CLI path |
+| `EngineLoop.__init__(prefill_chunk_size=...)` | 1024 | only the no-config fallback |
+| `EngineLoop` CLI default | 256 | `HIPENGINE_MAX_PREFILL_CHUNK_TOKENS` |
+| `qwen4exp_profile_gap.py --prefill-chunk-size` | 512 | this harness's own default |
+| what this packet passed | 1024 | the recorded attribution command |
+
+`EngineLoop.__init__` line 313's 1024 is a *fallback*: line 1907 sets
+`self.prefill_chunk_size = int(resolved_config.max_prefill_chunk_tokens)`, so a
+supplied config overrides it with 256 by default. The CLI agrees (line 1665:
+"default: 256").
+
+**Consequence.** The serving-relevant comparison is **256 -> 4096**, which is 16x
+the chunk rather than 4x, and it has **not been measured**. So:
+
+- The -4.94% is a measured result for **1024 -> 4096 under this harness protocol**.
+- It is **not** evidence for the size of the production change, which may be
+  larger (more chunks collapsed) or smaller (different row-count regime).
+- Nothing here should be cited as "the server would be 4.94% faster".
+
+The X-6 gate result above is unaffected in kind: it establishes that the
+**route's arithmetic and drift are invariant to the chunk size** over the range
+tested, and that conclusion does not depend on which default is in play. But the
+speedup figure does.
+
+**Still not promoted.** No default changed. If this is pursued, the next
+measurement is 256 -> 4096 on the same case and protocol, not 1024 -> 4096 again.
