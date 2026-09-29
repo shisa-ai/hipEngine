@@ -573,6 +573,23 @@ int launch_gemma4_attention_prefill_tiled(
   }
   return static_cast<int>(hipGetLastError());
 }
+// Defined below; the prefill launcher routes multi-token blocks into it.
+template <typename scalar_t>
+int launch_gemma4_attention_decode(
+    const scalar_t* query,
+    const scalar_t* key,
+    const scalar_t* value,
+    const uint8_t* keep_mask,
+    scalar_t* out,
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream,
+    int64_t keys,
+    float* split_workspace,
+    int split_slices);
 
 template <typename scalar_t>
 int launch_gemma4_attention_prefill(
@@ -595,6 +612,20 @@ int launch_gemma4_attention_prefill(
   }
   if (num_heads % num_kv_heads != 0) {
     return static_cast<int>(hipErrorInvalidValue);
+  }
+  // Multi-token blocks use the same key-class / barrier-batched family the
+  // decode step does. Its kernels are bit-identical to the block kernel below
+  // (same logit trees, same pass-2 and pass-3 partitions) and were measured at
+  // 421 us against the block kernel's 652-700 at keys=1024, head_dim 256, so
+  // prefill has no reason to keep the ~10 barriers per key the block kernel
+  // spends. The fallback below still covers every other geometry.
+  if (tokens > 1) {
+    const int batched_rc = launch_gemma4_attention_decode<scalar_t>(
+        query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads,
+        head_dim, scale, stream, keys, nullptr, 0);
+    if (batched_rc >= 0) {
+      return batched_rc;
+    }
   }
   // The tree reductions require a power-of-two block width. Rounding down
   // would leave dimensions unrepresented; launching head_dim threads directly
@@ -861,6 +892,32 @@ __global__ void gemma4_attention_decode_class_kernel(
       const bool in_range = j < keys;
       active[t] = in_range && mask_row[in_range ? j : 0] != 0;
     }
+    // Skip a tile whose keys are all masked out for this row. A masked key's
+    // logit is -INFINITY whether or not its dot is computed, so dropping the
+    // dot, the warp tree and the K loads moves no surviving term: pass 2 still
+    // reads -INFINITY at these positions and adds expf(-INFINITY - row_max) = 0
+    // at the same ascending-j step. This is the multi-row counterpart of
+    // ``key_begin`` in gemma4_layer, which can only shorten the key range for a
+    // one-row block -- and it is what makes a causal prefill block pay for the
+    // lower triangle instead of the whole square. A fully causal mask over
+    // tokens == keys leaves half the tiles of the average row dead.
+    bool any_active = false;
+#pragma unroll
+    for (int t = 0; t < kKeysPerTile; ++t) {
+      any_active = any_active || active[t];
+    }
+    if (!any_active) {
+      if (lane == 0) {
+#pragma unroll
+        for (int t = 0; t < kKeysPerTile; ++t) {
+          const int64_t j = j0 + static_cast<int64_t>(t) * warps;
+          if (j < keys) {
+            logits_s[j] = -INFINITY;
+          }
+        }
+      }
+      continue;
+    }
 #pragma unroll
     for (int t = 0; t < kKeysPerTile; ++t) {
       const int64_t j = j0 + static_cast<int64_t>(t) * warps;
@@ -957,11 +1014,40 @@ __global__ void gemma4_attention_decode_class_kernel(
   const int64_t v_row_stride = num_kv_heads * head_dim;
   const scalar_t* v_base = value + kv_head * head_dim;
   scalar_t* out_row = out + head_index * head_dim;
+  // Pass 3 walks every key for each of this row's dimensions, but the tail past
+  // the last key the mask keeps contributes weight 0 to every one of them -- the
+  // same argument key_begin's docstring makes for shortening the range of a
+  // one-row block. The mask is the caller's, causal on the full layers and
+  // windowed on the sliding ones, so the bound is read out of it rather than
+  // assumed. max_s is free here: row_max was reduced from it before pass 2, and
+  // pass 2's tree barriers have retired every read of it.
+  int local_last = -1;
+  for (int64_t j = static_cast<int64_t>(tid); j < keys; j += threads) {
+    if (mask_row[j] != 0) {
+      local_last = static_cast<int>(j);
+    }
+  }
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    const int other = __shfl_down(local_last, offset);
+    local_last = other > local_last ? other : local_last;
+  }
+  if ((tid & 31u) == 0u) {
+    max_s[tid >> 5] = static_cast<float>(local_last);
+  }
+  __syncthreads();
+  int last_active = -1;
+  for (unsigned int w = 0; w < (threads >> 5); ++w) {
+    const int per_warp = static_cast<int>(max_s[w]);
+    last_active = per_warp > last_active ? per_warp : last_active;
+  }
+  const int64_t pass3_keys =
+      static_cast<int64_t>(last_active) + 1 < keys ? static_cast<int64_t>(last_active) + 1 : keys;
   if (head_dim >= 2 * static_cast<int64_t>(threads)) {
-    gemma4_decode_pass3<2, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, keys,
+    gemma4_decode_pass3<2, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, pass3_keys,
                               denominator, threads, tid);
   } else {
-    gemma4_decode_pass3<1, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, keys,
+    gemma4_decode_pass3<1, 4>(logits_s, v_base, out_row, v_row_stride, head_dim, pass3_keys,
                               denominator, threads, tid);
   }
 }

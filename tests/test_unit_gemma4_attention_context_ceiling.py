@@ -94,17 +94,34 @@ def test_the_ceiling_is_where_the_lds_budget_runs_out(head_dim: int) -> None:
     Asserting the value here and not only in the attention module means a change to
     the LDS layout that moves the ceiling has to move it in one place, and the test
     fails where the number is written down.
+
+    The requirement is the larger of two launchers' formulas, not one: the block
+    kernel needs ``head_dim + keys + threads`` floats, and the decode key-class
+    kernel that the multi-token route also runs needs ``keys + 256 * 2 + 16`` at
+    its 512-thread block. For ``head_dim=256`` the decode term is the binding one,
+    so a boundary written only against the block formula asserts a limit that is
+    not the limit. Both are checked here, which is what makes the ceiling
+    independent of which term wins.
     """
 
     ceiling = _largest_accepted_capacity(head_dim)
     threads = min(256, 1 << (head_dim - 1).bit_length())
-    assert (head_dim + ceiling + threads) * 4 <= 64 * 1024
-    assert (head_dim + ceiling + 1 + threads) * 4 > 64 * 1024
+
+    def required(keys: int) -> int:
+        """Both launchers' shared-memory formulas, as the kernels compute them."""
+
+        return max(
+            (head_dim + keys + threads) * 4,
+            (keys + 256 * 2 + 16) * 4,
+        )
+
+    assert required(ceiling) <= 64 * 1024
+    assert required(ceiling + 1) > 64 * 1024
 
 
 @pytest.mark.parametrize(
     "head_dim,capacity",
-    [(256, 15_872), (512, 15_616)],
+    [(256, 15_856), (512, 15_616)],
 )
 def test_a_capacity_at_the_ceiling_constructs(
     head_dim: int, capacity: int, monkeypatch
@@ -120,7 +137,7 @@ def test_a_capacity_at_the_ceiling_constructs(
 
 @pytest.mark.parametrize(
     "head_dim,capacity",
-    [(256, 15_873), (512, 15_617)],
+    [(256, 15_857), (512, 15_617)],
 )
 def test_a_capacity_above_the_ceiling_is_refused_loudly(
     head_dim: int, capacity: int, monkeypatch

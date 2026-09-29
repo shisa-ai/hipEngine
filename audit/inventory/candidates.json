@@ -2,7 +2,7 @@
   "kind": "candidates",
   "meta": {
     "campaign_docs_scanned": 67,
-    "candidates": 231
+    "candidates": 232
   },
   "rows": [
     {
@@ -38,6 +38,47 @@
       },
       "id": "candidate/concurrency2-gfx1151-mtp-tuning-x-t4-3-dflash2-closed-pa-93d3d0babce8",
       "evidence_hash": "354490b62b81"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-optimization-5-8-choose-wmma-by-usefu-d3a3557a613b",
+      "title": "| 5.8 Choose WMMA by useful tile occupancy | Measured as an arm, not adopted: 61 \u2014 GEMMA4-26B-A4B-OPTIMIZATION.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md:6213",
+      "evidence": {
+        "verdict_word": "blocked",
+        "measurements": [
+          "611.4 tok/s"
+        ],
+        "excerpt": "| 5.8 Choose WMMA by useful tile occupancy | Measured as an arm, not adopted: 611.4 tok/s against 382.2 on the same lane. Blocked on the promotion gate, iteration 67. |"
+      },
+      "signals": [
+        "recorded as 'blocked' while citing a measurement",
+        "recorded as blocked \u2014 check whether the blocker still holds"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md",
+        "refs": [
+          "611.4 tok/s"
+        ],
+        "tokens": [
+          "382",
+          "611",
+          "adopted",
+          "against",
+          "arm",
+          "choose",
+          "lane",
+          "measured",
+          "occupancy",
+          "same",
+          "tile",
+          "tok",
+          "useful",
+          "wmma"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-optimization-5-8-choose-wmma-by-usefu-d3a3557a613b",
+      "evidence_hash": "60de517e1887"
     },
     {
       "kind": "candidate",

@@ -233,7 +233,14 @@ def gemma4_attention_shared_bytes(*, head_dim: int, keys: int) -> int:
     if head_dim <= 0 or keys <= 0:
         raise ValueError("head_dim and keys must be positive")
     threads = min(256, 1 << (int(head_dim) - 1).bit_length())
-    required = (int(head_dim) + int(keys) + threads) * 4
+    # The multi-token route runs the decode family, whose key-class kernel holds
+    # the logits plus a 256-lane partial per 256-thread group plus one max slot
+    # per warp: keys + 512 + 16 floats at its 512-thread block. Take the larger
+    # of that and the block kernel's own requirement.
+    required = max(
+        (int(head_dim) + int(keys) + threads) * 4,
+        (int(keys) + 256 * 2 + 16) * 4,
+    )
     if required > 64 * 1024:
         raise NotImplementedError(
             f"Gemma 4 gfx1100 attention requires {required} bytes of shared memory "

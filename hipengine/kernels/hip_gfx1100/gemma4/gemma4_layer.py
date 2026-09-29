@@ -129,6 +129,10 @@ def gemma4_project(
     ``int`` is a bf16 device pointer; anything else is a GGUF device weight and
     goes through the quantized linear dispatch, which picks its own kernel from
     the weight's quant key and the row count.
+
+    Keep WMMA prefill eligible for every dense projection, including GeGLU
+    down. T16 Q8 kernels repair non-finite WMMA accumulators in FP32 from the
+    original activation rather than disabling prefill for the whole projection.
     """
 
     if isinstance(weight, int):
@@ -146,6 +150,7 @@ def gemma4_project(
         in_features,
         out_features,
         stream=stream,
+        use_wmma_prefill=True,
     )
 
 

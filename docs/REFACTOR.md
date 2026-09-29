@@ -92,6 +92,36 @@ Removal condition: delete `gemma4_attention_prefill_tiled_kernel`,
 `scripts/gemma4_attention_prefill_tiled_ab.py`. Nothing selects them, so there
 is no behaviour to preserve. Keep the strict kernel, which is both faster and
 the one the decode-parity contract is written against.
+## Dense Q8 MMQ prefill branch is unreachable behind the WMMA rewrite (found 2026-09-26)
+
+The dense branch of `_q8_mmq_prefill_dispatch`
+(`hipengine/runtime/gguf_linear.py`) cannot fire for any shape whose policy admits
+it. `_wmma_prefill_dispatch` runs earlier in the chain and rewrites a raw Q8_0
+dispatch to `abi="wmma_raw"` / `variant="wmma_prefill_bf16_bf16_out"`, while the
+MMQ dispatch matches on `abi == "raw"` plus one of three unwrapped variant names,
+so it returns the dispatch unchanged. Instrumentation at the entry point confirmed
+680 admitted dispatches rejected on the key mismatch and none on policy.
+
+**This is not a bug to fix by reordering.** Making the branch fire was measured at
+29% slower (1054 against 1367 tok/s) although correct, and `kl_max` improved to
+0.000893 from 0.001341. The unreachability is the mechanism that keeps a slower
+route off the default path, so the ordering is load-bearing.
+
+Removal condition: delete the dense branch of `_q8_mmq_prefill_dispatch` (and the
+three unwrapped variant names it matches on) once no caller can reach it. That is
+already true today -- the WMMA rewrite runs first for every shape the branch's own
+policy admits, and the ordering is load-bearing -- so the branch is dead code whose
+only remaining effect is to look selectable. Removing it needs no replacement path:
+the WMMA route it loses to is the faster one. If the ordering is ever reversed,
+delete the branch instead of reviving it, and treat a faster dense Q8 MMQ leaf as a
+new candidate with its own measurement rather than as a restoration of this one.
+
+What is left to clean up is the appearance: the branch reads as a working route.
+Either delete the dense branch and its policy entries, or add the note at the
+match site explaining that the `wmma_raw` rewrite precedes it by design. Decide when
+someone next touches the Q8 MMQ policy. Removal condition: any edit to
+`_q8_mmq_prefill_dispatch`'s dense branch or to the Gemma4 `Q8MMQPrefillPolicy`
+shape table.
 
 ## Gemma attention legacy slice-count ABI (2026-09-26)
 
@@ -9440,3 +9470,23 @@ Two things would clear it, and either is enough:
 If neither happens, delete the kernel, its `extern "C"` launcher, its Python symbol and its
 three test parameters. The `KSUB` template machinery underneath stays either way: it is a
 verified no-op at `KSUB = 1` and it is what made the experiment cheap.
+## `HIPENGINE_GEMMA4_MOE_PREFILL` selects a prefill route that fails an absolute bar (open 2026-09-26)
+
+The Gemma 4 prefill MoE has two WMMA owner variants per projection that are 2.7x
+faster than the exact routes: a compensated form (fp16 high part plus fp16 residual
+per weight, two WMMA ops per k-tile) and the plain uncompensated form kept only as
+the diagnostic that isolates the fp16 weight-rounding term. `auto` runs neither.
+The compensated form passes every aggregate logits bar with 10-200x margin and
+leaves top-1 unchanged on all 1023 scored rows, but breaches the campaign's absolute
+`kl_max` bar at 0.060867 against 0.05 on 1 of 1023 rows. The breach is reduction
+association, not a defect; a two-way accumulator split moved it to 0.081599 rather
+than reducing it. See the iteration-59 diagnostic in
+`docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md`.
+
+Remove this once the lead rules on whether an absolute `kl_max` applies to a
+reordering-class change. If it does not apply, delete `_PREFILL_MODE_ENV`,
+`_prefill_mode`, `_prefill_route_flags` and the exact-route default, make the
+compensated variants the prefill route unconditionally, and delete the plain
+variants and the diagnostic modes with them. If it does apply, delete the Gemma
+wiring for both WMMA owner variants and their `compensated` plumbing instead, and
+keep the kernels registered for callers that only need their own parity contract.
