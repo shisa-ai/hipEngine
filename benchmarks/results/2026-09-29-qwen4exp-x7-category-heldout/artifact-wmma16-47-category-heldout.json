@@ -1,0 +1,762 @@
+{
+ "schema_version": 2,
+ "kind": "hipengine_execution_profile_q8_wmma_prefill_layers_gate",
+ "created_at": "2026-09-29T15:37:18.349514+00:00",
+ "performance_claim": false,
+ "status": "invalid_or_screen_only",
+ "measurement_valid": false,
+ "canonical_numerical_qualification_claim": false,
+ "category_heldout_qualification_claim": false,
+ "profile_qualification_claim": false,
+ "qualification_blockers": [
+  "complete canonical numerical coverage",
+  "calibrated quality thresholds",
+  "category-heldout numerical evidence",
+  "strict-teacher and applicable BF16-relative evidence",
+  "exact control/isolation/graph/lifecycle evidence",
+  "task-quality evidence",
+  "candidate route engagement and repair-oracle coverage"
+ ],
+ "qualification_coverage": {
+  "protocol": "canonical_12_case_d128_three_repeat_numerical_v1",
+  "complete": false,
+  "checks": {
+   "canonical_fixture_identity": false,
+   "canonical_cases_once_each": false,
+   "canonical_categories": false,
+   "teacher_d128": false,
+   "candidate_d128_three_repeats": false,
+   "positive_chunk_size": true
+  },
+  "required_fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "observed_fixture_sha256": "005196cbf06f747350b0f35a02febb4aad3cd85a1251af1bfe9c152f95aadbfb",
+  "fixture_kind": "category_heldout",
+  "observed_case_ids": [
+   "code_merge_intervals",
+   "code_topological_sort",
+   "code_lru_cache",
+   "code_markdown_table",
+   "general_en_plan",
+   "general_en_explain",
+   "general_ja_plan",
+   "general_ja_explain",
+   "mixed_ja_en_translate",
+   "mixed_ja_en_review",
+   "heldout_code_rate_limiter",
+   "heldout_code_interval_schedule",
+   "heldout_general_en_incident",
+   "heldout_general_en_quant",
+   "heldout_general_ja_migration",
+   "heldout_general_ja_speculative",
+   "heldout_mixed_summary",
+   "heldout_mixed_review"
+  ],
+  "observed_teacher_rows": 450,
+  "prefill_chunk_size": 1024,
+  "scope": "this route/layer set, manifest and chunk size only",
+  "category_heldout": {
+   "protocol": "category_heldout_natural_length_d128_three_repeat_v1",
+   "complete": false,
+   "checks": {
+    "heldout_fixture_identity": true,
+    "heldout_cases_once_each": true,
+    "heldout_categories": true,
+    "heldout_declared_transitions": true,
+    "heldout_teacher_rows": true,
+    "heldout_candidate_three_repeats": true,
+    "heldout_prompts_exceed_route_row_floor": false
+   },
+   "required_fixture_sha256": "005196cbf06f747350b0f35a02febb4aad3cd85a1251af1bfe9c152f95aadbfb",
+   "observed_fixture_sha256": "005196cbf06f747350b0f35a02febb4aad3cd85a1251af1bfe9c152f95aadbfb",
+   "observed_case_ids": [
+    "code_merge_intervals",
+    "code_topological_sort",
+    "code_lru_cache",
+    "code_markdown_table",
+    "general_en_plan",
+    "general_en_explain",
+    "general_ja_plan",
+    "general_ja_explain",
+    "mixed_ja_en_translate",
+    "mixed_ja_en_review",
+    "heldout_code_rate_limiter",
+    "heldout_code_interval_schedule",
+    "heldout_general_en_incident",
+    "heldout_general_en_quant",
+    "heldout_general_ja_migration",
+    "heldout_general_ja_speculative",
+    "heldout_mixed_summary",
+    "heldout_mixed_review"
+   ],
+   "observed_prompt_rows": [
+    40,
+    50,
+    47,
+    52,
+    39,
+    40,
+    43,
+    43,
+    64,
+    71,
+    55,
+    52,
+    45,
+    56,
+    53,
+    45,
+    52,
+    56
+   ],
+   "longest_prompt_rows": 71,
+   "decode_steps": 24,
+   "observed_rows_per_trajectory": 25,
+   "route_row_floor": 256,
+   "blocked_reason": "longest heldout prompt is 71 rows, at or below the 256-row floor both layer-scoped routes decline at, so the route cannot have engaged and this run is a control rather than qualification",
+   "scope": "this route/layer set, manifest and chunk size only"
+  }
+ },
+ "route": {
+  "name": "wmma",
+  "surface": "post-binder HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS; HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE cleared in both arms",
+  "candidate_layers": "16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+  "teacher_selector": "cleared",
+  "teacher_chain": "exact coltile8_rowbatch4_f32_f32_out",
+  "candidate_chain": "wmma_prefill_f32_f32_out",
+  "warmup_request_after_selector_flip": true,
+  "selector_restored_after_capture": true
+ },
+ "protocol": {
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_admission_suite_18prompt.json",
+  "fixture_sha256": "005196cbf06f747350b0f35a02febb4aad3cd85a1251af1bfe9c152f95aadbfb",
+  "case_count": 18,
+  "decode_steps": 24,
+  "candidate_repeat_runs": 3,
+  "execution_profile": "production",
+  "prefill_chunk_size": 1024,
+  "same_context_rule": "candidate consumes the strict generated token prefix at every compared transition",
+  "teacher_scope": "production profile with the route's selectors cleared; candidate-local isolation of the changed route",
+  "thresholds_evaluated": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  },
+  "profile_manifest_sha256": "a55324f919900c20b244b65605e37d8e12623fe20ff9b076bc3573f11edf3786",
+  "strict_manifest_sha256": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed"
+ },
+ "quality": {
+  "finite": true,
+  "top_k": 5,
+  "thresholds": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  },
+  "summary": {
+   "rows": 450,
+   "kl_mean": 0.0002737173677357448,
+   "kl_p50": 1.0548428293809816e-05,
+   "kl_p95": 0.0010666799990065776,
+   "kl_p99": 0.003778547911131664,
+   "kl_max": 0.027064114361067544,
+   "top1_agreement": 0.9955555555555555,
+   "top1_matches": 448,
+   "topk_overlap_mean": 0.9866666666666667,
+   "strict_teacher_nll_mean": 0.17467872598854,
+   "candidate_teacher_nll_mean": 0.17515394625512795,
+   "teacher_nll_delta": 0.0004752202665879446,
+   "teacher_delta_p_mean": -0.00038085197045961407,
+   "strict_margin_min": 0.024791717529296875,
+   "max_abs_logit_delta": 1.6183471083641052,
+   "flip_eligible_rows": 41,
+   "flip_eligible_share": 0.09111111111111111,
+   "top1_mismatches_flip_eligible": 2,
+   "top1_mismatches_outside_flip_eligible": 0
+  },
+  "by_scope": {
+   "category": {
+    "code": {
+     "rows": 150,
+     "kl_mean": 9.791037469223064e-05,
+     "kl_p50": 1.121833651736262e-06,
+     "kl_p95": 0.0006691953020610549,
+     "kl_p99": 0.0014460414059430332,
+     "kl_max": 0.0015731166669363578,
+     "top1_agreement": 1.0,
+     "top1_matches": 150,
+     "topk_overlap_mean": 0.9853333333333334,
+     "strict_teacher_nll_mean": 0.07391598899829821,
+     "candidate_teacher_nll_mean": 0.07494135840091341,
+     "teacher_nll_delta": 0.0010253694026152033,
+     "teacher_delta_p_mean": -0.0006497071707686868,
+     "strict_margin_min": 0.024791717529296875,
+     "max_abs_logit_delta": 1.6183471083641052,
+     "flip_eligible_rows": 7,
+     "flip_eligible_share": 0.04666666666666667,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    },
+    "general_en": {
+     "rows": 100,
+     "kl_mean": 0.00027007417692773183,
+     "kl_p50": 3.0454679213096367e-05,
+     "kl_p95": 0.001466410565064556,
+     "kl_p99": 0.003635169804140158,
+     "kl_max": 0.003919058455983347,
+     "top1_agreement": 1.0,
+     "top1_matches": 100,
+     "topk_overlap_mean": 0.996,
+     "strict_teacher_nll_mean": 0.2402787407151292,
+     "candidate_teacher_nll_mean": 0.23988647830151602,
+     "teacher_nll_delta": -0.0003922624136131758,
+     "teacher_delta_p_mean": 0.0003663893082172959,
+     "strict_margin_min": 0.031314849853515625,
+     "max_abs_logit_delta": 1.1446900367736816,
+     "flip_eligible_rows": 14,
+     "flip_eligible_share": 0.14,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    },
+    "general_ja": {
+     "rows": 100,
+     "kl_mean": 0.000172392614238651,
+     "kl_p50": 1.3628770410198377e-05,
+     "kl_p95": 0.0006432586894441443,
+     "kl_p99": 0.002411034251317712,
+     "kl_max": 0.005657919031194114,
+     "top1_agreement": 0.99,
+     "top1_matches": 99,
+     "topk_overlap_mean": 0.9839999999999999,
+     "strict_teacher_nll_mean": 0.16527688914061933,
+     "candidate_teacher_nll_mean": 0.1659318158518062,
+     "teacher_nll_delta": 0.0006549267111868595,
+     "teacher_delta_p_mean": -0.0004944296315164742,
+     "strict_margin_min": 0.030775070190429688,
+     "max_abs_logit_delta": 0.7832136154174805,
+     "flip_eligible_rows": 4,
+     "flip_eligible_share": 0.04,
+     "top1_mismatches_flip_eligible": 1,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    },
+    "mixed_ja_en": {
+     "rows": 100,
+     "kl_mean": 0.0006423958016061227,
+     "kl_p50": 4.2056508103970274e-05,
+     "kl_p95": 0.0028208492488790617,
+     "kl_p99": 0.005298192611175078,
+     "kl_max": 0.027064114361067544,
+     "top1_agreement": 0.99,
+     "top1_matches": 99,
+     "topk_overlap_mean": 0.982,
+     "strict_teacher_nll_mean": 0.2696246535952342,
+     "candidate_teacher_nll_mean": 0.2699624263933835,
+     "teacher_nll_delta": 0.00033777279814933836,
+     "teacher_delta_p_mean": -0.0006112327876160548,
+     "strict_margin_min": 0.029668807983398438,
+     "max_abs_logit_delta": 1.4627180099487305,
+     "flip_eligible_rows": 16,
+     "flip_eligible_share": 0.16,
+     "top1_mismatches_flip_eligible": 1,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    }
+   },
+   "shape": {
+    "c1": {
+     "rows": 432,
+     "kl_mean": 0.00019921444556652925,
+     "kl_p50": 8.745803354446827e-06,
+     "kl_p95": 0.0009121576474554874,
+     "kl_p99": 0.003235601361812968,
+     "kl_max": 0.005657919031194114,
+     "top1_agreement": 0.9953703703703703,
+     "top1_matches": 430,
+     "topk_overlap_mean": 0.9870370370370372,
+     "strict_teacher_nll_mean": 0.16947898625220376,
+     "candidate_teacher_nll_mean": 0.1697094798802469,
+     "teacher_nll_delta": 0.00023049362804314355,
+     "teacher_delta_p_mean": -0.00024958490669199813,
+     "strict_margin_min": 0.024791717529296875,
+     "max_abs_logit_delta": 1.6183471083641052,
+     "flip_eligible_rows": 35,
+     "flip_eligible_share": 0.08101851851851852,
+     "top1_mismatches_flip_eligible": 2,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    },
+    "prefill_last": {
+     "rows": 18,
+     "kl_mean": 0.0020617874997969176,
+     "kl_p50": 0.00012722417239779152,
+     "kl_p95": 0.00837620174752338,
+     "kl_p99": 0.02332653183835868,
+     "kl_max": 0.027064114361067544,
+     "top1_agreement": 1.0,
+     "top1_matches": 18,
+     "topk_overlap_mean": 0.9777777777777779,
+     "strict_teacher_nll_mean": 0.2994724796606097,
+     "candidate_teacher_nll_mean": 0.30582113925227405,
+     "teacher_nll_delta": 0.006348659591664363,
+     "teacher_delta_p_mean": -0.003531261500882396,
+     "strict_margin_min": 0.2081584930419922,
+     "max_abs_logit_delta": 1.4627180099487305,
+     "flip_eligible_rows": 6,
+     "flip_eligible_share": 0.3333333333333333,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": false
+    }
+   },
+   "transition": {
+    "prefill_to_c1": {
+     "rows": 18,
+     "kl_mean": 0.0020617874997969176,
+     "kl_p50": 0.00012722417239779152,
+     "kl_p95": 0.00837620174752338,
+     "kl_p99": 0.02332653183835868,
+     "kl_max": 0.027064114361067544,
+     "top1_agreement": 1.0,
+     "top1_matches": 18,
+     "topk_overlap_mean": 0.9777777777777779,
+     "strict_teacher_nll_mean": 0.2994724796606097,
+     "candidate_teacher_nll_mean": 0.30582113925227405,
+     "teacher_nll_delta": 0.006348659591664363,
+     "teacher_delta_p_mean": -0.003531261500882396,
+     "strict_margin_min": 0.2081584930419922,
+     "max_abs_logit_delta": 1.4627180099487305,
+     "flip_eligible_rows": 6,
+     "flip_eligible_share": 0.3333333333333333,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": false
+    },
+    "steady": {
+     "rows": 432,
+     "kl_mean": 0.00019921444556652925,
+     "kl_p50": 8.745803354446827e-06,
+     "kl_p95": 0.0009121576474554874,
+     "kl_p99": 0.003235601361812968,
+     "kl_max": 0.005657919031194114,
+     "top1_agreement": 0.9953703703703703,
+     "top1_matches": 430,
+     "topk_overlap_mean": 0.9870370370370372,
+     "strict_teacher_nll_mean": 0.16947898625220376,
+     "candidate_teacher_nll_mean": 0.1697094798802469,
+     "teacher_nll_delta": 0.00023049362804314355,
+     "teacher_delta_p_mean": -0.00024958490669199813,
+     "strict_margin_min": 0.024791717529296875,
+     "max_abs_logit_delta": 1.6183471083641052,
+     "flip_eligible_rows": 35,
+     "flip_eligible_share": 0.08101851851851852,
+     "top1_mismatches_flip_eligible": 2,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    }
+   }
+  },
+  "scope_failures": [
+   {
+    "dimension": "shape",
+    "value": "prefill_last"
+   },
+   {
+    "dimension": "transition",
+    "value": "prefill_to_c1"
+   }
+  ],
+  "rows_over_review_boundary": [
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-wmma-dense-prefill-layers-16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 425,
+    "request_id": "heldout_mixed_review",
+    "teacher_step": 0,
+    "category": "mixed_ja_en",
+    "shape": "prefill_last",
+    "transition": "prefill_to_c1",
+    "teacher_token_id": 12,
+    "row_index": 425,
+    "kl": 0.027064114361067544,
+    "top1_equal": true,
+    "strict_top1_token_id": 12,
+    "candidate_top1_token_id": 12,
+    "topk_overlap": 1.0,
+    "strict_margin": 1.247537612915039,
+    "strict_top1_candidate_rank": 1,
+    "strict_teacher_nll": 0.5751658986023005,
+    "candidate_teacher_nll": 0.7820144520388383,
+    "teacher_delta_p": -0.10512802073217203,
+    "max_abs_logit_delta": 1.4627180099487305
+   }
+  ],
+  "top1_mismatch_rows": [
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-wmma-dense-prefill-layers-16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 248,
+    "request_id": "mixed_ja_en_review",
+    "teacher_step": 23,
+    "category": "mixed_ja_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 4016,
+    "row_index": 248,
+    "kl": 0.0004893543781115489,
+    "top1_equal": false,
+    "strict_top1_token_id": 4016,
+    "candidate_top1_token_id": 11,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.029668807983398438,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 0.6921956721434792,
+    "candidate_teacher_nll": 0.7201275249714734,
+    "teacher_delta_p": -0.013785793771924904,
+    "max_abs_logit_delta": 0.1309642791748047
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-wmma-dense-prefill-layers-16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 394,
+    "request_id": "heldout_general_ja_speculative",
+    "teacher_step": 19,
+    "category": "general_ja",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 194964,
+    "row_index": 394,
+    "kl": 0.0023782374353593476,
+    "top1_equal": false,
+    "strict_top1_token_id": 194964,
+    "candidate_top1_token_id": 103910,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.030775070190429688,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 1.2055208869048832,
+    "candidate_teacher_nll": 1.2565142495861037,
+    "teacher_delta_p": -0.014891435617878479,
+    "max_abs_logit_delta": 0.14417648315429688
+   }
+  ],
+  "hard_gates_passed": false,
+  "requires_outlier_review": true,
+  "eligible_for_automatic_admission": false
+ },
+ "repeat_determinism": {
+  "runs": 3,
+  "passed": true,
+  "mismatches": [],
+  "trajectory_sha256_by_prompt": [
+   [
+    "5c1bd04cdb4b2511aa18c4d9e95cb48e60f8654d7ba1410a384b4e0ada7c3672",
+    "5c1bd04cdb4b2511aa18c4d9e95cb48e60f8654d7ba1410a384b4e0ada7c3672",
+    "5c1bd04cdb4b2511aa18c4d9e95cb48e60f8654d7ba1410a384b4e0ada7c3672"
+   ],
+   [
+    "c18ddce75cc025f09b6af804ce06a6e5de0e6861458c7c7660551c575cfff9f2",
+    "c18ddce75cc025f09b6af804ce06a6e5de0e6861458c7c7660551c575cfff9f2",
+    "c18ddce75cc025f09b6af804ce06a6e5de0e6861458c7c7660551c575cfff9f2"
+   ],
+   [
+    "171bc52c1cdc121799b14abd5341f6a2a6b68982c920149d219f07afe91f9bc1",
+    "171bc52c1cdc121799b14abd5341f6a2a6b68982c920149d219f07afe91f9bc1",
+    "171bc52c1cdc121799b14abd5341f6a2a6b68982c920149d219f07afe91f9bc1"
+   ],
+   [
+    "4709136659b6f2ac811a7c7998d6129424e21254a25dbc9e863599f75121827e",
+    "4709136659b6f2ac811a7c7998d6129424e21254a25dbc9e863599f75121827e",
+    "4709136659b6f2ac811a7c7998d6129424e21254a25dbc9e863599f75121827e"
+   ],
+   [
+    "470f4f09ba8df370f7cd4ad6e625cc00a0b0b3173e363d8d840e34bf81e18f5b",
+    "470f4f09ba8df370f7cd4ad6e625cc00a0b0b3173e363d8d840e34bf81e18f5b",
+    "470f4f09ba8df370f7cd4ad6e625cc00a0b0b3173e363d8d840e34bf81e18f5b"
+   ],
+   [
+    "7b0b21be3723aac70368c9bd84f0c21bbecc051c1846b6e1c727099f341b230c",
+    "7b0b21be3723aac70368c9bd84f0c21bbecc051c1846b6e1c727099f341b230c",
+    "7b0b21be3723aac70368c9bd84f0c21bbecc051c1846b6e1c727099f341b230c"
+   ],
+   [
+    "3b2f923a6c59238f2984fde46150b8fe3151b6ee14f34174e125c2fd9fe3893d",
+    "3b2f923a6c59238f2984fde46150b8fe3151b6ee14f34174e125c2fd9fe3893d",
+    "3b2f923a6c59238f2984fde46150b8fe3151b6ee14f34174e125c2fd9fe3893d"
+   ],
+   [
+    "83ba4074913d2739286ddc357c14d19908eff7b7ec646ffef2b417cda65220dd",
+    "83ba4074913d2739286ddc357c14d19908eff7b7ec646ffef2b417cda65220dd",
+    "83ba4074913d2739286ddc357c14d19908eff7b7ec646ffef2b417cda65220dd"
+   ],
+   [
+    "f4fe73d7f762e8c736f943683835ff89fbd29e1a9a5b884e7a8bacdb7aca6a5b",
+    "f4fe73d7f762e8c736f943683835ff89fbd29e1a9a5b884e7a8bacdb7aca6a5b",
+    "f4fe73d7f762e8c736f943683835ff89fbd29e1a9a5b884e7a8bacdb7aca6a5b"
+   ],
+   [
+    "d625d8008c9034992968b4b3f275f59c07e029ca89ce03472880dc449ea6ebbc",
+    "d625d8008c9034992968b4b3f275f59c07e029ca89ce03472880dc449ea6ebbc",
+    "d625d8008c9034992968b4b3f275f59c07e029ca89ce03472880dc449ea6ebbc"
+   ],
+   [
+    "1cce1288047cc77f1c8e4c65d323194ce371d204465c8221cae25ada07d247c9",
+    "1cce1288047cc77f1c8e4c65d323194ce371d204465c8221cae25ada07d247c9",
+    "1cce1288047cc77f1c8e4c65d323194ce371d204465c8221cae25ada07d247c9"
+   ],
+   [
+    "094869b2152f4eca90b1ee80f0ab35e5945b1c8eea190c7b1fc96b38b81db428",
+    "094869b2152f4eca90b1ee80f0ab35e5945b1c8eea190c7b1fc96b38b81db428",
+    "094869b2152f4eca90b1ee80f0ab35e5945b1c8eea190c7b1fc96b38b81db428"
+   ],
+   [
+    "6d076045dcb9ed3fc278c4fdc012fc4fb0ba1419801b7c37542dfb8978ba8119",
+    "6d076045dcb9ed3fc278c4fdc012fc4fb0ba1419801b7c37542dfb8978ba8119",
+    "6d076045dcb9ed3fc278c4fdc012fc4fb0ba1419801b7c37542dfb8978ba8119"
+   ],
+   [
+    "e0e45691ac3a8c14195275b9fc994c1be7bdab02aedcb370abb6363ddf464e2f",
+    "e0e45691ac3a8c14195275b9fc994c1be7bdab02aedcb370abb6363ddf464e2f",
+    "e0e45691ac3a8c14195275b9fc994c1be7bdab02aedcb370abb6363ddf464e2f"
+   ],
+   [
+    "dfef2ec257c995dba3f172d13cf30ee47fce4c050e05d246c54ed6e1fa6bcd9f",
+    "dfef2ec257c995dba3f172d13cf30ee47fce4c050e05d246c54ed6e1fa6bcd9f",
+    "dfef2ec257c995dba3f172d13cf30ee47fce4c050e05d246c54ed6e1fa6bcd9f"
+   ],
+   [
+    "ca1da8decf77d3c41066576079d41e74b5468aa0c27a0f024d390d684b807b4b",
+    "ca1da8decf77d3c41066576079d41e74b5468aa0c27a0f024d390d684b807b4b",
+    "ca1da8decf77d3c41066576079d41e74b5468aa0c27a0f024d390d684b807b4b"
+   ],
+   [
+    "46620f28afea209e8eac2ad860be23e8be6a1f2201f8eb99a525ce3abcbd183e",
+    "46620f28afea209e8eac2ad860be23e8be6a1f2201f8eb99a525ce3abcbd183e",
+    "46620f28afea209e8eac2ad860be23e8be6a1f2201f8eb99a525ce3abcbd183e"
+   ],
+   [
+    "2d1d429171caccf5ea279b017020d7124a7bdc361b3cdb58c9f98102f71fc694",
+    "2d1d429171caccf5ea279b017020d7124a7bdc361b3cdb58c9f98102f71fc694",
+    "2d1d429171caccf5ea279b017020d7124a7bdc361b3cdb58c9f98102f71fc694"
+   ]
+  ]
+ },
+ "strict_logits_sha256": "7b4385b7dff48201cfcb86875f628af45580b5c5b74804c0a95d5d921cc41040",
+ "candidate_logits_sha256": "b46e7be47a519aa00dc248db3a677320ed5e7ddee6823faaa8b950705bbd04ea",
+ "variant_manifests": {
+  "candidate_evidentiary": {
+   "kind": "hipengine_execution_profile_manifest",
+   "schema_version": 1,
+   "execution_profile": "production",
+   "backend": "hip_gfx1151",
+   "model": "qwen4_exp_gguf",
+   "quant": "gguf_ud_q4_k_xl",
+   "kv_policy": "paged_bf16_qsa_index_f32",
+   "graph_policy": "request_owned_exact_moe_graph_c1",
+   "selections": [
+    {
+     "layer": "linear",
+     "scope": "prefill_dense_q8_wmma_layers",
+     "selected_variant": "wmma_prefill_f32_f32_out",
+     "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+     "evidence_artifact": null,
+     "registry_quant": "gguf_q8_0"
+    }
+   ]
+  }
+ },
+ "prompts": [
+  {
+   "id": "code_merge_intervals",
+   "category": "code",
+   "prompt_tokens": 40,
+   "prompt_token_ids_sha256": "df2d91b35856f260bc0f83b53da392a38fb2c844139b8f2aaa308d42e37f1d76"
+  },
+  {
+   "id": "code_topological_sort",
+   "category": "code",
+   "prompt_tokens": 50,
+   "prompt_token_ids_sha256": "c819ac9a0e81eccc744973022a451072c12ab6636918423f4974af480b617498"
+  },
+  {
+   "id": "code_lru_cache",
+   "category": "code",
+   "prompt_tokens": 47,
+   "prompt_token_ids_sha256": "3b7619476b9bbdeaf418a2e7463d244df53d3de5cd8def0adfbe13c1ed96380a"
+  },
+  {
+   "id": "code_markdown_table",
+   "category": "code",
+   "prompt_tokens": 52,
+   "prompt_token_ids_sha256": "826baa75301566149ab7fca4d8e37f7de27fb7381b5e61a528334c86528bdb9e"
+  },
+  {
+   "id": "general_en_plan",
+   "category": "general_en",
+   "prompt_tokens": 39,
+   "prompt_token_ids_sha256": "fc1069fb8471bda5da1cafdae026d4a93ceacc425630d552d48c3d1aac651156"
+  },
+  {
+   "id": "general_en_explain",
+   "category": "general_en",
+   "prompt_tokens": 40,
+   "prompt_token_ids_sha256": "0f65019eb3f00b8ad7657613732c1951e31cffc82c81fb106a6037b630ae48dd"
+  },
+  {
+   "id": "general_ja_plan",
+   "category": "general_ja",
+   "prompt_tokens": 43,
+   "prompt_token_ids_sha256": "79dbc18d76d4fc4a071da62e486d2e7a9d43237a5e773065d8f082bfa1c02de5"
+  },
+  {
+   "id": "general_ja_explain",
+   "category": "general_ja",
+   "prompt_tokens": 43,
+   "prompt_token_ids_sha256": "155f9e514f5eba59e5eeecf2c94935827b5d7871ef7144e6e3aba5ea208bd814"
+  },
+  {
+   "id": "mixed_ja_en_translate",
+   "category": "mixed_ja_en",
+   "prompt_tokens": 64,
+   "prompt_token_ids_sha256": "3e74801363c2057a4249de6a7515cee2f23e15a74a8181e35342a5adfa80d467"
+  },
+  {
+   "id": "mixed_ja_en_review",
+   "category": "mixed_ja_en",
+   "prompt_tokens": 71,
+   "prompt_token_ids_sha256": "4d58beab6d31fd07ad4c75bea58aecb4c04160bed4439425ab9d284775b18da6"
+  },
+  {
+   "id": "heldout_code_rate_limiter",
+   "category": "code",
+   "prompt_tokens": 55,
+   "prompt_token_ids_sha256": "8da39cefeba185e7467ba519faedbc1d41365b1cbc5cf2b16cd867fa784ad413"
+  },
+  {
+   "id": "heldout_code_interval_schedule",
+   "category": "code",
+   "prompt_tokens": 52,
+   "prompt_token_ids_sha256": "0526022dc0093d1d3f2ca55d3eb3340ab5a997204d9892fb8216a42db2b978f5"
+  },
+  {
+   "id": "heldout_general_en_incident",
+   "category": "general_en",
+   "prompt_tokens": 45,
+   "prompt_token_ids_sha256": "d38575ce43649f7a5914b4e8e4f63f1d6d32229c08dd0e4fc3acb276c021339c"
+  },
+  {
+   "id": "heldout_general_en_quant",
+   "category": "general_en",
+   "prompt_tokens": 56,
+   "prompt_token_ids_sha256": "f1ed6521944613b3452e787a4cccb8c519fa1de7d6ff9d249b09fe6a0c4112b4"
+  },
+  {
+   "id": "heldout_general_ja_migration",
+   "category": "general_ja",
+   "prompt_tokens": 53,
+   "prompt_token_ids_sha256": "337a40f73abf2f5814cbc626bfa520b90e66bf01e405d1472508253776f4a411"
+  },
+  {
+   "id": "heldout_general_ja_speculative",
+   "category": "general_ja",
+   "prompt_tokens": 45,
+   "prompt_token_ids_sha256": "f4d1c423950e44fa485b2f84300fbffb8d3295059ad6992da9649947e0552d8e"
+  },
+  {
+   "id": "heldout_mixed_summary",
+   "category": "mixed_ja_en",
+   "prompt_tokens": 52,
+   "prompt_token_ids_sha256": "af7ae719ee89715769bd4a6010f670aa984f6bfaad9a3d2158970b8e266b33f7"
+  },
+  {
+   "id": "heldout_mixed_review",
+   "category": "mixed_ja_en",
+   "prompt_tokens": 56,
+   "prompt_token_ids_sha256": "089b3b0916f856689985204fdaf1e55636f47aedcacf7c44fe0e3876505fce11"
+  }
+ ],
+ "provenance": {
+  "kind": "hipengine_artifact_provenance",
+  "schema_version": 3,
+  "collected_at": "2026-09-29T15:37:18.116134+00:00",
+  "host_name": "gfx1151",
+  "repo_root": "/home/lhl/hipEngine",
+  "hipengine_commit": "034de138bed2832306186321d7148eb1a4e18004",
+  "git_branch": "qwen3.8-flash-next",
+  "staged_dirty": false,
+  "unstaged_dirty": false,
+  "untracked_dirty": true,
+  "untracked_count": 4,
+  "dirty": true,
+  "dirty_paths": [],
+  "dirty_path_count": 0,
+  "untracked_paths": [
+   "benchmarks/results/2026-09-17-iu8-repair-unroll/census.json",
+   "benchmarks/results/2026-09-17-iu8-repair-unroll/warm.json",
+   "benchmarks/results/2026-09-17-iu8-repair-unroll/warm.log",
+   "docs/superpowers/plans/2026-09-13-qwen38-gfx1151-release-qualification.md"
+  ],
+  "execution_affecting_dirty": false,
+  "execution_affecting_paths": [],
+  "configured_backend": "hip_gfx1151",
+  "resolved_backend": "hip_gfx1151",
+  "target_arch": "gfx1151",
+  "device_name": "AMD Radeon 8060S Graphics",
+  "model_path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "model_revision": null,
+  "model_fingerprint": {
+   "algorithm": "sha256-directory-manifest-v1",
+   "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+   "size_bytes": 111334654784,
+   "sampled_bytes": 12582912,
+   "file_count": 4,
+   "exists": true,
+   "path_type": "directory"
+  },
+  "quant": "gguf_ud_q4_k_xl",
+  "kv_dtype": "bf16",
+  "command": [
+   "python3",
+   "scripts/execution_profile_q8_wmma_prefill_layers_gate.py",
+   "--model-root",
+   "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+   "--route",
+   "wmma",
+   "--layers",
+   "16-47",
+   "--decode-steps",
+   "24",
+   "--repeat-runs",
+   "3",
+   "--prefill-chunk-size",
+   "1024",
+   "--fixture",
+   "benchmarks/fixtures/qwen4exp_admission_suite_18prompt.json",
+   "--output",
+   "benchmarks/results/2026-09-29-qwen4exp-x7-category-heldout/artifact-wmma16-47-category-heldout.json"
+  ],
+  "environment": {
+   "HIPENGINE_HIP_ARCH": "gfx1151",
+   "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": "16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+   "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": "0",
+   "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ""
+  },
+  "rocm_version": "HIP version: 7.15.26333-0000000",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+  "build_profile": "hipengine_execution_profile_q8_wmma_prefill_layers_gate",
+  "timing_protocol": "none_full_logits_only_v1",
+  "warmups": 1,
+  "repetitions": 3,
+  "profiler": {
+   "enabled": false,
+   "kind": null,
+   "command": null
+  }
+ }
+}

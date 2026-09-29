@@ -281,6 +281,12 @@ def qualification_verdict(coverage, *, quality_passed, deterministic, clean):
     numerical = all(checks.values())
     heldout = coverage.get("category_heldout")
     heldout_complete = bool(heldout and heldout["complete"])
+    # A *qualification* claim needs the evidence to exist **and** to pass. The
+    # first version asserted it on complete-but-failing coverage, so a heldout
+    # run that failed a per-scope gate still carried
+    # ``category_heldout_qualification_claim: true``. Collected is not passed,
+    # and the name of this field promises the second.
+    heldout_qualified = heldout_complete and bool(quality_passed)
     # Each entry is emitted only when this collector has not produced that
     # certificate. A blocker is dropped by producing evidence, never by
     # asserting it - and the heldout entry in particular is dropped only when
@@ -298,7 +304,8 @@ def qualification_verdict(coverage, *, quality_passed, deterministic, clean):
         "status": "complete" if numerical else "invalid_or_screen_only",
         "measurement_valid": numerical,
         "canonical_numerical_qualification_claim": numerical,
-        "category_heldout_qualification_claim": heldout_complete,
+        "category_heldout_qualification_claim": heldout_qualified,
+        "category_heldout_evidence_complete": heldout_complete,
         "profile_qualification_claim": False,
         "qualification_blockers": [name for name, ok in checks.items() if not ok] + missing,
     }
