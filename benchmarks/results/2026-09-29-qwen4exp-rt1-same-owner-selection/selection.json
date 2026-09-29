@@ -1,0 +1,152 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_rt1_same_owner_selection",
+ "performance_claim": false,
+ "promotion_claim": false,
+ "purpose": "RT-1 blocker (a) from docs/REFACTOR.md: measure short/long requests on the SAME prepared owners, exercising the selection path end-to-end.",
+ "source": {
+  "path": "/home/lhl/hipEngine",
+  "head": "4b246927d3adff074391be8b0e3ce768653a6cab",
+  "tracked_clean": true
+ },
+ "host": {
+  "hostname": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "kernel": "7.1.6-1-cachyos",
+  "tuned_active": "It seems that tuned daemon is not running, preset profile is not activated.\nPreset profile: accelerator-performance",
+  "cpu_governors": {
+   "powersave": 32
+  },
+  "gpu_clock_policies": {
+   "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+  },
+  "rocm_platform": "10.0.0",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+ },
+ "command": [
+  "scripts/qwen4exp_rt1_same_owner_selection.py",
+  "--model-root",
+  "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "--base-chunk",
+  "4096",
+  "--extra-chunk",
+  "1024",
+  "--max-sequence-length",
+  "4352",
+  "--steps",
+  "8",
+  "--repeats",
+  "5",
+  "--warmups",
+  "3",
+  "--short-case",
+  "code-p512",
+  "--long-case",
+  "code-p4096",
+  "--output",
+  "benchmarks/results/2026-09-29-qwen4exp-rt1-same-owner-selection/selection.json"
+ ],
+ "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+ "manifest_sha256": "a55324f919900c20b244b65605e37d8e12623fe20ff9b076bc3573f11edf3786",
+ "model": {
+  "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+  "fingerprint": {
+   "algorithm": "sha256-directory-manifest-v1",
+   "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+   "size_bytes": 111334654784,
+   "sampled_bytes": 12582912,
+   "file_count": 4,
+   "exists": true,
+   "path_type": "directory"
+  }
+ },
+ "base_chunk": 4096,
+ "extra_chunk": 1024,
+ "steps": 8,
+ "repeats": 5,
+ "limits": "One model, one quant, one host, one execution profile. Diagnostic: the selector is enabled only inside this process; no runtime default changes.",
+ "base_owner": {
+  "chunk_size": 4096,
+  "prepared": true
+ },
+ "extra_owner": {
+  "chunk_size": 1024,
+  "additional_bytes": 1669332992
+ },
+ "owner_count": 2,
+ "selection_enabled": true,
+ "selection_choices": [
+  1024,
+  4096
+ ],
+ "cases": [
+  {
+   "label": "short",
+   "prompt_tokens": 512,
+   "expected_owner_chunk": 1024,
+   "owners_that_served": [
+    1024
+   ],
+   "selection_correct": true,
+   "wall_median_s": 3.206774569116533,
+   "wall_seconds": [
+    3.2020548759028316,
+    3.2511015539057553,
+    3.206774569116533,
+    3.211600999813527,
+    3.1871511479839683
+   ],
+   "spread_pct": 1.9942282983554211,
+   "logits_sha256": "fefecd926fc91ec7d4aaa1a15b21a56a197d638327bca0cb2a20244690acdc97"
+  },
+  {
+   "label": "long",
+   "prompt_tokens": 4096,
+   "expected_owner_chunk": 4096,
+   "owners_that_served": [
+    4096
+   ],
+   "selection_correct": true,
+   "wall_median_s": 15.983343093190342,
+   "wall_seconds": [
+    15.958044732920825,
+    15.983343093190342,
+    15.983899675309658,
+    15.963025327771902,
+    16.033056136220694
+   ],
+   "spread_pct": 0.46930984877516957,
+   "logits_sha256": "2cb5f3932e98b76e3414dbe51ca4d34cd93dd702f9ba29f6191d27d41d6e7ce2"
+  }
+ ],
+ "all_selections_correct": true,
+ "selector_disabled": true,
+ "short_without_selection": {
+  "label": "short_no_selection",
+  "prompt_tokens": 512,
+  "expected_owner_chunk": 4096,
+  "owners_that_served": [
+   4096
+  ],
+  "selection_correct": true,
+  "wall_median_s": 3.1730268099345267,
+  "wall_seconds": [
+   3.17362673394382,
+   3.1944194650277495,
+   3.171405883040279,
+   3.1730268099345267,
+   3.1726603358983994
+  ],
+  "spread_pct": 0.7252879778833403,
+  "logits_sha256": "fefecd926fc91ec7d4aaa1a15b21a56a197d638327bca0cb2a20244690acdc97"
+ },
+ "short_policy_effect": {
+  "with_selection_s": 3.206774569116533,
+  "without_selection_s": 3.1730268099345267,
+  "delta_pct": -1.0635825413243982,
+  "same_logits": true,
+  "separation_vs_spread": 0.01692271602495906
+ },
+ "status": "complete"
+}

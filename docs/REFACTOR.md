@@ -15,6 +15,18 @@
   separate qualification steps. Keep historical donor commands
   source-pinned; remove duplicated donor plumbing once a qualified replacement
   covers state, lifetime, memory and matched performance.
+- **`20260929T`: the shape policy this selector exists to provide is measured to be
+  unnecessary, so the entry below is a removal candidate rather than a pending
+  qualification.** On one host, one runner, two prepared owners, the same short
+  prompt served by the small 1024 owner is **1.06% slower** than served by the large
+  4096 owner, at **0.017x the within-arm spread** - no measurable benefit - with
+  **identical** `logits_sha256`. The premise "preserving the smaller owner's short
+  costs" fails because the workspace is scratch: its rows are
+  `min(chunk_size, max_sequence_length)` and kernel work scales with the actual token
+  count, so a 512-token prefill costs the same whichever owner supplies the buffers.
+  The extra owner also costs 1.555 GiB. A single-owner configuration is therefore at
+  least as good. Evidence:
+  `benchmarks/results/2026-09-29-qwen4exp-rt1-same-owner-selection/`.
 - `_configure_prefill_workspace_selection` is a private, default-disabled
   selector over already prepared owners. **As of `20260929T` the two largest
   reasons it was parked are cleared by measurement**: the chunk-4096 canonical
