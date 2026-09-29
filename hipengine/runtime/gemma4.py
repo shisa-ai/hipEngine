@@ -642,6 +642,9 @@ class Gemma4Runner:
     _caches: list[DeviceBuffer] = field(default_factory=list, repr=False)
     _staging: dict[str, tuple[DeviceBuffer, int]] = field(default_factory=dict, repr=False)
     _position: int = field(default=0, repr=False)
+    # Rows of post-output_norm state left in ``_normalized`` by the most recent
+    # forward that asked for ``return_hidden``; 0 when the caller did not.
+    _normalized_hidden_rows: int = field(default=0, repr=False)
     _closed: bool = field(default=False, repr=False)
     _q8_mmq_policy: Any = field(default=None, repr=False)
     _q8_mmq_library: Any = field(default=None, repr=False)
@@ -693,7 +696,12 @@ class Gemma4Runner:
         try:
             self._token_ids = self._alloc(self.max_block * _I64_BYTES)
             self._hidden = self._alloc(self.max_block * hidden * _BF16_BYTES)
-            self._normalized = self._alloc(hidden * _BF16_BYTES)
+            # Block-sized rather than single-row: the default path still
+            # normalizes and projects only the last row, but ``return_hidden``
+            # (M2) keeps every row's post-output_norm state here so a multi-row
+            # lm_head can consume them without recomputing. 2.9 MB at a
+            # 512-token block of 2816-wide states, against 25 GB in use.
+            self._normalized = self._alloc(self.max_block * hidden * _BF16_BYTES)
             self._logits = self._alloc(int(config.vocab_size or 0) * _F32_BYTES)
 
             for index, attention in enumerate(config.attention):
@@ -774,6 +782,9 @@ class Gemma4Runner:
         """Rewind to an empty sequence without freeing the cache."""
 
         self._position = 0
+        # The exposed states belonged to the sequence just rewound; a consumer
+        # must not read them for a prompt that no longer exists.
+        self._normalized_hidden_rows = 0
         for index in range(len(self._kv)):
             self._kv[index] = Gemma4LayerKV(
                 key_cache=self._kv[index].key_cache,
@@ -810,7 +821,31 @@ class Gemma4Runner:
     def position(self) -> int:
         return self._position
 
-    def forward(self, token_ids: Sequence[int], *, apply_softcap: bool = True) -> np.ndarray:
+    @property
+    def normalized_hidden(self) -> DeviceBuffer:
+        """Post-``output_norm`` states for the last block that asked for them.
+
+        ``rows`` worth of rows are live; see :attr:`normalized_hidden_rows`.
+        The buffer is device-resident so a multi-row lm_head can launch against
+        it without a round trip. Reading 0 rows means the last forward did not
+        ask for ``return_hidden``.
+        """
+
+        return self._normalized
+
+    @property
+    def normalized_hidden_rows(self) -> int:
+        """How many rows of :attr:`normalized_hidden` are valid (0 if none)."""
+
+        return self._normalized_hidden_rows
+
+    def forward(
+        self,
+        token_ids: Sequence[int],
+        *,
+        apply_softcap: bool = True,
+        return_hidden: bool = False,
+    ) -> np.ndarray:
         """Run ``token_ids`` through the model and return the last row's logits.
 
         The tokens append to the sequence at the current position, so calling
@@ -830,6 +865,15 @@ class Gemma4Runner:
         distribution and so is applied by default; the raw values are exposed
         because a saturated cap destroys the ordering information a parity
         comparison needs.
+
+        ``return_hidden=True`` additionally keeps the final block's
+        post-``output_norm`` states for **every** row of that block instead of
+        only the last, exposed through :attr:`normalized_hidden` and
+        :attr:`normalized_hidden_rows`. This is ``h`` -- the tensor llama.cpp
+        names ``t_h_nextn`` -- which a multi-row lm_head consumes without
+        recomputing. The last row's logits are unchanged by it: the norm writes
+        each row independently, so the default path and this one agree
+        byte-for-byte on the row the projection reads.
         """
 
         if self._closed:
@@ -859,6 +903,7 @@ class Gemma4Runner:
                 # earlier block's copy is overwritten on the next iteration, so
                 # its final norm, projection and device-to-host copy are unread.
                 needs_logits=start == last_start,
+                return_hidden=return_hidden,
             )
         assert logits is not None
         return logits
@@ -922,12 +967,16 @@ class Gemma4Runner:
         *,
         apply_softcap: bool = True,
         needs_logits: bool = True,
+        return_hidden: bool = False,
     ) -> np.ndarray:
         """Run one block of at most ``max_block`` tokens; see :meth:`forward`."""
 
         with self._q8_mmq_prefill_session():
             return self._forward_block_inner(
-                tokens, apply_softcap=apply_softcap, needs_logits=needs_logits
+                tokens,
+                apply_softcap=apply_softcap,
+                needs_logits=needs_logits,
+                return_hidden=return_hidden,
             )
 
     def _forward_block_inner(
@@ -936,6 +985,7 @@ class Gemma4Runner:
         *,
         apply_softcap: bool = True,
         needs_logits: bool = True,
+        return_hidden: bool = False,
     ) -> np.ndarray:
         """The block body, run under whatever session :meth:`_forward_block` set.
 
@@ -1045,21 +1095,33 @@ class Gemma4Runner:
             self._position += rows
             return np.empty(0, dtype=np.float32)
 
-        # Only the last row is needed: the caller wants the next-token
-        # distribution, and the earlier rows' logits are never read.
-        last = (rows - 1) * hidden * _BF16_BYTES
+        # The default path keeps only the last row: the caller wants one
+        # next-token distribution and the earlier rows' logits are never read.
+        # ``return_hidden`` normalizes the whole block instead, so a multi-row
+        # lm_head can read the states already computed. Each row is independent
+        # under rmsnorm, so the row the projection consumes is identical either
+        # way -- asserted byte-for-byte by the live M2 test.
+        if return_hidden:
+            norm_rows, norm_input = rows, self._hidden.ptr
+            self._normalized_hidden_rows = rows
+        else:
+            norm_rows, norm_input = 1, self._hidden.ptr + (rows - 1) * hidden * _BF16_BYTES
+            self._normalized_hidden_rows = 0
         gemma4_rmsnorm_f32w_bf16(
-            self._hidden.ptr + last,
+            norm_input,
             self.weights.final_norm.buffer.ptr,
             self._normalized.ptr,
-            1,
+            norm_rows,
             hidden,
             config.rms_norm_eps,
         )
         head = self.weights.lm_head or self.weights.embed_tokens
+        # With return_hidden the block's states occupy the whole buffer, so the
+        # projection reads the last row's slice rather than the base.
+        head_input = self._normalized.ptr + (norm_rows - 1) * hidden * _BF16_BYTES
         launch_gguf_linear(
             head,
-            self._normalized.ptr,
+            head_input,
             self._logits.ptr,
             1,
             hidden,
