@@ -1,0 +1,341 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_x4_decode_role_attribution",
+ "performance_claim": false,
+ "promotion_claim": false,
+ "purpose": "X-4's named next step - analyze marker-scoped kernel/API/role owners - so the decode rows parked 'after X-4' have a device split to rank against.",
+ "command": [
+  "scripts/qwen4exp_x4_decode_role_attribution.py",
+  "--trace-dir",
+  "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/rocprof",
+  "--stem",
+  "x4full",
+  "--output",
+  "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/attribution.json"
+ ],
+ "source_trace": {
+  "stem": "x4full",
+  "step_windows": 3,
+  "role_windows": 2220,
+  "hip_launches": 15478,
+  "whole_trace_kernels": 18941,
+  "selected_decode_kernels": 5313
+ },
+ "attribution": {
+  "roles_observed": 740,
+  "kernels_unattributed": 0,
+  "kernels_attributed": 5313,
+  "recovered_by_kernel_rename": 1797,
+  "by_source": {
+   "correlation": 3516,
+   "kernel_rename": 1797,
+   "none": 0
+  }
+ },
+ "total_kernel_ms_per_step": 54.21806799999987,
+ "roles_top": [
+  {
+   "name": "linear:root.lm_head",
+   "ms_per_step": 2.9797646666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 5.495888689111301
+  },
+  {
+   "name": "moe:layers.2.expert_gate",
+   "ms_per_step": 0.7235559999999999,
+   "kernels_per_step": 15.0,
+   "share_pct": 1.3345292938140134
+  },
+  {
+   "name": "moe:layers.46.expert_gate",
+   "ms_per_step": 0.5760390000000002,
+   "kernels_per_step": 13.0,
+   "share_pct": 1.0624484074202012
+  },
+  {
+   "name": "moe:layers.30.expert_gate",
+   "ms_per_step": 0.555428,
+   "kernels_per_step": 13.0,
+   "share_pct": 1.0244334047461843
+  },
+  {
+   "name": "moe:layers.47.expert_gate",
+   "ms_per_step": 0.5448753333333332,
+   "kernels_per_step": 13.0,
+   "share_pct": 1.0049700283184833
+  },
+  {
+   "name": "moe:layers.4.expert_gate",
+   "ms_per_step": 0.5446226666666666,
+   "kernels_per_step": 13.0,
+   "share_pct": 1.0045040090079713
+  },
+  {
+   "name": "moe:layers.38.expert_gate",
+   "ms_per_step": 0.5341486666666667,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9851857256637548
+  },
+  {
+   "name": "moe:layers.45.expert_gate",
+   "ms_per_step": 0.5310353333333333,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.979443482444514
+  },
+  {
+   "name": "moe:layers.37.expert_gate",
+   "ms_per_step": 0.5238500000000001,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9661908277513716
+  },
+  {
+   "name": "moe:layers.44.expert_gate",
+   "ms_per_step": 0.5223286666666668,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9633848750690786
+  },
+  {
+   "name": "moe:layers.34.expert_gate",
+   "ms_per_step": 0.521699,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.962223515600005
+  },
+  {
+   "name": "moe:layers.36.expert_gate",
+   "ms_per_step": 0.5155003333333334,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9507906724624248
+  },
+  {
+   "name": "moe:layers.25.expert_gate",
+   "ms_per_step": 0.5102506666666667,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9411081683446707
+  },
+  {
+   "name": "moe:layers.32.expert_gate",
+   "ms_per_step": 0.509637,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9399763193332548
+  },
+  {
+   "name": "moe:layers.22.expert_gate",
+   "ms_per_step": 0.5090610000000002,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9389139428575756
+  },
+  {
+   "name": "moe:layers.29.expert_gate",
+   "ms_per_step": 0.5084336666666667,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9377568869969103
+  },
+  {
+   "name": "moe:layers.33.expert_gate",
+   "ms_per_step": 0.508407,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9377077029008141
+  },
+  {
+   "name": "decode_boundary",
+   "ms_per_step": 0.5079526666666664,
+   "kernels_per_step": 151.0,
+   "share_pct": 0.936869728863573
+  },
+  {
+   "name": "moe:layers.26.expert_gate",
+   "ms_per_step": 0.5074596666666666,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9359604378869936
+  },
+  {
+   "name": "moe:layers.24.expert_gate",
+   "ms_per_step": 0.5070439999999999,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9351937807890928
+  },
+  {
+   "name": "moe:layers.35.expert_gate",
+   "ms_per_step": 0.5053880000000002,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9321394484215141
+  },
+  {
+   "name": "moe:layers.23.expert_gate",
+   "ms_per_step": 0.5047476666666665,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9309584153140016
+  },
+  {
+   "name": "moe:layers.31.expert_gate",
+   "ms_per_step": 0.5041313333333336,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9298216478929768
+  },
+  {
+   "name": "moe:layers.28.expert_gate",
+   "ms_per_step": 0.5041183333333334,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9297976706461298
+  },
+  {
+   "name": "moe:layers.42.expert_gate",
+   "ms_per_step": 0.5031036666666667,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9279262157896663
+  }
+ ],
+ "families_top": [
+  {
+   "name": "moe:expert_gate",
+   "ms_per_step": 24.55039366666666,
+   "kernels_per_step": 583.0,
+   "share_pct": 45.28083454885689
+  },
+  {
+   "name": "linear:attn_qkv",
+   "ms_per_step": 4.658018666666665,
+   "kernels_per_step": 36.0,
+   "share_pct": 8.59126641448507
+  },
+  {
+   "name": "linear:root.lm_head",
+   "ms_per_step": 2.9797646666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 5.495888689111301
+  },
+  {
+   "name": "linear:attn_gate",
+   "ms_per_step": 2.8899976666666665,
+   "kernels_per_step": 36.0,
+   "share_pct": 5.330322110825996
+  },
+  {
+   "name": "linear:ssm_out",
+   "ms_per_step": 2.8418766666666664,
+   "kernels_per_step": 36.0,
+   "share_pct": 5.241567565016654
+  },
+  {
+   "name": "qsa_decode:attn_q",
+   "ms_per_step": 2.6206763333333343,
+   "kernels_per_step": 120.0,
+   "share_pct": 4.833584873096807
+  },
+  {
+   "name": "gdn:attn_qkv",
+   "ms_per_step": 2.401333999999999,
+   "kernels_per_step": 72.0,
+   "share_pct": 4.4290290830724635
+  },
+  {
+   "name": "linear:attn_q",
+   "ms_per_step": 1.814952333333334,
+   "kernels_per_step": 12.0,
+   "share_pct": 3.347504623981324
+  },
+  {
+   "name": "linear:hc_ffn_down",
+   "ms_per_step": 1.7710706666666667,
+   "kernels_per_step": 48.0,
+   "share_pct": 3.266569119848887
+  },
+  {
+   "name": "linear:hc_attn_down",
+   "ms_per_step": 1.7679700000000003,
+   "kernels_per_step": 48.0,
+   "share_pct": 3.260850239075293
+  },
+  {
+   "name": "linear:hc_attn_up",
+   "ms_per_step": 0.997830333333333,
+   "kernels_per_step": 48.0,
+   "share_pct": 1.8404018625918863
+  },
+  {
+   "name": "linear:hc_ffn_up",
+   "ms_per_step": 0.9946806666666667,
+   "kernels_per_step": 48.0,
+   "share_pct": 1.8345926060417148
+  },
+  {
+   "name": "linear:attn_output",
+   "ms_per_step": 0.9465350000000003,
+   "kernels_per_step": 12.0,
+   "share_pct": 1.745792564943485
+  },
+  {
+   "name": "decode_boundary",
+   "ms_per_step": 0.5079526666666664,
+   "kernels_per_step": 151.0,
+   "share_pct": 0.936869728863573
+  },
+  {
+   "name": "gr_read:hc_ffn_down",
+   "ms_per_step": 0.47473033333333353,
+   "kernels_per_step": 144.0,
+   "share_pct": 0.8755943375432239
+  },
+  {
+   "name": "gr_read:hc_attn_down",
+   "ms_per_step": 0.4495086666666666,
+   "kernels_per_step": 144.0,
+   "share_pct": 0.8290754046541602
+  },
+  {
+   "name": "linear:hc_ffn_inject",
+   "ms_per_step": 0.19612733333333324,
+   "kernels_per_step": 48.0,
+   "share_pct": 0.3617379603665216
+  },
+  {
+   "name": "linear:hc_attn_inject",
+   "ms_per_step": 0.1914000000000001,
+   "kernels_per_step": 48.0,
+   "share_pct": 0.3530188497310538
+  },
+  {
+   "name": "linear:index_q",
+   "ms_per_step": 0.18981033333333333,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.3500868628025141
+  },
+  {
+   "name": "linear:ssm_alpha",
+   "ms_per_step": 0.17144133333333322,
+   "kernels_per_step": 36.0,
+   "share_pct": 0.31620701300779225
+  },
+  {
+   "name": "linear:ssm_beta",
+   "ms_per_step": 0.16779600000000008,
+   "kernels_per_step": 36.0,
+   "share_pct": 0.30948354707143105
+  },
+  {
+   "name": "linear:attn_v",
+   "ms_per_step": 0.15215266666666666,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.28063092669895034
+  },
+  {
+   "name": "linear:attn_k",
+   "ms_per_step": 0.15147066666666667,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.27937304344128794
+  },
+  {
+   "name": "linear:ple_key",
+   "ms_per_step": 0.12698466666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23421097680328076
+  },
+  {
+   "name": "linear:index_k",
+   "ms_per_step": 0.06524066666666668,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.1203301207019528
+  }
+ ],
+ "limits": "Profiled capture: the wall and per-kernel times are diagnostic, not a performance measurement. One case (code-p4096), one live count (4097), one model, one host, one execution profile. Role attribution depends on the innermost-window join; kernels launched outside any role range are reported as unattributed rather than assigned."
+}
