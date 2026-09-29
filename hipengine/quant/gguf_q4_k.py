@@ -301,8 +301,11 @@ def repack_gguf_q4_k_tile16_tile_bytes(shape: Any) -> int:
 
     The raw tensor has byte shape ``[experts, out_features, bytes_per_row]`` and
     the tiles have ``[experts, out_features // 16, blocks_per_row, 2368]``, so
-    the total is that product rather than a second tensor's worth of bytes: the
-    tiles are 2.78 percent larger than the raw blocks they replace.
+    the total is that product, with one tile per 16 columns per K block.
+    A tile is 2368 bytes where the 16 raw Q4_K
+    blocks it is built from are 2304, so the tiles alone are 1.02778 times the
+    raw bytes, and a weight that keeps those raw blocks as well -- the Gemma 4
+    expert gate/up stack does -- holds 2.02778 times the raw bytes in total.
     """
 
     experts, out_features, bytes_per_row = Q4_K_T16_SHAPE.validate(shape)

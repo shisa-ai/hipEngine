@@ -539,8 +539,10 @@ def gemma4_experts_forward_bf16(
                 **kwargs,
             )
         )
-    else:
-        _record_moe_route("gate_up_mmq32")
+    # The MMQ-family wrapper records the leaf that served the projection, so the
+    # ladder is the only gate/up route left for the caller to name. Naming the
+    # family here as well counted a Q4T16 tile launch twice and named a Q5_K iu8
+    # launch as a route it never ran.
     gemma4_gelu_tanh_mul_bf16(gate_up_out.ptr, activated.ptr, lanes, intermediate, **kwargs)
 
     # 4. The down projection, over the same compact rows. The Q5_1 DS4 MMQ
@@ -1045,13 +1047,21 @@ def gemma4_project_experts_gate_up_mmq(
     on error feedback and the leaf now reads them correctly, so the three-plane
     route is 0.030 percent relative against 0.655 percent at one plane, a 22x
     reduction; ``_MMQ_ACTIVATION_PASSES`` records why the route still runs one.
+
+    This is a family, not one leaf: the fused MMQ32 launch below, the Q4T16 tile
+    leaf, and the Q5_K iu8 leaf all arrive through here. Each served projection
+    is counted under the name of the leaf that ran it -- ``gate_up_mmq32``,
+    ``gate_up_t16``, ``gate_up_iu8`` -- exactly once, from this function, which
+    is the only place that knows which leaf ran. A caller therefore records the
+    ladder route and nothing else; naming the family on top of a leaf's own name
+    counted a tile-route launch twice and named an iu8 launch as MMQ32.
     """
 
     if isinstance(weight, int):
         return False
     quant_key = getattr(weight.spec, "quant_key", None)
     if quant_key == "gguf_q5_k":
-        return _gemma4_project_experts_gate_up_wmma_iu8(
+        if _gemma4_project_experts_gate_up_wmma_iu8(
             weight,
             x_ptr,
             out_ptr,
@@ -1063,7 +1073,10 @@ def gemma4_project_experts_gate_up_mmq(
             scratch=scratch,
             stream=stream,
             runtime=runtime,
-        )
+        ):
+            _record_moe_route("gate_up_iu8")
+            return True
+        return False
     if quant_key != "gguf_q4_k":
         return False
     if _gemma4_t16_tiles_ready(weight):
@@ -1080,6 +1093,7 @@ def gemma4_project_experts_gate_up_mmq(
             stream=stream,
             runtime=runtime,
         ):
+            _record_moe_route("gate_up_t16")
             return True
     if in_features % 128 or (2 * intermediate) % 32 or intermediate % 32:
         return False
@@ -1166,6 +1180,7 @@ def gemma4_project_experts_gate_up_mmq(
         library=library,
         **kwargs,
     )
+    _record_moe_route("gate_up_mmq32")
     return True
 
 
@@ -1213,8 +1228,9 @@ def _gemma4_project_experts_gate_up_wmma_t16(
     MMQ32 route, 5.040 ms against 6.369 ms per layer.
 
     The tiles cost 2.78 percent more than the raw blocks they are built from and
-    are produced once at materialize time, so the route adds no per-call work and
-    no second copy of the tensor.
+    are produced once at materialize time, so the route adds no per-call work.
+    They are a second resident layout rather than a replacement: the raw blocks
+    stay, so a tensor carrying both holds 2.02778 times its raw bytes.
     """
 
     if intermediate % 16:
@@ -1289,7 +1305,6 @@ def _gemma4_project_experts_gate_up_wmma_t16(
         library=library,
         **kwargs,
     )
-    _record_moe_route("gate_up_t16")
     return True
 
 

@@ -156,8 +156,10 @@ def _plan_one(slot_path: str, source: GGUFTensorInfo) -> Gemma4GGUFWeightSpec:
     allocation_names = ("raw",)
     if quant_key == "gguf_q4_k" and len(source.shape) == 3 and source.shape[1] % 32 == 0:
         # A stacked Q4_K expert tensor also carries its Q4T16 tiles, because the
-        # expert gate/up prefill route reads that layout and it is 2.78 percent
-        # larger than the raw blocks rather than a second copy of the tensor.
+        # expert gate/up prefill route reads that layout. The raw blocks stay, so
+        # the tensor holds both layouts at once: a tile is 2368 bytes where the 16
+        # Q4_K blocks it is built from are 2304, which makes the tiles 1.02778
+        # times the raw bytes and the tensor 2.02778 times raw.
         # Rank-3 is what makes a tensor an expert stack; a dense Q4_K matrix has
         # no route that reads tiles, so it does not pay for them.
         #

@@ -2121,3 +2121,215 @@ def test_fused_gate_up_mmq_route_ships_on_and_the_variable_rolls_it_back(
     # An unrecognised value must not silently downgrade the default path.
     monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ", "banana")
     assert gemma4_moe_gate_up_mmq_enabled() is True
+
+
+# ---------------------------------------------------------------------------
+# Route accounting
+#
+# Every expert projection moves exactly one route counter, under the name of the
+# leaf that ran it. The fused gate/up wrapper is where that name is decided: it
+# is the only place that knows which of its leaves served the call, and two of
+# those leaves -- the Q4T16 tile route and the Q5_K iu8 route -- are not the
+# MMQ32 route the wrapper is named after.
+# ---------------------------------------------------------------------------
+
+
+class _TiledResidentWeight(_ResidentWeight):
+    """A resident Q4_K expert stack that also carries its Q4T16 tiles."""
+
+    def __init__(self, *, backend: str) -> None:
+        super().__init__(backend=backend, quant_key="gguf_q4_k")
+        self.allocations = {
+            "raw": SimpleNamespace(buffer=SimpleNamespace(ptr=self.ptr)),
+            "t16_gate": SimpleNamespace(buffer=SimpleNamespace(ptr=self.ptr + 1)),
+            "t16_up": SimpleNamespace(buffer=SimpleNamespace(ptr=self.ptr + 2)),
+        }
+
+
+class _AccountingScratch:
+    """A scratch stand-in for the block's accounting test.
+
+    The subject is which route counter moves, not what the kernels compute, so
+    every kernel the block calls is stubbed and the buffers only have to carry a
+    pointer.
+    """
+
+    def __init__(
+        self, *, tokens: int, top_k: int, hidden_size: int, intermediate: int, num_experts: int
+    ) -> None:
+        self.tokens = tokens
+        self.top_k = top_k
+        self.hidden_size = hidden_size
+        self.intermediate = intermediate
+        self.num_experts = num_experts
+
+    def buffer(self, name: str) -> SimpleNamespace:
+        return SimpleNamespace(ptr=0x10000 + 8 * len(name), nbytes=1 << 20)
+
+
+def _route_delta(before: dict[str, int], after: dict[str, int]) -> dict[str, int]:
+    return {k: v - before.get(k, 0) for k, v in after.items() if v - before.get(k, 0)}
+
+
+@pytest.mark.parametrize(
+    ("route", "leaf"),
+    [
+        ("gate_up_t16", "_gemma4_project_experts_gate_up_wmma_t16"),
+        ("gate_up_iu8", "_gemma4_project_experts_gate_up_wmma_iu8"),
+    ],
+)
+def test_the_fused_gate_up_wrapper_counts_the_leaf_that_served_it(
+    monkeypatch: pytest.MonkeyPatch, route: str, leaf: str
+) -> None:
+    """A served projection is counted under its own leaf's name, exactly once.
+
+    The wrapper dispatches to leaves whose names differ from its own, and the
+    counter has to follow the leaf that ran. Counting the family instead
+    attributes a Q4T16 tile launch and a Q5_K iu8 launch to ``gate_up_mmq32``,
+    a route neither of them ran.
+    """
+
+    import hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts as experts
+
+    served: list[str] = []
+
+    def stub(*args, **kwargs) -> bool:
+        served.append(route)
+        return True
+
+    monkeypatch.setattr(experts, leaf, stub)
+    # A Q5_K expert tensor is not a Q4_K one, so the iu8 case is a weight with no
+    # tiles at all; the tile route's case is the stack the loader plans both
+    # layouts for.
+    weight = (
+        _ResidentWeight(backend="hip_gfx1100", quant_key="gguf_q5_k")
+        if route == "gate_up_iu8"
+        else _TiledResidentWeight(backend="hip_gfx1100")
+    )
+    scratch = Gemma4ExpertScratch(
+        tokens=8, top_k=1, hidden_size=256, intermediate=64, num_experts=4
+    )
+    before = gemma4_moe_expert_route_counts()
+    try:
+        served_route = gemma4_project_experts_gate_up_mmq(
+            weight,
+            0x1000,
+            0x2000,
+            SimpleNamespace(ptr=0x3000),
+            8,
+            4,
+            256,
+            64,
+            scratch=scratch,
+        )
+    finally:
+        scratch.free()
+
+    assert served_route is True
+    assert served == [route], "the wrapper did not reach the leaf this case names"
+    delta = _route_delta(before, gemma4_moe_expert_route_counts())
+    assert delta == {route: 1}, (
+        f"the {route} leaf served one projection but the counters moved by {delta}"
+    )
+
+
+def test_the_expert_block_counts_one_gate_up_route_per_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The block records one gate/up name per projection, never two.
+
+    The wrapper records the leaf that served the projection, so the caller must
+    not add a second name for the same launch. With the Q4T16 tiles live in
+    production that double count made ``gate_up_mmq32`` report every tile-route
+    launch, so the counters read as twice the projections the block ran.
+    """
+
+    import hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts as experts
+
+    def no_op(*args, **kwargs) -> None:
+        return None
+
+    def gate_up_leaf(*args, **kwargs) -> bool:
+        # What the wrapper does once the Q4T16 leaf reports that it served the
+        # call: the leaf's own name, and nothing from the caller on top of it.
+        experts._record_moe_route("gate_up_t16")
+        return True
+
+    monkeypatch.setattr(experts, "_zero", no_op)
+    monkeypatch.setattr(experts, "qwen35_moe_group_count", no_op)
+    monkeypatch.setattr(experts, "qwen35_moe_group_prefix_active", no_op)
+    monkeypatch.setattr(experts, "qwen35_moe_group_compact_active", no_op)
+    monkeypatch.setattr(experts, "qwen35_moe_gather_packed_hidden_lowp", no_op)
+    monkeypatch.setattr(experts, "gemma4_gelu_tanh_mul_bf16", no_op)
+    monkeypatch.setattr(experts, "gemma4_moe_lane_to_row_i32", no_op)
+    monkeypatch.setattr(experts, "gemma4_moe_weighted_accumulate_bf16", no_op)
+    monkeypatch.setattr(experts, "gemma4_project_experts_gate_up_mmq", gate_up_leaf)
+    monkeypatch.setattr(experts, "gemma4_project_experts_down_mmq", lambda *a, **k: True)
+    monkeypatch.setattr(experts, "gemma4_project_experts_rows", lambda *a, **k: "selected_gemv")
+
+    scratch = _AccountingScratch(
+        tokens=8, top_k=1, hidden_size=256, intermediate=64, num_experts=4
+    )
+    before = gemma4_moe_expert_route_counts()
+    experts.gemma4_experts_forward_bf16(
+        0x1000,
+        0x2000,
+        0x3000,
+        SimpleNamespace(),
+        SimpleNamespace(),
+        0x4000,
+        scratch=scratch,
+        rows=8,
+    )
+    delta = _route_delta(before, gemma4_moe_expert_route_counts())
+    assert delta == {"gate_up_t16": 1, "down_mmq32": 1}, (
+        "one gate/up projection and one down projection ran, so exactly one name "
+        f"per projection is expected; the counters moved by {delta}"
+    )
+
+
+def test_the_expert_block_counts_the_ladder_route_when_the_mmq_leaves_decline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A declining MMQ leaf leaves the accounting to the ladder route.
+
+    The caller records the ladder route only when no MMQ-family leaf served the
+    projection, so a refusal must not consume a counter of its own.
+    """
+
+    import hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts as experts
+
+    def no_op(*args, **kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(experts, "_zero", no_op)
+    monkeypatch.setattr(experts, "qwen35_moe_group_count", no_op)
+    monkeypatch.setattr(experts, "qwen35_moe_group_prefix_active", no_op)
+    monkeypatch.setattr(experts, "qwen35_moe_group_compact_active", no_op)
+    monkeypatch.setattr(experts, "qwen35_moe_gather_packed_hidden_lowp", no_op)
+    monkeypatch.setattr(experts, "gemma4_gelu_tanh_mul_bf16", no_op)
+    monkeypatch.setattr(experts, "gemma4_moe_lane_to_row_i32", no_op)
+    monkeypatch.setattr(experts, "gemma4_moe_weighted_accumulate_bf16", no_op)
+    monkeypatch.setattr(experts, "gemma4_project_experts_gate_up_mmq", lambda *a, **k: False)
+    monkeypatch.setattr(experts, "gemma4_project_experts_down_mmq", lambda *a, **k: False)
+    monkeypatch.setattr(experts, "gemma4_project_experts_rows", lambda *a, **k: "grouped_prefill")
+
+    scratch = _AccountingScratch(
+        tokens=8, top_k=1, hidden_size=256, intermediate=64, num_experts=4
+    )
+    before = gemma4_moe_expert_route_counts()
+    experts.gemma4_experts_forward_bf16(
+        0x1000,
+        0x2000,
+        0x3000,
+        SimpleNamespace(),
+        SimpleNamespace(),
+        0x4000,
+        scratch=scratch,
+        rows=8,
+    )
+    delta = _route_delta(before, gemma4_moe_expert_route_counts())
+    assert delta == {"grouped_prefill": 2}, (
+        "both projections fell to the ladder, so its route is the only name "
+        f"that may move; the counters moved by {delta}"
+    )
