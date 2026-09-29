@@ -123,20 +123,30 @@ $TH/bin/python scripts/qwen4exp_de1_moe_bandwidth_gate.py \
   --output benchmarks/results/2026-09-29-qwen4exp-de1-moe-bandwidth-gate/gate.json
 ```
 
-## Addendum: identifying the owner kernels from the existing trace
+## Addendum 1: RETRACTED - the kernel named here is the PREFILL owner, not the decode owner
 
-The capture's raw kernel trace (`../2026-09-29-qwen4exp-x4-decode-split/rocprof/x4decode_kernel_trace.csv`,
-18,941 dispatches) spans **68 s** of prefill + warmup + measured steps, so it cannot segment a
-single decode step without redoing the join that `attribution.json` already performs. Two structural
-facts are nevertheless readable from it, and both matter for `DE-1`'s next cut.
+> **RETRACTED (`20260929T`, see Addendum 3).** The kernel identified below is real and its
+> geometry is correct, but it **does not execute during decode**. All 192 of its dispatches in
+> this capture fall **before** the measured decode repetitions; **zero** fall inside them. It was
+> found by ranking total time across the whole 68 s trace, which is prefill-dominated, so it is
+> the **prefill** owner of the routed gate+up work. The decode owner is a different kernel.
+> Addendum 3 replaces this section. The text is kept so the error and its cause stay legible.
+
+The capture's raw kernel trace
+(`../2026-09-29-qwen4exp-x4-decode-split/rocprof/x4decode_kernel_trace.csv`, 18,941 dispatches)
+spans **68 s** of prefill + warmup + measured steps, so it cannot segment a single decode step
+without redoing the join that `attribution.json` already performs. One structural fact is
+nevertheless readable from it.
 
 **The expert GEMM owner is `gguf_q4_k_selected_dual_wmma_iu8_risk_*`.** The `selected` refers to
 *selected experts* (MoE routing), and **`dual` confirms gate and up are fused into a single kernel**.
 It appears 188 times in the capture totaling 2,709.02 ms, at **`grid = 1280`, `workgroup = 128`**.
+**This is the PREFILL owner.** Its `grid = 1280` geometry describes prefill, and Addendum 3 shows
+the decode owner has a different name and a different shape.
 
 **1,280 is exactly the gate+up output row count for one expert** (640 gate rows + 640 up rows). So the
 decomposition is **one workgroup per output row, each reducing over 2,560 input columns** - a
-128-thread workgroup spanning the full reduction axis. That is a plausible source of the 2.77x gap
+128-thread workgroup spanning the full reduction axis. **This describes the prefill kernel.** That is a plausible source of the 2.77x gap
 and it is a *structural* property, which is precisely what `DE-1`'s action targets ("the structure,
 not the dp4a arithmetic").
 
@@ -187,3 +197,73 @@ gap of 53.60 us between consecutive kernels is far above a normal device-side ke
 latency, and the reps differ by 23x, so these gaps are dominated by harness/profiler interaction
 rather than by engine behavior. **No gap figure here should be read as an engine property.** The
 conclusion drawn from them is only the negative one: gaps are *not* what the 24.5504 ms consists of.
+
+## Addendum 3: the decode owner, and the correction of Addendum 1
+
+`scripts/qwen4exp_de1_moe_per_kernel.py` (artifact `per_kernel.json`) splits the `moe:expert_gate`
+family into its raw kernels and charges each one the traffic it actually moves. It joins two
+artifacts: the harness renames every **decode** dispatch to its semantic role, so
+`rocprof/x4full_kernel_trace.csv` carries the attribution but not the raw name; and
+`rocprof/x4full_results.db` maps `Kernel_Id` back to the mangled raw kernel name. The decode window
+comes from the `qwen4exp_decode_live4097_rep{0,1,2}` ROCTX ranges, and every figure is divided by the
+three reps.
+
+**The join reproduces the family total exactly - 24.550 ms/step - which is the check that it is
+correct rather than merely plausible.** It also reproduces the published kernel sum: 162.654 ms over
+the three reps = 54.218 ms/step.
+
+### The correction
+
+**Addendum 1 named the wrong kernel.** All 192 dispatches of `selected_dual_wmma_iu8_risk_*` fall
+**before** the decode repetitions and **zero** fall inside them, as do all 430 `q5_1_selected` and all
+192 `router_logits` dispatches. Those are **prefill** kernels. The error's cause is worth recording:
+Addendum 1 ranked kernels by total time across the whole 68 s capture, and the measured decode reps
+are only 0.68 s of that, so a prefill-dominated ranking cannot identify a decode owner. The decode
+kernels are also **not identifiable by raw name in that file at all** - all 5,313 decode dispatches
+carry renamed role names, and all 13,628 prefill dispatches carry raw names.
+
+### The decode owner
+
+| raw kernel | bucket | ms/step | kernels/step | us/kernel | bytes/step | **GB/s** | **% roof** |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `gguf_q4_k_selected_dual_silu_logical128_t64` | routed gate+up | **14.013** | 47 | 298.14 | 888.83 MB | **63.43** | **28.7%** |
+| `q5_1_selected_weighted_sum_logical256_t64` | routed down | 5.444 | 43 | 126.59 | 615.42 MB | 113.06 | 51.2% |
+| `dense_gemv_out_kernel<float,float,false>` | router GEMV | 1.363 | 96 | 14.20 | 251.66 MB | **184.66** | **83.5%** |
+| `qwen35_router_select_kernel` | top-k select | 0.331 | 48 | 6.90 | ~0 | - | - |
+
+Charged **20.819 ms/step**; **3.731 ms/step (15.2%)** is reported unattributed rather than
+distributed across the charged kernels.
+
+### Two in-block comparators, and a corrected router term
+
+**The family figure of 81.73 GB/s is a blend of kernels running at 63.43, 113.06 and 184.66 GB/s.**
+The gate+up GEMV is simultaneously the largest owner (57.1% of the family) and the least efficient.
+
+**The router term in the family-level model is wrong, and this artifact corrects it.**
+`qwen35_router_select_kernel` is the **top-k selection over 512 logits**, not the router GEMV: it
+takes 0.331 ms/step, so charging it the router's 251.66 MB would imply **760 GB/s, 3.4x the
+documented roof** - an impossible rate that the family-level model absorbed because it charges the
+router's bytes to the family rather than to a kernel. The actual router GEMV is
+`dense_gemv_out_kernel<float,float,false>`, the only fp32 dense GEMV in the block, which matches
+`ffn_gate_inp` exactly (5,242,880 B/layer = 512 x 2560 at 4 B/weight). At 1.363 ms/step it reaches
+**184.66 GB/s = 83.5% of roof** - a **second comparator inside the same block**, and a stronger one
+than `linear:root.lm_head` because it is the same role family, the same step, and the same shape
+class (a dense GEMV over a single token).
+
+### Headroom, now localized
+
+At the `linear:root.lm_head` comparator rate (226.67 GB/s) the gate+up GEMV's 888.83 MB would take
+**3.921 ms** instead of 14.013 ms - a **10.091 ms/step** saving, **18.6% of the 54.218 ms kernel
+sum**. That is larger than the 15.70 ms/step the family-level gate attributed to the whole block,
+because the family figure was diluted by the router's impossible bytes.
+
+### Limits
+
+Same profiled capture, one case, one live count, one model, one host, as above. The gate+up and
+down mappings are high confidence - the kernel names carry both the quant (`q4_k`, `q5_1`) and the
+role (`selected_dual_silu`, `selected_weighted_sum`), and the per-step dispatch counts (47 and 43
+over 48 layers) match one dispatch per layer, with the shortfall expected from this model's
+**dynamic** quantization (layer tensor sizes are not uniform). The router-GEMV identification is
+medium confidence: it rests on the kernel being the only fp32 dense GEMV in the block and on
+`ffn_gate_inp` being exactly fp32, not on a name match. **No timing claim is made** - the artifact
+inherits the source capture's own limit that its per-kernel times are diagnostic.
