@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_qa5_context_rerank",
+  "performance_claim": false,
+  "created_at": "2026-09-29T18:19:56.932005+00:00",
+  "source_attribution": "benchmarks/results/2026-09-17-qwen4exp-per-role-cost/role-analysis.json",
+  "source_window_ms": 22698.625927,
+  "named_kernel_occupancy_measured": {
+    "kernel": "qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel",
+    "vgpr": 256,
+    "sgpr": 48,
+    "instructions": 1934,
+    "waves_per_cu": 8,
+    "occupancy_pct": 25.0,
+    "static_lds_bytes": 0,
+    "lds_note": "extern __shared__ float shared[] - dynamic LDS, invisible to compile census"
+  },
+  "named_kernel_entries_in_capture": 0,
+  "running_kernel": {
+    "kernel": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
+    "vgpr": 18,
+    "sgpr": 53,
+    "instructions": 554,
+    "waves_per_cu": 32,
+    "occupancy_pct": 100.0,
+    "ms": 801.566,
+    "share_pct": 3.531
+  },
+  "lds_occupancy_model": {
+    "lds_per_cu_bytes": 65536,
+    "head_dim": 256,
+    "formula": "shared = (max_context_len + threads + head_dim) * 4",
+    "threads_rule": "32 if max_context_len <= 1024 else 64",
+    "rows": [
+      {
+        "context": 512,
+        "threads": 32,
+        "shared_bytes": 3200,
+        "blocks_per_cu": 20,
+        "waves_per_cu": 8,
+        "occupancy_pct": 25.0,
+        "binding": "registers"
+      },
+      {
+        "context": 1024,
+        "threads": 32,
+        "shared_bytes": 5248,
+        "blocks_per_cu": 12,
+        "waves_per_cu": 8,
+        "occupancy_pct": 25.0,
+        "binding": "registers"
+      },
+      {
+        "context": 2048,
+        "threads": 64,
+        "shared_bytes": 9472,
+        "blocks_per_cu": 6,
+        "waves_per_cu": 8,
+        "occupancy_pct": 25.0,
+        "binding": "registers"
+      },
+      {
+        "context": 4096,
+        "threads": 64,
+        "shared_bytes": 17664,
+        "blocks_per_cu": 3,
+        "waves_per_cu": 6,
+        "occupancy_pct": 18.8,
+        "binding": "LDS"
+      },
+      {
+        "context": 8192,
+        "threads": 64,
+        "shared_bytes": 34048,
+        "blocks_per_cu": 1,
+        "waves_per_cu": 2,
+        "occupancy_pct": 6.2,
+        "binding": "LDS"
+      },
+      {
+        "context": 16064,
+        "threads": 64,
+        "shared_bytes": 65536,
+        "blocks_per_cu": 1,
+        "waves_per_cu": 2,
+        "occupancy_pct": 6.2,
+        "binding": "LDS"
+      },
+      {
+        "context": 16384,
+        "threads": 64,
+        "shared_bytes": 66816,
+        "blocks_per_cu": null,
+        "waves_per_cu": null,
+        "occupancy_pct": null,
+        "binding": "global score scratch (guarded, >65536)"
+      }
+    ]
+  },
+  "guard": {
+    "source": "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip:3796",
+    "expr": "use_global_scores = global_score_workspace or (max_context_len + threads + head_dim) * 4 > 65536",
+    "verdict": "the >64 KiB case is already guarded; no bug"
+  }
+}
