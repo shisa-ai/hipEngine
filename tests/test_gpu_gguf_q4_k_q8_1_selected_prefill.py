@@ -36,6 +36,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out,
     plan_gguf_q4_k_q8_1_selected_prefill_build,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+    gguf_q5_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out as _gguf_q5_k_mmq32_launcher,
+)
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
 from hipengine.quant.gguf_q4_k import (
@@ -1218,6 +1221,7 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
     *,
     source_remap: bool = False,
     layout: str = "raw",
+    quant: str = "gguf_q4_k",
     activation_passes: int = 1,
     fused_stride: bool = False,
     fused_stride_rows: int | None = None,
@@ -1241,7 +1245,14 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
     if layout == "raw":
         qweight_a = fixture.qweight_a
         qweight_b = fixture.qweight_b
-        launcher = gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
+        # Q5_K shares the raw block layout -- no repack -- and reaches device
+        # code through its own export, so only the launcher differs. A lookup
+        # rather than a conditional keeps an unknown quant loud instead of
+        # silently falling back to Q4_K.
+        launcher = {
+            "gguf_q4_k": gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+            "gguf_q5_k": _gguf_q5_k_mmq32_launcher,
+        }[quant]
     elif layout == "x8":
         qweight_a = repack_gguf_q4_k_x8(fixture.qweight_a).tiles
         qweight_b = repack_gguf_q4_k_x8(fixture.qweight_b).tiles

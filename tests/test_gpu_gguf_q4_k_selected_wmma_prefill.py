@@ -63,6 +63,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
+from tests._gguf_synthetic_weights import make_q5_k_weight
 from tests.test_gpu_gguf_q4_k_gemv import make_q4_k_weight
 
 
@@ -326,10 +327,19 @@ def _decode_output(host: np.ndarray, dtype: str) -> np.ndarray:
     raise ValueError(dtype)
 
 
-def _make_expert_q4_k_weights(
-    *, num_experts: int, out_features: int, in_features: int, offset: int
+def _make_expert_qk_weights(
+    *,
+    num_experts: int,
+    out_features: int,
+    in_features: int,
+    offset: int,
+    quant: str = "gguf_q4_k",
 ) -> np.ndarray:
-    base = make_q4_k_weight(out_features, in_features)
+    make_weight = {
+        "gguf_q4_k": make_q4_k_weight,
+        "gguf_q5_k": make_q5_k_weight,
+    }[quant]
+    base = make_weight(out_features, in_features)
     return np.ascontiguousarray(
         np.stack([np.roll(base, shift=offset + expert, axis=0) for expert in range(num_experts)], axis=0)
     )
@@ -343,6 +353,7 @@ def _build_compact_fixture(
     out_features_b: int,
     dtype: str,
     seed: int = 0,
+    quant: str = "gguf_q4_k",
 ) -> CompactFixture:
     num_experts = len(counts)
     compact_rows = int(sum(counts))
@@ -364,32 +375,38 @@ def _build_compact_fixture(
     x_host = _prepare_input(x_f32, dtype)
     x_ref = _decode_input_for_reference(x_host, dtype)
 
-    qweight_a = _make_expert_q4_k_weights(
+    qweight_a = _make_expert_qk_weights(
         num_experts=num_experts,
         out_features=out_features_a,
         in_features=in_features,
         offset=0,
+        quant=quant,
     )
-    qweight_b = _make_expert_q4_k_weights(
+    qweight_b = _make_expert_qk_weights(
         num_experts=num_experts,
         out_features=out_features_b,
         in_features=in_features,
         offset=3,
+        quant=quant,
     )
 
     reference = np.zeros(
         (compact_rows, out_features_a + out_features_b), dtype=np.float32
     )
+    qtype = {
+        "gguf_q4_k": GGMLQuantizationType.Q4_K,
+        "gguf_q5_k": GGMLQuantizationType.Q5_K,
+    }[quant]
     for expert, count in enumerate(counts):
         if count == 0:
             continue
         start = int(expert_start_compact[expert])
         stop = start + count
         reference[start:stop, :out_features_a] = gguf_quant_gemv(
-            x_ref[start:stop], qweight_a[expert], GGMLQuantizationType.Q4_K
+            x_ref[start:stop], qweight_a[expert], qtype
         )
         reference[start:stop, out_features_a:] = gguf_quant_gemv(
-            x_ref[start:stop], qweight_b[expert], GGMLQuantizationType.Q4_K
+            x_ref[start:stop], qweight_b[expert], qtype
         )
 
     return CompactFixture(
@@ -983,7 +1000,7 @@ def test_gguf_q4_k_selected_wmma_fp16_matches_cpu_selected_reference(
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_p9_c5_q4_k_predecode_scale_min_sidemeta_shape_and_values() -> None:
-    raw = _make_expert_q4_k_weights(num_experts=2, out_features=4, in_features=256, offset=1)
+    raw = _make_expert_qk_weights(num_experts=2, out_features=4, in_features=256, offset=1)
     sidemeta = q4_k_predecode_scale_min_sidemeta(raw)
     assert sidemeta.shape == (2, 4, 1, 8, 2)
     assert sidemeta.dtype == np.float16

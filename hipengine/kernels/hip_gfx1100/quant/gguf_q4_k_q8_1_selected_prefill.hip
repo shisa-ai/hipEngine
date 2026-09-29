@@ -21,6 +21,22 @@ constexpr int Q4_K_BLOCK_BYTES = 144;
 constexpr int Q4_K_SCALE_BYTES = 12;
 constexpr int Q4_K_QS_OFFSET = 2 + 2 + Q4_K_SCALE_BYTES;
 constexpr int Q4_K_QS_BYTES = QK_K / 2;
+
+// Q5_K superblock layout: d, dmin, 12 scale/min bytes, then the 32-byte qh
+// plane (one high bit per value), then the 128-byte qs nibble plane.  The qh
+// plane sits exactly where Q4_K's qs plane starts (offset 16), so a Q4_K
+// loader that reads qs at 16 must not be reused for Q5_K.
+constexpr int Q5_K_SCALE_BYTES = 12;
+constexpr int Q5_K_QH_OFFSET = 2 + 2 + Q5_K_SCALE_BYTES;  // == 16
+constexpr int Q5_K_QH_BYTES = QK_K / 8;                   // == 32
+constexpr int Q5_K_QS_OFFSET = Q5_K_QH_OFFSET + Q5_K_QH_BYTES;  // == 48
+constexpr int Q5_K_QS_BYTES = QK_K / 2;                   // == 128
+constexpr int Q5_K_BLOCK_BYTES = Q5_K_QS_OFFSET + Q5_K_QS_BYTES;  // == 176
+
+// Weight-quant selector for the mmq32 body.  Q4_K is the default so every
+// existing instantiation is unchanged.
+constexpr int Q4_K_QUANT = 0;
+constexpr int Q5_K_QUANT = 1;
 constexpr int Q4_K_TILE16_COLS = 16;
 constexpr int Q4_K_SUBBLOCK = 32;
 constexpr int Q4_K_SUBBLOCKS = QK_K / Q4_K_SUBBLOCK;  // == 8
@@ -207,6 +223,39 @@ __device__ inline int pack_q4_k_u8x4(
 #pragma unroll
   for (int i = 0; i < 4; ++i) {
     out |= static_cast<uint32_t>(gguf_q4_k_quant(qs, subblock, lane32_base + i)) << (8 * i);
+  }
+  return static_cast<int>(out);
+}
+
+// Q5_K's fifth bit.  The qh plane is one byte per lane32 (32 bytes for the
+// 32 value-lanes of a subblock) and packs all 8 subblocks of that lane as
+// one bit each, so the high bit for (subblock, lane32) is bit `subblock` of
+// qh[lane32].  This is the byte-wise form of the word expression used by the
+// Q5X8 GEMV: (word >> subblock) & 0x01010101 picks bit `subblock` of every
+// byte, because a right shift of s maps old bit s of a byte to its bit 0.
+__device__ inline uint8_t gguf_q5_k_high(
+    const uint8_t* qh,
+    int subblock,
+    int lane32) {
+  return static_cast<uint8_t>((qh[lane32] >> subblock) & 1u);
+}
+
+// 0/1 mask pack mirroring pack_q4_k_u8x4's byte layout.  The mask word is
+// fed to the SAME sudot4 as the weight word, where the dot reads
+// (word >> ((qword&1)*4)) & 0x0F0F0F0F -- the low nibble of each byte -- so
+// the bit must live in the LOW nibble of each byte, which 0x00/0x01 does.
+// Weights are the unsigned operand of sudot4, so a 0/1 mask is in range and
+// the fifth-bit contribution is simply 16 * (mask . activation).
+__device__ inline int pack_q5_k_mask_u8x4(
+    const uint8_t* qh,
+    int subblock,
+    int lane32_base) {
+  uint32_t out = 0;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    out |= static_cast<uint32_t>(
+               gguf_q5_k_high(qh, subblock, lane32_base + i))
+           << (8 * i);
   }
   return static_cast<int>(out);
 }
@@ -497,6 +546,32 @@ struct alignas(4) q4_k_mmq32_cache {
   uint16_t dm[2];
 };
 static_assert(sizeof(q4_k_mmq32_cache) == 20, "unexpected Q4_K MMQ cache size");
+
+// Q5_K carries every Q4_K weight plus one high bit per value.  Option (A):
+// keep qs[4] as the unsigned low nibbles (the Q4_K domain, consumed
+// unmodified by the sudot4 dot) and park the fifth bit in its own words, so
+// the dot runs twice over activation words that are already in registers --
+// once on the nibbles, once on a 0/1 mask -- instead of widening the operand
+// to bytes and repacking the DS4 activation path.  qh mirrors qs: four words
+// of four bytes, one word per 8-lane group, because the dot indexes them as
+// qh[qword >> 1] exactly as it indexes qs.
+struct alignas(4) q5_k_mmq32_cache {
+  uint32_t qs[4];  // low 4 bits of each of 32 values
+  uint32_t qh[4];  // bit 5 of each value, same 8-lane grouping as qs
+  uint16_t dm[2];
+};
+static_assert(sizeof(q5_k_mmq32_cache) == 36, "unexpected Q5_K MMQ cache size");
+
+// Selects the shared-memory weight cache for a quant.  Q5_K adds one qh word
+// for the fifth bit; every other quant uses the Q4_K layout.
+template <int QUANT>
+struct mmq32_weight_cache {
+  using type = q4_k_mmq32_cache;
+};
+template <>
+struct mmq32_weight_cache<Q5_K_QUANT> {
+  using type = q5_k_mmq32_cache;
+};
 
 struct alignas(4) q8_1_mmq32_cache {
   int32_t qs[8];
@@ -1141,7 +1216,9 @@ __global__ void gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_kernel(
 // routed-row residue. Each lane therefore keeps eight FP32 accumulators instead
 // of the 16 required by a literal two-wave mapping. WMITER remains one,
 // matching Vulkan's K-quant pressure control.
-template <int WEIGHT_LAYOUT, int ACTIVATION_PASSES, bool COLLECT_RISKS>
+template <int WEIGHT_LAYOUT, int ACTIVATION_PASSES, bool COLLECT_RISKS,
+          class WEIGHT_CACHE = q4_k_mmq32_cache,
+          int WEIGHT_QUANT = Q4_K_QUANT>
 __device__ __forceinline__ void
 gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
     const block_q8_1_mmq_ds4* __restrict__ x_q8,
@@ -1164,7 +1241,7 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
     int* __restrict__ risk_tiles,
     int64_t max_risks,
     float risk_threshold,
-    q4_k_mmq32_cache* __restrict__ weight_tile,
+    WEIGHT_CACHE* __restrict__ weight_tile,
     q8_1_mmq32_cache* __restrict__ activation_tile) {
   constexpr int MMQ_M = 32;
   constexpr int MMQ_N = 32;
@@ -1172,6 +1249,14 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
   constexpr int THREADS = 128;
   constexpr int TM = 1;
   constexpr int WNITER = 8;
+  // Q5_K superses Q4_K block geometry: 176 vs 144 bytes, and its qs plane
+  // starts at 48 because the 32-byte qh plane precedes it (Q4_K's starts at
+  // 16).  Both fold at compile time, so the Q4_K path sees the very same
+  // constants as before.
+  constexpr int64_t QUANT_BLOCK_BYTES =
+      (WEIGHT_QUANT == Q5_K_QUANT) ? Q5_K_BLOCK_BYTES : Q4_K_BLOCK_BYTES;
+  constexpr int QUANT_QS_OFFSET =
+      (WEIGHT_QUANT == Q5_K_QUANT) ? Q5_K_QS_OFFSET : Q4_K_QS_OFFSET;
 
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
@@ -1205,7 +1290,7 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
   const int64_t blocks_per_weight_row = in_features / QK_K;
   const int64_t q8_blocks_per_row = in_features / Q8_1_MMQ_BLOCK;
   const int64_t weight_row_bytes =
-      blocks_per_weight_row * Q4_K_BLOCK_BYTES;
+      blocks_per_weight_row * QUANT_BLOCK_BYTES;
   // ``expert_stride_rows`` is the distance between consecutive experts in the
   // raw layout. Zero means the half is its own tensor and the stride is its
   // output width, which is what a split-weight or repacked caller passes. A
@@ -1242,6 +1327,7 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
       const int64_t local_col = local_col_base + col_offset;
       const bool valid_col = local_col < local_out_features;
       uint32_t packed_q4 = 0;
+      uint32_t packed_mask = 0;
       uint16_t packed_scale = 0;
       uint16_t packed_min = 0;
       if (valid_col) {
@@ -1259,7 +1345,7 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
                static_cast<int64_t>(weight_block)) *
                   X8_COLS +
               col_in_pack;
-          block = qweight + x8_block * Q4_K_BLOCK_BYTES;
+          block = qweight + x8_block * QUANT_BLOCK_BYTES;
         } else if constexpr (WEIGHT_LAYOUT == Q4_K_LAYOUT_T16) {
           const int64_t out_tiles =
               local_out_features / Q4_K_TILE16_COLS;
@@ -1275,7 +1361,7 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
         } else {
           block =
               expert_base + local_col * weight_row_bytes +
-              static_cast<int64_t>(weight_block) * Q4_K_BLOCK_BYTES;
+              static_cast<int64_t>(weight_block) * QUANT_BLOCK_BYTES;
         }
         const int lane8 = load_weight_part * 8;
         uint32_t low = 0;
@@ -1288,13 +1374,25 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
               pack_q4_k_t16_u8x4(
                   t16_tile, subblock, lane8 + 4, t16_col));
         } else {
-          const uint8_t* __restrict__ qs = block + Q4_K_QS_OFFSET;
+          const uint8_t* __restrict__ qs = block + QUANT_QS_OFFSET;
           low = static_cast<uint32_t>(
               pack_q4_k_u8x4(qs, subblock, lane8));
           high = static_cast<uint32_t>(
               pack_q4_k_u8x4(qs, subblock, lane8 + 4));
         }
         packed_q4 = low | (high << 4);
+        if constexpr (WEIGHT_QUANT == Q5_K_QUANT) {
+          if constexpr (WEIGHT_LAYOUT != Q4_K_LAYOUT_T16) {
+            const uint8_t* __restrict__ qh = block + Q5_K_QH_OFFSET;
+            const uint32_t mlow = static_cast<uint32_t>(
+                pack_q5_k_mask_u8x4(qh, subblock, lane8));
+            const uint32_t mhigh = static_cast<uint32_t>(
+                pack_q5_k_mask_u8x4(qh, subblock, lane8 + 4));
+            // Same interleave as packed_q4: the high group rides in each
+            // byte's upper nibble so the dot's qword split reads it back.
+            packed_mask = mlow | (mhigh << 4);
+          }
+        }
         if (load_weight_part == 0) {
           float d = 0.0f;
           float dmin = 0.0f;
@@ -1325,6 +1423,9 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
         }
       }
       weight_tile[col_offset].qs[load_weight_part] = packed_q4;
+      if constexpr (WEIGHT_QUANT == Q5_K_QUANT) {
+        weight_tile[col_offset].qh[load_weight_part] = packed_mask;
+      }
       if (load_weight_part == 0) {
         weight_tile[col_offset].dm[0] = packed_scale;
         weight_tile[col_offset].dm[1] = packed_min;
@@ -1376,7 +1477,7 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
       }
       __syncthreads();
 
-      q4_k_mmq32_cache weight_cache[TM];
+      WEIGHT_CACHE weight_cache[TM];
 #pragma unroll
       for (int cr = 0; cr < TM; ++cr) {
         weight_cache[cr] = weight_tile[tiwr * TM + cr];
@@ -1394,6 +1495,7 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
 #pragma unroll
         for (int cr = 0; cr < TM; ++cr) {
           int dot = 0;
+          int mask_dot = 0;
 #pragma unroll
           for (int qword = 0; qword < 8; ++qword) {
             const uint32_t q4_word =
@@ -1405,13 +1507,34 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
                 static_cast<uint32_t>(
                     activation_cache.qs[qword]),
                 dot);
+            if constexpr (WEIGHT_QUANT == Q5_K_QUANT) {
+              const uint32_t mask_word =
+                  (weight_cache[cr].qh[qword >> 1] >>
+                   ((qword & 1) * 4)) &
+                  0x0F0F0F0Fu;
+              mask_dot = gguf_q4_k_mmq_dp4a(
+                  mask_word,
+                  static_cast<uint32_t>(
+                      activation_cache.qs[qword]),
+                  mask_dot);
+            }
+          }
+          float dot_value = static_cast<float>(dot);
+          if constexpr (WEIGHT_QUANT == Q5_K_QUANT) {
+            // Fifth weight bit: value = low4 + 16*bit5, so the product sum
+            // gains exactly 16 * (mask . activation).  The mask is 0/1 and
+            // sudot4 treats the weight operand as unsigned, so it is in
+            // range; the activation words are already resident, so this is
+            // a second dot over the same registers rather than a wider
+            // operand.
+            dot_value += 16.0f * static_cast<float>(mask_dot);
           }
           const float dscale =
               fp16_bits_to_float(weight_cache[cr].dm[0]);
           const float dmin =
               fp16_bits_to_float(weight_cache[cr].dm[1]);
           acc[wsic * TM + cr] +=
-              xd * dscale * static_cast<float>(dot) -
+              xd * dscale * dot_value -
               dmin * xsum;
         }
       }
@@ -1458,6 +1581,7 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
   }
 }
 
+template <int WEIGHT_QUANT = Q4_K_QUANT>
 __launch_bounds__(128, 2)
 __global__ void gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel(
     const block_q8_1_mmq_ds4* __restrict__ x_q8,
@@ -1475,10 +1599,12 @@ __global__ void gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel(
     int64_t num_experts,
     int64_t mmq_total_rows,
     int64_t expert_stride_rows) {
-  __shared__ q4_k_mmq32_cache weight_tile[32];
+  using weight_cache_t =
+      typename mmq32_weight_cache<WEIGHT_QUANT>::type;
+  __shared__ weight_cache_t weight_tile[32];
   __shared__ q8_1_mmq32_cache activation_tile[32];
   gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body<
-      Q4_K_LAYOUT_RAW, 1, false>(
+      Q4_K_LAYOUT_RAW, 1, false, weight_cache_t, WEIGHT_QUANT>(
       x_q8,
       compact_to_source,
       expert_start_compact,
@@ -4990,7 +5116,8 @@ int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
 template <
     int WEIGHT_LAYOUT,
     int ACTIVATION_PASSES = 1,
-    bool COLLECT_RISKS = false>
+    bool COLLECT_RISKS = false,
+    int WEIGHT_QUANT = Q4_K_QUANT>
 int launch_selected_dual_q8_1_ds4_mmq32_compact32(
     const block_q8_1_mmq_ds4* x_q8,
     const int64_t* compact_to_source,
@@ -5093,7 +5220,8 @@ int launch_selected_dual_q8_1_ds4_mmq32_compact32(
         risk_threshold);
   } else {
     hipLaunchKernelGGL(
-        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel,
+        (gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel<
+             WEIGHT_QUANT>),
         grid,
         block,
         0,
@@ -6932,6 +7060,48 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact3
     int64_t expert_stride_rows,
     hipStream_t stream) {
   return launch_selected_dual_q8_1_ds4_mmq32_compact32<Q4_K_LAYOUT_RAW>(
+      reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
+      compact_to_source,
+      expert_start_compact,
+      expert_start_mmq32,
+      tile_expert,
+      qweight_a,
+      qweight_b,
+      out,
+      compact_rows,
+      compact_rows,
+      in_features,
+      out_features_a,
+      out_features_b,
+      num_experts,
+      mmq_total_rows,
+      stream,
+      expert_stride_rows);
+}
+
+// Q5_K export.  Same ABI as the Q4_K launcher above so the Python wrapper
+// differs only in symbol name; the quant travels as a template argument, so
+// the shared body builds the Q5_K tile (176-byte blocks, qs at 48, qh at 16,
+// 24-byte cache) and runs the second sudot4 that adds 16 * (bit5 . activation).
+extern "C" int hipengine_gguf_q5_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+    const void* x_q8,
+    const int64_t* compact_to_source,
+    const int64_t* expert_start_compact,
+    const int64_t* expert_start_mmq32,
+    const int64_t* tile_expert,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts,
+    int64_t mmq_total_rows,
+    int64_t expert_stride_rows,
+    hipStream_t stream) {
+  return launch_selected_dual_q8_1_ds4_mmq32_compact32<
+      Q4_K_LAYOUT_RAW, 1, false, Q5_K_QUANT>(
       reinterpret_cast<const block_q8_1_mmq_ds4*>(x_q8),
       compact_to_source,
       expert_start_compact,

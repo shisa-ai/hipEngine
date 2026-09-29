@@ -23,6 +23,9 @@ _SYMBOL_BF16 = "hipengine_gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf
 _SYMBOL_DS4_MMQ32_BF16 = (
     "hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 )
+_SYMBOL_Q5_K_DS4_MMQ32_BF16 = (
+    "hipengine_gguf_q5_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
+)
 _SYMBOL_X8_DS4_MMQ32_BF16 = (
     "hipengine_gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 )
@@ -1810,6 +1813,58 @@ def gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
         runtime.check(int(err))
 
 
+def gguf_q5_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+    x_q8_ptr: int,
+    compact_to_source_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_mmq32_ptr: int,
+    mmq_tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    mmq_total_rows: int,
+    *,
+    expert_stride_rows: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Q5_K sibling of the Q4_K packed-dot MMQ leaf.
+
+    The ABI is identical: the quant reaches device code as a template
+    argument, so this only selects the Q5_K export. That export builds 176-byte
+    blocks with ``qs`` at 48 and ``qh`` at 16, stores the fifth bit in the
+    cache's extra word, and runs a second ``sudot4`` over a 0/1 mask whose sum
+    is scaled by 16 -- the ``value = low4 + 16 * bit5`` decomposition.
+    """
+    return gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+        x_q8_ptr,
+        compact_to_source_ptr,
+        expert_start_compact_ptr,
+        expert_start_mmq32_ptr,
+        mmq_tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        mmq_total_rows,
+        expert_stride_rows=expert_stride_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        _symbol=_SYMBOL_Q5_K_DS4_MMQ32_BF16,
+    )
+
+
 def gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
     x_q8_ptr: int,
     compact_to_source_ptr: int,
@@ -2335,6 +2390,19 @@ def register_gguf_q4_k_q8_1_selected_prefill_kernels(*, replace: bool = True) ->
             variant="selected_dual_q8_1_prefill_compact32_bf16_bf16_out",
         ),
         gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q5_k",
+            variant=(
+                "selected_dual_q8_1_ds4_mmq32_prefill_compact32_"
+                "bf16_bf16_out"
+            ),
+        ),
+        gguf_q5_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
         replace=replace,
     )
     register(
