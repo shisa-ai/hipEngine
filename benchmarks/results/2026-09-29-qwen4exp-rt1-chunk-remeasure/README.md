@@ -143,3 +143,58 @@ and engagement/repair-oracle coverage. Those are pre-existing and are not
 created or worsened by the chunk change.
 
 **Still not promoted.** No default changed.
+
+---
+
+# Short-request cost: does not exist, and the mechanism says why
+
+RT-1's second blocker was `RT-3`'s recorded short-request cost at a larger chunk.
+Measured with `code-p512`, three repetitions per arm, same protocol:
+
+| code-p512 | samples (s) | median | peak allocation |
+|---|---:|---:|---:|
+| chunk 1024 | 2.0074, 2.0059, 2.0525 | 2.0074 | 83,857,109,608 B |
+| chunk 4096 | 2.0114, 2.0057, 2.0379 | 2.0114 | **83,857,109,608 B** |
+
+Wall time is indistinguishable: +0.20%, which is **0.08x** the larger within-arm
+spread, and the arms overlap. `token_id` and `logits_sha256` are identical.
+
+**Peak allocation is byte-identical**, not +4.96 GB. So a short request pays
+*nothing* for the larger chunk size - neither time nor memory.
+
+## Why: the workspace is already shape-aware
+
+`Qwen4ExpPrefillWorkspace.allocate_scratch` sizes every owner at
+`rows = min(chunk_size, runner.max_sequence_length)`, and the harness sets
+`max_sequence_length = max(768, prompt_tokens + 1)`:
+
+| case | `max_sequence_length` | chunk 1024 | chunk 4096 | workspace |
+|---|---:|---:|---:|---|
+| `code-p512` | **768** | min(1024, 768) = **768** | min(4096, 768) = **768** | identical |
+| `code-p4096` | 4097 | min(1024, 4097) = **1024** | min(4096, 4097) = **4096** | 4x |
+
+So for any prompt where `max(768, prompt + 1) <= 1024` - i.e. **prompt <= 1023
+tokens** - both chunk sizes allocate the same workspace and run the same kernels
+on the same rows. They are the same execution. The +4.96 GB appears only once the
+sequence length exceeds 1024, which is exactly when the larger chunk does more
+work and buys the -4.94%.
+
+**Correction to my own earlier reasoning.** I wrote that a shape-based policy
+would have to make *the allocation* shape-aware rather than the chunk loop, and
+that this would be "a different and larger change than RT-3 assumes". That was
+wrong: the allocation is already shape-aware, through `max_sequence_length`. I had
+the `min(chunk, max_seq_len)` expression right and assumed `max_seq_len` was
+constant across runs; it is prompt-derived. The measurement corrected me, which is
+what it was for.
+
+## What this means for promotion
+
+`RT-3`'s short-request objection **does not reproduce** on this host and
+configuration: there is no short-request penalty to trade against. The remaining
+question is purely **memory admission on long prompts** - can the host afford a
+89.40 GB peak? - and that is a property of the long prompt that pays for it, not a
+cost imposed on short ones.
+
+**Still not promoted.** No default changed. This section removes one blocker and
+narrows the remaining one to a single memory-admission question; it does not
+settle it.
