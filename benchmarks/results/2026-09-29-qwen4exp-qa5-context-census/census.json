@@ -1,0 +1,4380 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_repair_register_census",
+  "created_at": "2026-09-29T18:18:31.940214+00:00",
+  "performance_claim": false,
+  "boundary": "static census of one compiled profile; occupancy is the register limit only (no LDS/scratch), not a runtime measurement",
+  "source": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip",
+  "flags": [
+    "-O3",
+    "-mllvm",
+    "-amdgpu-unroll-threshold-local=600",
+    "--offload-arch=gfx1151",
+    "-mcumode"
+  ],
+  "threads_per_block": 128,
+  "model": {
+    "vgpr_per_cu": 65536,
+    "max_waves_per_cu": 32,
+    "wave_width": 32,
+    "vgpr_granule": 8
+  },
+  "kernels": [
+    {
+      "symbol": "_ZN12_GLOBAL__N_145qwen35_full_attn_decode_context_tensor_kernelEPKfPKtS3_PfPKlllllf",
+      "vgpr": 17,
+      "sgpr": 35,
+      "static_instructions": 256,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          27
+        ],
+        [
+          "s_mul_i32",
+          20
+        ],
+        [
+          "s_addc_u32",
+          18
+        ],
+        [
+          "s_add_u32",
+          17
+        ],
+        [
+          "s_mul_hi_u32",
+          14
+        ],
+        [
+          "s_cselect_b32",
+          13
+        ],
+        [
+          "s_add_i32",
+          12
+        ],
+        [
+          "s_nop",
+          8
+        ],
+        [
+          "s_xor_b64",
+          7
+        ],
+        [
+          "s_waitcnt",
+          6
+        ],
+        [
+          "s_sub_u32",
+          6
+        ],
+        [
+          "s_cmp_lg_u32",
+          5
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 17,
+        "vgpr_granule": 24,
+        "waves_per_cu_by_vgpr": 85,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151qwen35_paged_full_attn_decode_context_tensor_kernelEPKfPKtS3_PKiPKlPflllllf",
+      "vgpr": 33,
+      "sgpr": 37,
+      "static_instructions": 313,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          32
+        ],
+        [
+          "s_addc_u32",
+          23
+        ],
+        [
+          "s_mul_hi_u32",
+          22
+        ],
+        [
+          "s_mul_i32",
+          20
+        ],
+        [
+          "s_add_i32",
+          18
+        ],
+        [
+          "s_add_u32",
+          15
+        ],
+        [
+          "s_cselect_b32",
+          14
+        ],
+        [
+          "s_waitcnt",
+          9
+        ],
+        [
+          "s_xor_b64",
+          7
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          7
+        ],
+        [
+          "s_or_b32",
+          6
+        ],
+        [
+          "s_cmp_lg_u32",
+          6
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 33,
+        "vgpr_granule": 40,
+        "waves_per_cu_by_vgpr": 51,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_137qwen35_full_attn_gate_mul_bf16_kernelEPKfPKtPtl",
+      "vgpr": 15,
+      "sgpr": 13,
+      "static_instructions": 44,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          4
+        ],
+        [
+          "v_add_co_u32",
+          4
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          4
+        ],
+        [
+          "s_load_b32",
+          2
+        ],
+        [
+          "s_mov_b32",
+          2
+        ],
+        [
+          "v_lshlrev_b64",
+          2
+        ],
+        [
+          "v_fma_f32",
+          2
+        ],
+        [
+          "v_add_f32_e32",
+          2
+        ],
+        [
+          "v_div_scale_f32",
+          2
+        ],
+        [
+          "s_clause",
+          1
+        ],
+        [
+          "v_mov_b32_e32",
+          1
+        ],
+        [
+          "s_add_u32",
+          1
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 15,
+        "vgpr_granule": 16,
+        "waves_per_cu_by_vgpr": 128,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_137qwen35_full_attn_gate_mul_fp16_kernelEPKfPKDF16_PDF16_l",
+      "vgpr": 15,
+      "sgpr": 14,
+      "static_instructions": 42,
+      "top_opcodes": [
+        [
+          "v_add_co_u32",
+          5
+        ],
+        [
+          "s_mov_b32",
+          3
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          3
+        ],
+        [
+          "s_load_b32",
+          2
+        ],
+        [
+          "s_waitcnt",
+          2
+        ],
+        [
+          "v_lshlrev_b64",
+          2
+        ],
+        [
+          "s_delay_alu",
+          2
+        ],
+        [
+          "v_add_f32_e32",
+          2
+        ],
+        [
+          "v_div_scale_f32",
+          2
+        ],
+        [
+          "s_clause",
+          1
+        ],
+        [
+          "v_mov_b32_e32",
+          1
+        ],
+        [
+          "s_add_u32",
+          1
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 15,
+        "vgpr_granule": 16,
+        "waves_per_cu_by_vgpr": 128,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_166qwen35_paged_full_attn_decode_context_tensor_batch_c1_exact_kernelEPKfPKtS3_PKiPKlPflllllllf",
+      "vgpr": 18,
+      "sgpr": 53,
+      "static_instructions": 554,
+      "top_opcodes": [
+        [
+          "s_mul_i32",
+          63
+        ],
+        [
+          "s_addc_u32",
+          60
+        ],
+        [
+          "s_delay_alu",
+          55
+        ],
+        [
+          "s_add_u32",
+          52
+        ],
+        [
+          "s_mul_hi_u32",
+          45
+        ],
+        [
+          "s_cselect_b32",
+          31
+        ],
+        [
+          "s_add_i32",
+          30
+        ],
+        [
+          "s_subb_u32",
+          14
+        ],
+        [
+          "s_mov_b32",
+          12
+        ],
+        [
+          "s_cmp_lg_u32",
+          12
+        ],
+        [
+          "s_cmp_ge_u32",
+          12
+        ],
+        [
+          "s_sub_u32",
+          11
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 18,
+        "vgpr_granule": 24,
+        "waves_per_cu_by_vgpr": 85,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_155qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernelEPKfPKtS3_PKiPKlPfS8_S8_llllllf",
+      "vgpr": 26,
+      "sgpr": 57,
+      "static_instructions": 518,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          55
+        ],
+        [
+          "s_mul_i32",
+          53
+        ],
+        [
+          "s_addc_u32",
+          51
+        ],
+        [
+          "s_add_u32",
+          41
+        ],
+        [
+          "s_mul_hi_u32",
+          39
+        ],
+        [
+          "s_cselect_b32",
+          27
+        ],
+        [
+          "s_add_i32",
+          21
+        ],
+        [
+          "s_mov_b32",
+          15
+        ],
+        [
+          "s_xor_b64",
+          12
+        ],
+        [
+          "s_subb_u32",
+          11
+        ],
+        [
+          "s_cmp_ge_u32",
+          11
+        ],
+        [
+          "s_cmp_lg_u32",
+          10
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 26,
+        "vgpr_granule": 32,
+        "waves_per_cu_by_vgpr": 64,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_160qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp_kernelEPKfPKtS3_PKiPKlPfS8_S8_llllf",
+      "vgpr": 34,
+      "sgpr": 40,
+      "static_instructions": 238,
+      "top_opcodes": [
+        [
+          "s_nop",
+          22
+        ],
+        [
+          "s_delay_alu",
+          19
+        ],
+        [
+          "s_waitcnt",
+          18
+        ],
+        [
+          "s_mov_b32",
+          12
+        ],
+        [
+          "s_addc_u32",
+          12
+        ],
+        [
+          "s_or_b32",
+          9
+        ],
+        [
+          "v_cndmask_b32_e64",
+          8
+        ],
+        [
+          "v_add_nc_u32_e32",
+          7
+        ],
+        [
+          "s_mul_i32",
+          6
+        ],
+        [
+          "v_lshlrev_b32_e32",
+          6
+        ],
+        [
+          "s_add_i32",
+          5
+        ],
+        [
+          "s_add_u32",
+          5
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 34,
+        "vgpr_granule": 40,
+        "waves_per_cu_by_vgpr": 51,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151qwen35_paged_full_attn_decode_split_k_reduce_kernelEPKfS1_S1_Pfll",
+      "vgpr": 12,
+      "sgpr": 29,
+      "static_instructions": 205,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          34
+        ],
+        [
+          "s_waitcnt",
+          13
+        ],
+        [
+          "v_mov_b32_e32",
+          9
+        ],
+        [
+          "s_mov_b32",
+          7
+        ],
+        [
+          "ds_load_b32",
+          6
+        ],
+        [
+          "s_cselect_b32",
+          6
+        ],
+        [
+          "v_add_co_u32",
+          5
+        ],
+        [
+          "s_cbranch_vccnz",
+          5
+        ],
+        [
+          "v_readfirstlane_b32",
+          5
+        ],
+        [
+          "s_add_i32",
+          5
+        ],
+        [
+          "v_fmac_f32_e32",
+          5
+        ],
+        [
+          "s_cbranch_execz",
+          4
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 12,
+        "vgpr_granule": 16,
+        "waves_per_cu_by_vgpr": 128,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_112_GLOBAL__N_156qwen35_paged_full_attn_prefill_gqa_gate_int8_wmma_kernelEPKfPKaS4_S2_S2_PKDF16_PtPKiPKlSB_lllllf",
+      "vgpr": 256,
+      "sgpr": 48,
+      "static_instructions": 1934,
+      "top_opcodes": [
+        [
+          "v_dual_mov_b32",
+          185
+        ],
+        [
+          "s_delay_alu",
+          171
+        ],
+        [
+          "ds_load_u16_d16_hi",
+          130
+        ],
+        [
+          "s_waitcnt",
+          118
+        ],
+        [
+          "ds_load_u16_d16",
+          71
+        ],
+        [
+          "v_fma_mix_f32",
+          60
+        ],
+        [
+          "v_mov_b32_e32",
+          57
+        ],
+        [
+          "s_or_b32",
+          56
+        ],
+        [
+          "ds_load_b128",
+          46
+        ],
+        [
+          "v_fma_f32",
+          46
+        ],
+        [
+          "v_add_f32_e32",
+          45
+        ],
+        [
+          "v_mov_b16_e32",
+          38
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 256,
+        "vgpr_granule": 256,
+        "waves_per_cu_by_vgpr": 8,
+        "waves_per_cu": 8,
+        "waves_per_simd": 2,
+        "occupancy_fraction": 0.25,
+        "threads_per_cu": 256,
+        "blocks_per_cu": 2
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_158qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernelEPKfPKtS3_PKDF16_PDF16_PKiPKlSA_S8_S8_llllllllllf",
+      "vgpr": 26,
+      "sgpr": 61,
+      "static_instructions": 541,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          51
+        ],
+        [
+          "s_mul_i32",
+          48
+        ],
+        [
+          "s_add_u32",
+          41
+        ],
+        [
+          "s_addc_u32",
+          36
+        ],
+        [
+          "s_cselect_b32",
+          27
+        ],
+        [
+          "s_mul_hi_u32",
+          21
+        ],
+        [
+          "s_add_i32",
+          19
+        ],
+        [
+          "s_waitcnt",
+          17
+        ],
+        [
+          "s_mov_b32",
+          15
+        ],
+        [
+          "s_cmp_ge_u32",
+          11
+        ],
+        [
+          "s_branch",
+          9
+        ],
+        [
+          "s_or_b32",
+          9
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 26,
+        "vgpr_granule": 32,
+        "waves_per_cu_by_vgpr": 64,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_160qwen35_paged_full_attn_decode_split_k_prepare_weights_kernelEPfPKfl",
+      "vgpr": 19,
+      "sgpr": 15,
+      "static_instructions": 127,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          15
+        ],
+        [
+          "s_waitcnt",
+          10
+        ],
+        [
+          "s_or_b32",
+          8
+        ],
+        [
+          "v_mov_b32_e32",
+          7
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          7
+        ],
+        [
+          "s_branch",
+          5
+        ],
+        [
+          "v_add_co_u32",
+          5
+        ],
+        [
+          "s_mov_b32",
+          4
+        ],
+        [
+          "ds_load_b32",
+          4
+        ],
+        [
+          "s_cbranch_execz",
+          3
+        ],
+        [
+          "v_max_f32_e32",
+          3
+        ],
+        [
+          "v_mov_b16_e32",
+          3
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 19,
+        "vgpr_granule": 24,
+        "waves_per_cu_by_vgpr": 85,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_145qwen35_full_attn_gate_mul_bf16_to_bf16_kernelEPKtS1_Ptl",
+      "vgpr": 11,
+      "sgpr": 14,
+      "static_instructions": 38,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          9
+        ],
+        [
+          "v_add_co_u32",
+          3
+        ],
+        [
+          "s_load_b32",
+          2
+        ],
+        [
+          "s_mov_b32",
+          2
+        ],
+        [
+          "v_cndmask_b32_e32",
+          2
+        ],
+        [
+          "v_fma_f32",
+          2
+        ],
+        [
+          "s_clause",
+          1
+        ],
+        [
+          "v_mov_b32_e32",
+          1
+        ],
+        [
+          "s_add_u32",
+          1
+        ],
+        [
+          "s_waitcnt",
+          1
+        ],
+        [
+          "s_and_b32",
+          1
+        ],
+        [
+          "v_mad_u64_u32",
+          1
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 11,
+        "vgpr_granule": 16,
+        "waves_per_cu_by_vgpr": 128,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_159qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernelILl8ELl16ELl2EEEvPKfPKtS4_PKiPKlPfS9_S9_llf",
+      "vgpr": 71,
+      "sgpr": 52,
+      "static_instructions": 672,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          78
+        ],
+        [
+          "s_delay_alu",
+          46
+        ],
+        [
+          "ds_bpermute_b32",
+          38
+        ],
+        [
+          "v_dual_mov_b32",
+          26
+        ],
+        [
+          "s_or_b32",
+          25
+        ],
+        [
+          "s_add_u32",
+          21
+        ],
+        [
+          "v_fmac_f32_e32",
+          21
+        ],
+        [
+          "v_max_f32_e32",
+          20
+        ],
+        [
+          "v_mov_b32_e32",
+          19
+        ],
+        [
+          "s_add_i32",
+          18
+        ],
+        [
+          "s_addc_u32",
+          18
+        ],
+        [
+          "s_and_saveexec_b32",
+          17
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 71,
+        "vgpr_granule": 72,
+        "waves_per_cu_by_vgpr": 28,
+        "waves_per_cu": 28,
+        "waves_per_simd": 7,
+        "occupancy_fraction": 0.875,
+        "threads_per_cu": 896,
+        "blocks_per_cu": 7
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_159qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernelILl6ELl24ELl4EEEvPKfPKtS4_PKiPKlPfS9_S9_llf",
+      "vgpr": 59,
+      "sgpr": 52,
+      "static_instructions": 554,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          57
+        ],
+        [
+          "s_waitcnt",
+          43
+        ],
+        [
+          "s_addc_u32",
+          30
+        ],
+        [
+          "ds_bpermute_b32",
+          24
+        ],
+        [
+          "v_dual_mov_b32",
+          21
+        ],
+        [
+          "s_add_u32",
+          20
+        ],
+        [
+          "s_mov_b32",
+          19
+        ],
+        [
+          "s_or_b32",
+          18
+        ],
+        [
+          "s_add_i32",
+          16
+        ],
+        [
+          "ds_load_b32",
+          16
+        ],
+        [
+          "v_mov_b32_e32",
+          15
+        ],
+        [
+          "v_fmac_f32_e32",
+          15
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 59,
+        "vgpr_granule": 64,
+        "waves_per_cu_by_vgpr": 32,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_165qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_batch_kernelILl8ELl16ELl2EEEvPKfPKtS4_PKiPKlPfS9_S9_llllf",
+      "vgpr": 71,
+      "sgpr": 56,
+      "static_instructions": 655,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          66
+        ],
+        [
+          "s_delay_alu",
+          46
+        ],
+        [
+          "ds_bpermute_b32",
+          35
+        ],
+        [
+          "ds_load_b32",
+          33
+        ],
+        [
+          "s_or_b32",
+          29
+        ],
+        [
+          "v_dual_mov_b32",
+          28
+        ],
+        [
+          "v_mov_b32_e32",
+          26
+        ],
+        [
+          "v_max_f32_e32",
+          24
+        ],
+        [
+          "s_add_u32",
+          22
+        ],
+        [
+          "s_addc_u32",
+          21
+        ],
+        [
+          "s_mov_b32",
+          20
+        ],
+        [
+          "s_cbranch_execz",
+          16
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 71,
+        "vgpr_granule": 72,
+        "waves_per_cu_by_vgpr": 28,
+        "waves_per_cu": 28,
+        "waves_per_simd": 7,
+        "occupancy_fraction": 0.875,
+        "threads_per_cu": 896,
+        "blocks_per_cu": 7
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_165qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_batch_kernelILl6ELl24ELl4EEEvPKfPKtS4_PKiPKlPfS9_S9_llllf",
+      "vgpr": 59,
+      "sgpr": 54,
+      "static_instructions": 535,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          57
+        ],
+        [
+          "s_waitcnt",
+          49
+        ],
+        [
+          "s_add_u32",
+          32
+        ],
+        [
+          "s_addc_u32",
+          32
+        ],
+        [
+          "v_dual_mov_b32",
+          26
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          21
+        ],
+        [
+          "global_store_b32",
+          18
+        ],
+        [
+          "v_fmac_f32_e32",
+          17
+        ],
+        [
+          "ds_load_b32",
+          15
+        ],
+        [
+          "s_mul_i32",
+          13
+        ],
+        [
+          "s_add_i32",
+          13
+        ],
+        [
+          "ds_bpermute_b32",
+          13
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 59,
+        "vgpr_granule": 64,
+        "waves_per_cu_by_vgpr": 32,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_171qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_direct_kernelILl8ELl16ELl2EEEvPKfPKtS4_PKDF16_PDF16_PKiPKllllllf",
+      "vgpr": 76,
+      "sgpr": 50,
+      "static_instructions": 670,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          73
+        ],
+        [
+          "s_waitcnt",
+          59
+        ],
+        [
+          "v_dual_mov_b32",
+          31
+        ],
+        [
+          "ds_bpermute_b32",
+          29
+        ],
+        [
+          "v_fmac_f32_e32",
+          28
+        ],
+        [
+          "ds_load_b32",
+          24
+        ],
+        [
+          "s_add_i32",
+          23
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          20
+        ],
+        [
+          "s_mov_b32",
+          19
+        ],
+        [
+          "ds_load_2addr_b32",
+          16
+        ],
+        [
+          "v_add_co_u32",
+          13
+        ],
+        [
+          "v_add_f32_e32",
+          13
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 76,
+        "vgpr_granule": 80,
+        "waves_per_cu_by_vgpr": 25,
+        "waves_per_cu": 25,
+        "waves_per_simd": 6,
+        "occupancy_fraction": 0.78125,
+        "threads_per_cu": 800,
+        "blocks_per_cu": 6
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernelILb1EEEvPKfPKtS4_PKDF16_PDF16_PKiPKlSB_lllllllllf",
+      "vgpr": 26,
+      "sgpr": 53,
+      "static_instructions": 333,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          29
+        ],
+        [
+          "s_mul_i32",
+          28
+        ],
+        [
+          "s_addc_u32",
+          26
+        ],
+        [
+          "s_add_u32",
+          22
+        ],
+        [
+          "s_mul_hi_u32",
+          20
+        ],
+        [
+          "s_add_i32",
+          19
+        ],
+        [
+          "s_cselect_b32",
+          16
+        ],
+        [
+          "s_waitcnt",
+          11
+        ],
+        [
+          "s_and_b32",
+          8
+        ],
+        [
+          "s_cmp_ge_u32",
+          7
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          6
+        ],
+        [
+          "s_branch",
+          6
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 26,
+        "vgpr_granule": 32,
+        "waves_per_cu_by_vgpr": 64,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernelILb0EEEvPKfPKtS4_PKDF16_PDF16_PKiPKlSB_lllllllllf",
+      "vgpr": 30,
+      "sgpr": 60,
+      "static_instructions": 502,
+      "top_opcodes": [
+        [
+          "s_mul_i32",
+          57
+        ],
+        [
+          "s_delay_alu",
+          43
+        ],
+        [
+          "s_addc_u32",
+          42
+        ],
+        [
+          "s_add_u32",
+          37
+        ],
+        [
+          "s_mul_hi_u32",
+          35
+        ],
+        [
+          "s_add_i32",
+          29
+        ],
+        [
+          "s_cselect_b32",
+          20
+        ],
+        [
+          "s_mov_b32",
+          16
+        ],
+        [
+          "s_waitcnt",
+          12
+        ],
+        [
+          "s_cmp_ge_u32",
+          11
+        ],
+        [
+          "s_and_b32",
+          9
+        ],
+        [
+          "s_subb_u32",
+          8
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 30,
+        "vgpr_granule": 32,
+        "waves_per_cu_by_vgpr": 64,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_161qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernelIfLl256ELb0ELb0EEEvPKfPKaS4_PKT_S7_PKDF16_PtPKiPKlSE_lllllllllf",
+      "vgpr": 20,
+      "sgpr": 58,
+      "static_instructions": 294,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          38
+        ],
+        [
+          "s_mul_i32",
+          35
+        ],
+        [
+          "s_mul_hi_u32",
+          28
+        ],
+        [
+          "s_addc_u32",
+          26
+        ],
+        [
+          "s_add_u32",
+          22
+        ],
+        [
+          "s_cselect_b32",
+          16
+        ],
+        [
+          "s_mov_b32",
+          11
+        ],
+        [
+          "s_add_i32",
+          11
+        ],
+        [
+          "s_subb_u32",
+          7
+        ],
+        [
+          "s_and_b32",
+          6
+        ],
+        [
+          "s_xor_b64",
+          6
+        ],
+        [
+          "s_cmp_ge_u32",
+          6
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 20,
+        "vgpr_granule": 24,
+        "waves_per_cu_by_vgpr": 85,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_161qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernelIfLl256ELb0ELb1EEEvPKfPKaS4_PKT_S7_PKDF16_PtPKiPKlSE_lllllllllf",
+      "vgpr": 20,
+      "sgpr": 58,
+      "static_instructions": 294,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          38
+        ],
+        [
+          "s_mul_i32",
+          35
+        ],
+        [
+          "s_mul_hi_u32",
+          28
+        ],
+        [
+          "s_addc_u32",
+          26
+        ],
+        [
+          "s_add_u32",
+          22
+        ],
+        [
+          "s_cselect_b32",
+          16
+        ],
+        [
+          "s_mov_b32",
+          11
+        ],
+        [
+          "s_add_i32",
+          11
+        ],
+        [
+          "s_subb_u32",
+          7
+        ],
+        [
+          "s_and_b32",
+          6
+        ],
+        [
+          "s_xor_b64",
+          6
+        ],
+        [
+          "s_cmp_ge_u32",
+          6
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 20,
+        "vgpr_granule": 24,
+        "waves_per_cu_by_vgpr": 85,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_157qwen35_paged_full_attn_prefill_gqa_gate_int8_flash_kernelIfLi6ELi24ELi4ELb1EEEvPKfPKaS4_PKT_S7_PKDF16_PtPKiPKlSE_lllllllf",
+      "vgpr": 54,
+      "sgpr": 44,
+      "static_instructions": 256,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          30
+        ],
+        [
+          "s_waitcnt",
+          12
+        ],
+        [
+          "v_mul_f32_e32",
+          12
+        ],
+        [
+          "v_fmac_f32_e32",
+          11
+        ],
+        [
+          "v_add_co_u32",
+          10
+        ],
+        [
+          "v_fma_f32",
+          10
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          8
+        ],
+        [
+          "v_dual_mov_b32",
+          8
+        ],
+        [
+          "v_mov_b16_e32",
+          8
+        ],
+        [
+          "v_and_b32_e32",
+          7
+        ],
+        [
+          "v_add3_u32",
+          7
+        ],
+        [
+          "v_mov_b32_e32",
+          7
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 54,
+        "vgpr_granule": 56,
+        "waves_per_cu_by_vgpr": 36,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_161qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernelIDF16_Ll256ELb0ELb0EEEvPKfPKaS4_PKT_S7_PKDF16_PtPKiPKlSE_lllllllllf",
+      "vgpr": 20,
+      "sgpr": 58,
+      "static_instructions": 297,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          38
+        ],
+        [
+          "s_mul_i32",
+          35
+        ],
+        [
+          "s_mul_hi_u32",
+          28
+        ],
+        [
+          "s_addc_u32",
+          27
+        ],
+        [
+          "s_add_u32",
+          23
+        ],
+        [
+          "s_cselect_b32",
+          16
+        ],
+        [
+          "s_mov_b32",
+          11
+        ],
+        [
+          "s_add_i32",
+          11
+        ],
+        [
+          "s_subb_u32",
+          7
+        ],
+        [
+          "s_and_b32",
+          6
+        ],
+        [
+          "s_xor_b64",
+          6
+        ],
+        [
+          "s_cmp_ge_u32",
+          6
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 20,
+        "vgpr_granule": 24,
+        "waves_per_cu_by_vgpr": 85,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_161qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernelIfLl32ELb1ELb0EEEvPKfPKaS4_PKT_S7_PKDF16_PtPKiPKlSE_lllllllllf",
+      "vgpr": 25,
+      "sgpr": 58,
+      "static_instructions": 337,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          45
+        ],
+        [
+          "s_mul_i32",
+          25
+        ],
+        [
+          "s_mul_hi_u32",
+          22
+        ],
+        [
+          "s_add_u32",
+          21
+        ],
+        [
+          "s_addc_u32",
+          18
+        ],
+        [
+          "s_cselect_b32",
+          15
+        ],
+        [
+          "s_add_i32",
+          12
+        ],
+        [
+          "s_mov_b32",
+          10
+        ],
+        [
+          "s_waitcnt",
+          8
+        ],
+        [
+          "s_subb_u32",
+          7
+        ],
+        [
+          "v_lshlrev_b32_e32",
+          7
+        ],
+        [
+          "s_and_b32",
+          6
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 25,
+        "vgpr_granule": 32,
+        "waves_per_cu_by_vgpr": 64,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_161qwen35_paged_full_attn_prefill_gqa_gate_int8_groupwise_kernelIDF16_Ll32ELb1ELb0EEEvPKfPKaS4_PKT_S7_PKDF16_PtPKiPKlSE_lllllllllf",
+      "vgpr": 25,
+      "sgpr": 58,
+      "static_instructions": 339,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          46
+        ],
+        [
+          "s_mul_i32",
+          25
+        ],
+        [
+          "s_mul_hi_u32",
+          22
+        ],
+        [
+          "s_add_u32",
+          19
+        ],
+        [
+          "s_addc_u32",
+          17
+        ],
+        [
+          "s_cselect_b32",
+          16
+        ],
+        [
+          "s_add_i32",
+          13
+        ],
+        [
+          "s_mov_b32",
+          11
+        ],
+        [
+          "s_waitcnt",
+          8
+        ],
+        [
+          "s_and_b32",
+          6
+        ],
+        [
+          "s_sub_u32",
+          6
+        ],
+        [
+          "s_subb_u32",
+          6
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 25,
+        "vgpr_granule": 32,
+        "waves_per_cu_by_vgpr": 64,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_156qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_kernelILb1EEEvPKfPKtS4_PKDF16_PDF16_PKiPKlSB_PKhSB_lllllllllf",
+      "vgpr": 24,
+      "sgpr": 61,
+      "static_instructions": 328,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          29
+        ],
+        [
+          "s_addc_u32",
+          27
+        ],
+        [
+          "s_mul_i32",
+          23
+        ],
+        [
+          "s_add_u32",
+          22
+        ],
+        [
+          "s_mul_hi_u32",
+          20
+        ],
+        [
+          "s_cselect_b32",
+          16
+        ],
+        [
+          "s_add_i32",
+          14
+        ],
+        [
+          "s_waitcnt",
+          9
+        ],
+        [
+          "s_and_b32",
+          9
+        ],
+        [
+          "s_nop",
+          8
+        ],
+        [
+          "s_cmp_ge_u32",
+          7
+        ],
+        [
+          "s_mov_b32",
+          6
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 24,
+        "vgpr_granule": 24,
+        "waves_per_cu_by_vgpr": 85,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_156qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_kernelILb0EEEvPKfPKtS4_PKDF16_PDF16_PKiPKlSB_PKhSB_lllllllllf",
+      "vgpr": 30,
+      "sgpr": 67,
+      "static_instructions": 514,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          56
+        ],
+        [
+          "s_mul_i32",
+          45
+        ],
+        [
+          "s_add_u32",
+          34
+        ],
+        [
+          "s_addc_u32",
+          31
+        ],
+        [
+          "s_mul_hi_u32",
+          30
+        ],
+        [
+          "s_add_i32",
+          23
+        ],
+        [
+          "s_cselect_b32",
+          23
+        ],
+        [
+          "s_mov_b32",
+          21
+        ],
+        [
+          "s_waitcnt",
+          13
+        ],
+        [
+          "s_subb_u32",
+          11
+        ],
+        [
+          "s_or_b32",
+          10
+        ],
+        [
+          "s_cmp_ge_u32",
+          9
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 30,
+        "vgpr_granule": 32,
+        "waves_per_cu_by_vgpr": 64,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_156qwen35_paged_full_attn_decode_split_k_reduce_gate_kernelI12hip_bfloat16EEvPKfS3_S3_PKT_PS4_llll",
+      "vgpr": 12,
+      "sgpr": 38,
+      "static_instructions": 231,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          35
+        ],
+        [
+          "s_waitcnt",
+          17
+        ],
+        [
+          "s_and_b32",
+          11
+        ],
+        [
+          "s_mov_b32",
+          11
+        ],
+        [
+          "v_mov_b32_e32",
+          10
+        ],
+        [
+          "s_nop",
+          8
+        ],
+        [
+          "s_add_i32",
+          6
+        ],
+        [
+          "s_cbranch_vccnz",
+          6
+        ],
+        [
+          "ds_load_b32",
+          6
+        ],
+        [
+          "s_cselect_b32",
+          6
+        ],
+        [
+          "v_fmac_f32_e32",
+          5
+        ],
+        [
+          "v_readfirstlane_b32",
+          5
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 12,
+        "vgpr_granule": 16,
+        "waves_per_cu_by_vgpr": 128,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_165qwen35_paged_full_attn_decode_split_k_parallel_output_gate_kernelI12hip_bfloat16EEvPKfS3_PKT_PS4_llll",
+      "vgpr": 16,
+      "sgpr": 23,
+      "static_instructions": 102,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          17
+        ],
+        [
+          "v_add_co_u32",
+          6
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          6
+        ],
+        [
+          "v_add_f32_e32",
+          5
+        ],
+        [
+          "s_mov_b32",
+          4
+        ],
+        [
+          "s_lshl_b64",
+          4
+        ],
+        [
+          "s_waitcnt",
+          4
+        ],
+        [
+          "s_add_u32",
+          3
+        ],
+        [
+          "s_addc_u32",
+          3
+        ],
+        [
+          "s_nop",
+          3
+        ],
+        [
+          "s_mul_i32",
+          3
+        ],
+        [
+          "s_cbranch_execz",
+          2
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 16,
+        "vgpr_granule": 16,
+        "waves_per_cu_by_vgpr": 128,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_156qwen35_paged_full_attn_decode_split_k_reduce_gate_kernelIDF16_EEvPKfS2_S2_PKT_PS3_llll",
+      "vgpr": 12,
+      "sgpr": 38,
+      "static_instructions": 231,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          35
+        ],
+        [
+          "s_waitcnt",
+          17
+        ],
+        [
+          "s_and_b32",
+          11
+        ],
+        [
+          "s_mov_b32",
+          11
+        ],
+        [
+          "v_mov_b32_e32",
+          10
+        ],
+        [
+          "s_nop",
+          8
+        ],
+        [
+          "s_add_i32",
+          6
+        ],
+        [
+          "s_cbranch_vccnz",
+          6
+        ],
+        [
+          "ds_load_b32",
+          6
+        ],
+        [
+          "s_cselect_b32",
+          6
+        ],
+        [
+          "v_fmac_f32_e32",
+          5
+        ],
+        [
+          "v_readfirstlane_b32",
+          5
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 12,
+        "vgpr_granule": 16,
+        "waves_per_cu_by_vgpr": 128,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_162qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernelI12hip_bfloat16EEvPKfS3_S3_PKT_PS4_lllll",
+      "vgpr": 12,
+      "sgpr": 35,
+      "static_instructions": 227,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          34
+        ],
+        [
+          "s_waitcnt",
+          12
+        ],
+        [
+          "s_add_i32",
+          11
+        ],
+        [
+          "v_mov_b32_e32",
+          9
+        ],
+        [
+          "s_mov_b32",
+          8
+        ],
+        [
+          "s_cbranch_vccnz",
+          7
+        ],
+        [
+          "s_add_u32",
+          7
+        ],
+        [
+          "s_mul_i32",
+          7
+        ],
+        [
+          "s_fmamk_f32",
+          6
+        ],
+        [
+          "s_cselect_b32",
+          6
+        ],
+        [
+          "v_add_co_u32",
+          5
+        ],
+        [
+          "v_cndmask_b32_e32",
+          5
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 12,
+        "vgpr_granule": 16,
+        "waves_per_cu_by_vgpr": 128,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_170qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_strided_kernelI12hip_bfloat16EEvPKfS3_S3_PKT_PS4_lllllllll",
+      "vgpr": 12,
+      "sgpr": 37,
+      "static_instructions": 230,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          34
+        ],
+        [
+          "s_waitcnt",
+          13
+        ],
+        [
+          "s_add_i32",
+          11
+        ],
+        [
+          "v_mov_b32_e32",
+          9
+        ],
+        [
+          "s_mul_i32",
+          8
+        ],
+        [
+          "s_mov_b32",
+          7
+        ],
+        [
+          "s_cbranch_vccnz",
+          7
+        ],
+        [
+          "s_add_u32",
+          6
+        ],
+        [
+          "s_fmamk_f32",
+          6
+        ],
+        [
+          "s_cselect_b32",
+          6
+        ],
+        [
+          "s_addc_u32",
+          5
+        ],
+        [
+          "v_add_co_u32",
+          5
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 12,
+        "vgpr_granule": 16,
+        "waves_per_cu_by_vgpr": 128,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_162qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernelIDF16_EEvPKfS2_S2_PKT_PS3_lllll",
+      "vgpr": 12,
+      "sgpr": 35,
+      "static_instructions": 228,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          34
+        ],
+        [
+          "s_waitcnt",
+          12
+        ],
+        [
+          "s_add_i32",
+          11
+        ],
+        [
+          "s_mov_b32",
+          10
+        ],
+        [
+          "s_mul_i32",
+          9
+        ],
+        [
+          "v_mov_b32_e32",
+          9
+        ],
+        [
+          "s_add_u32",
+          8
+        ],
+        [
+          "s_cbranch_vccnz",
+          7
+        ],
+        [
+          "v_add_co_u32",
+          6
+        ],
+        [
+          "s_fmamk_f32",
+          6
+        ],
+        [
+          "s_cselect_b32",
+          6
+        ],
+        [
+          "ds_load_2addr_b32",
+          4
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 12,
+        "vgpr_granule": 16,
+        "waves_per_cu_by_vgpr": 128,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_156qwen35_paged_full_attn_decode_split_k_reduce_gate_kernelIfEEvPKfS2_S2_PKT_PS3_llll",
+      "vgpr": 12,
+      "sgpr": 38,
+      "static_instructions": 236,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          30
+        ],
+        [
+          "s_waitcnt",
+          15
+        ],
+        [
+          "v_mov_b32_e32",
+          14
+        ],
+        [
+          "s_mov_b32",
+          11
+        ],
+        [
+          "s_and_b32",
+          9
+        ],
+        [
+          "s_add_i32",
+          8
+        ],
+        [
+          "s_cbranch_vccnz",
+          8
+        ],
+        [
+          "s_cbranch_execz",
+          6
+        ],
+        [
+          "s_add_u32",
+          6
+        ],
+        [
+          "s_fmamk_f32",
+          6
+        ],
+        [
+          "s_cselect_b32",
+          6
+        ],
+        [
+          "s_lshl_b32",
+          5
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 12,
+        "vgpr_granule": 16,
+        "waves_per_cu_by_vgpr": 128,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_157qwen35_paged_full_attn_decode_context_tensor_batch_kernelILb0ELi1ELb0ElLi1EEEvPKfPKtS4_PKiPKlPflllllllf",
+      "vgpr": 34,
+      "sgpr": 58,
+      "static_instructions": 694,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          85
+        ],
+        [
+          "s_mul_i32",
+          54
+        ],
+        [
+          "s_mul_hi_u32",
+          42
+        ],
+        [
+          "s_addc_u32",
+          36
+        ],
+        [
+          "s_add_i32",
+          31
+        ],
+        [
+          "s_add_u32",
+          31
+        ],
+        [
+          "s_cselect_b32",
+          24
+        ],
+        [
+          "v_add_co_u32",
+          14
+        ],
+        [
+          "s_or_b32",
+          13
+        ],
+        [
+          "s_waitcnt",
+          12
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          12
+        ],
+        [
+          "s_lshl_b64",
+          10
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 34,
+        "vgpr_granule": 40,
+        "waves_per_cu_by_vgpr": 51,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_157qwen35_paged_full_attn_decode_context_tensor_batch_kernelILb1ELi2ELb0ElLi1EEEvPKfPKtS4_PKiPKlPflllllllf",
+      "vgpr": 32,
+      "sgpr": 51,
+      "static_instructions": 496,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          59
+        ],
+        [
+          "s_mul_i32",
+          26
+        ],
+        [
+          "s_addc_u32",
+          23
+        ],
+        [
+          "s_add_u32",
+          21
+        ],
+        [
+          "s_nop",
+          21
+        ],
+        [
+          "s_waitcnt",
+          17
+        ],
+        [
+          "s_mul_hi_u32",
+          17
+        ],
+        [
+          "s_mov_b32",
+          16
+        ],
+        [
+          "s_or_b32",
+          14
+        ],
+        [
+          "s_add_i32",
+          13
+        ],
+        [
+          "v_add_co_u32",
+          12
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          12
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 32,
+        "vgpr_granule": 32,
+        "waves_per_cu_by_vgpr": 64,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_157qwen35_paged_full_attn_decode_context_tensor_batch_kernelILb1ELi1ELb0ElLi1EEEvPKfPKtS4_PKiPKlPflllllllf",
+      "vgpr": 32,
+      "sgpr": 51,
+      "static_instructions": 499,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          55
+        ],
+        [
+          "s_mul_i32",
+          32
+        ],
+        [
+          "s_add_u32",
+          29
+        ],
+        [
+          "s_addc_u32",
+          25
+        ],
+        [
+          "s_mul_hi_u32",
+          25
+        ],
+        [
+          "s_waitcnt",
+          22
+        ],
+        [
+          "s_cselect_b32",
+          20
+        ],
+        [
+          "s_add_i32",
+          20
+        ],
+        [
+          "s_or_b32",
+          15
+        ],
+        [
+          "s_mov_b32",
+          10
+        ],
+        [
+          "v_add_co_u32",
+          10
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          9
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 32,
+        "vgpr_granule": 32,
+        "waves_per_cu_by_vgpr": 64,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_157qwen35_paged_full_attn_decode_context_tensor_batch_kernelILb1ELi2ELb0EiLi4EEEvPKfPKtS4_PKiPKlPflllllllf",
+      "vgpr": 49,
+      "sgpr": 51,
+      "static_instructions": 517,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          65
+        ],
+        [
+          "s_addc_u32",
+          23
+        ],
+        [
+          "s_mul_i32",
+          23
+        ],
+        [
+          "s_add_u32",
+          19
+        ],
+        [
+          "s_mul_hi_u32",
+          19
+        ],
+        [
+          "s_waitcnt",
+          16
+        ],
+        [
+          "s_or_b32",
+          15
+        ],
+        [
+          "s_mov_b32",
+          14
+        ],
+        [
+          "s_add_i32",
+          13
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          13
+        ],
+        [
+          "s_nop",
+          11
+        ],
+        [
+          "v_mov_b32_e32",
+          10
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 49,
+        "vgpr_granule": 56,
+        "waves_per_cu_by_vgpr": 36,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_157qwen35_paged_full_attn_decode_context_tensor_batch_kernelILb1ELi1ELb0EiLi4EEEvPKfPKtS4_PKiPKlPflllllllf",
+      "vgpr": 49,
+      "sgpr": 51,
+      "static_instructions": 502,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          60
+        ],
+        [
+          "s_addc_u32",
+          25
+        ],
+        [
+          "s_add_u32",
+          22
+        ],
+        [
+          "s_mul_i32",
+          21
+        ],
+        [
+          "s_cselect_b32",
+          21
+        ],
+        [
+          "s_mul_hi_u32",
+          20
+        ],
+        [
+          "s_waitcnt",
+          16
+        ],
+        [
+          "s_add_i32",
+          16
+        ],
+        [
+          "s_or_b32",
+          14
+        ],
+        [
+          "v_mov_b32_e32",
+          13
+        ],
+        [
+          "s_mov_b32",
+          12
+        ],
+        [
+          "v_add_co_u32",
+          10
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 49,
+        "vgpr_granule": 56,
+        "waves_per_cu_by_vgpr": 36,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_157qwen35_paged_full_attn_decode_context_tensor_batch_kernelILb1ELi2ELb0ElLi4EEEvPKfPKtS4_PKiPKlPflllllllf",
+      "vgpr": 49,
+      "sgpr": 52,
+      "static_instructions": 537,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          57
+        ],
+        [
+          "s_mul_i32",
+          27
+        ],
+        [
+          "s_addc_u32",
+          22
+        ],
+        [
+          "s_or_b32",
+          19
+        ],
+        [
+          "s_add_u32",
+          19
+        ],
+        [
+          "s_waitcnt",
+          18
+        ],
+        [
+          "s_mul_hi_u32",
+          17
+        ],
+        [
+          "ds_bpermute_b32",
+          16
+        ],
+        [
+          "s_add_i32",
+          15
+        ],
+        [
+          "s_nop",
+          15
+        ],
+        [
+          "v_max_f32_e32",
+          15
+        ],
+        [
+          "s_mov_b32",
+          14
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 49,
+        "vgpr_granule": 56,
+        "waves_per_cu_by_vgpr": 36,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_157qwen35_paged_full_attn_decode_context_tensor_batch_kernelILb1ELi1ELb0ElLi4EEEvPKfPKtS4_PKiPKlPflllllllf",
+      "vgpr": 49,
+      "sgpr": 52,
+      "static_instructions": 511,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          53
+        ],
+        [
+          "s_mul_i32",
+          23
+        ],
+        [
+          "s_add_u32",
+          22
+        ],
+        [
+          "s_addc_u32",
+          21
+        ],
+        [
+          "s_waitcnt",
+          20
+        ],
+        [
+          "s_or_b32",
+          20
+        ],
+        [
+          "s_mul_hi_u32",
+          20
+        ],
+        [
+          "s_cselect_b32",
+          20
+        ],
+        [
+          "s_add_i32",
+          17
+        ],
+        [
+          "ds_bpermute_b32",
+          16
+        ],
+        [
+          "v_max_f32_e32",
+          15
+        ],
+        [
+          "v_add_f32_e32",
+          10
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 49,
+        "vgpr_granule": 56,
+        "waves_per_cu_by_vgpr": 36,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_157qwen35_paged_full_attn_decode_context_tensor_batch_kernelILb1ELi2ELb0EiLi2EEEvPKfPKtS4_PKiPKlPflllllllf",
+      "vgpr": 39,
+      "sgpr": 50,
+      "static_instructions": 510,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          63
+        ],
+        [
+          "s_nop",
+          25
+        ],
+        [
+          "s_mul_i32",
+          23
+        ],
+        [
+          "s_addc_u32",
+          22
+        ],
+        [
+          "s_add_u32",
+          20
+        ],
+        [
+          "s_waitcnt",
+          19
+        ],
+        [
+          "s_mul_hi_u32",
+          19
+        ],
+        [
+          "s_mov_b32",
+          17
+        ],
+        [
+          "s_or_b32",
+          13
+        ],
+        [
+          "s_add_i32",
+          11
+        ],
+        [
+          "v_mov_b32_e32",
+          11
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          10
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 39,
+        "vgpr_granule": 40,
+        "waves_per_cu_by_vgpr": 51,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_157qwen35_paged_full_attn_decode_context_tensor_batch_kernelILb0ELi1ELb1ElLi1EEEvPKfPKtS4_PKiPKlPflllllllf",
+      "vgpr": 34,
+      "sgpr": 58,
+      "static_instructions": 693,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          87
+        ],
+        [
+          "s_mul_i32",
+          53
+        ],
+        [
+          "s_mul_hi_u32",
+          43
+        ],
+        [
+          "s_addc_u32",
+          36
+        ],
+        [
+          "s_add_u32",
+          32
+        ],
+        [
+          "s_add_i32",
+          31
+        ],
+        [
+          "s_cselect_b32",
+          24
+        ],
+        [
+          "v_add_co_u32",
+          14
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          14
+        ],
+        [
+          "s_waitcnt",
+          13
+        ],
+        [
+          "s_or_b32",
+          13
+        ],
+        [
+          "s_xor_b64",
+          11
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 34,
+        "vgpr_granule": 40,
+        "waves_per_cu_by_vgpr": 51,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_164qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernelIfLl8ELl16ELl2EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_llf",
+      "vgpr": 74,
+      "sgpr": 63,
+      "static_instructions": 652,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          66
+        ],
+        [
+          "s_delay_alu",
+          56
+        ],
+        [
+          "s_or_b32",
+          28
+        ],
+        [
+          "s_add_u32",
+          27
+        ],
+        [
+          "s_addc_u32",
+          25
+        ],
+        [
+          "v_add_f32_e32",
+          25
+        ],
+        [
+          "v_dual_mov_b32",
+          24
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          20
+        ],
+        [
+          "v_max_f32_e32",
+          20
+        ],
+        [
+          "v_mov_b32_e32",
+          19
+        ],
+        [
+          "s_and_saveexec_b32",
+          18
+        ],
+        [
+          "ds_bpermute_b32",
+          18
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 74,
+        "vgpr_granule": 80,
+        "waves_per_cu_by_vgpr": 25,
+        "waves_per_cu": 25,
+        "waves_per_simd": 6,
+        "occupancy_fraction": 0.78125,
+        "threads_per_cu": 800,
+        "blocks_per_cu": 6
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_164qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernelIfLl6ELl24ELl4EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_llf",
+      "vgpr": 62,
+      "sgpr": 59,
+      "static_instructions": 558,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          73
+        ],
+        [
+          "s_addc_u32",
+          33
+        ],
+        [
+          "s_waitcnt",
+          29
+        ],
+        [
+          "s_add_u32",
+          22
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          21
+        ],
+        [
+          "s_or_b32",
+          20
+        ],
+        [
+          "ds_bpermute_b32",
+          20
+        ],
+        [
+          "v_fmac_f32_e32",
+          19
+        ],
+        [
+          "s_add_i32",
+          17
+        ],
+        [
+          "v_add_co_u32",
+          17
+        ],
+        [
+          "s_mov_b32",
+          16
+        ],
+        [
+          "s_lshl_b64",
+          16
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 62,
+        "vgpr_granule": 64,
+        "waves_per_cu_by_vgpr": 32,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_164qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernelIDF16_Ll8ELl16ELl2EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_llf",
+      "vgpr": 74,
+      "sgpr": 58,
+      "static_instructions": 660,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          65
+        ],
+        [
+          "s_delay_alu",
+          53
+        ],
+        [
+          "s_or_b32",
+          29
+        ],
+        [
+          "v_mov_b32_e32",
+          26
+        ],
+        [
+          "v_dual_mov_b32",
+          25
+        ],
+        [
+          "v_add_f32_e32",
+          25
+        ],
+        [
+          "s_add_u32",
+          24
+        ],
+        [
+          "s_addc_u32",
+          23
+        ],
+        [
+          "ds_bpermute_b32",
+          23
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          20
+        ],
+        [
+          "v_max_f32_e32",
+          20
+        ],
+        [
+          "ds_store_b32",
+          19
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 74,
+        "vgpr_granule": 80,
+        "waves_per_cu_by_vgpr": 25,
+        "waves_per_cu": 25,
+        "waves_per_simd": 6,
+        "occupancy_fraction": 0.78125,
+        "threads_per_cu": 800,
+        "blocks_per_cu": 6
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_164qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernelIDF16_Ll6ELl24ELl4EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_llf",
+      "vgpr": 62,
+      "sgpr": 54,
+      "static_instructions": 578,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          68
+        ],
+        [
+          "s_waitcnt",
+          37
+        ],
+        [
+          "s_addc_u32",
+          33
+        ],
+        [
+          "v_fmac_f32_e32",
+          30
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          24
+        ],
+        [
+          "s_add_u32",
+          22
+        ],
+        [
+          "ds_bpermute_b32",
+          21
+        ],
+        [
+          "s_or_b32",
+          19
+        ],
+        [
+          "global_store_b32",
+          19
+        ],
+        [
+          "ds_load_b32",
+          16
+        ],
+        [
+          "s_mov_b32",
+          15
+        ],
+        [
+          "s_add_i32",
+          15
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 62,
+        "vgpr_granule": 64,
+        "waves_per_cu_by_vgpr": 32,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_170qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_batch_kernelIfLl8ELl16ELl2EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_lllllf",
+      "vgpr": 74,
+      "sgpr": 63,
+      "static_instructions": 645,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          65
+        ],
+        [
+          "s_delay_alu",
+          43
+        ],
+        [
+          "ds_bpermute_b32",
+          34
+        ],
+        [
+          "s_or_b32",
+          28
+        ],
+        [
+          "v_add_f32_e32",
+          26
+        ],
+        [
+          "v_dual_mov_b32",
+          22
+        ],
+        [
+          "s_add_u32",
+          21
+        ],
+        [
+          "s_mov_b32",
+          20
+        ],
+        [
+          "v_max_f32_e32",
+          20
+        ],
+        [
+          "s_add_i32",
+          19
+        ],
+        [
+          "s_addc_u32",
+          18
+        ],
+        [
+          "s_mul_i32",
+          16
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 74,
+        "vgpr_granule": 80,
+        "waves_per_cu_by_vgpr": 25,
+        "waves_per_cu": 25,
+        "waves_per_simd": 6,
+        "occupancy_fraction": 0.78125,
+        "threads_per_cu": 800,
+        "blocks_per_cu": 6
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_170qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_batch_kernelIfLl6ELl24ELl4EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_lllllf",
+      "vgpr": 62,
+      "sgpr": 60,
+      "static_instructions": 589,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          60
+        ],
+        [
+          "s_waitcnt",
+          38
+        ],
+        [
+          "s_add_u32",
+          35
+        ],
+        [
+          "s_addc_u32",
+          32
+        ],
+        [
+          "v_dual_mov_b32",
+          27
+        ],
+        [
+          "v_mov_b32_e32",
+          21
+        ],
+        [
+          "s_or_b32",
+          20
+        ],
+        [
+          "s_mov_b32",
+          19
+        ],
+        [
+          "ds_load_b32",
+          19
+        ],
+        [
+          "s_mul_i32",
+          16
+        ],
+        [
+          "s_add_i32",
+          16
+        ],
+        [
+          "global_store_b32",
+          16
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 62,
+        "vgpr_granule": 64,
+        "waves_per_cu_by_vgpr": 32,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_170qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_batch_kernelIDF16_Ll8ELl16ELl2EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_lllllf",
+      "vgpr": 74,
+      "sgpr": 62,
+      "static_instructions": 655,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          70
+        ],
+        [
+          "s_delay_alu",
+          42
+        ],
+        [
+          "ds_bpermute_b32",
+          38
+        ],
+        [
+          "s_or_b32",
+          28
+        ],
+        [
+          "v_add_f32_e32",
+          26
+        ],
+        [
+          "v_max_f32_e32",
+          24
+        ],
+        [
+          "v_dual_mov_b32",
+          22
+        ],
+        [
+          "s_add_u32",
+          21
+        ],
+        [
+          "s_mov_b32",
+          20
+        ],
+        [
+          "s_addc_u32",
+          19
+        ],
+        [
+          "s_add_i32",
+          16
+        ],
+        [
+          "s_and_saveexec_b32",
+          16
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 74,
+        "vgpr_granule": 80,
+        "waves_per_cu_by_vgpr": 25,
+        "waves_per_cu": 25,
+        "waves_per_simd": 6,
+        "occupancy_fraction": 0.78125,
+        "threads_per_cu": 800,
+        "blocks_per_cu": 6
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_170qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_batch_kernelIDF16_Ll6ELl24ELl4EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_lllllf",
+      "vgpr": 62,
+      "sgpr": 60,
+      "static_instructions": 586,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          61
+        ],
+        [
+          "s_waitcnt",
+          38
+        ],
+        [
+          "s_add_u32",
+          35
+        ],
+        [
+          "s_addc_u32",
+          33
+        ],
+        [
+          "v_dual_mov_b32",
+          29
+        ],
+        [
+          "s_or_b32",
+          22
+        ],
+        [
+          "v_mov_b32_e32",
+          22
+        ],
+        [
+          "s_add_i32",
+          20
+        ],
+        [
+          "s_mov_b32",
+          18
+        ],
+        [
+          "ds_load_b32",
+          18
+        ],
+        [
+          "s_mul_i32",
+          17
+        ],
+        [
+          "global_store_b32",
+          15
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 62,
+        "vgpr_granule": 64,
+        "waves_per_cu_by_vgpr": 32,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_174qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernelIfLl8ELl16ELl2ELl16ELb0EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_llf",
+      "vgpr": 73,
+      "sgpr": 56,
+      "static_instructions": 660,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          65
+        ],
+        [
+          "s_delay_alu",
+          47
+        ],
+        [
+          "ds_bpermute_b32",
+          37
+        ],
+        [
+          "s_or_b32",
+          27
+        ],
+        [
+          "v_mov_b32_e32",
+          26
+        ],
+        [
+          "ds_load_b32",
+          25
+        ],
+        [
+          "v_max_f32_e32",
+          23
+        ],
+        [
+          "s_cbranch_execz",
+          20
+        ],
+        [
+          "v_dual_mov_b32",
+          20
+        ],
+        [
+          "s_and_saveexec_b32",
+          19
+        ],
+        [
+          "s_add_u32",
+          19
+        ],
+        [
+          "s_addc_u32",
+          18
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 73,
+        "vgpr_granule": 80,
+        "waves_per_cu_by_vgpr": 25,
+        "waves_per_cu": 25,
+        "waves_per_simd": 6,
+        "occupancy_fraction": 0.78125,
+        "threads_per_cu": 800,
+        "blocks_per_cu": 6
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_174qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernelIfLl6ELl24ELl4ELl16ELb0EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_llf",
+      "vgpr": 61,
+      "sgpr": 54,
+      "static_instructions": 571,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          64
+        ],
+        [
+          "s_waitcnt",
+          42
+        ],
+        [
+          "s_addc_u32",
+          25
+        ],
+        [
+          "s_add_u32",
+          21
+        ],
+        [
+          "global_store_b32",
+          21
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          20
+        ],
+        [
+          "ds_bpermute_b32",
+          20
+        ],
+        [
+          "v_mov_b32_e32",
+          19
+        ],
+        [
+          "v_fmac_f32_e32",
+          19
+        ],
+        [
+          "ds_load_b32",
+          19
+        ],
+        [
+          "s_or_b32",
+          18
+        ],
+        [
+          "s_add_i32",
+          17
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 61,
+        "vgpr_granule": 64,
+        "waves_per_cu_by_vgpr": 32,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_174qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernelIDF16_Ll8ELl16ELl2ELl16ELb0EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_llf",
+      "vgpr": 73,
+      "sgpr": 56,
+      "static_instructions": 657,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          71
+        ],
+        [
+          "s_delay_alu",
+          51
+        ],
+        [
+          "ds_bpermute_b32",
+          35
+        ],
+        [
+          "v_max_f32_e32",
+          27
+        ],
+        [
+          "v_mov_b32_e32",
+          26
+        ],
+        [
+          "s_or_b32",
+          24
+        ],
+        [
+          "s_and_saveexec_b32",
+          24
+        ],
+        [
+          "v_dual_mov_b32",
+          21
+        ],
+        [
+          "s_add_u32",
+          19
+        ],
+        [
+          "s_addc_u32",
+          18
+        ],
+        [
+          "v_add_f32_e32",
+          18
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          17
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 73,
+        "vgpr_granule": 80,
+        "waves_per_cu_by_vgpr": 25,
+        "waves_per_cu": 25,
+        "waves_per_simd": 6,
+        "occupancy_fraction": 0.78125,
+        "threads_per_cu": 800,
+        "blocks_per_cu": 6
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_174qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernelIDF16_Ll6ELl24ELl4ELl16ELb0EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_llf",
+      "vgpr": 61,
+      "sgpr": 54,
+      "static_instructions": 536,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          66
+        ],
+        [
+          "s_waitcnt",
+          42
+        ],
+        [
+          "s_addc_u32",
+          29
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          25
+        ],
+        [
+          "v_add_co_u32",
+          23
+        ],
+        [
+          "s_add_i32",
+          19
+        ],
+        [
+          "s_add_u32",
+          17
+        ],
+        [
+          "v_dual_mov_b32",
+          17
+        ],
+        [
+          "global_store_b32",
+          16
+        ],
+        [
+          "ds_load_2addr_b32",
+          16
+        ],
+        [
+          "s_mov_b32",
+          14
+        ],
+        [
+          "v_mov_b32_e32",
+          14
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 61,
+        "vgpr_granule": 64,
+        "waves_per_cu_by_vgpr": 32,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_174qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernelIfLl8ELl16ELl2ELl32ELb1EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_llf",
+      "vgpr": 78,
+      "sgpr": 60,
+      "static_instructions": 785,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          94
+        ],
+        [
+          "ds_bpermute_b32",
+          90
+        ],
+        [
+          "v_add_f32_e32",
+          64
+        ],
+        [
+          "s_delay_alu",
+          47
+        ],
+        [
+          "v_cndmask_b32_e64",
+          42
+        ],
+        [
+          "s_addc_u32",
+          26
+        ],
+        [
+          "global_store_b32",
+          26
+        ],
+        [
+          "s_add_u32",
+          25
+        ],
+        [
+          "ds_load_b32",
+          25
+        ],
+        [
+          "v_max_f32_e32",
+          23
+        ],
+        [
+          "ds_store_b32",
+          21
+        ],
+        [
+          "s_and_saveexec_b32",
+          20
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 78,
+        "vgpr_granule": 80,
+        "waves_per_cu_by_vgpr": 25,
+        "waves_per_cu": 25,
+        "waves_per_simd": 6,
+        "occupancy_fraction": 0.78125,
+        "threads_per_cu": 800,
+        "blocks_per_cu": 6
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_174qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernelIfLl6ELl24ELl4ELl32ELb1EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_llf",
+      "vgpr": 66,
+      "sgpr": 56,
+      "static_instructions": 637,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          64
+        ],
+        [
+          "s_delay_alu",
+          52
+        ],
+        [
+          "ds_bpermute_b32",
+          36
+        ],
+        [
+          "v_dual_mov_b32",
+          31
+        ],
+        [
+          "v_cndmask_b32_e64",
+          28
+        ],
+        [
+          "s_addc_u32",
+          23
+        ],
+        [
+          "ds_load_b32",
+          20
+        ],
+        [
+          "s_or_b32",
+          19
+        ],
+        [
+          "s_add_u32",
+          17
+        ],
+        [
+          "v_max_f32_e32",
+          17
+        ],
+        [
+          "v_add_f32_e32",
+          16
+        ],
+        [
+          "v_add_co_u32",
+          15
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 66,
+        "vgpr_granule": 72,
+        "waves_per_cu_by_vgpr": 28,
+        "waves_per_cu": 28,
+        "waves_per_simd": 7,
+        "occupancy_fraction": 0.875,
+        "threads_per_cu": 896,
+        "blocks_per_cu": 7
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_174qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernelIDF16_Ll8ELl16ELl2ELl32ELb1EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_llf",
+      "vgpr": 78,
+      "sgpr": 60,
+      "static_instructions": 816,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          101
+        ],
+        [
+          "ds_bpermute_b32",
+          76
+        ],
+        [
+          "v_add_f32_e32",
+          68
+        ],
+        [
+          "v_cndmask_b32_e64",
+          46
+        ],
+        [
+          "s_delay_alu",
+          44
+        ],
+        [
+          "s_addc_u32",
+          32
+        ],
+        [
+          "global_store_b32",
+          27
+        ],
+        [
+          "s_add_u32",
+          24
+        ],
+        [
+          "s_or_b32",
+          22
+        ],
+        [
+          "v_max_f32_e32",
+          22
+        ],
+        [
+          "v_dual_max_f32",
+          20
+        ],
+        [
+          "s_add_i32",
+          18
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 78,
+        "vgpr_granule": 80,
+        "waves_per_cu_by_vgpr": 25,
+        "waves_per_cu": 25,
+        "waves_per_simd": 6,
+        "occupancy_fraction": 0.78125,
+        "threads_per_cu": 800,
+        "blocks_per_cu": 6
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_174qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernelIDF16_Ll6ELl24ELl4ELl32ELb1EEEvPKfPKaS4_PKT_S7_PKiPKlPfSC_SC_llf",
+      "vgpr": 66,
+      "sgpr": 56,
+      "static_instructions": 631,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          70
+        ],
+        [
+          "s_delay_alu",
+          45
+        ],
+        [
+          "ds_bpermute_b32",
+          37
+        ],
+        [
+          "v_dual_mov_b32",
+          27
+        ],
+        [
+          "v_cndmask_b32_e64",
+          25
+        ],
+        [
+          "s_addc_u32",
+          24
+        ],
+        [
+          "v_mov_b32_e32",
+          24
+        ],
+        [
+          "v_max_f32_e32",
+          23
+        ],
+        [
+          "ds_load_b32",
+          22
+        ],
+        [
+          "v_fmac_f32_e32",
+          20
+        ],
+        [
+          "s_add_u32",
+          19
+        ],
+        [
+          "v_add_f32_e32",
+          18
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 66,
+        "vgpr_granule": 72,
+        "waves_per_cu_by_vgpr": 28,
+        "waves_per_cu": 28,
+        "waves_per_simd": 7,
+        "occupancy_fraction": 0.875,
+        "threads_per_cu": 896,
+        "blocks_per_cu": 7
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_179qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_key_bf16_value_kernelIfLl8ELl16ELl2EEEvPKfPKaPKtPKT_PKiPKlPfSE_SE_llf",
+      "vgpr": 75,
+      "sgpr": 54,
+      "static_instructions": 648,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          63
+        ],
+        [
+          "s_delay_alu",
+          54
+        ],
+        [
+          "ds_load_b32",
+          35
+        ],
+        [
+          "s_or_b32",
+          28
+        ],
+        [
+          "v_mov_b32_e32",
+          28
+        ],
+        [
+          "ds_bpermute_b32",
+          28
+        ],
+        [
+          "ds_load_2addr_b32",
+          26
+        ],
+        [
+          "v_max_f32_e32",
+          23
+        ],
+        [
+          "s_and_saveexec_b32",
+          19
+        ],
+        [
+          "s_add_i32",
+          18
+        ],
+        [
+          "s_addc_u32",
+          18
+        ],
+        [
+          "v_dual_mov_b32",
+          18
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 75,
+        "vgpr_granule": 80,
+        "waves_per_cu_by_vgpr": 25,
+        "waves_per_cu": 25,
+        "waves_per_simd": 6,
+        "occupancy_fraction": 0.78125,
+        "threads_per_cu": 800,
+        "blocks_per_cu": 6
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_179qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_key_bf16_value_kernelIfLl6ELl24ELl4EEEvPKfPKaPKtPKT_PKiPKlPfSE_SE_llf",
+      "vgpr": 63,
+      "sgpr": 52,
+      "static_instructions": 543,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          57
+        ],
+        [
+          "s_waitcnt",
+          42
+        ],
+        [
+          "s_addc_u32",
+          32
+        ],
+        [
+          "s_add_u32",
+          29
+        ],
+        [
+          "v_fmac_f32_e32",
+          26
+        ],
+        [
+          "global_store_b32",
+          20
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          20
+        ],
+        [
+          "s_nop",
+          20
+        ],
+        [
+          "v_dual_mov_b32",
+          18
+        ],
+        [
+          "s_lshl_b64",
+          14
+        ],
+        [
+          "v_add_co_u32",
+          14
+        ],
+        [
+          "s_add_i32",
+          13
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 63,
+        "vgpr_granule": 64,
+        "waves_per_cu_by_vgpr": 32,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_179qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_key_bf16_value_kernelIDF16_Ll8ELl16ELl2EEEvPKfPKaPKtPKT_PKiPKlPfSE_SE_llf",
+      "vgpr": 75,
+      "sgpr": 54,
+      "static_instructions": 641,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          69
+        ],
+        [
+          "s_delay_alu",
+          58
+        ],
+        [
+          "v_mov_b32_e32",
+          34
+        ],
+        [
+          "ds_bpermute_b32",
+          30
+        ],
+        [
+          "s_addc_u32",
+          22
+        ],
+        [
+          "ds_load_2addr_b32",
+          21
+        ],
+        [
+          "s_or_b32",
+          20
+        ],
+        [
+          "ds_load_b32",
+          20
+        ],
+        [
+          "s_add_u32",
+          19
+        ],
+        [
+          "v_max_f32_e32",
+          19
+        ],
+        [
+          "s_and_saveexec_b32",
+          18
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          17
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 75,
+        "vgpr_granule": 80,
+        "waves_per_cu_by_vgpr": 25,
+        "waves_per_cu": 25,
+        "waves_per_simd": 6,
+        "occupancy_fraction": 0.78125,
+        "threads_per_cu": 800,
+        "blocks_per_cu": 6
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_179qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_key_bf16_value_kernelIDF16_Ll6ELl24ELl4EEEvPKfPKaPKtPKT_PKiPKlPfSE_SE_llf",
+      "vgpr": 63,
+      "sgpr": 52,
+      "static_instructions": 546,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          60
+        ],
+        [
+          "s_waitcnt",
+          41
+        ],
+        [
+          "s_addc_u32",
+          32
+        ],
+        [
+          "s_add_u32",
+          29
+        ],
+        [
+          "v_fmac_f32_e32",
+          22
+        ],
+        [
+          "global_store_b32",
+          20
+        ],
+        [
+          "s_nop",
+          20
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          19
+        ],
+        [
+          "v_dual_mov_b32",
+          18
+        ],
+        [
+          "ds_bpermute_b32",
+          16
+        ],
+        [
+          "s_lshl_b64",
+          14
+        ],
+        [
+          "v_add_co_u32",
+          14
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 63,
+        "vgpr_granule": 64,
+        "waves_per_cu_by_vgpr": 32,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernelILb1ELb0EEEvPKfPKtS4_S4_PtPKiPKlS9_lllllllllfPfl",
+      "vgpr": 30,
+      "sgpr": 53,
+      "static_instructions": 348,
+      "top_opcodes": [
+        [
+          "s_mul_i32",
+          34
+        ],
+        [
+          "s_delay_alu",
+          27
+        ],
+        [
+          "s_addc_u32",
+          25
+        ],
+        [
+          "s_add_u32",
+          24
+        ],
+        [
+          "s_mul_hi_u32",
+          21
+        ],
+        [
+          "s_add_i32",
+          19
+        ],
+        [
+          "s_cselect_b32",
+          15
+        ],
+        [
+          "s_mov_b32",
+          9
+        ],
+        [
+          "s_waitcnt",
+          8
+        ],
+        [
+          "s_cmp_ge_u32",
+          7
+        ],
+        [
+          "s_cbranch_execz",
+          7
+        ],
+        [
+          "s_or_b32",
+          7
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 30,
+        "vgpr_granule": 32,
+        "waves_per_cu_by_vgpr": 64,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernelILb0ELb0EEEvPKfPKtS4_S4_PtPKiPKlS9_lllllllllfPfl",
+      "vgpr": 36,
+      "sgpr": 57,
+      "static_instructions": 516,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          52
+        ],
+        [
+          "s_mul_i32",
+          46
+        ],
+        [
+          "s_addc_u32",
+          35
+        ],
+        [
+          "s_mul_hi_u32",
+          33
+        ],
+        [
+          "s_add_u32",
+          32
+        ],
+        [
+          "s_add_i32",
+          22
+        ],
+        [
+          "s_cselect_b32",
+          21
+        ],
+        [
+          "s_waitcnt",
+          17
+        ],
+        [
+          "s_or_b32",
+          13
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          12
+        ],
+        [
+          "v_mov_b32_e32",
+          11
+        ],
+        [
+          "s_cmp_ge_u32",
+          10
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 36,
+        "vgpr_granule": 40,
+        "waves_per_cu_by_vgpr": 51,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernelILb0ELb1EEEvPKfPKtS4_S4_PtPKiPKlS9_lllllllllfPfl",
+      "vgpr": 36,
+      "sgpr": 63,
+      "static_instructions": 512,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          54
+        ],
+        [
+          "s_mul_i32",
+          31
+        ],
+        [
+          "s_addc_u32",
+          30
+        ],
+        [
+          "s_nop",
+          28
+        ],
+        [
+          "s_add_u32",
+          26
+        ],
+        [
+          "s_mul_hi_u32",
+          23
+        ],
+        [
+          "s_add_i32",
+          22
+        ],
+        [
+          "s_waitcnt",
+          15
+        ],
+        [
+          "s_cselect_b32",
+          15
+        ],
+        [
+          "s_mov_b32",
+          13
+        ],
+        [
+          "s_and_b32",
+          12
+        ],
+        [
+          "v_mov_b32_e32",
+          11
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 36,
+        "vgpr_granule": 40,
+        "waves_per_cu_by_vgpr": 51,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    }
+  ]
+}

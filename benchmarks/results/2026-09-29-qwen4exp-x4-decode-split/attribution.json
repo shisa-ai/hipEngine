@@ -11,7 +11,9 @@
   "--stem",
   "x4full",
   "--output",
-  "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/attribution.json"
+  "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/attribution.json",
+  "--top",
+  "100000"
  ],
  "source_trace": {
   "stem": "x4full",
@@ -183,6 +185,4296 @@
    "ms_per_step": 0.5031036666666667,
    "kernels_per_step": 12.0,
    "share_pct": 0.9279262157896663
+  },
+  {
+   "name": "moe:layers.0.expert_gate",
+   "ms_per_step": 0.4998713333333335,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.921964488541596
+  },
+  {
+   "name": "moe:layers.14.expert_gate",
+   "ms_per_step": 0.49961833333333344,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9214978544298823
+  },
+  {
+   "name": "moe:layers.27.expert_gate",
+   "ms_per_step": 0.4990546666666667,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9204582255986473
+  },
+  {
+   "name": "moe:layers.9.expert_gate",
+   "ms_per_step": 0.4977736666666667,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.918095544582422
+  },
+  {
+   "name": "moe:layers.17.expert_gate",
+   "ms_per_step": 0.4976946666666667,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9179498366977368
+  },
+  {
+   "name": "moe:layers.41.expert_gate",
+   "ms_per_step": 0.4967860000000001,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9162738886232563
+  },
+  {
+   "name": "moe:layers.18.expert_gate",
+   "ms_per_step": 0.49657066666666677,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9158767270472788
+  },
+  {
+   "name": "moe:layers.3.expert_gate",
+   "ms_per_step": 0.49649000000000015,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9157279451565877
+  },
+  {
+   "name": "moe:layers.20.expert_gate",
+   "ms_per_step": 0.4963580000000001,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.915484483880911
+  },
+  {
+   "name": "moe:layers.10.expert_gate",
+   "ms_per_step": 0.49611600000000006,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9150381382088372
+  },
+  {
+   "name": "moe:layers.21.expert_gate",
+   "ms_per_step": 0.4958786666666666,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.91460039975358
+  },
+  {
+   "name": "moe:layers.39.expert_gate",
+   "ms_per_step": 0.49542400000000003,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9137618109151386
+  },
+  {
+   "name": "moe:layers.40.expert_gate",
+   "ms_per_step": 0.49486233333333324,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9127258708911105
+  },
+  {
+   "name": "moe:layers.8.expert_gate",
+   "ms_per_step": 0.4943823333333333,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9118405571613775
+  },
+  {
+   "name": "moe:layers.5.expert_gate",
+   "ms_per_step": 0.49430066666666667,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9116899308670826
+  },
+  {
+   "name": "moe:layers.6.expert_gate",
+   "ms_per_step": 0.4940723333333332,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9112687920442581
+  },
+  {
+   "name": "moe:layers.7.expert_gate",
+   "ms_per_step": 0.49402133333333326,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.911174727460474
+  },
+  {
+   "name": "moe:layers.13.expert_gate",
+   "ms_per_step": 0.4940200000000001,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9111722682556697
+  },
+  {
+   "name": "moe:layers.43.expert_gate",
+   "ms_per_step": 0.4936730000000001,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9105322602052167
+  },
+  {
+   "name": "moe:layers.12.expert_gate",
+   "ms_per_step": 0.4929776666666665,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9092497848995056
+  },
+  {
+   "name": "moe:layers.16.expert_gate",
+   "ms_per_step": 0.492832,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9089811167745802
+  },
+  {
+   "name": "moe:layers.11.expert_gate",
+   "ms_per_step": 0.49230966666666665,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9080177232922941
+  },
+  {
+   "name": "moe:layers.15.expert_gate",
+   "ms_per_step": 0.49176366666666665,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9070106789247228
+  },
+  {
+   "name": "moe:layers.1.expert_gate",
+   "ms_per_step": 0.49110766666666666,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.9058007501607543
+  },
+  {
+   "name": "moe:layers.19.expert_gate",
+   "ms_per_step": 0.4875700000000002,
+   "kernels_per_step": 12.0,
+   "share_pct": 0.899275865012382
+  },
+  {
+   "name": "qsa_decode:layers.23.attn_q",
+   "ms_per_step": 0.22979233333333338,
+   "kernels_per_step": 10.0,
+   "share_pct": 0.42382980768207007
+  },
+  {
+   "name": "qsa_decode:layers.39.attn_q",
+   "ms_per_step": 0.22814866666666667,
+   "kernels_per_step": 10.0,
+   "share_pct": 0.42079822295893543
+  },
+  {
+   "name": "qsa_decode:layers.7.attn_q",
+   "ms_per_step": 0.22427433333333333,
+   "kernels_per_step": 10.0,
+   "share_pct": 0.41365238859734704
+  },
+  {
+   "name": "qsa_decode:layers.15.attn_q",
+   "ms_per_step": 0.22376666666666664,
+   "kernels_per_step": 10.0,
+   "share_pct": 0.41271604636791404
+  },
+  {
+   "name": "qsa_decode:layers.3.attn_q",
+   "ms_per_step": 0.22041366666666665,
+   "kernels_per_step": 10.0,
+   "share_pct": 0.40653176108500805
+  },
+  {
+   "name": "qsa_decode:layers.43.attn_q",
+   "ms_per_step": 0.2192103333333333,
+   "kernels_per_step": 10.0,
+   "share_pct": 0.4043123287486634
+  },
+  {
+   "name": "qsa_decode:layers.47.attn_q",
+   "ms_per_step": 0.21509499999999995,
+   "kernels_per_step": 10.0,
+   "share_pct": 0.39672199311860484
+  },
+  {
+   "name": "qsa_decode:layers.19.attn_q",
+   "ms_per_step": 0.2146563333333333,
+   "kernels_per_step": 10.0,
+   "share_pct": 0.3959129147378211
+  },
+  {
+   "name": "qsa_decode:layers.35.attn_q",
+   "ms_per_step": 0.21421500000000002,
+   "kernels_per_step": 10.0,
+   "share_pct": 0.3950989179474277
+  },
+  {
+   "name": "qsa_decode:layers.11.attn_q",
+   "ms_per_step": 0.2122116666666667,
+   "kernels_per_step": 10.0,
+   "share_pct": 0.3914039627281946
+  },
+  {
+   "name": "qsa_decode:layers.27.attn_q",
+   "ms_per_step": 0.21157100000000006,
+   "kernels_per_step": 10.0,
+   "share_pct": 0.39022231481948155
+  },
+  {
+   "name": "qsa_decode:layers.31.attn_q",
+   "ms_per_step": 0.20732133333333333,
+   "kernels_per_step": 10.0,
+   "share_pct": 0.3823842143053379
+  },
+  {
+   "name": "linear:layers.0.attn_qkv",
+   "ms_per_step": 0.20402266666666669,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.37630014161822806
+  },
+  {
+   "name": "linear:layers.43.attn_q",
+   "ms_per_step": 0.152713,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2816644075181734
+  },
+  {
+   "name": "linear:layers.23.attn_q",
+   "ms_per_step": 0.152593,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2814430790857401
+  },
+  {
+   "name": "linear:layers.31.attn_q",
+   "ms_per_step": 0.15209899999999998,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.28053194370555656
+  },
+  {
+   "name": "linear:layers.35.attn_q",
+   "ms_per_step": 0.15152466666666664,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2794726412358829
+  },
+  {
+   "name": "linear:layers.39.attn_q",
+   "ms_per_step": 0.151511,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2794474343866336
+  },
+  {
+   "name": "linear:layers.27.attn_q",
+   "ms_per_step": 0.15141733333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2792746752490954
+  },
+  {
+   "name": "linear:layers.15.attn_q",
+   "ms_per_step": 0.15084333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.27821598758062294
+  },
+  {
+   "name": "linear:layers.11.attn_q",
+   "ms_per_step": 0.15084300000000003,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2782153727794218
+  },
+  {
+   "name": "linear:layers.47.attn_q",
+   "ms_per_step": 0.15053533333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2776479112707109
+  },
+  {
+   "name": "linear:layers.3.attn_q",
+   "ms_per_step": 0.15044233333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2774763817355751
+  },
+  {
+   "name": "linear:layers.19.attn_q",
+   "ms_per_step": 0.15022866666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.27708229416560365
+  },
+  {
+   "name": "linear:layers.7.attn_q",
+   "ms_per_step": 0.15020166666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2770324952683062
+  },
+  {
+   "name": "linear:layers.34.attn_qkv",
+   "ms_per_step": 0.13065833333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.24098670084174456
+  },
+  {
+   "name": "linear:layers.45.attn_qkv",
+   "ms_per_step": 0.13003066666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2398290301798784
+  },
+  {
+   "name": "linear:layers.36.attn_qkv",
+   "ms_per_step": 0.13001733333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2398044381318303
+  },
+  {
+   "name": "linear:layers.33.attn_qkv",
+   "ms_per_step": 0.12976366666666664,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23933657441771436
+  },
+  {
+   "name": "linear:layers.37.attn_qkv",
+   "ms_per_step": 0.12972333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2392621834723688
+  },
+  {
+   "name": "linear:layers.44.attn_qkv",
+   "ms_per_step": 0.12932266666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23852319242852216
+  },
+  {
+   "name": "linear:layers.25.attn_qkv",
+   "ms_per_step": 0.12924233333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23837502533903213
+  },
+  {
+   "name": "linear:layers.26.attn_qkv",
+   "ms_per_step": 0.12876200000000002,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23748909680809785
+  },
+  {
+   "name": "linear:layers.32.attn_qkv",
+   "ms_per_step": 0.12873466666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23743868310959915
+  },
+  {
+   "name": "linear:layers.24.attn_qkv",
+   "ms_per_step": 0.12846766666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23694622734743515
+  },
+  {
+   "name": "linear:layers.22.attn_qkv",
+   "ms_per_step": 0.12801366666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23610886811139595
+  },
+  {
+   "name": "linear:layers.21.attn_qkv",
+   "ms_per_step": 0.12785333333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23581314873361703
+  },
+  {
+   "name": "linear:layers.38.attn_qkv",
+   "ms_per_step": 0.12765233333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23544242360929143
+  },
+  {
+   "name": "linear:layers.5.attn_qkv",
+   "ms_per_step": 0.12719866666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2346056791744534
+  },
+  {
+   "name": "linear:layers.1.ple_key",
+   "ms_per_step": 0.12698466666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23421097680328076
+  },
+  {
+   "name": "linear:layers.4.attn_qkv",
+   "ms_per_step": 0.12673133333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2337437278903661
+  },
+  {
+   "name": "linear:layers.2.attn_qkv",
+   "ms_per_step": 0.126691,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23366933694502048
+  },
+  {
+   "name": "linear:layers.20.attn_qkv",
+   "ms_per_step": 0.126611,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2335217846567316
+  },
+  {
+   "name": "linear:layers.28.attn_qkv",
+   "ms_per_step": 0.126517,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23334841071799223
+  },
+  {
+   "name": "linear:layers.30.attn_qkv",
+   "ms_per_step": 0.12637033333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23307789818946273
+  },
+  {
+   "name": "linear:layers.16.attn_qkv",
+   "ms_per_step": 0.12637033333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23307789818946267
+  },
+  {
+   "name": "linear:layers.40.attn_qkv",
+   "ms_per_step": 0.12630366666666668,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.232954937949222
+  },
+  {
+   "name": "linear:layers.17.attn_qkv",
+   "ms_per_step": 0.126237,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23283197770898129
+  },
+  {
+   "name": "linear:layers.14.attn_qkv",
+   "ms_per_step": 0.12618333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23273299471558753
+  },
+  {
+   "name": "linear:layers.18.attn_qkv",
+   "ms_per_step": 0.12613,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23263462652339498
+  },
+  {
+   "name": "linear:layers.1.attn_qkv",
+   "ms_per_step": 0.12609033333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23256146518045176
+  },
+  {
+   "name": "linear:layers.29.attn_qkv",
+   "ms_per_step": 0.12609,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2325608503792506
+  },
+  {
+   "name": "linear:layers.6.attn_qkv",
+   "ms_per_step": 0.12607633333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2325356435300012
+  },
+  {
+   "name": "linear:layers.41.attn_qkv",
+   "ms_per_step": 0.126036,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23246125258465558
+  },
+  {
+   "name": "linear:layers.8.attn_qkv",
+   "ms_per_step": 0.12586299999999997,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23214217076123092
+  },
+  {
+   "name": "linear:layers.42.attn_qkv",
+   "ms_per_step": 0.12576933333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23196941162369275
+  },
+  {
+   "name": "linear:layers.12.attn_qkv",
+   "ms_per_step": 0.12575566666666668,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23194420477444344
+  },
+  {
+   "name": "linear:layers.13.attn_qkv",
+   "ms_per_step": 0.12572966666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23189625028074953
+  },
+  {
+   "name": "linear:layers.46.attn_qkv",
+   "ms_per_step": 0.12571566666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.231870428630299
+  },
+  {
+   "name": "linear:layers.9.attn_qkv",
+   "ms_per_step": 0.12566233333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.2317720604381064
+  },
+  {
+   "name": "linear:layers.10.attn_qkv",
+   "ms_per_step": 0.12562199999999998,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.23169766949276083
+  },
+  {
+   "name": "linear:layers.33.attn_gate",
+   "ms_per_step": 0.08274166666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.15260902816874047
+  },
+  {
+   "name": "linear:layers.37.attn_gate",
+   "ms_per_step": 0.082221,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1516487086924606
+  },
+  {
+   "name": "linear:layers.36.attn_gate",
+   "ms_per_step": 0.08206033333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.15135237451348052
+  },
+  {
+   "name": "linear:layers.34.attn_gate",
+   "ms_per_step": 0.08188666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1510320630876535
+  },
+  {
+   "name": "linear:layers.44.attn_gate",
+   "ms_per_step": 0.08164633333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.15058879142158577
+  },
+  {
+   "name": "linear:layers.45.attn_gate",
+   "ms_per_step": 0.08152633333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1503674629891525
+  },
+  {
+   "name": "linear:layers.1.attn_gate",
+   "ms_per_step": 0.08151333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.15034348574230555
+  },
+  {
+   "name": "linear:layers.32.attn_gate",
+   "ms_per_step": 0.08145966666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1502445027489118
+  },
+  {
+   "name": "linear:layers.17.attn_gate",
+   "ms_per_step": 0.08133933333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.15002255951527735
+  },
+  {
+   "name": "linear:layers.24.attn_gate",
+   "ms_per_step": 0.08115233333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14967765604140218
+  },
+  {
+   "name": "linear:layers.25.attn_gate",
+   "ms_per_step": 0.08077866666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14898846389485304
+  },
+  {
+   "name": "linear:layers.22.attn_gate",
+   "ms_per_step": 0.08072466666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14888886610025806
+  },
+  {
+   "name": "linear:layers.19.attn_output",
+   "ms_per_step": 0.08056466666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1485937615236804
+  },
+  {
+   "name": "linear:layers.36.ssm_out",
+   "ms_per_step": 0.08052433333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14851937057833475
+  },
+  {
+   "name": "linear:layers.46.attn_gate",
+   "ms_per_step": 0.080511,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14849477853028661
+  },
+  {
+   "name": "linear:layers.45.ssm_out",
+   "ms_per_step": 0.08045766666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14839641033809406
+  },
+  {
+   "name": "linear:layers.21.attn_gate",
+   "ms_per_step": 0.08044433333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14837181829004592
+  },
+  {
+   "name": "linear:layers.33.ssm_out",
+   "ms_per_step": 0.080444,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1483712034888447
+  },
+  {
+   "name": "linear:layers.29.ssm_out",
+   "ms_per_step": 0.08031066666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1481252830083633
+  },
+  {
+   "name": "linear:layers.44.ssm_out",
+   "ms_per_step": 0.07996366666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14748527495791047
+  },
+  {
+   "name": "linear:layers.0.attn_gate",
+   "ms_per_step": 0.07992366666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14741149881376603
+  },
+  {
+   "name": "linear:layers.42.ssm_out",
+   "ms_per_step": 0.07989666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14736169991646858
+  },
+  {
+   "name": "linear:layers.41.attn_gate",
+   "ms_per_step": 0.07987000000000001,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1473125158203723
+  },
+  {
+   "name": "linear:layers.2.attn_gate",
+   "ms_per_step": 0.07986966666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1473119010191711
+  },
+  {
+   "name": "linear:layers.18.ssm_out",
+   "ms_per_step": 0.07986966666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14731190101917108
+  },
+  {
+   "name": "linear:layers.14.attn_gate",
+   "ms_per_step": 0.07985700000000001,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14728853857352536
+  },
+  {
+   "name": "linear:layers.32.ssm_out",
+   "ms_per_step": 0.079857,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14728853857352533
+  },
+  {
+   "name": "linear:layers.9.ssm_out",
+   "ms_per_step": 0.07984333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.147263331724276
+  },
+  {
+   "name": "linear:layers.3.attn_output",
+   "ms_per_step": 0.07970933333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14701618164139219
+  },
+  {
+   "name": "linear:layers.38.attn_gate",
+   "ms_per_step": 0.07969633333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14699220439454525
+  },
+  {
+   "name": "linear:layers.4.attn_gate",
+   "ms_per_step": 0.07968266666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14696699754529588
+  },
+  {
+   "name": "linear:layers.28.ssm_out",
+   "ms_per_step": 0.07965599999999999,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1469178134491996
+  },
+  {
+   "name": "linear:layers.34.ssm_out",
+   "ms_per_step": 0.079629,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14686801455190215
+  },
+  {
+   "name": "linear:layers.29.attn_gate",
+   "ms_per_step": 0.079616,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14684403730505521
+  },
+  {
+   "name": "linear:layers.16.attn_gate",
+   "ms_per_step": 0.079603,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14682006005820825
+  },
+  {
+   "name": "linear:layers.40.attn_gate",
+   "ms_per_step": 0.07960266666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14681944525700708
+  },
+  {
+   "name": "linear:layers.20.attn_gate",
+   "ms_per_step": 0.07957566666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14676964635970954
+  },
+  {
+   "name": "linear:layers.28.attn_gate",
+   "ms_per_step": 0.07954966666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14672169186601572
+  },
+  {
+   "name": "linear:layers.10.attn_gate",
+   "ms_per_step": 0.07954933333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1467210770648145
+  },
+  {
+   "name": "linear:layers.5.ssm_out",
+   "ms_per_step": 0.07952266666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14667189296871821
+  },
+  {
+   "name": "linear:layers.30.attn_gate",
+   "ms_per_step": 0.079509,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14664668611946888
+  },
+  {
+   "name": "linear:layers.6.attn_gate",
+   "ms_per_step": 0.079496,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14662270887262194
+  },
+  {
+   "name": "linear:layers.12.attn_gate",
+   "ms_per_step": 0.079496,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14662270887262194
+  },
+  {
+   "name": "linear:layers.42.attn_gate",
+   "ms_per_step": 0.07949566666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14662209407142074
+  },
+  {
+   "name": "linear:layers.26.attn_gate",
+   "ms_per_step": 0.07946933333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14657352477652566
+  },
+  {
+   "name": "linear:layers.47.attn_output",
+   "ms_per_step": 0.07940233333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14644994973508377
+  },
+  {
+   "name": "linear:layers.5.attn_gate",
+   "ms_per_step": 0.07934933333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14635219634409238
+  },
+  {
+   "name": "linear:layers.13.attn_gate",
+   "ms_per_step": 0.07932233333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1463023974467949
+  },
+  {
+   "name": "linear:layers.23.attn_output",
+   "ms_per_step": 0.079322,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1463017826455937
+  },
+  {
+   "name": "linear:layers.37.ssm_out",
+   "ms_per_step": 0.07929533333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1462525985494974
+  },
+  {
+   "name": "linear:layers.40.ssm_out",
+   "ms_per_step": 0.07926866666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14620341445340115
+  },
+  {
+   "name": "linear:layers.18.attn_gate",
+   "ms_per_step": 0.07917533333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14603127011706415
+  },
+  {
+   "name": "linear:layers.9.attn_gate",
+   "ms_per_step": 0.079175,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14603065531586296
+  },
+  {
+   "name": "linear:layers.30.ssm_out",
+   "ms_per_step": 0.07916166666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14600606326781482
+  },
+  {
+   "name": "linear:layers.26.ssm_out",
+   "ms_per_step": 0.07913533333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14595749397291977
+  },
+  {
+   "name": "linear:layers.8.attn_gate",
+   "ms_per_step": 0.07910833333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1459076950756223
+  },
+  {
+   "name": "linear:layers.39.attn_output",
+   "ms_per_step": 0.079055,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1458093268834297
+  },
+  {
+   "name": "linear:layers.0.ssm_out",
+   "ms_per_step": 0.07904166666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14578473483538157
+  },
+  {
+   "name": "linear:layers.2.ssm_out",
+   "ms_per_step": 0.07900133333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14571034389003593
+  },
+  {
+   "name": "linear:layers.1.ssm_out",
+   "ms_per_step": 0.07893499999999999,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14558799845099643
+  },
+  {
+   "name": "linear:layers.6.ssm_out",
+   "ms_per_step": 0.07892133333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14556279160174707
+  },
+  {
+   "name": "linear:layers.25.ssm_out",
+   "ms_per_step": 0.07890799999999999,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14553819955369895
+  },
+  {
+   "name": "linear:layers.27.attn_output",
+   "ms_per_step": 0.07872066666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1451926812786226
+  },
+  {
+   "name": "linear:layers.11.attn_output",
+   "ms_per_step": 0.07864066666666668,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14504512899033375
+  },
+  {
+   "name": "linear:layers.15.attn_output",
+   "ms_per_step": 0.07862766666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14502115174348681
+  },
+  {
+   "name": "linear:layers.17.ssm_out",
+   "ms_per_step": 0.078614,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14499594489423745
+  },
+  {
+   "name": "linear:layers.8.ssm_out",
+   "ms_per_step": 0.07860066666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1449713528461893
+  },
+  {
+   "name": "linear:layers.43.attn_output",
+   "ms_per_step": 0.07857399999999999,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14492216875009303
+  },
+  {
+   "name": "linear:layers.7.attn_output",
+   "ms_per_step": 0.07850766666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14479982331105354
+  },
+  {
+   "name": "linear:layers.22.ssm_out",
+   "ms_per_step": 0.078467,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14472481756450672
+  },
+  {
+   "name": "linear:layers.10.ssm_out",
+   "ms_per_step": 0.07838733333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14457788007741906
+  },
+  {
+   "name": "linear:layers.24.ssm_out",
+   "ms_per_step": 0.078374,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14455328802937092
+  },
+  {
+   "name": "linear:layers.21.ssm_out",
+   "ms_per_step": 0.07821366666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14425756865159206
+  },
+  {
+   "name": "linear:layers.20.ssm_out",
+   "ms_per_step": 0.07816,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14415858565819828
+  },
+  {
+   "name": "linear:layers.13.ssm_out",
+   "ms_per_step": 0.078093,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14403501061675636
+  },
+  {
+   "name": "linear:layers.31.attn_output",
+   "ms_per_step": 0.077986,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14383765943117008
+  },
+  {
+   "name": "linear:layers.16.ssm_out",
+   "ms_per_step": 0.07790533333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14368887754047882
+  },
+  {
+   "name": "linear:layers.4.ssm_out",
+   "ms_per_step": 0.07787899999999999,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14364030824558371
+  },
+  {
+   "name": "linear:layers.14.ssm_out",
+   "ms_per_step": 0.07777233333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1434435718611986
+  },
+  {
+   "name": "linear:layers.41.ssm_out",
+   "ms_per_step": 0.07774566666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14339438776510235
+  },
+  {
+   "name": "linear:layers.38.ssm_out",
+   "ms_per_step": 0.077719,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14334520366900605
+  },
+  {
+   "name": "linear:layers.46.ssm_out",
+   "ms_per_step": 0.07747866666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.1429019320029383
+  },
+  {
+   "name": "linear:layers.35.attn_output",
+   "ms_per_step": 0.07742500000000001,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14280294900954454
+  },
+  {
+   "name": "linear:layers.12.ssm_out",
+   "ms_per_step": 0.076824,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.14169446244377465
+  },
+  {
+   "name": "gdn:layers.6.attn_qkv",
+   "ms_per_step": 0.067527,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12454704214100763
+  },
+  {
+   "name": "gdn:layers.17.attn_qkv",
+   "ms_per_step": 0.06747366666666667,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12444867394881505
+  },
+  {
+   "name": "gdn:layers.16.attn_qkv",
+   "ms_per_step": 0.06739266666666667,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12429927725692261
+  },
+  {
+   "name": "gdn:layers.12.attn_qkv",
+   "ms_per_step": 0.067313,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12415233976983497
+  },
+  {
+   "name": "gdn:layers.26.attn_qkv",
+   "ms_per_step": 0.06721933333333334,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12397958063229679
+  },
+  {
+   "name": "gdn:layers.1.attn_qkv",
+   "ms_per_step": 0.06719266666666666,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.1239303965362005
+  },
+  {
+   "name": "gdn:layers.21.attn_qkv",
+   "ms_per_step": 0.06716599999999999,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12388121244010422
+  },
+  {
+   "name": "gdn:layers.8.attn_qkv",
+   "ms_per_step": 0.067153,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12385723519325728
+  },
+  {
+   "name": "gdn:layers.28.attn_qkv",
+   "ms_per_step": 0.06715266666666668,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.1238566203920561
+  },
+  {
+   "name": "gdn:layers.0.attn_qkv",
+   "ms_per_step": 0.06711266666666667,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12378284424791165
+  },
+  {
+   "name": "gdn:layers.18.attn_qkv",
+   "ms_per_step": 0.06707266666666667,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12370906810376724
+  },
+  {
+   "name": "gdn:layers.10.attn_qkv",
+   "ms_per_step": 0.06707233333333333,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12370845330256604
+  },
+  {
+   "name": "gdn:layers.4.attn_qkv",
+   "ms_per_step": 0.06700566666666667,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12358549306232533
+  },
+  {
+   "name": "gdn:layers.2.attn_qkv",
+   "ms_per_step": 0.06696633333333334,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12351294652058332
+  },
+  {
+   "name": "gdn:layers.38.attn_qkv",
+   "ms_per_step": 0.066872,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12333895778064272
+  },
+  {
+   "name": "gdn:layers.25.attn_qkv",
+   "ms_per_step": 0.06677833333333333,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12316619864310453
+  },
+  {
+   "name": "gdn:layers.37.attn_qkv",
+   "ms_per_step": 0.06675166666666667,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12311701454700828
+  },
+  {
+   "name": "gdn:layers.5.attn_qkv",
+   "ms_per_step": 0.06671133333333333,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12304262360166264
+  },
+  {
+   "name": "gdn:layers.46.attn_qkv",
+   "ms_per_step": 0.06668466666666667,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12299343950556635
+  },
+  {
+   "name": "gdn:layers.44.attn_qkv",
+   "ms_per_step": 0.06660533333333334,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12284711681967993
+  },
+  {
+   "name": "gdn:layers.42.attn_qkv",
+   "ms_per_step": 0.06651133333333333,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12267374288094055
+  },
+  {
+   "name": "gdn:layers.36.attn_qkv",
+   "ms_per_step": 0.066485,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12262517358604547
+  },
+  {
+   "name": "gdn:layers.22.attn_qkv",
+   "ms_per_step": 0.06647166666666667,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12260058153799733
+  },
+  {
+   "name": "gdn:layers.41.attn_qkv",
+   "ms_per_step": 0.066458,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12257537468874798
+  },
+  {
+   "name": "gdn:layers.32.attn_qkv",
+   "ms_per_step": 0.06643166666666667,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12252680539385291
+  },
+  {
+   "name": "gdn:layers.30.attn_qkv",
+   "ms_per_step": 0.06640466666666665,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12247700649655541
+  },
+  {
+   "name": "gdn:layers.29.attn_qkv",
+   "ms_per_step": 0.06639133333333334,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12245241444850728
+  },
+  {
+   "name": "gdn:layers.34.attn_qkv",
+   "ms_per_step": 0.06635133333333333,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12237863830436287
+  },
+  {
+   "name": "gdn:layers.20.attn_qkv",
+   "ms_per_step": 0.06632433333333333,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12232883940706536
+  },
+  {
+   "name": "gdn:layers.40.attn_qkv",
+   "ms_per_step": 0.06625833333333332,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12220710876922705
+  },
+  {
+   "name": "gdn:layers.13.attn_qkv",
+   "ms_per_step": 0.06619066666666668,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12208230412538279
+  },
+  {
+   "name": "gdn:layers.24.attn_qkv",
+   "ms_per_step": 0.06617733333333332,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12205771207733462
+  },
+  {
+   "name": "gdn:layers.33.attn_qkv",
+   "ms_per_step": 0.066071,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12186159049415071
+  },
+  {
+   "name": "gdn:layers.14.attn_qkv",
+   "ms_per_step": 0.06601733333333333,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12176260750075694
+  },
+  {
+   "name": "gdn:layers.9.attn_qkv",
+   "ms_per_step": 0.065857,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12146688812297804
+  },
+  {
+   "name": "gdn:layers.45.attn_qkv",
+   "ms_per_step": 0.06571,
+   "kernels_per_step": 2.0,
+   "share_pct": 0.12119576079324731
+  },
+  {
+   "name": "linear:layers.0.hc_attn_down",
+   "ms_per_step": 0.040342333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.07440754497805682
+  },
+  {
+   "name": "linear:layers.33.hc_attn_down",
+   "ms_per_step": 0.038058,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0701943123462092
+  },
+  {
+   "name": "linear:layers.32.hc_ffn_down",
+   "ms_per_step": 0.03773733333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06960287359065143
+  },
+  {
+   "name": "linear:layers.34.hc_attn_down",
+   "ms_per_step": 0.037711,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06955430429575635
+  },
+  {
+   "name": "linear:layers.35.hc_attn_down",
+   "ms_per_step": 0.037671,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06948052815161192
+  },
+  {
+   "name": "linear:layers.9.hc_attn_down",
+   "ms_per_step": 0.037670666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06947991335041072
+  },
+  {
+   "name": "linear:layers.29.hc_ffn_down",
+   "ms_per_step": 0.037644000000000004,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06943072925431444
+  },
+  {
+   "name": "linear:layers.43.hc_ffn_down",
+   "ms_per_step": 0.037296666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06879010640266038
+  },
+  {
+   "name": "linear:layers.45.hc_attn_down",
+   "ms_per_step": 0.037283666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06876612915581345
+  },
+  {
+   "name": "linear:layers.28.hc_ffn_down",
+   "ms_per_step": 0.03727,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0687409223065641
+  },
+  {
+   "name": "linear:layers.6.hc_ffn_down",
+   "ms_per_step": 0.037269666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06874030750536289
+  },
+  {
+   "name": "linear:layers.7.hc_attn_down",
+   "ms_per_step": 0.037269666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06874030750536289
+  },
+  {
+   "name": "linear:layers.16.hc_ffn_down",
+   "ms_per_step": 0.03720333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0686179620663234
+  },
+  {
+   "name": "linear:layers.41.hc_ffn_down",
+   "ms_per_step": 0.037189999999999994,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06859337001827524
+  },
+  {
+   "name": "linear:layers.24.hc_ffn_down",
+   "ms_per_step": 0.03717666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0685687779702271
+  },
+  {
+   "name": "linear:layers.44.hc_attn_down",
+   "ms_per_step": 0.037175999999999994,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06856754836782471
+  },
+  {
+   "name": "linear:layers.38.hc_attn_down",
+   "ms_per_step": 0.03716333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06854418592217898
+  },
+  {
+   "name": "linear:layers.10.hc_ffn_down",
+   "ms_per_step": 0.03716266666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06854295631977658
+  },
+  {
+   "name": "linear:layers.46.hc_attn_down",
+   "ms_per_step": 0.03716266666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06854295631977658
+  },
+  {
+   "name": "linear:layers.33.hc_ffn_down",
+   "ms_per_step": 0.037135999999999995,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06849377222368029
+  },
+  {
+   "name": "linear:layers.44.hc_ffn_down",
+   "ms_per_step": 0.037123,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06846979497683336
+  },
+  {
+   "name": "linear:layers.41.hc_attn_down",
+   "ms_per_step": 0.037122999999999996,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06846979497683335
+  },
+  {
+   "name": "linear:layers.39.hc_ffn_down",
+   "ms_per_step": 0.03710966666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06844520292878523
+  },
+  {
+   "name": "linear:layers.1.hc_ffn_down",
+   "ms_per_step": 0.03706966666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0683714267846408
+  },
+  {
+   "name": "linear:layers.27.hc_ffn_down",
+   "ms_per_step": 0.03705633333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06834683473659266
+  },
+  {
+   "name": "linear:layers.19.hc_attn_down",
+   "ms_per_step": 0.03704266666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0683216278873433
+  },
+  {
+   "name": "linear:layers.30.hc_attn_down",
+   "ms_per_step": 0.03701633333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06827305859244823
+  },
+  {
+   "name": "linear:layers.21.hc_ffn_down",
+   "ms_per_step": 0.03700266666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06824785174319889
+  },
+  {
+   "name": "linear:layers.3.hc_ffn_down",
+   "ms_per_step": 0.03700233333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06824723694199769
+  },
+  {
+   "name": "linear:layers.17.hc_ffn_down",
+   "ms_per_step": 0.036989666666666664,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06822387449635195
+  },
+  {
+   "name": "linear:layers.40.hc_ffn_down",
+   "ms_per_step": 0.036989666666666664,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06822387449635195
+  },
+  {
+   "name": "linear:layers.46.hc_ffn_down",
+   "ms_per_step": 0.03698933333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06822325969515076
+  },
+  {
+   "name": "linear:layers.6.hc_attn_down",
+   "ms_per_step": 0.036976,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06819866764710261
+  },
+  {
+   "name": "linear:layers.19.hc_ffn_down",
+   "ms_per_step": 0.036962666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06817407559905446
+  },
+  {
+   "name": "linear:layers.4.hc_ffn_down",
+   "ms_per_step": 0.036949333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06814948355100633
+  },
+  {
+   "name": "linear:layers.11.hc_ffn_down",
+   "ms_per_step": 0.036936000000000004,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0681248915029582
+  },
+  {
+   "name": "linear:layers.22.hc_ffn_down",
+   "ms_per_step": 0.036909,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06807509260566069
+  },
+  {
+   "name": "linear:layers.29.hc_attn_down",
+   "ms_per_step": 0.03688266666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06802652331076563
+  },
+  {
+   "name": "linear:layers.2.hc_ffn_down",
+   "ms_per_step": 0.03688233333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06802590850956441
+  },
+  {
+   "name": "linear:layers.12.hc_ffn_down",
+   "ms_per_step": 0.03686933333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06800193126271749
+  },
+  {
+   "name": "linear:layers.14.hc_ffn_down",
+   "ms_per_step": 0.036856,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06797733921466934
+  },
+  {
+   "name": "linear:layers.36.hc_ffn_down",
+   "ms_per_step": 0.03685533333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06797610961226694
+  },
+  {
+   "name": "linear:layers.18.hc_attn_down",
+   "ms_per_step": 0.03684233333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06795213236542001
+  },
+  {
+   "name": "linear:layers.5.hc_ffn_down",
+   "ms_per_step": 0.03682933333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06792815511857306
+  },
+  {
+   "name": "linear:layers.8.hc_ffn_down",
+   "ms_per_step": 0.03682933333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06792815511857306
+  },
+  {
+   "name": "linear:layers.18.hc_ffn_down",
+   "ms_per_step": 0.036829,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06792754031737186
+  },
+  {
+   "name": "linear:layers.31.hc_ffn_down",
+   "ms_per_step": 0.03681566666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0679029482693237
+  },
+  {
+   "name": "linear:layers.35.hc_ffn_down",
+   "ms_per_step": 0.03680233333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06787835622127557
+  },
+  {
+   "name": "linear:layers.47.hc_attn_down",
+   "ms_per_step": 0.036789333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06785437897442864
+  },
+  {
+   "name": "linear:layers.37.hc_ffn_down",
+   "ms_per_step": 0.036789333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06785437897442864
+  },
+  {
+   "name": "linear:layers.27.hc_attn_down",
+   "ms_per_step": 0.036788999999999995,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06785376417322744
+  },
+  {
+   "name": "linear:layers.26.hc_attn_down",
+   "ms_per_step": 0.036775999999999996,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0678297869263805
+  },
+  {
+   "name": "linear:layers.43.hc_attn_down",
+   "ms_per_step": 0.036775333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0678285573239781
+  },
+  {
+   "name": "linear:layers.2.hc_attn_down",
+   "ms_per_step": 0.036762333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06780458007713117
+  },
+  {
+   "name": "linear:layers.9.hc_ffn_down",
+   "ms_per_step": 0.036762333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06780458007713117
+  },
+  {
+   "name": "linear:layers.38.hc_ffn_down",
+   "ms_per_step": 0.036762333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06780458007713117
+  },
+  {
+   "name": "linear:layers.40.hc_attn_down",
+   "ms_per_step": 0.036762333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06780458007713117
+  },
+  {
+   "name": "linear:layers.42.hc_ffn_down",
+   "ms_per_step": 0.036749,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06777998802908303
+  },
+  {
+   "name": "linear:layers.5.hc_attn_down",
+   "ms_per_step": 0.036748666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06777937322788181
+  },
+  {
+   "name": "linear:layers.15.hc_attn_down",
+   "ms_per_step": 0.03672233333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06773080393298674
+  },
+  {
+   "name": "linear:layers.21.hc_attn_down",
+   "ms_per_step": 0.03670833333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06770498228253619
+  },
+  {
+   "name": "linear:layers.22.hc_attn_down",
+   "ms_per_step": 0.036682,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06765641298764112
+  },
+  {
+   "name": "linear:layers.1.hc_attn_down",
+   "ms_per_step": 0.036669,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06763243574079418
+  },
+  {
+   "name": "linear:layers.39.hc_attn_down",
+   "ms_per_step": 0.03666866666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06763182093959298
+  },
+  {
+   "name": "linear:layers.34.hc_ffn_down",
+   "ms_per_step": 0.03666866666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06763182093959297
+  },
+  {
+   "name": "linear:layers.45.hc_ffn_down",
+   "ms_per_step": 0.03665533333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06760722889154484
+  },
+  {
+   "name": "linear:layers.7.hc_ffn_down",
+   "ms_per_step": 0.036642666666666664,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0675838664458991
+  },
+  {
+   "name": "linear:layers.0.hc_ffn_down",
+   "ms_per_step": 0.036628666666666664,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06755804479544855
+  },
+  {
+   "name": "linear:layers.25.hc_attn_down",
+   "ms_per_step": 0.036628666666666664,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06755804479544855
+  },
+  {
+   "name": "linear:layers.13.hc_ffn_down",
+   "ms_per_step": 0.03661533333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06753345274740041
+  },
+  {
+   "name": "linear:layers.13.hc_attn_down",
+   "ms_per_step": 0.036601666666666664,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06750824589815108
+  },
+  {
+   "name": "linear:layers.20.hc_ffn_down",
+   "ms_per_step": 0.036588666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06748426865130414
+  },
+  {
+   "name": "linear:layers.24.hc_attn_down",
+   "ms_per_step": 0.036575666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0674602914044572
+  },
+  {
+   "name": "linear:layers.25.hc_ffn_down",
+   "ms_per_step": 0.036575333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.067459676603256
+  },
+  {
+   "name": "linear:layers.23.hc_ffn_down",
+   "ms_per_step": 0.03657533333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06745967660325598
+  },
+  {
+   "name": "linear:layers.42.hc_attn_down",
+   "ms_per_step": 0.036574999999999996,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06745906180205478
+  },
+  {
+   "name": "linear:layers.31.hc_attn_down",
+   "ms_per_step": 0.036561666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06743446975400665
+  },
+  {
+   "name": "linear:layers.26.hc_ffn_down",
+   "ms_per_step": 0.036535333333333336,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06738590045911158
+  },
+  {
+   "name": "linear:layers.23.hc_attn_down",
+   "ms_per_step": 0.03650833333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06733610156181408
+  },
+  {
+   "name": "linear:layers.3.hc_attn_down",
+   "ms_per_step": 0.036495,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06731150951376594
+  },
+  {
+   "name": "linear:layers.10.hc_attn_down",
+   "ms_per_step": 0.03645466666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06723711856842034
+  },
+  {
+   "name": "linear:layers.8.hc_attn_down",
+   "ms_per_step": 0.036415333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06716457202667832
+  },
+  {
+   "name": "linear:layers.30.hc_ffn_down",
+   "ms_per_step": 0.036415,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06716395722547712
+  },
+  {
+   "name": "linear:root.head_hc_down",
+   "ms_per_step": 0.036415,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06716395722547712
+  },
+  {
+   "name": "linear:layers.15.hc_ffn_down",
+   "ms_per_step": 0.036402000000000004,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06713997997863018
+  },
+  {
+   "name": "linear:layers.36.hc_attn_down",
+   "ms_per_step": 0.036401666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06713936517742897
+  },
+  {
+   "name": "linear:layers.32.hc_attn_down",
+   "ms_per_step": 0.036401333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06713875037622777
+  },
+  {
+   "name": "linear:layers.37.hc_attn_down",
+   "ms_per_step": 0.036375333333333336,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06709079588253389
+  },
+  {
+   "name": "linear:layers.12.hc_attn_down",
+   "ms_per_step": 0.03632166666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06699181288914013
+  },
+  {
+   "name": "linear:layers.20.hc_attn_down",
+   "ms_per_step": 0.03626833333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06689344469694757
+  },
+  {
+   "name": "linear:layers.4.hc_attn_down",
+   "ms_per_step": 0.036268,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06689282989574637
+  },
+  {
+   "name": "linear:layers.28.hc_attn_down",
+   "ms_per_step": 0.036254666666666664,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06686823784769821
+  },
+  {
+   "name": "linear:layers.11.hc_attn_down",
+   "ms_per_step": 0.036241333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06684364579965008
+  },
+  {
+   "name": "linear:layers.17.hc_attn_down",
+   "ms_per_step": 0.036228333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06681966855280314
+  },
+  {
+   "name": "linear:layers.14.hc_attn_down",
+   "ms_per_step": 0.036188,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06674527760745752
+  },
+  {
+   "name": "ple:layers.1.ple_key",
+   "ms_per_step": 0.036187333333333335,
+   "kernels_per_step": 8.0,
+   "share_pct": 0.06674404800505511
+  },
+  {
+   "name": "linear:layers.47.hc_ffn_down",
+   "ms_per_step": 0.035961,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06632659798943794
+  },
+  {
+   "name": "linear:layers.16.hc_attn_down",
+   "ms_per_step": 0.03596066666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06632598318823672
+  },
+  {
+   "name": "linear:layers.1.ple_value",
+   "ms_per_step": 0.03415733333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06299990868972576
+  },
+  {
+   "name": "linear:layers.0.hc_attn_up",
+   "ms_per_step": 0.027532333333333336,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.050780734815806056
+  },
+  {
+   "name": "linear:layers.38.hc_ffn_up",
+   "ms_per_step": 0.022602666666666663,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.04168843985120739
+  },
+  {
+   "name": "linear:layers.45.hc_ffn_up",
+   "ms_per_step": 0.022015000000000003,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.04060454533348561
+  },
+  {
+   "name": "linear:layers.35.hc_ffn_up",
+   "ms_per_step": 0.021854666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.04030882595570672
+  },
+  {
+   "name": "linear:layers.2.hc_attn_up",
+   "ms_per_step": 0.02174733333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.040110859968919194
+  },
+  {
+   "name": "linear:layers.33.hc_attn_up",
+   "ms_per_step": 0.021694,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.04001249177672663
+  },
+  {
+   "name": "linear:layers.45.hc_attn_up",
+   "ms_per_step": 0.021613666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03986432468723659
+  },
+  {
+   "name": "linear:layers.7.hc_ffn_up",
+   "ms_per_step": 0.0214,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03947023711726513
+  },
+  {
+   "name": "linear:layers.31.hc_ffn_up",
+   "ms_per_step": 0.021333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.039346662075823234
+  },
+  {
+   "name": "linear:layers.38.hc_attn_up",
+   "ms_per_step": 0.021306333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03929747797972696
+  },
+  {
+   "name": "linear:layers.32.hc_attn_up",
+   "ms_per_step": 0.021280333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03924952348603308
+  },
+  {
+   "name": "linear:layers.47.hc_ffn_up",
+   "ms_per_step": 0.021240333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03917574734188866
+  },
+  {
+   "name": "linear:layers.41.hc_ffn_up",
+   "ms_per_step": 0.021239666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03917451773948625
+  },
+  {
+   "name": "linear:layers.46.hc_ffn_up",
+   "ms_per_step": 0.021226666666666668,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.039150540492639316
+  },
+  {
+   "name": "linear:layers.32.hc_ffn_up",
+   "ms_per_step": 0.021226333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03914992569143811
+  },
+  {
+   "name": "linear:layers.34.hc_attn_up",
+   "ms_per_step": 0.021173333333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03905217230044675
+  },
+  {
+   "name": "linear:layers.14.hc_attn_up",
+   "ms_per_step": 0.021173,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.039051557499245555
+  },
+  {
+   "name": "linear:layers.41.hc_attn_up",
+   "ms_per_step": 0.02113266666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03897716655389993
+  },
+  {
+   "name": "linear:layers.23.hc_ffn_up",
+   "ms_per_step": 0.021079666666666663,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03887941316290856
+  },
+  {
+   "name": "linear:layers.14.hc_ffn_up",
+   "ms_per_step": 0.021066333333333336,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03885482111486043
+  },
+  {
+   "name": "linear:layers.39.hc_ffn_up",
+   "ms_per_step": 0.02103933333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03880502221756294
+  },
+  {
+   "name": "linear:layers.42.hc_attn_up",
+   "ms_per_step": 0.021012666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.038755838121466664
+  },
+  {
+   "name": "linear:layers.13.hc_attn_up",
+   "ms_per_step": 0.02101233333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03875522332026546
+  },
+  {
+   "name": "linear:layers.13.hc_ffn_up",
+   "ms_per_step": 0.020999666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.038731860874619724
+  },
+  {
+   "name": "linear:layers.5.hc_ffn_up",
+   "ms_per_step": 0.020972666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03868206197732225
+  },
+  {
+   "name": "linear:layers.9.hc_attn_up",
+   "ms_per_step": 0.020972333333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03868144717612104
+  },
+  {
+   "name": "linear:layers.10.hc_attn_up",
+   "ms_per_step": 0.020932999999999997,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03860890063437902
+  },
+  {
+   "name": "linear:layers.26.hc_ffn_up",
+   "ms_per_step": 0.02093233333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03860767103197661
+  },
+  {
+   "name": "linear:layers.17.hc_attn_up",
+   "ms_per_step": 0.020893,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03853512449023461
+  },
+  {
+   "name": "linear:layers.3.hc_attn_up",
+   "ms_per_step": 0.020878999999999998,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03850930283978406
+  },
+  {
+   "name": "linear:layers.46.hc_attn_up",
+   "ms_per_step": 0.020852333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03846011874368778
+  },
+  {
+   "name": "linear:layers.22.hc_attn_up",
+   "ms_per_step": 0.020839,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03843552669563964
+  },
+  {
+   "name": "linear:layers.11.hc_ffn_up",
+   "ms_per_step": 0.020799333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.038362365352696416
+  },
+  {
+   "name": "linear:layers.27.hc_ffn_up",
+   "ms_per_step": 0.020745666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.038263382359302656
+  },
+  {
+   "name": "linear:layers.4.hc_attn_up",
+   "ms_per_step": 0.020745333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03826276755810146
+  },
+  {
+   "name": "linear:layers.28.hc_attn_up",
+   "ms_per_step": 0.020745333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03826276755810146
+  },
+  {
+   "name": "linear:layers.29.hc_attn_up",
+   "ms_per_step": 0.020745333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03826276755810146
+  },
+  {
+   "name": "linear:layers.2.hc_ffn_up",
+   "ms_per_step": 0.020718666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03821358346200517
+  },
+  {
+   "name": "linear:layers.40.hc_ffn_up",
+   "ms_per_step": 0.020706000000000002,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.038190221016359445
+  },
+  {
+   "name": "linear:layers.12.hc_attn_up",
+   "ms_per_step": 0.020705666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03818960621515824
+  },
+  {
+   "name": "linear:layers.26.hc_attn_up",
+   "ms_per_step": 0.020705666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03818960621515824
+  },
+  {
+   "name": "linear:layers.43.hc_ffn_up",
+   "ms_per_step": 0.020705666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03818960621515824
+  },
+  {
+   "name": "linear:layers.6.hc_ffn_up",
+   "ms_per_step": 0.020705,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.038188376612755835
+  },
+  {
+   "name": "linear:layers.5.hc_attn_up",
+   "ms_per_step": 0.020692000000000002,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.038164399365908895
+  },
+  {
+   "name": "linear:layers.19.hc_attn_up",
+   "ms_per_step": 0.02065233333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03809123802296568
+  },
+  {
+   "name": "linear:layers.1.hc_attn_up",
+   "ms_per_step": 0.020638666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.038066031173716326
+  },
+  {
+   "name": "linear:layers.40.hc_attn_up",
+   "ms_per_step": 0.020625,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03804082432446698
+  },
+  {
+   "name": "linear:layers.0.hc_ffn_up",
+   "ms_per_step": 0.020612000000000002,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.038016847077620056
+  },
+  {
+   "name": "linear:layers.16.hc_attn_up",
+   "ms_per_step": 0.020585,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.037967048180322566
+  },
+  {
+   "name": "linear:layers.9.hc_ffn_up",
+   "ms_per_step": 0.020571999999999997,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.037943070933475626
+  },
+  {
+   "name": "linear:layers.29.hc_ffn_up",
+   "ms_per_step": 0.020558666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03791847888542749
+  },
+  {
+   "name": "linear:layers.37.hc_attn_up",
+   "ms_per_step": 0.02055833333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03791786408422628
+  },
+  {
+   "name": "linear:layers.34.hc_ffn_up",
+   "ms_per_step": 0.020532333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.037869909590532415
+  },
+  {
+   "name": "linear:layers.1.hc_ffn_up",
+   "ms_per_step": 0.020531666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.037868679988130004
+  },
+  {
+   "name": "linear:layers.20.hc_ffn_up",
+   "ms_per_step": 0.020518666666666668,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.037844702741283064
+  },
+  {
+   "name": "linear:layers.19.hc_ffn_up",
+   "ms_per_step": 0.020505333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03782011069323493
+  },
+  {
+   "name": "linear:layers.22.hc_ffn_up",
+   "ms_per_step": 0.020505333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03782011069323493
+  },
+  {
+   "name": "linear:layers.28.hc_ffn_up",
+   "ms_per_step": 0.020505333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03782011069323493
+  },
+  {
+   "name": "linear:layers.35.hc_attn_up",
+   "ms_per_step": 0.020505333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03782011069323493
+  },
+  {
+   "name": "linear:layers.16.hc_ffn_up",
+   "ms_per_step": 0.020505,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03781949589203372
+  },
+  {
+   "name": "linear:layers.30.hc_ffn_up",
+   "ms_per_step": 0.020505,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03781949589203372
+  },
+  {
+   "name": "linear:layers.37.hc_ffn_up",
+   "ms_per_step": 0.020505,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03781949589203372
+  },
+  {
+   "name": "linear:layers.36.hc_attn_up",
+   "ms_per_step": 0.020492333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03779613344638799
+  },
+  {
+   "name": "linear:layers.30.hc_attn_up",
+   "ms_per_step": 0.020491333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03779428904278438
+  },
+  {
+   "name": "linear:layers.25.hc_ffn_up",
+   "ms_per_step": 0.020465333333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03774633454909051
+  },
+  {
+   "name": "linear:layers.4.hc_ffn_up",
+   "ms_per_step": 0.020451333333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03772051289863996
+  },
+  {
+   "name": "linear:layers.10.hc_ffn_up",
+   "ms_per_step": 0.020425,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03767194360374488
+  },
+  {
+   "name": "linear:layers.25.hc_attn_up",
+   "ms_per_step": 0.020425,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03767194360374488
+  },
+  {
+   "name": "linear:layers.17.hc_ffn_up",
+   "ms_per_step": 0.020411666666666668,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03764735155569675
+  },
+  {
+   "name": "linear:layers.8.hc_ffn_up",
+   "ms_per_step": 0.020411666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03764735155569674
+  },
+  {
+   "name": "linear:layers.21.hc_attn_up",
+   "ms_per_step": 0.020398333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0376227595076486
+  },
+  {
+   "name": "linear:layers.6.hc_attn_up",
+   "ms_per_step": 0.020385,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.037598167459600464
+  },
+  {
+   "name": "linear:layers.18.hc_ffn_up",
+   "ms_per_step": 0.020371333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03757296061035112
+  },
+  {
+   "name": "linear:layers.24.hc_ffn_up",
+   "ms_per_step": 0.020371333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03757296061035112
+  },
+  {
+   "name": "linear:layers.11.hc_attn_up",
+   "ms_per_step": 0.020358333333333336,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03754898336350418
+  },
+  {
+   "name": "linear:layers.44.hc_attn_up",
+   "ms_per_step": 0.020345000000000002,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03752439131545605
+  },
+  {
+   "name": "linear:layers.8.hc_attn_up",
+   "ms_per_step": 0.020331666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.037499799267407895
+  },
+  {
+   "name": "linear:layers.33.hc_ffn_up",
+   "ms_per_step": 0.020331333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.037499184466206696
+  },
+  {
+   "name": "linear:root.head_hc_up",
+   "ms_per_step": 0.02033133333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.037499184466206696
+  },
+  {
+   "name": "linear:layers.15.hc_ffn_up",
+   "ms_per_step": 0.020304666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03745000037011041
+  },
+  {
+   "name": "linear:layers.43.hc_attn_up",
+   "ms_per_step": 0.020291666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03742602312326348
+  },
+  {
+   "name": "linear:layers.15.hc_attn_up",
+   "ms_per_step": 0.02029133333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03742540832206227
+  },
+  {
+   "name": "linear:layers.3.hc_ffn_up",
+   "ms_per_step": 0.020264333333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03737560942476479
+  },
+  {
+   "name": "linear:layers.47.hc_attn_up",
+   "ms_per_step": 0.020251333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03735163217791786
+  },
+  {
+   "name": "linear:layers.27.hc_attn_up",
+   "ms_per_step": 0.020251333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03735163217791785
+  },
+  {
+   "name": "linear:layers.12.hc_ffn_up",
+   "ms_per_step": 0.020211333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03727785603377344
+  },
+  {
+   "name": "linear:layers.39.hc_attn_up",
+   "ms_per_step": 0.020144333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03715428099233153
+  },
+  {
+   "name": "linear:layers.42.hc_ffn_up",
+   "ms_per_step": 0.020104666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03708111964938832
+  },
+  {
+   "name": "linear:layers.23.hc_attn_up",
+   "ms_per_step": 0.020104,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.037079890046985906
+  },
+  {
+   "name": "linear:layers.21.hc_ffn_up",
+   "ms_per_step": 0.020037666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03695754460794641
+  },
+  {
+   "name": "linear:layers.7.hc_attn_up",
+   "ms_per_step": 0.020037333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.036956929806745205
+  },
+  {
+   "name": "linear:layers.18.hc_attn_up",
+   "ms_per_step": 0.019984000000000002,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03685856161455265
+  },
+  {
+   "name": "linear:layers.31.hc_attn_up",
+   "ms_per_step": 0.019957333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.036809377518456365
+  },
+  {
+   "name": "linear:layers.44.hc_ffn_up",
+   "ms_per_step": 0.01993066666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03676019342236008
+  },
+  {
+   "name": "linear:layers.24.hc_attn_up",
+   "ms_per_step": 0.019730333333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.036390697900436766
+  },
+  {
+   "name": "linear:layers.36.hc_ffn_up",
+   "ms_per_step": 0.019623333333333336,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.03619334671485045
+  },
+  {
+   "name": "linear:layers.20.hc_attn_up",
+   "ms_per_step": 0.019609666666666668,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0361681398656011
+  },
+  {
+   "name": "linear:layers.7.index_q",
+   "ms_per_step": 0.01603033333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.029566404567077847
+  },
+  {
+   "name": "linear:layers.47.index_q",
+   "ms_per_step": 0.01603033333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.029566404567077847
+  },
+  {
+   "name": "linear:layers.31.index_q",
+   "ms_per_step": 0.01600333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.02951660566978036
+  },
+  {
+   "name": "linear:layers.19.index_q",
+   "ms_per_step": 0.015896666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.029319869285395237
+  },
+  {
+   "name": "linear:layers.3.index_q",
+   "ms_per_step": 0.015856333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.029245478340049615
+  },
+  {
+   "name": "linear:layers.23.index_q",
+   "ms_per_step": 0.015856333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.029245478340049615
+  },
+  {
+   "name": "linear:layers.27.index_q",
+   "ms_per_step": 0.015816333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.029171702195905203
+  },
+  {
+   "name": "linear:layers.35.index_q",
+   "ms_per_step": 0.015776333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.029097926051760772
+  },
+  {
+   "name": "linear:layers.39.index_q",
+   "ms_per_step": 0.01571,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.028975580612721277
+  },
+  {
+   "name": "linear:layers.11.index_q",
+   "ms_per_step": 0.015682666666666668,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.028925166914222592
+  },
+  {
+   "name": "linear:layers.43.index_q",
+   "ms_per_step": 0.015682666666666668,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.028925166914222592
+  },
+  {
+   "name": "linear:layers.15.index_q",
+   "ms_per_step": 0.015468999999999998,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.02853107934425114
+  },
+  {
+   "name": "linear:layers.27.attn_k",
+   "ms_per_step": 0.013385333333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.024687957035528018
+  },
+  {
+   "name": "linear:layers.35.attn_k",
+   "ms_per_step": 0.013184333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.024317231911202303
+  },
+  {
+   "name": "linear:layers.11.attn_k",
+   "ms_per_step": 0.013144999999999999,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.02424468536946029
+  },
+  {
+   "name": "linear:layers.31.attn_v",
+   "ms_per_step": 0.012997333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.023972328437327137
+  },
+  {
+   "name": "linear:layers.3.attn_v",
+   "ms_per_step": 0.012984666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.023948965991681406
+  },
+  {
+   "name": "linear:layers.23.attn_v",
+   "ms_per_step": 0.012984666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.023948965991681406
+  },
+  {
+   "name": "linear:layers.11.attn_v",
+   "ms_per_step": 0.012943999999999999,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.02387396024513458
+  },
+  {
+   "name": "linear:layers.43.attn_k",
+   "ms_per_step": 0.012903999999999999,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.023800184100990156
+  },
+  {
+   "name": "linear:layers.19.attn_v",
+   "ms_per_step": 0.012824,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.023652631812701316
+  },
+  {
+   "name": "linear:layers.7.attn_v",
+   "ms_per_step": 0.012731,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.023481102277565537
+  },
+  {
+   "name": "linear:layers.7.attn_k",
+   "ms_per_step": 0.012624000000000002,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.023283751091979214
+  },
+  {
+   "name": "linear:layers.43.attn_v",
+   "ms_per_step": 0.012623666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.02328313629077801
+  },
+  {
+   "name": "linear:layers.23.attn_k",
+   "ms_per_step": 0.012556999999999999,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.023160176050537305
+  },
+  {
+   "name": "linear:layers.15.attn_v",
+   "ms_per_step": 0.012517,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.02308639990639289
+  },
+  {
+   "name": "linear:layers.35.attn_v",
+   "ms_per_step": 0.012517,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.02308639990639289
+  },
+  {
+   "name": "linear:layers.47.attn_k",
+   "ms_per_step": 0.012490000000000001,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.023036601009095402
+  },
+  {
+   "name": "linear:layers.39.attn_v",
+   "ms_per_step": 0.01249,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.023036601009095402
+  },
+  {
+   "name": "linear:layers.3.attn_k",
+   "ms_per_step": 0.012383333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.02283986462471028
+  },
+  {
+   "name": "linear:layers.27.attn_v",
+   "ms_per_step": 0.012383333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.02283986462471028
+  },
+  {
+   "name": "linear:layers.15.attn_k",
+   "ms_per_step": 0.012383,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.02283924982350908
+  },
+  {
+   "name": "linear:layers.39.attn_k",
+   "ms_per_step": 0.012316333333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.02271628958326837
+  },
+  {
+   "name": "linear:layers.47.attn_v",
+   "ms_per_step": 0.012156,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.022420570205489487
+  },
+  {
+   "name": "linear:layers.19.attn_k",
+   "ms_per_step": 0.012129000000000001,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.022370771308192004
+  },
+  {
+   "name": "linear:layers.31.attn_k",
+   "ms_per_step": 0.011969333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.022076281532815524
+  },
+  {
+   "name": "gr_read:layers.0.hc_attn_down",
+   "ms_per_step": 0.011701999999999999,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.02158321096945031
+  },
+  {
+   "name": "gr_read:root.head_hc_down",
+   "ms_per_step": 0.011261,
+   "kernels_per_step": 4.0,
+   "share_pct": 0.020769828980258073
+  },
+  {
+   "name": "gr_read:layers.7.hc_ffn_down",
+   "ms_per_step": 0.010767333333333332,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01985930840127568
+  },
+  {
+   "name": "gr_read:layers.0.hc_ffn_down",
+   "ms_per_step": 0.010460333333333334,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01929307649496725
+  },
+  {
+   "name": "gr_read:layers.46.hc_ffn_down",
+   "ms_per_step": 0.010312333333333335,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01902010476163289
+  },
+  {
+   "name": "gr_read:layers.11.hc_ffn_down",
+   "ms_per_step": 0.010299666666666667,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018996742315987157
+  },
+  {
+   "name": "gr_read:layers.5.hc_ffn_down",
+   "ms_per_step": 0.010299,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01899551271358475
+  },
+  {
+   "name": "gr_read:layers.21.hc_ffn_down",
+   "ms_per_step": 0.010272666666666664,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01894694341868967
+  },
+  {
+   "name": "gr_read:layers.10.hc_ffn_down",
+   "ms_per_step": 0.010245666666666667,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01889714452139219
+  },
+  {
+   "name": "gr_read:layers.3.hc_ffn_down",
+   "ms_per_step": 0.010192333333333334,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018798776329199633
+  },
+  {
+   "name": "gr_read:layers.36.hc_ffn_down",
+   "ms_per_step": 0.010125666666666666,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018675816088958925
+  },
+  {
+   "name": "gr_read:layers.43.hc_ffn_down",
+   "ms_per_step": 0.010112,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018650609239709584
+  },
+  {
+   "name": "gr_read:layers.41.hc_ffn_down",
+   "ms_per_step": 0.010098666666666667,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018626017191661445
+  },
+  {
+   "name": "gr_read:layers.28.hc_attn_down",
+   "ms_per_step": 0.010098666666666667,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018626017191661442
+  },
+  {
+   "name": "gr_read:layers.8.hc_ffn_down",
+   "ms_per_step": 0.010098333333333334,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018625402390460243
+  },
+  {
+   "name": "gr_read:layers.9.hc_ffn_down",
+   "ms_per_step": 0.010085666666666668,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01860203994481451
+  },
+  {
+   "name": "gr_read:layers.12.hc_ffn_down",
+   "ms_per_step": 0.010085333333333333,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018601425143613303
+  },
+  {
+   "name": "gr_read:layers.31.hc_ffn_down",
+   "ms_per_step": 0.010071666666666666,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01857621829436396
+  },
+  {
+   "name": "gr_read:layers.40.hc_ffn_down",
+   "ms_per_step": 0.010071333333333333,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018575603493162757
+  },
+  {
+   "name": "gr_read:layers.8.hc_attn_down",
+   "ms_per_step": 0.010045,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018527034198267678
+  },
+  {
+   "name": "gr_read:layers.34.hc_ffn_down",
+   "ms_per_step": 0.010032000000000001,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01850305695142074
+  },
+  {
+   "name": "gr_read:layers.6.hc_ffn_down",
+   "ms_per_step": 0.009992333333333334,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018429895608477527
+  },
+  {
+   "name": "gr_read:layers.44.hc_ffn_down",
+   "ms_per_step": 0.009992,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01842928080727632
+  },
+  {
+   "name": "gr_read:layers.38.hc_ffn_down",
+   "ms_per_step": 0.009978333333333332,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018404073958026977
+  },
+  {
+   "name": "gr_read:layers.43.hc_attn_down",
+   "ms_per_step": 0.009966000000000001,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01838132631358245
+  },
+  {
+   "name": "gr_read:layers.14.hc_ffn_down",
+   "ms_per_step": 0.009952333333333334,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018356119464333104
+  },
+  {
+   "name": "gr_read:layers.28.hc_ffn_down",
+   "ms_per_step": 0.009951666666666666,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018354889861930693
+  },
+  {
+   "name": "gr_read:layers.4.hc_ffn_down",
+   "ms_per_step": 0.009938666666666667,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01833091261508376
+  },
+  {
+   "name": "gr_read:layers.38.hc_attn_down",
+   "ms_per_step": 0.009925666666666666,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018306935368236823
+  },
+  {
+   "name": "gr_read:layers.20.hc_ffn_down",
+   "ms_per_step": 0.009924666666666667,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01830509096463321
+  },
+  {
+   "name": "gr_read:layers.26.hc_ffn_down",
+   "ms_per_step": 0.009898666666666665,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018257136470939336
+  },
+  {
+   "name": "gr_read:layers.30.hc_ffn_down",
+   "ms_per_step": 0.009885666666666668,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018233159224092403
+  },
+  {
+   "name": "gr_read:layers.39.hc_ffn_down",
+   "ms_per_step": 0.009885666666666666,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.0182331592240924
+  },
+  {
+   "name": "gr_read:layers.1.hc_attn_down",
+   "ms_per_step": 0.009845333333333333,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018158768278746778
+  },
+  {
+   "name": "gr_read:layers.16.hc_ffn_down",
+   "ms_per_step": 0.009845000000000001,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018158153477545576
+  },
+  {
+   "name": "gr_read:layers.44.hc_attn_down",
+   "ms_per_step": 0.009819333333333334,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018110813785052908
+  },
+  {
+   "name": "gr_read:layers.25.hc_ffn_down",
+   "ms_per_step": 0.009818333333333333,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018108969381449295
+  },
+  {
+   "name": "gr_read:layers.18.hc_ffn_down",
+   "ms_per_step": 0.009791333333333334,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01805917048415181
+  },
+  {
+   "name": "gr_read:layers.37.hc_attn_down",
+   "ms_per_step": 0.009778666666666666,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018035808038506077
+  },
+  {
+   "name": "gr_read:layers.1.hc_ffn_down",
+   "ms_per_step": 0.009778333333333332,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01803519323730487
+  },
+  {
+   "name": "gr_read:layers.42.hc_attn_down",
+   "ms_per_step": 0.009777333333333332,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.018033348833701262
+  },
+  {
+   "name": "gr_read:layers.13.hc_ffn_down",
+   "ms_per_step": 0.009752,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017986623942409796
+  },
+  {
+   "name": "gr_read:layers.15.hc_ffn_down",
+   "ms_per_step": 0.009738333333333333,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017961417093160452
+  },
+  {
+   "name": "gr_read:layers.6.hc_attn_down",
+   "ms_per_step": 0.009725333333333334,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01793743984631352
+  },
+  {
+   "name": "gr_read:layers.33.hc_attn_down",
+   "ms_per_step": 0.009725,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017936825045112313
+  },
+  {
+   "name": "gr_read:layers.42.hc_ffn_down",
+   "ms_per_step": 0.009698333333333331,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01788764094901603
+  },
+  {
+   "name": "gr_read:layers.23.hc_ffn_down",
+   "ms_per_step": 0.009685333333333332,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017863663702169092
+  },
+  {
+   "name": "gr_read:layers.37.hc_ffn_down",
+   "ms_per_step": 0.009685000000000001,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017863048900967893
+  },
+  {
+   "name": "gr_read:layers.5.hc_attn_down",
+   "ms_per_step": 0.009658333333333333,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01781386480487161
+  },
+  {
+   "name": "gr_read:layers.35.hc_ffn_down",
+   "ms_per_step": 0.009658333333333333,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01781386480487161
+  },
+  {
+   "name": "gr_read:layers.29.hc_ffn_down",
+   "ms_per_step": 0.009644333333333335,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017788043154421066
+  },
+  {
+   "name": "gr_read:layers.12.hc_attn_down",
+   "ms_per_step": 0.009618,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017739473859525987
+  },
+  {
+   "name": "gr_read:layers.47.hc_ffn_down",
+   "ms_per_step": 0.009618,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017739473859525987
+  },
+  {
+   "name": "gr_read:layers.27.hc_ffn_down",
+   "ms_per_step": 0.009591666666666667,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017690904564630912
+  },
+  {
+   "name": "gr_read:layers.10.hc_attn_down",
+   "ms_per_step": 0.009538,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017591921571237148
+  },
+  {
+   "name": "gr_read:layers.7.hc_attn_down",
+   "ms_per_step": 0.009537666666666667,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01759130677003594
+  },
+  {
+   "name": "gr_read:layers.2.hc_ffn_down",
+   "ms_per_step": 0.009524666666666666,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017567329523189002
+  },
+  {
+   "name": "gr_read:layers.18.hc_attn_down",
+   "ms_per_step": 0.009524333333333334,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.0175667147219878
+  },
+  {
+   "name": "gr_read:layers.22.hc_ffn_down",
+   "ms_per_step": 0.009524333333333334,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.0175667147219878
+  },
+  {
+   "name": "gr_read:layers.24.hc_ffn_down",
+   "ms_per_step": 0.00952433333333333,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017566714721987797
+  },
+  {
+   "name": "gr_read:layers.17.hc_ffn_down",
+   "ms_per_step": 0.009471666666666666,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017469576132197646
+  },
+  {
+   "name": "gr_read:layers.13.hc_attn_down",
+   "ms_per_step": 0.009471,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017468346529795238
+  },
+  {
+   "name": "gr_read:layers.11.hc_attn_down",
+   "ms_per_step": 0.009457333333333335,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.0174431396805459
+  },
+  {
+   "name": "gr_read:layers.40.hc_attn_down",
+   "ms_per_step": 0.009457333333333333,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017443139680545897
+  },
+  {
+   "name": "gr_read:layers.9.hc_attn_down",
+   "ms_per_step": 0.009444333333333332,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017419162433698957
+  },
+  {
+   "name": "gr_read:layers.32.hc_ffn_down",
+   "ms_per_step": 0.009430666666666667,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017393955584449616
+  },
+  {
+   "name": "gr_read:layers.33.hc_ffn_down",
+   "ms_per_step": 0.009418,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01737059313880388
+  },
+  {
+   "name": "gr_read:layers.29.hc_attn_down",
+   "ms_per_step": 0.009377333333333333,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017295587392257054
+  },
+  {
+   "name": "gr_read:layers.32.hc_attn_down",
+   "ms_per_step": 0.009364666666666667,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017272224946611323
+  },
+  {
+   "name": "gr_read:layers.25.hc_attn_down",
+   "ms_per_step": 0.009351333333333333,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01724763289856318
+  },
+  {
+   "name": "gr_read:layers.19.hc_ffn_down",
+   "ms_per_step": 0.009271333333333335,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01710008061027434
+  },
+  {
+   "name": "gr_read:layers.16.hc_attn_down",
+   "ms_per_step": 0.009244333333333334,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017050281712976855
+  },
+  {
+   "name": "gr_read:layers.39.hc_attn_down",
+   "ms_per_step": 0.009244333333333334,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017050281712976855
+  },
+  {
+   "name": "gr_read:layers.41.hc_attn_down",
+   "ms_per_step": 0.009244,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017049666911775653
+  },
+  {
+   "name": "gr_read:layers.45.hc_ffn_down",
+   "ms_per_step": 0.009231000000000001,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.017025689664928716
+  },
+  {
+   "name": "gr_read:layers.19.hc_attn_down",
+   "ms_per_step": 0.009230666666666667,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01702507486372751
+  },
+  {
+   "name": "gr_read:layers.4.hc_attn_down",
+   "ms_per_step": 0.009230333333333333,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01702446006252631
+  },
+  {
+   "name": "gr_read:layers.34.hc_attn_down",
+   "ms_per_step": 0.009217000000000001,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01699986801447817
+  },
+  {
+   "name": "gr_read:layers.36.hc_attn_down",
+   "ms_per_step": 0.009151000000000001,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.016878137376639877
+  },
+  {
+   "name": "gr_read:layers.24.hc_attn_down",
+   "ms_per_step": 0.009123666666666667,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01682772367814119
+  },
+  {
+   "name": "gr_read:layers.22.hc_attn_down",
+   "ms_per_step": 0.009057,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.016704763437900484
+  },
+  {
+   "name": "gr_read:layers.2.hc_attn_down",
+   "ms_per_step": 0.009056666666666666,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.016704148636699282
+  },
+  {
+   "name": "gr_read:layers.45.hc_attn_down",
+   "ms_per_step": 0.00903,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.016654964540602998
+  },
+  {
+   "name": "gr_read:layers.23.hc_attn_down",
+   "ms_per_step": 0.009017,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.016630987293756064
+  },
+  {
+   "name": "gr_read:layers.26.hc_attn_down",
+   "ms_per_step": 0.008990666666666666,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.016582417998860982
+  },
+  {
+   "name": "gr_read:layers.47.hc_attn_down",
+   "ms_per_step": 0.00899,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01658118839645858
+  },
+  {
+   "name": "gr_read:layers.20.hc_attn_down",
+   "ms_per_step": 0.008976666666666668,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01655659634841044
+  },
+  {
+   "name": "gr_read:layers.30.hc_attn_down",
+   "ms_per_step": 0.008937333333333334,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.016484049806668424
+  },
+  {
+   "name": "gr_read:layers.46.hc_attn_down",
+   "ms_per_step": 0.008896666666666666,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.016409044060121596
+  },
+  {
+   "name": "gr_read:layers.21.hc_attn_down",
+   "ms_per_step": 0.008896333333333334,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.016408429258920394
+  },
+  {
+   "name": "gr_read:layers.35.hc_attn_down",
+   "ms_per_step": 0.008882999999999999,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.016383837210872252
+  },
+  {
+   "name": "gr_read:layers.31.hc_attn_down",
+   "ms_per_step": 0.008856666666666665,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.016335267915977177
+  },
+  {
+   "name": "gr_read:layers.3.hc_attn_down",
+   "ms_per_step": 0.008829666666666668,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.016285469018679694
+  },
+  {
+   "name": "gr_read:layers.15.hc_attn_down",
+   "ms_per_step": 0.008816666666666667,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.016261491771832757
+  },
+  {
+   "name": "gr_read:layers.14.hc_attn_down",
+   "ms_per_step": 0.008816,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01626026216943035
+  },
+  {
+   "name": "gr_read:layers.17.hc_attn_down",
+   "ms_per_step": 0.008816,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.01626026216943035
+  },
+  {
+   "name": "gr_read:layers.27.hc_attn_down",
+   "ms_per_step": 0.008749,
+   "kernels_per_step": 3.0,
+   "share_pct": 0.016136687127988446
+  },
+  {
+   "name": "linear:layers.7.index_k",
+   "ms_per_step": 0.005623666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.010372311065504364
+  },
+  {
+   "name": "linear:layers.31.index_k",
+   "ms_per_step": 0.005597,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.010323126969408085
+  },
+  {
+   "name": "linear:layers.19.index_k",
+   "ms_per_step": 0.0055839999999999996,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.010299149722561147
+  },
+  {
+   "name": "linear:layers.43.index_k",
+   "ms_per_step": 0.005543333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.01022414397601432
+  },
+  {
+   "name": "linear:layers.11.index_k",
+   "ms_per_step": 0.00553,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.010199551927966179
+  },
+  {
+   "name": "linear:layers.3.index_k",
+   "ms_per_step": 0.005423333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.010002815543581057
+  },
+  {
+   "name": "linear:layers.39.index_k",
+   "ms_per_step": 0.005423333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.010002815543581057
+  },
+  {
+   "name": "linear:layers.23.index_k",
+   "ms_per_step": 0.005410000000000001,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.009978223495532918
+  },
+  {
+   "name": "linear:layers.27.index_k",
+   "ms_per_step": 0.00529,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.009756895063099656
+  },
+  {
+   "name": "linear:layers.35.index_k",
+   "ms_per_step": 0.0052766666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.009732303015051513
+  },
+  {
+   "name": "linear:layers.15.index_k",
+   "ms_per_step": 0.005276333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.009731688213850311
+  },
+  {
+   "name": "linear:layers.47.index_k",
+   "ms_per_step": 0.0052629999999999994,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.009707096165802167
+  },
+  {
+   "name": "linear:layers.44.ssm_alpha",
+   "ms_per_step": 0.005063,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.009338215445080065
+  },
+  {
+   "name": "linear:layers.36.ssm_alpha",
+   "ms_per_step": 0.005023,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.009264439300935644
+  },
+  {
+   "name": "linear:layers.0.ssm_alpha",
+   "ms_per_step": 0.005022666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00926382449973444
+  },
+  {
+   "name": "linear:layers.17.ssm_beta",
+   "ms_per_step": 0.004969333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.009165456307541881
+  },
+  {
+   "name": "linear:layers.45.ssm_alpha",
+   "ms_per_step": 0.004943,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.009116887012646804
+  },
+  {
+   "name": "linear:layers.10.ssm_alpha",
+   "ms_per_step": 0.004942666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.009116272211445599
+  },
+  {
+   "name": "linear:layers.29.ssm_beta",
+   "ms_per_step": 0.004929333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00909168016339746
+  },
+  {
+   "name": "linear:layers.20.ssm_beta",
+   "ms_per_step": 0.004916,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00906708811534932
+  },
+  {
+   "name": "linear:layers.40.ssm_alpha",
+   "ms_per_step": 0.004915666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.009066473314148116
+  },
+  {
+   "name": "linear:layers.2.ssm_alpha",
+   "ms_per_step": 0.004889,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.009017289218051835
+  },
+  {
+   "name": "linear:layers.8.ssm_alpha",
+   "ms_per_step": 0.004876,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008993311971204898
+  },
+  {
+   "name": "linear:layers.36.ssm_beta",
+   "ms_per_step": 0.004875666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008992697170003696
+  },
+  {
+   "name": "linear:layers.10.ssm_beta",
+   "ms_per_step": 0.004862333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008968105121955554
+  },
+  {
+   "name": "linear:layers.25.ssm_beta",
+   "ms_per_step": 0.004862333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008968105121955554
+  },
+  {
+   "name": "linear:layers.28.ssm_alpha",
+   "ms_per_step": 0.004862333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008968105121955554
+  },
+  {
+   "name": "linear:layers.32.ssm_alpha",
+   "ms_per_step": 0.004861999999999999,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00896749032075435
+  },
+  {
+   "name": "linear:layers.34.ssm_beta",
+   "ms_per_step": 0.004849,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008943513073907415
+  },
+  {
+   "name": "linear:layers.34.ssm_alpha",
+   "ms_per_step": 0.004848999999999999,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008943513073907412
+  },
+  {
+   "name": "linear:layers.22.ssm_beta",
+   "ms_per_step": 0.004836,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008919535827060477
+  },
+  {
+   "name": "linear:layers.18.ssm_alpha",
+   "ms_per_step": 0.004809333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008870351730964196
+  },
+  {
+   "name": "linear:layers.21.ssm_alpha",
+   "ms_per_step": 0.004809,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008869736929762994
+  },
+  {
+   "name": "linear:layers.26.ssm_alpha",
+   "ms_per_step": 0.004809,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008869736929762994
+  },
+  {
+   "name": "linear:layers.12.ssm_beta",
+   "ms_per_step": 0.004795999999999999,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008845759682916055
+  },
+  {
+   "name": "linear:layers.30.ssm_alpha",
+   "ms_per_step": 0.004795666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008845144881714853
+  },
+  {
+   "name": "linear:layers.33.ssm_alpha",
+   "ms_per_step": 0.004795666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008845144881714853
+  },
+  {
+   "name": "linear:layers.42.ssm_alpha",
+   "ms_per_step": 0.004795666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008845144881714853
+  },
+  {
+   "name": "linear:layers.9.ssm_alpha",
+   "ms_per_step": 0.004795333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00884453008051365
+  },
+  {
+   "name": "linear:layers.41.ssm_alpha",
+   "ms_per_step": 0.004795000000000001,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008843915279312447
+  },
+  {
+   "name": "linear:layers.5.ssm_alpha",
+   "ms_per_step": 0.004782333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008820552833666713
+  },
+  {
+   "name": "linear:layers.24.ssm_alpha",
+   "ms_per_step": 0.004782000000000001,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00881993803246551
+  },
+  {
+   "name": "linear:layers.13.ssm_beta",
+   "ms_per_step": 0.004768666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008795345984417368
+  },
+  {
+   "name": "linear:layers.9.ssm_beta",
+   "ms_per_step": 0.004756,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008771983538771636
+  },
+  {
+   "name": "linear:layers.40.ssm_beta",
+   "ms_per_step": 0.004742,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008746161888321087
+  },
+  {
+   "name": "linear:layers.33.ssm_beta",
+   "ms_per_step": 0.004715666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008697592593426012
+  },
+  {
+   "name": "linear:layers.16.ssm_beta",
+   "ms_per_step": 0.0047023333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008673000545377871
+  },
+  {
+   "name": "linear:layers.16.ssm_alpha",
+   "ms_per_step": 0.0047023333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008673000545377871
+  },
+  {
+   "name": "linear:layers.8.ssm_beta",
+   "ms_per_step": 0.004689,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008648408497329731
+  },
+  {
+   "name": "linear:layers.20.ssm_alpha",
+   "ms_per_step": 0.004689,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008648408497329731
+  },
+  {
+   "name": "linear:layers.44.ssm_beta",
+   "ms_per_step": 0.004688333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008647178894927323
+  },
+  {
+   "name": "linear:layers.28.ssm_beta",
+   "ms_per_step": 0.0046756666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00862381644928159
+  },
+  {
+   "name": "linear:layers.6.ssm_beta",
+   "ms_per_step": 0.004675333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008623201648080387
+  },
+  {
+   "name": "linear:layers.13.ssm_alpha",
+   "ms_per_step": 0.004675333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008623201648080387
+  },
+  {
+   "name": "linear:layers.37.ssm_alpha",
+   "ms_per_step": 0.004675333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008623201648080387
+  },
+  {
+   "name": "linear:layers.1.ssm_beta",
+   "ms_per_step": 0.004662333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00859922440123345
+  },
+  {
+   "name": "linear:layers.6.ssm_alpha",
+   "ms_per_step": 0.004662,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008598609600032246
+  },
+  {
+   "name": "linear:layers.12.ssm_alpha",
+   "ms_per_step": 0.004661666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008597994798831042
+  },
+  {
+   "name": "linear:layers.29.ssm_alpha",
+   "ms_per_step": 0.004649,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008574632353185311
+  },
+  {
+   "name": "linear:layers.47.hc_ffn_inject",
+   "ms_per_step": 0.0046489999999999995,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00857463235318531
+  },
+  {
+   "name": "linear:layers.17.ssm_alpha",
+   "ms_per_step": 0.004635666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008550040305137169
+  },
+  {
+   "name": "linear:layers.4.ssm_beta",
+   "ms_per_step": 0.004635333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008549425503935967
+  },
+  {
+   "name": "linear:layers.25.ssm_alpha",
+   "ms_per_step": 0.004635333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008549425503935965
+  },
+  {
+   "name": "linear:layers.38.ssm_beta",
+   "ms_per_step": 0.004635333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008549425503935965
+  },
+  {
+   "name": "linear:layers.5.ssm_beta",
+   "ms_per_step": 0.004621666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008524218654686623
+  },
+  {
+   "name": "linear:layers.4.ssm_alpha",
+   "ms_per_step": 0.004595666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00847626416099275
+  },
+  {
+   "name": "linear:layers.14.ssm_alpha",
+   "ms_per_step": 0.004595333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008475649359791546
+  },
+  {
+   "name": "linear:layers.41.ssm_beta",
+   "ms_per_step": 0.004595333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008475649359791546
+  },
+  {
+   "name": "linear:layers.1.ssm_alpha",
+   "ms_per_step": 0.004581666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008450442510542201
+  },
+  {
+   "name": "linear:layers.45.ssm_beta",
+   "ms_per_step": 0.004569,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008427080064896468
+  },
+  {
+   "name": "linear:layers.21.ssm_beta",
+   "ms_per_step": 0.004555333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008401873215647126
+  },
+  {
+   "name": "linear:layers.0.hc_attn_inject",
+   "ms_per_step": 0.004555,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00840125841444592
+  },
+  {
+   "name": "linear:layers.0.ssm_beta",
+   "ms_per_step": 0.004542,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008377281167598984
+  },
+  {
+   "name": "linear:layers.22.ssm_alpha",
+   "ms_per_step": 0.004542,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008377281167598984
+  },
+  {
+   "name": "linear:layers.18.ssm_beta",
+   "ms_per_step": 0.004528666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008352689119550845
+  },
+  {
+   "name": "linear:layers.14.ssm_beta",
+   "ms_per_step": 0.004528333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008352074318349641
+  },
+  {
+   "name": "linear:layers.26.ssm_beta",
+   "ms_per_step": 0.004528333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008352074318349641
+  },
+  {
+   "name": "linear:layers.2.ssm_beta",
+   "ms_per_step": 0.004515,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008327482270301499
+  },
+  {
+   "name": "linear:layers.42.ssm_beta",
+   "ms_per_step": 0.004515,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008327482270301499
+  },
+  {
+   "name": "linear:layers.46.ssm_alpha",
+   "ms_per_step": 0.004475333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008254320927358283
+  },
+  {
+   "name": "linear:layers.24.ssm_beta",
+   "ms_per_step": 0.004475333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008254320927358283
+  },
+  {
+   "name": "linear:layers.38.ssm_alpha",
+   "ms_per_step": 0.004448333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0082045220300608
+  },
+  {
+   "name": "linear:layers.46.ssm_beta",
+   "ms_per_step": 0.004421666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008155337933964519
+  },
+  {
+   "name": "linear:layers.30.ssm_beta",
+   "ms_per_step": 0.0044213333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008154723132763315
+  },
+  {
+   "name": "linear:layers.32.ssm_beta",
+   "ms_per_step": 0.004395,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008106153837868238
+  },
+  {
+   "name": "linear:layers.11.hc_ffn_inject",
+   "ms_per_step": 0.004368,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.008056354940570755
+  },
+  {
+   "name": "linear:layers.37.ssm_beta",
+   "ms_per_step": 0.0043419999999999995,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00800840044687688
+  },
+  {
+   "name": "linear:layers.23.hc_ffn_inject",
+   "ms_per_step": 0.004315,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007958601549579397
+  },
+  {
+   "name": "linear:layers.43.hc_attn_inject",
+   "ms_per_step": 0.004301666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007934009501531256
+  },
+  {
+   "name": "linear:layers.47.hc_attn_inject",
+   "ms_per_step": 0.004301,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00793277989912885
+  },
+  {
+   "name": "linear:layers.7.hc_attn_inject",
+   "ms_per_step": 0.004288333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007909417453483116
+  },
+  {
+   "name": "linear:layers.7.hc_ffn_inject",
+   "ms_per_step": 0.004275,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007884825405434975
+  },
+  {
+   "name": "linear:layers.27.hc_ffn_inject",
+   "ms_per_step": 0.004274333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007883595803032568
+  },
+  {
+   "name": "linear:layers.20.hc_attn_inject",
+   "ms_per_step": 0.004248,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00783502650813749
+  },
+  {
+   "name": "linear:layers.4.hc_ffn_inject",
+   "ms_per_step": 0.004234333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007809819658888147
+  },
+  {
+   "name": "linear:layers.19.hc_ffn_inject",
+   "ms_per_step": 0.004234333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007809819658888147
+  },
+  {
+   "name": "linear:layers.42.hc_ffn_inject",
+   "ms_per_step": 0.004234,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007809204857686944
+  },
+  {
+   "name": "linear:layers.3.hc_attn_inject",
+   "ms_per_step": 0.004221666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007786457213242414
+  },
+  {
+   "name": "linear:layers.43.hc_ffn_inject",
+   "ms_per_step": 0.004221333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0077858424120412105
+  },
+  {
+   "name": "linear:layers.21.hc_attn_inject",
+   "ms_per_step": 0.004221,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0077852276108400075
+  },
+  {
+   "name": "linear:layers.23.hc_attn_inject",
+   "ms_per_step": 0.004207666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007760635562791866
+  },
+  {
+   "name": "linear:layers.0.hc_ffn_inject",
+   "ms_per_step": 0.004181666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0077126810690979946
+  },
+  {
+   "name": "linear:layers.9.hc_attn_inject",
+   "ms_per_step": 0.004181333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007712066267896792
+  },
+  {
+   "name": "linear:layers.34.hc_ffn_inject",
+   "ms_per_step": 0.004181333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00771206626789679
+  },
+  {
+   "name": "linear:layers.3.hc_ffn_inject",
+   "ms_per_step": 0.004181,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007711451466695586
+  },
+  {
+   "name": "linear:layers.45.hc_ffn_inject",
+   "ms_per_step": 0.004168333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007688089021049853
+  },
+  {
+   "name": "linear:layers.19.hc_attn_inject",
+   "ms_per_step": 0.004154666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007662882171800511
+  },
+  {
+   "name": "linear:layers.28.hc_ffn_inject",
+   "ms_per_step": 0.004154333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007662267370599307
+  },
+  {
+   "name": "linear:layers.31.hc_attn_inject",
+   "ms_per_step": 0.004154333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007662267370599305
+  },
+  {
+   "name": "linear:layers.25.hc_attn_inject",
+   "ms_per_step": 0.004154,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007661652569398102
+  },
+  {
+   "name": "linear:layers.40.hc_ffn_inject",
+   "ms_per_step": 0.004141,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007637675322551164
+  },
+  {
+   "name": "linear:layers.17.hc_ffn_inject",
+   "ms_per_step": 0.004114666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007589106027656089
+  },
+  {
+   "name": "linear:layers.18.hc_ffn_inject",
+   "ms_per_step": 0.004101333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007564513979607948
+  },
+  {
+   "name": "linear:layers.35.hc_ffn_inject",
+   "ms_per_step": 0.004101333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007564513979607948
+  },
+  {
+   "name": "linear:layers.15.hc_ffn_inject",
+   "ms_per_step": 0.0041010000000000005,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007563899178406745
+  },
+  {
+   "name": "linear:layers.26.hc_ffn_inject",
+   "ms_per_step": 0.0041010000000000005,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007563899178406745
+  },
+  {
+   "name": "linear:layers.9.hc_ffn_inject",
+   "ms_per_step": 0.0041006666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007563284377205541
+  },
+  {
+   "name": "linear:layers.46.hc_ffn_inject",
+   "ms_per_step": 0.0040880000000000005,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007539921931559808
+  },
+  {
+   "name": "linear:layers.10.hc_attn_inject",
+   "ms_per_step": 0.0040876666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007539307130358604
+  },
+  {
+   "name": "linear:layers.18.hc_attn_inject",
+   "ms_per_step": 0.0040746666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007515329883511668
+  },
+  {
+   "name": "linear:layers.24.hc_ffn_inject",
+   "ms_per_step": 0.0040743333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007514715082310463
+  },
+  {
+   "name": "linear:layers.5.hc_ffn_inject",
+   "ms_per_step": 0.004074,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00751410028110926
+  },
+  {
+   "name": "linear:layers.13.hc_ffn_inject",
+   "ms_per_step": 0.004074,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00751410028110926
+  },
+  {
+   "name": "linear:layers.37.hc_attn_inject",
+   "ms_per_step": 0.0040609999999999995,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0074901230342623235
+  },
+  {
+   "name": "linear:layers.8.hc_ffn_inject",
+   "ms_per_step": 0.004060666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00748950823306112
+  },
+  {
+   "name": "linear:layers.29.hc_attn_inject",
+   "ms_per_step": 0.004047666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007465530986214184
+  },
+  {
+   "name": "linear:layers.33.hc_attn_inject",
+   "ms_per_step": 0.004047666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007465530986214184
+  },
+  {
+   "name": "linear:layers.28.hc_attn_inject",
+   "ms_per_step": 0.004047666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007465530986214183
+  },
+  {
+   "name": "linear:layers.8.hc_attn_inject",
+   "ms_per_step": 0.004047333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00746491618501298
+  },
+  {
+   "name": "linear:layers.12.hc_ffn_inject",
+   "ms_per_step": 0.004047333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00746491618501298
+  },
+  {
+   "name": "linear:layers.33.hc_ffn_inject",
+   "ms_per_step": 0.004034333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007440938938166044
+  },
+  {
+   "name": "linear:layers.34.hc_attn_inject",
+   "ms_per_step": 0.004034333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007440938938166044
+  },
+  {
+   "name": "linear:layers.20.hc_ffn_inject",
+   "ms_per_step": 0.004034,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00744032413696484
+  },
+  {
+   "name": "linear:layers.10.hc_ffn_inject",
+   "ms_per_step": 0.004033999999999999,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007440324136964839
+  },
+  {
+   "name": "linear:layers.39.hc_ffn_inject",
+   "ms_per_step": 0.0040213333333333325,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007416961691319105
+  },
+  {
+   "name": "linear:layers.26.hc_attn_inject",
+   "ms_per_step": 0.004021,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007416346890117904
+  },
+  {
+   "name": "linear:layers.1.hc_attn_inject",
+   "ms_per_step": 0.004020666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007415732088916699
+  },
+  {
+   "name": "linear:layers.31.hc_ffn_inject",
+   "ms_per_step": 0.004020666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007415732088916699
+  },
+  {
+   "name": "linear:layers.22.hc_attn_inject",
+   "ms_per_step": 0.004008,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007392369643270967
+  },
+  {
+   "name": "linear:layers.11.hc_attn_inject",
+   "ms_per_step": 0.004007333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0073911400408685594
+  },
+  {
+   "name": "linear:layers.36.hc_ffn_inject",
+   "ms_per_step": 0.004007333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0073911400408685594
+  },
+  {
+   "name": "linear:layers.37.hc_ffn_inject",
+   "ms_per_step": 0.004007333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0073911400408685594
+  },
+  {
+   "name": "linear:layers.32.hc_attn_inject",
+   "ms_per_step": 0.003994666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007367777595222825
+  },
+  {
+   "name": "linear:layers.1.hc_ffn_inject",
+   "ms_per_step": 0.003994333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007367162794021623
+  },
+  {
+   "name": "linear:layers.14.hc_ffn_inject",
+   "ms_per_step": 0.003994333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007367162794021623
+  },
+  {
+   "name": "linear:layers.41.hc_ffn_inject",
+   "ms_per_step": 0.003994333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007367162794021623
+  },
+  {
+   "name": "linear:layers.41.hc_attn_inject",
+   "ms_per_step": 0.003993666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007365933191619216
+  },
+  {
+   "name": "linear:layers.38.hc_ffn_inject",
+   "ms_per_step": 0.003981,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007342570745973482
+  },
+  {
+   "name": "linear:layers.13.hc_attn_inject",
+   "ms_per_step": 0.003980999999999999,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007342570745973482
+  },
+  {
+   "name": "linear:layers.21.hc_ffn_inject",
+   "ms_per_step": 0.003980666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007341955944772279
+  },
+  {
+   "name": "linear:layers.5.hc_attn_inject",
+   "ms_per_step": 0.003967666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007317978697925343
+  },
+  {
+   "name": "linear:layers.6.hc_ffn_inject",
+   "ms_per_step": 0.003967333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00731736389672414
+  },
+  {
+   "name": "linear:layers.44.hc_ffn_inject",
+   "ms_per_step": 0.003954333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007293386649877201
+  },
+  {
+   "name": "linear:layers.32.hc_ffn_inject",
+   "ms_per_step": 0.003954,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007292771848675998
+  },
+  {
+   "name": "linear:layers.16.hc_ffn_inject",
+   "ms_per_step": 0.003953666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007292157047474794
+  },
+  {
+   "name": "linear:layers.12.hc_attn_inject",
+   "ms_per_step": 0.003940666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007268179800627859
+  },
+  {
+   "name": "linear:layers.6.hc_attn_inject",
+   "ms_per_step": 0.003927333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007243587752579718
+  },
+  {
+   "name": "linear:layers.39.hc_attn_inject",
+   "ms_per_step": 0.003927333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007243587752579718
+  },
+  {
+   "name": "linear:layers.2.hc_attn_inject",
+   "ms_per_step": 0.003914333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007219610505732782
+  },
+  {
+   "name": "linear:layers.2.hc_ffn_inject",
+   "ms_per_step": 0.003914,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007218995704531578
+  },
+  {
+   "name": "linear:layers.15.hc_attn_inject",
+   "ms_per_step": 0.003900666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007194403656483437
+  },
+  {
+   "name": "linear:layers.30.hc_ffn_inject",
+   "ms_per_step": 0.003900666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007194403656483437
+  },
+  {
+   "name": "linear:layers.45.hc_attn_inject",
+   "ms_per_step": 0.0038876666666666673,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007170426409636502
+  },
+  {
+   "name": "linear:layers.42.hc_attn_inject",
+   "ms_per_step": 0.003861,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00712124231354022
+  },
+  {
+   "name": "linear:layers.4.hc_attn_inject",
+   "ms_per_step": 0.0038606666666666668,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007120627512339017
+  },
+  {
+   "name": "linear:layers.25.hc_ffn_inject",
+   "ms_per_step": 0.0038606666666666668,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007120627512339017
+  },
+  {
+   "name": "linear:layers.29.hc_ffn_inject",
+   "ms_per_step": 0.0038603333333333332,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007120012711137813
+  },
+  {
+   "name": "linear:layers.24.hc_attn_inject",
+   "ms_per_step": 0.003847333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007096035464290877
+  },
+  {
+   "name": "linear:layers.16.hc_attn_inject",
+   "ms_per_step": 0.0038469999999999997,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.0070954206630896716
+  },
+  {
+   "name": "linear:layers.27.hc_attn_inject",
+   "ms_per_step": 0.003833666666666666,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007070828615041532
+  },
+  {
+   "name": "linear:layers.22.hc_ffn_inject",
+   "ms_per_step": 0.003807333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.007022259320146455
+  },
+  {
+   "name": "linear:layers.38.hc_attn_inject",
+   "ms_per_step": 0.003794,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.006997667272098315
+  },
+  {
+   "name": "linear:layers.46.hc_attn_inject",
+   "ms_per_step": 0.003740666666666667,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.006899299079905755
+  },
+  {
+   "name": "linear:layers.36.hc_attn_inject",
+   "ms_per_step": 0.0037403333333333334,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.006898684278704551
+  },
+  {
+   "name": "linear:layers.17.hc_attn_inject",
+   "ms_per_step": 0.0037400000000000003,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.006898069477503348
+  },
+  {
+   "name": "linear:layers.14.hc_attn_inject",
+   "ms_per_step": 0.003727,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.00687409223065641
+  },
+  {
+   "name": "linear:layers.35.hc_attn_inject",
+   "ms_per_step": 0.0036733333333333336,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.006775109237262646
+  },
+  {
+   "name": "linear:layers.40.hc_attn_inject",
+   "ms_per_step": 0.0036466666666666665,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.006725925141166365
+  },
+  {
+   "name": "linear:layers.30.hc_attn_inject",
+   "ms_per_step": 0.0036333333333333335,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.006701333093118224
+  },
+  {
+   "name": "linear:layers.44.hc_attn_inject",
+   "ms_per_step": 0.003526333333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.006503981907531899
   }
  ],
  "families_top": [
@@ -335,6 +4627,36 @@
    "ms_per_step": 0.06524066666666668,
    "kernels_per_step": 12.0,
    "share_pct": 0.1203301207019528
+  },
+  {
+   "name": "linear:root.head_hc_down",
+   "ms_per_step": 0.036415,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06716395722547712
+  },
+  {
+   "name": "ple:ple_key",
+   "ms_per_step": 0.036187333333333335,
+   "kernels_per_step": 8.0,
+   "share_pct": 0.06674404800505511
+  },
+  {
+   "name": "linear:ple_value",
+   "ms_per_step": 0.03415733333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.06299990868972576
+  },
+  {
+   "name": "linear:root.head_hc_up",
+   "ms_per_step": 0.02033133333333333,
+   "kernels_per_step": 1.0,
+   "share_pct": 0.037499184466206696
+  },
+  {
+   "name": "gr_read:root.head_hc_down",
+   "ms_per_step": 0.011261,
+   "kernels_per_step": 4.0,
+   "share_pct": 0.020769828980258073
   }
  ],
  "limits": "Profiled capture: the wall and per-kernel times are diagnostic, not a performance measurement. One case (code-p4096), one live count (4097), one model, one host, one execution profile. Role attribution depends on the innermost-window join; kernels launched outside any role range are reported as unattributed rather than assigned."

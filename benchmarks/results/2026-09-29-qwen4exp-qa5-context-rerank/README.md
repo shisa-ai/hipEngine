@@ -78,3 +78,13 @@ is at 100% occupancy. QA-5 is closed as a stale premise.
   different (prefill-only microbench) measurement and was **not** reproduced here.
 - The full-attn family total (801.566 ms) is a sum over one kernel; it is not an
   end-to-end attribution.
+
+## Occupancy evidence
+
+The occupancy figures this packet uses are a **static register census**, committed at
+`../2026-09-29-qwen4exp-qa5-context-census/census.json`
+(`kind: qwen4exp_repair_register_census`, `source: .../attention/paged_attn_decode.hip`,
+`--offload-arch=gfx1151`, 128 threads/block). It is a **static census of one compiled
+profile** - occupancy there is the register limit only, with no LDS or scratch term and
+no runtime counter - which is exactly the caveat recorded in the row: the 25% and 100%
+figures are arithmetic from launch code plus measured VGPR, not counter-based.
