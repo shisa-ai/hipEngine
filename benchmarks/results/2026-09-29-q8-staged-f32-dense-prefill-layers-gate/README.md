@@ -37,7 +37,7 @@ layers 16-47 and the staged tile only replaces the **exact chain** on 13-15.
 | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | staged 13-15 + WMMA 16-47 | WMMA 16-47 (production) | 4.818e-4 | 2.510e-3 | 6.495e-3 | 2.056e-2 | 0.99289 | **pass** |
 | staged 13-14 + WMMA 16-47 | WMMA 16-47 (production) | 5.384e-4 | 2.675e-3 | 7.056e-3 | 4.201e-2 | 0.99289 | **pass** |
-| staged 13-15 + WMMA 16-47 | exact chain | *(pending)* | | | | | |
+| staged 13-15 + WMMA 16-47 | exact chain | 5.443e-4 | 2.584e-3 | 8.525e-3 | 2.819e-2 | 0.99096 | **pass** | |
 
 The first two are the **marginal** cost: adding the staged tile at 13-15 changes
 the certified production trajectory by 4.818e-4 mean KL, inside every gate with
@@ -45,7 +45,41 @@ roughly 2x headroom. Both pre-checks were confirmed: the teacher arm bound WMMA
 (its `strict_logits_sha256` differs from the exact chain's), and the candidate
 arm engaged the staged tile (its hash differs from the teacher's).
 
-The third row is the **end-to-end** figure the production envelope asks for. The
+The third row is the **end-to-end** figure the production envelope asks for, and
+it passes every hard gate with 1.77x to 2.35x headroom:
+
+| gate | value | limit | headroom |
+| --- | ---: | ---: | ---: |
+| mean KL | 5.443e-4 | 1e-3 | 1.84x |
+| p95 KL | 2.584e-3 | 5e-3 | 1.93x |
+| p99 KL | 8.525e-3 | 2e-2 | 2.35x |
+| max KL | 2.819e-2 | 5e-2 | 1.77x |
+| top-1 | 0.99096 | 0.99 | pass |
+
+Determinism clean, no per-scope failures, teacher confirmed as the exact chain
+and the staged tile confirmed engaged.
+
+### It is not automatically admissible: two rows need outlier review
+
+`status` is `invalid_or_screen_only` and `measurement_valid` is `false`, but
+**no threshold failed**. `quality_passed` is false only because
+`requires_outlier_review` is true: two rows sit above the 0.02 review boundary.
+
+| request | step | KL | top-1 equal | top-k overlap | strict margin |
+| --- | ---: | ---: | --- | ---: | ---: |
+| `code-p4096` | 259 | 2.766e-2 | yes | 1.0 | 0.414 |
+| `general_ja-p4096` | 1047 | 2.819e-2 | yes | 1.0 | 0.792 |
+
+Both have **identical top-1 and full top-k overlap**: the candidate's ranking is
+unchanged, and the KL comes from probability mass moving within the tail while
+the chosen token keeps a large margin (0.41 and 0.79). That is the signature of
+benign tail redistribution rather than a ranking hazard, but the gate requires
+the review explicitly and `eligible_for_automatic_admission` stays false.
+
+Note the blocker label is misleading: `qualification_blockers` reports
+"calibrated quality thresholds" because `quality_passed` folds in the
+outlier-review requirement, not because any calibrated threshold was exceeded.
+Read the threshold table, not the blocker name. The
 envelope is defined against the exact chain, so the full promoted composition has
 to be scored against the exact chain directly. The marginal cost must **not** be
 added to WMMA's own 16-47 drift to obtain it - that is a summed-KL budget, and
