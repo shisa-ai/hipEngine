@@ -75,6 +75,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import (  # noqa: 
     gguf_q8_0_dense_wide256_f16in_f32_f32_out,
     gguf_q8_0_dense_wide256_f32_f32_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_gr_staged_f32 import (  # noqa: E402
+    gr_staged_f32_up,
+)
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata  # noqa: E402
 from scripts.qwen4exp_dense_projection_ab import load_layer_weights  # noqa: E402
 
@@ -195,11 +198,25 @@ def _up_arms(device: Device, weight) -> dict[str, Any]:
             hidden, runtime=device.runtime,
         )
 
+    def staged_f32() -> None:
+        gr_staged_f32_up(
+            device.x.ptr, weight.ptr, device.extra.ptr, rows, k, n,
+            runtime=device.runtime,
+        )
+        qwen4_exp_sigmoid_f32(
+            device.extra.ptr, device.extra.ptr, rows * n, runtime=device.runtime,
+        )
+        qwen4_exp_gated_mean_f32(
+            device.normalized.ptr, device.extra.ptr, device.mixed.ptr, rows, BRANCHES,
+            hidden, runtime=device.runtime,
+        )
+
     return dict(
         fused_exact=dict(run=fused, gate=True, mixed=device.mixed),
         unfused_exact=dict(run=unfused, gate=True, mixed=device.mixed),
         wide_f32in=dict(run=wide_f32in, gate=False, mixed=device.mixed),
         wide_f16in=dict(run=wide_f16in, gate=False, mixed=device.mixed),
+        staged_f32=dict(run=staged_f32, gate=False, mixed=device.mixed),
     )
 
 
@@ -225,10 +242,17 @@ def _down_arms(device: Device, weight) -> dict[str, Any]:
             threads=256, runtime=device.runtime,
         )
 
+    def staged_f32() -> None:
+        gr_staged_f32_up(
+            device.x.ptr, weight.ptr, device.out.ptr, rows, k, n,
+            runtime=device.runtime,
+        )
+
     return dict(
         exact=dict(run=exact, gate=False, mixed=device.out),
         wide_f32in=dict(run=wide_f32in, gate=False, mixed=device.out),
         wide_f16in=dict(run=wide_f16in, gate=False, mixed=device.out),
+        staged_f32=dict(run=staged_f32, gate=False, mixed=device.out),
     )
 
 
