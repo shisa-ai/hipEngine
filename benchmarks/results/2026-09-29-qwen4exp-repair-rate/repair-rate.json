@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_repair_rate_measured",
+  "performance_claim": false,
+  "created_at": "2026-09-29T18:26:06.128232+00:00",
+  "purpose": "Quantify the sparse-exact-repair incidence and effective throughput, as corroboration for EG-3's measured mechanism (latency of a dependent memory chain). Does NOT reopen EG-3.",
+  "command": [
+    "qwen4exp_profile_gap.py",
+    "--model-root",
+    "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--mode",
+    "prefill",
+    "--case-id",
+    "code-p4096",
+    "--repetitions",
+    "1",
+    "--execution-profile",
+    "production",
+    "--compiler-version-file",
+    "/tmp/qwen4exp-ledger-20260928-current/hipcc-version.txt",
+    "--require-cached-build",
+    "--prefill-chunk-size",
+    "4096",
+    "--risk-diagnostics",
+    "--output",
+    "benchmarks/results/2026-09-29-qwen4exp-repair-rate/code-p4096.json"
+  ],
+  "case": "code-p4096",
+  "execution_profile": "production",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "It seems that tuned daemon is not running, preset profile is not activated.\nPreset profile: accelerator-performance",
+    "cpu_governors": {
+      "powersave": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "wall_seconds": [
+    14.80009841825813
+  ],
+  "risk_diagnostics_route": "q4_iu8_exact:expert_gate_up",
+  "measured": {
+    "calls": 94,
+    "outputs": 4928307200,
+    "risk": 35083610,
+    "aggregate_repair_rate": 0.007118795273151804,
+    "max_repair_rate": 0.007796993255615234,
+    "over_capacity_calls": 0
+  },
+  "derived": {
+    "per_call_outputs": 52428800,
+    "per_call_risky": 373229,
+    "compact_rows_per_call": 40960,
+    "weight_bytes_per_repair": 1440,
+    "bytes_per_call_mb": 537.5,
+    "bytes_total_gb": 50.5,
+    "effective_scattered_gbps": 40.9,
+    "ns_per_repair": 35.2
+  },
+  "disproportion": {
+    "q4k_repair_ms": 573.211,
+    "q4k_fast_ms": 2713.953,
+    "ideal_repair_at_fast_efficiency_ms": 19.32,
+    "ratio": 29.7,
+    "saving_ms": 553.9,
+    "saving_pct_of_window": 2.44
+  },
+  "unmeasured_route_inference": {
+    "q51_repair_ms": 661.21,
+    "q51_fast_ms": 1482.958,
+    "note": "q5_1 route rate NOT observed; the following assumes it matches q4_k",
+    "saving_if_matching_ms": 650.7,
+    "saving_if_matching_pct": 2.87
+  },
+  "combined_ceiling_ms": 1204.5,
+  "combined_ceiling_pct": 5.31,
+  "verdict": "corroborates EG-3; does not reopen it",
+  "source_attribution": "benchmarks/results/2026-09-17-qwen4exp-per-role-cost/role-analysis.json"
+}
