@@ -8080,10 +8080,25 @@ _PACK8_GEMV_WIDE_MAX_OUT = 640
 
 
 def _pack8_gemv_wide_threads_enabled() -> bool:
-    """Session/env opt-in for the narrow-projection block-size lever."""
+    """Whether the narrow-projection block-size lever is active.
+
+    Default-on.  The T2 profile gate passed every binding production gate on the
+    full 18-prompt / 450-row suite: ``kl_mean`` 0.000287 against a 0.001 bound,
+    ``kl_p99`` 0.004831 against 0.02, ``kl_max`` 0.018131 against 0.05, top-1
+    0.9978 against 0.99, all four categories passing their 0.97 per-scope floor,
+    three repeat runs bit-identical, and a clean lifecycle.  The one top-1
+    mismatch was a near-tie (strict margin 0.0248, the candidate ranked the
+    strict winner second, top-5 overlap 1.0, KL 0.000626) and the one free-output
+    divergence was a cosmetic import-list difference.
+
+    Set ``HIPENGINE_GGUF_PACK8_GEMV_WIDE=0`` to force the 128-wide launcher
+    default for rollback or bisection.
+    """
 
     raw = os.environ.get(_PACK8_GEMV_WIDE_ENV, "")
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    if not raw:
+        return True
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _pack8_gemv_decode_threads(
@@ -8109,6 +8124,9 @@ def _pack8_gemv_decode_threads(
     the decode-shaped pack8 family.  Only ``gguf_q8_0`` was measured; the other
     quants in the family inherit the rule by the same reasoning and are reported
     as measured-for-q8_0-only.
+
+    Active by default since the T2 profile gate passed; ``HIPENGINE_GGUF_PACK8_
+    GEMV_WIDE=0`` restores the 128-wide launcher default.
 
     Returns 0 when the caller supplied its own block size or the shape is not a
     narrow decode-shaped pack8 GEMV, leaving the launcher default in place.

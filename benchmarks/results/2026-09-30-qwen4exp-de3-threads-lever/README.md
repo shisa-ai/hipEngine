@@ -75,8 +75,64 @@ family and this is not a variant-selection miss.
 - **`threads` changes arithmetic.** 256 threads per 8-output workgroup means 32 threads
   per output rather than 16, so the K-reduction tree differs. Measured divergence from
   the 128-thread result is max relative 2.6e-7 (float32 rounding level) at both 320x10240
-  and 640x2560. This is a T1/T2 arithmetic change and requires the production numerical
-  envelope before promotion; it is not exact.
+  and 640x2560. This is a T2 arithmetic change; it is not exact, and it was promoted only
+  after the production numerical envelope passed (below).
 - The 1.490 ms/step figure is a per-kernel projection from a microbenchmark, not an
   end-to-end measurement.
 - `threads` is validated to be one of {64, 128, 256}; 512 was rejected by the launcher.
+
+## Production numerical envelope
+
+Measured with the applicable harness,
+`scripts/qwen4exp_layer2_profile_gate.py --candidate pack8_gemv_wide_256` on
+Qwen3.8-Flash-Next-UD-Q4_K_XL (head `d49dc011c`, tracked tree clean,
+`measurement_valid = true`). Artifact: `kl-envelope-gate-qwen4exp.json`.
+
+The route engaged: `strict_logits_sha256 = 7b4385b7...` against
+`candidate_logits_sha256 = 6094c507...`.
+
+| Gate | Measured | Bound | Margin |
+| --- | ---: | ---: | ---: |
+| `kl_mean` | 0.000287 | 0.001 | 3.5x |
+| `kl_p95` | 0.001425 | 0.005 | 3.5x |
+| `kl_p99` | 0.004831 | 0.02 | 4.1x |
+| `kl_max` | 0.018131 | 0.05 | 2.8x |
+| `top1_agreement` | 0.99778 | 0.99 | - |
+
+Per-category top-1 clears the 0.97 per-scope floor everywhere: `code` 0.99333,
+`general_en` 1.0, `general_ja` 1.0, `mixed_ja_en` 1.0. `hard_gates_passed` is
+true, `requires_outlier_review` false, `rows_over_review_boundary` empty. Three
+repeat runs are bit-identical, the state repeat gate passes, and the lifecycle
+gate closes with all 83.5 GB freed and no active allocations.
+
+**The change is confined to decode.** The `prefill_last` scope scores `kl_mean
+= 6.9e-14` with `max_abs_logit_delta = 2.9e-06`, i.e. float noise, so prefill is
+untouched. `teacher_nll_delta` is -0.00042: the candidate is marginally better on
+teacher NLL, not worse.
+
+### The two review items
+
+The harness returns `requires_review` rather than auto-admitting a cross-route
+free-output difference, so both items were inspected.
+
+1. **The single top-1 mismatch** (teacher step 13 of `heldout_code_rate_limiter`)
+   is a near-tie: `strict_margin = 0.0248`, `strict_top1_candidate_rank = 2` (the
+   candidate ranked the strict winner second), `topk_overlap = 1.0` (identical
+   top-5 set), `kl = 0.000626`, which is 32x below the 0.02 review boundary. It
+   lies inside the flip-eligible set: `top1_mismatches_outside_flip_eligible = 0`.
+2. **The single free-output divergence** emits `from typing import Dict, Deque,
+   Tuple` where strict emitted `from typing import Dict, Deque`. Both produce the
+   same working `SlidingWindowRateLimiter`, and `candidate_repeat_exact` is true,
+   so the difference is deterministic and cosmetic.
+
+### A void run, recorded
+
+An earlier attempt adapted a c1 threads gate driving Qwen3.6-35B-A3B and returned
+`kl_mean = 0.0` with `strict_and_candidate_bytes_equal` on all 18 prompts. The
+two arms were bit-identical, so its green quality status was vacuous and the run
+is discarded rather than reported. The cause was measured, not assumed:
+`scripts/qwen4exp_de3_route_probe.py` wraps the predicate and drives a real
+decode, showing the predicate is reached 549 times but only ever sees
+`bf16_hidden_bf16_out` at out=32 and `t16_gemv_decode_bf16_f32_out` at out=248320
+- that model never dispatches the `pack8_gemv_*` family, so the guard correctly
+rejected every call. A KL gate on that model cannot exercise this change.
