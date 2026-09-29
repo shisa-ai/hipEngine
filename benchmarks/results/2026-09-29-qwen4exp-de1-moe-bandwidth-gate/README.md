@@ -267,3 +267,93 @@ over 48 layers) match one dispatch per layer, with the shortfall expected from t
 medium confidence: it rests on the kernel being the only fp32 dense GEMV in the block and on
 `ffn_gate_inp` being exactly fp32, not on a name match. **No timing claim is made** - the artifact
 inherits the source capture's own limit that its per-kernel times are diagnostic.
+
+## Addendum 4: the production decode path is already the exact variant - and the dp4a revert does not cover it
+
+Addendum 3 measured the decode owner as `gguf_q4_k_selected_dual_silu_logical128_t64` - the
+**non-dp4a** variant. That raised an obvious question: which variant does the production profile
+actually select? The answer changes what `DE-1`'s action should target.
+
+### The capture is the production profile
+
+`scripts/qwen4exp_context_decode_profile.py` builds its generator with
+`_make_generator(factory_args, "production")`, so the capture is the **production** profile. Its
+report labels it `"execution_profile": "production"`.
+
+### Production selects the exact variant, via the recovery block
+
+`hipengine/generation/qwen4_exp_profiles.py` defines two selection sets:
+
+- **`_strict_selections()`** selects `selected_dual_silu_logical128_t64` (exact activation).
+- **`_production_selections()`** selects `selected_dual_q8_1_dp4a_silu_logical128_t64` (dp4a) with
+  `evidence=_DECODE_EVIDENCE` - but for this model's quant (`gguf_ud_q4_k_xl`) the call site passes
+  **`recovery=True`**, and the recovery block then applies:
+
+  ```python
+  replacements = {
+      "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out":
+          "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+  }
+  ```
+
+  under `_ARITHMETIC_RECOVERY_EVIDENCE`. **So production decode runs the exact variant**, which is
+  why the trace shows `gguf_q4_k_selected_dual_silu_logical128_t64_kernel`. **Addendum 3's 63.43 GB/s
+  is therefore a production-path measurement, not a strict-profile artifact.**
+
+### The warp256 structure exists only as dp4a
+
+`DE-1`'s action is "an exact-activation variant of the warp256 structure (the structure, not the
+dp4a arithmetic)". The tree contains:
+
+- `gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out` (gate/up)
+- `qwen4_exp_q5_1_selected_weighted_sum_warp256{,_fast}_bf16_bf16_out` (down)
+
+with docstring: *"One block per output column with 32\*rows threads; warp w serves expert row w
+(rows <= 12); lanes stride the 4-element groups by 32 ... Warp shuffle reductions, no barriers."*
+
+**Every warp256 variant is dp4a. No exact-activation warp256 exists.** So the row's action is a real,
+unbuilt unit - and the recovery's replacement of dp4a-logical128 with exact-logical128 does **not**
+cover it.
+
+### What the recovery evidence actually covers
+
+`_ARITHMETIC_RECOVERY_EVIDENCE` is `benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json`.
+That artifact's failing candidate is `production_q8_fallback`, mechanism *"strict Q8 selected-down
+and dense Q8 MMQ fallback; **other production paths unchanged**"*, and it failed on **task quality,
+not numerics**: the candidate produced *"Llama-2-7B uses GQA, reducing KV cache size by 4x compared
+to MHA"*, a claim absent from the strict arm. Its `task_review.status` is
+`rejected_for_default_promotion`.
+
+**That candidate did not change the decode linear.** Yet the recovery's `replacements` dict sweeps
+the decode dp4a linear into the revert. The recovery's own gate then passes
+(`conservative_recovery.status: passed`, `task_gate: passed_exact`, 18/18) - which shows the
+conservative configuration works, **not** that the decode dp4a linear fails.
+
+### The decode dp4a linear has its own passing acceptance
+
+`_DECODE_EVIDENCE` is
+`benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-dp4a-safe43-decode.json`:
+
+- `status: **accepted_explicit_production_profile**`
+- `numerical_gate.mean_kl: **2.72e-4**`, `max_kl: **5.77e-3**`
+
+For comparison, the warp256 dp4a variant failed admission at **max KL 0.121-0.431** - roughly 20-75x
+worse. **These are different arithmetic outcomes and should not be treated as one class.**
+
+### What this does and does not establish
+
+**Establishes:** the production decode path is the exact variant; the warp256 structure has never
+been built with exact activations; and the decode dp4a linear was reverted by a conservative sweep
+whose triggering candidate explicitly left it unchanged, despite having its own accepted production
+evidence.
+
+**Does NOT establish** that re-admitting the decode dp4a linear is safe today, or that it would pass
+the current production envelope. The recovery was a deliberate conservative response to a real task
+failure, and reverting non-exact owners broadly was a reasonable choice at the time. **No speedup is
+claimed here**, and the row's 2.0x/5.8x figures belong to the warp256 variant, not to the logical128
+dp4a variant that was reverted.
+
+**Two candidate next steps follow, and they are different units:** (1) re-run the profile gate on the
+decode dp4a logical128 owner under the current production envelope - a gate run, no kernel work; and
+(2) build the exact-activation warp256 variant the row actually asks for - real kernel work. Neither
+is licensed by this addendum.
