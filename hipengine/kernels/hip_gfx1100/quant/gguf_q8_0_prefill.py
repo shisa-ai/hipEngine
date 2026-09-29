@@ -490,6 +490,35 @@ def register_gguf_q8_0_prefill_kernels(*, replace: bool = True) -> None:
             fn,
             replace=replace,
         )
+    # The expert path resolves the grouped WMMA down owner on the
+    # ``moe_linear`` layer axis -- ``gemma4_project_experts_wmma`` builds
+    # ``KernelKey(backend, "moe_linear", quant_key, _WMMA_PREFILL_VARIANT)`` --
+    # and under the group owner's ``compact`` variant name rather than this
+    # module's dense ``selected_grouped_wmma_prefill_*`` key. Without a binding
+    # here that resolve raises ``MissingKernelError`` and the down silently
+    # falls through the WMMA -> MMQ -> grouped chain to the selected GEMV,
+    # which is how a single layer's Q8_0 down came to run ~44 ms while every
+    # other layer's Q5_1 down reaches the WMMA owner through the matching
+    # ``qwen4_exp_q5_1`` binding.
+    #
+    # This wrapper already carries the expert ABI: it takes
+    # ``expert_start_compact_ptr`` / ``expert_start_wmma_ptr`` /
+    # ``tile_expert_ptr`` and documents itself as the promoted Q5_1 grouped
+    # WMMA down contract applied to Q8_0 expert weights, and
+    # ``tests/test_gpu_qwen4exp_q8_0_grouped_wmma_down.py`` pins it against a
+    # NumPy dequant reference through ``qwen35_moe_wmma_tile_map``, the same
+    # tile map the runner uses. Only the plain form is bound: ``auto`` runs
+    # ``compensated=False`` and no compensated Q8_0 wrapper exists.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q8_0",
+            "selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+        ),
+        gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
+        replace=replace,
+    )
 
 
 register_gguf_q8_0_prefill_kernels()
