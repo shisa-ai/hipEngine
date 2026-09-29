@@ -385,9 +385,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/generation/gemma4_gguf.py:445",
+      "key": "hipengine/generation/gemma4_gguf.py:447",
       "title": "unimplemented: raise NotImplementedError(\"Gemma 4 basic runner: \" + \"; \".join(blockers))",
-      "location": "hipengine/generation/gemma4_gguf.py:445",
+      "location": "hipengine/generation/gemma4_gguf.py:447",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -398,7 +398,7 @@
       "hints": {
         "anchor": "hipengine/generation/gemma4_gguf.py",
         "refs": [
-          "hipengine/generation/gemma4_gguf.py:445"
+          "hipengine/generation/gemma4_gguf.py:447"
         ],
         "tokens": [
           "basic",
@@ -411,8 +411,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/generation/gemma4_gguf.py:445",
-      "evidence_hash": "013e9d5fcffc"
+      "id": "stub/hipengine/generation/gemma4_gguf.py:447",
+      "evidence_hash": "e54ca7c4fefc"
     },
     {
       "kind": "stub",

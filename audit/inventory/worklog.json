@@ -2,15 +2,15 @@
   "kind": "worklog",
   "meta": {
     "source": "worklog/entries",
-    "entries": 11249,
-    "current": 4017,
+    "entries": 11254,
+    "current": 4022,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1305,
+    "rows": 1308,
     "by_rule": {
       "dependency": 42,
       "legacy-next": 109,
-      "status": 1154
+      "status": 1157
     }
   },
   "rows": [
@@ -48553,6 +48553,118 @@
       },
       "id": "worklog/20260929T040000.000000Z-lhl-gemma4-t16-wmma-expert-lever-1a2b3c",
       "evidence_hash": "411daedd593b"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260929T043858.685376Z-lhl-gemma4-review-mtp-controls-a8de22",
+      "title": "Enforce Gemma 4 MTP stop controls and probe verdicts",
+      "location": "worklog/entries/20260929T043858.685376Z-lhl-gemma4-review-mtp-controls-a8de22.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-review-mtp-controls",
+        "written": "2026-09-29",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 1,
+        "open_text": "- Separate speculative verification from prompt-prefill attention selection; keep production prefill enabled. Do not interpret the category mismatch as proof that all production arithmetic fails its numerical quality contract.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "1 later entry by the same worker share this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260929T043858.685376Z-lhl-gemma4-review-mtp-controls-a8de22.md",
+        "refs": [],
+        "tokens": [
+          "controls",
+          "enforce",
+          "gemma",
+          "mtp",
+          "probe",
+          "stop",
+          "verdicts"
+        ]
+      },
+      "id": "worklog/20260929T043858.685376Z-lhl-gemma4-review-mtp-controls-a8de22",
+      "evidence_hash": "4c53271380e8"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260929T045116.294723Z-lhl-gemma4-verify-phase-129906",
+      "title": "Separate Gemma 4 speculative verification from prompt attention",
+      "location": "worklog/entries/20260929T045116.294723Z-lhl-gemma4-verify-phase-129906.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-verify-phase",
+        "written": "2026-09-29",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Complete independent review and reassess the campaign's completion claim;\n  the matching 18-prompt run does not establish its general 2x speed objective.",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260929T045116.294723Z-lhl-gemma4-verify-phase-129906.md",
+        "refs": [],
+        "tokens": [
+          "attention",
+          "gemma",
+          "prompt",
+          "separate",
+          "speculative",
+          "verification"
+        ]
+      },
+      "id": "worklog/20260929T045116.294723Z-lhl-gemma4-verify-phase-129906",
+      "evidence_hash": "18f065664b40"
+    },
+    {
+      "kind": "worklog",
+      "key": "20260929T045734.345910Z-lhl-gemma4-review-final-0c140a",
+      "title": "Close Gemma 4 correctness review with matching softcap semantics",
+      "location": "worklog/entries/20260929T045734.345910Z-lhl-gemma4-review-final-0c140a.md:8",
+      "evidence": {
+        "status": "checkpoint",
+        "worker": "lhl",
+        "topic": "gemma4-review-final",
+        "written": "2026-09-29",
+        "age_days": 0,
+        "open_by": "status",
+        "continuation_entries": 0,
+        "open_text": "- Campaign completion is not established: these are correctness and route\n  checks, not a general 2x decode benchmark or task-quality evaluation.\n- Known out-of-scope test debt: the child no-ROCm environment exposed 15\n  missing availability guards in `tests/test_unit_gemma4_gpu_kernels.py`.\n  The GPU-capable parent run passes; this does not clear that portability\n  defect. Historical verify-row xfail annotations also need a separate\n  coverage cleanup.\n- Leave the pre-existing campaign document and audit metadata edits with\n  their owners. All implementation fixes from this review are committ",
+        "paths_missing": [],
+        "flags_unread": []
+      },
+      "signals": [
+        "recorded as checkpoint \u2014 the entry says the unit was not complete at this commit",
+        "no later entry by the same worker shares this topic prefix"
+      ],
+      "hints": {
+        "anchor": "worklog/entries/20260929T045734.345910Z-lhl-gemma4-review-final-0c140a.md",
+        "refs": [
+          "tests/test_unit_gemma4_gpu_kernels.py"
+        ],
+        "tokens": [
+          "close",
+          "correctness",
+          "gemma",
+          "matching",
+          "review",
+          "semantics",
+          "softcap"
+        ]
+      },
+      "id": "worklog/20260929T045734.345910Z-lhl-gemma4-review-final-0c140a",
+      "evidence_hash": "049121c8223b"
     },
     {
       "kind": "worklog",

@@ -10386,7 +10386,7 @@
         "sites_by_root": {
           "benchmarks": 16,
           "hipengine": 11,
-          "scripts": 192,
+          "scripts": 191,
           "tests": 62
         },
         "runtime_sites": [
@@ -10394,7 +10394,7 @@
           "hipengine/benchmark/provenance.py:336",
           "hipengine/core/build.py:17",
           "hipengine/core/build.py:225",
-          "hipengine/generation/gemma4_gguf.py:463",
+          "hipengine/generation/gemma4_gguf.py:465",
           "hipengine/kernels/backends.py:24",
           "hipengine/kernels/backends.py:289",
           "hipengine/kernels/hip_gfx1151/__init__.py:5"
@@ -10419,7 +10419,7 @@
         ]
       },
       "id": "flag/HIPENGINE_HIP_ARCH",
-      "evidence_hash": "451dc4e8a657"
+      "evidence_hash": "994640256c4f"
     },
     {
       "kind": "flag",
