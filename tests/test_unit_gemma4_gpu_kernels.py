@@ -1476,6 +1476,7 @@ def _reference_attention(query, key, value, keep_mask, *, num_heads, num_kv_head
     return context
 
 
+@_needs_hip
 def test_attention_prefill_f32_matches_the_reference():
     """The f32 entry point reproduces masked GQA attention exactly."""
 
@@ -1516,6 +1517,7 @@ def test_attention_prefill_f32_matches_the_reference():
     np.testing.assert_allclose(got, want, atol=1e-5, rtol=1e-5)
 
 
+@_needs_hip
 def test_attention_prefill_applies_the_mask_it_is_given():
     """A masked-out key must contribute nothing, including when it is recent.
 
@@ -1575,6 +1577,7 @@ def test_attention_prefill_applies_the_mask_it_is_given():
         np.testing.assert_allclose(got[0, head], value[0, kv_head], atol=1e-5)
 
 
+@_needs_hip
 @pytest.mark.parametrize("start,rows,window", [(0, 4, 2), (0, 6, 3), (10, 1, 4), (0, 5, None)])
 def test_attention_prefill_matches_the_reference_through_the_production_mask(start, rows, window):
     """Production keep-mask -> HIP kernel -> naive reference, end to end.
@@ -1643,6 +1646,121 @@ def test_attention_prefill_matches_the_reference_through_the_production_mask(sta
     np.testing.assert_allclose(
         got, want, atol=1e-5, rtol=1e-5,
         err_msg=f"production-mask path disagreed at start={start} rows={rows} window={window}",
+    )
+
+
+@_needs_hip
+@pytest.mark.parametrize(
+    "head_dim,num_kv_heads,window,layer_kind",
+    [
+        (256, 8, 1024, "sliding"),  # the 25 sliding layers: the window binds
+        (512, 2, None, "global"),   # the 5 global layers: head_dim 512, causal only
+    ],
+)
+def test_windowed_attention_matches_the_reference_at_the_gate_shape(
+    head_dim, num_kv_heads, window, layer_kind
+):
+    """The windowed path is right at the shape V1 gates, not just in fixtures.
+
+    V2's open half. Everything else about the window is already pinned: the
+    mask builder is bound to the HuggingFace-gated reference, and
+    ``test_unit_gemma4_attention_flash_admission.py`` proves the routing policy
+    refuses the flash path the moment the window binds (``keys`` 1024 admits,
+    1025 does not), so a sliding layer past its window always reaches the exact
+    kernel that reads ``keep_mask`` -- while the flash kernel reads no mask at
+    all. What no test did was run the pair the runtime actually issues at the
+    gate's own geometry. The composition test above stops at head_dim 16 with
+    six rows and a four-token window; a bug that only appears once the key walk
+    spans thousands of tiles -- the pass-1 skip over fully-masked tiles, the
+    window binding on every row past the first 1024 -- would sail past it.
+
+    ``start=3584, rows=512`` is the last block of a 4096-token prefill: keys
+    4096 against a 1024 window, so the window binds on the sliding layers. The
+    global class runs the same block with ``sliding_window=None``, which is the
+    check that a window is *not* applied where none is declared. Both are the
+    configuration the gate measures and the one V3 found the kernel skipping
+    tiles for.
+    """
+    from hipengine.kernels.cpu_reference.gemma4 import (
+        FULL_ATTENTION,
+        SLIDING_ATTENTION,
+        Gemma4AttentionGeometry,
+        Gemma4RopeConfig,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        gemma4_attention_prefill_f32,
+    )
+    from hipengine.runtime.gemma4 import _keep_mask
+
+    num_heads = 16
+    rows, start = 512, 3584
+    keys = start + rows
+    assert keys == 4096
+    if window is not None:
+        assert keys > window, "the window must bind or this shape proves nothing"
+
+    geometry = Gemma4AttentionGeometry(
+        layer_type=SLIDING_ATTENTION if window is not None else FULL_ATTENTION,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        rope=Gemma4RopeConfig(
+            rope_theta=10000.0, head_dim=head_dim, rope_angles=head_dim // 2, rope_type=1
+        ),
+        sliding_window=window,
+        k_eq_v=False,
+    )
+
+    keep = _keep_mask(geometry, start, rows)
+    assert keep.shape == (rows, keys)
+    # Every query sees its own key (column start+i, not i -- the mask spans the
+    # whole cached range), so no row is masked away entirely.
+    assert keep[np.arange(rows), start + np.arange(rows)].all()
+    assert keep.any(axis=1).all()
+    if window is not None:
+        # Row 0's query sits at ``start``=3584, so only keys in
+        # (3584-1024, 3584] are visible -- 1024 of 4096 columns.
+        assert keep[0, : start - window + 1].sum() == 0      # older than the window
+        assert keep[0, start - window + 1: start + 1].all()  # the window itself
+        assert keep[0, start + 1:].sum() == 0                # causal: no future keys
+        assert keep[0].sum() == window
+        # The window binds on every row, not just the first.
+        assert keep.sum(axis=1).max() <= window
+    else:
+        # A global layer must be pure causality: no window may leak in.
+        assert keep.sum(axis=1).max() == keys
+
+    rng = np.random.default_rng(20260929)
+    query = (rng.standard_normal((rows, num_heads, head_dim)) * 0.5).astype(np.float32)
+    key = (rng.standard_normal((keys, num_kv_heads, head_dim)) * 0.5).astype(np.float32)
+    value = (rng.standard_normal((keys, num_kv_heads, head_dim)) * 0.5).astype(np.float32)
+
+    device = _Device()
+    try:
+        q_ptr, k_ptr, v_ptr = device.put(query), device.put(key), device.put(value)
+        m_ptr = device.put(keep)
+        out_ptr = device.out((rows, num_heads, head_dim), np.float32)
+        gemma4_attention_prefill_f32(
+            q_ptr, k_ptr, v_ptr, m_ptr, out_ptr,
+            tokens=rows,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            scale=1.0,
+            keys=keys,
+        )
+        got = device.get(out_ptr, (rows, num_heads, head_dim), np.float32)
+    finally:
+        device.close()
+
+    want = _reference_attention(
+        query, key, value, keep, num_heads=num_heads, num_kv_heads=num_kv_heads
+    )
+    np.testing.assert_allclose(
+        got, want, atol=1e-5, rtol=1e-5,
+        err_msg="windowed prefill disagreed with the reference at the gate shape "
+                f"({layer_kind} head_dim={head_dim} start=3584 rows=512 keys=4096 "
+                f"window={window})",
     )
 
 
