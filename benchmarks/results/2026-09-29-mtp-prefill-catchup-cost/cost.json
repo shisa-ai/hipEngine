@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "kind": "mtp_prefill_catchup_cost",
+  "created_at": "2026-09-29T17:59:50.767847+00:00",
+  "performance_claim": false,
+  "boundary": "host-side MTP prefill catch-up only (llama_cpp_mtp_catchup_rows); excludes the prefill itself, the draft model, and all device work",
+  "host_hidden_size": 2048,
+  "repeats": 9,
+  "warmups": 2,
+  "cases": [
+    {
+      "prompt_tokens": 1024,
+      "hidden_size": 2048,
+      "retained_hidden_bytes": 8388608,
+      "catchup_peak_bytes": 8396800,
+      "total_bytes": 16785408,
+      "catchup_ms_samples": [
+        0.23133400827646255,
+        0.7048831321299076,
+        0.21439231932163239,
+        0.17568888142704964,
+        0.174627173691988,
+        0.17840508371591568,
+        0.17404602840542793,
+        0.17296522855758667,
+        0.1736762933433056
+      ],
+      "catchup_ms_median": 0.17568888142704964,
+      "catchup_ms_min": 0.17296522855758667,
+      "bytes_per_token": 8192
+    },
+    {
+      "prompt_tokens": 4096,
+      "hidden_size": 2048,
+      "retained_hidden_bytes": 33554432,
+      "catchup_peak_bytes": 33562624,
+      "total_bytes": 67117056,
+      "catchup_ms_samples": [
+        2.390183974057436,
+        2.5648223236203194,
+        2.5139660574495792,
+        2.4867551401257515,
+        2.5029857642948627,
+        2.5566359981894493,
+        2.510971389710903,
+        2.461697906255722,
+        2.489290200173855
+      ],
+      "catchup_ms_median": 2.5029857642948627,
+      "catchup_ms_min": 2.390183974057436,
+      "bytes_per_token": 8192
+    },
+    {
+      "prompt_tokens": 16384,
+      "hidden_size": 2048,
+      "retained_hidden_bytes": 134217728,
+      "catchup_peak_bytes": 134225920,
+      "total_bytes": 268443648,
+      "catchup_ms_samples": [
+        10.298359673470259,
+        10.821410920470953,
+        9.993437211960554,
+        9.972617961466312,
+        9.9368910305202,
+        9.735023137181997,
+        9.752125013619661,
+        10.147165972739458,
+        9.839058388024569
+      ],
+      "catchup_ms_median": 9.972617961466312,
+      "catchup_ms_min": 9.735023137181997,
+      "bytes_per_token": 8192
+    }
+  ],
+  "reference_single_row_bytes": 8192,
+  "notes": [
+    "retained_hidden_bytes is the caller-held prompt hidden state the catch-up requires; it is O(prompt_tokens x hidden_size).",
+    "catchup_peak_bytes is the transient copy the catch-up builds.",
+    "The reference approach in the ledger keeps one lagging row and replays the final chunk, i.e. O(1) hidden state."
+  ]
+}
