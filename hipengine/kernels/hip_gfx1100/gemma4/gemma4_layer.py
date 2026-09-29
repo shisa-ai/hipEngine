@@ -272,7 +272,13 @@ class Gemma4LayerScratch:
         self._buffers.clear()
         self._by_name.clear()
 
-    def _size_of(self, name: str) -> int:
+    def _sizes(self) -> dict[str, int]:
+        """Byte size of every buffer this scratch can hold, at ``tokens`` rows.
+
+        Built as one table so the allocator and the memory planner cannot
+        drift apart: ``_size_of`` looks a name up here, and ``resident_bytes``
+        sums it.
+        """
         rows = self.tokens
         hidden = self.hidden_size
         q_width = self.num_heads * self.head_dim
@@ -304,10 +310,27 @@ class Gemma4LayerScratch:
             "routing": rows * self.top_k * _F32_BYTES,
             "branch_sum": rows * hidden * _BF16_BYTES,
         }
+        return sizes
+
+    def _size_of(self, name: str) -> int:
         try:
-            return sizes[name]
+            return self._sizes()[name]
         except KeyError:
             raise ValueError(f"unknown scratch buffer {name!r}") from None
+
+    def resident_bytes(self) -> int:
+        """Upper bound on every device buffer this scratch can take.
+
+        Deliberately a sum over the whole table rather than over the names one
+        forward path happens to touch: the memory planner must not assume a
+        path, and over-estimating only costs a smaller block.
+        """
+        total = sum(self._sizes().values())
+        if self.experts is not None:
+            total += self.experts.resident_bytes()
+        if self.router is not None:
+            total += self.router.resident_bytes()
+        return total
 
 
 @dataclass(frozen=True)

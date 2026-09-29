@@ -145,7 +145,12 @@ class Gemma4RouterScratch:
         self._buffers.clear()
         self._by_name.clear()
 
-    def _size_of(self, name: str) -> int:
+    def _sizes(self) -> dict[str, int]:
+        """Byte size of every buffer this scratch can hold.
+
+        One table shared by ``_size_of`` and ``resident_bytes`` so the
+        allocator and the memory planner cannot drift apart.
+        """
         rows = self.tokens
         sizes = {
             # BF16, not F32: the prescale kernel's output dtype is templated on
@@ -153,10 +158,17 @@ class Gemma4RouterScratch:
             "prescaled": rows * self.hidden_size * _BF16_BYTES,
             "logits": rows * self.num_experts * _F32_BYTES,
         }
+        return sizes
+
+    def _size_of(self, name: str) -> int:
         try:
-            return sizes[name]
+            return self._sizes()[name]
         except KeyError:
             raise ValueError(f"unknown scratch buffer {name!r}") from None
+
+    def resident_bytes(self) -> int:
+        """Upper bound on every device buffer this scratch can take."""
+        return sum(self._sizes().values())
 
 
 def gemma4_router_topk_bf16(
