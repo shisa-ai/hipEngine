@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_de1_moe_per_kernel",
+  "performance_claim": false,
+  "measurement_class": "derived_from_profiled_capture_diagnostic",
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "results_dir": "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split",
+  "stem": "x4full",
+  "decode_rep_windows": 3,
+  "traffic_model": {
+    "layers": 48,
+    "experts_used": 10,
+    "experts_total": 512,
+    "routed_gate_up_bytes_per_step": 888832000.0,
+    "routed_down_bytes_per_step": 615424000.0,
+    "router_bytes_per_step": 251658240,
+    "charged_bytes_per_step": 1755914240.0
+  },
+  "per_kernel": [
+    {
+      "role_family": "moe",
+      "raw_kernel": "_ZN12_GLOBAL__N_150gguf_q4_k_selected_dual_silu_logical128_t64_kernelItEEvPKT_PKlPKhS7_Ptiiiii.kd",
+      "bucket": "routed_gate_up",
+      "ms_per_step": 14.012586999999995,
+      "kernels_per_step": 47.00000000000006,
+      "us_per_kernel": 298.14014893616974,
+      "bytes_per_step": 888832000.0,
+      "achieved_gbps": 63.43097102626376,
+      "fraction_of_documented_roof": 0.2870179684446324
+    },
+    {
+      "role_family": "moe",
+      "raw_kernel": "_ZN12_GLOBAL__N_158q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_kernelEPKtPKlPKhPKfPtlllll.kd",
+      "bucket": "routed_down",
+      "ms_per_step": 5.443576999999998,
+      "kernels_per_step": 43.00000000000003,
+      "us_per_kernel": 126.59481395348823,
+      "bytes_per_step": 615424000.0,
+      "achieved_gbps": 113.05507389718198,
+      "fraction_of_documented_roof": 0.5115614203492398
+    },
+    {
+      "role_family": "moe",
+      "raw_kernel": "_ZN12_GLOBAL__N_121dense_gemv_out_kernelIffLb0EEEvPKT_S3_S3_PT0_lll.kd",
+      "bucket": "router_gemv",
+      "ms_per_step": 1.3628523333333344,
+      "kernels_per_step": 95.99999999999972,
+      "us_per_kernel": 14.196378472222277,
+      "bytes_per_step": 251658240,
+      "achieved_gbps": 184.65554473130726,
+      "fraction_of_documented_roof": 0.8355454512728835
+    }
+  ],
+  "summary": {
+    "moe_family_ms_per_step": 24.55039366666666,
+    "charged_ms_per_step": 20.81901633333333,
+    "unattributed_ms_per_step": 3.731377333333331,
+    "unattributed_pct_of_family": 15.19884928932775,
+    "gate_up_share_of_family_pct": 57.07683220992749,
+    "router_select_ms_per_step": 0.3310196666666667,
+    "router_select_kernels_per_step": 48.000000000000064,
+    "router_select_raw_kernel": "_ZN12_GLOBAL__N_127qwen35_router_select_kernelEPKfPlPflll.kd"
+  },
+  "result": {
+    "dominant_owner": "_ZN12_GLOBAL__N_150gguf_q4_k_selected_dual_silu_logical128_t64_kernelItEEvPKT_PKlPKhS7_Ptiiiii.kd",
+    "dominant_owner_ms_per_step": 14.012586999999995,
+    "dominant_owner_gbps": 63.43097102626376,
+    "dominant_owner_fraction_of_roof": 0.2870179684446324,
+    "gate_up_floor_ms_at_comparator_rate": 3.9212599814708606,
+    "gate_up_headroom_ms_per_step": 10.091327018529133,
+    "verdict": "The MoE gap is localized to the routed gate+up GEMV: 50gguf_q4_k_selected_dual_silu_logical12 carries 14.013 of 24.550 ms/step (57.1% of the family) at 63.43 GB/s = 28.7% of the documented roof, while the router GEMV in the same block reaches 184.66 GB/s."
+  },
+  "limits": [
+    "Derived from a PROFILED capture; the source artifact's own limits state that per-kernel times there are diagnostic, not a performance measurement.",
+    "The decode window is the three snapshot-restored measured repetitions; the same capture also contains prefill, whose kernels are excluded.",
+    "Traffic is charged per kernel only where the tensor mapping is unambiguous. The 'other' remainder is reported, not distributed.",
+    "If a kernel stages or dequantizes into wider buffers, its real DRAM traffic exceeds the model, making the achieved rate a lower bound.",
+    "One case (code-p4096), one live count (4097), one model, one host."
+  ]
+}
