@@ -1,0 +1,71 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_dp8_staged_f32_dense_family",
+ "baseline_leaf": "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+ "host": "Radeon 8060S gfx1151, machine-id 55ea6c509d0b49eea8de7094a1023668, ROCm 10.0.0",
+ "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+ "quant": "Q8_0",
+ "rows": 1024,
+ "repetitions": 5,
+ "layers": [
+  0,
+  9,
+  22,
+  34,
+  46
+ ],
+ "activation_note": "Per-layer deterministic standard normal scaled by 0.5 (synthetic).",
+ "tensors": [
+  {
+   "tensor": "attn_qkv",
+   "shape": "10240x2560",
+   "gflops_at_1024_rows": 53.7,
+   "leaf_mean_ms": 16.1753,
+   "staged_mean_ms": 13.1121,
+   "speedup": 1.2336,
+   "time_reduction_pct": 18.94,
+   "max_abs_diff": 1.049041748046875e-05,
+   "bit_identical": false,
+   "best_variant_every_layer": true,
+   "layers_where_best": 5
+  },
+  {
+   "tensor": "attn_gate",
+   "shape": "6144x2560",
+   "gflops_at_1024_rows": 32.2,
+   "leaf_mean_ms": 9.8217,
+   "staged_mean_ms": 7.3819,
+   "speedup": 1.3305,
+   "time_reduction_pct": 24.84,
+   "max_abs_diff": 1.33514404296875e-05,
+   "bit_identical": false,
+   "best_variant_every_layer": true,
+   "layers_where_best": 5
+  },
+  {
+   "tensor": "ssm_out",
+   "shape": "2560x6144",
+   "gflops_at_1024_rows": 32.2,
+   "leaf_mean_ms": 9.2511,
+   "staged_mean_ms": 7.236,
+   "speedup": 1.2785,
+   "time_reduction_pct": 21.78,
+   "max_abs_diff": 2.2411346435546875e-05,
+   "bit_identical": false,
+   "best_variant_every_layer": true,
+   "layers_where_best": 5
+  }
+ ],
+ "total": {
+  "leaf_mean_ms": 35.2481,
+  "staged_mean_ms": 27.73,
+  "speedup": 1.2711,
+  "time_reduction_pct": 21.33
+ },
+ "unmeasured_suffixes": [
+  "ffn_gate_shexp.weight (640x2560)",
+  "ffn_up_shexp.weight (640x2560)",
+  "ffn_down_shexp.weight (2560x640)"
+ ],
+ "extrapolation_warning": "Do NOT scale these per-layer-step figures by a layer count to get a prefill share. The three measured tensors total 35.25 ms at rows=1024; naive scaling by 16 exact-chain layers gives 564 ms, and by 48 layers 1692 ms, but the attribution puts the ENTIRE dense_projection family at 4553.007 ms of a 15741.963 ms prefill. Any scaling that is consistent with that total implies a row count or a per-step multiplicity this measurement does not establish. The per-tensor speedups are solid; the prefill share is not derivable from this data."
+}

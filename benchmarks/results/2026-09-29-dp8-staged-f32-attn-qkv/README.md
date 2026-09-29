@@ -67,11 +67,19 @@ inferred, not as a measured relative-error bound.
 **4553.007 ms of a 15741.963 ms kernel union, 28.9% of prefill**. A 23.6%
 reduction on the whole family would be ~1075 ms, about **6.8% of prefill**.
 
-**That family-wide figure is an upper bound, not a measurement.** This run
-measured one tensor suffix (`attn_qkv.weight`) at one row count. `dense_projection`
-also contains `attn_output` and the dense-layer MLP projections, whose shapes
-differ and whose staged-f32 performance is unmeasured. Do not quote 6.8% as a
-result.
+**That family-wide figure is withdrawn.** It was an upper bound built by scaling
+a per-layer-step time by a layer count, and the follow-up run in
+`benchmarks/results/2026-09-29-dp8-staged-f32-dense-family/` shows the scaling
+does not close: the three measured tensors total 35.25 ms at rows=1024, so ×16
+exact-chain layers gives 564 ms and ×48 gives 1692 ms, while the attribution puts
+the *entire* `dense_projection` family at 4553.007 ms. Any scaling consistent
+with that total implies a row count or per-step multiplicity this measurement
+does not establish. The per-tensor speedup is solid; the prefill share is not
+derivable from this data.
+
+**Also note a units error in the table above.** The `(+22.5%)`-style labels give
+the ratio's excess, i.e. "× faster". The equivalent *time* reductions are 18.94%
+for the mean of the five layers, not 22.5%. The family packet separates the two.
 
 ## Status: candidate, not promoted
 
