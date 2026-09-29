@@ -303,6 +303,48 @@ SELECTORS: dict[str, Route] = {
             f"{WMMA_LAYERS_ENV} and {DENSE_WIDE_ENV} cleared in both arms"
         ),
     ),
+    # The composition that promotion would actually create, which the plain
+    # ``staged_f32`` route cannot measure because it clears WMMA in both arms.
+    #
+    # In production the f16 WMMA route owns layers 16-47, so a staged scope of
+    # 13-15 does not compete with it: the exact chain runs on 13-15, WMMA takes
+    # over from 16, and the staged tile only ever replaces the exact chain on
+    # 13-15. The teacher here is therefore **current production** (WMMA on
+    # 16-47), not the exact chain, and the measured drift is the marginal cost
+    # of adding the staged tile at 13-15 to a composition that is already
+    # certified.
+    #
+    # This matters because the plain route's numbers cannot be reused for it.
+    # Summing WMMA's 16-47 drift with the staged 13-15 increment would be a
+    # summed-KL budget, which the scope ladders in this route's own packet show
+    # to be invalid: 8-47's max KL exceeds 0-47's while its mean is lower, and
+    # 0-7's mean exceeds 0-47's, so scope contributions are neither additive nor
+    # monotonic.
+    "staged_f32_over_wmma": Route(
+        kind=(
+            "hipengine_execution_profile_q8_staged_f32_over_wmma_prefill_layers_gate"
+        ),
+        scenario_prefix=(
+            "qwen4exp-ud-q4-k-xl-q8-staged-f32-over-wmma-dense-prefill-layers"
+        ),
+        candidate_chain="wmma_prefill_f32_f32_out + staged_f32_bm128_bn64_bk32",
+        candidate_env={
+            WMMA_LAYERS_ENV: "16-47",
+            DENSE_WIDE_ENV: "0",
+            DENSE_WIDE_LAYERS_ENV: "",
+            STAGED_F32_LAYERS_ENV: "{layers}",
+        },
+        teacher_env={
+            WMMA_LAYERS_ENV: "16-47",
+            DENSE_WIDE_ENV: "0",
+            DENSE_WIDE_LAYERS_ENV: "",
+            STAGED_F32_LAYERS_ENV: "",
+        },
+        surface=(
+            f"post-binder {STAGED_F32_LAYERS_ENV} over a {WMMA_LAYERS_ENV}=16-47 "
+            f"teacher; {DENSE_WIDE_ENV} cleared in both arms"
+        ),
+    ),
 }
 
 
