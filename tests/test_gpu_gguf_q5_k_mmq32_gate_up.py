@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import ctypes
 
+import numpy as np
 import pytest
 
 _MMQ32_VARIANT = "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
@@ -112,4 +113,102 @@ def test_q5_k_gate_up_reaches_the_mmq32_leaf() -> None:
         "176-byte superblock) from gguf_q5_k_q8_1_selected_prefill.hip, then "
         "widen _mmq_dual_route's _MMQ_DUAL_QUANT_KEY guard in "
         "gemma4_experts.py."
+    )
+
+def _ds4_to_f32(packed):
+    """Invert ``pack_q8_1_mmq_ds4_from_bf16`` to recover the activations.
+
+    The packer documents its own layout, so the inverse needs nothing beyond
+    it: 144 bytes per 128 activations -- four FP16 ``(d, sum)`` pairs followed
+    by 128 int8 quants -- with ``qs = rint(block / d)`` and
+    ``d = max_abs / 127`` for each 32-wide subblock. The kernel consumes those
+    same packed bytes, so dequantizing *them* (rather than starting from the
+    raw bf16 input) isolates the weight-side decode this task added.
+    """
+    rows, nblocks, nbytes = packed.shape
+    assert nbytes == 144, f"expected 144-byte DS4 blocks, got {nbytes}"
+    body = packed.reshape(rows * nblocks, 144)
+    meta = body[:, :16].copy().view(np.float16).astype(np.float32)
+    d = meta.reshape(-1, 4, 2)[..., 0]
+    qs = body[:, 16:].copy().view(np.int8).astype(np.float32).reshape(-1, 4, 32)
+    return (qs * d[..., None]).reshape(rows, nblocks * 128)
+
+
+def _q5_k_ds4_reference(fixture):
+    """CPU oracle: DS4 activations x dequantized ``block_q5_K`` weights.
+
+    ``gguf_q5_k_gemv`` is exactly ``dequantize + np.matmul`` over the raw weight
+    bytes; feeding it the *dequantized* DS4 activations makes both sides describe
+    the arithmetic the leaf performs. Using the raw bf16 activations instead
+    would measure the activation-quantization difference, not the kernel.
+    """
+    from hipengine.kernels.cpu_reference import gguf_q5_k_gemv
+
+    from hipengine.quant.gguf_q4_k import pack_q8_1_mmq_ds4_from_bf16
+
+    x_ds4 = _ds4_to_f32(pack_q8_1_mmq_ds4_from_bf16(fixture.x_host))
+    ref = np.zeros(
+        (fixture.compact_rows, fixture.out_features_a + fixture.out_features_b),
+        dtype=np.float32,
+    )
+    for expert in range(fixture.num_experts):
+        start = int(fixture.expert_start_compact[expert])
+        stop = int(fixture.expert_start_compact[expert + 1])
+        if stop == start:
+            continue
+        ref[start:stop, : fixture.out_features_a] = gguf_q5_k_gemv(
+            x_ds4[start:stop], fixture.qweight_a[expert]
+        )
+        ref[start:stop, fixture.out_features_a :] = gguf_q5_k_gemv(
+            x_ds4[start:stop], fixture.qweight_b[expert]
+        )
+    return ref
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("counts", "in_features", "out_features_a", "out_features_b"),
+    [
+        pytest.param([4, 0, 5], 256, 32, 32, id="empty-middle-tail"),
+        pytest.param([0, 17, 31], 512, 32, 64, id="empty-first-multi-block"),
+    ],
+)
+def test_q5_k_mmq32_prefill_matches_cpu_reference(
+    counts, in_features, out_features_a, out_features_b
+) -> None:
+    """GREEN: the Q5_K leaf must agree with the CPU oracle.
+
+    This is the assertion that actually proves the ``qh`` decode. The routing
+    test above only shows the key resolves; a mis-addressed ``qh`` plane or a
+    wrong fifth-bit scale would still resolve and still launch, then silently
+    return wrong numbers. Thresholds are copied from
+    ``test_q4_k_q8_1_ds4_mmq32_selected_prefill_bf16_matches_ds4_cpu_reference``
+    so this leaf is held to the same standard as the Q4_K one it mirrors.
+    """
+    from tests.test_gpu_gguf_q4_k_selected_wmma_prefill import _build_compact_fixture
+
+    from tests.test_gpu_gguf_q4_k_q8_1_selected_prefill import (
+        _run_q8_1_ds4_mmq32_selected_dual_gpu,
+    )
+    from tests.test_gpu_gguf_q4_k_q8_1_selected_prefill import _max_softmax_kl
+    from tests.test_gpu_gguf_q4_k_selected_wmma_prefill import _TOLERANCE_BF16
+
+    fixture = _build_compact_fixture(
+        quant=_QUANT,
+        counts=counts,
+        in_features=in_features,
+        out_features_a=out_features_a,
+        out_features_b=out_features_b,
+        dtype="bf16",
+        seed=23,
+    )
+    actual = _run_q8_1_ds4_mmq32_selected_dual_gpu(fixture, quant=_QUANT)
+    expected = _q5_k_ds4_reference(fixture)
+    np.testing.assert_allclose(actual, expected, **_TOLERANCE_BF16)
+    assert _max_softmax_kl(expected, actual) <= 0.05
+    assert (
+        float(
+            np.mean(np.argmax(expected, axis=-1) == np.argmax(actual, axis=-1))
+        )
+        >= 0.9
     )
