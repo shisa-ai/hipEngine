@@ -36,13 +36,19 @@ class Census:
         original = getattr(owner, name)
 
         def wrapper(*args: Any, **kwargs: Any) -> Any:
+            # Events must bracket the call on the stream it launches on. The
+            # layer runs the MoE branch on a second stream (P11), and events
+            # recorded on stream 0 do not wait for it -- they instead measure
+            # the dispatch gap, which collapsed every cross-stream family to
+            # ~5 us and pushed half the prefill into `unattributed`.
+            stream = int(kwargs.get("stream", 0))
             start = self.runtime.event_create()
             end = self.runtime.event_create()
-            self.runtime.event_record(start)
+            self.runtime.event_record(start, stream)
             try:
                 return original(*args, **kwargs)
             finally:
-                self.runtime.event_record(end)
+                self.runtime.event_record(end, stream)
                 self.records.append((label(*args, **kwargs), start, end))
 
         setattr(owner, name, wrapper)
