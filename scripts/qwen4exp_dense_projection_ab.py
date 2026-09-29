@@ -63,6 +63,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (  # noqa: E402
     gguf_q8_0_gemv_coltile8_rowbatch4_pipelined_f32_f32_out,
     gguf_q8_0_gemv_coltile4_rowbatch8_pipelined_f32_f32_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_gr_staged_f32 import (  # noqa: E402
+    gr_staged_f32_up,
+)
 from hipengine.loading.gguf import (  # noqa: E402
     GGUFReader,
     discover_gguf_files,
@@ -78,11 +81,42 @@ Q8_0_BLOCK_BYTES = 34
 # ``float, float, 8, 8, 4, true``. Reading the base kernel name alone is not
 # enough to tell the two apart, because WAVE_SCALE is a template parameter and
 # both instantiations share the kernel name.
-PRODUCTION_VARIANT = "coltile8_rowbatch4_wave_scale_f32_f32_out"
+#
+# This names the leaf the engine actually selects, not the pre-DP-8 parent. The
+# software pipeline promoted on 2026-09-29 is preferred by
+# ``hipengine.runtime.gguf_linear._raw_k_coltile_pipelined_dispatch`` whenever it
+# is registered, so the unpipelined name made this sweep report a stale baseline
+# (17.39 ms against the real 16.19 ms on attn_qkv) and understate every
+# candidate's speedup. The two are bit-identical to each other, so switching the
+# reference does not change any ``bit_identical_to_production`` verdict.
+PRODUCTION_VARIANT = "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
 
-# The instantiation that the kernel name alone would suggest, kept so the sweep
-# records the comparison that motivated checking the template argument.
+# The pre-promotion parent, kept so the sweep still records the scheduling delta.
 SUPERSEDED_VARIANT = "coltile8_rowbatch4_f32_f32_out"
+PARENT_VARIANT = "coltile8_rowbatch4_wave_scale_f32_f32_out"
+
+
+def _staged_f32_adapter(
+    x_ptr: int, w_ptr: int, out_ptr: int,
+    rows: int, in_features: int, out_features: int,
+    *, threads: int = 128, stream: int = 0,
+) -> None:
+    """Adapt the LDS-staged f32 prototype to this harness's calling convention.
+
+    The prototype is a general tiled GEMM over Q8_0 weights (BM=128 x BN=64 x
+    BK=32, 256-thread block, f32 FMA on f32 operands). It is measured here
+    because the census puts ``dense_projection`` at 28.9% of prefill, and the
+    prototype's weight-traffic argument gets much stronger as K grows: the GR
+    shape it was written for has K=320, while these layers have K=2560.
+
+    ``threads`` is accepted and ignored: the prototype's block size is fixed at
+    256 by its tiling. ``stream`` is forwarded.
+    """
+
+    gr_staged_f32_up(
+        x_ptr, w_ptr, out_ptr, rows, in_features, out_features, stream=stream
+    )
+
 
 VARIANTS: dict[str, Any] = {
     "coltile4_rowbatch8_f32_f32_out": gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out,
@@ -103,6 +137,7 @@ VARIANTS: dict[str, Any] = {
     "coltile4_rowbatch8_pipelined_f32_f32_out": (
         gguf_q8_0_gemv_coltile4_rowbatch8_pipelined_f32_f32_out
     ),
+    "staged_f32_bm128_bn64_bk32": _staged_f32_adapter,
 }
 
 
