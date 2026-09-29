@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-26**
+Last updated: **2026-09-29**
 
 **Halo-box Vulkan MTP** (`strix-llama.cpp@03895887abe6`) completes the same
 Qwen3.6 Q4_K_M 140-turn replay on Radeon 8060S in **643.08 s** (mean **4.593 s**),
@@ -1875,17 +1875,25 @@ rule as the rest rather than falling to a slower fallback.
 
 | Workload | Prefill | Decode | Public wall |
 | --- | ---: | ---: | ---: |
-| 512/128 | **746.6 tok/s** | 27.91 tok/s | **5.210 s** |
+| 512/128 | **1139.1 tok/s** | 28.70 tok/s | **4.651 s** |
 
-The previous published row for this workload was 121.90 tok/s prefill, 21.14
+Both arms of that row were measured in one session with only the Q4_K gate/up
+leaf's source file differing: **1064.2 to 1139.1 tok/s prefill, 28.314 to 28.697
+tok/s decode, 4.9306 to 4.6510 s public wall**, path parity true in both. The
+leaf itself goes **4.936 to 4.114 ms per call at 512 tokens and 4.997 to 4.136
+at 4096**, 29 and 232 calls respectively, and the output is bit-identical.
+
+An earlier published row for this workload was 121.90 tok/s prefill, 21.14
 tok/s decode and a 10.240 s wall. The intervening work was the int8 MMQ expert
 routes becoming the default, the Q5_1 down projection's inner-loop memory
-traffic, layer 29 reaching its siblings' routes, and prefill attention no longer
-walking the columns its own causal mask zeroes. Prefill-only kernel time at
-512 tokens divides into the routed experts at 46.8%, the dense projections and
-lm head at 26.9%, and attention at 19.2%. At 2048 tokens attention is 46.2% and
-the expert block 31.1%, so attention is the only term that grows with prompt
-length and past the sliding window it becomes the largest single one.
+traffic, layer 29 reaching its siblings' routes, prefill attention no longer
+walking the columns its own causal mask zeroes, and the Q4_K gate/up leaf's
+per-(sub-block, k-tile, half) bookkeeping moving out of its K loop. Prefill-only
+kernel time at 512 tokens divides into the routed experts at 46.8%, the dense
+projections and lm head at 26.9%, and attention at 19.2%. At 2048 tokens
+attention is 46.2% and the expert block 31.1%, so attention is the only term
+that grows with prompt length and past the sliding window it becomes the largest
+single one.
 
 The projection kernels are fetch-bound, not weight-bound: with the weight reuse
 in place the two expert projections were still 68% of prefill kernel time while
@@ -1894,7 +1902,12 @@ moving only ~4 GB/s of weight bytes, and isolating the shipped kernel's parts pu
 Staging the expert's activation rows in shared memory and hoisting each column's
 `d*scale` / `dmin*min` pairs into shared memory per 32-element sub-block is an
 exact rewrite of the same expressions, so it is **2.07x** on that kernel with 0
-of 5,767,168 bf16 outputs differing.
+of 5,767,168 bf16 outputs differing. The T16 gate/up WMMA leaf is a different
+route to the same projection, and it gains **1.294x** on its own fixture and
+**1.200x** in situ by hoisting its per-(sub-block, k-tile, half) bookkeeping out
+of the K loop and dropping a column-validity predicate that no stored column
+could observe. That is also bit-identical, 0 of 5,767,168 outputs differing, and
+it is what the +7.0% row above measures.
 
 Routing the `Q4_K` gate/up through the row-batched WMMA prefill instead exceeds
 the production `kl_max` limit at 0.167959 on 2 of 1023 teacher-forced rows (both
@@ -1905,6 +1918,7 @@ shipped. Evidence:
 [`Q5_1` down reuse](results/2026-09-27-gemma4-moe-prefill-grouped-accepted.json);
 [`Q4_K` gate/up reuse](results/2026-09-27-gemma4-moe-prefill-q4k-grouped-accepted.json);
 [`Q4_K` staged fetch](results/2026-09-27-gemma4-moe-prefill-q4k-staged-accepted.json);
+[`Q4_K` gate/up T16 leaf](results/2026-09-29-gemma4-t16-gate-up-leaf-invariant-hoist.json);
 [`WMMA row-slice rejection`](results/2026-09-27-gemma4-moe-prefill-wmma-rowslice-rejected.json).
 
 ### Laguna S 2.1
