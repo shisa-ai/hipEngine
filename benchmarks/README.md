@@ -302,6 +302,17 @@ whole-process memory percentage, throughput gain or proven context maximum.
 
 ## Current default notes
 
+**Qwen3.8 Flash Next decode arithmetic (gfx1151, UD-Q4_K_XL).** The routed-expert
+gate+up decode GEMV uses the dp4a Q8_1-activation linear
+(`gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64`) by default on 43 of 48
+layers. On one `code-p4096` decode step at live count 4097 this cuts the owner from
+14.155 to 6.908 ms/step (2.049x) and the decode kernel sum from 54.603 to 47.359
+ms/step (-13.27%), with every other kernel unchanged (non-owner sum 40.448 vs
+40.451 ms). The production numerical envelope holds: mean KL 2.44e-4 (gate 1e-3),
+max KL 6.14e-3 (gate 5e-2), top-1 0.9911, deterministic across three repeats, and
+task quality cross-validated on the `code` category. This is a decode kernel-time
+result, not a serving throughput claim. [Evidence](results/2026-09-29-qwen4exp-de1-dp4a-e2e/e2e.json).
+
 W7900 Qwen3.6 enables automatic MTP only for its qualified single-request and
 capacity-2/two-request keys. **On W7900, Qwen3.8-27B `Q4_K_M` uses ordinary AR by default
 at every width.** Explicit MTP is available there with production/BF16 KV, context
