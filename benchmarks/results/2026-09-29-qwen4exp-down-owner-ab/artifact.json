@@ -1,0 +1,322 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_moe_owner_ab",
+  "performance_claim": false,
+  "route": "down",
+  "quant": "gguf_q5_1",
+  "owners": [
+    "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out",
+    "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+    "selected_wmma_iu8_risk_prefill_bf16_bf16_out"
+  ],
+  "question": "Among the registered owners of the down route, which is fastest on the main kernel at the real geometry, and is that comparison already archived?",
+  "protocol": {
+    "experts": 512,
+    "in_features": 640,
+    "out_features": 2560,
+    "row_bytes": 480,
+    "dual": false,
+    "wmma_tile_rows": 16,
+    "repetitions": 15,
+    "max_risks": 0,
+    "timing": "median of per-launch HIP event pairs, 2 primed launches",
+    "weights": "synthesized at the real shapes and byte layout; the access pattern and byte counts are representative, the values are not",
+    "scope": "main kernel only; no risk queue writes, no repair pass, no packing, no engine work, no correctness claim"
+  },
+  "rows": {
+    "balanced-512": {
+      "distribution": "balanced",
+      "rows": 512,
+      "padded_rows": 8096,
+      "active_experts": 506,
+      "max_expert_rows": 2,
+      "medians_ms": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 6.9089,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 12.6114,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": 5.4181,
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out__repeated_last": 6.9076
+      },
+      "vs_primary_pct": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 0.0,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 82.5398,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": -21.5783
+      },
+      "primary_repeat_drift_pct": -0.0188
+    },
+    "balanced-1024": {
+      "distribution": "balanced",
+      "rows": 1024,
+      "padded_rows": 8192,
+      "active_experts": 512,
+      "max_expert_rows": 3,
+      "medians_ms": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 7.2347,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 13.7145,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": 5.493,
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out__repeated_last": 7.2502
+      },
+      "vs_primary_pct": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 0.0,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 89.5659,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": -24.0749
+      },
+      "primary_repeat_drift_pct": 0.2136
+    },
+    "balanced-4096": {
+      "distribution": "balanced",
+      "rows": 4096,
+      "padded_rows": 8192,
+      "active_experts": 512,
+      "max_expert_rows": 12,
+      "medians_ms": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 9.8263,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 25.7621,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": 5.8212,
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out__repeated_last": 9.8909
+      },
+      "vs_primary_pct": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 0.0,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 162.1739,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": -40.7594
+      },
+      "primary_repeat_drift_pct": 0.6566
+    },
+    "balanced-10240": {
+      "distribution": "balanced",
+      "rows": 10240,
+      "padded_rows": 13696,
+      "active_experts": 512,
+      "max_expert_rows": 30,
+      "medians_ms": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 17.2634,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 61.2365,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": 8.9039,
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out__repeated_last": 17.4512
+      },
+      "vs_primary_pct": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 0.0,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 254.718,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": -48.4232
+      },
+      "primary_repeat_drift_pct": 1.0878
+    },
+    "sparse-512": {
+      "distribution": "sparse",
+      "rows": 512,
+      "padded_rows": 2048,
+      "active_experts": 128,
+      "max_expert_rows": 4,
+      "medians_ms": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 2.052,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 4.1672,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": 1.6213,
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out__repeated_last": 2.0512
+      },
+      "vs_primary_pct": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 0.0,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 103.0788,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": -20.9881
+      },
+      "primary_repeat_drift_pct": -0.0381
+    },
+    "sparse-1024": {
+      "distribution": "sparse",
+      "rows": 1024,
+      "padded_rows": 2048,
+      "active_experts": 128,
+      "max_expert_rows": 8,
+      "medians_ms": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 2.2447,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 5.5667,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": 1.6245,
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out__repeated_last": 2.287
+      },
+      "vs_primary_pct": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 0.0,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 147.9955,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": -27.6278
+      },
+      "primary_repeat_drift_pct": 1.8871
+    },
+    "sparse-4096": {
+      "distribution": "sparse",
+      "rows": 4096,
+      "padded_rows": 4096,
+      "active_experts": 128,
+      "max_expert_rows": 32,
+      "medians_ms": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 5.9158,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 23.0943,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": 2.8145,
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out__repeated_last": 5.9128
+      },
+      "vs_primary_pct": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 0.0,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 290.3858,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": -52.4245
+      },
+      "primary_repeat_drift_pct": -0.0495
+    },
+    "sparse-10240": {
+      "distribution": "sparse",
+      "rows": 10240,
+      "padded_rows": 10240,
+      "active_experts": 128,
+      "max_expert_rows": 80,
+      "medians_ms": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 13.5983,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 60.2052,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": 6.4628,
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out__repeated_last": 13.5797
+      },
+      "vs_primary_pct": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 0.0,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 342.7422,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": -52.4736
+      },
+      "primary_repeat_drift_pct": -0.1364
+    },
+    "single-512": {
+      "distribution": "single",
+      "rows": 512,
+      "padded_rows": 512,
+      "active_experts": 1,
+      "max_expert_rows": 512,
+      "medians_ms": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 1.2861,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 6.6383,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": 0.3982,
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out__repeated_last": 1.2278
+      },
+      "vs_primary_pct": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 0.0,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 416.1504,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": -69.0387
+      },
+      "primary_repeat_drift_pct": -4.5337
+    },
+    "single-1024": {
+      "distribution": "single",
+      "rows": 1024,
+      "padded_rows": 1024,
+      "active_experts": 1,
+      "max_expert_rows": 1024,
+      "medians_ms": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 2.4114,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 14.2586,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": 0.6949,
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out__repeated_last": 2.4049
+      },
+      "vs_primary_pct": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 0.0,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 491.2902,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": -71.1834
+      },
+      "primary_repeat_drift_pct": -0.2713
+    },
+    "single-4096": {
+      "distribution": "single",
+      "rows": 4096,
+      "padded_rows": 4096,
+      "active_experts": 1,
+      "max_expert_rows": 4096,
+      "medians_ms": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 9.5816,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 61.7814,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": 2.5602,
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out__repeated_last": 9.5693
+      },
+      "vs_primary_pct": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 0.0,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 544.7932,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": -73.2803
+      },
+      "primary_repeat_drift_pct": -0.1285
+    },
+    "single-10240": {
+      "distribution": "single",
+      "rows": 10240,
+      "padded_rows": 10240,
+      "active_experts": 1,
+      "max_expert_rows": 10240,
+      "medians_ms": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 30.6396,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 202.8248,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": 6.3654,
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out__repeated_last": 30.5881
+      },
+      "vs_primary_pct": {
+        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out": 0.0,
+        "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": 561.9683,
+        "selected_wmma_iu8_risk_prefill_bf16_bf16_out": -79.2249
+      },
+      "primary_repeat_drift_pct": -0.1683
+    }
+  },
+  "summary": {
+    "cases": 12,
+    "primary": "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out",
+    "max_abs_repeat_drift_pct": 4.5337,
+    "reading": "vs_primary_pct is positive when that owner is SLOWER than the primary owner",
+    "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out": {
+      "slower_cases": 12,
+      "faster_cases": 0,
+      "median_pct": 272.5519,
+      "min_pct": 82.5398,
+      "max_pct": 561.9683
+    },
+    "selected_wmma_iu8_risk_prefill_bf16_bf16_out": {
+      "slower_cases": 0,
+      "faster_cases": 12,
+      "median_pct": -50.4239,
+      "min_pct": -79.2249,
+      "max_pct": -20.9881
+    }
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "gpu": "AMD Radeon 8060S (gfx1151)",
+    "rocm": "TheRock therock10-staging-20260828",
+    "note": "same physical host as the 2026-09-29 ED-1 artifacts"
+  },
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "1c0d23ea07168bf57fd3aa782b19dd5601cda1ee",
+    "tracked_clean": false
+  },
+  "command": {
+    "argv": [
+      "/home/lhl/miniforge3/envs/therock10-staging-20260828/bin/python3",
+      "scripts/qwen4exp_moe_owner_ab.py",
+      "--route",
+      "down",
+      "--output",
+      "benchmarks/results/2026-09-29-qwen4exp-down-owner-ab/artifact.json",
+      "--rows",
+      "512,1024,4096,10240",
+      "--distribution",
+      "balanced,sparse,single",
+      "--repetitions",
+      "15"
+    ],
+    "env": {
+      "PATH": "$ROCK/_rocm_sdk_devel/bin:$ROCK/_rocm_sdk_core/bin:$PATH",
+      "HIP_PATH": "$ROCK/_rocm_sdk_devel",
+      "LD_LIBRARY_PATH": "$ROCK/_rocm_sdk_devel/lib:$ROCK/_rocm_sdk_core/lib:$LD_LIBRARY_PATH"
+    }
+  },
+  "correctness_gate": {
+    "run": false,
+    "note": "No output was compared between owners. The wmma arm is an approximate-then-repair design and this packet does not exercise its repair, so it makes no numerical claim about it."
+  },
+  "repair_excluded": {
+    "applies_to": "selected_wmma_iu8_risk_prefill_bf16_bf16_out",
+    "note": "The wmma owner's correctness depends on a sparse repair pass that is NOT timed here (max_risks=0). The production default is exact and has no repair. So the measured ratio is the whole owner cost for the production default and only part of it for the wmma owner.",
+    "recorded_q51_fast_ms": 1482.958,
+    "recorded_q51_repair_ms": 661.21,
+    "repair_is_inference": true,
+    "provenance": "benchmarks/results/2026-09-29-qwen4exp-repair-rate/repair-rate.json"
+  }
+}
