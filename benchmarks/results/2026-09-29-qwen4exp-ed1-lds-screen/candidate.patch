@@ -1,0 +1,379 @@
+diff --git a/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip b/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip
+index 6f669b046..ef1e063ca 100644
+--- a/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip
++++ b/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip
+@@ -1047,7 +1047,7 @@ constexpr int q51_iu8_warps() {
+   return (TILE_ROWS / Q51_IU8_WARP_ROWS) * 4;
+ }
+ 
+-template <int TILE_ROWS = 16>
++template <int TILE_ROWS = 16, bool STAGE_WEIGHTS = false>
+ __global__ __launch_bounds__(q51_iu8_warps<TILE_ROWS>() * 32,
+                             TILE_ROWS == Q51_IU8_WARP_ROWS ? 2 : 1)
+ void q5_1_selected_wmma_iu8_risk_prefill_kernel(
+@@ -1067,6 +1067,9 @@ void q5_1_selected_wmma_iu8_risk_prefill_kernel(
+     int64_t num_experts,
+     int64_t wmma_total_rows) {
+   __shared__ int lds_row_atrisk[TILE_ROWS];
++  // One raw 24-byte Q5_1 block per column and K-subblock. Both row
++  // groups consume these bytes; no dequantization/accumulation changes.
++  __shared__ uint32_t lds_weights[STAGE_WEIGHTS ? 128 * 8 * 6 : 1];
+   __shared__ int8_t lds_q8a[Q51_IU8_ACT_PLANES * TILE_ROWS * Q51_IU8_LDS_ROW_STRIDE];
+   __shared__ float lds_da[Q51_IU8_ACT_PLANES * TILE_ROWS * 8];
+   __shared__ int lds_sumq8a[Q51_IU8_ACT_PLANES * TILE_ROWS * 8];
+@@ -1193,6 +1196,23 @@ void q5_1_selected_wmma_iu8_risk_prefill_kernel(
+         lds_sumq8a[plane * TILE_ROWS * 8 + actrow * 8 + sub] = qsum;
+       }
+     }
++    if constexpr (STAGE_WEIGHTS) {
++      for (int index = tid; index < 128 * 8 * 6;
++           index += q51_iu8_warps<TILE_ROWS>() * 32) {
++        const int column = index / 48;
++        const int subblock = (index / 6) % 8;
++        const int word = index % 6;
++        const int64_t kblock = chunk * 8 + subblock;
++        const bool valid = col_base + column < out_features &&
++                           kblock < blocks_per_row;
++        const uint8_t* source = valid
++            ? qweight + (expert_id * out_features + col_base + column) *
++                row_bytes + kblock * 24 + word * 4
++            : nullptr;
++        lds_weights[index] = valid
++            ? *reinterpret_cast<const uint32_t*>(source) : 0;
++      }
++    }
+     __syncthreads();
+ 
+ #pragma unroll 1
+@@ -1200,7 +1220,10 @@ void q5_1_selected_wmma_iu8_risk_prefill_kernel(
+       const int64_t col0 = chunk * 256 + static_cast<int64_t>(sub) * 32;
+       const bool sub_valid = col0 + 32 <= in_features;
+       const uint8_t* block_ptr = sub_valid && wcol_valid
+-          ? (block_base + (col0 / 32) * 24)
++          ? (STAGE_WEIGHTS
++              ? reinterpret_cast<const uint8_t*>(lds_weights +
++                  (warp_col * 32 + lane) * 48 + sub * 6)
++              : block_base + (col0 / 32) * 24)
+           : nullptr;
+       // Raw 5-bit Q5_1 codes (0..31) as the integer B operand; the weight
+       // path has no requantization error at all.
+@@ -1424,7 +1447,7 @@ __global__ void q5_1_selected_sparse_exact_repair_row_publish_kernel(
+   }
+ }
+ 
+-template <int TILE_ROWS = 16>
++template <int TILE_ROWS = 16, bool STAGE_WEIGHTS = false>
+ static int launch_q5_1_wmma_iu8_risk(
+     const uint16_t* x,
+     const int64_t* expert_start_compact,
+@@ -1457,7 +1480,7 @@ static int launch_q5_1_wmma_iu8_risk(
+       static_cast<unsigned int>((out_features + 127) / 128),
+       static_cast<unsigned int>(row_tiles));
+   hipLaunchKernelGGL(
+-      (q5_1_selected_wmma_iu8_risk_prefill_kernel<TILE_ROWS>),
++      (q5_1_selected_wmma_iu8_risk_prefill_kernel<TILE_ROWS, STAGE_WEIGHTS>),
+       grid, block, 0, stream,
+       x, expert_start_compact, expert_start_wmma, tile_expert, qweight,
+       out, risk_count, risk_indices, max_risks, risk_multiplier,
+@@ -2104,6 +2127,42 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_wmma_iu8_risk_j32_prefill_bf16_
+       stream);
+ }
+ 
++extern "C" int hipengine_qwen4_exp_q5_1_selected_wmma_iu8_risk_j16_lds_prefill_bf16_bf16_out(
++    const void* x, const void* expert_start_compact,
++    const void* expert_start_wmma, const void* tile_expert,
++    const void* qweight, void* output, void* risk_count, void* risk_indices,
++    int64_t max_risks, double risk_multiplier, int64_t compact_rows,
++    int64_t in_features, int64_t out_features, int64_t num_experts,
++    int64_t wmma_total_rows, hipStream_t stream) {
++  return launch_q5_1_wmma_iu8_risk<16, true>(
++      static_cast<const uint16_t*>(x),
++      static_cast<const int64_t*>(expert_start_compact),
++      static_cast<const int64_t*>(expert_start_wmma),
++      static_cast<const int64_t*>(tile_expert),
++      static_cast<const uint8_t*>(qweight), static_cast<uint16_t*>(output),
++      static_cast<int*>(risk_count), static_cast<int*>(risk_indices),
++      max_risks, static_cast<float>(risk_multiplier), compact_rows,
++      in_features, out_features, num_experts, wmma_total_rows, stream);
++}
++
++extern "C" int hipengine_qwen4_exp_q5_1_selected_wmma_iu8_risk_j32_lds_prefill_bf16_bf16_out(
++    const void* x, const void* expert_start_compact,
++    const void* expert_start_wmma, const void* tile_expert,
++    const void* qweight, void* output, void* risk_count, void* risk_indices,
++    int64_t max_risks, double risk_multiplier, int64_t compact_rows,
++    int64_t in_features, int64_t out_features, int64_t num_experts,
++    int64_t wmma_total_rows, hipStream_t stream) {
++  return launch_q5_1_wmma_iu8_risk<32, true>(
++      static_cast<const uint16_t*>(x),
++      static_cast<const int64_t*>(expert_start_compact),
++      static_cast<const int64_t*>(expert_start_wmma),
++      static_cast<const int64_t*>(tile_expert),
++      static_cast<const uint8_t*>(qweight), static_cast<uint16_t*>(output),
++      static_cast<int*>(risk_count), static_cast<int*>(risk_indices),
++      max_risks, static_cast<float>(risk_multiplier), compact_rows,
++      in_features, out_features, num_experts, wmma_total_rows, stream);
++}
++
+ extern "C" int hipengine_qwen4_exp_q5_1_selected_sparse_exact_repair_row_publish_bf16(
+     const void* input,
+     const void* expert_start,
+diff --git a/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py b/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py
+index d3cfcecaa..e48e6b3e4 100644
+--- a/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py
++++ b/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py
+@@ -897,6 +897,56 @@ def qwen4_exp_q5_1_selected_wmma_iu8_risk_j32_prefill_bf16_bf16_out(
+     )
+ 
+ 
++def qwen4_exp_q5_1_selected_wmma_iu8_risk_j16_lds_prefill_bf16_bf16_out(
++    x_ptr: int, expert_start_compact_ptr: int, expert_start_wmma_ptr: int,
++    tile_expert_ptr: int, qweight_ptr: int, output_ptr: int,
++    risk_count_ptr: int, risk_indices_ptr: int, max_risks: int,
++    risk_multiplier: float, compact_rows: int, in_features: int,
++    out_features: int, num_experts: int, wmma_total_rows: int, *,
++    stream: int = 0, library: ctypes.CDLL | None = None,
++    runtime: HipRuntime | None = None,
++) -> None:
++    """Experimental raw-weight LDS staging; requires a 16-row tile map."""
++    return _q5_1_iu8_risk_prefill(
++        symbol="hipengine_qwen4_exp_q5_1_selected_wmma_iu8_risk_j16_lds_prefill_bf16_bf16_out",
++        tile_rows=16, x_ptr=x_ptr,
++        expert_start_compact_ptr=expert_start_compact_ptr,
++        expert_start_wmma_ptr=expert_start_wmma_ptr,
++        tile_expert_ptr=tile_expert_ptr, qweight_ptr=qweight_ptr,
++        output_ptr=output_ptr, risk_count_ptr=risk_count_ptr,
++        risk_indices_ptr=risk_indices_ptr, max_risks=max_risks,
++        risk_multiplier=risk_multiplier, compact_rows=compact_rows,
++        in_features=in_features, out_features=out_features,
++        num_experts=num_experts, wmma_total_rows=wmma_total_rows,
++        stream=stream, library=library, runtime=runtime,
++    )
++
++
++def qwen4_exp_q5_1_selected_wmma_iu8_risk_j32_lds_prefill_bf16_bf16_out(
++    x_ptr: int, expert_start_compact_ptr: int, expert_start_wmma_ptr: int,
++    tile_expert_ptr: int, qweight_ptr: int, output_ptr: int,
++    risk_count_ptr: int, risk_indices_ptr: int, max_risks: int,
++    risk_multiplier: float, compact_rows: int, in_features: int,
++    out_features: int, num_experts: int, wmma_total_rows: int, *,
++    stream: int = 0, library: ctypes.CDLL | None = None,
++    runtime: HipRuntime | None = None,
++) -> None:
++    """Experimental raw-weight LDS staging; requires a 32-row tile map."""
++    return _q5_1_iu8_risk_prefill(
++        symbol="hipengine_qwen4_exp_q5_1_selected_wmma_iu8_risk_j32_lds_prefill_bf16_bf16_out",
++        tile_rows=32, x_ptr=x_ptr,
++        expert_start_compact_ptr=expert_start_compact_ptr,
++        expert_start_wmma_ptr=expert_start_wmma_ptr,
++        tile_expert_ptr=tile_expert_ptr, qweight_ptr=qweight_ptr,
++        output_ptr=output_ptr, risk_count_ptr=risk_count_ptr,
++        risk_indices_ptr=risk_indices_ptr, max_risks=max_risks,
++        risk_multiplier=risk_multiplier, compact_rows=compact_rows,
++        in_features=in_features, out_features=out_features,
++        num_experts=num_experts, wmma_total_rows=wmma_total_rows,
++        stream=stream, library=library, runtime=runtime,
++    )
++
++
+ def qwen4_exp_q5_1_selected_sparse_exact_repair_row_publish_bf16(
+     input_ptr: int,
+     expert_start_ptr: int,
+@@ -956,6 +1006,18 @@ def qwen4_exp_q5_1_selected_sparse_exact_repair_row_publish_bf16(
+ 
+ 
+ def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:
++    register(
++        KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1",
++                  "selected_wmma_iu8_risk_j16_lds_prefill_bf16_bf16_out"),
++        qwen4_exp_q5_1_selected_wmma_iu8_risk_j16_lds_prefill_bf16_bf16_out,
++        replace=replace,
++    )
++    register(
++        KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1",
++                  "selected_wmma_iu8_risk_j32_lds_prefill_bf16_bf16_out"),
++        qwen4_exp_q5_1_selected_wmma_iu8_risk_j32_lds_prefill_bf16_bf16_out,
++        replace=replace,
++    )
+     register(
+         KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1",
+                   "selected_wmma_iu8_risk_prefill_bf16_bf16_out"),
+diff --git a/scripts/qwen4exp_q51_lds_screen.py b/scripts/qwen4exp_q51_lds_screen.py
+new file mode 100644
+index 000000000..71574763c
+--- /dev/null
++++ b/scripts/qwen4exp_q51_lds_screen.py
+@@ -0,0 +1,107 @@
++#!/usr/bin/env python3
++"""ED-1 main-kernel screen: real Q5_1 weights, synthetic activations/routing.
++
++No repair-chain or engine timing; never use this screen alone for promotion.
++"""
++from __future__ import annotations
++
++import argparse
++import hashlib
++import json
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT))
++
++import numpy as np
++
++from hipengine.core.hip import get_hip_runtime
++from hipengine.core.memory import free
++from hipengine.kernels.hip_gfx1100.quant import qwen4_exp_q5_1 as q51
++from hipengine.loading.gguf import GGUFReader, discover_gguf_files
++from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata
++from scripts.qwen4exp_moe_main_kernel_cost import _counts_for, _maps, _time_launch
++from tests.test_gpu_qwen4_exp_pf3_moe_schedules import (
++    _alloc, _upload, _download, _make_activation,
++)
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--model-root', type=Path, required=True)
++    parser.add_argument('--output', type=Path, required=True)
++    parser.add_argument('--rows', type=int, default=10240)
++    parser.add_argument('--repetitions', type=int, default=15)
++    parser.add_argument('--distribution', choices=['balanced', 'uniform', 'sparse', 'single'],
++                        default='balanced')
++    args = parser.parse_args()
++    if args.rows < 512 or args.repetitions < 1:
++        parser.error('rows must be >=512 and repetitions positive')
++    runtime = get_hip_runtime()
++    library = q51.build_qwen4_exp_q5_1(load=True)
++    readers = [GGUFReader(p) for p in discover_gguf_files(args.model_root)]
++    name = 'blk.0.ffn_down_exps.weight'
++    reader = next(r for r in readers if any(t.name == name for t in r.info.tensors))
++    info = reader.tensor_info(name)
++    raw = reader.tensor_data(name)
++    assert raw.nbytes == 512 * 2560 * (640 // 32) * 24
++    counts = _counts_for(args.rows, 512, args.distribution, seed=20260928)
++    x, _ = _make_activation(args.rows, 640, seed=20260928)
++    report = dict(schema=1, kind='qwen4exp_q51_lds_main_screen',
++                  source=_git_metadata(ROOT), host=_host_metadata(), command=sys.argv,
++                  model_root=str(args.model_root), tensor=name, tensor_info=str(info),
++                  weight_sha256=hashlib.sha256(raw).hexdigest(), counts=counts,
++                  synthetic_activations=True, synthetic_routing=True,
++                  runtime_default_changed=False, cases=[])
++    allocations = []
++    try:
++        dx, dw = [_upload(a, runtime, allocations) for a in (x, raw)]
++        total = args.rows * 2560
++        out = _alloc(total, np.uint16, runtime, allocations)
++        rc = _alloc(1, np.int32, runtime, allocations)
++        ri = _alloc(total, np.int32, runtime, allocations)
++        baseline = None
++        for label, tile, suffix in [('j16', 16, ''), ('j32', 32, '_j32'),
++                                    ('j32_lds', 32, '_j32_lds'), ('j16_lds', 16, '_j16_lds'),
++                                    ('j16_repeat', 16, '')]:
++            compact, padded, owners, padded_rows = _maps(counts, tile)
++            ds, dp, dt = [_upload(np.asarray(a, dtype=np.int64), runtime, allocations)
++                          for a in (compact, padded, owners)]
++            fn = getattr(q51, f'qwen4_exp_q5_1_selected_wmma_iu8_risk{suffix}_prefill_bf16_bf16_out')
++            def launch(capacity=0):
++                fn(dx.ptr, ds.ptr, dp.ptr, dt.ptr, dw.ptr, out.ptr, rc.ptr, ri.ptr,
++                   capacity, 16.0, args.rows, 640, 2560, 512, padded_rows,
++                   library=library, runtime=runtime)
++            runtime.memset(rc.ptr, 0, 4)
++            launch(total)
++            output = _download(out, (total,), np.uint16, runtime)
++            n = int(_download(rc, (1,), np.int32, runtime)[0])
++            assert 0 <= n <= total
++            risks = np.sort(_download(ri, (total,), np.int32, runtime)[:n])
++            assert len(np.unique(risks)) == n
++            if baseline is None:
++                baseline = output, risks
++            np.testing.assert_array_equal(output, baseline[0])
++            np.testing.assert_array_equal(risks, baseline[1])
++            # Main-only: suppress risk-index writes for timing, like the earlier
++            # cost-attribution packet. Counter stays bounded across repeats.
++            if (args.repetitions + 2) * total >= 2**31:
++                raise ValueError('risk counter could overflow during timing')
++            runtime.memset(rc.ptr, 0, 4)
++            ms = _time_launch(launch, runtime, args.repetitions)
++            result = dict(variant=label, tile_rows=tile, padded_rows=padded_rows,
++                          main_median_ms=ms, parity=True, risk_count=n,
++                          timed_risk_capacity=0)
++            report['cases'].append(result)
++            print(json.dumps(result), flush=True)
++    finally:
++        runtime.device_synchronize()
++        for allocation in reversed(allocations):
++            free(allocation)
++    args.output.parent.mkdir(parents=True, exist_ok=True)
++    args.output.write_text(json.dumps(report, indent=2) + '\n')
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/tests/test_gpu_qwen4exp_q51_iu8_lds.py b/tests/test_gpu_qwen4exp_q51_iu8_lds.py
+new file mode 100644
+index 000000000..e53f84727
+--- /dev/null
++++ b/tests/test_gpu_qwen4exp_q51_iu8_lds.py
+@@ -0,0 +1,60 @@
++"""ED-1 raw-weight LDS staging: parent outputs and unordered risk sets."""
++import numpy as np
++import pytest
++
++from hipengine.core.hip import get_hip_runtime
++from hipengine.core.memory import free
++from tests.test_gpu_qwen4exp_q51_iu8_exact import (
++    Fixture, hip_available, q51, _alloc, _upload, _download,
++)
++
++
++def run(fixture, runtime, library, allocations, *, tile_rows, staged):
++    counts = fixture.counts
++    starts = np.concatenate(([0], np.cumsum(counts))).astype(np.int64)
++    tiles = (counts + tile_rows - 1) // tile_rows
++    padded = np.concatenate(([0], np.cumsum(tiles) * tile_rows)).astype(np.int64)
++    owners = np.repeat(np.arange(len(counts), dtype=np.int64), tiles)
++    dx, ds, dp, dt, dw = [_upload(a, runtime, allocations) for a in
++                         (fixture.x_host, starts, padded, owners, fixture.qweight)]
++    total = fixture.compact_rows * fixture.out_features
++    out = _alloc(total, np.uint16, runtime, allocations)
++    rc = _upload(np.zeros(1, dtype=np.int32), runtime, allocations)
++    ri = _alloc(total, np.int32, runtime, allocations)
++    suffix = f'_j{tile_rows}_lds' if staged else ('' if tile_rows == 16 else '_j32')
++    fn = getattr(q51, f'qwen4_exp_q5_1_selected_wmma_iu8_risk{suffix}_prefill_bf16_bf16_out')
++    fn(
++        x_ptr=dx.ptr, expert_start_compact_ptr=ds.ptr,
++        expert_start_wmma_ptr=dp.ptr, tile_expert_ptr=dt.ptr, qweight_ptr=dw.ptr,
++        output_ptr=out.ptr, risk_count_ptr=rc.ptr, risk_indices_ptr=ri.ptr,
++        max_risks=total, risk_multiplier=16.0, compact_rows=fixture.compact_rows,
++        in_features=fixture.in_features, out_features=fixture.out_features,
++        num_experts=len(counts), wmma_total_rows=int(padded[-1]),
++        library=library, runtime=runtime)
++    n = int(_download(rc, (1,), np.int32, runtime)[0])
++    assert 0 <= n <= total
++    risks = _download(ri, (total,), np.int32, runtime)[:n]
++    assert len(np.unique(risks)) == n
++    assert np.all((risks >= 0) & (risks < total))
++    return _download(out, (total,), np.uint16, runtime), np.sort(risks)
++
++
++@pytest.mark.skipif(not hip_available(), reason='HIP runtime is not available')
++@pytest.mark.parametrize('k,n', [(32, 17), (288, 129), (640, 256)])
++def test_staged_weights_preserve_outputs_and_risk_membership(k, n):
++    fixture = Fixture(counts=[1, 0, 15, 16, 17, 31, 32, 33],
++                      in_features=k, out_features=n, seed=20260928)
++    runtime = get_hip_runtime()
++    library = q51.build_qwen4_exp_q5_1(load=True)
++    allocations = []
++    try:
++        baseline = run(fixture, runtime, library, allocations, tile_rows=16, staged=False)
++        for tile_rows, staged in [(32, False), (32, True), (32, True), (16, True)]:
++            result = run(fixture, runtime, library, allocations,
++                         tile_rows=tile_rows, staged=staged)
++            for actual, expected in zip(result, baseline):
++                np.testing.assert_array_equal(actual, expected)
++    finally:
++        runtime.device_synchronize()
++        for buffer in reversed(allocations):
++            free(buffer)
