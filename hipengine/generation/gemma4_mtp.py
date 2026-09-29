@@ -176,6 +176,9 @@ class Gemma4MTPTextProvider:
             raise NotImplementedError(
                 "Gemma 4 MTP supports greedy generation only"
             )
+        from hipengine.generation.gemma4_gguf import Gemma4GGUFGenerator
+
+        Gemma4GGUFGenerator._validate_request(request, greedy_top_k=True)
         return [self._generate_one(prompt, request) for prompt in request.prompts]
 
     def _generate_one(self, prompt: Any, request: GenerationRequest) -> GenerationOutput:
@@ -203,7 +206,12 @@ class Gemma4MTPTextProvider:
 
         drafter = self._ensure_drafter()
         runner = generator._ensure_runner()
-        eos = tokenizer.eos_token_id
+        stop_ids = set(request.stop_token_ids)
+        if not request.ignore_eos:
+            stop_ids.update(
+                getattr(tokenizer, "stop_token_ids", (tokenizer.eos_token_id,))
+                if request.eos_token_id is None else (int(request.eos_token_id),)
+            )
 
         phase_ms: dict[str, float] = {}
         phase_calls: dict[str, int] = {}
@@ -234,10 +242,10 @@ class Gemma4MTPTextProvider:
         seed_row = -1
         cycles: list[Gemma4MTPCycle] = []
         reason = "length"
-        if not request.ignore_eos and token == eos:
-            reason = "eos"
+        if token in stop_ids:
+            reason = "stop"
 
-        while len(generated) < request.max_tokens and reason != "eos":
+        while len(generated) < request.max_tokens and reason != "stop":
             raise_if_generation_deadline_expired(request)
             remaining = request.max_tokens - len(generated)
             # A cycle commits `accepted + 1` tokens: the accepted drafts plus the
@@ -283,24 +291,30 @@ class Gemma4MTPTextProvider:
                 accepted += 1
 
             token = int(np.argmax(rows[accepted]))
-            generated.extend(drafts[:accepted])
-            generated.append(token)
+            committed = [*drafts[:accepted], token]
+            for index, committed_token in enumerate(committed):
+                if committed_token in stop_ids:
+                    # A stop can be an accepted draft, not only the bonus.
+                    committed = committed[:index + 1]
+                    accepted = min(accepted, len(committed))
+                    reason = "stop"
+                    break
+            generated.extend(committed)
+            token = committed[-1]
 
-            # The verify consumed `token` plus every draft; the target keeps
-            # `token` and the accepted prefix, so the rejected tail goes back.
-            runner.rewind(start_position + 1 + accepted)
-            seed_row = accepted
+            # Keep the previously sampled seed and the committed prefix except
+            # its final token, which has been sampled but not consumed by AR.
+            runner.rewind(start_position + len(committed))
+            seed_row = len(committed) - 1
 
             cycles.append(
                 Gemma4MTPCycle(
                     start_position=start_position,
                     candidates=tuple(int(draft) for draft in drafts),
                     accepted=accepted,
-                    committed=accepted + 1,
+                    committed=len(committed),
                 )
             )
-            if not request.ignore_eos and token == eos:
-                reason = "eos"
 
         self.last_cycles = tuple(cycles)
         proposed = sum(len(cycle.candidates) for cycle in cycles)
@@ -349,8 +363,7 @@ class Gemma4MTPTextProvider:
                     },
                     "target_verify": {
                         "calls": phase_calls.get("target_verify", 0),
-                        "rows": phase_calls.get("target_verify", 0)
-                        * (self.candidate_budget + 1),
+                        "rows": sum(len(cycle.candidates) + 1 for cycle in cycles),
                         "ms": phase_ms.get("target_verify", 0.0),
                     },
                 },
@@ -362,7 +375,7 @@ class Gemma4MTPTextProvider:
             telemetry=telemetry,
             finish_details=FinishDetails(
                 reason=reason,
-                eos_token_id=eos if reason == "eos" else None,
+                eos_token_id=generated[-1] if reason == "stop" else None,
                 length_limit=request.max_tokens if reason == "length" else None,
                 sampler_mode="greedy_speculative_mtp",
             ),
