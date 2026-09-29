@@ -761,6 +761,7 @@ class Gemma4Runner:
         apply_softcap: bool = True,
         logits_rows: int = 1,
         capture_layers: list[np.ndarray] | None = None,
+        verification: bool = False,
     ) -> np.ndarray:
         """Run ``token_ids`` through the model and return the last row's logits.
 
@@ -792,6 +793,10 @@ class Gemma4Runner:
         same computation a single-token forward would produce for that position:
         the mask is built from absolute positions, so a row never depends on how
         many rows accompany it.
+
+        ``verification=True`` keeps batched speculative rows on the attention
+        arithmetic used by target decode, rather than the production prompt-
+        prefill variants. Prompt prefill retains its selected profile.
 
         ``capture_layers`` appends the residual stream after each block, as a
         ``(rows, hidden)`` BF16 array, to the list it is given. The residual
@@ -844,12 +849,13 @@ class Gemma4Runner:
             # picking the working path per shape is dispatch rather than a gate.
             # Clearing command: fix the partial-block path, then rerun
             # scripts/gemma4_teacher_forced_gate.py at --prefill 256.
-            with _gemma4_block_wmma_session(len(block) == self.max_block):
+            with _gemma4_block_wmma_session(not verification and len(block) == self.max_block):
                 logits = self._forward_block(
                     block,
                     apply_softcap=apply_softcap,
                     logits_rows=block_rows,
                     capture_layers=capture_layers,
+                    verification=verification,
                 )
         assert logits is not None
         return logits
@@ -861,6 +867,7 @@ class Gemma4Runner:
         apply_softcap: bool = True,
         logits_rows: int = 1,
         capture_layers: list[np.ndarray] | None = None,
+        verification: bool = False,
     ) -> np.ndarray:
         """Run one block of at most ``max_block`` tokens; see :meth:`forward`."""
 
@@ -972,7 +979,7 @@ class Gemma4Runner:
                 window=start + rows - key_begin
                 if attention.sliding_window is None
                 else int(attention.sliding_window),
-                prefill_attention_variants=self.prefill_attention_variants,
+                prefill_attention_variants=(None if verification else self.prefill_attention_variants),
             )
             if capture_layers is not None:
                 residual = np.empty((rows, hidden), dtype=np.uint16)

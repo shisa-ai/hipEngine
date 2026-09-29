@@ -272,6 +272,7 @@ class Gemma4MTPTextProvider:
                 [token, *drafts],
                 apply_softcap=False,
                 logits_rows=len(drafts) + 1,
+                verification=True,
             )
             if rows.ndim == 1:
                 # ``Gemma4Runner.forward`` returns a flat ``(vocab,)`` array for

@@ -63,6 +63,7 @@ class _FakeRunner:
     def __init__(self, position: int = 0) -> None:
         self.position = int(position)
         self.resets = 0
+        self.verification_calls: list[bool] = []
         self.forwards: list[tuple[tuple[int, ...], int]] = []
 
     def reset(self) -> None:
@@ -78,7 +79,9 @@ class _FakeRunner:
         *,
         apply_softcap: bool = True,
         logits_rows: int = 1,
+        verification: bool = False,
     ) -> np.ndarray:
+        self.verification_calls.append(verification)
         del apply_softcap
         block = [int(token) for token in tokens]
         wanted = int(logits_rows)
@@ -256,6 +259,12 @@ def test_every_budget_stops_exactly_at_max_tokens_and_matches_greedy() -> None:
                 f"reproduce greedy decoding"
             )
             assert run.finish_reason == "length"
+
+
+def test_mtp_marks_verification_but_not_prompt_prefill() -> None:
+    run = _run_cycle(budget=6, max_tokens=16)
+    assert run.runner.verification_calls[0] is False
+    assert all(run.runner.verification_calls[1:])
 
 
 def test_accepted_draft_eos_stops_before_later_candidates() -> None:
