@@ -3314,8 +3314,8 @@ _PREFILL_TILE8X2_BF16 = KernelKey(
 _PREFILL_TILE8X4_BF16 = KernelKey(
     "hip_gfx1100", "linear", "gguf_q8_0", "exact_prefill_tile8x4_bf16_bf16_out"
 )
-_PREFILL_TILE16X4_BF16 = KernelKey(
-    "hip_gfx1100", "linear", "gguf_q8_0", "exact_prefill_tile16x4_bf16_bf16_out"
+_PREFILL_TILE4X16_BF16 = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q8_0", "exact_prefill_tile4x16_bf16_bf16_out"
 )
 _PREFILL_MMQ128_X3_GUARDED_BF16 = KernelKey(
     "hip_gfx1100",
@@ -3372,7 +3372,7 @@ def _capture_launch(
         _DECODE_PACK8_BF16,
         _PREFILL_TILE8X2_BF16,
         _PREFILL_TILE8X4_BF16,
-        _PREFILL_TILE16X4_BF16,
+        _PREFILL_TILE4X16_BF16,
         _Q4_WMMA_BF16,
         _Q4_PREFILL_BF16,
         _Q4_GEMV_BF16,
@@ -3449,20 +3449,14 @@ def test_exact_q8_prefill_reuses_weights_across_rows() -> None:
     assert small == _PREFILL_PACK8_BF16
 
 
-def test_exact_q8_prefill_widens_columns_at_measured_row_thresholds() -> None:
-    narrow, _, _ = _capture_launch(rows=512, out_features=512)
-    medium, _, _ = _capture_launch(rows=64, out_features=2048)
-    wide, _, _ = _capture_launch(rows=32, out_features=8192)
-    narrow_control, _, _ = _capture_launch(rows=256, out_features=512)
-    medium_control, _, _ = _capture_launch(rows=32, out_features=2048)
-    wide_control, _, _ = _capture_launch(rows=16, out_features=8192)
-
-    assert narrow == _PREFILL_TILE16X4_BF16
-    assert medium == _PREFILL_TILE16X4_BF16
-    assert wide == _PREFILL_TILE16X4_BF16
-    assert narrow_control == _PREFILL_TILE8X4_BF16
-    assert medium_control == _PREFILL_TILE8X4_BF16
-    assert wide_control == _PREFILL_TILE8X4_BF16
+@pytest.mark.parametrize("out_features,threshold", [(512, 512), (2048, 64), (8192, 32)])
+@pytest.mark.parametrize("offset", [-1, 0, 1, 19])
+def test_exact_q8_prefill_widens_rows_at_measured_thresholds(
+    out_features: int, threshold: int, offset: int,
+) -> None:
+    key, _, _ = _capture_launch(rows=threshold + offset, out_features=out_features)
+    expected = _PREFILL_TILE8X4_BF16 if offset < 0 else _PREFILL_TILE4X16_BF16
+    assert key == expected
 
 
 def test_q3_mmq_prefill_policy_is_registry_selected() -> None:
