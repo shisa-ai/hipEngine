@@ -1,0 +1,240 @@
+{
+ "baseline_forced_slices": null,
+ "baseline_path": "/mnt/nvme1/gemma4-eval/teacher-forced-prefilled-p4096-c3ea386af.npz",
+ "baseline_provenance": {
+  "artifact": {
+   "bytes": 17010980576,
+   "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+   "mtime": "2026-09-22T10:30:20.793299+00:00",
+   "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+  },
+  "attention_source_sha256": {
+   "hip": "8505e37a31790784102600d438f97aab6c40619aff581c06fe03f6f3f335c3e1",
+   "py": "fba1d584276767d5526c06806b6d09d1dce9dd8f5d888b07d1a4ec74a8e07385"
+  },
+  "context_length": 8192,
+  "env": {
+   "HIP_INCLUDE_PATH": "/opt/rocm/include",
+   "HIP_LIB_PATH": "/opt/rocm/lib",
+   "HIP_PATH": "/opt/rocm",
+   "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+   "HSA_SCRATCH_SINGLE_LIMIT": "8388608",
+   "ROCR_VISIBLE_DEVICES": "0"
+  },
+  "evaluator_source_sha256": "dad9df1e93e349d3d75e3c427de61d6a3d0342faeb8a5ed4e8512319ffe4ca1f",
+  "forced_slices": null,
+  "git_commit": "c3ea386af3b13974ba46ed621cec86fc17c711b8",
+  "git_dirty": true,
+  "git_dirty_files": [
+   "M audit/findings/doc-path-drift.json",
+   " M audit/findings/stub.json",
+   " M audit/findings/ungoverned-flag-branch.json",
+   " M audit/inventory/candidates.json",
+   " M audit/inventory/flags.json",
+   " M audit/inventory/kernels.json",
+   " M audit/inventory/ledger.json",
+   " M audit/inventory/meta.json",
+   " M audit/inventory/worklog.json",
+   " M audit/triage/stub.jsonl"
+  ],
+  "gpu_name_device0": "AMD Radeon Pro W7900",
+  "hipcc": [
+   "HIP version: 7.2.53211-3d9ef42",
+   "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+  ],
+  "max_block": 512,
+  "observed_routes": {
+   "decode_launches": 30690,
+   "head_dims": [
+    256,
+    512
+   ],
+   "selections": [
+    2
+   ],
+   "split_key_range": [
+    1024,
+    5119
+   ],
+   "split_launches": 30690
+  },
+  "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+  "prefill": 4096,
+  "python": "3.11.11",
+  "rocm_smi_clock_power": [
+   "============================ ROCm System Management Interface ============================",
+   "====================================== Temperature =======================================",
+   "GPU[0]\t\t: Temperature (Sensor edge) (C): 50.0",
+   "GPU[0]\t\t: Temperature (Sensor junction) (C): 61.0",
+   "GPU[0]\t\t: Temperature (Sensor memory) (C): 63.0",
+   "GPU[1]\t\t: Temperature (Sensor edge) (C): 28.0",
+   "GPU[1]\t\t: Temperature (Sensor junction) (C): 36.0",
+   "GPU[1]\t\t: Temperature (Sensor memory) (C): 42.0",
+   "==========================================================================================",
+   "=============================== Current clock frequencies ================================",
+   "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+   "GPU[0]\t\t: fclk clock level: 4: (1801Mhz)",
+   "GPU[0]\t\t: mclk clock level: 3: (1124Mhz)",
+   "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+   "GPU[0]\t\t: socclk clock level: 1: (1200Mhz)",
+   "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+   "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+   "GPU[1]\t\t: fclk clock level: 1: (1000Mhz)",
+   "GPU[1]\t\t: mclk clock level: 0: (96Mhz)",
+   "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+   "GPU[1]\t\t: socclk clock level: 1: (600Mhz)",
+   "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+   "==========================================================================================",
+   "=================================== Power Consumption ====================================",
+   "GPU[0]\t\t: Average Graphics Package Power (W): 66.0",
+   "GPU[1]\t\t: Average Graphics Package Power (W): 8.0",
+   "==========================================================================================",
+   "================================== End of ROCm SMI Log ==================================="
+  ]
+ },
+ "baseline_sha256": "2adf5033b1578f47d44b9a468c38c478baf665b9c9d8517430643fde85b57e37",
+ "candidate_forced_slices": null,
+ "candidate_provenance": {
+  "artifact": {
+   "bytes": 17010980576,
+   "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+   "mtime": "2026-09-22T10:30:20.793299+00:00",
+   "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+  },
+  "attention_source_sha256": {
+   "hip": "3fb6a454c489cb74a34cf2a3cc38db218f1aa1dec1138dcc2caf2405410eaf3e",
+   "py": "fba1d584276767d5526c06806b6d09d1dce9dd8f5d888b07d1a4ec74a8e07385"
+  },
+  "context_length": 8192,
+  "env": {
+   "HIP_INCLUDE_PATH": "/opt/rocm/include",
+   "HIP_LIB_PATH": "/opt/rocm/lib",
+   "HIP_PATH": "/opt/rocm",
+   "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+   "HSA_SCRATCH_SINGLE_LIMIT": "8388608",
+   "ROCR_VISIBLE_DEVICES": "0"
+  },
+  "evaluator_source_sha256": "b78bb5a71a17280334b5418a7bbaa11623fbcb9dbf4aafa0659fcf59f2c4d409",
+  "git_commit": "7e9670c9a776006bd5dc970b7a1cbfd0db0221c0",
+  "git_dirty": true,
+  "git_dirty_files": [
+   "M scripts/gemma4_teacher_forced_gate.py"
+  ],
+  "gpu_name_device0": "AMD Radeon Pro W7900",
+  "hipcc": [
+   "HIP version: 7.2.53211-3d9ef42",
+   "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+  ],
+  "max_block": 512,
+  "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+  "python": "3.11.11",
+  "rocm_smi_clock_power": [
+   "============================ ROCm System Management Interface ============================",
+   "====================================== Temperature =======================================",
+   "GPU[0]\t\t: Temperature (Sensor edge) (C): 61.0",
+   "GPU[0]\t\t: Temperature (Sensor junction) (C): 68.0",
+   "GPU[0]\t\t: Temperature (Sensor memory) (C): 74.0",
+   "GPU[1]\t\t: Temperature (Sensor edge) (C): 31.0",
+   "GPU[1]\t\t: Temperature (Sensor junction) (C): 39.0",
+   "GPU[1]\t\t: Temperature (Sensor memory) (C): 45.0",
+   "==========================================================================================",
+   "=============================== Current clock frequencies ================================",
+   "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+   "GPU[0]\t\t: fclk clock level: 0: (601Mhz)",
+   "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+   "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+   "GPU[0]\t\t: socclk clock level: 0: (500Mhz)",
+   "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+   "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+   "GPU[1]\t\t: fclk clock level: 1: (1000Mhz)",
+   "GPU[1]\t\t: mclk clock level: 0: (96Mhz)",
+   "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+   "GPU[1]\t\t: socclk clock level: 1: (600Mhz)",
+   "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+   "==========================================================================================",
+   "=================================== Power Consumption ====================================",
+   "GPU[0]\t\t: Average Graphics Package Power (W): 11.0",
+   "GPU[1]\t\t: Average Graphics Package Power (W): 5.0",
+   "==========================================================================================",
+   "================================== End of ROCm SMI Log ==================================="
+  ]
+ },
+ "chain_sha256": "3958e56f2e3752dd800875532e1d3997344df5bad28e4835a35352bedabe3630",
+ "direction": "kl(baseline || candidate)",
+ "evidence_level": "numerical_rows",
+ "failed": [],
+ "kl_max": 0.0,
+ "kl_mean": 0.0,
+ "kl_p95": 0.0,
+ "kl_p99": 0.0,
+ "kl_rows_over_limit": 0,
+ "kl_worst_rows": [
+  [
+   1022,
+   0.0
+  ],
+  [
+   1021,
+   0.0
+  ],
+  [
+   1020,
+   0.0
+  ],
+  [
+   1019,
+   0.0
+  ],
+  [
+   1018,
+   0.0
+  ],
+  [
+   1017,
+   0.0
+  ],
+  [
+   1016,
+   0.0
+  ],
+  [
+   1015,
+   0.0
+  ]
+ ],
+ "observed_routes": {
+  "decode_launches": 30690,
+  "head_dims": [
+   256,
+   512
+  ],
+  "selections": [
+   2
+  ],
+  "split_key_range": [
+   1024,
+   5119
+  ],
+  "split_launches": 30690
+ },
+ "passed": true,
+ "percentile_method": "nearest-rank",
+ "prefill": 4096,
+ "promotion_qualified": false,
+ "rows": 1023,
+ "scored_key_range": [
+  4097,
+  5119
+ ],
+ "thresholds": {
+  "kl_max": 0.05,
+  "kl_mean": 0.001,
+  "kl_p95": 0.005,
+  "kl_p99": 0.02,
+  "top1_rate": 0.99
+ },
+ "top1_flip_rows": [],
+ "top1_flips": 0,
+ "top1_rate": 1.0,
+ "vocab": 262144
+}
