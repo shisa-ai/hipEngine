@@ -327,6 +327,35 @@ def main() -> int:
                                     None if reference is None
                                     else float(np.max(np.abs(out - reference)))
                                 ),
+                                # A relative figure, because an absolute difference
+                                # cannot by itself distinguish f32 summation-order
+                                # drift from f16 operand rounding. Scaled by the
+                                # reference's own magnitude, in float64 so the
+                                # statistic itself does not round.
+                                "relative_l2_vs_production": (
+                                    None if reference is None
+                                    else float(
+                                        np.linalg.norm(
+                                            out.astype(np.float64)
+                                            - reference.astype(np.float64)
+                                        )
+                                        / max(
+                                            float(
+                                                np.linalg.norm(
+                                                    reference.astype(np.float64)
+                                                )
+                                            ),
+                                            1e-30,
+                                        )
+                                    )
+                                ),
+                                "max_relative_to_peak_vs_production": (
+                                    None if reference is None
+                                    else float(
+                                        np.max(np.abs(out - reference))
+                                        / max(float(np.max(np.abs(reference))), 1e-30)
+                                    )
+                                ),
                                 "bit_identical_to_production": (
                                     None if reference is None
                                     else bool(np.array_equal(out, reference))
