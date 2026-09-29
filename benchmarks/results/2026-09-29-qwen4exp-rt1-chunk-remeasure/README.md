@@ -75,3 +75,71 @@ per arm, under the benchmark lock.
   That is not contradicted here — different date, and the ledger notes the
   September 14 recovery changed the composition — but this measurement does not
   confirm it either, and is not presented as doing so.
+
+---
+
+# X-6 gate re-run at chunk 4096: passes, and both arms are bit-identical
+
+RT-1's first promotion blocker is the ledger's `X-6` requirement that the
+numerical gate be re-run at the new chunk size — and the gate states its own
+scope explicitly: *"A complete run at one chunk size never qualifies another
+chunk size."* So the chunk-1024 certification does not transfer by default.
+
+Re-run at chunk 4096 for the promoted route at canonical depth:
+
+```bash
+execution_profile_q8_wmma_prefill_layers_gate.py --route wmma --layers 16-47 \
+  --prefill-chunk-size 4096 --decode-steps 128 --repeat-runs 3 \
+  --require-cached-build --output gate-wmma-16-47-chunk4096.json
+```
+
+## Result
+
+| | chunk 1024 (recorded) | chunk 4096 (this run) |
+|---|---:|---:|
+| teacher logits sha256 | `550bb9b8…` | **`550bb9b832bc7ba2…`** |
+| candidate logits sha256 | `65370710…` | **`65370710c0b9c40f…`** |
+| mean KL | 3.79552e-4 | **3.795524e-4** |
+| status | complete | complete |
+| `hard_gates_passed` | true | true |
+
+**Both arms reproduce the chunk-1024 certification bit-identically.** Not merely
+the mean KL agreeing to six figures — the full trajectories hash the same. So the
+route's arithmetic and its drift are both **invariant to the prefill chunk size**
+over 1024 → 4096.
+
+Other gates at chunk 4096: `p95` 1.762e-3, `max` 1.530e-2, `top1_rate` 0.99354,
+`repeat_deterministic: true`, `canonical_numerical_qualification_claim: true`,
+teacher rows 1548, chunk recorded as 4096.
+
+## This is not the false-pass mode
+
+The gate previously returned **KL exactly 0.0 with `measurement_valid: true`** on
+a route that never ran, so a clean pass is the failure to rule out *first*. Here
+the engagement is recorded, not inferred:
+
+- `candidate_route_engaged: true`, `teacher_route_engaged: false`
+- `wmma_prefill` candidate engaged rate **0.373585** against the teacher's **0.0**
+- **792** launches of `wmma_prefill_f32_f32_out`
+- `selectors_observed_in_one_arm_only: []` — the attribution rests on both arms
+  being observed
+- `selectors_differing_between_arms: ["q4k_rowtile", "wmma_prefill"]`
+
+The KL is nonzero, the arms differ, the teacher is genuinely the cleared exact
+chain (`teacher_chain: exact coltile8_rowbatch4_f32_f32_out`), and the hashes
+match a certification taken at a different chunk size in a different session.
+
+## What this does and does not clear
+
+**Clears** RT-1's first blocker for the promoted route: the chunk-4096
+configuration passes the canonical numerical gate and reproduces the chunk-1024
+result bit-identically, so the chunk change does not perturb this route.
+
+**Does not clear** RT-1's second blocker (`RT-3`: short-request behaviour and the
++4.96 GB allocation), and does not clear `X-7`'s remaining profile blockers,
+which are unchanged and reported by the gate itself: category-heldout,
+strict-teacher/BF16-relative, control/isolation/graph/lifecycle, task-quality,
+and engagement/repair-oracle coverage. Those are pre-existing and are not
+created or worsened by the chunk change.
+
+**Still not promoted.** No default changed.
