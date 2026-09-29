@@ -128,6 +128,29 @@ def main(argv: list[str] | None = None) -> int:
 
     manifest = load_manifest(args.manifest)
     selected = select_sources(manifest.sources, args.kind, args.file_patterns)
+
+    # A manifest repository can be absent on this host -- it may live on another
+    # machine, or have been retired since the manifest was written. Running git
+    # against a missing path raises out of build_report and discards every other
+    # source's report, so the check would return nothing at all and kernel work
+    # would have no lineage gate to clear. Report the gap by name on stderr
+    # instead: sources whose repository is present still get their drift check,
+    # and the missing repository stays visible rather than silently skipped.
+    present: list[SourceSpec] = []
+    absent_repos: dict[str, Path] = {}
+    for source in selected:
+        repo = manifest.repos[source.repo]
+        if repo.path.is_dir():
+            present.append(source)
+        else:
+            absent_repos[source.repo] = repo.path
+    for name, path in sorted(absent_repos.items()):
+        print(
+            f"check_lineage: repository {name!r} not found at {path} -- "
+            f"its sources are not checked on this host",
+            file=sys.stderr,
+        )
+
     reports = tuple(
         build_report(
             manifest,
@@ -135,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
             baseline_override=args.baseline_ref,
             evidence_limit=max(args.evidence_limit, 0),
         )
-        for source in selected
+        for source in present
     )
 
     if args.json:

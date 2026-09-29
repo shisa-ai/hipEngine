@@ -136,3 +136,75 @@ def git_output(repo: Path, *args: str) -> str:
         check=True,
     )
     return result.stdout.strip()
+
+
+def test_check_lineage_missing_repository_reports_instead_of_crashing(
+    tmp_path: Path,
+) -> None:
+    """A repository absent on this host must not discard every other report.
+
+    ``build_report`` shells out to git against the repository path. When the
+    manifest still names a repository that no longer exists on this machine,
+    git raises and the whole run dies, so the check returns no reports at all
+    and kernel work has no lineage gate to clear. The gap is reported by name on
+    stderr instead, and the sources whose repository is present are still
+    checked -- losing that coverage silently would be worse than the crash.
+    """
+
+    source_repo = tmp_path / "source"
+    source_repo.mkdir()
+    run(["git", "init"], cwd=source_repo)
+    run(["git", "config", "user.email", "test@example.invalid"], cwd=source_repo)
+    run(["git", "config", "user.name", "Test User"], cwd=source_repo)
+
+    kernel = source_repo / "kernels" / "foo.hip"
+    kernel.parent.mkdir()
+    kernel.write_text("extern \"C\" __global__ void foo() {}\n")
+    run(["git", "add", "kernels/foo.hip"], cwd=source_repo)
+    run(["git", "commit", "-m", "baseline foo kernel"], cwd=source_repo)
+    baseline = git_output(source_repo, "rev-parse", "HEAD")
+
+    missing = tmp_path / "retired-repo"
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "repositories": {
+                    "source": {"path": str(source_repo), "baseline_ref": baseline},
+                    "retired": {"path": str(missing), "baseline_ref": baseline},
+                },
+                "files": [
+                    {
+                        "repo": "source",
+                        "path": "kernels/foo.hip",
+                        "kind": "kernel",
+                        "family": "foo test kernel",
+                    },
+                    {
+                        "repo": "retired",
+                        "path": "kernels/gone.hip",
+                        "kind": "kernel",
+                        "family": "retired test kernel",
+                    },
+                ],
+            }
+        )
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--manifest", str(manifest), "--json"],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    # The run completes rather than raising out of git on the missing path.
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    # The present repository is still checked, so coverage is not lost.
+    assert [s["repo"] for s in report["sources"]] == ["source"]
+    # And the gap is named rather than silently skipped.
+    assert "retired" in result.stderr
+    assert str(missing) in result.stderr
