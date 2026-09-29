@@ -29,9 +29,15 @@ import pytest
 
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
     _DS4_BLOCK_VALUES,
-    _MMQ_DUAL_QUANT_KEY,
+    _MMQ32_PREFILL_VARIANT,
     _mmq_dual_route,
 )
+
+# A quant that has a registered mmq32 owner, so it routes. The guard no longer
+# compares against a quant name -- it resolves an owner -- but Q4_K is the
+# reference case. ``gguf_q8_0`` has no owner and is still refused, which is the
+# capability check doing the same work the old allowlist did.
+_ROUTE_QUANT = "gguf_q4_k"
 
 
 class _Spec:
@@ -40,13 +46,15 @@ class _Spec:
 
 
 class _Weight:
-    """Minimal stand-in: the guard reads only ``weight.spec.quant_key``."""
+    """Minimal stand-in: the guard reads ``weight.backend`` and
+    ``weight.spec.quant_key``, and nothing else."""
 
-    def __init__(self, quant_key: str = _MMQ_DUAL_QUANT_KEY) -> None:
+    def __init__(self, quant_key: str = _ROUTE_QUANT) -> None:
+        self.backend = "hip_gfx1100"
         self.spec = _Spec(quant_key)
 
 
-def _route(compact_rows: int, num_experts: int, *, quant_key: str = _MMQ_DUAL_QUANT_KEY) -> bool:
+def _route(compact_rows: int, num_experts: int, *, quant_key: str = _ROUTE_QUANT) -> bool:
     in_features = 7 * _DS4_BLOCK_VALUES  # aligned: 7 blocks of 128
     out_features = 704  # 704 % 32 == 0
     return _mmq_dual_route(
@@ -112,10 +120,30 @@ def test_row_count_matches_the_measured_probe() -> None:
 
 
 def test_other_guards_still_refuse_first() -> None:
-    """The new guard must not shadow the pre-existing ones."""
-    assert _route(4096, 128, quant_key="gguf_q8_0") is False, "wrong quant key"
+    """The new guard must not shadow the pre-existing ones.
+
+    ``gguf_q8_0`` has no mmq32 owner, so a capability probe refuses it for the
+    same observable reason the old allowlist did. A quant that gains an owner
+    routes without this file changing, which is the point of the probe.
+    """
+    assert _route(4096, 128, quant_key="gguf_q8_0") is False, "no owner for this quant"
     assert _mmq_dual_route(0, 4096, 896, 704, 128) is False, "int weight sentinel"
     assert _route(32, 128) is False, "below the minimum lanes-per-expert floor"
+
+
+def test_a_quant_without_an_owner_falls_back_to_the_grouped_route() -> None:
+    """The probe is the admission rule: registration decides, not a name.
+
+    Both quants below clear every shape, lane and row guard, so the only thing
+    that can refuse them is the absence of a registered mmq32 leaf.
+    """
+    assert _route(4096, 128, quant_key=_ROUTE_QUANT) is True, "Q4_K owns the leaf"
+    assert _route(4096, 128, quant_key="gguf_q5_k") is True, "Q5_K owns the leaf"
+    assert _route(4096, 128, quant_key="gguf_q8_0") is False, "no owner: grouped route"
+
+    assert _MMQ32_PREFILL_VARIANT == (
+        "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
+    )
 
 
 def test_lane_floor_still_applies_to_aligned_rows() -> None:
