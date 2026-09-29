@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_kv_reset_cost",
+  "created_at": "2026-09-29T18:01:06.040054+00:00",
+  "performance_claim": false,
+  "boundary": "the K/V memset that dominates Qwen4ExpGGUFResidentModelRunner.reset; excludes the recurrent state zero, index resets and position writes",
+  "bytes_per_token": 24576,
+  "repeats": 7,
+  "warmups": 2,
+  "written_tokens": 512,
+  "cases": [
+    {
+      "capacity_tokens": 1024,
+      "bytes_per_cache": 25165824,
+      "bytes_cleared_per_reset": 50331648,
+      "reset_ms_samples": [
+        0.24251500144600868,
+        0.23674359545111656,
+        0.23874780163168907,
+        0.2378462813794613,
+        0.23637386038899422,
+        0.23884791880846024,
+        0.23738527670502663
+      ],
+      "reset_ms_median": 0.2378462813794613,
+      "reset_ms_min": 0.23637386038899422,
+      "effective_gb_per_s": 211.61418924898223,
+      "written_tokens": 512,
+      "wasted_bytes": 25165824,
+      "wasted_fraction": 0.5,
+      "wasted_ms_estimate": 0.11892314068973064
+    },
+    {
+      "capacity_tokens": 4096,
+      "bytes_per_cache": 100663296,
+      "bytes_cleared_per_reset": 201326592,
+      "reset_ms_samples": [
+        0.8907010778784752,
+        0.8730879053473473,
+        0.8837883360683918,
+        0.8935467340052128,
+        0.8726869709789753,
+        0.9054993279278278,
+        0.8847187273204327
+      ],
+      "reset_ms_median": 0.8847187273204327,
+      "reset_ms_min": 0.8726869709789753,
+      "effective_gb_per_s": 227.55999820390636,
+      "written_tokens": 512,
+      "wasted_bytes": 176160768,
+      "wasted_fraction": 0.875,
+      "wasted_ms_estimate": 0.7741288864053786
+    },
+    {
+      "capacity_tokens": 16384,
+      "bytes_per_cache": 402653184,
+      "bytes_cleared_per_reset": 805306368,
+      "reset_ms_samples": [
+        3.6960141733288765,
+        3.70678398758173,
+        3.6729099228978157,
+        3.709299024194479,
+        3.7279538810253143,
+        4.3106768280267715,
+        3.8429698906838894
+      ],
+      "reset_ms_median": 3.709299024194479,
+      "reset_ms_min": 3.6729099228978157,
+      "effective_gb_per_s": 217.1047313110278,
+      "written_tokens": 512,
+      "wasted_bytes": 780140544,
+      "wasted_fraction": 0.96875,
+      "wasted_ms_estimate": 3.5933834296884015
+    },
+    {
+      "capacity_tokens": 65536,
+      "bytes_per_cache": 1610612736,
+      "bytes_cleared_per_reset": 3221225472,
+      "reset_ms_samples": [
+        14.75102361291647,
+        14.619166031479836,
+        14.918217435479164,
+        14.517203904688358,
+        14.798383228480816,
+        14.592877123504877,
+        14.487690292298794
+      ],
+      "reset_ms_median": 14.619166031479836,
+      "reset_ms_min": 14.487690292298794,
+      "effective_gb_per_s": 220.34262864678124,
+      "written_tokens": 512,
+      "wasted_bytes": 3196059648,
+      "wasted_fraction": 0.9921875,
+      "wasted_ms_estimate": 14.5049537968589
+    },
+    {
+      "capacity_tokens": 131072,
+      "bytes_per_cache": 3221225472,
+      "bytes_cleared_per_reset": 6442450944,
+      "reset_ms_samples": [
+        29.458224773406982,
+        29.38333386555314,
+        29.13460833951831,
+        28.865342028439045,
+        29.763788916170597,
+        29.182226862758398,
+        29.127243906259537
+      ],
+      "reset_ms_median": 29.182226862758398,
+      "reset_ms_min": 28.865342028439045,
+      "effective_gb_per_s": 220.76625523810483,
+      "written_tokens": 512,
+      "wasted_bytes": 6417285120,
+      "wasted_fraction": 0.99609375,
+      "wasted_ms_estimate": 29.068233789075748
+    }
+  ],
+  "notes": [
+    "The caches are capacity-sized, so the reset is O(capacity) even for a request that wrote a handful of tokens.",
+    "wasted_bytes/wasted_ms_estimate are what a request that wrote --written-tokens pays for storage it never touched.",
+    "This measures the memset only; it does not claim a saving from any alternative clearing contract."
+  ]
+}
