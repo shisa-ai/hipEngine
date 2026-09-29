@@ -24,6 +24,27 @@ allocations after close. This comparison does not qualify the underlying
 production arithmetic against strict or establish decode/MTP speedups.
 [Protocol and artifacts](results/2026-09-26-qwen4exp-f16-integration/README.md).
 
+## Qwen3.8 Flash Next prefill chunk size
+
+Measured on physical host `gfx1151` (`55ea6c509d0b49eea8de7094a1023668`), AMD
+gfx1151, UD-Q4_K_XL, BF16 KV, production execution profile, case `code-p4096`,
+cached build. Three repetitions per arm, one process per arm.
+
+| Prefill chunk | Wall median (s) | Change | Peak allocation |
+| ---: | ---: | ---: | ---: |
+| 1024 (default) | 15.625 | — | 84.44 GB |
+| 4096 | 14.854 | **-771.9 ms (-4.94%)** | 89.40 GB |
+
+The separation between medians is 5.70x the larger within-arm spread and the
+arms do not overlap. `token_id` and `logits_sha256` are identical on every arm
+at every repetition. Chunk 4096 costs +4.96 GB peak (+5.9%).
+
+Not promoted: the numerical gate must be re-run at the new chunk size, and
+`RT-3` records that short-request costs historically kept 1024 as the default,
+so the right form is a shape-based policy rather than a blanket flip. One case,
+prefill only.
+[Protocol, cost and limits](results/2026-09-29-qwen4exp-rt1-chunk-remeasure/README.md).
+
 ## Qwen3.8 Flash Next full-attention context route
 
 Measured on physical host `gfx1151` (`55ea6c509d0b49eea8de7094a1023668`), AMD
