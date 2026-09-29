@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- **2026-09-29 UTC**: ED-1 replay on all48 measured router populations from synthetic IDs4000..5023, Framework Radeon8060S, Qwen3.8-Flash-Next UD-Q4_K_XL real layer0 Q5_1 weights/synthetic activations, rows10240/K640/N2560: mean case medians j16 7.888ms → stagedj32 14.864ms (+88.44%) / stagedj16 22.246ms (+182.01%). Both lose48/48 cases; all240 output/risk-set checks exact. Main-only, no index writes/repair, defaults unchanged. [Evidence and replay patch](results/2026-09-29-qwen4exp-ed1-population-replay/README.md).
+
 - **2026-09-29 UTC**: Provenance correction for the September27 Qwen4Exp expert-population report: its 48 router captures used synthetic token IDs4000..5023, not a natural code-p4096 prompt. Recovered all48 count arrays; assignments, seven tile sweeps and engine padded totals validate. No new timing/default change. [Fixture and correction](results/2026-09-29-qwen4exp-population-recovery/README.md).
 
 - **2026-09-29 UTC**: Diagnostic ED-1 Q5_1 raw-weight LDS staging on Framework Radeon8060S, Qwen3.8-Flash-Next UD-Q4_K_XL, real layer0 weights with synthetic activations/balanced routing (10240 rows,512 experts,K640,N2560): j16 9.147 ms → staged j32 18.312 ms (+100.20%) / staged j16 28.919 ms (+216.17%). Output/risk sets exact; cache-only trace shows no scratch, staged j32 LDS57344/VGPR248. Prototypes archived, defaults/scoreboard unchanged; real-population qualification open. [Evidence and patch](results/2026-09-29-qwen4exp-ed1-lds-screen/README.md).
