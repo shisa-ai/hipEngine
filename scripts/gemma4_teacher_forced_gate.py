@@ -123,6 +123,12 @@ def evaluate(baseline_logits: np.ndarray, candidate_logits: np.ndarray) -> dict[
             flips.append(i)
 
     top1_rate = (rows - len(flips)) / rows
+    # ``kl_max`` alone cannot be acted on: with a passing p99 a single row can
+    # dominate it, and the summary says nothing about where that row sits in
+    # the chain. Report the worst offenders and how many clear the limit so a
+    # failure points at a key range instead of a single number.
+    worst = np.argsort(kl)[::-1][:8]
+    kl_limit = THRESHOLDS["kl_max"]
     verdict: dict[str, Any] = {
         "rows": rows,
         "vocab": int(baseline.shape[1]),
@@ -130,6 +136,8 @@ def evaluate(baseline_logits: np.ndarray, candidate_logits: np.ndarray) -> dict[
         "kl_p95": _nearest_rank(kl, 0.95),
         "kl_p99": _nearest_rank(kl, 0.99),
         "kl_max": float(kl.max()),
+        "kl_rows_over_limit": int((kl > kl_limit).sum()),
+        "kl_worst_rows": [[int(i), float(kl[i])] for i in worst],
         "top1_rate": top1_rate,
         "top1_flips": len(flips),
         "top1_flip_rows": flips[:32],
