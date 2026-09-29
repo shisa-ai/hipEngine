@@ -59,6 +59,33 @@ def runner(tmp_path_factory):
         weights.free()
 
 
+def test_verification_phase_keeps_decode_attention_without_changing_prefill(runner, monkeypatch):
+    from hipengine.runtime import gemma4 as module
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import PREFILL_ATTENTION_WMMA_FLASH
+
+    requested = (PREFILL_ATTENTION_WMMA_FLASH,)
+    requests = []
+    original = module.gemma4_layer_forward_bf16
+
+    def record(*args, **kwargs):
+        requests.append(kwargs["prefill_attention_variants"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "gemma4_layer_forward_bf16", record)
+    previous = runner.prefill_attention_variants
+    runner.prefill_attention_variants = requested
+    try:
+        for verification in (False, True, False):
+            runner.reset()
+            requests.clear()
+            runner.forward(_TOKENS, logits_rows=5, verification=verification)
+            expected = None if verification else requested
+            assert requests and all(value == expected for value in requests)
+            assert runner.prefill_attention_variants == requested
+    finally:
+        runner.prefill_attention_variants = previous
+
+
 def test_one_row_matches_a_one_row_forward(runner) -> None:
     """The control: at width one the two paths are the same computation.
 
