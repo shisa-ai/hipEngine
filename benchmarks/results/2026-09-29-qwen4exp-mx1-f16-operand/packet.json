@@ -1,0 +1,5265 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_mx1_f16_operand_packet",
+  "performance_claim": false,
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "command": [
+    "scripts/qwen4exp_mx1_f16_operand_packet.py",
+    "--output",
+    "/tmp/mx1-packet-full.json",
+    "--experts-sampled",
+    "8"
+  ],
+  "comparison_basis": "The BF16 publication floor already present in the path. An operand change whose error is below that floor cannot move the model beyond what the current path already does.",
+  "part_a_weight_decode": [
+    {
+      "layer": 0,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.0.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.0001220703125,
+        "rms_abs": 2.360501062836735e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018319692407826787
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3983154296875,
+        "overflow_count": 0,
+        "subnormal_count": 51115,
+        "zero_count": 1809,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 0,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.0.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.699562072753906e-05,
+        "rms_abs": 2.832958032377673e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002066774634689319
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3708229064941406,
+        "overflow_count": 0,
+        "subnormal_count": 49629,
+        "zero_count": 842,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 0,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.0.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.00011920928955078125,
+        "rms_abs": 2.7744840309837845e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002066876429454331
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3415031433105469,
+        "overflow_count": 0,
+        "subnormal_count": 49523,
+        "zero_count": 744,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 1,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.1.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.4061870791492245e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018418853578163467
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1279296875,
+        "overflow_count": 0,
+        "subnormal_count": 48184,
+        "zero_count": 1832,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 1,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.1.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.91278076171875e-05,
+        "rms_abs": 2.6904424513898258e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002066793625267476
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2634735107421875,
+        "overflow_count": 0,
+        "subnormal_count": 51070,
+        "zero_count": 740,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 1,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.1.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.91278076171875e-05,
+        "rms_abs": 2.6736222884315363e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067302310433801
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.42922210693359375,
+        "overflow_count": 0,
+        "subnormal_count": 50331,
+        "zero_count": 632,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 2,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.2.ffn_down_exps.weight",
+      "quant": "Q8_0",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 4.1961669921875e-05,
+        "rms_abs": 2.5911632309743108e-06,
+        "max_rel": 0.00048146364949446316,
+        "rms_rel": 0.00019768877464907596
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2148609161376953,
+        "overflow_count": 0,
+        "subnormal_count": 0,
+        "zero_count": 97737,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 2,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.2.ffn_gate_exps.weight",
+      "quant": "Q5_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.0001373291015625,
+        "rms_abs": 2.7356718052704784e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020668609407460808
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.5623626708984375,
+        "overflow_count": 0,
+        "subnormal_count": 49797,
+        "zero_count": 588,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 2,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.2.ffn_up_exps.weight",
+      "quant": "Q5_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.91278076171875e-05,
+        "rms_abs": 2.6616303904912194e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020670486770962514
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.23421835899353027,
+        "overflow_count": 0,
+        "subnormal_count": 51070,
+        "zero_count": 701,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 3,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.3.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.382720686949959e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001840255709697567
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.16201400756835938,
+        "overflow_count": 0,
+        "subnormal_count": 48919,
+        "zero_count": 1730,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 3,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.3.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.91278076171875e-05,
+        "rms_abs": 2.7087959965622445e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067806466992088
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.20055198669433594,
+        "overflow_count": 0,
+        "subnormal_count": 49379,
+        "zero_count": 661,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 3,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.3.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 8.058547973632812e-05,
+        "rms_abs": 2.6725658481661157e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067292442886783
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3146324157714844,
+        "overflow_count": 0,
+        "subnormal_count": 50570,
+        "zero_count": 799,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 4,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.4.ffn_down_exps.weight",
+      "quant": "Q8_0",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.340576171875e-05,
+        "rms_abs": 2.634648676392946e-06,
+        "max_rel": 0.00048146364949446316,
+        "rms_rel": 0.00019771584795363724
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2226123809814453,
+        "overflow_count": 0,
+        "subnormal_count": 0,
+        "zero_count": 97872,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 4,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.4.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.91278076171875e-05,
+        "rms_abs": 2.7151293121422982e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067640597578151
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.23824143409729004,
+        "overflow_count": 0,
+        "subnormal_count": 49642,
+        "zero_count": 775,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 4,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.4.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.805492401123047e-05,
+        "rms_abs": 2.663077796791531e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020666322790730267
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.13006889820098877,
+        "overflow_count": 0,
+        "subnormal_count": 50534,
+        "zero_count": 686,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 5,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.5.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 8.392333984375e-05,
+        "rms_abs": 2.3928413474403393e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018393096735753472
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.38077545166015625,
+        "overflow_count": 0,
+        "subnormal_count": 47809,
+        "zero_count": 1894,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 5,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.5.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 7.534027099609375e-05,
+        "rms_abs": 2.7304027863226563e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020670528676217245
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3508758544921875,
+        "overflow_count": 0,
+        "subnormal_count": 48991,
+        "zero_count": 753,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 5,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.5.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.841255187988281e-05,
+        "rms_abs": 2.6865382405203893e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067210896638528
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2408132553100586,
+        "overflow_count": 0,
+        "subnormal_count": 50114,
+        "zero_count": 815,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 6,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.6.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.814697265625e-05,
+        "rms_abs": 2.4263754168028334e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001838678546748179
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2060546875,
+        "overflow_count": 0,
+        "subnormal_count": 47506,
+        "zero_count": 1844,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 6,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.6.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 4.887580871582031e-05,
+        "rms_abs": 2.6575460329191808e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067018402183998
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.17655551433563232,
+        "overflow_count": 0,
+        "subnormal_count": 49499,
+        "zero_count": 645,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 6,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.6.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.9723854064941406e-05,
+        "rms_abs": 2.6563815710169727e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020667897938202745
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.21376991271972656,
+        "overflow_count": 0,
+        "subnormal_count": 49916,
+        "zero_count": 558,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 7,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.7.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 7.62939453125e-05,
+        "rms_abs": 2.428705506416876e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018396153066558795
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3262481689453125,
+        "overflow_count": 0,
+        "subnormal_count": 47747,
+        "zero_count": 1774,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 7,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.7.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.555152893066406e-05,
+        "rms_abs": 2.6862393426860014e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020676830128908637
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2440509796142578,
+        "overflow_count": 0,
+        "subnormal_count": 49697,
+        "zero_count": 820,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 7,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.7.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.042552947998047e-05,
+        "rms_abs": 2.649425523660324e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067266095482362
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1567826271057129,
+        "overflow_count": 0,
+        "subnormal_count": 50260,
+        "zero_count": 843,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 8,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.8.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 4.57763671875e-05,
+        "rms_abs": 2.389117017521804e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001840999005528361
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2498779296875,
+        "overflow_count": 0,
+        "subnormal_count": 48506,
+        "zero_count": 1641,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 8,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.8.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.608841331784748e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067872324914922
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.12352752685546875,
+        "overflow_count": 0,
+        "subnormal_count": 50754,
+        "zero_count": 839,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 8,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.8.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.0677528381347656e-05,
+        "rms_abs": 2.6071100985927257e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020675614794296473
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2578697204589844,
+        "overflow_count": 0,
+        "subnormal_count": 50240,
+        "zero_count": 638,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 9,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.9.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.395893586471454e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001841114921730156
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.204833984375,
+        "overflow_count": 0,
+        "subnormal_count": 48375,
+        "zero_count": 1735,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 9,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.9.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 4.1961669921875e-05,
+        "rms_abs": 2.6322223213315015e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020679175128987228
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.21239876747131348,
+        "overflow_count": 0,
+        "subnormal_count": 49897,
+        "zero_count": 746,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 9,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.9.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.0001068115234375,
+        "rms_abs": 2.623048694278155e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020667167677166688
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3826751708984375,
+        "overflow_count": 0,
+        "subnormal_count": 50510,
+        "zero_count": 774,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 10,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.10.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 2.86102294921875e-05,
+        "rms_abs": 2.3656094764128103e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018425065773688463
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1611328125,
+        "overflow_count": 0,
+        "subnormal_count": 49111,
+        "zero_count": 1673,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 10,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.10.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.389617919921875e-05,
+        "rms_abs": 2.6087783385897474e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002066561077298324
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3120756149291992,
+        "overflow_count": 0,
+        "subnormal_count": 49546,
+        "zero_count": 695,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 10,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.10.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 4.863739013671875e-05,
+        "rms_abs": 2.6177875625719104e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067513507151597
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.15061736106872559,
+        "overflow_count": 0,
+        "subnormal_count": 50323,
+        "zero_count": 740,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 11,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.11.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.409874504441685e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018424071498547248
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.11844635009765625,
+        "overflow_count": 0,
+        "subnormal_count": 47959,
+        "zero_count": 1663,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 11,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.11.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.7220458984375e-05,
+        "rms_abs": 2.619577467968183e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020673851338289865
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2243506908416748,
+        "overflow_count": 0,
+        "subnormal_count": 50102,
+        "zero_count": 827,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 11,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.11.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.218650817871094e-05,
+        "rms_abs": 2.6218646251139142e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020670719971792006
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1471846103668213,
+        "overflow_count": 0,
+        "subnormal_count": 50804,
+        "zero_count": 753,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 12,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.12.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.3667892162663544e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001840654189013781
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.257568359375,
+        "overflow_count": 0,
+        "subnormal_count": 49277,
+        "zero_count": 1706,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 12,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.12.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.4849853515625e-05,
+        "rms_abs": 2.6526875122307284e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020674339068315562
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2809410095214844,
+        "overflow_count": 0,
+        "subnormal_count": 50370,
+        "zero_count": 638,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 12,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.12.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.6047871936592856e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020677224863538006
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.24296951293945312,
+        "overflow_count": 0,
+        "subnormal_count": 50358,
+        "zero_count": 700,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 13,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.13.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.36267563347595e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018418330854561444
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1239013671875,
+        "overflow_count": 0,
+        "subnormal_count": 49526,
+        "zero_count": 1742,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 13,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.13.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 8.487701416015625e-05,
+        "rms_abs": 2.6081309124807738e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020677611011281656
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.25430965423583984,
+        "overflow_count": 0,
+        "subnormal_count": 50477,
+        "zero_count": 779,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 13,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.13.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.000110626220703125,
+        "rms_abs": 2.635179369011803e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020678512390037698
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3453483581542969,
+        "overflow_count": 0,
+        "subnormal_count": 49469,
+        "zero_count": 830,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 14,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.14.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 9.1552734375e-05,
+        "rms_abs": 2.4087617927992734e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018373930754887036
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.37090301513671875,
+        "overflow_count": 0,
+        "subnormal_count": 47805,
+        "zero_count": 1648,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 14,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.14.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.6743621826171875e-05,
+        "rms_abs": 2.642878313780518e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020671611641393797
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.15993690490722656,
+        "overflow_count": 0,
+        "subnormal_count": 50494,
+        "zero_count": 729,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 14,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.14.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.62396240234375e-05,
+        "rms_abs": 2.5946594569522694e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002068199637547307
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1711270809173584,
+        "overflow_count": 0,
+        "subnormal_count": 51367,
+        "zero_count": 774,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 15,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.15.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 2.86102294921875e-05,
+        "rms_abs": 2.369489116591042e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018380574227935175
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.08441162109375,
+        "overflow_count": 0,
+        "subnormal_count": 48798,
+        "zero_count": 1847,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 15,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.15.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.4332275390625e-05,
+        "rms_abs": 2.6133831684714706e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067896829799903
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.12588882446289062,
+        "overflow_count": 0,
+        "subnormal_count": 50691,
+        "zero_count": 725,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 15,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.15.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.6364333273209172e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020673596949793486
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1913928985595703,
+        "overflow_count": 0,
+        "subnormal_count": 50224,
+        "zero_count": 754,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 16,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.16.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 8.392333984375e-05,
+        "rms_abs": 2.3569788513210904e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018404270779911368
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3671875,
+        "overflow_count": 0,
+        "subnormal_count": 49302,
+        "zero_count": 1783,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 16,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.16.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.6176766596114753e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002066573711025003
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1681079864501953,
+        "overflow_count": 0,
+        "subnormal_count": 50411,
+        "zero_count": 915,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 16,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.16.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.91278076171875e-05,
+        "rms_abs": 2.6381403241000176e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020676126081153968
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1267719268798828,
+        "overflow_count": 0,
+        "subnormal_count": 50658,
+        "zero_count": 719,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 17,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.17.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 4.57763671875e-05,
+        "rms_abs": 2.3899023514977046e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018406768538227461
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.25390625,
+        "overflow_count": 0,
+        "subnormal_count": 48438,
+        "zero_count": 1745,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 17,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.17.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.577560598503559e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067842869300762
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.16864871978759766,
+        "overflow_count": 0,
+        "subnormal_count": 51504,
+        "zero_count": 762,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 17,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.17.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.6310183339760375e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020667153146394882
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2239837646484375,
+        "overflow_count": 0,
+        "subnormal_count": 51127,
+        "zero_count": 835,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 18,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.18.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 8.392333984375e-05,
+        "rms_abs": 2.397337969861662e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018411235967309643
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.45101165771484375,
+        "overflow_count": 0,
+        "subnormal_count": 47821,
+        "zero_count": 1659,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 18,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.18.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.7816505432128906e-05,
+        "rms_abs": 2.632972096206325e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020681536675108098
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.300567626953125,
+        "overflow_count": 0,
+        "subnormal_count": 49903,
+        "zero_count": 787,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 18,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.18.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 7.152557373046875e-05,
+        "rms_abs": 2.630944159966565e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020675681265105254
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.26081371307373047,
+        "overflow_count": 0,
+        "subnormal_count": 50384,
+        "zero_count": 776,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 19,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.19.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.4051507024127176e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018393894149103422
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.138671875,
+        "overflow_count": 0,
+        "subnormal_count": 48067,
+        "zero_count": 1718,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 19,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.19.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.14984130859375e-05,
+        "rms_abs": 2.6023148049267205e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020675310647828195
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2558600902557373,
+        "overflow_count": 0,
+        "subnormal_count": 51567,
+        "zero_count": 711,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 19,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.19.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 4.38690185546875e-05,
+        "rms_abs": 2.613081867989402e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020672352600942278
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.15396881103515625,
+        "overflow_count": 0,
+        "subnormal_count": 50053,
+        "zero_count": 821,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 20,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.20.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.381300524976731e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001843251678480683
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.17258071899414062,
+        "overflow_count": 0,
+        "subnormal_count": 48582,
+        "zero_count": 1716,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 20,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.20.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 4.76837158203125e-05,
+        "rms_abs": 2.675262198026191e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020674575749954723
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1366252899169922,
+        "overflow_count": 0,
+        "subnormal_count": 49702,
+        "zero_count": 760,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 20,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.20.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.00010204315185546875,
+        "rms_abs": 2.6688696332806265e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002068215938359985
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2933073043823242,
+        "overflow_count": 0,
+        "subnormal_count": 49598,
+        "zero_count": 937,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 21,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.21.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.4081726954549586e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001843164521333123
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.11783599853515625,
+        "overflow_count": 0,
+        "subnormal_count": 48218,
+        "zero_count": 1760,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 21,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.21.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.888938903808594e-05,
+        "rms_abs": 2.6885212216839846e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020681834641666315
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.28618574142456055,
+        "overflow_count": 0,
+        "subnormal_count": 48277,
+        "zero_count": 715,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 21,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.21.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 9.5367431640625e-05,
+        "rms_abs": 2.6171128723188016e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067400597630291
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.29264187812805176,
+        "overflow_count": 0,
+        "subnormal_count": 50482,
+        "zero_count": 662,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 22,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.22.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.3997024897588713e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018430353412728472
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1610107421875,
+        "overflow_count": 0,
+        "subnormal_count": 47980,
+        "zero_count": 1704,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 22,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.22.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.00010752677917480469,
+        "rms_abs": 2.6809048914191383e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020677519351025922
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3001563549041748,
+        "overflow_count": 0,
+        "subnormal_count": 49893,
+        "zero_count": 771,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 22,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.22.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.020069122314453e-05,
+        "rms_abs": 2.6446183261930645e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020675394957276732
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.22258758544921875,
+        "overflow_count": 0,
+        "subnormal_count": 50454,
+        "zero_count": 774,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 23,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.23.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.432044159213531e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001841116454048441
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.09588241577148438,
+        "overflow_count": 0,
+        "subnormal_count": 47366,
+        "zero_count": 1661,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 23,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.23.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.53131103515625e-05,
+        "rms_abs": 2.6571822898941667e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020671556233376164
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.12725257873535156,
+        "overflow_count": 0,
+        "subnormal_count": 48786,
+        "zero_count": 706,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 23,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.23.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.340576171875e-05,
+        "rms_abs": 2.621231445742218e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020662528310080896
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.17951202392578125,
+        "overflow_count": 0,
+        "subnormal_count": 50803,
+        "zero_count": 802,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 24,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.24.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.3471353754328944e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018421960675807315
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1712799072265625,
+        "overflow_count": 0,
+        "subnormal_count": 48854,
+        "zero_count": 1807,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 24,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.24.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.5538970287912317e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020661590717925272
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.30462646484375,
+        "overflow_count": 0,
+        "subnormal_count": 51506,
+        "zero_count": 789,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 24,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.24.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 7.2479248046875e-05,
+        "rms_abs": 2.6101869418545694e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067047400521624
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2968025207519531,
+        "overflow_count": 0,
+        "subnormal_count": 51093,
+        "zero_count": 755,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 25,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.25.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.34300210920152e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001839286714339771
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.19626617431640625,
+        "overflow_count": 0,
+        "subnormal_count": 49696,
+        "zero_count": 1709,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 25,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.25.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.030632019042969e-05,
+        "rms_abs": 2.579409317585538e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067262668971178
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2577972412109375,
+        "overflow_count": 0,
+        "subnormal_count": 52115,
+        "zero_count": 696,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 25,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.25.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.604496650229737e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020681398048568407
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.10827898979187012,
+        "overflow_count": 0,
+        "subnormal_count": 51699,
+        "zero_count": 813,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 26,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.26.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.3730219563740087e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018395377514518786
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.16885757446289062,
+        "overflow_count": 0,
+        "subnormal_count": 48747,
+        "zero_count": 1707,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 26,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.26.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 7.510185241699219e-05,
+        "rms_abs": 2.579373166829559e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020672097878406928
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.281907320022583,
+        "overflow_count": 0,
+        "subnormal_count": 52003,
+        "zero_count": 741,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 26,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.26.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.602836608886719e-05,
+        "rms_abs": 2.597064407349993e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020672350276995915
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.17324328422546387,
+        "overflow_count": 0,
+        "subnormal_count": 51456,
+        "zero_count": 748,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 27,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.27.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.390225309914786e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001842103682114016
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.21147918701171875,
+        "overflow_count": 0,
+        "subnormal_count": 48568,
+        "zero_count": 1771,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 27,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.27.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.578461527320454e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020677255927492252
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.261474609375,
+        "overflow_count": 0,
+        "subnormal_count": 50546,
+        "zero_count": 666,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 27,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.27.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.340576171875e-05,
+        "rms_abs": 2.6570074968963195e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067263499975543
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1614084243774414,
+        "overflow_count": 0,
+        "subnormal_count": 49842,
+        "zero_count": 811,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 28,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.28.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 4.9591064453125e-05,
+        "rms_abs": 2.3891409821333123e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001842402391223751
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.232421875,
+        "overflow_count": 0,
+        "subnormal_count": 47944,
+        "zero_count": 1861,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 28,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.28.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.000118255615234375,
+        "rms_abs": 2.6640301198661936e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020663201383325618
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.45508718490600586,
+        "overflow_count": 0,
+        "subnormal_count": 50499,
+        "zero_count": 714,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 28,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.28.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.53131103515625e-05,
+        "rms_abs": 2.6564692819760396e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020672237553021405
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2631568908691406,
+        "overflow_count": 0,
+        "subnormal_count": 49488,
+        "zero_count": 894,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 29,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.29.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.340576171875e-05,
+        "rms_abs": 2.408829563658455e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018401887126520754
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.224609375,
+        "overflow_count": 0,
+        "subnormal_count": 48685,
+        "zero_count": 1831,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 29,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.29.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 7.62939453125e-05,
+        "rms_abs": 2.6059618136686893e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020672700878974563
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3160858154296875,
+        "overflow_count": 0,
+        "subnormal_count": 51518,
+        "zero_count": 775,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 29,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.29.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.435943603515625e-05,
+        "rms_abs": 2.6562914700674595e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020674280461877473
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.18003487586975098,
+        "overflow_count": 0,
+        "subnormal_count": 49211,
+        "zero_count": 774,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 30,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.30.ffn_down_exps.weight",
+      "quant": "Q8_0",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.817413330078125e-05,
+        "rms_abs": 2.6624671553303614e-06,
+        "max_rel": 0.00048146364949446316,
+        "rms_rel": 0.00019752787190741242
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.19923686981201172,
+        "overflow_count": 0,
+        "subnormal_count": 0,
+        "zero_count": 98024,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 30,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.30.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.000110626220703125,
+        "rms_abs": 2.6163375606720903e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020678590015694924
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.4449591636657715,
+        "overflow_count": 0,
+        "subnormal_count": 51195,
+        "zero_count": 693,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 30,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.30.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.000118255615234375,
+        "rms_abs": 2.716314747920066e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020677708942295285
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3737668991088867,
+        "overflow_count": 0,
+        "subnormal_count": 50060,
+        "zero_count": 687,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 31,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.31.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.4426947272981865e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018355847164114027
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.09185791015625,
+        "overflow_count": 0,
+        "subnormal_count": 48153,
+        "zero_count": 1916,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 31,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.31.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.62396240234375e-05,
+        "rms_abs": 2.631596467614229e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020665981143936474
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.14840126037597656,
+        "overflow_count": 0,
+        "subnormal_count": 50817,
+        "zero_count": 818,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 31,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.31.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.7016081211219336e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067286555416484
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.11217665672302246,
+        "overflow_count": 0,
+        "subnormal_count": 49442,
+        "zero_count": 755,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 32,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.32.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.4215567362593666e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018381663601116792
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.11509323120117188,
+        "overflow_count": 0,
+        "subnormal_count": 47740,
+        "zero_count": 1779,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 32,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.32.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.6414521685672907e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002066960707080274
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.13012170791625977,
+        "overflow_count": 0,
+        "subnormal_count": 50590,
+        "zero_count": 795,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 32,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.32.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.6858470262394455e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020670323518380185
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.11000919342041016,
+        "overflow_count": 0,
+        "subnormal_count": 49794,
+        "zero_count": 681,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 33,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.33.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.340576171875e-05,
+        "rms_abs": 2.3957957883541004e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018397798824290422
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.22162628173828125,
+        "overflow_count": 0,
+        "subnormal_count": 48713,
+        "zero_count": 1691,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 33,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.33.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.6558395460193934e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020671463033559054
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.12196540832519531,
+        "overflow_count": 0,
+        "subnormal_count": 50369,
+        "zero_count": 766,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 33,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.33.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 9.1552734375e-05,
+        "rms_abs": 2.682132842417028e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020671260416731214
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.31305360794067383,
+        "overflow_count": 0,
+        "subnormal_count": 50352,
+        "zero_count": 795,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 34,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.34.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.4304024452662796e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018401790292890867
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2949066162109375,
+        "overflow_count": 0,
+        "subnormal_count": 47086,
+        "zero_count": 1831,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 34,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.34.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.000110626220703125,
+        "rms_abs": 2.6487110788906614e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020673535515870712
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3729362487792969,
+        "overflow_count": 0,
+        "subnormal_count": 50157,
+        "zero_count": 859,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 34,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.34.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.0558319091796875e-05,
+        "rms_abs": 2.654290382244134e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067516406136738
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2334766387939453,
+        "overflow_count": 0,
+        "subnormal_count": 50013,
+        "zero_count": 725,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 35,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.35.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.340576171875e-05,
+        "rms_abs": 2.4570394224283247e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001837787559493986
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.171142578125,
+        "overflow_count": 0,
+        "subnormal_count": 46710,
+        "zero_count": 1688,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 35,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.35.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.6131466230021238e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020683375893411354
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.17466354370117188,
+        "overflow_count": 0,
+        "subnormal_count": 51058,
+        "zero_count": 776,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 35,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.35.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.7535905676996653e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020673043540894037
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.18930625915527344,
+        "overflow_count": 0,
+        "subnormal_count": 47952,
+        "zero_count": 735,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 36,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.36.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.4332275390625e-05,
+        "rms_abs": 2.477535359217359e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001836634603699614
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.15029525756835938,
+        "overflow_count": 0,
+        "subnormal_count": 46869,
+        "zero_count": 1843,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 36,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.36.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.0558319091796875e-05,
+        "rms_abs": 2.7065334238431117e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067689627505372
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2201385498046875,
+        "overflow_count": 0,
+        "subnormal_count": 48582,
+        "zero_count": 759,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 36,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.36.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.008148193359375e-05,
+        "rms_abs": 2.7628447843449794e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020683184773726617
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.19883108139038086,
+        "overflow_count": 0,
+        "subnormal_count": 48136,
+        "zero_count": 697,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 37,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.37.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 4.9591064453125e-05,
+        "rms_abs": 2.511074253141508e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018357296227500397
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.255859375,
+        "overflow_count": 0,
+        "subnormal_count": 46360,
+        "zero_count": 1800,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 37,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.37.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.0677528381347656e-05,
+        "rms_abs": 2.7515775197946934e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067972368104716
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.24008560180664062,
+        "overflow_count": 0,
+        "subnormal_count": 48977,
+        "zero_count": 681,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 37,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.37.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 4.220008850097656e-05,
+        "rms_abs": 2.7871447846502987e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020667496358876475
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3135051727294922,
+        "overflow_count": 0,
+        "subnormal_count": 47714,
+        "zero_count": 802,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 38,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.38.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.554376261052274e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.000183485477197629
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.20416259765625,
+        "overflow_count": 0,
+        "subnormal_count": 44702,
+        "zero_count": 1720,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 38,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.38.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.00010633468627929688,
+        "rms_abs": 2.778738616429555e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020681529630782496
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.41365814208984375,
+        "overflow_count": 0,
+        "subnormal_count": 48146,
+        "zero_count": 750,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 38,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.38.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.00011873245239257812,
+        "rms_abs": 2.823134467034414e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020675034135984784
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.388519287109375,
+        "overflow_count": 0,
+        "subnormal_count": 48087,
+        "zero_count": 647,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 39,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.39.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.00011444091796875,
+        "rms_abs": 2.5055510163020557e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001835059015851261
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.27918243408203125,
+        "overflow_count": 0,
+        "subnormal_count": 46612,
+        "zero_count": 1763,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 39,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.39.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.7360628552095225e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020671977201386227
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.14996337890625,
+        "overflow_count": 0,
+        "subnormal_count": 48471,
+        "zero_count": 751,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 39,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.39.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 4.00543212890625e-05,
+        "rms_abs": 2.7291193180712717e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067311902223469
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1779388189315796,
+        "overflow_count": 0,
+        "subnormal_count": 48094,
+        "zero_count": 912,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 40,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.40.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 4.1961669921875e-05,
+        "rms_abs": 2.459929626818966e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001839659137337147
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.14627456665039062,
+        "overflow_count": 0,
+        "subnormal_count": 46857,
+        "zero_count": 1771,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 40,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.40.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 9.1552734375e-05,
+        "rms_abs": 2.7587562934762645e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020667198068354402
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2705409526824951,
+        "overflow_count": 0,
+        "subnormal_count": 47617,
+        "zero_count": 689,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 40,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.40.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.0001220703125,
+        "rms_abs": 2.7035557569034045e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002068299477285909
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.47441768646240234,
+        "overflow_count": 0,
+        "subnormal_count": 48495,
+        "zero_count": 642,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 41,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.41.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.494770152594299e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018378283831563697
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1600341796875,
+        "overflow_count": 0,
+        "subnormal_count": 46039,
+        "zero_count": 1783,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 41,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.41.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.739971093911821e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020672935500966626
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.21865463256835938,
+        "overflow_count": 0,
+        "subnormal_count": 48176,
+        "zero_count": 688,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 41,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.41.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.91278076171875e-05,
+        "rms_abs": 2.6959561634691576e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020681606759946963
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1893768310546875,
+        "overflow_count": 0,
+        "subnormal_count": 48759,
+        "zero_count": 807,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 42,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.42.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.7220458984375e-05,
+        "rms_abs": 2.509658455467027e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018370539854613616
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2021484375,
+        "overflow_count": 0,
+        "subnormal_count": 46175,
+        "zero_count": 1758,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 42,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.42.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 7.152557373046875e-05,
+        "rms_abs": 2.768136936617322e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002066901211950313
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.27483081817626953,
+        "overflow_count": 0,
+        "subnormal_count": 48686,
+        "zero_count": 758,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 42,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.42.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 7.62939453125e-05,
+        "rms_abs": 2.774312633373085e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020660575214384417
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3797149658203125,
+        "overflow_count": 0,
+        "subnormal_count": 47359,
+        "zero_count": 578,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 43,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.43.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.0517578125e-05,
+        "rms_abs": 2.4803033268901243e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0001839070795548143
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.1590423583984375,
+        "overflow_count": 0,
+        "subnormal_count": 46182,
+        "zero_count": 1763,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 43,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.43.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.6950497776863576e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.0002067826828172762
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.22158050537109375,
+        "overflow_count": 0,
+        "subnormal_count": 49132,
+        "zero_count": 750,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 43,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.43.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.91278076171875e-05,
+        "rms_abs": 2.722525236341429e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020666129759040045
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.24282550811767578,
+        "overflow_count": 0,
+        "subnormal_count": 48424,
+        "zero_count": 726,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 44,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.44.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.4766527252239376e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018368917344192923
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.19336700439453125,
+        "overflow_count": 0,
+        "subnormal_count": 46538,
+        "zero_count": 1706,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 44,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.44.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.00011396408081054688,
+        "rms_abs": 2.633916452267419e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020672538031991442
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3902435302734375,
+        "overflow_count": 0,
+        "subnormal_count": 50838,
+        "zero_count": 723,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 44,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.44.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.7220458984375e-05,
+        "rms_abs": 2.686508394194927e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020669298012767324
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.21918153762817383,
+        "overflow_count": 0,
+        "subnormal_count": 48990,
+        "zero_count": 708,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 45,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.45.ffn_down_exps.weight",
+      "quant": "Q5_1",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 3.814697265625e-05,
+        "rms_abs": 2.466422518582784e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00018361866170666885
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.161865234375,
+        "overflow_count": 0,
+        "subnormal_count": 46471,
+        "zero_count": 1727,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 45,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.45.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.031990051269531e-05,
+        "rms_abs": 2.685202669816304e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020663466043556155
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.4148290157318115,
+        "overflow_count": 0,
+        "subnormal_count": 49931,
+        "zero_count": 610,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 45,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.45.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.079673767089844e-05,
+        "rms_abs": 2.734790434582873e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020678738742357328
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.31621551513671875,
+        "overflow_count": 0,
+        "subnormal_count": 47651,
+        "zero_count": 679,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 46,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.46.ffn_down_exps.weight",
+      "quant": "Q8_0",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 5.817413330078125e-05,
+        "rms_abs": 2.812921690970486e-06,
+        "max_rel": 0.00048146364949446316,
+        "rms_rel": 0.00019724688871824368
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2422332763671875,
+        "overflow_count": 0,
+        "subnormal_count": 0,
+        "zero_count": 98500,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 46,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.46.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.0001068115234375,
+        "rms_abs": 2.755103379511415e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020670333938683494
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3588066101074219,
+        "overflow_count": 0,
+        "subnormal_count": 48103,
+        "zero_count": 742,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 46,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.46.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 6.103515625e-05,
+        "rms_abs": 2.7997832055000783e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020669350787340447
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.34498143196105957,
+        "overflow_count": 0,
+        "subnormal_count": 48623,
+        "zero_count": 650,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 47,
+      "suffix": "ffn_down_exps",
+      "tensor": "blk.47.ffn_down_exps.weight",
+      "quant": "Q8_0",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.0001087188720703125,
+        "rms_abs": 2.8522499352073685e-06,
+        "max_rel": 0.00048146364949446316,
+        "rms_rel": 0.0001970938183470369
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.3086051940917969,
+        "overflow_count": 0,
+        "subnormal_count": 0,
+        "zero_count": 100393,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 47,
+      "suffix": "ffn_gate_exps",
+      "tensor": "blk.47.ffn_gate_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 0.00012183189392089844,
+        "rms_abs": 2.8493202638526538e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.00020668916747896234
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.4510917663574219,
+        "overflow_count": 0,
+        "subnormal_count": 46856,
+        "zero_count": 557,
+        "finite_after_cast": true
+      }
+    },
+    {
+      "layer": 47,
+      "suffix": "ffn_up_exps",
+      "tensor": "blk.47.ffn_up_exps.weight",
+      "quant": "Q4_K",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "experts_sampled": 8,
+      "weight_error_f16_vs_f32": {
+        "max_abs": 9.1552734375e-05,
+        "rms_abs": 3.054789284486308e-06,
+        "max_rel": 0.0004880429477794046,
+        "rms_rel": 0.000206801092168806
+      },
+      "weight_f16_range": {
+        "max_magnitude": 0.2670021057128906,
+        "overflow_count": 0,
+        "subnormal_count": 44940,
+        "zero_count": 714,
+        "finite_after_cast": true
+      }
+    }
+  ],
+  "part_b_real_activation_down": {
+    "capture": "/home/lhl/tmp/q51-down-input-general_en-p4096.npz",
+    "capture_sha256": "a0865ba04efd2a8b3c76c2c75d53e7b783df0dc3e7dd8b9cecae6d8fe382026b",
+    "case_id": "general_en-p4096",
+    "rows": 10240,
+    "in_features": 640,
+    "out_features": 2560,
+    "experts": 512,
+    "activation_source": "real natural-input prefill capture, BF16 bits decoded to float32",
+    "activation_bf16_exact": true,
+    "per_quant": {
+      "Q5_1": [
+        {
+          "layer": 0,
+          "tensor": "blk.0.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.0002124309539794922,
+            "rms_abs": 5.186247500945804e-06,
+            "max_rel": 3195.188679245283,
+            "rms_rel": 0.9666985315338368
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019513368606567383,
+            "rms_abs": 4.9287485366611714e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016586156501771348
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.683135986328125,
+            "overflow_count": 0,
+            "subnormal_count": 1924334,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 1,
+          "tensor": "blk.1.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020372867584228516,
+            "rms_abs": 5.288278934318612e-06,
+            "max_rel": 1233.75,
+            "rms_rel": 0.47239622591593644
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019488334655761719,
+            "rms_abs": 4.558837065237617e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016587928924832723
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.32596588134765625,
+            "overflow_count": 0,
+            "subnormal_count": 1861580,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 3,
+          "tensor": "blk.3.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.0002047419548034668,
+            "rms_abs": 5.264682823483824e-06,
+            "max_rel": 4859.571428571428,
+            "rms_rel": 1.3071062306964314
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019494295120239258,
+            "rms_abs": 4.579644510522328e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016586659511326574
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.40039825439453125,
+            "overflow_count": 0,
+            "subnormal_count": 1864353,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 5,
+          "tensor": "blk.5.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.0002086162567138672,
+            "rms_abs": 5.317530791542621e-06,
+            "max_rel": 6688.0,
+            "rms_rel": 1.412327707164229
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019219517707824707,
+            "rms_abs": 4.588834729133165e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016586507008700402
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.484375,
+            "overflow_count": 0,
+            "subnormal_count": 1867264,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 6,
+          "tensor": "blk.6.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00021126866340637207,
+            "rms_abs": 5.271716775074533e-06,
+            "max_rel": 4057.0,
+            "rms_rel": 0.9096656135830568
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.001952826976776123,
+            "rms_abs": 4.558952457961719e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016584100593459536
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.423828125,
+            "overflow_count": 0,
+            "subnormal_count": 1868280,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 7,
+          "tensor": "blk.7.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020301342010498047,
+            "rms_abs": 5.258527800943963e-06,
+            "max_rel": 15313.5,
+            "rms_rel": 3.1404366070431378
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019273757934570312,
+            "rms_abs": 4.536439052288258e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016590070621311116
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.499786376953125,
+            "overflow_count": 0,
+            "subnormal_count": 1872148,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 8,
+          "tensor": "blk.8.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00019884109497070312,
+            "rms_abs": 5.207046416585137e-06,
+            "max_rel": 6694.0,
+            "rms_rel": 1.6460126364815848
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019412636756896973,
+            "rms_abs": 4.499818504555771e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.001659226762640821
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.384765625,
+            "overflow_count": 0,
+            "subnormal_count": 1879675,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 9,
+          "tensor": "blk.9.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.000206679105758667,
+            "rms_abs": 5.1985411126984095e-06,
+            "max_rel": 2201.5,
+            "rms_rel": 0.7177653462111402
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.001949012279510498,
+            "rms_abs": 4.4945472487769136e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016585261518998087
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.40822601318359375,
+            "overflow_count": 0,
+            "subnormal_count": 1879549,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 10,
+          "tensor": "blk.10.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00019943714141845703,
+            "rms_abs": 5.203465460641273e-06,
+            "max_rel": 6868.0,
+            "rms_rel": 1.66763560040535
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019499659538269043,
+            "rms_abs": 4.517614623854418e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016589622627026315
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.453369140625,
+            "overflow_count": 0,
+            "subnormal_count": 1869520,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 11,
+          "tensor": "blk.11.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020778179168701172,
+            "rms_abs": 5.231950615931401e-06,
+            "max_rel": 7412.5,
+            "rms_rel": 1.7054907052788124
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019488334655761719,
+            "rms_abs": 4.52904805204958e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016590545679801738
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.37880706787109375,
+            "overflow_count": 0,
+            "subnormal_count": 1865287,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 12,
+          "tensor": "blk.12.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020322203636169434,
+            "rms_abs": 5.212552932044336e-06,
+            "max_rel": 1917.0,
+            "rms_rel": 0.6557284776887129
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019524097442626953,
+            "rms_abs": 4.522941016973798e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016588597671465448
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.494049072265625,
+            "overflow_count": 0,
+            "subnormal_count": 1872891,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 13,
+          "tensor": "blk.13.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020891427993774414,
+            "rms_abs": 5.22041688188338e-06,
+            "max_rel": 1933.5,
+            "rms_rel": 0.5684663019090146
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019513368606567383,
+            "rms_abs": 4.517719074007418e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016586629681941943
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.2989501953125,
+            "overflow_count": 0,
+            "subnormal_count": 1880979,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 14,
+          "tensor": "blk.14.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00019297003746032715,
+            "rms_abs": 5.224455614557253e-06,
+            "max_rel": 2252.0,
+            "rms_rel": 0.7399122694417658
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019150972366333008,
+            "rms_abs": 4.518190213284878e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016590406478292886
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.378662109375,
+            "overflow_count": 0,
+            "subnormal_count": 1880893,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 15,
+          "tensor": "blk.15.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00019493699073791504,
+            "rms_abs": 5.214277525891055e-06,
+            "max_rel": 1077.0,
+            "rms_rel": 0.3691022303836588
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019508004188537598,
+            "rms_abs": 4.5175832116940274e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016585164739013499
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.38275146484375,
+            "overflow_count": 0,
+            "subnormal_count": 1894313,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 16,
+          "tensor": "blk.16.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.0001927018165588379,
+            "rms_abs": 5.164819154943127e-06,
+            "max_rel": 937.0,
+            "rms_rel": 0.38226159561504663
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019475817680358887,
+            "rms_abs": 4.487548973063481e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.001658821756570161
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.453125,
+            "overflow_count": 0,
+            "subnormal_count": 1899127,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 17,
+          "tensor": "blk.17.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00021094083786010742,
+            "rms_abs": 5.186238810401687e-06,
+            "max_rel": 1057.3,
+            "rms_rel": 0.5327865668831796
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019319653511047363,
+            "rms_abs": 4.4849432869654696e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016588006868701968
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.33203125,
+            "overflow_count": 0,
+            "subnormal_count": 1891788,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 18,
+          "tensor": "blk.18.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.0002054274082183838,
+            "rms_abs": 5.209594095640979e-06,
+            "max_rel": 14160.0,
+            "rms_rel": 2.9726727127995427
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019418001174926758,
+            "rms_abs": 4.4960201869061e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016588951525061469
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.45101165771484375,
+            "overflow_count": 0,
+            "subnormal_count": 1874357,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 19,
+          "tensor": "blk.19.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.0002028346061706543,
+            "rms_abs": 5.2187920243388705e-06,
+            "max_rel": 121399.0,
+            "rms_rel": 23.72382065141544
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019415616989135742,
+            "rms_abs": 4.516382868262786e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016589940189708026
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.3066864013671875,
+            "overflow_count": 0,
+            "subnormal_count": 1877784,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 20,
+          "tensor": "blk.20.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00021031498908996582,
+            "rms_abs": 5.222041217302489e-06,
+            "max_rel": 2448.1666666666665,
+            "rms_rel": 0.605741447125418
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.001948535442352295,
+            "rms_abs": 4.507922438691237e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016585831610945686
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.29296875,
+            "overflow_count": 0,
+            "subnormal_count": 1873351,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 21,
+          "tensor": "blk.21.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020417571067810059,
+            "rms_abs": 5.269727279613456e-06,
+            "max_rel": 5333.0,
+            "rms_rel": 1.1076637555247648
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019379258155822754,
+            "rms_abs": 4.5692887434957993e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016585867138678508
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.44149017333984375,
+            "overflow_count": 0,
+            "subnormal_count": 1859425,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 22,
+          "tensor": "blk.22.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00021213293075561523,
+            "rms_abs": 5.265220313138629e-06,
+            "max_rel": 2149.3125,
+            "rms_rel": 0.4876806023357038
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019456148147583008,
+            "rms_abs": 4.568367773385252e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.001658865632198136
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.4765625,
+            "overflow_count": 0,
+            "subnormal_count": 1861247,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 23,
+          "tensor": "blk.23.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020062923431396484,
+            "rms_abs": 5.262240783521614e-06,
+            "max_rel": 1891.0,
+            "rms_rel": 0.615675756675887
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019513964653015137,
+            "rms_abs": 4.542414048190424e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016587027671005556
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.3574981689453125,
+            "overflow_count": 0,
+            "subnormal_count": 1862088,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 24,
+          "tensor": "blk.24.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020205974578857422,
+            "rms_abs": 5.162710980218599e-06,
+            "max_rel": 2135.285714285714,
+            "rms_rel": 0.5986486052225127
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019507408142089844,
+            "rms_abs": 4.475845522780708e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016587514481581044
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.335784912109375,
+            "overflow_count": 0,
+            "subnormal_count": 1896688,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 25,
+          "tensor": "blk.25.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020328164100646973,
+            "rms_abs": 5.122013068260308e-06,
+            "max_rel": 4937.0,
+            "rms_rel": 1.0448917093551597
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019469857215881348,
+            "rms_abs": 4.435130318327765e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016590634953976822
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.37493133544921875,
+            "overflow_count": 0,
+            "subnormal_count": 1915219,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 26,
+          "tensor": "blk.26.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020301342010498047,
+            "rms_abs": 5.186081357616822e-06,
+            "max_rel": 3095.0,
+            "rms_rel": 0.7537055115850575
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0018849968910217285,
+            "rms_abs": 4.4899880657449605e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.001658800016935639
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.408203125,
+            "overflow_count": 0,
+            "subnormal_count": 1888148,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 27,
+          "tensor": "blk.27.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00019884109497070312,
+            "rms_abs": 5.207553677688657e-06,
+            "max_rel": 6418.0,
+            "rms_rel": 1.4391902818193776
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.001951456069946289,
+            "rms_abs": 4.5128318067916805e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.001659024767964436
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.3262481689453125,
+            "overflow_count": 0,
+            "subnormal_count": 1876132,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 28,
+          "tensor": "blk.28.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020751357078552246,
+            "rms_abs": 5.2173857327407885e-06,
+            "max_rel": 11532.888888888889,
+            "rms_rel": 2.390579764085266
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019434690475463867,
+            "rms_abs": 4.52203170355689e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016587826960069274
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.489990234375,
+            "overflow_count": 0,
+            "subnormal_count": 1872093,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 29,
+          "tensor": "blk.29.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020629167556762695,
+            "rms_abs": 5.2540367530675854e-06,
+            "max_rel": 5488.0,
+            "rms_rel": 1.2889860092443808
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019472837448120117,
+            "rms_abs": 4.558490943122805e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016589813610137097
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.3828125,
+            "overflow_count": 0,
+            "subnormal_count": 1859059,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 31,
+          "tensor": "blk.31.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00021210312843322754,
+            "rms_abs": 5.272023896639409e-06,
+            "max_rel": 994.6811594202899,
+            "rms_rel": 0.42231739304549437
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019528865814208984,
+            "rms_abs": 4.576088469617095e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016591213391706175
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.37042236328125,
+            "overflow_count": 0,
+            "subnormal_count": 1889052,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 32,
+          "tensor": "blk.32.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00019729137420654297,
+            "rms_abs": 5.274620642036561e-06,
+            "max_rel": 2733.0,
+            "rms_rel": 0.8050113051058542
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019420981407165527,
+            "rms_abs": 4.577492515988088e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016589934716888881
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.54296875,
+            "overflow_count": 0,
+            "subnormal_count": 1883650,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 33,
+          "tensor": "blk.33.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00022417306900024414,
+            "rms_abs": 5.273181695665148e-06,
+            "max_rel": 2317.0,
+            "rms_rel": 0.6927940727561691
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019526481628417969,
+            "rms_abs": 4.567419219859648e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016592710716756747
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.2987518310546875,
+            "overflow_count": 0,
+            "subnormal_count": 1863507,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 34,
+          "tensor": "blk.34.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00021457672119140625,
+            "rms_abs": 5.3032044826148556e-06,
+            "max_rel": 1181.0,
+            "rms_rel": 0.48083254070680675
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019526481628417969,
+            "rms_abs": 4.5936814162853253e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016586202420482686
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.45294189453125,
+            "overflow_count": 0,
+            "subnormal_count": 1822254,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 35,
+          "tensor": "blk.35.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020614266395568848,
+            "rms_abs": 5.3643937177225714e-06,
+            "max_rel": 5971.9,
+            "rms_rel": 1.3419021125335722
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019500255584716797,
+            "rms_abs": 4.6602986935582635e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016589779112016455
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.33997344970703125,
+            "overflow_count": 0,
+            "subnormal_count": 1820327,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 36,
+          "tensor": "blk.36.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00022539496421813965,
+            "rms_abs": 5.4009816468881456e-06,
+            "max_rel": 8534.0,
+            "rms_rel": 2.192039844182159
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.001947641372680664,
+            "rms_abs": 4.6708643460894174e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016587668539730282
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.38257598876953125,
+            "overflow_count": 0,
+            "subnormal_count": 1810449,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 37,
+          "tensor": "blk.37.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020992755889892578,
+            "rms_abs": 5.465159016756716e-06,
+            "max_rel": 6183.0,
+            "rms_rel": 1.23162074820113
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.001948237419128418,
+            "rms_abs": 4.750993850967527e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016584554277395695
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.38671875,
+            "overflow_count": 0,
+            "subnormal_count": 1795621,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 38,
+          "tensor": "blk.38.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020143389701843262,
+            "rms_abs": 5.4957648594766005e-06,
+            "max_rel": 716.7741935483871,
+            "rms_rel": 0.29263556601059015
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019440054893493652,
+            "rms_abs": 4.7740641248830816e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016588533143849526
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.5,
+            "overflow_count": 0,
+            "subnormal_count": 1773740,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 39,
+          "tensor": "blk.39.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00021409988403320312,
+            "rms_abs": 5.494675095166079e-06,
+            "max_rel": 7626.0,
+            "rms_rel": 2.2287655846250574
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019519329071044922,
+            "rms_abs": 4.75052485358583e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016590454310064877
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.4003753662109375,
+            "overflow_count": 0,
+            "subnormal_count": 1787475,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 40,
+          "tensor": "blk.40.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.0002041459083557129,
+            "rms_abs": 5.36963152954395e-06,
+            "max_rel": 4693.125,
+            "rms_rel": 1.039132639639082
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019521117210388184,
+            "rms_abs": 4.652458954712991e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016589430122309309
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.425537109375,
+            "overflow_count": 0,
+            "subnormal_count": 1809283,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 41,
+          "tensor": "blk.41.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00021392107009887695,
+            "rms_abs": 5.38288176588634e-06,
+            "max_rel": 3344.0,
+            "rms_rel": 0.9728604130599015
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019491314888000488,
+            "rms_abs": 4.66592603075267e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016587761678347086
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.41796875,
+            "overflow_count": 0,
+            "subnormal_count": 1807625,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 42,
+          "tensor": "blk.42.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020968914031982422,
+            "rms_abs": 5.475811166411911e-06,
+            "max_rel": 1328.5,
+            "rms_rel": 0.428150250701262
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019438862800598145,
+            "rms_abs": 4.7508663490066063e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016588259920370832
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.4261474609375,
+            "overflow_count": 0,
+            "subnormal_count": 1784370,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 43,
+          "tensor": "blk.43.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.0002129673957824707,
+            "rms_abs": 5.460101523395412e-06,
+            "max_rel": 12530.0,
+            "rms_rel": 2.5379919634173276
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.001947641372680664,
+            "rms_abs": 4.7184629142190406e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016586482531405133
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.396484375,
+            "overflow_count": 0,
+            "subnormal_count": 1806799,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 44,
+          "tensor": "blk.44.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00021752715110778809,
+            "rms_abs": 5.466673819447157e-06,
+            "max_rel": 3359.0,
+            "rms_rel": 0.828847385037342
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019399523735046387,
+            "rms_abs": 4.7188116806862986e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016586986225645608
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.5311279296875,
+            "overflow_count": 0,
+            "subnormal_count": 1794790,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 45,
+          "tensor": "blk.45.ffn_down_exps.weight",
+          "quant": "Q5_1",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00019794702529907227,
+            "rms_abs": 5.499353515715816e-06,
+            "max_rel": 4227.833333333333,
+            "rms_rel": 1.0655382914737412
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019513368606567383,
+            "rms_abs": 4.793317512289092e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.001658636620397899
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.388702392578125,
+            "overflow_count": 0,
+            "subnormal_count": 1798631,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        }
+      ],
+      "Q8_0": [
+        {
+          "layer": 2,
+          "tensor": "blk.2.ffn_down_exps.weight",
+          "quant": "Q8_0",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020271539688110352,
+            "rms_abs": 5.674421893473423e-06,
+            "max_rel": 2120.3333333333335,
+            "rms_rel": 0.5197443538950763
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019530057907104492,
+            "rms_abs": 4.5483719397361206e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016589378272803936
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.5115966796875,
+            "overflow_count": 0,
+            "subnormal_count": 0,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 4,
+          "tensor": "blk.4.ffn_down_exps.weight",
+          "quant": "Q8_0",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.0002084970474243164,
+            "rms_abs": 5.67850701809898e-06,
+            "max_rel": 12356.5,
+            "rms_rel": 2.50355810658053
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019525885581970215,
+            "rms_abs": 4.569894925165834e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016589253885944835
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.37691497802734375,
+            "overflow_count": 0,
+            "subnormal_count": 0,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 30,
+          "tensor": "blk.30.ffn_down_exps.weight",
+          "quant": "Q8_0",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00020238757133483887,
+            "rms_abs": 5.775133775024153e-06,
+            "max_rel": 1627.5,
+            "rms_rel": 0.5028216871399989
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019408464431762695,
+            "rms_abs": 4.62581428046732e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.001658936635339129
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.37110137939453125,
+            "overflow_count": 0,
+            "subnormal_count": 0,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 46,
+          "tensor": "blk.46.ffn_down_exps.weight",
+          "quant": "Q8_0",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00022464990615844727,
+            "rms_abs": 5.958028593001032e-06,
+            "max_rel": 2562.3333333333335,
+            "rms_rel": 0.8847232165852847
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019468069076538086,
+            "rms_abs": 4.782453677713529e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016587782703322246
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.4706592559814453,
+            "overflow_count": 0,
+            "subnormal_count": 0,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        },
+        {
+          "layer": 47,
+          "tensor": "blk.47.ffn_down_exps.weight",
+          "quant": "Q8_0",
+          "experts_measured": 310,
+          "rows_measured": 10240,
+          "rows_per_expert_min": 1,
+          "rows_per_expert_max": 200,
+          "output_error_f16_vs_f32": {
+            "max_abs": 0.00030368566513061523,
+            "rms_abs": 6.521160324162416e-06,
+            "max_rel": 2550.913043478261,
+            "rms_rel": 0.8245962962758325
+          },
+          "output_error_bf16_floor_vs_f32": {
+            "max_abs": 0.0019530057907104492,
+            "rms_abs": 5.229612471771291e-05,
+            "max_rel": 0.0038910505836575876,
+            "rms_rel": 0.0016588363425376381
+          },
+          "weight_f16_range": {
+            "max_magnitude": 0.6172103881835938,
+            "overflow_count": 0,
+            "subnormal_count": 0,
+            "finite_after_cast": true
+          },
+          "activation_f16_range": {
+            "max_magnitude": 13.4375,
+            "overflow_count": 0,
+            "subnormal_count": 42393,
+            "finite_after_cast": true
+          },
+          "candidate_below_bf16_floor": true
+        }
+      ]
+    }
+  }
+}
