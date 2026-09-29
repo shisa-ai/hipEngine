@@ -72,9 +72,60 @@ so it would have been a poor place to leave one.
    identical engagement, so the remaining difference is a property of those
    other selectors or of the shapes, not of whether the route ran.
 
-## What is still open
+## Attribution, on real weights
 
-The exact attribution *within* those other selectors. The recorder covers the
-WMMA route only; extending it to `f_rowtile` and the batch-decode session is what
-would close the loop, and until then the gate's drift is "not this route" rather
-than "that selector".
+The recorder was then extended to the other selectors `use_wmma` gates, and the
+canonical case re-run (`artifact-canonical-selectors.json`):
+
+| selector | teacher rate | candidate rate | differs |
+|---|---|---|---|
+| `q4k_rowtile` | **1.0** | **0.775128** | yes |
+| `wmma_prefill` | 0.0 | 0.264 | yes |
+| `native_batch_decode_session` | 0.0 | 0.0 | no - ruled out |
+
+Counts: teacher `wmma_prefill active=0 / inactive=902`, candidate `active=264 /
+inactive=736`. `teacher_route_engaged` is `False`, `selectors_observed_in_one_arm_only`
+is empty - so the attribution rests on both arms having been observed, not on
+absence of evidence.
+
+**The 0.775128 is the finding.** The candidate arm leaves `q4k_rowtile` inactive
+for **792 launches** where the teacher had it active. Those launches are at rows
+the WMMA route refuses, so they are decode-path work - and the canonical prefill
+row is bit-identical (5.8014e-12) while the decode row moves (1.0184e-04). The
+gate's drift is the rowtile's, reached through a flag named for the route.
+
+The KL is unchanged by this analysis (5.8014e-12 / 1.0184e-04): the fix moved the
+attribution, not the measurement.
+
+## Two bugs in my own summariser, found by reading the artifact
+
+Both were in the check added one commit earlier to stop exactly this.
+
+1. `teacher_route_engaged` was derived from *total* engagement across every
+   selector. `q4k_rowtile` is active in the teacher arm always and correctly, so
+   the flag was unconditionally true and the verdict read "the teacher arm also
+   engaged the route" on a run where that arm's `wmma_prefill` count was exactly
+   **zero**. Now derived from the route's own selector.
+2. `selectors_differing_between_arms` collapsed each arm to a boolean, so
+   `q4k_rowtile` at 1654/1654 and 2730/3522 both read "active at least once" and
+   the difference being hunted was discarded by the comparison itself. Now
+   compares engagement *rates*, which are comparable across arms with different
+   repeat counts.
+
+Both are the same shape as the four misattributions this packet already carried:
+a true-valued field narrower than its name. That is why the artifact is read
+through `selector_states` and the per-selector counts rather than the verdict
+string.
+
+## What this establishes, and what it does not
+
+Established: the gate's recorded `candidate_chain` runs (264 launches), its
+arithmetic is equivalent to the exact chain at the prefill position, and the
+drift it reports belongs to `q4k_rowtile` - which `use_wmma` disables on part of
+the decode path.
+
+Not established: that the rowtile difference is *harmful*. It is a numerical
+difference on the decode path at 1.0184e-04 KL, which is inside the broad smoke
+floor but has not been taken through the production profile gates. Whether the
+rowtile should stay bound to `use_wmma` at all is a separate question from
+whether the gate is named correctly - and it is the gate naming that was wrong.
