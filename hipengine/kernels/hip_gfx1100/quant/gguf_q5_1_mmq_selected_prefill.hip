@@ -178,6 +178,154 @@ void q5_1_mmq_ds4_selected_prefill_kernel(
   }
 }
 
+__device__ inline int pack_i8x4(const int8_t* ptr) {
+  uint32_t out = 0;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    out |= static_cast<uint32_t>(static_cast<uint8_t>(ptr[i])) << (8 * i);
+  }
+  return static_cast<int>(out);
+}
+
+// Pack four Q5_1 values starting at k0 into one i32, one value per byte,
+// for the int8 matrix core. Q5_1 keeps values 0..15 in the low nibble of
+// qs[k] for k < 16 and the high nibble of qs[k-16] for k >= 16, with the
+// 5th bit in qh; the value is nibble + 16*hi, unsigned in 0..31, and the
+// minimum travels separately as the block's m. The wmma operand therefore
+// matches the scalar leaf's split `dot_q + 16*dot_h` exactly.
+__device__ inline int q5_1_pack4(const uint8_t* qs, uint32_t qh, int k0) {
+  uint32_t out = 0;
+#pragma unroll
+  for (int j = 0; j < 4; ++j) {
+    const int k = k0 + j;
+    const uint32_t nib = (k < 16)
+        ? static_cast<uint32_t>(qs[k] & 0x0F)
+        : static_cast<uint32_t>(qs[k - 16] >> 4);
+    const uint32_t v = nib | (((qh >> k) & 1u) << 4);
+    out |= (v & 0xFFu) << (8 * j);
+  }
+  return static_cast<int>(out);
+}
+
+// Int8 matrix-core down-projection consumer (P10). Same DS4 activation
+// layout and same 32-column x 16-row tile, 64-thread workgroup shape as
+// gguf_q4_k_q8_1_mmq_prefill.hip's q4_k_q8_1_wmma32_dense_kernel; only the
+// weight-side pack differs, Q5_1 blocks of 32 K values stepping the same
+// kt in {0,1} halves the sibling uses. Two waves own 32 columns between
+// them, each lane owning one column and eight output rows.
+__global__ __launch_bounds__(64, 1)
+void q5_1_q8_1_wmma_prefill_kernel(
+    const block_q8_1_mmq_ds4* __restrict__ x_ds4,
+    const int64_t* __restrict__ expert_start,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int planes) {
+  typedef int int32x4_t __attribute__((__vector_size__(4 * sizeof(int))));
+  typedef int int32x8_t __attribute__((__vector_size__(8 * sizeof(int))));
+
+  const int64_t col_tile = static_cast<int64_t>(blockIdx.x);
+  const int expert = static_cast<int>(blockIdx.y);
+  const int tid = threadIdx.x;
+  const int wave_id = tid >> 5;
+  const int wave_tid = tid & 31;
+  const int lane16 = wave_tid & 15;
+  const int half_id = wave_tid >> 4;
+
+  const int64_t q51_blocks = in_features / QK5_1;
+  const int64_t ds4_blocks =
+      (in_features + Q8_1_MMQ_BLOCK - 1) / Q8_1_MMQ_BLOCK;
+  const int64_t row_bytes = q51_blocks * Q5_1_BLOCK_BYTES;
+
+  const int64_t col_base = col_tile * 32 + wave_id * 16;
+  const int64_t global_col = col_base + lane16;
+  const bool valid_col = global_col < out_features;
+  const uint8_t* __restrict__ weight_row = valid_col
+      ? (qweight + (static_cast<int64_t>(expert) * out_features + global_col) *
+             row_bytes)
+      : qweight;
+
+  const int64_t start = expert_start[expert];
+  const int64_t end = expert_start[expert + 1];
+  if (start < 0 || end < start || end > compact_rows || start == end) return;
+
+  for (int64_t row0 = start; row0 < end; row0 += 16) {
+    float acc_f[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    const int64_t a_row = row0 + lane16;
+    const bool valid_a = a_row < end;
+
+    for (int64_t b = 0; b < q51_blocks; ++b) {
+      const uint8_t* __restrict__ w_sub = weight_row + b * Q5_1_BLOCK_BYTES;
+      float d = 0.0f;
+      float m = 0.0f;
+      uint32_t qh = 0;
+      if (valid_col) {
+        d = fp16_bits_to_float(*reinterpret_cast<const uint16_t*>(w_sub));
+        m = fp16_bits_to_float(*reinterpret_cast<const uint16_t*>(w_sub + 2));
+        qh = *reinterpret_cast<const uint32_t*>(w_sub + 4);
+      }
+      // Four 32-value Q5_1 blocks per 128-value DS4 block; a partial final
+      // DS4 block simply is not addressed, because b stops at q51_blocks.
+      const int64_t xb_blk = b >> 2;
+      const int ds4_idx = static_cast<int>(b & 3);
+
+      for (int plane = 0; plane < planes; ++plane) {
+        const block_q8_1_mmq_ds4* __restrict__ x_plane =
+            x_ds4 + static_cast<int64_t>(plane) * compact_rows * ds4_blocks;
+
+        int32x8_t dot_acc = {0, 0, 0, 0, 0, 0, 0, 0};
+#pragma unroll
+        for (int kt = 0; kt < 2; ++kt) {
+          int32x4_t a_vec = {0, 0, 0, 0};
+          if (valid_a) {
+            const block_q8_1_mmq_ds4* __restrict__ xb =
+                x_plane + a_row * ds4_blocks + xb_blk;
+            const int8_t* __restrict__ xq =
+                xb->qs + ds4_idx * QK5_1 + kt * 16;
+            a_vec = int32x4_t{pack_i8x4(xq + 0), pack_i8x4(xq + 4),
+                              pack_i8x4(xq + 8), pack_i8x4(xq + 12)};
+          }
+          int32x4_t b_vec = {0, 0, 0, 0};
+          if (valid_col) {
+            b_vec = int32x4_t{q5_1_pack4(w_sub + 8, qh, kt * 16 + 0),
+                              q5_1_pack4(w_sub + 8, qh, kt * 16 + 4),
+                              q5_1_pack4(w_sub + 8, qh, kt * 16 + 8),
+                              q5_1_pack4(w_sub + 8, qh, kt * 16 + 12)};
+          }
+          dot_acc = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32(
+              true, a_vec, true, b_vec, dot_acc, false);
+        }
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const int64_t orow = row0 + half_id + j * 2;
+          if (valid_col && orow < end) {
+            const block_q8_1_mmq_ds4* __restrict__ xb =
+                x_plane + orow * ds4_blocks + xb_blk;
+            const float xd =
+                fp16_bits_to_float(xb->ds4[2 * ds4_idx]);
+            const float xs =
+                fp16_bits_to_float(xb->ds4[2 * ds4_idx + 1]);
+            acc_f[j] += d * xd * static_cast<float>(dot_acc[j]);
+            // Only plane 0 carries the full block sum, as in the scalar leaf.
+            if (plane == 0) acc_f[j] += m * xs;
+          }
+        }
+      }
+    }
+
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int64_t orow = row0 + half_id + j * 2;
+      if (valid_col && orow < end) {
+        out[orow * out_features + global_col] = float_to_bf16_bits(acc_f[j]);
+      }
+    }
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
@@ -206,6 +354,37 @@ extern "C" int hipengine_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
       dim3(out_tiles, expert_grid), dim3(128), 0, stream,
       static_cast<const block_q8_1_mmq_ds4*>(x_ds4), expert_start, qweight,
       out, compact_rows, num_experts, in_features, out_features,
+      static_cast<int>(planes));
+  return static_cast<int>(hipGetLastError());
+}
+
+// P10: int8 matrix-core twin of the scalar leaf above. Same arguments, so
+// an A/B needs only a different symbol. 32-column x 16-row tiles; the grid's
+// y axis carries the expert, whose row range the block walks itself.
+extern "C" int hipengine_q5_1_mmq_ds4_wmma_prefill_bf16_bf16_out(
+    const void* x_ds4,
+    const int64_t* expert_start,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int planes,
+    hipStream_t stream) {
+  if (x_ds4 == nullptr || expert_start == nullptr || qweight == nullptr ||
+      out == nullptr || compact_rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || in_features % QK5_1 != 0 || out_features <= 0 ||
+      planes <= 0 || planes > 3 || num_experts > 65535u) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const unsigned int col_tiles =
+      static_cast<unsigned int>((out_features + 31) / 32);
+  hipLaunchKernelGGL(
+      (q5_1_q8_1_wmma_prefill_kernel),
+      dim3(col_tiles, static_cast<unsigned int>(num_experts)), dim3(64), 0,
+      stream, static_cast<const block_q8_1_mmq_ds4*>(x_ds4), expert_start,
+      qweight, out, compact_rows, num_experts, in_features, out_features,
       static_cast<int>(planes));
   return static_cast<int>(hipGetLastError());
 }

@@ -282,3 +282,114 @@ def test_q5_1_mmq_ds4_serves_in_features_not_divisible_by_128() -> None:
     )
     assert float(abs_err.mean()) < 2e-3
     assert int((mmq.argmax(1) == oracle.argmax(1)).sum()) >= compact_rows - 1
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q5_1_mmq_wmma_prefill_agrees_with_dp4a_leaf_at_k704() -> None:
+    """P10: the int8 matrix-core twin must reproduce the leaf it targets.
+
+    K=704 is the shape that matters -- 22 Q5_1 blocks, 5.5 DS4 blocks -- so
+    this exercises the partial-final-block path through the new kernel too.
+    """
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+        gguf_q8_1_mmq_ds4_pack_bf16_d4x3 as gguf_q8_1_mmq_ds4_pack_bf16,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_mmq_selected_prefill import (
+        build_gguf_q5_1_mmq_selected_prefill,
+        ds4_workspace_nbytes,
+        gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out as run_dp4a,
+        gguf_q5_1_mmq_ds4_wmma_prefill_bf16_bf16_out as run_wmma,
+    )
+
+    rng = np.random.default_rng(41)
+    experts, in_features, out_features = 8, 704, 512
+    counts = np.array([4, 7, 0, 12, 1, 3, 0, 6], dtype=np.int64)
+    compact_rows = int(counts.sum())
+    expert_start = np.zeros(experts + 1, dtype=np.int64)
+    expert_start[1:] = np.cumsum(counts)
+
+    raw_weights, weights = _make_q5_1_weight(rng, experts * out_features, in_features)
+    host_w = np.frombuffer(raw_weights, dtype=np.uint8)
+    rows_f32 = (rng.standard_normal((compact_rows, in_features)) * 0.4).astype(np.float32)
+    rows_bf16 = _bf16_bits(rows_f32).reshape(compact_rows, in_features)
+
+    out_dp4a = np.empty((compact_rows, out_features), dtype=np.uint16)
+    out_wmma = np.empty_like(out_dp4a)
+
+    runtime = get_hip_runtime()
+    library = build_gguf_q5_1_mmq_selected_prefill(load=True)
+    allocations = []
+    try:
+        w_dev = malloc(host_w.nbytes, runtime=runtime)
+        rows_dev = malloc(rows_bf16.nbytes, runtime=runtime)
+        ds4_dev = malloc(ds4_workspace_nbytes(compact_rows, in_features, 3), runtime=runtime)
+        start_dev = malloc(expert_start.nbytes, runtime=runtime)
+        dp4a_dev = malloc(out_dp4a.nbytes, runtime=runtime)
+        wmma_dev = malloc(out_wmma.nbytes, runtime=runtime)
+        allocations += [w_dev, rows_dev, ds4_dev, start_dev, dp4a_dev, wmma_dev]
+        copy_host_to_device(w_dev, host_array_ptr(host_w), runtime=runtime)
+        copy_host_to_device(
+            rows_dev, host_array_ptr(np.ascontiguousarray(rows_bf16)), runtime=runtime
+        )
+        copy_host_to_device(start_dev, host_array_ptr(expert_start), runtime=runtime)
+
+        gguf_q8_1_mmq_ds4_pack_bf16(
+            rows_dev.ptr, ds4_dev.ptr, compact_rows, in_features, runtime=runtime
+        )
+        run_dp4a(
+            ds4_dev.ptr, start_dev.ptr, w_dev.ptr, dp4a_dev.ptr,
+            compact_rows, experts, in_features, out_features, 3,
+            runtime=runtime, library=library,
+        )
+        run_wmma(
+            ds4_dev.ptr, start_dev.ptr, w_dev.ptr, wmma_dev.ptr,
+            compact_rows, experts, in_features, out_features, 3,
+            runtime=runtime, library=library,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out_dp4a), dp4a_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_wmma), wmma_dev, runtime=runtime)
+        runtime.device_synchronize()
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    dp4a = _bf16_to_float(out_dp4a)
+    wmma = _bf16_to_float(out_wmma)
+
+    # Guard against a silently uninitialised output: an unwritten plane or a
+    # dropped tile shows up as NaN first, and as agreement failure second.
+    assert np.isfinite(wmma).all(), "wmma leaf produced non-finite output"
+    assert np.isfinite(dp4a).all(), "dp4a leaf produced non-finite output"
+
+    oracle = np.empty_like(dp4a)
+    rows_bf16_f = _bf16_to_float(rows_bf16)
+    for expert in range(experts):
+        for row in range(expert_start[expert], expert_start[expert + 1]):
+            weight = weights[expert * out_features : (expert + 1) * out_features]
+            oracle[row] = rows_bf16_f[row] @ weight.T
+
+    row_scale = np.maximum(np.abs(oracle).max(axis=1, keepdims=True), 1e-3)
+    abs_dp4a = np.abs(dp4a - oracle) / row_scale
+    abs_wmma = np.abs(wmma - oracle) / row_scale
+    abs_pair = np.abs(wmma - dp4a) / row_scale
+
+    assert float(abs_wmma.max()) < 2e-2, f"wmma vs oracle max {float(abs_wmma.max()):.4f}"
+    assert float(abs_wmma.mean()) < 2e-3, f"wmma vs oracle mean {float(abs_wmma.mean()):.4f}"
+    assert float(abs_dp4a.max()) < 2e-2, f"dp4a vs oracle max {float(abs_dp4a.max()):.4f}"
+    # The two leaves compute the same arithmetic contract, so they should be
+    # far closer to each other than either is to the float oracle.
+    assert float(abs_pair.max()) < 5e-2, f"wmma vs dp4a max {float(abs_pair.max()):.4f}"
+    assert int((wmma.argmax(1) == oracle.argmax(1)).sum()) >= compact_rows - 1
+    # K=704's partial final DS4 block must contribute: without it the last 64
+    # inputs vanish and every output cell moves.
+    assert float(abs_wmma.mean()) < float(abs_dp4a.mean()) * 5 + 1e-4, (
+        "wmma leaf's error is disproportionate to the DP4A leaf's"
+    )

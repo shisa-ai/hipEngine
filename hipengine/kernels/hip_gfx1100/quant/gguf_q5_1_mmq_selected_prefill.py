@@ -130,6 +130,61 @@ def gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
 
 _KERNEL_KEY = KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1", VARIANT)
 
+_WMMA_SYMBOL = "hipengine_q5_1_mmq_ds4_wmma_prefill_bf16_bf16_out"
+
+
+def gguf_q5_1_mmq_ds4_wmma_prefill_bf16_bf16_out(
+    x_ds4_ptr: int,
+    expert_start_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    planes: int = 3,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the P10 int8 matrix-core twin of the DP4A leaf above.
+
+    Same arguments, same DS4 activation layout and same arithmetic contract,
+    so an A/B against ``gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out``
+    needs only this symbol swapped.
+    """
+
+    if compact_rows <= 0 or num_experts <= 0:
+        raise ValueError("compact_rows and num_experts must be positive")
+    if in_features <= 0 or in_features % 32:
+        raise ValueError("in_features must be a positive multiple of 32")
+    if out_features <= 0:
+        raise ValueError("out_features must be positive")
+    if planes <= 0 or planes > 3:
+        raise ValueError("planes must be in 1..3")
+    if num_experts > 65535:
+        raise ValueError("num_experts must fit the launcher's grid.y")
+    library = library or build_gguf_q5_1_mmq_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _WMMA_SYMBOL)
+    fn.argtypes = list(_ARGS) + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    error = fn(
+        ctypes.c_void_p(x_ds4_ptr),
+        ctypes.c_void_p(expert_start_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(planes),
+        ctypes.c_void_p(stream),
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
 
 def register_gguf_q5_1_mmq_selected_prefill_kernels(*, replace: bool = True) -> None:
     register(
@@ -147,6 +202,7 @@ __all__ = [
     "build_gguf_q5_1_mmq_selected_prefill",
     "ds4_workspace_nbytes",
     "gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out",
+    "gguf_q5_1_mmq_ds4_wmma_prefill_bf16_bf16_out",
     "plan_gguf_q5_1_mmq_selected_prefill_build",
     "register_gguf_q5_1_mmq_selected_prefill_kernels",
 ]
