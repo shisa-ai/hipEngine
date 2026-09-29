@@ -103,6 +103,11 @@ from hipengine.kernels.registry import (
 )
 
 BACKEND = "hip_gfx1151"
+
+# The registry variant name for the LDS-staged f32 dense Q8_0 tile. Exported so
+# the runtime dispatch and the gate scripts name the same string instead of
+# repeating it.
+STAGED_F32_VARIANT = "staged_f32_bm128_bn64_bk32"
 TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
 
 
@@ -3326,6 +3331,23 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
 
     for module_name in _GFX1100_MODULES:
         import_module(module_name)
+
+    # LDS-staged f32 dense Q8_0 tile. A production-gate candidate, not a default:
+    # it is measured 1.23x to 2.22x faster than the exact coltile leaf across all
+    # six Q8_0 dense projections of a layer step (see
+    # ``benchmarks/results/2026-09-29-dp8-staged-f32-dense-family/``), but its
+    # output is NOT bit-identical to that leaf, so selecting it requires the
+    # ``docs/EXECUTION-PROFILES.md`` production gate rather than strict parity.
+    # Nothing selects it by default; see ``_raw_k_staged_f32_dispatch`` in
+    # ``hipengine.runtime.gguf_linear``.
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_gr_staged_f32 import (
+        gr_staged_f32_up,
+    )
+
+    staged_key = KernelKey(BACKEND, "linear", "gguf_q8_0", STAGED_F32_VARIANT)
+    if replace or not is_registered(staged_key):
+        register(staged_key, gr_staged_f32_up, replace=replace)
+
     from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
         gguf_q8_0_selected_grouped_blockscale_prefill_bf16_bf16_out,
         gguf_q8_0_selected_grouped_blockscale_guarded_prefill_bf16_bf16_out,

@@ -3272,6 +3272,78 @@ def _raw_k_coltile_pipelined_dispatch(dispatch: GGUFLinearDispatch) -> GGUFLinea
     return GGUFLinearDispatch(key, "raw") if is_registered(key) else dispatch
 
 
+_Q8_STAGED_F32_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS"
+
+# Kept as a literal rather than imported from the backend package, which
+# ``hipengine.runtime`` must not import eagerly. The registration site is
+# ``hipengine.kernels.hip_gfx1151.STAGED_F32_VARIANT``; the two must agree, and
+# a test pins that they do.
+_Q8_STAGED_F32_VARIANT = "staged_f32_bm128_bn64_bk32"
+
+
+def _q8_staged_f32_layers() -> frozenset[int] | None:
+    """Parse the layer scope for the staged f32 tile, or ``None`` for none.
+
+    Unset or empty means **off**, not every layer. That is the opposite of
+    :func:`_q8_dense_wide_layers`, and deliberately so: this route is a
+    production-gate candidate whose arithmetic is not bit-identical to the exact
+    leaf, so an unset environment must leave the exact chain in place.
+
+    Footgun worth knowing: ``=0`` selects **layer 0**, it does not mean off. Layer
+    0 is a real index and a single-layer scope is a legitimate thing to ask for,
+    so there is no in-band way to spell both. To turn the route off, unset the
+    variable or set it to the empty string.
+    """
+
+    raw = os.environ.get(_Q8_STAGED_F32_LAYERS_ENV, "")
+    values = {int(part) for part in raw.split(",") if part.strip()}
+    return frozenset(values) if values else None
+
+
+def _raw_k_staged_f32_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    weight: object | None = None,
+) -> GGUFLinearDispatch:
+    """Opt-in replacement of the exact Q8/F32 coltile leaf by the staged f32 tile.
+
+    The LDS-staged f32 tile keeps the promoted ``dense_wide256`` tiling
+    (BM=128 x BN=64 x BK=32, LDS-staged weight and activation tiles) and does the
+    multiply in f32 FMA on f32 operands, so the only arithmetic difference from
+    the exact leaf is the summation order. It is measured 1.23x to 2.22x faster
+    than the exact coltile leaf across all six Q8_0 dense projections of a layer
+    step, with relative L2 4.6e-07 to 9.1e-07 (4-8 f32 ulp). See
+    ``benchmarks/results/2026-09-29-dp8-staged-f32-dense-family/``.
+
+    **Off by default, and it must stay off until the production gate passes.**
+    The output is not bit-identical to the leaf it replaces, so this is a T1/T2
+    arithmetic change under ``docs/EXECUTION-PROFILES.md`` and needs the
+    calibrated mean/tail/max KL, top-1 by category, determinism, isolation and
+    task gates - not strict parity. The exact leaf remains registered and
+    selected whenever this dispatch is a no-op, which is the strict fallback.
+
+    Layer-scoped because that is the only shape a gate can express: the sibling
+    f16 wide route fails the envelope at 0-47 and passes at 16-47, so a boolean
+    with no scope can only describe a configuration already known to fail.
+    """
+
+    layers = _q8_staged_f32_layers()
+    if layers is None or dispatch.abi != "raw":
+        return dispatch
+    if dispatch.key.variant not in _Q8_DENSE_WIDE_EXACT_PARENTS | {
+        "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+    }:
+        return dispatch
+    layer = _weight_layer_index(weight)
+    if layer is None or layer not in layers:
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend, dispatch.key.layer, dispatch.key.quant,
+        _Q8_STAGED_F32_VARIANT,
+    )
+    return GGUFLinearDispatch(key, "raw") if is_registered(key) else dispatch
+
+
 def resolve_gguf_linear_dispatch(
     weight: GGUFDeviceWeight,
     *,
@@ -4020,6 +4092,10 @@ def launch_gguf_linear(
         # Last, so every route keeps the parent it already matches on: only the
         # leaf kernel of the exact Q8/F32 coltile scope is replaced.
         dispatch = _raw_k_coltile_pipelined_dispatch(dispatch)
+        # After the pipelined leaf, so an opt-in staged-f32 scope replaces it.
+        # Off unless explicitly bound, and it never claims a dispatch the exact
+        # chain would otherwise own. See the docstring for the gate it owes.
+        dispatch = _raw_k_staged_f32_dispatch(dispatch, weight=weight)
         _ensure_linear_kernel_registered(dispatch.key)
         fn = resolve(
             backend=dispatch.key.backend,
