@@ -7551,12 +7551,22 @@ class Qwen4ExpGGUFResidentModelRunner:
             rows,
             hidden=cfg.hidden_size,
         )
+        ple_telemetry = self.resident.ple_table.telemetry() is not None
+        ple_h2d_started = time.perf_counter_ns() if ple_telemetry else 0
         copy_host_to_device(
             self.prefill_ple_embeddings,
             host_array_ptr(staged),
             staged.nbytes,
             runtime=self.runtime,
         )
+        if ple_h2d_started:
+            # The decode path records its copy; without this the PLE telemetry
+            # counts only decode copies and understates the request H2D payload
+            # (5 MiB prefill vs 1.25 MiB of decode copies at p512).
+            self.resident.ple_staging.record_h2d(
+                nbytes=staged.nbytes,
+                wall_ns=time.perf_counter_ns() - ple_h2d_started,
+            )
         residual_ptr = self.prefill_residual.ptr
         gdn_conv_row_bytes = (
             (2 * cfg.gdn_group_count * cfg.gdn_state_size + cfg.gdn_inner_size)

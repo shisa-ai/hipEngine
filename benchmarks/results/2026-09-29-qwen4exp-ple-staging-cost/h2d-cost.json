@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_ple_h2d_cost",
+  "created_at": "2026-09-29T18:04:11.793522+00:00",
+  "performance_claim": false,
+  "boundary": "pinned host -> device copy at the PLE staging shapes; excludes the PLE row gather/dequantize (CPU, mmap table) and the staging memcpy into the pinned ring",
+  "hidden": 2560,
+  "prompt_tokens": 512,
+  "decode_steps": 128,
+  "repeats": 15,
+  "warmups": 3,
+  "prefill_copy": {
+    "rows": 512,
+    "nbytes": 5242880,
+    "median_us": 67.597,
+    "min_us": 67.116,
+    "samples_us": [
+      72.206,
+      69.48,
+      68.399,
+      68.398,
+      67.486,
+      68.298,
+      67.276,
+      67.506,
+      67.577,
+      67.767,
+      83.757,
+      67.236,
+      67.116,
+      67.317,
+      67.597
+    ],
+    "effective_gb_per_s": 77.56083849874996
+  },
+  "decode_copy": {
+    "rows": 1,
+    "nbytes": 10240,
+    "median_us": 16.972,
+    "min_us": 16.151,
+    "samples_us": [
+      19.657,
+      18.074,
+      17.372,
+      16.972,
+      16.802,
+      18.895,
+      18.104,
+      16.391,
+      16.571,
+      17.283,
+      16.781,
+      16.19,
+      16.151,
+      16.821,
+      17.693
+    ],
+    "effective_gb_per_s": 0.6033466886636812
+  },
+  "per_request": {
+    "prefill_copy_us": 67.597,
+    "decode_copies_us": 2172.416,
+    "total_us": 2240.0130000000004,
+    "total_bytes": 6553600
+  },
+  "notes": [
+    "The engine's prefill PLE copy does not call record_h2d, so in-engine PLE telemetry counts only the decode copies and understates the per-request H2D payload.",
+    "This is the copy only; it is not a claim about an asynchronous path."
+  ]
+}
