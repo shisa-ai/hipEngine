@@ -384,8 +384,8 @@ def gguf_q8_1_mmq_ds4_pack_bf16(
 
     _check_positive(rows, "rows")
     _check_positive(hidden, "hidden")
-    if hidden % _Q8_1_MMQ_BLOCK != 0:
-        raise ValueError("hidden must be divisible by DS4 Q8_1 MMQ block size 128")
+    # No divisibility requirement: a partial final DS4 block is zero-filled by
+    # the kernel, so K=704 (the down projection) packs exactly like K=640.
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_DS4_PACK_BF16)
@@ -482,8 +482,8 @@ def gguf_q8_1_mmq_ds4_pack_bf16_d4x3(
 
     _check_positive(rows, "rows")
     _check_positive(hidden, "hidden")
-    if hidden % _Q8_1_MMQ_BLOCK != 0:
-        raise ValueError("hidden must be divisible by DS4 Q8_1 MMQ block size 128")
+    # No divisibility requirement: the kernel zero-fills the partial final
+    # DS4 block, so K=704 (the down projection) packs exactly like K=640.
     library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_DS4X3_PACK_BF16)

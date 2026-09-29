@@ -91,7 +91,13 @@ void q5_1_mmq_ds4_selected_prefill_kernel(
     int planes) {
   const int64_t out_col = static_cast<int64_t>(blockIdx.x) * 128 + threadIdx.x;
   if (out_col >= out_features) return;
-  const int64_t ds4_blocks = in_features / Q8_1_MMQ_BLOCK;
+  // Ceil: K need not be a multiple of 128 (the down projection is K=704,
+  // i.e. 22 Q5_1 blocks = 5.5 DS4 blocks). The pack zero-fills the trailing
+  // lanes of the partial block, so those lanes contribute exactly 0 to dot4,
+  // to the block sum and therefore to the m offset.
+  const int64_t q51_blocks = in_features / QK5_1;
+  const int64_t ds4_blocks =
+      (in_features + Q8_1_MMQ_BLOCK - 1) / Q8_1_MMQ_BLOCK;
   for (int64_t expert = blockIdx.y; expert < num_experts; expert += gridDim.y) {
     const int64_t start = expert_start[expert];
     const int64_t end = expert_start[expert + 1];
@@ -110,8 +116,15 @@ void q5_1_mmq_ds4_selected_prefill_kernel(
       for (int64_t kb = 0; kb < ds4_blocks; ++kb) {
         const uint8_t* w_base =
             weight_row + kb * (Q8_1_MMQ_BLOCK / QK5_1) * Q5_1_BLOCK_BYTES;
+        // A partial final DS4 block has fewer than 4 Q5_1 blocks left in the
+        // weight row (704 = 22, so the 6th DS4 block holds only 2); reading
+        // past row 22 would be a 48-byte out-of-bounds read.
+        const int64_t remaining =
+            q51_blocks - kb * (Q8_1_MMQ_BLOCK / QK5_1);
+        const int sub_count =
+            remaining < 4 ? static_cast<int>(remaining) : 4;
 #pragma unroll
-        for (int sub = 0; sub < 4; ++sub) {
+        for (int sub = 0; sub < sub_count; ++sub) {
           const uint8_t* w_sub = w_base + sub * Q5_1_BLOCK_BYTES;
           const float d =
               fp16_bits_to_float(*reinterpret_cast<const uint16_t*>(w_sub));
@@ -180,7 +193,7 @@ extern "C" int hipengine_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
     hipStream_t stream) {
   if (x_ds4 == nullptr || expert_start == nullptr || qweight == nullptr ||
       out == nullptr || compact_rows <= 0 || num_experts <= 0 ||
-      in_features <= 0 || (in_features % Q8_1_MMQ_BLOCK) != 0 ||
+      in_features <= 0 ||
       out_features <= 0 || planes <= 0 || planes > 3) {
     return static_cast<int>(hipErrorInvalidValue);
   }

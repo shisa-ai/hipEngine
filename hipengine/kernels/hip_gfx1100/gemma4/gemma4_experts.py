@@ -155,7 +155,7 @@ class Gemma4ExpertScratch:
             # ``compact_to_source`` is the row map the MMQ leaf dereferences. The
             # MMQ32 tile ABI is the same 16-row plan the WMMA owners build, so
             # that plan is reused and no second one is allocated here.
-            "ds4_q8": lanes * (self.hidden_size // 128) * _DS4_BLOCK_BYTES,
+            "ds4_q8": lanes * (-(-self.hidden_size // 128)) * _DS4_BLOCK_BYTES,
             "compact_to_source": lanes * _I64_BYTES,
         }
         try:
@@ -1086,13 +1086,19 @@ def gemma4_project_experts_mmq(
         return False
     if weight.spec.quant_key != _MMQ_DOWN_QUANT_KEY:
         return False
-    if in_features % _DS4_BLOCK_VALUES:
-        return False
+    # No in_features divisibility gate: the DS4 pack zero-fills a partial final
+    # block, so the down projection's K=704 (5.5 blocks of 128) is served.
+    # Q5_1 still needs in_features % 32 == 0 for the weight row, which the
+    # block_q5_1 layout itself guarantees.
     if compact_rows < _GROUPED_PREFILL_MIN_LANES_PER_EXPERT * num_experts:
         return False
 
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
-        gguf_q8_1_mmq_ds4_pack_bf16,
+        # d4x3 = residual_passes 3: the consumer runs with planes=3, so it
+        # reads all three DS4 planes. The plain symbol is <1> and writes only
+        # plane 0, leaving planes 1-2 uninitialized -- the K=704 gate used to
+        # keep this path from ever running, which hid the mismatch.
+        gguf_q8_1_mmq_ds4_pack_bf16_d4x3 as gguf_q8_1_mmq_ds4_pack_bf16,
     )
     from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_mmq_selected_prefill import (
         build_gguf_q5_1_mmq_selected_prefill,
