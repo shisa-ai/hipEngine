@@ -68,6 +68,7 @@ ARMS: dict[str, dict[str, str]] = {
     "q8_iu8_wmm": {"HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "1"},
     "gr_iu8": {"HIPENGINE_QWEN4_EXP_GR_IU8": "1"},
     "gr_iu8_down": {"HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1"},
+    "gr_wide": {"HIPENGINE_QWEN4_EXP_GR_WIDE": "1"},
     "gdn_peer": {
         "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS": _L(

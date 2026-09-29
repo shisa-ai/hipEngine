@@ -98,11 +98,13 @@ def test_the_restored_flags_are_not_in_the_disabled_set(module):
 
     recovery = set(PRODUCTION_ARITHMETIC_RECOVERY_FLAGS)
     restored = set(PRODUCTION_Q8_QSA_RESTORED_FLAGS)
-    assert len(PRODUCTION_ARITHMETIC_RECOVERY_FLAGS) == 15
-    assert len(PRODUCTION_Q8_QSA_RESTORED_FLAGS) == 6
-    # Five of the fifteen selectors are re-admitted; Q8_DOWN_VARIANT is the
+    assert len(PRODUCTION_ARITHMETIC_RECOVERY_FLAGS) == 16
+    assert len(PRODUCTION_Q8_QSA_RESTORED_FLAGS) == 7
+    # Six of the sixteen selectors are re-admitted; Q8_DOWN_VARIANT is the
     # companion value of one of them rather than a selector in its own right.
-    assert len(restored & recovery) == 5
+    # Q4_DP4A64 joined the restored set when the decode dp4a linear was
+    # promoted; GR_WIDE joined the recovery set as a default-off prefill route.
+    assert len(restored & recovery) == 6
     assert restored - recovery == {"Q8_DOWN_VARIANT"}
     still_disabled = [flag for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS
                       if flag not in restored]
