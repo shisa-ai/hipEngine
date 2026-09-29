@@ -4300,6 +4300,15 @@ def launch_gguf_linear(
             kwargs["threads"] = q8_t16_threads
     elif threads:
         kwargs["threads"] = threads
+    else:
+        wide_threads = _pack8_gemv_decode_threads(
+            rows=rows,
+            out_features=out_features,
+            variant=variant,
+            threads=threads,
+        )
+        if wide_threads and abi != "wmma_raw":
+            kwargs["threads"] = wide_threads
     if library is not None:
         kwargs["library"] = library
     if (
@@ -5370,6 +5379,15 @@ def launch_gguf_linear_raw_ptr(
         # caller-supplied ``threads`` value applies to the decode-shaped path
         # only and is silently dropped on the WMMA path.
         kwargs["threads"] = threads
+    else:
+        wide_threads = _pack8_gemv_decode_threads(
+            rows=rows,
+            out_features=out_features,
+            variant=dispatch.key.variant,
+            threads=threads,
+        )
+        if wide_threads and dispatch.abi != "wmma_raw":
+            kwargs["threads"] = wide_threads
     if library is not None:
         kwargs["library"] = library
     fn(x_ptr, int(qweight_ptr), out_ptr, rows, in_features, out_features, **kwargs)
@@ -8051,6 +8069,58 @@ def _pack8_decode_dispatch(
         if is_registered(candidate):
             return GGUFLinearDispatch(candidate, dispatch.abi)
     return dispatch
+
+
+_PACK8_GEMV_WIDE_ENV = "HIPENGINE_GGUF_PACK8_GEMV_WIDE"
+_PACK8_GEMV_WIDE_THREADS = 256
+# The pack8 GEMV grid is (out_features / 8, rows), so this is the largest
+# out_features whose decode grid still sits below the ~320-workgroup knee where
+# the measured bandwidth curve saturates.
+_PACK8_GEMV_WIDE_MAX_OUT = 640
+
+
+def _pack8_gemv_wide_threads_enabled() -> bool:
+    """Session/env opt-in for the narrow-projection block-size lever."""
+
+    raw = os.environ.get(_PACK8_GEMV_WIDE_ENV, "")
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _pack8_gemv_decode_threads(
+    *,
+    rows: int,
+    out_features: int,
+    variant: str,
+    threads: int = 0,
+) -> int:
+    """Raise the block size where the decode grid is too small to fill the device.
+
+    A narrow single-token projection launches ``out_features / 8`` workgroups, so
+    it cannot saturate DRAM no matter how well the kernel itself is written.  The
+    measured curve on gfx1100 (``benchmarks/results/2026-09-30-qwen4exp-de3-
+    threads-lever/``) is monotonic in grid size and flat above roughly 320
+    workgroups: out=320 runs 40 workgroups at 92.4 GB/s (42% of the 221 GB/s
+    roof) with a 128-wide block and 136.8 GB/s (62%) with 256, and out=640 runs
+    80 workgroups at 121.5 and 150.8 GB/s, while every shape at 2560 or more
+    output features is unchanged within 2% and mixed in sign.
+
+    The rule is therefore gated on the grid, not on the quantization scheme: the
+    reason is occupancy, and the same argument holds for any narrow projection in
+    the decode-shaped pack8 family.  Only ``gguf_q8_0`` was measured; the other
+    quants in the family inherit the rule by the same reasoning and are reported
+    as measured-for-q8_0-only.
+
+    Returns 0 when the caller supplied its own block size or the shape is not a
+    narrow decode-shaped pack8 GEMV, leaving the launcher default in place.
+    """
+
+    if threads or rows != 1 or not _pack8_gemv_wide_threads_enabled():
+        return 0
+    if not variant.startswith("pack8_gemv_") or variant.startswith("pack8_gemv_decode_"):
+        return 0
+    if out_features > _PACK8_GEMV_WIDE_MAX_OUT:
+        return 0
+    return _PACK8_GEMV_WIDE_THREADS
 
 
 _Q5_PLANAR_DP4A_TARGET_ENV = "HIPENGINE_C8_Q5_PLANAR_DP4A"
