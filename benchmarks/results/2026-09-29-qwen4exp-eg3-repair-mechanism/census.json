@@ -1,0 +1,2136 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_repair_register_census",
+  "created_at": "2026-09-29T18:08:39.910625+00:00",
+  "performance_claim": false,
+  "boundary": "static census of one compiled profile; occupancy is the register limit only (no LDS/scratch), not a runtime measurement",
+  "source": "/home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip",
+  "flags": [
+    "-O3",
+    "-mllvm",
+    "-amdgpu-unroll-threshold-local=600",
+    "--offload-arch=gfx1151",
+    "-mcumode"
+  ],
+  "threads_per_block": 128,
+  "model": {
+    "vgpr_per_cu": 65536,
+    "max_waves_per_cu": 32,
+    "wave_width": 32,
+    "vgpr_granule": 8
+  },
+  "kernels": [
+    {
+      "symbol": "_ZN12_GLOBAL__N_149gguf_q4_k_selected_dual_grouped_pair2_bf16_kernelEPKtPKlPKhS5_PtS6_llll",
+      "vgpr": 87,
+      "sgpr": 94,
+      "static_instructions": 459,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          68
+        ],
+        [
+          "v_add_f32_e32",
+          62
+        ],
+        [
+          "ds_bpermute_b32",
+          47
+        ],
+        [
+          "s_delay_alu",
+          21
+        ],
+        [
+          "s_or_b32",
+          18
+        ],
+        [
+          "v_dual_mov_b32",
+          17
+        ],
+        [
+          "s_cbranch_execz",
+          16
+        ],
+        [
+          "s_addc_u32",
+          14
+        ],
+        [
+          "s_and_saveexec_b32",
+          13
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          12
+        ],
+        [
+          "ds_store_b32",
+          12
+        ],
+        [
+          "ds_swizzle_b32",
+          11
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 87,
+        "vgpr_granule": 88,
+        "waves_per_cu_by_vgpr": 23,
+        "waves_per_cu": 23,
+        "waves_per_simd": 5,
+        "occupancy_fraction": 0.71875,
+        "threads_per_cu": 736,
+        "blocks_per_cu": 5
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_155gguf_q4_k_selected_dual_sparse_exact_repair_bf16_kernelEPKtPKlPKhS5_PtPKiS8_llllll",
+      "vgpr": 57,
+      "sgpr": 63,
+      "static_instructions": 336,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          35
+        ],
+        [
+          "s_mul_i32",
+          23
+        ],
+        [
+          "s_add_u32",
+          17
+        ],
+        [
+          "s_addc_u32",
+          16
+        ],
+        [
+          "v_cvt_f32_ubyte0_e32",
+          15
+        ],
+        [
+          "s_add_i32",
+          14
+        ],
+        [
+          "s_mul_hi_u32",
+          14
+        ],
+        [
+          "s_cselect_b32",
+          13
+        ],
+        [
+          "v_and_b16",
+          12
+        ],
+        [
+          "s_waitcnt",
+          11
+        ],
+        [
+          "v_lshrrev_b16",
+          10
+        ],
+        [
+          "v_add_co_u32",
+          9
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 57,
+        "vgpr_granule": 64,
+        "waves_per_cu_by_vgpr": 32,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_142gguf_q4_k_selected_dual_risk_bitmap_kernelEPKiS1_Pjll",
+      "vgpr": 14,
+      "sgpr": 26,
+      "static_instructions": 109,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          14
+        ],
+        [
+          "s_addc_u32",
+          8
+        ],
+        [
+          "s_mul_i32",
+          6
+        ],
+        [
+          "s_add_u32",
+          6
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          5
+        ],
+        [
+          "s_waitcnt",
+          4
+        ],
+        [
+          "v_mad_u64_u32",
+          4
+        ],
+        [
+          "s_mul_hi_u32",
+          4
+        ],
+        [
+          "v_cmp_le_u32_e32",
+          4
+        ],
+        [
+          "v_cndmask_b32_e64",
+          4
+        ],
+        [
+          "s_and_b32",
+          3
+        ],
+        [
+          "v_add_co_u32",
+          3
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 14,
+        "vgpr_granule": 16,
+        "waves_per_cu_by_vgpr": 128,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_153gguf_q4_k_selected_dual_row_bitmap_repair_bf16_kernelEPKtPKlPKhS5_PtPKjlllll",
+      "vgpr": 49,
+      "sgpr": 43,
+      "static_instructions": 238,
+      "top_opcodes": [
+        [
+          "v_and_b16",
+          17
+        ],
+        [
+          "s_delay_alu",
+          16
+        ],
+        [
+          "s_and_b32",
+          11
+        ],
+        [
+          "s_waitcnt",
+          10
+        ],
+        [
+          "s_mul_i32",
+          10
+        ],
+        [
+          "v_cvt_f32_ubyte0_e32",
+          10
+        ],
+        [
+          "s_nop",
+          9
+        ],
+        [
+          "s_add_u32",
+          9
+        ],
+        [
+          "s_addc_u32",
+          9
+        ],
+        [
+          "s_cselect_b32",
+          8
+        ],
+        [
+          "v_lshrrev_b16",
+          8
+        ],
+        [
+          "v_fmac_f32_e32",
+          6
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 49,
+        "vgpr_granule": 56,
+        "waves_per_cu_by_vgpr": 36,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_152gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernelILi8ELi1ELb0ELb0EEEvPKtPKlPKhS6_PtS7_llll",
+      "vgpr": 40,
+      "sgpr": 70,
+      "static_instructions": 473,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          36
+        ],
+        [
+          "s_delay_alu",
+          31
+        ],
+        [
+          "v_mov_b32_e32",
+          27
+        ],
+        [
+          "v_add_f32_e32",
+          27
+        ],
+        [
+          "s_addc_u32",
+          22
+        ],
+        [
+          "s_add_u32",
+          20
+        ],
+        [
+          "s_cbranch_execz",
+          20
+        ],
+        [
+          "s_or_b32",
+          18
+        ],
+        [
+          "s_add_i32",
+          16
+        ],
+        [
+          "ds_bpermute_b32",
+          16
+        ],
+        [
+          "s_and_saveexec_b32",
+          14
+        ],
+        [
+          "s_mul_i32",
+          14
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 40,
+        "vgpr_granule": 40,
+        "waves_per_cu_by_vgpr": 51,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_152gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernelILi8ELi4ELb0ELb0EEEvPKtPKlPKhS6_PtS7_llll",
+      "vgpr": 40,
+      "sgpr": 86,
+      "static_instructions": 1664,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          157
+        ],
+        [
+          "v_add_f32_e32",
+          104
+        ],
+        [
+          "v_mov_b32_e32",
+          91
+        ],
+        [
+          "s_delay_alu",
+          85
+        ],
+        [
+          "ds_bpermute_b32",
+          78
+        ],
+        [
+          "s_add_i32",
+          76
+        ],
+        [
+          "s_and_saveexec_b32",
+          71
+        ],
+        [
+          "s_cbranch_execz",
+          70
+        ],
+        [
+          "s_mul_i32",
+          68
+        ],
+        [
+          "s_addc_u32",
+          63
+        ],
+        [
+          "s_or_b32",
+          62
+        ],
+        [
+          "s_add_u32",
+          59
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 40,
+        "vgpr_granule": 40,
+        "waves_per_cu_by_vgpr": 51,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_152gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernelILi8ELi4ELb1ELb0EEEvPKtPKlPKhS6_PtS7_llll",
+      "vgpr": 50,
+      "sgpr": 92,
+      "static_instructions": 1745,
+      "top_opcodes": [
+        [
+          "s_waitcnt",
+          164
+        ],
+        [
+          "v_add_f32_e32",
+          112
+        ],
+        [
+          "s_delay_alu",
+          108
+        ],
+        [
+          "v_mov_b32_e32",
+          100
+        ],
+        [
+          "s_add_i32",
+          80
+        ],
+        [
+          "s_cbranch_execz",
+          76
+        ],
+        [
+          "ds_bpermute_b32",
+          68
+        ],
+        [
+          "s_or_b32",
+          67
+        ],
+        [
+          "s_mul_i32",
+          67
+        ],
+        [
+          "s_and_saveexec_b32",
+          66
+        ],
+        [
+          "s_barrier",
+          59
+        ],
+        [
+          "s_add_u32",
+          49
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 50,
+        "vgpr_granule": 56,
+        "waves_per_cu_by_vgpr": 36,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_152gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernelILi8ELi4ELb1ELb1EEEvPKtPKlPKhS6_PtS7_llll",
+      "vgpr": 53,
+      "sgpr": 88,
+      "static_instructions": 882,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          89
+        ],
+        [
+          "v_mov_b32_e32",
+          50
+        ],
+        [
+          "s_add_u32",
+          48
+        ],
+        [
+          "s_waitcnt",
+          48
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          43
+        ],
+        [
+          "v_add_co_u32",
+          40
+        ],
+        [
+          "s_addc_u32",
+          38
+        ],
+        [
+          "v_lshrrev_b16",
+          26
+        ],
+        [
+          "s_cbranch_execz",
+          24
+        ],
+        [
+          "v_and_b16",
+          23
+        ],
+        [
+          "s_and_not1_b32",
+          21
+        ],
+        [
+          "v_cmp_lt_i64_e64",
+          20
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 53,
+        "vgpr_granule": 56,
+        "waves_per_cu_by_vgpr": 36,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_158gguf_q4_k_selected_dual_wmma_prefill_compact_legacy_kernelItEEvPKT_PKlS5_S5_PKhS7_PS1_lllll",
+      "vgpr": 51,
+      "sgpr": 37,
+      "static_instructions": 715,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          93
+        ],
+        [
+          "v_cvt_f16_f32_e32",
+          84
+        ],
+        [
+          "s_delay_alu",
+          43
+        ],
+        [
+          "v_and_b32_e32",
+          43
+        ],
+        [
+          "v_bfe_u32",
+          42
+        ],
+        [
+          "v_lshlrev_b32_e32",
+          38
+        ],
+        [
+          "v_fma_mixhi_f16",
+          34
+        ],
+        [
+          "v_dual_mov_b32",
+          32
+        ],
+        [
+          "v_fma_mixlo_f16",
+          31
+        ],
+        [
+          "s_waitcnt",
+          22
+        ],
+        [
+          "s_or_b32",
+          22
+        ],
+        [
+          "v_mov_b32_e32",
+          17
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 51,
+        "vgpr_granule": 56,
+        "waves_per_cu_by_vgpr": 36,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151gguf_q4_k_selected_dual_wmma_prefill_compact_kernelItLi32ELi16EEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 65,
+      "sgpr": 41,
+      "static_instructions": 1203,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          192
+        ],
+        [
+          "v_bfe_u32",
+          104
+        ],
+        [
+          "v_cvt_f16_f32_e32",
+          63
+        ],
+        [
+          "v_fma_mixlo_f16",
+          60
+        ],
+        [
+          "s_delay_alu",
+          59
+        ],
+        [
+          "v_and_b32_e32",
+          58
+        ],
+        [
+          "v_fma_mixhi_f16",
+          55
+        ],
+        [
+          "s_waitcnt",
+          52
+        ],
+        [
+          "v_dual_mov_b32",
+          41
+        ],
+        [
+          "v_and_b16",
+          40
+        ],
+        [
+          "v_lshlrev_b32_e32",
+          38
+        ],
+        [
+          "v_lshrrev_b16",
+          31
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 65,
+        "vgpr_granule": 72,
+        "waves_per_cu_by_vgpr": 28,
+        "waves_per_cu": 28,
+        "waves_per_simd": 7,
+        "occupancy_fraction": 0.875,
+        "threads_per_cu": 896,
+        "blocks_per_cu": 7
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151gguf_q4_k_selected_dual_wmma_prefill_compact_kernelItLi16ELi32EEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 67,
+      "sgpr": 52,
+      "static_instructions": 1486,
+      "top_opcodes": [
+        [
+          "v_cvt_f16_f32_e32",
+          224
+        ],
+        [
+          "v_bfe_u32",
+          135
+        ],
+        [
+          "v_cvt_f32_ubyte0_e32",
+          135
+        ],
+        [
+          "v_fma_mixlo_f16",
+          101
+        ],
+        [
+          "v_dual_mov_b32",
+          99
+        ],
+        [
+          "v_lshlrev_b32_e32",
+          98
+        ],
+        [
+          "v_fma_mixhi_f16",
+          84
+        ],
+        [
+          "v_and_b32_e32",
+          69
+        ],
+        [
+          "s_delay_alu",
+          64
+        ],
+        [
+          "v_mov_b16_e32",
+          43
+        ],
+        [
+          "s_waitcnt",
+          34
+        ],
+        [
+          "s_or_b32",
+          30
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 67,
+        "vgpr_granule": 72,
+        "waves_per_cu_by_vgpr": 28,
+        "waves_per_cu": 28,
+        "waves_per_simd": 7,
+        "occupancy_fraction": 0.875,
+        "threads_per_cu": 896,
+        "blocks_per_cu": 7
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151gguf_q4_k_selected_dual_wmma_prefill_compact_kernelItLi32ELi32EEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 88,
+      "sgpr": 53,
+      "static_instructions": 2061,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          311
+        ],
+        [
+          "v_bfe_u32",
+          203
+        ],
+        [
+          "v_cvt_f16_f32_e32",
+          172
+        ],
+        [
+          "v_fma_mixhi_f16",
+          163
+        ],
+        [
+          "v_fma_mixlo_f16",
+          154
+        ],
+        [
+          "v_dual_mov_b32",
+          131
+        ],
+        [
+          "v_and_b32_e32",
+          81
+        ],
+        [
+          "s_waitcnt",
+          75
+        ],
+        [
+          "v_and_b16",
+          62
+        ],
+        [
+          "v_mov_b16_e32",
+          61
+        ],
+        [
+          "v_lshlrev_b32_e32",
+          61
+        ],
+        [
+          "v_mov_b32_e32",
+          50
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 88,
+        "vgpr_granule": 88,
+        "waves_per_cu_by_vgpr": 23,
+        "waves_per_cu": 23,
+        "waves_per_simd": 5,
+        "occupancy_fraction": 0.71875,
+        "threads_per_cu": 736,
+        "blocks_per_cu": 5
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151gguf_q4_k_selected_dual_wmma_prefill_compact_kernelItLi64ELi16EEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 105,
+      "sgpr": 46,
+      "static_instructions": 1934,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          346
+        ],
+        [
+          "v_bfe_u32",
+          204
+        ],
+        [
+          "v_dual_mov_b32",
+          160
+        ],
+        [
+          "v_fma_mixlo_f16",
+          122
+        ],
+        [
+          "v_fma_mixhi_f16",
+          119
+        ],
+        [
+          "v_cvt_f16_f32_e32",
+          91
+        ],
+        [
+          "s_waitcnt",
+          89
+        ],
+        [
+          "v_and_b32_e32",
+          76
+        ],
+        [
+          "v_and_b16",
+          65
+        ],
+        [
+          "v_lshrrev_b16",
+          46
+        ],
+        [
+          "s_delay_alu",
+          44
+        ],
+        [
+          "v_fma_mix_f32",
+          41
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 105,
+        "vgpr_granule": 112,
+        "waves_per_cu_by_vgpr": 18,
+        "waves_per_cu": 18,
+        "waves_per_simd": 4,
+        "occupancy_fraction": 0.5625,
+        "threads_per_cu": 576,
+        "blocks_per_cu": 4
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151gguf_q4_k_selected_dual_wmma_prefill_compact_kernelItLi64ELi32EEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 128,
+      "sgpr": 65,
+      "static_instructions": 3196,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          517
+        ],
+        [
+          "v_bfe_u32",
+          304
+        ],
+        [
+          "v_fma_mixhi_f16",
+          239
+        ],
+        [
+          "v_fma_mixlo_f16",
+          235
+        ],
+        [
+          "v_dual_mov_b32",
+          176
+        ],
+        [
+          "s_delay_alu",
+          170
+        ],
+        [
+          "v_cvt_f16_f32_e32",
+          109
+        ],
+        [
+          "s_waitcnt",
+          101
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          98
+        ],
+        [
+          "v_and_b16",
+          92
+        ],
+        [
+          "v_add_co_u32",
+          86
+        ],
+        [
+          "v_mov_b32_e32",
+          75
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 128,
+        "vgpr_granule": 128,
+        "waves_per_cu_by_vgpr": 16,
+        "waves_per_cu": 16,
+        "waves_per_simd": 4,
+        "occupancy_fraction": 0.5,
+        "threads_per_cu": 512,
+        "blocks_per_cu": 4
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_158gguf_q4_k_selected_dual_wmma_prefill_compact_legacy_kernelIDF16_EEvPKT_PKlS5_S5_PKhS7_PS1_lllll",
+      "vgpr": 47,
+      "sgpr": 37,
+      "static_instructions": 582,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          102
+        ],
+        [
+          "s_delay_alu",
+          46
+        ],
+        [
+          "v_dual_mov_b32",
+          44
+        ],
+        [
+          "v_bfe_u32",
+          37
+        ],
+        [
+          "v_fma_mixhi_f16",
+          25
+        ],
+        [
+          "s_or_b32",
+          23
+        ],
+        [
+          "v_and_b16",
+          23
+        ],
+        [
+          "s_cbranch_execz",
+          20
+        ],
+        [
+          "v_fma_mixlo_f16",
+          20
+        ],
+        [
+          "s_waitcnt",
+          19
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          19
+        ],
+        [
+          "global_load_b128",
+          19
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 47,
+        "vgpr_granule": 48,
+        "waves_per_cu_by_vgpr": 42,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151gguf_q4_k_selected_dual_wmma_prefill_compact_kernelIDF16_Li32ELi16EEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 65,
+      "sgpr": 41,
+      "static_instructions": 949,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          177
+        ],
+        [
+          "v_bfe_u32",
+          92
+        ],
+        [
+          "v_fma_mixhi_f16",
+          77
+        ],
+        [
+          "v_fma_mixlo_f16",
+          71
+        ],
+        [
+          "s_waitcnt",
+          52
+        ],
+        [
+          "v_dual_mov_b32",
+          40
+        ],
+        [
+          "v_and_b16",
+          35
+        ],
+        [
+          "s_delay_alu",
+          33
+        ],
+        [
+          "v_lshrrev_b16",
+          30
+        ],
+        [
+          "v_mov_b32_e32",
+          25
+        ],
+        [
+          "v_and_b32_e32",
+          23
+        ],
+        [
+          "v_fma_mix_f32",
+          22
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 65,
+        "vgpr_granule": 72,
+        "waves_per_cu_by_vgpr": 28,
+        "waves_per_cu": 28,
+        "waves_per_simd": 7,
+        "occupancy_fraction": 0.875,
+        "threads_per_cu": 896,
+        "blocks_per_cu": 7
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151gguf_q4_k_selected_dual_wmma_prefill_compact_kernelIDF16_Li16ELi32EEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 67,
+      "sgpr": 52,
+      "static_instructions": 1128,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          169
+        ],
+        [
+          "v_bfe_u32",
+          108
+        ],
+        [
+          "v_fma_mixlo_f16",
+          81
+        ],
+        [
+          "v_fma_mixhi_f16",
+          80
+        ],
+        [
+          "v_dual_mov_b32",
+          72
+        ],
+        [
+          "s_delay_alu",
+          63
+        ],
+        [
+          "s_waitcnt",
+          47
+        ],
+        [
+          "v_add_co_u32",
+          39
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          35
+        ],
+        [
+          "global_load_b128",
+          30
+        ],
+        [
+          "v_and_b16",
+          30
+        ],
+        [
+          "v_lshrrev_b16",
+          28
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 67,
+        "vgpr_granule": 72,
+        "waves_per_cu_by_vgpr": 28,
+        "waves_per_cu": 28,
+        "waves_per_simd": 7,
+        "occupancy_fraction": 0.875,
+        "threads_per_cu": 896,
+        "blocks_per_cu": 7
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151gguf_q4_k_selected_dual_wmma_prefill_compact_kernelIDF16_Li32ELi32EEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 88,
+      "sgpr": 53,
+      "static_instructions": 2017,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          382
+        ],
+        [
+          "v_bfe_u32",
+          173
+        ],
+        [
+          "v_fma_mixlo_f16",
+          134
+        ],
+        [
+          "v_fma_mixhi_f16",
+          128
+        ],
+        [
+          "v_dual_mov_b32",
+          120
+        ],
+        [
+          "s_delay_alu",
+          102
+        ],
+        [
+          "s_waitcnt",
+          82
+        ],
+        [
+          "v_mov_b32_e32",
+          64
+        ],
+        [
+          "v_add_co_u32",
+          63
+        ],
+        [
+          "v_and_b16",
+          63
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          58
+        ],
+        [
+          "s_cbranch_execz",
+          46
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 88,
+        "vgpr_granule": 88,
+        "waves_per_cu_by_vgpr": 23,
+        "waves_per_cu": 23,
+        "waves_per_simd": 5,
+        "occupancy_fraction": 0.71875,
+        "threads_per_cu": 736,
+        "blocks_per_cu": 5
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151gguf_q4_k_selected_dual_wmma_prefill_compact_kernelIDF16_Li64ELi16EEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 105,
+      "sgpr": 46,
+      "static_instructions": 1919,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          352
+        ],
+        [
+          "v_bfe_u32",
+          203
+        ],
+        [
+          "v_dual_mov_b32",
+          200
+        ],
+        [
+          "v_fma_mixlo_f16",
+          160
+        ],
+        [
+          "v_fma_mixhi_f16",
+          131
+        ],
+        [
+          "v_and_b16",
+          75
+        ],
+        [
+          "s_delay_alu",
+          65
+        ],
+        [
+          "s_waitcnt",
+          52
+        ],
+        [
+          "v_mov_b32_e32",
+          43
+        ],
+        [
+          "v_lshrrev_b32_e32",
+          40
+        ],
+        [
+          "v_and_b32_e32",
+          39
+        ],
+        [
+          "s_or_b32",
+          38
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 105,
+        "vgpr_granule": 112,
+        "waves_per_cu_by_vgpr": 18,
+        "waves_per_cu": 18,
+        "waves_per_simd": 4,
+        "occupancy_fraction": 0.5625,
+        "threads_per_cu": 576,
+        "blocks_per_cu": 4
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_151gguf_q4_k_selected_dual_wmma_prefill_compact_kernelIDF16_Li64ELi32EEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 128,
+      "sgpr": 65,
+      "static_instructions": 2686,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          398
+        ],
+        [
+          "v_bfe_u32",
+          265
+        ],
+        [
+          "v_fma_mixhi_f16",
+          200
+        ],
+        [
+          "v_fma_mixlo_f16",
+          181
+        ],
+        [
+          "s_delay_alu",
+          177
+        ],
+        [
+          "v_dual_mov_b32",
+          120
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          100
+        ],
+        [
+          "v_add_co_u32",
+          92
+        ],
+        [
+          "v_mov_b32_e32",
+          91
+        ],
+        [
+          "s_waitcnt",
+          79
+        ],
+        [
+          "v_and_b16",
+          73
+        ],
+        [
+          "s_cbranch_execz",
+          59
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 128,
+        "vgpr_granule": 128,
+        "waves_per_cu_by_vgpr": 16,
+        "waves_per_cu": 16,
+        "waves_per_simd": 4,
+        "occupancy_fraction": 0.5,
+        "threads_per_cu": 512,
+        "blocks_per_cu": 4
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_166gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile32_kernelItEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 61,
+      "sgpr": 40,
+      "static_instructions": 1126,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          193
+        ],
+        [
+          "v_bfe_u32",
+          106
+        ],
+        [
+          "v_fma_mixlo_f16",
+          74
+        ],
+        [
+          "v_cvt_f16_f32_e32",
+          68
+        ],
+        [
+          "v_fma_mixhi_f16",
+          54
+        ],
+        [
+          "s_waitcnt",
+          49
+        ],
+        [
+          "s_delay_alu",
+          46
+        ],
+        [
+          "v_and_b32_e32",
+          46
+        ],
+        [
+          "v_dual_mov_b32",
+          38
+        ],
+        [
+          "v_and_b16",
+          34
+        ],
+        [
+          "v_mov_b16_e32",
+          33
+        ],
+        [
+          "v_mov_b32_e32",
+          32
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 61,
+        "vgpr_granule": 64,
+        "waves_per_cu_by_vgpr": 32,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_168gguf_q4_k_selected_dual_wmma_prefill_compact_tail_by_expert16_kernelItEEvPKT_PKlS5_PKhS7_PS1_lllll",
+      "vgpr": 51,
+      "sgpr": 30,
+      "static_instructions": 726,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          85
+        ],
+        [
+          "v_cvt_f16_f32_e32",
+          85
+        ],
+        [
+          "v_and_b32_e32",
+          45
+        ],
+        [
+          "v_fma_mixlo_f16",
+          43
+        ],
+        [
+          "v_fma_mixhi_f16",
+          40
+        ],
+        [
+          "v_lshlrev_b32_e32",
+          39
+        ],
+        [
+          "s_delay_alu",
+          35
+        ],
+        [
+          "v_bfe_u32",
+          33
+        ],
+        [
+          "v_dual_mov_b32",
+          32
+        ],
+        [
+          "s_and_saveexec_b32",
+          22
+        ],
+        [
+          "s_waitcnt",
+          20
+        ],
+        [
+          "s_cbranch_execz",
+          20
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 51,
+        "vgpr_granule": 56,
+        "waves_per_cu_by_vgpr": 36,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_162gguf_q4_k_selected_dual_wmma_prefill_compact_tailcold16_kernelItEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 51,
+      "sgpr": 38,
+      "static_instructions": 724,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          80
+        ],
+        [
+          "v_cvt_f16_f32_e32",
+          58
+        ],
+        [
+          "v_bfe_u32",
+          55
+        ],
+        [
+          "v_and_b32_e32",
+          51
+        ],
+        [
+          "s_delay_alu",
+          40
+        ],
+        [
+          "v_lshlrev_b32_e32",
+          35
+        ],
+        [
+          "v_fma_mixhi_f16",
+          35
+        ],
+        [
+          "v_fma_mixlo_f16",
+          32
+        ],
+        [
+          "v_dual_mov_b32",
+          30
+        ],
+        [
+          "s_waitcnt",
+          23
+        ],
+        [
+          "s_or_b32",
+          20
+        ],
+        [
+          "s_cbranch_execz",
+          20
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 51,
+        "vgpr_granule": 56,
+        "waves_per_cu_by_vgpr": 36,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_166gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile32_kernelIDF16_EEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 60,
+      "sgpr": 40,
+      "static_instructions": 918,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          131
+        ],
+        [
+          "v_bfe_u32",
+          108
+        ],
+        [
+          "v_fma_mixlo_f16",
+          105
+        ],
+        [
+          "v_fma_mixhi_f16",
+          91
+        ],
+        [
+          "v_and_b16",
+          43
+        ],
+        [
+          "s_waitcnt",
+          41
+        ],
+        [
+          "v_dual_mov_b32",
+          38
+        ],
+        [
+          "s_delay_alu",
+          28
+        ],
+        [
+          "v_and_b32_e32",
+          26
+        ],
+        [
+          "v_lshrrev_b16",
+          22
+        ],
+        [
+          "v_mov_b32_e32",
+          21
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          20
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 60,
+        "vgpr_granule": 64,
+        "waves_per_cu_by_vgpr": 32,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_168gguf_q4_k_selected_dual_wmma_prefill_compact_tail_by_expert16_kernelIDF16_EEvPKT_PKlS5_PKhS7_PS1_lllll",
+      "vgpr": 47,
+      "sgpr": 30,
+      "static_instructions": 599,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          111
+        ],
+        [
+          "v_dual_mov_b32",
+          48
+        ],
+        [
+          "v_fma_mixhi_f16",
+          39
+        ],
+        [
+          "v_fma_mixlo_f16",
+          36
+        ],
+        [
+          "v_bfe_u32",
+          34
+        ],
+        [
+          "s_delay_alu",
+          33
+        ],
+        [
+          "s_and_saveexec_b32",
+          24
+        ],
+        [
+          "s_or_b32",
+          19
+        ],
+        [
+          "s_cbranch_execz",
+          19
+        ],
+        [
+          "s_waitcnt",
+          17
+        ],
+        [
+          "v_and_b16",
+          17
+        ],
+        [
+          "v_mov_b32_e32",
+          16
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 47,
+        "vgpr_granule": 48,
+        "waves_per_cu_by_vgpr": 42,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_162gguf_q4_k_selected_dual_wmma_prefill_compact_tailcold16_kernelIDF16_EEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 47,
+      "sgpr": 38,
+      "static_instructions": 588,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          57
+        ],
+        [
+          "v_bfe_u32",
+          57
+        ],
+        [
+          "v_fma_mixlo_f16",
+          51
+        ],
+        [
+          "v_fma_mixhi_f16",
+          45
+        ],
+        [
+          "s_delay_alu",
+          43
+        ],
+        [
+          "v_dual_mov_b32",
+          26
+        ],
+        [
+          "s_and_saveexec_b32",
+          21
+        ],
+        [
+          "s_cbranch_execz",
+          20
+        ],
+        [
+          "v_lshrrev_b16",
+          20
+        ],
+        [
+          "v_and_b16",
+          19
+        ],
+        [
+          "s_waitcnt",
+          18
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          18
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 47,
+        "vgpr_granule": 48,
+        "waves_per_cu_by_vgpr": 42,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_162gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta32_kernelItEEvPKT_PKlS5_S5_PKhS7_PKDF16_S9_PS1_llllll",
+      "vgpr": 55,
+      "sgpr": 60,
+      "static_instructions": 1424,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          149
+        ],
+        [
+          "v_bfe_u32",
+          112
+        ],
+        [
+          "s_delay_alu",
+          93
+        ],
+        [
+          "v_cvt_f16_f32_e32",
+          85
+        ],
+        [
+          "s_mov_b64",
+          75
+        ],
+        [
+          "v_fma_mixhi_f16",
+          66
+        ],
+        [
+          "v_fma_mixlo_f16",
+          56
+        ],
+        [
+          "v_and_b32_e32",
+          54
+        ],
+        [
+          "v_dual_mov_b32",
+          51
+        ],
+        [
+          "v_add_co_u32",
+          50
+        ],
+        [
+          "v_mul_lo_u32",
+          49
+        ],
+        [
+          "s_mul_i32",
+          46
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 55,
+        "vgpr_granule": 56,
+        "waves_per_cu_by_vgpr": 36,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_162gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta32_kernelIDF16_EEvPKT_PKlS5_S5_PKhS7_PKDF16_S9_PS1_llllll",
+      "vgpr": 55,
+      "sgpr": 60,
+      "static_instructions": 1162,
+      "top_opcodes": [
+        [
+          "v_cvt_f32_ubyte0_e32",
+          145
+        ],
+        [
+          "v_bfe_u32",
+          119
+        ],
+        [
+          "s_mov_b64",
+          80
+        ],
+        [
+          "v_fma_mixhi_f16",
+          71
+        ],
+        [
+          "s_delay_alu",
+          68
+        ],
+        [
+          "v_fma_mixlo_f16",
+          67
+        ],
+        [
+          "s_mul_i32",
+          50
+        ],
+        [
+          "v_dual_mov_b32",
+          48
+        ],
+        [
+          "v_mul_lo_u32",
+          42
+        ],
+        [
+          "v_add_co_ci_u32_e64",
+          41
+        ],
+        [
+          "v_add_co_u32",
+          39
+        ],
+        [
+          "s_waitcnt",
+          30
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 55,
+        "vgpr_granule": 56,
+        "waves_per_cu_by_vgpr": 36,
+        "waves_per_cu": 32,
+        "waves_per_simd": 8,
+        "occupancy_fraction": 1.0,
+        "threads_per_cu": 1024,
+        "blocks_per_cu": 8
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_147gguf_q4_k_selected_dual_wmma_iu8_prefill_kernelItEEvPKT_PKlS5_S5_PKhS7_PS1_llllll",
+      "vgpr": 169,
+      "sgpr": 40,
+      "static_instructions": 845,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          65
+        ],
+        [
+          "v_cvt_f32_i32_e32",
+          63
+        ],
+        [
+          "v_fma_f32",
+          45
+        ],
+        [
+          "v_mov_b32_e32",
+          35
+        ],
+        [
+          "s_waitcnt",
+          33
+        ],
+        [
+          "s_or_b32",
+          32
+        ],
+        [
+          "v_dual_mov_b32",
+          31
+        ],
+        [
+          "v_fmac_f32_e32",
+          30
+        ],
+        [
+          "v_max3_f32",
+          25
+        ],
+        [
+          "v_mul_f32_e32",
+          25
+        ],
+        [
+          "global_load_u16",
+          20
+        ],
+        [
+          "v_cvt_i32_f32_e32",
+          20
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 169,
+        "vgpr_granule": 176,
+        "waves_per_cu_by_vgpr": 11,
+        "waves_per_cu": 11,
+        "waves_per_simd": 2,
+        "occupancy_fraction": 0.34375,
+        "threads_per_cu": 352,
+        "blocks_per_cu": 2
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_152gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernelItLi3ELi16EEEvPKT_PKlS5_S5_PKhS7_PS1_PiS9_lfllllll",
+      "vgpr": 211,
+      "sgpr": 40,
+      "static_instructions": 1297,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          117
+        ],
+        [
+          "v_mov_b32_e32",
+          96
+        ],
+        [
+          "s_or_b32",
+          67
+        ],
+        [
+          "s_cbranch_execz",
+          53
+        ],
+        [
+          "v_fma_f32",
+          52
+        ],
+        [
+          "v_cvt_f32_i32_e32",
+          48
+        ],
+        [
+          "s_mov_b32",
+          44
+        ],
+        [
+          "v_add_nc_u32_e32",
+          35
+        ],
+        [
+          "v_cvt_i32_f32_e32",
+          35
+        ],
+        [
+          "s_and_saveexec_b32",
+          34
+        ],
+        [
+          "v_med3_i32",
+          33
+        ],
+        [
+          "v_mul_f32_e32",
+          28
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 211,
+        "vgpr_granule": 216,
+        "waves_per_cu_by_vgpr": 9,
+        "waves_per_cu": 9,
+        "waves_per_simd": 2,
+        "occupancy_fraction": 0.28125,
+        "threads_per_cu": 288,
+        "blocks_per_cu": 2
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_152gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernelItLi3ELi32EEEvPKT_PKlS5_S5_PKhS7_PS1_PiS9_lfllllll",
+      "vgpr": 216,
+      "sgpr": 40,
+      "static_instructions": 1315,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          127
+        ],
+        [
+          "v_mov_b32_e32",
+          83
+        ],
+        [
+          "s_or_b32",
+          71
+        ],
+        [
+          "s_mov_b32",
+          46
+        ],
+        [
+          "s_cbranch_execz",
+          46
+        ],
+        [
+          "v_cvt_f32_i32_e32",
+          44
+        ],
+        [
+          "v_and_b16",
+          40
+        ],
+        [
+          "v_fma_f32",
+          38
+        ],
+        [
+          "v_cvt_i32_f32_e32",
+          34
+        ],
+        [
+          "v_rndne_f32_e32",
+          33
+        ],
+        [
+          "v_med3_i32",
+          33
+        ],
+        [
+          "s_and_saveexec_b32",
+          32
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 216,
+        "vgpr_granule": 216,
+        "waves_per_cu_by_vgpr": 9,
+        "waves_per_cu": 9,
+        "waves_per_simd": 2,
+        "occupancy_fraction": 0.28125,
+        "threads_per_cu": 288,
+        "blocks_per_cu": 2
+      }
+    },
+    {
+      "symbol": "_ZN12_GLOBAL__N_152gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernelItLi2ELi16EEEvPKT_PKlS5_S5_PKhS7_PS1_PiS9_lfllllll",
+      "vgpr": 176,
+      "sgpr": 40,
+      "static_instructions": 1240,
+      "top_opcodes": [
+        [
+          "s_delay_alu",
+          130
+        ],
+        [
+          "v_mov_b32_e32",
+          78
+        ],
+        [
+          "s_or_b32",
+          62
+        ],
+        [
+          "s_mov_b32",
+          50
+        ],
+        [
+          "v_fma_f32",
+          50
+        ],
+        [
+          "s_cbranch_execz",
+          49
+        ],
+        [
+          "v_and_b16",
+          34
+        ],
+        [
+          "s_waitcnt",
+          33
+        ],
+        [
+          "s_and_saveexec_b32",
+          33
+        ],
+        [
+          "v_cvt_f32_i32_e32",
+          33
+        ],
+        [
+          "v_mul_f32_e32",
+          29
+        ],
+        [
+          "v_med3_i32",
+          27
+        ]
+      ],
+      "occupancy": {
+        "vgpr": 176,
+        "vgpr_granule": 176,
+        "waves_per_cu_by_vgpr": 11,
+        "waves_per_cu": 11,
+        "waves_per_simd": 2,
+        "occupancy_fraction": 0.34375,
+        "threads_per_cu": 352,
+        "blocks_per_cu": 2
+      }
+    }
+  ]
+}
