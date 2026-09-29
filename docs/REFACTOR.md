@@ -7530,3 +7530,36 @@ An earlier revision of this ledger listed this as the next lever to implement; i
 was implemented, measured, and rejected. The kernel now carries a comment at the
 precompute loop recording why the table is per-token. Full measurements are in
 the campaign worklog entry and `benchmarks/results/`.
+
+## GR up-projection: unregistered LDS-staged f32 prototype
+
+`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_gr_staged_f32.{hip,py}` is a
+screen prototype, not a production variant. It is not registered, not reachable
+from the engine, and its only consumer is the `staged_f32` arm in
+`scripts/qwen4exp_gr_projection_screen.py` plus
+`tests/test_gpu_qwen4exp_gr_staged_f32.py`.
+
+It exists because the ledger recorded the `dense_wide256` tile's 4.59x speed and
+its numerical-gate failure as one fact, which made the weight-traffic mechanism
+look unusable at production precision. The prototype separates them: 2.388x on
+the up projection at a relative-L2 deviation of 7.442e-08 from the exact kernel,
+against the wide tile's 4.709e-05.
+
+Removal or promotion trigger, whichever comes first:
+
+- **Promote** by registering it as the hyper_connection up-projection variant
+  and clearing the `docs/EXECUTION-PROFILES.md` production gate, which requires
+  a registered strict fallback because the prototype is not bit-exact with the
+  parent. At that point the screen arm becomes a gate test and this entry's
+  "unregistered" claim stops being true.
+- **Remove** if the production gate fails, or if the remaining 1.92x is
+  collected by a different mechanism. Delete the `.hip`/`.py` pair, the
+  `staged_f32` arms in the screen, and the GPU test; archive the evidence README
+  as the rejection record.
+
+Do not leave it in the tree as a third permanent GR route. Two things would make
+it actively misleading if left alone: it loses on the down projection (0.859x,
+an occupancy defect at 40 blocks for 40 CUs, not a mechanism failure), and its
+`BN=128` configuration is measurably worse (3.038 ms against 2.737 ms) because
+the 33 KB tile drops residency to one block per CU. Both are recorded in the
+kernel header so a future reader does not re-run them.
