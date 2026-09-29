@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_mr1_reorderfree_price",
+  "performance_claim": false,
+  "created_at": "2026-09-29T18:21:18.985886+00:00",
+  "question": "MR-1's next step: 'First try structures preserving the existing reduction: fold the shared-expert gate row into the router GEMM (gufo computes both in one GEMM), or remove a pass. Price the reorder-free share first'",
+  "source_attribution": "benchmarks/results/2026-09-17-qwen4exp-per-role-cost/role-analysis.json",
+  "source_window_ms": 22698.625927,
+  "tensor_shapes": {
+    "router_ffn_gate_inp": {
+      "shape": [
+        512,
+        2560
+      ],
+      "type": "F32"
+    },
+    "shared_expert_gate_row_ffn_gate_inp_shexp": {
+      "shape": [
+        2560
+      ],
+      "type": "F32",
+      "note": "a VECTOR - one output row, not a matrix"
+    },
+    "shared_expert_gate_matrix_ffn_gate_shexp": {
+      "shape": [
+        640,
+        2560
+      ],
+      "type": "Q8_0",
+      "note": "the shared expert's own gate projection, a different tensor"
+    }
+  },
+  "router_kernel": {
+    "kernel": "qwen35_router_logits_f32_token_tile_dense_exact_kernel",
+    "ms": 617.805,
+    "share_pct": 2.722
+  },
+  "shared_expert_gate_row_kernel": {
+    "kernel": "dense_gemv_out_kernel",
+    "ms": 3.286,
+    "share_pct": 0.0145
+  },
+  "reorder_free_ceiling_ms": 3.286,
+  "reorder_free_ceiling_pct": 0.0145,
+  "rejected_reordered_lever_pct": 1.65,
+  "ratio_reorder_free_vs_rejected": 114.0,
+  "verdict": "the reorder-free share is 0.0145% - 114x smaller than the rejected reordered lever's 1.65%; it cannot recover that win, and 0.0145% is itself an over-estimate because the work still happens inside the router kernel"
+}
