@@ -332,8 +332,15 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
     _wave_scale: bool = False,
+    _no_gate: bool = False,
 ) -> None:
-    """Launch exact raw-Q8 GR up, sigmoid gate, and branch mean."""
+    """Launch exact raw-Q8 GR up, sigmoid gate, and branch mean.
+
+    ``_no_gate`` selects the strict variant that omits the ``gate`` store. The
+    gate values are already in registers and already feed ``mixed``, so ``mixed``
+    is bit-identical and ``gate_ptr`` may be 0. See
+    :func:`gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32`.
+    """
 
     _validate("gguf_q8_0", rows, in_features, branches * hidden, threads)
     if branches != 4:
@@ -342,11 +349,19 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
         raise ValueError("hidden must be a positive multiple of 2")
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
+    if _no_gate:
+        symbol = (
+            "hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32"
+        )
+    elif _wave_scale:
+        symbol = (
+            "hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32"
+        )
+    else:
+        symbol = "hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32"
     fn = _cached_fn(
         library,
-        ("hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32"
-         if _wave_scale else
-         "hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32"),
+        symbol,
         [_VOID, _VOID, _VOID, _VOID, _VOID,
          _I64, _I64, _I64, _I64, _I64, _VOID],
     )
@@ -368,6 +383,30 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
 
 def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32(*args, **kwargs):
     gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(*args, **kwargs, _wave_scale=True)
+
+
+def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32(
+    x_ptr: int,
+    qweight_ptr: int,
+    normalized_ptr: int,
+    mixed_ptr: int,
+    rows: int,
+    in_features: int,
+    branches: int,
+    hidden: int,
+    **kwargs,
+) -> None:
+    """Strict GR up + sigmoid + branch mean with the dead ``gate`` store removed.
+
+    Produces a bit-identical ``mixed`` to the gate-writing variant. The gate
+    tensor is a documented dead write: ``run_qwen4_exp_gr_read`` returns it but
+    no production consumer reads it (ledger HC-3 census).
+    """
+
+    gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
+        x_ptr, qweight_ptr, normalized_ptr, 0, mixed_ptr, rows, in_features,
+        branches, hidden, _no_gate=True, **kwargs,
+    )
 
 
 gguf_q8_0_gemv_f32_f32_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_f32_f32_out"))
@@ -1735,6 +1774,7 @@ __all__ = [
     "gguf_q8_0_gemv_coltile8_rowbatch4_pipelined_f32_f32_out",
     "gguf_q8_0_gemv_coltile4_rowbatch8_pipelined_f32_f32_out",
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32",
+    "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32",
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32",
     "gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out",
     "gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out",

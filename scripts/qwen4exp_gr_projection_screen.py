@@ -69,6 +69,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (  # noqa: E402
     gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out,
     gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out,
     gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32,
+    gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import (  # noqa: E402
     f32_to_f16,
@@ -159,6 +160,14 @@ def _up_arms(device: Device, weight) -> dict[str, Any]:
             device.mixed.ptr, rows, k, BRANCHES, hidden, runtime=device.runtime,
         )
 
+    def fused_no_gate() -> None:
+        # Strict variant: same arithmetic, same `mixed`, no gate store. Writes
+        # `mixed` only, so it is compared against the gate-writing arm's mixed.
+        gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32(
+            device.x.ptr, weight.ptr, device.normalized.ptr,
+            device.mixed.ptr, rows, k, BRANCHES, hidden, runtime=device.runtime,
+        )
+
     def unfused() -> None:
         gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out(
             device.x.ptr, weight.ptr, device.out.ptr, rows, k, n, runtime=device.runtime,
@@ -213,6 +222,7 @@ def _up_arms(device: Device, weight) -> dict[str, Any]:
 
     return dict(
         fused_exact=dict(run=fused, gate=True, mixed=device.mixed),
+        fused_no_gate=dict(run=fused_no_gate, gate=False, mixed=device.mixed),
         unfused_exact=dict(run=unfused, gate=True, mixed=device.mixed),
         wide_f32in=dict(run=wide_f32in, gate=False, mixed=device.mixed),
         wide_f16in=dict(run=wide_f16in, gate=False, mixed=device.mixed),
