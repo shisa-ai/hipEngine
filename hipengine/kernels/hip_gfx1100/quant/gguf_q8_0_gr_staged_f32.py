@@ -73,12 +73,27 @@ def gr_staged_f32_up(
     in_features: int,
     out_features: int,
     *,
+    threads: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch the staged-f32 GR-up prototype over Q8_0 weight bytes."""
+    """Launch the staged-f32 GR-up prototype over Q8_0 weight bytes.
 
+    ``threads`` is accepted and ignored so this matches the ``raw`` launch ABI
+    the runtime's GGUF linear dispatch uses (``_launch_raw`` forwards its kwargs
+    verbatim). The prototype's block size is fixed at 256 by its BM=128/BN=64
+    tiling; honouring a caller-supplied thread count would silently change the
+    tiling. Passing a value that is not None and not 256 raises rather than
+    ignoring it, because a caller that believes it is selecting a geometry
+    should find out that it is not.
+    """
+
+    if threads is not None and threads != 256:
+        raise ValueError(
+            "the staged-f32 tile has a fixed 256-thread block; "
+            f"got threads={threads}"
+        )
     if rows <= 0:
         raise ValueError("rows must be positive")
     if in_features <= 0 or in_features % 32 != 0:

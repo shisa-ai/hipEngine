@@ -7586,3 +7586,50 @@ Python wrapper, the screen's `fused_no_gate` arm, and the GPU test once either
 GR kernel itself is replaced — for example by the staged-f32 path in the entry
 above, which does not write a gate tensor at all. Do not leave a slower variant
 registered as an option; nothing selects it today, and nothing should.
+
+## Staged-f32 dense Q8_0 route: registered, off by default, owes a gate
+
+`staged_f32_bm128_bn64_bk32` is registered for
+`(hip_gfx1151, linear, gguf_q8_0)` and selected only when
+`HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS` names a layer scope. It is a
+production-gate candidate, not a default.
+
+Measured 1.23× to 2.22× faster than the exact coltile leaf across all six Q8_0
+dense projections of a layer step (`attn_qkv`, `attn_gate`, `ssm_out`,
+`ffn_{gate,up,down}_shexp`), best variant in 30/30 (layer, tensor) cases, with
+relative L2 4.6e-07 to 9.1e-07 — 4–8 f32 ulp, against the f16 WMMA sibling
+route's 4.7e-05. Evidence:
+`benchmarks/results/2026-09-29-dp8-staged-f32-dense-family/`.
+
+It is **not bit-identical** to the leaf it replaces, so it is a T1/T2 arithmetic
+change under `docs/EXECUTION-PROFILES.md` and cannot be promoted on strict
+parity. Two exits:
+
+- **Promote** by passing the calibrated production gate (mean/p95/p99/max KL,
+  top-1 by category, determinism, isolation, task quality) at the declared layer
+  scope, then making that scope the default. The exact coltile leaf stays
+  registered as the strict fallback either way.
+- **Remove** if the gate fails: delete
+  `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_gr_staged_f32.{hip,py}`, the
+  registration block and `STAGED_F32_VARIANT` in
+  `hipengine/kernels/hip_gfx1151/__init__.py`, `_Q8_STAGED_F32_LAYERS_ENV`,
+  `_q8_staged_f32_layers`, `_Q8_STAGED_F32_VARIANT`,
+  `_raw_k_staged_f32_dispatch` and its call site in
+  `hipengine/runtime/gguf_linear.py`, and
+  `tests/test_unit_qwen4exp_staged_f32_route.py`. Keep the evidence README as
+  the rejection record.
+
+Two things to know before touching this:
+
+- **Unset means off, and `=0` means layer 0, not off.** Layer 0 is a real index
+  and a one-layer scope is legitimate, so there is no in-band way to spell both.
+  To disable, unset the variable or set it to the empty string. Pinned by
+  `test_layer_zero_is_layer_zero_not_off`.
+- **The variant name exists in two places.** `STAGED_F32_VARIANT` in the backend
+  package and `_Q8_STAGED_F32_VARIANT` in `gguf_linear.py`, kept separate so
+  `hipengine.runtime` does not import a backend package eagerly. If they drift,
+  the dispatch silently no-ops and the route looks enabled while doing nothing.
+  `test_variant_name_agrees_between_runtime_and_backend_package` is the check.
+
+Do not leave this route on by default without the gate. The whole reason it is
+registered-but-off is that its arithmetic differs from the leaf it replaces.
