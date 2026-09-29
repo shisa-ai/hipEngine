@@ -62,16 +62,24 @@ def _gate():
     return module
 
 
+# The admission suite declares 24 transitions, not the canonical 128. A hardcoded
+# 129 here made the trajectory checks fail and left the blocker open for the
+# wrong reason - a misleading accounting defect rather than the honest row-floor
+# one - so the count is read from the fixture and passed through.
+HELDOUT_DECODE_STEPS = 24
+
+
 class _Capture:
     """The minimum shape ``qualification_coverage`` reads."""
 
     def __init__(self, prompt_id: str, category: str):
         self.prompt_id = prompt_id
         self.category = category
-        self.strict = tuple({} for _ in range(129))
+        self.strict = tuple({} for _ in range(HELDOUT_DECODE_STEPS + 1))
         self.candidate_runs = {
             "candidate": tuple(
-                tuple({} for _ in range(129)) for _ in range(3)
+                tuple({} for _ in range(HELDOUT_DECODE_STEPS + 1))
+                for _ in range(3)
             )
         }
 
@@ -86,6 +94,7 @@ def _coverage(gate, rows):
         fixture_sha256=gate.ADMISSION_FIXTURE_SHA256,
         prefill_chunk_size=1024,
         fixture_rows=list(rows),
+        heldout_decode_steps=HELDOUT_DECODE_STEPS,
     )
 
 
@@ -153,6 +162,28 @@ def test_short_heldout_suite_is_refused_as_a_control_not_a_qualification():
     )
     assert verdict["category_heldout_qualification_claim"] is False
     assert "category-heldout numerical evidence" in verdict["qualification_blockers"]
+
+
+def test_heldout_uses_the_fixture_declared_transition_count():
+    """The heldout protocol is not the canonical 128-step one.
+
+    The admission suite declares 24 transitions. Assuming 128 made the
+    trajectory checks fail, which left the blocker open for the wrong reason:
+    the artifact would have blamed the trajectories instead of the row shortfall.
+    """
+
+    gate = _gate()
+    rows = [int(c["prompt_tokens"]) for c in json.loads(ADMISSION.read_text())["cases"]]
+    heldout = _coverage(gate, rows)["category_heldout"]
+    assert heldout["decode_steps"] == HELDOUT_DECODE_STEPS
+    assert heldout["observed_rows_per_trajectory"] == HELDOUT_DECODE_STEPS + 1
+    assert heldout["checks"]["heldout_teacher_rows"] is True, (
+        "the trajectory check must pass on correctly-shaped heldout captures, or "
+        "it masks the real blocker"
+    )
+    assert heldout["checks"]["heldout_candidate_three_repeats"] is True
+    # ...and the only failing check is the one that matters here.
+    assert heldout["checks"]["heldout_prompts_exceed_route_row_floor"] is False
 
 
 def test_row_floor_check_is_not_vacuous():
