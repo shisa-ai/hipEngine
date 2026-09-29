@@ -192,6 +192,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q8_0_iu8_wmma_prefill_f32_f32,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_gr_staged_f32 import (
+    gr_staged_f32_up,
+)
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen4_exp_materialize import Qwen4ExpResidentWeights
 from hipengine.loading.qwen4_exp_gguf import Qwen4ExpGGUFConfig
@@ -3047,7 +3050,50 @@ def run_qwen4_exp_gr_read(
     )
     gr_iu8 = fused_up and _qwen4_exp_gr_iu8_enabled(rows)
     gr_wide = fused_up and not gr_iu8 and _qwen4_exp_gr_wide_enabled(rows, low_rank)
-    if gr_wide:
+    gr_staged = (
+        fused_up
+        and not gr_iu8
+        and not gr_wide
+        and _qwen4_exp_gr_staged_enabled(rows, low_rank)
+    )
+    if gr_staged:
+        # HC-1 candidate: the same LDS-staged tiling as the wide route, but the
+        # multiply stays f32 FMA on f32 operands, so the only arithmetic
+        # difference from the exact chain is the summation order. Screened at
+        # 2.388x over the fused exact kernel with the arithmetic intact
+        # (benchmarks/results/2026-09-29-gr-staged-f32-screen/). The epilogue is
+        # the retained exact sigmoid plus gated-mean pair, as in the wide route.
+        # Default-off: the GR numerical gate is a cliff at ~5e-9
+        # prefill-boundary KL and this route's screened drift is ~1e-6 relative
+        # L2, so it has to cross that screen before it can be selected.
+        gr_staged_f32_up(
+            scratch.low_rank.ptr,
+            up_weight.allocation("raw").tensor.ptr,
+            scratch.gate.ptr,
+            rows,
+            low_rank,
+            residual_width,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        qwen4_exp_sigmoid_f32(
+            scratch.gate.ptr,
+            scratch.gate.ptr,
+            rows * residual_width,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        qwen4_exp_gated_mean_f32(
+            scratch.normalized.ptr,
+            scratch.gate.ptr,
+            scratch.mixed.ptr,
+            rows,
+            branches,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    elif gr_wide:
         # Measured 4.38x faster than the fused exact kernel at rows=1024,
         # K=320, N=10240 (1.4925 ms against 6.5379 ms, real weights). The
         # projection is the same tile the dense route already ships, so the
@@ -3356,6 +3402,26 @@ def _qwen4_exp_gr_iu8_enabled(rows: int) -> bool:
         os.environ.get("HIPENGINE_QWEN4_EXP_GR_IU8", "0")
         not in {"", "0", "false", "False"}
         and rows > 256
+    )
+
+
+def _qwen4_exp_gr_staged_enabled(rows: int, low_rank: int) -> bool:
+    """Default-off LDS-staged f32 GR up route (HC-1 candidate).
+
+    Keeps the wide route's tiling and LDS staging but does the multiply in f32
+    FMA on f32 operands, so the only arithmetic difference from the exact chain
+    is the summation order. Screened at 2.388x over the fused exact kernel.
+
+    The tile is fixed at 256 threads with a BM=128/BN=64 shape, so ``low_rank``
+    (the K extent) must be a multiple of the K-tile; the launcher rejects a
+    mismatched ``threads`` rather than silently retiling.
+    """
+
+    return (
+        os.environ.get("HIPENGINE_QWEN4_EXP_GR_STAGED", "0")
+        not in {"", "0", "false", "False"}
+        and rows > 256
+        and low_rank % 64 == 0
     )
 
 
