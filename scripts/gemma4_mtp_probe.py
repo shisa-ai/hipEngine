@@ -75,7 +75,12 @@ def main() -> int:
         return 1
 
     started = time.perf_counter()
-    plain = llm.generate([args.prompt], params)
+    # `generate_detailed` is the same call `generate` makes -- `generate` is
+    # `[output.text for output in self.generate_detailed(...)]` -- and it is the
+    # one that returns the token IDs. The plain route has to come back as an
+    # output object, or its tokens cannot be compared with the speculative
+    # route's and the divergence can only be read off character lengths.
+    plain = llm.generate_detailed([args.prompt], params)
     plain_s = time.perf_counter() - started
     plain_text = plain[0].text if hasattr(plain[0], "text") else str(plain[0])
     print(f"plain generate()        : {args.tokens / plain_s:7.2f} tok/s  ({plain_s:.2f}s)")
@@ -90,13 +95,46 @@ def main() -> int:
 
     spec_text = spec[0].text if hasattr(spec[0], "text") else str(spec[0])
     print(f"generate_speculative_mtp_detailed: {args.tokens / spec_s:7.2f} tok/s  ({spec_s:.2f}s)")
-    plain_tokens = getattr(plain[0], "token_ids", None)
-    spec_tokens = getattr(spec[0], "token_ids", None)
+    # `GenerationOutput` carries `generated_token_ids`, not `token_ids`. An
+    # earlier version of this probe asked for the latter, got `None`, and printed
+    # no token counts at all -- and it read the plain route through `generate`,
+    # which returns bare strings, so the guard could never be satisfied. The token
+    # sequences are the thing that can actually be compared.
+    plain_tokens = getattr(plain[0], "generated_token_ids", None)
+    spec_tokens = getattr(spec[0], "generated_token_ids", None)
     if plain_tokens is not None and spec_tokens is not None:
         print(
             f"tokens emitted          : plain {len(plain_tokens)}, "
             f"spec {len(spec_tokens)}  (max_tokens={args.tokens})"
         )
+        # The two rates above divide the *requested* token count by the wall time,
+        # which is the protocol the recorded baseline used. A route that stopped
+        # early -- an EOS, or a cycle that committed fewer tokens than requested --
+        # therefore reports a rate for tokens it never produced, and the ratio can
+        # come out far above any real speedup. Say so instead of leaving it to be
+        # noticed.
+        for name, tokens in (("plain", plain_tokens), ("spec", spec_tokens)):
+            if len(tokens) != args.tokens:
+                print(
+                    f"  {name} emitted {len(tokens)} of {args.tokens} requested "
+                    f"tokens ({name} tok/s and the speedup above are computed over "
+                    f"the request, not over what ran)"
+                )
+        if tuple(plain_tokens) != tuple(spec_tokens):
+            shared = 0
+            for plain_id, spec_id in zip(plain_tokens, spec_tokens):
+                if plain_id != spec_id:
+                    break
+                shared += 1
+            print(
+                f"  shared token prefix   : {shared} of "
+                f"{min(len(plain_tokens), len(spec_tokens))}"
+            )
+            if shared < min(len(plain_tokens), len(spec_tokens)):
+                print(
+                    f"  first divergent token : index {shared}: "
+                    f"plain {plain_tokens[shared]!r} vs spec {spec_tokens[shared]!r}"
+                )
     print(f"speedup                 : {plain_s / spec_s:7.3f}x")
     print(f"outputs identical       : {plain_text == spec_text}")
     if plain_text != spec_text:

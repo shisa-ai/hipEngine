@@ -215,6 +215,16 @@ class Gemma4MTPTextProvider:
             phase_calls[name] = phase_calls.get(name, 0) + 1
 
         prefill_started = time.perf_counter()
+        # A runner carries the previous request's position and KV, and this route
+        # has to give that back before its own prefill, the way the AR route does
+        # per prompt (``gemma4_gguf.py`` ``generate_detailed`` calls
+        # ``runner.reset()``). Without it the prefill appends this prompt after
+        # the last request's tokens and attends over them: the output becomes a
+        # function of what ran before it rather than of the prompt, which is both
+        # wrong for a server and enough to break the comparison this route's
+        # whole design rests on -- the batched verify reproduces a single-token
+        # forward *for this request's own context*.
+        runner.reset()
         logits = runner.forward(token_ids, apply_softcap=False)
         record("target_prefill", prefill_started)
 
@@ -255,6 +265,15 @@ class Gemma4MTPTextProvider:
                 apply_softcap=False,
                 logits_rows=len(drafts) + 1,
             )
+            if rows.ndim == 1:
+                # ``Gemma4Runner.forward`` returns a flat ``(vocab,)`` array for
+                # the one-row count and a ``(rows, vocab)`` array above it, and a
+                # zero-draft cycle is exactly that one-row case. Row 0 is read
+                # like any other row here, so give it the shape every other row
+                # count produces: ``rows[0]`` on a flat array is the scalar logit
+                # of vocabulary entry 0, whose argmax is 0, and a cycle that
+                # commits it emits ``<pad>`` instead of the model's next token.
+                rows = rows.reshape(1, -1)
             record("target_verify", verify_started)
 
             accepted = 0
@@ -270,7 +289,6 @@ class Gemma4MTPTextProvider:
             # The verify consumed `token` plus every draft; the target keeps
             # `token` and the accepted prefix, so the rejected tail goes back.
             runner.rewind(start_position + 1 + accepted)
-            logits = rows[accepted]
             seed_row = accepted
 
             cycles.append(
