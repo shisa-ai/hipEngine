@@ -25,13 +25,17 @@ capture/fixture assembly and swaps only the model couplings:
   accepts those kwargs only to honour the shared call-site contract. No
   ``--gdn-mode`` flag exists here rather than one that does nothing.
 * **Prompt width**: the strict/production split only exists at width. The
-  MMQ/WMMA prefill plans require ``_WMMA_PREFILL_MIN_LANES_PER_EXPERT *``
-  ``expert_count`` lanes (2048 on the shipped 128-expert artifact) and the
-  grouped folds 512; below those both arms take the same fallback and the
-  packet certifies identity, not the promoted route. ``--prompt-tokens``
-  therefore defaults to that derived width, padding each suite row by cycling
-  its own user text (the campaign corpus-cycling practice), and the chosen
-  target is recorded in ``smoke-env.json``. Pass ``0`` to keep prompts as-is.
+  MMQ/WMMA prefill plans gate on compact lanes (``lanes >=
+  _WMMA_PREFILL_MIN_LANES_PER_EXPERT * expert_count``) and the lanes are
+  ``tokens * expert_used_count``, so on the shipped artifact the route first
+  engages at 256 tokens (2048 lanes / 8); the grouped folds need 512 lanes.
+  Below those both arms take the same fallback and the packet certifies
+  identity, not the promoted route. ``--prompt-tokens`` therefore defaults to
+  the campaign gate's registered chain width (2048, matching the
+  ``--prompt 2048`` teacher-forced recipe) or the derived route minimum when
+  that is larger, padding each suite row by cycling its own user text (the
+  campaign corpus-cycling practice); the target, the derived minimum and the
+  source are recorded in ``smoke-env.json``. Pass ``0`` to keep prompts as-is.
 
 Task-artifact mode (``--task-artifact`` in the template) is not carried over:
 it reports the Qwen lane's retained-evidence note and artifact kind. This
@@ -96,6 +100,10 @@ from scripts.gemma4_real_probe import render
 
 DEFAULT_SCENARIO_ID = "gemma4_gguf_c1_smoke"
 DEFAULT_RUN_ID = "gemma4-c1-smoke"
+# The campaign gate's registered teacher-forced chain width: the frozen
+# baselines are ``--prompt 2048 --prefill 1024``. The packet defaults here so
+# its chain length is protocol-fixed, never chosen after seeing a verdict.
+CAMPAIGN_GATE_CHAIN_TOKENS = 2048
 
 # The arms the registered plans declare: strict pins the grouped exact route,
 # production the auto route the default path already resolves to.
@@ -232,19 +240,42 @@ def _prompt_token_ids(tokenizer, row: Mapping, *, min_tokens: int = 0) -> list[i
 
 
 def _moe_prefill_width(metadata: Mapping) -> int:
-    """Lane count at which the MMQ/WMMA prefill plans engage, or 0 without MoE.
+    """Token width at which the MMQ/WMMA prefill plans first engage, or 0.
 
-    Derived from the kernel's own threshold and the artifact's expert count so
-    the packet width cannot drift from the route gate it is meant to cross.
+    The kernel gates on compact lanes (``lanes >= _WMMA_PREFILL_MIN_LANES_PER_EXPERT
+    * expert_count``) and ``lanes = tokens * expert_used_count`` (gemma4_experts
+    line 226), so the token width is ``ceil(16 * expert_count /
+    expert_used_count)`` -- 256 on the shipped 128/8 artifact. Returns 0 when
+    the artifact declares no MoE routing to size against, which leaves the
+    caller on the campaign chain width.
     """
 
     try:
         experts = int(metadata.get("gemma4.expert_count") or 0)
+        used = int(metadata.get("gemma4.expert_used_count") or 0)
     except (TypeError, ValueError):
         return 0
-    if experts <= 0:
+    if experts <= 0 or used <= 0:
         return 0
-    return int(_WMMA_PREFILL_MIN_LANES_PER_EXPERT) * experts
+    lanes = int(_WMMA_PREFILL_MIN_LANES_PER_EXPERT) * experts
+    return -(-lanes // used)
+
+
+def _default_prompt_tokens(metadata: Mapping) -> tuple[int, str]:
+    """Default padding target: the campaign gate's registered chain width.
+
+    2048 matches the frozen ``--prompt 2048 --prefill 1024`` teacher-forced
+    baselines, so the packet's chain length never depends on a verdict it has
+    already seen; the derived route minimum only raises it for an artifact
+    whose MoE gate sits above that width.
+    """
+
+    route_min = _moe_prefill_width(metadata)
+    target = max(CAMPAIGN_GATE_CHAIN_TOKENS, route_min)
+    source = "campaign-gate-chain"
+    if route_min > CAMPAIGN_GATE_CHAIN_TOKENS:
+        source = "route-min"
+    return target, f"{source} (route min {route_min})"
 
 
 def _trajectory_with_controls(
@@ -393,6 +424,50 @@ def _trajectory_with_controls(
         return logits, controls, row_specs
 
 
+def _gate_command(
+    *,
+    output_dir: Path,
+    strict_capture: Path,
+    production_capture: Path,
+    production_fixture: Path,
+    strict_fixture: Path,
+    isolation_fixture: Path,
+    repeat_capture: Path,
+    isolation_capture: Path,
+    task_path: Path,
+    arithmetic_class: str,
+    verdict_path: Path,
+    bf16_logits: Path | None = None,
+) -> list[str]:
+    """Build this packet's ``execution_profile_gate.py`` invocation.
+
+    ``bf16_logits`` attaches an aligned BF16 teacher cache via
+    ``--bf16-logits``; without it the gate reports ``bf16_noninferiority``
+    as ``unavailable`` and does not bind on it, which is the documented
+    state until a teacher fixture exists for the packet (docs/TESTING.md).
+    """
+
+    cmd = [
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "execution_profile_gate.py"),
+        "--variant-manifest", str(output_dir / "production-variant-manifest.json"),
+        "--strict-manifest", str(output_dir / "strict-variant-manifest.json"),
+        "--strict-capture", str(strict_capture),
+        "--candidate-capture", str(production_capture),
+        "--expected-controls", str(production_fixture),
+        "--strict-expected-controls", str(strict_fixture),
+        "--comparison-controls", str(isolation_fixture),
+        "--repeat-capture", str(repeat_capture),
+        "--isolation-capture", str(isolation_capture),
+        "--task-results", str(task_path),
+        "--arithmetic-class", str(arithmetic_class),
+        "--output", str(verdict_path),
+    ]
+    if bf16_logits is not None:
+        cmd += ["--bf16-logits", str(bf16_logits)]
+    return cmd
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, required=True)
@@ -403,10 +478,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--decode-steps", type=int, default=3)
     parser.add_argument("--prompt-tokens", type=int, default=None,
                         help="pad each prompt to this many tokens by cycling its "
-                             "own text (default: the MoE route width, "
-                             "_WMMA_PREFILL_MIN_LANES_PER_EXPERT * expert_count, "
-                             "so the strict/production arms actually diverge; "
-                             "0 keeps prompts as-is and certifies identity only)")
+                             "own text (default: the campaign gate's 2048-token "
+                             "registered chain, raised to the derived MoE route "
+                             "minimum when that is larger; 0 keeps prompts "
+                             "as-is and certifies identity only)")
     parser.add_argument("--scenario-id", default=DEFAULT_SCENARIO_ID)
     parser.add_argument("--run-id", default=DEFAULT_RUN_ID)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -420,6 +495,11 @@ def _parser() -> argparse.ArgumentParser:
                              "(gemma4.expert_used_count on the shipped artifact)")
     parser.add_argument("--rng-seed", type=int, default=0)
     parser.add_argument("--skip-gate", action="store_true")
+    parser.add_argument("--bf16-logits", type=Path, default=None,
+                        help="aligned BF16 teacher cache (.npy, packet row "
+                             "order) produced by scripts/gemma4_bf16_teacher.py; "
+                             "omitted, the gate reports bf16_noninferiority "
+                             "as unavailable")
     return parser
 
 
@@ -436,14 +516,15 @@ def main() -> int:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
 
     register_builtin_generators()
+    if args.bf16_logits is not None and not Path(args.bf16_logits).is_file():
+        raise SystemExit(f"--bf16-logits not found: {args.bf16_logits}")
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     rows = _prompt_rows(list(args.prompts), limit=int(args.limit))
     gguf_info = scan_gguf(args.model)
     tokenizer = Gemma4GGUFTokenizer.from_gguf_info(gguf_info)
     if args.prompt_tokens is None:
-        prompt_tokens_target = _moe_prefill_width(gguf_info.metadata)
-        width_source = "auto:moe_prefill_width"
+        prompt_tokens_target, width_source = _default_prompt_tokens(gguf_info.metadata)
     else:
         prompt_tokens_target = max(0, int(args.prompt_tokens))
         width_source = "explicit" if prompt_tokens_target else "disabled"
@@ -464,6 +545,14 @@ def main() -> int:
             "WARNING: --prompt-tokens 0 keeps prompts short, so both arms take "
             "the same prefill fallback and the packet certifies identity rather "
             "than the strict/production split",
+            flush=True,
+        )
+    route_min = _moe_prefill_width(gguf_info.metadata)
+    if 0 < prompt_tokens_target < route_min:
+        print(
+            f"WARNING: --prompt-tokens {prompt_tokens_target} is below the MoE "
+            f"route minimum {route_min}; the MMQ/WMMA plans will not engage and "
+            "the packet certifies identity only",
             flush=True,
         )
     prompt_formats = {
@@ -692,9 +781,16 @@ def main() -> int:
         },
         "prompt_formats": prompt_formats,
         "prompt_tokens_target": int(prompt_tokens_target),
+        "prompt_tokens_route_min": int(route_min),
         "prompt_tokens_width_source": width_source,
         "prompt_tokens_padded": {
             prompt_id: len(tokens) for prompt_id, tokens in prompt_tokens.items()
+        },
+        # The full padded ids, so a BF16 teacher (scripts/gemma4_bf16_teacher.py
+        # prepare) replays exactly the rows this run scored instead of
+        # re-deriving the padding and risking drift from it.
+        "prompt_tokens_ids": {
+            prompt_id: tokens for prompt_id, tokens in prompt_tokens.items()
         },
         "route_top_k": int(args.top_k),
         "arithmetic_class": args.arithmetic_class,
@@ -713,22 +809,22 @@ def main() -> int:
         return 0 if greedy_aligned else 1
 
     verdict_path = output_dir / "gate-verdict.json"
-    gate_cmd = [
-        sys.executable,
-        str(REPO_ROOT / "scripts" / "execution_profile_gate.py"),
-        "--variant-manifest", str(output_dir / "production-variant-manifest.json"),
-        "--strict-manifest", str(output_dir / "strict-variant-manifest.json"),
-        "--strict-capture", str(strict_capture),
-        "--candidate-capture", str(production_capture),
-        "--expected-controls", str(production_fixture),
-        "--strict-expected-controls", str(strict_fixture),
-        "--comparison-controls", str(isolation_fixture),
-        "--repeat-capture", str(repeat_capture),
-        "--isolation-capture", str(isolation_capture),
-        "--task-results", str(task_path),
-        "--arithmetic-class", args.arithmetic_class,
-        "--output", str(verdict_path),
-    ]
+    gate_cmd = _gate_command(
+        output_dir=output_dir,
+        strict_capture=strict_capture,
+        production_capture=production_capture,
+        production_fixture=production_fixture,
+        strict_fixture=strict_fixture,
+        isolation_fixture=isolation_fixture,
+        repeat_capture=repeat_capture,
+        isolation_capture=isolation_capture,
+        task_path=task_path,
+        arithmetic_class=args.arithmetic_class,
+        verdict_path=verdict_path,
+        bf16_logits=(
+            Path(args.bf16_logits).resolve() if args.bf16_logits is not None else None
+        ),
+    )
     print("invoking gate:", " ".join(gate_cmd), flush=True)
     gate_result = subprocess.run(gate_cmd, capture_output=True, text=True, cwd=str(REPO_ROOT))
     if gate_result.stdout.strip():

@@ -292,12 +292,45 @@ def test_prompt_token_ids_pads_by_cycling_the_rows_own_text() -> None:
     assert untouched == [0, 1, 2]
 
 
-def test_moe_prefill_width_follows_the_artifacts_expert_count() -> None:
-    assert _moe_prefill_width({"gemma4.expert_count": 128}) == 16 * 128
-    assert _moe_prefill_width({"gemma4.expert_count": 8}) == 16 * 8
-    # No experts declared (or unreadable): nothing to cross, so no padding.
+def test_moe_prefill_width_follows_the_artifacts_routing() -> None:
+    # lanes >= 16 * experts and lanes = tokens * used, so tokens = 16*e/u:
+    # the shipped 128/8 artifact first engages the MMQ/WMMA plans at 256.
+    assert _moe_prefill_width(
+        {"gemma4.expert_count": 128, "gemma4.expert_used_count": 8}
+    ) == 256
+    assert _moe_prefill_width(
+        {"gemma4.expert_count": 8, "gemma4.expert_used_count": 4}
+    ) == 32
+    # No usable routing metadata: nothing to derive, caller stays on the
+    # campaign chain width.
     assert _moe_prefill_width({}) == 0
+    assert _moe_prefill_width({"gemma4.expert_count": 128}) == 0
     assert _moe_prefill_width({"gemma4.expert_count": "n/a"}) == 0
+    assert _moe_prefill_width(
+        {"gemma4.expert_count": 128, "gemma4.expert_used_count": "n/a"}
+    ) == 0
+
+
+def test_default_prompt_tokens_is_protocol_fixed_at_the_campaign_chain() -> None:
+    from scripts.gemma4_control_smoke import CAMPAIGN_GATE_CHAIN_TOKENS, _default_prompt_tokens
+
+    # Normal artifacts: the registered 2048-token gate chain, never the
+    # route minimum, so the width cannot move with a verdict already seen.
+    target, source = _default_prompt_tokens(
+        {"gemma4.expert_count": 128, "gemma4.expert_used_count": 8}
+    )
+    assert target == CAMPAIGN_GATE_CHAIN_TOKENS == 2048
+    assert "campaign-gate-chain" in source and "route min 256" in source
+    # An artifact whose MoE gate sits above the campaign chain raises the
+    # target and switches the source.
+    target, source = _default_prompt_tokens(
+        {"gemma4.expert_count": 1024, "gemma4.expert_used_count": 4}
+    )
+    assert target == 4096  # ceil(16 * 1024 / 4)
+    assert source.startswith("route-min")
+    # Missing metadata: fall back to the campaign chain.
+    target, source = _default_prompt_tokens({})
+    assert target == CAMPAIGN_GATE_CHAIN_TOKENS
 
 
 def test_trajectory_places_its_rows_in_the_requested_step_band() -> None:
