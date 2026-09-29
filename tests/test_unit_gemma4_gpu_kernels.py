@@ -2011,8 +2011,11 @@ def _run_layer_on_gpu(weights, config, attn_geometry, hidden, tokens, *, k_eq_v,
         k_norm=device.put(weights.k_norm),
         post_attention_layernorm=device.put(weights.post_attention_layernorm),
         pre_feedforward_layernorm=device.put(weights.pre_feedforward_layernorm),
-        mlp_gate_proj=put_bf16(weights.mlp_gate_proj),
-        mlp_up_proj=put_bf16(weights.mlp_up_proj),
+        # The resident weight carries both halves in one buffer, laid out
+        # (rows, 2 * intermediate) exactly as the fused loader emits it.
+        mlp_gate_up_proj=put_bf16(
+            np.concatenate([weights.mlp_gate_proj, weights.mlp_up_proj], axis=0)
+        ),
         mlp_down_proj=put_bf16(weights.mlp_down_proj),
         post_feedforward_layernorm_1=device.put(weights.post_feedforward_layernorm_1),
         router_scale=device.put(weights.router_scale),
@@ -2349,8 +2352,11 @@ def test_layer_incremental_decode_matches_a_dense_prefill():
         k_norm=device.put(weights.k_norm),
         post_attention_layernorm=device.put(weights.post_attention_layernorm),
         pre_feedforward_layernorm=device.put(weights.pre_feedforward_layernorm),
-        mlp_gate_proj=put_bf16(weights.mlp_gate_proj),
-        mlp_up_proj=put_bf16(weights.mlp_up_proj),
+        # The resident weight carries both halves in one buffer, laid out
+        # (rows, 2 * intermediate) exactly as the fused loader emits it.
+        mlp_gate_up_proj=put_bf16(
+            np.concatenate([weights.mlp_gate_proj, weights.mlp_up_proj], axis=0)
+        ),
         mlp_down_proj=put_bf16(weights.mlp_down_proj),
         post_feedforward_layernorm_1=device.put(weights.post_feedforward_layernorm_1),
         router_scale=device.put(weights.router_scale),
