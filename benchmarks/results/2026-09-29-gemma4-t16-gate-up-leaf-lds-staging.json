@@ -14,7 +14,7 @@
  },
  "performance": {
   "platform": "gfx1151 Strix Halo (Radeon 8060S, zbook), ROCm, bf16 activations",
-  "protocol": "one declared same-host protocol measuring both arms in the same session, alternating between the committed kernel and the candidate with only the kernel, its wrapper, its route and its loader repack differing, rebuilt into separate cache entries. The HEAD arm was measured first and re-measured last, and reproduced to within 0.7 percent.",
+  "protocol": "one declared same-host protocol measuring both arms in the same session, alternating between the committed kernel and the candidate with only the kernel, its wrapper, its route and its loader repack differing, rebuilt into separate cache entries. The HEAD arm was measured twice in this session at 4096 and once at 512, and it reproduces across sessions as well: see baseline_reproduction.",
   "primary": {
    "row": "512 prompt / 128 output, public path, scripts/gemma4_campaign_bench.py --samples 3 --warmup 1",
    "incumbent_s": 0.45,
@@ -43,7 +43,7 @@
     "incumbent_ms_per_call": 4.087,
     "candidate_ms_per_call": 2.987,
     "delta": "1.368x",
-    "prefill_wall_incumbent_s": 0.440,
+    "prefill_wall_incumbent_s": 0.44,
     "prefill_wall_candidate_s": 0.405,
     "prefill_tps_incumbent": 1162.7,
     "prefill_tps_candidate": 1265.0
@@ -52,7 +52,7 @@
     "calls": 232,
     "incumbent_ms": 967.45,
     "candidate_ms": 712.78,
-    "incumbent_ms_per_call": 4.170,
+    "incumbent_ms_per_call": 4.17,
     "candidate_ms_per_call": 3.0723,
     "delta": "1.357x",
     "prefill_wall_incumbent_s": 3.979,
@@ -60,6 +60,33 @@
     "prefill_tps_incumbent": 1029.4,
     "prefill_tps_candidate": 1103.1
    }
+  },
+  "baseline_reproduction": {
+   "leaf_ms_per_call_prompt_4096": {
+    "this_session_run_a": 4.205,
+    "this_session_run_b": 4.17,
+    "sibling_unit_session": 4.136,
+    "spread": "4.136 to 4.205, 1.7 percent, three independent measurements",
+    "candidate": 3.0723,
+    "delta_range": "1.346x to 1.369x against the baseline range"
+   },
+   "leaf_ms_per_call_prompt_512": {
+    "this_session": 4.087,
+    "sibling_unit_session": 4.114,
+    "spread": "0.66 percent",
+    "candidate": 2.987,
+    "delta_range": "1.346x to 1.368x"
+   },
+   "prefill_wall_s_prompt_4096": {
+    "baselines": [
+     4.024,
+     3.979,
+     3.961
+    ],
+    "candidate": 3.7132,
+    "delta_range": "1.067x to 1.084x"
+   },
+   "note": "the candidate is below every baseline measurement on every instrument, so the delta is a range rather than a single ratio and the conclusion does not depend on which baseline run is used."
   }
  },
  "correctness": {
