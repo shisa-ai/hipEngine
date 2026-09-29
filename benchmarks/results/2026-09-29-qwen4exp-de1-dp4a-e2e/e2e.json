@@ -73,5 +73,25 @@
   "source": {
     "tracked_clean": true,
     "commit": "44343aafc"
+  },
+  "headroom_closure": {
+    "note": "the promotion closes almost all of the headroom the DE-1 bandwidth gate identified",
+    "owner_weight_bytes_per_step": 888830000.0,
+    "comparator_gbs": 184.66,
+    "baseline_gbs": 62.79,
+    "baseline_pct_of_comparator": 34.0,
+    "promoted_gbs": 164.48,
+    "promoted_pct_of_comparator": 89.1,
+    "gap_to_comparator_x": {
+      "baseline": 2.94,
+      "promoted": 1.12
+    },
+    "floor_at_comparator_ms": 4.813,
+    "headroom_ms": {
+      "baseline": 9.342,
+      "promoted": 0.591
+    },
+    "headroom_consumed_pct": 93.7,
+    "remaining_pct_of_new_kernel_sum": 1.25
   }
 }
