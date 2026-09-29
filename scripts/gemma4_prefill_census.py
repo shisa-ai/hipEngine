@@ -157,6 +157,16 @@ def main() -> int:
         gemma4_experts, "gemma4_project_experts_grouped_dual", grouped_dual_label
     )
 
+    # The int8 MMQ leaf is the first arm of the gate_up chain (mmq_dual ->
+    # wmma_dual -> grouped_dual -> selected) and was the only one unwrapped,
+    # so the fastest gate_up route ran uncounted inside `unattributed`. Its
+    # quant is pinned by _MMQ_DUAL_QUANT_KEY, so this label also shows whether
+    # the pinned key is what the artifact actually carries.
+    def mmq_dual_label(weight: Any, *a: Any, **kw: Any) -> str:
+        return f"moe_mmq_dual:{quant_of(weight)}"
+
+    census.wrap(gemma4_experts, "gemma4_project_experts_mmq_dual", mmq_dual_label)
+
     def wmma_dual_label(weight: Any, x_ptr: int, expert_start_ptr: int, expert_start_wmma_ptr: int, tile_expert_ptr: int, out_ptr: int, compact_rows: int, num_experts: int, in_features: int, out_features: int, wmma_total_rows: int, **kw: Any) -> str:
         return f"moe_wmma_dual:{quant_of(weight)}"
 
