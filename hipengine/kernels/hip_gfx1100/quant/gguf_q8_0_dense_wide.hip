@@ -211,7 +211,18 @@ __device__ __forceinline__ half8_t wide_load_act8(const half_t* p) {
 // staging, ``half_t`` is an activation already converted by
 // ``hipengine_gguf_q8_0_f32_to_f16``. Both paths put the same f16 bytes in LDS
 // for the same values, so the matmul and its result are unchanged.
-template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL>
+// ``WMMA_REP`` is the DP-3 split-operand probe. A split-f16-operand variant
+// represents each f32 operand as an f16 hi/lo pair and needs three WMMA
+// products per tile where this kernel issues one. Building the real split is
+// "scope work"; before paying for it the question is only whether issuing
+// three products per tile is affordable at all. ``WMMA_REP = 3`` issues the
+// same product three times on the same operands, which isolates the **WMMA
+// issue cost** and nothing else: it does not pay for the extra LDS bytes or
+// the splitting arithmetic a real split needs, so its timing is a lower bound
+// on the split's cost. A negative here kills the scheme cheaply; a positive
+// says the split is worth scoping.
+template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL,
+          int WMMA_REP = 1>
 __device__ __forceinline__ void wide_tile_gemm(
     const uint8_t* __restrict__ w_base,  // first weight row of this block
     const size_t wrow_bytes,
@@ -360,7 +371,10 @@ __device__ __forceinline__ void wide_tile_gemm(
 #pragma unroll
         for (int j = 0; j < TN; ++j) {
           if (TAIL && !jact[j]) continue;
-          acc[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b[j], a[i], acc[i][j]);
+#pragma unroll
+          for (int rep = 0; rep < WMMA_REP; ++rep) {
+            acc[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b[j], a[i], acc[i][j]);
+          }
         }
       }
     }
@@ -390,7 +404,8 @@ __device__ __forceinline__ void wide_tile_gemm(
   }
 }
 
-template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL>
+template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL,
+          int WMMA_REP = 1>
 __global__ void __launch_bounds__(WIDE_THREADS, 1)
 q8_0_dense_wide_kernel(const x_t* __restrict__ x,
                        const uint8_t* __restrict__ qweight,
@@ -406,7 +421,7 @@ q8_0_dense_wide_kernel(const x_t* __restrict__ x,
   const size_t wrow_bytes =
       static_cast<size_t>(in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
 
-  wide_tile_gemm<x_t, BM, BN, WTM, WTN, TAIL>(
+  wide_tile_gemm<x_t, BM, BN, WTM, WTN, TAIL, WMMA_REP>(
       qweight + static_cast<size_t>(m0) * wrow_bytes, wrow_bytes,
       out_features - m0, x, in_features, out, out_features, rows, t0, m0, As, Bs);
 }
@@ -425,7 +440,8 @@ __global__ void q8_0_f32_to_f16_kernel(const float* __restrict__ x,
 
 }  // namespace
 
-template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL>
+template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL,
+          int WMMA_REP = 1>
 int wide_launch_tail(const void* x,
                      const void* qweight,
                      void* out,
@@ -435,7 +451,7 @@ int wide_launch_tail(const void* x,
                      hipStream_t stream) {
   const dim3 grid(static_cast<unsigned int>((out_features + BM - 1) / BM),
                   static_cast<unsigned int>((rows + BN - 1) / BN));
-  hipLaunchKernelGGL((q8_0_dense_wide_kernel<x_t, BM, BN, WTM, WTN, TAIL>),
+  hipLaunchKernelGGL((q8_0_dense_wide_kernel<x_t, BM, BN, WTM, WTN, TAIL, WMMA_REP>),
                      grid, dim3(WIDE_THREADS), 0, stream,
                      static_cast<const x_t*>(x),
                      static_cast<const uint8_t*>(qweight),
@@ -449,7 +465,7 @@ int wide_launch_tail(const void* x,
 // The tail-free instantiation has no per-fragment predication at all; the tail
 // one bounds-checks every load and store. Picking between them at launch keeps
 // the common (exactly-divisible) case free of the checks.
-template <typename x_t, int BM, int BN, int WTM, int WTN>
+template <typename x_t, int BM, int BN, int WTM, int WTN, int WMMA_REP = 1>
 int wide_launch(const void* x,
                 const void* qweight,
                 void* out,
@@ -463,9 +479,9 @@ int wide_launch(const void* x,
     return static_cast<int>(hipErrorInvalidValue);
   }
   const bool tail = (rows % BN) != 0 || (out_features % BM) != 0;
-  return tail ? wide_launch_tail<x_t, BM, BN, WTM, WTN, true>(
+  return tail ? wide_launch_tail<x_t, BM, BN, WTM, WTN, true, WMMA_REP>(
                     x, qweight, out, rows, in_features, out_features, stream)
-              : wide_launch_tail<x_t, BM, BN, WTM, WTN, false>(
+              : wide_launch_tail<x_t, BM, BN, WTM, WTN, false, WMMA_REP>(
                     x, qweight, out, rows, in_features, out_features, stream);
 }
 
@@ -506,6 +522,18 @@ extern "C" int hipengine_gguf_q8_0_f32_to_f16(const void* x,
                                               stream);                         \
   }
 
+// DP-3 probe: the same tile with three WMMA products issued per accumulator
+// instead of one. See the ``WMMA_REP`` comment on ``wide_tile_gemm``.
+#define HIPENGINE_DENSE_WIDE_EXPORT_REP(name, x_t, BM, BN, WTM, WTN, REP)      \
+  extern "C" int name(const void* x, const void* qweight, void* out,           \
+                      int64_t rows, int64_t in_features, int64_t out_features, \
+                      int64_t threads, hipStream_t stream) {                   \
+    (void)threads;                                                             \
+    return wide_launch<x_t, BM, BN, WTM, WTN, REP>(x, qweight, out, rows,      \
+                                                   in_features, out_features,  \
+                                                   stream);                    \
+  }
+
 // ``x_t`` selects the activation ABI. The f32 exports convert during staging;
 // the f16in exports consume an activation already converted by
 // ``hipengine_gguf_q8_0_f32_to_f16``, which must hold ``rows * in_features``
@@ -522,3 +550,6 @@ HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide256_f16in_f32_f32_out,
                             half_t, 128, 256, 64, 64)
 HIPENGINE_DENSE_WIDE_EXPORT(hipengine_gguf_q8_0_dense_wide128x128_f16in_f32_f32_out,
                             half_t, 128, 128, 64, 32)
+HIPENGINE_DENSE_WIDE_EXPORT_REP(
+    hipengine_gguf_q8_0_dense_wide256_split3_f32_f32_out, float, 128, 256, 64,
+    64, 3)

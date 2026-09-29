@@ -30,7 +30,10 @@ CENSUS = (
 )
 
 _EXPORT = re.compile(
-    r"^\s*HIPENGINE_DENSE_WIDE_EXPORT\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*,",
+    # ``..._EXPORT_REP`` is the DP-3 probe macro. Both are real export sites, so
+    # the parser must know about both: a probe export that the parser cannot see
+    # would look like an unwrapped variant and the guard would be vacuous for it.
+    r"^\s*HIPENGINE_DENSE_WIDE_EXPORT(?:_REP)?\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*,",
     re.MULTILINE,
 )
 
