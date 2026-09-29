@@ -1,0 +1,106 @@
+{
+  "probe": "qwen4exp-dp3-split-operand",
+  "purpose": "Lower bound on the WMMA issue cost of a split-f16-operand tile. rep3 issues three products per tile on identical operands, so its timing isolates issue cost and its result is NOT a split result.",
+  "rows": [
+    1024
+  ],
+  "repetitions": 20,
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "cases": [
+    {
+      "role": "attn_qkv",
+      "layer": 16,
+      "rows": 1024,
+      "in_features": 2560,
+      "out_features": 10240,
+      "rep1_ms": 2.613024950027466,
+      "rep3_ms": 4.587977886199951,
+      "f16in_ms": 1.4262759685516357,
+      "ratio_rep3_over_rep1": 1.755810975379981,
+      "rep1_tflops": 20.545954296929192,
+      "rep3_tflops": 11.70168918239207,
+      "f16in_tflops": 37.64144694558552,
+      "split_on_f16in_estimate_ms": 2.504270999503675,
+      "split_vs_f32in_ratio": 0.958380056599671
+    },
+    {
+      "role": "attn_q",
+      "layer": 19,
+      "rows": 1024,
+      "in_features": 2560,
+      "out_features": 12288,
+      "rep1_ms": 2.814876437187195,
+      "rep3_ms": 5.190544843673706,
+      "f16in_ms": 1.7833930253982544,
+      "ratio_rep3_over_rep1": 1.843968983896299,
+      "rep1_tflops": 22.88715362027653,
+      "rep3_tflops": 12.411897282521567,
+      "f16in_tflops": 36.12468397178641,
+      "split_on_f16in_estimate_ms": 3.2885214249313655,
+      "split_vs_f32in_ratio": 1.1682649303844637
+    },
+    {
+      "role": "attn_gate",
+      "layer": 16,
+      "rows": 1024,
+      "in_features": 2560,
+      "out_features": 6144,
+      "rep1_ms": 1.5622259974479675,
+      "rep3_ms": 2.791918992996216,
+      "f16in_ms": 0.9733265042304993,
+      "ratio_rep3_over_rep1": 1.7871415515790028,
+      "rep1_tflops": 20.619458882787463,
+      "rep3_tflops": 11.537675269521568,
+      "f16in_tflops": 33.09501444786674,
+      "split_on_f16in_estimate_ms": 1.7394722389634614,
+      "split_vs_f32in_ratio": 1.1134574906607886
+    },
+    {
+      "role": "ssm_out",
+      "layer": 16,
+      "rows": 1024,
+      "in_features": 6144,
+      "out_features": 2560,
+      "rep1_ms": 1.7430959939956665,
+      "rep3_ms": 2.9045050144195557,
+      "f16in_ms": 1.1359670162200928,
+      "ratio_rep3_over_rep1": 1.6662909125054053,
+      "rep1_tflops": 18.47990864012053,
+      "rep3_tflops": 11.090445552712323,
+      "f16in_tflops": 28.356681364909367,
+      "split_on_f16in_estimate_ms": 1.892851516033421,
+      "split_vs_f32in_ratio": 1.085913525447599
+    },
+    {
+      "role": "shared_gate",
+      "layer": 16,
+      "rows": 1024,
+      "in_features": 2560,
+      "out_features": 640,
+      "rep1_ms": 0.2307179942727089,
+      "rep3_ms": 0.4699465036392212,
+      "f16in_ms": 0.1937830001115799,
+      "ratio_rep3_over_rep1": 2.036887088588955,
+      "rep1_tflops": 14.543482880810167,
+      "rep3_tflops": 7.140053546554269,
+      "f16in_tflops": 17.315467291083024,
+      "split_on_f16in_estimate_ms": 0.3947140909153091,
+      "split_vs_f32in_ratio": 1.7108075690392692
+    }
+  ],
+  "aggregate": {
+    "cases": 5,
+    "ratio_median": 1.7871415515790028,
+    "ratio_min": 1.6662909125054053,
+    "ratio_max": 2.036887088588955,
+    "split_vs_f32in_median": 1.1134574906607886,
+    "split_vs_f32in_min": 0.958380056599671,
+    "split_vs_f32in_max": 1.7108075690392692
+  },
+  "not_claimed": [
+    "no correctness gate: rep3's numerics are the accumulator summed three times over, not a precision improvement",
+    "no production route and no promotion",
+    "a real split additionally pays doubled LDS operand bytes and the hi/lo splitting arithmetic, so this ratio is a lower bound",
+    "kernel microbenchmark, not engine throughput"
+  ]
+}

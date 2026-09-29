@@ -196,6 +196,13 @@ _VARIANTS = {
     "dense_wide128x128_f16in_f32_f32_out": (
         "hipengine_gguf_q8_0_dense_wide128x128_f16in_f32_f32_out"
     ),
+    # DP-3 probe. Not a production route: it issues three WMMA products per
+    # accumulator on identical operands, so its *result* is not a split-operand
+    # result - only its timing is meaningful. Registered so the microbenchmark
+    # can reach it through the same wrapper path as the real variants.
+    "dense_wide256_split3_f32_f32_out": (
+        "hipengine_gguf_q8_0_dense_wide256_split3_f32_f32_out"
+    ),
 }
 
 _WRAPPERS = {
@@ -205,6 +212,9 @@ _WRAPPERS = {
 gguf_q8_0_dense_wide256_f32_f32_out = _WRAPPERS["dense_wide256_f32_f32_out"]
 gguf_q8_0_dense_wide256_f16in_f32_f32_out = _WRAPPERS[
     "dense_wide256_f16in_f32_f32_out"
+]
+gguf_q8_0_dense_wide256_split3_f32_f32_out = _WRAPPERS[
+    "dense_wide256_split3_f32_f32_out"
 ]
 
 
