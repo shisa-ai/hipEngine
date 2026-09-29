@@ -78,8 +78,13 @@ rules it out completely.
   covered by the union on inspection (revision precedence, tie-breaking by later arrival,
   cancellation, adjacency, room independence, rejected-not-blocking, empty input, no mutation), but
   this is not a formal proof.
-- **The source capture is invalidated** (`invalid_source_or_lifecycle`: the repo was committed to
-  while the run was in flight, so `_git_metadata(ROOT) != source` at the end). The **generated
-  outputs are unaffected** - they are deterministic and repeat-internally exact - but the artifact
-  cannot be cited as a valid run. A re-run on a stable tree is the citable version.
+- **The original source capture was invalidated** (`invalid_source_or_lifecycle`: the repo was
+  committed to while the run was in flight, so `_git_metadata(ROOT) != source` at the end). It is
+  **superseded by the citable re-run** at
+  `benchmarks/results/2026-09-29-qwen4exp-decode-dp4a-linear-tasks-rerun/artifact.json`
+  (`status: captured_requires_manual_review`, `head: 3d681e391`, `tracked_clean: true`, both arms
+  returning to 0 current bytes / 0 active allocations). The re-run **reproduced the outputs
+  bit-exactly** - 1938 / 431 / 633 / 240 tokens, and both generated implementations identical
+  (strict sha `b8685e99…`, candidate sha `97a8ef2e…`) - and cross-validation on the re-run is
+  again **11/11 with 0 disagreements**.
 - **No speedup claimed.** This artifact concerns task quality only.
