@@ -1,0 +1,3834 @@
+{
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "It seems that tuned daemon is not running, preset profile is not activated.\nPreset profile: accelerator-performance",
+    "cpu_governors": {
+      "powersave": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "bb01efb556b709098719576681a49ec799456651",
+    "tracked_clean": false
+  },
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "tensor": "blk.0.ffn_down_exps.weight",
+  "tensor_info": "GGUFTensorInfo(name='blk.0.ffn_down_exps.weight', shape=(512, 2560, 640), ggml_shape=(640, 2560, 512), ggml_type=7, ggml_type_name='Q5_1', n_elements=838860800, nbytes=629145600, offset=30202567680, data_offset=30202586400, byte_shape=(512, 2560, 480))",
+  "weight_sha256": "b8182533b10a398040d86f4026f4cdbee23b5b666414c37b4c6f73bcfa3f5663",
+  "repetitions": 5,
+  "schema": 1,
+  "kind": "qwen4exp_ed1_measured_population_replay",
+  "hardware": "Radeon 8060S gfx1151",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "shape": {
+    "rows": 10240,
+    "experts": 512,
+    "K": 640,
+    "N": 2560
+  },
+  "candidate_patch_sha256": "75cea28c54c517c4ef132b52eba9d6bfc0733f5c5af8e0f03bc5ac9f387ae93a",
+  "runtime_default_changed": false,
+  "synthetic_activations": true,
+  "population_input": "synthetic token IDs4000..5023; measured router counts",
+  "cases": [
+    {
+      "capture_index": 0,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "0",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-0.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 0,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 13312,
+          "main_median_ms": 8.521007537841797,
+          "parity": true,
+          "risk_count": 389095,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 17312,
+          "main_median_ms": 12.964263916015625,
+          "parity": true,
+          "risk_count": 389095,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 17312,
+          "main_median_ms": 17.771251678466797,
+          "parity": true,
+          "risk_count": 389095,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 13312,
+          "main_median_ms": 25.13730239868164,
+          "parity": true,
+          "risk_count": 389095,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 13312,
+          "main_median_ms": 8.55986499786377,
+          "parity": true,
+          "risk_count": 389095,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 1,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "1",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-1.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 1,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 13504,
+          "main_median_ms": 8.705116271972656,
+          "parity": true,
+          "risk_count": 389778,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 17632,
+          "main_median_ms": 13.252718925476074,
+          "parity": true,
+          "risk_count": 389778,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 17632,
+          "main_median_ms": 18.214784622192383,
+          "parity": true,
+          "risk_count": 389778,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 13504,
+          "main_median_ms": 25.59848976135254,
+          "parity": true,
+          "risk_count": 389778,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 13504,
+          "main_median_ms": 8.697038650512695,
+          "parity": true,
+          "risk_count": 389778,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 2,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "2",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-2.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 2,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 13424,
+          "main_median_ms": 8.616277694702148,
+          "parity": true,
+          "risk_count": 388170,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 17344,
+          "main_median_ms": 12.981742858886719,
+          "parity": true,
+          "risk_count": 388170,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 17344,
+          "main_median_ms": 17.753360748291016,
+          "parity": true,
+          "risk_count": 388170,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 13424,
+          "main_median_ms": 25.229164123535156,
+          "parity": true,
+          "risk_count": 388170,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 13424,
+          "main_median_ms": 8.614317893981934,
+          "parity": true,
+          "risk_count": 388170,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 3,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "3",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-3.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 3,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 13488,
+          "main_median_ms": 8.653087615966797,
+          "parity": true,
+          "risk_count": 389271,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 17536,
+          "main_median_ms": 13.06869888305664,
+          "parity": true,
+          "risk_count": 389271,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 17536,
+          "main_median_ms": 17.66368865966797,
+          "parity": true,
+          "risk_count": 389271,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 13488,
+          "main_median_ms": 25.006166458129883,
+          "parity": true,
+          "risk_count": 389271,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 13488,
+          "main_median_ms": 8.688003540039062,
+          "parity": true,
+          "risk_count": 389271,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 4,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "4",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-4.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 4,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 13456,
+          "main_median_ms": 8.649744987487793,
+          "parity": true,
+          "risk_count": 389233,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 17536,
+          "main_median_ms": 13.089983940124512,
+          "parity": true,
+          "risk_count": 389233,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 17536,
+          "main_median_ms": 17.850200653076172,
+          "parity": true,
+          "risk_count": 389233,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 13456,
+          "main_median_ms": 25.105571746826172,
+          "parity": true,
+          "risk_count": 389233,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 13456,
+          "main_median_ms": 8.63573169708252,
+          "parity": true,
+          "risk_count": 389233,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 5,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "5",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-5.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 5,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 13616,
+          "main_median_ms": 8.738161087036133,
+          "parity": true,
+          "risk_count": 389504,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 17760,
+          "main_median_ms": 13.289790153503418,
+          "parity": true,
+          "risk_count": 389504,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 17760,
+          "main_median_ms": 18.099889755249023,
+          "parity": true,
+          "risk_count": 389504,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 13616,
+          "main_median_ms": 25.595766067504883,
+          "parity": true,
+          "risk_count": 389504,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 13616,
+          "main_median_ms": 8.729863166809082,
+          "parity": true,
+          "risk_count": 389504,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 6,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "6",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-6.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 6,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 13904,
+          "main_median_ms": 8.979573249816895,
+          "parity": true,
+          "risk_count": 389047,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 18624,
+          "main_median_ms": 13.877219200134277,
+          "parity": true,
+          "risk_count": 389047,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 18624,
+          "main_median_ms": 19.015663146972656,
+          "parity": true,
+          "risk_count": 389047,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 13904,
+          "main_median_ms": 26.284940719604492,
+          "parity": true,
+          "risk_count": 389047,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 13904,
+          "main_median_ms": 8.929780006408691,
+          "parity": true,
+          "risk_count": 389047,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 7,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "7",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-7.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 7,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 13488,
+          "main_median_ms": 8.663537979125977,
+          "parity": true,
+          "risk_count": 389704,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 17696,
+          "main_median_ms": 13.210173606872559,
+          "parity": true,
+          "risk_count": 389704,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 17696,
+          "main_median_ms": 18.008644104003906,
+          "parity": true,
+          "risk_count": 389704,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 13488,
+          "main_median_ms": 25.398319244384766,
+          "parity": true,
+          "risk_count": 389704,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 13488,
+          "main_median_ms": 8.68952465057373,
+          "parity": true,
+          "risk_count": 389704,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 8,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "8",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-8.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 8,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12736,
+          "main_median_ms": 8.15487289428711,
+          "parity": true,
+          "risk_count": 389768,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 15744,
+          "main_median_ms": 11.776894569396973,
+          "parity": true,
+          "risk_count": 389768,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 15744,
+          "main_median_ms": 15.55160140991211,
+          "parity": true,
+          "risk_count": 389768,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12736,
+          "main_median_ms": 22.969160079956055,
+          "parity": true,
+          "risk_count": 389768,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12736,
+          "main_median_ms": 8.134763717651367,
+          "parity": true,
+          "risk_count": 389768,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 9,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "9",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-9.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 9,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12624,
+          "main_median_ms": 8.079349517822266,
+          "parity": true,
+          "risk_count": 389626,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 15616,
+          "main_median_ms": 11.621977806091309,
+          "parity": true,
+          "risk_count": 389626,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 15616,
+          "main_median_ms": 15.51240348815918,
+          "parity": true,
+          "risk_count": 389626,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12624,
+          "main_median_ms": 22.873859405517578,
+          "parity": true,
+          "risk_count": 389626,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12624,
+          "main_median_ms": 8.060988426208496,
+          "parity": true,
+          "risk_count": 389626,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 10,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "10",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-10.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 10,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11808,
+          "main_median_ms": 7.497919082641602,
+          "parity": true,
+          "risk_count": 389750,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 13696,
+          "main_median_ms": 10.269412994384766,
+          "parity": true,
+          "risk_count": 389750,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 13696,
+          "main_median_ms": 13.38317584991455,
+          "parity": true,
+          "risk_count": 389750,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11808,
+          "main_median_ms": 20.875459671020508,
+          "parity": true,
+          "risk_count": 389750,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11808,
+          "main_median_ms": 7.489713191986084,
+          "parity": true,
+          "risk_count": 389750,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 11,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "11",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-11.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 11,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11824,
+          "main_median_ms": 7.511635780334473,
+          "parity": true,
+          "risk_count": 390087,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 13664,
+          "main_median_ms": 10.220882415771484,
+          "parity": true,
+          "risk_count": 390087,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 13664,
+          "main_median_ms": 13.353631019592285,
+          "parity": true,
+          "risk_count": 390087,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11824,
+          "main_median_ms": 20.801300048828125,
+          "parity": true,
+          "risk_count": 390087,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11824,
+          "main_median_ms": 7.503638744354248,
+          "parity": true,
+          "risk_count": 390087,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 12,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "12",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-12.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 12,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12416,
+          "main_median_ms": 7.9115471839904785,
+          "parity": true,
+          "risk_count": 389438,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14976,
+          "main_median_ms": 11.199366569519043,
+          "parity": true,
+          "risk_count": 389438,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14976,
+          "main_median_ms": 14.84702205657959,
+          "parity": true,
+          "risk_count": 389438,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12416,
+          "main_median_ms": 22.3592472076416,
+          "parity": true,
+          "risk_count": 389438,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12416,
+          "main_median_ms": 7.915852069854736,
+          "parity": true,
+          "risk_count": 389438,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 13,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "13",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-13.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 13,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11696,
+          "main_median_ms": 7.4347381591796875,
+          "parity": true,
+          "risk_count": 389899,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 13440,
+          "main_median_ms": 10.047744750976562,
+          "parity": true,
+          "risk_count": 389899,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 13440,
+          "main_median_ms": 13.06317138671875,
+          "parity": true,
+          "risk_count": 389899,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11696,
+          "main_median_ms": 20.520631790161133,
+          "parity": true,
+          "risk_count": 389899,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11696,
+          "main_median_ms": 7.424287796020508,
+          "parity": true,
+          "risk_count": 389899,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 14,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "14",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-14.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 14,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12352,
+          "main_median_ms": 7.875946998596191,
+          "parity": true,
+          "risk_count": 388533,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14912,
+          "main_median_ms": 11.207995414733887,
+          "parity": true,
+          "risk_count": 388533,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14912,
+          "main_median_ms": 14.804107666015625,
+          "parity": true,
+          "risk_count": 388533,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12352,
+          "main_median_ms": 22.258501052856445,
+          "parity": true,
+          "risk_count": 388533,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12352,
+          "main_median_ms": 7.8699259757995605,
+          "parity": true,
+          "risk_count": 388533,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 15,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "15",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-15.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 15,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 13392,
+          "main_median_ms": 8.589217185974121,
+          "parity": true,
+          "risk_count": 388605,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 17440,
+          "main_median_ms": 12.966102600097656,
+          "parity": true,
+          "risk_count": 388605,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 17440,
+          "main_median_ms": 17.54254913330078,
+          "parity": true,
+          "risk_count": 388605,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 13392,
+          "main_median_ms": 24.82723617553711,
+          "parity": true,
+          "risk_count": 388605,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 13392,
+          "main_median_ms": 8.586502075195312,
+          "parity": true,
+          "risk_count": 388605,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 16,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "16",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-16.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 16,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 13024,
+          "main_median_ms": 8.3473539352417,
+          "parity": true,
+          "risk_count": 390420,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 16576,
+          "main_median_ms": 12.318849563598633,
+          "parity": true,
+          "risk_count": 390420,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 16576,
+          "main_median_ms": 16.567020416259766,
+          "parity": true,
+          "risk_count": 390420,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 13024,
+          "main_median_ms": 23.793535232543945,
+          "parity": true,
+          "risk_count": 390420,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 13024,
+          "main_median_ms": 8.379623413085938,
+          "parity": true,
+          "risk_count": 390420,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 17,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "17",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-17.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 17,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11840,
+          "main_median_ms": 7.531706809997559,
+          "parity": true,
+          "risk_count": 389457,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 13888,
+          "main_median_ms": 10.418033599853516,
+          "parity": true,
+          "risk_count": 389457,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 13888,
+          "main_median_ms": 13.505126953125,
+          "parity": true,
+          "risk_count": 389457,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11840,
+          "main_median_ms": 20.9222354888916,
+          "parity": true,
+          "risk_count": 389457,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11840,
+          "main_median_ms": 7.546441078186035,
+          "parity": true,
+          "risk_count": 389457,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 18,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "18",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-18.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 18,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12032,
+          "main_median_ms": 7.647997856140137,
+          "parity": true,
+          "risk_count": 388692,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14144,
+          "main_median_ms": 10.581185340881348,
+          "parity": true,
+          "risk_count": 388692,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14144,
+          "main_median_ms": 13.872614860534668,
+          "parity": true,
+          "risk_count": 388692,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12032,
+          "main_median_ms": 21.358219146728516,
+          "parity": true,
+          "risk_count": 388692,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12032,
+          "main_median_ms": 7.641750812530518,
+          "parity": true,
+          "risk_count": 388692,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 19,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "19",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-19.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 19,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11472,
+          "main_median_ms": 7.31190299987793,
+          "parity": true,
+          "risk_count": 388620,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 12960,
+          "main_median_ms": 9.753615379333496,
+          "parity": true,
+          "risk_count": 388620,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 12960,
+          "main_median_ms": 12.584944725036621,
+          "parity": true,
+          "risk_count": 388620,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11472,
+          "main_median_ms": 19.97522735595703,
+          "parity": true,
+          "risk_count": 388620,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11472,
+          "main_median_ms": 7.324855804443359,
+          "parity": true,
+          "risk_count": 388620,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 20,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "20",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-20.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 20,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12544,
+          "main_median_ms": 8.014269828796387,
+          "parity": true,
+          "risk_count": 389854,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 15520,
+          "main_median_ms": 11.627171516418457,
+          "parity": true,
+          "risk_count": 389854,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 15520,
+          "main_median_ms": 15.529627799987793,
+          "parity": true,
+          "risk_count": 389854,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12544,
+          "main_median_ms": 22.727344512939453,
+          "parity": true,
+          "risk_count": 389854,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12544,
+          "main_median_ms": 8.012364387512207,
+          "parity": true,
+          "risk_count": 389854,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 21,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "21",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-21.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 21,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12128,
+          "main_median_ms": 7.742922782897949,
+          "parity": true,
+          "risk_count": 390294,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14336,
+          "main_median_ms": 10.744528770446777,
+          "parity": true,
+          "risk_count": 390294,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14336,
+          "main_median_ms": 14.096726417541504,
+          "parity": true,
+          "risk_count": 390294,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12128,
+          "main_median_ms": 21.637968063354492,
+          "parity": true,
+          "risk_count": 390294,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12128,
+          "main_median_ms": 7.701610088348389,
+          "parity": true,
+          "risk_count": 390294,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 22,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "22",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-22.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 22,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 13184,
+          "main_median_ms": 8.403383255004883,
+          "parity": true,
+          "risk_count": 389173,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 16800,
+          "main_median_ms": 12.557628631591797,
+          "parity": true,
+          "risk_count": 389173,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 16800,
+          "main_median_ms": 16.946928024291992,
+          "parity": true,
+          "risk_count": 389173,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 13184,
+          "main_median_ms": 24.33835792541504,
+          "parity": true,
+          "risk_count": 389173,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 13184,
+          "main_median_ms": 8.473912239074707,
+          "parity": true,
+          "risk_count": 389173,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 23,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "23",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-23.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 23,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 13680,
+          "main_median_ms": 8.836862564086914,
+          "parity": true,
+          "risk_count": 390017,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 17984,
+          "main_median_ms": 13.397939682006836,
+          "parity": true,
+          "risk_count": 390017,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 17984,
+          "main_median_ms": 18.138891220092773,
+          "parity": true,
+          "risk_count": 390017,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 13680,
+          "main_median_ms": 25.55686378479004,
+          "parity": true,
+          "risk_count": 390017,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 13680,
+          "main_median_ms": 8.79422378540039,
+          "parity": true,
+          "risk_count": 390017,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 24,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "24",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-24.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 24,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12240,
+          "main_median_ms": 7.804356098175049,
+          "parity": true,
+          "risk_count": 388702,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14720,
+          "main_median_ms": 10.98960018157959,
+          "parity": true,
+          "risk_count": 388702,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14720,
+          "main_median_ms": 14.44797134399414,
+          "parity": true,
+          "risk_count": 388702,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12240,
+          "main_median_ms": 21.7545166015625,
+          "parity": true,
+          "risk_count": 388702,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12240,
+          "main_median_ms": 7.79990816116333,
+          "parity": true,
+          "risk_count": 388702,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 25,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "25",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-25.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 25,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12944,
+          "main_median_ms": 8.270467758178711,
+          "parity": true,
+          "risk_count": 389129,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 16224,
+          "main_median_ms": 12.099674224853516,
+          "parity": true,
+          "risk_count": 389129,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 16224,
+          "main_median_ms": 16.084840774536133,
+          "parity": true,
+          "risk_count": 389129,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12944,
+          "main_median_ms": 23.540403366088867,
+          "parity": true,
+          "risk_count": 389129,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12944,
+          "main_median_ms": 8.242128372192383,
+          "parity": true,
+          "risk_count": 389129,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 26,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "26",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-26.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 26,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12032,
+          "main_median_ms": 7.6385178565979,
+          "parity": true,
+          "risk_count": 390250,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14144,
+          "main_median_ms": 10.595111846923828,
+          "parity": true,
+          "risk_count": 390250,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14144,
+          "main_median_ms": 13.892171859741211,
+          "parity": true,
+          "risk_count": 390250,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12032,
+          "main_median_ms": 21.341733932495117,
+          "parity": true,
+          "risk_count": 390250,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12032,
+          "main_median_ms": 7.6369099617004395,
+          "parity": true,
+          "risk_count": 390250,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 27,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "27",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-27.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 27,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11744,
+          "main_median_ms": 7.459920883178711,
+          "parity": true,
+          "risk_count": 389366,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 13568,
+          "main_median_ms": 10.156109809875488,
+          "parity": true,
+          "risk_count": 389366,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 13568,
+          "main_median_ms": 13.185425758361816,
+          "parity": true,
+          "risk_count": 389366,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11744,
+          "main_median_ms": 20.564037322998047,
+          "parity": true,
+          "risk_count": 389366,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11744,
+          "main_median_ms": 7.4627509117126465,
+          "parity": true,
+          "risk_count": 389366,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 28,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "28",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-28.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 28,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11904,
+          "main_median_ms": 7.569756031036377,
+          "parity": true,
+          "risk_count": 390037,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14016,
+          "main_median_ms": 10.475147247314453,
+          "parity": true,
+          "risk_count": 390037,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14016,
+          "main_median_ms": 13.739477157592773,
+          "parity": true,
+          "risk_count": 390037,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11904,
+          "main_median_ms": 21.03281021118164,
+          "parity": true,
+          "risk_count": 390037,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11904,
+          "main_median_ms": 7.568741798400879,
+          "parity": true,
+          "risk_count": 390037,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 29,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "29",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-29.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 29,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11488,
+          "main_median_ms": 7.288731098175049,
+          "parity": true,
+          "risk_count": 390068,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 12960,
+          "main_median_ms": 9.73264217376709,
+          "parity": true,
+          "risk_count": 390068,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 12960,
+          "main_median_ms": 12.598404884338379,
+          "parity": true,
+          "risk_count": 390068,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11488,
+          "main_median_ms": 20.018978118896484,
+          "parity": true,
+          "risk_count": 390068,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11488,
+          "main_median_ms": 7.2807111740112305,
+          "parity": true,
+          "risk_count": 390068,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 30,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "30",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-30.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 30,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12288,
+          "main_median_ms": 7.8316240310668945,
+          "parity": true,
+          "risk_count": 389233,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14752,
+          "main_median_ms": 11.072147369384766,
+          "parity": true,
+          "risk_count": 389233,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14752,
+          "main_median_ms": 14.567996978759766,
+          "parity": true,
+          "risk_count": 389233,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12288,
+          "main_median_ms": 22.084896087646484,
+          "parity": true,
+          "risk_count": 389233,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12288,
+          "main_median_ms": 7.833661079406738,
+          "parity": true,
+          "risk_count": 389233,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 31,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "31",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-31.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 31,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12416,
+          "main_median_ms": 7.923127174377441,
+          "parity": true,
+          "risk_count": 388761,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 15104,
+          "main_median_ms": 11.231789588928223,
+          "parity": true,
+          "risk_count": 388761,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 15104,
+          "main_median_ms": 14.971793174743652,
+          "parity": true,
+          "risk_count": 388761,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12416,
+          "main_median_ms": 22.417556762695312,
+          "parity": true,
+          "risk_count": 388761,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12416,
+          "main_median_ms": 7.927005767822266,
+          "parity": true,
+          "risk_count": 388761,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 32,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "32",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-32.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 32,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12144,
+          "main_median_ms": 7.725099086761475,
+          "parity": true,
+          "risk_count": 389966,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14304,
+          "main_median_ms": 10.724055290222168,
+          "parity": true,
+          "risk_count": 389966,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14304,
+          "main_median_ms": 14.07437515258789,
+          "parity": true,
+          "risk_count": 389966,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12144,
+          "main_median_ms": 21.584794998168945,
+          "parity": true,
+          "risk_count": 389966,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12144,
+          "main_median_ms": 7.716410160064697,
+          "parity": true,
+          "risk_count": 389966,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 33,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "33",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-33.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 33,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11328,
+          "main_median_ms": 7.179614067077637,
+          "parity": true,
+          "risk_count": 389238,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 12768,
+          "main_median_ms": 9.54497241973877,
+          "parity": true,
+          "risk_count": 389238,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 12768,
+          "main_median_ms": 12.321540832519531,
+          "parity": true,
+          "risk_count": 389238,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11328,
+          "main_median_ms": 19.603933334350586,
+          "parity": true,
+          "risk_count": 389238,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11328,
+          "main_median_ms": 7.182295799255371,
+          "parity": true,
+          "risk_count": 389238,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 34,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "34",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-34.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 34,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11424,
+          "main_median_ms": 7.24396276473999,
+          "parity": true,
+          "risk_count": 387719,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 12928,
+          "main_median_ms": 9.683420181274414,
+          "parity": true,
+          "risk_count": 387719,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 12928,
+          "main_median_ms": 12.495614051818848,
+          "parity": true,
+          "risk_count": 387719,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11424,
+          "main_median_ms": 19.76679229736328,
+          "parity": true,
+          "risk_count": 387719,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11424,
+          "main_median_ms": 7.232059955596924,
+          "parity": true,
+          "risk_count": 387719,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 35,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "35",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-35.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 35,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11408,
+          "main_median_ms": 7.225642204284668,
+          "parity": true,
+          "risk_count": 390314,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 12800,
+          "main_median_ms": 9.592874526977539,
+          "parity": true,
+          "risk_count": 390314,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 12800,
+          "main_median_ms": 12.408329010009766,
+          "parity": true,
+          "risk_count": 390314,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11408,
+          "main_median_ms": 19.8057861328125,
+          "parity": true,
+          "risk_count": 390314,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11408,
+          "main_median_ms": 7.224233150482178,
+          "parity": true,
+          "risk_count": 390314,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 36,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "36",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-36.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 36,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11856,
+          "main_median_ms": 7.52707576751709,
+          "parity": true,
+          "risk_count": 390501,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 13760,
+          "main_median_ms": 10.271991729736328,
+          "parity": true,
+          "risk_count": 390501,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 13760,
+          "main_median_ms": 13.407815933227539,
+          "parity": true,
+          "risk_count": 390501,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11856,
+          "main_median_ms": 20.940839767456055,
+          "parity": true,
+          "risk_count": 390501,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11856,
+          "main_median_ms": 7.523799896240234,
+          "parity": true,
+          "risk_count": 390501,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 37,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "37",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-37.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 37,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11408,
+          "main_median_ms": 7.197389125823975,
+          "parity": true,
+          "risk_count": 388954,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 12864,
+          "main_median_ms": 9.61752700805664,
+          "parity": true,
+          "risk_count": 388954,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 12864,
+          "main_median_ms": 12.340375900268555,
+          "parity": true,
+          "risk_count": 388954,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11408,
+          "main_median_ms": 19.77600860595703,
+          "parity": true,
+          "risk_count": 388954,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11408,
+          "main_median_ms": 7.219941139221191,
+          "parity": true,
+          "risk_count": 388954,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 38,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "38",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-38.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 38,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12400,
+          "main_median_ms": 7.905253887176514,
+          "parity": true,
+          "risk_count": 389449,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 15200,
+          "main_median_ms": 11.38284969329834,
+          "parity": true,
+          "risk_count": 389449,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 15200,
+          "main_median_ms": 15.115492820739746,
+          "parity": true,
+          "risk_count": 389449,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12400,
+          "main_median_ms": 22.307361602783203,
+          "parity": true,
+          "risk_count": 389449,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12400,
+          "main_median_ms": 7.913376808166504,
+          "parity": true,
+          "risk_count": 389449,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 39,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "39",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-39.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 39,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11712,
+          "main_median_ms": 7.4327898025512695,
+          "parity": true,
+          "risk_count": 388962,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 13568,
+          "main_median_ms": 10.161914825439453,
+          "parity": true,
+          "risk_count": 388962,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 13568,
+          "main_median_ms": 13.25652027130127,
+          "parity": true,
+          "risk_count": 388962,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11712,
+          "main_median_ms": 20.557748794555664,
+          "parity": true,
+          "risk_count": 388962,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11712,
+          "main_median_ms": 7.429478168487549,
+          "parity": true,
+          "risk_count": 388962,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 40,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "40",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-40.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 40,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11904,
+          "main_median_ms": 7.563968181610107,
+          "parity": true,
+          "risk_count": 390090,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 13920,
+          "main_median_ms": 10.398008346557617,
+          "parity": true,
+          "risk_count": 390090,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 13920,
+          "main_median_ms": 13.555852890014648,
+          "parity": true,
+          "risk_count": 390090,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11904,
+          "main_median_ms": 20.95226287841797,
+          "parity": true,
+          "risk_count": 390090,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11904,
+          "main_median_ms": 7.575756072998047,
+          "parity": true,
+          "risk_count": 390090,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 41,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "41",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-41.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 41,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12144,
+          "main_median_ms": 7.744801998138428,
+          "parity": true,
+          "risk_count": 388991,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14528,
+          "main_median_ms": 10.841879844665527,
+          "parity": true,
+          "risk_count": 388991,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14528,
+          "main_median_ms": 14.237772941589355,
+          "parity": true,
+          "risk_count": 388991,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12144,
+          "main_median_ms": 21.557235717773438,
+          "parity": true,
+          "risk_count": 388991,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12144,
+          "main_median_ms": 7.727028846740723,
+          "parity": true,
+          "risk_count": 388991,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 42,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "42",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-42.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 42,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11648,
+          "main_median_ms": 7.3679962158203125,
+          "parity": true,
+          "risk_count": 390034,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 13408,
+          "main_median_ms": 10.057804107666016,
+          "parity": true,
+          "risk_count": 390034,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 13408,
+          "main_median_ms": 13.004695892333984,
+          "parity": true,
+          "risk_count": 390034,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11648,
+          "main_median_ms": 20.303112030029297,
+          "parity": true,
+          "risk_count": 390034,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11648,
+          "main_median_ms": 7.3737359046936035,
+          "parity": true,
+          "risk_count": 390034,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 43,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "43",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-43.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 43,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11968,
+          "main_median_ms": 7.613181114196777,
+          "parity": true,
+          "risk_count": 388014,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14080,
+          "main_median_ms": 10.554335594177246,
+          "parity": true,
+          "risk_count": 388014,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14080,
+          "main_median_ms": 13.846195220947266,
+          "parity": true,
+          "risk_count": 388014,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11968,
+          "main_median_ms": 21.107004165649414,
+          "parity": true,
+          "risk_count": 388014,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11968,
+          "main_median_ms": 7.6177449226379395,
+          "parity": true,
+          "risk_count": 388014,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 44,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "44",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-44.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 44,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12192,
+          "main_median_ms": 7.763271808624268,
+          "parity": true,
+          "risk_count": 389891,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14656,
+          "main_median_ms": 10.964475631713867,
+          "parity": true,
+          "risk_count": 389891,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14656,
+          "main_median_ms": 14.415836334228516,
+          "parity": true,
+          "risk_count": 389891,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12192,
+          "main_median_ms": 21.767715454101562,
+          "parity": true,
+          "risk_count": 389891,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12192,
+          "main_median_ms": 7.775417804718018,
+          "parity": true,
+          "risk_count": 389891,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 45,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "45",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-45.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 45,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12000,
+          "main_median_ms": 7.621161937713623,
+          "parity": true,
+          "risk_count": 389024,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14240,
+          "main_median_ms": 10.667866706848145,
+          "parity": true,
+          "risk_count": 389024,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14240,
+          "main_median_ms": 13.894685745239258,
+          "parity": true,
+          "risk_count": 389024,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12000,
+          "main_median_ms": 21.187660217285156,
+          "parity": true,
+          "risk_count": 389024,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12000,
+          "main_median_ms": 7.597334861755371,
+          "parity": true,
+          "risk_count": 389024,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 46,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "46",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-46.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 46,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 11984,
+          "main_median_ms": 7.625442981719971,
+          "parity": true,
+          "risk_count": 388877,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14048,
+          "main_median_ms": 10.53085994720459,
+          "parity": true,
+          "risk_count": 388877,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14048,
+          "main_median_ms": 13.835541725158691,
+          "parity": true,
+          "risk_count": 388877,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 11984,
+          "main_median_ms": 21.274898529052734,
+          "parity": true,
+          "risk_count": 388877,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 11984,
+          "main_median_ms": 7.6216721534729,
+          "parity": true,
+          "risk_count": 388877,
+          "timed_risk_capacity": 0
+        }
+      ]
+    },
+    {
+      "capture_index": 47,
+      "command": [
+        "scripts/qwen4exp_q51_lds_screen.py",
+        "--model-root",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--populations",
+        "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "--capture-index",
+        "47",
+        "--repetitions",
+        "5",
+        "--output",
+        "/tmp/qwen4exp-ed1-population-replay/capture-47.json"
+      ],
+      "population_capture": {
+        "path": "benchmarks/results/2026-09-29-qwen4exp-population-recovery/populations.json",
+        "sha256": "a645b3c1a045a07a29f77b16f3151eea663d89fc6c2dea992deaa17f8a77d18d",
+        "capture_index": 47,
+        "input": {
+          "kind": "synthetic_token_id_sequence",
+          "start_inclusive": 4000,
+          "stop_exclusive": 5024,
+          "tokens": 1024,
+          "warmup_same_input": true,
+          "reset_before_capture": true,
+          "natural_code_prompt": false
+        },
+        "layer_identity_verified": false
+      },
+      "variants": [
+        {
+          "variant": "j16",
+          "tile_rows": 16,
+          "padded_rows": 12080,
+          "main_median_ms": 7.6919660568237305,
+          "parity": true,
+          "risk_count": 388449,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32",
+          "tile_rows": 32,
+          "padded_rows": 14400,
+          "main_median_ms": 10.767287254333496,
+          "parity": true,
+          "risk_count": 388449,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j32_lds",
+          "tile_rows": 32,
+          "padded_rows": 14400,
+          "main_median_ms": 14.114737510681152,
+          "parity": true,
+          "risk_count": 388449,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_lds",
+          "tile_rows": 16,
+          "padded_rows": 12080,
+          "main_median_ms": 21.40234375,
+          "parity": true,
+          "risk_count": 388449,
+          "timed_risk_capacity": 0
+        },
+        {
+          "variant": "j16_repeat",
+          "tile_rows": 16,
+          "padded_rows": 12080,
+          "main_median_ms": 7.686801910400391,
+          "parity": true,
+          "risk_count": 388449,
+          "timed_risk_capacity": 0
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "j16": {
+      "mean_case_median_ms": 7.888192733128865,
+      "sum_case_medians_ms": 378.63325119018555,
+      "delta_percent_vs_j16": 0.0,
+      "min_case_ratio": 1.0,
+      "max_case_ratio": 1.0,
+      "cases_faster_than_j16": 0
+    },
+    "j32": {
+      "mean_case_median_ms": 11.21996388832728,
+      "sum_case_medians_ms": 538.5582666397095,
+      "delta_percent_vs_j16": 42.23744611621403,
+      "min_case_ratio": 1.327615491573766,
+      "max_case_ratio": 1.545420791619162,
+      "cases_faster_than_j16": 0
+    },
+    "j32_lds": {
+      "mean_case_median_ms": 14.8643852074941,
+      "sum_case_medians_ms": 713.4904899597168,
+      "delta_percent_vs_j16": 88.43841308626487,
+      "min_case_ratio": 1.7145628344578074,
+      "max_case_ratio": 2.117657779267006,
+      "cases_faster_than_j16": 0
+    },
+    "j16_lds": {
+      "mean_case_median_ms": 22.24586037794749,
+      "sum_case_medians_ms": 1067.8012981414795,
+      "delta_percent_vs_j16": 182.0146658501285,
+      "min_case_ratio": 2.728726380756428,
+      "max_case_ratio": 2.950038746832094,
+      "cases_faster_than_j16": 0
+    },
+    "j16_repeat": {
+      "mean_case_median_ms": 7.886947562297185,
+      "sum_case_medians_ms": 378.5734829902649,
+      "delta_percent_vs_j16": -0.01578524858363295,
+      "min_case_ratio": 0.9944548318697418,
+      "max_case_ratio": 1.0083929272210475,
+      "cases_faster_than_j16": 30
+    }
+  },
+  "limits": [
+    "Main only, risk-index writes disabled during timing; repair and engine excluded.",
+    "Same real layer0 weights for all populations; not layer-matched activations/weights or mixed-quant execution.",
+    "Five samples per arm after two warmups; fixed arm order with final j16 repeat.",
+    "No new profiler run; identical kernel source to archived initial trace. No CPU outer/model/task qualification."
+  ]
+}
