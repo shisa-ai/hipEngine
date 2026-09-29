@@ -71,6 +71,22 @@ STARVED = (
     (512, 2560, 24, 0.307, 33.4),
 )
 
+# Sweep of the gated range itself, so the rule's boundary is supported across
+# every width it claims rather than only at the three shapes the engine
+# happened to exercise.  out=48 and out=128 appear in the Qwen3.6-35B model
+# (96 and 0 tensors respectively) and out=48 was not covered by the original
+# three; the in_features values are the ones that model actually uses.
+NARROW_RANGE = (
+    (48, 512, 96, 0.0, 0.0),
+    (128, 512, 96, 0.0, 0.0),
+    (256, 512, 96, 0.0, 0.0),
+    (320, 10240, 97, 3.601, 337.7),
+    (384, 512, 96, 0.0, 0.0),
+    (512, 2560, 24, 0.307, 33.4),
+    (640, 2560, 96, 1.286, 167.1),
+    (768, 512, 96, 0.0, 0.0),
+)
+
 # (out_features, in_features, tensors/step, ms/step, MB/step) for the shapes
 # already at 90.8-102.9% of roof.  out=10240 and out=2560 mix two or three
 # in_features; the dominant one is used, and the resulting byte figure is
@@ -108,7 +124,7 @@ def main() -> int:
     ap.add_argument("--json-out", type=pathlib.Path, default=None)
     ap.add_argument(
         "--shapes",
-        choices=("starved", "saturated", "all"),
+        choices=("starved", "saturated", "range", "all"),
         default="starved",
         help="which shapes to sweep; default is the three starved ones",
     )
@@ -118,6 +134,8 @@ def main() -> int:
         shapes = STARVED
     elif args.shapes == "saturated":
         shapes = SATURATED
+    elif args.shapes == "range":
+        shapes = NARROW_RANGE
     else:
         shapes = STARVED + SATURATED
 

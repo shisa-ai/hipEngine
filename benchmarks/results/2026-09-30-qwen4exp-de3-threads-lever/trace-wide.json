@@ -1,0 +1,403 @@
+{
+  "case": {
+    "category": "code",
+    "id": "code-p4096",
+    "prompt_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+    "prompt_tokens": 4096
+  },
+  "command": [
+    "qwen4exp_context_decode_profile.py",
+    "--model-root",
+    "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--case-id",
+    "code-p4096",
+    "--live-count",
+    "4097",
+    "--repetitions",
+    "3",
+    "--prefill-chunk-size",
+    "1024",
+    "--hip-arch",
+    "gfx1151",
+    "--require-cached-build",
+    "--compiler-version-file",
+    "/tmp/qwen4exp-ledger-20260928-current/hipcc-version.txt",
+    "--profile",
+    "--role-markers",
+    "--override",
+    "HIPENGINE_GGUF_PACK8_GEMV_WIDE=1",
+    "--output",
+    "benchmarks/results/2026-09-30-qwen4exp-de3-threads-lever/trace-wide.json"
+  ],
+  "contexts": [
+    {
+      "dense_equivalent_limit": 2051,
+      "graph_after": {
+        "enabled": true,
+        "graphs": 48,
+        "node_types": {
+          "0": 625
+        },
+        "nodes": 625,
+        "stats": {
+          "capture": 48,
+          "eager": 0,
+          "reject": 0,
+          "replay": 144
+        }
+      },
+      "graph_before": {
+        "enabled": true,
+        "graphs": 48,
+        "node_types": {
+          "0": 625
+        },
+        "nodes": 625,
+        "stats": {
+          "capture": 48,
+          "eager": 0,
+          "reject": 0,
+          "replay": 0
+        }
+      },
+      "lifecycle": {
+        "after_measurement": {
+          "active_allocations": 1622,
+          "current_allocated_bytes": 84439708424,
+          "peak_allocated_bytes": 84439708424,
+          "peak_allocations": 1622,
+          "total_allocated_bytes": 84544566032,
+          "total_freed_bytes": 104857608
+        },
+        "after_warmup": {
+          "active_allocations": 1622,
+          "current_allocated_bytes": 84439708424,
+          "peak_allocated_bytes": 84439708424,
+          "peak_allocations": 1622,
+          "total_allocated_bytes": 84544566032,
+          "total_freed_bytes": 104857608
+        },
+        "allocated_byte_growth": 0,
+        "allocation_growth": 0,
+        "passed": true
+      },
+      "live_count": 4097,
+      "prefix_token_ids_sha256": "72a815ea3e4758bfc8f026ca51dec5c64e5aa7f3b7947a0c6cd0dd8f2ad83c75",
+      "prefix_tokens": 4096,
+      "qsa_path": "indexed_sparse",
+      "repeats": [
+        {
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "marker": "qwen4exp_decode_live4097_rep0",
+          "repetition": 0,
+          "runtime_census": {
+            "bytes": {
+              "memcpy": 10440,
+              "memcpy_async": 6144,
+              "memset": 16
+            },
+            "calls": {
+              "graph_launch": 48,
+              "memcpy": 3,
+              "memcpy_async": 12,
+              "memset": 1
+            },
+            "memcpy_kinds": {
+              "memcpy": {
+                "1": 2,
+                "2": 1
+              },
+              "memcpy_async": {
+                "3": 12
+              }
+            },
+            "memcpy_size_kinds": {
+              "memcpy": {
+                "10240:1": 1,
+                "192:1": 1,
+                "8:2": 1
+              },
+              "memcpy_async": {
+                "512:3": 12
+              }
+            },
+            "sizes": {
+              "memcpy": {
+                "10240": 1,
+                "192": 1,
+                "8": 1
+              },
+              "memcpy_async": {
+                "512": 12
+              },
+              "memset": {
+                "16": 1
+              }
+            }
+          },
+          "state_finite": true,
+          "state_sha256": "540dd1664f7018428e464d676cb46afaa7aebf0456b6c58663dc7d7223397c74",
+          "token_id": 198,
+          "wall_seconds": 0.21840652311220765
+        },
+        {
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "marker": "qwen4exp_decode_live4097_rep1",
+          "repetition": 1,
+          "runtime_census": {
+            "bytes": {
+              "memcpy": 10440,
+              "memcpy_async": 6144,
+              "memset": 16
+            },
+            "calls": {
+              "graph_launch": 48,
+              "memcpy": 3,
+              "memcpy_async": 12,
+              "memset": 1
+            },
+            "memcpy_kinds": {
+              "memcpy": {
+                "1": 2,
+                "2": 1
+              },
+              "memcpy_async": {
+                "3": 12
+              }
+            },
+            "memcpy_size_kinds": {
+              "memcpy": {
+                "10240:1": 1,
+                "192:1": 1,
+                "8:2": 1
+              },
+              "memcpy_async": {
+                "512:3": 12
+              }
+            },
+            "sizes": {
+              "memcpy": {
+                "10240": 1,
+                "192": 1,
+                "8": 1
+              },
+              "memcpy_async": {
+                "512": 12
+              },
+              "memset": {
+                "16": 1
+              }
+            }
+          },
+          "state_finite": true,
+          "state_sha256": "540dd1664f7018428e464d676cb46afaa7aebf0456b6c58663dc7d7223397c74",
+          "token_id": 198,
+          "wall_seconds": 0.20907643903046846
+        },
+        {
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "marker": "qwen4exp_decode_live4097_rep2",
+          "repetition": 2,
+          "runtime_census": {
+            "bytes": {
+              "memcpy": 10440,
+              "memcpy_async": 6144,
+              "memset": 16
+            },
+            "calls": {
+              "graph_launch": 48,
+              "memcpy": 3,
+              "memcpy_async": 12,
+              "memset": 1
+            },
+            "memcpy_kinds": {
+              "memcpy": {
+                "1": 2,
+                "2": 1
+              },
+              "memcpy_async": {
+                "3": 12
+              }
+            },
+            "memcpy_size_kinds": {
+              "memcpy": {
+                "10240:1": 1,
+                "192:1": 1,
+                "8:2": 1
+              },
+              "memcpy_async": {
+                "512:3": 12
+              }
+            },
+            "sizes": {
+              "memcpy": {
+                "10240": 1,
+                "192": 1,
+                "8": 1
+              },
+              "memcpy_async": {
+                "512": 12
+              },
+              "memset": {
+                "16": 1
+              }
+            }
+          },
+          "state_finite": true,
+          "state_sha256": "540dd1664f7018428e464d676cb46afaa7aebf0456b6c58663dc7d7223397c74",
+          "token_id": 198,
+          "wall_seconds": 0.20208630478009582
+        }
+      ],
+      "root_token_id": 248068,
+      "summary": {
+        "finite": true,
+        "passed": true,
+        "runs": 3,
+        "state_exact": true,
+        "token_exact": true,
+        "wall_seconds": {
+          "max": 0.21840652311220765,
+          "mean": 0.20985642230759063,
+          "median": 0.20907643903046846,
+          "min": 0.20208630478009582
+        }
+      },
+      "warmup": {
+        "finite": true,
+        "state_sha256": "540dd1664f7018428e464d676cb46afaa7aebf0456b6c58663dc7d7223397c74",
+        "token_id": 198
+      }
+    }
+  ],
+  "decision": {
+    "next": "analyze marker-scoped kernel/API/role owners",
+    "passed": true
+  },
+  "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "host": {
+    "cpu_governors": {
+      "powersave": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "gfx1151",
+    "kernel": "7.1.6-1-cachyos",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "rocm_platform": null,
+    "tuned_active": "It seems that tuned daemon is not running, preset profile is not activated.\nPreset profile: accelerator-performance"
+  },
+  "kind": "qwen4exp_context_decode_profile",
+  "lifecycle": {
+    "after_all_contexts": {
+      "active_allocations": 1622,
+      "current_allocated_bytes": 84439708424,
+      "peak_allocated_bytes": 84439708424,
+      "peak_allocations": 1622,
+      "total_allocated_bytes": 84544566032,
+      "total_freed_bytes": 104857608
+    },
+    "after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 84439708424,
+      "peak_allocations": 1622,
+      "total_allocated_bytes": 84544566032,
+      "total_freed_bytes": 84544566032
+    },
+    "after_first_context_warmup": {
+      "active_allocations": 1622,
+      "current_allocated_bytes": 84439708424,
+      "peak_allocated_bytes": 84439708424,
+      "peak_allocations": 1622,
+      "total_allocated_bytes": 84544566032,
+      "total_freed_bytes": 104857608
+    },
+    "cross_bucket_growth": {
+      "allocated_byte_growth": 0,
+      "allocation_growth": 0,
+      "passed": true
+    },
+    "passed": true,
+    "steady_windows_passed": true
+  },
+  "measurement_class": "diagnostic_profiled_not_performance",
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "profile": {
+    "bound_route_env": {
+      "HIPENGINE_GGUF_PACK8_GEMV_WIDE": null,
+      "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
+      "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": "27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+      "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "0",
+      "HIPENGINE_QWEN4_EXP_MOE_GRAPH": null,
+      "HIPENGINE_QWEN4_EXP_PLE_WARM": null,
+      "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0",
+      "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1",
+      "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": "0,2,5,6,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+      "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "1",
+      "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+      "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES": null,
+      "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "0",
+      "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": null,
+      "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+      "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+      "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "0",
+      "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_token_tile4_dense_exact"
+    },
+    "configuration_class": "diagnostic_post_binder_override",
+    "execution_profile": "production",
+    "fell_back_to_strict": false,
+    "manifest_sha256": "a55324f919900c20b244b65605e37d8e12623fe20ff9b076bc3573f11edf3786",
+    "named_profile_intact": false,
+    "override_stage": "post_profile_binder_pre_measurement",
+    "overrides": {
+      "HIPENGINE_GGUF_PACK8_GEMV_WIDE": "1"
+    },
+    "route_env": {
+      "HIPENGINE_GGUF_PACK8_GEMV_WIDE": "1",
+      "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
+      "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": "27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+      "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "0",
+      "HIPENGINE_QWEN4_EXP_MOE_GRAPH": null,
+      "HIPENGINE_QWEN4_EXP_PLE_WARM": null,
+      "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0",
+      "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1",
+      "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": "0,2,5,6,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+      "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "1",
+      "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+      "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES": null,
+      "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "0",
+      "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": null,
+      "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+      "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": "35,36,37,38,39,40,41,42,43,44,45,46,47",
+      "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "0",
+      "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_token_tile4_dense_exact"
+    },
+    "strict_manifest_sha256": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed"
+  },
+  "protocol": {
+    "allocated_capacity": 4098,
+    "compact_output": true,
+    "live_counts": [
+      4097
+    ],
+    "prefill_chunk_size": 1024,
+    "profile": true,
+    "repetitions": 3,
+    "resident_input_token": true,
+    "role_markers": true,
+    "snapshot_restore_between_repeats": true,
+    "warmup_transitions_per_context": 1
+  },
+  "schema": 1,
+  "source": {
+    "head": "bc387b5d8422b87aca06596b4552639af0bd1bdb",
+    "path": "/home/lhl/hipEngine",
+    "script_tracked": true,
+    "tracked_clean": true
+  },
+  "status": "passed"
+}
