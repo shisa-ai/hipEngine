@@ -105,10 +105,10 @@ def _coverage(gate, rows, floor):
     )
 
 
-def _verdict(gate, rows, floor):
+def _verdict(gate, rows, floor, *, quality_passed=True):
     return gate.qualification_verdict(
         _coverage(gate, rows, floor),
-        quality_passed=True,
+        quality_passed=quality_passed,
         deterministic=True,
         clean=True,
     )
@@ -234,6 +234,35 @@ def test_the_same_suite_does_not_qualify_the_dense_wide_route():
     verdict = _verdict(gate, rows, floor)
     assert verdict["category_heldout_qualification_claim"] is False
     assert "category-heldout numerical evidence" in verdict["qualification_blockers"]
+
+
+def test_qualification_claim_requires_the_evidence_to_pass():
+    """Collected is not passed, and the field name promises the second.
+
+    The first version asserted ``category_heldout_qualification_claim`` on
+    complete-but-failing coverage. The real heldout run is exactly that case: 18
+    cases, four categories, real engagement - and ``hard_gates_passed: False``
+    with a per-scope KL failure at the prefill->c1 transition. A green claim on
+    that run is the same shape of defect as the two false passes this packet
+    already records.
+    """
+
+    gate = _gate()
+    rows = _rows()
+    floor = gate.ROUTE_ROW_FLOORS["wmma"]
+
+    passing = _verdict(gate, rows, floor, quality_passed=True)
+    assert passing["category_heldout_evidence_complete"] is True
+    assert passing["category_heldout_qualification_claim"] is True
+
+    failing = _verdict(gate, rows, floor, quality_passed=False)
+    assert failing["category_heldout_evidence_complete"] is True, (
+        "the evidence is still collected; only the claim should change"
+    )
+    assert failing["category_heldout_qualification_claim"] is False, (
+        "a heldout run that fails a quality gate must not claim qualification"
+    )
+    assert "calibrated quality thresholds" in failing["qualification_blockers"]
 
 
 def test_row_floor_boundary_is_inclusive():
