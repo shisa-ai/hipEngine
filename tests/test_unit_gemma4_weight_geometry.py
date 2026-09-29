@@ -239,7 +239,9 @@ def _install_layer_dispatch_recorder(
 
     calls: list[tuple[object, int, int]] = []
 
-    def fake_project(x_ptr, weight, out_ptr, rows, in_features, out_features, *, stream=0):
+    def fake_project(
+        x_ptr, weight, out_ptr, rows, in_features, out_features, *, stream=0, **kwargs
+    ):
         calls.append((weight, in_features, out_features))
 
     monkeypatch.setattr(layer_module, "gemma4_project", fake_project)

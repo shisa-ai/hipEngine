@@ -189,7 +189,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | `quant/gguf_q4_k_t16_selected_prefill.hip` | T16 Q4_K selected-expert prefill projections. |
 | `quant/gguf_q5_k_qmicro_planar_gemv.hip` | Planar qmicro Q5_K selected-expert projections. |
 | `quant/gguf_q8_0_t16_gemv.hip` | T16 Q8_0 decode projections. |
-| `quant/gguf_q8_0_t16_prefill.hip` | T16 Q8_0 prefill projections. |
+| `quant/gguf_q8_0_t16_prefill.hip` | T16 Q8_0 prefill projections with FP32 repair of non-finite WMMA accumulators. |
 | `quant/gguf_q8_0_raw_to_t16.hip` | Repack raw Q8_0 weights into T16 storage. |
 | `quant/gguf_iq_dense.hip` | Raw IQ/Q3 dense projections and Q3_K embedding lookup. |
 | `quant/gguf_iq_gemv.hip` | Raw IQ selected-expert projections. |
