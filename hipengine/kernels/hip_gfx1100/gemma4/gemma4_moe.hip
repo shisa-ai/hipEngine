@@ -101,7 +101,18 @@ __global__ void gemma4_moe_lane_to_row_kernel(
   for (int64_t row = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
        row < total_lanes;
        row += static_cast<int64_t>(blockDim.x) * gridDim.x) {
-    lane_to_row[sorted_lanes[row]] = static_cast<int32_t>(row);
+    // Range-check the scatter target. When the compaction upstream finds no
+    // active lanes (every routing entry rejected, so active_count is zero) it
+    // writes nothing, and this buffer then holds uninitialized heap. Indexing
+    // with it is a write far outside the buffer that the device reports as an
+    // SQ privilege fault -- silent, unrecoverable, and observed only as the
+    // next synchronizing call blocking forever. Rejecting an out-of-range
+    // source costs one comparison on a path that is already invalid and leaves
+    // a valid permutation untouched.
+    const int64_t src = sorted_lanes[row];
+    if (src >= 0 && src < total_lanes) {
+      lane_to_row[src] = static_cast<int32_t>(row);
+    }
   }
 }
 
@@ -131,12 +142,19 @@ __global__ void gemma4_moe_weighted_accumulate_kernel(
     return;
   }
   const int64_t lane_base = token * top_k;
+  // Upper bound as well as the existing negative check. ``expert_out`` holds
+  // exactly tokens * top_k compact rows; when the compaction wrote nothing the
+  // map is uninitialized and a large positive row would read outside both
+  // ``expert_out`` and ``sorted_weights``. A stale or garbage row is skipped
+  // rather than followed, so an upstream numerical failure surfaces as a
+  // wrong answer the parity test reports instead of a device fault.
+  const int64_t row_limit = tokens * top_k;
   for (int64_t col = threadIdx.x; col < hidden; col += blockDim.x) {
     float accumulated = 0.0f;
     for (int64_t slot = 0; slot < top_k; ++slot) {
       const int64_t lane = lane_base + slot;
       const int64_t row = lane_to_row[lane];
-      if (row < 0) {
+      if (row < 0 || row >= row_limit) {
         continue;
       }
       accumulated += gemma4_moe_bf16_bits_to_float(
