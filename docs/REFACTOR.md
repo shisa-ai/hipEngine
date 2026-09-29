@@ -65,6 +65,43 @@
     run, because `REFACTOR.md` forbids claiming a direct comparison from separate
     runs.
 
+## GR Staged-F32 Selector (HC-1)
+
+- `HIPENGINE_QWEN4_EXP_GR_STAGED` selects
+  `coltile2_branch4_rowbatch4_staged_f32` for the GR up projection
+  (`linear+gr_gated_mean`). The tile keeps the `dense_wide256` tiling and LDS
+  staging but multiplies in f32 FMA on f32 operands, so its only arithmetic
+  difference from the fused exact parent is the summation order. Screened at
+  **2.388x** with the arithmetic intact
+  (`benchmarks/results/2026-09-29-gr-staged-f32-screen/`), and its numerical
+  contract test pins it within the f32 summation-order floor (relative L2 <=
+  1e-6) of the exact fused kernel at five shapes.
+- **Default-off, and it must stay off until the production gate passes.** The
+  variant is not bit-exact with the parent, so under
+  `docs/EXECUTION-PROFILES.md` it is a T1/T2 arithmetic change needing the
+  calibrated mean/tail/max KL, top-1 by category, determinism, isolation and
+  task gates. The fused exact parent remains the registered fallback.
+- **Concrete blocker, not "needs more evidence":** the gate cannot be run for
+  this route yet. Every route in
+  `scripts/execution_profile_q8_wmma_prefill_layers_gate.py` is *layer-scoped* -
+  its `Route.env_for` formats `{layers}` into the selector - but
+  `run_qwen4_exp_gr_read` takes **no layer index**, so a layer-scoped GR
+  selector cannot be expressed without threading a layer argument through the GR
+  call chain. Without that, a gate run would engage the staged tile on **every**
+  layer rather than the named scope, which is not the comparison the gate's
+  scope checks are built to certify.
+- Related but distinct: the *dense linear* staged tile
+  (`HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS`,
+  `staged_f32_bm128_bn64_bk32`, `KernelKey(..., "linear", ...)`) is a different
+  kernel on a different layer. Its gate has already run and reaches
+  `status=complete, canonical=True` on layers 16-47 and 14-47
+  (`benchmarks/results/2026-09-29-q8-staged-f32-dense-prefill-layers-gate/`).
+  That result does not transfer to this route: different layer, different
+  epilogue, and the GR dispatch records its own prefill-boundary KL cliff.
+- **Disposition:** keep the selector and its unit test while the layer-scoped
+  gate is built; remove the flag and the dispatch branch if that gate rejects
+  the route, or promote it (and delete the flag) if it passes.
+
 ## Qualified Chunk Tradeoffs
 
 - The explicit2048 path passes canonical numerics, active4K tasks,

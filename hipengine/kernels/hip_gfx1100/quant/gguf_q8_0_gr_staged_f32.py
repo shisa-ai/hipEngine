@@ -9,7 +9,12 @@ its matrix-core multiply rounds both operands to f16. This prototype keeps the
 staging and tiling and does the multiply in f32 FMA on f32 operands, so the only
 arithmetic difference from the exact chain is the summation order.
 
-Not registered as a production variant and not reachable from the engine.
+Registered as ``coltile2_branch4_rowbatch4_staged_f32`` under
+``linear+gr_gated_mean`` so the four-axis registry knows the variant and
+``is_registered`` can gate it, but **default-off and not selected unless
+``HIPENGINE_QWEN4_EXP_GR_STAGED`` is set** - the route changes arithmetic
+(summation order) relative to the fused exact parent and has not crossed the GR
+prefill-boundary KL screen.
 """
 
 from __future__ import annotations
@@ -127,4 +132,40 @@ def gr_staged_f32_up(
         runtime.check(int(err))
 
 
-__all__ = ["SYMBOL", "build", "gr_staged_f32_up", "plan_build"]
+GR_STAGED_F32_VARIANT = "coltile2_branch4_rowbatch4_staged_f32"
+
+
+def register_gr_staged_f32_kernel(*, replace: bool = True) -> None:
+    """Register the staged-f32 GR-up variant under ``linear+gr_gated_mean``.
+
+    Registration is separate from selection: the runtime chooses this variant
+    only behind its own default-off env gate. Registering it here (rather than
+    in ``gguf_k_gemv``) keeps the dependency pointing from the prototype module
+    to the registry instead of the reverse.
+    """
+
+    from hipengine.kernels.registry import KernelKey, register
+
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear+gr_gated_mean",
+            "gguf_q8_0",
+            GR_STAGED_F32_VARIANT,
+        ),
+        gr_staged_f32_up,
+        replace=replace,
+    )
+
+
+register_gr_staged_f32_kernel()
+
+
+__all__ = [
+    "GR_STAGED_F32_VARIANT",
+    "SYMBOL",
+    "build",
+    "gr_staged_f32_up",
+    "plan_build",
+    "register_gr_staged_f32_kernel",
+]
