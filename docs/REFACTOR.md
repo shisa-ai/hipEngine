@@ -7837,3 +7837,28 @@ Two consequences worth knowing:
   and `qualification_coverage()` verify the protocol, not engagement. Check that
   the candidate and teacher logits hashes differ before reading any KL; an
   identical pair is a failed run regardless of the summary statistics.
+
+## `HIPENGINE_GGUF_PACK8_GEMV_WIDE` (DE-3 narrow-projection block size)
+
+- Added 2026-09-30, default OFF while the production numerical envelope is
+  measured. The decode-shaped pack8 GEMV launches `out_features / 8` workgroups,
+  so a narrow projection cannot fill the device: measured on gfx1100, out=320
+  runs 40 workgroups at 92.4 GB/s (42% of the 221 GB/s roof) and out=640 runs 80
+  at 121.5 GB/s (55%), while every shape at 2560 or more output features is
+  already at 90.8-102.9%. Raising the block from 128 to 256 at the starved shapes
+  is worth -32.4% and -19.4% of kernel time respectively (+1.490 ms/step over the
+  three narrow shapes) and is neutral within 2%, mixed in sign, above the knee.
+  Artifact: `benchmarks/results/2026-09-30-qwen4exp-de3-threads-lever/`.
+- **This changes arithmetic.** 256 threads per 8-output workgroup means 32
+  threads per output rather than 16, so the K-reduction tree differs; measured
+  divergence is max relative 2.6e-7. It is a T1/T2 arithmetic change and must
+  pass the production numerical envelope before it becomes the default.
+- Removal condition: once the envelope passes and the gate is removed, delete the
+  env flag, `_pack8_gemv_wide_threads_enabled`, and the falsy-spelling tests, and
+  keep only the shape-boundary cases in
+  `tests/test_unit_gguf_pack8_gemv_wide_threads.py`. If the envelope fails, delete
+  the helper, both `launch_gguf_*` call sites, and the test file together.
+- Only `gguf_q8_0` was measured. The rule is deliberately gated on grid size
+  rather than on the quantization scheme because the reason is occupancy, so the
+  other quants in the decode-shaped pack8 family inherit it; that inheritance is
+  reasoned, not measured, and should be measured before the default flips.
