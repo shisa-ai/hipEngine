@@ -45,3 +45,27 @@ key, and `tests/test_unit_qwen4exp_staged_f32_route.py` pins it RED/GREEN.
 
 **This artifact is retained only as the record of the invalid run.** A real gate
 result requires re-running the gate on the fixed code.
+
+## Follow-up: engagement confirmed on the fixed code
+
+`engagement-probe.json` (one `code-p512` case, 8 decode steps, 3 repeats) is the
+record that the fix works:
+
+```
+strict_logits_sha256    = 11b2f8eb1f69e715ccbfbfa046a01c68e5a977cb36b4ebebc871493f272a5f2a
+candidate_logits_sha256 = 499ea85fc1651d91935c8b9a8a3c81186b8ceda2f3c34a21060575aa96d04177
+```
+
+The hashes now **differ**, where the invalid 12-case run had them identical. The
+staged tile executes. `mean_kl` moved from exactly `0.0` to `2.947e-3` over 9 rows.
+
+That probe is a screen, not a verdict: one case at 8 decode steps is far outside
+the canonical 12-case D128 protocol, and the gate correctly returned
+`invalid_or_screen_only`. Its KL is **not** comparable to the canonical numbers
+below it in this file.
+
+One signal is worth carrying forward as a caution, not a conclusion: at 0-47 the
+screen's mean KL of `2.947e-3` is already above the `1e-3` limit, while its
+`max_kl` (`1.35e-2`) and `top1` (`1.0`) are inside theirs. That is the same shape
+as the f16 WMMA route, which fails 0-47 on the mean and had to retreat to 16-47.
+Full-scope promotion may not survive the canonical run.
