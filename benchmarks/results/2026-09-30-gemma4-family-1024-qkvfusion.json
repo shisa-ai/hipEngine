@@ -1,0 +1,138 @@
+{
+ "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/g4_p6d9_census -o run -- .venv/bin/python scripts/gemma4_family_census.py drive --prompt 1024 --decode 64 --prefill-repeats 2",
+ "decode_per_token": {
+  "busy_ms": 19.3576,
+  "families": {
+   "attn.global": {
+    "launches": 10.0,
+    "ms": 0.7427
+   },
+   "attn.sliding": {
+    "launches": 50.0,
+    "ms": 3.6058
+   },
+   "dense.q8_0": {
+    "launches": 126.0,
+    "ms": 2.6903
+   },
+   "elementwise": {
+    "launches": 121.0,
+    "ms": 0.2332
+   },
+   "lm_head": {
+    "launches": 1.0,
+    "ms": 0.962
+   },
+   "moe.down": {
+    "launches": 29.0,
+    "ms": 2.61
+   },
+   "moe.gate_up": {
+    "launches": 29.0,
+    "ms": 4.7408
+   },
+   "moe.l29_experts": {
+    "launches": 2.0,
+    "ms": 0.236
+   },
+   "moe.route_glue": {
+    "launches": 240.0,
+    "ms": 1.1396
+   },
+   "moe.router_gemm": {
+    "launches": 60.0,
+    "ms": 0.6863
+   },
+   "norm": {
+    "launches": 301.0,
+    "ms": 1.519
+   },
+   "other": {
+    "launches": 25.0,
+    "ms": 0.0546
+   },
+   "runtime_copy_fill": {
+    "launches": 67.0,
+    "ms": 0.1374
+   }
+  },
+  "other_top": {
+   "(anonymous namespace)::gemma4_qkv_split_bf16_kernel(unsigned short const*, long, long, long, long, i": 0.0546
+  },
+  "span_ms": 23.382
+ },
+ "decode_steps": 64,
+ "engine": "hipengine",
+ "git_head": "c850a2d00",
+ "gpu": "ROCR_VISIBLE_DEVICES=1 (W7900-class; census launch counts are device-independent)",
+ "label": "qkvfusion",
+ "note": "First census after P6's q/k/v fusion (17f745d6c) alongside the earlier gate/up fusion (67d225458). decode dense.q8_0 = 126 launches/token against 176 at 2026-09-30-gemma4-family-4096-blockfit.json (post-gate/up) and 206 at 2026-09-29-gemma4-family-{1024,4096}-p2.json (pre-both): -50 dense, with gemma4_qkv_split_bf16_kernel appearing as 25 launches/token in other (0.055 ms decode, 1.674 ms over 50 prefill launches), net -25 launches as route (b) predicts. k_eq_v layers verified from the artifact: 5 of 30 (indices 5,11,17,23,29) lack attn_v, so 25 fuse.",
+ "prefill": {
+  "busy_ms": 397.6042,
+  "families": {
+   "attn.global": {
+    "launches": 10.0,
+    "ms": 9.124
+   },
+   "attn.sliding": {
+    "launches": 50.0,
+    "ms": 30.3034
+   },
+   "dense.q8_0": {
+    "launches": 252.0,
+    "ms": 113.2765
+   },
+   "elementwise": {
+    "launches": 242.0,
+    "ms": 7.3007
+   },
+   "lm_head": {
+    "launches": 1.0,
+    "ms": 0.982
+   },
+   "moe.act_quant": {
+    "launches": 60.0,
+    "ms": 6.6336
+   },
+   "moe.down": {
+    "launches": 58.0,
+    "ms": 47.6298
+   },
+   "moe.gate_up": {
+    "launches": 60.0,
+    "ms": 119.6637
+   },
+   "moe.l29_experts": {
+    "launches": 2.0,
+    "ms": 1.4
+   },
+   "moe.route_glue": {
+    "launches": 540.0,
+    "ms": 18.7251
+   },
+   "moe.router_gemm": {
+    "launches": 120.0,
+    "ms": 29.1622
+   },
+   "norm": {
+    "launches": 601.0,
+    "ms": 10.014
+   },
+   "other": {
+    "launches": 50.0,
+    "ms": 1.6739
+   },
+   "runtime_copy_fill": {
+    "launches": 272.0,
+    "ms": 1.7152
+   }
+  },
+  "other_top": {
+   "(anonymous namespace)::gemma4_qkv_split_bf16_kernel(unsigned short const*, long, long, long, long, i": 1.6739
+  },
+  "span_ms": 379.8869
+ },
+ "prefill_prompt_tokens": 1024,
+ "prefill_repeats": 2,
+ "trace": "/tmp/g4_p6d9_census/run_kernel_trace.csv"
+}
