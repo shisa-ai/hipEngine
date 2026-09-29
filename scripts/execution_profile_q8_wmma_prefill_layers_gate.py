@@ -326,6 +326,44 @@ SELECTORS: dict[str, Route] = {
     # to be invalid: 8-47's max KL exceeds 0-47's while its mean is lower, and
     # 0-7's mean exceeds 0-47's, so scope contributions are neither additive nor
     # monotonic.
+    # The end-to-end promotion certificate for the composition above.
+    #
+    # ``staged_f32_over_wmma`` measures the marginal cost against current
+    # production, which is the right question for "what does adding this cost"
+    # but not the question the production envelope asks. The envelope is defined
+    # against the exact chain, so the full promoted composition has to be scored
+    # against the exact chain directly. Summing the marginal cost onto WMMA's own
+    # 16-47 drift would be a summed-KL budget, which this packet's ladders show
+    # is invalid.
+    #
+    # So: candidate = staged on the named scope **with WMMA still bound at
+    # 16-47**, exactly as promotion would leave it; teacher = the exact chain.
+    "staged_f32_composed_vs_exact": Route(
+        kind=(
+            "hipengine_execution_profile_q8_staged_f32_composed_vs_exact_gate"
+        ),
+        scenario_prefix=(
+            "qwen4exp-ud-q4-k-xl-q8-staged-f32-composed-dense-prefill-layers"
+        ),
+        candidate_chain="wmma_prefill_f32_f32_out + staged_f32_bm128_bn64_bk32",
+        candidate_env={
+            WMMA_LAYERS_ENV: WMMA_CERTIFIED_SCOPE,
+            DENSE_WIDE_ENV: "0",
+            DENSE_WIDE_LAYERS_ENV: "",
+            STAGED_F32_LAYERS_ENV: "{layers}",
+        },
+        teacher_env={
+            WMMA_LAYERS_ENV: "",
+            DENSE_WIDE_ENV: "0",
+            DENSE_WIDE_LAYERS_ENV: "",
+            STAGED_F32_LAYERS_ENV: "",
+        },
+        surface=(
+            f"post-binder {STAGED_F32_LAYERS_ENV} with {WMMA_LAYERS_ENV}=16-47 "
+            f"held in the candidate arm only; teacher is the exact chain; "
+            f"{DENSE_WIDE_ENV} cleared in both arms"
+        ),
+    ),
     "staged_f32_over_wmma": Route(
         kind=(
             "hipengine_execution_profile_q8_staged_f32_over_wmma_prefill_layers_gate"

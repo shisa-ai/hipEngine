@@ -26,7 +26,37 @@ max 5e-2, top-1 0.99.
 certified 16-47, with roughly 2x headroom on every gate (mean 1.94x, p95 1.84x,
 p99 2.40x, max 2.00x).
 
-## 13-47 passing does not yet establish production value
+## The composition that promotion would create
+
+`staged_f32` clears WMMA in both arms, so the table above certifies "staged on the
+named scope with no WMMA anywhere". Production is not that. Two further routes
+measure the configuration that promotion would actually create, where WMMA keeps
+layers 16-47 and the staged tile only replaces the **exact chain** on 13-15.
+
+| Candidate | Teacher | Mean KL | p95 KL | p99 KL | Max KL | Top-1 | Verdict |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| staged 13-15 + WMMA 16-47 | WMMA 16-47 (production) | 4.818e-4 | 2.510e-3 | 6.495e-3 | 2.056e-2 | 0.99289 | **pass** |
+| staged 13-14 + WMMA 16-47 | WMMA 16-47 (production) | 5.384e-4 | 2.675e-3 | 7.056e-3 | 4.201e-2 | 0.99289 | **pass** |
+| staged 13-15 + WMMA 16-47 | exact chain | *(pending)* | | | | | |
+
+The first two are the **marginal** cost: adding the staged tile at 13-15 changes
+the certified production trajectory by 4.818e-4 mean KL, inside every gate with
+roughly 2x headroom. Both pre-checks were confirmed: the teacher arm bound WMMA
+(its `strict_logits_sha256` differs from the exact chain's), and the candidate
+arm engaged the staged tile (its hash differs from the teacher's).
+
+The third row is the **end-to-end** figure the production envelope asks for. The
+envelope is defined against the exact chain, so the full promoted composition has
+to be scored against the exact chain directly. The marginal cost must **not** be
+added to WMMA's own 16-47 drift to obtain it - that is a summed-KL budget, and
+this packet's ladders show scope contributions are neither additive nor
+monotonic.
+
+Non-monotonicity appears here too: staged 13-14 is **worse** than staged 13-15 on
+both mean (5.384e-4 against 4.818e-4) and max (4.201e-2 against 2.056e-2).
+Adding layer 15 improves the result.
+
+## 13-47 passing does not by itself establish production value
 
 Every scope above is measured with **WMMA cleared in both arms**, so what these
 rows certify is *staged on the named scope with no WMMA anywhere*. Production is
