@@ -120,6 +120,66 @@ __global__ void gemma4_rmsnorm_weightless_kernel(
   }
 }
 
+// Multi-output RMSNorm: up to three outputs in one launch (D6 fusion).
+//
+// The layer runs three normalizations over the SAME residual row (pre-FFN,
+// pre-FFN-2, the weightless router norm) and two over different rows (the
+// dense and expert branch outputs). At decode, rows == 1, so each of those
+// launches is a single 256-thread block whose real work is sub-microsecond —
+// the family cost is dispatch, not arithmetic. One block computing the outputs
+// sequentially pays one dispatch.
+//
+// Bit-exactness contract: each output performs the identical reduction tree
+// (`gemma4_block_sum` over the same strided loop) and the identical write
+// expression as its standalone kernel, so every output equals the chain
+// bitwise. The trailing __syncthreads() fences partial[] so the next output's
+// block_sum cannot overwrite inv_rms before every thread has consumed it.
+// A null weight selects the weightless expression, matching
+// gemma4_rmsnorm_weightless_kernel exactly.
+template <typename scalar_t>
+__global__ void gemma4_multi_rmsnorm_kernel(
+    const scalar_t* in0,
+    const scalar_t* in1,
+    const scalar_t* in2,
+    const float* w0,
+    const float* w1,
+    const float* w2,
+    scalar_t* out0,
+    scalar_t* out1,
+    scalar_t* out2,
+    int count,
+    float eps,
+    int64_t hidden_size) {
+  extern __shared__ float partial[];
+  const int64_t row_offset = static_cast<int64_t>(blockIdx.x) * hidden_size;
+  const scalar_t* inputs[3] = {in0, in1, in2};
+  const float* weights[3] = {w0, w1, w2};
+  scalar_t* outputs[3] = {out0, out1, out2};
+  for (int k = 0; k < count; ++k) {
+    const scalar_t* input = inputs[k];
+    const float* weight = weights[k];
+    scalar_t* out = outputs[k];
+    float sumsq = 0.0f;
+    for (int64_t idx = threadIdx.x; idx < hidden_size; idx += blockDim.x) {
+      const float value = gemma4_to_float(input[row_offset + idx]);
+      sumsq += value * value;
+    }
+    gemma4_block_sum(partial, sumsq);
+    const float inv_rms =
+        rsqrtf((partial[0] / static_cast<float>(hidden_size)) + eps);
+    for (int64_t idx = threadIdx.x; idx < hidden_size; idx += blockDim.x) {
+      const float value = gemma4_to_float(input[row_offset + idx]);
+      if (weight == nullptr) {
+        out[row_offset + idx] = gemma4_to_scalar<scalar_t>(value * inv_rms);
+      } else {
+        out[row_offset + idx] =
+            gemma4_to_scalar<scalar_t>(value * inv_rms * weight[idx]);
+      }
+    }
+    __syncthreads();
+  }
+}
+
 // Per-head plain-weight RMSNorm over `head_dim`, one block per head.
 // Gemma 4 applies this to queries and keys, and to keys again for the value on
 // global layers. `weight` may be null, which is the weightless case.
@@ -422,6 +482,80 @@ __global__ void gemma4_add_rmsnorm_scale_kernel(
   }
 }
 
+// D6 tail fold: post_ffw_norm_1 -> branch_add -> add_rmsnorm_scale in ONE
+// launch.
+//
+// The three standalone kernels are strictly sequential on the main stream and
+// each intermediate has exactly one consumer (dense -> branch_add -> the tail
+// norm), so one block keeps them in registers at decode. The stage arithmetic
+// mirrors the standalone kernels exactly, including the bf16 rounding of the
+// intermediate `dense_norm` and `branch_sum` that the chain's buffers would
+// apply: stage 2 computes `to_scalar(to_float(dense_norm) + to_float(expert))`
+// where dense_norm is already the rounded scalar_t the norm kernel would have
+// stored, and stage 3 accumulates sumsq over those rounded sums in the row
+// stride add_rmsnorm_scale uses. Every output bit therefore equals the chain.
+//
+// The __syncthreads() after inv_rms1 fences partial[]: every thread must have
+// consumed the stage-1 reduction before any thread's stage-2 block_sum
+// overwrites it.
+template <typename scalar_t>
+__global__ void gemma4_dense_combine_rmsnorm_scale_kernel(
+    const scalar_t* dense,
+    const scalar_t* experts,
+    const scalar_t* residual,
+    const float* dense_weight,
+    const float* tail_weight,
+    const float* layer_scalar,
+    scalar_t* out,
+    float eps,
+    int64_t hidden_size) {
+  extern __shared__ float partial[];
+  const int64_t row_offset = static_cast<int64_t>(blockIdx.x) * hidden_size;
+  const float scalar = layer_scalar == nullptr ? 1.0f : layer_scalar[0];
+
+  // Stage 1: rmsnorm of the dense branch output (post_feedforward_layernorm_1).
+  float sumsq = 0.0f;
+  for (int64_t idx = threadIdx.x; idx < hidden_size; idx += blockDim.x) {
+    const float value = gemma4_to_float(dense[row_offset + idx]);
+    sumsq += value * value;
+  }
+  gemma4_block_sum(partial, sumsq);
+  const float inv_rms1 =
+      rsqrtf((partial[0] / static_cast<float>(hidden_size)) + eps);
+  __syncthreads();
+
+  // Stage 2: branch add with the chain's bf16 rounding, accumulating the tail
+  // norm's sumsq over the rounded sums (the same values add_rmsnorm_scale
+  // would read back from the branch_sum buffer).
+  float sumsq2 = 0.0f;
+  for (int64_t idx = threadIdx.x; idx < hidden_size; idx += blockDim.x) {
+    const float value = gemma4_to_float(dense[row_offset + idx]);
+    const scalar_t dense_norm =
+        gemma4_to_scalar<scalar_t>(value * inv_rms1 * dense_weight[idx]);
+    const scalar_t branch_sum_bits = gemma4_to_scalar<scalar_t>(
+        gemma4_to_float(dense_norm) + gemma4_to_float(experts[row_offset + idx]));
+    const float branch_sum = gemma4_to_float(branch_sum_bits);
+    sumsq2 += branch_sum * branch_sum;
+  }
+  gemma4_block_sum(partial, sumsq2);
+  const float inv_rms2 =
+      rsqrtf((partial[0] / static_cast<float>(hidden_size)) + eps);
+
+  // Stage 3: (residual + rmsnorm(branch_sum, tail_weight)) * layer_scalar,
+  // written to the residual buffer in place.
+  for (int64_t idx = threadIdx.x; idx < hidden_size; idx += blockDim.x) {
+    const float value = gemma4_to_float(dense[row_offset + idx]);
+    const scalar_t dense_norm =
+        gemma4_to_scalar<scalar_t>(value * inv_rms1 * dense_weight[idx]);
+    const scalar_t branch_sum_bits = gemma4_to_scalar<scalar_t>(
+        gemma4_to_float(dense_norm) + gemma4_to_float(experts[row_offset + idx]));
+    const float branch_sum = gemma4_to_float(branch_sum_bits);
+    const float normed = branch_sum * inv_rms2 * tail_weight[idx];
+    const float base = gemma4_to_float(residual[row_offset + idx]);
+    out[row_offset + idx] = gemma4_to_scalar<scalar_t>((base + normed) * scalar);
+  }
+}
+
 // `weights[token, slot] *= per_expert_scale[expert[token, slot]]`.
 //
 // Gemma4TextRouter applies the per-expert scale after renormalizing the top-k
@@ -631,6 +765,52 @@ extern "C" int hipengine_gemma4_rmsnorm_weightless_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_gemma4_multi_rmsnorm_bf16(
+    const uint16_t* in0,
+    const uint16_t* in1,
+    const uint16_t* in2,
+    const float* w0,
+    const float* w1,
+    const float* w2,
+    uint16_t* out0,
+    uint16_t* out1,
+    uint16_t* out2,
+    int count,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0 || count < 1 || count > 3 ||
+      in0 == nullptr || out0 == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (count >= 2 && (in1 == nullptr || out1 == nullptr)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (count == 3 && (in2 == nullptr || out2 == nullptr)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      gemma4_multi_rmsnorm_kernel<uint16_t>,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(kGemma4NormThreads),
+      kGemma4NormThreads * sizeof(float),
+      stream,
+      in0,
+      in1,
+      in2,
+      w0,
+      w1,
+      w2,
+      out0,
+      out1,
+      out2,
+      count,
+      eps,
+      hidden_size);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_gemma4_head_rmsnorm_f32w_bf16(
     const uint16_t* hidden_states,
     const float* weight,
@@ -749,6 +929,41 @@ extern "C" int hipengine_gemma4_add_rmsnorm_scale_bf16(
       hidden_states,
       residual,
       weight,
+      layer_scalar,
+      out,
+      eps,
+      hidden_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gemma4_dense_combine_rmsnorm_scale_bf16(
+    const uint16_t* dense,
+    const uint16_t* experts,
+    const uint16_t* residual,
+    const float* dense_weight,
+    const float* tail_weight,
+    const float* layer_scalar,
+    uint16_t* out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0 || dense == nullptr || experts == nullptr ||
+      residual == nullptr || dense_weight == nullptr || tail_weight == nullptr ||
+      out == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      gemma4_dense_combine_rmsnorm_scale_kernel<uint16_t>,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(kGemma4NormThreads),
+      kGemma4NormThreads * sizeof(float),
+      stream,
+      dense,
+      experts,
+      residual,
+      dense_weight,
+      tail_weight,
       layer_scalar,
       out,
       eps,

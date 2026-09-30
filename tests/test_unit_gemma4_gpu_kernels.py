@@ -315,6 +315,207 @@ def test_weightless_rmsnorm_matches_the_reference(device) -> None:
 
 
 @_needs_hip
+def test_multi_rmsnorm_matches_the_chain_bitwise_same_input(device) -> None:
+    """D6 group G3: three outputs over ONE input must equal the chain bitwise.
+
+    The three normalizations that read the same residual row (pre-FFN, pre-FFN-2,
+    the weightless router norm) may be emitted by one launch instead of three.
+    The contract is not approximate equality: the fused kernel must compute each
+    output with the same reduction tree and expression as its standalone kernel,
+    so every bit matches. A tolerance would hide exactly the drift this fusion
+    must not introduce.
+    """
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
+        gemma4_multi_rmsnorm_bf16,
+    )
+
+    rng = np.random.default_rng(51)
+    rows, hidden = 3, 2816  # the real decode geometry: one block, 11 per thread
+    hidden_states = rng.standard_normal((rows, hidden)).astype(np.float32)
+    weight_a = (rng.standard_normal(hidden) * 0.05).astype(np.float32)
+    weight_b = (rng.standard_normal(hidden) * 0.05).astype(np.float32)
+    eps = 1e-6
+
+    src = device.put(_to_bf16_bits(hidden_states))
+    wa = device.put(weight_a)
+    wb = device.put(weight_b)
+
+    chain = [device.out((rows, hidden), np.uint16) for _ in range(3)]
+    gemma4_rmsnorm_f32w_bf16(src, wa, chain[0], rows, hidden, eps)
+    gemma4_rmsnorm_f32w_bf16(src, wb, chain[1], rows, hidden, eps)
+    gemma4_rmsnorm_weightless_bf16(src, chain[2], rows, hidden, eps)
+
+    fused = [device.out((rows, hidden), np.uint16) for _ in range(3)]
+    gemma4_multi_rmsnorm_bf16(
+        src, src, src, wa, wb, 0, fused[0], fused[1], fused[2],
+        3, rows, hidden, eps,
+    )
+
+    for index, (before, after) in enumerate(zip(chain, fused)):
+        assert np.array_equal(
+            device.get(before, (rows, hidden), np.uint16),
+            device.get(after, (rows, hidden), np.uint16),
+        ), f"output {index} differs from the chain"
+
+
+@_needs_hip
+def test_multi_rmsnorm_matches_the_chain_bitwise_distinct_inputs(device) -> None:
+    """D6 group G4: two different inputs in one launch, each bitwise its chain.
+
+    post_ffw_norm_1 and post_ffw_norm_2 normalize different rows (dense vs
+    expert output). One block may compute both sequentially only if each
+    output's reduction is exactly the standalone one, and a null weight in any
+    slot must behave as the weightless kernel does.
+    """
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
+        gemma4_multi_rmsnorm_bf16,
+    )
+
+    rng = np.random.default_rng(52)
+    rows, hidden = 2, 2816
+    dense = rng.standard_normal((rows, hidden)).astype(np.float32)
+    expert = rng.standard_normal((rows, hidden)).astype(np.float32)
+    weight = (rng.standard_normal(hidden) * 0.05).astype(np.float32)
+    eps = 1e-6
+
+    src_a = device.put(_to_bf16_bits(dense))
+    src_b = device.put(_to_bf16_bits(expert))
+    w = device.put(weight)
+
+    chain_a = device.out((rows, hidden), np.uint16)
+    chain_b = device.out((rows, hidden), np.uint16)
+    chain_w = device.out((rows, hidden), np.uint16)
+    gemma4_rmsnorm_f32w_bf16(src_a, w, chain_a, rows, hidden, eps)
+    # The chain reference for a null weight slot IS the weightless kernel:
+    # gemma4_rmsnorm_kernel dereferences weight unconditionally.
+    gemma4_rmsnorm_weightless_bf16(src_b, chain_b, rows, hidden, eps)
+    gemma4_rmsnorm_weightless_bf16(src_a, chain_w, rows, hidden, eps)
+
+    out_a = device.out((rows, hidden), np.uint16)
+    out_b = device.out((rows, hidden), np.uint16)
+    out_w = device.out((rows, hidden), np.uint16)
+    # Three distinct references: weighted on A, null-weight on B, weightless on A.
+    gemma4_multi_rmsnorm_bf16(
+        src_a, src_b, src_a, w, 0, 0, out_a, out_b, out_w,
+        3, rows, hidden, eps,
+    )
+
+    for name, before, after in (
+        ("weighted", chain_a, out_a),
+        ("null-weight", chain_b, out_b),
+        ("weightless", chain_w, out_w),
+    ):
+        assert np.array_equal(
+            device.get(before, (rows, hidden), np.uint16),
+            device.get(after, (rows, hidden), np.uint16),
+        ), f"{name} output differs from the chain"
+
+
+@_needs_hip
+def test_multi_rmsnorm_writes_exactly_its_rows(device) -> None:
+    """grid=rows must hold: a fencepost overrun poisons the row after the last."""
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
+        gemma4_multi_rmsnorm_bf16,
+    )
+
+    rng = np.random.default_rng(53)
+    rows, hidden = 4, 256
+    hidden_states = rng.standard_normal((rows + 1, hidden)).astype(np.float32)
+    sentinel = _to_bf16_bits(np.full((1, hidden), np.nan, dtype=np.float32))
+    payload = _to_bf16_bits(hidden_states[:-1])
+    device_array = np.concatenate([payload, sentinel]).astype(np.uint16)
+    weight = (rng.standard_normal(hidden) * 0.05).astype(np.float32)
+
+    src = device.put(device_array)
+    w = device.put(weight)
+    out = device.put(device_array.copy())
+    gemma4_multi_rmsnorm_bf16(
+        src, src, src, w, w, w, out, out, out, 1, rows, hidden, 1e-6,
+    )
+
+    got = device.get(out, (rows + 1, hidden), np.uint16)
+    assert np.array_equal(got[-1], sentinel[0]), "kernel wrote past its rows"
+
+
+@_needs_hip
+def test_dense_combine_rmsnorm_matches_the_chain_bitwise(device) -> None:
+    """D6 tail fold: post_ffw_norm_1 -> branch_add -> add_rmsnorm_scale in one launch.
+
+    The three kernels are strictly sequential on the main stream and each
+    intermediate has exactly one consumer, so one block may keep them in
+    registers -- provided every intermediate passes through the same bf16
+    rounding the standalone kernels would apply, and every reduction keeps its
+    own tree. The assertion is bitwise against the chain; the null layer-scalar
+    form is exercised too because Gemma 4 layers may carry no scale.
+    """
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
+        gemma4_dense_combine_rmsnorm_scale_bf16,
+    )
+
+    rng = np.random.default_rng(54)
+    rows, hidden = 3, 2816
+    dense = rng.standard_normal((rows, hidden)).astype(np.float32)
+    experts = rng.standard_normal((rows, hidden)).astype(np.float32)
+    residual = rng.standard_normal((rows, hidden)).astype(np.float32)
+    w1 = (rng.standard_normal(hidden) * 0.05).astype(np.float32)
+    w2 = (rng.standard_normal(hidden) * 0.05).astype(np.float32)
+    eps = 1e-6
+
+    def run_chain(scalar) -> np.ndarray:
+        d = device.put(_to_bf16_bits(dense))
+        e = device.put(_to_bf16_bits(experts))
+        h = device.put(_to_bf16_bits(residual))
+        w1p, w2p = device.put(w1), device.put(w2)
+        s = device.put(np.array([scalar], dtype=np.float32)) if scalar is not None else 0
+        bs = device.out((rows, hidden), np.uint16)
+        out = device.out((rows, hidden), np.uint16)
+        gemma4_rmsnorm_f32w_bf16(d, w1p, d, rows, hidden, eps)
+        gemma4_branch_add_bf16(d, e, bs, rows * hidden)
+        gemma4_add_rmsnorm_scale_bf16(bs, h, w2p, s, out, rows, hidden, eps)
+        return device.get(out, (rows, hidden), np.uint16)
+
+    for scalar in (1.0, None):
+        d = device.put(_to_bf16_bits(dense))
+        e = device.put(_to_bf16_bits(experts))
+        h = device.put(_to_bf16_bits(residual))
+        w1p, w2p = device.put(w1), device.put(w2)
+        s = device.put(np.array([scalar], dtype=np.float32)) if scalar is not None else 0
+        out = device.out((rows, hidden), np.uint16)
+        gemma4_dense_combine_rmsnorm_scale_bf16(d, e, h, w1p, w2p, s, out, rows, hidden, eps)
+        got = device.get(out, (rows, hidden), np.uint16)
+        expected = run_chain(scalar)
+        assert np.array_equal(got, expected), f"scalar={scalar}: fold differs from the chain"
+
+
+@_needs_hip
+def test_dense_combine_rmsnorm_writes_exactly_its_rows(device) -> None:
+    """The fold writes the residual row in place; a fencepost overrun poisons row rows."""
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
+        gemma4_dense_combine_rmsnorm_scale_bf16,
+    )
+
+    rng = np.random.default_rng(55)
+    rows, hidden = 4, 256
+    sentinel = _to_bf16_bits(np.full((1, hidden), np.nan, dtype=np.float32))
+    dense = _to_bf16_bits(rng.standard_normal((rows, hidden)).astype(np.float32))
+    experts = _to_bf16_bits(rng.standard_normal((rows, hidden)).astype(np.float32))
+    residual = np.concatenate(
+        [_to_bf16_bits(rng.standard_normal((rows, hidden)).astype(np.float32)), sentinel]
+    ).astype(np.uint16)
+    w1 = (rng.standard_normal(hidden) * 0.05).astype(np.float32)
+    w2 = (rng.standard_normal(hidden) * 0.05).astype(np.float32)
+
+    d = device.put(dense)
+    e = device.put(experts)
+    h = device.put(residual.copy())
+    w1p, w2p = device.put(w1), device.put(w2)
+    gemma4_dense_combine_rmsnorm_scale_bf16(d, e, h, w1p, w2p, 0, h, rows, hidden, 1e-6)
+
+    got = device.get(h, (rows + 1, hidden), np.uint16)
+    assert np.array_equal(got[-1], sentinel[0]), "kernel wrote past its rows"
+
+
+@_needs_hip
 def test_head_rmsnorm_matches_a_per_head_reference(device) -> None:
     rng = np.random.default_rng(14)
     heads, head_dim = 6, 512

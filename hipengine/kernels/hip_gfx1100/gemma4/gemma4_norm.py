@@ -263,6 +263,129 @@ def gemma4_rmsnorm_weightless_bf16(
     _check_launch(runtime, err)
 
 
+# Multi-output norm (D6 fusion): in0..in2, w0..w2, out0..out2, count, rows,
+# hidden_size, eps, stream.
+_ARGTYPES_MULTI_NORM = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
+_SYMBOL_MULTI_BF16 = "hipengine_gemma4_multi_rmsnorm_bf16"
+
+
+def gemma4_multi_rmsnorm_bf16(
+    in0_ptr: int,
+    in1_ptr: int,
+    in2_ptr: int,
+    w0_ptr: int,
+    w1_ptr: int,
+    w2_ptr: int,
+    out0_ptr: int,
+    out1_ptr: int,
+    out2_ptr: int,
+    count: int,
+    rows: int,
+    hidden_size: int,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch up to three RMSNorms over one block-per-row dispatch (D6).
+
+    ``count`` outputs are computed sequentially: input ``k``, weight ``k``
+    (``0`` selects the weightless expression), output ``k`` for
+    ``k in 0..count-1``; slots beyond ``count`` are ignored but must be
+    non-null for the slots in use. Each output is bit-identical to its
+    standalone kernel, so the fused call may replace a chain of
+    ``gemma4_rmsnorm_f32w_bf16`` / ``gemma4_rmsnorm_weightless_bf16`` calls
+    with matching arguments without changing any value.
+    """
+
+    if count < 1 or count > 3:
+        raise ValueError("count must be in 1..3")
+    _check_positive_shape(rows, hidden_size)
+    library = library or build_gemma4_norm(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, _SYMBOL_MULTI_BF16, _ARGTYPES_MULTI_NORM, ctypes.c_int)
+    err = fn(
+        in0_ptr, in1_ptr, in2_ptr,
+        w0_ptr, w1_ptr, w2_ptr,
+        out0_ptr, out1_ptr, out2_ptr,
+        int(count), rows, hidden_size, float(eps), stream,
+    )
+    _check_launch(runtime, err)
+
+
+# D6 tail fold: dense, experts, residual, dense_weight, tail_weight,
+# layer_scalar, out, rows, hidden_size, eps, stream.
+_ARGTYPES_DENSE_COMBINE = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
+_SYMBOL_DENSE_COMBINE_BF16 = "hipengine_gemma4_dense_combine_rmsnorm_scale_bf16"
+
+
+def gemma4_dense_combine_rmsnorm_scale_bf16(
+    dense_ptr: int,
+    experts_ptr: int,
+    residual_ptr: int,
+    dense_weight_ptr: int,
+    tail_weight_ptr: int,
+    layer_scalar_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fold post_ffw_norm_1 -> branch_add -> add_rmsnorm_scale into one launch.
+
+    Bit-identical to the three-kernel chain it replaces: every intermediate
+    passes through the same bf16 rounding and every reduction keeps its own
+    tree. ``layer_scalar_ptr = 0`` is the null-scalar form. ``out_ptr`` may
+    alias ``residual_ptr`` (the production call writes the residual buffer in
+    place).
+    """
+
+    _check_positive_shape(rows, hidden_size)
+    library = library or build_gemma4_norm(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, _SYMBOL_DENSE_COMBINE_BF16, _ARGTYPES_DENSE_COMBINE, ctypes.c_int
+    )
+    err = fn(
+        dense_ptr, experts_ptr, residual_ptr,
+        dense_weight_ptr, tail_weight_ptr, layer_scalar_ptr,
+        out_ptr, rows, hidden_size, float(eps), stream,
+    )
+    _check_launch(runtime, err)
+
+
 def gemma4_head_rmsnorm_f32w_bf16(
     hidden_states_ptr: int,
     weight_ptr: int,
@@ -464,6 +587,16 @@ def register_gemma4_norm_kernels(*, replace: bool = False) -> None:
         register(
             KernelKey("hip_gfx1100", "add_rmsnorm_scale", quant, "gemma4_plain"),
             gemma4_add_rmsnorm_scale_bf16,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "multi_rmsnorm", quant, "gemma4_plain"),
+            gemma4_multi_rmsnorm_bf16,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "dense_combine_rmsnorm_scale", quant, "gemma4_plain"),
+            gemma4_dense_combine_rmsnorm_scale_bf16,
             replace=replace,
         )
         register(
