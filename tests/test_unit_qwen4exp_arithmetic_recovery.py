@@ -46,15 +46,34 @@ def test_other_quant_profile_binding_is_unchanged(monkeypatch):
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] == "1"
 
 
-def test_production_selects_the_multi_column_gdn_prefill_owner(monkeypatch):
-    """The multi-column GDN prefill route supersedes the DPP route.
+def _tile16_declaration(profile):
+    """Return the production manifest's declared owner for the tile16 scope."""
+    rows = [
+        row["selected_variant"]
+        for row in profile.manifest["selections"]
+        if row["layer"] == "gdn_recurrence_norm_gate"
+        and row["scope"] == "prefill_rows_ge16_hk16_hv32_48_d128_layers27_47"
+    ]
+    assert len(rows) == 1, rows
+    return rows[0]
 
-    The live selection is the ``HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`` env var, not
-    the manifest row: the production plan is built with
-    ``dpp=quant == "gguf_ud_q4_k_xl"`` and ``recovery=quant == "gguf_ud_q4_k_xl"``,
-    the SAME condition, so the recovery pass replaces every ``dpp=True`` tiled
-    selection with its exact owner before the manifest is ever observed. The
-    ``dpp`` branch is therefore inert and only the env binding is live.
+
+def test_production_selects_the_multi_column_gdn_prefill_owner(monkeypatch):
+    """The multi-column GDN prefill route supersedes the DPP route, and the
+    manifest declares the route the binder dispatches.
+
+    The live selection is the ``HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`` env var, so
+    the manifest row has to name the same variant the env names. An earlier version
+    made the row conditional on the quant and claimed that branch was inert; it was
+    not. The recovery pass only replaces rows for the quant that passes
+    ``recovery=True``, so the OTHER quant's conditional row reached its manifest
+    unchanged and declared ``qwen4exp_gdn_tiled16_prefill`` while the env dispatched
+    the multi-column route underneath it - a gate on that profile recorded one
+    manifest hash for two different kernels (1350 dispatches each).
+
+    The row is now unconditional, which is safe precisely because the recovery pass
+    deactivates tiled variants by NAME: for the recovery quant both candidate values
+    map to the same exact owner, so its manifest is unchanged byte for byte.
 
     Pinned because that binding is a one-line change the recovery path would
     silently undo: the recovery pass deactivates tiled variants by NAME, so the
@@ -95,6 +114,16 @@ def test_production_selects_the_multi_column_gdn_prefill_owner(monkeypatch):
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == (
         "qwen4exp_gdn_tiled16_multi_prefill")
+
+    # ...and the manifest must declare that same variant. A gate records the
+    # manifest hash as the candidate's provenance, so a declaration that disagrees
+    # with the binding gives two different kernels one hash - which is exactly what
+    # happened while this row was conditional on the quant.
+    assert _tile16_declaration(other) == os.environ[
+        "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"]
+    # The recovery quant closes the gate, so it declares the exact owner instead and
+    # names no tile16 route at all.
+    assert _tile16_declaration(profile) == "qwen4exp_sigmoid_wave_norm_prefill"
 
     # The superseded route stays registered as the strict fallback, so rollback is
     # a one-line revert rather than a rebuild.

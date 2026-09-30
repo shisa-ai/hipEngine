@@ -104,7 +104,7 @@ def test_strict_stays_pinned_to_the_exact_parent() -> None:
 
 def test_production_follows_the_switch_and_keeps_the_exact_fallback() -> None:
     production = _router_selection(
-        profiles._production_selections(dpp=True, recovery=True)
+        profiles._production_selections(recovery=True)
     )
     assert production.selected_variant == profiles._ROUTER_LOGITS_SELECTED_VARIANT
     assert production.strict_fallback_variant == profiles._ROUTER_TILE4_VARIANT
