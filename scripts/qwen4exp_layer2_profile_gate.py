@@ -359,6 +359,30 @@ CANDIDATES["production_gdn_multi_q4km"] = CandidateSpec(
                   "qwen4exp_sigmoid_strict_prefill"),
     count_registered_dispatch=True,
 )
+# Attribution control for `production_gdn_multi_q4km`. It is the same q4_k_m production
+# base profile with the GDN prefill owner pinned to `qwen4exp_gdn_tiled16_prefill`,
+# which is the callable the binder fell back to before the tile16 binding was
+# repaired. Running both candidates separates "the multi-column route is outside
+# the envelope" from "the production composition around it is".
+CANDIDATES["production_gdn_tiled16_q4km"] = CandidateSpec(
+    name="production_gdn_tiled16_q4km",
+    classification="T1",
+    mechanism="q4_k_m production base profile with the GDN prefill owner pinned to "
+              "the tiled16 route the binder selected before the multi-column "
+              "binding was repaired - the attribution control for "
+              "production_gdn_multi_q4km",
+    environment={
+        "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_prefill",
+    },
+    base_profile="production",
+    quant="gguf_q4_k_m",
+    scenario_id="qwen4exp-q4-k-m-gdn-tiled16-control",
+    candidate_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+                   "qwen4exp_gdn_tiled16_prefill"),
+    fallback_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+                  "qwen4exp_sigmoid_strict_prefill"),
+    count_registered_dispatch=True,
+)
 CANDIDATES["production_gr_up_restore"] = CandidateSpec(
     name="production_gr_up_restore", classification="T2",
     mechanism="GR-up three-plane IU8 projection plus existing sigmoid/mean; dense and GR-down off",
