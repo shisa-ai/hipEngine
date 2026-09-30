@@ -1,0 +1,359 @@
+{
+  "schema": 1,
+  "label": "gemma4-scoreboard-d3",
+  "created_at": "2026-09-30T03:10:04.712141+00:00",
+  "elapsed_s": 104.5,
+  "provenance": {
+    "git_commit": "311f37e98bd57a49d3181cab5d5d198db8cea67b",
+    "git_dirty_files": [
+      "M audit/findings/doc-path-drift.json",
+      " M audit/findings/stub.json",
+      " M audit/inventory/candidates.json",
+      " M audit/inventory/flags.json",
+      " M audit/inventory/kernels.json",
+      " M audit/inventory/ledger.json",
+      " M audit/inventory/meta.json",
+      " M audit/inventory/worklog.json",
+      " M audit/triage/candidate.jsonl",
+      " M audit/triage/stub.jsonl",
+      " M hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py",
+      " M tests/test_unit_gemma4_gguf_device.py",
+      "?? benchmarks/results/2026-09-30-gemma4-family-1024-d3.json",
+      "?? benchmarks/results/2026-09-30-gemma4-family-4096-d3.json",
+      "?? benchmarks/results/2026-09-30-gemma4-p4096-revert-router-at41-w7900.json",
+      "?? benchmarks/results/2026-09-30-gemma4-q5_1-down-decode-screen.json",
+      "?? benchmarks/results/2026-09-30-gemma4-scoreboard-d3.json",
+      "?? benchmarks/results/2026-09-30-gemma4-topline-1024-d3.json",
+      "?? benchmarks/results/2026-09-30-gemma4-topline-4096-d3.json",
+      "?? scratch/",
+      "?? scripts/gguf_q5_1_gemma_down_decode_screen.py",
+      "?? worklog/entries/20260930T030006.724583Z-lhl-gemma4-a6bf05.md"
+    ],
+    "physical_gpu_index": 1,
+    "gpu_name": "AMD Radeon RX 7900 XTX",
+    "rocm_smi": [
+      "GPU[1]\t\t: Card Model: \t\t0x744c",
+      "GPU[1]\t\t: Card Vendor: \t\tAdvanced Micro Devices, Inc. [AMD/ATI]",
+      "GPU[1]\t\t: Card SKU: \t\tEXT89622",
+      "GPU[1]\t\t: Subsystem ID: \t0x2422",
+      "GPU[1]\t\t: Device Rev: \t\t0xc8",
+      "GPU[1]\t\t: Node ID: \t\t2",
+      "GPU[1]\t\t: GUID: \t\t33912",
+      "GPU[1]\t\t: GFX Version: \t\tgfx1100",
+      "==========================================================================================",
+      "================================== End of ROCm SMI Log ===================================",
+      "WARNING: AMD GPU device(s) is/are in a low-power state. Check power control/runtime_status",
+      ""
+    ],
+    "hipcc_version_first_line": "HIP version: 7.2.53211-3d9ef42",
+    "captured_at": "2026-09-30T03:08:20.504479+00:00"
+  },
+  "protocol": {
+    "topline": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --samples 3 --warmup 1 --context 8192; unprofiled, median of 3 samples, fixed length (EOS ignored)",
+    "family": "rocprofv3 --kernel-trace around scripts/gemma4_family_census.py drive --prompt P --decode 64 --prefill-repeats 2, rolled up by scripts/gemma4_family_census.py rollup; device-busy sums, profiled",
+    "kv_dtype": "bf16",
+    "execution_profile": "production route, default selection",
+    "comparator": "llama.cpp rows are unchanged and come from the recorded a97cce8 comparison; this artifact refreshes hipEngine only",
+    "family_note": "family half captured by the census run of the same tag on the same commit and lane (bg-164); the topline half was rerun under .venv because the first attempt used a different interpreter"
+  },
+  "topline": {
+    "1024": {
+      "prefill_tps": 2707.4028403386624,
+      "prefill_s": 0.37822225224226713,
+      "decode_tps": 61.451136713174584,
+      "decode_tps_min": 60.83057260350295,
+      "decode_tps_max": 61.654365793776726,
+      "decode_tps_stdev": 0.4291536426029696,
+      "first_token_s": 0.37825190369039774,
+      "wall_s": 2.4449957199394703,
+      "artifact": "benchmarks/results/2026-09-30-gemma4-topline-1024-d3.json",
+      "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 1024 --output 128 --samples 3 --warmup 1 --context 8192 --out /home/lhl/hipEngine-gemma4/benchmarks/results/2026-09-30-gemma4-topline-1024-d3.json --label scoreboard-d3 --expect-gpu 'RX 7900 XTX'"
+    },
+    "4096": {
+      "prefill_tps": 1560.7419720607884,
+      "prefill_s": 2.624392803758383,
+      "decode_tps": 54.28335111191099,
+      "decode_tps_min": 54.16922687769513,
+      "decode_tps_max": 54.36399643259357,
+      "decode_tps_stdev": 0.0978631596488063,
+      "first_token_s": 2.62442325334996,
+      "wall_s": 4.963803472928703,
+      "artifact": "benchmarks/results/2026-09-30-gemma4-topline-4096-d3.json",
+      "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 4096 --output 128 --samples 3 --warmup 1 --context 8192 --out /home/lhl/hipEngine-gemma4/benchmarks/results/2026-09-30-gemma4-topline-4096-d3.json --label scoreboard-d3 --expect-gpu 'RX 7900 XTX'"
+    }
+  },
+  "family": {
+    "1024": {
+      "engine": "hipengine",
+      "trace": "/tmp/g4_scoreboard_d3/trace_1024/run_kernel_trace.csv",
+      "prefill": {
+        "busy_ms": 392.6052,
+        "span_ms": 375.842,
+        "families": {
+          "moe.gate_up": {
+            "ms": 117.516,
+            "launches": 60.0
+          },
+          "dense.q8_0": {
+            "ms": 111.6382,
+            "launches": 252.0
+          },
+          "moe.down": {
+            "ms": 47.6952,
+            "launches": 58.0
+          },
+          "attn.sliding": {
+            "ms": 30.0016,
+            "launches": 50.0
+          },
+          "moe.router_gemm": {
+            "ms": 28.6767,
+            "launches": 120.0
+          },
+          "moe.route_glue": {
+            "ms": 18.5491,
+            "launches": 540.0
+          },
+          "norm": {
+            "ms": 9.9362,
+            "launches": 601.0
+          },
+          "attn.global": {
+            "ms": 8.8965,
+            "launches": 10.0
+          },
+          "elementwise": {
+            "ms": 7.2824,
+            "launches": 242.0
+          },
+          "moe.act_quant": {
+            "ms": 6.6,
+            "launches": 60.0
+          },
+          "runtime_copy_fill": {
+            "ms": 1.6957,
+            "launches": 272.0
+          },
+          "other": {
+            "ms": 1.6565,
+            "launches": 50.0
+          },
+          "moe.l29_experts": {
+            "ms": 1.4926,
+            "launches": 2.0
+          },
+          "lm_head": {
+            "ms": 0.9686,
+            "launches": 1.0
+          }
+        },
+        "other_top": {
+          "(anonymous namespace)::gemma4_qkv_split_bf16_kernel(unsigned short const*, long, long, long, long, i": 1.6565
+        }
+      },
+      "decode_per_token": {
+        "busy_ms": 14.7268,
+        "span_ms": 18.9789,
+        "families": {
+          "attn.sliding": {
+            "ms": 3.6765,
+            "launches": 50.0
+          },
+          "dense.q8_0": {
+            "ms": 2.8586,
+            "launches": 126.0
+          },
+          "norm": {
+            "ms": 1.5552,
+            "launches": 301.0
+          },
+          "moe.down": {
+            "ms": 1.4973,
+            "launches": 29.0
+          },
+          "moe.gate_up": {
+            "ms": 1.047,
+            "launches": 29.0
+          },
+          "lm_head": {
+            "ms": 0.9644,
+            "launches": 1.0
+          },
+          "moe.route_glue": {
+            "ms": 0.8944,
+            "launches": 180.0
+          },
+          "attn.global": {
+            "ms": 0.7502,
+            "launches": 10.0
+          },
+          "moe.router_gemm": {
+            "ms": 0.7098,
+            "launches": 30.0
+          },
+          "elementwise": {
+            "ms": 0.244,
+            "launches": 121.0
+          },
+          "moe.l29_experts": {
+            "ms": 0.2366,
+            "launches": 2.0
+          },
+          "runtime_copy_fill": {
+            "ms": 0.2304,
+            "launches": 97.0
+          },
+          "other": {
+            "ms": 0.0624,
+            "launches": 25.0
+          }
+        },
+        "other_top": {
+          "(anonymous namespace)::gemma4_qkv_split_bf16_kernel(unsigned short const*, long, long, long, long, i": 0.0624
+        }
+      },
+      "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/g4_scoreboard_d3/trace_1024 -o run -- /home/lhl/mambaforge/envs/therock/bin/python3 scripts/gemma4_family_census.py drive --prompt 1024 --decode 64 --prefill-repeats 2",
+      "trace_kernel_rows": 79412,
+      "prefill_prompt_tokens": 1024
+    },
+    "4096": {
+      "engine": "hipengine",
+      "trace": "/tmp/g4_scoreboard_d3/trace_4096/run_kernel_trace.csv",
+      "prefill": {
+        "busy_ms": 2718.0892,
+        "span_ms": 2641.0676,
+        "families": {
+          "attn.sliding": {
+            "ms": 1216.5483,
+            "launches": 200.0
+          },
+          "moe.gate_up": {
+            "ms": 468.5171,
+            "launches": 240.0
+          },
+          "dense.q8_0": {
+            "ms": 440.6259,
+            "launches": 1008.0
+          },
+          "moe.down": {
+            "ms": 192.7198,
+            "launches": 232.0
+          },
+          "moe.router_gemm": {
+            "ms": 112.3194,
+            "launches": 480.0
+          },
+          "attn.global": {
+            "ms": 100.3743,
+            "launches": 40.0
+          },
+          "moe.route_glue": {
+            "ms": 73.1211,
+            "launches": 2160.0
+          },
+          "norm": {
+            "ms": 39.0328,
+            "launches": 2401.0
+          },
+          "elementwise": {
+            "ms": 29.1015,
+            "launches": 968.0
+          },
+          "moe.act_quant": {
+            "ms": 26.0723,
+            "launches": 240.0
+          },
+          "other": {
+            "ms": 6.6344,
+            "launches": 200.0
+          },
+          "runtime_copy_fill": {
+            "ms": 6.461,
+            "launches": 788.0
+          },
+          "moe.l29_experts": {
+            "ms": 5.5913,
+            "launches": 8.0
+          },
+          "lm_head": {
+            "ms": 0.9702,
+            "launches": 1.0
+          }
+        },
+        "other_top": {
+          "(anonymous namespace)::gemma4_qkv_split_bf16_kernel(unsigned short const*, long, long, long, long, i": 6.6344
+        }
+      },
+      "decode_per_token": {
+        "busy_ms": 16.6774,
+        "span_ms": 20.6766,
+        "families": {
+          "attn.sliding": {
+            "ms": 3.6564,
+            "launches": 50.0
+          },
+          "dense.q8_0": {
+            "ms": 2.8335,
+            "launches": 126.0
+          },
+          "attn.global": {
+            "ms": 2.815,
+            "launches": 10.0
+          },
+          "norm": {
+            "ms": 1.5399,
+            "launches": 301.0
+          },
+          "moe.down": {
+            "ms": 1.4974,
+            "launches": 29.0
+          },
+          "moe.gate_up": {
+            "ms": 1.0516,
+            "launches": 29.0
+          },
+          "lm_head": {
+            "ms": 0.9646,
+            "launches": 1.0
+          },
+          "moe.route_glue": {
+            "ms": 0.8716,
+            "launches": 180.0
+          },
+          "moe.router_gemm": {
+            "ms": 0.7183,
+            "launches": 30.0
+          },
+          "moe.l29_experts": {
+            "ms": 0.2364,
+            "launches": 2.0
+          },
+          "elementwise": {
+            "ms": 0.2228,
+            "launches": 121.0
+          },
+          "runtime_copy_fill": {
+            "ms": 0.2206,
+            "launches": 97.0
+          },
+          "other": {
+            "ms": 0.0491,
+            "launches": 25.0
+          }
+        },
+        "other_top": {
+          "(anonymous namespace)::gemma4_qkv_split_bf16_kernel(unsigned short const*, long, long, long, long, i": 0.0491
+        }
+      },
+      "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/g4_scoreboard_d3/trace_4096 -o run -- /home/lhl/mambaforge/envs/therock/bin/python3 scripts/gemma4_family_census.py drive --prompt 4096 --decode 64 --prefill-repeats 2",
+      "trace_kernel_rows": 99356,
+      "prefill_prompt_tokens": 4096
+    }
+  },
+  "artifacts": {
+    "topline_1024": "benchmarks/results/2026-09-30-gemma4-topline-1024-d3.json",
+    "topline_4096": "benchmarks/results/2026-09-30-gemma4-topline-4096-d3.json",
+    "family_1024": "benchmarks/results/2026-09-30-gemma4-family-1024-d3.json",
+    "family_4096": "benchmarks/results/2026-09-30-gemma4-family-4096-d3.json"
+  }
+}
