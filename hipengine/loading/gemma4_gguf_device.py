@@ -18,9 +18,19 @@ GEMV measured 4.9-5.1x the raw-layout selected GEMV at bitwise-equal output
 and whose mmq32 / WMMA prefill owners resolve under the same quant key. The
 repack runs here, once per tensor, replacing the raw copy rather than
 adding one -- a second resident copy of the gate_up stacks would not fit the
-capacity the artifact already occupies. Everything else (Q5_1 / Q5_K / Q8_0
-downs, dense projections, norms) keeps raw residency; those quants have no
-t16 family or no measured reason to move.
+capacity the artifact already occupies.
+
+Q8_0 dense projections additionally carry a *side* allocation: the raw
+copy stays primary (the prefill owners keep reading it, byte for byte) and a
+byte-neutral ``tiles`` copy is uploaded beside it so the rows==1 decode
+launch can rewrite to the Q8T16 GEMV sibling (see
+:func:`hipengine.runtime.gguf_linear._q8_t16_tiles_decode_dispatch`). Q8T16
+tiles are the same 34-byte Q8_0 blocks per 16 rows, transposed -- the same
+byte count as the raw copy -- and only rank-2 tensors at projection slots
+plan it, so the resident total grows by exactly one copy of the Q8_0
+projections (measured to fit the fixture's capacity headroom). Everything
+else (Q5_1 / Q5_K / Q8_0 stacked expert tensors, projections in other
+quants, norms) keeps raw residency alone.
 """
 
 from __future__ import annotations
@@ -43,7 +53,7 @@ from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_TILE16_COLS,
     repack_gguf_q4_k_tile16,
 )
-from hipengine.quant.gguf_repack import Q4_K_T16_SHAPE
+from hipengine.quant.gguf_repack import Q4_K_T16_SHAPE, Q8_0_T16_SHAPE
 
 __all__ = [
     "LAYOUT_DENSE_F32",
@@ -206,6 +216,32 @@ def _plan_one(
                 layout=LAYOUT_GGUF_Q4_K_T16,
                 allocation_names=("tiles",),
             )
+    # Q8_0 dense projections plan a raw-plus-tiles side allocation. The slot
+    # names the tensor's dispatch role (root slots like ``token_embedding``
+    # and stacked expert tensors have no rows==1 t16 owner), and the shape
+    # contract is ``Q8_0_T16_SHAPE``'s, so a tensor the tile-16 repack would
+    # reject keeps raw residency alone -- the same fail-open shape gate the
+    # Q4_K stacks use above, just keeping both allocations instead of the
+    # one.
+    if (
+        qtype is GGMLQuantizationType.Q8_0
+        and len(source.shape) == 2
+        and slot_path.startswith("layers.")
+        and slot_path.rsplit(".", 1)[-1]
+        in {"attn_q", "attn_k", "attn_v", "attn_output", "ffn_gate", "ffn_up", "ffn_down"}
+    ):
+        try:
+            Q8_0_T16_SHAPE.validate(source.byte_shape)
+        except ValueError:
+            pass
+        else:
+            return Gemma4GGUFWeightSpec(
+                slot_path=slot_path,
+                source=source,
+                quant_key=f"gguf_{source.ggml_type_name.lower()}",
+                layout=LAYOUT_RAW_GGUF,
+                allocation_names=("raw", "tiles"),
+            )
     return Gemma4GGUFWeightSpec(
         slot_path=slot_path,
         source=source,
@@ -273,6 +309,14 @@ def _planned_nbytes(spec: Gemma4GGUFWeightSpec) -> int:
             * blocks
             * GGUF_Q4_K_TILE16_BLOCK_BYTES
         )
+    if spec.layout == LAYOUT_RAW_GGUF:
+        if "tiles" in spec.allocation_names:
+            # The Q8T16 side allocation is the same 34-byte Q8_0 blocks per
+            # 16 rows, transposed: exactly the raw byte count again.
+            # Capacity checks must sum both copies, so the doubling is
+            # explicit here rather than implied by the repack's internals.
+            return 2 * int(spec.source.nbytes)
+        return int(spec.source.nbytes)
     return int(spec.source.nbytes)
 
 
@@ -300,6 +344,7 @@ def materialize_gemma4_gguf_device_weight(
 
     raw = reader.tensor_data(spec.source.name)
     allocation_name = "raw"
+    uploads: dict[str, tuple] = {}
     if spec.layout == LAYOUT_RAW_GGUF:
         # ``storage_dtype`` is the byte view the kernels index; every block type
         # this loader carries stores as uint8 blocks.
@@ -310,6 +355,14 @@ def materialize_gemma4_gguf_device_weight(
                 "raw GGUF residency expects uint8 block storage"
             )
         dtype, source_dtype = DType.INT8, "I8"
+        if "tiles" in spec.allocation_names:
+            from hipengine.quant.gguf_t16 import repack_gguf_q8_0_tile16
+
+            uploads["tiles"] = (
+                repack_gguf_q8_0_tile16(
+                    np.frombuffer(raw, dtype=np.uint8).reshape(spec.source.byte_shape)
+                ).tiles,
+            )
     elif spec.layout == LAYOUT_DENSE_F32:
         dtype, source_dtype = DType.FP32, "F32"
     elif spec.layout == LAYOUT_GGUF_Q4_K_T16:
@@ -321,19 +374,31 @@ def materialize_gemma4_gguf_device_weight(
     else:
         raise ValueError(f"unsupported resident layout {spec.layout!r}")
 
+    allocations = {
+        allocation_name: load_host_array_to_device_as_dtype(
+            spec.source.name,
+            raw,
+            dtype,
+            source_dtype=source_dtype,
+            device=device,
+            runtime=runtime,
+            allocator=allocator,
+        )
+    }
+    for name, (array,) in uploads.items():
+        allocations[name] = load_host_array_to_device_as_dtype(
+            f"{spec.source.name}:{name}",
+            array,
+            DType.INT8,
+            source_dtype="I8",
+            device=device,
+            runtime=runtime,
+            allocator=allocator,
+        )
+
     return Gemma4GGUFDeviceWeight(
         spec=spec,
-        allocations={
-            allocation_name: load_host_array_to_device_as_dtype(
-                spec.source.name,
-                raw,
-                dtype,
-                source_dtype=source_dtype,
-                device=device,
-                runtime=runtime,
-                allocator=allocator,
-            )
-        },
+        allocations=allocations,
         backend=backend,
     )
 
@@ -461,18 +526,36 @@ def materialize_fused_gguf_device_weight(
         source=source,
     )
 
+    allocations = {
+        "raw": load_host_array_to_device_as_dtype(
+            spec.source.name,
+            raw,
+            DType.INT8,
+            source_dtype="I8",
+            device=device,
+            runtime=runtime,
+            allocator=allocator,
+        )
+    }
+    if "tiles" in spec.allocation_names:
+        # The members planned a raw-plus-tiles side allocation, so the fused
+        # buffer does too: the Q8T16 repack of the concatenated rows is the
+        # concat of their tiles (the block column layout is per-row), and the
+        # rows==1 rewrite reads it as one fused t16 weight.
+        from hipengine.quant.gguf_t16 import repack_gguf_q8_0_tile16
+
+        allocations["tiles"] = load_host_array_to_device_as_dtype(
+            f"{spec.source.name}:tiles",
+            repack_gguf_q8_0_tile16(raw).tiles,
+            DType.INT8,
+            source_dtype="I8",
+            device=device,
+            runtime=runtime,
+            allocator=allocator,
+        )
+
     return Gemma4GGUFDeviceWeight(
         spec=spec,
-        allocations={
-            "raw": load_host_array_to_device_as_dtype(
-                spec.source.name,
-                raw,
-                DType.INT8,
-                source_dtype="I8",
-                device=device,
-                runtime=runtime,
-                allocator=allocator,
-            )
-        },
+        allocations=allocations,
         backend=backend,
     )

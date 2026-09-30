@@ -43,13 +43,9 @@ import d10_q8_dense_gemv_screen as scr  # noqa: E402
 
 from hipengine.core.hip import get_hip_runtime  # noqa: E402
 
-SINGLE_SHAPES = [
-    ("gate/up single", 2816, 2112),
-    ("q projection", 2816, 4096),
-    ("fused qkv", 2816, 8192),
-    ("o projection", 4096, 2816),
-    ("down projection", 2112, 2816),
-]
+# The production shape set lives with the timing screen so both instruments
+# measure the same matrix.
+SINGLE_SHAPES = scr.SINGLE_SHAPES
 
 
 def bits(x_device: int, n: int) -> np.ndarray:

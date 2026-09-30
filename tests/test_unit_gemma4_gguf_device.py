@@ -30,6 +30,23 @@ from tests._gemma4_gguf_fixture import (
     write_fixture_gguf,
 )
 
+# The dense projection slots the planner gives a Q8T16 side allocation. Kept
+# as an explicit list here: it is the contract under test, and a planner that
+# widened or narrowed the set must fail loudly.
+PROJECTION_SLOTS = frozenset(
+    {"attn_q", "attn_k", "attn_v", "attn_output", "ffn_gate", "ffn_up", "ffn_down"}
+)
+
+
+def _expects_tiles_side_allocation(spec) -> bool:
+    return bool(
+        spec.layout == LAYOUT_RAW_GGUF
+        and len(spec.source.shape) == 2
+        and spec.slot_path.startswith("layers.")
+        and spec.slot_path.rsplit(".", 1)[-1] in PROJECTION_SLOTS
+        and spec.source.ggml_type == GGMLQuantizationType.Q8_0
+    )
+
 
 @pytest.fixture
 def reader(tmp_path: Path) -> GGUFReader:
@@ -74,7 +91,13 @@ def test_quant_keys_follow_the_artifact(reader: GGUFReader) -> None:
         else:
             assert spec.layout == LAYOUT_RAW_GGUF, name
             assert spec.quant_key == f"gguf_{source.ggml_type_name.lower()}", name
-            assert spec.allocation_names == ("raw",), name
+            # Q8_0 dense projections carry the byte-neutral tiles side
+            # allocation the rows==1 t16 rewrite reads; every other raw
+            # tensor (root slots, stacked experts, other quants) keeps raw.
+            if _expects_tiles_side_allocation(spec):
+                assert spec.allocation_names == ("raw", "tiles"), name
+            else:
+                assert spec.allocation_names == ("raw",), name
 
 
 def test_a_stacked_expert_tensor_stays_one_allocation(reader: GGUFReader) -> None:
@@ -103,6 +126,59 @@ def test_a_stacked_expert_tensor_stays_one_allocation(reader: GGUFReader) -> Non
         # shape[0] times larger, so check the total against the whole tensor.
         per_expert = spec.source.nbytes / spec.source.shape[0]
         assert spec.source.nbytes == int(per_expert) * spec.source.shape[0], spec.slot_path
+
+
+def test_q8_0_projections_plan_raw_plus_tiles(reader: GGUFReader) -> None:
+    """Every Q8_0 dense projection plans raw *and* its tiles side copy.
+
+    The rows==1 rewrite routes on the presence of ``tiles`` alone, so the
+    planner is what decides the capability: rank-2 Q8_0 projection slots get
+    both allocations, and root slots (``token_embedding``) and stacked expert
+    tensors -- which have no rows==1 t16 owner -- get raw only.
+    """
+
+    specs = plan_gemma4_gguf_resident_specs(reader)
+    duals = [spec for spec in specs if spec.allocation_names == ("raw", "tiles")]
+    assert duals, "fixture projections should plan the tiles side allocation"
+    for spec in duals:
+        assert _expects_tiles_side_allocation(spec), spec.slot_path
+
+    root = next(spec for spec in specs if spec.slot_path == "token_embedding")
+    assert root.allocation_names == ("raw",), root.slot_path
+    for spec in specs:
+        if len(spec.source.shape) == 3:
+            assert spec.allocation_names != ("raw", "tiles"), spec.slot_path
+
+
+def test_tiles_repack_is_byte_neutral_with_the_raw_copy(reader: GGUFReader) -> None:
+    """The tiles copy occupies exactly the raw bytes and round-trips them.
+
+    This is the capacity claim behind a *side* allocation: if the repack
+    were not byte-neutral the resident total could not be planned as a plain
+    doubling, and if it did not round-trip the bytes the prefill owners and
+    the decode rewrite would disagree about what the weight contains. Host
+    only -- no device needed.
+    """
+
+    from hipengine.quant.gguf_t16 import (
+        repack_gguf_q8_0_tile16,
+        unpack_gguf_q8_0_tile16,
+    )
+
+    spec = next(
+        spec
+        for spec in plan_gemma4_gguf_resident_specs(reader)
+        if spec.allocation_names == ("raw", "tiles")
+    )
+    raw = np.frombuffer(reader.tensor_data(spec.source.name), dtype=np.uint8).reshape(
+        spec.source.byte_shape
+    )
+    packed = repack_gguf_q8_0_tile16(raw)
+    assert int(packed.tiles.nbytes) == int(raw.nbytes), spec.slot_path
+    restored = np.asarray(unpack_gguf_q8_0_tile16(packed), dtype=np.uint8)
+    np.testing.assert_array_equal(
+        restored.reshape(raw.shape), raw, err_msg=spec.slot_path
+    )
 
 
 def test_resident_bytes_is_the_artifact_bytes(reader: GGUFReader) -> None:
@@ -612,15 +688,19 @@ def test_gate_up_q4_k_plans_the_t16_tiles_layout(reader: GGUFReader) -> None:
         assert spec.quant_key == T16_LAYOUT, spec.slot_path
         assert spec.allocation_names == ("tiles",), spec.slot_path
 
-    # Every other tensor keeps the raw / dense residency it had. The down
-    # stack (Q8_0 in the fixture, Q5_1 in the real artifact) has no t16
-    # family, and dense projections have no reason to move.
+    # Every other tensor keeps the raw / dense residency it had. The Q8_0
+    # dense projections keep raw residency *plus* the byte-neutral tiles side
+    # allocation the rows==1 rewrite reads; everything else -- stacked expert
+    # tensors, root slots, other quants -- keeps raw alone.
     gate_up_slots = {spec.slot_path for spec in gate_up}
     for spec in specs:
         if spec.slot_path in gate_up_slots:
             continue
         assert spec.layout in (LAYOUT_RAW_GGUF, LAYOUT_DENSE_F32), spec.slot_path
-        assert spec.allocation_names == ("raw",), spec.slot_path
+        if _expects_tiles_side_allocation(spec):
+            assert spec.allocation_names == ("raw", "tiles"), spec.slot_path
+        else:
+            assert spec.allocation_names == ("raw",), spec.slot_path
         assert spec.quant_key == (
             "f32"
             if spec.layout == LAYOUT_DENSE_F32
@@ -634,7 +714,10 @@ def test_resident_bytes_counts_the_planned_layouts(reader: GGUFReader) -> None:
     T16 tiles carry per-16-row scale blocks, so a converted gate_up stack
     occupies slightly more than its stored bytes (2.78% at the fixture shape,
     the same ratio at the real 1408x2816 shape). A capacity check that summed
-    file bytes would under-plan the device by that delta.
+    file bytes would under-plan the device by that delta. The Q8_0 tiles side
+    allocation is byte-neutral with its raw copy but is still a second
+    resident copy, so it is planned twice -- a capacity check that counted it
+    once would over-allocate against the reported budget.
     """
 
     specs = plan_gemma4_gguf_resident_specs(reader)
@@ -647,6 +730,8 @@ def test_resident_bytes_counts_the_planned_layouts(reader: GGUFReader) -> None:
             expected += _t16_tiles_nbytes(spec)
         else:
             expected += int(spec.source.nbytes)
+            if "tiles" in spec.allocation_names:
+                expected += int(spec.source.nbytes)
     assert resident_bytes(specs) == expected
 
     artifact_bytes = sum(
