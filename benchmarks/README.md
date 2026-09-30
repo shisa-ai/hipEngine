@@ -857,6 +857,23 @@ the strict fallback. Measured on `gfx1151`, not the default W7900; GDN
 prefill scope only, not a whole-request rate.
 [Multi-column evidence](results/2026-09-30-qwen4exp-gdn-multicolumn-ab/README.md).
 
+The route is the production selection **where its column-warp gate is open**,
+which is the `gguf_q4_k_m` profile; the `gguf_ud_q4_k_xl` arithmetic-recovery
+profile closes that gate and replaces tiled variants by name with its exact
+owner, so its manifest declares `qwen4exp_sigmoid_wave_norm_prefill` and stays
+byte-identical. A gate on the q4_k_m profile confirms the route runs there
+(**1350 dispatches**, against 0 before the binding repair) and that the profile
+**fails** the calibrated envelope at max KL **0.05958** with `prefill_last` mean
+KL **1.333e-3**. That failure is not the route's: an attribution control that
+pins the GDN prefill owner to the superseded `qwen4exp_gdn_tiled16_prefill`
+fails the same five scopes with a **worse** tail (max KL **0.06645**,
+`prefill_last` mean **1.475e-3**). It is the composition the September 14
+recovery replaced for `gguf_ud_q4_k_xl` only, measured here at the same class
+of result (that artifact recorded max KL `0.054642` with prefill-last mean/p95
+also failing).
+[Gate](results/2026-09-30-qwen4exp-gdn-multicolumn-q4km/gate.json) ·
+[Control](results/2026-09-30-qwen4exp-gdn-tiled16-control/gate.json).
+
 Mapping-only random advice for sparse PLE reads is now the gfx1151 production
 default. In the matched file-scoped cold-cache protocol, all-category
 512/1K/4K prefill improves **84.161/134.330/225.864 ->

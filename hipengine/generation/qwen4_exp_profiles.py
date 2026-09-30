@@ -354,7 +354,7 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
     )
 
 
-def _production_selections(*, dpp: bool = False, recovery: bool = False) -> tuple[VariantSelection, ...]:
+def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection, ...]:
     selections = (
         _selection(
             "gdn_recurrence_norm_gate", "prefill_rows_ge16_hk16_hv32_48_d128_layers27_47",
@@ -365,9 +365,19 @@ def _production_selections(*, dpp: bool = False, recovery: bool = False) -> tupl
             # numerical gates pass (mean KL 8.92e-05, max 4.45e-03, top-1 777/780); the one
             # task finding is shared with the strict arm, not a regression. The DPP route
             # stays registered as the strict fallback.
-            "qwen4exp_gdn_tiled16_multi_prefill" if dpp else "qwen4exp_gdn_tiled16_prefill",
+            #
+            # Unconditional on purpose: the declaration has to name the route the binder
+            # dispatches. The runner reads HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT, and that
+            # binding names the multi-column route for every profile that keeps the
+            # column-warp gate open. The recovery profile closes that gate and deactivates
+            # tiled variants BY NAME below, so its own declaration is replaced with its exact
+            # owner before the manifest is built - an unconditional row therefore leaves the
+            # recovery manifest byte-identical while fixing the profile that dispatches it.
+            # A conditional row is what let the q4_k_m manifest declare the tiled16 route
+            # while 1350 dispatches of the multi-column route ran underneath it.
+            "qwen4exp_gdn_tiled16_multi_prefill",
             "qwen4exp_sigmoid_strict_prefill", "f32_state",
-            evidence="benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-ab/artifact.json" if dpp else _GDN_COLWARPS_EVIDENCE,
+            evidence="benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-ab/artifact.json",
         ),
         _selection("linear","prefill_rows_ge512_k2560_n12288_raw_q",
                    "mmq128_token64_q8_1_d4x3_guarded_f32_f32_out",
@@ -905,7 +915,6 @@ def register_qwen4_exp_gfx1151_profiles() -> bool:
             profile=ExecutionProfile.PRODUCTION,
             plan=RuntimeProfilePlan(
                 selections=_production_selections(
-                    dpp=quant == "gguf_ud_q4_k_xl",
                     recovery=quant == "gguf_ud_q4_k_xl",
                 ),
                 kv_policy="paged_bf16_qsa_index_f32",
