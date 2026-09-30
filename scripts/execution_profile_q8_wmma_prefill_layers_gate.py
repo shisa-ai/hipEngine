@@ -80,14 +80,69 @@ DEFAULT_FIXTURE = Path(
     "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json"
 )
 # The category-heldout suite: 18 natural-length prompts across the same four
-# categories, with the same per-case schema. This is the fixture that can supply
-# the canonical protocol's first missing admission certificate.
+# categories, with the same per-case schema. This suite **cannot** supply the
+# canonical protocol's missing admission certificate: its longest prompt is 71
+# tokens against ``dense_wide``'s 257-row floor, so it never engages a prefill
+# route. It is retained as the calibration/heldout suite it has always been, and
+# the long-form sibling below is the one that can engage.
 ADMISSION_FIXTURE = Path(
     "benchmarks/fixtures/qwen4exp_admission_suite_18prompt.json"
 )
 ADMISSION_FIXTURE_SHA256 = (
     "005196cbf06f747350b0f35a02febb4aad3cd85a1251af1bfe9c152f95aadbfb"
 )
+# The long-form category-heldout suite, a **sibling** of the admission suite
+# rather than a replacement for it.
+#
+# The admission suite cannot engage a prefill route at all: its longest prompt is
+# 71 tokens against ``dense_wide``'s 257-row floor, so a heldout run over it
+# compares two runs of the same kernel and certifies nothing. The floor was
+# verified genuine rather than assumed - it is read from
+# ``_q8_dense_wide_dispatch``'s ``rows <= 256``, and ``rows`` at that guard is
+# ``len(tokens)`` (``laguna_gguf_runner.py:5059``, ``_execute_rows``), the real
+# prefill token count rather than the scratch row count that ``allocate_scratch``
+# sizes to ``min(chunk_size, max(768, prompt_tokens + 1))`` - so ``prompt_tokens``
+# is a faithful proxy for what the guard sees.
+#
+# The four natural long tasks in this suite are 424-512 tokens, one per category,
+# 1.65x-1.99x the floor. It is a sibling because the admission suite is shared:
+# the same 18 prompts are what ``scripts/qwen4exp_layer2_profile_gate.py`` and the
+# 2026-08-16 threshold calibration consume, and extending it in place would change
+# a shared fixture and invalidate every artifact citing its hash.
+LONGFORM_HELDOUT_FIXTURE = Path(
+    "benchmarks/fixtures/qwen4exp_longform_heldout_4prompt.json"
+)
+LONGFORM_HELDOUT_FIXTURE_SHA256 = (
+    "b2d37b8f5f8c33d1b530ffc336e7e1211debccdd582f90437e97805243c0af07"
+)
+# Per-protocol identity. The expected case-id set and the protocol string travel
+# together with the hash so that a suite can never be accounted for under the
+# other's name - the two are not interchangeable, and a run of one must not be
+# readable as the other.
+HELDOUT_PROTOCOLS = {
+    ADMISSION_FIXTURE_SHA256: {
+        "kind": "category_heldout",
+        "protocol": "category_heldout_natural_length_d128_three_repeat_v1",
+        "ids": {
+            "code_merge_intervals", "code_topological_sort", "code_lru_cache",
+            "code_markdown_table", "general_en_plan", "general_en_explain",
+            "general_ja_plan", "general_ja_explain", "mixed_ja_en_translate",
+            "mixed_ja_en_review", "heldout_code_rate_limiter",
+            "heldout_code_interval_schedule", "heldout_general_en_incident",
+            "heldout_general_en_quant", "heldout_general_ja_migration",
+            "heldout_general_ja_speculative", "heldout_mixed_summary",
+            "heldout_mixed_review",
+        },
+    },
+    LONGFORM_HELDOUT_FIXTURE_SHA256: {
+        "kind": "category_heldout_longform",
+        "protocol": "category_heldout_longform_d128_three_repeat_v1",
+        "ids": {
+            "long_code_booking_merge", "long_general_en_release_decision",
+            "long_general_ja_retention_review", "long_mixed_ja_en_acceptance",
+        },
+    },
+}
 # Each route declines below its own row count, and the values differ by more than
 # an order of magnitude, so this is a per-route property (``Route.min_engaging_rows``)
 # and never a shared constant. Getting it wrong in either direction is a silent
@@ -135,8 +190,9 @@ def _fixture_kind(fixture_sha256: str) -> str:
 
     if fixture_sha256 == CANONICAL_FIXTURE_SHA256:
         return "canonical"
-    if fixture_sha256 == ADMISSION_FIXTURE_SHA256:
-        return "category_heldout"
+    protocol = HELDOUT_PROTOCOLS.get(fixture_sha256)
+    if protocol is not None:
+        return protocol["kind"]
     return "unknown"
 
 
@@ -157,7 +213,10 @@ def qualification_coverage(
 
     A category-heldout fixture produces a **separate** record and never sets
     ``complete`` here: the two protocols are not interchangeable, and a run of
-    one must not be readable as the other.
+    one must not be readable as the other. The two heldout protocols - the
+    18-prompt admission suite and the long-form sibling - are likewise separate:
+    each is accounted for under its own hash, protocol string and case-id set,
+    so neither can be read as the other.
     """
     expected = {
         f"{category}-p{shape}": category
@@ -215,21 +274,14 @@ def _heldout_coverage(
     reach the route's row floor produces a flawless-looking comparison between
     two runs of the *same* kernel - bit-identical logits, KL exactly zero,
     ``measurement_valid: true`` - so ``complete`` must stay ``False`` and the
-    blocker must stay open. That is what the current suite does: 18 prompts of
-    39-71 tokens against a 256-row floor.
+    blocker must stay open. That is what the 18-prompt admission suite does: 39-71
+    tokens against a 256-row floor. The long-form sibling exists for exactly this
+    reason - it is the same check, over prompts that can reach the floor.
     """
-    if fixture_sha256 != ADMISSION_FIXTURE_SHA256:
+    protocol = HELDOUT_PROTOCOLS.get(fixture_sha256)
+    if protocol is None:
         return None
-    expected_ids = {
-        "code_merge_intervals", "code_topological_sort", "code_lru_cache",
-        "code_markdown_table", "general_en_plan", "general_en_explain",
-        "general_ja_plan", "general_ja_explain", "mixed_ja_en_translate",
-        "mixed_ja_en_review", "heldout_code_rate_limiter",
-        "heldout_code_interval_schedule", "heldout_general_en_incident",
-        "heldout_general_en_quant", "heldout_general_ja_migration",
-        "heldout_general_ja_speculative", "heldout_mixed_summary",
-        "heldout_mixed_review",
-    }
+    expected_ids = protocol["ids"]
     ids = [capture.prompt_id for capture in captures]
     # Taken from the fixture rather than the capture: ``PromptCalibrationCapture``
     # is shared by ten other gates and carries no row count, and adding a
@@ -242,7 +294,7 @@ def _heldout_coverage(
     # accounting defect rather than the honest row-floor one.
     expected_rows = (int(decode_steps) + 1) if decode_steps else None
     checks = {
-        "heldout_fixture_identity": fixture_sha256 == ADMISSION_FIXTURE_SHA256,
+        "heldout_fixture_identity": fixture_sha256 in HELDOUT_PROTOCOLS,
         "heldout_cases_once_each": len(ids) == len(expected_ids) and set(ids) == set(expected_ids),
         "heldout_categories": len({c.category for c in captures}) == 4,
         "heldout_declared_transitions": expected_rows is not None,
@@ -262,10 +314,10 @@ def _heldout_coverage(
         "heldout_prompts_exceed_route_row_floor": longest >= min_engaging_rows,
     }
     return {
-        "protocol": "category_heldout_natural_length_d128_three_repeat_v1",
+        "protocol": protocol["protocol"],
         "complete": all(checks.values()),
         "checks": checks,
-        "required_fixture_sha256": ADMISSION_FIXTURE_SHA256,
+        "required_fixture_sha256": fixture_sha256,
         "observed_fixture_sha256": fixture_sha256,
         "observed_case_ids": ids,
         "observed_prompt_rows": rows,
@@ -1036,7 +1088,15 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, default=DEFAULT_MODEL_ROOT)
-    parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
+    parser.add_argument(
+        "--fixture",
+        type=Path,
+        default=DEFAULT_FIXTURE,
+        help=(
+            "canonical fixture by default; pass "
+            f"{LONGFORM_HELDOUT_FIXTURE} for the long-form category heldout"
+        ),
+    )
     parser.add_argument("--case-id", action="append", default=None)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument(
