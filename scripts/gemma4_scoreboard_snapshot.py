@@ -175,6 +175,15 @@ def warm_jit(gpu: int) -> None:
     )
 
 
+def expect_gpu_for(gpu: int) -> str:
+    """The device-name expectation the campaign bench validates for a lane.
+
+    ``gemma4_campaign_bench`` defaults to the XTX name, so a ``--gpu 0``
+    snapshot died on the check instead of measuring the W7900.
+    """
+    return "W7900" if gpu == 0 else "RX 7900 XTX"
+
+
 def run_topline(gpu: int, prompt: int, out_path: Path, tag: str) -> dict[str, Any]:
     print(f"[snapshot] topline: prompt {prompt}", flush=True)
     command = [
@@ -187,6 +196,7 @@ def run_topline(gpu: int, prompt: int, out_path: Path, tag: str) -> dict[str, An
         "--context", str(DEFAULT_CONTEXT),
         "--out", str(out_path),
         "--label", f"scoreboard-{tag}",
+        "--expect-gpu", expect_gpu_for(gpu),
     ]
     _run(command, env=base_env(gpu), timeout=7200)
     return json.loads(out_path.read_text())
