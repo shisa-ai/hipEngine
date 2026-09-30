@@ -1,0 +1,19 @@
+{
+  "schema": "gemma4-d8-async-h2d-screen/v1",
+  "created_utc": "2026-09-30T05:12:10+00:00",
+  "command": ".venv/bin/python scratch/d8_async_h2d_screen.py",
+  "git_commit": "7cca1a7afc5f65051530183eb5e0ac3e01bb5b07",
+  "question": "Does hipMemcpyAsync from PAGEABLE host memory drain the stream (CUDA documents that it does)? The D8 staging fix is only a win if it does not.",
+  "method": "enqueue seconds-scale memset work on stream 0, then time one KB-scale H2D upload: A sync hipMemcpy (production path), B async pageable (candidate), C async pinned (reference), D async pageable with an empty queue (floor). Verify landed bytes after a drain for B and C.",
+  "results_host_us": {
+    "A_sync_pageable_deep_queue": 18022.5,
+    "B_async_pageable_deep_queue": 11.2,
+    "C_async_pinned_deep_queue": 11.0,
+    "D_async_pageable_empty_queue": 7.4
+  },
+  "bytes_ok": {
+    "B_pageable": true,
+    "C_pinned": true
+  },
+  "verdict": "ROCm stages pageable memory during the async call: B is 1600x cheaper than the sync copy with the same deep queue and equals pinned, so wiring enqueue_host_to_device needs no pinned slots, no double-buffering and no source-lifetime machinery for temporary pageable arrays (covered by test_enqueue_host_to_device_consumes_a_temporary_pageable_source)."
+}

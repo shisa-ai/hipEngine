@@ -148,6 +148,37 @@ def copy_host_to_device(
     runtime.memcpy(buffer.ptr, host_ptr, count, MemcpyKind.HOST_TO_DEVICE)
 
 
+def enqueue_host_to_device(
+    buffer: DeviceBuffer,
+    host_ptr: int,
+    nbytes: int | None = None,
+    *,
+    stream: int = 0,
+    runtime: DeviceRuntime | None = None,
+) -> None:
+    """Enqueue a H2D upload on ``stream`` without draining queued work.
+
+    ``copy_host_to_device`` uses the synchronous ``hipMemcpy``, which waits for
+    every kernel already enqueued on the stream. A caller that reads the result
+    immediately wants that; a caller whose copy is only a staging step in the
+    middle of a forward pass does not -- it stalls the host and starves the
+    device behind it (measured: a sync copy behind a deep queue costs
+    milliseconds of host time, an enqueued one ~11 us,
+    ``scratch/d8_async_h2d_screen.py``).
+
+    Ordering against later readers on the same stream is what makes the data
+    visible to kernels launched after this call. The host source may be a
+    temporary pageable allocation: ROCm stages pageable memory during the call,
+    so no reference needs to outlive it (covered by
+    ``test_enqueue_host_to_device_consumes_a_temporary_pageable_source``).
+    """
+
+    runtime = runtime or get_hip_runtime()
+    count = buffer.nbytes if nbytes is None else nbytes
+    _check_copy_size(count, buffer.nbytes)
+    runtime.memcpy_async(buffer.ptr, host_ptr, count, MemcpyKind.HOST_TO_DEVICE, stream)
+
+
 def copy_host_array_to_device(
     buffer: DeviceBuffer,
     array: object,
