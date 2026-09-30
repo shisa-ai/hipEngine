@@ -113,22 +113,21 @@ class _TimedCall:
         _STATS["hip_host_ns"] += dt
         _STATS[f"{tag}_calls"] += 1
         _STATS[f"{tag}_host_ns"] += dt
-        if tag != "launch":
-            row = _SYMBOL_STATS.setdefault(name, [0, 0])
-            row[0] += 1
-            row[1] += dt
-            if name == "hipMemcpy":
-                # Record the first non-infra caller; timed window already closed.
-                site = "?"
-                for fr in reversed(_traceback.extract_stack()[:-1]):
-                    p = fr.filename
-                    if "/scratch/" in p or "/core/hip.py" in p or "/core/memory.py" in p:
-                        continue
-                    site = f"{_os.path.basename(fr.filename)}:{fr.lineno} {fr.name}"
-                    break
-                srow = _MEMCPY_SITES.setdefault(site, [0, 0])
-                srow[0] += 1
-                srow[1] += dt
+        row = _SYMBOL_STATS.setdefault(name, [0, 0])
+        row[0] += 1
+        row[1] += dt
+        if name == "hipMemcpy":
+            # Record the first non-infra caller; timed window already closed.
+            site = "?"
+            for fr in reversed(_traceback.extract_stack()[:-1]):
+                p = fr.filename
+                if "/scratch/" in p or "/core/hip.py" in p or "/core/memory.py" in p:
+                    continue
+                site = f"{_os.path.basename(fr.filename)}:{fr.lineno} {fr.name}"
+                break
+            srow = _MEMCPY_SITES.setdefault(site, [0, 0])
+            srow[0] += 1
+            srow[1] += dt
         return err
 
 
@@ -327,6 +326,17 @@ def main() -> int:
             }
             for site in sorted(set(sites_b) | set(sites_a))
             if (sites_b.get(site, [0, 0])[0] - sites_a.get(site, [0, 0])[0]) != 0
+        },
+        "top_launch_symbols_per_step": {
+            name: {
+                "calls": round((sym_b.get(name, [0, 0])[0] - sym_a.get(name, [0, 0])[0]) / decode_steps, 2),
+                "host_us": round((sym_b.get(name, [0, 0])[1] - sym_a.get(name, [0, 0])[1]) / decode_steps / 1e3, 2),
+            }
+            for name in sorted(
+                (set(sym_b) | set(sym_a)),
+                key=lambda n: -(sym_b.get(n, [0, 0])[1] - sym_a.get(n, [0, 0])[1]),
+            )[:20]
+            if (sym_b.get(name, [0, 0])[0] - sym_a.get(name, [0, 0])[0]) != 0
         },
         "wrapped_decode_classes": sorted(set(_wrapped_decode)),
         "runs": {"wall_a_s": round(wall_a, 4), "wall_b_s": round(wall_b, 4),
