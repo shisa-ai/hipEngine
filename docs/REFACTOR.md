@@ -687,6 +687,18 @@
   recovered UD production profile; remove the multi-column
   path if the numerical or operation-complete performance gate rejects it.
 
+  **CORRECTION (`20260930T`): the "gate rejected it" premise was a misattribution, so the
+  removal is not yet justified.** The rejection was read from the ledger's section-7 row,
+  which combined `R01` (tiled/DPP) and `R02` (multi-column) under `R01`'s evidence entry.
+  `benchmarks/results/2026-09-15-journey-gdn-multi-restoration/README.md` shows `R02`
+  **passing** the full 594-row short gate (593/594 top-1) and the canonical depth gate at
+  every declared limit (mean KL 8.92215e-05, max 4.4548289e-03, top-1 777/780), and states
+  that it **does not reproduce** the single-column Japanese error that blocked `R01`. Its
+  own finding is a different prompt (`heldout_general_en_quant`) that the artifact scopes as
+  "not proof of worse expected quality or a GDN kernel defect". **The removal stays pending
+  the numerical or operation-complete performance gate actually rejecting this variant** -
+  that gate has not been recorded as having run against `R02`.
+
   Historical old-stack594-row scope failures remain evidence, but are not
   the current blocker. Over corrected Q8/QSA production, short594 and
   canonical780-row numerical gates pass. The complete quantization task
