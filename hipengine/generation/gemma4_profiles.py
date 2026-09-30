@@ -76,16 +76,23 @@ _STRICT_ROUTE = "grouped"
 _KV_POLICY = "paged_bf16"
 _GRAPH_POLICY = "serial_eager"
 
-# Registry-quant strings the observed rows resolved under.
+# Registry-quant strings the rows resolve under.
 _Q8_0 = "gguf_q8_0"
-_Q4_K = "gguf_q4_k"
 _Q5_1 = "gguf_q5_1"
 _Q5_K = "gguf_q5_k"
+# The fused gate_up stacks convert to the T16 tiles layout at load, so every
+# Q4_K gate_up scope (prefill and decode) dispatches under the layout's own
+# registry key -- worklog 20260930T014202-land-the-t16-gate-up-repack-
+# dispatch-wiring-0bf1f8.
+_Q4_K_T16 = "gguf_q4_k_t16_v1"
 
 # Production (measured, no route pin) MoE owners.
 _MMQ32 = "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 _GROUPED_DUAL = "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
 _WMMA_DOWN = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
+# The T16-converted gate_up scope's exact owner (registered at moe_linear;
+# the dense-key ``selected_gemv`` chain lands on the same function).
+_T16_DECODE = "selected_t16_gemv_decode_bf16_bf16_out"
 
 # Strict (measured under HIPENGINE_GEMMA4_MOE_PREFILL=grouped) MoE owners.
 _GROUPED_DOWN_Q5_1 = "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
@@ -149,10 +156,11 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         # MoE work that resolves through the dense ``linear`` layer key: 29
         # decode calls/step matches the MoE layer count, and the selected owner
-        # was site-attributed to gemma4_experts.py:1401.
+        # was site-attributed to gemma4_experts.py:1401. The T16 conversion of
+        # the gate_up stacks changes the registry key, not the owner.
         _selection(
             layer="linear", scope="moe_decode_q4_k",
-            selected_variant=_SELECTED_GEMV, registry_quant=_Q4_K,
+            selected_variant=_SELECTED_GEMV, registry_quant=_Q4_K_T16,
         ),
         _selection(
             layer="linear", scope="moe_decode_q5_1",
@@ -168,8 +176,8 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             layer="moe_linear", scope="gate_up_q4_k",
-            selected_variant=_MMQ32, strict_fallback_variant=_GROUPED_DUAL,
-            registry_quant=_Q4_K,
+            selected_variant=_MMQ32, strict_fallback_variant=_T16_DECODE,
+            registry_quant=_Q4_K_T16,
         ),
         _selection(
             layer="moe_linear", scope="gate_up_q5_k",
@@ -221,7 +229,7 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             layer="linear", scope="moe_decode_q4_k",
-            selected_variant=_SELECTED_GEMV, registry_quant=_Q4_K,
+            selected_variant=_SELECTED_GEMV, registry_quant=_Q4_K_T16,
         ),
         _selection(
             layer="linear", scope="moe_decode_q5_1",
@@ -235,11 +243,13 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
             layer="linear", scope="moe_selected_q8_0",
             selected_variant=_SELECTED_GEMV, registry_quant=_Q8_0,
         ),
-        # Measured strict arm: grouped_dual replaces the MMQ leaf (and also
-        # covers the 29 per-layer fallback calls production makes).
+        # The T16-converted gate_up scope: grouped has no T16 owner, so the
+        # strict arm resolves this scope through the exact selected owner
+        # (also production's declared fallback; the raw grouped arm still
+        # serves the unconverted Q5_K stack at layer 29).
         _selection(
             layer="moe_linear", scope="gate_up_q4_k",
-            selected_variant=_GROUPED_DUAL, registry_quant=_Q4_K,
+            selected_variant=_T16_DECODE, registry_quant=_Q4_K_T16,
         ),
         _selection(
             layer="moe_linear", scope="gate_up_q5_k",

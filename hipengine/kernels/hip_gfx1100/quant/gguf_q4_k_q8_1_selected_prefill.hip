@@ -1296,8 +1296,9 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
   // output width, which is what a split-weight or repacked caller passes. A
   // fused ``gate | up`` stack holds both halves of one expert contiguously
   // instead, so it passes the fused width and points ``qweight_b`` at the up
-  // half; the leaf then reads both halves out of the one allocation. The
-  // repacked layouts carry their own indexing and ignore this value.
+  // half; the leaf then reads both halves out of the one allocation. The X8
+  // layout still carries its own half-tensor indexing; the T16 branch applies
+  // this stride below.
   const int64_t expert_stride =
       expert_stride_rows > 0 ? expert_stride_rows : local_out_features;
   const int64_t expert_bytes = expert_stride * weight_row_bytes;
@@ -1352,8 +1353,18 @@ gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_body(
           const int64_t out_tile = local_col / Q4_K_TILE16_COLS;
           t16_col =
               static_cast<int>(local_col % Q4_K_TILE16_COLS);
+          // The same expert-stride contract as the raw branch: a fused
+          // ``gate | up`` stack passes its full width in
+          // ``expert_stride_rows`` (``qweight_b`` already advanced to the up
+          // half), while the split form passes 0 and each half is its own
+          // tensor of half-width tile columns. Indexing every expert at half
+          // width reads the fused stack's later experts from wrong tiles.
+          const int64_t expert_stride_tiles =
+              expert_stride_rows > 0
+                  ? expert_stride_rows / Q4_K_TILE16_COLS
+                  : out_tiles;
           const int64_t tile_index =
-              (expert_id * out_tiles + out_tile) *
+              (expert_id * expert_stride_tiles + out_tile) *
                   blocks_per_weight_row +
               static_cast<int64_t>(weight_block);
           t16_tile =

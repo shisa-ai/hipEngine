@@ -532,11 +532,19 @@ def gemma4_project_expert(
             stream=stream,
         )
         return
+    from hipengine.loading.gemma4_gguf_device import LAYOUT_RAW_GGUF
+
+    if weight.spec.layout != LAYOUT_RAW_GGUF:
+        raise ValueError(
+            f"{weight.spec.slot_path}: the per-expert raw launch reads raw GGUF "
+            f"blocks, but this weight is resident as {weight.spec.layout!r}; "
+            "the layout-aware selected owner must serve it"
+        )
     # Imported here rather than at module scope: the quantized dispatch lives in
     # the runtime layer and the kernel package does not depend on it otherwise.
     from hipengine.runtime.gguf_linear import launch_gguf_linear_raw_ptr
 
-    allocation = weight.allocation("raw")
+    allocation = weight.allocation()
     if expert >= int(weight.spec.source.shape[0]):
         raise ValueError(
             f"expert {expert} is out of range for {weight.spec.slot_path} "
@@ -773,7 +781,7 @@ def gemma4_project_experts_wmma_dual(
         )
     except MissingKernelError:
         return False
-    base = weight.allocation("raw").buffer.ptr
+    base = weight.allocation().buffer.ptr
     # One half's byte length, not a row stride: a Q4_K row is a whole number of
     # 256-value blocks, so the half boundary lands on a block boundary too.
     half_bytes = weight.expert_stride_bytes // 2
@@ -847,7 +855,7 @@ def gemma4_project_experts_wmma(
         expert_start_ptr,
         expert_start_wmma_ptr,
         tile_expert_ptr,
-        weight.allocation("raw").buffer.ptr,
+        weight.allocation().buffer.ptr,
         out_ptr,
         compact_rows,
         num_experts,
@@ -1095,7 +1103,7 @@ def gemma4_project_experts_mmq_dual(
         library=library,
         runtime=runtime,
     )
-    base_ptr = weight.allocation("raw").buffer.ptr
+    base_ptr = weight.allocation().buffer.ptr
     # One half's byte length, not a row stride: a Q4_K row is a whole number of
     # 256-value blocks, so the half boundary lands on a block boundary too. The
     # fused stack holds each expert's gate rows then its up rows, so the up half
@@ -1190,7 +1198,7 @@ def gemma4_project_experts_mmq(
     gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
         ds4.ptr,
         expert_start_ptr,
-        weight.allocation("raw").buffer.ptr,
+        weight.allocation().buffer.ptr,
         out_ptr,
         compact_rows,
         num_experts,
@@ -1263,7 +1271,7 @@ def gemma4_project_experts_grouped_dual(
             continue
     if fn is None:
         return False
-    base_ptr = weight.allocation("raw").buffer.ptr
+    base_ptr = weight.allocation().buffer.ptr
     # One half's byte length, not a row stride: a Q4_K row is a whole number of
     # 256-value blocks, so the half boundary lands on a block boundary too. The
     # owner indexes each side from its own origin while striding experts by the
@@ -1349,7 +1357,7 @@ def gemma4_project_experts_grouped(
     fn(
         x_ptr,
         expert_start_ptr,
-        weight.allocation("raw").buffer.ptr,
+        weight.allocation().buffer.ptr,
         out_ptr,
         compact_rows,
         num_experts,
@@ -1409,7 +1417,7 @@ def gemma4_project_experts_selected(
     fn(
         x_ptr,
         selected_ptr,
-        weight.allocation("raw").buffer.ptr,
+        weight.allocation().buffer.ptr,
         out_ptr,
         x_rows,
         rows,
@@ -1438,6 +1446,15 @@ def gemma4_project_experts_by_offset(
     back to the host, which is a device-to-host synchronisation, so the selected
     path is preferred wherever one exists.
     """
+
+    from hipengine.loading.gemma4_gguf_device import LAYOUT_RAW_GGUF
+
+    if not isinstance(weight, int) and weight.spec.layout != LAYOUT_RAW_GGUF:
+        raise ValueError(
+            f"{weight.spec.slot_path}: the by-offset expert launch reads raw "
+            f"GGUF blocks, but this weight is resident as {weight.spec.layout!r}; "
+            "the layout-aware selected owner must serve it"
+        )
 
     starts = _read_int64(expert_start, num_experts + 1)
     for expert in range(num_experts):

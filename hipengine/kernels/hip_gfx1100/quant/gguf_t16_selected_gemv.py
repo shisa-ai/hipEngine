@@ -4595,6 +4595,26 @@ def _check_common(compact_rows: int, in_features: int, num_experts: int) -> None
 def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
     """Register compact selected T16 GEMV decode kernels."""
 
+    # Alias registration: the t16 selected decode GEMV has the same launch ABI
+    # as the raw selected GEMV (identical positional arguments and stream
+    # keyword), so under the t16 quant key the raw variant name serves it and
+    # dispatch routes on quant_key alone -- the alias pattern qwen's
+    # materializer documents for the WMMA compact spelling. The ``linear``
+    # layer binding is the key Gemma 4's decode resolves, and the key its
+    # strict-mode grouped-miss fall-through resolves; without it that miss
+    # would reach the raw-layout by-offset launch, which refuses non-raw
+    # layouts loudly.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "selected_gemv_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
+        replace=replace,
+    )
+
     register(
         KernelKey(
             "hip_gfx1100",

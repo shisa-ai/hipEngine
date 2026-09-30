@@ -1915,6 +1915,21 @@ def gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
     )
 
 
+def _require_t16_tile_stride(expert_stride_rows: int) -> None:
+    """A set T16 expert stride must span whole 16-column tile columns.
+
+    The T16 branch floor-divides ``expert_stride_rows`` by the tile width
+    when it strides experts through a fused ``gate | up`` allocation, so a
+    non-multiple would silently misindex rather than fail.
+    """
+
+    if expert_stride_rows > 0 and expert_stride_rows % 16:
+        raise ValueError(
+            "expert_stride_rows must be a multiple of the T16 tile width (16) "
+            f"when set on a t16 weight: {expert_stride_rows}"
+        )
+
+
 def gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
     x_q8_ptr: int,
     compact_to_source_ptr: int,
@@ -1939,9 +1954,11 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
     """Launch MMQ32 directly against resident Q4_K T16 weights.
 
     ``expert_stride_rows`` is forwarded to the shared leaf, where its meaning
-    and validation are documented.
+    and validation are documented; the T16 branch additionally strides in
+    whole tile columns, which ``_require_t16_tile_stride`` checks loudly.
     """
 
+    _require_t16_tile_stride(expert_stride_rows)
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
         x_q8_ptr,
         compact_to_source_ptr,
