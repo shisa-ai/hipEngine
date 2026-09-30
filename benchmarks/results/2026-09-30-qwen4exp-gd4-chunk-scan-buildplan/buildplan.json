@@ -101,5 +101,21 @@
     "why": "A ratio of prefix products divides by a geometric decay that underflows to zero non-simultaneously; while cum[j] has underflowed and cum[i] has not, the clamped ratio explodes and the solve diverges (measured max_abs 1.05e1 at chunk 256 vs 2.26e-01 at chunk 64 - larger chunks worse). The suffix product never divides and every factor is in (0,1], so entries stay bounded by 1."
   },
   "status": "BUILD PLAN ONLY - no kernel written. The design constraints above were derived by working the design against the validated reference and the existing ABI; they are recorded so the build does not rediscover them.",
-  "limits": "Arithmetic and design analysis; no kernel written, compiled or timed. One shape (Hk16/Hv48/Dk=Dv=128), one host class."
+  "limits": "Arithmetic and design analysis; no kernel written, compiled or timed. One shape (Hk16/Hv48/Dk=Dv=128), one host class.",
+  "correction_operating_point": {
+    "finding": "This build plan and the already-committed feasibility artifact disagreed on the operating point: the feasibility artifact chose chunk 128, this plan chose chunk 32.",
+    "resolution": "The LDS arithmetic settles it against chunk 128. Chunk 128 needs 320.0 KB of workgroup LDS with full fp32 staging and 192.0 KB with fp16 staging, against a 64 KB limit - 5x and 3x over. The maximum LDS-resident logical chunk is 32 (fp32 staging) or 48 (fp16 staging).",
+    "why_the_feasibility_artifact_chose_128": "It picked the operating point on the numerics axis alone - fp16 NMSE improves monotonically with chunk size - without checking residency. A builder acting on it would have started at chunk 128 and hit a 5x overrun.",
+    "why_chunk_32_is_right_on_the_artifact_own_terms": "Chunk 32 has the LOWEST break-even in the feasibility artifact's own table (1.05 TFLOP/s against 1.30 for chunk 128), is the only operating point that is LDS-resident, and its fp16 NMSE 7.961e-10 is still 251x better than the cited reference's 2e-7. The extra orders of magnitude chunks 64-128 buy are orders nobody asked for: the admission question is whether the route clears 2e-7, and chunk 32 clears it by 2.4 orders.",
+    "governing_operating_point": "chunk 32, with chunk 48 available if delta is also staged in fp16 and occupancy does not bind",
+    "max_lds_resident_chunk": {
+      "full_fp32_staging": 32,
+      "fp16_kn_qn_L_ratio_fp32_delta": 48
+    },
+    "chunk_128_cost_bytes": {
+      "full_fp32_staging": 327680,
+      "fp16_staging": 196608
+    },
+    "supersedes": "benchmarks/results/2026-09-30-qwen4exp-gd4-chunk-scan-feasibility/ on the feasibility axis only, not the numerics axis"
+  }
 }
