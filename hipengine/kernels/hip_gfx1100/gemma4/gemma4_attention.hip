@@ -983,7 +983,8 @@ int gemma4_decode_class_launch(
 }
 
 // Last decode selection: 0 = block, 1 = single key-class, 2 = two-phase
-// dimension partition. Introspection only; this does not change dispatch.
+// dimension partition, 3 = flash-decoding. Introspection only; this does not
+// change dispatch.
 inline int& gemma4_decode_selection() {
   static int selection = 0;
   return selection;
@@ -1047,6 +1048,309 @@ int gemma4_decode_split_launch(
   return static_cast<int>(hipGetLastError());
 }
 
+// ---------------------------------------------------------------------------
+// Flash-decoding (D2): KV-sliced partial attention with a combine pass.
+//
+// The two-phase split partitions output dimensions; this partitions KEYS.
+// Each block owns one KV head's q-pair (the sliding layers' GQA ratio of 2
+// packs exactly the two query heads that read the same K and V rows) and one
+// contiguous key slice: phase A computes the slice's logits with the class
+// kernel's warp tree and the slice's per-row maximum, phase B exponentiates
+// against that maximum and accumulates the slice's weighted V sum over f32
+// partials, and the combine kernel merges slices in ascending order with the
+// standard max-rescale. K loads are shared by both q rows of the pair, and V
+// once per key feeds both rows' accumulators.
+//
+// This reassociates: a slice softmax against its own maximum differs from the
+// row softmax by an exact rescale factor -- exact in reals, f32-rounding-close
+// in practice. Arithmetic the production route allows
+// (docs/EXECUTION-PROFILES.md), and the strict chain stays reachable: a
+// rejected request falls through to the split/class/block path untouched.
+// Contract: agreement to float precision vs the single kernel in the unit
+// battery, production KL/top-1 bars at the campaign gate.
+//
+// Partial layout, f32, per (pair, slice) where pair = token*num_kv_heads+kv:
+//   base = (pair * slices + slice) * kFlashQPerKV * (2 + head_dim)
+//   [q*(2 + head_dim) + 0]      = slice row max
+//   [q*(2 + head_dim) + 1]      = slice denominator
+//   [q*(2 + head_dim) + 2 + d]  = weighted V sum for dimension d
+// hipengine_gemma4_decode_flash_workspace_bytes must match this exactly:
+// tokens * num_heads * slices * (2 + head_dim) floats, since
+// num_kv_heads * kFlashQPerKV == num_heads under the admission.
+
+constexpr int kFlashThreads = 128;   // 4 warps
+constexpr int kFlashWarps = 4;
+constexpr int kFlashQPerKV = 2;      // the packing the admission admits
+
+template <typename scalar_t>
+__global__ void gemma4_attention_decode_flash_kernel(
+    const scalar_t* __restrict__ query,
+    const scalar_t* __restrict__ key,
+    const scalar_t* __restrict__ value,
+    const uint8_t* __restrict__ keep_mask,
+    float* __restrict__ partials,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t tokens,
+    int64_t keys,
+    int slices) {
+  constexpr int kWarpLanes = 32;
+  constexpr int kOwn = 8;  // tree lanes per warp lane
+  const int64_t slice = static_cast<int64_t>(blockIdx.x) % slices;
+  const int64_t kv = (static_cast<int64_t>(blockIdx.x) / slices) % num_kv_heads;
+  const int64_t token = static_cast<int64_t>(blockIdx.x) / (slices * num_kv_heads);
+  const int64_t j_begin = keys * slice / slices;
+  const int64_t j_end = keys * (slice + 1) / slices;
+  const int64_t slice_keys = j_end - j_begin;
+
+  extern __shared__ float smem[];
+  float* warp_max = smem;                              // [kFlashQPerKV][kFlashWarps]
+  float* q_s = warp_max + kFlashQPerKV * kFlashWarps;  // [kFlashQPerKV][head_dim]
+  // [kFlashQPerKV][slice_keys]: phase A writes logits; the weight pass below
+  // overwrites them in place with exp(logit - row_max) * mask.
+  float* logits_s = q_s + kFlashQPerKV * head_dim;
+
+  const unsigned int tid = threadIdx.x;
+  const unsigned int warp = tid / kWarpLanes;
+  const unsigned int lane = tid & (kWarpLanes - 1);
+
+  for (int64_t i = tid; i < kFlashQPerKV * head_dim; i += kFlashThreads) {
+    const int64_t row = token * num_heads + kv * kFlashQPerKV + i / head_dim;
+    q_s[i] = gemma4_attn_to_float(query[row * head_dim + (i % head_dim)]);
+  }
+  __syncthreads();
+
+  const uint8_t* mask_row = keep_mask + token * keys;
+
+  // Phase A: slice logits through the class kernel's warp tree. Each warp
+  // owns every kFlashWarps-th key of the slice; K is loaded once per key and
+  // dotted against both rows of the pair. The tree folds the eight per-lane
+  // partials into element 0 on lane 0 only (the class kernel's own contract),
+  // so lane 0 alone publishes the logit -- a shared store or running max from
+  // any other lane would race a partial reduction into the same address.
+  float running_max[kFlashQPerKV];
+#pragma unroll
+  for (int q = 0; q < kFlashQPerKV; ++q) {
+    running_max[q] = -INFINITY;
+  }
+  for (int64_t j = j_begin + warp; j < j_end; j += kFlashWarps) {
+    const bool keep = mask_row[j] != 0;
+    const scalar_t* k_row = key + (j * num_kv_heads + kv) * head_dim;
+    float k_reg[kOwn];
+#pragma unroll
+    for (int i = 0; i < kOwn; ++i) {
+      k_reg[i] = gemma4_attn_to_float(k_row[lane * kOwn + i]);
+    }
+    for (int q = 0; q < kFlashQPerKV; ++q) {
+      float v[kOwn];
+#pragma unroll
+      for (int i = 0; i < kOwn; ++i) {
+        v[i] = q_s[q * head_dim + lane * kOwn + i] * k_reg[i];
+      }
+      const float reduced = gemma4_warp_tree(v, lane);
+      if (lane == 0) {
+        const float logit = keep ? reduced * scale : -INFINITY;
+        logits_s[q * slice_keys + (j - j_begin)] = logit;
+        running_max[q] = fmaxf(running_max[q], logit);
+      }
+    }
+  }
+  if (lane == 0) {
+#pragma unroll
+    for (int q = 0; q < kFlashQPerKV; ++q) {
+      warp_max[q * kFlashWarps + warp] = running_max[q];
+    }
+  }
+  __syncthreads();
+
+  float row_max[kFlashQPerKV];
+#pragma unroll
+  for (int q = 0; q < kFlashQPerKV; ++q) {
+    float m = -INFINITY;
+    for (unsigned int w = 0; w < kFlashWarps; ++w) {
+      m = fmaxf(m, warp_max[q * kFlashWarps + w]);
+    }
+    row_max[q] = m;
+  }
+
+  // Weight pass: overwrite the logits in place with exp(logit - row_max),
+  // zero for masked keys. Each (q, key) exponent is computed once here rather
+  // than once per dimension in phase B; the stride covers any slice width.
+  const int64_t weight_count = kFlashQPerKV * slice_keys;
+  for (int64_t idx = tid; idx < weight_count; idx += kFlashThreads) {
+    const int64_t q = idx / slice_keys;
+    const int64_t jj = idx - q * slice_keys;
+    const bool keep = mask_row[j_begin + jj] != 0;
+    logits_s[idx] = keep ? expf(logits_s[idx] - row_max[q]) : 0.0f;
+  }
+  __syncthreads();
+
+  // Phase B: every thread owns dimensions (2*tid, 2*tid+1) of both pair rows
+  // and walks the whole slice itself (gemma4_decode_pass3's partition), so
+  // each accumulator is complete as written -- no cross-warp publish, no
+  // shared staging. The pipe keeps one key's load in flight while the
+  // previous one accumulates.
+  const int64_t d0 = static_cast<int64_t>(tid) * 2;
+  const int64_t v_stride = num_kv_heads * head_dim;
+  const scalar_t* v_base = value + kv * head_dim + j_begin * v_stride;
+  constexpr gemma4_pair2<scalar_t> kZeroPair = {
+      static_cast<scalar_t>(0), static_cast<scalar_t>(0)};
+  gemma4_pair2<scalar_t> pipe[2];
+  pipe[0] = 0 < slice_keys
+      ? gemma4_load_v<2>(v_base + 0 * v_stride + d0)
+      : kZeroPair;
+  pipe[1] = 1 < slice_keys
+      ? gemma4_load_v<2>(v_base + 1 * v_stride + d0)
+      : kZeroPair;
+  float acc[kFlashQPerKV][2] = {{0.0f, 0.0f}, {0.0f, 0.0f}};
+  float denom[kFlashQPerKV] = {0.0f, 0.0f};
+  for (int64_t jj = 0; jj < slice_keys; ++jj) {
+    const gemma4_pair2<scalar_t> v_cur = pipe[0];
+    pipe[0] = pipe[1];
+    const int64_t jn = jj + 2;
+    pipe[1] = jn < slice_keys
+        ? gemma4_load_v<2>(v_base + jn * v_stride + d0)
+        : kZeroPair;
+    const float w0 = logits_s[0 * slice_keys + jj];
+    const float w1 = logits_s[1 * slice_keys + jj];
+    denom[0] += w0;
+    denom[1] += w1;
+    const float vlo = gemma4_attn_to_float(v_cur.lo);
+    const float vhi = gemma4_attn_to_float(v_cur.hi);
+    acc[0][0] += w0 * vlo;
+    acc[0][1] += w0 * vhi;
+    acc[1][0] += w1 * vlo;
+    acc[1][1] += w1 * vhi;
+  }
+
+  const int64_t pair = token * num_kv_heads + kv;
+  const int64_t slot = (pair * slices + slice) * kFlashQPerKV * (2 + head_dim);
+  if (tid == 0) {
+#pragma unroll
+    for (int q = 0; q < kFlashQPerKV; ++q) {
+      float* p = partials + slot + q * (2 + head_dim);
+      p[0] = row_max[q];
+      p[1] = denom[q];
+    }
+  }
+#pragma unroll
+  for (int q = 0; q < kFlashQPerKV; ++q) {
+    float* p = partials + slot + q * (2 + head_dim);
+    p[2 + d0] = acc[q][0];
+    p[3 + d0] = acc[q][1];
+  }
+}
+
+// Combine pass: merge slices in ascending order with the flash rescale. Dead
+// slices (l == 0) carry no mass and are skipped before any exponent, so a
+// -inf slice max can never reach expf(-inf - -inf). An all-masked row leaves
+// L == 0 and O == 0, so O / L is NaN -- the incumbent's own NaN propagation
+// for that row, matching at the bf16 round trip.
+template <typename scalar_t>
+__global__ void gemma4_attention_decode_flash_combine_kernel(
+    const float* __restrict__ partials,
+    scalar_t* __restrict__ out,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t tokens,
+    int slices) {
+  const int64_t head = static_cast<int64_t>(blockIdx.x);
+  const int64_t token = head / num_heads;
+  const int64_t h = head - token * num_heads;
+  const int64_t ratio = num_heads / num_kv_heads;
+  const int64_t kv = h / ratio;
+  const int64_t q = h - kv * ratio;
+  const int64_t pair = token * num_kv_heads + kv;
+  const int64_t slot_stride = ratio * (2 + head_dim);
+  const int64_t d0 = static_cast<int64_t>(threadIdx.x) * 2;
+  float M = -INFINITY;
+  float L = 0.0f;
+  float O0 = 0.0f;
+  float O1 = 0.0f;
+  for (int s = 0; s < slices; ++s) {
+    const float* p = partials + (pair * slices + s) * slot_stride + q * (2 + head_dim);
+    const float l_s = p[1];
+    if (!(l_s > 0.0f)) {
+      continue;
+    }
+    const float m_s = p[0];
+    const float o0 = p[2 + d0];
+    const float o1 = p[3 + d0];
+    if (!(L > 0.0f)) {
+      M = m_s;
+      L = l_s;
+      O0 = o0;
+      O1 = o1;
+      continue;
+    }
+    const float M_new = fmaxf(M, m_s);
+    const float alpha = expf(M - M_new);
+    const float beta = expf(m_s - M_new);
+    L = alpha * L + beta * l_s;
+    O0 = alpha * O0 + beta * o0;
+    O1 = alpha * O1 + beta * o1;
+    M = M_new;
+  }
+  scalar_t* out_row = out + head * head_dim;
+  out_row[d0] = gemma4_attn_to_scalar<scalar_t>(O0 / L);
+  if (d0 + 1 < head_dim) {
+    out_row[d0 + 1] = gemma4_attn_to_scalar<scalar_t>(O1 / L);
+  }
+}
+
+// Flash launcher: KV slices over one q-pair, then the combine. Returns -1
+// when the shape is outside what this template implements, so the caller
+// falls through to the incumbent chain with the same workspace (the Python
+// side sizes it as max(split, flash)).
+template <typename scalar_t>
+int gemma4_decode_flash_launch(
+    const scalar_t* query,
+    const scalar_t* key,
+    const scalar_t* value,
+    const uint8_t* keep_mask,
+    scalar_t* out,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t tokens,
+    int64_t keys,
+    hipStream_t stream,
+    float* workspace,
+    int slices) {
+  if (head_dim != 256 || tokens < 1 || slices < 2 || slices > keys ||
+      num_kv_heads <= 0 || num_heads != num_kv_heads * kFlashQPerKV ||
+      workspace == nullptr) {
+    return -1;
+  }
+  const int64_t slice_max = (keys + slices - 1) / slices;
+  const size_t shared_bytes =
+      static_cast<size_t>(
+          kFlashQPerKV * kFlashWarps + kFlashQPerKV * head_dim +
+          kFlashQPerKV * slice_max) *
+      sizeof(float);
+  if (shared_bytes > 64 * 1024) {
+    return -1;
+  }
+  const unsigned int grid =
+      static_cast<unsigned int>(tokens * num_kv_heads * slices);
+  gemma4_attention_decode_flash_kernel<scalar_t>
+      <<<dim3(grid), dim3(kFlashThreads), shared_bytes, stream>>>(
+          query, key, value, keep_mask, workspace, num_heads, num_kv_heads,
+          head_dim, scale, tokens, keys, slices);
+  int rc = static_cast<int>(hipGetLastError());
+  if (rc != 0) {
+    return rc;
+  }
+  gemma4_attention_decode_flash_combine_kernel<scalar_t>
+      <<<dim3(tokens * num_heads), dim3(kFlashThreads), 0, stream>>>(
+          workspace, out, num_heads, num_kv_heads, head_dim, tokens, slices);
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename scalar_t>
 int launch_gemma4_attention_decode(
     const scalar_t* query,
@@ -1069,6 +1373,21 @@ int launch_gemma4_attention_decode(
   if (num_heads % num_kv_heads != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
+  int effective_slices = split_slices;
+  if (split_slices < 0 && split_workspace != nullptr) {
+    // Flash request: Python's admission already checked the capability
+    // (head_dim 256, GQA ratio 2, decode token). Any rejection here falls
+    // through to the incumbent chain on the same workspace, which the
+    // caller sized as max(split, flash).
+    const int flash_rc = gemma4_decode_flash_launch<scalar_t>(
+        query, key, value, keep_mask, out, num_heads, num_kv_heads, head_dim,
+        scale, tokens, keys, stream, split_workspace, -split_slices);
+    if (flash_rc >= 0) {
+      gemma4_decode_selection() = 3;  // flash-decoding
+      return flash_rc;
+    }
+    effective_slices = -split_slices;
+  }
   int threads_i = 1;
   while (threads_i < head_dim && threads_i < kGemma4AttentionMaxThreads) {
     threads_i <<= 1;
@@ -1080,14 +1399,14 @@ int launch_gemma4_attention_decode(
   // 421 us (head_dim 256) and 665 us (head_dim 512) against the block kernel's
   // 652-700 and 1186 us at keys=1024. Any other geometry uses the block kernel.
   if (head_dim == 256 || head_dim == 512) {
-    if (split_slices > 1 && split_workspace != nullptr) {
+    if (effective_slices > 1 && split_workspace != nullptr) {
       const int split_rc = head_dim == 256
           ? gemma4_decode_split_launch<scalar_t, 1>(query, key, value, keep_mask, out, num_heads,
                 num_kv_heads, head_dim, scale, tokens, keys, stream, split_workspace,
-                split_slices)
+                effective_slices)
           : gemma4_decode_split_launch<scalar_t, 2>(query, key, value, keep_mask, out, num_heads,
                 num_kv_heads, head_dim, scale, tokens, keys, stream, split_workspace,
-                split_slices);
+                effective_slices);
       if (split_rc >= 0) {
         gemma4_decode_selection() = 2;  // key-class, two-phase split
         return split_rc;
@@ -1146,8 +1465,9 @@ int launch_gemma4_attention_decode(
 
 }  // namespace
 
-// Returns 0 for block, 1 for single key-class, or 2 for dimension partition.
-// Test/introspection surface for the routing contract.
+// Returns 0 for block, 1 for single key-class, 2 for dimension partition,
+// or 3 for flash-decoding. Test/introspection surface for the routing
+// contract.
 extern "C" int hipengine_gemma4_attention_decode_variant(void) {
   return gemma4_decode_selection();
 }
@@ -1201,8 +1521,9 @@ extern "C" int hipengine_gemma4_attention_prefill_f32(
 // path. The caller owns the allocation because it is reused across steps and
 // must outlive the in-flight stream.
 // Which decode kernel the launcher last selected, exported so a caller can
-// confirm the intended path actually ran rather than inferring it from timings:
-// 0 = block kernel, 1 = key-class single kernel, 2 = key-class two-phase split.
+// confirm the intended path actually ran rather than inferring it from
+// timings: 0 = block kernel, 1 = key-class single kernel, 2 = key-class
+// two-phase split, 3 = flash-decoding.
 extern "C" int hipengine_gemma4_decode_selection(void) {
   return gemma4_decode_selection();
 }
@@ -1217,6 +1538,20 @@ extern "C" size_t hipengine_gemma4_decode_split_workspace_bytes(
     int64_t keys,
     int slices) {
   return gemma4_decode_split_workspace_bytes(tokens, num_heads, head_dim, keys, slices);
+}
+
+// Workspace sizing for flash-decoding, same single-definition rule. The
+// partial layout comment on the flash kernel is the normative statement;
+// this expression must match it: one (m, l, o[head_dim]) slot per head per
+// slice, f32.
+extern "C" size_t hipengine_gemma4_decode_flash_workspace_bytes(
+    int64_t tokens,
+    int64_t num_heads,
+    int64_t head_dim,
+    int slices) {
+  return static_cast<size_t>(tokens) * static_cast<size_t>(num_heads) *
+         static_cast<size_t>(slices) * (2 + static_cast<size_t>(head_dim)) *
+         sizeof(float);
 }
 
 extern "C" int hipengine_gemma4_attention_decode_bf16(
