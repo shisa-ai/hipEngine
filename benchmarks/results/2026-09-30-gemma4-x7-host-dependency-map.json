@@ -1,0 +1,75 @@
+{
+  "schema": "gemma4-x7-host-dependency-map/v1",
+  "created_utc": "2026-09-30T05:15:41+00:00",
+  "command": "rocprofv3 --hip-runtime-trace -f csv -d /tmp/g4_hipapi -o run -- .venv/bin/python scripts/gemma4_family_census.py drive --prompt 1024 --decode 8 (warm-only run beforehand, ROCR_VISIBLE_DEVICES=1)",
+  "git_commit": "ba58a7176905b1c8bcecfd82a6e18919e2066c41",
+  "window": {
+    "method": "launch-density phase detection: the decode steps are the final dense phase (t~25.75-25.95 s of the trace, ~6750 hipLaunchKernel in ~200 ms = ~45/ms, matching 784 launches / ~15.7 ms per step); earlier sparse phases are the census's per-family reruns",
+    "span_ms": 133.94,
+    "api_calls": 15489,
+    "steps": 8
+  },
+  "per_function": {
+    "hipMemcpy": {
+      "count": 8,
+      "total_ms": 21.217,
+      "avg_us": 2652.18,
+      "max_us": 5495.69
+    },
+    "hipLaunchKernel": {
+      "count": 6752,
+      "total_ms": 13.083,
+      "avg_us": 1.94,
+      "max_us": 12.99
+    },
+    "hipStreamWaitEvent": {
+      "count": 480,
+      "total_ms": 1.657,
+      "avg_us": 3.45,
+      "max_us": 13.9
+    },
+    "hipMemcpyAsync": {
+      "count": 536,
+      "total_ms": 1.173,
+      "avg_us": 2.19,
+      "max_us": 28.95
+    },
+    "hipEventRecord": {
+      "count": 480,
+      "total_ms": 0.852,
+      "avg_us": 1.78,
+      "max_us": 7.0
+    },
+    "hipMemsetAsync": {
+      "count": 240,
+      "total_ms": 0.534,
+      "avg_us": 2.23,
+      "max_us": 5.76
+    },
+    "hipGetLastError": {
+      "count": 6752,
+      "total_ms": 0.316,
+      "avg_us": 0.05,
+      "max_us": 5.59
+    },
+    "hipGetDevice": {
+      "count": 240,
+      "total_ms": 0.048,
+      "avg_us": 0.2,
+      "max_us": 0.66
+    },
+    "hipDeviceSynchronize": {
+      "count": 1,
+      "total_ms": 0.007,
+      "avg_us": 6.77,
+      "max_us": 6.77
+    }
+  },
+  "readings": [
+    "The 8 blocking hipMemcpy (one per step, the logits D2H at gemma4.py:1137) are the only host-blocking dependency in the step: 21.22 ms of the 133.9 ms window (15.8%). Staging/token copies are absent - iteration 145's enqueue fix shows here as 536 hipMemcpyAsync at ~2.2 us.",
+    "hipLaunchKernel: 6752 calls, 13.08 ms host (9.8% of span), avg 1.9 us under rocprof's own instrumentation (the ctypes probe measures 3.1-3.6 us including wrapper overhead). Launches pair 1:1 with hipGetLastError checks (6752, 0.32 ms).",
+    "Event traffic: 480 hipStreamWaitEvent + 480 hipEventRecord (60/step, 2 per layer) - the engine's inter-stage ordering, capture-compatible.",
+    "Total HIP-API host time is 38.89 ms = 29% of the window; the other 71% is host time outside HIP (scheduler/sampler/Python) and GPU-bound waiting.",
+    "X7 ceiling honesty: the 13.08 ms of launch host time mostly OVERLAPS device work already (wall 15.95 vs census busy 14.21 = ~1.7 ms gap), so graph replay can only recover about that gap, not the launch total. Capture split: the captured region must end before the logits D2H + host sampling, which consumes the token for the next step."
+  ]
+}
