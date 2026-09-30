@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp-dp6-epilogue-scope-pricing",
+  "performance_claim": false,
+  "purpose": "Price DP-6's two previously unpriced components (SSM causal conv, KV store) and separate them from the q/k-norm+RoPE half, so the row is rankable against DP-5's 131.001 ms instead of resting on the 319.494 ms elementwise_norm bucket that covers more passes than the row would fuse.",
+  "source": "benchmarks/results/2026-09-28-qwen4exp-current-attribution/artifact.json",
+  "source_pointer": "audit.prefill.windows[0].engagement_by_role_kernel joined to kernel_names by kernel_id",
+  "case": "code-p4096 prefill, p4096 window",
+  "window_ms": 16319.888103,
+  "kernel_union_ms": 15741.963266,
+  "commit": "2789c19d634c2d86f6e67d5140181bcf45c71e69",
+  "components": {
+    "qk_norm_rope": [
+      {
+        "kernel": "qsa_split_norm_rope_rows_f32_kernel<false>",
+        "role": "qsa_prefill:layers.*.attn_q",
+        "ms": 23.958913,
+        "launches": 48
+      },
+      {
+        "kernel": "qsa_norm_rope_rows_f32_kernel<false>",
+        "role": "qsa_prefill:layers.*.attn_q",
+        "ms": 1.846746,
+        "launches": 48
+      },
+      {
+        "kernel": "qsa_pool_norm_rope_f32_kernel",
+        "role": "qsa_prefill:layers.*.attn_q",
+        "ms": 0.316394,
+        "launches": 24
+      }
+    ],
+    "ssm_causal_conv": [
+      {
+        "kernel": "qwen4_exp_linear_attn_conv_prefill_exact_kernel",
+        "role": "gdn:layers.*.attn_qkv",
+        "ms": 57.58381,
+        "launches": 144
+      },
+      {
+        "kernel": "qwen35_linear_attn_conv_prefill_state_kernel",
+        "role": "gdn:layers.*.attn_qkv",
+        "ms": 0.452209,
+        "launches": 144
+      }
+    ],
+    "kv_store": [
+      {
+        "kernel": "qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<float>",
+        "role": "qsa_prefill:layers.*.attn_q",
+        "ms": 1.633266,
+        "launches": 48
+      }
+    ]
+  },
+  "component_ms": {
+    "qk_norm_rope": 26.122053,
+    "ssm_causal_conv": 58.036019,
+    "kv_store": 1.633266
+  },
+  "dp6_scope_ms": 85.791338,
+  "dp6_scope_pct_of_union": 0.544985,
+  "dp5_priced_ms": 131.001,
+  "credit_the_row_was_resting_on_ms": 319.494,
+  "overstatement_factor": 3.724,
+  "ranking": "DP-5 (131.001 ms) outranks DP-6 (85.791 ms)",
+  "ceiling_not_net": "These are owner costs, i.e. a ceiling. DP-6 fuses the SSM causal conv into the ssm_in GEMM's LD path; the conv still has to happen, so the recoverable part is the eliminated pass over the wide activations, not the whole component.",
+  "limits": "One model, one quant, one host (gfx1151), one case (code-p4096), one window, one execution profile. Prefill only. Attribution is a per-role-per-kernel join inside a marked window."
+}
