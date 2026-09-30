@@ -15,15 +15,15 @@ so profiling it is safe.
 
 | family | calls | total ms | share |
 | --- | ---: | ---: | ---: |
-| **moe** | 384 | 1554.168 | **39.70%** |
+| **moe** | 576 | 1855.127 | **47.39%** |
 | **gr** | 654 | 1338.149 | **34.18%** |
 | other | 3231 | 314.040 | 8.02% |
-| **qsa** | 288 | 309.376 | **7.90%** |
 | **gdn** | 72 | 194.487 | **4.97%** |
 | linear | 662 | 117.020 | 2.99% |
 | attention | 48 | 49.856 | 1.27% |
 | norm | 200 | 16.178 | 0.41% |
 | conv | 146 | 13.625 | 0.35% |
+| **qsa** | 96 | 8.418 | **0.22%** |
 | cast | 6 | 6.252 | 0.16% |
 | ple | 6 | 1.262 | 0.03% |
 | embed | 2 | 0.054 | 0.00% |
@@ -33,19 +33,30 @@ Top individual kernels:
 | calls | total ms | share | kernel |
 | ---: | ---: | ---: | --- |
 | 94 | 852.157 | 21.77% | `gguf_q4_k_selected_dual_wmma_iu8_risk_prefill` |
-| 268 | 706.377 | 18.05% | `gguf_k_prefill_out_coltile_rowbatch` |
+| 268 | 706.377 | 18.05% | `gguf_k_prefill_out_coltile_rowbatch_pipelined` |
 | 192 | 613.970 | 15.68% | `q8_0_gr_up_sigmoid_mean_coltile2_branch4` |
 | 86 | 478.917 | 12.23% | `q5_1_selected_wmma_iu8_risk_prefill` |
 | 72 | 194.487 | 4.97% | `qwen4_exp_gdn_prefill_f32_kernel<true, true>` |
 
-**Prefill is 73.9% MoE + GR.** Those two families, and four individual kernels
-within them, are where the time is. Everything else is under 8% each.
+**Prefill is 81.6% MoE + GR.** Those two families, and four individual kernels
+within them, are where the time is. Everything else is under 5% each.
 
-Classification is by kernel-name substring via
-`scripts/qwen4exp_family_share.py`, which prints each bucket with its member
-kernels so a mis-filing is visible rather than hidden in a total. "gr" and
-"moe" are the two families whose membership is least obvious from the name, so
-their top kernels are listed above for exactly that reason.
+**A classifier correction, recorded because it changes a conclusion.** The first
+revision of `scripts/qwen4exp_family_share.py` matched the `qsa` pattern against
+any name containing `sparse`, which swept in
+`*_selected_sparse_exact_repair_*` - **MoE expert-repair kernels**, where
+"sparse" means sparse *expert selection*, not sparse attention. That overstated
+the QSA slice as 7.90%. Corrected, the pattern is `qsa_|block_pool|selection`
+and the MoE patterns explicitly claim `selected_sparse|sparse_exact_repair|sparse_repair`:
+**the real QSA kernels total 8.418 ms = 0.22%** (`qsa_split_norm_rope_rows`
+0.14%, `qsa_gate_context` 0.06%, `qsa_norm_rope_rows` 0.01%,
+`qsa_scatter_index_keys` 0.00%), and MoE rises from 39.70% to **47.39%**.
+
+Classification is otherwise by kernel-name substring, which is deliberately
+crude and therefore auditable: every bucket is printed with its member kernels
+so a mis-filing is visible rather than hidden inside a total. That is exactly
+how this error was caught, and it is why the two largest families have their top
+kernels listed above.
 
 ## Correction to GD-3
 
