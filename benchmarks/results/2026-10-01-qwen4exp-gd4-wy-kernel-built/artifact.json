@@ -1,0 +1,573 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp-gd4-wy-kernel-built",
+  "date": "2026-10-01",
+  "title": "GD-4's chunked WY prefill: built, parent-parity correct, and 1.16-1.21x slower",
+  "host": {
+    "gpu": "AMD Radeon 8060S (gfx1151, Strix Halo)",
+    "backend": "hip_gfx1151",
+    "note": "not the W7900/gfx1100 default host; both routes measured on this host only"
+  },
+  "geometry": {
+    "num_k_heads": 16,
+    "num_v_heads": 48,
+    "head_k_dim": 128,
+    "head_v_dim": 128,
+    "chunk": 8,
+    "threads": 256,
+    "grid": [
+      48,
+      4
+    ]
+  },
+  "command": "HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen4exp_gd3_recurrence_screen.py --tokens 512 1024 2048 --reps 7",
+  "correctness": {
+    "core_max_abs_vs_tiled16": 5.96e-07,
+    "core_rel_vs_refmax": 3.8e-07,
+    "state_max_abs_vs_tiled16": 5.59e-09,
+    "state_rel_vs_refmax": 1.9e-07,
+    "serial_fp64_agreement_out": 2.9e-05,
+    "verdict": "parent-parity at fp32 rounding level; also matches an fp64 serial GDN recurrence"
+  },
+  "register_counts": {
+    "wave_norm_ud_production": {
+      "kernel": "qwen4_exp_gdn_prefill_f32_kernel<true,true>",
+      "vgpr": 256,
+      "lds": 0,
+      "selected_by_profile": "gguf_ud_q4_k_xl production (arithmetic recovery)"
+    },
+    "register_state": {
+      "kernel": "qwen4_exp_gdn_prefill_f32_kernel<true,false>",
+      "vgpr": 256,
+      "lds": 0,
+      "selected_by_profile": false
+    },
+    "columnwarps": {
+      "kernel": "qwen4_exp_gdn_prefill_columnwarps_f32_kernel<4,4>",
+      "vgpr": 46,
+      "lds": 0,
+      "selected_by_profile": "strict/recovery only"
+    },
+    "tiled16_nonmulti": {
+      "kernel": "qwen4_exp_gdn_prefill_tiled_f32_kernel<16,16,4,1>",
+      "vgpr": 56,
+      "lds": 16640,
+      "selected_by_profile": false
+    },
+    "tiled16_multi_production": {
+      "kernel": "qwen4_exp_gdn_prefill_tiled_f32_kernel<16,8,4,8>",
+      "vgpr": 85,
+      "lds": 16640,
+      "selected_by_profile": "gguf_q4_k_m production"
+    },
+    "wy_chunked": {
+      "kernel": "qwen4_exp_gdn_prefill_wy_f32_kernel",
+      "vgpr": 169,
+      "lds": 28576,
+      "selected_by_profile": false
+    },
+    "source": "amdclang++ -x hip --offload-arch=gfx1151 -O3 -mllvm -amdgpu-unroll-threshold-local=600 [+-DHIPENGINE_QWEN4_GDN_DPP=1 +-DHIPENGINE_QWEN4_GDN_MULTI_COLUMN=1] --cuda-device-only -S, reading .amdhsa_next_free_vgpr per kernel; the allocated counts rocprofv3 reports are these rounded up (wy 169 -> 176 VGPR, 28576 -> 28672 B LDS)"
+  },
+  "speedup_vs_tiled16": {
+    "512": 0.8332698896079178,
+    "1024": 0.8237369687249398,
+    "2048": 0.8627711376715361
+  },
+  "results": [
+    {
+      "tokens": 512,
+      "bytes_moved": 52625408,
+      "flops": 1610612736,
+      "bandwidth_floor_ms": 0.2381240180995475,
+      "flop_floor_ms": 0.026403487475409836,
+      "arms": {
+        "register_state": {
+          "median_ms": 2.9137609526515007,
+          "min_ms": 2.8770621865987778,
+          "max_ms": 3.101492766290903,
+          "samples_ms": [
+            2.892340999096632,
+            2.8914688155055046,
+            2.8770621865987778,
+            2.9137609526515007,
+            3.101492766290903,
+            3.025280311703682,
+            2.9350407421588898
+          ],
+          "achieved_gbps": 18.060990196231185,
+          "achieved_tflops": 0.5527607659558874,
+          "x_above_bandwidth_floor": 12.236316923870342,
+          "pct_of_bw_roof": 8.172393753950763,
+          "pct_of_f32_roof": 0.9061651900916187
+        },
+        "serial_lds": {
+          "median_ms": 21.131806075572968,
+          "min_ms": 21.0732351988554,
+          "max_ms": 21.331039257347584,
+          "samples_ms": [
+            21.074248012155294,
+            21.135552786290646,
+            21.25086821615696,
+            21.331039257347584,
+            21.104624960571527,
+            21.0732351988554,
+            21.131806075572968
+          ],
+          "achieved_gbps": 2.4903412331060357,
+          "achieved_tflops": 0.0762174671790958,
+          "x_above_bandwidth_floor": 88.74285863402001,
+          "pct_of_bw_roof": 1.1268512366995638,
+          "pct_of_f32_roof": 0.12494666750671443
+        },
+        "columnwarps": {
+          "median_ms": 3.3852350898087025,
+          "min_ms": 3.3812071196734905,
+          "max_ms": 3.4635416232049465,
+          "samples_ms": [
+            3.4635416232049465,
+            3.414650447666645,
+            3.3852350898087025,
+            3.3844029530882835,
+            3.3831209875643253,
+            3.3812071196734905,
+            3.4110131673514843
+          ],
+          "achieved_gbps": 15.54556968832963,
+          "achieved_tflops": 0.47577574179375964,
+          "x_above_bandwidth_floor": 14.216268971211079,
+          "pct_of_bw_roof": 7.03419442910843,
+          "pct_of_f32_roof": 0.7799602324487863
+        },
+        "tiled16": {
+          "median_ms": 2.177461050450802,
+          "min_ms": 2.1669412963092327,
+          "max_ms": 2.196777146309614,
+          "samples_ms": [
+            2.177461050450802,
+            2.196777146309614,
+            2.171690110117197,
+            2.17184005305171,
+            2.184674609452486,
+            2.1669412963092327,
+            2.188592217862606
+          ],
+          "achieved_gbps": 24.168243096290936,
+          "achieved_tflops": 0.7396746479881021,
+          "x_above_bandwidth_floor": 9.144231093650186,
+          "pct_of_bw_roof": 10.935856604656532,
+          "pct_of_f32_roof": 1.2125813901444298
+        },
+        "wy_chunked": {
+          "median_ms": 2.6197098195552826,
+          "min_ms": 2.6030689477920532,
+          "max_ms": 2.6337760500609875,
+          "samples_ms": [
+            2.6206420734524727,
+            2.6337760500609875,
+            2.6323427446186543,
+            2.6197098195552826,
+            2.6176362298429012,
+            2.618999220430851,
+            2.6030689477920532
+          ],
+          "achieved_gbps": 20.088258480831893,
+          "achieved_tflops": 0.6148057788604292,
+          "x_above_bandwidth_floor": 11.001451430489954,
+          "pct_of_bw_roof": 9.089709719833436,
+          "pct_of_f32_roof": 1.0078783260007036
+        },
+        "wave_norm": {
+          "median_ms": 2.762658055871725,
+          "min_ms": 2.7534612454473972,
+          "max_ms": 2.7721556834876537,
+          "samples_ms": [
+            2.762407064437866,
+            2.7720360085368156,
+            2.762658055871725,
+            2.7721556834876537,
+            2.7534612454473972,
+            2.7651023119688034,
+            2.762356773018837
+          ],
+          "achieved_gbps": 19.048831572966655,
+          "achieved_tflops": 0.5829938788757516,
+          "x_above_bandwidth_floor": 11.601761459933028,
+          "pct_of_bw_roof": 8.619380802247356,
+          "pct_of_f32_roof": 0.9557276702881173
+        },
+        "tiled16_multi": {
+          "median_ms": 1.156727783381939,
+          "min_ms": 1.1447248980402946,
+          "max_ms": 1.1797812767326832,
+          "samples_ms": [
+            1.1797812767326832,
+            1.1715758591890335,
+            1.1626901105046272,
+            1.1447248980402946,
+            1.156727783381939,
+            1.1480506509542465,
+            1.1506271548569202
+          ],
+          "achieved_gbps": 45.495066995052596,
+          "achieved_tflops": 1.392387006812469,
+          "x_above_bandwidth_floor": 4.857669514455993,
+          "pct_of_bw_roof": 20.58600316518217,
+          "pct_of_f32_roof": 2.2826016505122446
+        }
+      }
+    },
+    {
+      "tokens": 1024,
+      "bytes_moved": 98959360,
+      "flops": 3221225472,
+      "bandwidth_floor_ms": 0.44777990950226243,
+      "flop_floor_ms": 0.05280697495081967,
+      "arms": {
+        "register_state": {
+          "median_ms": 5.634180270135403,
+          "min_ms": 5.623158998787403,
+          "max_ms": 5.648796912282705,
+          "samples_ms": [
+            5.648175720125437,
+            5.643337033689022,
+            5.634180270135403,
+            5.628529004752636,
+            5.623158998787403,
+            5.623479839414358,
+            5.648796912282705
+          ],
+          "achieved_gbps": 17.56410964067747,
+          "achieved_tflops": 0.5717292165950854,
+          "x_above_bandwidth_floor": 12.58247668234641,
+          "pct_of_bw_roof": 7.947560923383469,
+          "pct_of_f32_roof": 0.9372610108116153
+        },
+        "serial_lds": {
+          "median_ms": 42.155187111347914,
+          "min_ms": 42.06485906615853,
+          "max_ms": 42.550578247755766,
+          "samples_ms": [
+            42.483622673898935,
+            42.09819110110402,
+            42.06485906615853,
+            42.155187111347914,
+            42.365682777017355,
+            42.550578247755766,
+            42.09804022684693
+          ],
+          "achieved_gbps": 2.347501381944068,
+          "achieved_tflops": 0.0764135019372946,
+          "x_above_bandwidth_floor": 94.14264958471729,
+          "pct_of_bw_roof": 1.0622178198841938,
+          "pct_of_f32_roof": 0.12526803596277802
+        },
+        "columnwarps": {
+          "median_ms": 7.575848139822483,
+          "min_ms": 7.507590111345053,
+          "max_ms": 7.590015884488821,
+          "samples_ms": [
+            7.589173037558794,
+            7.514442782849073,
+            7.5096143409609795,
+            7.575848139822483,
+            7.507590111345053,
+            7.590015884488821,
+            7.586800027638674
+          ],
+          "achieved_gbps": 13.062479365157763,
+          "achieved_tflops": 0.4251966793087645,
+          "x_above_bandwidth_floor": 16.918687013545448,
+          "pct_of_bw_roof": 5.91062414713021,
+          "pct_of_f32_roof": 0.6970437365717451
+        },
+        "tiled16": {
+          "median_ms": 5.062628071755171,
+          "min_ms": 4.975826013833284,
+          "max_ms": 5.170721095055342,
+          "samples_ms": [
+            5.008787848055363,
+            5.0915926694869995,
+            5.070092156529427,
+            5.062628071755171,
+            5.0300369039177895,
+            5.170721095055342,
+            4.975826013833284
+          ],
+          "achieved_gbps": 19.54703339795049,
+          "achieved_tflops": 0.636275354686134,
+          "x_above_bandwidth_floor": 11.306063457341406,
+          "pct_of_bw_roof": 8.84481149228529,
+          "pct_of_f32_roof": 1.043074351944482
+        },
+        "wy_chunked": {
+          "median_ms": 6.202294025570154,
+          "min_ms": 6.037245038896799,
+          "max_ms": 6.354278884828091,
+          "samples_ms": [
+            6.354278884828091,
+            6.292965263128281,
+            6.217814050614834,
+            6.202294025570154,
+            6.166636943817139,
+            6.176656112074852,
+            6.037245038896799
+          ],
+          "achieved_gbps": 15.95528357604798,
+          "achieved_tflops": 0.5193603300198082,
+          "x_above_bandwidth_floor": 13.851211039066987,
+          "pct_of_bw_roof": 7.219585328528497,
+          "pct_of_f32_roof": 0.8514103770816528
+        },
+        "wave_norm": {
+          "median_ms": 5.41252363473177,
+          "min_ms": 5.402154754847288,
+          "max_ms": 5.4279230535030365,
+          "samples_ms": [
+            5.41252363473177,
+            5.425598938018084,
+            5.402154754847288,
+            5.410681013017893,
+            5.412143189460039,
+            5.416120868176222,
+            5.4279230535030365
+          ],
+          "achieved_gbps": 18.283404688523667,
+          "achieved_tflops": 0.5951429849339837,
+          "x_above_bandwidth_floor": 12.087464220420596,
+          "pct_of_bw_roof": 8.273033795712067,
+          "pct_of_f32_roof": 0.9756442375966945
+        },
+        "tiled16_multi": {
+          "median_ms": 3.1500342302024364,
+          "min_ms": 3.1201778911054134,
+          "max_ms": 3.173849079757929,
+          "samples_ms": [
+            3.173849079757929,
+            3.129885997623205,
+            3.1500342302024364,
+            3.1603630632162094,
+            3.1201778911054134,
+            3.129054792225361,
+            3.1624571420252323
+          ],
+          "achieved_gbps": 31.415328459348327,
+          "achieved_tflops": 1.0226001486317144,
+          "x_above_bandwidth_floor": 7.034782408402181,
+          "pct_of_bw_roof": 14.215080750836346,
+          "pct_of_f32_roof": 1.6763936862814992
+        }
+      }
+    },
+    {
+      "tokens": 2048,
+      "bytes_moved": 191627264,
+      "flops": 6442450944,
+      "bandwidth_floor_ms": 0.8670916923076923,
+      "flop_floor_ms": 0.10561394990163935,
+      "arms": {
+        "register_state": {
+          "median_ms": 11.210981290787458,
+          "min_ms": 11.180174071341753,
+          "max_ms": 11.40936417505145,
+          "samples_ms": [
+            11.40936417505145,
+            11.180174071341753,
+            11.23113976791501,
+            11.210981290787458,
+            11.266686022281647,
+            11.180495377629995,
+            11.181084904819727
+          ],
+          "achieved_gbps": 17.092818106606625,
+          "achieved_tflops": 0.574655400530731,
+          "x_above_bandwidth_floor": 12.929406878470218,
+          "pct_of_bw_roof": 7.734306835568609,
+          "pct_of_f32_roof": 0.9420580336569362
+        },
+        "serial_lds": {
+          "median_ms": 84.42918909713626,
+          "min_ms": 84.09454068168998,
+          "max_ms": 84.9991962313652,
+          "samples_ms": [
+            84.53038800507784,
+            84.9991962313652,
+            84.16592516005039,
+            84.09454068168998,
+            84.3535871244967,
+            84.47840111330152,
+            84.42918909713626
+          ],
+          "achieved_gbps": 2.269680261639511,
+          "achieved_tflops": 0.07630596731881345,
+          "x_above_bandwidth_floor": 97.37054321491075,
+          "pct_of_bw_roof": 1.0270046432757969,
+          "pct_of_f32_roof": 0.12509174970297288
+        },
+        "columnwarps": {
+          "median_ms": 16.674560960382223,
+          "min_ms": 16.566117759793997,
+          "max_ms": 16.762766987085342,
+          "samples_ms": [
+            16.678589396178722,
+            16.566117759793997,
+            16.649774741381407,
+            16.699437983334064,
+            16.576296649873257,
+            16.674560960382223,
+            16.762766987085342
+          ],
+          "achieved_gbps": 11.492192475429794,
+          "achieved_tflops": 0.38636405236137156,
+          "x_above_bandwidth_floor": 19.23044714683434,
+          "pct_of_bw_roof": 5.200087092954658,
+          "pct_of_f32_roof": 0.6333836923956911
+        },
+        "tiled16": {
+          "median_ms": 11.827948037534952,
+          "min_ms": 11.573851108551025,
+          "max_ms": 12.012614868581295,
+          "samples_ms": [
+            12.012614868581295,
+            11.827948037534952,
+            11.573851108551025,
+            11.903299950063229,
+            11.938244570046663,
+            11.665042024105787,
+            11.695359833538532
+          ],
+          "achieved_gbps": 16.201226399700754,
+          "achieved_tflops": 0.5446803556758492,
+          "x_above_bandwidth_floor": 13.640942639014167,
+          "pct_of_bw_roof": 7.330871674072739,
+          "pct_of_f32_roof": 0.8929186158620478
+        },
+        "wy_chunked": {
+          "median_ms": 13.545136898756027,
+          "min_ms": 13.513226062059402,
+          "max_ms": 13.94739095121622,
+          "samples_ms": [
+            13.94739095121622,
+            13.532111886888742,
+            13.513226062059402,
+            13.528876006603241,
+            13.861379120498896,
+            13.545136898756027,
+            13.851029798388481
+          ],
+          "achieved_gbps": 14.147310981965703,
+          "achieved_tflops": 0.4756283374730357,
+          "x_above_bandwidth_floor": 15.621343185409577,
+          "pct_of_bw_roof": 6.401498181884933,
+          "pct_of_f32_roof": 0.77971858602137
+        },
+        "wave_norm": {
+          "median_ms": 10.731003247201443,
+          "min_ms": 10.703099891543388,
+          "max_ms": 10.746972635388374,
+          "samples_ms": [
+            10.738666635006666,
+            10.72737481445074,
+            10.703099891543388,
+            10.731362737715244,
+            10.746972635388374,
+            10.730531066656113,
+            10.731003247201443
+          ],
+          "achieved_gbps": 17.857348431049523,
+          "achieved_tflops": 0.6003586799472955,
+          "x_above_bandwidth_floor": 12.375857527410707,
+          "pct_of_bw_roof": 8.080248158845938,
+          "pct_of_f32_roof": 0.9841945572906483
+        },
+        "tiled16_multi": {
+          "median_ms": 7.741148117929697,
+          "min_ms": 7.72668095305562,
+          "max_ms": 8.212781976908445,
+          "samples_ms": [
+            7.741148117929697,
+            7.740457076579332,
+            7.7967229299247265,
+            7.72668095305562,
+            7.731331046670675,
+            8.212781976908445,
+            7.807483430951834
+          ],
+          "achieved_gbps": 24.754372488515187,
+          "achieved_tflops": 0.8322345530475365,
+          "x_above_bandwidth_floor": 8.92771570366137,
+          "pct_of_bw_roof": 11.201073524215017,
+          "pct_of_f32_roof": 1.3643189394221908
+        }
+      }
+    }
+  ],
+  "headline": "The FP32 chunked WY build is correct and slower than every route that matters: 1.16-1.21x slower than the non-multi tiled16 route it was screened against, 1.15-1.26x slower than the wave-norm register route the UD-Q4_K_XL production lane actually dispatches at 1K/2K, and 1.75-2.26x slower than the multi-column tiled16 route (85 VGPR) that already escapes the row's 256-VGPR register bound. The row's premise is not stale - it holds for the UD lane - but a built, registered route already beats it by 1.5-2.4x at 1/5 the register pressure.",
+  "screen_command": "HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen4exp_gd3_recurrence_screen.py --tokens 512 1024 2048 --reps 7",
+  "reproduction": {
+    "note": "A first 5-arm run (no wave_norm / tiled16_multi arms) measured tiled16 2.189/5.136/11.694 and wy_chunked 2.627/6.235/13.554; the 7-arm run below reproduces them within 1.3%.",
+    "tiled16_ms": {
+      "512": 2.189,
+      "1024": 5.136,
+      "2048": 11.694
+    },
+    "wy_chunked_ms": {
+      "512": 2.627,
+      "1024": 6.235,
+      "2048": 13.554
+    }
+  },
+  "speedup": {
+    "wy_vs_tiled16_nonmulti": {
+      "512": 0.8312,
+      "1024": 0.8163,
+      "2048": 0.8732
+    },
+    "wy_vs_wave_norm_ud_lane": {
+      "512": 1.0546,
+      "1024": 0.8727,
+      "2048": 0.7922
+    },
+    "wy_vs_tiled16_multi_nonud_lane": {
+      "512": 0.4415,
+      "1024": 0.5079,
+      "2048": 0.5715
+    },
+    "tiled16_multi_vs_wave_norm": {
+      "512": 2.3883,
+      "1024": 1.7182,
+      "2048": 1.3862
+    },
+    "note": "ratio > 1 means the first-named route is faster"
+  },
+  "macs_per_token_per_v_head": {
+    "serial_tiled16": 49152,
+    "wy_chunked": 58368,
+    "wy_over_serial": 1.1875,
+    "wy_breakdown": {
+      "key_and_query_state": 32768,
+      "keykey_querykey_4_block_redundant_full_square": 8192,
+      "triangular_solve": 448,
+      "output_combination": 576,
+      "chunk_final_state": 16384
+    },
+    "cooperative_lower_triangle_alternative": 51328,
+    "note": "the serial route's three 128x128 products (k.S, k(x)delta, q.S) each appear once in the chunked route as key/query state and the chunk-final state; the extra 9216 is the CxC dots recomputed by each of the four value-column blocks (half of them the discarded upper triangle), the solve and the output combination"
+  },
+  "lane_analysis": {
+    "ud_q4_k_xl_lane": {
+      "route": "qwen4exp_sigmoid_wave_norm_prefill",
+      "kernel": "qwen4_exp_gdn_prefill_f32_kernel<true,true>",
+      "vgpr": 256,
+      "why": "PRODUCTION_ARITHMETIC_RECOVERY_FLAGS zeroes GDN_COLWARPS_PREFILL for gguf_ud_q4_k_xl, so the runner falls to the register path, which GDN_REGISTER_PREFILL=1 + GDN_WAVE_NORM=1 resolve to the wave-norm sibling",
+      "trace_confirmation": "2026-09-30-qwen4exp-gd4-family-share trace: 72 dispatches of <true,true>, bound env GDN_COLWARPS_PREFILL=0, model root UD-Q4_K_XL",
+      "premise_holds": true
+    },
+    "q4_k_m_lane": {
+      "route": "qwen4exp_gdn_tiled16_multi_prefill",
+      "kernel": "qwen4_exp_gdn_prefill_tiled_f32_kernel<16,8,4,8>",
+      "vgpr": 85,
+      "why": "gate open, GDN_TILE16_VARIANT names the multi-column route",
+      "status": "composition fails the calibrated envelope for a pre-existing reason, with an attribution control that fails worse (2026-09-30-qwen4exp-gdn-multicolumn-q4km)"
+    }
+  }
+}

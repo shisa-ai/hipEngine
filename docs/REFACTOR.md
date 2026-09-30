@@ -8185,3 +8185,22 @@ Two consequences worth knowing:
   reports `route_engagement_recorded: false` rather than a wrong answer, but it
   still has no recorder. Add one before relying on any of those gates for
   engagement.
+
+## Qwen4Exp chunked WY GDN prefill screen arm (GD-4)
+
+- `qwen4_exp_gdn_prefill_wy_f32_kernel` / `hipengine_qwen4_exp_gdn_prefill_wy_f32`
+  and the screen's `wy_chunked` arm are the FP32 chunked triangular /
+  Woodbury-Young candidate GD-4 proposed. The row is closed: the build is
+  parent-parity correct but 1.15-1.26x slower than the `wave_norm` route the
+  UD-Q4_K_XL lane dispatches at 1K/2K, and 1.75-2.26x slower than the registered
+  `tiled16_multi` route (85 VGPR) that already escapes the 256-VGPR register
+  bound the row cited. Evidence:
+  `benchmarks/results/2026-10-01-qwen4exp-gd4-wy-kernel-built/`.
+- The kernel is **not registered** and no profile selects it; it is retained
+  only so `scripts/qwen4exp_gd3_recurrence_screen.py` can reproduce the
+  comparison.
+- Removal condition: delete the kernel, its `extern "C"` wrapper, the host
+  wrapper and the `wy_chunked` screen arm once no ledger row or artifact
+  references the screen. The open follow-up from this row - admitting
+  `tiled16_multi` on the UD lane - is a profile/gate task and does not need
+  this arm.
