@@ -833,10 +833,17 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
 
     from hipengine.core.memory import memory_stats, reset_memory_stats
     from hipengine.generation.qwen4_exp_profiles import register_qwen4_exp_gfx1151_profiles
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
+        register_gguf_q4_k_selected_prefill_kernels,
+    )
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     from hipengine.kernels.registry import resolve
 
     register_gfx1151_kernels(replace=True)
+    # The selected Q4_K MoE prefill owners live in the gfx1100 quant package and
+    # are registered lazily by the runner. The gate resolves its candidate and
+    # fallback keys before any generator exists, so register them here too.
+    register_gguf_q4_k_selected_prefill_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     candidate_kernel = None if candidate_spec.candidate_key is None else resolve(
         backend=candidate_spec.candidate_key[0],
