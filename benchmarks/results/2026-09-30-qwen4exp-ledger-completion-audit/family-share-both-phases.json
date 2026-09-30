@@ -1,0 +1,110 @@
+{
+  "prefill": {
+    "total_ms": 3914.468,
+    "kernels": 5699,
+    "families": {
+      "moe": {
+        "ms": 1855.127,
+        "share_pct": 47.39,
+        "kernels": 576
+      },
+      "gr": {
+        "ms": 1338.149,
+        "share_pct": 34.18,
+        "kernels": 654
+      },
+      "other": {
+        "ms": 314.04,
+        "share_pct": 8.02,
+        "kernels": 3231
+      },
+      "gdn": {
+        "ms": 194.487,
+        "share_pct": 4.97,
+        "kernels": 72
+      },
+      "linear": {
+        "ms": 117.02,
+        "share_pct": 2.99,
+        "kernels": 662
+      },
+      "attention": {
+        "ms": 49.856,
+        "share_pct": 1.27,
+        "kernels": 48
+      },
+      "norm": {
+        "ms": 16.178,
+        "share_pct": 0.41,
+        "kernels": 200
+      },
+      "conv": {
+        "ms": 13.625,
+        "share_pct": 0.35,
+        "kernels": 146
+      },
+      "qsa": {
+        "ms": 8.418,
+        "share_pct": 0.22,
+        "kernels": 96
+      },
+      "cast": {
+        "ms": 6.252,
+        "share_pct": 0.16,
+        "kernels": 6
+      },
+      "ple": {
+        "ms": 1.262,
+        "share_pct": 0.03,
+        "kernels": 6
+      },
+      "embed": {
+        "ms": 0.054,
+        "share_pct": 0.0,
+        "kernels": 2
+      }
+    }
+  },
+  "decode": {
+    "total_ms": 54.173,
+    "kernels": 1771,
+    "window": "rep2 (steady state)",
+    "families": {
+      "moe": {
+        "ms": 24.733,
+        "share_pct": 45.66,
+        "kernels": 583
+      },
+      "linear": {
+        "ms": 23.121,
+        "share_pct": 42.68,
+        "kernels": 545
+      },
+      "qsa_decode": {
+        "ms": 2.589,
+        "share_pct": 4.78,
+        "kernels": 120
+      },
+      "gdn": {
+        "ms": 2.374,
+        "share_pct": 4.38,
+        "kernels": 72
+      },
+      "gr_read": {
+        "ms": 0.848,
+        "share_pct": 1.56,
+        "kernels": 292
+      },
+      "decode_boundary": {
+        "ms": 0.476,
+        "share_pct": 0.88,
+        "kernels": 151
+      },
+      "ple": {
+        "ms": 0.032,
+        "share_pct": 0.06,
+        "kernels": 8
+      }
+    }
+  }
+}
