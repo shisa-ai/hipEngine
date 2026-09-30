@@ -234,6 +234,46 @@
   the combined path rather than assuming either independence or complete
   overlap.
 
+## Withdrawn Routes That Stay Bound In The Production Plan
+
+- **`20260930T` AUDIT: seven withdrawn routes are still bound `"1" if production`
+  and are held off only by `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS`.** The sweep
+  in `hipengine/generation/qwen4_exp_profiles.py` zeroes every flag in that list
+  for the `gguf_ud_q4_k_xl` production profile, and a flag is re-admitted only by
+  moving it into `PRODUCTION_Q8_QSA_RESTORED_FLAGS` (which is how DE-1 promoted
+  `Q4_DP4A64`). So a binding plus a recovery-list entry means "the plan says on,
+  the sweep says off". The seven, with their ledger rows and reopen conditions:
+
+  | Flag(s) | Ledger | Withdrawn for | Reopen condition |
+  | --- | --- | --- | --- |
+  | `GDN_COLWARPS_PREFILL`, `GDN_PEER_PREFILL` | 627 | perf, inside run-to-run spread | a complete-owner mechanism |
+  | `GR_IU8`, `GR_IU8_DOWN` | 593 | accuracy (mean KL 1.40e-3 / 1.31e-3) | a structurally different mechanism |
+  | `Q4_IU8_PREFILL` | 555 | perf, `code-p4096` disabled-family sweep | new tiling, packing, fusion or repair work |
+  | `Q8_MMQ_PREFILL` | 529 | failed canonical depth | operand localization showing which role carries it |
+  | `QSA_FLASH_PREFILL` | 610 | part of the failed recovery composition | - |
+
+- **These are correctly left bound, and that is the point of the entry.** Each is
+  withdrawn *pending a named reopen condition*, so keeping the binding records
+  the plan the recovery overrode and makes re-admission a one-line move with a
+  gate run attached. Removing the bindings would erase that record.
+- **The failure mode to guard, learned from `Q8_IU8_WMM` (`20260930T`):** when a
+  route is **rejected** rather than withdrawn-with-a-condition, the binding stops
+  being a record of intent and becomes a contradiction. That route was rejected
+  by role isolation (14 of 17 roles claim and all 14 fail the canonical envelope),
+  yet still read `"1" if production`, so narrowing the sweep would have silently
+  re-enabled arithmetic the project had already ruled out. Its removal is in
+  `docs/REFACTOR.md` under "Non-GR Q8 Diagnostic Scope" and worklog
+  `20260930T092825`.
+- **Rule that follows:** when a route's reopen condition is *discharged
+  negatively* - the condition was met or its scope exhausted and the route still
+  fails - remove the production binding in the same unit. A route that fails the
+  task gate or the canonical envelope should never be one sweep edit from live.
+- **Not audited here:** whether any of the seven would pass the current
+  production envelope if re-admitted. `production_moe_restore` (`20260930T`)
+  tested exactly that for `PRODUCTION_MOE_PREFILL` and found the envelope passes
+  while the task gate fails 15/18, so a passing envelope is not evidence of
+  admission.
+
 ## Non-GR Q8 Diagnostic Scope
 
 - **CLOSED `20260930T`.** `scripts/qwen4exp_dense_q8_nongr_gate.py` and
