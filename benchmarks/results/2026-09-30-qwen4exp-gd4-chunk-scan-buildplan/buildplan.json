@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp-gd4-chunk-scan-buildplan",
+  "performance_claim": false,
+  "purpose": "The build plan for GD-4's chunked scan, and three design constraints that are NOT in the ledger row and that determine whether the kernel can hit the break-even the feasibility screen priced.",
+  "reference_implementation": "scripts/gdn_chunk_drift_screen.py::_chunk_local - validated, and it locks the direct suffix product via tests/test_unit_gdn_chunk_drift_screen.py",
+  "target_abi": "hipengine_qwen4_exp_gdn_prefill_*_f32 in hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.hip, same argument list as the tiled16 route, with qwen4_exp_gdn_core_norm_gate_f32_kernel as the unchanged epilogue",
+  "algorithm": [
+    "q_scale = rsqrt(max(|q|,1e-6)) * rsqrt(Dk); k_scale = rsqrt(max(|k|,1e-6))",
+    "beta = sigmoid(beta_logits); decay = exp(-exp(a_log) * softplus(alpha + dt_bias))",
+    "cum = cumprod(decay); ratio[i][j] = prod_{k=j+1..i} decay[k]  (DIRECT SUFFIX PRODUCT)",
+    "start_term = cum * (k_norm @ S_0)",
+    "L[i][j] = beta_i * (k_norm_i . k_norm_j) * ratio[i][j], strictly lower",
+    "rhs = (v - start_term) * beta; forward-substitute (I + L) delta = rhs",
+    "out = (q_norm @ k_norm^T * ratio)_tril @ delta + cum * (q_norm @ S_0)",
+    "gated RMS norm + SiLU gate -> outputs (the existing core_norm_gate epilogue)",
+    "S_end = S_0 * cum[-1] + (k_norm * ratio[-1,:])^T @ delta"
+  ],
+  "constraint_1_l_qk_are_v_column_independent": {
+    "finding": "L and QK depend only on k, q and the decay - NOT on the value column. So they are shared by every warp of a v-head.",
+    "consequence": "They MUST be computed cooperatively into shared memory. Computing them per-warp redundantly costs 16x.",
+    "cooperative_pct": 4.17,
+    "per_warp_redundant_pct": 66.7,
+    "chunk": 16,
+    "why_it_matters": "This is the difference between the priced 1.05 TFLOP/s break-even and a 34%-more-arithmetic route that has to reach ~15 TFLOP/s. Violating it silently converts a 2%-of-peak bar into a 25%-of-peak bar.",
+    "costs": [
+      {
+        "chunk": 16,
+        "l_plus_qk_macs_per_chunk_per_head": 32768,
+        "cooperative_pct": 4.17,
+        "per_warp_redundant_x16_pct": 66.7,
+        "lds_bytes": 26944,
+        "lds_kb": 26.3,
+        "lds_fits_64kb": true
+      },
+      {
+        "chunk": 32,
+        "l_plus_qk_macs_per_chunk_per_head": 131072,
+        "cooperative_pct": 8.33,
+        "per_warp_redundant_x16_pct": 133.3,
+        "lds_bytes": 57984,
+        "lds_kb": 56.6,
+        "lds_fits_64kb": true
+      },
+      {
+        "chunk": 64,
+        "l_plus_qk_macs_per_chunk_per_head": 524288,
+        "cooperative_pct": 16.67,
+        "per_warp_redundant_x16_pct": 266.7,
+        "lds_bytes": 132352,
+        "lds_kb": 129.2,
+        "lds_fits_64kb": false
+      }
+    ]
+  },
+  "constraint_2_lds_operating_point": {
+    "finding": "Both chunk 16 (26.3 KB) and chunk 32 (56.6 KB) fit the 64 KB per-workgroup LDS limit, assuming kn, qn, L, ratio and delta are all staged.",
+    "recommendation": "chunk 32 primary - it fits and its fp16 state-carry NMSE is 7.961e-10, better than chunk 16, because the drift screen found fp16 NMSE IMPROVES with larger chunks. But it leaves only 7.4 KB of LDS headroom, so chunk 16 is the fallback if LDS-limited occupancy binds.",
+    "costs": [
+      {
+        "chunk": 16,
+        "l_plus_qk_macs_per_chunk_per_head": 32768,
+        "cooperative_pct": 4.17,
+        "per_warp_redundant_x16_pct": 66.7,
+        "lds_bytes": 26944,
+        "lds_kb": 26.3,
+        "lds_fits_64kb": true
+      },
+      {
+        "chunk": 32,
+        "l_plus_qk_macs_per_chunk_per_head": 131072,
+        "cooperative_pct": 8.33,
+        "per_warp_redundant_x16_pct": 133.3,
+        "lds_bytes": 57984,
+        "lds_kb": 56.6,
+        "lds_fits_64kb": true
+      },
+      {
+        "chunk": 64,
+        "l_plus_qk_macs_per_chunk_per_head": 524288,
+        "cooperative_pct": 16.67,
+        "per_warp_redundant_x16_pct": 266.7,
+        "lds_bytes": 132352,
+        "lds_kb": 129.2,
+        "lds_fits_64kb": false
+      }
+    ]
+  },
+  "constraint_3_block_decomposition_must_change": {
+    "finding": "The existing tiled16 grid is (num_v_heads=48, col_blocks=8) - 8 blocks per v-head, each owning 16 of the 128 value columns. Under a chunked scan each of those 8 blocks would recompute the shared L, which is exactly the 8x redundancy constraint 1 forbids.",
+    "second_half": "Collapsing to one block per v-head (grid = 48) removes that redundancy but gives only 48 blocks against the gfx1100's 96 CUs, so half the GPU idles.",
+    "consequence": "Filling the device requires parallelism on the CHUNK axis as well, i.e. a multi-block scan with a separate state-propagation pass between chunk groups. That is a two-kernel design, not a one-kernel port, and it is the main structural work the row does not mention.",
+    "options": [
+      "one block per v-head, 48 blocks, 16 warps x 8 columns - no L redundancy, half the device idle",
+      "two blocks per v-head (64 columns each), 96 blocks - fills the device, pays 2x L redundancy (+4.17% -> +8.34% at chunk 16)",
+      "multi-block scan over the chunk axis with a state-propagation pass - fills the device at no L redundancy, but needs a second kernel and a chunk-level prefix scan"
+    ]
+  },
+  "constraint_4_suffix_product_in_kernel": {
+    "finding": "The underflow hazard the drift screen found is not only a reference-implementation concern: the kernel's `ratio` matrix AND the state-carry weights `ratio[-1,:]` must be built as direct suffix products.",
+    "why": "A ratio of prefix products divides by a geometric decay that underflows to zero non-simultaneously; while cum[j] has underflowed and cum[i] has not, the clamped ratio explodes and the solve diverges (measured max_abs 1.05e1 at chunk 256 vs 2.26e-01 at chunk 64 - larger chunks worse). The suffix product never divides and every factor is in (0,1], so entries stay bounded by 1."
+  },
+  "status": "BUILD PLAN ONLY - no kernel written. The design constraints above were derived by working the design against the validated reference and the existing ABI; they are recorded so the build does not rediscover them.",
+  "limits": "Arithmetic and design analysis; no kernel written, compiled or timed. One shape (Hk16/Hv48/Dk=Dv=128), one host class."
+}
