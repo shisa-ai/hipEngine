@@ -911,7 +911,12 @@ refutation of exactly that figure had already been written into **`DE-5`'s** cel
 neighbouring row, by then closed. A closed row's correction does not reach an open
 row that quotes the same measurement, and the reader who most needs the correction is
 the one reading the *open* row. Where a shared measurement is refuted, the correction
-belongs in **every** cell that quotes it.
+belongs in **every** cell that quotes it. **That pattern was then swept for, and the
+sweep came back clean (`20260930T`):** every figure this census has corrected or
+refuted - the `153.0 ms` / `65% host-launch` decomposition, the `1.1% of prefill`
+attribution, the `+0.228` / `+0.126` gate deltas - appears only in rows that are
+already closed or in prose that cites the correction. `DE-6` was the sole open row
+carrying one, so the class is recorded as a hazard rather than as a live backlog.
 
 **That systematic pass is the reusable part.** Four of the five movements came from
 reading a row's own content or its code rather than from any measurement, and two
