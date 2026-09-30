@@ -326,10 +326,15 @@ baseline arithmetic, not in this route. Chunk size is not the variable: the
 chunk-1024 and chunk-4096 configurations are bit-identical at `f4b12e0c2`. All
 hard thresholds still pass with 1.84x-2.28x headroom on the tightest three
 (mean against 1e-3, p95 against 5e-3, top-1 against 0.99), so this is a review
-requirement rather than a demonstrated quality failure. The baseline change
-landed somewhere in `035185fb2..HEAD`, which contains several promoted
-decode-path and chunk-default arithmetic changes; the responsible commit is not
-identified. No speed claim is made. [Evidence](results/2026-09-30-qwen4exp-rt1-chunk4096-gate/README.md).
+requirement rather than a demonstrated quality failure. A binary search over the
+range attributes the baseline movement to two commits, both of which promote
+decode-path arithmetic rather than changing the route under test: `c66db0264`
+(decode dp4a linear to the production default) and `6c3c46b04` (a wider pack8
+GEMV block at narrow projections). The gate certifies a prefill route but
+measures its drift over 128 teacher-forced decode steps, so its baseline is
+decode-path arithmetic and a promoted decode-path change invalidates a
+prefill-route certificate without touching that route. No speed claim is made.
+[Evidence](results/2026-09-30-qwen4exp-rt1-chunk4096-gate/README.md).
 
 **Qwen3.8 Flash Next decode arithmetic (gfx1151, UD-Q4_K_XL).** The routed-expert
 gate+up decode GEMV uses the dp4a Q8_1-activation linear
