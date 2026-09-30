@@ -434,6 +434,36 @@ CANDIDATES["production_dense_q8_restore"] = replace(
     direct_dispatch_target=None, direct_dispatch_reference=None, count_registered_dispatch=True,
 )
 
+CANDIDATES["production_moe_restore"] = CandidateSpec(
+    name="production_moe_restore",
+    classification="T2",
+    mechanism=(
+        "WMMA-MoE27 prefill restored on layers 27-47 (iu8-WMMA gate/up plus the "
+        "compact f16-WMMA down), replacing the exact grouped iu8-risk+repair "
+        "route that production runs today. The 2026-09-14 arithmetic recovery "
+        "zeroed this flag as part of a blanket sweep of "
+        "PRODUCTION_ARITHMETIC_RECOVERY_FLAGS, while its own triggering candidate "
+        "(production_q8_fallback) declared 'other production paths unchanged' "
+        "and failed on TASK QUALITY rather than on this route. The route has its "
+        "own passing acceptance from 2026-08-29 (hard_gates_passed true, "
+        "eligible_for_automatic_admission true, mean KL 2.79e-4, max KL 5.98e-3, "
+        "top-1 0.99111, determinism and state-repeat exact) and a measured "
+        "-4.34%/-5.26% paired prefill at p508/p1012. The lever is the sparse "
+        "exact repair this route omits: that family is 5.44% of the prefill "
+        "window."
+    ),
+    environment={
+        "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "1",
+        "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
+    },
+    base_profile="production",
+    scenario_id="qwen4exp-ud-q4-k-xl-moe-wmma-restore",
+    candidate_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                   "selected_dual_wmma_iu8_prefill_bf16_bf16_out"),
+    fallback_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                  "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"),
+    count_registered_dispatch=True,
+)
 CANDIDATES["router_warp_reduce"] = CandidateSpec(
     name="router_warp_reduce",
     classification="T1",
