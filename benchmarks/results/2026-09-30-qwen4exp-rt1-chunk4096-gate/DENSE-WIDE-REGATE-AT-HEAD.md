@@ -94,3 +94,60 @@ HIPENGINE_HIP_ARCH=gfx1151 uv run --no-sync python \
   --route dense_wide --layers 16-47 --decode-steps 128 --repeat-runs 3 \
   --prefill-chunk-size 1024 --output <artifact>.json
 ```
+
+---
+
+# Addendum: the same canonical gate with the engagement recorder (`9a30a93c2`)
+
+The re-gate above predates the recorder fix (`20260930T113806`), so it could not
+say whether the `dense_wide` route ran. This repeats it with the fix in place.
+Artifact: `artifact-dense-wide16-47-chunk1024-engaged.json`.
+
+## The envelope is bit-identical, which is the control
+
+| | without recorder (`cac0f1da5`) | with recorder (`9a30a93c2`) |
+| --- | --- | --- |
+| `strict_logits_sha256` | `294e6c08d5b2c315…` | `294e6c08d5b2c315…` |
+| `candidate_logits_sha256` | `10fd0ae50b6eb9ce…` | `10fd0ae50b6eb9ce…` |
+| `kl_mean` | 4.38817e-4 | 4.38817e-4 |
+| `kl_p95` | 2.360965e-3 | 2.360965e-3 |
+| `kl_p99` | 5.843182e-3 | 5.843182e-3 |
+| `kl_max` | 2.3411946e-2 | 2.3411946e-2 |
+| top-1 | 0.994186 | 0.994186 |
+| rows / over review | 1548 / 1 | 1548 / 1 |
+
+**Every published value is identical.** The fix adds recording only, and this is
+the evidence that it altered no dispatch decision and no arithmetic - which was
+the stated falsifier: a difference here would have meant the recorder changed
+behaviour, and would itself have been the finding.
+
+## The live default now has engagement evidence
+
+```
+route: dense_wide | recorded: True
+candidate_route_engaged: True | teacher: False
+selectors_differing: ['dense_wide']
+   dense_wide: t=0.0000 c=0.3372 differs=True
+   native_batch_decode_session: t=0.0000 c=0.0000 differs=False
+   q4k_rowtile: t=1.0000 c=1.0000 differs=False
+   wmma_prefill: t=0.0000 c=0.0000 differs=False
+```
+
+The candidate arm claims on **33.72%** of dispatches; the teacher arm on 0.00%,
+which is what makes the comparison a comparison against the cleared exact chain.
+`wmma_prefill` reads 0.0000 in both arms, correct because this gate clears the
+WMMA selector in both.
+
+## Not yet established: that 0.3372 is the expected window share
+
+The claim rate is **0.3372** on the canonical protocol and **0.2640** on the
+reduced screen (2 cases, 24 decode steps). Different case and shape mixes are a
+sufficient explanation for the gap, and the window is 32 of 48 layers, so a
+fraction well under 1 is expected. But **the exact expected fraction has not
+been derived** - that needs a per-layer, per-shape dispatch census, which this
+run does not record.
+
+A rate that does not match the window share would mean the route claims more or
+less than its scope. Nothing here suggests it does, and the layer scope is
+unit-tested, but "plausible" is not "derived" and this is recorded as open rather
+than closed.
