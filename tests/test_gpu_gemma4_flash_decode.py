@@ -11,6 +11,8 @@ battery pins here:
   only there (capability: head_dim 256, GQA ratio 2, one token, workspace),
   including through the production wrapper the engine registers -- not just
   the raw ABI;
+- both admitted packings run the same contract: sliding (head_dim 256,
+  ratio 2) and global (head_dim 512, ratio 8);
 - outputs match the single kernel to a measured float-precision bound over
   keep / holes / window masks and both dtypes;
 - the all-masked row propagates NaN exactly as the incumbent does;
@@ -28,13 +30,16 @@ from tests._rocm_guard import hip_runtime_available
 
 pytestmark = pytest.mark.skipif(not hip_runtime_available(), reason="HIP runtime unavailable")
 
-# The artifact's real sliding-layer geometry: q=16, kv=8, head_dim=256.
+# The artifact's real geometries: sliding layers q=16, kv=8, head_dim=256;
+# global layers q=16, kv=2, head_dim=512.
 _SLIDING = dict(num_heads=16, num_kv_heads=8, head_dim=256)
+_GLOBAL = dict(num_heads=16, num_kv_heads=2, head_dim=512)
+_GEOMETRIES = [pytest.param(_SLIDING, id="sliding"), pytest.param(_GLOBAL, id="global")]
 # Capability misses that must keep the incumbent routing.
 _NON_FLASH = [
-    (16, 2, 512, "global-layer head_dim is a different template"),
-    (16, 2, 256, "GQA ratio 8 is outside the kernel's ratio-2 packing"),
-    (16, 16, 256, "MHA ratio 1 is outside the kernel's ratio-2 packing"),
+    (16, 4, 512, "GQA ratio 4 is outside the kernel's ratio-2/ratio-8 packings"),
+    (16, 2, 256, "GQA ratio 8 at head_dim 256 is a different template"),
+    (16, 16, 256, "MHA ratio 1 is outside the kernel's ratio-2/ratio-8 packings"),
 ]
 
 
@@ -76,6 +81,7 @@ def test_capability_surface_and_slice_formula(attention_library):
     """
     flash_admits, flash_slices, flash_workspace_bytes = _capability_surface()
     assert flash_admits(tokens=1, head_dim=256, num_heads=16, num_kv_heads=8)
+    assert flash_admits(tokens=1, head_dim=512, num_heads=16, num_kv_heads=2)
     assert not flash_admits(tokens=2, head_dim=256, num_heads=16, num_kv_heads=8)
     for num_heads, num_kv_heads, head_dim, _ in _NON_FLASH:
         assert not flash_admits(
@@ -89,10 +95,11 @@ def test_capability_surface_and_slice_formula(attention_library):
     assert flash_workspace_bytes(1, 16, 256, 32) == 1 * 16 * 32 * (2 + 256) * 4
 
 
+@pytest.mark.parametrize("geom", _GEOMETRIES)
 @pytest.mark.parametrize("keys", [1024, 2055, 4096])
-def test_flash_selected_for_admitted_sliding_geometry(attention_library, keys):
+def test_flash_selected_for_admitted_geometry(attention_library, geom, keys):
     out_single, out_flash, slices = _flash_ab(
-        attention_library, dtype="f32", mask_mode="holes", keys=keys, **_SLIDING
+        attention_library, dtype="f32", mask_mode="holes", keys=keys, **geom
     )
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
         gemma4_attention_decode_variant,
@@ -103,14 +110,15 @@ def test_flash_selected_for_admitted_sliding_geometry(attention_library, keys):
     assert out_flash.shape == out_single.shape
 
 
+@pytest.mark.parametrize("geom", _GEOMETRIES)
 @pytest.mark.parametrize("dtype", ["f32", "bf16"])
 @pytest.mark.parametrize("mask_mode", ["keep", "holes", "window"])
 @pytest.mark.parametrize("keys", [1024, 2055, 4096])
 def test_flash_matches_single_kernel_to_float_precision(
-    attention_library, dtype, mask_mode, keys
+    attention_library, geom, dtype, mask_mode, keys
 ):
     out_single, out_flash, _ = _flash_ab(
-        attention_library, dtype=dtype, mask_mode=mask_mode, keys=keys, **_SLIDING
+        attention_library, dtype=dtype, mask_mode=mask_mode, keys=keys, **geom
     )
     reference = _as_float(out_single, dtype)
     candidate = _as_float(out_flash, dtype)
@@ -122,12 +130,13 @@ def test_flash_matches_single_kernel_to_float_precision(
         np.testing.assert_allclose(candidate, reference, rtol=6e-3, atol=6e-3, equal_nan=True)
 
 
+@pytest.mark.parametrize("geom", _GEOMETRIES)
 @pytest.mark.parametrize("dtype", ["f32", "bf16"])
-def test_flash_all_masked_row_propagates_nan(attention_library, dtype):
+def test_flash_all_masked_row_propagates_nan(attention_library, geom, dtype):
     # The incumbent row_max is -inf on an all-masked row, so expf(-inf - -inf)
     # makes every weight NaN and the output NaN. Flash must agree, NaN for NaN.
     out_single, out_flash, _ = _flash_ab(
-        attention_library, dtype=dtype, mask_mode="none", keys=1024, **_SLIDING
+        attention_library, dtype=dtype, mask_mode="none", keys=1024, **geom
     )
     reference = _as_float(out_single, dtype)
     candidate = _as_float(out_flash, dtype)
@@ -135,11 +144,12 @@ def test_flash_all_masked_row_propagates_nan(attention_library, dtype):
     np.testing.assert_array_equal(candidate, reference)
 
 
+@pytest.mark.parametrize("geom", _GEOMETRIES)
 @pytest.mark.parametrize("dtype", ["f32", "bf16"])
 @pytest.mark.parametrize("keys", [1024, 2055])
-def test_flash_ignores_poisoned_workspace(attention_library, dtype, keys):
+def test_flash_ignores_poisoned_workspace(attention_library, geom, dtype, keys):
     out_single, out_flash, _ = _flash_ab(
-        attention_library, dtype=dtype, mask_mode="keep", keys=keys, poison=True, **_SLIDING
+        attention_library, dtype=dtype, mask_mode="keep", keys=keys, poison=True, **geom
     )
     reference = _as_float(out_single, dtype)
     candidate = _as_float(out_flash, dtype)
@@ -173,7 +183,8 @@ def test_non_admitted_geometry_keeps_incumbent_routing(
     assert slices >= 2
 
 
-def test_production_wrapper_selects_flash_for_admitted_decode(attention_library):
+@pytest.mark.parametrize("geom", _GEOMETRIES)
+def test_production_wrapper_selects_flash_for_admitted_decode(attention_library, geom):
     """The registered attention entry -- what the engine calls for a decode
     step -- must take the flash route for the admitted sliding geometry.
 
@@ -194,7 +205,9 @@ def test_production_wrapper_selects_flash_for_admitted_decode(attention_library)
     )
 
     keys = 1024
-    num_heads, num_kv_heads, head_dim = 16, 8, 256
+    num_heads = geom["num_heads"]
+    num_kv_heads = geom["num_kv_heads"]
+    head_dim = geom["head_dim"]
     rng = np.random.default_rng(20260930)
     arrays = [
         np.ascontiguousarray(rng.standard_normal((1, num_heads, head_dim)) * 0.7, dtype=np.float32),
