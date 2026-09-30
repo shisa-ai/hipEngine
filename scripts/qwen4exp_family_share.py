@@ -27,12 +27,17 @@ from pathlib import Path
 # Ordered: the first pattern that matches a kernel name wins, so put the
 # specific families before the generic ones.
 FAMILIES: tuple[tuple[str, str], ...] = (
+    # ``sparse`` in this codebase means sparse EXPERT selection, not sparse
+    # attention: ``*_selected_sparse_exact_repair_*`` are MoE repair kernels and
+    # must be filed under moe, not qsa.  An earlier revision of this table let
+    # the qsa pattern match them and overstated the QSA slice as 7.90% when the
+    # real QSA kernels total 0.21%.
     ("gdn", r"gdn"),
     ("conv", r"conv"),
-    ("qsa", r"qsa|sparse|block_pool|selection"),
+    ("qsa", r"qsa_|block_pool|selection"),
     ("ple", r"ple"),
     ("gr", r"gr_|gated_mean|four_branch|coltile"),
-    ("moe", r"expert|selected_|router|topk|top_k|shexp"),
+    ("moe", r"expert|selected_|selected_sparse|sparse_exact_repair|sparse_repair|router|topk|top_k|shexp"),
     ("norm", r"rmsnorm|rms_norm|norm_"),
     ("linear", r"linear|gemm|gemv|mmq|wmma|dp4a|matmul"),
     ("attention", r"attn|attention|rope|rotate|paged"),
