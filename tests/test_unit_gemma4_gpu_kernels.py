@@ -3070,3 +3070,39 @@ def test_router_topk_fused_agrees_with_the_unfused_chain(device) -> None:
     # reduction order separates their logits; a softmax over top_k values
     # moves by far less than this under that class of difference.
     np.testing.assert_allclose(fused_weights, chain_weights, atol=1e-5, rtol=1e-4)
+
+
+@_needs_hip
+def test_enqueue_host_to_device_consumes_a_temporary_pageable_source() -> None:
+    """The staging path uploads a freshly built array and drops it immediately.
+
+    ``_stage_upload`` and the token-ids upload build their source with
+    ``np.ascontiguousarray`` and keep no reference: the enqueued copy must be
+    self-contained by the time the call returns (ROCm stages pageable memory
+    during the call, measured at ~11 us with a deep queue in
+    ``scratch/d8_async_h2d_screen.py``), or the device would read host memory
+    the caller is about to free. The sync path hid this by blocking until the
+    copy completed; the enqueued path has to hold up on its own.
+    """
+
+    import gc
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import enqueue_host_to_device
+
+    n = 4096
+    reference = np.arange(n, dtype=np.uint8)
+    dst = malloc(n)
+    try:
+        # Exactly the production pattern: temporary source, dropped on return.
+        enqueue_host_to_device(
+            dst, host_array_ptr(np.ascontiguousarray(reference)), n, stream=0
+        )
+        del reference  # type: ignore[has-type]
+        gc.collect()
+        get_hip_runtime().stream_synchronize(0)
+        readback = np.empty(n, dtype=np.uint8)
+        copy_device_to_host(host_array_ptr(readback), dst, n)
+        np.testing.assert_array_equal(readback, np.arange(n, dtype=np.uint8))
+    finally:
+        free(dst)

@@ -302,7 +302,7 @@ def test_multi_block_forward_takes_the_head_only_on_the_final_block(
         gemma4_module.Gemma4Runner, "_q8_mmq_prefill_session", _no_session
     )
     for name in (
-        "copy_host_to_device",
+        "enqueue_host_to_device",
         "copy_device_to_host",
         "host_array_ptr",
         "launch_gguf_embedding",

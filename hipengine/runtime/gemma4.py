@@ -33,7 +33,7 @@ import numpy as np
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    enqueue_host_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -1003,8 +1003,12 @@ class Gemma4Runner:
 
         # --- embedding ------------------------------------------------------
         ids = np.ascontiguousarray(tokens, dtype=np.int64)
-        copy_host_to_device(
-            self._token_ids, host_array_ptr(ids), ids.nbytes
+        # Enqueued, not sync: the embedding kernel below is launched on the
+        # same default stream after this returns, so stream order delivers the
+        # ids to it, while the host keeps submitting instead of draining the
+        # previous step's work (0.19 ms/step of blocking hipMemcpy, D8 row).
+        enqueue_host_to_device(
+            self._token_ids, host_array_ptr(ids), ids.nbytes, stream=0
         )
         launch_gguf_embedding(
             self.weights.embed_tokens,
@@ -1142,10 +1146,16 @@ class Gemma4Runner:
         return logits
 
     def _stage_upload(self, name: str, values: np.ndarray) -> DeviceBuffer:
-        """Copy ``values`` into the reusable staging buffer for ``name``."""
+        """Enqueue an upload of ``values`` into the reusable staging buffer."""
 
         buffer = self._staging_buffer(name, values.nbytes)
-        copy_host_to_device(buffer, host_array_ptr(values), values.nbytes)
+        # Enqueued on the default stream (the one every gemma4 wrapper uses):
+        # readers launched after this return see the data in stream order, and
+        # the next step's upload of the same buffer lands behind this block's
+        # readers. The sync hipMemcpy here was draining the whole queued
+        # forward mid-pass -- six times per decode step, 0.55 ms of host stall
+        # for KB-scale buffers (D8 row; screen in scratch/d8_async_h2d_screen.py).
+        enqueue_host_to_device(buffer, host_array_ptr(values), values.nbytes, stream=0)
         return buffer
 
     def next_token(self, logits: np.ndarray, *, temperature: float = 0.0) -> int:
