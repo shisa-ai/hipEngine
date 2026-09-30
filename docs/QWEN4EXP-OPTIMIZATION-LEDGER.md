@@ -844,9 +844,9 @@ that is open with no outstanding precondition is *actionable*.
 
 | class | count | rows |
 | --- | ---: | --- |
-| **Actionable now** | **19** | X-1, X-2, X-7, X-8, X-9, X-10, X-11, DP-2, DP-6, ED-3, QA-4, GD-4, PL-1, RT-5, RT-6, DE-8, DE-9, DE-10, MT-8 |
+| **Actionable now** | **22** | X-1, X-2, X-7, X-8, X-9, X-10, X-11, DP-2, DP-6, ED-3, QA-4, GD-4, RT-5, RT-6, DE-8, DE-9, DE-10, MT-8, **MX-1**, **DE-1**, **DE-5**, **MT-1** |
 | **Gated** (open, precondition outstanding) | 15 | DP-4, DP-5, DP-7, DP-8, MR-4, QA-2, QA-6, QA-7, DE-2, MT-2, MT-3, MT-4, MT-6, RT-1, RT-2 |
-| **Closed** (terminal conclusion) | 36 | X-3, X-4, X-5, X-6, DP-1, DP-3, DP-9, ED-1, ED-4, EG-1, EG-3, MX-1, MR-1, MR-3, MR-5, HC-1, HC-3, HC-6, HC-7, QA-5, QA-8, QA-9, QA-10, GD-1, GD-3, PL-2, RT-3, RT-4, DE-1, DE-3, DE-4, DE-5, DE-6, MT-1, MT-5, DE-7 |
+| **Closed** (terminal conclusion) | 33 | X-3, X-4, X-5, X-6, DP-1, DP-3, DP-9, ED-1, ED-4, EG-1, EG-3, MR-1, MR-3, MR-5, HC-1, HC-3, HC-6, HC-7, QA-5, QA-8, QA-9, QA-10, GD-1, GD-3, PL-1, PL-2, RT-3, RT-4, DE-3, DE-4, DE-6, MT-5, DE-7 |
 | **Not a candidate** | 1 | MT-7 (standing rule) |
 
 **Audit pass over the borderline rows (`20260930T`).** Re-reading the actionable
@@ -882,27 +882,86 @@ rows against the measured conclusions in their own cells moved two of them:
   heuristic in this census - and the first one where the census itself, rather than a row,
   supplied the wrong reading.
 
+**Contradiction sweep over the closed set (`20260930T`).** Every classification above
+was a judgement over a long status cell, which is the same kind of reading that has
+failed four times in this census. It was therefore re-checked mechanically in the one
+direction that matters: **every row the table called closed was searched for an
+explicit statement, in its own cell, that something of *its own candidate* remains
+open** — "remains open", "remain open", "still open", "not promoted", "not yet
+built", "the candidate build".
+
+Thirty-two of the thirty-six closed rows contain no such statement. **Four do, and
+all four were misclassified:**
+
+| row | the sentence in its own cell that contradicts "closed" | disposition |
+| --- | --- | --- |
+| `MX-1` | "**MX-1 is NOT promoted**: this is an operand-error budget and does not replace the production mean/p95/p99/max KL, top-1, determinism, isolation or task gate; **the candidate build and the production gate remain open**", and its final append closes "**The pricing does not decide whether to build**" | **actionable - and it is the largest measured lever in the ledger** |
+| `DE-1` | "**Unit (2) - the exact-activation warp256 variant - REMAINS OPEN and is NOT licensed by this result.**" | actionable (unit 2 only; the dp4a promotion itself is landed) |
+| `DE-5` | "**Still OPEN:** no mechanism inside `reset()` is isolated - `state.zero()`, the per-attention KV memsets, `index.reset()` and the `_ple_hash_states` clear are all candidates and none is individually excluded." | actionable |
+| `MT-1` | "Remaining work is composing it into a verifier body pass and measuring the COMPLETE pass - a different and smaller unit than the row assumed", and "**does NOT cover DE-1** (MoE expert GEMV pair, 11.3 ms/token)" | actionable |
+
+**`MX-1` is the material one.** The census read its *first experiment* - the operand-error
+budget, complete across all 144 expert tensors - as the row, and the row's own text says
+the opposite: what is finished is the admissibility budget, and what remains is the
+build. Its price is already known from the same X-3 authority as every other figure
+here: the repair is **1,219.978 ms = 7.75% of the 15,741.963 ms prefill union**, with a
+stated acceptance target for the build (the F16 gate/up+down must come in at or below
+the 4,280.901 ms the iu8-risk owners currently take). **That is larger than `GD-4`'s
+~5.5% ceiling, `DP-6`'s 1.090% scope, `DP-5`'s 0.832% cast and `DP-8`'s measured 0.6%,
+and `EG-3` names `MX-1` as the sole remaining path to that cost.**
+
+**Two closed rows pass the sweep and stay closed.** `X-4` says "**Still OPEN**: the stable
+wall and serving-wrapper attribution remain open **under X-10/DE-5**" - the residual is
+explicitly delegated, both named owners are now in the actionable set, and the row's own
+named next step (analyze marker-scoped owners) is done. `X-6` says "**RT-3's blocker is
+separate and still open**" - that blocker belongs to `RT-3`, whose own cell states a
+terminal conclusion (premise falsified), and nothing of `X-6`'s candidate remains. In
+both cases the sentence names *another row's* work, which is why the sweep keys on the
+row's own candidate rather than on the words alone.
+
+**A second reading of the same sweep, recorded because it shows the limit of the
+instrument.** Taking the census's rule literally - "a row counts as closed only when the
+cell states a terminal conclusion" - and testing whether the *end* of each cell states
+one reports **30 of 36 closed rows as violations**. That is not 30 misclassifications:
+most cells end with an evidence or limits line ("Evidence: `benchmarks/results/...`",
+"One model, one quant, one host"), not with a status token. The rule is about the cell
+*containing* a terminal conclusion for its own candidate, not about its final words, and
+the crude form of it is useless. It is recorded because it is the fifth positional
+reading to look decisive and be wrong.
+
 **What this says about the loop.** The campaign is **not close to exhausted**:
-**19 rows remain actionable and 15 more unblock when a named precondition lands**
+**22 rows remain actionable and 15 more unblock when a named precondition lands**
 (the table above is the current count; earlier paragraphs in this section quote the
 series as it moved).
 But most actionable rows are explicitly *low-value or lane-separated* — X-1 is
 "informational, not a prerequisite", X-8 is a "separate lane", X-9 is
 "maintenance", DP-2 is "low value", MR-3 is "low value", DE-6 is "low", DE-8 is
 "lower priority", DE-9 is a "separate serving lane", QA-4 is a "long-context
-lane" — so the count of rows is not a count of comparable prizes. **The rows that
-carry measured millisecond-scale value are already closed**, and the largest
-remaining decode prize that was identified (DE-1, 10.09 ms/step of headroom) is
-now closed by its own scope-space exhaustion.
+lane" — so the count of rows is not a count of comparable prizes. **But the census's own
+conclusion that "the rows that carry measured millisecond-scale value are already
+closed" is refuted by the sweep above, and was the most consequential error in this
+section.** The largest measured lever in the ledger, `MX-1` at 7.75% of prefill, was
+classified closed on the strength of its completed admissibility budget while its own
+cell said the build remains open - and the sentence asserting that the valuable rows
+were all closed was written in the same section that had just hidden one. The rows that
+carry measured millisecond-scale value are **not** all closed: `MX-1` (7.75%),
+`GD-4` (~5.5%), `DP-6` (1.090%), `DP-5` (0.832%, gated on a buffer contract) and
+`DP-8` (0.6%, measured) are all open, and the decode prize `DE-1` is open in unit (2)
+rather than closed by scope-space exhaustion as this paragraph claimed. What *is*
+closed is the largest decode prize: the dp4a logical128 promotion landed and the
+remaining gap to its comparator fell from 2.94x to 1.12x (`DP-9`).
 
-**The actionable count is now 19.** It was 25 in the first pass of this census.
+**The actionable count is now 22.** It was 25 in the first pass of this census.
 The audit moved QA-2 out; attempting DP-5's build showed the row is gated on a buffer
 contract that does not exist, which moved DP-5 out; and a systematic pass over every
 actionable row's First-bounded-experiment column moved MR-3 out, whose columns agree
 that it "should not be started". `DE-3` then moved out as a landed win the heuristic
 had read as outstanding work, `GD-1` moved out once the source of its two figures
 was read, and `DE-6` moved out when `X-4` was evaluated and its own precondition came
-back false (see the note above).
+back false (see the note above). `PL-1` then moved out on its own terms - its flag was
+withdrawn as a cell mis-assignment rather than a malformed contract - and the
+contradiction sweep above moved **four back in**: `MX-1`, `DE-1` (unit 2), `DE-5` and
+`MT-1`, all of which the table had called closed while their own cells said otherwise.
 
 **One correction is worth recording as a class, because it is the worst kind found so
 far (`20260930T`).** `DE-6`'s cell asserted *"DECODE IS NOT KERNEL-BOUND ... ~65% is
