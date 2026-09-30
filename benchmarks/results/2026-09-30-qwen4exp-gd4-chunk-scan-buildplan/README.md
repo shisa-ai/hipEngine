@@ -88,3 +88,41 @@ The row says the remaining work is "the kernel build". It is, but three of the f
 constraints above are invisible from the row and two of them change the kernel's structure
 rather than its tuning. A builder who ports `tiled16`'s grid and computes L per warp gets a
 kernel that is 66.7% over its arithmetic budget and cannot be diagnosed from timing alone.
+
+---
+
+## Correction: the feasibility artifact's chunk 128 is not buildable, and chunk 32 is right anyway
+
+**Added after the build plan, reconciling it against the already-committed feasibility
+artifact.** The two disagreed: the feasibility artifact says *"chunk 128 is the balance"*,
+this build plan says chunk 32. The disagreement is real and the LDS arithmetic settles it.
+
+Chunk 128 is **3-5x over the 64 KB per-workgroup limit under every staging choice**:
+
+| staging | max LDS-resident chunk | chunk 128 costs |
+| --- | ---: | ---: |
+| full fp32 (`kn`, `qn`, `L`, `ratio`, `delta`) | **32** | 320.0 KB — **5x over** |
+| fp16 `kn`/`qn`/`L`/`ratio`, fp32 `delta` | **48** | 192.0 KB — **3x over** |
+
+The feasibility artifact picked its operating point on the **numerics axis alone** — fp16
+NMSE improves monotonically with chunk size — without checking whether that chunk is
+resident. A builder acting on it would have started at chunk 128 and hit a 5x overrun.
+
+**But the reconciliation also shows chunk 32 was the right call on the artifact's own
+terms**, because its NMSE advantage does not bind:
+
+| chunk | fp16 NMSE (measured) | break-even | vs the cited reference (2e-7) | LDS-resident |
+| ---: | ---: | ---: | ---: | --- |
+| **32** | 7.961e-10 | **1.05 TFLOP/s** | **251x better** | **yes** |
+| 64 | 3.855e-10 | 1.14 TFLOP/s | 519x better | no |
+| 128 | 1.824e-10 | 1.30 TFLOP/s | 1096x better | no |
+
+Chunk 32 has the **lowest break-even in the artifact's own table**, is the only one that is
+LDS-resident, and its NMSE is still **251x better than the cited reference**. The extra
+orders of magnitude that chunks 64-128 buy are orders of magnitude **nobody asked for** —
+the admission question is whether the route clears the reference's 2e-7, and chunk 32
+clears it by 2.4 orders.
+
+**Governing operating point: chunk 32**, with chunk 48 available if `delta` is also staged
+in fp16 and occupancy does not bind. The feasibility artifact's chunk 128 is superseded on
+the feasibility axis, not the numerics axis.

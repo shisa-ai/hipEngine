@@ -80,3 +80,26 @@ p4096 window. Removing the recurrence entirely is therefore worth **~5% of the r
 Arithmetic model plus one measured sequential rate. One shape, one host class, no kernel
 built, no chunked schedule timed. The 61 TFLOP/s peak is the screen script's W7900 figure; the
 28.5 TFLOP/s is GD-3's measured FP32 ceiling with dual issue.
+
+---
+
+## Correction: the chosen operating point is not LDS-resident
+
+**Added when the chunk-scan build plan reconciled against this artifact.** This artifact
+chose **chunk 128** as "the balance" on the numerics axis — fp16 NMSE improves monotonically
+with chunk size — **without checking whether chunk 128 is resident in shared memory.** It is
+not:
+
+| staging | max LDS-resident chunk | chunk 128 |
+| --- | ---: | ---: |
+| full fp32 (`kn`, `qn`, `L`, `ratio`, `delta`) | **32** | 320.0 KB — **5x over the 64 KB limit** |
+| fp16 `kn`/`qn`/`L`/`ratio`, fp32 `delta` | **48** | 192.0 KB — **3x over** |
+
+**The break-even table above already shows chunk 32 was the better choice**: it has the
+*lowest* break-even of any operating point (1.05 TFLOP/s against chunk 128's 1.30), and its
+fp16 NMSE of 7.961e-10 is still **251x better than the cited reference's ~2e-7**. The extra
+orders of magnitude chunks 64-128 buy are orders nobody asked for — admission asks whether
+the route clears 2e-7, and chunk 32 clears it by 2.4 orders.
+
+**Governing operating point: chunk 32.** See
+`benchmarks/results/2026-09-30-qwen4exp-gd4-chunk-scan-buildplan/README.md`.
