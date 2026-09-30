@@ -16,6 +16,7 @@ HIP_SUCCESS: Final[int] = 0
 HIP_HOST_REGISTER_MAPPED: Final[int] = 0x02
 DEFAULT_HIP_LIBRARY: Final[str] = "libamdhip64.so"
 HIP_GRAPH_NODE_TYPE_KERNEL: Final[int] = 0
+HIP_GRAPH_NODE_TYPE_MEMCPY: Final[int] = 1
 
 
 class HipDim3(ctypes.Structure):
@@ -40,6 +41,50 @@ class HipKernelNodeParams(ctypes.Structure):
 
 
 HipMemcpyKind = MemcpyKind
+
+
+class HipPos(ctypes.Structure):
+    """ctypes layout of HIP's ``hipPos`` value."""
+
+    _fields_ = [("x", ctypes.c_size_t), ("y", ctypes.c_size_t), ("z", ctypes.c_size_t)]
+
+
+class HipPitchedPtr(ctypes.Structure):
+    """ctypes layout of HIP's ``hipPitchedPtr`` value."""
+
+    _fields_ = [
+        ("ptr", ctypes.c_void_p),
+        ("pitch", ctypes.c_size_t),
+        ("xsize", ctypes.c_size_t),
+        ("ysize", ctypes.c_size_t),
+    ]
+
+
+class HipExtent(ctypes.Structure):
+    """ctypes layout of HIP's ``hipExtent`` value."""
+
+    _fields_ = [("width", ctypes.c_size_t), ("height", ctypes.c_size_t), ("depth", ctypes.c_size_t)]
+
+
+class HipMemcpy3DParms(ctypes.Structure):
+    """ctypes layout of ``hipMemcpy3DParms`` from ``driver_types.h``.
+
+    Field order follows ROCm's header exactly (ABI-significant): ``srcArray``,
+    ``srcPos``, ``srcPtr``, ``dstArray``, ``dstPos``, ``dstPtr``, ``extent``,
+    ``kind``. Used by ``hipGraphMemcpyNodeGetParams`` to read back the copy a
+    captured memcpy node will perform.
+    """
+
+    _fields_ = [
+        ("srcArray", ctypes.c_void_p),
+        ("srcPos", HipPos),
+        ("srcPtr", HipPitchedPtr),
+        ("dstArray", ctypes.c_void_p),
+        ("dstPos", HipPos),
+        ("dstPtr", HipPitchedPtr),
+        ("extent", HipExtent),
+        ("kind", ctypes.c_int),
+    ]
 
 
 class HipError(RuntimeError):
@@ -297,6 +342,55 @@ class HipRuntime:
         self.check(function(ctypes.c_void_p(node), ctypes.byref(params)))
         return params
 
+    def graph_memcpy_node_params(self, node: int) -> tuple[int, int, int]:
+        """Return the ``(src, dst, count_bytes)`` a captured memcpy node will run.
+
+        HIP stores 1-D copies as ``hipMemcpy3DParms``: the pointers land in
+        ``srcPtr``/``dstPtr`` and the byte count in ``extent.width`` (per the
+        header, width is bytes for linear memory). Callers that know what the
+        node must copy should cross-check the returned count rather than trust
+        this reconstruction.
+        """
+
+        params = HipMemcpy3DParms()
+        function = self._inspection_function("hipGraphMemcpyNodeGetParams")
+        self.check(function(ctypes.c_void_p(node), ctypes.byref(params)))
+        return (
+            int(params.srcPtr.ptr or 0),
+            int(params.dstPtr.ptr or 0),
+            int(params.extent.width),
+        )
+
+    def graph_exec_memcpy_node_set_1d(
+        self,
+        graph_exec: int,
+        node: int,
+        *,
+        dst: int,
+        src: int,
+        count: int,
+        kind: HipMemcpyKind | int,
+    ) -> None:
+        """Re-target one memcpy node of an instantiated graph.
+
+        This is the per-replay update for copies whose destination is a
+        position the graph cannot know at capture time (the Gemma 4 KV
+        append): the executable keeps every other parameter, and the host
+        supplies the one value that moves each step.
+        """
+
+        function = self._inspection_function("hipGraphExecMemcpyNodeSetParams1D")
+        self.check(
+            function(
+                ctypes.c_void_p(graph_exec),
+                ctypes.c_void_p(node),
+                ctypes.c_void_p(dst),
+                ctypes.c_void_p(src),
+                ctypes.c_size_t(count),
+                ctypes.c_int(int(kind)),
+            )
+        )
+
     def kernel_name_ref_by_ptr(self, function_ptr: int, stream: int = 0) -> str:
         function = self._inspection_function("hipKernelNameRefByPtr")
         raw = function(ctypes.c_void_p(function_ptr), ctypes.c_void_p(stream))
@@ -439,6 +533,11 @@ class HipRuntime:
             "hipGraphGetEdges": ([ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)], ctypes.c_int),
             "hipGraphNodeGetType": ([ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)], ctypes.c_int),
             "hipGraphKernelNodeGetParams": ([ctypes.c_void_p, ctypes.POINTER(HipKernelNodeParams)], ctypes.c_int),
+            "hipGraphMemcpyNodeGetParams": ([ctypes.c_void_p, ctypes.POINTER(HipMemcpy3DParms)], ctypes.c_int),
+            "hipGraphExecMemcpyNodeSetParams1D": (
+                [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int],
+                ctypes.c_int,
+            ),
             "hipKernelNameRefByPtr": ([ctypes.c_void_p, ctypes.c_void_p], ctypes.c_char_p),
             "hipGetDevice": ([ctypes.POINTER(ctypes.c_int)], ctypes.c_int),
             "hipDeviceGetPCIBusId": ([ctypes.c_char_p, ctypes.c_int, ctypes.c_int], ctypes.c_int),
