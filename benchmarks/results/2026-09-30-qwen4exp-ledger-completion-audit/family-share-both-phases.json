@@ -105,6 +105,63 @@
         "share_pct": 0.06,
         "kernels": 8
       }
-    }
+    },
+    "resolved_top_kernels": [
+      {
+        "kernel": "31gguf_k_pack8_prefill_out_kernelIffLi8",
+        "mangled": "_ZN12_GLOBAL__N_131gguf_k_pack8_prefill_out_kernelIffLi8EEEvPKT_PKhPT0_iiii.kd",
+        "calls": 497,
+        "ms": 23.846,
+        "share_pct": 44.55,
+        "workgroup": "128",
+        "grid": "5120"
+      },
+      {
+        "kernel": "50gguf_q4_k_selected_dual_silu_logical128_t64_kernelItEEvPKT_PKlPKhS7_Ptiiiii.kd",
+        "mangled": "_ZN12_GLOBAL__N_150gguf_q4_k_selected_dual_silu_logical128_t64_kernelItEEvPKT_PKlPKhS7_Ptiiiii.kd",
+        "calls": 47,
+        "ms": 13.968,
+        "share_pct": 26.1,
+        "workgroup": "64",
+        "grid": "40960"
+      },
+      {
+        "kernel": "58q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_kernelEPKtPKlPKhPKfPtlllll",
+        "mangled": "_ZN12_GLOBAL__N_158q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_kernelEPKtPKlPKhPKfPtlllll.kd",
+        "calls": 43,
+        "ms": 5.42,
+        "share_pct": 10.13,
+        "workgroup": "64",
+        "grid": "163840"
+      },
+      {
+        "kernel": "31qwen4_exp_gdn_decode_f32_kernelEPKfS1_S1_S1_S1_S1_S1_PfS2_llll.kd",
+        "mangled": "_ZN12_GLOBAL__N_131qwen4_exp_gdn_decode_f32_kernelEPKfS1_S1_S1_S1_S1_S1_PfS2_llll.kd",
+        "calls": 36,
+        "ms": 2.215,
+        "share_pct": 4.14,
+        "workgroup": "256",
+        "grid": "12288"
+      },
+      {
+        "kernel": "21dense_gemv_out_kernelIffLb0",
+        "mangled": "_ZN12_GLOBAL__N_121dense_gemv_out_kernelIffLb0EEEvPKT_S3_S3_PT0_lll.kd",
+        "calls": 264,
+        "ms": 1.959,
+        "share_pct": 3.66,
+        "workgroup": "256",
+        "grid": "1024"
+      },
+      {
+        "kernel": "60qsa_sparse_attention_paged_bf16_ordered_values_v2_f32_kernelEPKtPKlPKiPKfS7_Pf",
+        "mangled": "_ZN12_GLOBAL__N_160qsa_sparse_attention_paged_bf16_ordered_values_v2_f32_kernelEPKtPKlPKiPKfS7_Pfllllll.kd",
+        "calls": 12,
+        "ms": 1.343,
+        "share_pct": 2.51,
+        "workgroup": "256",
+        "grid": "6144"
+      }
+    ],
+    "note": "rep2 window from the x4full stem, whose rocpd symbol table resolves the real kernel names that --kernel-rename replaced with ROCTX roles. Total 53.524 ms vs 54.173 ms for the x4decode stem (same rep, two profiler runs)."
   }
 }
