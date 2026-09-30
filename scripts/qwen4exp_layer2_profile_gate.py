@@ -109,6 +109,39 @@ CANDIDATES = {
         candidate_key=None,
         fallback_key=None,
     ),
+    # MX-1's gate/up half as a CONFIGURATION rather than a build. The
+    # production repair is a bit-parity mechanism: the risk kernel queues
+    # outputs within a Kahan bound of a BF16 rounding boundary so the sparse
+    # exact pass can reproduce the pair2 parent bit-for-bit, and the profile
+    # binds it "bit-identical to the pair2 owner". The plain iu8 owner
+    # publishes *identical arithmetic* without the risk criterion or the
+    # repair pass, and it is already reachable: the dispatch tests
+    # exact_grouped_q4_gate BEFORE the q4_iu8 branch, so clearing the former
+    # selects the latter. The production profile already binds
+    # Q4_IU8_PREFILL=1 but only on layers 35-47 while the repair route carries
+    # no layer restriction, so the layer set is widened to cover exactly the
+    # scope the repair currently serves. Q5_1 down is left at production
+    # because no plain non-risk iu8 sibling exists for it.
+    "repair_free_gate_up": CandidateSpec(
+        name="repair_free_gate_up",
+        classification="T1",
+        mechanism=(
+            "plain iu8-WMMA grouped gate/up on every layer with the "
+            "bit-parity repair removed; Q5_1 down unchanged at production"
+        ),
+        environment={
+            "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "0",
+            "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
+            "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "all",
+        },
+        base_profile="production",
+        scenario_id="qwen4exp-repair-free-gate-up",
+        candidate_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                       "selected_dual_wmma_iu8_prefill_bf16_bf16_out"),
+        fallback_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                      "selected_dual_wmma_prefill_compact_bf16_bf16_out"),
+        count_registered_dispatch=True,
+    ),
     "production_q8_fallback": CandidateSpec(
         name="production_q8_fallback",
         classification="diagnostic",
