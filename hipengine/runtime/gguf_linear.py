@@ -3076,151 +3076,6 @@ def _raw_k_prefill_rowbatch_dispatch(
     )
 
 
-_Q8_IU8_WMM_ENV = "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM"
-_Q8_IU8_WMM_ROLES_ENV = "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM_ROLES"
-
-
-def _q8_iu8_wmma_enabled() -> bool:
-    """Whether the iu8-WMMA dense route is bound on for this process."""
-
-    return os.environ.get(_Q8_IU8_WMM_ENV, "0") not in {"", "0", "false", "False"}
-
-
-def _q8_iu8_wmm_roles() -> frozenset[str] | None:
-    """Parse the role scope for the iu8-WMMA dense route, or ``None`` for all.
-
-    The route is a single boolean that claims every eligible Q8_0 prefill
-    linear, but its two recorded rejections each closed an *arm* rather than a
-    role: ``20260915T015835`` rejected the unchanged generic switch and said so
-    explicitly ("not role-isolated non-GR work"), and ``20260915T022059``
-    rejected the non-GR arm while recording that it "does not implicate every
-    projection". The ledger's reopen condition is therefore role-isolated
-    evidence, which a boolean cannot express: it can only re-measure the whole
-    route that already failed.
-
-    This scope narrows the route to named roles so each can be gated alone.
-    Values match a weight's slot path after its ``layers.<n>.`` prefix as a
-    *prefix*, so ``attn_gate`` selects ``layers.5.attn_gate.weight`` and a more
-    specific value such as ``attn_gate.weight`` selects the same tensor. An
-    empty or unset value means every role, which is the shape that already
-    fails and which a gate must be able to reproduce.
-    """
-
-    raw = os.environ.get(_Q8_IU8_WMM_ROLES_ENV, "")
-    values = {part.strip() for part in raw.split(",") if part.strip()}
-    return frozenset(values) if values else None
-
-
-def _weight_role(weight: object | None) -> str | None:
-    """Return a weight's role within its block, or ``None`` if unplaceable."""
-
-    spec = getattr(weight, "spec", None)
-    slot_path = getattr(spec, "slot_path", None)
-    if not isinstance(slot_path, str):
-        return None
-    parts = slot_path.split(".")
-    if len(parts) < 3 or parts[0] != "layers" or not parts[1].isdigit():
-        return None
-    return ".".join(parts[2:])
-
-
-def _role_in_scope(role: str | None, scope: frozenset[str]) -> bool:
-    """True when ``role`` matches a scope entry as a dotted-path prefix.
-
-    The match is on whole path segments, so ``attn`` does not select
-    ``attn_gate.weight``.
-    """
-
-    if role is None:
-        return False
-    segments = role.split(".")
-    for entry in scope:
-        wanted = entry.split(".")
-        if segments[: len(wanted)] == wanted:
-            return True
-    return False
-
-
-def _q8_iu8_role_cache_key(weight: object | None) -> tuple[object, ...]:
-    """The iu8 route's contribution to the dispatch-resolution cache key.
-
-    The role scope is invisible to the key unless it is named here. Two roles
-    of identical shape resolve the same key, so without this the first role's
-    decision is replayed for every later role and the scope becomes an artifact
-    of cache-fill order rather than a contract. The boolean flag alone cannot
-    express it, because the whole point of the scope is that different roles
-    resolve differently under the same flag.
-
-    This mirrors ``_wmma_scope_key`` above, which carries the same exposure and
-    whose omission was measured rather than theorized: a gate cleared the scope
-    for its teacher arm, both arms produced the same key, and the gate reported
-    bit-identical logits, a KL of exactly zero, and ``measurement_valid: true``.
-    """
-
-    enabled = _q8_iu8_wmma_enabled()
-    scope = _q8_iu8_wmm_roles() if enabled else None
-    return (
-        enabled,
-        scope,
-        _weight_role(weight) if scope is not None else None,
-    )
-
-
-def _q8_iu8_wmma_dispatch(
-    dispatch: GGUFLinearDispatch,
-    *,
-    rows: int,
-    in_features: int,
-    out_features: int,
-    weight: object | None = None,
-) -> GGUFLinearDispatch:
-    """Default-off iu8-WMMA route for Q8_0 F32/F32 prefill linears (T1).
-
-    Replaces the retained F32 coltile family for prefill-sized rows when
-    the geometry fits the dense iu8 kernel (in_features % 32 == 0). The
-    three-plane fp32 staging drift is gated by the production numerical
-    envelope; the exact coltile parents stay the default and the
-    sub-256-row path.
-
-    ``HIPENGINE_QWEN4_EXP_Q8_IU8_WMM_ROLES`` narrows the route to named
-    roles. Without it the route covers every eligible role, which is the
-    configuration that already failed the canonical envelope, so a gate has to
-    be able to narrow it.
-    """
-
-    if (
-        dispatch.abi != "raw"
-        or dispatch.key.quant != "gguf_q8_0"
-        or dispatch.key.variant
-        not in {
-            "prefill_f32_f32_out",
-            "coltile8_rowbatch4_f32_f32_out",
-            "coltile8_rowbatch4_wave_scale_f32_f32_out",
-        }
-        or rows <= 256
-        or in_features <= 0
-        or in_features % 32 != 0
-        or out_features <= 0
-        or not _q8_iu8_wmma_enabled()
-    ):
-        return dispatch
-    scope = _q8_iu8_wmm_roles()
-    if scope is not None and not _role_in_scope(_weight_role(weight), scope):
-        # A scoped route must not silently cover a weight it cannot place.
-        return dispatch
-    key = KernelKey(
-        dispatch.key.backend,
-        dispatch.key.layer,
-        dispatch.key.quant,
-        "iu8_wmma_prefill_f32_f32_out",
-    )
-    if not is_registered(key):
-        # Populate the raw families before deciding so the very first
-        # launch of a process cannot silently fall back past this route.
-        _ensure_linear_kernel_registered(key)
-    return GGUFLinearDispatch(key, "raw") if is_registered(key) else dispatch
-
-
 # The wide kernel stages BK = 64 K-elements per LDS tile, so ``_launch`` raises
 # on any other K. Keep the constant next to the selector that has to honour it.
 def _variant_scoped_library(
@@ -4130,20 +3985,11 @@ def launch_gguf_linear(
         _wmma_scope,
         _weight_layer_index(weight) if _wmma_scope is not None else None,
     )
-    # The iu8 route's cache entry has the same exposure as the WMMA scope above,
-    # and for the same reason: the role scope is invisible to the key unless it
-    # is named here. Two roles of identical shape resolve the same key, so
-    # without this the first role's decision is replayed for every later role
-    # and the scope becomes an artifact of cache-fill order. The boolean flag
-    # alone cannot express it, because the whole point of the scope is that
-    # different roles resolve differently under the same flag.
-    _iu8_role_key = _q8_iu8_role_cache_key(weight)
     cache_key = (
         generation(),
         _dense_wide_key,
         _staged_f32_key,
         _wmma_scope_key,
-        _iu8_role_key,
         weight.spec.layout,
         weight.spec.quant_key,
         rows,
@@ -4320,16 +4166,6 @@ def launch_gguf_linear(
         )
         dispatch = _raw_k_wave_scale_dispatch(
             dispatch, enabled=raw_k_variant == "coltile8_wave_scale")
-        dispatch = _q8_iu8_wmma_dispatch(
-            dispatch,
-            rows=rows,
-            in_features=in_features,
-            out_features=out_features,
-            weight=weight,
-        )
-        # After iu8: where both routes are enabled the iu8 kernel has already
-        # claimed the dispatch and its variant is not a wide-route parent, so
-        # iu8 keeps precedence and this is a no-op.
         dispatch = _q8_dense_wide_dispatch(
             dispatch,
             rows=rows,

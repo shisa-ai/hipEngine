@@ -95,7 +95,6 @@ def test_real_gr_alias_and_candidate_scopes_match():
     for name, enabled in (
         ("production_gr_up_restore", "GR_IU8"),
         ("production_gr_down_restore", "GR_IU8_DOWN"),
-        ("production_dense_q8_restore", "Q8_IU8_WMM"),
     ):
         spec = CANDIDATES[name]
         assert spec.requires_dispatch_count
@@ -103,7 +102,7 @@ def test_real_gr_alias_and_candidate_scopes_match():
         assert spec.dispatch_shape_positions == (3, 4, 5)
         assert spec.environment == {
             "HIPENGINE_QWEN4_EXP_" + flag: "1" if flag == enabled else "0"
-            for flag in ("GR_IU8", "GR_IU8_DOWN", "Q8_IU8_WMM", "Q8_MMQ_PREFILL")}
+            for flag in ("GR_IU8", "GR_IU8_DOWN", "Q8_MMQ_PREFILL")}
         with count_candidate_dispatch(
             key=KernelKey(*spec.candidate_key), direct_target=spec.direct_dispatch_target,
             direct_reference=spec.direct_dispatch_reference,
