@@ -854,13 +854,19 @@ def _qwen4_exp_bounded_kv_reset_enabled() -> bool:
     # full allocated capacity.  Sound by the invariant on
     # ``Qwen4ExpDenseAttentionState.written_cache_bytes``: allocation zeroes the
     # whole cache and writes only ever land below ``position``, so bytes above the
-    # bound are already zero.  At native capacity the full clear spends 99.6% of
-    # 29.182 ms on untouched storage.
+    # bound are already zero.
     #
-    # Default-off pending an end-to-end measurement and the poison/shorter-after-
-    # longer qualification the RT-4 row specifies.  Set
-    # HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET=1 to enable.
-    return os.environ.get("HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET", "0") not in {
+    # PROMOTED to default (2026-09-30).  Measured at 128K capacity: reset
+    # 15.689/15.519 ms -> 1.133/1.741 ms, 14.17 ms saved per request, decode
+    # identical in both regimes.  Exactness proven by parent parity on
+    # ``scripts/qwen4exp_layer2_profile_gate.py``: production_baseline and
+    # bounded_kv_reset produce an identical candidate_logits_sha256, with
+    # identical strict hashes across the two runs showing the harness itself is
+    # reproducible; the raw K/V buffers are byte-identical at all 12 attention
+    # states across three arms (flag off, off, on).  Set
+    # HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET=0 to restore the full-capacity clear
+    # for rollback or bisection.
+    return os.environ.get("HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET", "1") not in {
         "",
         "0",
         "false",

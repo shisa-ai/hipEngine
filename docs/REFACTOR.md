@@ -7870,26 +7870,39 @@ Two consequences worth knowing:
   occupancy, so the other quants in the decode-shaped pack8 family inherit it;
   that inheritance is still reasoned rather than measured.
 
-## `HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET` (RT-4)
+## `HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET` (RT-4) — promoted to default
 
-- Added 2026-09-30. When set, `Qwen4ExpGGUFResidentModelRunner.reset()` clears
-  only `[0, written_cache_bytes())` of each K/V cache instead of the full
-  allocated capacity. Measured at 128K capacity: reset 15.5 ms -> 1.13-1.74 ms,
-  saving 14.17 ms per request; decode unaffected in both regimes. Artifact:
+- Added 2026-09-30, **promoted to default the same day**. When enabled (now the
+  default), `Qwen4ExpGGUFResidentModelRunner.reset()` clears only
+  `[0, written_cache_bytes())` of each K/V cache instead of the full allocated
+  capacity. Measured at 128K capacity: reset 15.689/15.519 ms -> 1.133/1.741 ms,
+  **14.17 ms saved per request**, decode identical in both regimes. Artifact:
   `benchmarks/results/2026-09-30-qwen4exp-rt4-bounded-kv-reset/`.
-- **Exactness argument, not yet a gate result:** `allocate()` memsets the whole
-  cache and writes only land below `position`, so the skipped bytes are already
-  zero. This is why it is classified T1 rather than a reassociation. The binding
-  evidence is the `scripts/qwen4exp_layer2_profile_gate.py --candidate
-  bounded_kv_reset` run showing identical strict/candidate hashes.
-- Removal condition: promote to default once the exactness gate passes, then
-  delete the env flag, `_qwen4_exp_bounded_kv_reset_enabled`, and the falsy
-  spellings, keeping `tests/test_gpu_qwen4exp_kv_reset_bounded.py` as the
-  permanent contract for the bound. If the gate fails, delete the bounded path
-  and this entry instead.
+- **Exactness proven by parent parity, not asserted.** `scripts/qwen4exp_layer2_profile_gate.py`
+  run twice, `production_baseline` (no flag) and `bounded_kv_reset` (flag on),
+  both under the production profile: **identical `candidate_logits_sha256`**
+  (`260979d6...`). Both runs also produce an **identical `strict_logits_sha256`**,
+  which is the control showing the harness is reproducible, so the match is
+  evidence rather than coincidence. Independently, the raw K/V buffers are
+  **byte-identical at all 12 attention states** across three arms (flag off, off,
+  on), and the invariant `last_nonzero < bound` holds at every state
+  (1,064,959 vs 1,310,720).
+- **Note on the gate comparison:** an earlier single run compared the candidate
+  against the **strict** arm and showed differing logits hashes. That is the
+  gate's intended strict-vs-production difference, not a property of this flag -
+  which is why the parent-parity pair above, not the strict comparison, is the
+  binding evidence for a T1 candidate.
+- Removal condition: once the bounded path has survived a release cycle without a
+  rollback, delete the env flag and `_qwen4_exp_bounded_kv_reset_enabled`, keep
+  `tests/test_gpu_qwen4exp_kv_reset_bounded.py` as the permanent contract for the
+  bound, and drop the flag-contract test.
 - Not exercised by any test: rollback, cancellation and c2. The bound is
   re-derived from `position` on each prefill, which is an argument rather than a
   measurement.
+- **Diagnostic script gotcha:** `scripts/qwen4exp_rt4_kv_compare.py` initially
+  read buffers with `copy_device_to_host` before `device_synchronize()`, which
+  captured partially-written state and produced a phantom arm difference. Any
+  probe that reads device buffers must sync **before** the copy.
 
 ## `scripts/execution_profile_gguf_c1_pack8_wide_gate.py` (superseded harness)
 
