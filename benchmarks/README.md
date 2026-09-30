@@ -333,7 +333,19 @@ decode-path arithmetic rather than changing the route under test: `c66db0264`
 GEMV block at narrow projections). The gate certifies a prefill route but
 measures its drift over 128 teacher-forced decode steps, so its baseline is
 decode-path arithmetic and a promoted decode-path change invalidates a
-prefill-route certificate without touching that route. No speed claim is made.
+prefill-route certificate without touching that route. The route live at 16-47
+is `dense_wide` (`PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS`); the `wmma` route
+was retired at that scope because the wide route holds the identical envelope
+and is 5.4% faster, and the two routes' published logits are byte-identical. A
+full canonical re-gate of `dense_wide` at `cac0f1da5` gives teacher hash
+`294e6c08` (recorded `550bb9b8`) and candidate `10fd0ae5` (recorded `65370710`),
+mean KL 4.388e-4, max KL 2.341e-2, top-1 0.9942 and one row over the review
+boundary, with all hard gates still passing. The teacher hash was predicted by
+identity before the run, since both gates clear every selector for the teacher
+arm. One gap is recorded: the engagement detector added in `056e6fbd8` has no
+recorder for the `dense_wide` route, so its `candidate_route_engaged: false` is
+a coverage artifact and this gate cannot prove the route ran. No speed claim is
+made.
 [Evidence](results/2026-09-30-qwen4exp-rt1-chunk4096-gate/README.md).
 
 **Qwen3.8 Flash Next decode arithmetic (gfx1151, UD-Q4_K_XL).** The routed-expert
