@@ -117,5 +117,37 @@
       "fp16_staging": 196608
     },
     "supersedes": "benchmarks/results/2026-09-30-qwen4exp-gd4-chunk-scan-feasibility/ on the feasibility axis only, not the numerics axis"
+  },
+  "build_cost": {
+    "verdict": "NOT A PORT. Five components, one with no precedent in the linear_attn family, one of which changes a test contract rather than adding to it.",
+    "components": [
+      {
+        "n": 1,
+        "what": "fp16 WMMA GEMM primitive in linear_attn/",
+        "precedent": "none - WMMA appears only in the attention family, inline inside process_attention_tile in attention/laguna_flash_attention_prefill.hip (intrinsics at lines 230 and 360), attention-shaped rather than a generic GEMM helper"
+      },
+      {
+        "n": 2,
+        "what": "chunk-local scan (cooperative L in LDS, chunk 32, direct suffix products)",
+        "precedent": "none - the family is entirely scalar-FMA"
+      },
+      {
+        "n": 3,
+        "what": "chunk-axis state-propagation pass (second kernel)",
+        "precedent": "none"
+      },
+      {
+        "n": 4,
+        "what": "variant registration with tiled16 as the strict fallback",
+        "precedent": "the registry pattern exists"
+      },
+      {
+        "n": 5,
+        "what": "a new GPU test envelope",
+        "precedent": "CONFLICTS with the existing contract - tests/test_gpu_qwen4_exp_gdn_hip.py::test_qwen4_exp_gdn_prefill_is_exact_to_serial_decode holds every existing prefill route exact to serial decode, which a chunked scan cannot satisfy by construction because it reassociates the recurrence's floating-point sums. Component 5 is adding a second envelope-based prefill contract alongside the exact one, which docs/EXECUTION-PROFILES.md governs, not a local test edit."
+      }
+    ],
+    "estimate": "multi-session build, not a single iteration",
+    "residual_risk": "concentrated in component 1 (bringing WMMA into a scalar-FMA family) and component 3 (the second kernel's state handoff)"
   }
 }
