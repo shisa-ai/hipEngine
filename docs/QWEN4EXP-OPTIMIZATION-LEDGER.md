@@ -527,7 +527,7 @@ software-pipelined leaf (`20260929T083913`, `DP-8`).
 | Tried | Class | Evidence | Entry | Reopen only with |
 | --- | --- | --- | --- | --- |
 | Dense Q8 MMQ stack (`Q8_MMQ_PREFILL`, raw-Q token64, vector staging) | withdrawn | Passed short prompts, failed canonical depth after the recovery | `20260829T113335`, `20260914T154413` | Operand localization showing which role carries the depth failure |
-| iu8 WMMA dense Q8_0 (`Q8_IU8_WMM`), generic and non-GR restorations | withdrawn, then accuracy | Both restorations fail the canonical envelope | `20260909T024000`, `20260915T015835`, `20260915T022059` | Role-isolated evidence |
+| iu8 WMMA dense Q8_0 (`Q8_IU8_WMM`), generic and non-GR restorations | withdrawn, then accuracy | Both restorations fail the canonical envelope. **2026-09-30: CLOSED by the role-isolated evidence the reopen cell asked for - 14 of 17 roles claim and all 14 fail alone, zero pass.** | `20260909T024000`, `20260915T015835`, `20260915T022059`, `20260930T034024`, `20260930T091752` | — |
 | F16 WMMA / wide at 0-47, 12-47, 8-47 | accuracy | 0-47 mean KL 1.099e-3; 12-47 `general_en` 1.089e-3; 8-47 max 7.30e-2, top-1 1532/1548 | `20260917T053701` | A cheaper unmeasured scope (`DP-1`) or changed arithmetic |
 | Single-plane d4 MMQ (the 2.40x lever) | accuracy | Fails unit numerics | `20260903T000259` | — |
 | Two-plane d4x2 MMQ (1.38-1.4x) | accuracy | mean KL 1.598e-3, p95 8.70e-3, max 7.18e-2, top-1 0.983 | `20260910T113000` | — |

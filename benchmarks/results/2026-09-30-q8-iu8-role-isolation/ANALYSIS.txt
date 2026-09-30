@@ -1,0 +1,50 @@
+========================================================================================================
+CONTROLS
+========================================================================================================
+arm             claims    kl_mean     kl_p95     kl_p99     kl_max     top1  verdict
+baseline             0   0.000448   0.002085   0.006351   0.017192  0.99103  PASS
+full_route       28656   0.001394   0.007240   0.015292   0.031511  0.98718  FAIL kl_mean=0.0013939 > 0.001; kl_p95=0.00724019 > 0.005; top1_agreement=0.987179 < 0.99
+
+binding envelope: mean<=0.001 p95<=0.005 p99<=0.02 max<=0.05 top1>=0.99
+
+========================================================================================================
+ROLE ARMS
+========================================================================================================
+arm             claims    kl_mean     kl_p95     kl_p99     kl_max     top1  verdict
+attn_gate         2592   0.001680   0.009228   0.022562   0.037380  0.98590  FAIL kl_mean=0.00167999 > 0.001; kl_p95=0.0092279 > 0.005; kl_p99=0.0225623 > 0.02; top1_agreement=0.985897 < 0.99
+attn_k             864   0.001219   0.006483   0.014633   0.027915  0.98462  FAIL kl_mean=0.00121936 > 0.001; kl_p95=0.00648297 > 0.005; top1_agreement=0.984615 < 0.99
+attn_output        864   0.001439   0.007642   0.017836   0.037103  0.99487  FAIL kl_mean=0.00143901 > 0.001; kl_p95=0.00764189 > 0.005
+attn_q             864   0.001859   0.008928   0.025821   0.106523  0.98333  FAIL kl_mean=0.00185938 > 0.001; kl_p95=0.0089279 > 0.005; kl_p99=0.0258208 > 0.02; kl_max=0.106523 > 0.05; top1_agreement=0.983333 < 0.99
+attn_qkv          2592   0.001702   0.009016   0.021932   0.099049  0.98974  FAIL kl_mean=0.00170226 > 0.001; kl_p95=0.00901573 > 0.005; kl_p99=0.0219325 > 0.02; kl_max=0.0990493 > 0.05; top1_agreement=0.989744 < 0.99
+attn_v             864   0.001308   0.007258   0.014271   0.023857  0.98974  FAIL kl_mean=0.00130837 > 0.001; kl_p95=0.00725812 > 0.005; top1_agreement=0.989744 < 0.99
+expert_down          0   0.000548   0.002744   0.007226   0.021451  0.99103  INERT (claimed nothing - not evidence about this role)
+hc_attn_down      3456   0.001490   0.008462   0.019720   0.045730  0.98846  FAIL kl_mean=0.00149027 > 0.001; kl_p95=0.00846179 > 0.005; top1_agreement=0.988462 < 0.99
+hc_attn_up           0   0.000548   0.002744   0.007226   0.021451  0.99103  INERT (claimed nothing - not evidence about this role)
+hc_ffn_down       3456   0.001439   0.007293   0.016456   0.032988  0.99103  FAIL kl_mean=0.00143884 > 0.001; kl_p95=0.00729339 > 0.005
+hc_ffn_up            0   0.000548   0.002744   0.007226   0.021451  0.99103  INERT (claimed nothing - not evidence about this role)
+ple_key             72   0.001596   0.009174   0.018155   0.058100  0.98718  FAIL kl_mean=0.00159573 > 0.001; kl_p95=0.00917418 > 0.005; kl_max=0.0581004 > 0.05; top1_agreement=0.987179 < 0.99
+ple_value           72   0.001659   0.008063   0.018750   0.115324  0.98462  FAIL kl_mean=0.00165935 > 0.001; kl_p95=0.0080632 > 0.005; kl_max=0.115324 > 0.05; top1_agreement=0.984615 < 0.99
+shared_down       3456   0.001447   0.007564   0.020310   0.037998  0.99103  FAIL kl_mean=0.00144662 > 0.001; kl_p95=0.00756372 > 0.005; kl_p99=0.0203099 > 0.02
+shared_gate       3456   0.001312   0.006389   0.018135   0.062865  0.98718  FAIL kl_mean=0.00131167 > 0.001; kl_p95=0.00638884 > 0.005; kl_max=0.0628651 > 0.05; top1_agreement=0.987179 < 0.99
+shared_up         3456   0.001455   0.007162   0.019925   0.044718  0.99103  FAIL kl_mean=0.00145542 > 0.001; kl_p95=0.00716224 > 0.005
+ssm_out           2592   0.001667   0.008813   0.023085   0.062189  0.98974  FAIL kl_mean=0.00166673 > 0.001; kl_p95=0.00881309 > 0.005; kl_p99=0.0230848 > 0.02; kl_max=0.0621891 > 0.05; top1_agreement=0.989744 < 0.99
+
+--------------------------------------------------------------------------------------------------------
+inert-arm control (3 arms, mutually identical: True)
+  kl_mean=0.000548 kl_p95=0.002744 kl_p99=0.007226 kl_max=0.021451 top1=0.99103  -> PASS
+  (this is the correct route-off control: the candidate inherits from
+   production_gr_up_restore and so runs production defaults for every
+   flag it does not name, unlike production_conservative which zeroes
+   all conservative flags)
+
+========================================================================================================
+SUMMARY
+========================================================================================================
+verdict            : REJECTED - 14 of 17 roles claim and all 14 fail alone; zero pass
+claiming + passing : none
+claiming + failing : ['attn_gate', 'attn_k', 'attn_output', 'attn_q', 'attn_qkv', 'attn_v', 'hc_attn_down', 'hc_ffn_down', 'ple_key', 'ple_value', 'shared_down', 'shared_gate', 'shared_up', 'ssm_out']
+inert (no claims)  : ['expert_down', 'hc_attn_up', 'hc_ffn_up']
+
+full route claims 18 shapes, 28656 calls: [(640, 2560), (2560, 512), (2560, 640), (2560, 2560), (2560, 6144), (2560, 10240), (2560, 12288), (6144, 2560), (10240, 320)]
+
+re-derivation agrees with every recorded hard_gates_passed
