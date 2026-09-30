@@ -527,7 +527,7 @@ software-pipelined leaf (`20260929T083913`, `DP-8`).
 | Tried | Class | Evidence | Entry | Reopen only with |
 | --- | --- | --- | --- | --- |
 | LDS-staged f32 FMA tile (`staged_f32_bm128_bn64_bk32`), the mechanism `DP-1` names as its reopening route | accuracy | **Fails at 0-15 on three independent criteria**: mean KL 1.17743e-3 (limit 1e-3), p95 6.12058e-3 (limit 5e-3), top-1 0.986434 (limit 0.99), 7 rows over review. Canonical protocol: 12 cases, 1548 rows, 128 decode steps, chunk 1024, 3 repeats, determinism passed on all 12 prompts, teacher `coltile8_rowbatch4_f32_f32_out`, WMMA and dense_wide cleared in both arms. 0-11 also fails (mean 1.274e-3, 10 rows over review). **The failure is not a 0-15 boundary artefact and narrowing does not fix it**: `DP-8`'s ladder shows 0-7 worse than 0-15 (mean 1.354e-3 vs 1.177e-3) and 0-7 worse than 0-47, so the drift is concentrated in the earliest layers rather than cumulative, and every scope with marginal value fails. **The same mechanism passes at 16-47** (mean 3.236e-4, p95 1.629e-3, max 1.610e-2, top-1 0.99483, no rows over review) **Its value where it does pass is now measured rather than estimated: the 13-15 composition saves ~90 ms = 0.6% of prefill** (two runs, 4096 rows, chunk 1024, 900 staged launches against 0 in the baseline and a one-for-one replacement of the exact-chain leaf; `DP-8`). That is the deepest passing scope, and it is a narrow one: the same anchor charges 3262.5 ms of exact-chain dense-family time to layers 0-15, so the region where the value would be large is exactly the region that fails the envelope - and no number is offered for it, because this packet's own non-monotonicity forbids the extrapolation. | `20260929T083913`; artifacts `benchmarks/results/2026-09-29-q8-staged-f32-dense-prefill-layers-gate/artifact-layers0-15-4cat.json`, `...-layers16-47-4cat.json` | A different layer set. The mechanism's own summation-order drift is enough to fail at 0-15 while passing at 16-47, so the boundary is in which layers are converted, not in the tile. The 0-15 artifact's status is `invalid_or_screen_only`, so it is not a certificate - but the KL numbers are from the canonical protocol and fail the calibrated envelope regardless of certification. Its value at the scope where it passes is 0.6% of prefill, so a layer-set change is the whole question: the 0-15 region holds 20.7% of prefill in the exact chain the tile replaces. |
-| Dense Q8 MMQ stack (`Q8_MMQ_PREFILL`, raw-Q token64, vector staging) | withdrawn | Passed short prompts, failed canonical depth after the recovery | `20260829T113335`, `20260914T154413` | Operand localization showing which role carries the depth failure |
+| Dense Q8 MMQ stack (`Q8_MMQ_PREFILL`, raw-Q token64, vector staging) | withdrawn | Passed short prompts, failed canonical depth after the recovery **SUPERSEDED - THIS ROUTE IS A CURRENT PRODUCTION DEFAULT (`20260930T`).** The binder binds `Q8_MMQ_PREFILL` to `"1" if production` in `hipengine/generation/qwen4_exp_profiles.py`, so this row records as "not retained" a flag that is live. The recorded reason is "Passed short prompts, failed canonical depth after the recovery", but the flag is production-ON. **Whether the depth failure was later resolved or the flag was restored without a re-gate is not established here** - this is flagged, not settled. Its own reopen condition ("Operand localization showing which role carries the depth failure") is the thing to check first.| `20260829T113335`, `20260914T154413` | Operand localization showing which role carries the depth failure |
 | iu8 WMMA dense Q8_0 (`Q8_IU8_WMM`), generic and non-GR restorations | withdrawn, then accuracy | Both restorations fail the canonical envelope. **2026-09-30: CLOSED by the role-isolated evidence the reopen cell asked for - 14 of 17 roles claim and all 14 fail alone, zero pass.** | `20260909T024000`, `20260915T015835`, `20260915T022059`, `20260930T034024`, `20260930T091752` | — |
 | F16 WMMA / wide at 0-47, 12-47, 8-47 | accuracy | 0-47 mean KL 1.099e-3; 12-47 `general_en` 1.089e-3; 8-47 max 7.30e-2, top-1 1532/1548 | `20260917T053701` | A cheaper unmeasured scope (`DP-1`) or changed arithmetic |
 | Single-plane d4 MMQ (the 2.40x lever) | accuracy | Fails unit numerics | `20260903T000259` | — |
@@ -553,7 +553,7 @@ per-row publication, Q8 down register reuse and bundled reduction.
 | Grouped / WMMA / peer fast prefill profile | accuracy | 8.67 → 211.76 tok/s structural; fails the 687-row gate | `20260827T103921` | — |
 | Q4 T16 and pack8 replacement layouts | accuracy, perf | Neutral prefill, slower decode, fail mean/p95 KL; pack8 repack impractical | `20260827T113708`, `20260827T133503` | — |
 | Layer-2 grouped Q5_K route | perf, accuracy | ~1% regression over five pairs; exceeds prefill-last KL | `20260830T223941`, `20260831T065604` | — |
-| `PRODUCTION_MOE_PREFILL`, `Q4_IU8_PREFILL` overrides | withdrawn, perf, then task quality | Slower on `code-p4096` in the disabled-family sweep. **2026-09-30: the WMMA-MoE27 restore was given its own production verdict rather than inheriting the sweep's - the numerical envelope PASSES in all four categories (mean 1.18e-4 to 5.29e-4, p95 5.19e-4 to 2.67e-3, p99 2.08e-3 to 8.03e-3, max 2.82e-3 to 1.14e-2, top-1 0.99-1.00) while the TASK GATE FAILS 15/18 with three heldout divergences (`heldout_code_rate_limiter`, `heldout_general_ja_migration`, `heldout_general_ja_speculative`) and zero repeat mismatches, so the failure is deterministic arithmetic and not flakiness. Decision: reject candidate, keep strict fallback. THE BINDING CONSTRAINT IS TASK QUALITY, NOT SPEED, which is the same axis the sweep's own triggering candidate `production_q8_fallback` failed on.** | `2026-09-16-disabled-family-recoverable-time`, `20260930T093500` | **CORRECTED: not "new tiling, packing, fusion or repair work" - a faster tiling cannot change a task-gate failure.** Reopen only on a mechanism that fixes the three divergent prompts |
+| `PRODUCTION_MOE_PREFILL`, `Q4_IU8_PREFILL` overrides | withdrawn, perf, then task quality | Slower on `code-p4096` in the disabled-family sweep. **2026-09-30: the WMMA-MoE27 restore was given its own production verdict rather than inheriting the sweep's - the numerical envelope PASSES in all four categories (mean 1.18e-4 to 5.29e-4, p95 5.19e-4 to 2.67e-3, p99 2.08e-3 to 8.03e-3, max 2.82e-3 to 1.14e-2, top-1 0.99-1.00) while the TASK GATE FAILS 15/18 with three heldout divergences (`heldout_code_rate_limiter`, `heldout_general_ja_migration`, `heldout_general_ja_speculative`) and zero repeat mismatches, so the failure is deterministic arithmetic and not flakiness. Decision: reject candidate, keep strict fallback. THE BINDING CONSTRAINT IS TASK QUALITY, NOT SPEED, which is the same axis the sweep's own triggering candidate `production_q8_fallback` failed on.** **SUPERSEDED - THIS ROUTE IS A CURRENT PRODUCTION DEFAULT (`20260930T`).** The binder binds `Q4_IU8_PREFILL` to `"1" if production` in `hipengine/generation/qwen4_exp_profiles.py`, so this row records as "not retained" a flag that is live. Note `PRODUCTION_MOE_PREFILL` is ALSO production-ON via `PRODUCTION_MOE_PREFILL_ENV`, so the same-day (2026-09-30) correction above - "Decision: reject candidate, keep strict fallback" - coexists with both flags enabled. **Flagged, not settled.**| `2026-09-16-disabled-family-recoverable-time`, `20260930T093500` | **CORRECTED: not "new tiling, packing, fusion or repair work" - a faster tiling cannot change a task-gate failure.** Reopen only on a mechanism that fixes the three divergent prompts |
 | Exact scheduling family: expert grid 128, wider output tiles, Q4 team2 | perf | All bit-exact, neutral or negative | `20260831T073529`, `20260831T074736`, `20260831T075708`, `20260901T223441` | — |
 | Q4 register caches (decoded floats 0.666x, packed nibbles 0.404x, volatile metadata 0.136x), packed-nibble LDS cache, fixed-geometry specialization, row4/output4 retile | perf | All exact, all slower or distribution-dependent | `20260906T083411`, `20260906T084224`, `20260906T084909`, `20260906T091305`, `20260906T142927` | — |
 | Q5_1 simultaneous pair reduction; M2 hierarchical reduction; first-wave tail; row16 | perf | Leaf wins (M2 +6.99%) that regress the complete owner | `20260906T103958`, `20260905T005246`, `20260907T051623`, `20260907T095223` | — |
@@ -591,7 +591,7 @@ Live: exact fused GR sigmoid mean and GR up sigmoid mean (`20260831T094724`,
 
 | Tried | Class | Evidence | Entry | Reopen only with |
 | --- | --- | --- | --- | --- |
-| iu8 WMMA GR up / down (`GR_IU8`, `GR_IU8_DOWN`) | withdrawn, accuracy | +11.3% prefill combined when promoted; independently mean KL 1.40e-3 / 1.31e-3, p95 7.40e-3 / 6.84e-3 | `20260908T224000`, `20260908T234000`, `20260914T235202`, `20260915T001253` | A structurally different mechanism |
+| iu8 WMMA GR up / down (`GR_IU8`, `GR_IU8_DOWN`) | withdrawn, accuracy | +11.3% prefill combined when promoted; independently mean KL 1.40e-3 / 1.31e-3, p95 7.40e-3 / 6.84e-3 **SUPERSEDED - THIS ROUTE IS A CURRENT PRODUCTION DEFAULT (`20260930T`).** The binder binds `GR_IU8 / GR_IU8_DOWN` to `"1" if production` in `hipengine/generation/qwen4_exp_profiles.py`, so this row records as "not retained" a flag that is live. **This one is settled and the row is simply stale.** The binder comment records the re-qualification: GR up is "teacher-forced logits KL <= 7.4e-8 versus the incumbent with 100% top-1 and 10-100x argmax margins, bit-deterministic; full-suite A/B +9.2% prefill geo-mean with all 12 cases winning", and GR down "KL <= 5.5e-8 vs incumbent, top-1 100%, deterministic; full-suite A/B +2.0% prefill geo-mean on top of the promoted up leg". So the recorded mean KL 1.40e-3 / 1.31e-3 is **five orders of magnitude worse than the KL actually shipped**, because the promoted mechanism is a different one (three-plane fp32 staging). **The row's own reopen condition - "A structurally different mechanism" - was met, and nothing tracked it.** The +9.2%/+2.0% prefill gains are already in production; there is no win left here, only a wrong record.| `20260908T224000`, `20260908T234000`, `20260914T235202`, `20260915T001253` | A structurally different mechanism |
 | Compensated GR down; P4 up correction | accuracy | Pass operand screens, fail the full gate; code removed | `20260915T010915`, `20260915T013552` | — |
 | GR wide tile (`HIPENGINE_QWEN4_EXP_GR_WIDE`) | accuracy | 4.38x on the projection; mean KL 1.554e-3, max 7.349e-2, top-1 768/780 | `20260927T075248` | Changed/scoped `HC-6` with its own gate; `X-1` is informative |
 | Constant-accumulator row reuse RB8/H1; equal-accumulator RB2/H4; GR-specific MMQ64x128 | perf | RB8/H1 loses on both real weight banks; RB2/H4 not repeatably positive; 64x128 rejected | `20260906T075517`, `20260906T080204`, `20260906T021059` | The LDS-staged weight path (`HC-1`) |
@@ -608,7 +608,7 @@ int32 token-offset table and four-token QK unroll (`20260927T175027`,
 | Tried | Class | Evidence | Entry | Reopen only with |
 | --- | --- | --- | --- | --- |
 | H256 wave8 sparse attention; contiguous-chunk H256 | accuracy | Large deterministic speedup; fails p4096 numerics, top-1 and tasks | `20260831T181221`, `20260831T182919` | Tensor-core route under `QA-2` |
-| QSA flash prefill (`QSA_FLASH_PREFILL`, 33% family win) | withdrawn | Part of the failed recovery composition | `20260829T203508`, `20260914T090826` | — |
+| QSA flash prefill (`QSA_FLASH_PREFILL`, 33% family win) | withdrawn | Part of the failed recovery composition **SUPERSEDED - THIS ROUTE IS A CURRENT PRODUCTION DEFAULT (`20260930T`).** The binder binds `QSA_FLASH_PREFILL` to `"1" if production` in `hipengine/generation/qwen4_exp_profiles.py`, so this row records as "not retained" a flag that is live. The recorded reason is "Part of the failed recovery composition" - i.e. withdrawn **by association**, which is the same defect that hid the multi-column GDN win (see the R01/R02 row below). The flag is production-ON.| `20260829T203508`, `20260914T090826` | — |
 | Grid-exploded multirow QSA prefill; row-tiled persistent QSA prefill | perf, blocked | Untenable CTA grid; static geometry cannot reach the owner | `20260901T221408`, `20260901T221630` | — |
 | Grouped-column ordered QSA value pass | perf | Exact, loses the leaf screen | `20260901T211624` | — |
 | QSA long-context prefill reuse (PF-2) | perf | Slower at every shape | `20260903T142550` | — |
@@ -625,7 +625,7 @@ Live: tile-16 prefill (`20260905T050430`), register-state prefill
 
 | Tried | Class | Evidence | Entry | Reopen only with |
 | --- | --- | --- | --- | --- |
-| Column warps, peer (`GDN_COLWARPS_PREFILL`, `GDN_PEER_PREFILL`) | withdrawn, perf | +0.228 / +0.126 s, inside run-to-run spread, not additive | `20260829T185915`, `20260829T195152`, `20260914T090826` | A complete-owner mechanism |
+| Column warps, peer (`GDN_COLWARPS_PREFILL`, `GDN_PEER_PREFILL`) | withdrawn, perf | +0.228 / +0.126 s, inside run-to-run spread, not additive **SUPERSEDED - THIS ROUTE IS A CURRENT PRODUCTION DEFAULT (`20260930T`).** The binder binds `GDN_COLWARPS_PREFILL / GDN_PEER_PREFILL` to `"1" if production` in `hipengine/generation/qwen4_exp_profiles.py`, so this row records as "not retained" a flag that is live. Both flags are production-ON. `GDN_COLWARPS_PREFILL` is not merely live, it is the **gate the current GDN prefill default runs inside** (`qwen4_exp_gdn_tile16_prefill_selected` is only consulted when `colwarps_prefill` is true). The recorded "+0.228 / +0.126 s, inside run-to-run spread" therefore describes the wall of the path that is now the default.| `20260829T185915`, `20260829T195152`, `20260914T090826` | A complete-owner mechanism |
 | Journey tiled/DPP (`R01`) / multi-column (`R02`) restorations | accuracy (task) | **`R02` PROMOTED TO PRODUCTION (`20260930T`) - MEASURED 1.34x-1.68x FASTER THAN THE DPP ROUTE IT REPLACES, at NMSE ~1.8e-14 (fp32 round-off), with the production numerical gates passing; the correction below is what unblocked it.**  **CORRECTED (`20260930T`): THE ATTRIBUTION WAS WRONG - `R02` DID NOT FAIL THIS.** This row combined `R01` (tiled/DPP) and `R02` (multi-column) under one evidence entry - `20260914T201148`, which is **`R01`'s** entry - and carried `R01`'s Japanese failure across to `R02`. **The `R02` artifact contradicts that.** `benchmarks/results/2026-09-15-journey-gdn-multi-restoration/README.md` records the full 18-prompt/594-row short gate **passing** (mean KL 1.0724e-04, p95 3.9221e-04, max 9.67834e-03, 593/594 top-1) and the canonical depth gate **passing every declared limit** (mean KL 8.92215e-05 <= 1e-3, p95 4.206676e-04 <= 5e-3, p99 1.2666802e-03 <= 2e-2, max 4.4548289e-03 <= 5e-2, top-1 777/780 = 99.615% >= 99%), and states outright: **"The candidate does not reproduce the single-column Japanese speculative-decoding error."** `R02`'s binding finding is a **different prompt** - `heldout_general_en_quant`, where the candidate "conflates native AMD INT8 capability with library support and FP16 emulation" - and the artifact scopes it itself: "This one paired finding is **not proof of worse expected quality or a GDN kernel defect**." **So `R01` failed the Japanese complete-EOS task; `R02` did not.** They are separate candidates with separate entries and separate findings, and this row's single citation covered only the first. The top1 differences `R02` does record (3 of 780) are explicitly **in-envelope**: "Three top1 differences are permitted by the production envelope; exact generated IDs are not the admission criterion." **The removal premise this row fed into `docs/REFACTOR.md` rested on the misattribution and has been corrected there.**| `20260914T201148` (R01), `2026-09-15-journey-gdn-multi-restoration` (R02) | A passing predeclared task review |
 | Early column blocks | state | Fails production-width parity; a one-block fixture missed it | `20260831T135620` | — |
 | Prepared strict GDN; persistent transposed state | perf | Exact, regress the operation-complete boundary | `20260831T130106`, `20260831T214146` | — |
@@ -661,7 +661,7 @@ ms/token), device argmax (`20260831T153159`).
 | --- | --- | --- | --- | --- |
 | Q5_1 wave64 selected decode | accuracy | +6-8% warm decode; fails mean/p95 KL | `20260827T105018` | — |
 | R11 warp256 dp4a MoE GEMV pair | accuracy (task) | +6.5% TG; admission suite max KL 0.121-0.431, top-10 overlap 6-7/10 | `20260910T083000` | An exact-activation variant (`DE-1`) or a changed production candidate under §3.1 |
-| DP4A safe-43 decode (`Q4_DP4A64`) | withdrawn | Part of the failed composition | `20260829T000503`, `20260914T090826` | — |
+| DP4A safe-43 decode (`Q4_DP4A64`) | withdrawn | Part of the failed composition **SUPERSEDED - THIS ROUTE IS A CURRENT PRODUCTION DEFAULT (`20260930T`).** The binder binds `Q4_DP4A64` to `"1" if production` in `hipengine/generation/qwen4_exp_profiles.py`, so this row records as "not retained" a flag that is live. Withdrawn as "Part of the failed composition" - again **by association**. The flag is production-ON and is a `PRODUCTION_Q8_QSA_RESTORED_FLAGS` entry.| `20260829T000503`, `20260914T090826` | — |
 | GDN t128 decode | perf | Memory-dominated recurrence, no gain | `20260831T205428` | — |
 
 ### 7J. MTP
@@ -896,6 +896,47 @@ unchanged" - while PL-1's holds a *state* ("OPEN — workload-dependent, not a
 warm-kernel priority") in the column where an experiment belongs. **The count is only
 as good as the column it is derived from, and that column is not uniformly an
 experiment.** MR-3 is closed; GD-1, PL-1 and X-7 are flagged rather than settled,
+
+
+### Section 7's reopen conditions are recorded and never tracked
+
+**Six section-7 rows describe routes that are current production defaults.** Verified by
+reading the binder, not inferred: each named flag is bound to `"1" if production` in
+`hipengine/generation/qwen4_exp_profiles.py`.
+
+| row | flag | recorded reason | current state |
+| --- | --- | --- | --- |
+| Dense Q8 MMQ stack | `Q8_MMQ_PREFILL` | failed canonical depth | **ON** |
+| `PRODUCTION_MOE_PREFILL` / `Q4_IU8_PREFILL` | both | rejected candidate, keep strict fallback | **ON** |
+| iu8 WMMA GR up/down | `GR_IU8`, `GR_IU8_DOWN` | mean KL 1.40e-3 / 1.31e-3 | **ON** |
+| QSA flash prefill | `QSA_FLASH_PREFILL` | part of the failed recovery composition | **ON** |
+| Column warps, peer | `GDN_COLWARPS_PREFILL`, `GDN_PEER_PREFILL` | inside run-to-run spread | **ON** |
+| DP4A safe-43 decode | `Q4_DP4A64` | part of the failed composition | **ON** |
+
+**Three of the six were withdrawn "by association"** - as part of a failed composition,
+not on their own measurement. That is precisely the defect that hid the multi-column GDN
+win, where `R02` was condemned by a row citing only `R01`'s evidence.
+
+**One is settled and the row is simply stale.** `GR_IU8`/`GR_IU8_DOWN` were re-qualified
+and promoted: the binder records GR up at **KL <= 7.4e-8 with 100% top-1** and a
+**+9.2% prefill geo-mean**, GR down at **KL <= 5.5e-8** and **+2.0%** on top. The row's
+recorded mean KL 1.40e-3 is **five orders of magnitude worse than the KL actually
+shipped**, because the promoted mechanism is a different one (three-plane fp32 staging).
+**The row's own reopen condition - "A structurally different mechanism" - was met, and
+nothing tracked it.**
+
+**That is the systemic defect, and it is more general than the ledger's arithmetic:** every
+section-7 row carries a "Reopen only with" condition, and **nothing in the repository
+evaluates whether one has been satisfied.** A row can be simultaneously (a) correct when
+written, (b) superseded by later work, and (c) still read as a rejection by anyone
+consulting the table - which is the table's only purpose.
+
+**The consequence for this census is concrete**: section 7 is a candidate *source*, not
+just a graveyard. The retained multi-column GDN win - 1.34x-1.68x - was found by asking
+whether a recorded rejection still held. **Six more rows are now known to be contradicted
+by current state, and three were condemned by association rather than by measurement.**
+Whether any of those three holds a further win is an open question this census did not
+answer.
 because in those three the columns disagree and the resolution is a decision.
 
 **The metric series is not a metric.** `results.jsonl` records 107 iterations
