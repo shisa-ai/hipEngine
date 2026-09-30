@@ -805,9 +805,15 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         # Certified column-warp GDN prefill suffix (supersedes peer-GDN).
         # Decode retains its separately tuned rows==1 owner.
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1" if production else "0",
+        # The tile16 variant is consulted only inside the colwarps gate above, so
+        # it must be bound exactly where that gate is open. The UD quant is the
+        # arithmetic-recovery profile, which closes the gate (GDN_COLWARPS_PREFILL
+        # is in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS), so naming a tile16 route
+        # there selects a variant that can never be dispatched. Bind it for the
+        # profiles that actually keep the column-warp suffix enabled.
         "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": (
             "qwen4exp_gdn_tiled16_multi_prefill"
-            if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
+            if production and resolved.manifest.get("quant") != "gguf_ud_q4_k_xl"
             else ""
         ),
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": (
