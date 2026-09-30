@@ -70,3 +70,27 @@ rejection still held.
 
 One profile (production, `gguf_ud_q4_k_xl`), one host (gfx1151), static reading of the
 binder. **No timing was run for this artifact** — `performance_claim: false`.
+
+---
+
+## Follow-on: DE-3 is a landed win the census counted as outstanding
+
+Checking the actionable list against the same question turned up one more: **`DE-3` was
+counted actionable while its own status cell ends *"...PROMOTED TO THE DEFAULT
+(`20260930T`)"*.** It is a landed lever, not outstanding work. Closed; actionable 22 → 21.
+
+**Why the census missed it**: the census reads a row's status from the **end** of its status
+cell. DE-3's cell ends with rollback and test detail, so the terminal conclusion sits
+*before* that detail. The heuristic read operational tail as status.
+
+That is the **third distinct failure** of the same heuristic in this census:
+
+| # | row | how it failed |
+| --- | --- | --- |
+| 1 | `QA-2` | its own cell cost-gated it, but not with a status keyword |
+| 2 | `MR-3` | its columns agreed it should not be started; no keyword said so |
+| 3 | `DE-3` | the conclusion is in the cell, **before** trailing operational detail |
+
+**The count is derived from a positional heuristic over prose, and prose does not keep a
+stable shape.** Every correction has been a reading rather than a measurement, and each has
+moved the number by one.
