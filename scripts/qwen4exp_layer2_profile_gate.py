@@ -157,6 +157,42 @@ CANDIDATES = {
         dispatch_shape_positions=(7, 8, 9, 10),
         count_registered_dispatch=True,
     ),
+    "f16_compact_gate_up": CandidateSpec(
+        name="f16_compact_gate_up",
+        classification="T1",
+        mechanism=(
+            "the F16-WMMA compact grouped gate/up owner (Q4_K decoded to F16, "
+            "F16 WMMA, F32 accumulate) with no repair pass; Q5_1 down "
+            "unchanged at production"
+        ),
+        environment={
+            # The ONLY change: clear the exact-grouped Q4 gate so the chain
+            # falls through to the F16 owner. Q4_IU8_PREFILL stays at its
+            # default 0 and EXACT_GROUPED_DOWN stays at production, which
+            # isolates the gate/up half (the down leg's route is selected
+            # independently at its own dispatch site).
+            "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "0",
+        },
+        base_profile="production",
+        scenario_id="qwen4exp-f16-compact-gate-up",
+        candidate_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                       "selected_dual_wmma_prefill_compact_bf16_bf16_out"),
+        fallback_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                      "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"),
+        # This owner is also invoked by a direct module-attribute call, so the
+        # registry-entry counter alone would read zero. MX-1's premise is that
+        # the F16 route is admissible with NO repair because F16 decode error
+        # sits 8-9.5x below the BF16 floor already in the path - if that holds
+        # the 1,219.978 ms repair comes out as a configuration change rather
+        # than the from-scratch port the row was priced as.
+        direct_dispatch_target=("hipengine.runtime.qwen4_exp_runner",
+                                "gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out"),
+        direct_dispatch_reference=(
+            "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill",
+            "gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out"),
+        dispatch_shape_positions=(7, 8, 9, 10),
+        count_registered_dispatch=True,
+    ),
     "production_q8_fallback": CandidateSpec(
         name="production_q8_fallback",
         classification="diagnostic",
