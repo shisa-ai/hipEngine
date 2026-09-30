@@ -348,11 +348,7 @@ def _resolve_generator(artifact: Path, context: int) -> tuple[Any, Any, dict[str
     load_start = time.perf_counter()
     runner = generator._ensure_runner()
     load_s = time.perf_counter() - load_start
-    resolution = {}
-    for attribute in ("_resolved_backend", "_resolved_quant", "_resolved_execution_profile"):
-        value = getattr(llm, attribute, None)
-        resolution[attribute] = getattr(value, "value", value)
-    resolution["generator_type"] = type(generator).__name__
+    resolution = resolution_row(llm, generator)
     return llm, runner, {
         "resolve_s": resolve_s,
         "load_s": load_s,
@@ -413,6 +409,27 @@ def memory_row(samples: Sequence[tuple[str, int, int]]) -> dict:
         "peak_used_bytes": max(used.values()),
         "labels": labels,
     }
+
+
+def resolution_row(llm: Any, generator: Any) -> dict[str, Any]:
+    """JSON-safe resolution labels for the artifact's ``loading`` row.
+
+    Backend and quant resolve to enums (unwrapped via ``.value``); a registered
+    execution profile resolves to a ``ResolvedRuntimeProfile`` whose profile
+    name lives under ``.profile``. Embedding that object raw crashes
+    ``json.dumps`` when the artifact is written.
+    """
+    from hipengine.execution_profiles import ResolvedRuntimeProfile
+
+    resolution: dict[str, Any] = {}
+    for attribute in ("_resolved_backend", "_resolved_quant", "_resolved_execution_profile"):
+        value = getattr(llm, attribute, None)
+        if isinstance(value, ResolvedRuntimeProfile):
+            resolution[attribute] = value.profile.value
+        else:
+            resolution[attribute] = getattr(value, "value", value)
+    resolution["generator_type"] = type(generator).__name__
+    return resolution
 
 
 def main(argv: Sequence[str] | None = None) -> int:
