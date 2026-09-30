@@ -318,7 +318,7 @@ def _apply_mode(
         if mode not in {"before","after"}:
             raise ValueError("invalid chunk mode")
         return
-    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "moe-decode-warp", "moe-decode-warp-pair"}:
+    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         flag = ROW4_ENV if route_package == "q5k-row4" else QSA_H256_ENV
@@ -350,10 +350,6 @@ def _apply_mode(
             flag = "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"
         if route_package == "q8-wmma-down":
             flag = "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"
-        if route_package == "moe-decode-warp":
-            flag = "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP"
-        if route_package == "moe-decode-warp-pair":
-            flag = "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP"
         if route_package == "q8-wave-scale":
             flag = "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"
         if route_package == "gr-wave-scale":
@@ -381,9 +377,6 @@ def _apply_mode(
         if route_package == "q51-row-publish":
             flag = "HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH"
         environment[flag] = "1" if mode == "after" else "0"
-        if route_package == "moe-decode-warp-pair":
-            environment["HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN"] = (
-                "fast" if mode == "after" else "0")
         if route_package == "q8-mmq-planes2":
             environment["HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES"] = (
                 "2" if mode == "after" else "3")
@@ -434,7 +427,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="One full-suite pair, then stop for multiple clear losses or finish remaining pairs in-residency")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "moe-decode-warp", "moe-decode-warp-pair", "q8-mmq-planes2"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down", "q8-mmq-planes2"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 

@@ -64,7 +64,16 @@ DEFAULT_RESULTS = pathlib.Path(
 
 # Raw mangled kernel name -> traffic bucket.  Matched by substring so the
 # template suffixes do not have to be spelled out.
-GATE_UP_MARKER = "gguf_q4_k_selected_dual_silu_logical128_t64"
+#
+# The routed gate/up owner changed when the decode dp4a linear was promoted to
+# the production default (`20260929T`, DE-1).  A capture taken before that
+# promotion carries the exact variant; one taken after carries the dp4a variant.
+# Both are listed so this attribution runs against either capture, and `find`
+# reports which owner it actually charged.
+GATE_UP_MARKERS = (
+    "selected_dual_q8_1_dp4a_silu_logical128_t64",   # post-promotion (dp4a)
+    "gguf_q4_k_selected_dual_silu_logical128_t64",   # pre-promotion (exact)
+)
 DOWN_MARKER = "q5_1_selected_weighted_sum_logical256_t64"
 # The router GEMV is the fp32 dense GEMV over ffn_gate_inp (512 x 2560, 4 B/weight).
 # `qwen35_router_select_kernel` is NOT charged: it is the top-k over 512 logits
@@ -174,14 +183,15 @@ def main() -> int:
 
     moe_ms = family(per_kernel_ms, "moe")
 
-    def find(marker: str) -> tuple[float, float, str]:
-        hits = [(v, per_kernel_n[k], k[1]) for k, v in per_kernel_ms.items() if marker in k[1]]
-        if not hits:
-            raise SystemExit(f"no decode kernel matching {marker!r}")
-        hits.sort(reverse=True)
-        return hits[0]
+    def find(marker: str | tuple[str, ...]) -> tuple[float, float, str]:
+        for one in (marker,) if isinstance(marker, str) else marker:
+            hits = [(v, per_kernel_n[k], k[1]) for k, v in per_kernel_ms.items() if one in k[1]]
+            if hits:
+                hits.sort(reverse=True)
+                return hits[0]
+        raise SystemExit(f"no decode kernel matching {marker!r}")
 
-    gate_up_ms, gate_up_n, gate_up_name = find(GATE_UP_MARKER)
+    gate_up_ms, gate_up_n, gate_up_name = find(GATE_UP_MARKERS)
     down_ms, down_n, down_name = find(DOWN_MARKER)
     router_ms, router_n, router_name = find(ROUTER_GEMV_MARKER)
     select_ms, select_n, select_name = find(ROUTER_SELECT_MARKER)

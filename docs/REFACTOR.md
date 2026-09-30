@@ -557,6 +557,22 @@
   2.6-4.4x margin)", but that fixture does not contain `heldout_mixed_review`,
   which is exactly where the warp fails. A gate that omits the failing case
   cannot clear it. The ledger's own action cell had predicted this gap.
+- **CLOSED `20260930T` - the unread-env-var obligation is discharged.** All four
+  scripts named below are fixed, plus a fifth the obligation did not list.
+  `scripts/qwen4exp_moe_decode_warp_logits_probe.py` and
+  `scripts/qwen4exp_moe_decode_warp_state_gate.py` are **deleted**; the generic
+  helpers the probe happened to host (`hip_available`, `_forced_logits`, `_kl`)
+  moved to `scripts/qwen4exp_canonical_ar_bench.py`, which both surviving
+  importers already used. `scripts/qwen4exp_row4_state_gate.py` and
+  `scripts/qwen4exp_halo_box_campaign_ab.py` lost the `moe-decode-warp` and
+  `moe-decode-warp-pair` route packages from their `choices`, their flag
+  lookups, their `_DOWN` environment writes and their chunk-size sets - both had
+  **no engagement guard**, so those arms would have silently measured the
+  incumbent. **The fifth:** `scripts/qwen4exp_r2e_route_ablation.py` imported
+  `FLAG`/`FLAG_DOWN` from the deleted probe and set both to `"0"` in its
+  incumbent baseline; those writes are gone (they were no-ops once the flags
+  stopped being read). `grep` for `MOE_DECODE_WARP` across `scripts/` is now
+  empty. The kernel definitions stay registered, as the bullet below requires.
 - **What remains:** the kernel definitions stay registered (the probe scripts can
   still select them directly for future work); only the production routes are
   gone. `scripts/qwen4exp_moe_decode_warp_logits_probe.py`,
@@ -566,6 +582,17 @@
   variables are now **unread**, so those scripts' warp arms would silently
   measure the incumbent. **They must be deleted or made to fail loudly before
   being used again.**
+- **The stale-owner obligation is also discharged `20260930T`.**
+  `scripts/qwen4exp_de1_moe_per_kernel.py` hardcoded the gate/up owner as
+  `gguf_q4_k_selected_dual_silu_logical128_t64`, which stopped matching once the
+  dp4a variant became the production default; the marker now accepts either era
+  (`GATE_UP_MARKERS`, dp4a first) and `find` reports which owner it charged.
+  Verified against the existing pre-promotion capture, reproducing the recorded
+  14.013 ms/step, 63.43 GB/s, 28.7%-of-roof and 10.091 ms/step headroom exactly.
+  The failure was loud (`SystemExit`), not silent, but it made the tool unusable
+  against any post-promotion capture. **The general lesson:** a measurement tool
+  that matches kernels by name must tolerate the names a promotion changes, or
+  it silently becomes single-era.
 - Evidence: `benchmarks/results/2026-09-30-qwen4exp-moe-decode-warp-gateup-blocked/`,
   `benchmarks/results/2026-09-30-qwen4exp-de1-dual-vs-strict/`, and worklog
   `20260930T031044` (the measured scope table).
