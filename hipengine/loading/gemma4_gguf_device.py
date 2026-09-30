@@ -12,10 +12,15 @@ This module keeps the blocks as they are stored. Each tensor becomes one
 quantized linear dispatch in :mod:`hipengine.runtime.gguf_linear` reads those
 blocks directly.
 
-No repack step. ``launch_gguf_linear`` serves the ``raw`` layout for every quant
-type this artifact uses (Q4_K, Q5_1, Q5_K, Q8_0), at both decode and prefill
-shapes, so resident-layout conversion is a later performance question rather
-than a prerequisite for running.
+One tensor family converts at load: the fused Q4_K ``gate_up`` expert stack
+resides as bit-lossless T16 tiles (``LAYOUT_GGUF_Q4_K_T16``), whose decode
+GEMV measured 4.9-5.1x the raw-layout selected GEMV at bitwise-equal output
+and whose mmq32 / WMMA prefill owners resolve under the same quant key. The
+repack runs here, once per tensor, replacing the raw copy rather than
+adding one -- a second resident copy of the gate_up stacks would not fit the
+capacity the artifact already occupies. Everything else (Q5_1 / Q5_K / Q8_0
+downs, dense projections, norms) keeps raw residency; those quants have no
+t16 family or no measured reason to move.
 """
 
 from __future__ import annotations
@@ -32,9 +37,17 @@ from hipengine.loading.materialize import (
     load_host_array_to_device_as_dtype,
 )
 from hipengine.quant.gguf import GGMLQuantizationType, quant_layout
+from hipengine.quant.gguf_q4_k import (
+    GGUF_Q4_K_BLOCK_BYTES,
+    GGUF_Q4_K_TILE16_BLOCK_BYTES,
+    GGUF_Q4_K_TILE16_COLS,
+    repack_gguf_q4_k_tile16,
+)
+from hipengine.quant.gguf_repack import Q4_K_T16_SHAPE
 
 __all__ = [
     "LAYOUT_DENSE_F32",
+    "LAYOUT_GGUF_Q4_K_T16",
     "LAYOUT_RAW_GGUF",
     "Gemma4GGUFDeviceWeight",
     "Gemma4GGUFWeightSpec",
@@ -47,6 +60,10 @@ __all__ = [
 
 LAYOUT_RAW_GGUF = "raw_gguf"
 LAYOUT_DENSE_F32 = "dense_f32"
+# The T16 tiles resident layout for Q4_K expert stacks. The string is the
+# registry quant key it dispatches under, by design: the four-axis key carries
+# the layout, so no dispatch site branches on it.
+LAYOUT_GGUF_Q4_K_T16 = "gguf_q4_k_t16_v1"
 
 # The quant types this artifact is built from, plus the f32 norms. This is the
 # set the *loader* can carry, not an admission list for a model: a Gemma 4 GGUF
@@ -83,7 +100,17 @@ class Gemma4GGUFDeviceWeight:
     allocations: Mapping[str, DeviceTensorAllocation]
     backend: str
 
-    def allocation(self, name: str = "raw") -> DeviceTensorAllocation:
+    def allocation(self, name: str | None = None) -> DeviceTensorAllocation:
+        """The resident allocation ``name``, or the spec's primary one.
+
+        The primary is ``spec.allocation_names[0]``: ``raw`` for the layouts
+        that hold GGUF bytes as stored, ``tiles`` for the T16 conversion. Call
+        sites that read weights through dispatch want the primary; callers
+        that address a known layout by name keep passing it.
+        """
+
+        if name is None:
+            name = self.spec.allocation_names[0]
         return self.allocations[name]
 
     def has_allocation(self, name: str) -> bool:
@@ -99,10 +126,12 @@ class Gemma4GGUFDeviceWeight:
 
         A rank-3 ``(num_experts, out, in)`` expert tensor is one contiguous
         allocation, and the caller selects an expert by offsetting into it. Each
-        expert's rows are contiguous, so the stride is the tensor's byte count
-        divided by the expert count -- which is the right expression for a
-        quantized tensor, where a row is a whole number of 256-element blocks
-        rather than ``in_features * itemsize``.
+        expert's rows are contiguous, so the stride is the allocation's byte
+        count divided by the expert count -- the right expression for any
+        resident layout: for raw GGUF bytes a row is a whole number of
+        256-element blocks rather than ``in_features * itemsize``, and for T16
+        tiles the allocation is exactly the tiled stack, so one expression
+        serves both and half-offsets stay on the layout's own boundaries.
         """
 
         shape = self.spec.source.shape
@@ -111,7 +140,7 @@ class Gemma4GGUFDeviceWeight:
                 f"{self.spec.slot_path} is rank {len(shape)}, not a stacked expert tensor"
             )
         experts = int(shape[0])
-        nbytes = int(self.spec.source.nbytes)
+        nbytes = int(self.allocations[self.spec.allocation_names[0]].buffer.nbytes)
         if experts <= 0 or nbytes % experts:
             raise ValueError(
                 f"{self.spec.slot_path}: {nbytes} bytes does not divide evenly across "
@@ -153,6 +182,30 @@ def _plan_one(
     # here would multiply the allocation count by 128 for no benefit, and the
     # fused ``gate | up`` stack stays whole for the same reason -- the int8 MMQ
     # leaf reads it through an explicit expert stride rather than a second copy.
+    #
+    # The fused Q4_K gate_up stack is the one tensor whose owners are all
+    # registered for the T16 tiles quant key (decode's selected GEMV, the mmq32
+    # prefill leaf, the WMMA alias), so it resides tiled, replacing its raw
+    # copy. The slot names the tensor's dispatch role -- down stacks run a
+    # different owner chain with no t16 service -- and the shape contract is
+    # ``Q4_K_T16_SHAPE``'s, so a stack it rejects keeps raw residency.
+    if (
+        qtype is GGMLQuantizationType.Q4_K
+        and slot_path.endswith(".ffn_gate_up_exps")
+        and len(source.shape) == 3
+    ):
+        try:
+            Q4_K_T16_SHAPE.validate(source.byte_shape)
+        except ValueError:
+            pass
+        else:
+            return Gemma4GGUFWeightSpec(
+                slot_path=slot_path,
+                source=source,
+                quant_key=LAYOUT_GGUF_Q4_K_T16,
+                layout=LAYOUT_GGUF_Q4_K_T16,
+                allocation_names=("tiles",),
+            )
     return Gemma4GGUFWeightSpec(
         slot_path=slot_path,
         source=source,
@@ -203,10 +256,30 @@ def plan_gemma4_gguf_resident_specs(
     return tuple(specs)
 
 
+def _planned_nbytes(spec: Gemma4GGUFWeightSpec) -> int:
+    """Device bytes the spec's resident layout will occupy.
+
+    Raw and dense layouts occupy exactly their stored bytes; the T16 tiles
+    carry per-16-row scale blocks and occupy the repack's planned size, which
+    is what capacity checks must sum.
+    """
+
+    if spec.layout == LAYOUT_GGUF_Q4_K_T16:
+        experts, out_features, bytes_per_row = spec.source.byte_shape
+        blocks = bytes_per_row // GGUF_Q4_K_BLOCK_BYTES
+        return (
+            experts
+            * (out_features // GGUF_Q4_K_TILE16_COLS)
+            * blocks
+            * GGUF_Q4_K_TILE16_BLOCK_BYTES
+        )
+    return int(spec.source.nbytes)
+
+
 def resident_bytes(specs: tuple[Gemma4GGUFWeightSpec, ...]) -> int:
     """Return the device bytes ``specs`` would occupy, without allocating."""
 
-    return sum(int(spec.source.nbytes) for spec in specs)
+    return sum(_planned_nbytes(spec) for spec in specs)
 
 
 def materialize_gemma4_gguf_device_weight(
@@ -218,9 +291,15 @@ def materialize_gemma4_gguf_device_weight(
     backend: str = "hip_gfx1100",
     allocator=None,
 ) -> Gemma4GGUFDeviceWeight:
-    """Upload one planned weight's blocks to device, unmodified."""
+    """Upload one planned weight's blocks to device in its resident layout.
+
+    Raw and dense layouts upload the stored bytes unmodified; the T16 layout
+    uploads the bit-lossless repack of those bytes, which is the layout's
+    definition rather than a change to the tensor.
+    """
 
     raw = reader.tensor_data(spec.source.name)
+    allocation_name = "raw"
     if spec.layout == LAYOUT_RAW_GGUF:
         # ``storage_dtype`` is the byte view the kernels index; every block type
         # this loader carries stores as uint8 blocks.
@@ -233,13 +312,19 @@ def materialize_gemma4_gguf_device_weight(
         dtype, source_dtype = DType.INT8, "I8"
     elif spec.layout == LAYOUT_DENSE_F32:
         dtype, source_dtype = DType.FP32, "F32"
+    elif spec.layout == LAYOUT_GGUF_Q4_K_T16:
+        raw = repack_gguf_q4_k_tile16(
+            np.frombuffer(raw, dtype=np.uint8).reshape(spec.source.byte_shape)
+        ).tiles
+        allocation_name = "tiles"
+        dtype, source_dtype = DType.INT8, "I8"
     else:
         raise ValueError(f"unsupported resident layout {spec.layout!r}")
 
     return Gemma4GGUFDeviceWeight(
         spec=spec,
         allocations={
-            "raw": load_host_array_to_device_as_dtype(
+            allocation_name: load_host_array_to_device_as_dtype(
                 spec.source.name,
                 raw,
                 dtype,

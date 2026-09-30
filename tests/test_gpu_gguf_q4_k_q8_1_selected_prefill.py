@@ -45,6 +45,7 @@ from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_BLOCK_BYTES,
     GGUF_Q4_K_SUBBLOCK,
     GGUF_Q4_K_SUBBLOCKS,
+    GGUF_Q4_K_TILE16_COLS,
     gguf_q4_k_mmq_tile16_preview_matmul,
     interleave_gguf_q4_k_tile16_dual,
     pack_gguf_q4_k_mmq_tile16_preview,
@@ -450,6 +451,14 @@ def test_gguf_q4_k_q8_1_selected_prefill_wrapper_validates_common_contract() -> 
             entry(**{**mmq32_kwargs, "expert_stride_rows": -1})
         with pytest.raises(ValueError, match="expert_stride_rows must span both halves"):
             entry(**{**mmq32_kwargs, "expert_stride_rows": 16})
+
+    # The T16 branch strides a fused stack in whole 16-column tile columns;
+    # a non-multiple would floor-divide and silently misindex, so it fails
+    # loudly at the wrapper instead.
+    with pytest.raises(ValueError, match="multiple of the T16 tile width"):
+        gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+            **{**mmq32_kwargs, "expert_stride_rows": 40}
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1275,10 +1284,22 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
     fused_up_offset = 0
     fused_expert_stride = 0
     if fused_stride:
-        if layout != "raw" or activation_passes != 1:
-            raise ValueError("fused_stride requires the raw single-pass layout")
-        row_bytes = int(qweight_a.shape[-1])
-        fused_up_offset = fixture.out_features_a * row_bytes
+        if activation_passes != 1:
+            raise ValueError("fused_stride requires the single-pass layout")
+        if layout == "raw":
+            # The up half sits one half of a raw row frame into the expert
+            # block: ``shape[-1]`` is the raw bytes-per-row.
+            row_bytes = int(qweight_a.shape[-1])
+            fused_up_offset = fixture.out_features_a * row_bytes
+        else:
+            # T16 tiles are (experts, out_tiles, blocks, block_bytes): the up
+            # half starts at tile column out_features_a / 16 into the expert
+            # block, so a raw row-byte offset would land past it.
+            blocks_per_row = int(qweight_a.shape[2])
+            block_bytes = int(qweight_a.shape[3])
+            fused_up_offset = (
+                fixture.out_features_a // GGUF_Q4_K_TILE16_COLS
+            ) * blocks_per_row * block_bytes
         fused_expert_stride = (
             fixture.out_features_a + fixture.out_features_b
             if fused_stride_rows is None
@@ -1489,6 +1510,14 @@ def test_q4_k_q8_1_ds4_selected_prefill_bf16_matches_ds4_cpu_reference(
             True,
             id="empty-first-multi-block-source-remap",
         ),
+        pytest.param(
+            [64] * 8,
+            4608,
+            4608,
+            4608,
+            False,
+            id="gemma-gate-up-fused-t16",
+        ),
     ],
 )
 def test_q4_k_q8_1_ds4_mmq32_fused_stride_matches_split_tensors(
@@ -1530,6 +1559,28 @@ def test_q4_k_q8_1_ds4_mmq32_fused_stride_matches_split_tensors(
         fused_stride_rows=max(out_features_a, out_features_b),
     )
     assert not np.array_equal(truncated, split)
+
+    # The Gemma 4 loader converts this same fused stack to the T16 tiles
+    # layout, and production then wires it fused into the t16 mmq32 leaf. The
+    # split-tensors t16 form was the only t16 combination covered before, so
+    # the fused t16 read has its own contract: same bytes, same result, and a
+    # stride that is not honored must show up as a difference.
+    t16_split = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture, source_remap=source_remap, layout="t16"
+    )
+    np.testing.assert_array_equal(t16_split, split)
+    t16_fused = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture, source_remap=source_remap, layout="t16", fused_stride=True
+    )
+    np.testing.assert_array_equal(t16_fused, split)
+    t16_truncated = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture,
+        source_remap=source_remap,
+        layout="t16",
+        fused_stride=True,
+        fused_stride_rows=max(out_features_a, out_features_b),
+    )
+    assert not np.array_equal(t16_truncated, split)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

@@ -66,9 +66,13 @@ def make_q4_k_weight(out_features: int, in_features: int) -> np.ndarray:
 def _make_q4_k_block(out_idx: int, block_idx: int) -> np.ndarray:
     d = np.float16(0.015625 * (1 + (out_idx % 5)))
     dmin = np.float16(0.0078125 * (1 + (block_idx % 3)))
-    scales = ((np.arange(8, dtype=np.uint8) * 3 + out_idx + block_idx) % 63 + 1).astype(np.uint8)
-    mins = ((np.arange(8, dtype=np.uint8) * 5 + 2 * out_idx + block_idx) % 17).astype(np.uint8)
-    q = ((np.arange(QK_K, dtype=np.uint16) + out_idx * 7 + block_idx * 11) % 16).astype(np.uint8)
+    # int32 accumulators: numpy 2 refuses out-of-range Python ints added to
+    # uint8 arrays, and Gemma-scale fixtures (out_features in the thousands)
+    # cross 256. For every shape the small fixtures cover, no wrap occurred,
+    # so the widened arithmetic is value-identical there.
+    scales = ((np.arange(8, dtype=np.int32) * 3 + out_idx + block_idx) % 63 + 1).astype(np.uint8)
+    mins = ((np.arange(8, dtype=np.int32) * 5 + 2 * out_idx + block_idx) % 17).astype(np.uint8)
+    q = ((np.arange(QK_K, dtype=np.int32) + out_idx * 7 + block_idx * 11) % 16).astype(np.uint8)
 
     packed_scales = _pack_q4_k_scales(scales, mins)
     q_groups = q.reshape(8, 32)

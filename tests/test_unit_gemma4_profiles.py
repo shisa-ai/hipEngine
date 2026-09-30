@@ -35,6 +35,9 @@ _MMQ32 = "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 _WMMA_DOWN = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
 _GROUPED_DUAL = "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
 _GROUPED_DOWN_Q5_1 = "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
+# The T16-converted gate_up scope's exact owner: grouped registers no T16
+# owner, so both plans carry the selected owner for that scope.
+_T16_DECODE = "selected_t16_gemv_decode_bf16_bf16_out"
 
 # Register at import, not only inside each test: conftest snapshots
 # ``registry._KERNELS`` in ``pytest_collection_finish`` (after every module has
@@ -99,6 +102,14 @@ def test_production_manifest_matches_the_measured_routes() -> None:
     )
     rows = _by_scope(resolved)
     assert rows[("moe_linear", "gate_up_q4_k")]["selected_variant"] == _MMQ32
+    # The T16 conversion moves the registry key the rows resolve under:
+    # gate_up dispatches as its tiles layout, both at prefill and decode.
+    assert rows[("moe_linear", "gate_up_q4_k")]["registry_quant"] == (
+        "gguf_q4_k_t16_v1"
+    )
+    assert rows[("linear", "moe_decode_q4_k")]["registry_quant"] == (
+        "gguf_q4_k_t16_v1"
+    )
     assert rows[("moe_linear", "gate_up_q5_k")]["selected_variant"] == _MMQ32
     assert rows[("moe_linear", "down_q5_1")]["selected_variant"] == _WMMA_DOWN
     assert rows[("linear", "dense_prefill_q8_0")]["selected_variant"] == (
@@ -118,8 +129,12 @@ def test_strict_selects_the_measured_grouped_arm_for_moe() -> None:
         profile=ExecutionProfile.STRICT,
     )
     rows = _by_scope(resolved)
-    # The MMQ production owner must be gone: grouped is the exact arm.
-    assert rows[("moe_linear", "gate_up_q4_k")]["selected_variant"] == _GROUPED_DUAL
+    # The MMQ production owner must be gone: grouped is the exact arm for the
+    # raw stacks, and the T16-converted Q4_K scope resolves its exact owner
+    # through the selected chain (grouped registers no T16 owner).
+    assert rows[("moe_linear", "gate_up_q4_k")]["selected_variant"] == _T16_DECODE
+    # The unconverted Q5_K stack keeps the measured grouped strict arm.
+    assert rows[("moe_linear", "gate_up_q5_k")]["selected_variant"] == _GROUPED_DUAL
     assert rows[("moe_linear", "down_q5_1")]["selected_variant"] == _GROUPED_DOWN_Q5_1
     assert _MMQ32 not in {row["selected_variant"] for row in rows.values()}
     assert resolved.profile is ExecutionProfile.STRICT

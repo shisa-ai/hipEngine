@@ -16,6 +16,7 @@ import pytest
 from hipengine.loading.gemma4_gguf_device import (
     LAYOUT_DENSE_F32,
     LAYOUT_RAW_GGUF,
+    Gemma4GGUFDeviceWeight,
     materialize_gemma4_gguf_device_weight,
     plan_gemma4_gguf_resident_specs,
     resident_bytes,
@@ -52,7 +53,12 @@ def test_every_tensor_gets_a_spec(reader: GGUFReader) -> None:
 
 
 def test_quant_keys_follow_the_artifact(reader: GGUFReader) -> None:
-    """The resident quant key is the tensor's own type, not a default."""
+    """The resident quant key follows the tensor's type and resident layout.
+
+    Raw residency keeps ``gguf_<type>``; the T16 conversion of the fused
+    gate_up stack carries the layout string as its quant key, which is the
+    registry key its owners resolve under.
+    """
 
     by_name = {spec.source.name: spec for spec in plan_gemma4_gguf_resident_specs(reader)}
     for name, spec in by_name.items():
@@ -60,10 +66,15 @@ def test_quant_keys_follow_the_artifact(reader: GGUFReader) -> None:
         if source.ggml_type == GGMLQuantizationType.F32:
             assert spec.layout == LAYOUT_DENSE_F32, name
             assert spec.quant_key == "f32", name
+            assert spec.allocation_names == ("raw",), name
+        elif spec.layout == T16_LAYOUT:
+            assert spec.quant_key == T16_LAYOUT, name
+            assert spec.allocation_names == ("tiles",), name
+            assert source.ggml_type == GGMLQuantizationType.Q4_K, name
         else:
             assert spec.layout == LAYOUT_RAW_GGUF, name
             assert spec.quant_key == f"gguf_{source.ggml_type_name.lower()}", name
-        assert spec.allocation_names == ("raw",), name
+            assert spec.allocation_names == ("raw",), name
 
 
 def test_a_stacked_expert_tensor_stays_one_allocation(reader: GGUFReader) -> None:
@@ -82,7 +93,10 @@ def test_a_stacked_expert_tensor_stays_one_allocation(reader: GGUFReader) -> Non
     assert len(names) == len(set(names)), "a stacked expert tensor was planned more than once"
 
     for spec in stacked:
-        assert spec.allocation_names == ("raw",), spec.slot_path
+        # One allocation for the whole stack, named for its resident layout:
+        # ``raw`` for GGUF bytes as stored, ``tiles`` for the T16 conversion.
+        expected_name = "tiles" if spec.layout == T16_LAYOUT else "raw"
+        assert spec.allocation_names == (expected_name,), spec.slot_path
         assert spec.source.shape[0] > 1, spec.slot_path
         # One allocation holds all experts. If the planner had split per expert
         # the resident total would be the same but the allocation count would be
@@ -92,13 +106,25 @@ def test_a_stacked_expert_tensor_stays_one_allocation(reader: GGUFReader) -> Non
 
 
 def test_resident_bytes_is_the_artifact_bytes(reader: GGUFReader) -> None:
-    """Residency is the stored size, not a dequantized size."""
+    """Raw and dense residency is the stored size, not a dequantized size.
+
+    The T16-converted stacks are planned separately at their tiles size (see
+    ``test_resident_bytes_counts_the_planned_layouts``); everything else must
+    still occupy exactly what the artifact stores.
+    """
 
     specs = plan_gemma4_gguf_resident_specs(reader)
+    t16_sources = {spec.source.name for spec in specs if spec.layout == T16_LAYOUT}
     expected = sum(
-        tensor.nbytes for tensor in reader.info.tensors if tensor.name != "rope_freqs.weight"
+        tensor.nbytes
+        for tensor in reader.info.tensors
+        if tensor.name != "rope_freqs.weight" and tensor.name not in t16_sources
     )
-    assert resident_bytes(specs) == expected
+    planned_raw = sum(
+        int(spec.source.nbytes) for spec in specs if spec.layout != T16_LAYOUT
+    )
+    assert planned_raw == expected
+    assert t16_sources, "fixture gate_up stacks should convert to t16"
 
 
 def test_an_unsupported_quant_type_names_the_type(reader: GGUFReader) -> None:
@@ -532,3 +558,216 @@ def test_fused_blocks_are_the_members_bytes_in_order(reader: GGUFReader) -> None
         np.testing.assert_array_equal(host, expected, err_msg="fused residency")
     finally:
         weight.free()
+
+
+# --------------------------------------------------------------------------
+# Resident T16 tiles for the fused gate_up stack (D1 repack)
+# --------------------------------------------------------------------------
+
+# The layout string and the registry quant key are the same string by design:
+# dispatch routes on ``quant_key`` alone, with no backend or quant branch.
+T16_LAYOUT = "gguf_q4_k_t16_v1"
+
+
+def _t16_tiles_nbytes(spec) -> int:
+    """Planned device bytes for a gate_up spec's T16 tiles residency."""
+
+    from hipengine.quant.gguf_q4_k import (
+        GGUF_Q4_K_BLOCK_BYTES,
+        GGUF_Q4_K_TILE16_BLOCK_BYTES,
+        GGUF_Q4_K_TILE16_COLS,
+    )
+
+    experts, out_features, bytes_per_row = spec.source.byte_shape
+    blocks = bytes_per_row // GGUF_Q4_K_BLOCK_BYTES
+    assert out_features % GGUF_Q4_K_TILE16_COLS == 0
+    return experts * (out_features // GGUF_Q4_K_TILE16_COLS) * blocks * GGUF_Q4_K_TILE16_BLOCK_BYTES
+
+
+def _gate_up_stack_specs(reader: GGUFReader) -> list:
+    """Every planned fused ``ffn_gate_up_exps`` spec in the fixture."""
+
+    return [
+        spec
+        for spec in plan_gemma4_gguf_resident_specs(reader)
+        if spec.slot_path.endswith(".ffn_gate_up_exps")
+    ]
+
+
+def test_gate_up_q4_k_plans_the_t16_tiles_layout(reader: GGUFReader) -> None:
+    """The fused Q4_K gate_up stack materializes as T16 tiles, on by default.
+
+    This is the layout the measured decode win lives in (iteration 136's
+    screen: 4.9-5.1x over the raw-layout selected GEMV at bitwise-equal
+    output), so the planner must select it for every gate_up stack whose shape
+    the t16 kernels serve -- not behind a flag.
+    """
+
+    specs = plan_gemma4_gguf_resident_specs(reader)
+    gate_up = _gate_up_stack_specs(reader)
+    assert gate_up, "fixture has no fused gate_up expert slot"
+
+    for spec in gate_up:
+        assert spec.layout == T16_LAYOUT, spec.slot_path
+        assert spec.quant_key == T16_LAYOUT, spec.slot_path
+        assert spec.allocation_names == ("tiles",), spec.slot_path
+
+    # Every other tensor keeps the raw / dense residency it had. The down
+    # stack (Q8_0 in the fixture, Q5_1 in the real artifact) has no t16
+    # family, and dense projections have no reason to move.
+    gate_up_slots = {spec.slot_path for spec in gate_up}
+    for spec in specs:
+        if spec.slot_path in gate_up_slots:
+            continue
+        assert spec.layout in (LAYOUT_RAW_GGUF, LAYOUT_DENSE_F32), spec.slot_path
+        assert spec.allocation_names == ("raw",), spec.slot_path
+        assert spec.quant_key == (
+            "f32"
+            if spec.layout == LAYOUT_DENSE_F32
+            else f"gguf_{spec.source.ggml_type_name.lower()}"
+        ), spec.slot_path
+
+
+def test_resident_bytes_counts_the_planned_layouts(reader: GGUFReader) -> None:
+    """Residency plans what the *kernels will read*, not just file bytes.
+
+    T16 tiles carry per-16-row scale blocks, so a converted gate_up stack
+    occupies slightly more than its stored bytes (2.78% at the fixture shape,
+    the same ratio at the real 1408x2816 shape). A capacity check that summed
+    file bytes would under-plan the device by that delta.
+    """
+
+    specs = plan_gemma4_gguf_resident_specs(reader)
+    gate_up = _gate_up_stack_specs(reader)
+    assert gate_up, "fixture has no fused gate_up expert slot"
+
+    expected = 0
+    for spec in specs:
+        if spec.layout == T16_LAYOUT:
+            expected += _t16_tiles_nbytes(spec)
+        else:
+            expected += int(spec.source.nbytes)
+    assert resident_bytes(specs) == expected
+
+    artifact_bytes = sum(
+        tensor.nbytes for tensor in reader.info.tensors if tensor.name != "rope_freqs.weight"
+    )
+    assert expected > artifact_bytes, "tiles residency must be planned, not assumed free"
+
+
+def test_expert_stride_bytes_follows_the_resident_layout(reader: GGUFReader) -> None:
+    """Expert strides come from the resident allocation, not the source file.
+
+    The fused ``half_bytes = stride // 2`` offsets in the prefill owners land
+    on a tile boundary only when the stride is the tiles stride: at the real
+    shape the raw stride is 2,230,592 while the tiles stride is 2,292,224, and
+    half of the raw stride (1,115,296) is not a multiple of the 2,368-byte tile
+    block, so an owner reading tiles through the source-derived stride would
+    read across expert and half boundaries.
+    """
+
+    from types import SimpleNamespace
+
+    class _StubAllocation:
+        def __init__(self, nbytes: int) -> None:
+            self.buffer = SimpleNamespace(nbytes=nbytes)
+
+    gate_up = _gate_up_stack_specs(reader)
+    assert gate_up, "fixture has no fused gate_up expert slot"
+    spec = gate_up[0]
+    tiles_nbytes = _t16_tiles_nbytes(spec)
+    weight = Gemma4GGUFDeviceWeight(
+        spec=spec,
+        allocations={"tiles": _StubAllocation(tiles_nbytes)},
+        backend="hip_gfx1100",
+    )
+    experts = int(spec.source.shape[0])
+    assert weight.expert_stride_bytes == tiles_nbytes // experts
+    assert weight.expert_stride_bytes != int(spec.source.nbytes) // experts
+
+    # A raw stacked tensor keeps the stride it had (allocation == file bytes).
+    raw_stacked = next(
+        spec
+        for spec in plan_gemma4_gguf_resident_specs(reader)
+        if len(spec.source.shape) == 3 and spec.layout == LAYOUT_RAW_GGUF
+    )
+    raw_weight = Gemma4GGUFDeviceWeight(
+        spec=raw_stacked,
+        allocations={"raw": _StubAllocation(int(raw_stacked.source.nbytes))},
+        backend="hip_gfx1100",
+    )
+    assert raw_weight.expert_stride_bytes == int(raw_stacked.source.nbytes) // int(
+        raw_stacked.source.shape[0]
+    )
+
+
+def test_t16_gate_up_dispatch_keys_resolve() -> None:
+    """Every probe the gemma chain can issue for a t16 gate_up resolves.
+
+    Three owners serve the converted stack: the selected decode GEMV under the
+    ``linear`` layer key (decode *and* the strict-mode grouped-miss
+    fall-through, whose absence would route to the raw-layout by-offset path),
+    the mmq32 prefill leaf that the production ``auto`` route probes, and the
+    WMMA compact alias the wmma route probes. Each must be registered for the
+    t16 quant key before the planner may emit it.
+    """
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+        register_gguf_q4_k_q8_1_selected_prefill_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
+        register_gguf_q4_k_t16_selected_prefill_kernels,
+    )
+    from hipengine.kernels.registry import KernelKey, is_registered
+    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+    # Both prefill families register outside the shared ensure list, so the
+    # production probes reach them through the leaf's own registrar
+    # (``gemma4_project_experts_mmq_dual`` / ``_mmq32_leaf_owner``) or the
+    # backend package's import; pytest's registry baseline restore between
+    # tests drops import-time registrations, so this test re-runs the
+    # registrars exactly the way production code does when it needs them.
+    register_gguf_q4_k_q8_1_selected_prefill_kernels()
+    register_gguf_q4_k_t16_selected_prefill_kernels()
+
+    for layer, variant in (
+        ("linear", "selected_gemv_bf16_bf16_out"),
+        ("moe_linear", "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"),
+        ("moe_linear", "selected_dual_wmma_prefill_compact_bf16_bf16_out"),
+    ):
+        key = KernelKey("hip_gfx1100", layer, T16_LAYOUT, variant)
+        _ensure_linear_kernel_registered(key)
+        assert is_registered(key), key.display()
+
+
+def test_raw_layout_launches_refuse_a_t16_weight(reader: GGUFReader) -> None:
+    """The raw-layout expert launches fail loudly on a tiles weight.
+
+    Both are the by-offset fallback family: if a future probe miss ever lets a
+    converted stack reach them, they must raise naming the layout rather than
+    stride through tiles as if they were raw blocks -- that silent path is
+    exactly what the alias registration exists to make unreachable, and this
+    guard is the tripwire that keeps the reachability claim honest.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import (
+        gemma4_project_expert,
+        gemma4_project_experts_by_offset,
+    )
+    from types import SimpleNamespace
+
+    class _StubAllocation:
+        def __init__(self, nbytes: int) -> None:
+            self.buffer = SimpleNamespace(nbytes=nbytes)
+
+    spec = _gate_up_stack_specs(reader)[0]
+    weight = Gemma4GGUFDeviceWeight(
+        spec=spec,
+        allocations={"tiles": _StubAllocation(_t16_tiles_nbytes(spec))},
+        backend="hip_gfx1100",
+    )
+
+    with pytest.raises(ValueError, match="t16_v1"):
+        gemma4_project_experts_by_offset(weight, 0, 0, None, 4, 256, 128)
+    with pytest.raises(ValueError, match="t16_v1"):
+        gemma4_project_expert(weight, 0, 0, 0, 1, 256, 128)
