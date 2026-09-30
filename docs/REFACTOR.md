@@ -246,6 +246,22 @@
   production plan and remove the diagnostic monkeypatch after equivalent
   role/count coverage exists. If rejected, preserve its capture and avoid
   rerunning unchanged arithmetic.
+- **`20260930T`: the role scope this entry asks for now exists as a dispatch
+  control, so the reopen condition is expressible.**
+  `HIPENGINE_QWEN4_EXP_Q8_IU8_WMM_ROLES` narrows the generic iu8-WMMA dense route
+  to named roles, matched as dotted-path prefixes against a weight's slot path
+  after its `layers.<n>.` prefix (`attn_gate` selects `layers.5.attn_gate.weight`).
+  Unset means every role, which reproduces the whole-route shape that already
+  failed. The role scope is part of the dispatch-resolution cache key for the
+  same reason the WMMA layer scope is: without it two roles of identical shape
+  share a key, the first resolution is replayed for the rest, and the scope
+  becomes an artifact of cache-fill order rather than a contract. Contract tests:
+  `tests/test_unit_qwen4exp_iu8_scope.py`. All 17 Q8_0 roles in this model are
+  geometrically eligible (`in_features % 32 == 0`, `out_features > 256`), so the
+  recorded whole-route failure is numerical and the role scope is the only
+  lever that isolates it. Remove the scope once a role set is either promoted or
+  the route is finally rejected; until then it is the row's evidence mechanism,
+  not a production policy.
 
 ## Removed GR Corrections
 
