@@ -1,0 +1,158 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp-dp5-consumer-census",
+  "performance_claim": false,
+  "purpose": "DP-5's named prerequisite: confirm the HC mix epilogue feeds the most dense consumers before the F16 write is moved into it. Census of the single F16 staging-cast kernel and of its producers and consumers.",
+  "source": "benchmarks/results/2026-09-28-qwen4exp-current-attribution/artifact.json",
+  "source_pointer": "audit.prefill.windows[0].engagement_by_role_kernel joined to kernel_names by kernel_id",
+  "commit": "2789c19d634c2d86f6e67d5140181bcf45c71e69",
+  "case": "code-p4096 prefill, p4096 window",
+  "kernel_union_ms": 15741.963266,
+  "request_ms": 16319.888103,
+  "cast_kernel": "q8_0_f32_to_f16_kernel",
+  "cast_total_ms": 131.000655,
+  "cast_pct_of_union": 0.832175,
+  "cast_role_count": 12,
+  "cast_by_role": [
+    {
+      "role": "linear:layers.*.hc_ffn_down",
+      "ms": 42.324258,
+      "launches": 128,
+      "layers": 32,
+      "layer_first": 16,
+      "layer_last": 47
+    },
+    {
+      "role": "linear:layers.*.hc_attn_down",
+      "ms": 41.536413,
+      "launches": 128,
+      "layers": 32,
+      "layer_first": 16,
+      "layer_last": 47
+    },
+    {
+      "role": "linear:layers.*.ssm_out",
+      "ms": 14.920953,
+      "launches": 96,
+      "layers": 24,
+      "layer_first": 16,
+      "layer_last": 46
+    },
+    {
+      "role": "linear:layers.*.attn_gate",
+      "ms": 6.789094,
+      "launches": 96,
+      "layers": 24,
+      "layer_first": 16,
+      "layer_last": 46
+    },
+    {
+      "role": "linear:layers.*.shared_gate",
+      "ms": 6.742849,
+      "launches": 128,
+      "layers": 32,
+      "layer_first": 16,
+      "layer_last": 47
+    },
+    {
+      "role": "linear:layers.*.attn_output",
+      "ms": 5.118402,
+      "launches": 32,
+      "layers": 8,
+      "layer_first": 19,
+      "layer_last": 47
+    },
+    {
+      "role": "linear:layers.*.attn_qkv",
+      "ms": 5.102091,
+      "launches": 96,
+      "layers": 24,
+      "layer_first": 16,
+      "layer_last": 46
+    },
+    {
+      "role": "linear:layers.*.shared_up",
+      "ms": 3.095805,
+      "launches": 128,
+      "layers": 32,
+      "layer_first": 16,
+      "layer_last": 47
+    },
+    {
+      "role": "linear:layers.*.attn_k",
+      "ms": 2.14294,
+      "launches": 32,
+      "layers": 8,
+      "layer_first": 19,
+      "layer_last": 47
+    },
+    {
+      "role": "linear:layers.*.attn_q",
+      "ms": 1.589143,
+      "launches": 32,
+      "layers": 8,
+      "layer_first": 19,
+      "layer_last": 47
+    },
+    {
+      "role": "linear:layers.*.shared_down",
+      "ms": 0.845299,
+      "launches": 128,
+      "layers": 32,
+      "layer_first": 16,
+      "layer_last": 47
+    },
+    {
+      "role": "linear:layers.*.attn_v",
+      "ms": 0.793408,
+      "launches": 32,
+      "layers": 8,
+      "layer_first": 19,
+      "layer_last": 47
+    }
+  ],
+  "hc_down_ms": 83.860671,
+  "hc_down_pct_of_cast": 64.015,
+  "hc_down_pct_of_union": 0.532721,
+  "layer_scope": "layers 16-47 (32 layers) for the hc_*_down roles - the promoted 16-47 scope",
+  "producer_and_consumer_by_role": {
+    "linear:layers.*.hc_ffn_down": [
+      {
+        "kernel": "gguf_k_prefill_out_coltile_rowbatch_kernel<float, float, 8, ",
+        "ms": 183.643039,
+        "launches": 64
+      },
+      {
+        "kernel": "q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, true>",
+        "ms": 128.378332,
+        "launches": 128
+      },
+      {
+        "kernel": "q8_0_f32_to_f16_kernel",
+        "ms": 42.324258,
+        "launches": 128
+      }
+    ],
+    "linear:layers.*.hc_attn_down": [
+      {
+        "kernel": "gguf_k_prefill_out_coltile_rowbatch_kernel<float, float, 8, ",
+        "ms": 182.713493,
+        "launches": 64
+      },
+      {
+        "kernel": "q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, true>",
+        "ms": 127.53836,
+        "launches": 128
+      },
+      {
+        "kernel": "q8_0_f32_to_f16_kernel",
+        "ms": 41.536413,
+        "launches": 128
+      }
+    ]
+  },
+  "verdict": "CONFIRMED: the HC down projections are 64.0% of the cast total, the largest single block, so moving the F16 write into the HC mix epilogue first is the right order.",
+  "recoverable_estimate_ms": 87.334,
+  "recoverable_estimate_note": "Per element the cast reads F32 (4 B) and writes F16 (2 B) = 6 B; the producer would add a 2 B F16 store, so net traffic change is -4 B per element, i.e. ~4/6 of the cast time IF both run at the same effective rate. 4/6 x 131.001 = 87.3 ms for the whole row, 4/6 x 83.860 = 55.9 ms for the HC down pair. This is an estimate, not a measurement; the cast may be launch-bound rather than bandwidth-bound.",
+  "limits": "One model, one quant, one host (gfx1151), one case (code-p4096), one window, one profile, prefill only. Per-role-per-kernel join inside a marked window; diagnostic, not a wall measurement."
+}
