@@ -31,7 +31,7 @@ ARMS = {
     "bound": {},
     "gdn_strict": {PREFIX + key: "0" for key in ("GDN_PEER_PREFILL", "GDN_COLWARPS_PREFILL")},
     "moe_strict": {PREFIX + key: "0" for key in ("PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL")},
-    "dense_q8_gr_strict": {PREFIX + key: "0" for key in ("Q8_MMQ_PREFILL", "Q8_IU8_WMM", "GR_IU8", "GR_IU8_DOWN")},
+    "dense_q8_gr_strict": {PREFIX + key: "0" for key in ("Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN")},
     "decode_strict": {PREFIX + "Q4_DP4A64": "0"},
 }
 ARMS["all_numerics_strict"] = {
@@ -65,7 +65,7 @@ FAMILY_PREFIXES = {
 for family in FAMILY_PREFIXES:
     ARMS["strict_plus_" + family] = {}
     ARMS["q8down_off_without_" + family] = {}
-for flag in ("Q8_MMQ_PREFILL", "Q8_IU8_WMM", "GR_IU8", "GR_IU8_DOWN"):
+for flag in ("Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN"):
     ARMS["strict_plus_" + flag.lower()] = {}
     ARMS["q8down_off_without_" + flag.lower()] = {
         **ARMS["q8_selected_down_strict"], PREFIX + flag: "0"}
@@ -212,7 +212,7 @@ def main():
             ARMS["q8down_off_without_" + family] = {
                 **ARMS["q8_selected_down_strict"],
                 **{key: strict_flags[key] for key in keys}}
-        for flag in ("Q8_MMQ_PREFILL", "Q8_IU8_WMM", "GR_IU8", "GR_IU8_DOWN"):
+        for flag in ("Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN"):
             ARMS["strict_plus_" + flag.lower()] = {
                 **strict_flags, PREFIX + flag: "1"}
         controlled = set(key for values in ARMS.values() for key in values)

@@ -173,7 +173,7 @@ def main():
             return result
 
         try:
-            for flag in ("GR_IU8", "GR_IU8_DOWN", "Q8_IU8_WMM", "Q8_MMQ_PREFILL"):
+            for flag in ("GR_IU8", "GR_IU8_DOWN", "Q8_MMQ_PREFILL"):
                 if os.environ.get("HIPENGINE_QWEN4_EXP_" + flag) != "0":
                     raise ValueError("production reference must keep failed GR/dense arms off")
             baseline = generator.runner.prefill(case["prompt_token_ids"])

@@ -39,15 +39,13 @@ from scripts.qwen4exp_canonical_ar_bench import (
     DEFAULT_FIXTURE, _git_metadata, _host_metadata, load_fixture,
 )
 
-FLAGS = ("HIPENGINE_QWEN4_EXP_GR_IU8", "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN",
-         "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM")
+FLAGS = ("HIPENGINE_QWEN4_EXP_GR_IU8", "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN")
 
 # ``wide`` is a route, not one of the iu8 flags: it swaps the GR up projection
 # for the promoted dense wide tile plus the retained exact epilogue.
 ROUTES = {
     "up": FLAGS[0],
     "down": FLAGS[1],
-    "dense": FLAGS[2],
     "wide": "HIPENGINE_QWEN4_EXP_GR_WIDE",
 }
 
