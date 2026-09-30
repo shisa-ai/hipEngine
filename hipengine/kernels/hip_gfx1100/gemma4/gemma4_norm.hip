@@ -179,6 +179,216 @@ __global__ void gemma4_router_prescale_kernel(
   }
 }
 
+// Top-k selection over one token's logits: iterative block-parallel argmax,
+// then softmax over the selected values only. This is the same math as the
+// `qwen35_router_select` chain stage -- the body copies
+// `qwen35_router_select_from_logits` from `moe/router.hip` (including its
+// warp-shuffle fix history) because device helpers are per translation unit
+// and the norm family does not include the router family's source.
+//
+// Shared memory (dynamic): `num_experts * sizeof(float)` at `shared_logits`.
+// Shared memory (static): warp-reduction scratch plus `top_vals[16]`.
+__device__ void gemma4_router_select_from_logits(
+    const float* __restrict__ token_logits,
+    int64_t* __restrict__ selected,
+    float* __restrict__ routing,
+    float* __restrict__ shared_logits,
+    int64_t token,
+    int64_t logits_stride,
+    int64_t num_experts,
+    int64_t top_k) {
+  // Warp-reduction scratch: blockDim.x / warpSize <= 16 for allowed router workgroups.
+  __shared__ float warp_max_vals[16];
+  __shared__ int32_t warp_max_idxs[16];
+  // Top-k buffer for softmax. top_k is asserted <= 16 at the wrapper.
+  __shared__ float top_vals[16];
+
+  const int lane_id = static_cast<int>(threadIdx.x) & (warpSize - 1);
+  const int warp_id = static_cast<int>(threadIdx.x) / warpSize;
+  const int num_warps = static_cast<int>(blockDim.x) / warpSize;
+
+  // Parallel load of this token's logits into shared memory.
+  for (int64_t expert = threadIdx.x; expert < num_experts; expert += blockDim.x) {
+    shared_logits[expert] = token_logits[expert];
+  }
+  __syncthreads();
+
+  // Iterative top-k: each iteration runs a block-parallel argmax, records
+  // the winner, and marks that expert's score as -inf so the next
+  // iteration finds the next-best.
+  for (int64_t pos = 0; pos < top_k; ++pos) {
+    // 1) Thread-local argmax across strided experts.
+    float my_val = -3.4028234663852886e38f;
+    int32_t my_idx = -1;
+    for (int64_t expert = threadIdx.x; expert < num_experts; expert += blockDim.x) {
+      const float v = shared_logits[expert];
+      if (v > my_val) {
+        my_val = v;
+        my_idx = static_cast<int32_t>(expert);
+      }
+    }
+    // 2) Warp-level argmax via shuffle. On gfx1100 CU mode, warpSize==64.
+    for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+      const float other_val = __shfl_down(my_val, offset);
+      const int32_t other_idx = __shfl_down(my_idx, offset);
+      if (other_val > my_val) {
+        my_val = other_val;
+        my_idx = other_idx;
+      }
+    }
+    if (lane_id == 0) {
+      warp_max_vals[warp_id] = my_val;
+      warp_max_idxs[warp_id] = my_idx;
+    }
+    __syncthreads();
+    // 3) First warp reduces the per-warp maxes.
+    if (warp_id == 0) {
+      float v = (lane_id < num_warps) ? warp_max_vals[lane_id] : -3.4028234663852886e38f;
+      int32_t i = (lane_id < num_warps) ? warp_max_idxs[lane_id] : -1;
+      for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+        const float other_v = __shfl_down(v, offset);
+        const int32_t other_i = __shfl_down(i, offset);
+        if (other_v > v) {
+          v = other_v;
+          i = other_i;
+        }
+      }
+      if (lane_id == 0) {
+        top_vals[pos] = v;
+        selected[token * top_k + pos] = static_cast<int64_t>(i);
+        shared_logits[i] = -3.4028234663852886e38f;
+      }
+    }
+    __syncthreads();
+  }
+
+  // Softmax over top_k values. top_k <= 16 so this is trivial; leave it
+  // in thread 0 to avoid extra syncs for a cost that no longer matters.
+  if (threadIdx.x == 0) {
+    const float max_value = top_vals[0];
+    float denom = 0.0f;
+    for (int64_t pos = 0; pos < top_k; ++pos) {
+      denom += expf(top_vals[pos] - max_value);
+    }
+    denom = fmaxf(denom, 1.0e-20f);
+    for (int64_t pos = 0; pos < top_k; ++pos) {
+      routing[token * top_k + pos] = expf(top_vals[pos] - max_value) / denom;
+    }
+  }
+}
+
+// Whole Gemma 4 router for one token: weightless prescale, projection,
+// top-k softmax, and per-expert scale in a single launch.
+//
+// The grid is one block per expert row of the projection. Every block
+// recomputes the prescaled row into shared memory -- the same arithmetic and
+// the same bf16 rounding as `gemma4_router_prescale_kernel`, so the products
+// below see exactly the bits the unfused chain's buffer would hold -- reduces
+// its own logit, and fences into the global logits buffer. The last block to
+// arrive runs the selection (the cooperative-output pattern from
+// `moe/router.hip`'s topk kernels) and applies `per_expert_scale` in place.
+//
+// `selected` doubles as the arrival counter, so the host wrapper zeroes it on
+// the stream before the launch; the selection overwrites every int64 it
+// touched, and top_k >= 1 guarantees the counter bytes do not survive.
+//
+// Not bit-identical to the unfused chain: the projection's f32 reduction
+// order differs from `qwen35_router_logits_bf16_f32w`'s. The teacher-forced
+// campaign gate covers that class of change, exactly as it covers the
+// token-tile logits variant in the chain.
+template <typename scalar_t>
+__global__ void gemma4_router_topk_fused_kernel(
+    const scalar_t* __restrict__ hidden,
+    const float* __restrict__ scale,
+    const float* __restrict__ proj,
+    const float* __restrict__ per_expert,
+    float* __restrict__ logits,
+    int64_t* __restrict__ selected,
+    float* __restrict__ routing,
+    float eps,
+    float root_size,
+    int64_t hidden_size,
+    int64_t num_experts,
+    int64_t top_k) {
+  extern __shared__ float shmem[];
+  float* prescaled = shmem;                              // [hidden_size]
+  float* partial = shmem + hidden_size;                  // [blockDim.x]
+  float* shared_logits = partial + blockDim.x;           // [num_experts]
+  __shared__ int is_last_block;
+
+  const int tid = static_cast<int>(threadIdx.x);
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+
+  // Phase 1: weightless norm, learned scale, and hidden_size**-0.5 -- the
+  // `gemma4_router_prescale_kernel` arithmetic, rounded to bf16 so the
+  // projection consumes the same values the chain's output buffer holds.
+  float sumsq = 0.0f;
+  for (int64_t idx = tid; idx < hidden_size; idx += blockDim.x) {
+    const float value = gemma4_to_float(hidden[idx]);
+    sumsq += value * value;
+  }
+  gemma4_block_sum(partial, sumsq);
+  const float inv_rms =
+      rsqrtf((partial[0] / static_cast<float>(hidden_size)) + eps);
+  for (int64_t idx = tid; idx < hidden_size; idx += blockDim.x) {
+    const float value = gemma4_to_float(hidden[idx]);
+    prescaled[idx] = gemma4_to_float(
+        gemma4_to_scalar<uint16_t>(value * inv_rms * scale[idx] * root_size));
+  }
+  __syncthreads();
+
+  // Phase 2: this expert's logit over the bf16-prescaled row, f32 weight
+  // row, 8-wide vectors with a scalar tail, tree-reduced into `partial[0]`.
+  const float* weight_row = proj + row * hidden_size;
+  float acc = 0.0f;
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  for (int64_t k = tid * 8; k + 7 < hidden_size; k += vec_stride) {
+    acc += prescaled[k + 0] * weight_row[k + 0];
+    acc += prescaled[k + 1] * weight_row[k + 1];
+    acc += prescaled[k + 2] * weight_row[k + 2];
+    acc += prescaled[k + 3] * weight_row[k + 3];
+    acc += prescaled[k + 4] * weight_row[k + 4];
+    acc += prescaled[k + 5] * weight_row[k + 5];
+    acc += prescaled[k + 6] * weight_row[k + 6];
+    acc += prescaled[k + 7] * weight_row[k + 7];
+  }
+  for (int64_t k = (hidden_size & ~7) + tid; k < hidden_size; k += blockDim.x) {
+    acc += prescaled[k] * weight_row[k];
+  }
+  partial[tid] = acc;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+
+  if (tid == 0) {
+    logits[row] = partial[0];
+    __threadfence();
+    int32_t* counter = reinterpret_cast<int32_t*>(selected);
+    const int prior = atomicAdd(counter, 1);
+    is_last_block =
+        (prior + 1 == static_cast<int32_t>(num_experts)) ? 1 : 0;
+  }
+  __syncthreads();
+  if (is_last_block == 0) {
+    return;
+  }
+
+  // Phase 3 (last block): select, renormalize, and scale by the selected
+  // experts' per-expert scale -- the router_select and expert_weight_scale
+  // chain stages over token 0.
+  gemma4_router_select_from_logits(
+      logits, selected, routing, shared_logits, 0, num_experts, num_experts, top_k);
+  if (tid == 0) {
+    for (int64_t pos = 0; pos < top_k; ++pos) {
+      routing[pos] *= per_expert[selected[pos]];
+    }
+  }
+}
+
 // `out = (residual + rmsnorm(x, weight)) * layer_scalar`.
 //
 // This is the tail of a Gemma 4 decoder layer: the post-feedforward norm, the
@@ -470,6 +680,50 @@ extern "C" int hipengine_gemma4_router_prescale_bf16(
       eps,
       root_size,
       hidden_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gemma4_router_topk_fused_bf16(
+    const uint16_t* hidden,
+    const float* scale,
+    const float* proj,
+    const float* per_expert,
+    float* logits,
+    int64_t* selected,
+    float* routing,
+    int64_t hidden_size,
+    int64_t num_experts,
+    int64_t top_k,
+    float eps,
+    float root_size,
+    hipStream_t stream) {
+  if (hidden_size <= 0 || num_experts <= 0 || top_k <= 0 || top_k > 16) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const size_t shmem =
+      (static_cast<size_t>(hidden_size) + kGemma4NormThreads +
+       static_cast<size_t>(num_experts)) * sizeof(float);
+  if (shmem > 49152) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      gemma4_router_topk_fused_kernel<uint16_t>,
+      dim3(static_cast<unsigned int>(num_experts)),
+      dim3(kGemma4NormThreads),
+      shmem,
+      stream,
+      hidden,
+      scale,
+      proj,
+      per_expert,
+      logits,
+      selected,
+      routing,
+      eps,
+      root_size,
+      hidden_size,
+      num_experts,
+      top_k);
   return static_cast<int>(hipGetLastError());
 }
 

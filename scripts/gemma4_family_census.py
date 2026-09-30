@@ -68,7 +68,7 @@ ENGINE_FAMILIES: tuple[tuple[str, str], ...] = (
     ("moe.down", r"q5_1_selected"),
     ("moe.act_quant", r"q8_1_mmq_ds4_pack|q8_1_mmq_gather_ds4_pack"),
     ("moe.route_glue", r"qwen35_moe_|gemma4_moe_|gemma4_expert_weight_scale|qwen35_router_select"),
-    ("moe.router_gemm", r"router_logits|gemma4_router_prescale"),
+    ("moe.router_gemm", r"router_logits|gemma4_router_prescale|gemma4_router_topk_fused"),
     ("attn.sliding", r"^attn_fwd|gemma4_attention_decode_class_kernel<unsigned short, 1|^dim_sliding:"),
     # flash_attn_tile<512 is P2's tiled head_dim-512 prefill port. It replaced
     # gemma4_attention_decode_class_kernel<...,2,...>, which is the only symbol

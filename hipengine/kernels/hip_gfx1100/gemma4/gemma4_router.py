@@ -7,6 +7,14 @@ Assembles the router from kernels that are each tested on their own:
     top-k + softmax + renormalise                    qwen35_router_select
     per-expert scale                                 gemma4_expert_weight_scale_f32
 
+At ``tokens == 1`` (decode) all four stages take one fused launch instead --
+``gemma4_router_topk_fused_bf16`` recomputes the prescaled row per block with
+the same bf16 rounding, projects with an f32 reduction in a different order,
+and runs the identical select + per-expert-scale math in the last block. The
+chain below stays the strict unfused fallback under that composite: it is
+what runs for ``tokens > 1``, and its four primitives are the registered
+chain the fused launch can fall back to.
+
 The reference order is pinned in ``gemma4_router_topk``: normalise without a
 weight, apply the learned ``router.scale`` and ``hidden_size**-0.5``, project to
 expert logits, softmax over **all** experts, keep the top ``k``, renormalise
@@ -49,10 +57,14 @@ is the standard low-precision router path here.
 
 from __future__ import annotations
 
+import ctypes
 from dataclasses import dataclass, field
 
+from hipengine.core.ctypes_cache import signed_kernel_fn
+from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, free as hip_free, malloc
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
+    build_gemma4_norm,
     gemma4_expert_weight_scale_f32,
     gemma4_router_prescale_bf16,
 )
@@ -61,9 +73,28 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w_token_tile_16,
     qwen35_router_select,
 )
+from hipengine.kernels.registry import KernelKey, register
 
 _BF16_BYTES = 2
 _F32_BYTES = 4
+_I64_BYTES = 8
+
+_SYMBOL_ROUTER_TOPK_FUSED_BF16 = "hipengine_gemma4_router_topk_fused_bf16"
+_ARGTYPES_ROUTER_TOPK_FUSED = (
+    ctypes.c_void_p,  # hidden (tokens=1, BF16)
+    ctypes.c_void_p,  # scale
+    ctypes.c_void_p,  # proj
+    ctypes.c_void_p,  # per_expert_scale
+    ctypes.c_void_p,  # logits (scratch)
+    ctypes.c_void_p,  # selected (int64, zeroed for the arrival counter)
+    ctypes.c_void_p,  # routing weights
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_float,
+    ctypes.c_void_p,  # stream
+)
 
 # Size-based logits variant selection, the same shape of dispatch the C layer
 # already does inside ``launch_qwen35_router_logits`` (``tokens >= 4`` picks
@@ -171,6 +202,87 @@ class Gemma4RouterScratch:
         return sum(self._sizes().values())
 
 
+def gemma4_router_topk_fused_bf16(
+    hidden_ptr: int,
+    scale_ptr: int,
+    proj_ptr: int,
+    per_expert_scale_ptr: int,
+    selected_ptr: int,
+    weights_ptr: int,
+    *,
+    tokens: int,
+    hidden_size: int,
+    num_experts: int,
+    top_k: int,
+    scratch: Gemma4RouterScratch,
+    eps: float = 1e-6,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Route one token through the fused prescale/projection/select/scale launch.
+
+    ``tokens`` must be 1: this is the rows=1 decode kernel, and the caller
+    keeps the four-launch chain for wider blocks (see
+    ``gemma4_router_topk_bf16``). Argument layouts are the orchestrator's.
+
+    ``selected`` is zeroed on ``stream`` before the launch because the kernel
+    uses its first bytes as an arrival counter; the selection overwrites
+    every int64 the token writes, and ``top_k >= 1`` guarantees no counter
+    bytes survive the launch.
+    """
+
+    if int(tokens) != 1:
+        raise ValueError("the fused router runs exactly one token")
+    for name, value in (
+        ("hidden_size", hidden_size),
+        ("num_experts", num_experts),
+        ("top_k", top_k),
+    ):
+        if int(value) <= 0:
+            raise ValueError(f"{name} must be positive")
+    if top_k > num_experts:
+        raise ValueError(f"top_k ({top_k}) cannot exceed num_experts ({num_experts})")
+    if top_k > 16:
+        raise ValueError("fused router selection supports top_k up to 16")
+    if (hidden_size, num_experts, top_k) != (
+        scratch.hidden_size,
+        scratch.num_experts,
+        scratch.top_k,
+    ):
+        raise ValueError("router scratch shape does not match this call")
+    if tokens > scratch.tokens:
+        raise ValueError(f"tokens={tokens} exceeds scratch capacity {scratch.tokens}")
+
+    logits = scratch.buffer("logits")
+    library = library or build_gemma4_norm(load=True)
+    runtime = runtime or get_hip_runtime()
+    runtime.memset_async(selected_ptr, 0, top_k * _I64_BYTES, stream)
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_ROUTER_TOPK_FUSED_BF16,
+        _ARGTYPES_ROUTER_TOPK_FUSED,
+        ctypes.c_int,
+    )
+    err = fn(
+        hidden_ptr,
+        scale_ptr,
+        proj_ptr,
+        per_expert_scale_ptr,
+        logits.ptr,
+        selected_ptr,
+        weights_ptr,
+        hidden_size,
+        num_experts,
+        top_k,
+        float(eps),
+        float(hidden_size**-0.5),
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def gemma4_router_topk_bf16(
     hidden_ptr: int,
     scale_ptr: int,
@@ -232,6 +344,30 @@ def gemma4_router_topk_bf16(
 
     prescaled = scratch.buffer("prescaled")
     logits = scratch.buffer("logits")
+
+    if tokens == 1:
+        # Decode's single-token route takes the fused launch: all four
+        # stages in one kernel with the same bf16 prescale rounding and the
+        # same select math, only the projection's reduction order differs.
+        # Selection is by shape, exactly like the token-tile logits variant
+        # below; the chain stays the strict unfused fallback for wider
+        # blocks and for anything the composite cannot serve.
+        gemma4_router_topk_fused_bf16(
+            hidden_ptr,
+            scale_ptr,
+            proj_ptr,
+            per_expert_scale_ptr,
+            selected_ptr,
+            weights_ptr,
+            tokens=tokens,
+            hidden_size=hidden_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            scratch=scratch,
+            eps=eps,
+            stream=stream,
+        )
+        return
 
     # Weightless norm, learned scale, and hidden_size**-0.5 in one launch.
     gemma4_router_prescale_bf16(
@@ -296,3 +432,24 @@ def gemma4_router_topk_bf16(
         top_k,
         stream=stream,
     )
+
+
+def register_gemma4_router_kernels(*, replace: bool = False) -> None:
+    """Register the Gemma 4 router family against the four-axis registry.
+
+    The fused rows=1 launch is the registered composite; the four chain
+    primitives it composes are registered with their own keys
+    (``router_prescale`` in the norm family, ``router_logits`` and
+    ``router_select`` in the MoE family), which is the strict unfused chain
+    under the composite.
+    """
+
+    for quant in ("gguf_q4_k_m", "gguf_q4_k_xl", "gguf_q8_0", "gguf"):
+        register(
+            KernelKey("hip_gfx1100", "router_topk", quant, "gemma4_fused_c1"),
+            gemma4_router_topk_fused_bf16,
+            replace=replace,
+        )
+
+
+register_gemma4_router_kernels()
