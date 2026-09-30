@@ -84,6 +84,37 @@ never overflowed on this input.
 
 ## Admissibility, from the project's own evidence
 
+> **Correction (2026-09-30, added after the sweep was cited as an opportunity list).** Two
+> things in this section are stale and one is structural. Read the flags first, because they
+> change what the sweep is a measurement *of*.
+>
+> **Every family in the top six is bound to `"1" if production` in the profile binder**
+> (`hipengine/generation/qwen4_exp_profiles.py`): `Q8_MMQ_PREFILL`, `GR_IU8`,
+> `GR_IU8_DOWN`, `GDN_COLWARPS_PREFILL`, `GDN_PEER_PREFILL` and `Q4_DP4A64` are all in
+> `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS` and all bound ON for the non-recovery production
+> profile. So the savings in the table above are **not unexploited headroom**: they are the
+> difference between the **recovery profile** (this artifact's fallback) and the
+> **production profile**, i.e. a re-measurement of the recovery cost already recorded as
+> `-40.94/-41.89/-54.53%` prefill and `-12.60/-12.43/-36.88%` decode in
+> `2026-09-14-q8-prefill-numerics`. The `+1.493x` combined figure is what the recovery
+> profile gives back, not a prize sitting on the table.
+>
+> **The `Q8_IU8_WMM` disposition below is stale and the family is now closed.** It read "no
+> current rejection recorded at this scope; largest measured opportunity in this sweep".
+> The role-isolated evidence that rejection cell asked for has since been produced: **14 of
+> 17 roles claim the route and all 14 fail the canonical envelope alone, zero pass**
+> (`docs/QWEN4EXP-OPTIMIZATION-LEDGER.md`, row for `Q8_IU8_WMM`, 2026-09-30). The 1.388x is
+> real as a rate and unavailable as a route.
+>
+> **The `GR_IU8` / `GR_IU8_DOWN` dispositions below are also stale.** They were rejected at
+> this scope, and the binder now binds both to `"1" if production`; the ledger records them
+> as superseded production defaults. A rejection at one scope does not survive a
+> re-qualification at another, and this table did not say so.
+>
+> **What is still true and still useful here:** the protocol, the measured rates, the
+> overlap warning, the combined measurement, and the repair-rate finding (that an exact
+> risk-plus-repair variant is not what makes these families expensive). Those stand.
+
 The performance numbers above are not a promotion argument. Two of the three
 largest entries already have recorded numerical rejections:
 
@@ -94,8 +125,10 @@ largest entries already have recorded numerical rejections:
 | `Q8_IU8_WMM` | No current rejection recorded at this scope; largest measured opportunity in this sweep |
 | `Q8_MMQ_PREFILL` | Owned by the named production manifest for layers 32-47 in the MMQ stack; enabling it here is a diagnostic override |
 
-`Q8_IU8_WMM` at 1.388x is the largest single measured opportunity in this sweep
-and is the natural first target for a corrected arithmetic.
+`Q8_IU8_WMM` at 1.388x is the largest single measured rate in this sweep. **It is not a
+target:** the role-isolated screen has since shown all 14 claiming roles fail the canonical
+envelope alone, so the route is closed rather than awaiting a corrected arithmetic. See the
+correction above.
 
 ## What this does not establish
 
