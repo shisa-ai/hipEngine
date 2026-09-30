@@ -65,6 +65,7 @@ class CandidateSpec:
     direct_dispatch_target: tuple[str, str] | None = None
     direct_dispatch_reference: tuple[str, str] | None = None
     dispatch_shape_positions: tuple[int, ...] | None = None
+    quant: str | None = None
 
     @property
     def requires_dispatch_count(self) -> bool:
@@ -334,6 +335,29 @@ CANDIDATES["production_gdn_multi_restore"] = replace(
     },
     candidate_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
                    "qwen4exp_gdn_tiled16_multi_prefill"),
+)
+# The multi-column route is consulted only inside the runner's colwarps gate, and
+# that gate is open exactly on the profiles that do NOT run the UD arithmetic
+# recovery. Every other candidate above pins the route with an env override on top
+# of a profile that either closes the gate (UD) or clears the variant (q4_k_m), so
+# none of them can observe the binding the production profiles actually install.
+# This candidate has no env override at all: it passes only if the q4_k_m
+# production binder by itself dispatches the multi-column owner, with the dispatch
+# count recorded so the result cannot be vacuous.
+CANDIDATES["production_gdn_multi_q4km"] = CandidateSpec(
+    name="production_gdn_multi_q4km",
+    classification="T1",
+    mechanism="multi-column GDN prefill owner selected by the q4_k_m production "
+              "binder alone, on the profile that keeps the colwarps gate open",
+    environment={},
+    base_profile="production",
+    quant="gguf_q4_k_m",
+    scenario_id="qwen4exp-q4-k-m-gdn-multi-column",
+    candidate_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+                   "qwen4exp_gdn_tiled16_multi_prefill"),
+    fallback_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+                  "qwen4exp_sigmoid_strict_prefill"),
+    count_registered_dispatch=True,
 )
 CANDIDATES["production_gr_up_restore"] = CandidateSpec(
     name="production_gr_up_restore", classification="T2",
@@ -763,7 +787,7 @@ def _candidate_trajectory(
     return tuple(trajectory)
 
 
-def _make_generator(args: argparse.Namespace, profile: str):
+def _make_generator(args: argparse.Namespace, profile: str, quant: str | None = None):
     from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profile
     from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
     from hipengine.generation.qwen4_exp_profiles import (
@@ -780,7 +804,7 @@ def _make_generator(args: argparse.Namespace, profile: str):
     resolved = resolve_runtime_profile(
         model=QWEN4_EXP_MODEL,
         backend=QWEN4_EXP_BACKEND,
-        quant=QWEN4_EXP_QUANTS[1],
+        quant=quant or QWEN4_EXP_QUANTS[1],
         profile=requested,
     )
 
@@ -904,7 +928,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     candidate_tasks: dict[str, list[dict[str, Any]]] = {}
     reset_memory_stats()
     candidate_generator, candidate_profile, _ = _make_generator(
-        args, candidate_spec.base_profile
+        args, candidate_spec.base_profile, candidate_spec.quant
     )
     bound_environment = {
         key: os.environ.get(key) for key in candidate_spec.environment

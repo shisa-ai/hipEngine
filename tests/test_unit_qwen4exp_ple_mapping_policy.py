@@ -85,11 +85,13 @@ def test_production_binder_selects_random_with_strict_and_explicit_rollback(monk
     generator = SimpleNamespace(_resident=SimpleNamespace(ple_table=table))
     profile = SimpleNamespace(manifest_sha256="test", manifest={"quant": "gguf_ud_q4_k_xl"})
     _bind(generator, profile, production=True)
-    # The multi-column route supersedes the DPP route (measured 1.34x-1.68x at
-    # Hk16/Hv48/Dk=Dv=128 on gfx1151, NMSE ~1.8e-14). This test pins the binding,
-    # so it moves with the default.
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == (
-        "qwen4exp_gdn_tiled16_multi_prefill")
+    # The UD quant is the arithmetic-recovery profile, which closes the runner's
+    # colwarps gate (GDN_COLWARPS_PREFILL is a recovery flag). The tile16 variant is
+    # read only inside that gate, so binding a route here would name something that
+    # can never dispatch. The multi-column route is bound on the profiles that keep
+    # the gate open instead - see the q4_k_m case below.
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == ""
     _bind(generator, profile, production=False)
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == ""
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS", "normal")
@@ -98,4 +100,11 @@ def test_production_binder_selects_random_with_strict_and_explicit_rollback(monk
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS")
     profile.manifest["quant"] = "gguf_q4_k_m"
     _bind(generator, profile, production=True)
+    # The multi-column route supersedes the DPP route (measured 1.34x-1.68x at
+    # Hk16/Hv48/Dk=Dv=128 on gfx1151, NMSE ~1.8e-14). This is the profile whose
+    # colwarps gate is open, so this is where the binding has to appear. This test
+    # pins the binding, so it moves with the default.
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == (
+        "qwen4exp_gdn_tiled16_multi_prefill")
     assert calls[-1] == "normal"
