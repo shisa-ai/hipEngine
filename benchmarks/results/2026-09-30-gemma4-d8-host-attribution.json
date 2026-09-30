@@ -1,0 +1,89 @@
+{
+  "schema": "gemma4-d8-host-attribution/v1",
+  "created_utc": "2026-09-30T04:16:25+00:00",
+  "command": "ROCR_VISIBLE_DEVICES=1 .venv/bin/python scratch/d8_host_attribution_probe.py",
+  "git_commit": "ab0309657b30b8e8317d9430d447fb7e1797339b",
+  "arch": "x86_64",
+  "gpu_env": {
+    "ROCR_VISIBLE_DEVICES": "1"
+  },
+  "method": "ctypes.CDLL.__getattr__ wraps every hip* symbol (launches, memcpys, syncs) and times the host call; ResidentEngineLoop._tick_once and the runners' decode_batch are wall-wrapped. Run A prefills+8 steps, run B prefills+136; differences / 128 = per decode step. Wrapper bias ~0.1-0.2 us/call included.",
+  "decode_steps_differenced": 128,
+  "per_decode_step": {
+    "wall_ms": 16.4653,
+    "hip_host_ms": 7.368,
+    "hip_calls": 1031.9,
+    "launch_host_ms": 2.5322,
+    "launch_calls": 784.0,
+    "memcpy_host_ms": 4.466,
+    "memcpy_calls": 98.0,
+    "sync_host_ms": 0.3698,
+    "sync_calls": 150.0
+  },
+  "engine_side_raw": {
+    "ticks_a": 2,
+    "ticks_b": 2,
+    "tick_wall_ms_a": 477.393,
+    "tick_wall_ms_b": 2585.032,
+    "decode_batches_a": 1,
+    "decode_batches_b": 1,
+    "decode_batch_wall_ms_a": 477.094,
+    "decode_batch_wall_ms_b": 2584.729,
+    "decode_tokens_b": 1
+  },
+  "nonlaunch_symbols_per_step": {
+    "hipEventRecord": {
+      "calls": 60.0,
+      "host_ms": 0.1263
+    },
+    "hipGetDevice": {
+      "calls": 29.96,
+      "host_ms": 0.0214
+    },
+    "hipMemcpy": {
+      "calls": 8.0,
+      "host_ms": 4.2327
+    },
+    "hipMemcpyAsync": {
+      "calls": 60.0,
+      "host_ms": 0.1528
+    },
+    "hipMemsetAsync": {
+      "calls": 30.0,
+      "host_ms": 0.0805
+    },
+    "hipStreamWaitEvent": {
+      "calls": 60.0,
+      "host_ms": 0.222
+    }
+  },
+  "hipmemcpy_callers_per_step": {
+    "gemma4.py:1006 _forward_block_inner": {
+      "calls": 1.0,
+      "host_ms": 0.1928
+    },
+    "gemma4.py:1133 _forward_block_inner": {
+      "calls": 1.0,
+      "host_ms": 3.4245
+    },
+    "gemma4.py:1148 _stage_upload": {
+      "calls": 6.0,
+      "host_ms": 0.5464
+    }
+  },
+  "wrapped_decode_classes": [
+    "EngineLoopRunner",
+    "_SubmitPollTextRunner"
+  ],
+  "runs": {
+    "wall_a_s": 0.4791,
+    "wall_b_s": 2.5866,
+    "tokens_a": 8,
+    "tokens_b": 136
+  },
+  "comparison": {
+    "census_busy_ms_per_token_d7_1024": 14.2094,
+    "topline_wall_ms_per_token_d7_1024": 15.915963711602737,
+    "note": "census busy and topline wall are the committed d7 numbers under their own instruments; this probe's wall is a third measurement of the same step (LLM.generate path)."
+  }
+}
