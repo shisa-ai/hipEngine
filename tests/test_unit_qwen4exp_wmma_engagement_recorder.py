@@ -185,7 +185,8 @@ def test_summary_does_not_claim_arm_isolation():
                     "variant_out": "wmma_prefill_q8_0_f32_f32_out",
                 }
             ],
-        }
+        },
+        route_selector="wmma_prefill",
     )
     assert "arms_isolated" not in summary, (
         "the flag was renamed because it promised isolation this check cannot "
@@ -254,7 +255,8 @@ def test_summary_names_the_selectors_that_differ_between_arms():
                 {"selector": "native_batch_decode_session", "reason": "inactive",
                  "engaged": False, "rows": 4},
             ],
-        }
+        },
+        route_selector="wmma_prefill",
     )
     assert summary["selectors_differing_between_arms"] == [
         "q4k_rowtile",
@@ -285,7 +287,8 @@ def test_selector_observed_in_one_arm_only_is_not_called_isolated():
                 {"selector": "q4k_rowtile", "reason": "inactive",
                  "engaged": False, "rows": 512},
             ],
-        }
+        },
+        route_selector="wmma_prefill",
     )
     assert summary["selectors_observed_in_one_arm_only"] == ["q4k_rowtile"]
     assert "q4k_rowtile" not in summary["selectors_differing_between_arms"]
@@ -316,7 +319,8 @@ def test_route_engagement_is_about_the_route_not_every_selector():
                 {"selector": "q4k_rowtile", "reason": "active",
                  "engaged": True, "rows": 512},
             ],
-        }
+        },
+        route_selector="wmma_prefill",
     )
     assert summary["teacher_route_engaged"] is False, (
         "the teacher's route count is zero; a true flag here makes the verdict "
@@ -359,7 +363,8 @@ def test_differing_selector_is_found_even_when_both_arms_engage_it():
                  "rows": 512, "variant_out": "wmma_prefill_f32_f32_out"}
                 for _ in range(100)
             ],
-        }
+        },
+        route_selector="wmma_prefill",
     )
     assert "q4k_rowtile" in summary["selectors_differing_between_arms"], (
         "both arms engaged it at least once, but at different rates; a boolean "
@@ -381,7 +386,8 @@ def test_summary_flags_a_route_that_never_engaged():
             "candidate": [
                 {"reason": "raw_abi_not_eligible", "engaged": False, "rows": 512}
             ],
-        }
+        },
+        route_selector="wmma_prefill",
     )
     assert summary["candidate_route_engaged"] is False
     assert summary["wmma_route_engaged_candidate_only"] is False
@@ -404,7 +410,8 @@ def test_summary_accepts_a_correctly_isolated_pair():
                     "variant_out": "wmma_prefill_q8_0_f32_f32_out",
                 }
             ],
-        }
+        },
+        route_selector="wmma_prefill",
     )
     assert summary["candidate_route_engaged"] is True
     assert summary["teacher_route_engaged"] is False
@@ -443,7 +450,74 @@ def test_summary_rejects_a_teacher_arm_that_also_engaged():
                     "variant_out": "wmma_prefill_q8_0_f32_f32_out",
                 }
             ],
-        }
+        },
+        route_selector="wmma_prefill",
     )
     assert summary["wmma_route_engaged_candidate_only"] is False
     assert "not against the cleared chain" in summary["verdict"]
+
+
+def test_route_flag_follows_the_named_route_not_wmma():
+    """A `--route dense_wide` run must be able to report its own route engaged.
+
+    The flag was hardcoded to `wmma_prefill`, so the route that is the live
+    production default at 16-47 reported `candidate_route_engaged: False`
+    whatever the recorder saw. It was the one route the false-pass detector
+    could not see, and it was the live one.
+    """
+
+    gate = _gate()
+    engagement = {
+        "teacher": [
+            {"selector": "dense_wide", "reason": "selector off", "engaged": False,
+             "rows": 512},
+        ],
+        "candidate": [
+            {"selector": "dense_wide", "reason": "claimed", "engaged": True,
+             "rows": 512, "variant_out": "dense_wide256_f32_f32_out"},
+        ],
+    }
+
+    dense = gate._summarise_engagement(engagement, route_selector="dense_wide")
+    assert dense["route"] == "dense_wide"
+    assert dense["candidate_route_engaged"] is True
+    assert dense["teacher_route_engaged"] is False
+    assert dense["route_engagement_recorded"] is True
+
+    # The same records asked about the WMMA route answer about that route: the
+    # wmma selector never appears, so it did not engage. This is the assertion
+    # that pins "the flag is about the route you named".
+    wmma = gate._summarise_engagement(engagement, route_selector="wmma_prefill")
+    assert wmma["candidate_route_engaged"] is False
+
+
+def test_an_unrecorded_route_says_so_instead_of_borrowing_another():
+    """No recorder must read as *unanswered*, not as a pass or a failure."""
+
+    gate = _gate()
+    summary = gate._summarise_engagement(
+        {
+            "teacher": [{"selector": "wmma_prefill", "reason": "x", "engaged": False,
+                         "rows": 512}],
+            "candidate": [{"selector": "wmma_prefill", "reason": "y", "engaged": True,
+                           "rows": 512}],
+        },
+        route_selector=None,
+    )
+    assert summary["route_engagement_recorded"] is False
+    assert summary["route"] is None
+    assert summary["candidate_route_engaged"] is False
+    assert "cannot say whether" in summary["route_engagement_note"]
+    # It must not answer with another route's selector.
+    assert summary["candidate_route_engaged"] != summary["selectors_differing_between_arms"]
+
+
+def test_every_route_with_a_recorder_is_mapped():
+    """The map is the only place a route's selector is named; keep it honest."""
+
+    gate = _gate()
+    assert gate.ROUTE_ENGAGEMENT_SELECTORS["wmma"] == "wmma_prefill"
+    assert gate.ROUTE_ENGAGEMENT_SELECTORS["dense_wide"] == "dense_wide"
+    # Every mapped route must also have a row floor, so the two registries
+    # cannot drift apart silently.
+    assert set(gate.ROUTE_ENGAGEMENT_SELECTORS) <= set(gate.ROUTE_ROW_FLOORS)

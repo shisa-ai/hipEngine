@@ -395,3 +395,84 @@ def test_a_scoped_route_declines_a_weight_it_cannot_place(slot_path, monkeypatch
         parent, rows=1024, in_features=PACKET_K, out_features=PACKET_N,
         weight=_weight(slot_path),
     ) == GGUFLinearDispatch(CANDIDATE, "raw")
+
+
+def test_records_engagement_in_both_arms(monkeypatch):
+    """The route must be visible to the gate's engagement summary either way.
+
+    ``--route dense_wide`` reported ``candidate_route_engaged: False`` whether or
+    not the route ran, because the recorder covered only ``wmma_prefill`` and the
+    selectors ``use_wmma`` moves. That made the detector added in 056e6fbd8 blind
+    to the route that is the live production default at 16-47. A selector that
+    only records when it fires appears in one arm and is reported *unobserved*
+    rather than engaged, so the declined path has to record too.
+    """
+
+    from hipengine.runtime.gguf_linear import (
+        wmma_prefill_dispatch_recorder,
+        _q8_dense_wide_dispatch,
+    )
+
+    parent = _parent()
+
+    # Declined: selector off. The teacher arm of a dense_wide gate is this arm.
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", raising=False)
+    off: list[dict] = []
+    with wmma_prefill_dispatch_recorder(off):
+        _q8_dense_wide_dispatch(
+            parent, rows=1024, in_features=PACKET_K, out_features=PACKET_N
+        )
+    assert [r["engaged"] for r in off] == [False]
+    assert off[0]["selector"] == "dense_wide"
+    assert off[0]["reason"] == "selector off"
+    assert off[0]["rows"] == 1024
+
+    # Claimed: the candidate arm.
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    on: list[dict] = []
+    with wmma_prefill_dispatch_recorder(on):
+        claimed = _q8_dense_wide_dispatch(
+            parent, rows=1024, in_features=PACKET_K, out_features=PACKET_N
+        )
+    assert claimed.key.variant == "dense_wide256_f32_f32_out"
+    assert [r["engaged"] for r in on] == [True]
+    assert on[0]["reason"] == "claimed"
+    assert on[0]["detail"] == "dense_wide256_f32_f32_out"
+
+
+def test_records_the_reason_it_declined(monkeypatch):
+    """A decline must name itself, so a zero rate is diagnosable."""
+
+    from hipengine.runtime.gguf_linear import (
+        wmma_prefill_dispatch_recorder,
+        _q8_dense_wide_dispatch,
+    )
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+
+    rec: list[dict] = []
+    with wmma_prefill_dispatch_recorder(rec):
+        _q8_dense_wide_dispatch(
+            _parent(), rows=128, in_features=PACKET_K, out_features=PACKET_N
+        )
+    assert [r["reason"] for r in rec] == ["ineligible shape"]
+
+    rec: list[dict] = []
+    with wmma_prefill_dispatch_recorder(rec):
+        _q8_dense_wide_dispatch(
+            _parent("prefill_f32_f32_out"),
+            rows=1024,
+            in_features=PACKET_K,
+            out_features=PACKET_N,
+        )
+    assert [r["reason"] for r in rec] == ["claimed"]
+
+    rec: list[dict] = []
+    with wmma_prefill_dispatch_recorder(rec):
+        _q8_dense_wide_dispatch(
+            _parent("wmma_not_a_parent_f32_f32_out"),
+            rows=1024,
+            in_features=PACKET_K,
+            out_features=PACKET_N,
+        )
+    assert [r["reason"] for r in rec] == ["parent not claimable"]

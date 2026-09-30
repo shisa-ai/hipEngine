@@ -8145,8 +8145,21 @@ Two consequences worth knowing:
 - The detector covers the *retired* route and is blind to the live one. Any
   future `dense_wide` certificate is unverifiable on route engagement for the
   same reason the pre-`056e6fbd8` certificates are.
-- Removal condition: add a `dense_wide` dispatch recorder alongside
-  `_record_wmma_prefill_dispatch`, re-run the 16-47 gate with it, and confirm the
-  selector appears in `selector_states` with the candidate arm engaged. Until
-  then, attribution of a `dense_wide` gate's drift to that route rests on the
-  documented byte-identity with the `wmma` route rather than on direct evidence.
+- **CLOSED 2026-09-30 (`20260930T113806`).** Both defects are fixed:
+  `_record_route_engagement` now records the route at all six decision points of
+  `_q8_dense_wide_dispatch`, and `_summarise_engagement` takes a `route_selector`
+  from `ROUTE_ENGAGEMENT_SELECTORS` instead of hardcoding `wmma_prefill`. Only
+  the first was in the original entry; fixing it alone would have left the flags
+  wrong, because the gate read the wrong key.
+- Verified end-to-end on the reduced screen: `--route dense_wide --layers 16-47`
+  now reports `candidate_route_engaged: True`, `route: dense_wide`,
+  `selectors_differing: ['dense_wide']`, with `dense_wide` at t=0.0000 c=0.2640
+  differs=True. The `wmma` route is unchanged.
+- **Residual, not closed:** the canonical `dense_wide` 16-47 re-gate of
+  `20260930T113116` predates this fix, so that artifact still cannot say whether
+  the route ran. Repeat it to give the live default engagement evidence.
+- **Residual, not closed:** a route with no entry in `ROUTE_ENGAGEMENT_SELECTORS`
+  (`staged_f32`, `staged_f32_composed_vs_exact`, `staged_f32_over_wmma`) now
+  reports `route_engagement_recorded: false` rather than a wrong answer, but it
+  still has no recorder. Add one before relying on any of those gates for
+  engagement.

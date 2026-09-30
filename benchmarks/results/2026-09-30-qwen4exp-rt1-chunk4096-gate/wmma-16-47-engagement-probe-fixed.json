@@ -1,0 +1,594 @@
+{
+ "schema_version": 2,
+ "kind": "hipengine_execution_profile_q8_wmma_prefill_layers_gate",
+ "created_at": "2026-09-30T11:38:01.475801+00:00",
+ "performance_claim": false,
+ "status": "invalid_or_screen_only",
+ "measurement_valid": false,
+ "canonical_numerical_qualification_claim": false,
+ "category_heldout_qualification_claim": false,
+ "category_heldout_evidence_complete": false,
+ "profile_qualification_claim": false,
+ "qualification_blockers": [
+  "complete canonical numerical coverage",
+  "calibrated quality thresholds",
+  "execution-affecting worktree provenance",
+  "category-heldout numerical evidence",
+  "strict-teacher and applicable BF16-relative evidence",
+  "exact control/isolation/graph/lifecycle evidence",
+  "task-quality evidence",
+  "candidate route engagement and repair-oracle coverage"
+ ],
+ "qualification_coverage": {
+  "protocol": "canonical_12_case_d128_three_repeat_numerical_v1",
+  "complete": false,
+  "checks": {
+   "canonical_fixture_identity": true,
+   "canonical_cases_once_each": false,
+   "canonical_categories": true,
+   "teacher_d128": false,
+   "candidate_d128_three_repeats": false,
+   "positive_chunk_size": true
+  },
+  "required_fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "observed_fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "fixture_kind": "canonical",
+  "observed_case_ids": [
+   "code-p512",
+   "general_en-p512"
+  ],
+  "observed_teacher_rows": 50,
+  "prefill_chunk_size": 1024,
+  "scope": "this route/layer set, manifest and chunk size only"
+ },
+ "route": {
+  "name": "wmma",
+  "surface": "post-binder HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS; HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE cleared in both arms",
+  "candidate_layers": "16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+  "teacher_selector": "cleared",
+  "teacher_chain": "exact coltile8_rowbatch4_f32_f32_out",
+  "candidate_chain": "wmma_prefill_f32_f32_out",
+  "warmup_request_after_selector_flip": true,
+  "selector_restored_after_capture": true
+ },
+ "protocol": {
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "case_count": 2,
+  "decode_steps": 24,
+  "candidate_repeat_runs": 3,
+  "execution_profile": "production",
+  "prefill_chunk_size": 1024,
+  "same_context_rule": "candidate consumes the strict generated token prefix at every compared transition",
+  "teacher_scope": "production profile with the route's selectors cleared; candidate-local isolation of the changed route",
+  "thresholds_evaluated": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  },
+  "profile_manifest_sha256": "a55324f919900c20b244b65605e37d8e12623fe20ff9b076bc3573f11edf3786",
+  "strict_manifest_sha256": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed"
+ },
+ "quality": {
+  "finite": true,
+  "top_k": 5,
+  "thresholds": {
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "max_kl_max": 0.05,
+   "top1_min": 0.99,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02
+  },
+  "summary": {
+   "rows": 50,
+   "kl_mean": 0.0009399214094387318,
+   "kl_p50": 0.0002462996662099033,
+   "kl_p95": 0.0035281235058394218,
+   "kl_p99": 0.010886723553111368,
+   "kl_max": 0.01231981048269808,
+   "top1_agreement": 0.96,
+   "top1_matches": 48,
+   "topk_overlap_mean": 0.976,
+   "strict_teacher_nll_mean": 0.29571310279709667,
+   "candidate_teacher_nll_mean": 0.29132509574012366,
+   "teacher_nll_delta": -0.004388007056973009,
+   "teacher_delta_p_mean": 0.001693994546672205,
+   "strict_margin_min": 0.03929328918457031,
+   "max_abs_logit_delta": 0.6708436012268066,
+   "flip_eligible_rows": 10,
+   "flip_eligible_share": 0.2,
+   "top1_mismatches_flip_eligible": 2,
+   "top1_mismatches_outside_flip_eligible": 0
+  },
+  "by_scope": {
+   "category": {
+    "code": {
+     "rows": 25,
+     "kl_mean": 0.0008690880640915784,
+     "kl_p50": 0.00015820512733054655,
+     "kl_p95": 0.001988901103037856,
+     "kl_p99": 0.009852623304901921,
+     "kl_max": 0.01231981048269808,
+     "top1_agreement": 1.0,
+     "top1_matches": 25,
+     "topk_overlap_mean": 0.9840000000000001,
+     "strict_teacher_nll_mean": 0.2797024856888303,
+     "candidate_teacher_nll_mean": 0.27256781630200533,
+     "teacher_nll_delta": -0.007134669386824999,
+     "teacher_delta_p_mean": 0.003611833027427167,
+     "strict_margin_min": 0.03929328918457031,
+     "max_abs_logit_delta": 0.49063658714294434,
+     "flip_eligible_rows": 5,
+     "flip_eligible_share": 0.2,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    },
+    "general_en": {
+     "rows": 25,
+     "kl_mean": 0.0010107547547858853,
+     "kl_p50": 0.00028780780238976987,
+     "kl_p95": 0.0037955383193454787,
+     "kl_p99": 0.008102581733225596,
+     "kl_max": 0.009395143279459905,
+     "top1_agreement": 0.92,
+     "top1_matches": 23,
+     "topk_overlap_mean": 0.968,
+     "strict_teacher_nll_mean": 0.3117237199053631,
+     "candidate_teacher_nll_mean": 0.3100823751782419,
+     "teacher_nll_delta": -0.0016413447271211856,
+     "teacher_delta_p_mean": -0.00022384393408275693,
+     "strict_margin_min": 0.05734825134277344,
+     "max_abs_logit_delta": 0.6708436012268066,
+     "flip_eligible_rows": 5,
+     "flip_eligible_share": 0.2,
+     "top1_mismatches_flip_eligible": 2,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": false
+    }
+   },
+   "shape": {
+    "c1": {
+     "rows": 48,
+     "kl_mean": 0.000979084800332107,
+     "kl_p50": 0.00026766568385458976,
+     "kl_p95": 0.0036350894312418463,
+     "kl_p99": 0.010945216897176141,
+     "kl_max": 0.01231981048269808,
+     "top1_agreement": 0.9583333333333334,
+     "top1_matches": 46,
+     "topk_overlap_mean": 0.975,
+     "strict_teacher_nll_mean": 0.3080344820568027,
+     "candidate_teacher_nll_mean": 0.3034636413786153,
+     "teacher_nll_delta": -0.004570840678187416,
+     "teacher_delta_p_mean": 0.0017645776466240388,
+     "strict_margin_min": 0.03929328918457031,
+     "max_abs_logit_delta": 0.6708436012268066,
+     "flip_eligible_rows": 10,
+     "flip_eligible_share": 0.20833333333333334,
+     "top1_mismatches_flip_eligible": 2,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": false
+    },
+    "prefill_last": {
+     "rows": 2,
+     "kl_mean": 2.7997731355695957e-11,
+     "kl_p50": 2.7997731355695957e-11,
+     "kl_p95": 4.797440967586568e-11,
+     "kl_p99": 4.9750114415436325e-11,
+     "kl_max": 5.019404060032899e-11,
+     "top1_agreement": 1.0,
+     "top1_matches": 2,
+     "topk_overlap_mean": 1.0,
+     "strict_teacher_nll_mean": 5.641510590213672e-10,
+     "candidate_teacher_nll_mean": 4.1632286497862876e-10,
+     "teacher_nll_delta": -1.4782819404273843e-10,
+     "teacher_delta_p_mean": 1.4782819413028392e-10,
+     "strict_margin_min": 21.541034698486328,
+     "max_abs_logit_delta": 0.4491094946861267,
+     "flip_eligible_rows": 0,
+     "flip_eligible_share": 0.0,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    }
+   },
+   "transition": {
+    "prefill_to_c1": {
+     "rows": 2,
+     "kl_mean": 2.7997731355695957e-11,
+     "kl_p50": 2.7997731355695957e-11,
+     "kl_p95": 4.797440967586568e-11,
+     "kl_p99": 4.9750114415436325e-11,
+     "kl_max": 5.019404060032899e-11,
+     "top1_agreement": 1.0,
+     "top1_matches": 2,
+     "topk_overlap_mean": 1.0,
+     "strict_teacher_nll_mean": 5.641510590213672e-10,
+     "candidate_teacher_nll_mean": 4.1632286497862876e-10,
+     "teacher_nll_delta": -1.4782819404273843e-10,
+     "teacher_delta_p_mean": 1.4782819413028392e-10,
+     "strict_margin_min": 21.541034698486328,
+     "max_abs_logit_delta": 0.4491094946861267,
+     "flip_eligible_rows": 0,
+     "flip_eligible_share": 0.0,
+     "top1_mismatches_flip_eligible": 0,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": true
+    },
+    "steady": {
+     "rows": 48,
+     "kl_mean": 0.000979084800332107,
+     "kl_p50": 0.00026766568385458976,
+     "kl_p95": 0.0036350894312418463,
+     "kl_p99": 0.010945216897176141,
+     "kl_max": 0.01231981048269808,
+     "top1_agreement": 0.9583333333333334,
+     "top1_matches": 46,
+     "topk_overlap_mean": 0.975,
+     "strict_teacher_nll_mean": 0.3080344820568027,
+     "candidate_teacher_nll_mean": 0.3034636413786153,
+     "teacher_nll_delta": -0.004570840678187416,
+     "teacher_delta_p_mean": 0.0017645776466240388,
+     "strict_margin_min": 0.03929328918457031,
+     "max_abs_logit_delta": 0.6708436012268066,
+     "flip_eligible_rows": 10,
+     "flip_eligible_share": 0.20833333333333334,
+     "top1_mismatches_flip_eligible": 2,
+     "top1_mismatches_outside_flip_eligible": 0,
+     "passed": false
+    }
+   }
+  },
+  "scope_failures": [
+   {
+    "dimension": "category",
+    "value": "general_en"
+   },
+   {
+    "dimension": "shape",
+    "value": "c1"
+   },
+   {
+    "dimension": "transition",
+    "value": "steady"
+   }
+  ],
+  "rows_over_review_boundary": [],
+  "top1_mismatch_rows": [
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-wmma-dense-prefill-layers-16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 30,
+    "request_id": "general_en-p512",
+    "teacher_step": 5,
+    "category": "general_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 11173,
+    "row_index": 30,
+    "kl": 0.0029398109161261,
+    "top1_equal": false,
+    "strict_top1_token_id": 11173,
+    "candidate_top1_token_id": 3106,
+    "topk_overlap": 1.0,
+    "strict_margin": 0.08922958374023438,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 0.911303680637243,
+    "candidate_teacher_nll": 0.9840068725682345,
+    "teacher_delta_p": -0.028189519009893582,
+    "max_abs_logit_delta": 0.2628355026245117
+   },
+   {
+    "scenario_id": "qwen4exp-ud-q4-k-xl-q8-wmma-dense-prefill-layers-16_17_18_19_20_21_22_23_24_25_26_27_28_29_30_31_32_33_34_35_36_37_38_39_40_41_42_43_44_45_46_47-c1-teacher-forced",
+    "scenario_step": 48,
+    "request_id": "general_en-p512",
+    "teacher_step": 23,
+    "category": "general_en",
+    "shape": "c1",
+    "transition": "steady",
+    "teacher_token_id": 10926,
+    "row_index": 48,
+    "kl": 0.0017968226376547318,
+    "top1_equal": false,
+    "strict_top1_token_id": 10926,
+    "candidate_top1_token_id": 12960,
+    "topk_overlap": 0.8,
+    "strict_margin": 0.05734825134277344,
+    "strict_top1_candidate_rank": 2,
+    "strict_teacher_nll": 1.0479675590523418,
+    "candidate_teacher_nll": 1.0622889514012612,
+    "teacher_delta_p": -0.004986003457598531,
+    "max_abs_logit_delta": 0.2576446533203125
+   }
+  ],
+  "hard_gates_passed": false,
+  "requires_outlier_review": false,
+  "eligible_for_automatic_admission": false
+ },
+ "repeat_determinism": {
+  "runs": 3,
+  "passed": true,
+  "mismatches": [],
+  "trajectory_sha256_by_prompt": [
+   [
+    "7324d3f1e37b06df9df38a87ac39aebb27f2ca95440bf6c48904bb27c9581881",
+    "7324d3f1e37b06df9df38a87ac39aebb27f2ca95440bf6c48904bb27c9581881",
+    "7324d3f1e37b06df9df38a87ac39aebb27f2ca95440bf6c48904bb27c9581881"
+   ],
+   [
+    "fff7a084b311c80a94a5e108dc6a34e806609582ab5ce65c8f7d0cdf56c2d93d",
+    "fff7a084b311c80a94a5e108dc6a34e806609582ab5ce65c8f7d0cdf56c2d93d",
+    "fff7a084b311c80a94a5e108dc6a34e806609582ab5ce65c8f7d0cdf56c2d93d"
+   ]
+  ]
+ },
+ "strict_logits_sha256": "e91c8bb18bc171062fc9fa25c66305325158473d5ec42c53c29e4ed40aac1d75",
+ "candidate_logits_sha256": "03534889470e9c75ab1193e0fa00b3742671aa3a3de543af0150ad6744a2bb83",
+ "variant_manifests": {
+  "candidate_evidentiary": {
+   "kind": "hipengine_execution_profile_manifest",
+   "schema_version": 1,
+   "execution_profile": "production",
+   "backend": "hip_gfx1151",
+   "model": "qwen4_exp_gguf",
+   "quant": "gguf_ud_q4_k_xl",
+   "kv_policy": "paged_bf16_qsa_index_f32",
+   "graph_policy": "request_owned_exact_moe_graph_c1",
+   "selections": [
+    {
+     "layer": "linear",
+     "scope": "prefill_dense_q8_wmma_layers",
+     "selected_variant": "wmma_prefill_f32_f32_out",
+     "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+     "evidence_artifact": null,
+     "registry_quant": "gguf_q8_0"
+    }
+   ]
+  }
+ },
+ "route_engagement": {
+  "teacher": {
+   "launches": 56496,
+   "engaged_launches": 27346,
+   "engaged_variants": {
+    "None": 27346
+   },
+   "decline_reasons": {
+    "active": 27346,
+    "inactive": 27346,
+    "selector off": 902,
+    "use_wmma_false": 902
+   },
+   "rows_seen": [
+    1,
+    512
+   ],
+   "per_selector": {
+    "dense_wide": {
+     "active": 0,
+     "inactive": 902
+    },
+    "native_batch_decode_session": {
+     "active": 0,
+     "inactive": 27346
+    },
+    "q4k_rowtile": {
+     "active": 27346,
+     "inactive": 0
+    },
+    "wmma_prefill": {
+     "active": 0,
+     "inactive": 902
+    }
+   }
+  },
+  "candidate": {
+   "launches": 163196,
+   "engaged_launches": 79278,
+   "engaged_variants": {
+    "None": 79014,
+    "wmma_prefill_f32_f32_out": 264
+   },
+   "decline_reasons": {
+    "active": 79014,
+    "engaged": 264,
+    "inactive": 82182,
+    "selector off": 1000,
+    "use_wmma_false": 736
+   },
+   "rows_seen": [
+    1,
+    512
+   ],
+   "per_selector": {
+    "dense_wide": {
+     "active": 0,
+     "inactive": 1000
+    },
+    "native_batch_decode_session": {
+     "active": 0,
+     "inactive": 80598
+    },
+    "q4k_rowtile": {
+     "active": 79014,
+     "inactive": 1584
+    },
+    "wmma_prefill": {
+     "active": 264,
+     "inactive": 736
+    }
+   }
+  },
+  "selector_states": {
+   "dense_wide": {
+    "teacher_engaged_rate": 0.0,
+    "candidate_engaged_rate": 0.0,
+    "differs": false
+   },
+   "native_batch_decode_session": {
+    "teacher_engaged_rate": 0.0,
+    "candidate_engaged_rate": 0.0,
+    "differs": false
+   },
+   "q4k_rowtile": {
+    "teacher_engaged_rate": 1.0,
+    "candidate_engaged_rate": 0.980347,
+    "differs": true
+   },
+   "wmma_prefill": {
+    "teacher_engaged_rate": 0.0,
+    "candidate_engaged_rate": 0.264,
+    "differs": true
+   }
+  },
+  "selectors_differing_between_arms": [
+   "q4k_rowtile",
+   "wmma_prefill"
+  ],
+  "selectors_observed_in_one_arm_only": [],
+  "attribution": "the drift this run measures can only come from q4k_rowtile, wmma_prefill",
+  "candidate_route_engaged": true,
+  "teacher_route_engaged": false,
+  "route": "wmma_prefill",
+  "route_engagement_recorded": true,
+  "wmma_route_engaged_candidate_only": true,
+  "covers_other_use_wmma_selectors": false,
+  "verdict": "this route engaged in the candidate arm only - which does NOT mean the arms are isolated: use_wmma also gates f_rowtile, enabled=not use_wmma, use_rowtile and the rows-2-8 native batch-decode session, and this recorder cannot observe those"
+ },
+ "prompts": [
+  {
+   "id": "code-p512",
+   "category": "code",
+   "prompt_tokens": 512,
+   "prompt_token_ids_sha256": "4ea99919370c0cc80a798432e0985f19d71beeecf9b6d486cb68eb16c58159b7"
+  },
+  {
+   "id": "general_en-p512",
+   "category": "general_en",
+   "prompt_tokens": 512,
+   "prompt_token_ids_sha256": "6f75ae560a9b18076c9a175b3f4fb806df50289b495c25ce68237e8af006ded6"
+  }
+ ],
+ "provenance": {
+  "kind": "hipengine_artifact_provenance",
+  "schema_version": 3,
+  "collected_at": "2026-09-30T11:38:01.229768+00:00",
+  "host_name": "gfx1151",
+  "repo_root": "/home/lhl/hipEngine",
+  "hipengine_commit": "c64d168a1e37989fcecf7ed7823e1ee1660b1da1",
+  "git_branch": "qwen3.8-flash-next",
+  "staged_dirty": false,
+  "unstaged_dirty": true,
+  "untracked_dirty": true,
+  "untracked_count": 29,
+  "dirty": true,
+  "dirty_paths": [
+   "hipengine/runtime/gguf_linear.py",
+   "scripts/execution_profile_q8_wmma_prefill_layers_gate.py",
+   "tests/test_unit_qwen4exp_dense_wide_dispatch.py",
+   "tests/test_unit_qwen4exp_wmma_engagement_recorder.py"
+  ],
+  "dirty_path_count": 4,
+  "untracked_paths": [
+   "benchmarks/results/2026-09-17-iu8-repair-unroll/census.json",
+   "benchmarks/results/2026-09-17-iu8-repair-unroll/warm.json",
+   "benchmarks/results/2026-09-17-iu8-repair-unroll/warm.log",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/decode-baseline.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/decode-dp4a.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/prof-baseline.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/prof-dp4a.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/trace-baseline.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/trace-dp4a.json",
+   "benchmarks/results/2026-09-29-qwen4exp-de1-dp4a-e2e/trace-promoted.json",
+   "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/rocprof/x4full_memory_allocation_trace.csv",
+   "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/rocprof/x4full_memory_copy_trace.csv",
+   "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/rocprof/x4full_scratch_memory_trace.csv",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/de5-clean-ar.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/reset-split-mem.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/reset-split.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-clocks.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-hostgpu.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-long.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-p1024.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-perstep.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-prefill.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-production.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-resync.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-settle.json",
+   "benchmarks/results/2026-09-30-qwen4exp-de5-wrapper-wall/wall-split-trend.json",
+   "benchmarks/results/2026-09-30-qwen4exp-rt1-chunk4096-gate/dense-wide-16-47-engagement-probe-fixed.json",
+   "benchmarks/results/2026-09-30-qwen4exp-rt1-chunk4096-gate/dense-wide-16-47-engagement-probe-recorded.json",
+   "docs/superpowers/plans/2026-09-13-qwen38-gfx1151-release-qualification.md"
+  ],
+  "execution_affecting_dirty": true,
+  "execution_affecting_paths": [
+   "hipengine/runtime/gguf_linear.py",
+   "scripts/execution_profile_q8_wmma_prefill_layers_gate.py",
+   "tests/test_unit_qwen4exp_dense_wide_dispatch.py",
+   "tests/test_unit_qwen4exp_wmma_engagement_recorder.py"
+  ],
+  "configured_backend": "hip_gfx1151",
+  "resolved_backend": "hip_gfx1151",
+  "target_arch": "gfx1151",
+  "device_name": "AMD Radeon 8060S Graphics",
+  "model_path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "model_revision": null,
+  "model_fingerprint": {
+   "algorithm": "sha256-directory-manifest-v1",
+   "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+   "size_bytes": 111334654784,
+   "sampled_bytes": 12582912,
+   "file_count": 4,
+   "exists": true,
+   "path_type": "directory"
+  },
+  "quant": "gguf_ud_q4_k_xl",
+  "kv_dtype": "bf16",
+  "command": [
+   "python3",
+   "scripts/execution_profile_q8_wmma_prefill_layers_gate.py",
+   "--model-root",
+   "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+   "--route",
+   "wmma",
+   "--layers",
+   "16-47",
+   "--decode-steps",
+   "24",
+   "--repeat-runs",
+   "3",
+   "--case-id",
+   "code-p512",
+   "--case-id",
+   "general_en-p512",
+   "--prefill-chunk-size",
+   "1024",
+   "--output",
+   "benchmarks/results/2026-09-30-qwen4exp-rt1-chunk4096-gate/wmma-16-47-engagement-probe-fixed.json"
+  ],
+  "environment": {
+   "HIPENGINE_HIP_ARCH": "gfx1151",
+   "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": "16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+   "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": "0",
+   "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ""
+  },
+  "rocm_version": "HIP version: 7.15.26333-0000000",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+  "build_profile": "hipengine_execution_profile_q8_wmma_prefill_layers_gate",
+  "timing_protocol": "none_full_logits_only_v1",
+  "warmups": 1,
+  "repetitions": 3,
+  "profiler": {
+   "enabled": false,
+   "kind": null,
+   "command": null
+  }
+ }
+}

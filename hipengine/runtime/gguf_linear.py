@@ -229,6 +229,48 @@ def _record_selector(
     )
 
 
+def _record_route_engagement(
+    selector: str,
+    *,
+    rows: int,
+    engaged: bool,
+    reason: str,
+    detail: object = None,
+) -> None:
+    """Record whether a *route* selector claimed a dispatch.
+
+    ``_record_selector`` covers the selectors ``use_wmma`` moves that are not a
+    route; this covers the routes themselves. Both write the same record shape,
+    so a gate's engagement summary sees them in one ``selector_states`` map and
+    compares them by rate across arms.
+
+    Recording in **both** arms matters as much as recording at all: a selector
+    that only ever records when it fires appears in one arm, lands in
+    ``selectors_observed_in_one_arm_only``, and is reported as *unobserved*
+    rather than as engaged. The declined paths therefore record too, with the
+    reason they declined.
+
+    ``dense_wide`` needs this. It had no dispatch recorder of its own, so a
+    ``--route dense_wide`` gate reported ``candidate_route_engaged: False``
+    whether or not the route ran, and the detector added in 056e6fbd8 - the one
+    that caught the WMMA false pass - could not see the route that is the live
+    production default at 16-47. See ``docs/REFACTOR.md``.
+    """
+
+    records = _wmma_prefill_dispatch_records.get()
+    if records is None:
+        return
+    records.append(
+        {
+            "selector": selector,
+            "rows": int(rows),
+            "engaged": bool(engaged),
+            "reason": reason,
+            "detail": detail,
+        }
+    )
+
+
 _wmma_prefill_weight_filter: ContextVar[
     Callable[[GGUFDeviceWeight], bool] | None
 ] = ContextVar("gguf_wmma_prefill_weight_filter", default=None)
@@ -3230,6 +3272,10 @@ def _q8_dense_wide_dispatch(
     """
 
     if not _q8_dense_wide_enabled():
+        _record_route_engagement(
+            "dense_wide", rows=rows, engaged=False, reason="selector off",
+            detail=dispatch.key.variant,
+        )
         return dispatch
     if (
         dispatch.key.quant != "gguf_q8_0"
@@ -3238,6 +3284,10 @@ def _q8_dense_wide_dispatch(
         or in_features % _Q8_DENSE_WIDE_K_TILE != 0
         or out_features <= 0
     ):
+        _record_route_engagement(
+            "dense_wide", rows=rows, engaged=False, reason="ineligible shape",
+            detail=dispatch.key.variant,
+        )
         return dispatch
     if not _q8_dense_wide_claims_parent(dispatch):
         # Enabled, eligible shape, and still declining: another route owns the
@@ -3250,12 +3300,21 @@ def _q8_dense_wide_dispatch(
             RuntimeWarning,
             stacklevel=2,
         )
+        _record_route_engagement(
+            "dense_wide", rows=rows, engaged=False, reason="parent not claimable",
+            detail=f"{dispatch.key.variant}|{dispatch.abi}",
+        )
         return dispatch
     scope = _q8_dense_wide_layers()
     if scope is not None:
         layer_index = _weight_layer_index(weight)
         # A scoped route must not silently cover a weight it cannot place.
         if layer_index is None or layer_index not in scope:
+            _record_route_engagement(
+                "dense_wide", rows=rows, engaged=False,
+                reason="outside layer scope",
+                detail=f"layer={layer_index}",
+            )
             return dispatch
     key = KernelKey(
         dispatch.key.backend,
@@ -3279,7 +3338,14 @@ def _q8_dense_wide_dispatch(
             RuntimeWarning,
             stacklevel=2,
         )
+        _record_route_engagement(
+            "dense_wide", rows=rows, engaged=False, reason="kernel not registered",
+            detail=key.variant,
+        )
         return dispatch
+    _record_route_engagement(
+        "dense_wide", rows=rows, engaged=True, reason="claimed", detail=key.variant,
+    )
     return GGUFLinearDispatch(key, "raw")
 
 
