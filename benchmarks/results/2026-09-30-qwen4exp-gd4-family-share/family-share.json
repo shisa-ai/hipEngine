@@ -1,0 +1,326 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp-prefill-family-share",
+  "trace": "benchmarks/results/2026-09-30-qwen4exp-gd4-family-share/rocprof/prefill_kernel_trace.csv",
+  "kernel_rows": 5699,
+  "total_kernel_ns": 3914467828.0,
+  "families": {
+    "moe": {
+      "calls": 384,
+      "total_ns": 1554168303.0,
+      "share": 0.3970318243218424
+    },
+    "gr": {
+      "calls": 654,
+      "total_ns": 1338148674.0,
+      "share": 0.34184689536296275
+    },
+    "other": {
+      "calls": 3231,
+      "total_ns": 314039903.0,
+      "share": 0.08022543977847708
+    },
+    "qsa": {
+      "calls": 288,
+      "total_ns": 309376343.0,
+      "share": 0.07903407476925622
+    },
+    "gdn": {
+      "calls": 72,
+      "total_ns": 194487062.0,
+      "share": 0.04968416411774888
+    },
+    "linear": {
+      "calls": 662,
+      "total_ns": 117019808.0,
+      "share": 0.02989418054811
+    },
+    "attention": {
+      "calls": 48,
+      "total_ns": 49856313.0,
+      "share": 0.012736421702940101
+    },
+    "norm": {
+      "calls": 200,
+      "total_ns": 16177846.0,
+      "share": 0.004132834068600755
+    },
+    "conv": {
+      "calls": 146,
+      "total_ns": 13625012.0,
+      "share": 0.003480680541692269
+    },
+    "cast": {
+      "calls": 6,
+      "total_ns": 6252134.0,
+      "share": 0.0015971862012196872
+    },
+    "ple": {
+      "calls": 6,
+      "total_ns": 1262489.0,
+      "share": 0.0003225186808202834
+    },
+    "embed": {
+      "calls": 2,
+      "total_ns": 53941.0,
+      "share": 1.3779906329581412e-05
+    }
+  },
+  "kernels": {
+    "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short, 3, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long, long)": {
+      "calls": 94,
+      "total_ns": 852157228.0,
+      "share": 0.21769427300042177
+    },
+    "void (anonymous namespace)::gguf_k_prefill_out_coltile_rowbatch_pipelined_kernel<float, float, 8, 8, 4, true>(float const*, unsigned char const*, float*, int, int, int)": {
+      "calls": 268,
+      "total_ns": 706377079.0,
+      "share": 0.18045290191103852
+    },
+    "void (anonymous namespace)::q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<true, true>(float const*, unsigned char const*, float const*, float*, float*, int, int, int, int)": {
+      "calls": 192,
+      "total_ns": 613970234.0,
+      "share": 0.15684641207376912
+    },
+    "void (anonymous namespace)::q5_1_selected_wmma_iu8_risk_prefill_kernel<16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long)": {
+      "calls": 86,
+      "total_ns": 478916858.0,
+      "share": 0.1223453299511956
+    },
+    "void (anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel<true, true>(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)": {
+      "calls": 72,
+      "total_ns": 194487062.0,
+      "share": 0.04968416411774888
+    },
+    "void (anonymous namespace)::qwen35_router_logits_f32_token_tile_dense_exact_kernel<4>(float const*, float const*, float*, long, long, long)": {
+      "calls": 96,
+      "total_ns": 155717634.0,
+      "share": 0.03978002651756626
+    },
+    "(anonymous namespace)::q5_1_selected_sparse_exact_repair_row_publish_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long)": {
+      "calls": 86,
+      "total_ns": 131277417.0,
+      "share": 0.033536465943334356
+    },
+    "(anonymous namespace)::gguf_q4_k_selected_dual_sparse_exact_repair_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long, long)": {
+      "calls": 94,
+      "total_ns": 128592918.0,
+      "share": 0.03285067693753441
+    },
+    "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, false, 1>(_Float16 const*, unsigned char const*, float*, int, int, int)": {
+      "calls": 400,
+      "total_ns": 124171371.0,
+      "share": 0.03172113719055453
+    },
+    "void (anonymous namespace)::q8_0_dense_wide_kernel<_Float16, 128, 256, 64, 64, true, 1>(_Float16 const*, unsigned char const*, float*, int, int, int)": {
+      "calls": 128,
+      "total_ns": 110986385.0,
+      "share": 0.028352866820393754
+    },
+    "(anonymous namespace)::dense_gemv_f32_bf16w_f32_out_kernel(float const*, unsigned short const*, float*, long, long, long)": {
+      "calls": 48,
+      "total_ns": 67735220.0,
+      "share": 0.017303813181320134
+    },
+    "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false, int, 4>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)": {
+      "calls": 24,
+      "total_ns": 49513429.0,
+      "share": 0.012648827676097586
+    },
+    "void (anonymous namespace)::dense_gemv_out_kernel<float, float, false>(float const*, float const*, float const*, float*, long, long, long)": {
+      "calls": 432,
+      "total_ns": 48646227.0,
+      "share": 0.012427290027021268
+    },
+    "void (anonymous namespace)::q8_0_selected_grouped_wmma_prefill_bf16_bf16_kernel<32, 16, true, true>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long, int*, int*)": {
+      "calls": 10,
+      "total_ns": 41052633.0,
+      "share": 0.010487411010598297
+    },
+    "(anonymous namespace)::q8_0_f32_to_f16_kernel(float const*, _Float16*, long)": {
+      "calls": 528,
+      "total_ns": 29360094.0,
+      "share": 0.007500404982252929
+    },
+    "(anonymous namespace)::q8_0_selected_sparse_repair_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int const*, int const*, int, int, int, int)": {
+      "calls": 10,
+      "total_ns": 25946446.0,
+      "share": 0.00662834570114648
+    },
+    "void (anonymous namespace)::gguf_q5_k_selected_dual_wmma_iu8_risk_prefill_kernel<unsigned short>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int*, int*, long, float, long, long, long, long, long, long)": {
+      "calls": 2,
+      "total_ns": 21445280.0,
+      "share": 0.005478466280040149
+    },
+    "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)": {
+      "calls": 96,
+      "total_ns": 19436911.0,
+      "share": 0.004965403179703946
+    },
+    "(anonymous namespace)::gr_write_bf16_f32_kernel(unsigned short const*, float const*, float const*, unsigned short*, long, long)": {
+      "calls": 192,
+      "total_ns": 17797153.0,
+      "share": 0.004546506391672917
+    },
+    "(anonymous namespace)::grouped_rmsnorm_bf16_f32_kernel(unsigned short const*, float const*, float*, long, long, float)": {
+      "calls": 196,
+      "total_ns": 15658432.0,
+      "share": 0.004000143234795798
+    },
+    "(anonymous namespace)::gguf_q5_k_selected_dual_sparse_exact_repair_bf16_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int const*, int const*, long, long, long, long, long, long)": {
+      "calls": 2,
+      "total_ns": 15141892.0,
+      "share": 0.00386818660040856
+    },
+    "(anonymous namespace)::qwen4_exp_linear_attn_conv_prefill_exact_kernel(float const*, float const*, float const*, float*, long, long)": {
+      "calls": 72,
+      "total_ns": 12242215.0,
+      "share": 0.0031274276703545816
+    },
+    "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)": {
+      "calls": 96,
+      "total_ns": 10346016.0,
+      "share": 0.0026430198061650795
+    },
+    "void (anonymous namespace)::silu_mul_dual_out_kernel<unsigned short>(unsigned short const*, unsigned short*, long, long)": {
+      "calls": 96,
+      "total_ns": 8617043.0,
+      "share": 0.0022013319252141266
+    },
+    "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<float, float, 8>(float const*, unsigned char const*, float*, int, int, int, int)": {
+      "calls": 6,
+      "total_ns": 6252134.0,
+      "share": 0.0015971862012196872
+    },
+    "void (anonymous namespace)::qsa_split_norm_rope_rows_f32_kernel<false>(float const*, float const*, float const*, float const*, long const*, float*, float*, float*, long, long, long, long, long, float, float)": {
+      "calls": 24,
+      "total_ns": 5426100.0,
+      "share": 0.0013861654351039413
+    },
+    "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)": {
+      "calls": 96,
+      "total_ns": 4878670.0,
+      "share": 0.001246317562020336
+    },
+    "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)": {
+      "calls": 192,
+      "total_ns": 2590694.0,
+      "share": 0.0006618253396972356
+    },
+    "(anonymous namespace)::qsa_gate_context_f32_kernel(float const*, float const*, float*, long)": {
+      "calls": 24,
+      "total_ns": 2415730.0,
+      "share": 0.0006171285871148051
+    },
+    "__amd_rocclr_fillBufferAligned": {
+      "calls": 458,
+      "total_ns": 2194749.0,
+      "share": 0.000560676213584147
+    },
+    "void (anonymous namespace)::shared_gate_combine_batch_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, float const*, unsigned short*, long, long)": {
+      "calls": 96,
+      "total_ns": 2024207.0,
+      "share": 0.0005171091164732393
+    },
+    "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)": {
+      "calls": 96,
+      "total_ns": 1334581.0,
+      "share": 0.00034093548820450287
+    },
+    "(anonymous namespace)::ple_dilated_depthwise_conv_f32_kernel(float const*, float const*, float*, float*, long, long, long, long, long)": {
+      "calls": 2,
+      "total_ns": 1161981.0,
+      "share": 0.00029684264913059337
+    },
+    "__amd_rocclr_copyBuffer": {
+      "calls": 463,
+      "total_ns": 1057475.0,
+      "share": 0.0002701452780978125
+    },
+    "(anonymous namespace)::scaled_silu_f32_kernel(float const*, float*, long, float)": {
+      "calls": 196,
+      "total_ns": 650151.0,
+      "share": 0.00016608924343419076
+    },
+    "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long, long, long)": {
+      "calls": 182,
+      "total_ns": 638361.0,
+      "share": 0.00016307733976859753
+    },
+    "(anonymous namespace)::silu_mul_f32_kernel(float const*, float const*, float*, long)": {
+      "calls": 96,
+      "total_ns": 569467.0,
+      "share": 0.00014547750167382396
+    },
+    "(anonymous namespace)::ple_add_delta_bf16_f32_kernel(unsigned short const*, float const*, float const*, unsigned short*, long)": {
+      "calls": 2,
+      "total_ns": 566423.0,
+      "share": 0.0001446998736197047
+    },
+    "(anonymous namespace)::ple_signed_sqrt_gate_f32_kernel(float const*, float const*, float*, long)": {
+      "calls": 2,
+      "total_ns": 558287.0,
+      "share": 0.00014262143017413503
+    },
+    "(anonymous namespace)::grouped_rmsnorm_f32_kernel(float const*, float const*, float*, long, long, float)": {
+      "calls": 4,
+      "total_ns": 519414.0,
+      "share": 0.00013269083380495727
+    },
+    "void (anonymous namespace)::qsa_norm_rope_rows_f32_kernel<false>(float const*, float const*, long const*, float*, long, long, long, long, float, float)": {
+      "calls": 24,
+      "total_ns": 479219.0,
+      "share": 0.00012242251592213112
+    },
+    "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<float>(float const*, float const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)": {
+      "calls": 24,
+      "total_ns": 342884.0,
+      "share": 8.759402684251668e-05
+    },
+    "(anonymous namespace)::qwen35_linear_attn_conv_prefill_state_kernel(float const*, float*, long, long, long)": {
+      "calls": 72,
+      "total_ns": 220816.0,
+      "share": 5.641022220709384e-05
+    },
+    "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)": {
+      "calls": 96,
+      "total_ns": 195445.0,
+      "share": 4.992888141830962e-05
+    },
+    "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)": {
+      "calls": 96,
+      "total_ns": 179983.0,
+      "share": 4.597891920648581e-05
+    },
+    "(anonymous namespace)::repeat_bf16_branches_kernel(unsigned short const*, unsigned short*, long, long, long)": {
+      "calls": 2,
+      "total_ns": 171321.0,
+      "share": 4.376610245064454e-05
+    },
+    "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)": {
+      "calls": 96,
+      "total_ns": 154010.0,
+      "share": 3.934378995233372e-05
+    },
+    "(anonymous namespace)::ple_repeat_gated_value_f32_kernel(float const*, float const*, float*, long, long)": {
+      "calls": 2,
+      "total_ns": 137779.0,
+      "share": 3.519737702644366e-05
+    },
+    "(anonymous namespace)::qsa_scatter_index_keys_f32_kernel(float const*, float*, int const*, long, long, long, long)": {
+      "calls": 24,
+      "total_ns": 96621.0,
+      "share": 2.4683048691542342e-05
+    },
+    "gguf_q8_0_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)": {
+      "calls": 2,
+      "total_ns": 53941.0,
+      "share": 1.3779906329581412e-05
+    },
+    "(anonymous namespace)::gated_mean_sigmoid_f32_kernel(float const*, float*, float*, long, long)": {
+      "calls": 2,
+      "total_ns": 4208.0,
+      "share": 1.074986482172718e-06
+    }
+  }
+}
