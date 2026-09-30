@@ -341,3 +341,60 @@ def test_resolution_row_serializes_resolved_runtime_profile():
     row = resolution_row(migration, object())
     json.dumps(row)
     assert row["_resolved_execution_profile"] is None
+
+
+def test_resolve_generator_passes_the_context_to_the_llm_factory(monkeypatch, tmp_path):
+    """``--context`` has to reach the runner, not only the generator.
+
+    The runner sizes its KV cache from the value the factory received at
+    construction. Assigning ``generator.context_length`` afterwards moves only
+    the generator's own request validation, so a harness that omits
+    ``max_sequence_length`` measures a runner pinned at the 8192 default: a
+    longer prompt fails with a capacity error instead of being measured, and
+    every shorter prompt is measured against a larger KV allocation than the
+    caller asked for. That is not a small effect - at 512 tokens the two
+    capacities differ by 6.5 percent on prefill and 12.6 percent on decode.
+    """
+
+    import hipengine
+
+    from scripts import gemma4_campaign_bench
+
+    seen: dict[str, object] = {}
+
+    class _FakeRunner:
+        def __init__(self, capacity):
+            self.capacity = capacity
+            self.max_block = min(capacity, 512)
+
+    class _FakeGenerator:
+        def __init__(self):
+            self.context_length = 0
+            self._load_seconds = None
+
+        def _ensure_runner(self):
+            seen["runner_context_length"] = self.context_length
+            return _FakeRunner(self.context_length)
+
+    class _FakeLLM:
+        def __init__(self, model, **kwargs):
+            seen["model"] = model
+            seen.update(kwargs)
+            self._generator = _FakeGenerator()
+
+        def _get_text_generator(self):
+            return self._generator
+
+    monkeypatch.setattr(hipengine, "LLM", _FakeLLM)
+
+    artifact = tmp_path / "model.gguf"
+    artifact.write_bytes(b"")
+
+    _llm, _runner, loading = gemma4_campaign_bench._resolve_generator(artifact, 8320)
+
+    assert seen.get("max_sequence_length") == 8320, (
+        "the harness must pass the requested context to the LLM factory, or the "
+        "runner keeps its own default capacity and --context is decorative"
+    )
+    assert loading["runner_capacity"] == 8320
+    assert loading["context_length"] == 8320
