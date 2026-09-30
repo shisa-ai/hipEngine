@@ -1,0 +1,459 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_prefill_last_row_probe",
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "repeats": 3,
+  "dense_wide_layers": "16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+  "subjects": [
+    {
+      "subject": "canonical-code-p512",
+      "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+      "case_id": "code-p512",
+      "prompt_tokens": 512,
+      "arms": {
+        "cleared": {
+          "step0_token_ids": [
+            198,
+            198,
+            198
+          ],
+          "step0_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ],
+          "step1_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ]
+        },
+        "dense_wide": {
+          "step0_token_ids": [
+            198,
+            198,
+            198
+          ],
+          "step0_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ],
+          "step1_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ]
+        }
+      },
+      "step0_route_effect": {
+        "kl_symmetric": 1.3277122928143332e-12,
+        "max_abs_diff": 0.4058656692504883,
+        "identical": false,
+        "argmax_equal": true
+      },
+      "step1_route_effect": {
+        "kl_symmetric": 2.1901832323795202e-05,
+        "max_abs_diff": 0.23140960931777954,
+        "identical": false,
+        "argmax_equal": true
+      }
+    },
+    {
+      "subject": "admission-code-merge-40",
+      "fixture": "benchmarks/fixtures/qwen4exp_admission_suite_18prompt.json",
+      "case_id": "code_merge_intervals",
+      "prompt_tokens": 40,
+      "arms": {
+        "cleared": {
+          "step0_token_ids": [
+            12305,
+            12305,
+            12305
+          ],
+          "step0_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ],
+          "step1_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ]
+        },
+        "dense_wide": {
+          "step0_token_ids": [
+            12305,
+            12305,
+            12305
+          ],
+          "step0_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ],
+          "step1_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ]
+        }
+      },
+      "step0_route_effect": {
+        "kl_symmetric": 0.0,
+        "max_abs_diff": 0.0,
+        "identical": true,
+        "argmax_equal": true
+      },
+      "step1_route_effect": {
+        "kl_symmetric": 0.0,
+        "max_abs_diff": 0.0,
+        "identical": true,
+        "argmax_equal": true
+      }
+    },
+    {
+      "subject": "admission-heldout-ratelimiter-55",
+      "fixture": "benchmarks/fixtures/qwen4exp_admission_suite_18prompt.json",
+      "case_id": "heldout_code_rate_limiter",
+      "prompt_tokens": 55,
+      "arms": {
+        "cleared": {
+          "step0_token_ids": [
+            12305,
+            12305,
+            12305
+          ],
+          "step0_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ],
+          "step1_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ]
+        },
+        "dense_wide": {
+          "step0_token_ids": [
+            12305,
+            12305,
+            12305
+          ],
+          "step0_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ],
+          "step1_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ]
+        }
+      },
+      "step0_route_effect": {
+        "kl_symmetric": 0.0,
+        "max_abs_diff": 0.0,
+        "identical": true,
+        "argmax_equal": true
+      },
+      "step1_route_effect": {
+        "kl_symmetric": 0.0,
+        "max_abs_diff": 0.0,
+        "identical": true,
+        "argmax_equal": true
+      }
+    },
+    {
+      "subject": "longform-mixed-512",
+      "fixture": "benchmarks/fixtures/qwen4exp_longform_heldout_4prompt.json",
+      "case_id": "long_mixed_ja_en_acceptance",
+      "prompt_tokens": 512,
+      "arms": {
+        "cleared": {
+          "step0_token_ids": [
+            220,
+            220,
+            220
+          ],
+          "step0_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ],
+          "step1_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ]
+        },
+        "dense_wide": {
+          "step0_token_ids": [
+            220,
+            220,
+            220
+          ],
+          "step0_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ],
+          "step1_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ]
+        }
+      },
+      "step0_route_effect": {
+        "kl_symmetric": 0.001088539071929448,
+        "max_abs_diff": 0.44499826431274414,
+        "identical": false,
+        "argmax_equal": true
+      },
+      "step1_route_effect": {
+        "kl_symmetric": 9.664697952837985e-06,
+        "max_abs_diff": 0.49528419971466064,
+        "identical": false,
+        "argmax_equal": true
+      }
+    },
+    {
+      "subject": "longform-ja-424",
+      "fixture": "benchmarks/fixtures/qwen4exp_longform_heldout_4prompt.json",
+      "case_id": "long_general_ja_retention_review",
+      "prompt_tokens": 424,
+      "arms": {
+        "cleared": {
+          "step0_token_ids": [
+            220,
+            220,
+            220
+          ],
+          "step0_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ],
+          "step1_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ]
+        },
+        "dense_wide": {
+          "step0_token_ids": [
+            220,
+            220,
+            220
+          ],
+          "step0_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ],
+          "step1_same_arm_repeats": [
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            },
+            {
+              "kl_symmetric": 0.0,
+              "max_abs_diff": 0.0,
+              "identical": true,
+              "argmax_equal": true
+            }
+          ]
+        }
+      },
+      "step0_route_effect": {
+        "kl_symmetric": 0.00015954876937757925,
+        "max_abs_diff": 0.6280024647712708,
+        "identical": false,
+        "argmax_equal": true
+      },
+      "step1_route_effect": {
+        "kl_symmetric": 1.7304591325128947e-06,
+        "max_abs_diff": 0.4245891571044922,
+        "identical": false,
+        "argmax_equal": true
+      }
+    }
+  ]
+}
