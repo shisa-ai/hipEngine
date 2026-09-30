@@ -226,3 +226,50 @@ def test_memory_row_rejects_empty_bad_shape_and_inconsistent_totals():
 def test_exact_prompt_ids_rejects_nonpositive_target():
     with pytest.raises(ValueError, match="target"):
         exact_prompt_ids(lambda text: [1], 0, corpus=("x y",))
+
+def test_resolution_row_serializes_resolved_runtime_profile():
+    """The loading row must stay JSON-safe once profiles resolve.
+
+    On the migration path `_resolved_execution_profile` is None and the
+    resolution dict serializes trivially. Once a combination has a registered
+    plan the attribute holds a `ResolvedRuntimeProfile`, which has no `.value`:
+    embedding it raw crashes `json.dumps` while writing the artifact (the
+    scoreboard snapshot failed exactly there).
+    """
+    import json
+    from types import SimpleNamespace
+
+    from hipengine.execution_profiles import ExecutionProfile, ResolvedRuntimeProfile
+
+    from scripts.gemma4_campaign_bench import resolution_row
+
+    resolved = ResolvedRuntimeProfile(
+        profile=ExecutionProfile.PRODUCTION,
+        manifest={"production": {}},
+        manifest_sha256="a" * 64,
+        strict_manifest_sha256="b" * 64,
+        factory=None,
+        binder=None,
+        fell_back_to_strict=False,
+        source_profile=ExecutionProfile.PRODUCTION,
+    )
+    llm = SimpleNamespace(
+        _resolved_backend=SimpleNamespace(value="hip_gfx1100"),
+        _resolved_quant=SimpleNamespace(value="gguf_q4_k_m"),
+        _resolved_execution_profile=resolved,
+    )
+    row = resolution_row(llm, object())
+    json.dumps(row)  # must not raise TypeError
+    assert row["_resolved_backend"] == "hip_gfx1100"
+    assert row["_resolved_quant"] == "gguf_q4_k_m"
+    assert row["_resolved_execution_profile"] == "production"
+    assert row["generator_type"] == "object"
+
+    migration = SimpleNamespace(
+        _resolved_backend=None,
+        _resolved_quant=None,
+        _resolved_execution_profile=None,
+    )
+    row = resolution_row(migration, object())
+    json.dumps(row)
+    assert row["_resolved_execution_profile"] is None
