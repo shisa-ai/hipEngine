@@ -1,0 +1,375 @@
+{
+  "schema": "gemma4-d9-pack8-tuning-screen/v1",
+  "created_utc": "2026-09-30T10:54:28+00:00",
+  "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 PYTHONPATH=. .venv/bin/python scratch/d10_q8_dense_gemv_screen.py (x3) ; env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 PYTHONPATH=. .venv/bin/python scratch/d10_association_parity_screen.py 200",
+  "git_commit": "f34cdccd5605927bb736375bcc0025ad6cc6ac86",
+  "arch": "x86_64",
+  "gpu_env": {
+    "ROCR_VISIBLE_DEVICES": "1",
+    "HIP_VISIBLE_DEVICES": "unset"
+  },
+  "geometry": {
+    "rows": 1,
+    "activation_dtype": "bf16",
+    "weight": "gguf_q8_0 raw bytes (t16 candidates byte-neutral Q8T16 repack)",
+    "shapes": [
+      {
+        "shape": "gate/up single",
+        "in_features": 2816,
+        "out_features": 2112
+      },
+      {
+        "shape": "q projection",
+        "in_features": 2816,
+        "out_features": 4096
+      },
+      {
+        "shape": "fused qkv",
+        "in_features": 2816,
+        "out_features": 8192
+      },
+      {
+        "shape": "o projection",
+        "in_features": 4096,
+        "out_features": 2816
+      },
+      {
+        "shape": "down projection",
+        "in_features": 2112,
+        "out_features": 2816
+      },
+      {
+        "shape": "gate+up pair",
+        "in_features": 2816,
+        "out_features": 4224
+      }
+    ],
+    "timing": {
+      "warmup": 20,
+      "iters": 200,
+      "runs": 3,
+      "metric": "hipEvent ms per launch"
+    }
+  },
+  "timings": {
+    "down projection | pack8_gemv (legacy, prod)": {
+      "min_us": 20.8,
+      "median_us": 20.8,
+      "max_us": 20.8,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": ""
+    },
+    "down projection | pack8_gemv_decode (P9.B3)": {
+      "min_us": 12.8,
+      "median_us": 12.8,
+      "max_us": 12.8,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "down projection | t16_gemv_decode": {
+      "min_us": 15.9,
+      "median_us": 15.9,
+      "max_us": 15.9,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "down projection | t16_gemv_decode_rowtile4": {
+      "min_us": 21.2,
+      "median_us": 21.2,
+      "max_us": 21.8,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "fused qkv | pack8_gemv (legacy, prod)": {
+      "min_us": 45.3,
+      "median_us": 45.4,
+      "max_us": 47.3,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": ""
+    },
+    "fused qkv | pack8_gemv_decode (P9.B3)": {
+      "min_us": 23.3,
+      "median_us": 23.4,
+      "max_us": 24.4,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "fused qkv | t16_gemv_decode": {
+      "min_us": 21.2,
+      "median_us": 21.2,
+      "max_us": 22.4,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "fused qkv | t16_gemv_decode_rowtile4": {
+      "min_us": 34.4,
+      "median_us": 35.1,
+      "max_us": 36.7,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "gate+up pair | pack8_dual_gate_up (P9.B3)": {
+      "min_us": 23.6,
+      "median_us": 23.7,
+      "max_us": 23.8,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "gate+up pair | rowvec8_dual_split t=128": {
+      "min_us": 12.3,
+      "median_us": 12.5,
+      "max_us": 12.6,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "gate+up pair | rowvec8_dual_split t=32": {
+      "min_us": 12.2,
+      "median_us": 12.4,
+      "max_us": 12.8,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "gate+up pair | rowvec8_dual_split t=64": {
+      "min_us": 12.1,
+      "median_us": 12.1,
+      "max_us": 12.2,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "gate+up pair | t16_dual_gemv_decode": {
+      "min_us": 23.7,
+      "median_us": 23.8,
+      "max_us": 24.5,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "gate+up pair | t16_dual_rowtile4": {
+      "min_us": 28.4,
+      "median_us": 28.7,
+      "max_us": 28.8,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "gate+up pair | t16_dual_rowtile4_col8": {
+      "min_us": 22.6,
+      "median_us": 22.6,
+      "max_us": 23.0,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "gate/up single | pack8_gemv (legacy, prod)": {
+      "min_us": 21.7,
+      "median_us": 22.1,
+      "max_us": 26.5,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": ""
+    },
+    "gate/up single | pack8_gemv_decode (P9.B3)": {
+      "min_us": 13.7,
+      "median_us": 14.1,
+      "max_us": 21.1,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "gate/up single | t16_gemv_decode": {
+      "min_us": 17.2,
+      "median_us": 18.9,
+      "max_us": 20.6,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "gate/up single | t16_gemv_decode_rowtile4": {
+      "min_us": 22.5,
+      "median_us": 23.3,
+      "max_us": 26.3,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "o projection | pack8_gemv (legacy, prod)": {
+      "min_us": 33.3,
+      "median_us": 33.5,
+      "max_us": 33.6,
+      "err_vs_f32ref": "0.003906",
+      "err_vs_legacy_bits": ""
+    },
+    "o projection | pack8_gemv_decode (P9.B3)": {
+      "min_us": 15.8,
+      "median_us": 16.0,
+      "max_us": 16.2,
+      "err_vs_f32ref": "0.003906",
+      "err_vs_legacy_bits": "0"
+    },
+    "o projection | t16_gemv_decode": {
+      "min_us": 19.8,
+      "median_us": 20.3,
+      "max_us": 21.7,
+      "err_vs_f32ref": "0.003906",
+      "err_vs_legacy_bits": "0"
+    },
+    "o projection | t16_gemv_decode_rowtile4": {
+      "min_us": 27.3,
+      "median_us": 27.4,
+      "max_us": 27.7,
+      "err_vs_f32ref": "0.003906",
+      "err_vs_legacy_bits": "0"
+    },
+    "q projection | pack8_gemv (legacy, prod)": {
+      "min_us": 34.0,
+      "median_us": 34.2,
+      "max_us": 42.9,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": ""
+    },
+    "q projection | pack8_gemv_decode (P9.B3)": {
+      "min_us": 18.8,
+      "median_us": 19.1,
+      "max_us": 19.5,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "q projection | t16_gemv_decode": {
+      "min_us": 18.0,
+      "median_us": 18.6,
+      "max_us": 18.7,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    },
+    "q projection | t16_gemv_decode_rowtile4": {
+      "min_us": 23.7,
+      "median_us": 24.0,
+      "max_us": 24.1,
+      "err_vs_f32ref": "0",
+      "err_vs_legacy_bits": "0"
+    }
+  },
+  "association_parity": {
+    "trials": 200,
+    "control": {
+      "candidate": "pack8_gemv_decode (rejected at production gate 2026-09-24)",
+      "note": "instrument control: must reproduce the pinned ~1e-4 rate; measured 8.8e-5..9.7e-5 on all five shapes",
+      "rates": [
+        8.789e-05,
+        8.878e-05,
+        9.033e-05,
+        9.055e-05,
+        9.706e-05
+      ]
+    },
+    "candidates": [
+      {
+        "shape": "gate/up single",
+        "candidate": "t16_gemv_decode",
+        "diffs": 0,
+        "elements": 422400,
+        "rate": 0.0
+      },
+      {
+        "shape": "gate/up single",
+        "candidate": "t16_gemv_decode_rowtile4",
+        "diffs": 0,
+        "elements": 422400,
+        "rate": 0.0
+      },
+      {
+        "shape": "q projection",
+        "candidate": "t16_gemv_decode",
+        "diffs": 0,
+        "elements": 819200,
+        "rate": 0.0
+      },
+      {
+        "shape": "q projection",
+        "candidate": "t16_gemv_decode_rowtile4",
+        "diffs": 0,
+        "elements": 819200,
+        "rate": 0.0
+      },
+      {
+        "shape": "fused qkv",
+        "candidate": "t16_gemv_decode",
+        "diffs": 0,
+        "elements": 1638400,
+        "rate": 0.0
+      },
+      {
+        "shape": "fused qkv",
+        "candidate": "t16_gemv_decode_rowtile4",
+        "diffs": 0,
+        "elements": 1638400,
+        "rate": 0.0
+      },
+      {
+        "shape": "o projection",
+        "candidate": "t16_gemv_decode",
+        "diffs": 0,
+        "elements": 563200,
+        "rate": 0.0
+      },
+      {
+        "shape": "o projection",
+        "candidate": "t16_gemv_decode_rowtile4",
+        "diffs": 0,
+        "elements": 563200,
+        "rate": 0.0
+      },
+      {
+        "shape": "down projection",
+        "candidate": "t16_gemv_decode",
+        "diffs": 0,
+        "elements": 563200,
+        "rate": 0.0
+      },
+      {
+        "shape": "down projection",
+        "candidate": "t16_gemv_decode_rowtile4",
+        "diffs": 0,
+        "elements": 563200,
+        "rate": 0.0
+      }
+    ],
+    "upper95_zero_diff_bounds": {
+      "gate/up single | t16_gemv_decode": {
+        "elements": 422400,
+        "upper95_rate": 7.092e-06
+      },
+      "gate/up single | t16_gemv_decode_rowtile4": {
+        "elements": 422400,
+        "upper95_rate": 7.092e-06
+      },
+      "q projection | t16_gemv_decode": {
+        "elements": 819200,
+        "upper95_rate": 3.657e-06
+      },
+      "q projection | t16_gemv_decode_rowtile4": {
+        "elements": 819200,
+        "upper95_rate": 3.657e-06
+      },
+      "fused qkv | t16_gemv_decode": {
+        "elements": 1638400,
+        "upper95_rate": 1.828e-06
+      },
+      "fused qkv | t16_gemv_decode_rowtile4": {
+        "elements": 1638400,
+        "upper95_rate": 1.828e-06
+      },
+      "o projection | t16_gemv_decode": {
+        "elements": 563200,
+        "upper95_rate": 5.319e-06
+      },
+      "o projection | t16_gemv_decode_rowtile4": {
+        "elements": 563200,
+        "upper95_rate": 5.319e-06
+      },
+      "down projection | t16_gemv_decode": {
+        "elements": 563200,
+        "upper95_rate": 5.319e-06
+      },
+      "down projection | t16_gemv_decode_rowtile4": {
+        "elements": 563200,
+        "upper95_rate": 5.319e-06
+      }
+    }
+  },
+  "verdict": "tune-open: t16 family measures 0 divergent bits vs legacy (bounds <7e-6) and 15-45% faster per launch; pack8_gemv_decode re-confirmed non-bit-exact at the control rate and stays rejected",
+  "evidence_note": "The timing screen alone observed 0 legacy-vs-candidate bit diffs, which is underpowered for the known ~1e-4 divergence rate of the rejected rewrite (expected <1 diff per shape sample); the 200-trial rate screen corrects that: the rejected control reproduces ~9e-5 on every shape while t16_gemv_decode and t16_gemv_decode_rowtile4 report 0/422400..0/1638400. Timings are 3-run medians on an idle GPU1; per-launch device cost only (no queue/host effects). Wiring t16 needs a tile-storage decision: the byte-neutral repack is not the raw layout prefill kernels read, so a routed tensor needs either both layouts or a tile-reading prefill consumer."
+}
