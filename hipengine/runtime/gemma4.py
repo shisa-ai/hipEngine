@@ -55,6 +55,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
     gemma4_layer_forward_bf16,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
+    gemma4_logit_softcap_f32,
     gemma4_rmsnorm_f32w_bf16,
     gemma4_scale_bf16,
 )
@@ -1248,22 +1249,34 @@ class Gemma4Runner:
             self._position += rows
             return np.empty(0, dtype=np.float32)
 
+        vocab = int(self.weights.config.vocab_size or 0)
+        # The cap is part of the model's output, applied here rather than in
+        # the sampler so every consumer sees the distribution the model
+        # defines (both CPU references do the same). It now runs on the
+        # device: the host np.tanh over the full vocab measured 0.528 ms per
+        # decode step — about a third of the measured host wall gap (X7 row)
+        # — so the kernel is enqueued on the block's stream against the
+        # logits buffer before the copy below. The device tanhf rounds
+        # independently of numpy's libm; tests/test_gpu_gemma4_softcap_kernel
+        # pins the argmax / tie / saturation contract on adversarial
+        # batteries, and the workload parity tests pin the tokens.
+        cap = self.weights.config.final_logit_softcapping
+        if apply_softcap and cap:
+            gemma4_logit_softcap_f32(
+                self._logits.ptr,
+                vocab,
+                float(np.float32(cap)),
+                stream=int(stream) if stream is not None else 0,
+            )
+
         if stream is not None and int(stream) != 0:
             from hipengine.core.hip import get_hip_runtime
 
             get_hip_runtime().stream_synchronize(int(stream))
 
-        vocab = int(self.weights.config.vocab_size or 0)
         logits = np.empty(vocab, dtype=np.float32)
         copy_device_to_host(host_array_ptr(logits), self._logits, logits.nbytes)
         self._position += rows
-        # Applied here rather than in the sampler so that every consumer of the
-        # model's output sees the distribution the model defines. Both the dense
-        # and the streaming CPU references do the same.
-        cap = self.weights.config.final_logit_softcapping
-        if apply_softcap and cap:
-            cap = np.float32(cap)
-            logits = (np.tanh(logits / cap) * cap).astype(np.float32)
         return logits
 
     def _stage_upload(self, name: str, values: np.ndarray, *, stream: int = 0) -> DeviceBuffer:

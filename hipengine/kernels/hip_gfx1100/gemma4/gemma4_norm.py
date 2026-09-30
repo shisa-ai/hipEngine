@@ -105,6 +105,7 @@ _SYMBOL_ADD_RMSNORM_SCALE_BF16 = "hipengine_gemma4_add_rmsnorm_scale_bf16"
 _SYMBOL_EXPERT_WEIGHT_SCALE_F32 = "hipengine_gemma4_expert_weight_scale_f32"
 _SYMBOL_BRANCH_ADD_BF16 = "hipengine_gemma4_branch_add_bf16"
 _SYMBOL_SCALE_BF16 = "hipengine_gemma4_scale_bf16"
+_SYMBOL_LOGIT_SOFTCAP = "hipengine_gemma4_logit_softcap_f32"
 _SYMBOL_QKV_SPLIT = "hipengine_gemma4_qkv_split_bf16"
 
 
@@ -557,6 +558,50 @@ def gemma4_scale_bf16(
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_SCALE_BF16, _ARGTYPES_SCALE, ctypes.c_int)
     err = fn(x_ptr, out_ptr, rows * hidden_size, float(scale), stream)
+    _check_launch(runtime, err)
+
+
+# x (in place), total, cap, stream
+_ARGTYPES_LOGIT_SOFTCAP = (
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
+
+
+def gemma4_logit_softcap_f32(
+    x_ptr: int,
+    total: int,
+    cap: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Apply ``x = tanh(x / cap) * cap`` in place over ``total`` f32 values.
+
+    The device-side home of ``final_logit_softcapping``: the runner enqueues
+    this on the logits device buffer *before* the D2H copy, which removes
+    0.528 ms of ``np.tanh`` host time per decode step (X7 measurement, about
+    a third of the measured host wall gap). ``apply_softcap=False`` callers
+    simply do not launch it.
+
+    ``tanhf`` on the device and numpy's libm tanh round independently, so
+    consumers needing sampler guarantees go through the battery in
+    ``tests/test_gpu_gemma4_softcap_kernel.py``: elementwise agreement
+    within two f32 ulps of the capped range, greedy argmax exact on unique
+    tops, tie sets preserved, and the saturating tail equal bitwise.
+    """
+
+    if total <= 0:
+        raise ValueError("logit softcap needs at least one element")
+    library = library or build_gemma4_norm(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, _SYMBOL_LOGIT_SOFTCAP, _ARGTYPES_LOGIT_SOFTCAP, ctypes.c_int
+    )
+    err = fn(x_ptr, int(total), float(cap), stream)
     _check_launch(runtime, err)
 
 
