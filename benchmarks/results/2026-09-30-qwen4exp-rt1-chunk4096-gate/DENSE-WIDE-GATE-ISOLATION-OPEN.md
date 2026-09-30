@@ -1,88 +1,90 @@
-# Does the dense_wide gate isolate the wide route at 16-47?
+# RESOLVED: the dense_wide and wmma 16-47 certificates are the same measurement
 
-**Status: OPEN LEAD, not a conclusion.** Recorded because two independent
-certificates disagree with the expectation that they measure different routes,
-and because nothing in either artifact proves which kernel ran.
+**Originally opened as a possible third false pass. It is not one — the
+byte-identical hashes are a documented, intended property.** Recorded because
+the check was worth running, the resolution sharpens the stale-certificate
+finding in this directory, and an earlier draft of this file framed it as an
+anomaly.
 
-## The observation
+## What was observed
 
-Two gate certificates for **different routes**, produced 13 days apart at
-different commits, record **bit-identical published logits**:
+Three gate certificates, produced across 13 days at three different commits,
+record **bit-identical published logits**:
 
-| artifact | route | created | commit | strict hash | candidate hash |
+| artifact | route | created | commit | strict | candidate |
 | --- | --- | --- | --- | --- | --- |
-| `2026-09-17-q8-dense-wide-16-47-gate/artifact-layers16-47-4cat.json` | `dense_wide` | 2026-09-16 | `1f06cd5e3` | `550bb9b832bc7ba2…` | `65370710c0b9c40f…` |
-| `2026-09-29-q8-staged-f32-dense-prefill-layers-gate/artifact-control-wmma16-47-vs-exact-dwcleared.json` | `wmma` | 2026-09-29 | `ccd9f7a84` | `550bb9b832bc7ba2…` | `65370710c0b9c40f…` |
+| `2026-09-16-q8-wmma-dense-prefill-layers-gate/artifact-layers16-47-4cat.json` | `wmma` | 2026-09-16 | `f1d676684` | `550bb9b8…` | `65370710…` |
+| `2026-09-17-q8-dense-wide-16-47-gate/artifact-layers16-47-4cat.json` | `dense_wide` | 2026-09-16 | `1f06cd5e3` | `550bb9b8…` | `65370710…` |
+| `2026-09-29-…/artifact-control-wmma16-47-vs-exact-dwcleared.json` | `wmma` | 2026-09-29 | `ccd9f7a84` | `550bb9b8…` | `65370710…` |
 
-The **teacher** hash matching is expected: both gates clear every selector for
-the teacher arm, so both teachers are the same exact chain.
+All three also agree on `kl_mean` 3.79552e-4, `kl_max` 1.530440e-2, top-1
+0.99354, and 1548 rows. At HEAD, the reduced protocol for `--route dense_wide`
+returns the same `kl_mean`/`kl_max` as `--route wmma`.
 
-The **candidate** hash matching is not. The two gates bind different selectors
-(`wmma` clears `dense_wide` in both arms; `dense_wide` clears `wmma` in both
-arms), and they record different candidate chains -
-`wmma_prefill_f32_f32_out` and `dense_wide256_f32_f32_out`. Either those two
-chains genuinely produce bit-identical logits at these shapes, or one gate did
-not run the route it recorded.
+## The resolution
 
-## Why the artifacts cannot settle it
-
-Neither certificate carries a `route_engagement` block. Engagement recording was
-added later, in `056e6fbd8` ("record WMMA prefill engagement at the dispatch, not
-from a KL"). So **neither artifact proves its candidate route engaged**, and the
-recorded `candidate_chain` field is a label rather than a measurement.
-
-## What HEAD says
-
-HEAD records engagement, so the same gate can now be asked directly. Reduced
-protocol (`--case-id code-p512 --case-id general_en-p512 --decode-steps 24
---repeat-runs 3`, chunk 1024), artifact
-`dense-wide-16-47-engagement-probe.json`:
+This is documented in `hipengine/generation/qwen4_exp_profiles.py` and is the
+**stated reason the WMMA route was retired**:
 
 ```
-route: dense_wide | candidate_chain: dense_wide256_f32_f32_out
-candidate_route_engaged: False
-teacher_route_engaged  : False
-wmma_route_engaged_candidate_only: False
-candidate.engaged_launches: 80598
-teacher.engaged_launches  : 27346
-  native_batch_decode_session: teacher 0.0 / candidate 0.0 / differs False
-  q4k_rowtile:                 teacher 1.0 / candidate 1.0 / differs False
-  wmma_prefill:                teacher 0.0 / candidate 0.0 / differs False
-kl_mean: 9.399214e-04 | kl_max: 1.231981e-02 | top1: 0.96
+PRODUCTION_Q8_WMMA_PREFILL_LAYERS = tuple(range(16, 48))
+# Retired as the production default at this scope on 2026-09-17: the wide-row
+# route below holds the identical envelope (byte-identical strict and candidate
+# logits digests) and is 5.4% faster at 1K/4K.
+
+PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS = tuple(range(16, 48))
+# ... with `strict_logits_sha256` and `candidate_logits_sha256` equal to that
+# route's gate artifact byte for byte.
 ```
 
-**No selector state differs between the arms**, and `candidate_route_engaged` is
-`False`. The same reduced protocol for `--route wmma` returns the **same**
-`kl_mean` and `kl_max` to every printed digit, which is consistent with the two
-routes being one configuration at these shapes.
+So the identity is an **acceptance criterion that was met and cited**, not an
+unexplained coincidence. The wide route replaced the WMMA route at 16-47
+*because* it holds the identical envelope while being 5.4% faster. The
+mechanism is in `_q8_dense_wide_claims_parent`: the WMMA rewrite runs earlier in
+the launch chain, both families are f16-operand WMMA, and the wide route takes
+precedence over the family it replaces at that tile.
 
-Note the arms still differ (`kl_mean` is not zero), so `candidate_route_engaged:
-False` is not "the arms are identical" - it is "this route's own selector state
-does not distinguish them".
+## What the sweep did find
 
-## What this does and does not establish
+Two things, both worth keeping:
 
-- **Does establish:** the two recorded certificates are bit-identical in both
-  hashes, and at HEAD the two `--route` values produce bit-identical results.
-  Neither certificate carries engagement evidence.
-- **Does not establish:** that either gate is a false pass. `dense_wide` may
-  legitimately be the parent the `wmma` selector resolves through, in which case
-  the two routes are one arithmetic and the identical hashes are correct - but
-  then the two gates are not independent certificates and should not be cited as
-  such.
-- **Not yet checked:** the full 12-case/128-step protocol for `--route
-  dense_wide` at HEAD. The comparison above is the reduced screen only.
+1. **The two certificates are not independent evidence.** They are one
+   measurement cited twice. Any accounting that treats "wmma 16-47 certified"
+   and "dense_wide 16-47 certified" as two supporting artifacts is
+   double-counting. The project already knew this — the docstring cites the
+   identity — but the artifact set does not make it visible.
 
-## Next
+2. **The stale certificate is the one admitting the current production
+   default.** `dense_wide`, not `wmma`, is what runs at 16-47 today
+   (`PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS`), and its certificate carries the
+   same teacher hash `550bb9b8` that `20260930T110625` showed no longer
+   reproduces at HEAD. The earlier entry said "`wmma` 16-47 is the production
+   default for the wide dense-prefill shapes and this certificate is what admits
+   it" — that is **imprecise**. The route in production is `dense_wide`; the
+   WMMA selector is retired at this scope and retained for opt-in and re-gating.
+   The finding is unchanged and if anything sharper: **the certificate admitting
+   the live default no longer reproduces**, and its teacher movement is
+   established by identity rather than by a separate run, since both routes share
+   the teacher.
 
-1. Run `--route dense_wide --layers 16-47` at HEAD on the full canonical
-   protocol and compare its engagement block and hashes against the `wmma` run
-   in this same directory.
-2. Resolve whether `_q8_dense_wide_claims_parent` makes the `wmma` candidate
-   resolve to `dense_wide256_f32_f32_out`; if it does, the `wmma` gate is not
-   measuring the WMMA chain it records.
-3. Treat this as the same class as the two previously found false passes
-   (`WMMA-ROUTE-FALSE-PASS.md`, and the staged-f32 run whose `measurement_valid`
-   was true over a replayed teacher). The distinguishing feature here is that no
-   engagement evidence exists in the artifacts at all, so the failure mode could
-   not have been detected from them.
+## What remains genuinely open
+
+- The full 12-case/128-step `--route dense_wide` run at HEAD is still
+  unmeasured. Its teacher hash would be `294e6c08…` (the value the `wmma` gate
+  returns at HEAD), because the teacher clears every selector in both gates.
+- No certificate produced before `056e6fbd8` carries a `route_engagement` block,
+  so none of them proves its candidate route engaged. Here that gap is harmless
+  because the property is documented elsewhere; it is not harmless as a general
+  property of the artifact set.
+- **The corrected action item is a re-gate of `dense_wide` at 16-47**, since
+  that is the live default, not `wmma`.
+
+## Method note
+
+This was opened as an anomaly on the strength of two matching hashes, before
+checking whether the project had documented the identity. It had — in the
+profile module, in the comment that explains why the route changed. The check
+that resolved it (`grep` for the claim in-tree) took under a minute and should
+have preceded writing the open-lead file. This is the third time in this
+campaign that a plausibility-first hypothesis was refuted by a cheap check run
+late; the pattern is recorded rather than the individual instances.
