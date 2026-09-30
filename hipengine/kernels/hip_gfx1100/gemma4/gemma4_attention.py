@@ -335,21 +335,24 @@ def flash_admits(
 ) -> bool:
     """Capability admission for the flash decode route.
 
-    The kernel exists for exactly one shape family: head_dim 256 (the
-    sliding layers' geometry, one 256-lane warp tree over the row), one
-    token's q-pair per KV head (GQA ratio 2 packs the two query heads that
-    share K and V). Anything else -- head_dim 512 global layers, a different
-    GQA ratio, a multi-token block -- keeps the incumbent split/class chain,
-    which is the strict fallback flash rejects into as well. No identity,
-    path, or measured-performance terms: if the kernels can execute the
-    shape, it is admitted.
+    The kernel is instantiated for exactly the two packings the model has:
+    head_dim 256 with GQA ratio 2 (sliding layers, one 256-lane warp tree
+    over the row, two query heads sharing K and V) and head_dim 512 with
+    GQA ratio 8 (global layers, two 256-dim halves folded into the same
+    tree). Anything else -- another head_dim, another ratio, a multi-token
+    block -- keeps the incumbent split/class chain, which is the strict
+    fallback flash rejects into as well; the C-side dispatcher re-checks the
+    same two shapes and returns the capability miss on anything else. No
+    identity, path, or measured-performance terms: if the kernels can
+    execute the shape, it is admitted.
     """
 
-    if tokens != 1 or head_dim != 256:
+    if tokens != 1:
         return False
     if num_heads <= 0 or num_kv_heads <= 0 or num_heads % num_kv_heads != 0:
         return False
-    return num_heads // num_kv_heads == 2
+    ratio = num_heads // num_kv_heads
+    return (head_dim, ratio) in ((256, 2), (512, 8))
 
 
 def flash_workspace_bytes(
