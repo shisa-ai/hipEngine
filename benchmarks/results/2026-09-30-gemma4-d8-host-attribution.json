@@ -1,8 +1,8 @@
 {
   "schema": "gemma4-d8-host-attribution/v1",
-  "created_utc": "2026-09-30T10:07:42+00:00",
+  "created_utc": "2026-09-30T10:25:24+00:00",
   "command": "ROCR_VISIBLE_DEVICES=1 .venv/bin/python scratch/d8_host_attribution_probe.py",
-  "git_commit": "764570ab55150f5622fc6f1fffaaf6ec5dab6c5d",
+  "git_commit": "239af7d8d6c8944abe37462470ec4837078284a4",
   "arch": "x86_64",
   "gpu_env": {
     "ROCR_VISIBLE_DEVICES": "1"
@@ -10,63 +10,63 @@
   "method": "ctypes.CDLL.__getattr__ wraps every hip* symbol (launches, memcpys, syncs) and times the host call; ResidentEngineLoop._tick_once and the runners' decode_batch are wall-wrapped. Run A prefills+8 steps, run B prefills+136; differences / 128 = per decode step. Wrapper bias ~0.1-0.2 us/call included.",
   "decode_steps_differenced": 128,
   "per_decode_step": {
-    "wall_ms": 13.175,
-    "hip_host_ms": 4.6057,
+    "wall_ms": 13.1731,
+    "hip_host_ms": 4.5958,
     "hip_calls": 1063.9,
-    "launch_host_ms": 2.6067,
+    "launch_host_ms": 2.6565,
     "launch_calls": 815.9,
-    "memcpy_host_ms": 1.6269,
+    "memcpy_host_ms": 1.5577,
     "memcpy_calls": 98.0,
-    "sync_host_ms": 0.3721,
+    "sync_host_ms": 0.3817,
     "sync_calls": 150.0
   },
   "engine_side_raw": {
     "ticks_a": 2,
     "ticks_b": 2,
-    "tick_wall_ms_a": 463.843,
-    "tick_wall_ms_b": 2150.271,
+    "tick_wall_ms_a": 460.988,
+    "tick_wall_ms_b": 2147.175,
     "decode_batches_a": 1,
     "decode_batches_b": 1,
-    "decode_batch_wall_ms_a": 463.53,
-    "decode_batch_wall_ms_b": 2149.958,
+    "decode_batch_wall_ms_a": 460.684,
+    "decode_batch_wall_ms_b": 2146.871,
     "decode_tokens_b": 1
   },
   "nonlaunch_symbols_per_step": {
     "hipEventRecord": {
       "calls": 60.0,
-      "host_ms": 0.1179
+      "host_ms": 0.1218
     },
     "hipGetDevice": {
       "calls": 29.96,
-      "host_ms": 0.0218
+      "host_ms": 0.0227
     },
     "hipMalloc": {
       "calls": 0.04,
-      "host_ms": 0.0039
+      "host_ms": 0.0045
     },
     "hipMemcpy": {
       "calls": 1.0,
-      "host_ms": 1.3522
+      "host_ms": 1.2807
     },
     "hipMemcpyAsync": {
       "calls": 67.0,
-      "host_ms": 0.1867
+      "host_ms": 0.1866
     },
     "hipMemsetAsync": {
       "calls": 30.0,
-      "host_ms": 0.0842
+      "host_ms": 0.086
     },
     "hipStreamWaitEvent": {
       "calls": 60.0,
-      "host_ms": 0.2323
+      "host_ms": 0.2372
     },
     "hipengine_gemma4_add_rmsnorm_scale_bf16": {
       "calls": 30.0,
-      "host_ms": 0.1099
+      "host_ms": 0.1102
     },
     "hipengine_gemma4_attention_decode_bf16": {
       "calls": 29.96,
-      "host_ms": 0.1748
+      "host_ms": 0.1766
     },
     "hipengine_gemma4_attention_tiled_prefill_bf16": {
       "calls": 0.04,
@@ -74,187 +74,187 @@
     },
     "hipengine_gemma4_decode_flash_workspace_bytes": {
       "calls": 29.96,
-      "host_ms": 0.023
+      "host_ms": 0.0232
     },
     "hipengine_gemma4_decode_split_workspace_bytes": {
       "calls": 29.96,
-      "host_ms": 0.0308
+      "host_ms": 0.0314
     },
     "hipengine_gemma4_dense_combine_rmsnorm_scale_bf16": {
       "calls": 30.0,
-      "host_ms": 0.1145
+      "host_ms": 0.1171
     },
     "hipengine_gemma4_gelu_tanh_mul_bf16": {
       "calls": 60.0,
-      "host_ms": 0.1511
+      "host_ms": 0.1554
     },
     "hipengine_gemma4_head_rmsnorm_f32w_bf16": {
       "calls": 60.0,
-      "host_ms": 0.1628
+      "host_ms": 0.1676
     },
     "hipengine_gemma4_logit_argmax_f32": {
       "calls": 1.0,
-      "host_ms": 0.0043
+      "host_ms": 0.0045
     },
     "hipengine_gemma4_logit_softcap_f32": {
       "calls": 1.0,
-      "host_ms": 0.0029
+      "host_ms": 0.003
     },
     "hipengine_gemma4_moe_lane_to_row_i32": {
       "calls": 30.0,
-      "host_ms": 0.068
+      "host_ms": 0.0684
     },
     "hipengine_gemma4_moe_weighted_accumulate_bf16": {
       "calls": 30.0,
-      "host_ms": 0.0831
+      "host_ms": 0.0848
     },
     "hipengine_gemma4_partial_rotary_bf16": {
       "calls": 30.0,
-      "host_ms": 0.1029
+      "host_ms": 0.1037
     },
     "hipengine_gemma4_qkv_split_bf16": {
       "calls": 25.0,
-      "host_ms": 0.0877
+      "host_ms": 0.0881
     },
     "hipengine_gemma4_rmsnorm_f32w_bf16": {
       "calls": 121.0,
-      "host_ms": 0.3672
+      "host_ms": 0.3723
     },
     "hipengine_gemma4_rmsnorm_weightless_bf16": {
       "calls": 30.0,
-      "host_ms": 0.0836
+      "host_ms": 0.0834
     },
     "hipengine_gemma4_router_topk_fused_bf16": {
       "calls": 30.0,
-      "host_ms": 0.1243
+      "host_ms": 0.1271
     },
     "hipengine_gemma4_scale_bf16": {
       "calls": 1.0,
-      "host_ms": 0.0035
+      "host_ms": 0.0034
     },
     "hipengine_gguf_q4_k_t16_selected_gemv_bf16_bf16_out": {
       "calls": 29.0,
-      "host_ms": 0.0934
+      "host_ms": 0.0941
     },
     "hipengine_gguf_q5_k_selected_gemv_bf16_bf16_out": {
       "calls": 1.0,
-      "host_ms": 0.0032
+      "host_ms": 0.0034
     },
     "hipengine_gguf_q8_0_embedding_bf16_out": {
       "calls": 1.0,
-      "host_ms": 0.0054
+      "host_ms": 0.0055
     },
     "hipengine_gguf_q8_0_pack8_gemv_bf16_bf16_out": {
       "calls": 125.0,
-      "host_ms": 0.4495
+      "host_ms": 0.462
     },
     "hipengine_gguf_q8_0_pack8_gemv_bf16_f32_out": {
       "calls": 1.0,
-      "host_ms": 0.0036
+      "host_ms": 0.004
     },
     "hipengine_gguf_q8_0_selected_gemv_bf16_bf16_out": {
       "calls": 1.0,
-      "host_ms": 0.003
+      "host_ms": 0.0031
     },
     "hipengine_qwen35_moe_gather_packed_hidden_lowp": {
       "calls": 30.0,
-      "host_ms": 0.0849
+      "host_ms": 0.0846
     },
     "hipengine_qwen35_moe_group_compact_active_parallel": {
       "calls": 30.0,
-      "host_ms": 0.1811
+      "host_ms": 0.186
     },
     "hipengine_qwen4_exp_q5_1_selected_gemv_logical256_t64_bf16_bf16_out": {
       "calls": 29.0,
-      "host_ms": 0.0887
+      "host_ms": 0.0917
     }
   },
   "hipmemcpy_callers_per_step": {
     "gemma4.py:1139 _collect_block_argmax": {
       "calls": 1.0,
-      "host_ms": 1.2719
+      "host_ms": 1.2483
     }
   },
   "top_launch_symbols_per_step": {
     "hipMemcpy": {
       "calls": 1.0,
-      "host_us": 1352.15
+      "host_us": 1280.66
     },
     "hipengine_gguf_q8_0_pack8_gemv_bf16_bf16_out": {
       "calls": 125.0,
-      "host_us": 449.45
+      "host_us": 461.96
     },
     "hipengine_gemma4_rmsnorm_f32w_bf16": {
       "calls": 121.0,
-      "host_us": 367.2
+      "host_us": 372.28
     },
     "hipStreamWaitEvent": {
       "calls": 60.0,
-      "host_us": 232.34
+      "host_us": 237.2
     },
     "hipMemcpyAsync": {
       "calls": 67.0,
-      "host_us": 186.73
+      "host_us": 186.56
     },
     "hipengine_qwen35_moe_group_compact_active_parallel": {
       "calls": 30.0,
-      "host_us": 181.06
+      "host_us": 185.99
     },
     "hipengine_gemma4_attention_decode_bf16": {
       "calls": 29.96,
-      "host_us": 174.78
+      "host_us": 176.55
     },
     "hipengine_gemma4_head_rmsnorm_f32w_bf16": {
       "calls": 60.0,
-      "host_us": 162.77
+      "host_us": 167.57
     },
     "hipengine_gemma4_gelu_tanh_mul_bf16": {
       "calls": 60.0,
-      "host_us": 151.14
+      "host_us": 155.37
     },
     "hipengine_gemma4_router_topk_fused_bf16": {
       "calls": 30.0,
-      "host_us": 124.29
+      "host_us": 127.13
     },
     "hipEventRecord": {
       "calls": 60.0,
-      "host_us": 117.94
+      "host_us": 121.82
     },
     "hipengine_gemma4_dense_combine_rmsnorm_scale_bf16": {
       "calls": 30.0,
-      "host_us": 114.48
+      "host_us": 117.11
     },
     "hipengine_gemma4_add_rmsnorm_scale_bf16": {
       "calls": 30.0,
-      "host_us": 109.89
+      "host_us": 110.16
     },
     "hipengine_gemma4_partial_rotary_bf16": {
       "calls": 30.0,
-      "host_us": 102.93
+      "host_us": 103.71
     },
     "hipengine_gguf_q4_k_t16_selected_gemv_bf16_bf16_out": {
       "calls": 29.0,
-      "host_us": 93.44
+      "host_us": 94.14
     },
     "hipengine_qwen4_exp_q5_1_selected_gemv_logical256_t64_bf16_bf16_out": {
       "calls": 29.0,
-      "host_us": 88.66
+      "host_us": 91.74
     },
     "hipengine_gemma4_qkv_split_bf16": {
       "calls": 25.0,
-      "host_us": 87.74
-    },
-    "hipengine_qwen35_moe_gather_packed_hidden_lowp": {
-      "calls": 30.0,
-      "host_us": 84.91
+      "host_us": 88.12
     },
     "hipMemsetAsync": {
       "calls": 30.0,
-      "host_us": 84.15
+      "host_us": 86.03
     },
-    "hipengine_gemma4_rmsnorm_weightless_bf16": {
+    "hipengine_gemma4_moe_weighted_accumulate_bf16": {
       "calls": 30.0,
-      "host_us": 83.57
+      "host_us": 84.78
+    },
+    "hipengine_qwen35_moe_gather_packed_hidden_lowp": {
+      "calls": 30.0,
+      "host_us": 84.59
     }
   },
   "wrapped_decode_classes": [
@@ -262,8 +262,8 @@
     "_SubmitPollTextRunner"
   ],
   "runs": {
-    "wall_a_s": 0.4655,
-    "wall_b_s": 2.1519,
+    "wall_a_s": 0.4626,
+    "wall_b_s": 2.1488,
     "tokens_a": 8,
     "tokens_b": 136
   },
