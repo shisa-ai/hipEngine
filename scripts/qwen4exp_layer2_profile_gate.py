@@ -226,6 +226,26 @@ CANDIDATES = {
 }
 
 
+CANDIDATES["bounded_kv_reset"] = CandidateSpec(
+    name="bounded_kv_reset",
+    classification="T1",
+    mechanism=(
+        "reset() clears only the K/V bytes the request could have written instead "
+        "of the full allocated capacity; exact by the written_cache_bytes invariant "
+        "(allocation zeroes the whole cache, writes only land below position, so "
+        "bytes above the round_up(position, block_size) bound are already zero)"
+    ),
+    environment={"HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET": "1"},
+    base_profile="production",
+    scenario_id="qwen4exp-bounded-kv-reset",
+    # This changes how much storage reset() zeroes, not a registry key, so there is
+    # no swapped key to count.  For a T1 candidate the binding evidence is that the
+    # strict and candidate state/logits hashes are IDENTICAL - the bytes skipped are
+    # already zero, so skipping them cannot change a result.
+    candidate_key=None,
+    fallback_key=None,
+)
+
 CANDIDATES["pack8_gemv_wide_256"] = CandidateSpec(
     name="pack8_gemv_wide_256",
     classification="T2",

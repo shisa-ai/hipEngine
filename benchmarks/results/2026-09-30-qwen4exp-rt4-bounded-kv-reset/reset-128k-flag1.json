@@ -1,0 +1,343 @@
+{
+  "case": "code-p1024",
+  "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "bounded_kv_reset": "1",
+  "sizes": {
+    "max_sequence_length": 131072,
+    "prompt_tokens": 1024,
+    "attention_states": 12,
+    "key_cache_bytes_each": [
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728
+    ],
+    "value_cache_bytes_each": [
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728,
+      134217728
+    ],
+    "index_states": 12,
+    "key_cache_bytes_total": 1610612736,
+    "value_cache_bytes_total": 1610612736,
+    "kv_bytes_total": 3221225472,
+    "kv_memset_ms_at_220GBs": 14.641933963636365,
+    "index_states_detail": [
+      {
+        "type": "Qwen4ExpQSAIndexDeviceState",
+        "capacity": 131072
+      },
+      {
+        "type": "Qwen4ExpQSAIndexDeviceState",
+        "capacity": 131072
+      },
+      {
+        "type": "Qwen4ExpQSAIndexDeviceState",
+        "capacity": 131072
+      },
+      {
+        "type": "Qwen4ExpQSAIndexDeviceState",
+        "capacity": 131072
+      },
+      {
+        "type": "Qwen4ExpQSAIndexDeviceState",
+        "capacity": 131072
+      },
+      {
+        "type": "Qwen4ExpQSAIndexDeviceState",
+        "capacity": 131072
+      },
+      {
+        "type": "Qwen4ExpQSAIndexDeviceState",
+        "capacity": 131072
+      },
+      {
+        "type": "Qwen4ExpQSAIndexDeviceState",
+        "capacity": 131072
+      },
+      {
+        "type": "Qwen4ExpQSAIndexDeviceState",
+        "capacity": 131072
+      },
+      {
+        "type": "Qwen4ExpQSAIndexDeviceState",
+        "capacity": 131072
+      },
+      {
+        "type": "Qwen4ExpQSAIndexDeviceState",
+        "capacity": 131072
+      },
+      {
+        "type": "Qwen4ExpQSAIndexDeviceState",
+        "capacity": 131072
+      }
+    ]
+  },
+  "rows": [
+    {
+      "repetition": 0,
+      "warmup": true,
+      "steps": 64,
+      "prefill_ms": 4917.586646,
+      "reset_ms": 1.133187,
+      "memory": {
+        "before": {
+          "error": "AttributeError(\"'HipRuntime' object has no attribute 'memory_info'\")"
+        },
+        "after_prefill": {
+          "error": "AttributeError(\"'HipRuntime' object has no attribute 'memory_info'\")"
+        },
+        "before_decode": {
+          "error": "AttributeError(\"'HipRuntime' object has no attribute 'memory_info'\")"
+        },
+        "after_decode": {
+          "error": "AttributeError(\"'HipRuntime' object has no attribute 'memory_info'\")"
+        },
+        "free_during_first_40_steps": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "mem_call_ms_first_40": [
+          0.020037,
+          0.020658,
+          0.017222,
+          0.020779,
+          0.019366,
+          0.020719,
+          0.020308,
+          0.019938,
+          0.018365,
+          0.010239,
+          0.007444,
+          0.009628,
+          0.006943,
+          0.006693,
+          0.006833,
+          0.006633,
+          0.006582,
+          0.006693,
+          0.007594,
+          0.006602,
+          0.006282,
+          0.006222,
+          0.005982,
+          0.004238,
+          0.002746,
+          0.002344,
+          0.003016,
+          0.003056,
+          0.002134,
+          0.003958,
+          0.002365,
+          0.002324,
+          0.007154,
+          0.008666,
+          0.005671,
+          0.004649,
+          0.002465,
+          0.002465,
+          0.002695,
+          0.002374
+        ]
+      },
+      "components": {
+        "state_zero": 0.550013,
+        "kv_memsets_total": 14.749391000000001,
+        "index_resets_total": 0.016721,
+        "ple_hash_clear": 0.002936
+      },
+      "step_ms_mean": 76.266237375,
+      "step_ms_first_eighth": 194.9875645,
+      "step_ms_last_eighth": 51.98268775,
+      "step_ms_bands": [
+        194.9875645,
+        85.777807875,
+        66.319902125,
+        52.89820425,
+        53.06381775,
+        52.165306,
+        52.93460875,
+        51.98268775
+      ]
+    },
+    {
+      "repetition": 1,
+      "warmup": false,
+      "steps": 64,
+      "prefill_ms": 4217.782507,
+      "reset_ms": 1.741039,
+      "memory": {
+        "before": {
+          "error": "AttributeError(\"'HipRuntime' object has no attribute 'memory_info'\")"
+        },
+        "after_prefill": {
+          "error": "AttributeError(\"'HipRuntime' object has no attribute 'memory_info'\")"
+        },
+        "before_decode": {
+          "error": "AttributeError(\"'HipRuntime' object has no attribute 'memory_info'\")"
+        },
+        "after_decode": {
+          "error": "AttributeError(\"'HipRuntime' object has no attribute 'memory_info'\")"
+        },
+        "free_during_first_40_steps": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "mem_call_ms_first_40": [
+          0.019287,
+          0.017503,
+          0.01642,
+          0.017232,
+          0.016592,
+          0.015699,
+          0.0217,
+          0.017222,
+          0.01563,
+          0.017713,
+          0.017082,
+          0.017803,
+          0.014356,
+          0.015218,
+          0.014226,
+          0.019236,
+          0.017192,
+          0.018355,
+          0.018995,
+          0.01583,
+          0.016301,
+          0.008576,
+          0.007384,
+          0.007574,
+          0.007184,
+          0.006913,
+          0.005881,
+          0.006262,
+          0.006231,
+          0.005501,
+          0.009808,
+          0.009689,
+          0.006693,
+          0.007223,
+          0.006021,
+          0.005871,
+          0.005911,
+          0.006652,
+          0.006483,
+          0.003757
+        ]
+      },
+      "components": {
+        "state_zero": 0.567846,
+        "kv_memsets_total": 14.986928,
+        "index_resets_total": 0.040806,
+        "ple_hash_clear": 0.008927
+      },
+      "step_ms_mean": 85.927999765625,
+      "step_ms_first_eighth": 143.809755125,
+      "step_ms_last_eighth": 49.73361325,
+      "step_ms_bands": [
+        143.809755125,
+        142.88487975,
+        122.167976875,
+        66.22875875,
+        63.230389375,
+        49.701128375,
+        49.667496625,
+        49.73361325
+      ]
+    }
+  ]
+}
