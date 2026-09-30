@@ -112,6 +112,23 @@ ROUTE_ROW_FLOORS = {
     "staged_f32_over_wmma": 2,
 }
 
+# Which engagement selector proves a route ran, per route.
+#
+# The route name and the selector name are not the same string, and for a long
+# time this gate assumed they were: ``_summarise_engagement`` hardcoded
+# ``wmma_prefill`` for the engaged flags, so a ``--route dense_wide`` run
+# reported ``candidate_route_engaged: False`` whether or not that route ran. The
+# route that is the live production default at 16-47 was therefore the one route
+# the false-pass detector could not see. See ``docs/REFACTOR.md``.
+#
+# A route with no entry here has no dispatch recorder, and the gate reports that
+# as **not recorded** rather than falling back to another route's selector - a
+# fallback would answer a different route's question and read as a pass.
+ROUTE_ENGAGEMENT_SELECTORS = {
+    "wmma": "wmma_prefill",
+    "dense_wide": "dense_wide",
+}
+
 
 def _fixture_kind(fixture_sha256: str) -> str:
     """Classify a fixture so the two protocols can never be confused."""
@@ -315,6 +332,8 @@ def qualification_verdict(coverage, *, quality_passed, deterministic, clean):
 
 def _summarise_engagement(
     engagement: Mapping[str, Sequence[Mapping[str, Any]]],
+    *,
+    route_selector: str | None = None,
 ) -> dict[str, Any]:
     """Turn raw dispatch records into the answer a reader actually needs.
 
@@ -399,13 +418,27 @@ def _summarise_engagement(
     # which it always is, and which is correct - and so reported "the teacher
     # arm also engaged the route" on a run where the route's teacher count was
     # exactly zero.
-    route = "wmma_prefill"
-    route_arms = by_selector.get(route, {})
-    candidate_route_engaged = _rate(route_arms.get("candidate", {})) > 0.0
-    teacher_route_engaged = _rate(route_arms.get("teacher", {})) > 0.0
+    #
+    # The selector is supplied by the caller from ROUTE_ENGAGEMENT_SELECTORS.
+    # Hardcoding ``wmma_prefill`` here meant a ``--route dense_wide`` run could
+    # never report its own route as engaged, which is how the live 16-47 default
+    # stayed outside the detector. ``None`` means the route has no recorder, and
+    # that is reported as not recorded rather than answered with another
+    # route's selector.
+    route = route_selector
+    route_arms = by_selector.get(route, {}) if route else {}
+    candidate_route_engaged = bool(route) and _rate(route_arms.get("candidate", {})) > 0.0
+    teacher_route_engaged = bool(route) and _rate(route_arms.get("teacher", {})) > 0.0
     summary["candidate_route_engaged"] = candidate_route_engaged
     summary["teacher_route_engaged"] = teacher_route_engaged
     summary["route"] = route
+    summary["route_engagement_recorded"] = route is not None
+    if route is None:
+        summary["route_engagement_note"] = (
+            "this route has no dispatch recorder, so the gate cannot say whether "
+            "it ran; candidate_route_engaged is reported as False because it is "
+            "unanswered, not because the route was observed not to engage"
+        )
     candidate_engaged = candidate_route_engaged
     teacher_engaged = teacher_route_engaged
     # Deliberately **not** called ``arms_isolated``. It was, and the name was
@@ -991,7 +1024,10 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         "strict_logits_sha256": evaluated["strict_logits_sha256"],
         "candidate_logits_sha256": evaluated["candidate_logits_sha256"],
         "variant_manifests": {"candidate_evidentiary": manifest},
-        "route_engagement": _summarise_engagement(engagement),
+        "route_engagement": _summarise_engagement(
+            engagement,
+            route_selector=ROUTE_ENGAGEMENT_SELECTORS.get(str(args.route)),
+        ),
         "prompts": prompt_manifest,
         "provenance": provenance,
     }
