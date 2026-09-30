@@ -87,6 +87,32 @@
     memory admission. The 256 -> 1024 step is the one to measure next, in a single
     run, because `REFACTOR.md` forbids claiming a direct comparison from separate
     runs.
+  - **The chunk decision landed, and it makes the selector unnecessary rather
+    than load-bearing (2026-09-30).** The 256 -> 1024 step named above was
+    measured in a single run (12 cases, 3 reps per arm, one process per arm:
+    `benchmarks/results/2026-09-29-qwen4exp-rt1-256-vs-1024/`, -29.0% to -35.7%,
+    +1.24 GB at 4K) and **`DEFAULT_MAX_PREFILL_CHUNK_TOKENS` is now 1024** -
+    see `worklog/entries/20260930T011826.957349Z-lhl-qwen4exp-rt1-serving-chunk-default-3c5235.md`.
+    So the premise this park rested on ("the serving path's chunk default is
+    **256**, not the 1024 these tradeoffs assume") is no longer true: the serving
+    path now uses the 1024 the tradeoffs assume.
+    **That resolves the resume condition by removing its subject.** The
+    condition was "a default chunk change makes the ownership split
+    load-bearing"; the default changed, but the ownership split still is not
+    load-bearing, because a two-owner policy measured **1.06% slower on the small
+    owner at 0.017x the within-arm spread** with identical `logits_sha256`
+    (`benchmarks/results/2026-09-29-qwen4exp-rt1-same-owner-selection/`) - the
+    workspace is scratch and kernel work scales with the actual token count, not
+    the size of the scratch it is handed. A single larger owner is therefore at
+    least as good as the two-owner policy, without the extra 1.555 GiB, the
+    borrow/restore path, or a selector needing qualification.
+    **Revised disposition: remove the selector, do not enable it.** The four
+    binding prerequisites below are no longer worth satisfying - they qualify a
+    mechanism whose only measured benefit is a 1.06% *loss*. The one genuinely
+    useful survivor is the capacity question (what peak can the host admit for a
+    single larger owner), which is admission accounting, not this selector. Any
+    removal must keep the chunk-1024 default's own tests
+    (`tests/test_unit_engine_loop_prefill_chunk.py`) intact.
 
 ## GR Staged-F32 Selector (HC-1)
 

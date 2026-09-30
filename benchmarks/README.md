@@ -27,29 +27,38 @@ production arithmetic against strict or establish decode/MTP speedups.
 ## Qwen3.8 Flash Next prefill chunk size
 
 Measured on physical host `gfx1151` (`55ea6c509d0b49eea8de7094a1023668`), AMD
-gfx1151, UD-Q4_K_XL, BF16 KV, production execution profile, case `code-p4096`,
-cached build. Three repetitions per arm, one process per arm.
+gfx1151, UD-Q4_K_XL, BF16 KV, production execution profile, cached build.
+Three repetitions per arm, one process per arm.
 
-| Prefill chunk | Wall median (s) | Change | Peak allocation |
-| ---: | ---: | ---: | ---: |
-| 1024 | 15.625 | — | 84.44 GB |
-| 4096 | 14.854 | **-771.9 ms (-4.94%)** | 89.40 GB |
+**The serving default is now 1024.** It was 256
+(`EngineLoopConfig.max_prefill_chunk_tokens`), which split the engine loop's own
+1024-token round prefill budget into four chunks. The two knobs are now equal.
 
-The comparison basis is **1024**, the benchmark protocol's chunk size. The
-serving path's default is **256** (`EngineLoopConfig.max_prefill_chunk_tokens`),
-so the -4.94% describes 1024 -> 4096 under this protocol and is **not** the size
-of the production change, which is unmeasured.
+All 12 canonical cases (4 categories x 3 prompt sizes), both arms in one run:
 
-The separation between medians is 5.70x the larger within-arm spread and the
-arms do not overlap. `token_id` and `logits_sha256` are identical on every arm
-at every repetition. Chunk 4096 costs +4.96 GB peak (+5.9%).
+| Prompt tokens | 256 -> 1024 | Peak cost |
+| ---: | ---: | ---: |
+| 512 | -29.0% to -29.4% | +0.77 GB |
+| 1024 | -32.9% to -34.4% | +1.24 GB |
+| 4096 | -32.9% to -35.7% | +1.24 GB |
 
-Not promoted. The numerical gate now passes at chunk 4096 and reproduces the
-chunk-1024 certification bit-identically, and a short request (`code-p512`) is
-unaffected in both time and memory because the workspace is already shape-aware
-(`min(chunk, max_sequence_length)`). What remains is a single memory-admission
-question on long prompts, plus the unmeasured 256 -> 4096 serving comparison.
-One case, prefill only.
+12/12 cases faster, 12/12 arms separated, `token_id` identical on 12/12.
+`logits_sha256` differs from 256 on 12/12, so this is an arithmetic change
+against the old default rather than a pure scheduling one; chunk 1024 is the
+configuration the numerical gate certifies. The workspace is
+`min(chunk, max_sequence_length)`, so a 512-token request resolves to the same
+768 rows either way and short requests are unaffected in time and memory.
+
+This is a prefill-only measurement (`qwen4exp_profile_gap.py --mode prefill`).
+It is not a decode-latency-under-concurrency claim; the per-tick prefill bound
+that protects decode is the round budget, which is unchanged.
+
+[256 -> 1024 protocol and full table](results/2026-09-29-qwen4exp-rt1-256-vs-1024/README.md).
+
+The 1024 -> 4096 step was measured separately on `code-p4096`: 15.625 -> 14.854 s
+(**-4.94%**) for +4.96 GB peak, `token_id` and `logits_sha256` identical on every
+arm. Not promoted: it buys 2.76 further percentage points over 256 -> 1024 for
+4.96 GB more, and what remains is memory admission on long prompts.
 [Protocol, cost and limits](results/2026-09-29-qwen4exp-rt1-chunk-remeasure/README.md).
 
 ## Qwen3.8 Flash Next full-attention context route

@@ -17117,6 +17117,11 @@ def test_submit_poll_text_generator_routes_concurrent_streams_and_reclaims_close
 
 
 def test_engine_loop_cli_env_defaults_match_docs() -> None:
+    from hipengine.generation.engine_loop import (
+        DEFAULT_MAX_PREFILL_CHUNK_TOKENS,
+        DEFAULT_ROUND_PREFILL_TOKEN_BUDGET,
+    )
+
     parser = argparse.ArgumentParser()
     add_engine_loop_config_args(parser, environ={})
     config = engine_loop_config_from_args(parser.parse_args([]))
@@ -17124,7 +17129,12 @@ def test_engine_loop_cli_env_defaults_match_docs() -> None:
     assert config == EngineLoopConfig()
     assert config.prefill_decode_policy == "protect_decode"
     assert config.max_active_requests is None
-    assert config.max_prefill_chunk_tokens == 256
+    # RT-1: the chunk cap must equal the round budget it is drawn from, so it is
+    # asserted against the constant rather than a literal that can drift from it.
+    assert config.max_prefill_chunk_tokens == DEFAULT_MAX_PREFILL_CHUNK_TOKENS
+    assert (
+        DEFAULT_MAX_PREFILL_CHUNK_TOKENS == DEFAULT_ROUND_PREFILL_TOKEN_BUDGET
+    ), "a chunk cap below the round budget only fragments budgeted prefill work"
     assert config.fair_prefill_burst_chunks == 1
     assert config.kv_pool_initial_pages == 128
     assert config.kv_pool_low_water_pages == 128
