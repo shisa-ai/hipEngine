@@ -1,0 +1,51 @@
+{
+ "agreement": {
+  "kl_prod_vs_t16": 0.0,
+  "max_abs": 0.0,
+  "mean_abs": 0.0,
+  "rel_to_peak": 0.0
+ },
+ "kind": "gemma4-t16-decode-gemv-screen",
+ "production": {
+  "gbps": 107.8328876896389,
+  "ms_per_call": 0.16546135768294334
+ },
+ "provenance": {
+  "command_args": {
+   "compiler_version_file": null,
+   "experts": 128,
+   "in_features": 2816,
+   "iters": 200,
+   "out": "benchmarks/results/2026-09-30-gemma4-t16-decode-gemv-screen.json",
+   "out_features": 1408,
+   "require_cached_build": false,
+   "rows": 8,
+   "warmup": 20
+  },
+  "git": "1be26e1d6f48881a00ea74d7524095a8c0056464",
+  "gpu_env": {
+   "ROCR_VISIBLE_DEVICES": "1"
+  },
+  "iters": 200,
+  "protocol": "same-run same-bytes A/B; both arms warmed before timing (agreement phase runs both first)",
+  "warmup": 20
+ },
+ "reference": {
+  "note": "iterations 31/32 measured both launch structures at ~104 GB/s; the D1 row's trace shape gives 95 GB/s at 187 us",
+  "production_measured_gbps": 104.0
+ },
+ "shape": {
+  "bytes_per_row": 1584,
+  "experts": 128,
+  "in_features": 2816,
+  "out_features": 1408,
+  "rows": 8,
+  "selected_bytes": 17842176
+ },
+ "speedup_prod_over_t16": 4.856181804117385,
+ "t16": {
+  "gbps": 523.6561070838579,
+  "ms_per_call": 0.03407231532037258,
+  "repack_seconds_host": 0.5521663445979357
+ }
+}
