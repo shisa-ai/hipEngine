@@ -22,9 +22,14 @@ def _generator(tokens=(8, 9, 10)):
         eos_token_id=7, stop_token_ids=(7, 8, 9),
         decode=lambda ids, **kwargs: str(list(ids)),
     )
+    def _forward_argmax(ids):
+        calls.append(tuple(ids))
+        return next(iterator)
+
     generator._runner = SimpleNamespace(
         reset=lambda: None,
         forward=lambda ids: calls.append(tuple(ids)),
+        forward_argmax=_forward_argmax,
         next_token=lambda logits: next(iterator),
     )
     return generator, calls

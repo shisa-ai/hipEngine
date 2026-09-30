@@ -106,6 +106,7 @@ _SYMBOL_EXPERT_WEIGHT_SCALE_F32 = "hipengine_gemma4_expert_weight_scale_f32"
 _SYMBOL_BRANCH_ADD_BF16 = "hipengine_gemma4_branch_add_bf16"
 _SYMBOL_SCALE_BF16 = "hipengine_gemma4_scale_bf16"
 _SYMBOL_LOGIT_SOFTCAP = "hipengine_gemma4_logit_softcap_f32"
+_SYMBOL_LOGIT_ARGMAX = "hipengine_gemma4_logit_argmax_f32"
 _SYMBOL_QKV_SPLIT = "hipengine_gemma4_qkv_split_bf16"
 
 
@@ -602,6 +603,70 @@ def gemma4_logit_softcap_f32(
         library, _SYMBOL_LOGIT_SOFTCAP, _ARGTYPES_LOGIT_SOFTCAP, ctypes.c_int
     )
     err = fn(x_ptr, int(total), float(cap), stream)
+    _check_launch(runtime, err)
+
+
+# x, total, scratch, scratch_blocks, out, stream
+_ARGTYPES_LOGIT_ARGMAX = (
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+)
+
+
+def gemma4_logit_argmax_scratch_bytes(total: int) -> int:
+    """Device scratch bytes :func:`gemma4_logit_argmax_f32` needs for ``total``.
+
+    Partial slots are ``min(65535, ceil(total / 256))``, each an f32 value
+    plus an int64 index; the launcher never writes more than this.
+    """
+
+    if total <= 0:
+        raise ValueError("logit argmax needs at least one element")
+    blocks = min(65535, (total + 255) // 256)
+    return max(1, blocks) * (4 + 8)
+
+
+def gemma4_logit_argmax_f32(
+    x_ptr: int,
+    total: int,
+    out_ptr: int,
+    *,
+    scratch_ptr: int,
+    scratch_blocks: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Argmax over ``total`` f32 values in ``x_ptr``; write index + value.
+
+    ``out_ptr`` must hold 16 bytes: bytes 0..7 the winning ``int64`` index,
+    bytes 8..11 the ``f32`` value at that index (bitwise ``x[index]``).
+    Semantics are ``np.argmax``'s exactly -- first maximum wins, first NaN
+    beats every finite value -- which is what ``Gemma4Runner.next_token``
+    runs on the host path today, so the greedy route can swap the transfer
+    (12 bytes against the 1 MB vocab copy) without changing a token
+    (D10 first half; ``tests/test_gpu_gemma4_argmax_kernel.py`` pins index,
+    value, and the chained-after-softcap comparator).
+
+    ``scratch_ptr`` / ``scratch_blocks`` come from
+    :func:`gemma4_logit_argmax_scratch_bytes`; callers doing repeated steps
+    should keep one scratch buffer alive rather than allocating per call.
+    """
+
+    if total <= 0:
+        raise ValueError("logit argmax needs at least one element")
+    if scratch_blocks <= 0:
+        raise ValueError("logit argmax needs a non-empty scratch")
+    library = library or build_gemma4_norm(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, _SYMBOL_LOGIT_ARGMAX, _ARGTYPES_LOGIT_ARGMAX, ctypes.c_int
+    )
+    err = fn(x_ptr, int(total), scratch_ptr, int(scratch_blocks), out_ptr, stream)
     _check_launch(runtime, err)
 
 

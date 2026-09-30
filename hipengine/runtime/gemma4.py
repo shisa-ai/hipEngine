@@ -55,6 +55,8 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
     gemma4_layer_forward_bf16,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
+    gemma4_logit_argmax_f32,
+    gemma4_logit_argmax_scratch_bytes,
     gemma4_logit_softcap_f32,
     gemma4_rmsnorm_f32w_bf16,
     gemma4_scale_bf16,
@@ -704,6 +706,13 @@ class Gemma4Runner:
             # 512-token block of 2816-wide states, against 25 GB in use.
             self._normalized = self._alloc(self.max_block * hidden * _BF16_BYTES)
             self._logits = self._alloc(int(config.vocab_size or 0) * _F32_BYTES)
+            # Greedy argmax route (D10): the 16-byte (index, value) result and
+            # its partial scratch, pre-allocated beside _logits so no malloc
+            # can happen inside a decode step or a captured graph.
+            self._argmax_out = self._alloc(16)
+            self._argmax_scratch = self._alloc(
+                gemma4_logit_argmax_scratch_bytes(int(config.vocab_size or 0))
+            )
 
             for index, attention in enumerate(config.attention):
                 self._scratches.append(
@@ -840,6 +849,27 @@ class Gemma4Runner:
 
         return self._normalized_hidden_rows
 
+    def _validated_tokens(self, token_ids: Sequence[int]) -> list[int]:
+        """Admission checks shared by :meth:`forward` and :meth:`forward_argmax`."""
+
+        if self._closed:
+            raise RuntimeError("runner is closed")
+        tokens = [int(t) for t in token_ids]
+        rows = len(tokens)
+        if rows == 0:
+            raise ValueError("token_ids must not be empty")
+        if self._position + rows > self.capacity:
+            raise ValueError(
+                f"{rows} tokens from position {self._position} exceeds capacity {self.capacity}"
+            )
+        vocab = int(self.weights.config.vocab_size or 0)
+        if vocab <= 0:
+            raise ValueError("config carries no vocab_size, so logits cannot be sized")
+        for token in tokens:
+            if not 0 <= token < vocab:
+                raise ValueError(f"token id {token} is outside the vocabulary of {vocab}")
+        return tokens
+
     def forward(
         self,
         token_ids: Sequence[int],
@@ -877,22 +907,8 @@ class Gemma4Runner:
         byte-for-byte on the row the projection reads.
         """
 
-        if self._closed:
-            raise RuntimeError("runner is closed")
-        tokens = [int(t) for t in token_ids]
+        tokens = self._validated_tokens(token_ids)
         rows = len(tokens)
-        if rows == 0:
-            raise ValueError("token_ids must not be empty")
-        if self._position + rows > self.capacity:
-            raise ValueError(
-                f"{rows} tokens from position {self._position} exceeds capacity {self.capacity}"
-            )
-        vocab = int(self.weights.config.vocab_size or 0)
-        if vocab <= 0:
-            raise ValueError("config carries no vocab_size, so logits cannot be sized")
-        for token in tokens:
-            if not 0 <= token < vocab:
-                raise ValueError(f"token id {token} is outside the vocabulary of {vocab}")
 
         logits = None
         last_start = ((rows - 1) // self.max_block) * self.max_block
@@ -908,6 +924,42 @@ class Gemma4Runner:
             )
         assert logits is not None
         return logits
+
+    def forward_argmax(
+        self,
+        token_ids: Sequence[int],
+        *,
+        apply_softcap: bool = True,
+    ) -> int:
+        """Run ``token_ids`` and return the greedy token without the vocab copy.
+
+        Identical computation, admission, and chunking to :meth:`forward`, but
+        the collect phase argmaxes on the device behind the softcap and
+        transfers the winning index — 16 bytes instead of the full-vocab logits
+        (D10's greedy route; the host-side cost it removes is the ~0.118 ms
+        1 MB sync D2H plus the 0.016 ms ``np.argmax`` measured on this box).
+
+        The token equals ``int(np.argmax(forward(...)))`` exactly: the battery
+        in ``tests/test_gpu_gemma4_argmax_kernel.py`` pins first-maximum index
+        equality, bitwise value equality, NaN semantics, and the chained
+        after-softcap comparator against what the host path reads back. The
+        full-logits path stays as :meth:`forward` for diagnostics, gates, and
+        any non-greedy sampler.
+        """
+
+        tokens = self._validated_tokens(token_ids)
+        rows = len(tokens)
+        token = -1
+        last_start = ((rows - 1) // self.max_block) * self.max_block
+        for start in range(0, rows, self.max_block):
+            token = self._forward_block(
+                tokens[start : start + self.max_block],
+                apply_softcap=apply_softcap,
+                needs_logits=start == last_start,
+                collect_argmax=True,
+            )
+        assert token is not None
+        return int(token)
 
     @contextmanager
     def _q8_mmq_prefill_session(self) -> Iterator[None]:
@@ -969,7 +1021,8 @@ class Gemma4Runner:
         apply_softcap: bool = True,
         needs_logits: bool = True,
         return_hidden: bool = False,
-    ) -> np.ndarray:
+        collect_argmax: bool = False,
+    ) -> np.ndarray | int:
         """Run one block of at most ``max_block`` tokens; see :meth:`forward`."""
 
         with self._q8_mmq_prefill_session():
@@ -978,6 +1031,7 @@ class Gemma4Runner:
                 apply_softcap=apply_softcap,
                 needs_logits=needs_logits,
                 return_hidden=return_hidden,
+                collect_argmax=collect_argmax,
             )
 
     def _forward_block_inner(
@@ -987,7 +1041,8 @@ class Gemma4Runner:
         apply_softcap: bool = True,
         needs_logits: bool = True,
         return_hidden: bool = False,
-    ) -> np.ndarray:
+        collect_argmax: bool = False,
+    ) -> np.ndarray | int:
         """The block body, run under whatever session :meth:`_forward_block` set.
 
         ``needs_logits`` is False for a block whose output ``forward`` discards.
@@ -997,6 +1052,8 @@ class Gemma4Runner:
         (every device kernel, on one stream), collect (the logits copy and the
         host bookkeeping). This default path runs them in their historical
         stream order on the default stream with the actual position.
+        ``collect_argmax=True`` swaps the collect phase for the device-argmax
+        variant :meth:`_collect_block_argmax`; the launch phase is identical.
         """
 
         config = self.weights.config
@@ -1016,11 +1073,72 @@ class Gemma4Runner:
             needs_logits=needs_logits,
             return_hidden=return_hidden,
         )
+        if collect_argmax:
+            return self._collect_block_argmax(
+                tokens,
+                apply_softcap=apply_softcap,
+                needs_logits=needs_logits,
+            )
         return self._collect_block(
             tokens,
             apply_softcap=apply_softcap,
             needs_logits=needs_logits,
         )
+
+    def _collect_block_argmax(
+        self,
+        tokens: Sequence[int],
+        *,
+        apply_softcap: bool,
+        needs_logits: bool,
+        stream: int | None = None,
+    ) -> int:
+        """Softcap, argmax on the device, and bring home just the token.
+
+        Same admission and stream contract as :meth:`_collect_block`; only the
+        transfer changes. The argmax kernel is enqueued behind the softcap on
+        the same stream, then a sync copy moves 16 bytes instead of the vocab.
+        The drain the copy waits for is the token dependency itself — the
+        sampler needs the result before the next step can launch — so what
+        shrinks is the transfer and the host ``np.argmax``, not the wait.
+        Non-final blocks mirror the logits path: no collect, position advance
+        only, and the sentinel return is never read (the caller keeps only the
+        last block's result).
+        """
+
+        rows = len(tokens)
+        if not needs_logits:
+            self._position += rows
+            return -1
+
+        vocab = int(self.weights.config.vocab_size or 0)
+        cap = self.weights.config.final_logit_softcapping
+        launch_stream = int(stream) if stream is not None else 0
+        if apply_softcap and cap:
+            gemma4_logit_softcap_f32(
+                self._logits.ptr,
+                vocab,
+                float(np.float32(cap)),
+                stream=launch_stream,
+            )
+        gemma4_logit_argmax_f32(
+            self._logits.ptr,
+            vocab,
+            self._argmax_out.ptr,
+            scratch_ptr=self._argmax_scratch.ptr,
+            scratch_blocks=self._argmax_scratch.nbytes // 12,
+            stream=launch_stream,
+        )
+
+        if launch_stream != 0:
+            from hipengine.core.hip import get_hip_runtime
+
+            get_hip_runtime().stream_synchronize(launch_stream)
+
+        raw = np.empty(4, dtype=np.int64)  # 16 bytes: i64 index + f32 value
+        copy_device_to_host(host_array_ptr(raw), self._argmax_out, 16)
+        self._position += rows
+        return int(raw[0])
 
     def _stage_block_content(
         self,

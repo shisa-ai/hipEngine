@@ -1090,3 +1090,204 @@ extern "C" int hipengine_gemma4_logit_softcap_f32(
       cap);
   return static_cast<int>(hipGetLastError());
 }
+
+// Greedy argmax over the (optionally capped) logits: emit the index and the
+// winning value so the greedy route transfers 12 bytes instead of the full
+// 1 MB vocab copy (D10 first half). Semantics are np.argmax's exactly, since
+// that is what Gemma4Runner.next_token runs on the host path today: the FIRST
+// maximum wins, and a NaN beats every finite value with the first NaN winning
+// among NaNs (np.argmax returns the first NaN's index). The ordering below is
+// piecewise-total -- {NaN group, lowest index} above {value desc, index asc}
+// -- so any reduction tree yields the same winner as a left-to-right scan.
+__device__ inline bool gemma4_argmax_beats(
+    float candidate_value,
+    int64_t candidate_index,
+    float incumbent_value,
+    int64_t incumbent_index) {
+  const bool candidate_nan = isnan(candidate_value);
+  const bool incumbent_nan = isnan(incumbent_value);
+  if (candidate_nan != incumbent_nan) {
+    return candidate_nan;
+  }
+  if (candidate_nan) {
+    return candidate_index < incumbent_index;
+  }
+  if (candidate_value > incumbent_value) {
+    return true;
+  }
+  if (candidate_value < incumbent_value) {
+    return false;
+  }
+  // Equal (covers +0/-0): the first index wins, like np.argmax.
+  return candidate_index < incumbent_index;
+}
+
+__global__ void gemma4_logit_argmax_stage1_kernel(
+    const float* x,
+    int64_t total,
+    float* partial_values,
+    int64_t* partial_indices) {
+  extern __shared__ float shared_values[];  // [threads] values + [threads] idx
+  int64_t* shared_indices =
+      reinterpret_cast<int64_t*>(shared_values + blockDim.x);
+
+  const int64_t stride = static_cast<int64_t>(blockDim.x) * gridDim.x;
+  int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  bool have = false;
+  float best_value = 0.0f;
+  int64_t best_index = -1;
+  for (; i < total; i += stride) {
+    const float value = x[i];
+    if (!have) {
+      best_value = value;
+      best_index = i;
+      have = true;
+    } else if (gemma4_argmax_beats(value, i, best_value, best_index)) {
+      best_value = value;
+      best_index = i;
+    }
+  }
+
+  shared_values[threadIdx.x] = best_value;
+  shared_indices[threadIdx.x] = best_index;  // -1 marks "no candidate"
+  __syncthreads();
+  for (unsigned int offset = blockDim.x / 2; offset > 0; offset >>= 1) {
+    if (threadIdx.x < offset) {
+      const int64_t other_index = shared_indices[threadIdx.x + offset];
+      const int64_t my_index = shared_indices[threadIdx.x];
+      if (other_index >= 0 &&
+          (my_index < 0 ||
+           gemma4_argmax_beats(
+               shared_values[threadIdx.x + offset],
+               other_index,
+               shared_values[threadIdx.x],
+               my_index))) {
+        shared_values[threadIdx.x] = shared_values[threadIdx.x + offset];
+        shared_indices[threadIdx.x] = other_index;
+      }
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    partial_values[blockIdx.x] = shared_values[0];
+    partial_indices[blockIdx.x] = shared_indices[0];
+  }
+}
+
+__global__ void gemma4_logit_argmax_stage2_kernel(
+    const float* partial_values,
+    const int64_t* partial_indices,
+    int64_t partial_count,
+    void* out) {
+  extern __shared__ float shared_values[];
+  int64_t* shared_indices =
+      reinterpret_cast<int64_t*>(shared_values + blockDim.x);
+
+  const int64_t stride = static_cast<int64_t>(blockDim.x) * gridDim.x;
+  int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  bool have = false;
+  float best_value = 0.0f;
+  int64_t best_index = -1;
+  for (; i < partial_count; i += stride) {
+    const int64_t candidate_index = partial_indices[i];
+    if (candidate_index < 0) {
+      continue;  // empty stage-1 lane
+    }
+    const float candidate_value = partial_values[i];
+    if (!have) {
+      best_value = candidate_value;
+      best_index = candidate_index;
+      have = true;
+    } else if (gemma4_argmax_beats(
+                   candidate_value, candidate_index, best_value, best_index)) {
+      best_value = candidate_value;
+      best_index = candidate_index;
+    }
+  }
+
+  shared_values[threadIdx.x] = best_value;
+  shared_indices[threadIdx.x] = best_index;
+  __syncthreads();
+  for (unsigned int offset = blockDim.x / 2; offset > 0; offset >>= 1) {
+    if (threadIdx.x < offset) {
+      const int64_t other_index = shared_indices[threadIdx.x + offset];
+      const int64_t my_index = shared_indices[threadIdx.x];
+      if (other_index >= 0 &&
+          (my_index < 0 ||
+           gemma4_argmax_beats(
+               shared_values[threadIdx.x + offset],
+               other_index,
+               shared_values[threadIdx.x],
+               my_index))) {
+        shared_values[threadIdx.x] = shared_values[threadIdx.x + offset];
+        shared_indices[threadIdx.x] = other_index;
+      }
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    // out layout: bytes 0..7 int64 index, bytes 8..11 f32 value.
+    reinterpret_cast<int64_t*>(out)[0] = shared_indices[0];
+    reinterpret_cast<float*>(reinterpret_cast<int64_t*>(out) + 1)[0] =
+        shared_values[0];
+  }
+}
+
+// (const float* x, int64 total, void* scratch, int64 scratch_blocks,
+//  void* out, stream): out must hold 16 bytes; scratch holds
+// scratch_blocks floats followed by scratch_blocks int64s (size it with
+// gemma4_logit_argmax_scratch_bytes in Python). Enqueue order makes this
+// safe to run right after the softcap on the same logits buffer.
+extern "C" int hipengine_gemma4_logit_argmax_f32(
+    const float* x,
+    int64_t total,
+    void* scratch,
+    int64_t scratch_blocks,
+    void* out,
+    hipStream_t stream) {
+  if (total <= 0 || out == nullptr || scratch == nullptr ||
+      scratch_blocks <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  int64_t blocks = (total + threads - 1) / threads;
+  if (blocks > 65535) {
+    blocks = 65535;
+  }
+  if (blocks > scratch_blocks) {
+    // Fewer blocks just means each thread strides further; never write past
+    // the scratch the caller declared.
+    blocks = scratch_blocks;
+  }
+  float* partial_values = static_cast<float*>(scratch);
+  int64_t* partial_indices =
+      reinterpret_cast<int64_t*>(static_cast<float*>(scratch) + blocks);
+  const unsigned int shared_bytes =
+      static_cast<unsigned int>(threads) * (sizeof(float) + sizeof(int64_t));
+  hipLaunchKernelGGL(
+      gemma4_logit_argmax_stage1_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      x,
+      total,
+      partial_values,
+      partial_indices);
+  const hipError_t first = hipGetLastError();
+  if (first != hipSuccess) {
+    return static_cast<int>(first);
+  }
+  // One block reduces the partials; shared memory holds them all.
+  hipLaunchKernelGGL(
+      gemma4_logit_argmax_stage2_kernel,
+      dim3(1),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      partial_values,
+      partial_indices,
+      blocks,
+      out);
+  return static_cast<int>(hipGetLastError());
+}
