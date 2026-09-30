@@ -399,13 +399,26 @@ differs.
 | Engine | Prefill 1024 | Decode at 1024/128 |
 | --- | ---: | ---: |
 | llama.cpp HIP `8cfc315`, same GGUF | **3910** | **68.92** |
-| hipEngine | 2040.9 | 43.80 |
+| hipEngine | 2722.1 | 57.03 |
 
 On the same GPU and with llama.cpp rebuilt at build `8cfc315` for native HIP, a
 separately measured comparator row at `-fa on -b 4096 -ub 1024` reports 4124
 prefill tok/s; the table keeps the row recorded with this section's original
-flags rather than mixing protocols. On the W7900, hipEngine measures 1791.1
-prefill and 39.37 decode at the same shape, against 3761 prefill for llama.cpp.
+flags rather than mixing protocols. On the W7900, hipEngine measures 2665.1
+prefill and 50.87 decode at the same shape, against 3761 prefill for llama.cpp.
+
+Decode's MoE `gate_up` was the largest non-attention family in a step: the
+legacy raw-layout owner read Q4_K at 0.163 ms per launch across the 29 MoE
+layers. The `gate_up` tensors are now repacked to the tile16 layout at load
+and decode dispatches the registered t16 owner through the profile rows — a
+1:1 kernel swap over the same 1856 launches in a 64-step trace window
+(303.19 -> 66.59 ms), taking the family from **4.74 to 1.04 ms/token
+(-78%)** and decode device busy from 19.36 to 15.77 ms/token at 1024
+tokens of context. The t16 owner's outputs are bitwise-identical to the raw
+owner it replaces, the public `LLM.generate()` path records the `production`
+profile with parity true, and the campaign gate against the frozen baseline
+passes every bar (kl_max 0.01522, top-1 1.0 on all 1023 rows).
+([artifact](results/2026-09-30-gemma4-family-1024-t16.json))
 
 Prefill now serves both MoE expert projections from grouped expert owners
 instead of one CTA per output column. The owners reuse each loaded weight row
@@ -456,9 +469,9 @@ prompt, 48.12 at 512, 43.84 at 1024, 40.02 at 4096; prefill 140.2 / 135.7 /
 128.5 / 108.6 tok/s at the same shapes. The 128/512/4096 rows are one sample
 each; the 1024/128 row is three. The matrix's prefill figures were taken before
 the expert-projection routing, the flash-attention path and the tile change; the
-current 1024-token prefill is the 1988.7 tok/s in the table, and the current
-1024/128 decode is unchanged at 43.84. First-token latency at 1024 is 0.51 s and
-public request wall time is 3.41 s including prefill. Decode is close to flat
+current 1024-token prefill is the 2722.1 tok/s in the table, and the current
+1024/128 decode is 57.03. First-token latency at 1024 is 0.38 s and
+public request wall time is 2.61 s including prefill. Decode is close to flat
 across context length - 52.28 down to 40.02 - because the sliding layers, 25 of
 the model's 30, read only the keys inside their 1024-token window instead of
 walking the whole cached context and masking the difference away.
