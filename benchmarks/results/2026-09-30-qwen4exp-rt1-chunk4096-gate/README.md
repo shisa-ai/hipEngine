@@ -81,32 +81,56 @@ boundary crossing - not any hard threshold - is what turns the verdict.
 the gate pins the chunk size in both arms. A teacher whose published logits
 change therefore means the *baseline* arithmetic moved, not the WMMA route.
 
-Two classes of candidate landed after the recorded run. **Neither is bisected
-here**; this packet establishes that the certificate no longer describes HEAD,
-not which commit moved it.
+### Dispatch is provably unchanged
 
-Direct explanations for a change on the **teacher** side, because they alter
-dispatch resolution or registration rather than one route's arithmetic:
+Every engagement and selector-state field is **identical** between the recorded
+run and the HEAD run:
 
-- `a9a33dd88` gave the Q8 iu8-WMMA route a role scope **and fixed its cache
-  key**. A memoization-key change alters which dispatch is replayed, and the
-  gate's whole failure mode earlier in this campaign was a key that made the
-  teacher arm replay the candidate's dispatch. This is the most direct
-  candidate for a teacher-side hash change.
-- `b9f73e808` reordered registration so the selected Q4_K MoE prefill owners
-  register before the gate resolves its keys.
-- `76dd95d7f` removed the generic dense Q8 iu8-WMMA route from the registry.
+| field | recorded | HEAD |
+| --- | ---: | ---: |
+| `candidate.engaged_launches` | 2488860 | 2488860 |
+| `teacher.engaged_launches` | 833004 | 833004 |
+| `wmma_prefill` candidate / teacher | 0.373585 / 0.0 | 0.373585 / 0.0 |
+| `q4k_rowtile` candidate / teacher | 0.996195 / 1.0 | 0.996195 / 1.0 |
+| `wmma_route_engaged_candidate_only` | true | true |
 
-Explanations for a change on the **candidate** side, or on both arms through the
-decode path the gate exercises:
+So the same kernels ran, in the same proportions, with the same selector
+states. The differing logits come from **different arithmetic inside kernels
+that both runs dispatch identically** - not from a routing, registration or
+memoization change.
 
-- `c66db0264` promoted the DE-1 decode Q8_1-DP4A linear to the production
-  default, and `6c3c46b04` promoted DE-3's wide-block pack8 GEMV at narrow
-  projections. The gate runs **128 decode steps per case**, so both are
-  exercised on every compared transition.
-- `5fa2c2da5` promoted RT-1 (`DEFAULT_MAX_PREFILL_CHUNK_TOKENS` 256 -> 1024),
-  whose own commit records "`logits_sha256` differing 12/12 - an arithmetic
-  change against the old default".
+**This excludes the leading hypothesis I started with.** `a9a33dd88` added a
+component to the dispatch memoization key (`_iu8_role_key`), and a key change is
+the most direct way to make a teacher arm resolve differently - but the
+engagement evidence above shows the teacher resolved identically, so it did not
+move these numbers. The same argument applies to `b9f73e808` (registration
+order) and `76dd95d7f` (route removed).
+
+### What remains, and the leading candidate
+
+A change that alters arithmetic **without** altering dispatch. In that class:
+
+- **`6c3c46b04` (DE-3) is the leading candidate.** It changes the block width
+  of the decode-shaped pack8 GEMV at `out <= 640` - "32 threads per output
+  rather than 16; max relative divergence 2.6e-7" - as a runtime dispatch
+  parameter in `hipengine/runtime/gguf_linear.py`, not a kernel swap. The same
+  kernel family runs, so route-engagement counters are unchanged, while the
+  K-reduction tree differs. It is a **decode-path** change and the gate runs
+  **128 decode steps per case**.
+- `3b6497b25` promoted the RT-4 bounded KV reset, which changes device state
+  rather than dispatch.
+- `5fa2c2da5` promoted RT-1 (`DEFAULT_MAX_PREFILL_CHUNK_TOKENS` 256 -> 1024).
+  The gate pins the chunk explicitly, so this should not reach it, but it is not
+  excluded by measurement.
+
+None of these is bisected. The one thing the evidence does establish is the
+class: **an in-kernel arithmetic change on a path both arms share.**
+
+One observation that fits a near-tie explanation rather than a quality one: the
+HEAD run has **better** top-1 agreement (0.9942 vs 0.9935) while its max KL is
+worse (2.341e-2 vs 1.530e-2). Max KL on this fixture is a tail statistic
+driven by near-ties, and a small arithmetic perturbation can move which
+near-ties flip.
 
 ## Why this matters
 
