@@ -70,3 +70,51 @@ One model, one quant, one host (gfx1151, not the gfx1100 default), one case
 (`code-p4096`), one window, one execution profile, prefill only. Attribution is a
 per-role-per-kernel join inside a marked window and is diagnostic, not a wall measurement.
 No speedup claimed and no kernel built.
+
+---
+
+# Addendum: the cast's bandwidth, measured — and the whole-row estimate refuted
+
+The estimate above assumed both kernels run at the same effective rate. That assumption was
+then tested against the raw trace, and it does not hold uniformly.
+
+**Method.** Raw `rocprofv3` kernel trace filtered to the `qwen4exp_prefill_p4096_` marker
+window. Elements per launch = `Grid_Size_X * Grid_Size_Y * Grid_Size_Z` **as work-items**,
+per §8 rule 2 — *not* multiplied by `Workgroup_Size_X`. This reproduces the artifact's
+1,056 launches / 131.001 ms exactly.
+
+| elements/launch | shape | launches | ms | GB | GB/s |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| **10,485,760** | **1024x10240 (the hc_*_down pair)** | 256 | **83.861** | **16.106** | **192.1** |
+| 2,621,440 | 1024x2560 | 544 | 26.255 | 8.556 | 325.9 |
+| 6,291,456 | 1024x6144 | 128 | 20.039 | 4.832 | 241.1 |
+| 655,360 | 1024x640 | 128 | 0.845 | 0.503 | 595.4 |
+| | | 1,056 | **131.001** | **29.998** | **229.0** |
+
+## What the table says
+
+**Apparent bandwidth rises as the transfer shrinks** — 192.1 GB/s at 10.5M elements per
+launch, 595.4 GB/s at 655K — and the total, 229.0 GB/s, is **103.6% of the 221 GB/s DRAM
+roof**. That is impossible for pure DRAM traffic, so the small roles are partly **L2-served**
+and the 6 B/element model is not a DRAM model for them.
+
+## Consequences for DP-5
+
+- **The defensible target is the HC down pair alone.** 16.106 GB at **192.1 GB/s = 86.9% of
+  roof**, the largest transfers and the only ones plausibly DRAM-bound. Net saving
+  **4/6 x 83.861 = 55.9 ms = 0.36% of the union.**
+- **The whole-row figure of 87.3 ms is REFUTED as an over-estimate.** It applies a DRAM byte
+  model to roles whose apparent bandwidth exceeds the DRAM roof, i.e. whose traffic is partly
+  served by cache and would *not* be saved by eliminating the kernel.
+- **This strengthens the row's "epilogue first" order for a second, independent reason.** The
+  HC pair is not only 64.0% of the cast by time; it is also the only part whose traffic is
+  actually DRAM-bound, so it is where the saving genuinely is.
+
+## A join that had to be discarded on the way
+
+The first attempt joined `captures.child.launch_census` shapes to `audit.prefill` times —
+two different captures. It produced plausible per-role numbers but a total of **229.0 GB/s =
+103.6% of roof**, which is how the join was caught. **Cross-capture shape/time joins must be
+checked against a physical bound before they are used**, and the raw trace is what resolved
+it. The shape join happened to be right for the HC pair (10,485,760 = 1024x10240); the
+`launches` column was what could not be trusted.
