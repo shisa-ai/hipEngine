@@ -1,0 +1,105 @@
+{
+  "kind": "qwen4exp-gdn-chunk-scan-drift-screen",
+  "shape": {
+    "Hk": 16,
+    "Hv": 48,
+    "Dk": 128,
+    "Dv": 128,
+    "seq": 4096,
+    "kv_repeat": 3,
+    "seed": 0
+  },
+  "host": {
+    "platform": "Linux-7.1.6-1-cachyos-x86_64-with-glibc2.44",
+    "python": "3.13.13",
+    "numpy": "2.5.3"
+  },
+  "created_at": "2026-09-30T15:50:43Z",
+  "variants": {
+    "chunk64:fp16 operands + fp16 intra": {
+      "state_nmse": 1.1059944943381793e-07,
+      "out_nmse": 1.576627080708878e-07,
+      "max_abs_dstate": 6.315480076729552e-05
+    },
+    "chunk64:fp16 operands, f32 intra": {
+      "state_nmse": 8.461953395561541e-08,
+      "out_nmse": 1.3154759511018564e-07,
+      "max_abs_dstate": 6.259252730404785e-05
+    },
+    "chunk64:f32 operands (reassoc only)": {
+      "state_nmse": 1.9494416825719264e-13,
+      "out_nmse": 8.070659484566706e-14,
+      "max_abs_dstate": 8.600766529531789e-08
+    },
+    "chunk128:fp16 operands + fp16 intra": {
+      "state_nmse": 1.1058220731475305e-07,
+      "out_nmse": 1.566882283297186e-07,
+      "max_abs_dstate": 6.31609578973652e-05
+    },
+    "chunk128:fp16 operands, f32 intra": {
+      "state_nmse": 8.461873041694256e-08,
+      "out_nmse": 1.301815096195775e-07,
+      "max_abs_dstate": 6.251862018663568e-05
+    },
+    "chunk128:f32 operands (reassoc only)": {
+      "state_nmse": 8.920559586188747e-13,
+      "out_nmse": 3.2378771425734084e-13,
+      "max_abs_dstate": 1.6022270547810802e-07
+    },
+    "chunk256:fp16 operands + fp16 intra": {
+      "state_nmse": 1.1051638312088457e-07,
+      "out_nmse": 1.5619802354996003e-07,
+      "max_abs_dstate": 6.316094074830525e-05
+    },
+    "chunk256:fp16 operands, f32 intra": {
+      "state_nmse": 8.46323560638492e-08,
+      "out_nmse": 1.2948977335675905e-07,
+      "max_abs_dstate": 6.275636500170656e-05
+    },
+    "chunk256:f32 operands (reassoc only)": {
+      "state_nmse": 5.372890033106554e-12,
+      "out_nmse": 1.3301421063344118e-12,
+      "max_abs_dstate": 6.527166566822062e-07
+    },
+    "chunk512:fp16 operands + fp16 intra": {
+      "state_nmse": 1.1060158062425779e-07,
+      "out_nmse": 1.5594707492575414e-07,
+      "max_abs_dstate": 6.315349016770833e-05
+    },
+    "chunk512:fp16 operands, f32 intra": {
+      "state_nmse": 8.465596570503042e-08,
+      "out_nmse": 1.291320267949559e-07,
+      "max_abs_dstate": 6.247324293894019e-05
+    },
+    "chunk512:f32 operands (reassoc only)": {
+      "state_nmse": 1.5478482869501545e-11,
+      "out_nmse": 5.262949220474526e-12,
+      "max_abs_dstate": 8.357512460144267e-07
+    }
+  },
+  "tail": {
+    "chunk": 384,
+    "tail_len": 256,
+    "state_nmse": 1.1051638312088457e-07,
+    "out_nmse": 1.5604635639290038e-07
+  },
+  "growth": {
+    "512": {
+      "state_nmse": 1.1375299839576689e-07,
+      "out_nmse": 1.5671923554450017e-07
+    },
+    "1024": {
+      "state_nmse": 1.1471449064951755e-07,
+      "out_nmse": 1.568010230997139e-07
+    },
+    "2048": {
+      "state_nmse": 1.0986255771835564e-07,
+      "out_nmse": 1.5752688950115186e-07
+    },
+    "4096": {
+      "state_nmse": 1.1059944943381793e-07,
+      "out_nmse": 1.576627080708878e-07
+    }
+  },
+  "caveat": "synthetic unit-scale inputs and a NumPy model of the fp16 arithmetic, not the real kernel; state/output NMSE is not a KL measurement and does not establish production admissibility"
+}
