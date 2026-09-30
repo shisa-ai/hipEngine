@@ -844,9 +844,9 @@ that is open with no outstanding precondition is *actionable*.
 
 | class | count | rows |
 | --- | ---: | --- |
-| **Actionable now** | **22** | X-1, X-2, X-7, X-8, X-9, X-10, X-11, DP-2, DP-6, ED-3, QA-4, GD-1, GD-4, PL-1, RT-5, RT-6, DE-3, DE-6, DE-8, DE-9, DE-10, MT-8 |
+| **Actionable now** | **21** | X-1, X-2, X-7, X-8, X-9, X-10, X-11, DP-2, DP-6, ED-3, QA-4, GD-1, GD-4, PL-1, RT-5, RT-6, DE-6, DE-8, DE-9, DE-10, MT-8 |
 | **Gated** (open, precondition outstanding) | 15 | DP-4, DP-5, DP-7, DP-8, MR-4, QA-2, QA-6, QA-7, DE-2, MT-2, MT-3, MT-4, MT-6, RT-1, RT-2 |
-| **Closed** (terminal conclusion) | 33 | X-3, X-4, X-5, X-6, DP-1, DP-3, DP-9, ED-1, ED-4, EG-1, EG-3, MX-1, MR-1, MR-3, MR-5, HC-1, HC-3, HC-6, HC-7, QA-5, QA-8, QA-9, QA-10, GD-3, PL-2, RT-3, RT-4, DE-1, DE-4, DE-5, MT-1, MT-5, DE-7 |
+| **Closed** (terminal conclusion) | 34 | X-3, X-4, X-5, X-6, DP-1, DP-3, DP-9, ED-1, ED-4, EG-1, EG-3, MX-1, MR-1, MR-3, MR-5, HC-1, HC-3, HC-6, HC-7, QA-5, QA-8, QA-9, QA-10, GD-3, PL-2, RT-3, RT-4, DE-1, DE-3, DE-4, DE-5, MT-1, MT-5, DE-7 |
 | **Not a candidate** | 1 | MT-7 (standing rule) |
 
 **Audit pass over the borderline rows (`20260930T`).** Re-reading the actionable
@@ -937,6 +937,31 @@ whether a recorded rejection still held. **Six more rows are now known to be con
 by current state, and three were condemned by association rather than by measurement.**
 Whether any of those three holds a further win is an open question this census did not
 answer.
+
+### The census's status heuristic has now failed three separate ways
+
+`DE-3` was counted **actionable** while its own status cell ends
+*"...PROMOTED TO THE DEFAULT (`20260930T`)"* - it is a **landed win**, not outstanding work.
+It is now closed (actionable 22 -> 21).
+
+**Why it was missed**: this census reads a row's status from the **end** of its status cell,
+on the reasoning that the newest material is appended last. `DE-3`'s cell ends with rollback
+and test detail (`HIPENGINE_GGUF_PACK8_GEMV_WIDE=0` restores the 128-wide launcher default...
+the surrounding bundle is green`), so the terminal conclusion sits **before** that detail
+rather than at the end. The heuristic read operational tail as status.
+
+That is the third distinct failure of the same heuristic in this census:
+
+| # | row | how the heuristic failed |
+| --- | --- | --- |
+| 1 | `QA-2` | its own cell cost-gated it, but the conclusion was not a status keyword |
+| 2 | `MR-3` | its columns agreed it should not be started; no status keyword said so |
+| 3 | `DE-3` | the conclusion is in the cell, **before** trailing operational detail |
+
+**The count is derived from a positional heuristic over prose, and prose does not keep a
+stable shape.** Each correction has been a reading, not a measurement, and each has moved
+the number by one. That is worth stating plainly rather than presenting the current count as
+settled.
 because in those three the columns disagree and the resolution is a decision.
 
 **The metric series is not a metric.** `results.jsonl` records 107 iterations
