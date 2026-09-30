@@ -311,6 +311,26 @@ whole-process memory percentage, throughput gain or proven context maximum.
 
 ## Current default notes
 
+**Qwen3.8 Flash Next wide dense-prefill route needs a numerical re-review
+(gfx1151, UD-Q4_K_XL).** The `wmma` layer-scoped Q8_0 dense-prefill route on
+layers 16-47 is the production default for the wide dense-prefill shapes. Its
+recorded numerical certificate was measured at commit `035185fb2`; re-running
+the identical certified configuration at `f4b12e0c2` gives mean KL 4.388e-4
+(recorded 3.796e-4), max KL 2.341e-2 (recorded 1.530e-2) and top-1 0.9942
+(recorded 0.9935), and one of 1548 compared rows now exceeds the 0.02 review
+boundary, so the gate reports `measurement_valid: false` where it recorded
+`true`. Every protocol field, route field, fixture hash and manifest hash is
+identical between the two runs, and both arms' published logits changed -
+including the teacher arm's exact chain - so the divergence is in the shared
+baseline arithmetic, not in this route. Chunk size is not the variable: the
+chunk-1024 and chunk-4096 configurations are bit-identical at `f4b12e0c2`. All
+hard thresholds still pass with 1.84x-2.28x headroom on the tightest three
+(mean against 1e-3, p95 against 5e-3, top-1 against 0.99), so this is a review
+requirement rather than a demonstrated quality failure. The baseline change
+landed somewhere in `035185fb2..HEAD`, which contains several promoted
+decode-path and chunk-default arithmetic changes; the responsible commit is not
+identified. No speed claim is made. [Evidence](results/2026-09-30-qwen4exp-rt1-chunk4096-gate/README.md).
+
 **Qwen3.8 Flash Next decode arithmetic (gfx1151, UD-Q4_K_XL).** The routed-expert
 gate+up decode GEMV uses the dp4a Q8_1-activation linear
 (`gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64`) by default on 43 of 48
