@@ -11,6 +11,7 @@ autoregressive transitions by requesting 129 visible outputs from llama.cpp.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import importlib.metadata
 import json
@@ -27,6 +28,8 @@ import urllib.request
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
+
+import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -213,6 +216,49 @@ def load_fixture(path: Path) -> tuple[dict[str, Any], str]:
         raise ValueError("canonical fixture must be a JSON object")
     validate_fixture(payload)
     return payload, sha256_path(path)
+
+
+def hip_available() -> bool:
+    """Whether the HIP runtime can be loaded in this process."""
+    try:
+        ctypes.CDLL("libamdhip64.so")
+        return True
+    except OSError:
+        return False
+
+
+def _forced_logits(generator, token_ids, steps, forced=None):
+    """Teacher-forced prefill + ``steps`` decode; returns stacked logits.
+
+    With ``forced`` (the incumbent arm's token chain) every arm consumes the
+    SAME token sequence, so each row is a same-context measurement of pure
+    route drift (the calibration definition) - a flip cannot cascade into
+    incomparable contexts.
+    """
+    first = generator.runner.prefill(token_ids)
+    rows = [np.ascontiguousarray(first.logits, dtype=np.float32)]
+    token = int(first.token_id)
+    chain = [token]
+    for i in range(steps):
+        if forced is not None:
+            token = forced[i]
+        nxt = generator.runner.step(token)
+        generator.runner.runtime.device_synchronize()
+        token = int(nxt.token_id)
+        chain.append(token)
+        rows.append(np.ascontiguousarray(nxt.logits, dtype=np.float32))
+    return np.stack(rows), chain
+
+
+def _kl(ref: np.ndarray, cand: np.ndarray) -> float:
+    """KL divergence between two logit rows, computed in float64."""
+    r = ref.astype(np.float64)
+    c = cand.astype(np.float64)
+    pr = np.exp(r - r.max())
+    pr /= pr.sum()
+    pc = np.exp(c - c.max())
+    pc /= pc.sum()
+    return float(np.sum(pc * (np.log(pc) - np.log(pr))))
 
 
 def _percentile(values: Sequence[float], fraction: float) -> float:

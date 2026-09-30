@@ -25,9 +25,8 @@ from hipengine.generation.qwen4_exp_profiles import (
 from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
 from hipengine.models import resolve_model
-from scripts.qwen4exp_canonical_ar_bench import DEFAULT_FIXTURE, load_fixture
-from scripts.qwen4exp_moe_decode_warp_logits_probe import (
-    _forced_logits, _kl, FLAG, FLAG_DOWN)
+from scripts.qwen4exp_canonical_ar_bench import (
+    DEFAULT_FIXTURE, load_fixture, _forced_logits, _kl)
 
 # route -> (env name(s), disabled value)
 ROUTES = {
@@ -69,8 +68,6 @@ def main() -> None:
         prefill_chunk_size=1024))
 
     # incumbent arm + route ablation, applied AFTER construction
-    os.environ[FLAG] = "0"
-    os.environ[FLAG_DOWN] = "0"
     if a.route == "strict_baseline":
         envs, off = (), "0"
     else:

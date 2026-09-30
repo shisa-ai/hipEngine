@@ -33,7 +33,7 @@ if str(ROOT) not in sys.path:
 
 import numpy as np
 
-from scripts.qwen4exp_moe_decode_warp_logits_probe import _kl, hip_available
+from scripts.qwen4exp_canonical_ar_bench import _kl, hip_available
 from scripts.qwen4exp_canonical_ar_bench import (
     DEFAULT_FIXTURE, load_fixture, _git_metadata, _host_metadata,
 )
