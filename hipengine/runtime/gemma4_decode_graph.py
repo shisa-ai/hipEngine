@@ -49,10 +49,20 @@ after the graph — the sampler reads it, so that wait is inherent (D8 row) —
 and the runner's position bookkeeping happens in the collect phase, exactly
 as on the normal path.
 
-v1 scope: single-step capture with host-side sampling, single-stream (the
-layer's parallel MoE branch is folded onto the capture stream, so a capture
-does not use the two-stream overlap the normal path has). Not wired into the
-engine loop; the campaign gate comes before any default-on decision.
+v1 scope: single-step capture with host-side sampling, Global capture mode
+(the layer's parallel MoE stream and its event dependencies are recorded
+into the graph, so replay keeps the launched path's two-stream overlap).
+Not wired into `Gemma4Runner.forward`: the default-on attempt measured
+**negative** at the campaign workload — 64.43 tok/s launched vs 61.21 with
+the route at 1024/128 (−5.0%, three design variants, artifacts
+`benchmarks/results/2026-09-30-gemma4-x7-graph-{pre,post,post2,post3}.json`)
+— because launched decode is already device-bound: its 10.5 ms/step of host
+submission is hidden under device work, while the graph adds serial host
+(the per-step append retarget ≈ 0.17 ms, `hipGraphLaunch` ≈ 0.27 ms) plus
+~10.5 ms of capture recording per bucket crossing. The clearing route for a
+future attempt is device-positioned appends — the qwen
+`record_i64_scalar_indexed` pattern — which removes the retarget entirely
+(phase probe: `scratch/x7_graph_phase_probe.py`).
 
 The runner must be warm before the first capture: run at least one normal
 forward (prefill) and one normal decode step first, so every kernel the graph
@@ -62,6 +72,7 @@ modules while capture is active, which HIP rejects.
 
 from __future__ import annotations
 
+import weakref
 from dataclasses import dataclass
 
 import numpy as np
@@ -139,7 +150,11 @@ class Gemma4DecodeGraphSession:
     """
 
     def __init__(self, runner: Gemma4Runner) -> None:
-        self._runner = runner
+        # Weak: the runner owns this session (``_decode_graph``), so a strong
+        # back-reference would make the pair a cycle whose bulk is the
+        # runner's weight map -- unreachable at refcount-zero until a cyclic
+        # gc that allocation pressure may never trigger. See ``_runner``.
+        self._runner_ref = weakref.ref(runner)
         self._stream = get_hip_runtime().stream_create(nonblocking=True)
         self._graph = 0
         self._exec = 0
@@ -149,6 +164,22 @@ class Gemma4DecodeGraphSession:
         self._captures = 0
 
     # --- public API -------------------------------------------------------
+
+    @property
+    def _runner(self) -> Gemma4Runner:
+        """The runner this session drives, held weakly.
+
+        The runner owns the session, so a strong back-reference would make the
+        pair a reference cycle; a cycle whose bulk is a 17 GB weight map never
+        hits refcount-zero at request end and waits for a cyclic gc the
+        process may never trigger. Weak keeps runner teardown prompt: when the
+        runner dies, the session dies with it.
+        """
+
+        runner = self._runner_ref()
+        if runner is None:
+            raise RuntimeError("the decode-graph session's runner has been freed")
+        return runner
 
     @property
     def stream(self) -> int:
@@ -281,22 +312,61 @@ class Gemma4DecodeGraphSession:
 
         frozen_write = bucket.end - 1
         runtime = get_hip_runtime()
-        runtime.stream_begin_capture(self._stream)
-        try:
+
+        def launch(b: _Bucket, tbl: dict, msk: dict) -> None:
             runner._launch_block(
                 [token],
-                tables=tables,
-                masks=masks,
-                kv_write_offset=frozen_write,
-                key_begin_at=lambda attention: self._frozen_key_begin(attention, bucket),
+                tables=tbl,
+                masks=msk,
+                kv_write_offset=b.end - 1,
+                key_begin_at=lambda attention: self._frozen_key_begin(attention, b),
                 stream=self._stream,
-                # Single-stream capture: the MoE branch's event/stream pair is
-                # created outside a capture's contract, and the layer's own
-                # switch restores the two-stream order when passed -1.
-                stream_moe=self._stream,
+                # -1 lets the layer use its parallel MoE stream; Global mode
+                # below captures that stream's nodes and event dependencies
+                # into this graph, so replay keeps the launched path's
+                # two-stream overlap (folding it onto one stream measured
+                # 1.6 ms/step slower on device).
+                stream_moe=-1,
                 needs_logits=True,
                 return_hidden=False,
             )
+
+        # Pre-touch the decode route's per-stream split workspace before any
+        # capture: AttentionScratch is keyed per stream, and hipMalloc inside
+        # an active Global capture is rejected (HIP error 900). Sizes are not
+        # monotonic in the key count (measured: keys=1088 needs 69760 B where
+        # keys=8192 needs 65728 B), so the max-bucket warm-up above cannot
+        # cover every smaller bucket. This workspace is the decode route's only
+        # lazy allocation, and touching it costs one small malloc per layer
+        # instead of a launch chain per bucket crossing.
+        from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+            build_gemma4_attention,
+            decode_slices,
+            split_workspace_bytes,
+        )
+
+        library = build_gemma4_attention(load=True)
+        for index in range(len(runner.weights.layers)):
+            attention = runner.weights.config.geometry(index)
+            key_begin = self._frozen_key_begin(attention, bucket)
+            keys = frozen_write + 1 - key_begin
+            slices = decode_slices(keys, attention.head_dim)
+            if slices > 1:
+                need = split_workspace_bytes(
+                    1,
+                    attention.num_heads,
+                    attention.head_dim,
+                    keys,
+                    slices,
+                    library=library,
+                )
+                runner._scratches[index].attention.buffer(
+                    need, stream=self._stream, runtime=runtime
+                )
+        # Global capture mode: see ``launch`` above.
+        runtime.stream_begin_capture(self._stream, mode=0)
+        try:
+            launch(bucket, tables, masks)
             graph = runtime.stream_end_capture(self._stream)
         except Exception:
             # Leave capturing state behind and drop the partial graph: the
