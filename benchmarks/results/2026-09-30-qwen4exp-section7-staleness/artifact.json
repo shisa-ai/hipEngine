@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp-section7-staleness",
+  "performance_claim": false,
+  "date": "2026-09-30",
+  "title": "Six section-7 rows record as 'not retained' flags that are current production defaults",
+  "host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "method": "Read the binder in hipengine/generation/qwen4_exp_profiles.py and checked each named flag's binding against the production branch. No inference from names or comments.",
+  "finding": "Every one of the six flags is bound to '\"1\" if production else \"0\"' and is therefore live in the production profile.",
+  "rows": [
+    {
+      "tried": "Dense Q8 MMQ stack",
+      "flags": [
+        "Q8_MMQ_PREFILL"
+      ],
+      "recorded_reason": "failed canonical depth after the recovery",
+      "class": "withdrawn",
+      "current_production_on": true,
+      "withdrawn_by_association": false,
+      "settled": false
+    },
+    {
+      "tried": "PRODUCTION_MOE_PREFILL / Q4_IU8_PREFILL overrides",
+      "flags": [
+        "PRODUCTION_MOE_PREFILL",
+        "Q4_IU8_PREFILL"
+      ],
+      "recorded_reason": "reject candidate, keep strict fallback (2026-09-30)",
+      "class": "withdrawn, perf, then task quality",
+      "current_production_on": true,
+      "withdrawn_by_association": false,
+      "settled": false
+    },
+    {
+      "tried": "iu8 WMMA GR up / down",
+      "flags": [
+        "GR_IU8",
+        "GR_IU8_DOWN"
+      ],
+      "recorded_reason": "mean KL 1.40e-3 / 1.31e-3",
+      "class": "withdrawn, accuracy",
+      "current_production_on": true,
+      "withdrawn_by_association": true,
+      "settled": true
+    },
+    {
+      "tried": "QSA flash prefill",
+      "flags": [
+        "QSA_FLASH_PREFILL"
+      ],
+      "recorded_reason": "part of the failed recovery composition",
+      "class": "withdrawn",
+      "current_production_on": true,
+      "withdrawn_by_association": true,
+      "settled": false
+    },
+    {
+      "tried": "Column warps, peer",
+      "flags": [
+        "GDN_COLWARPS_PREFILL",
+        "GDN_PEER_PREFILL"
+      ],
+      "recorded_reason": "+0.228 / +0.126 s, inside run-to-run spread",
+      "class": "withdrawn, perf",
+      "current_production_on": true,
+      "withdrawn_by_association": true,
+      "settled": false
+    },
+    {
+      "tried": "DP4A safe-43 decode",
+      "flags": [
+        "Q4_DP4A64"
+      ],
+      "recorded_reason": "part of the failed composition",
+      "class": "withdrawn",
+      "current_production_on": true,
+      "withdrawn_by_association": true,
+      "settled": false
+    }
+  ],
+  "withdrawn_by_association": [
+    "QSA flash prefill",
+    "Column warps, peer",
+    "DP4A safe-43 decode"
+  ],
+  "settled_case": {
+    "row": "iu8 WMMA GR up / down",
+    "recorded": "mean KL 1.40e-3 / 1.31e-3",
+    "shipped": "GR up KL <= 7.4e-8 with 100% top-1 and +9.2% prefill geo-mean; GR down KL <= 5.5e-8 and +2.0% on top",
+    "source": "binder comments in hipengine/generation/qwen4_exp_profiles.py immediately above each binding",
+    "discrepancy": "five orders of magnitude in KL",
+    "explanation": "the promoted mechanism is a different one (three-plane fp32 staging); the row's own reopen condition, 'A structurally different mechanism', was met",
+    "consequence": "no win is left here - the gains are already in production - but the record is wrong"
+  },
+  "systemic_defect": "Every section-7 row carries a 'Reopen only with' condition and nothing in the repository evaluates whether one has been satisfied. A row can be correct when written, superseded by later work, and still read as a rejection by anyone consulting the table - which is the table's only purpose.",
+  "consequence_for_the_census": "Section 7 is a candidate SOURCE, not only a graveyard. The retained multi-column GDN win (1.34x-1.68x) was found by asking whether a recorded rejection still held.",
+  "not_established": [
+    "Whether the Q8 MMQ depth failure was later resolved or the flag was restored without a re-gate.",
+    "Whether the PRODUCTION_MOE_PREFILL/Q4_IU8_PREFILL task-gate rejection of 2026-09-30 coexists with both flags enabled by design or by drift.",
+    "Whether any of the three association-withdrawn rows holds a further win."
+  ],
+  "limits": "One profile (production, gguf_ud_q4_k_xl), one host (gfx1151), static reading of the binder. No timing was run for this artifact."
+}
