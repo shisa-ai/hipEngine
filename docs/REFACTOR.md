@@ -424,6 +424,43 @@
   output lengths. Evidence:
   `benchmarks/results/2026-09-14-journey-backend-cache/`.
 
+## MoE Decode warp256 GEMV Pair (`HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP`, `_DOWN`)
+
+- Both flags are **default-off** and are a retained experiment, not a pending
+  promotion. `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP` replaces the rows==1 dp4a
+  dual (gate/up) with `gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256`;
+  `_DOWN` replaces the Q5_1 selected weighted-sum with the warp256 variant.
+- **The gate/up flag is 2.06x faster and blocked on numerics, not on speed:**
+  `gate_up_warp256` measures 52.093 us / 353.831 GB/s against the promoted
+  dp4a's 107.416 us / 171.594 GB/s, which on DE-1's traffic model recomputes to
+  **2.792 ms/step = ~5.9%** of the decode kernel total. It is not promoted
+  because it is **4.34x worse on max KL** than the incumbent on
+  `heldout_mixed_review`. Evidence:
+  `benchmarks/results/2026-09-30-qwen4exp-moe-decode-warp-gateup-blocked/`.
+- **The down flag has no free exact win.** The plain warp256 down kernel is T0
+  bit-exact (`exact_equal` on all 18 cases, all KL exactly 0.0) but **13.7%
+  slower** (104.727 -> 121.313 us); the 5.8x belongs to the non-exact `fast`
+  variant. Remove `_DOWN` once the down leg's own ledger row settles.
+- **Removal condition for the gate/up flag, stated so this entry can be closed
+  rather than parked:** the remaining action is to localize the flip to a layer
+  and test a narrower scope via `HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS`, which
+  the warp path inherits because it is only reachable where `use_dp4a` is true.
+  If a scope is found that clears the binding envelope, **promote and delete
+  the flag**; if no scope clears it, **delete the flag and the kernel route** and
+  record the rejection. Either outcome ends this entry.
+- **Trap for anyone setting that scope:** the runner tests
+  `(not dp4a_layers or gate_layer in dp4a_layers)`, so an **empty**
+  `HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS` means *no filter* (every layer), not
+  *none*. Setting it to `""` to mean "no dp4a" enables dp4a on all 48 layers,
+  including the 5 normally excluded, and measures incumbent max KL **0.19363**
+  vs strict - **3.2x** the 43-layer scope's 0.06017. Express "none" as a list
+  matching no layer id.
+- **The 18-case suite is not an admission basis for this decision:** it fails
+  **both** arms against the strict teacher (candidate mean 0.001164 / max
+  0.261188; incumbent mean 0.001054 / p99 0.024299 / max 0.078490), so its bars
+  cannot rank them. Evidence:
+  `benchmarks/results/2026-09-30-qwen4exp-de1-dual-vs-strict/`.
+
 ## Unconsumed GR Gate Publication
 
 - `Qwen4ExpGRReadDeviceResult` has four fields and only `normalized`, `mixed`
