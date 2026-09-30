@@ -3381,6 +3381,13 @@ def launch_gguf_linear(
             rows=rows,
             variant=registered_variant,
         )
+        dispatch = _q8_t16_tiles_decode_dispatch(
+            dispatch,
+            weight=weight,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
         dispatch = _q4_t16_dense_native_dispatch(
             dispatch,
             rows=rows,
@@ -7576,6 +7583,78 @@ def _pack8_decode_dispatch(
         if is_registered(candidate):
             return GGUFLinearDispatch(candidate, dispatch.abi)
     return dispatch
+
+
+_Q8_T16_TILES_QUANT = "gguf_q8_0_t16_v1"
+
+
+def _weight_has_tiles_allocation(weight) -> bool:
+    """Whether the weight ships the Q8T16 tiles side allocation.
+
+    ``has_allocation`` is not part of the ``GGUFDeviceWeight`` protocol, so
+    weight owners that predate side allocations cannot express tiles and
+    answer no -- their raw Q8_0 keeps the pack8 decoder it has today. The
+    answer is deliberately *not* inferred from ``allocation("tiles")``
+    succeeding: a t16-layout weight resolves that name too, and treating a
+    mere name match as capability would route weights whose dispatch already
+    lives elsewhere.
+    """
+
+    checker = getattr(weight, "has_allocation", None)
+    if not callable(checker):
+        return False
+    try:
+        return bool(checker("tiles"))
+    except Exception:
+        return False
+
+
+def _q8_t16_tiles_decode_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    weight,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Route rows==1 Q8_0 to the t16 sibling when the weight ships tiles.
+
+    A Gemma-4 Q8_0 projection ships a second, byte-neutral ``tiles``
+    allocation beside its raw blocks (``gemma4_gguf_device`` plans it). At
+    ``rows == 1`` the registered Q8T16 GEMV decode sibling beats the legacy
+    pack8 decoder at every production shape in the D9 screen (1.25x-2.09x,
+    0/844800 association-bit divergence vs a 9e-5..1.2e-4 control rate at
+    7.1e-6 bounds), so the presence of the tiles *is* the capability signal:
+    an artifact that ships tiles gets the sibling, one that does not keeps
+    the decoder it always had. Nothing here keys on a model name or path.
+
+    Explicit decisions preserved: a pack8 ``gemv_decode`` opt-in (the P9.B3
+    rejected-candidate route) is left alone -- it is an active user choice,
+    not the default legacy alias this replaces -- and any shape whose
+    ``in``/``out`` is not a tile-16 multiple stays raw, because the t16
+    repack contract would not have admitted it at plan time either.
+    """
+    if (
+        dispatch.abi != "raw"
+        or rows != 1
+        or in_features % 16
+        or out_features % 16
+        or dispatch.key.quant != "gguf_q8_0"
+        or not _weight_has_tiles_allocation(weight)
+        or not dispatch.key.variant.startswith("pack8_gemv")
+        or dispatch.key.variant.startswith("pack8_gemv_decode")
+    ):
+        return dispatch
+    suffix = dispatch.key.variant[len("pack8_gemv_") :]
+    candidate = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        _Q8_T16_TILES_QUANT,
+        f"t16_gemv_decode_{suffix}",
+    )
+    if not is_registered(candidate):
+        return dispatch
+    return GGUFLinearDispatch(candidate, "t16")
 
 
 _Q5_PLANAR_DP4A_TARGET_ENV = "HIPENGINE_C8_Q5_PLANAR_DP4A"

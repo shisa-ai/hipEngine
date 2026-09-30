@@ -220,12 +220,18 @@ def candidates_pair():
     return fused, split
 
 
-# single-output production shapes: (label, K, out)
+# single-output production shapes: (label, K, out). Covers the post-fusion
+# resident singles: fused qkv and fused gate_up buffers (materialized concat),
+# attn_output at both column widths, k_eq_v layers' separate q/k, and down.
 SINGLE_SHAPES = [
     ("gate/up single", 2816, 2112),
+    ("fused gate/up", 2816, 4224),
     ("q projection", 2816, 4096),
     ("fused qkv", 2816, 8192),
+    ("k_eq_v k (1kv)", 2816, 1024),
+    ("k_eq_v k (2kv)", 2816, 2048),
     ("o projection", 4096, 2816),
+    ("o projection wide", 8192, 2816),
     ("down projection", 2112, 2816),
 ]
 PAIR_SHAPE = ("gate+up pair", 2816, 2112, 2112)
