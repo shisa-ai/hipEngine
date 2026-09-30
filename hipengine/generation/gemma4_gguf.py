@@ -176,7 +176,11 @@ class Gemma4GGUFGenerator:
                     )
                 started = time.perf_counter()
                 runner.reset()
-                logits = runner.forward(list(prompt_ids))
+                # Greedy-only generator (D10): the device argmax route brings
+                # home the token directly; identical tokens to
+                # np.argmax(forward(...)), pinned by the argmax battery and the
+                # campaign bench's public/instrumented path parity.
+                token_id = runner.forward_argmax(list(prompt_ids))
                 generated: list[int] = []
                 finish_reason = "length"
                 eos_id: int | None = None
@@ -188,7 +192,6 @@ class Gemma4GGUFGenerator:
                 )
                 for step in range(request.max_tokens):
                     raise_if_generation_deadline_expired(request)
-                    token_id = runner.next_token(logits)
                     generated.append(token_id)
                     if token_id in stop_ids:
                         finish_reason = "stop"
@@ -202,7 +205,7 @@ class Gemma4GGUFGenerator:
                         eos_id = token_id
                         break
                     if step + 1 < request.max_tokens:
-                        logits = runner.forward([token_id])
+                        token_id = runner.forward_argmax([token_id])
                 outputs.append(
                     GenerationOutput(
                         text=self.tokenizer.decode(generated, skip_special=False),

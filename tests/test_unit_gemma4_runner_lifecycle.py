@@ -187,9 +187,10 @@ def test_constructor_failure_after_layer_scratch_frees_the_scratch_too(
     """
 
     config = _config(num_layers=2)
-    # token_ids, hidden, normalized, logits, then key/value for the first
-    # layer. Fail while allocating the first layer's key cache.
-    allocator = _FakeAllocator(fail_at=5)
+    # token_ids, hidden, normalized, logits, argmax out, argmax scratch, then
+    # key/value for the first layer. Fail while allocating the first layer's
+    # key cache.
+    allocator = _FakeAllocator(fail_at=7)
     monkeypatch.setattr(gemma4_module, "malloc", allocator.malloc)
     monkeypatch.setattr(gemma4_module, "free", allocator.free)
     scratches_freed = []
@@ -204,7 +205,7 @@ def test_constructor_failure_after_layer_scratch_frees_the_scratch_too(
         Gemma4Runner(weights=_weights(config), capacity=64, max_block=8)
 
     assert len(scratches_freed) == 1
-    assert len(allocator.allocated) == 4
+    assert len(allocator.allocated) == 6
     assert sorted(buffer.ptr for buffer in allocator.freed) == sorted(
         buffer.ptr for buffer in allocator.allocated
     )
