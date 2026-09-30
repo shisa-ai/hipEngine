@@ -424,42 +424,53 @@
   output lengths. Evidence:
   `benchmarks/results/2026-09-14-journey-backend-cache/`.
 
-## MoE Decode warp256 GEMV Pair (`HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP`, `_DOWN`)
+## MoE Decode warp256 GEMV Pair - REMOVED 2026-09-30
 
-- Both flags are **default-off** and are a retained experiment, not a pending
-  promotion. `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP` replaces the rows==1 dp4a
-  dual (gate/up) with `gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256`;
-  `_DOWN` replaces the Q5_1 selected weighted-sum with the warp256 variant.
-- **The gate/up flag is 2.06x faster and blocked on numerics, not on speed:**
-  `gate_up_warp256` measures 52.093 us / 353.831 GB/s against the promoted
-  dp4a's 107.416 us / 171.594 GB/s, which on DE-1's traffic model recomputes to
-  **2.792 ms/step = ~5.9%** of the decode kernel total. It is not promoted
-  because it is **4.34x worse on max KL** than the incumbent on
-  `heldout_mixed_review`. Evidence:
-  `benchmarks/results/2026-09-30-qwen4exp-moe-decode-warp-gateup-blocked/`.
-- **The down flag has no free exact win.** The plain warp256 down kernel is T0
-  bit-exact (`exact_equal` on all 18 cases, all KL exactly 0.0) but **13.7%
-  slower** (104.727 -> 121.313 us); the 5.8x belongs to the non-exact `fast`
-  variant. Remove `_DOWN` once the down leg's own ledger row settles.
-- **Removal condition for the gate/up flag, stated so this entry can be closed
-  rather than parked:** the remaining action is to localize the flip to a layer
-  and test a narrower scope via `HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS`, which
-  the warp path inherits because it is only reachable where `use_dp4a` is true.
-  If a scope is found that clears the binding envelope, **promote and delete
-  the flag**; if no scope clears it, **delete the flag and the kernel route** and
-  record the rejection. Either outcome ends this entry.
-- **Trap for anyone setting that scope:** the runner tests
-  `(not dp4a_layers or gate_layer in dp4a_layers)`, so an **empty**
-  `HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS` means *no filter* (every layer), not
-  *none*. Setting it to `""` to mean "no dp4a" enables dp4a on all 48 layers,
-  including the 5 normally excluded, and measures incumbent max KL **0.19363**
-  vs strict - **3.2x** the 43-layer scope's 0.06017. Express "none" as a list
-  matching no layer id.
-- **The 18-case suite is not an admission basis for this decision:** it fails
-  **both** arms against the strict teacher (candidate mean 0.001164 / max
-  0.261188; incumbent mean 0.001054 / p99 0.024299 / max 0.078490), so its bars
-  cannot rank them. Evidence:
-  `benchmarks/results/2026-09-30-qwen4exp-de1-dual-vs-strict/`.
+- **Both runtime routes and both flags are DELETED**
+  (`HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP` gate/up and `_DOWN`). The removal
+  condition recorded here on `20260930T` was "localize the flip and test a
+  narrower scope; promote and delete the flag if a scope clears the envelope,
+  delete the flag and the route if none does." **No scope clears the envelope at
+  an acceptable cost**, so the route is deleted and the rejection is recorded.
+- **The scope table that decided it** (full 18-case suite, both arms vs strict,
+  1494 rows, one harness; the production default is the 43-layer scope):
+
+  | scope | envelope | net cost |
+  | --- | --- | --- |
+  | 43L (production) | fails max KL **0.261188**, 5.2x over | baseline |
+  | 48L (all) | fails mean+max (max 0.128120) | - |
+  | 35L | fails mean+p99+max (max 0.104060) | - |
+  | **30L** | **passes every bar, 1.84x-3.10x margin** | **+1.426 ms/step, +3.10%** |
+  | 17L | fails max (0.115957) | - |
+
+- **The 30-layer scope is the only passing one, and it is not adopted.** It
+  costs a **measured +1.426 ms/step = 3.10% of decode kernel time** (46.061 ->
+  47.486, per-kernel join), while the production default already passes the
+  **admission** gate with 4-8x margin (mean 2.44e-4 vs 1e-3, max 6.14e-3 vs
+  5e-2, top-1 0.9911, determinism 3/3, clean isolation). The 18-case suite that
+  the production default fails is a stress fixture already recorded as unable to
+  rank arms.
+- **The warp is not what costs time.** At a fixed 30-layer scope the warp
+  *saves* **0.493 ms/step** against the same scope without it; the +1.426 is the
+  price of the scope reduction. So there is no configuration where the warp pays
+  for the numerics it needs.
+- **The gate that had retained this flag never covered the failing case.** Its
+  docstring cited "996 shared-chain teacher-forced rows (all bars pass with
+  2.6-4.4x margin)", but that fixture does not contain `heldout_mixed_review`,
+  which is exactly where the warp fails. A gate that omits the failing case
+  cannot clear it. The ledger's own action cell had predicted this gap.
+- **What remains:** the kernel definitions stay registered (the probe scripts can
+  still select them directly for future work); only the production routes are
+  gone. `scripts/qwen4exp_moe_decode_warp_logits_probe.py`,
+  `scripts/qwen4exp_moe_decode_warp_state_gate.py`,
+  `scripts/qwen4exp_row4_state_gate.py` and
+  `scripts/qwen4exp_halo_box_campaign_ab.py` still set the two env vars; those
+  variables are now **unread**, so those scripts' warp arms would silently
+  measure the incumbent. **They must be deleted or made to fail loudly before
+  being used again.**
+- Evidence: `benchmarks/results/2026-09-30-qwen4exp-moe-decode-warp-gateup-blocked/`,
+  `benchmarks/results/2026-09-30-qwen4exp-de1-dual-vs-strict/`, and worklog
+  `20260930T031044` (the measured scope table).
 
 ## Unconsumed GR Gate Publication
 

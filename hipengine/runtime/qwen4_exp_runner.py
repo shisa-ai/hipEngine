@@ -99,7 +99,6 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_quantize_bf16_q8_1,
-    gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out,
@@ -134,8 +133,6 @@ from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
     qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
     qwen4_exp_q5_1_selected_sparse_exact_repair_row_publish_bf16,
     qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out,
-    qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_out,
-    qwen4_exp_q5_1_selected_weighted_sum_warp256_fast_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
     qwen4_exp_gdn_decode_f32,
@@ -3638,32 +3635,6 @@ def _qwen4_exp_q4_iu8_exact_enabled() -> bool:
     ) not in {"", "0", "false", "False"}
 
 
-def _qwen4_exp_moe_decode_warp_enabled() -> bool:
-    """Default-off warp256 MoE decode GEMV pair (#22 R11).
-
-    Replaces the rows==1 dp4a dual (gate/up) with the warp256
-    kernel (2.0x; T1 reduction order). Qualified under the production
-    envelope at 996 shared-chain teacher-forced rows (all bars pass
-    with 2.6-4.4x margin, top-1 99.50%); free-running trajectory
-    divergence ~1/12 canonical cases, routed to that packet per the
-    contract. The down leg is gated separately
-    (HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN) so the incumbent
-    bit-exact weighted-sum stays the production default.
-    """
-
-    return os.environ.get(
-        "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP", "0"
-    ) not in {"", "0", "false", "False"}
-
-
-def _qwen4_exp_moe_decode_warp_down_enabled() -> bool:
-    """Default-off warp256 Q5_1 selected weighted-sum (down leg only)."""
-
-    return os.environ.get(
-        "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN", "0"
-    ) not in {"", "0", "false", "False"}
-
-
 def _qwen4_exp_q51_iu8_exact_enabled() -> bool:
     """Default-off exact iu8-risk+repair selected Q5_1 down route."""
 
@@ -5061,44 +5032,34 @@ def run_qwen4_exp_moe(
                 stream=stream,
                 runtime=active_runtime,
             )
-            if (
-                _qwen4_exp_moe_decode_warp_enabled()
-                and compact <= 12
-            ):
-                gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out(
-                    scratch.group_gate_up.ptr,
-                    scratch.selected.ptr,
-                    gate_weight.allocation("raw").tensor.ptr,
-                    up_weight.allocation("raw").tensor.ptr,
-                    scratch.expert_intermediate.ptr,
-                    rows,
-                    compact,
-                    experts,
-                    hidden,
-                    ffn,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
-            else:
-                resolve(
-                    backend=dp4a_key.backend,
-                    layer=dp4a_key.layer,
-                    quant=dp4a_key.quant,
-                    variant=dp4a_key.variant,
-                )(
-                    scratch.group_gate_up.ptr,
-                    scratch.selected.ptr,
-                    gate_weight.allocation("raw").tensor.ptr,
-                    up_weight.allocation("raw").tensor.ptr,
-                    scratch.expert_intermediate.ptr,
-                    rows,
-                    compact,
-                    experts,
-                    hidden,
-                    ffn,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
+            # DE-1 warp256 gate/up route REMOVED 2026-09-30. It cannot be
+            # admitted at any scope that passes the production envelope:
+            # 43L fails max KL 0.261188 (5.2x over), 48L fails mean+max, 35L
+            # fails mean+p99+max, 17L fails max, and the only passing scope
+            # (30L) costs a measured +1.426 ms/step = 3.10% of decode kernel
+            # time while the production default already passes the admission
+            # gate with 4-8x margin. The kernel stays registered for direct
+            # use by the probes. See docs/REFACTOR.md and
+            # worklog 20260930T031044 for the full scope table.
+            resolve(
+                backend=dp4a_key.backend,
+                layer=dp4a_key.layer,
+                quant=dp4a_key.quant,
+                variant=dp4a_key.variant,
+            )(
+                scratch.group_gate_up.ptr,
+                scratch.selected.ptr,
+                gate_weight.allocation("raw").tensor.ptr,
+                up_weight.allocation("raw").tensor.ptr,
+                scratch.expert_intermediate.ptr,
+                rows,
+                compact,
+                experts,
+                hidden,
+                ffn,
+                stream=stream,
+                runtime=active_runtime,
+            )
         elif fused_silu:
             resolve(
                 backend=fused_key.backend,
@@ -5207,40 +5168,14 @@ def run_qwen4_exp_moe(
             down_weight.spec.quant_key,
             "selected_weighted_sum_logical256_t64_bf16_bf16_out",
         )
-        down_warp_mode = os.environ.get(
-            "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN", "0"
-        )
         fused_down = bool(rows == 1 and is_registered(fused_down_key))
-        if fused_down and down_warp_mode in {"fast", "1"} and compact <= 12:
-            if down_warp_mode == "fast":
-                qwen4_exp_q5_1_selected_weighted_sum_warp256_fast_bf16_bf16_out(
-                    scratch.expert_intermediate.ptr,
-                    scratch.selected.ptr,
-                    down_weight.allocation("raw").tensor.ptr,
-                    scratch.routing.ptr,
-                    scratch.routed.ptr,
-                    compact,
-                    experts,
-                    ffn,
-                    hidden,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
-            else:
-                qwen4_exp_q5_1_selected_weighted_sum_warp256_bf16_bf16_out(
-                    scratch.expert_intermediate.ptr,
-                    scratch.selected.ptr,
-                    down_weight.allocation("raw").tensor.ptr,
-                    scratch.routing.ptr,
-                    scratch.routed.ptr,
-                    compact,
-                    experts,
-                    ffn,
-                    hidden,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
-        elif fused_down:
+        # DE-1 warp256 down route REMOVED 2026-09-30. The plain (non-`fast`)
+        # warp256 down kernel is T0 bit-exact but 13.7% SLOWER than the
+        # incumbent (121.313 us vs 104.727 us), and the 5.8x belongs to the
+        # non-exact `fast` variant, which is not admissible. The kernels stay
+        # registered for direct use by the probes. See docs/REFACTOR.md and
+        # worklog 20260930T021532.
+        if fused_down:
             resolve(
                 backend=fused_down_key.backend,
                 layer=fused_down_key.layer,
@@ -7391,12 +7326,6 @@ class Qwen4ExpGGUFResidentModelRunner:
                         os.environ.get(
                             "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
                         ),
-                        os.environ.get(
-                            "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP", ""
-                        ),
-                        os.environ.get(
-                            "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN", ""
-                        ),
                     ),
                     layer_graph_cache=self.layer_graph_cache,
                     layer_graph_key=(
@@ -7438,12 +7367,6 @@ class Qwen4ExpGGUFResidentModelRunner:
                         os.environ.get("HIPENGINE_QWEN4_EXP_Q4_DP4A64", ""),
                         os.environ.get(
                             "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
-                        ),
-                        os.environ.get(
-                            "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP", ""
-                        ),
-                        os.environ.get(
-                            "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN", ""
                         ),
                     ),
                 ).ptr
