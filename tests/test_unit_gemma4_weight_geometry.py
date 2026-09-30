@@ -252,7 +252,11 @@ def _install_layer_dispatch_recorder(
         "gemma4_gelu_tanh_mul_bf16",
         "gemma4_router_topk_bf16",
         "gemma4_experts_forward_bf16",
-        "gemma4_branch_add_bf16",
+        # D6 tail fold: the three-kernel chain (branch_add +
+        # add_rmsnorm_scale + post_ffw_norm_1) collapsed into one launch, so
+        # the recorder follows the new call set -- a stale name here raises
+        # AttributeError, and a missing one faults on the fake buffers.
+        "gemma4_dense_combine_rmsnorm_scale_bf16",
         # Added when the fused q/k/v projection landed: this recorder fakes
         # malloc to hand out pointers in the 0x30000 range, so any kernel that
         # actually launches writes to unmapped GPU memory. Every other real

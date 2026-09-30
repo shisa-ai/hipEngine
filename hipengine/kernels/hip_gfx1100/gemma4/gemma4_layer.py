@@ -58,7 +58,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import (
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
     gemma4_add_rmsnorm_scale_bf16,
-    gemma4_branch_add_bf16,
+    gemma4_dense_combine_rmsnorm_scale_bf16,
     gemma4_head_rmsnorm_f32w_bf16,
     gemma4_qkv_split_bf16,
     gemma4_rmsnorm_f32w_bf16,
@@ -322,7 +322,9 @@ class Gemma4LayerScratch:
             "experts": rows * hidden * _BF16_BYTES,
             "selected": rows * self.top_k * _I64_BYTES,
             "routing": rows * self.top_k * _F32_BYTES,
-            "branch_sum": rows * hidden * _BF16_BYTES,
+            # "branch_sum" existed for the pre-D6 chain
+            # (branch_add -> add_rmsnorm_scale). The tail fold computes the sum
+            # in registers, so the buffer has no consumer and no allocation.
         }
         return sizes
 
@@ -797,15 +799,9 @@ def gemma4_layer_forward_bf16(
         hidden_size,
         **kwargs,
     )
-    gemma4_rmsnorm_f32w_bf16(
-        buf("dense"),
-        layer.post_feedforward_layernorm_1,
-        buf("dense"),
-        rows,
-        hidden_size,
-        eps,
-        **kwargs,
-    )
+    # D6: post_feedforward_layernorm_1 is NOT applied here anymore. The fold
+    # below consumes the RAW dense output, so this stage moved into the combine
+    # kernel -- one launch instead of three, bit-identical to the chain.
 
     # --- MoE branch ---------------------------------------------------------
     gemma4_router_topk_bf16(
@@ -859,12 +855,16 @@ def gemma4_layer_forward_bf16(
         runtime.stream_wait_event(stream, scratch._moe_exit_event)
 
     # --- combine ------------------------------------------------------------
-    gemma4_branch_add_bf16(
-        buf("dense"), buf("experts"), buf("branch_sum"), rows * hidden_size, **kwargs
-    )
-    gemma4_add_rmsnorm_scale_bf16(
-        buf("branch_sum"),
+    # D6 tail fold: post_ffw_norm_1 + branch_add + add_rmsnorm_scale in one
+    # launch (bit-identical to the chain it replaced; see the kernel
+    # docstring). It must sit after the exit barrier because `experts` is an
+    # input, and it reads the raw dense output -- which is why the first stage
+    # no longer runs right after down_proj.
+    gemma4_dense_combine_rmsnorm_scale_bf16(
+        buf("dense"),
+        buf("experts"),
         buf("hidden"),
+        layer.post_feedforward_layernorm_1,
         layer.post_feedforward_layernorm,
         layer.layer_scalar,
         hidden_ptr,
