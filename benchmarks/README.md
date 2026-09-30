@@ -456,6 +456,19 @@ in the artifacts
 ([sprint](results/gfx1151-evie-4p5b-fp16-perf-sprint-2026-09-09.json),
 [cluster8](results/gfx1151-evie-4p5b-cluster8-recurrence-2026-09-10.json)).
 
+**Qwen3.8 Flash Next WMMA-MoE27 prefill restore — withdrawn (gfx1151, UD-Q4_K_XL).**
+The route that replaces production's exact grouped iu8-risk+repair prefill with
+WMMA-MoE27 on layers 27-47 passes the production numerical envelope in all four
+categories (mean KL 1.18e-4 to 5.29e-4 against the 1e-3 gate, p95 5.19e-4 to
+2.67e-3 against 5e-3, max 2.82e-3 to 1.14e-2 against 5e-2, top-1 0.99 to 1.00)
+but fails the task gate on 3 of 18 prompts, deterministically. The three
+divergences are `heldout_code_rate_limiter`, `heldout_general_ja_migration` and
+`heldout_general_ja_speculative`, with zero repeat mismatches across three runs
+per prompt, so the cause is arithmetic rather than flakiness. The row was
+previously withdrawn on speed; that reason cannot be fixed by a faster tiling,
+so the rerun condition is now a mechanism that resolves those three prompts.
+[Evidence](results/2026-09-30-qwen4exp-moe-restore-rejection/README.md).
+
 ### W7900 Qwen3.8 `Q4_K_M` C1-C8
 
 #### Server performance on the INT8 KV route
