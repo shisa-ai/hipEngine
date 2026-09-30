@@ -45,6 +45,7 @@ _ARGTYPES_ACCUMULATE = (
     ctypes.c_int64,
     ctypes.c_int64,
     ctypes.c_int64,
+    ctypes.c_int,
     ctypes.c_void_p,
 )
 
@@ -185,14 +186,29 @@ def gemma4_moe_weighted_accumulate_bf16(
     hidden: int,
     top_k: int,
     *,
+    col_tiles: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Accumulate compacted expert rows into their tokens, scaled by route weight."""
+    """Accumulate compacted expert rows into their tokens, scaled by route weight.
+
+    ``col_tiles`` splits the column dimension across ``gridDim.y`` (0 = auto:
+    one tile per thread-width of ``hidden``). The tiling is scheduling only --
+    each column's slot-order sum stays inside one thread, so every tile count
+    is bit-identical to the one-block-per-token form; the bitwise guard is
+    ``test_weighted_accumulate_is_bitwise_grid_independent``. Auto tiling is
+    the shipped default because the one-block form at ``tokens == 1`` ran
+    17.8 us against a ~2 us floor for neighbouring single-block kernels.
+    """
 
     if tokens <= 0 or hidden <= 0 or top_k <= 0:
         raise ValueError("tokens, hidden, and top_k must be positive")
+    if col_tiles < 0:
+        raise ValueError("col_tiles must be >= 0 (0 = auto)")
+    threads = min(hidden, 256)
+    if col_tiles == 0:
+        col_tiles = (hidden + threads - 1) // threads
     library = library or build_gemma4_moe(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_ACCUMULATE, _ARGTYPES_ACCUMULATE, ctypes.c_int)
@@ -206,6 +222,7 @@ def gemma4_moe_weighted_accumulate_bf16(
             tokens,
             hidden,
             top_k,
+            int(col_tiles),
             stream,
         ),
     )

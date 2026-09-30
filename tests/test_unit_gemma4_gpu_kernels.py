@@ -1099,6 +1099,89 @@ def test_weighted_accumulate_matches_the_reference_with_shared_tokens(device) ->
 
 
 @_needs_hip
+def test_weighted_accumulate_is_bitwise_grid_independent(device) -> None:
+    """D7: column tiling must not change one bit of the accumulate output.
+
+    The decode launch is one block per token (tokens == 1) and measured
+    17.8 us/launch against a ~2 us floor for neighbouring single-block
+    kernels -- a latency-bound structure, not work. Splitting the column
+    dimension across ``gridDim.y`` redistributes the SAME per-column math:
+    each column's slot loop still runs in one thread in lane order, so every
+    ``col_tiles >= 1`` form must be bit-identical to the one-block-per-token
+    form. This test is the proof that makes the grid change safe -- it is
+    stronger than the reference check above, which only pins the formula.
+
+    ``col_tiles=0`` is the wrapper's auto choice (the shipped default), and
+    the sentinel row catches a tile loop that overruns ``hidden``.
+    """
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import (
+        gemma4_moe_lane_to_row_i32,
+        gemma4_moe_weighted_accumulate_bf16,
+    )
+
+    tokens, top_k, hidden = 3, 4, 300  # 300 is ragged against a 256-wide tile
+    total_lanes = tokens * top_k
+    rng = np.random.default_rng(77)
+    sorted_lanes = rng.permutation(total_lanes).astype(np.int64)
+    weights = rng.random(total_lanes).astype(np.float32)
+    expert_out = rng.standard_normal((total_lanes, hidden)).astype(np.float32)
+
+    lanes_ptr = device.put(sorted_lanes)
+    l2r_ptr = device.out((total_lanes,), np.int32)
+    gemma4_moe_lane_to_row_i32(lanes_ptr, l2r_ptr, total_lanes)
+    expert_ptr = device.put(_to_bf16_bits(expert_out))
+    weights_ptr = device.put(weights)
+
+    # The numpy oracle replicates the kernel's f32 slot-order sum by hand so
+    # the comparison can be bitwise, not allclose.
+    l2r = device.get(l2r_ptr, (total_lanes,), np.int32)
+    expected = np.zeros((tokens, hidden), dtype=np.float32)
+    for token in range(tokens):
+        for col in range(hidden):
+            acc = np.float32(0.0)
+            for slot in range(top_k):
+                lane = token * top_k + slot
+                row = int(l2r[lane])
+                if row < 0 or row >= total_lanes:
+                    continue
+                acc = np.float32(
+                    acc
+                    + np.float32(_from_bf16_bits(_to_bf16_bits(expert_out[row, col])))
+                    * np.float32(weights[row])
+                )
+            expected[token, col] = acc
+    expected_bits = _to_bf16_bits(expected)
+
+    results = {}
+    for col_tiles in (1, 2, 5, 0):
+        # One extra row stays untouched: a tile loop that runs past `hidden`
+        # or a token guard that slips would poison it.
+        payload = np.concatenate(
+            [_to_bf16_bits(expert_out), np.zeros((1, hidden), dtype=np.uint16)], axis=0
+        )
+        pad_ptr = device.put(payload)
+        out_ptr = device.put(np.full((tokens + 1, hidden), 0xBEEF, dtype=np.uint16))
+        gemma4_moe_weighted_accumulate_bf16(
+            pad_ptr,
+            l2r_ptr,
+            weights_ptr,
+            out_ptr,
+            tokens,
+            hidden,
+            top_k,
+            col_tiles=col_tiles,
+        )
+        got = device.get(out_ptr, (tokens + 1, hidden), np.uint16)
+        assert np.all(got[-1] == 0xBEEF), f"col_tiles={col_tiles}: wrote past tokens"
+        results[col_tiles] = got[:-1]
+
+    for col_tiles, got in results.items():
+        assert np.array_equal(got, expected_bits), (
+            f"col_tiles={col_tiles} differs bitwise from the slot-order reference"
+        )
+
+
+@_needs_hip
 def test_lane_to_row_is_the_inverse_permutation(device) -> None:
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import (
         gemma4_moe_lane_to_row_i32,
