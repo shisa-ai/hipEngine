@@ -1,0 +1,125 @@
+{
+  "shape": {
+    "num_k_heads": 16,
+    "num_v_heads": 48,
+    "head_k_dim": 128,
+    "head_v_dim": 128
+  },
+  "tokens": 4096,
+  "note": "Numerical screen only; no kernel was built. The chunked form is algebraically identical to the sequential one, so every figure below is floating-point reordering cost, not approximation error.",
+  "results": [
+    {
+      "kind": "chunk",
+      "chunk_size": 32,
+      "state_dtype": "fp32",
+      "max_abs": 8.165836334228516e-06,
+      "rms_abs": 1.137373767791888e-07,
+      "nmse": 4.558479807021928e-14,
+      "max_rel": 3.4626022082682755,
+      "p99_rel": 6.8532164193059155e-06
+    },
+    {
+      "kind": "chunk",
+      "chunk_size": 32,
+      "state_dtype": "fp16",
+      "max_abs": 0.007702827453613281,
+      "rms_abs": 1.5030986383119606e-05,
+      "nmse": 7.961384207354032e-10,
+      "max_rel": 631.1546241425904,
+      "p99_rel": 0.0002835639743607193
+    },
+    {
+      "kind": "chunk",
+      "chunk_size": 64,
+      "state_dtype": "fp32",
+      "max_abs": 1.3470649719238281e-05,
+      "rms_abs": 1.4217695948066817e-07,
+      "nmse": 7.123149593355577e-14,
+      "max_rel": 1.791321780169177,
+      "p99_rel": 9.902019171261032e-06
+    },
+    {
+      "kind": "chunk",
+      "chunk_size": 64,
+      "state_dtype": "fp16",
+      "max_abs": 0.004256069660186768,
+      "rms_abs": 1.0458742401298632e-05,
+      "nmse": 3.8545399672483485e-10,
+      "max_rel": 630.8470515670773,
+      "p99_rel": 0.00012938212585483387
+    },
+    {
+      "kind": "chunk",
+      "chunk_size": 128,
+      "state_dtype": "fp32",
+      "max_abs": 1.3470649719238281e-05,
+      "rms_abs": 1.4203796820400366e-07,
+      "nmse": 7.109229310864487e-14,
+      "max_rel": 1.791321780169177,
+      "p99_rel": 9.901917318819423e-06
+    },
+    {
+      "kind": "chunk",
+      "chunk_size": 128,
+      "state_dtype": "fp16",
+      "max_abs": 0.0030411481857299805,
+      "rms_abs": 7.194743126717198e-06,
+      "nmse": 1.8240813634309862e-10,
+      "max_rel": 630.8470515670773,
+      "p99_rel": 5.20675543047924e-05
+    },
+    {
+      "kind": "chunk",
+      "chunk_size": 256,
+      "state_dtype": "fp32",
+      "max_abs": 1.3589859008789062e-05,
+      "rms_abs": 1.4195645090528859e-07,
+      "nmse": 7.101071508011345e-14,
+      "max_rel": 1.791321780169177,
+      "p99_rel": 9.898481981310373e-06
+    },
+    {
+      "kind": "chunk",
+      "chunk_size": 256,
+      "state_dtype": "fp16",
+      "max_abs": 0.0030411481857299805,
+      "rms_abs": 5.04626545894739e-06,
+      "nmse": 8.973333439434532e-11,
+      "max_rel": 630.8470515670773,
+      "p99_rel": 2.3688467344924642e-05
+    },
+    {
+      "kind": "tail",
+      "tokens": 4095,
+      "chunk_size": 128,
+      "state_dtype": "fp32",
+      "max_abs": 1.6450881958007812e-05,
+      "rms_abs": 1.4225892594575606e-07,
+      "nmse": 7.357418406419147e-14,
+      "max_rel": 4.154544061133176,
+      "p99_rel": 9.704697461948328e-06
+    },
+    {
+      "kind": "tail",
+      "tokens": 4097,
+      "chunk_size": 128,
+      "state_dtype": "fp32",
+      "max_abs": 2.1696090698242188e-05,
+      "rms_abs": 1.4271395546694577e-07,
+      "nmse": 7.264248370577329e-14,
+      "max_rel": 3.7944609831994516,
+      "p99_rel": 9.745182937245873e-06
+    },
+    {
+      "kind": "tail",
+      "tokens": 4100,
+      "chunk_size": 128,
+      "state_dtype": "fp32",
+      "max_abs": 1.6033649444580078e-05,
+      "rms_abs": 1.4231755607908008e-07,
+      "nmse": 7.170581049185387e-14,
+      "max_rel": 0.744639873928265,
+      "p99_rel": 9.781511835001864e-06
+    }
+  ]
+}
