@@ -140,6 +140,21 @@ CANDIDATES = {
                        "selected_dual_wmma_iu8_prefill_bf16_bf16_out"),
         fallback_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
                       "selected_dual_wmma_prefill_compact_bf16_bf16_out"),
+        # The plain iu8 owner is invoked by a DIRECT module-attribute call in
+        # the runner, not through a registry resolve, so counting the registry
+        # entry alone reads zero however often the route runs. That is exactly
+        # how the first run of this candidate reported
+        # candidate_dispatch_calls=0 and measurement_valid=false while the
+        # route was engaging: verified independently by patching the runner's
+        # module attribute and observing 4 plain-iu8 calls with 0 risk and 0
+        # repair calls on one short prefill. The direct target makes the
+        # gate's counter patch the same attribute the runner actually calls.
+        direct_dispatch_target=("hipengine.runtime.qwen4_exp_runner",
+                                "gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out"),
+        direct_dispatch_reference=(
+            "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill",
+            "gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out"),
+        dispatch_shape_positions=(7, 8, 9, 10),
         count_registered_dispatch=True,
     ),
     "production_q8_fallback": CandidateSpec(
