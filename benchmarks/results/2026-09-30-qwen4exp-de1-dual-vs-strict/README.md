@@ -38,14 +38,24 @@ The single top-1 flip on `heldout_mixed_review` is at **step 63 of 83**, and it 
 margin, not a coin flip:
 
 ```
-step 63: margin 0.954472   candidate KL 0.261188   incumbent KL 0.039213
+step 63: candidate KL 0.261188   incumbent KL 0.039213   (6.7x)
 ```
 
-The candidate is **6.7x worse** at that step, with a **0.954** margin on the flipped token.
-The minimum step margin anywhere in that case is **0.1076**, so no step in the case is a
-near-tie. This **corrects an earlier reading** that described the flips as near-ties with
-min top-5 overlap 3-4 of 5 and min margin 0.0335-0.1686; that came from a different run and
-does not describe this one.
+**Note on the margin figure:** `step_margins` in the probe is computed from `ref` - the
+**strict teacher's** logits - not the candidate's:
+
+```python
+order = np.argsort(-ref[i])
+step_margins.append(float(ref[i][order[0]] - ref[i][order[1]]))
+```
+
+So the teacher's top-1-vs-top-2 margin at step 63 is **0.954472**, and the minimum such
+margin anywhere in that case is **0.1076**. That describes how decisive the step is for the
+*teacher*: the candidate did not jitter across a tie, it picked a different token on a step
+the teacher resolved by a wide margin. The candidate-side evidence for that step is the
+**6.7x KL ratio** above, which comes from `step_kls` / `incumbent_step_kls` and is measured
+on the arms. An earlier revision of this README described 0.954472 as the flip's own
+margin; that attribution was wrong and is corrected here.
 
 ## Result 3 — the suite is a stress suite, and it fails BOTH arms
 
