@@ -740,6 +740,59 @@ def test_t16_gate_up_dispatch_keys_resolve() -> None:
         assert is_registered(key), key.display()
 
 
+def test_gemma_down_raw_q5_1_selected_owner_is_logical_t64() -> None:
+    """The raw-Q5_1 ``linear`` selected decode owner is the logical t64 GEMV.
+
+    D3 screen (``scripts/gguf_q5_1_gemma_down_decode_screen.py``): at Gemma
+    down decode geometry (in 704, out 2816, rows 1/8/16) the logical t64
+    lane mapping is bit-exact with the 256-thread incumbent and 1.48-1.77x
+    faster, so ``gemma4_project_experts_selected`` resolves it under the
+    shared ABI variant. ``moe_linear`` (the Qwen down callers) keeps the
+    incumbent.
+    """
+
+    from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
+        qwen4_exp_q5_1_selected_gemv_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_gemv_logical256_t64_bf16_bf16_out,
+        register_qwen4_exp_q5_1_kernels,
+    )
+    from hipengine.kernels.registry import KernelKey, resolve
+    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+    # The registrar runs at module import in production but the pytest
+    # registry baseline restore between tests drops import-time
+    # registrations, and this family is not in the ensure list — re-run it
+    # exactly as production import does.
+    register_qwen4_exp_q5_1_kernels()
+    down = KernelKey(
+        "hip_gfx1100", "linear", "gguf_q5_1", "selected_gemv_bf16_bf16_out"
+    )
+    _ensure_linear_kernel_registered(down)
+    assert (
+        resolve(
+            backend=down.backend,
+            layer=down.layer,
+            quant=down.quant,
+            variant=down.variant,
+        )
+        is qwen4_exp_q5_1_selected_gemv_logical256_t64_bf16_bf16_out
+    ), down.display()
+
+    qwen = KernelKey(
+        "hip_gfx1100", "moe_linear", "gguf_q5_1", "selected_gemv_bf16_bf16_out"
+    )
+    _ensure_linear_kernel_registered(qwen)
+    assert (
+        resolve(
+            backend=qwen.backend,
+            layer=qwen.layer,
+            quant=qwen.quant,
+            variant=qwen.variant,
+        )
+        is qwen4_exp_q5_1_selected_gemv_bf16_bf16_out
+    ), qwen.display()
+
+
 def test_raw_layout_launches_refuse_a_t16_weight(reader: GGUFReader) -> None:
     """The raw-layout expert launches fail loudly on a tiles weight.
 

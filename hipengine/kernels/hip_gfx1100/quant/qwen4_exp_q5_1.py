@@ -1122,17 +1122,34 @@ def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:
             qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out,
             replace=replace,
         )
-    for layer in ("linear", "moe_linear"):
-        register(
-            KernelKey(
-                "hip_gfx1100",
-                layer,
-                "gguf_q5_1",
-                "selected_gemv_bf16_bf16_out",
-            ),
-            qwen4_exp_q5_1_selected_gemv_bf16_bf16_out,
-            replace=replace,
-        )
+    # D3 screen (scripts/gguf_q5_1_gemma_down_decode_screen.py, artifact
+    # benchmarks/results/2026-09-30-gemma4-q5_1-down-decode-screen.json): at
+    # Gemma down decode
+    # geometry (in 704, out 2816, E 128, rows 1/8/16) the logical t64 lane
+    # mapping is bit-exact with the 256-thread GEMV and 1.48-1.77x faster
+    # (105 GB/s -> 138-188 GB/s), beating wave64, pack8, and t128 in the
+    # same run. Register it for the ``linear`` consumer (Gemma down); the
+    # ``moe_linear`` callers keep the incumbent.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_1",
+            "selected_gemv_bf16_bf16_out",
+        ),
+        qwen4_exp_q5_1_selected_gemv_logical256_t64_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_1",
+            "selected_gemv_bf16_bf16_out",
+        ),
+        qwen4_exp_q5_1_selected_gemv_bf16_bf16_out,
+        replace=replace,
+    )
 
 
 register_qwen4_exp_q5_1_kernels()
