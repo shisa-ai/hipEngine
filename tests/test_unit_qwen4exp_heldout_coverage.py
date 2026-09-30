@@ -18,7 +18,7 @@ So the floor is a per-route property and never a shared constant. **Both**
 directions of error are silent: too low certifies a route that never ran (the
 false pass recorded in the sibling packet), too high refuses a certificate that
 is actually valid. The first version of this check made the second mistake - it
-took ``_q8_iu8_wmma_dispatch``'s 256-row floor, applied it to the f16 WMMA route
+took a since-removed route's 256-row floor, applied it to the f16 WMMA route
 whose floor is 2, and refused a heldout run that had genuinely engaged and
 passed every numerical gate.
 

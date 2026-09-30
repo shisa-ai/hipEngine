@@ -46,10 +46,6 @@ FAMILIES: tuple[dict, ...] = (
         "family": "Q8_MMQ_PREFILL",
         "env": {"HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1"},
     },
-    {
-        "family": "Q8_IU8_WMM",
-        "env": {"HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "1"},
-    },
     # The f16 WMMA dense Q8_0 selector is a layer list rather than a flag, and
     # it is not one of the recovery flags, so it was absent from the original
     # ranking. Its numerical envelope is gated in

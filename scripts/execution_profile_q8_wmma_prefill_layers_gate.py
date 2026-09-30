@@ -93,7 +93,7 @@ ADMISSION_FIXTURE_SHA256 = (
 # and never a shared constant. Getting it wrong in either direction is a silent
 # defect: too low certifies a route that never ran, too high refuses a valid
 # certificate. Both are reachable, and the first version of this check took
-# ``_q8_iu8_wmma_dispatch``'s 256-row floor and applied it to the f16 WMMA route,
+# a since-removed route's 256-row floor and applied it to the f16 WMMA route,
 # whose floor is 2 - so it refused a heldout run that had actually engaged and
 # passed. Each value below is read from its dispatch's own guard:
 #

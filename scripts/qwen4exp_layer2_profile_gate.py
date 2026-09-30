@@ -73,7 +73,7 @@ class CandidateSpec:
 
 CONSERVATIVE_ARITHMETIC_FLAGS = (
     "PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
-    "Q8_MMQ_PREFILL", "Q8_IU8_WMM", "GR_IU8", "GR_IU8_DOWN",
+    "Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN",
     "GDN_PEER_PREFILL", "GDN_COLWARPS_PREFILL", "Q4_DP4A64",
     "QSA_H256_WAVE_PREFILL", "QSA_HEAD_PAIR", "QSA_FLASH_PREFILL",
     "QSA_ORDERED_DECODE", "QSA_ORDERED_DECODE_V2", "GR_WIDE",
@@ -301,7 +301,6 @@ CANDIDATES["q8_blockscale_guarded_restore"] = replace(
     scenario_id="qwen4exp-q8-blockscale-guarded-dense-qsa",
     environment={
         **CANDIDATES["q8_blockscale_guarded_quad"].environment,
-        "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "1",
         "HIPENGINE_QWEN4_EXP_GR_IU8": "1",
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1",
         "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1",
@@ -342,7 +341,6 @@ CANDIDATES["production_gr_up_restore"] = CandidateSpec(
     environment={
         "HIPENGINE_QWEN4_EXP_GR_IU8": "1",
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "0",
-        "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
     },
     base_profile="production", scenario_id="qwen4exp-gr-up-restoration",
@@ -365,7 +363,6 @@ CANDIDATES["production_gr_up_wide"] = CandidateSpec(
         "HIPENGINE_QWEN4_EXP_GR_WIDE": "1",
         "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "0",
-        "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
     },
     base_profile="production", scenario_id="qwen4exp-gr-up-wide-tile",
@@ -395,7 +392,6 @@ CANDIDATES["production_gr_up_staged"] = CandidateSpec(
         "HIPENGINE_QWEN4_EXP_GR_WIDE": "0",
         "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "0",
-        "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
     },
     base_profile="production", scenario_id="qwen4exp-gr-up-staged-f32",
@@ -421,19 +417,6 @@ CANDIDATES["production_gr_down_restore"] = replace(
     },
     fallback_key=("hip_gfx1151", "linear", "gguf_q8_0", "coltile8_rowbatch4_f32_f32_out"),
 )
-CANDIDATES["production_dense_q8_restore"] = replace(
-    CANDIDATES["production_gr_up_restore"], name="production_dense_q8_restore",
-    mechanism="Generic dense Q8 IU8 routes, including eligible GR-down; dedicated GR flags off",
-    scenario_id="qwen4exp-dense-q8-restoration",
-    environment={
-        **CANDIDATES["production_gr_up_restore"].environment,
-        "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
-        "HIPENGINE_QWEN4_EXP_Q8_IU8_WMM": "1",
-    },
-    fallback_key=("hip_gfx1151", "linear", "gguf_q8_0", "coltile8_rowbatch4_f32_f32_out"),
-    direct_dispatch_target=None, direct_dispatch_reference=None, count_registered_dispatch=True,
-)
-
 CANDIDATES["production_moe_restore"] = CandidateSpec(
     name="production_moe_restore",
     classification="T2",

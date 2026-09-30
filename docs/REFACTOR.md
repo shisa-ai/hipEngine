@@ -236,6 +236,12 @@
 
 ## Non-GR Q8 Diagnostic Scope
 
+- **CLOSED `20260930T`.** `scripts/qwen4exp_dense_q8_nongr_gate.py` and
+  `tests/test_unit_qwen4exp_dense_q8_nongr_gate.py` are deleted. The scope this
+  entry asked for was built, tested, and rejected (the REJECTED bullet below),
+  so the diagnostic monkeypatch has no remaining use. The capture is preserved
+  at `benchmarks/results/2026-09-15-journey-dense-q8/`; do not rerun the
+  unchanged arithmetic.
 - `scripts/qwen4exp_dense_q8_nongr_gate.py` temporarily clears the existing
   generic Q8 selector only inside GR reads, with counted exclusions.
   It is single-threaded attribution code, not a production dispatch policy.
@@ -281,13 +287,23 @@
   inert arms are mutually identical and pass every threshold, isolating this
   route's arithmetic as the cause. Evidence:
   `benchmarks/results/2026-09-30-q8-iu8-role-isolation/`.
-- **REMOVAL, now unblocked by the rejection above:** delete
-  `HIPENGINE_QWEN4_EXP_Q8_IU8_WMM` with its role scope, its dispatch selector
-  `_q8_iu8_wmma_dispatch`, its cache-key helper `_q8_iu8_role_cache_key` and its
-  contract tests, and update the candidate specs that reference it
-  (`production_dense_q8_restore`, `production_gr_up_restore`) so the gate no
-  longer resolves a rejected key. Preserve the captured evidence; do not rerun
-  unchanged arithmetic.
+- **REMOVAL EXECUTED `20260930T`.** `HIPENGINE_QWEN4_EXP_Q8_IU8_WMM` is gone:
+  the flag and its role scope, the dispatch selector `_q8_iu8_wmma_dispatch`,
+  the cache-key helper `_q8_iu8_role_cache_key`, the profile binding and the
+  `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS` entry, the contract test
+  `tests/test_unit_qwen4exp_iu8_scope.py`, the generic-route block in
+  `tests/test_gpu_qwen4exp_gr_iu8.py`, the `production_dense_q8_restore`
+  candidate spec, the `q8_iu8_wmm` arms in the disabled-family sweep and
+  disabled-selector ranking, and the non-GR diagnostic above. The `Q8_IU8_WMM`
+  role-scope contract now lives in the rejection entry above and in
+  `benchmarks/results/2026-09-30-q8-iu8-role-isolation/`. **One latent hazard
+  this removal closes:** the route was still bound `"1" if production` at
+  `hipengine/generation/qwen4_exp_profiles.py`, suppressed only by its presence
+  in `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS`. Any future narrowing of that sweep
+  would have silently re-enabled a route that fails the canonical envelope in
+  14 of 17 roles. The GR route keeps the shared kernel key
+  `iu8_wmma_prefill_f32_f32_out`, which is registered independently in
+  `gguf_k_gemv.py`, so removing the generic selector does not affect it.
 
 ## Removed GR Corrections
 
