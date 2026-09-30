@@ -8125,3 +8125,28 @@ Two consequences worth knowing:
   measurement that established this.
 - Removal condition: delete the file once no other worker is using it as a
   generic c1 threads gate; the Qwen4Exp gate covers this lever's requirement.
+
+## Route-engagement recorder coverage (`wmma_prefill_dispatch_recorder`)
+
+- Found 2026-09-30 while re-gating the live default at 16-47
+  (`benchmarks/results/2026-09-30-qwen4exp-rt1-chunk4096-gate/DENSE-WIDE-REGATE-AT-HEAD.md`).
+- `hipengine/runtime/gguf_linear.py`'s `_record_wmma_prefill_dispatch` records
+  only the `wmma_prefill` selector, and `_record_selector` records the collateral
+  selectors `use_wmma` moves (`q4k_rowtile`, `native_batch_decode_session`, …).
+  **The `dense_wide` route has no recorder.**
+- Consequence: the engagement check added in `056e6fbd8` - the mechanism that
+  caught the WMMA-route false pass - **cannot see the route that is the live
+  production default at 16-47** (`PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS`). A
+  `--route dense_wide` gate reports `candidate_route_engaged: False` regardless
+  of whether the route ran, because the selector never appears in
+  `selector_states`. The gate has a row floor for it
+  (`ROUTE_ROW_FLOORS["dense_wide"]`) but no dispatch recorder, so the floor is
+  never fed.
+- The detector covers the *retired* route and is blind to the live one. Any
+  future `dense_wide` certificate is unverifiable on route engagement for the
+  same reason the pre-`056e6fbd8` certificates are.
+- Removal condition: add a `dense_wide` dispatch recorder alongside
+  `_record_wmma_prefill_dispatch`, re-run the 16-47 gate with it, and confirm the
+  selector appears in `selector_states` with the candidate arm engaged. Until
+  then, attribution of a `dense_wide` gate's drift to that route rests on the
+  documented byte-identity with the `wmma` route rather than on direct evidence.
