@@ -1,3 +1,25 @@
+> ## ⚠️ RETRACTED 2026-09-30 — THIS SCREEN MODELLED THE WRONG RECURRENCE
+>
+> `scripts/qwen4exp_gdn_chunk_scan_drift_screen.py` computes
+> `state = gate*state + outer(k, v)`, `out = q @ state`. **That is gated LINEAR attention.
+> GDN is the gated DELTA rule**, whose production kernel computes
+> `delta = (v_in - sum_c k~_c * S_cv * decay) * beta` and `S_next = S*decay + k~ * delta`.
+> The screen has **no `beta` term at all** — its signature is `chunked(q, k, v, gate, chunk, ...)`.
+>
+> **Measured:** on identical random inputs at the model's shape,
+> `NMSE(screen_sequential, gdn_prefill_recurrent_segments) = 1.009735e+00` — the two recurrences
+> differ by 100% of the signal magnitude (screen out RMS 1.505e-02 vs oracle 8.277e-03; max abs
+> difference 8.345e-02 against an oracle max of 7.590e-02).
+>
+> **Every number below describes chunked gated linear attention and says nothing about GD-4.**
+> GD-4's numerical screen is **not done**. The correct screen must exercise the triangular/WY form
+> already implemented in `hipengine.kernels.cpu_reference.gdn_prefill_chunkwise_wy_segments`.
+> The only in-tree model-level evidence about that form is GPF-8's KL 0.056522 at FP32.
+> Retained for the methodological finding only: the f32-reassociation control caught a formulation
+> bug in this very script, which is what the control is for.
+>
+> **This file is kept as a record of an invalid measurement, not as evidence.**
+
 # GD-4's state-drift screen: PASSED — the chunked fp16 arithmetic is admissible in principle
 
 **Status: SCREEN PASSED** (`20260930T`). `GD-4`'s prescribed first experiment — "screen
