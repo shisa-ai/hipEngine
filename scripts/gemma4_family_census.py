@@ -58,7 +58,13 @@ ENGINE_FAMILIES: tuple[tuple[str, str], ...] = (
     # without it the fix lands in `other` and layer 29 reads as improved by a
     # sum that no longer includes its own kernel.
     ("moe.l29_experts", r"gguf_q4_k_selected_dual_grouped_rowbatch|gguf_k_selected_prefill_out_kernel|q8_0_selected_grouped_wmma_prefill"),
-    ("moe.gate_up", r"q4_k_selected"),
+    # t16 gate_up owners (D1 repack landing): the decode GEMV is the shared
+    # qk_t16_selected_direct_gemv template instantiated at qtype 4 in
+    # selected-expert mode, and the prefill owner carries q4_k_t16_selected in
+    # its name - neither matches the legacy q4_k_selected pattern below, and
+    # without them the family reads 0.0000 ms while the cost sits in `other`.
+    # The qtype-5 dense instantiation of the same template is not gate_up.
+    ("moe.gate_up", r"q4_k_selected|q4_k_t16_selected|qk_t16_selected_direct_gemv_kernel<unsigned short, 4,"),
     ("moe.down", r"q5_1_selected"),
     ("moe.act_quant", r"q8_1_mmq_ds4_pack|q8_1_mmq_gather_ds4_pack"),
     ("moe.route_glue", r"qwen35_moe_|gemma4_moe_|gemma4_expert_weight_scale|qwen35_router_select"),
