@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 import numpy as np
 
@@ -990,46 +990,72 @@ class Gemma4Runner:
         """The block body, run under whatever session :meth:`_forward_block` set.
 
         ``needs_logits`` is False for a block whose output ``forward`` discards.
+
+        The body splits into three phases so the decode-graph path can drive
+        them separately: stage (position-dependent content, enqueued), launch
+        (every device kernel, on one stream), collect (the logits copy and the
+        host bookkeeping). This default path runs them in their historical
+        stream order on the default stream with the actual position.
         """
 
         config = self.weights.config
         rows = len(tokens)
         if rows > self.max_block:
             raise ValueError(f"{rows} tokens exceeds max_block {self.max_block}")
-        vocab = int(config.vocab_size or 0)
 
-        hidden = config.hidden_size
+        tables, masks = self._stage_block_content(tokens, stream=0)
+        self._launch_block(
+            tokens,
+            tables=tables,
+            masks=masks,
+            kv_write_offset=self._position,
+            key_begin_at=None,
+            stream=0,
+            stream_moe=-1,
+            needs_logits=needs_logits,
+            return_hidden=return_hidden,
+        )
+        return self._collect_block(
+            tokens,
+            apply_softcap=apply_softcap,
+            needs_logits=needs_logits,
+        )
+
+    def _stage_block_content(
+        self,
+        tokens: Sequence[int],
+        *,
+        stream: int,
+        keys_extent: int | None = None,
+    ) -> tuple[
+        dict[Gemma4RopeConfig, tuple[DeviceBuffer, DeviceBuffer]],
+        dict[int | None, DeviceBuffer],
+    ]:
+        """Compute this block's position-dependent content and enqueue uploads.
+
+        Token ids, the rope tables for this block's positions and the keep-mask
+        change every block, but each lands in a reusable staging buffer whose
+        device pointer does not, so they are enqueued on ``stream`` ahead of
+        every launch that reads them.
+
+        ``keys_extent`` overrides the mask's column count: the decode-graph
+        capture freezes it to its context bucket so the captured attention
+        nodes never change shape, while the mask's *content* still describes
+        this block's actual positions.
+        """
+
+        config = self.weights.config
+        rows = len(tokens)
         start = self._position
-
-        # --- embedding ------------------------------------------------------
+        # Enqueued, not sync: the embedding kernel launched after this returns
+        # sees the ids in stream order, while the host keeps submitting instead
+        # of draining the previous step's work (0.19 ms/step of blocking
+        # hipMemcpy, D8 row).
         ids = np.ascontiguousarray(tokens, dtype=np.int64)
-        # Enqueued, not sync: the embedding kernel below is launched on the
-        # same default stream after this returns, so stream order delivers the
-        # ids to it, while the host keeps submitting instead of draining the
-        # previous step's work (0.19 ms/step of blocking hipMemcpy, D8 row).
         enqueue_host_to_device(
-            self._token_ids, host_array_ptr(ids), ids.nbytes, stream=0
-        )
-        launch_gguf_embedding(
-            self.weights.embed_tokens,
-            self._token_ids.ptr,
-            self._hidden.ptr,
-            rows,
-            hidden,
-            vocab,
-        )
-        # sqrt(hidden_size), applied to the residual stream rather than folded
-        # into the first norm: the norm is scale-invariant and would hide it,
-        # but every layer adds back into this stream.
-        gemma4_scale_bf16(
-            self._hidden.ptr,
-            self._hidden.ptr,
-            rows,
-            hidden,
-            float(config.embed_scale),
+            self._token_ids, host_array_ptr(ids), ids.nbytes, stream=stream
         )
 
-        # --- layers ---------------------------------------------------------
         positions = np.arange(start, start + rows, dtype=np.int64)
         # Tables depend only on the rope contract and this block's positions,
         # the mask only on the sliding window and this block's range, so each
@@ -1041,7 +1067,12 @@ class Gemma4Runner:
         # behind this block's kernels, exactly as the per-layer staging was.
         tables: dict[Gemma4RopeConfig, tuple[DeviceBuffer, DeviceBuffer]] = {}
         masks: dict[int | None, DeviceBuffer] = {}
-        for index, layer in enumerate(self.weights.layers):
+        extent = start + rows if keys_extent is None else int(keys_extent)
+        if extent < start + rows:
+            raise ValueError(
+                f"keys_extent {extent} must cover this block's {start + rows} key positions"
+            )
+        for index in range(len(self.weights.layers)):
             attention = config.geometry(index)
             # The rope tables are F32 (rows, head_dim) with the rotated half
             # doubled, which is the layout gemma4_partial_rotary_bf16 indexes.
@@ -1052,21 +1083,83 @@ class Gemma4Runner:
                     self._stage_upload(
                         f"cos{attention.rope}",
                         np.ascontiguousarray(cos, dtype=np.float32),
+                        stream=stream,
                     ),
                     self._stage_upload(
                         f"sin{attention.rope}",
                         np.ascontiguousarray(sin, dtype=np.float32),
+                        stream=stream,
                     ),
                 )
                 tables[attention.rope] = staged
-            cos_buf, sin_buf = staged
-            mask_buf = masks.get(attention.sliding_window)
-            if mask_buf is None:
-                mask_buf = self._stage_upload(
+            if attention.sliding_window not in masks:
+                masks[attention.sliding_window] = self._stage_upload(
                     f"mask{attention.sliding_window}",
-                    _keep_mask(attention, start, rows),
+                    _keep_mask(attention, start, rows, extent),
+                    stream=stream,
                 )
-                masks[attention.sliding_window] = mask_buf
+        return tables, masks
+
+    def _launch_block(
+        self,
+        tokens: Sequence[int],
+        *,
+        tables: dict[Gemma4RopeConfig, tuple[DeviceBuffer, DeviceBuffer]],
+        masks: dict[int | None, DeviceBuffer],
+        kv_write_offset: int,
+        key_begin_at: Callable[[Gemma4AttentionGeometry], int] | None,
+        stream: int = 0,
+        stream_moe: int = -1,
+        needs_logits: bool = True,
+        return_hidden: bool = False,
+    ) -> None:
+        """Enqueue every device launch for this block on ``stream``.
+
+        No host copy and no position bookkeeping happens here: the caller
+        staged the content first and collects the logits after. Two parameters
+        are position-dependent and are passed in rather than read from the
+        runner so the decode-graph capture can freeze them to a context bucket:
+        ``kv_write_offset`` (where this block's keys and values are appended,
+        which also bounds the keys each layer attends) and ``key_begin_at``
+        (how far into the cache each layer's attention starts; ``None`` takes
+        the actual sliding-window range for ``kv_write_offset``).
+        """
+
+        config = self.weights.config
+        rows = len(tokens)
+        vocab = int(config.vocab_size or 0)
+        hidden = config.hidden_size
+
+        launch_gguf_embedding(
+            self.weights.embed_tokens,
+            self._token_ids.ptr,
+            self._hidden.ptr,
+            rows,
+            hidden,
+            vocab,
+            stream=stream,
+        )
+        # sqrt(hidden_size), applied to the residual stream rather than folded
+        # into the first norm: the norm is scale-invariant and would hide it,
+        # but every layer adds back into this stream.
+        gemma4_scale_bf16(
+            self._hidden.ptr,
+            self._hidden.ptr,
+            rows,
+            hidden,
+            float(config.embed_scale),
+            stream=stream,
+        )
+
+        for index, layer in enumerate(self.weights.layers):
+            attention = config.geometry(index)
+            cos_buf, sin_buf = tables[attention.rope]
+            mask_buf = masks[attention.sliding_window]
+            key_begin = (
+                _sliding_read_range(attention, kv_write_offset, rows)
+                if key_begin_at is None
+                else int(key_begin_at(attention))
+            )
             gemma4_layer_forward_bf16(
                 self._hidden.ptr,
                 cos_buf.ptr,
@@ -1078,26 +1171,26 @@ class Gemma4Runner:
                     key_cache=self._kv[index].key_cache,
                     value_cache=self._kv[index].value_cache,
                     capacity=self.capacity,
-                    write_offset=start,
+                    write_offset=kv_write_offset,
                 ),
                 rows=rows,
                 eps=config.rms_norm_eps,
-                key_begin=_sliding_read_range(attention, start, rows),
+                key_begin=key_begin,
                 # ``_keep_mask`` builds exactly ``key <= query`` plus the window
                 # bound, and the window bound is vacuous while the attended range
                 # is no wider than the window. The layer re-checks the range; this
                 # flag is the mask's *semantics*, which only the builder knows.
                 attention_mask_is_causal=True,
+                stream=stream,
+                stream_moe=stream_moe,
             )
 
-        # --- final norm and lm head -----------------------------------------
         # The caller wants one next-token distribution, so only the final block
         # computes one. Skipping it here drops a norm, a vocab-wide projection
         # and a device-to-host copy per discarded block: 1 at 1024 tokens and 7
         # at 4096 under the default 512-token block.
         if not needs_logits:
-            self._position += rows
-            return np.empty(0, dtype=np.float32)
+            return
 
         # The default path keeps only the last row: the caller wants one
         # next-token distribution and the earlier rows' logits are never read.
@@ -1118,6 +1211,7 @@ class Gemma4Runner:
             norm_rows,
             hidden,
             config.rms_norm_eps,
+            stream=stream,
         )
         head = self.weights.lm_head or self.weights.embed_tokens
         # With return_hidden the block's states occupy the whole buffer, so the
@@ -1131,31 +1225,59 @@ class Gemma4Runner:
             hidden,
             vocab,
             output_dtype="f32",
+            stream=stream,
         )
 
+    def _collect_block(
+        self,
+        tokens: Sequence[int],
+        *,
+        apply_softcap: bool,
+        needs_logits: bool,
+        stream: int | None = None,
+    ) -> np.ndarray:
+        """Copy this block's logits to the host and advance the position.
+
+        ``stream`` names a non-default stream the launches ran on: the copy
+        below is synchronous on the default stream, so work replayed on a
+        capture stream has to drain there first.
+        """
+
+        rows = len(tokens)
+        if not needs_logits:
+            self._position += rows
+            return np.empty(0, dtype=np.float32)
+
+        if stream is not None and int(stream) != 0:
+            from hipengine.core.hip import get_hip_runtime
+
+            get_hip_runtime().stream_synchronize(int(stream))
+
+        vocab = int(self.weights.config.vocab_size or 0)
         logits = np.empty(vocab, dtype=np.float32)
         copy_device_to_host(host_array_ptr(logits), self._logits, logits.nbytes)
         self._position += rows
         # Applied here rather than in the sampler so that every consumer of the
         # model's output sees the distribution the model defines. Both the dense
         # and the streaming CPU references do the same.
-        cap = config.final_logit_softcapping
+        cap = self.weights.config.final_logit_softcapping
         if apply_softcap and cap:
             cap = np.float32(cap)
             logits = (np.tanh(logits / cap) * cap).astype(np.float32)
         return logits
 
-    def _stage_upload(self, name: str, values: np.ndarray) -> DeviceBuffer:
+    def _stage_upload(self, name: str, values: np.ndarray, *, stream: int = 0) -> DeviceBuffer:
         """Enqueue an upload of ``values`` into the reusable staging buffer."""
 
         buffer = self._staging_buffer(name, values.nbytes)
-        # Enqueued on the default stream (the one every gemma4 wrapper uses):
-        # readers launched after this return see the data in stream order, and
-        # the next step's upload of the same buffer lands behind this block's
-        # readers. The sync hipMemcpy here was draining the whole queued
-        # forward mid-pass -- six times per decode step, 0.55 ms of host stall
-        # for KB-scale buffers (D8 row; screen in scratch/d8_async_h2d_screen.py).
-        enqueue_host_to_device(buffer, host_array_ptr(values), values.nbytes, stream=0)
+        # Enqueued on the caller's stream (the default stream for the normal
+        # path, the capture stream for the decode graph): readers launched
+        # after this return see the data in stream order, and the next step's
+        # upload of the same buffer lands behind this block's readers. The sync
+        # hipMemcpy here was draining the whole queued forward mid-pass -- six
+        # times per decode step, 0.55 ms of host stall for KB-scale buffers
+        # (D8 row; screen in scratch/d8_async_h2d_screen.py).
+        enqueue_host_to_device(buffer, host_array_ptr(values), values.nbytes, stream=stream)
         return buffer
 
     def next_token(self, logits: np.ndarray, *, temperature: float = 0.0) -> int:
@@ -1230,15 +1352,21 @@ def _keep_mask(
     attention: Gemma4AttentionGeometry,
     start: int,
     rows: int,
+    keys_extent: int | None = None,
 ) -> np.ndarray:
-    """Build the ``(rows, start + rows)`` uint8 keep-mask for one block.
+    """Build the ``(rows, keys)`` uint8 keep-mask for one block.
 
     A position may attend to a key at or before it, and on a sliding layer only
-    within ``sliding_window`` of it. The mask covers exactly the cached range
-    this block writes, which is ``start + rows`` columns.
+    within ``sliding_window`` of it. The mask covers the cached range this
+    block attends: ``start + rows`` columns by default, or ``keys_extent``
+    columns when the decode-graph capture freezes the shape to its context
+    bucket. Columns past the live range are kept False, so one bucket-shaped
+    mask reads as the exact mask for every position inside that bucket.
     """
 
-    keys = start + rows
+    keys = start + rows if keys_extent is None else int(keys_extent)
+    if keys < start + rows:
+        raise ValueError(f"keys_extent {keys} must cover {start + rows} key positions")
     queries = np.arange(start, start + rows, dtype=np.int64)[:, None]
     key_positions = np.arange(keys, dtype=np.int64)[None, :]
     keep = key_positions <= queries
