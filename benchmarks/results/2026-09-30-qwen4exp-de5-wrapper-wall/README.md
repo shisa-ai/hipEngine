@@ -89,6 +89,44 @@ boundaries agree within noise at this shape (production `54.01 / 53.78` versus
 diagnostic `53.94 / 53.79`), and **the transient is present on both**, so it is a
 property of the decode path rather than of the logits-capture boundary.
 
+## Reset is not the owner, and the trigger is sharper than "warmup versus repeat"
+
+`reset()` was split into its components (`scripts/qwen4exp_de5_reset_split.py`,
+`reset-split.json`):
+
+| component | warmup | rep1 |
+| --- | ---: | ---: |
+| `state.zero()` | 0.54 | 0.56 ms |
+| KV memsets (12 attention states) | 0.44 | 1.10 ms |
+| `index.reset()` (12 index states) | 0.02 | 0.06 ms |
+| `_ple_hash_states` clear | 0.00 | 0.01 ms |
+| **whole `reset()`** | **1.14** | **2.23 ms** |
+
+Against a ~1.5 s transient the reset is **three orders of magnitude too small to be
+the owner**. The KV memsets move 31,457,280 B in 0.44-1.10 ms against **0.143 ms
+predicted** at RT-4's 220 GB/s hardware rate, so that rate model holds at this scale.
+
+The reset-split run also revised the trigger. Every earlier run had the warmup flat
+(~53-57 ms first-eighth); this probe inserts an extra prefill before the measured decode
+(`prefill #1` -> `reset()` + components -> `prefill #2` -> decode), and the warmup then
+showed the transient as well:
+
+```
+[warmup] first-eighth 146.80  bands 146.8 61.6 52.5 52.3 52.5 52.8 53.0 52.5
+[rep1]   first-eighth 146.74  bands 146.7 97.5 58.2 49.6 49.8 49.7 49.9 49.8
+```
+
+So the rule is not "warmup versus repeat" but:
+
+**the first prefill+decode after model load is fast, and every subsequent one carries
+the transient.**
+
+That excludes anything depending on decode context or on the number of loops, and points
+at something the first prefill establishes and each later prefill invalidates. The prefill
+workspace path was checked and is clean: `_prefill_workspace_selection` is built once at
+construction (`qwen4_exp_runner.py` 6606/6667/6689) and closed at `close()` (7953-7956),
+so there is no per-prefill alloc/free there.
+
 ## Limits
 
 One case (`code-p1024`), one prompt, one model, one quant, one host, one profile.
@@ -96,9 +134,18 @@ The busy counter's averaging window is not documented by the driver, so
 busy-derived shares are approximate and the per-step wall series is the primary
 evidence. The transient's magnitude is measured on 128- and 512-transition
 windows; its behaviour at longer horizons is inferred from the 512-step run
-holding steady after step 32. No mechanism inside `reset()` is isolated here -
-`state.zero()`, the per-attention KV memsets, `index.reset()` and the
-`_ple_hash_states` clear are all candidates and none is individually excluded.
+holding steady after step 32.
+
+**Not yet isolated:** the mechanism. `reset()` is exonerated (above) and the prefill
+workspace path is clean, so the owner is something the first prefill establishes and
+later prefills invalidate - a graph cache, a residency or page-table effect, or
+allocation churn.
+
+**VOID TEST:** an allocation-churn probe (`reset-split-mem.json`) sampled
+`runtime.memory_info()` before and after each prefill and through the first 40
+decode steps. The method returned `None` on this runtime, so the churn hypothesis
+was **not** tested - the call itself was cheap (0.002-0.023 ms), so it errored
+rather than being slow. Allocation churn remains untested, not excluded.
 
 ## Status
 
