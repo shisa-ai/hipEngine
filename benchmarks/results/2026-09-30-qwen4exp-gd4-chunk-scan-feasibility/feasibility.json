@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp-gd4-chunk-scan-feasibility",
+  "performance_claim": false,
+  "purpose": "GD-4's missing build screen: price the chunked scan's extra arithmetic against the measured sequential rate, so the build is justified (or refuted) before it is started. GD-3's screen established that the recurrence is not traffic-bound; this establishes what throughput the chunked schedule must reach to break even.",
+  "shape": "Qwen4Exp GDN Hk16/Hv48/Dk=Dv=128, the shape both GD-3's and GD-4's screens use",
+  "sequential_measured_ms_per_1k_per_layer": 4.961,
+  "sequential_source": "GD-3's screen, the production tiled16 route (benchmarks/results/2026-09-30-qwen4exp-gd3-recurrence-screen/)",
+  "sequential_macs_per_token_per_head": 49152,
+  "sequential_macs_model": "three Dk x Dv products per token per v-head: memory = k.S, state update = k (x) delta, output = q.S",
+  "sequential_gflop_per_1k_per_layer": 4.8318,
+  "sequential_achieved_gflops": 974.0,
+  "sequential_pct_of_61_tflops_peak": 1.6,
+  "sequential_pct_of_28p5_tflops_measured_ceiling": 3.42,
+  "chunked_extra_macs_model": "per chunk per head: L (UT/WY) C^2/2 x Dk + QK C^2/2 x Dk = C^2 x Dk; per token per head C x Dk",
+  "chunked_extra_ratio": "C/384",
+  "by_chunk": [
+    {
+      "chunk": 32,
+      "extra_flops_pct": 8.33,
+      "total_gflop_per_1k_per_layer": 5.2345,
+      "break_even_tflops": 1.055,
+      "pct_of_61_tflops_peak": 1.73,
+      "fp16_state_carry_nmse_measured": 7.961e-10
+    },
+    {
+      "chunk": 64,
+      "extra_flops_pct": 16.67,
+      "total_gflop_per_1k_per_layer": 5.6371,
+      "break_even_tflops": 1.136,
+      "pct_of_61_tflops_peak": 1.86,
+      "fp16_state_carry_nmse_measured": 3.855e-10
+    },
+    {
+      "chunk": 128,
+      "extra_flops_pct": 33.33,
+      "total_gflop_per_1k_per_layer": 6.4425,
+      "break_even_tflops": 1.299,
+      "pct_of_61_tflops_peak": 2.13,
+      "fp16_state_carry_nmse_measured": 1.824e-10
+    },
+    {
+      "chunk": 256,
+      "extra_flops_pct": 66.67,
+      "total_gflop_per_1k_per_layer": 8.0531,
+      "break_even_tflops": 1.623,
+      "pct_of_61_tflops_peak": 2.66,
+      "fp16_state_carry_nmse_measured": 8.973e-11
+    }
+  ],
+  "recommended_operating_point": "chunk 128: +33.3% FLOPs, break-even 1.30 TFLOP/s = 2.1% of peak, fp16 state-carry NMSE 1.824e-10 (5.4x better than chunk 32). The drift screen shows fp16 NMSE IMPROVES with larger chunks, so the numerically better point is also the more expensive one; 128 is the balance.",
+  "verdict": "FEASIBLE AND WORTH BUILDING. The extra arithmetic is only C/384 - 8.3% at chunk 32 and 33.3% at chunk 128 - because the chunked scan adds two C x C dot-product matrices against the sequential route's three Dk x Dv products per token, which is a far smaller ratio than it appears. Break-even throughput is 1.06-1.62 TFLOP/s = 1.7-2.7% of the fp32 peak, against the 974 GFLOP/s (1.60% of peak) the sequential route already reaches. So the chunked schedule needs only to be about twice as efficient as the deeply latency-bound sequential one, while exposing C x more parallelism along the token axis.",
+  "what_this_does_not_show": "It does NOT show the chunked scan wins. It shows the arithmetic cost is small enough that a win is possible, which is the prerequisite. Whether the schedule reaches the 1.3 TFLOP/s bar is exactly what the build must demonstrate.",
+  "counter_constraint": "PMC counters cannot be used: RDNA3-TUNING-GUIDE.md section 4.9 records that every rocprofv3 counter collection on this stack hangs before the profiled application starts, and that timeout cannot kill it (SIGTERM handler blocks; use timeout -k 10). GD-3's screen avoided counters for this reason, and it was right. The mechanism must be established by A/B timing against the roofline bounds.",
+  "ceiling": "The GDN recurrence is the whole GDN family: 194.487 ms of 3,914.468 ms (4.97%) in GD-3's p512 trace, and the gdn role is 844.295 ms of the 15,741.963 ms union (5.36%) in the X-3 p4096 window. So the absolute ceiling for removing the recurrence entirely is ~5% of the request.",
+  "limits": "Arithmetic model and measured sequential rate only; no kernel built and no chunked schedule timed. One shape, one host class. The 61 TFLOP/s peak is the screen script's figure for the W7900; the 28.5 TFLOP/s figure is GD-3's measured FP32 ceiling with dual issue."
+}
