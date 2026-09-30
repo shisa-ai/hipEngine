@@ -262,6 +262,32 @@
   lever that isolates it. Remove the scope once a role set is either promoted or
   the route is finally rejected; until then it is the row's evidence mechanism,
   not a production policy.
+- **`20260930T` REJECTED, superseding the bullet above: role isolation closes the
+  route.** One arm per role, 780 rows each, 12 canonical 512/1K/4K cases, 64
+  shared-teacher decode transitions, 3 repeats, on `gfx1151` at commit
+  `a9a33dd88`: **14 of 17 roles claim, and all 14 fail the canonical envelope
+  alone; zero pass.** All 14 exceed `kl_mean` and `kl_p95`, so no subset of roles
+  is salvageable by narrowing. The failure is not localizable either -
+  `shared_gate` alone (3456 of 28656 calls, 12%) reproduces the full route's top-1
+  exactly (0.98718) while producing a *worse* max (0.062865 vs 0.031511), the
+  non-monotonic tail `20260915T022059` warned forbids treating KL differences as
+  additive. `ple_key` and `ple_value` are one tensor each (72 calls, 0.25%) and
+  both fail; `ple_value` has the worst max in the sweep (0.115324, 2.3x the
+  limit). Three roles (`expert_down`, `hc_attn_up`, `hc_ffn_up`) claim nothing -
+  `expert_down` shares its `(640, 2560)` shape with `shared_down`, which does
+  claim, so the difference is the parent variant, not geometry. Controls: the
+  full route reproduces `20260915T022059` on mean/p95 (0.001394 vs 0.0013826;
+  0.007240 vs 0.0069630) and is broader by exactly the GR-down reads; the three
+  inert arms are mutually identical and pass every threshold, isolating this
+  route's arithmetic as the cause. Evidence:
+  `benchmarks/results/2026-09-30-q8-iu8-role-isolation/`.
+- **REMOVAL, now unblocked by the rejection above:** delete
+  `HIPENGINE_QWEN4_EXP_Q8_IU8_WMM` with its role scope, its dispatch selector
+  `_q8_iu8_wmma_dispatch`, its cache-key helper `_q8_iu8_role_cache_key` and its
+  contract tests, and update the candidate specs that reference it
+  (`production_dense_q8_restore`, `production_gr_up_restore`) so the gate no
+  longer resolves a rejected key. Preserve the captured evidence; do not rerun
+  unchanged arithmetic.
 
 ## Removed GR Corrections
 
