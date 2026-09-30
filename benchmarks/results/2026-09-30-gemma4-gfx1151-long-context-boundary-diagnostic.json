@@ -1,0 +1,119 @@
+{
+  "kind": "gemma4_gfx1151_long_context_boundary_diagnostic",
+  "performance_claim": false,
+  "status": "boundary-and-protocol-diagnostic",
+  "not_a_topline": "This is not a replacement for the 512/128 topline in benchmarks/README.md. It records where hipEngine's context ceiling is, what causes it, and the same-host llama.cpp ladder on both sides of it. Four of the nine requested prompt lengths have no hipEngine answer, and the recorded campaign ladder it disagrees with is unresolved, so no topline row is added or replaced.",
+  "recorded": "2026-09-30, gfx1151 Strix Halo (zbook, AMD Radeon 8060S, 124 GB unified), Gemma 4 26B-A4B UD-Q4_K_XL, both engines on the same artifact",
+  "why": "The campaign metric had been a 512-token prefill. The objective's complaint is prefill far below llama.cpp, and the requested comparison was 8K/16K/32K/64K/128K. Measuring that honestly required establishing first that hipEngine cannot run four of those five lengths at all, and then that the boundary is decode attention rather than prefill or memory.",
+
+  "artifact": {
+    "path": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "bytes": 17010980576,
+    "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+  },
+
+  "capability_boundary": {
+    "ceiling_tokens": 15616,
+    "enforced_at": "construction, before weights load, by gemma4_require_context_capacity",
+    "refusal": "Gemma 4 gfx1100 attention requires 67648 bytes of shared memory for head_dim=256, keys=16384; this kernel supports at most 65536 bytes and needs tiled attention for this context",
+    "per_requested_length": {
+      "8192": "accepted (context 8320)",
+      "16384": "refused",
+      "32768": "refused",
+      "65536": "refused",
+      "131072": "refused"
+    },
+    "binding_geometry": "the 5 full layers (head_dim 512, 2 KV heads, no window), not the 25 sliding ones",
+    "terms": {
+      "strict_prefill_block_kernel": "(head_dim + keys + threads) * 4 -> 15616 at head_dim 512",
+      "key_class_decode_family": "(keys + 528) * 4 -> 15856",
+      "guard_reports": "the smaller, 15616"
+    },
+    "why_the_guard_is_not_stale": "Under the default production profile both prefill geometries are tiled (gemma4_wmma_flash for sliding head_dim 256, gemma4_wmma_flash_full for full head_dim 512, fixed LDS at K_BATCH 32 and 16), so prefill does not bind. Decode does: no decode_attention variant is registered anywhere, and decode_slices partitions output dimensions rather than keys, so the split does not reduce per-call LDS. A perfectly profile-aware guard would move the cap from 15616 to 15856 and still refuse 16384.",
+    "what_would_clear_it": "a tiled decode attention for head_dim 512 / 2 KV heads / GQA 8 - the decode twin of the gemma4_wmma_flash_full prefill kernel that already exists",
+    "memory_is_not_the_constraint": {
+      "kv_bytes_per_token": 225280,
+      "kv_mb_per_token": 0.2253,
+      "geometry": "25 sliding layers at 8 KV heads x head_dim 256 = 8192 B/token; 5 full layers at 2 KV heads x head_dim 512 = 4096 B/token",
+      "kv_at_128k_gb": 29.53,
+      "with_model_gb": 46.5,
+      "available_gb": 103
+    }
+  },
+
+  "protocol": {
+    "hipengine": "scripts/gemma4_campaign_bench.py --prompt <P> --output 128 --context <P+128> --samples 3 --warmup 1 --expect-gpu 8060S, production execution profile. capacity = prompt + 128 so the KV allocation matches llama-bench's n_ctx = n_prompt + n_gen.",
+    "llamacpp": "~/llama.cpp/llama.cpp-hip/build-hip/bin/llama-bench -m <artifact> -p 512,1024,2048,4096,8192,16384,32768,65536,131072 -n 128 -r 3 -ngl 99 -fa on, build 17252c769 (10685), f16 KV",
+    "parity": "public_path_parity True at every hipEngine point"
+  },
+
+  "hipengine_rows": {
+    "512": {"prefill_tps": 1175, "prefill_samples": [1175, 1173, 1192], "decode_tps": 32.32, "wall_s": 4.37},
+    "1024": {"prefill_tps": 1163, "prefill_samples": [1150, 1168, 1163], "decode_tps": 29.0, "wall_s": 5.29},
+    "2048": {"prefill_tps": 1137, "prefill_samples": [1127, 1143, 1137], "decode_tps": 29.27, "wall_s": 6.14},
+    "4096": {"prefill_tps": 1103, "prefill_samples": [1107, 1101, 1103], "decode_tps": 25.24, "wall_s": 8.75},
+    "8192": {"prefill_tps": 1042, "prefill_samples": [1039, 1043, 1042], "decode_tps": 16.72, "wall_s": 15.46},
+    "16384": "refused - capability miss",
+    "32768": "refused - capability miss",
+    "65536": "refused - capability miss",
+    "131072": "refused - capability miss"
+  },
+
+  "llamacpp_rows": {
+    "512": {"tps": 1029.67, "sd": 44.26, "samples": [978.744, 1058.89, 1051.37]},
+    "1024": {"tps": 1070.02, "sd": 4.77, "samples": [1069.36, 1065.62, 1075.09]},
+    "2048": {"tps": 1078.2, "sd": 6.6, "samples": [1081.87, 1082.15, 1070.59]},
+    "4096": {"tps": 943.18, "sd": 29.07, "samples": [936.8, 930.7, 928.3, 994.7, 925.5], "note": "recheck, fresh process, -r 5; the forward run's -r 3 mean of 1134.61 is biased by a warmup ramp"},
+    "8192": {"tps": 1193.6, "statistic": "warm median, pooled across two runs", "warm_samples": [1132.8, 1184.1, 1193.6, 1272.3, 1289.2], "cold_samples_excluded": [873.3, 876.4, 941.9]},
+    "16384": {"tps": 835.12, "sd": 4.59, "samples": [839.128, 836.134, 830.111]},
+    "32768": {"tps": 692.39, "sd": 0.5, "samples": [692.628, 691.818, 692.726]},
+    "65536": {"tps": 547.3, "sd": 34.77, "samples": [511.127, 580.473, 550.309]},
+    "131072": {"tps": 325.63, "sd": 0.8, "samples": [326.5, 325.0, 325.4]},
+    "tg128": {"tps": 41.04, "sd": 0.46, "samples": [40.6, 41.5, 41.0], "not_decode_at_length": "llama-bench runs this with n_prompt: 0, i.e. from an empty context, so it is not decode with KV resident at any of the lengths above"}
+  },
+
+  "comparison": {
+    "512": {"hipengine": 1175, "llamacpp": "~1055 warm", "ratio": "1.11x ahead"},
+    "1024": {"hipengine": 1163, "llamacpp": 1070.02, "ratio": "1.09x ahead"},
+    "2048": {"hipengine": 1137, "llamacpp": 1078.2, "ratio": "1.06x ahead"},
+    "4096": {"hipengine": 1103, "llamacpp": 943.18, "ratio": "1.17x ahead"},
+    "8192": {"hipengine": 1042, "llamacpp": 1193.6, "ratio": "1.15x behind"},
+    "16384": {"hipengine": "cannot run", "llamacpp": 835.12},
+    "32768": {"hipengine": "cannot run", "llamacpp": 692.39},
+    "65536": {"hipengine": "cannot run", "llamacpp": 547.3},
+    "131072": {"hipengine": "cannot run", "llamacpp": 325.63},
+    "reading": "The crossover is between 4096 and 8192. hipEngine's own decline is smooth and shallow - 1175 to 1042 across a 16x prompt range, -11 percent - while llama.cpp's is non-monotone and much steeper beyond 4096, falling 1078 to 326 from 2048 to 131072, a factor of 3.3. So it is llama.cpp that collapses at long context, and hipEngine never gets to show whether it would, because it stops at 8192."
+  },
+
+  "harness_defects": {
+    "fixed": {
+      "where": "scripts/gemma4_campaign_bench.py",
+      "what": "the harness built the LLM with hipengine.LLM(model=...) and then assigned generator.context_length afterwards, which moves only the generator's own request validation; the runner sizes its KV cache from the value the factory received at construction, so --context was decorative",
+      "evidence": "context_length 640/1152/2176/4224 against runner_capacity 8192 in all four artifacts",
+      "effect": "the 8192-token point failed with 'prompt (8192 tokens) plus max_tokens (128) exceeds runner capacity 8192', and the shorter points were measured against a KV allocation 13x larger than llama.cpp's",
+      "fix": "pass max_sequence_length=int(context) to LLM(...)",
+      "test": "tests/test_unit_gemma4_campaign_bench.py::test_resolve_generator_passes_the_context_to_the_llm_factory, RED confirmed against the pre-fix call form"
+    },
+    "recorded_not_fixed": {
+      "warmup_ramp": "The first ~2 samples after a model load are depressed by ~25 percent. Established by a fresh-process reverse-order re-run with -r 5, which reproduced the split at 8192 as [873.3, 876.4, 1184.1, 1132.8, 1193.6]. Any -r 3 mean that includes them is biased low, which is why pp512 and pp4096 in the forward run are not quotable."
+    }
+  },
+
+  "kv_allocation_sensitivity": {
+    "measured_at_512": {
+      "capacity_8192": {"prefill_tps": 1108, "decode_tps": 28.7, "wall_s": 4.89},
+      "capacity_640": {"prefill_tps": 1180, "decode_tps": 32.3, "wall_s": 4.37},
+      "delta": "prefill +6.5 percent, decode +12.6 percent, wall -10.6 percent"
+    },
+    "consequence": "A ladder mixing capacities is not quotable. This is why the hipEngine rows above were re-measured at matched capacity rather than taken from the first pass."
+  },
+
+  "open": {
+    "campaign_ladder_does_not_reproduce": "The recorded production ladder reads 1012.8/925.1/804.6/628.2 for 512/1024/2048/4096; this session measures 1175/1163/1137/1103. The 512 delta is consistent with the T16 LDS-leaf promotion (+8.3 percent) but 4096 is +76 percent, far too large for it. The LDS-leaf artifact recorded the same day independently reports 1103.1 at 4096, matching this run, so the campaign ladder is the one that looks wrong. Not explained.",
+    "published_topline_not_self_consistent": "benchmarks/README.md states 1242 prefill / 28.92 decode / 4.38 s wall for 512/128. 512/1242 + 127/28.92 = 4.80 s, not 4.38 s. Solving the stated wall gives 32.0 decode, which is what this session measures (32.32). The same triple appears in the leaf artifact, so it is not a downstream transcription error. Which figure is wrong is unresolved; the README was deliberately left unchanged rather than guessed at.",
+    "llamacpp_4096_anomaly": "pp4096 (943) is anomalously low against both pp2048 (1078) and pp8192 (1194), reproducibly in two independent runs. Growing attention cost does not predict that shape.",
+    "decode_not_yet_comparable": "hipEngine decode at length is recorded above; llama.cpp's is not, because llama-bench's tg test runs from an empty context. A real decode comparison needs scripts/gemma4_llamacpp_reference_bench.py and can only cover 8192 and below."
+  },
+
+  "limits": "Device validation is gfx1151 only; no gfx1100 claim. Peak memory was not measured - llama-bench does not report it and RSS is not a proxy on this host (the process showed 1.49 GB resident while holding a 17 GB model plus KV, because gfx1151 reports VMM: no and GPU allocations are GTT pages outside RSS). The 29.5 GB and 46.5 GB figures are computed from geometry, not measured."
+}
