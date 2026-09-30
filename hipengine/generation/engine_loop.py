@@ -57,7 +57,27 @@ DEFAULT_KV_POOL_INITIAL_PAGES = 128
 DEFAULT_KV_POOL_LOW_WATER_PAGES = 128
 DEFAULT_KV_POOL_CHUNK_PAGES = 128
 DEFAULT_KV_POOL_IDLE_GRACE_SECONDS = 30.0
-DEFAULT_MAX_PREFILL_CHUNK_TOKENS = 256
+# RT-1: this is a chunking cap, not the fairness bound.  ``_run_token_budget_round``
+# bounds per-tick prefill work with ``round_prefill_token_budget`` and then splits
+# that budget into chunks of ``min(prefill_chunk_size, prefill_budget)``, so a cap
+# BELOW the round budget cannot make the engine fairer - it only forces the same
+# budgeted work through more, smaller chunks, paying per-chunk overhead for no
+# fairness gain.  At 256 against a 1024 round budget the engine did 1024 tokens as
+# 4x256, which is the whole of the measured win.
+#
+# Measured with the PREFILL harness (``qwen4exp_profile_gap.py --mode prefill``),
+# 12 canonical cases, 3 reps per arm, one process per arm: 256 -> 1024 is -29.0% to
+# -35.7% wall for +1.24 GB peak at 4K, with ``token_id`` identical on 12/12.  Chunk
+# 1024 is the configuration the X-6 numerical gate certifies (it hashes
+# bit-identically at 4096).  ``logits_sha256`` differs from 256 on 12/12, so this is
+# an arithmetic change against the old default rather than a pure scheduling one.
+# That is a prefill-only measurement: it is not a decode-latency-under-concurrency
+# claim, and the tick bound it could have disturbed is the round budget above, which
+# is unchanged.
+#
+# Keep the two knobs equal; the relationship is pinned by
+# tests/test_unit_engine_loop_prefill_chunk.py.
+DEFAULT_MAX_PREFILL_CHUNK_TOKENS = 1024
 DEFAULT_ROUND_PREFILL_TOKEN_BUDGET = 1024
 DEFAULT_ROUND_DECODE_ROW_BUDGET = 32
 # Internal cross-thread routing absorbs transient scheduler bursts; the HTTP
