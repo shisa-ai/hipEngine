@@ -142,6 +142,16 @@ __global__ void gemma4_moe_weighted_accumulate_kernel(
     return;
   }
   const int64_t lane_base = token * top_k;
+  // Column tiling (D7): blockIdx.y splits `hidden` across blocks so a
+  // tokens == 1 decode launch is no longer one block trying to hide 8 x
+  // hidden dependent loads (measured 17.8 us/launch against a ~2 us floor
+  // for neighbouring single-block kernels -- latency-bound, not work-bound).
+  // Each column's slot loop still runs entirely inside one thread in lane
+  // order, so the sum per (token, col) is unchanged and every gridDim.y >= 1
+  // form is bit-identical; at gridDim.y == 1 the index arithmetic reduces to
+  // the previous one-block-per-token form instruction for instruction.
+  const int64_t col_base = static_cast<int64_t>(blockIdx.y) * blockDim.x;
+  const int64_t col_stride = static_cast<int64_t>(blockDim.x) * gridDim.y;
   // Upper bound as well as the existing negative check. ``expert_out`` holds
   // exactly tokens * top_k compact rows; when the compaction wrote nothing the
   // map is uninitialized and a large positive row would read outside both
@@ -149,7 +159,7 @@ __global__ void gemma4_moe_weighted_accumulate_kernel(
   // rather than followed, so an upstream numerical failure surfaces as a
   // wrong answer the parity test reports instead of a device fault.
   const int64_t row_limit = tokens * top_k;
-  for (int64_t col = threadIdx.x; col < hidden; col += blockDim.x) {
+  for (int64_t col = col_base + threadIdx.x; col < hidden; col += col_stride) {
     float accumulated = 0.0f;
     for (int64_t slot = 0; slot < top_k; ++slot) {
       const int64_t lane = lane_base + slot;
@@ -251,16 +261,17 @@ extern "C" int hipengine_gemma4_moe_weighted_accumulate_bf16(
     int64_t tokens,
     int64_t hidden,
     int64_t top_k,
+    int col_tiles,
     hipStream_t stream) {
   if (expert_out == nullptr || lane_to_row == nullptr ||
       sorted_weights == nullptr || out == nullptr || tokens <= 0 ||
-      hidden <= 0 || top_k <= 0) {
+      hidden <= 0 || top_k <= 0 || col_tiles < 1) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int threads = hidden < 256 ? static_cast<int>(hidden) : 256;
   hipLaunchKernelGGL(
       gemma4_moe_weighted_accumulate_kernel,
-      dim3(static_cast<unsigned int>(tokens)),
+      dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(col_tiles)),
       dim3(threads),
       0,
       stream,
