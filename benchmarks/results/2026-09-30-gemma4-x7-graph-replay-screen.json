@@ -1,0 +1,25 @@
+{
+  "schema": "gemma4-x7-graph-replay-screen/v1",
+  "created_utc": "2026-09-30T05:18:45+00:00",
+  "command": "ROCR_VISIBLE_DEVICES=1 .venv/bin/python scratch/d8_graph_replay_screen.py",
+  "git_commit": "b097a87bef52e2c1717adb7329b87ca9d8f05f96",
+  "question": "What is the HOST submission cost of a decode step's 784 launches versus one hipGraphLaunch of the captured chain - the ceiling X7 can aim at before any engine wiring?",
+  "method": "784 hipMemsetAsync ops on a dedicated capture stream (the legacy default stream cannot capture - HIP error 900): timed as direct launches, then captured once, instantiated, and replayed 50x with a drain before each timed replay so queue backpressure is excluded from the timed region.",
+  "results_host_us": {
+    "direct_784_ops_median": 1423.3,
+    "direct_784_ops_min": 1414.4,
+    "direct_784_ops_max": 1444.3,
+    "graph_replay_median": 12.5,
+    "graph_replay_min": 11.4,
+    "graph_replay_max": 54.2,
+    "saved_ms_per_step": 1.411
+  },
+  "capture_ok": true,
+  "readings": [
+    "Graph replay removes ~99% of host submission time at decode launch counts (1423 -> 12.5 us).",
+    "Without the drain-before-timing, replay medians bimodal at ~2-3 ms: that is device backpressure from the synthetic 784 MB chain, not graph cost - engine-side measurements must pace the same way.",
+    "WALL ceiling stays bounded by the committed wall-minus-busy gap (~1.7 ms/step): launch host time overlaps device work today.",
+    "Integration fact: capture needs a non-default stream; gemma4's wrappers all default to stream 0, so wiring X7 means threading an explicit stream through _forward_block_inner.",
+    "Design question for the build: kernels whose grid scales with context length (global-layer attention tiles) break stable capture; the existing gguf_decode_graph module solves the analogous problem for qwen35 with device-side scalar recording (record_i64_scalar_indexed / advance_decode_position_i64) - port that pattern rather than recapture per step (recapture would re-issue the very launches replay is meant to save)."
+  ]
+}
