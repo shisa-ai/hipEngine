@@ -106,25 +106,67 @@ engagement evidence above shows the teacher resolved identically, so it did not
 move these numbers. The same argument applies to `b9f73e808` (registration
 order) and `76dd95d7f` (route removed).
 
-### What remains, and the leading candidate
+### Bisected: two changes, both decode-path promotions
 
-A change that alters arithmetic **without** altering dispatch. In that class:
+Binary searches over `035185fb2..HEAD` (88 commits) with a **reduced but
+validated-sensitive** protocol - `--case-id code-p512 --case-id general_en-p512
+--decode-steps 24 --repeat-runs 3` - identify both boundaries. The reduced
+protocol reproduces the recorded certificate's `kl_max` exactly at `035185fb2`
+(`1.530440e-02`), which is what makes it usable as a bisect probe.
 
-- **`6c3c46b04` (DE-3) is the leading candidate.** It changes the block width
-  of the decode-shaped pack8 GEMV at `out <= 640` - "32 threads per output
-  rather than 16; max relative divergence 2.6e-7" - as a runtime dispatch
-  parameter in `hipengine/runtime/gguf_linear.py`, not a kernel swap. The same
-  kernel family runs, so route-engagement counters are unchanged, while the
-  K-reduction tree differs. It is a **decode-path** change and the gate runs
-  **128 decode steps per case**.
-- `3b6497b25` promoted the RT-4 bounded KV reset, which changes device state
-  rather than dispatch.
-- `5fa2c2da5` promoted RT-1 (`DEFAULT_MAX_PREFILL_CHUNK_TOKENS` 256 -> 1024).
-  The gate pins the chunk explicitly, so this should not reach it, but it is not
-  excluded by measurement.
+| | commit | subject | teacher hash |
+| --- | --- | --- | --- |
+| start | `035185fb2` | (the recorded certificate) | `724d1bde44e23a14` |
+| change 1 | **`c66db0264`** | perf: promote the decode dp4a linear to the production default | `9d9f3d4a7a7b1f7f` |
+| change 2 | **`6c3c46b04`** | perf: promote DE-3 - the decode-shaped pack8 GEMV runs a 256-wide block at narrow projections | `e91c8bb18bc17106` |
+| HEAD | `642d90e05` | | `e91c8bb18bc17106` |
 
-None of these is bisected. The one thing the evidence does establish is the
-class: **an in-kernel arithmetic change on a path both arms share.**
+HEAD's teacher hash equals the value after change 2, so **exactly these two
+changes** lie in the range and there is no third.
+
+**Both are decode-path promotions, and neither is a kernel swap.**
+
+- `c66db0264` is a **one-line profile change**: it moves `Q4_DP4A64` into
+  `PRODUCTION_Q8_QSA_RESTORED_FLAGS` so the binder stops zeroing the route, and
+  its own message records "0 dp4a dispatches in the baseline trace, 210 in the
+  candidate".
+- `6c3c46b04` changes the decode-shaped pack8 GEMV's block width at
+  `out <= 640` ("32 threads per output rather than 16; max relative divergence
+  2.6e-7") as a runtime dispatch parameter in
+  `hipengine/runtime/gguf_linear.py`.
+
+This is consistent with the engagement evidence above: that block counts the
+**prefill** selectors (`wmma_prefill`, `q4k_rowtile`) and does not cover either
+decode route, which is why a genuine arithmetic change produced no visible
+difference there.
+
+### The systemic point
+
+This gate certifies a **prefill** route, but measures its drift over **128
+teacher-forced decode steps**. Its baseline is therefore decode-path
+arithmetic, and **any promoted decode-path arithmetic change invalidates a
+prefill-route certificate** - without touching the route under test. Both
+changes above did exactly that, and neither is a defect in the route.
+
+The route under test was not changed by either commit. What moved is the
+measurement's baseline, and with it the recorded drift. That is the sense in
+which the certificate is stale, and it is why the correct remedy is a re-gate
+rather than a revert.
+
+### Corrections to hypotheses named earlier
+
+Two earlier revisions of this file named causes that the bisect refutes, and
+both are recorded rather than quietly dropped:
+
+- `a9a33dd88` (the dispatch cache-key fix) was named first, on the reasoning
+  that a memoization-key change is the most direct way to make a teacher arm
+  resolve differently. The engagement comparison refutes it.
+- `6c3c46b04` (DE-3) was then named as the leading candidate. **It is real, but
+  it is the second change, not the first.**
+
+Both were named on plausibility before the cheap decisive check was run: for the
+first, a 30-second diff of the two artifacts' engagement fields; for the second,
+the bisect itself.
 
 One observation that fits a near-tie explanation rather than a quality one: the
 HEAD run has **better** top-1 agreement (0.9942 vs 0.9935) while its max KL is
