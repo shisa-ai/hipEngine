@@ -1047,3 +1047,46 @@ extern "C" int hipengine_gemma4_scale_bf16(
       scale);
   return static_cast<int>(hipGetLastError());
 }
+
+// Final-logit softapping: x = tanh(x / cap) * cap, elementwise and in place.
+// The host expression this replaces (numpy's np.tanh over the full vocab,
+// ``Gemma4Runner._collect_logits``) measured 0.528 ms of decode host time per
+// step — about a third of the measured host wall gap (X7 row). Applying it
+// here, before the D2H copy of the logits, moves that work onto the device.
+// tanhf rounds independently of numpy's libm, so the Python-side gate pins
+// the contract: two f32 ulps of the capped range elementwise, greedy argmax
+// position exact on unique tops, tie sets preserved (tests/
+// test_gpu_gemma4_softcap_kernel.py).
+__global__ void gemma4_logit_softcap_f32_kernel(
+    float* x,
+    int64_t total,
+    float cap) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    x[idx] = tanhf(x[idx] / cap) * cap;
+  }
+}
+
+extern "C" int hipengine_gemma4_logit_softcap_f32(
+    float* x,
+    int64_t total,
+    float cap,
+    hipStream_t stream) {
+  if (total <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int64_t blocks = (total + threads - 1) / threads;
+  const int64_t capped = blocks > 65535 ? 65535 : blocks;
+  hipLaunchKernelGGL(
+      gemma4_logit_softcap_f32_kernel,
+      dim3(static_cast<unsigned int>(capped)),
+      dim3(threads),
+      0,
+      stream,
+      x,
+      total,
+      cap);
+  return static_cast<int>(hipGetLastError());
+}
