@@ -1,0 +1,72 @@
+{
+  "kind": "qwen4exp-gdn-wy-chunk-drift-screen",
+  "replaces": "qwen4exp_gdn_chunk_scan_drift_screen.py (retracted: modelled gated linear attention)",
+  "shape": {
+    "Hk": 16,
+    "Hv": 48,
+    "Dk": 128,
+    "Dv": 128,
+    "seq": 512,
+    "kv_repeat": 3,
+    "seed": 0
+  },
+  "host": {
+    "platform": "Linux-7.1.6-1-cachyos-x86_64-with-glibc2.44",
+    "python": "3.13.13",
+    "numpy": "2.5.3"
+  },
+  "created_at": "2026-09-30T16:02:24Z",
+  "variants": {
+    "serial_fp32": {
+      "out_nmse": 5.3585512753163784e-14,
+      "state_nmse": 3.1689745505440445e-15,
+      "max_abs_dout": 3.725290298461914e-08
+    },
+    "wy_fp32_chunk8": {
+      "out_nmse": 4.2647050986984345e-14,
+      "state_nmse": 1.1157214158566843e-14,
+      "max_abs_dout": 2.60770320892334e-08
+    },
+    "wy_fp32_chunk16": {
+      "out_nmse": 3.855548231278227e-14,
+      "state_nmse": 1.1170364654760508e-14,
+      "max_abs_dout": 2.421438694000244e-08
+    },
+    "wy_fp32_chunk32": {
+      "out_nmse": 3.6098730795455934e-14,
+      "state_nmse": 1.1205576726213958e-14,
+      "max_abs_dout": 2.2351741790771484e-08
+    },
+    "wy_fp32_chunk64": {
+      "out_nmse": 3.476956610448369e-14,
+      "state_nmse": 1.1062024193968703e-14,
+      "max_abs_dout": 2.2351741790771484e-08
+    },
+    "serial_fp16_operands": {
+      "out_nmse": 1.2967445967811266e-07,
+      "state_nmse": 4.4228659822425845e-08,
+      "max_abs_dout": 3.7439167499542236e-05,
+      "chunk": null,
+      "fp16_operands": true
+    },
+    "wy_fp16_operands_chunk_64": {
+      "out_nmse": 8.637052695259084e-08,
+      "state_nmse": 6.09331960879869e-10,
+      "max_abs_dout": 2.4462584406137466e-05,
+      "chunk": 64,
+      "fp16_operands": true
+    },
+    "wy_fp16_operands_chunk_128": {
+      "out_nmse": 8.639591623003721e-08,
+      "state_nmse": 6.093339722184327e-10,
+      "max_abs_dout": 2.4462584406137466e-05,
+      "chunk": 128,
+      "fp16_operands": true
+    }
+  },
+  "committed_oracle_cross_check": {
+    "out_nmse": 1.5560719780348154e-14,
+    "state_nmse": 6.767640975611105e-15
+  },
+  "caveat": "synthetic inputs and a NumPy model of the fp32 arithmetic, not the real kernel; this measures arithmetic drift only and does not establish production admissibility"
+}
