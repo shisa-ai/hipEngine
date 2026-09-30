@@ -153,6 +153,52 @@
   },
   "verdict": "CONFIRMED: the HC down projections are 64.0% of the cast total, the largest single block, so moving the F16 write into the HC mix epilogue first is the right order.",
   "recoverable_estimate_ms": 87.334,
-  "recoverable_estimate_note": "Per element the cast reads F32 (4 B) and writes F16 (2 B) = 6 B; the producer would add a 2 B F16 store, so net traffic change is -4 B per element, i.e. ~4/6 of the cast time IF both run at the same effective rate. 4/6 x 131.001 = 87.3 ms for the whole row, 4/6 x 83.860 = 55.9 ms for the HC down pair. This is an estimate, not a measurement; the cast may be launch-bound rather than bandwidth-bound.",
-  "limits": "One model, one quant, one host (gfx1151), one case (code-p4096), one window, one profile, prefill only. Per-role-per-kernel join inside a marked window; diagnostic, not a wall measurement."
+  "recoverable_estimate_note": "SUPERSEDED by bandwidth_measurement: the whole-row 87.3 ms is an over-estimate; the defensible target is the HC pair at 55.9 ms (0.36%).",
+  "limits": "One model, one quant, one host (gfx1151), one case (code-p4096), one window, one profile, prefill only. Per-role-per-kernel join inside a marked window; diagnostic, not a wall measurement.",
+  "bandwidth_measurement": {
+    "method": "Raw rocprofv3 kernel trace filtered to the qwen4exp_prefill_p4096_ marker window; elements = Grid_Size_X*Y*Z as WORK-ITEMS (section 8 rule 2), NOT multiplied by Workgroup_Size_X. Reproduces the artifact's 1056 launches / 131.001 ms exactly.",
+    "trace": "/tmp/qwen4exp-ledger-20260928-current/role-trace/gfx1151/3033290_kernel_trace.csv",
+    "byte_model": "read F32 (4 B) + write F16 (2 B) = 6 B per element",
+    "by_launch_size": [
+      {
+        "elements_per_launch": 10485760,
+        "shape": "1024x10240 (the hc_*_down pair)",
+        "launches": 256,
+        "ms": 83.861,
+        "gb": 16.106,
+        "gbps": 192.1
+      },
+      {
+        "elements_per_launch": 2621440,
+        "shape": "1024x2560",
+        "launches": 544,
+        "ms": 26.255,
+        "gb": 8.556,
+        "gbps": 325.9
+      },
+      {
+        "elements_per_launch": 6291456,
+        "shape": "1024x6144",
+        "launches": 128,
+        "ms": 20.039,
+        "gb": 4.832,
+        "gbps": 241.1
+      },
+      {
+        "elements_per_launch": 655360,
+        "shape": "1024x640",
+        "launches": 128,
+        "ms": 0.845,
+        "gb": 0.503,
+        "gbps": 595.4
+      }
+    ],
+    "total_ms": 131.001,
+    "total_gb": 29.998,
+    "total_gbps": 229.0,
+    "total_pct_of_221_gbps_roof": 103.6,
+    "finding": "The cast's apparent bandwidth RISES as the transfer shrinks, from 192.1 GB/s at 10,485,760 elements per launch to 595.4 GB/s at 655,360 - and the total of 229.0 GB/s is 103.6% of the DRAM roof, which is impossible for pure DRAM traffic. So the small roles are partly L2-served and their 6 B/element model is NOT a DRAM model.",
+    "defensible_target": "The hc_*_down pair alone: 16.106 GB at 192.1 GB/s = 86.9% of roof, the largest transfers and the only ones plausibly DRAM-bound. Net saving 4/6 x 83.861 = 55.9 ms = 0.36% of the union.",
+    "refuted": "The whole-row 4/6 x 131.001 = 87.3 ms figure is an OVER-ESTIMATE: it applies a DRAM byte model to roles whose apparent bandwidth is above the DRAM roof, i.e. whose traffic is partly served by cache and would not be saved by eliminating the kernel."
+  }
 }
