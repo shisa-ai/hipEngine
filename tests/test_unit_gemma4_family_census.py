@@ -32,6 +32,10 @@ DENSE_Q5_DIRECT = (
     "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel"
     "<unsigned short, 5, false, false, true>(...)"
 )
+FUSED_ROUTER = (
+    "void (anonymous namespace)::gemma4_router_topk_fused_kernel"
+    "<unsigned short>(...)"
+)
 
 
 def test_t16_gate_up_owners_bucket_to_gate_up():
@@ -53,3 +57,10 @@ def test_dense_q5_direct_instance_is_not_claimed_by_gate_up():
 def test_unrelated_owners_keep_their_buckets():
     assert family_of(ENGINE_FAMILIES, "q5_1_selected_gemv_bf16_bf16_kernel(...)") == "moe.down"
     assert family_of(ENGINE_FAMILIES, "gemma4_rmsnorm_kernel<...>(...)") == "norm"
+
+
+def test_fused_router_kernel_buckets_to_router_gemm():
+    # The fused rows=1 router carries the projection, so it belongs with
+    # the router GEMV family rather than falling into other like its
+    # unfused siblings' removal would leave it.
+    assert family_of(ENGINE_FAMILIES, FUSED_ROUTER) == "moe.router_gemm"

@@ -46,6 +46,11 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rotary import (
     plan_gemma4_rotary_build,
     register_gemma4_rotary_kernels,
 )
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_router import (
+    gemma4_router_topk_bf16,
+    gemma4_router_topk_fused_bf16,
+    register_gemma4_router_kernels,
+)
 
 __all__ = [
     "GEMMA4_ROPE_DEFAULT_TYPE",
@@ -76,6 +81,8 @@ __all__ = [
     "gemma4_rope_inverse_frequencies",
     "gemma4_rotate_split_half",
     "gemma4_router_prescale_bf16",
+    "gemma4_router_topk_bf16",
+    "gemma4_router_topk_fused_bf16",
     "plan_gemma4_attention_build",
     "plan_gemma4_moe_build",
     "plan_gemma4_norm_build",
@@ -84,4 +91,5 @@ __all__ = [
     "register_gemma4_moe_kernels",
     "register_gemma4_norm_kernels",
     "register_gemma4_rotary_kernels",
+    "register_gemma4_router_kernels",
 ]

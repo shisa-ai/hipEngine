@@ -606,6 +606,7 @@ variants/dtypes remain in source.
 | `moonshine_residual+moonshine_layernorm` | HIP and CUDA Moonshine | rounded residual add → LayerNorm |
 | Moonshine MLP projection composites | HIP/CUDA Moonshine | bias projection → gated SiLU; projection → rounded residual |
 | `moe_ffn_selected/fused_dual_silu_down_*` | HIP GGUF Q4_K | selected dual gate/up projection → SiLU/product → selected down projection |
+| `router_topk` (Gemma 4 rows=1) | HIP gfx1100 Gemma 4 decode | router_prescale → router_logits → router_select → expert_weight_scale |
 | `moe_ffn_selected/fused_rotate_dual_silu_rotate_down_*` | HIP PARO | rotate1 → selected dual pack8 gate/up → SiLU/down-rotate → selected down pack8 projection |
 
 Fallback requirements:

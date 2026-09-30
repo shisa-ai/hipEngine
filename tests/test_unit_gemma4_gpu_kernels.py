@@ -239,6 +239,7 @@ def test_library_builds_and_exports_the_family(device) -> None:
         "hipengine_gemma4_rmsnorm_weightless_bf16",
         "hipengine_gemma4_head_rmsnorm_f32w_bf16",
         "hipengine_gemma4_router_prescale_bf16",
+        "hipengine_gemma4_router_topk_fused_bf16",
         "hipengine_gemma4_add_rmsnorm_scale_bf16",
         "hipengine_gemma4_expert_weight_scale_f32",
         "hipengine_gemma4_branch_add_bf16",
@@ -2543,3 +2544,245 @@ def test_qkv_split_on_a_k_eq_v_layer_leaves_v_untouched(device) -> None:
     np.testing.assert_array_equal(
         device.get(v_out, (rows, kv_width), np.uint16), sentinel
     )
+
+
+# --------------------------------------------------------------------------
+# Router fused rows=1: prescale + logits + select + per-expert scale in one
+# --------------------------------------------------------------------------
+
+
+def _router_fused_inputs(device, *, tokens: int, hidden: int, experts: int, top_k: int):
+    """Put one router problem on the device and return host copies too."""
+
+    rng = np.random.default_rng(2604)
+    host_hidden = (rng.standard_normal((tokens, hidden)) * 0.5).astype(np.float32)
+    host_scale = (rng.random(hidden).astype(np.float32) + 0.5) * 0.1
+    host_proj = (rng.standard_normal((experts, hidden)) * 0.2).astype(np.float32)
+    host_per_expert = (rng.random(experts).astype(np.float32) + 0.5) * 0.3
+    return (
+        device.put(_to_bf16_bits(host_hidden)),
+        device.put(host_scale),
+        device.put(host_proj),
+        device.put(host_per_expert),
+        device.out((tokens, top_k), np.int64),
+        device.out((tokens, top_k), np.float32),
+        host_hidden,
+        host_scale,
+        host_proj,
+        host_per_expert,
+    )
+
+
+def _router_fused_reference(host_hidden, host_scale, host_proj, host_per_expert, top_k):
+    from hipengine.kernels.cpu_reference.gemma4 import gemma4_rmsnorm, gemma4_router_topk
+
+    return gemma4_router_topk(
+        host_hidden,
+        norm_weight=None,
+        scale=host_scale,
+        proj_weight=host_proj,
+        per_expert_scale=host_per_expert,
+        top_k=top_k,
+        scalar_root_size=host_hidden.shape[-1] ** -0.5,
+        eps=1e-6,
+    )
+
+
+def _decisive_mask(host_hidden, host_scale, host_proj, top_k):
+    """Tokens whose k-th/(k+1)-th gap exceeds the bf16 prescale perturbation."""
+
+    from hipengine.kernels.cpu_reference.gemma4 import gemma4_rmsnorm
+    from hipengine.kernels.cpu_reference.ops import linear
+
+    hidden_size = host_hidden.shape[-1]
+    ref_hidden = _from_bf16_bits(_to_bf16_bits(host_hidden))
+    pre_f32 = (
+        gemma4_rmsnorm(ref_hidden, None, 1e-6) * host_scale * np.float32(hidden_size**-0.5)
+    ).astype(np.float32)
+    pre_bf16 = _from_bf16_bits(_to_bf16_bits(pre_f32))
+    logits_f32 = linear(pre_f32, host_proj)
+    perturbation = np.abs(logits_f32 - linear(pre_bf16, host_proj)).max()
+    ordered = np.sort(logits_f32, axis=-1)
+    gap = ordered[:, -top_k] - ordered[:, -(top_k + 1)]
+    return gap > perturbation, perturbation
+
+
+@_needs_hip
+def test_router_topk_fused_matches_the_reference(device) -> None:
+    """The fused rows=1 router reproduces gemma4_router_topk end to end."""
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_router import (
+        Gemma4RouterScratch,
+        gemma4_router_topk_fused_bf16,
+    )
+
+    tokens, hidden_size, num_experts, top_k = 1, 64, 12, 4
+    (
+        hidden_ptr,
+        scale_ptr,
+        proj_ptr,
+        per_expert_ptr,
+        selected_ptr,
+        weights_ptr,
+        host_hidden,
+        host_scale,
+        host_proj,
+        host_per_expert,
+    ) = _router_fused_inputs(
+        device, tokens=tokens, hidden=hidden_size, experts=num_experts, top_k=top_k
+    )
+
+    scratch = Gemma4RouterScratch(
+        tokens=tokens, hidden_size=hidden_size, num_experts=num_experts, top_k=top_k
+    )
+    # Sentinel coverage first, per the lesson in the P8 prescale-fold entry:
+    # a fused kernel that writes only part of its output can still agree with
+    # a reference on the elements a comparison happens to inspect. Every logit
+    # and every weight must be written before this call returns.
+    sentinel_logits = np.full((tokens, num_experts), -12345.0, dtype=np.float32)
+    sentinel_weights = np.full((tokens, top_k), 9999.0, dtype=np.float32)
+    logits_ptr = scratch.buffer("logits").ptr
+    copy_host_to_device(
+        DeviceBuffer(ptr=logits_ptr, nbytes=sentinel_logits.nbytes),
+        host_array_ptr(sentinel_logits),
+        sentinel_logits.nbytes,
+    )
+    copy_host_to_device(
+        DeviceBuffer(ptr=weights_ptr, nbytes=sentinel_weights.nbytes),
+        host_array_ptr(sentinel_weights),
+        sentinel_weights.nbytes,
+    )
+    try:
+        gemma4_router_topk_fused_bf16(
+            hidden_ptr,
+            scale_ptr,
+            proj_ptr,
+            per_expert_ptr,
+            selected_ptr,
+            weights_ptr,
+            tokens=tokens,
+            hidden_size=hidden_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            scratch=scratch,
+        )
+        got_selected = device.get(selected_ptr, (tokens, top_k), np.int64)
+        got_weights = device.get(weights_ptr, (tokens, top_k), np.float32)
+        got_logits = device.get(logits_ptr, (tokens, num_experts), np.float32)
+    finally:
+        scratch.free()
+
+    assert not (got_logits == -12345.0).any(), (
+        "fused router left logits unwritten -- sentinel coverage failure"
+    )
+    assert not (got_weights == 9999.0).any(), (
+        "fused router left routing weights unwritten -- sentinel coverage failure"
+    )
+
+    _probs, want_weights, want_selected = _router_fused_reference(
+        host_hidden, host_scale, host_proj, host_per_expert, top_k
+    )
+    decisive, perturbation = _decisive_mask(
+        host_hidden, host_scale, host_proj, top_k
+    )
+    assert decisive.any(), "no decisive token; the assertion below would prove nothing"
+
+    got = np.asarray(got_selected)
+    want = np.asarray(want_selected).astype(np.int64)
+    np.testing.assert_array_equal(
+        got[decisive],
+        want[decisive],
+        err_msg="fused router selection differs on a decisive token",
+    )
+    np.testing.assert_allclose(
+        got_weights, want_weights, atol=4 * perturbation, rtol=0
+    )
+
+
+@_needs_hip
+def test_router_topk_fused_agrees_with_the_unfused_chain(device) -> None:
+    """At tokens=1 the fused launch and the registered chain select the same experts.
+
+    The two paths share the bf16-rounded prescaled row, so they differ only in
+    f32 reduction order inside the projection: selection must match wherever
+    the decision is not inside that rounding, and weights only at the level
+    the reduction order can move a softmax numerator.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_router import (
+        Gemma4RouterScratch,
+        gemma4_router_topk_bf16,
+        gemma4_router_topk_fused_bf16,
+    )
+
+    tokens, hidden_size, num_experts, top_k = 1, 64, 12, 4
+    inputs = _router_fused_inputs(
+        device, tokens=tokens, hidden=hidden_size, experts=num_experts, top_k=top_k
+    )
+    (
+        hidden_ptr,
+        scale_ptr,
+        proj_ptr,
+        per_expert_ptr,
+        _selected_ptr,
+        _weights_ptr,
+        host_hidden,
+        host_scale,
+        host_proj,
+        host_per_expert,
+    ) = inputs
+    chain_selected_ptr = device.out((tokens, top_k), np.int64)
+    chain_weights_ptr = device.out((tokens, top_k), np.float32)
+    fused_selected_ptr = device.out((tokens, top_k), np.int64)
+    fused_weights_ptr = device.out((tokens, top_k), np.float32)
+
+    scratch = Gemma4RouterScratch(
+        tokens=tokens, hidden_size=hidden_size, num_experts=num_experts, top_k=top_k
+    )
+    try:
+        gemma4_router_topk_bf16(
+            hidden_ptr,
+            scale_ptr,
+            proj_ptr,
+            per_expert_ptr,
+            chain_selected_ptr,
+            chain_weights_ptr,
+            tokens=tokens,
+            hidden_size=hidden_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            scratch=scratch,
+        )
+        gemma4_router_topk_fused_bf16(
+            hidden_ptr,
+            scale_ptr,
+            proj_ptr,
+            per_expert_ptr,
+            fused_selected_ptr,
+            fused_weights_ptr,
+            tokens=tokens,
+            hidden_size=hidden_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            scratch=scratch,
+        )
+        chain_selected = device.get(chain_selected_ptr, (tokens, top_k), np.int64)
+        chain_weights = device.get(chain_weights_ptr, (tokens, top_k), np.float32)
+        fused_selected = device.get(fused_selected_ptr, (tokens, top_k), np.int64)
+        fused_weights = device.get(fused_weights_ptr, (tokens, top_k), np.float32)
+    finally:
+        scratch.free()
+
+    decisive, perturbation = _decisive_mask(
+        host_hidden, host_scale, host_proj, top_k
+    )
+    assert decisive.any(), "no decisive token; the assertion below would prove nothing"
+    np.testing.assert_array_equal(
+        fused_selected[decisive],
+        chain_selected[decisive],
+        err_msg="fused and chain selection differ on a decisive token",
+    )
+    # Both paths round prescale to bf16 before projecting, so only f32
+    # reduction order separates their logits; a softmax over top_k values
+    # moves by far less than this under that class of difference.
+    np.testing.assert_allclose(fused_weights, chain_weights, atol=1e-5, rtol=1e-4)
