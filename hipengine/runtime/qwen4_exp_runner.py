@@ -783,6 +783,44 @@ class Qwen4ExpDenseAttentionState:
             owns_position_context=owns_position_context,
         )
 
+    def written_cache_bytes(self) -> int:
+        """Bytes of K/V storage that may hold data from the current request.
+
+        Clearing K/V to the full allocated capacity costs time proportional to
+        capacity rather than to work done, so at native capacity a short request
+        pays to clear storage it never touched (RT-4: 29.182 ms at 128K, 99.6%
+        wasted).  This returns the exact bound instead.
+
+        Writes only ever occur below ``position``, so everything at or above
+        ``round_up(position, block_size)`` has never been written and is already
+        zero - either from the allocation memset or from an earlier bounded clear.
+        Rounding up to a whole block is REQUIRED rather than conservative: the
+        final partial block does contain written bytes.
+
+        ``position_host`` is host-resident, so this needs no device read.
+        """
+        written = int(self.position_host[0])
+        if written <= 0:
+            return 0
+        blocks = int(self.block_host.size)
+        if blocks <= 0 or self.block_size <= 0:
+            return 0
+        bytes_per_block = self.key_cache.nbytes // blocks
+        written_blocks = (written + self.block_size - 1) // self.block_size
+        return min(written_blocks * bytes_per_block, self.key_cache.nbytes)
+
+    def clear_written_cache(self) -> None:
+        """Zero only the K/V storage this request could have written.
+
+        Equivalent to clearing the full capacity by the invariant documented on
+        :meth:`written_cache_bytes`, but proportional to work done.
+        """
+        bound = self.written_cache_bytes()
+        if bound <= 0:
+            return
+        self.runtime.memset(self.key_cache.ptr, 0, bound)
+        self.runtime.memset(self.value_cache.ptr, 0, bound)
+
     def set_position(self, value: int) -> None:
         if self.closed:
             raise RuntimeError("Qwen4Exp attention state is closed")
@@ -809,6 +847,25 @@ class Qwen4ExpDenseAttentionState:
         for buffer in reversed(owned):
             free(buffer, runtime=self.runtime)
         self.closed = True
+
+
+def _qwen4_exp_bounded_kv_reset_enabled() -> bool:
+    # RT-4: clear only the K/V bytes this request could have written instead of the
+    # full allocated capacity.  Sound by the invariant on
+    # ``Qwen4ExpDenseAttentionState.written_cache_bytes``: allocation zeroes the
+    # whole cache and writes only ever land below ``position``, so bytes above the
+    # bound are already zero.  At native capacity the full clear spends 99.6% of
+    # 29.182 ms on untouched storage.
+    #
+    # Default-off pending an end-to-end measurement and the poison/shorter-after-
+    # longer qualification the RT-4 row specifies.  Set
+    # HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET=1 to enable.
+    return os.environ.get("HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET", "0") not in {
+        "",
+        "0",
+        "false",
+        "False",
+    }
 
 
 def _qwen4_exp_batched_position_enabled() -> bool:
@@ -7100,9 +7157,18 @@ class Qwen4ExpGGUFResidentModelRunner:
         self._require_open()
         assert self.state is not None
         self.state.zero()
+        bounded = _qwen4_exp_bounded_kv_reset_enabled()
         for attention in self.attention_states:
-            self.runtime.memset(attention.key_cache.ptr, 0, attention.key_cache.nbytes)
-            self.runtime.memset(attention.value_cache.ptr, 0, attention.value_cache.nbytes)
+            if bounded:
+                # RT-4: clear only what this request could have written.  Sound by
+                # the invariant on ``written_cache_bytes`` - allocation zeroes the
+                # whole cache and writes only ever land below ``position`` - so the
+                # bytes above the bound are already zero and clearing them is pure
+                # waste (29.182 ms at 128K, 99.6% of it spent on untouched bytes).
+                attention.clear_written_cache()
+            else:
+                self.runtime.memset(attention.key_cache.ptr, 0, attention.key_cache.nbytes)
+                self.runtime.memset(attention.value_cache.ptr, 0, attention.value_cache.nbytes)
             attention.set_position(0)
         for index in self.index_states:
             index.reset()

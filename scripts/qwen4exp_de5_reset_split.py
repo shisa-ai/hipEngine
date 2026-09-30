@@ -66,6 +66,10 @@ def main() -> int:
     ap.add_argument("--case", default="code-p1024")
     ap.add_argument("--steps", type=int, default=128)
     ap.add_argument("--repeats", type=int, default=2)
+    ap.add_argument("--capacity", type=int, default=None,
+                    help="Override max_sequence_length.  RT-4's case is a SHORT request at "
+                         "native capacity, where the full-capacity clear spends nearly all "
+                         "its time on storage the request never touched.")
     ap.add_argument("--json-out", type=pathlib.Path, default=None)
     args = ap.parse_args()
 
@@ -96,6 +100,11 @@ def main() -> int:
     token_ids = [int(t) for t in case["prompt_token_ids"]]
     prompt_tokens = int(case["prompt_tokens"])
     max_sequence_length = prompt_tokens + max(int(args.steps), transitions) + 8
+    if args.capacity is not None:
+        capacity = int(args.capacity)
+        if capacity <= prompt_tokens + int(args.steps):
+            raise SystemExit("capacity must exceed prompt_tokens + steps")
+        max_sequence_length = capacity
 
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
@@ -288,6 +297,7 @@ def main() -> int:
                 {
                     "case": args.case,
                     "model_root": str(args.model_root),
+                    "bounded_kv_reset": os.environ.get("HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET", "0"),
                     "sizes": sizes,
                     "rows": rows,
                 },

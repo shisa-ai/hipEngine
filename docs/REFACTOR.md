@@ -7870,6 +7870,27 @@ Two consequences worth knowing:
   occupancy, so the other quants in the decode-shaped pack8 family inherit it;
   that inheritance is still reasoned rather than measured.
 
+## `HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET` (RT-4)
+
+- Added 2026-09-30. When set, `Qwen4ExpGGUFResidentModelRunner.reset()` clears
+  only `[0, written_cache_bytes())` of each K/V cache instead of the full
+  allocated capacity. Measured at 128K capacity: reset 15.5 ms -> 1.13-1.74 ms,
+  saving 14.17 ms per request; decode unaffected in both regimes. Artifact:
+  `benchmarks/results/2026-09-30-qwen4exp-rt4-bounded-kv-reset/`.
+- **Exactness argument, not yet a gate result:** `allocate()` memsets the whole
+  cache and writes only land below `position`, so the skipped bytes are already
+  zero. This is why it is classified T1 rather than a reassociation. The binding
+  evidence is the `scripts/qwen4exp_layer2_profile_gate.py --candidate
+  bounded_kv_reset` run showing identical strict/candidate hashes.
+- Removal condition: promote to default once the exactness gate passes, then
+  delete the env flag, `_qwen4_exp_bounded_kv_reset_enabled`, and the falsy
+  spellings, keeping `tests/test_gpu_qwen4exp_kv_reset_bounded.py` as the
+  permanent contract for the bound. If the gate fails, delete the bounded path
+  and this entry instead.
+- Not exercised by any test: rollback, cancellation and c2. The bound is
+  re-derived from `position` on each prefill, which is an argument rather than a
+  measurement.
+
 ## `scripts/execution_profile_gguf_c1_pack8_wide_gate.py` (superseded harness)
 
 - Added 2026-09-30 (`e5f43ce21`) to measure this lever's KL envelope, and
