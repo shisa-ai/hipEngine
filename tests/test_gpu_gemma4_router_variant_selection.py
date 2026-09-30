@@ -200,3 +200,170 @@ def test_router_selection_is_stable_across_repeated_launches() -> None:
             second[name]["selected"],
             err_msg=f"{name} router selection is not reproducible run to run",
         )
+
+def test_router_chain_routes_full_prefill_blocks_through_sgemma(monkeypatch) -> None:
+    """Full prefill blocks take the F32 rocBLAS projection, and it agrees.
+
+    The P8 screen (artifact ``2026-09-30-gemma4-p8-router-gemm-screen.json``,
+    RX 7900 XTX, production shape hidden 2816 / 128 experts) measured the
+    production token-tile route at 0.1835 ms for a 1024-row block and
+    0.7363 ms at 4096 rows, against 0.1394 / 0.2444 for a bit-exact
+    bf16->f32 upcast of the prescaled row plus rocBLAS SGEMM over the F32
+    weights -- 1.32x and 3.01x -- at maxabs 4.7e-05 against a float64
+    reference (tile: 3.8e-06).  The named F16-downcast route was slower at
+    4096 (0.3030 ms) and two orders of magnitude less accurate (5.0e-03).
+    Blocks are at most ``DEFAULT_PREFILL_BLOCK`` (1024) rows, so the block
+    width is exactly the full-block tier; narrower blocks keep the tile.
+
+    What this asserts: the route actually *calls* SGEMM at 1024 rows (not
+    merely that it could), its selection equals float64's at least as often
+    as the tile route's does, and repeating the launch picks the same
+    experts -- a non-deterministic reduction would make the gate itself
+    unmeasurable.
+    """
+
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_router as router_mod
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_router import (
+        Gemma4RouterScratch,
+        gemma4_router_topk_bf16,
+    )
+    from hipengine.kernels.hip_gfx1100.moe.router import (
+        _router_library,
+        qwen35_router_logits_bf16_f32w_token_tile_16,
+        qwen35_router_select,
+    )
+
+    # RED: before the route exists the module has no get_rocblas attribute,
+    # and monkeypatch raises on the missing name.
+    calls = {"sgemm": 0}
+    real_get = router_mod.get_rocblas
+
+    class _CountingRocblas:
+        def sgemm_rowmajor_nt(self, *args, **kwargs):
+            calls["sgemm"] += 1
+            return real_get().sgemm_rowmajor_nt(*args, **kwargs)
+
+    monkeypatch.setattr(router_mod, "get_rocblas", lambda: _CountingRocblas())
+
+    block = 1024  # DEFAULT_PREFILL_BLOCK: the production full-block width
+    rng = np.random.default_rng(SEED)
+    hidden = _bf16_bits(rng.standard_normal((block, HIDDEN)) * 2.0)
+    weight = (rng.standard_normal((EXPERTS, HIDDEN)) * 0.05).astype(np.float32)
+    scale = rng.standard_normal(HIDDEN).astype(np.float32)
+    per_expert = ((rng.random(EXPERTS).astype(np.float32) + 0.5) * 0.3).astype(
+        np.float32
+    )
+    selected = np.zeros((block, TOP_K), dtype=np.int64)
+    routing = np.zeros((block, TOP_K), dtype=np.float32)
+
+    arrays = (hidden, weight, scale, per_expert, selected, routing)
+    buffers = [malloc(a.nbytes) for a in arrays]
+    scratch = Gemma4RouterScratch(
+        tokens=block, hidden_size=HIDDEN, num_experts=EXPERTS, top_k=TOP_K
+    )
+    library = _router_library()
+    try:
+        for arr, buf in zip(arrays, buffers, strict=True):
+            copy_host_to_device(buf, host_array_ptr(arr), arr.nbytes)
+
+        runs = []
+        for _ in range(2):
+            gemma4_router_topk_bf16(
+                buffers[0].ptr,
+                buffers[2].ptr,
+                buffers[1].ptr,
+                buffers[3].ptr,
+                buffers[4].ptr,
+                buffers[5].ptr,
+                tokens=block,
+                hidden_size=HIDDEN,
+                num_experts=EXPERTS,
+                top_k=TOP_K,
+                scratch=scratch,
+            )
+            copy_device_to_host(host_array_ptr(selected), buffers[4], selected.nbytes)
+            runs.append(np.sort(selected.copy(), axis=1))
+        assert calls["sgemm"] == 2, (
+            f"the 1024-row block routed the projection through SGEMM "
+            f"{calls['sgemm']} times out of 2 runs -- the shape-based "
+            f"selection is not taking the full-block tier"
+        )
+        np.testing.assert_array_equal(
+            runs[0],
+            runs[1],
+            err_msg="the SGEMM router selection is not reproducible run to run",
+        )
+
+        # The tile route, for the float64-agreement invariant the existing
+        # tests state: the new route must not disagree with float64 more
+        # often than the route it replaces at this width.
+        prescaled = malloc(block * HIDDEN * 2)
+        from hipengine.kernels.hip_gfx1100.gemma4.gemma4_router import (
+            gemma4_router_prescale_bf16,
+        )
+
+        gemma4_router_prescale_bf16(
+            buffers[0].ptr,
+            buffers[2].ptr,
+            prescaled.ptr,
+            block,
+            HIDDEN,
+            1e-6,
+            root_size=HIDDEN**-0.5,
+            stream=0,
+        )
+        # logits need a real (block, EXPERTS) buffer -- routing is (block, TOP_K).
+        logits_tile = malloc(block * EXPERTS * 4)
+        qwen35_router_logits_bf16_f32w_token_tile_16(
+            prescaled.ptr,
+            buffers[1].ptr,
+            logits_tile.ptr,
+            block,
+            HIDDEN,
+            EXPERTS,
+            threads=128,
+            stream=0,
+            library=library,
+        )
+        tile_logits = np.zeros((block, EXPERTS), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(tile_logits), logits_tile, tile_logits.nbytes)
+        tile_sel = _topk_sets(tile_logits)
+
+        # The reference anchors on the SAME bf16-prescaled row both routes
+        # consume (the chain prescales into its own scratch; this temp buffer
+        # is the identical deterministic launch on identical inputs), so the
+        # comparison isolates the projection's rounding and not the prescale.
+        prescaled_host = np.empty((block, HIDDEN), dtype=np.uint16)
+        copy_device_to_host(
+            host_array_ptr(prescaled_host), prescaled, prescaled_host.nbytes
+        )
+        reference = _topk_sets(_f32_logits(prescaled_host, weight))
+        chain_sel = runs[0]
+        chain_mismatch = int((chain_sel != reference).any(axis=1).sum())
+        tile_mismatch = int((tile_sel != reference).any(axis=1).sum())
+        differ = int((chain_sel != tile_sel).any(axis=1).sum())
+        print(
+            f"\nsgemma route at {block}x{HIDDEN}->{EXPERTS} top-{TOP_K}:\n"
+            f"  chain vs tile selection   : {differ}/{block}\n"
+            f"  chain vs float64 reference: {chain_mismatch}/{block}\n"
+            f"  tile  vs float64 reference: {tile_mismatch}/{block}"
+        )
+        assert chain_mismatch <= tile_mismatch, (
+            f"the SGEMM route disagrees with float64 more often than the "
+            f"token-tile route it replaces ({chain_mismatch} vs {tile_mismatch} "
+            f"of {block}): it is the defective variant, not an equivalent "
+            f"rounding"
+        )
+        free(prescaled)
+        free(logits_tile)
+    finally:
+        scratch.free()
+        for buf in reversed(buffers):
+            free(buf)

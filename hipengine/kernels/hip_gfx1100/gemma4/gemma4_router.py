@@ -3,7 +3,10 @@
 Assembles the router from kernels that are each tested on their own:
 
     weightless RMSNorm * scale * hidden_size**-0.5   gemma4_router_prescale_bf16
-    logits (BF16 hidden, F32 weights)                qwen35_router_logits_bf16_f32w_token_tile_16
+    logits (BF16 hidden, F32 weights)                >= 1024 rows: bf16 -> f32
+                                                     upcast + rocBLAS SGEMM over
+                                                     the F32 weights, else
+                                                     qwen35_router_logits_bf16_f32w_token_tile_16
     top-k + softmax + renormalise                    qwen35_router_select
     per-expert scale                                 gemma4_expert_weight_scale_f32
 
@@ -47,7 +50,7 @@ output is BF16, not F32** — ``gemma4_router_prescale_kernel`` is templated on
 ``scalar_t`` for both its input and its output, so the ``_bf16`` symbol writes
 BF16. That makes the ``qwen35_router_logits_bf16_f32w`` family the matching
 logits variant; the route takes its ``token_tile_16`` specialization at
-``threads=256``, which is the same arithmetic class with a tile that fits this
+``threads=128``, which is the same arithmetic class with a tile that fits this
 shape -- see the call site for the measurement. Pairing a BF16 prescale buffer
 with the F32-hidden variant reads the bf16 row as
 f32 pairs and produces uncorrelated logits. Rounding the prescaled row to BF16
@@ -63,6 +66,8 @@ from dataclasses import dataclass, field
 from hipengine.core.ctypes_cache import signed_kernel_fn
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, free as hip_free, malloc
+from hipengine.core.rocblas import get_rocblas
+from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
     build_gemma4_norm,
     gemma4_expert_weight_scale_f32,
@@ -133,6 +138,21 @@ _TOKEN_TILE_16_MIN_TOKENS = 32
 # a third of them have no K range at all.
 _TOKEN_TILE_16_THREADS = 128
 
+# Row count where the projection leaves the hand-written tile for a bit-exact
+# bf16 -> f32 upcast of the prescaled row plus rocBLAS SGEMM over the F32
+# weights. Measured on the production shape (RX 7900 XTX, screen artifact
+# benchmarks/results/2026-09-30-gemma4-p8-router-gemm-screen.json): the tile
+# takes 0.0671 ms at 512 rows and 0.1835 ms at 1024, 0.7363 ms at 4096; the
+# upcast + SGEMM pair takes 0.1265 / 0.1394 / 0.2444 -- so the pair wins from
+# about 896 rows up and loses below about 768. 1024 is DEFAULT_PREFILL_BLOCK,
+# the production full-block width, and a measured win point (1.32x at 1024,
+# 3.01x at 4096); narrower blocks keep the tile, which wins beneath it. The
+# weights stay F32 -- no downcast (the named F16 route was slower at 4096,
+# 0.3030 ms, and about 100x less accurate, maxabs 5.0e-03). The accumulation
+# order changes, so the teacher-forced gate gates this tier exactly as it
+# gated the token-tile tier.
+_ROUTER_SGEMM_MIN_TOKENS = 1024
+
 
 @dataclass
 class Gemma4RouterScratch:
@@ -187,6 +207,11 @@ class Gemma4RouterScratch:
             # BF16, not F32: the prescale kernel's output dtype is templated on
             # its input dtype, so the _bf16 symbol writes bf16.
             "prescaled": rows * self.hidden_size * _BF16_BYTES,
+            # F32 upcast of ``prescaled`` for the >= 1024-row SGEMM tier.
+            # buffer() is lazy, so a decode-only runner never allocates it;
+            # resident_bytes still counts it, because the whole-table upper
+            # bound is the point of _sizes().
+            "prescaled_f32": rows * self.hidden_size * _F32_BYTES,
             "logits": rows * self.num_experts * _F32_BYTES,
         }
         return sizes
@@ -307,8 +332,8 @@ def gemma4_router_topk_bf16(
     ``(tokens, top_k)`` **int64** and ``weights_ptr`` is ``(tokens, top_k)`` F32
     — both token-major, and the int64 width is the router-select ABI, which is
     also what the expert forward's group-scatter chain consumes. Both are
-    written directly; the scratch holds only the ``prescaled`` and ``logits``
-    intermediates.
+    written directly; the scratch holds the ``prescaled``, ``prescaled_f32``,
+    and ``logits`` intermediates.
 
     ``scratch`` must have been built for the same ``(tokens, hidden_size,
     num_experts, top_k)``; a mismatch is a programming error rather than a
@@ -380,7 +405,10 @@ def gemma4_router_topk_bf16(
         root_size=hidden_size**-0.5,
         stream=stream,
     )
-    # Prefill-size token counts take token_tile_16 at 128 threads rather than
+    # Prefill-size token counts take one of two projection tiers: a full
+    # 1024-row block routes through the F32 SGEMM (see
+    # ``_ROUTER_SGEMM_MIN_TOKENS``) and narrower blocks take token_tile_16
+    # at 128 threads rather than
     # the generic bf16_f32w entry point, which defaults to threads=512 with a
     # four-token tile. At this shape (hidden 2816) that leaves threads 352..511
     # with no K range at all, so 31% of every block idles behind a nine-round
@@ -392,7 +420,29 @@ def gemma4_router_topk_bf16(
     # default of 256 -- see ``_TOKEN_TILE_16_THREADS``.
     # Neither choice is bit-identical to what it replaces: the tiling and the
     # width both change the reduction, so the teacher-forced gate gates this.
-    if tokens >= _TOKEN_TILE_16_MIN_TOKENS:
+    if tokens >= _ROUTER_SGEMM_MIN_TOKENS:
+        # Full prefill block: F32 weights through rocBLAS SGEMM. The cast is
+        # a bit-exact bf16 -> f32 of the prescaled row; only the accumulation
+        # order changes versus the tile (maxabs 4.7e-05 against a float64
+        # reference, tile 3.8e-06), and the F32 weights survive -- the P8
+        # row's downcast proposal would have lost precision to go fast.
+        prescaled_f32 = scratch.buffer("prescaled_f32")
+        bf16_to_f32(
+            prescaled.ptr,
+            prescaled_f32.ptr,
+            tokens * hidden_size,
+            stream=stream,
+        )
+        get_rocblas().sgemm_rowmajor_nt(
+            prescaled_f32.ptr,
+            proj_ptr,
+            logits.ptr,
+            rows=tokens,
+            in_features=hidden_size,
+            out_features=num_experts,
+            stream=stream,
+        )
+    elif tokens >= _TOKEN_TILE_16_MIN_TOKENS:
         qwen35_router_logits_bf16_f32w_token_tile_16(
             prescaled.ptr,
             proj_ptr,
