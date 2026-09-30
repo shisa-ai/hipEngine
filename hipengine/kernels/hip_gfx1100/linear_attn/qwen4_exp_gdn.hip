@@ -1101,3 +1101,324 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_w32_f32(
       tokens, core_width, num_v_heads, head_v_dim);
   return static_cast<int>(hipGetLastError());
 }
+
+
+// ---------------------------------------------------------------------------
+// Chunked triangular / Woodbury-Young GDN prefill (GD-4).
+//
+// The UD-Q4_K_XL production lane's recurrence - the wave-norm register route,
+// qwen4_exp_gdn_prefill_f32_kernel<true, true> - holds 128 floats of state
+// per thread and compiles at VGPR_Count 256, the hardware maximum, which
+// permits only 2 waves per SIMD of a 64-wave-per-CU maximum (~12.5%
+// occupancy).  It is latency-bound by register-file capacity, confirmed by
+// hardware counter.
+//
+// This body keeps the 128x32 state tile in LDS instead and processes eight
+// tokens per step through chunk-level products, so each thread holds 16 state
+// elements rather than 128.  The arithmetic is the direct lower-triangular
+// form, evaluated in FP32 operands:
+//
+//   P[t]  = prod_{u<=t} decay[u]                      (prefix decay in chunk)
+//   R[t,s]= prod_{u=s+1..t} decay[u],  R[t,t] = 1     (transition)
+//   delta[t] = beta[t] * ( v[t] - P[t]*(k_t . H0)
+//                          - sum_{s<t} R[t,s]*(k_t . k_s)*delta[s] )
+//   out[t]   = P[t]*(q_t . H0) + sum_{s<=t} R[t,s]*(q_t . k_s)*delta[s]
+//   H1       = P[C-1]*H0 + sum_s R[C-1,s] * outer(k_s, delta[s])
+//
+// Measured outcome (GD-4): correct but slower than every route that matters -
+// 1.15-1.22x behind the non-multi tiled16 route, 1.15-1.26x behind the
+// wave-norm route at 1K/2K, and 1.75-2.26x behind the multi-column tiled16
+// route (85 VGPR) that already escapes the register bound.  See
+// benchmarks/results/2026-10-01-qwen4exp-gd4-wy-kernel-built/.
+//
+// FP32 operands, not fp16: the state-drift screen measures this form's fp32
+// drift at 0.65-0.80x the serial chain's OWN fp32 drift, while fp16 operands
+// cost 1.3e-7 NMSE and chunking does not remove that.  See
+// benchmarks/results/2026-09-30-qwen4exp-gd4-wy-chunk-drift/.
+//
+// Grid: (num_v_heads, head_v_dim / VTILE).  Block: 256 threads.
+// The state tile is owned exclusively by one block, so the write-back is
+// race-free.  A chunk shorter than CHUNK pads with beta=0 and decay=1, which
+// makes delta zero and P[C-1] equal to the true final prefix decay.
+// ---------------------------------------------------------------------------
+#define QWEN4EXP_WY_CHUNK 8
+#define QWEN4EXP_WY_VTILE 32
+#define QWEN4EXP_WY_THREADS 256
+#define QWEN4EXP_WY_HEAD 128
+
+__device__ inline float qwen4_exp_wy_warp_sum(float value) {
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    value += __shfl_xor(value, offset);
+  }
+  return value;
+}
+
+__global__ void __launch_bounds__(QWEN4EXP_WY_THREADS, 2)
+qwen4_exp_gdn_prefill_wy_f32_kernel(
+    const float* __restrict__ conv,
+    const float* __restrict__ alpha,
+    const float* __restrict__ beta_logits,
+    const float* __restrict__ dt_bias,
+    const float* __restrict__ a,
+    float* __restrict__ recurrent_state,
+    float* __restrict__ core_out,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim) {
+  constexpr int CHUNK = QWEN4EXP_WY_CHUNK;
+  constexpr int VTILE = QWEN4EXP_WY_VTILE;
+  constexpr int HEAD = QWEN4EXP_WY_HEAD;
+
+  __shared__ float s_state[HEAD][VTILE];
+  __shared__ float s_q[CHUNK][HEAD];
+  __shared__ float s_k[CHUNK][HEAD];
+  __shared__ float s_qscale[CHUNK];
+  __shared__ float s_kscale[CHUNK];
+  __shared__ float s_beta[CHUNK];
+  __shared__ float s_decay[CHUNK];
+  __shared__ float s_p[CHUNK];
+  __shared__ float s_r[CHUNK][CHUNK];
+  __shared__ float s_keykey[CHUNK][CHUNK];
+  __shared__ float s_querykey[CHUNK][CHUNK];
+  __shared__ float s_keystate[CHUNK][VTILE];
+  __shared__ float s_querystate[CHUNK][VTILE];
+  __shared__ float s_delta[CHUNK][VTILE];
+
+  const int64_t v_head = blockIdx.x;
+  const int64_t tile = blockIdx.y;
+  if (v_head >= num_v_heads || tile * VTILE >= head_v_dim) {
+    return;
+  }
+  const int64_t k_head = v_head % num_k_heads;
+  const int64_t key_width = num_k_heads * head_k_dim;
+  const int64_t qkv_width = 2 * key_width + num_v_heads * head_v_dim;
+  const int64_t q_offset = k_head * head_k_dim;
+  const int64_t k_offset = key_width + q_offset;
+  const int64_t v_base = v_head * head_v_dim + tile * VTILE;
+  const int64_t v_offset = 2 * key_width + v_base;
+  const int64_t core_width = num_v_heads * head_v_dim;
+  const int64_t state_base = v_head * head_k_dim * head_v_dim;
+
+  const int tid = threadIdx.x;
+  const int warp = tid >> 5;
+  const int lane = tid & 31;
+
+  for (int index = tid; index < HEAD * VTILE; index += QWEN4EXP_WY_THREADS) {
+    const int row = index / VTILE;
+    const int col = index - row * VTILE;
+    s_state[row][col] = recurrent_state[state_base + row * head_v_dim
+                                        + tile * VTILE + col];
+  }
+  __syncthreads();
+
+  for (int64_t chunk_start = 0; chunk_start < tokens; chunk_start += CHUNK) {
+    const int active = static_cast<int>(
+        (tokens - chunk_start) < CHUNK ? (tokens - chunk_start) : CHUNK);
+
+    // --- one warp per chunk token: stage raw Q/K, reduce the norms ---
+    if (warp < CHUNK) {
+      if (warp < active) {
+        const float* conv_row = conv + (chunk_start + warp) * qkv_width;
+        float q_sumsq = 0.0f;
+        float k_sumsq = 0.0f;
+        for (int feature = lane; feature < HEAD; feature += 32) {
+          const float q_value = conv_row[q_offset + feature];
+          const float k_value = conv_row[k_offset + feature];
+          s_q[warp][feature] = q_value;
+          s_k[warp][feature] = k_value;
+          q_sumsq += q_value * q_value;
+          k_sumsq += k_value * k_value;
+        }
+        q_sumsq = qwen4_exp_wy_warp_sum(q_sumsq);
+        k_sumsq = qwen4_exp_wy_warp_sum(k_sumsq);
+        if (lane == 0) {
+          // Same scales the production kernel applies.
+          s_qscale[warp] = rsqrtf(q_sumsq + 1.0e-6f)
+              * rsqrtf(static_cast<float>(head_k_dim));
+          s_kscale[warp] = rsqrtf(k_sumsq + 1.0e-6f);
+          const int64_t scalar = (chunk_start + warp) * num_v_heads + v_head;
+          s_beta[warp] = sigmoid_f32(beta_logits[scalar]);
+          s_decay[warp] = expf(
+              a[v_head] * softplus_f32(alpha[scalar] + dt_bias[v_head]));
+        }
+      } else {
+        for (int feature = lane; feature < HEAD; feature += 32) {
+          s_q[warp][feature] = 0.0f;
+          s_k[warp][feature] = 0.0f;
+        }
+        if (lane == 0) {
+          s_qscale[warp] = 0.0f;
+          s_kscale[warp] = 0.0f;
+          s_beta[warp] = 0.0f;   // delta stays zero for padded tokens
+          s_decay[warp] = 1.0f;  // so P[CHUNK-1] is the true final prefix
+        }
+      }
+    }
+    __syncthreads();
+
+    for (int index = tid; index < CHUNK * HEAD; index += QWEN4EXP_WY_THREADS) {
+      const int token = index / HEAD;
+      const int feature = index - token * HEAD;
+      s_q[token][feature] *= s_qscale[token];
+      s_k[token][feature] *= s_kscale[token];
+    }
+    if (tid == 0) {
+      float product = 1.0f;
+      for (int token = 0; token < CHUNK; ++token) {
+        product *= s_decay[token];
+        s_p[token] = product;
+      }
+    }
+    if (tid < CHUNK * CHUNK) {
+      const int target = tid / CHUNK;
+      const int source = tid - target * CHUNK;
+      if (source == target) {
+        s_r[target][source] = 1.0f;
+      } else if (source < target) {
+        float product = 1.0f;
+        for (int step = source + 1; step <= target; ++step) {
+          product *= s_decay[step];
+        }
+        s_r[target][source] = product;
+      } else {
+        s_r[target][source] = 0.0f;
+      }
+    }
+    __syncthreads();
+
+    // --- intra-chunk coefficients and the token/state projections ---
+    if (tid < CHUNK * CHUNK) {
+      const int target = tid / CHUNK;
+      const int source = tid - target * CHUNK;
+      float key_key = 0.0f;
+      float query_key = 0.0f;
+      for (int feature = 0; feature < HEAD; ++feature) {
+        key_key += s_k[target][feature] * s_k[source][feature];
+        query_key += s_q[target][feature] * s_k[source][feature];
+      }
+      s_keykey[target][source] = key_key;
+      s_querykey[target][source] = query_key;
+    }
+    {
+      const int token = tid / VTILE;
+      const int col = tid - token * VTILE;
+      float key_state = 0.0f;
+      float query_state = 0.0f;
+      for (int row = 0; row < HEAD; ++row) {
+        const float state = s_state[row][col];
+        key_state += s_k[token][row] * state;
+        query_state += s_q[token][row] * state;
+      }
+      s_keystate[token][col] = key_state;
+      s_querystate[token][col] = query_state;
+    }
+    __syncthreads();
+
+    // --- forward substitution for delta (32 value lanes, sequential in t) ---
+    if (tid < VTILE) {
+      for (int target = 0; target < CHUNK; ++target) {
+        float correction = 0.0f;
+        for (int source = 0; source < target; ++source) {
+          correction += s_r[target][source] * s_keykey[target][source]
+              * s_delta[source][tid];
+        }
+        const float value = (target < active)
+            ? conv[(chunk_start + target) * qkv_width + v_offset + tid]
+            : 0.0f;
+        s_delta[target][tid] = s_beta[target]
+            * (value - s_p[target] * s_keystate[target][tid] - correction);
+      }
+    }
+    __syncthreads();
+
+    // --- outputs, then the chunk-final state ---
+    {
+      const int token = tid / VTILE;
+      const int col = tid - token * VTILE;
+      float accumulator = s_p[token] * s_querystate[token][col];
+      for (int source = 0; source <= token; ++source) {
+        accumulator += s_r[token][source] * s_querykey[token][source]
+            * s_delta[source][col];
+      }
+      if (token < active) {
+        core_out[(chunk_start + token) * core_width + v_base + col] = accumulator;
+      }
+    }
+    __syncthreads();
+    for (int index = tid; index < HEAD * VTILE; index += QWEN4EXP_WY_THREADS) {
+      const int row = index / VTILE;
+      const int col = index - row * VTILE;
+      float accumulator = s_p[CHUNK - 1] * s_state[row][col];
+      for (int source = 0; source < CHUNK; ++source) {
+        accumulator += s_r[CHUNK - 1][source] * s_k[source][row]
+            * s_delta[source][col];
+      }
+      s_state[row][col] = accumulator;
+    }
+    __syncthreads();
+  }
+
+  for (int index = tid; index < HEAD * VTILE; index += QWEN4EXP_WY_THREADS) {
+    const int row = index / VTILE;
+    const int col = index - row * VTILE;
+    recurrent_state[state_base + row * head_v_dim + tile * VTILE + col] =
+        s_state[row][col];
+  }
+}
+
+extern "C" int hipengine_qwen4_exp_gdn_prefill_wy_f32(
+    const void* conv,
+    const void* output_gate,
+    const void* alpha,
+    const void* beta_logits,
+    const void* dt_bias,
+    const void* a,
+    const void* norm_weight,
+    void* recurrent_state,
+    void* core,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!conv || !output_gate || !alpha || !beta_logits || !dt_bias || !a ||
+      !norm_weight || !recurrent_state || !core ||
+      num_k_heads != 16 || (num_v_heads != 32 && num_v_heads != 48) ||
+      head_k_dim != 128 || head_v_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(static_cast<uint32_t>(num_v_heads),
+                  static_cast<uint32_t>(head_v_dim / QWEN4EXP_WY_VTILE));
+  hipLaunchKernelGGL(
+      qwen4_exp_gdn_prefill_wy_f32_kernel,
+      grid,
+      dim3(QWEN4EXP_WY_THREADS), 0, stream,
+      static_cast<const float*>(conv),
+      static_cast<const float*>(alpha),
+      static_cast<const float*>(beta_logits),
+      static_cast<const float*>(dt_bias),
+      static_cast<const float*>(a),
+      static_cast<float*>(recurrent_state),
+      static_cast<float*>(core),
+      tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim);
+  // Same two-stage shape as the other prefill owners: the recurrence writes
+  // raw core, then the norm/gate pass overwrites it in place.  Without this
+  // the route is not a drop-in for the tiled16 interface.
+  const int err = static_cast<int>(hipGetLastError());
+  if (err != 0) return err;
+  const int64_t core_width = num_v_heads * head_v_dim;
+  hipLaunchKernelGGL(
+      qwen4_exp_gdn_core_norm_gate_f32_kernel,
+      dim3(static_cast<uint32_t>(tokens),
+           static_cast<uint32_t>(num_v_heads)),
+      dim3(32), 0, stream,
+      static_cast<float*>(core),
+      static_cast<const float*>(output_gate),
+      static_cast<const float*>(norm_weight),
+      tokens, core_width, num_v_heads, head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}

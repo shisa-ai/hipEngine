@@ -58,7 +58,23 @@ ROUTES = {
     "serial_lds": gdn.qwen4_exp_gdn_prefill_f32,
     "columnwarps": gdn.qwen4_exp_gdn_prefill_columnwarps_f32,
     "tiled16": gdn.qwen4_exp_gdn_prefill_tiled16_f32,
+    # GD-4: the chunked triangular/Woodbury-Young recurrence with the state
+    # tile in LDS instead of registers.  FP32 operands (the fp16 arm is
+    # measured in the drift screen and rejected there).
+    "wy_chunked": gdn.qwen4_exp_gdn_prefill_wy_f32,
+    # The route the UD-Q4_K_XL production lane actually dispatches: the
+    # arithmetic-recovery pass closes the column-warp gate, and
+    # GDN_REGISTER_PREFILL=1 + GDN_WAVE_NORM=1 then resolve the register
+    # owner to its wave-norm sibling (256 VGPR, same as register_state).
+    "wave_norm": gdn.qwen4_exp_gdn_wave_norm_prefill_f32,
+    # The non-UD lane's owner, built with -DHIPENGINE_QWEN4_GDN_DPP=1 and
+    # -DHIPENGINE_QWEN4_GDN_MULTI_COLUMN=1 (warps_per_block=8, cols=8), so it
+    # is a different .so from the rest.
+    "tiled16_multi": gdn.qwen4_exp_gdn_prefill_tiled16_multi_f32,
 }
+
+# Routes that live in the multi-column build rather than the plain one.
+_MULTI_LIBRARY_ROUTES = {"tiled16_multi"}
 
 
 def _alloc(shape, dtype, runtime, allocations):
@@ -108,6 +124,9 @@ class Fixture:
             for _ in range(2)
         ]
         self.library = gdn.build_qwen4_exp_gdn(load=True)
+        self.multi_library = gdn.build_qwen4_exp_gdn_dpp(
+            multi_column=True, load=True
+        )
 
     def launch(self, route: str):
         idx = 0 if route == "register_state" else 1
@@ -115,6 +134,10 @@ class Fixture:
             self.states[idx], host_array_ptr(self.state), runtime=self.runtime
         )
         fn = ROUTES[route]
+        library = (
+            self.multi_library if route in _MULTI_LIBRARY_ROUTES
+            else self.library
+        )
         fn(
             *[x.ptr for x in self.inputs],
             self.states[idx].ptr,
@@ -124,7 +147,7 @@ class Fixture:
             V_HEADS,
             DIM,
             DIM,
-            library=self.library,
+            library=library,
             runtime=self.runtime,
         )
 
