@@ -126,3 +126,38 @@ clears it by 2.4 orders.
 **Governing operating point: chunk 32**, with chunk 48 available if `delta` is also staged
 in fp16 and occupancy does not bind. The feasibility artifact's chunk 128 is superseded on
 the feasibility axis, not the numerics axis.
+
+---
+
+## The build cost: five components, one with no precedent in this family
+
+The row reads as "chunked GDN on fp16 WMMA" — i.e. a port of a known technique. Checking what
+the tree already has shows it is **not a port**:
+
+| # | component | precedent in tree |
+| ---: | --- | --- |
+| 1 | **fp16 WMMA GEMM primitive in `linear_attn/`** | **none.** WMMA appears only in the attention family, used inline inside `process_attention_tile` in `attention/laguna_flash_attention_prefill.hip` (intrinsics at lines 230 and 360). It is attention-shaped, not a generic GEMM helper, so it cannot be called as one. |
+| 2 | chunk-local scan (cooperative L in LDS, chunk 32, direct suffix products) | none — the family is entirely scalar-FMA |
+| 3 | chunk-axis state-propagation pass (the second kernel) | none |
+| 4 | variant registration with `tiled16` as the strict fallback | the registry pattern exists |
+| 5 | **a new GPU test envelope** | **conflicts with the existing one** — see below |
+
+### Component 5 is a contract change, not just a test
+
+`tests/test_gpu_qwen4_exp_gdn_hip.py::test_qwen4_exp_gdn_prefill_is_exact_to_serial_decode`
+holds every existing prefill route **exact to serial decode**. A chunked scan **cannot**
+satisfy that by construction: it reassociates the recurrence's floating-point sums, which is
+the entire point. The drift screen already measured what the reassociation costs (fp32 NMSE
+~5-7e-14, indistinguishable from round-off; fp16 state carry 7.961e-10 at chunk 32).
+
+So component 5 is not "add a test" — it is **adding a second, envelope-based prefill contract
+alongside the exact one**, which is the kind of change `docs/EXECUTION-PROFILES.md` governs
+rather than a local test edit.
+
+### What this means for the estimate
+
+**Five components, one of which has no precedent in the directory and one of which changes a
+test contract rather than adding to it.** This is a multi-session build, not a single
+iteration. Stated so the row is not started under a "port it" estimate — the arithmetic and
+numerics are now fully specified, and the remaining risk is concentrated in component 1
+(bringing WMMA into a scalar-FMA family) and component 3 (the second kernel's state handoff).
