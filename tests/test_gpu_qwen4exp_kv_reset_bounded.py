@@ -228,3 +228,25 @@ def test_shorter_request_after_longer_sees_no_stale_bytes() -> None:
         )
     finally:
         state.close()
+
+
+def test_bounded_reset_is_the_default_and_explicit_falsy_opts_out(monkeypatch) -> None:
+    """Promoted 2026-09-30: the bounded clear is the default path.
+
+    Exactness was proven by parent parity before promotion (identical
+    ``candidate_logits_sha256`` between ``production_baseline`` and
+    ``bounded_kv_reset`` on ``scripts/qwen4exp_layer2_profile_gate.py``), so the
+    full-capacity clear is now an opt-out kept only for rollback/bisection.
+    """
+    from hipengine.runtime.qwen4_exp_runner import _qwen4_exp_bounded_kv_reset_enabled
+
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET", raising=False)
+    assert _qwen4_exp_bounded_kv_reset_enabled() is True
+
+    for truthy in ("1", "true", "yes"):
+        monkeypatch.setenv("HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET", truthy)
+        assert _qwen4_exp_bounded_kv_reset_enabled() is True, truthy
+
+    for falsy in ("0", "false", "False", ""):
+        monkeypatch.setenv("HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET", falsy)
+        assert _qwen4_exp_bounded_kv_reset_enabled() is False, falsy

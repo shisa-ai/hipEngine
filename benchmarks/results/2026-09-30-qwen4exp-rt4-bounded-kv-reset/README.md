@@ -1,7 +1,9 @@
 # RT-4 — bounded KV reset at native capacity
 
-**Status:** implemented, unit-tested GREEN, measured; **default-off** pending the
-exactness gate.  Supersedes the `29.182 ms / 6,144 MiB` figures in the RT-4 row.
+**Status: PROMOTED TO THE DEFAULT (2026-09-30).**  Exactness proven by parent
+parity and by byte-level K/V identity; the full-capacity clear is now an opt-out
+(`HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET=0`) kept for rollback/bisection.
+Supersedes the `29.182 ms / 6,144 MiB` figures in the RT-4 row.
 
 **Date:** 2026-09-30
 **Host:** local workstation, AMD Radeon Pro W7900 (gfx1100/RDNA3), ROCm from the
@@ -93,11 +95,49 @@ size read past the end of the NumPy array; the pointer-shaped garbage in the
 first failure output was adjacent heap. `copy_host_to_device` and `memset` are
 also asynchronous, so tests must synchronize explicitly.
 
+## Exactness — proven, not asserted
+
+Two independent measurements, both controlled.
+
+**1. Parent parity.**  `scripts/qwen4exp_layer2_profile_gate.py` run twice on
+Qwen3.8-Flash-Next-UD-Q4_K_XL — `production_baseline` (no flag) and
+`bounded_kv_reset` (flag on).  Both use `base_profile="production"`, so the flag
+is the only variable:
+
+| | `production_baseline` | `bounded_kv_reset` |
+| --- | --- | --- |
+| `candidate_logits_sha256` | `260979d6...` | **`260979d6...`** (identical) |
+| `strict_logits_sha256` | `e5ae994e...` | **`e5ae994e...`** (identical) |
+| `measurement_valid` | true | true |
+
+The identical `strict_logits_sha256` across the two runs is the **control**: it
+shows the harness is reproducible, so the identical candidate hash is evidence
+rather than coincidence.
+
+**A single earlier run comparing the candidate against the strict arm showed
+differing hashes.**  That is the gate's intended strict-vs-production arithmetic
+difference and says nothing about this flag — the strict arm runs under the
+registered strict profile while candidates run under production.  For a T1
+candidate the binding comparison is parent parity, not the strict comparison.
+
+**2. Byte-level K/V identity.**  `scripts/qwen4exp_rt4_kv_compare.py` reads every
+K/V cache back to host and diffs the raw buffers.  Three arms — flag off, flag
+off again, flag on — are **byte-identical at all 12 attention states**, and the
+flag-off arm also matches across separate processes.  The invariant
+`last_nonzero < bound` holds everywhere: **1,064,959 vs 1,310,720**, i.e. the
+highest written byte sits exactly at `position` (1,039 x 1,024) and the bound
+clears a further 240 blocks of margin.
+
+**A phantom difference in the first arm comparison was a race in the probe, not
+the engine.**  `_read` called `copy_device_to_host` before
+`device_synchronize()`, so a copy issued while the last decode step was in flight
+captured partially-written state — a lower non-zero count and a different hash
+with no arithmetic change.  Moving the sync before the copy made the outlier
+vanish and the arms byte-identical.  **Any probe reading device buffers must sync
+before the copy**, not after.
+
 ## Not yet done
 
-- **The exactness gate.** `scripts/qwen4exp_layer2_profile_gate.py --candidate
-  bounded_kv_reset` (T1) must show identical strict/candidate state and logits
-  hashes. The gate refuses to run on a dirty tree, so it follows this commit.
 - **Rollback, cancellation and c2** behavior named by the row is not exercised
   here. The bound is derived from `position`, which `reset()` sets to 0, so a
   cancelled or rolled-back request re-derives a smaller bound on its next
