@@ -110,20 +110,41 @@ is a single `wg=128` GEMV streaming 675.43 MB in 2.965 ms = **227.8 GB/s, 103% o
 221 GB/s roof**, while the routed-expert owner of the same era measured **63.43 GB/s = 28.7%
 of roof**. Same host, same step, same file, same block width - a 3.6x spread.
 
-`DP-9`'s own next step already says what to do with this ("screen the largest surviving
-latency-bound shape against ordered load-ahead or one preselected library algorithm"), and
-the largest surviving shape is now named: `grid=163840` at 22.6% of decode, plus its
-`grid=40960` sibling at 34.2%.
+### The identity was then resolved, and it tempers the claim above
 
-**Caveat on this ranking.** The shape split is by launch signature, and a launch signature
-is not unique - in the real-name prefill trace both `q5_1_selected_sparse_exact_repair_row_publish`
-and `gguf_k_pack8_prefill_out_kernel` carry `wg=128, VGPR=48, LDS=512`. The decode names are
-unavailable by construction: `rocprofv3 --kernel-rename` replaces the kernel name with the
-enclosing ROCTX role, which is the only way to attribute the graph-replayed kernels at all.
-So the *slot* attribution above is exact (it comes from the profiler-assigned role) while the
-*kernel identity* is inferred from shape plus `DE-3`'s recorded 128-wide pack8 default. The
-ceiling and the ranking do not depend on that inference; the first experiment `DP-9` needs
-is the one that resolves it.
+The `x4full` stem carries a rocpd symbol table (`rocpd_info_kernel_symbol_*`) keyed by the
+same `Kernel_Id` the renamed kernel trace uses, so the role **and** the real kernel name can
+be recovered together from one stem. Doing that gives the decode's true top three:
+
+| calls | ms/step | share | wg | grid | kernel |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| **497** | **23.846** | **44.55%** | 128 | 5120 | `gguf_k_pack8_prefill_out_kernel<float,float,8>` |
+| 47 | 13.968 | 26.10% | 64 | 40960 | `gguf_q4_k_selected_dual_silu_logical128_t64` |
+| 43 | 5.420 | 10.13% | 64 | 163840 | `q5_1_selected_weighted_sum_logical256_t64_bf16` |
+
+**One kernel is 44.55% of decode**, and it is the `pack8` GEMV family - which is the family
+`DE-3` already measured and optimized. It serves *every* dense slot, `root.lm_head` among
+them, and its name says `prefill` while it runs 497 times per decode step.
+
+**That tempers rather than confirms the ranking above.** The largest owner is not an
+unexamined latency-bound shape: `DE-3` measured this exact family at `out=320` running
+40 workgroups at **92.4 GB/s (42% of roof)** and every shape at 2560+ at **90.8-102.9%**,
+then widened the block 128 -> 256 at the two starved shapes for -32.4% and -19.4% of kernel
+time. Its family figure was **24.005 ms/step**, matching the 23.846 measured here. So the
+dominant decode kernel is *already near roof at wide shapes and already fixed at narrow
+ones*, and its remaining gap is the small narrow shapes `DE-3` did not cover rather than a
+structural one.
+
+The honest reading: `DP-9`'s target is real and large, but the first thing its experiment
+should do is **subtract what `DE-3` already captured**, because the largest owner is the one
+already optimized. The `grid=163840` and `grid=40960` rows in the table above are the
+`expert_gate` shapes of a *different* kernel pair and remain the less-examined part.
+
+**Caveat on the shape table.** The shape split is by launch signature and a signature is not
+unique - in the real-name prefill trace both `q5_1_selected_sparse_exact_repair_row_publish`
+and `gguf_k_pack8_prefill_out_kernel` carry `wg=128, VGPR=48, LDS=512`. The symbol-table join
+above removes that ambiguity for the named kernels; the shape table is retained because it is
+what showed the `linear`/`moe` sharing in the first place.
 
 ## What this audit does not claim
 
