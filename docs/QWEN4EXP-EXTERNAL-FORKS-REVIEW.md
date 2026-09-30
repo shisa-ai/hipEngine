@@ -333,20 +333,31 @@ where the exact F64 result has max absolute value `13.595`:
 | F32 coltile (our strict and production default) | — | `1.51e-7` |
 | IU8 WMMA (`iu8_wmma_prefill`) | — | `3.90e-7` |
 | **F16 operands (our `dense_wide256`, `wmma_prefill`)** | `0.00283` | `2.08e-4` |
-| **BF16 operands (the comparator's class)** | `0.0922`-`0.0978` | `6.8e-3`-`7.2e-3` |
+| **BF16 operands — the comparator, MEASURED** | **`0.01466`** | **`1.078e-3`** |
+| ~~BF16 operands, derived bound~~ | ~~`0.0922`-`0.0978`~~ | ~~`6.8e-3`-`7.2e-3`~~ |
 
-The BF16 row is derived, not directly measured on the comparator's output. The
-artifact records `max_abs_vs_bf16both = 0.09499`: our F16 kernel's deviation
-from a reference with **both operands rounded to BF16**, which is the
-comparator's arithmetic class. Bounding that against our own `0.00283` from
-exact F64 gives the interval above. The comparator kernel's own output has not
-been compared against F64 directly, and the replay bridge already captures it,
-so closing that is cheap and is listed as E10 below.
+**The BF16 row is measured as of 2026-09-30, not derived.** The comparator
+kernel's own output was captured on this packet and scored against the exact F64
+reference in
+[`benchmarks/results/2026-09-16-cross-engine-replay/`](../benchmarks/results/2026-09-16-cross-engine-replay/README.md):
+max abs `1.466e-02` against an exact reference whose max abs is `13.595`, so
+`1.078e-3` normalized; mean abs `7.87e-04` against our `4.33e-08`; and it tracks
+the both-operands-bf16 reference to `2.17e-06` mean abs, confirming its
+declared arithmetic class.
 
-**The comparator's arithmetic is about 33x coarser than the path we spent this
-campaign gating.** For scale, our F16 kernel sits `1.11e-4` from an
-F16-simulated reference, so almost all of its `2.08e-4` relative error is
-operand rounding rather than accumulation order.
+**The withdrawn row was a triangle-inequality bound on elementwise maxima.** It
+added `max_abs_vs_bf16both` (`0.09499`, our F16 kernel's deviation from a
+bf16-both reference) to our F16 kernel's own `0.00283` from exact. That is a
+valid upper bound but a poor estimate — `max|a-c| <= max|a-b| + max|b-c|` holds,
+but the reverse does not, so the element attaining one maximum need not
+contribute to the other — and it landed **6.3x** above the directly measured
+value.
+
+**The correction is 6.4x and it revises the campaign's framing.** The comparator's
+arithmetic is **5.2x** coarser than the path we spent this campaign gating
+(`1.078e-3` against `2.08e-4`), not "about 33x". Our F16 kernel still sits
+`1.11e-4` from an F16-simulated reference, so almost all of its `2.08e-4`
+relative error is operand rounding rather than accumulation order.
 
 ### Why this matters to the campaign
 
@@ -356,7 +367,8 @@ operand rounding rather than accumulation order.
    path - converting once rather than once per column block - and is measured
    as such, not a precision dividend.
 2. **A BF16 variant is available to us and would be faster still**, at the cost
-   of moving from `2.08e-4` to roughly `7e-3` relative. Whether that survives
+   of moving from `2.08e-4` to a **measured** `1.078e-3` relative — a **5.2x**
+   move, not the 33x the withdrawn bound implied. Whether that survives
    the production envelope is an open question and must be answered by the
    gate, not by the comparator's example. It is plausible that it does not:
    the F16 path at layers 0-47 already fails mean KL, and BF16 would be coarser

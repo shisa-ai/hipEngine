@@ -403,15 +403,34 @@ identical-operand replay packet
 | F32 coltile — the strict dense route and production dense fallback | 1.51e-7 | This packet only; not an everywhere/model-level certificate |
 | IU8 WMMA — `iu8_wmma_prefill` | 3.90e-7 | This packet only; route/scope admission is separate |
 | **F16 operands — `dense_wide256`, `wmma_prefill`** | **2.08e-4** | Candidate-local model gate passes at 16-47; the sibling WMMA route fails at 0-47 |
-| **BF16-both simulated reference** | **6.8e-3 – 7.2e-3** | Derived bound, not measured comparator output |
+| **BF16 operands — the comparator's class, MEASURED** | **1.08e-3** | The pinned comparator's own output vs exact F64, identical operands |
+| ~~BF16-both simulated reference~~ | ~~6.8e-3 – 7.2e-3~~ | **WITHDRAWN — a 6.3x-high triangle-inequality bound, superseded by the measured row above** |
 
-The simulated BF16-both reference has roughly 33x the F16 kernel's normalized
-maximum error on this packet. This is a triangle-inequality bound derived from
-our F16 output's distance to that reference, not the comparator kernel's measured
-error, elementwise relative error, or end-to-end model quality. E10 should compare
-the captured comparator output directly against F64. Neither this packet nor
-operand precision establishes which engine has better task quality. BF16 also
-has greater dynamic range than F16; a precision-only ranking is not universal.
+**The BF16 row is now measured, not derived.** The pinned comparator
+(`mmb_dense_kernel<128, 256, 64, 64, 1>`, halo-box PR #63 `c4aa30229`) was
+captured on the identical-operand replay packet and scored against the exact F64
+reference in
+[`benchmarks/results/2026-09-16-cross-engine-replay/`](benchmarks/results/2026-09-16-cross-engine-replay/README.md):
+max abs **1.466e-02** against an exact reference whose max abs is **13.595**, so
+**1.078e-03** normalized, with mean abs **7.87e-04** against our **4.33e-08**.
+
+**The withdrawn row was a triangle-inequality bound on elementwise maxima**
+(`max_abs_vs_bf16both` 0.09499 plus our F16 kernel's own 0.00283 from exact).
+That is a valid upper bound but a poor estimate — the element attaining one
+maximum need not contribute to the other — and it landed **6.3x** above the
+directly measured value.
+
+**This revises the comparison by 6.4x.** The comparator's arithmetic is **5.2x**
+coarser than our F16-operand route (`1.08e-3` against `2.08e-4`), not the
+"about 33x" the bound implied. The earlier sentence "the simulated BF16-both
+reference has roughly 33x the F16 kernel's normalized maximum error on this
+packet" describes the *bound*, not the comparator. A BF16 arm of our own would
+move from `2.08e-4` to about `1.08e-3` — a **5.2x** move, not a 33x one — which
+materially lowers the cost of the experiment `DP-4` describes.
+
+Neither figure is a task-quality claim. This is one projection on one packet;
+BF16 also has greater dynamic range than F16, a precision-only ranking is not
+universal, and production correctness remains the admission criterion.
 
 Production correctness remains the admission criterion, not bit-exactness.
 Pre-converting to the **same F16 values** is worth testing before changing operand

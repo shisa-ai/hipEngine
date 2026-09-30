@@ -106,6 +106,44 @@ mean absolute difference 7.87e-04, on an output whose RMS is 0.834. The two
 kernels are not interchangeable outputs, which is the point — the 11.70x gap and
 the bf16 rounding are the same design decision seen twice.
 
+### Normalized against the exact reference
+
+The exact F64 reference has maximum absolute value **13.595**, so the table above
+normalizes to:
+
+| Arithmetic class | Max abs vs exact F64 | Max relative |
+| --- | ---: | ---: |
+| hipEngine production (`coltile8_rowbatch4_wave_scale_f32_f32_out`) | 2.06e-06 | **1.51e-07** |
+| **comparator `mmb_dense_kernel<128, 256, 64, 64, 1>`** | **1.466e-02** | **1.078e-03** |
+
+The comparator's normalized error is taken from `hipengine_vs_comparator`
+(`max_abs` 1.4659e-02), which is the comparator's distance from the exact
+reference to within hipEngine's own 2.06e-06, i.e. `1.078e-03` to four
+significant figures either way.
+
+**This replaces a derived bound that was 6.3x too high.**
+[`QWEN4EXP-EXTERNAL-FORKS-REVIEW.md`](../../../docs/QWEN4EXP-EXTERNAL-FORKS-REVIEW.md)
+§"What the measurement says" and [`QWEN4EXP-STATUS.md`](../../../docs/QWEN4EXP-STATUS.md)
+§2.6 both listed the comparator's arithmetic class as `6.8e-3`-`7.2e-3`
+normalized, derived as `max_abs_vs_bf16both` (0.09499) plus our F16 kernel's own
+distance from exact (0.00283). That is a triangle-inequality bound on
+**elementwise maxima**, and while it is a valid upper bound it is a poor
+estimate: `max|a-c| <= max|a-b| + max|b-c|` holds, but the reverse does not, so
+the element attaining one maximum need not contribute to the other. Here the two
+maxima sit at different elements and the bound lands **6.3x** above the
+directly measured value.
+
+The measured figure also revises the review's headline comparison. The
+comparator's arithmetic is **5.2x** coarser than our F16-operand route
+(`1.078e-03` against `2.08e-4`), not the "about 33x" the bound implied. That
+matters for a BF16 arm of our own: the review priced it as "moving from `2.08e-4`
+to roughly `7e-3` relative", and the measured class cost is `~1.08e-3` — a 5.2x
+move, not a 33x one.
+
+Neither figure is a task-quality claim. This is one projection on one packet;
+route and scope admission is separate, and production correctness remains the
+admission criterion.
+
 ## Why the gap is this large
 
 The two kernels differ in how many rows share one read of the weight, and the
