@@ -37,6 +37,7 @@ import pytest
 REPO = pathlib.Path(__file__).resolve().parents[1]
 GATE = REPO / "scripts" / "execution_profile_q8_wmma_prefill_layers_gate.py"
 ADMISSION = REPO / "benchmarks" / "fixtures" / "qwen4exp_admission_suite_18prompt.json"
+LONGFORM = REPO / "benchmarks" / "fixtures" / "qwen4exp_longform_heldout_4prompt.json"
 
 HELDOUT_CASES = (
     ("code_merge_intervals", "code"),
@@ -61,6 +62,15 @@ HELDOUT_CASES = (
 
 # The admission suite declares 24 transitions, not the canonical 128.
 HELDOUT_DECODE_STEPS = 24
+
+# The long-form sibling: four natural long tasks, one per category, all above the
+# ``dense_wide`` floor that the admission suite cannot reach.
+LONGFORM_CASES = (
+    ("long_code_booking_merge", "code"),
+    ("long_general_en_release_decision", "general_en"),
+    ("long_general_ja_retention_review", "general_ja"),
+    ("long_mixed_ja_en_acceptance", "mixed_ja_en"),
+)
 
 
 def _gate():
@@ -90,18 +100,36 @@ def _captures():
     return [_Capture(i, c) for i, c in HELDOUT_CASES]
 
 
+def _longform_captures():
+    return [_Capture(i, c) for i, c in LONGFORM_CASES]
+
+
 def _rows():
     return [int(c["prompt_tokens"]) for c in json.loads(ADMISSION.read_text())["cases"]]
 
 
-def _coverage(gate, rows, floor):
+def _longform_rows():
+    return [int(c["prompt_tokens"]) for c in json.loads(LONGFORM.read_text())["cases"]]
+
+
+def _coverage_for(gate, *, fixture_sha256, captures, rows, floor):
     return gate.qualification_coverage(
-        captures=_captures(),
-        fixture_sha256=gate.ADMISSION_FIXTURE_SHA256,
+        captures=captures,
+        fixture_sha256=fixture_sha256,
         prefill_chunk_size=1024,
         fixture_rows=list(rows),
         heldout_decode_steps=HELDOUT_DECODE_STEPS,
         min_engaging_rows=floor,
+    )
+
+
+def _coverage(gate, rows, floor):
+    return _coverage_for(
+        gate,
+        fixture_sha256=gate.ADMISSION_FIXTURE_SHA256,
+        captures=_captures(),
+        rows=rows,
+        floor=floor,
     )
 
 
@@ -139,6 +167,10 @@ def test_fixture_kind_separates_the_two_protocols():
     gate = _gate()
     assert gate._fixture_kind(gate.CANONICAL_FIXTURE_SHA256) == "canonical"
     assert gate._fixture_kind(gate.ADMISSION_FIXTURE_SHA256) == "category_heldout"
+    assert (
+        gate._fixture_kind(gate.LONGFORM_HELDOUT_FIXTURE_SHA256)
+        == "category_heldout_longform"
+    ), "the long-form suite is a separate protocol, not a second admission suite"
     assert gate._fixture_kind("0" * 64) == "unknown"
 
 
@@ -150,6 +182,116 @@ def test_heldout_fixture_hash_matches_the_file_on_disk():
     assert observed == gate.ADMISSION_FIXTURE_SHA256, (
         "the heldout fixture changed on disk; the gate would classify it as "
         "'unknown' and silently stop producing heldout coverage"
+    )
+
+
+def test_longform_fixture_hash_matches_the_file_on_disk():
+    """A drifted hash silently disables the only suite that can engage."""
+
+    gate = _gate()
+    if not LONGFORM.exists():
+        pytest.skip(f"long-form fixture not present: {LONGFORM}")
+    observed = hashlib.sha256(LONGFORM.read_bytes()).hexdigest()
+    assert observed == gate.LONGFORM_HELDOUT_FIXTURE_SHA256, (
+        "the long-form fixture changed on disk; the gate would classify it as "
+        "'unknown' and the engagement certificate would silently vanish"
+    )
+
+
+def test_longform_fixture_is_built_from_its_declared_source():
+    """The fixture must be reproducible from the prompt suite it names."""
+
+    if not LONGFORM.exists():
+        pytest.skip(f"long-form fixture not present: {LONGFORM}")
+    fixture = json.loads(LONGFORM.read_text())
+    declared = fixture["source"]["prompt_suites"]
+    assert list(declared) == ["benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl"]
+    for rel, digest in declared.items():
+        path = REPO / rel
+        assert path.exists(), f"declared prompt suite missing: {rel}"
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == digest, (
+            f"{rel} changed since the fixture was built; rebuild the fixture "
+            "rather than editing either side"
+        )
+
+
+def test_the_longform_suite_qualifies_the_dense_wide_route():
+    """The reason the sibling exists.
+
+    The promoted 16-47 default is ``dense_wide``, whose 257-row floor the
+    71-token admission suite cannot reach - so every heldout run over that suite
+    was a control between two runs of the same kernel. This suite clears it.
+    """
+
+    gate = _gate()
+    rows = _longform_rows()
+    floor = gate.ROUTE_ROW_FLOORS["dense_wide"]
+    assert max(rows) >= floor, "premise stale: the suite no longer clears the floor"
+    assert len(rows) == 4 and len({c for _, c in LONGFORM_CASES}) == 4, (
+        "one case per category, or a category is left unqualified while the "
+        "coverage check still reports full coverage of what it ran"
+    )
+
+    coverage = _coverage_for(
+        gate,
+        fixture_sha256=gate.LONGFORM_HELDOUT_FIXTURE_SHA256,
+        captures=_longform_captures(),
+        rows=rows,
+        floor=floor,
+    )
+    heldout = coverage["category_heldout"]
+    assert heldout["protocol"] == "category_heldout_longform_d128_three_repeat_v1"
+    assert heldout["checks"]["heldout_prompts_exceed_route_row_floor"] is True
+    assert heldout["complete"] is True
+    assert heldout["blocked_reason"] is None
+    assert coverage["fixture_kind"] == "category_heldout_longform"
+    assert coverage["complete"] is False, (
+        "a heldout run must never set the canonical protocol's complete flag"
+    )
+
+
+def test_the_two_heldout_protocols_are_not_interchangeable():
+    """Each suite is accounted for under its own hash, name and case-id set.
+
+    If the case-id set were shared, a four-case long-form run could be recorded
+    as a complete 18-case admission run, or the reverse - one certificate
+    standing in for the other, which is the accounting defect this file's
+    sibling packet records rather than a missing measurement.
+    """
+
+    gate = _gate()
+    floor = gate.ROUTE_ROW_FLOORS["dense_wide"]
+
+    # Long-form captures under the admission hash: every case id is wrong.
+    crossed = _coverage_for(
+        gate,
+        fixture_sha256=gate.ADMISSION_FIXTURE_SHA256,
+        captures=_longform_captures(),
+        rows=_longform_rows(),
+        floor=floor,
+    )["category_heldout"]
+    assert crossed["protocol"] == "category_heldout_natural_length_d128_three_repeat_v1"
+    assert crossed["checks"]["heldout_cases_once_each"] is False
+    assert crossed["complete"] is False
+
+    # Admission captures under the long-form hash: also wrong, and here the
+    # engagement check would otherwise pass, so the id check is load-bearing.
+    crossed_back = _coverage_for(
+        gate,
+        fixture_sha256=gate.LONGFORM_HELDOUT_FIXTURE_SHA256,
+        captures=_captures(),
+        rows=_rows(),
+        floor=floor,
+    )["category_heldout"]
+    assert crossed_back["protocol"] == "category_heldout_longform_d128_three_repeat_v1"
+    assert crossed_back["checks"]["heldout_cases_once_each"] is False
+    assert crossed_back["complete"] is False
+
+    # And the required hash must be the one that was actually run.
+    assert crossed["required_fixture_sha256"] == gate.ADMISSION_FIXTURE_SHA256
+    assert (
+        crossed_back["required_fixture_sha256"]
+        == gate.LONGFORM_HELDOUT_FIXTURE_SHA256
     )
 
 
