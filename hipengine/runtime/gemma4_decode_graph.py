@@ -342,6 +342,9 @@ class Gemma4DecodeGraphSession:
         from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
             build_gemma4_attention,
             decode_slices,
+            flash_admits,
+            flash_slices,
+            flash_workspace_bytes,
             split_workspace_bytes,
         )
 
@@ -360,6 +363,26 @@ class Gemma4DecodeGraphSession:
                     slices,
                     library=library,
                 )
+                # The launched route may be flash-decoding (negative slices),
+                # whose partials need more than the split's weights buffer;
+                # size for whichever the admission can pick, exactly as
+                # _launch_prefill does.
+                if flash_admits(
+                    tokens=1,
+                    head_dim=attention.head_dim,
+                    num_heads=attention.num_heads,
+                    num_kv_heads=attention.num_kv_heads,
+                ):
+                    need = max(
+                        need,
+                        flash_workspace_bytes(
+                            1,
+                            attention.num_heads,
+                            attention.head_dim,
+                            flash_slices(keys),
+                            library=library,
+                        ),
+                    )
                 runner._scratches[index].attention.buffer(
                     need, stream=self._stream, runtime=runtime
                 )

@@ -26,7 +26,8 @@ is the smoke for the capture path.
 The row-count standard applies: a ~60-row screening probe only passes with
 zero top-1 flips, while promotion evidence needs 500-1000 paired rows plus
 category, isolation and task gates not supplied by this single-chain evaluator.
-Gate requires observed split launches unless ``--slices 1`` explicitly requests
+Gate requires observed split-family launches (the incumbent split or
+flash-decoding) unless ``--slices 1`` explicitly requests
 single-kernel evaluation. The default 1024-token chain never reaches the split:
 use, for example, ``--prompt 2048 --prefill 1024`` to score 1023 decode rows.
 
@@ -184,13 +185,20 @@ def observe_decode_routes(routes: list[dict[str, int]]):
 
 
 def route_summary(routes: list[dict[str, int]]) -> dict[str, Any]:
+    # The split family is the multi-slice partials-plus-combine route: the
+    # incumbent split (selection 2) and flash-decoding (selection 3, the
+    # negative-slices split request) both exercise it.
     split = [row for row in routes if row["selection"] == 2]
+    flash = [row for row in routes if row["selection"] == 3]
+    family = split + flash
     return {
         "decode_launches": len(routes),
         "split_launches": len(split),
+        "flash_launches": len(flash),
+        "split_family_launches": len(family),
         "selections": sorted({row["selection"] for row in routes}),
-        "split_key_range": [min(row["keys"] for row in split),
-                            max(row["keys"] for row in split)] if split else None,
+        "split_key_range": [min(row["keys"] for row in family),
+                            max(row["keys"] for row in family)] if family else None,
         "head_dims": sorted({row["head_dim"] for row in routes}),
     }
 
@@ -199,7 +207,7 @@ def require_candidate_route(verdict: dict[str, Any], routes: dict[str, Any],
                             forced_slices: int | None) -> None:
     if not routes["decode_launches"]:
         verdict["failed"].append("no_decode_launches_observed")
-    elif forced_slices != 1 and not routes["split_launches"]:
+    elif forced_slices != 1 and not routes["split_family_launches"]:
         verdict["failed"].append("split_not_exercised")
     verdict["passed"] = not verdict["failed"]
 

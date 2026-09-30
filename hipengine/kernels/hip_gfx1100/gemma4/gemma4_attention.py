@@ -71,6 +71,7 @@ _ARGTYPES_DECODE = _ARGTYPES_PREFILL + (ctypes.c_void_p, ctypes.c_int)
 
 _DECODE_SYMBOLS = (_SYMBOL_DECODE_BF16, _SYMBOL_DECODE_F32)
 _SYMBOL_SPLIT_WORKSPACE_BYTES = "hipengine_gemma4_decode_split_workspace_bytes"
+_SYMBOL_FLASH_WORKSPACE_BYTES = "hipengine_gemma4_decode_flash_workspace_bytes"
 _SYMBOL_DECODE_SELECTION = "hipengine_gemma4_decode_selection"
 
 # Head dims the committed AOTriton runtime carries images for. The vendored tree
@@ -300,16 +301,75 @@ def decode_slices(keys: int, head_dim: int) -> int:
 def decode_selection(library: ctypes.CDLL | None = None) -> int:
     """Which decode kernel the launcher last selected.
 
-    0 = block kernel, 1 = key-class single kernel, 2 = key-class two-phase split.
-    Introspection for confirming that the intended path ran: the three are
-    numerically close by design, so a timing or a parity test cannot tell them
-    apart, and a caller who needs to know which one a real request took needs
-    this rather than an inference.
+    0 = block kernel, 1 = key-class single kernel, 2 = key-class two-phase
+    split, 3 = flash-decoding. Introspection for confirming that the intended
+    path ran: the four are numerically close by design, so a timing or a parity
+    test cannot tell them apart, and a caller who needs to know which one a
+    real request took needs this rather than an inference.
     """
 
     library = library or build_gemma4_attention(load=True)
     fn = signed_kernel_fn(library, _SYMBOL_DECODE_SELECTION, (), ctypes.c_int)
     return int(fn())
+
+
+def flash_slices(keys: int) -> int:
+    """KV slices the flash-decoding route asks for.
+
+    Single source of truth: the host wrapper trusts this count through the
+    negative-slices request and lays its partials out from it, so a mismatch
+    would be memory corruption rather than a slow path -- the unit battery
+    pins the values. One slice per ~32 keys keeps the block count at the
+    occupancy target (256 blocks at the 1024 entry threshold) while the cap
+    bounds the per-block LDS logits at context maximum.
+    """
+
+    if keys <= 0:
+        raise ValueError("keys must be positive")
+    per_slice = 32
+    return min(64, max(4, -(-int(keys) // per_slice)))
+
+
+def flash_admits(
+    *, tokens: int, head_dim: int, num_heads: int, num_kv_heads: int
+) -> bool:
+    """Capability admission for the flash decode route.
+
+    The kernel exists for exactly one shape family: head_dim 256 (the
+    sliding layers' geometry, one 256-lane warp tree over the row), one
+    token's q-pair per KV head (GQA ratio 2 packs the two query heads that
+    share K and V). Anything else -- head_dim 512 global layers, a different
+    GQA ratio, a multi-token block -- keeps the incumbent split/class chain,
+    which is the strict fallback flash rejects into as well. No identity,
+    path, or measured-performance terms: if the kernels can execute the
+    shape, it is admitted.
+    """
+
+    if tokens != 1 or head_dim != 256:
+        return False
+    if num_heads <= 0 or num_kv_heads <= 0 or num_heads % num_kv_heads != 0:
+        return False
+    return num_heads // num_kv_heads == 2
+
+
+def flash_workspace_bytes(
+    tokens: int,
+    num_heads: int,
+    head_dim: int,
+    slices: int,
+    *,
+    library: ctypes.CDLL | None = None,
+) -> int:
+    """Bytes of scratch the flash partials need, from the kernel's definition."""
+
+    library = library or build_gemma4_attention(load=True)
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_FLASH_WORKSPACE_BYTES,
+        (ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int),
+        ctypes.c_size_t,
+    )
+    return int(fn(int(tokens), int(num_heads), int(head_dim), int(slices)))
 
 
 def split_workspace_bytes(
@@ -370,13 +430,14 @@ def gemma4_attention_decode_variant(library: ctypes.CDLL | None = None) -> str:
     """Which decode kernel the launcher last selected.
 
     ``"class"`` is the single key-class kernel, ``"split"`` separates its
-    weights and dimension-partitioned value passes, and ``"block"`` is the
-    original block kernel. Introspection only; selection is not a quality gate.
+    weights and dimension-partitioned value passes, ``"flash"`` is the
+    KV-sliced flash route with its combine, and ``"block"`` is the original
+    block kernel. Introspection only; selection is not a quality gate.
     """
 
     library = library or build_gemma4_attention(load=True)
     fn = signed_kernel_fn(library, _SYMBOL_DECODE_VARIANT, [], ctypes.c_int)
-    return {0: "block", 1: "class", 2: "split"}[int(fn())]
+    return {0: "block", 1: "class", 2: "split", 3: "flash"}[int(fn())]
 
 
 def gemma4_attention_shared_bytes(*, head_dim: int, keys: int) -> int:
@@ -476,15 +537,35 @@ def _launch_prefill(
         # context length, because the kernel's parallelism is structurally low
         # (grid = tokens * num_heads is 16 blocks on a 96-CU GPU).
         slices = decode_slices(key_count, head_dim)
+        # Flash-decoding (D2) replaces the split for the sliding geometry when
+        # admitted: a negative slice count is the flash request, and the
+        # workspace is sized for whichever route is larger so a host-side
+        # rejection can fall through to the split without reallocating.
+        flash = slices > 1 and flash_admits(
+            tokens=tokens,
+            head_dim=head_dim,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+        )
+        request = -flash_slices(key_count) if flash else slices
         workspace = 0
         temporary = Gemma4AttentionScratch() if slices > 1 and scratch is None else None
         owner = scratch if scratch is not None else temporary
         try:
             if slices > 1:
+                need = split_workspace_bytes(
+                    tokens, num_heads, head_dim, key_count, slices, library=library
+                )
+                if flash:
+                    need = max(
+                        need,
+                        flash_workspace_bytes(
+                            tokens, num_heads, head_dim, flash_slices(key_count),
+                            library=library,
+                        ),
+                    )
                 workspace = owner.buffer(
-                    split_workspace_bytes(
-                        tokens, num_heads, head_dim, key_count, slices, library=library
-                    ),
+                    need,
                     stream=stream, runtime=runtime,
                 ).ptr
             fn = signed_kernel_fn(library, symbol, _ARGTYPES_DECODE, ctypes.c_int)
@@ -502,7 +583,7 @@ def _launch_prefill(
                 stream,
                 key_count,
                 ctypes.c_void_p(workspace),
-                ctypes.c_int(slices),
+                ctypes.c_int(request),
             )
             _check_launch(runtime, err)
         finally:
