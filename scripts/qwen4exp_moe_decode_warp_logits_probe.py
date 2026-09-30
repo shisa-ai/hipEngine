@@ -51,6 +51,7 @@ PACKETS = {
     "dual": ("1", "0"),          # warp256 gate/up only
     "fast-down": ("0", "fast"),  # warp256 T1 vectorized down only
     "pair": ("1", "fast"),       # combined packet
+    "down": ("0", "1"),          # warp256 T0 down only (exact-tree claim)
 }
 
 

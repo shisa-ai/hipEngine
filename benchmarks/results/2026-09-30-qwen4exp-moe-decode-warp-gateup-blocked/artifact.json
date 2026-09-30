@@ -1,0 +1,361 @@
+{
+ "schema": 1,
+ "kind": "qwen4exp_moe_decode_warp_gateup_promotion_blocked",
+ "date": "2026-09-30",
+ "status": "blocked",
+ "subject": "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP (gate/up warp256, gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256)",
+ "verdict": "BLOCKED on a measured numerical regression, not on speed. The candidate is 2.06x faster and would close ~2.79 ms/step, but it is 4.34x worse on the max row KL versus strict on heldout_mixed_review (0.26119 vs 0.06017) and 3.55x worse on mixed_ja_en_review (0.19023 vs 0.05364), and it spends a top-1 flip on heldout_mixed_review that the incumbent does not make (0.9880 vs 1.0000).",
+ "speed_evidence": {
+  "artifact": "/tmp/r11-moe-gemv-screen.json",
+  "source": {
+   "path": "/home/lhl/hipEngine",
+   "head": "cceed7336f0aded9a6a88cb77a9632dcae16eaa0",
+   "tracked_clean": false
+  },
+  "host": {
+   "hostname": "gfx1151",
+   "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+   "kernel": "7.1.6-1-cachyos",
+   "tuned_active": "It seems that tuned daemon is not running, preset profile is not activated.\nPreset profile: accelerator-performance",
+   "cpu_governors": {
+    "powersave": 32
+   },
+   "gpu_clock_policies": {
+    "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+   },
+   "rocm_platform": "10.0.0",
+   "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+   "scripts/qwen4exp_moe_gemv_decode_screen.py",
+   "--model-root",
+   "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+   "--compiler-version-file",
+   "/tmp/hipengine-hipcc-version.txt",
+   "--pairs",
+   "12",
+   "--output",
+   "/tmp/r11-moe-gemv-screen.json"
+  ],
+  "geometry": {
+   "hidden": 2560,
+   "ffn": 640,
+   "experts": 512,
+   "top_k": 10
+  },
+  "arms": [
+   {
+    "kernel": "gate_up_dp4a",
+    "median_us": 107.41641744971275,
+    "weight_bytes": 18432000.0,
+    "achieved_bandwidth_gbs": 171.59388143464182,
+    "ref_sha256": "687619302c66533c"
+   },
+   {
+    "kernel": "down_wsum",
+    "median_us": 104.7269906848669,
+    "weight_bytes": 12288000.0,
+    "achieved_bandwidth_gbs": 117.33364932613901,
+    "ref_sha256": "c5f8d1188aedc413"
+   },
+   {
+    "kernel": "down_warp256",
+    "median_us": 121.31314724683762,
+    "weight_bytes": 12288000.0,
+    "achieved_bandwidth_gbs": 101.29157703737938,
+    "ref_sha256": "c5f8d1188aedc413",
+    "drift_abs_max": 0.0,
+    "drift_abs_p999": 0.0
+   },
+   {
+    "kernel": "gate_up_warp256",
+    "median_us": 52.092596888542175,
+    "weight_bytes": 18432000.0,
+    "achieved_bandwidth_gbs": 353.83146744320095,
+    "ref_sha256": "60ec690de7315d53",
+    "drift_abs_max": 3.0517578125e-05,
+    "drift_abs_p999": 0.0
+   }
+  ],
+  "note": "same measurement also proved the down leg: down_warp256 is bit-exact (drift_abs_max 0.0, ref_sha256 equal to down_wsum) but 13.7% slower, rejected on speed."
+ },
+ "down_leg_t0_proof": {
+  "artifact": "/tmp/r11-admission-downonly.json",
+  "arm_flags": {
+   "incumbent": {
+    "dual": "0",
+    "down": "0"
+   },
+   "candidate": {
+    "dual": "0",
+    "down": "1"
+   }
+  },
+  "comparison": "production incumbent (both flags off)",
+  "envelope": {
+   "rows": 1494,
+   "kl_mean": 0.0,
+   "kl_p95": 0.0,
+   "kl_p99": 0.0,
+   "kl_max": 0.0,
+   "top1_overall": 1.0
+  },
+  "exact_equal_all_cases": true,
+  "cases_with_zero_kl": 18,
+  "n_cases": 18,
+  "verdict": "T0 bit-exact confirmed on 18 cases / 1494 rows (kl_mean/p95/p99/max all 0.0, top1 1.0, exact_equal on every case), but rejected on speed."
+ },
+ "envelope_candidate_vs_incumbent_18case": {
+  "artifact": "/tmp/r11-current-dual-18case.json",
+  "comparison": "production incumbent (both flags off)",
+  "arm_flags": {
+   "incumbent": {
+    "dual": "0",
+    "down": "0"
+   },
+   "candidate": {
+    "dual": "1",
+    "down": "0"
+   }
+  },
+  "envelope": {
+   "rows": 1494,
+   "kl_mean": 0.0015524859429155101,
+   "kl_p95": 0.004011733133909382,
+   "kl_p99": 0.025240435627680035,
+   "kl_max": 0.5353895539845115,
+   "top1_overall": 0.9919678714859438
+  },
+  "note": "reproduces and exceeds the 2026-09-10 admission-suite failure on current HEAD."
+ },
+ "envelope_candidate_vs_strict_18case": {
+  "artifact": "/tmp/r11-18case-dual-vs-strict.json",
+  "comparison": "strict teacher (production-versus-strict, 6.1)",
+  "arithmetic_class": "down bit-exact T0 / gate-up T1 (1 bf16 ulp, reduction order)",
+  "candidate": {
+   "rows": 1494,
+   "kl_mean": 0.001163977699159479,
+   "kl_p95": 0.003535983126988635,
+   "kl_p99": 0.01956533685636399,
+   "kl_max": 0.2611882400452258,
+   "top1_overall": 0.9933065595716198
+  },
+  "incumbent": {
+   "kl_mean": 0.0010538644185995908,
+   "kl_p95": 0.003731789807243848,
+   "kl_p99": 0.024299313408686515,
+   "kl_max": 0.07848966593112061,
+   "top1_overall": 0.9946452476572959
+  },
+  "bars": {
+   "mean": 0.001,
+   "p95": 0.005,
+   "p99": 0.02,
+   "max": 0.05,
+   "top1_overall": 0.99,
+   "top1_per_scope": 0.97
+  },
+  "per_case": [
+   {
+    "id": "heldout_mixed_review",
+    "category": "mixed_ja_en",
+    "candidate_max_kl_vs_strict": 0.2611882400452258,
+    "incumbent_max_kl_vs_strict": 0.060165479992450685,
+    "candidate_over_incumbent": 4.341164403209259,
+    "candidate_top1": 0.9879518072289156,
+    "incumbent_top1": 1.0,
+    "candidate_rows_over_2e-2": 2
+   },
+   {
+    "id": "mixed_ja_en_review",
+    "category": "mixed_ja_en",
+    "candidate_max_kl_vs_strict": 0.19023008829791094,
+    "incumbent_max_kl_vs_strict": 0.053638413120230766,
+    "candidate_over_incumbent": 3.5465271478391664,
+    "candidate_top1": 1.0,
+    "incumbent_top1": 1.0,
+    "candidate_rows_over_2e-2": 7
+   },
+   {
+    "id": "heldout_mixed_summary",
+    "category": "mixed_ja_en",
+    "candidate_max_kl_vs_strict": 0.04060007888731316,
+    "incumbent_max_kl_vs_strict": 0.07848966593112061,
+    "candidate_over_incumbent": 0.5172665522992819,
+    "candidate_top1": 0.9879518072289156,
+    "incumbent_top1": 0.9879518072289156,
+    "candidate_rows_over_2e-2": 4
+   },
+   {
+    "id": "mixed_ja_en_translate",
+    "category": "mixed_ja_en",
+    "candidate_max_kl_vs_strict": 0.03593929286717962,
+    "incumbent_max_kl_vs_strict": 0.04493859484001249,
+    "candidate_over_incumbent": 0.7997422481750573,
+    "candidate_top1": 1.0,
+    "incumbent_top1": 1.0,
+    "candidate_rows_over_2e-2": 1
+   },
+   {
+    "id": "heldout_code_interval_schedule",
+    "category": "code",
+    "candidate_max_kl_vs_strict": 0.00938081007529085,
+    "incumbent_max_kl_vs_strict": 0.009872188764963295,
+    "candidate_over_incumbent": 0.9502259629175281,
+    "candidate_top1": 0.9879518072289156,
+    "incumbent_top1": 1.0,
+    "candidate_rows_over_2e-2": 0
+   },
+   {
+    "id": "heldout_general_en_incident",
+    "category": "general_en",
+    "candidate_max_kl_vs_strict": 0.008887336886808572,
+    "incumbent_max_kl_vs_strict": 0.005697029020416308,
+    "candidate_over_incumbent": 1.5599950175713049,
+    "candidate_top1": 1.0,
+    "incumbent_top1": 0.9879518072289156,
+    "candidate_rows_over_2e-2": 0
+   },
+   {
+    "id": "general_ja_explain",
+    "category": "general_ja",
+    "candidate_max_kl_vs_strict": 0.007724779604199542,
+    "incumbent_max_kl_vs_strict": 0.0069476592714275,
+    "candidate_over_incumbent": 1.111853546987829,
+    "candidate_top1": 1.0,
+    "incumbent_top1": 1.0,
+    "candidate_rows_over_2e-2": 0
+   },
+   {
+    "id": "general_en_plan",
+    "category": "general_en",
+    "candidate_max_kl_vs_strict": 0.007496661173557394,
+    "incumbent_max_kl_vs_strict": 0.0067107645163071794,
+    "candidate_over_incumbent": 1.1171098546731126,
+    "candidate_top1": 0.9879518072289156,
+    "incumbent_top1": 0.9879518072289156,
+    "candidate_rows_over_2e-2": 0
+   },
+   {
+    "id": "heldout_general_ja_migration",
+    "category": "general_ja",
+    "candidate_max_kl_vs_strict": 0.006168115418067669,
+    "incumbent_max_kl_vs_strict": 0.01759037953789077,
+    "candidate_over_incumbent": 0.3506527761257888,
+    "candidate_top1": 0.9759036144578314,
+    "incumbent_top1": 0.9879518072289156,
+    "candidate_rows_over_2e-2": 0
+   },
+   {
+    "id": "heldout_general_ja_speculative",
+    "category": "general_ja",
+    "candidate_max_kl_vs_strict": 0.005172007293734765,
+    "incumbent_max_kl_vs_strict": 0.03215425232490379,
+    "candidate_over_incumbent": 0.16084986960586214,
+    "candidate_top1": 1.0,
+    "incumbent_top1": 0.9759036144578314,
+    "candidate_rows_over_2e-2": 0
+   },
+   {
+    "id": "general_en_explain",
+    "category": "general_en",
+    "candidate_max_kl_vs_strict": 0.004352339303550959,
+    "incumbent_max_kl_vs_strict": 0.004827052989254966,
+    "candidate_over_incumbent": 0.9016555884593102,
+    "candidate_top1": 1.0,
+    "incumbent_top1": 1.0,
+    "candidate_rows_over_2e-2": 0
+   },
+   {
+    "id": "heldout_code_rate_limiter",
+    "category": "code",
+    "candidate_max_kl_vs_strict": 0.0038208647462080075,
+    "incumbent_max_kl_vs_strict": 0.003715061038928631,
+    "candidate_over_incumbent": 1.0284796686166666,
+    "candidate_top1": 0.9879518072289156,
+    "incumbent_top1": 0.9879518072289156,
+    "candidate_rows_over_2e-2": 0
+   },
+   {
+    "id": "general_ja_plan",
+    "category": "general_ja",
+    "candidate_max_kl_vs_strict": 0.0036506551227966713,
+    "incumbent_max_kl_vs_strict": 0.007829795526506735,
+    "candidate_over_incumbent": 0.46625165503209665,
+    "candidate_top1": 1.0,
+    "incumbent_top1": 1.0,
+    "candidate_rows_over_2e-2": 0
+   },
+   {
+    "id": "heldout_general_en_quant",
+    "category": "general_en",
+    "candidate_max_kl_vs_strict": 0.003511911281873154,
+    "incumbent_max_kl_vs_strict": 0.0030948052065474306,
+    "candidate_over_incumbent": 1.134776196719356,
+    "candidate_top1": 0.9879518072289156,
+    "incumbent_top1": 0.9879518072289156,
+    "candidate_rows_over_2e-2": 0
+   },
+   {
+    "id": "code_markdown_table",
+    "category": "code",
+    "candidate_max_kl_vs_strict": 0.0030065657911031575,
+    "incumbent_max_kl_vs_strict": 0.0011919256878625904,
+    "candidate_over_incumbent": 2.5224439927078453,
+    "candidate_top1": 1.0,
+    "incumbent_top1": 1.0,
+    "candidate_rows_over_2e-2": 0
+   },
+   {
+    "id": "code_topological_sort",
+    "category": "code",
+    "candidate_max_kl_vs_strict": 0.0028590410231351675,
+    "incumbent_max_kl_vs_strict": 0.0056681706895483994,
+    "candidate_over_incumbent": 0.5044027746741967,
+    "candidate_top1": 0.9759036144578314,
+    "incumbent_top1": 1.0,
+    "candidate_rows_over_2e-2": 0
+   },
+   {
+    "id": "code_merge_intervals",
+    "category": "code",
+    "candidate_max_kl_vs_strict": 0.0017542344632593442,
+    "incumbent_max_kl_vs_strict": 0.005058154434479756,
+    "candidate_over_incumbent": 0.34681314815168784,
+    "candidate_top1": 1.0,
+    "incumbent_top1": 1.0,
+    "candidate_rows_over_2e-2": 0
+   },
+   {
+    "id": "code_lru_cache",
+    "category": "code",
+    "candidate_max_kl_vs_strict": 0.0013229010916580338,
+    "incumbent_max_kl_vs_strict": 0.005140734813822789,
+    "candidate_over_incumbent": 0.2573369643773336,
+    "candidate_top1": 1.0,
+    "incumbent_top1": 1.0,
+    "candidate_rows_over_2e-2": 0
+   }
+  ]
+ },
+ "binding_bars": {
+  "source": "docs/EXECUTION-PROFILES.md 6.1",
+  "mean_max": 0.001,
+  "p95_max": 0.005,
+  "p99_max": 0.02,
+  "max_max": 0.05,
+  "top1_overall_min": 0.99,
+  "top1_per_scope_min": 0.97
+ },
+ "findings": [
+  "The candidate is 2.06x faster than the promoted dp4a on the gate/up leg (353.83 vs 171.59 GB/s at production geometry), drift max 3.0517578125e-05 (one bf16 ulp) and p999 0.0 in-block.",
+  "Against DE-1's own e2e traffic model (888.83 MB/step, dp4a part 5.422 ms/step) that recomputes to ~2.79 ms/step saved, about 5.9% of the 47.359 ms/step decode kernel total.",
+  "But the candidate is a measured numerical regression on the max tail: 4.34x worse than the incumbent on heldout_mixed_review and 3.55x worse on mixed_ja_en_review, with an extra top-1 flip.",
+  "The entire tail lives in 4 mixed_ja_en cases; the other 14 cases are all below 0.0094 for the candidate and the two arms track each other (ratios 0.16-2.52).",
+  "The 18-case admission suite is ALSO failed by the production incumbent (3 cases exceed the 0.05 ceiling: 0.07849, 0.06017, 0.05364), so it is a stress suite, not an admission basis, and its bars do not discriminate between the two arms.",
+  "DE-1's 184.66 GB/s comparator is NOT a roof: the warp256 exceeds it by 1.92x, so the 2026-09-29 conclusion that 93.7% of headroom was consumed and only 0.591 ms/step remained understated the remaining opportunity roughly five-fold.",
+  "The 996-row packet cited by the flag's docstring and by docs/EXECUTION-PROFILES.md 6.1 used the canonical 12 cases, which do not include the heldout_mixed_review stress case; its qualification was therefore narrower than the docstring's wording implies."
+ ],
+ "promotion_decision": "do_not_promote",
+ "next": "The 2.06x speed win is real and worth recovering, but it needs a route that does not inflate the mixed_ja_en max tail. The candidate's arithmetic is one bf16 ulp of the incumbent in-block, so the tail is a route-flip sensitivity, not a per-element error: the two mixed_ja_en cases that regress are exactly the ones where the MoE router's expert choice moves. Any follow-up should localize which layer and which expert transition flips, and test whether a narrower layer scope (like the 43-of-48 dp4a layer list) avoids the sensitive layers."
+}
