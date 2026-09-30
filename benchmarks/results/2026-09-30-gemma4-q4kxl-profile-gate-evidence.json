@@ -1,0 +1,248 @@
+{
+ "bf16_teacher": {
+  "command_chain": "gemma4_teacher_logits (build from scripts/quant_quality/gemma4_teacher_logits.cpp) capture 16 threads/27 gpu layers, then gemma4_bf16_teacher.py finalize, then scripts/execution_profile_gate.py --arithmetic-class T2 --bf16-logits ...",
+  "correction": "Earlier BF16-relative figures for this plan pair (610-row teacher cache, mean KL 0.0102/0.00947) were computed against a teacher aligned one row position early: teacher rows predicted the row's own label while packet capture rows predict the next label. Repeated chain tokens masked it (the manifest's argmax diagnostic compared against the same wrong reference). The tool now reads logits conditional through each label and the diagnostic checks next-label argmax; the numbers above supersede them.",
+  "logits_sha256": "4b5bdfa4debbd6fb2e7f86590a87c5ecd1a5298bfce868ba2178e965d0ab2765",
+  "manifest_sha256": "3924cc2e98940f365f19e4080e04116ab80b763df31dae33ecd6de896c79a5fd",
+  "next_label_argmax_agreement": {
+   "agreement": 0.99875,
+   "matches": 799,
+   "note": "diagnostic only: row r predicts the packet's next label (labels[r + 1]); the packet's chain is the frozen campaign corpus both arms replay, so BF16 argmax disagreement is a legitimate observation, not a protocol failure",
+   "rows": 800
+  },
+  "noninferiority": {
+   "by_category": {
+    "smoke": {
+     "candidate": {
+      "candidate_teacher_nll_mean": 23.896217809703234,
+      "kl_max": 24.67360839114124,
+      "kl_mean": 0.043735409256386075,
+      "kl_p50": 9.406469981646415e-07,
+      "kl_p95": 0.00012560626563000253,
+      "kl_p99": 0.0023907547840728927,
+      "max_abs_logit_delta": 32.637807846069336,
+      "rows": 801,
+      "strict_margin_min": 0.375,
+      "strict_teacher_nll_mean": 23.49000906533533,
+      "teacher_delta_p_mean": 0.0012480194633557704,
+      "teacher_nll_delta": 0.40620874436790544,
+      "top1_agreement": 0.9987515605493134,
+      "top1_matches": 800,
+      "topk_overlap_mean": 0.7503121098626716
+     },
+     "mean_kl_delta": -0.002734344866314596,
+     "passed": true,
+     "strict": {
+      "candidate_teacher_nll_mean": 24.06568698549166,
+      "kl_max": 26.312621261130786,
+      "kl_mean": 0.04646975412270067,
+      "kl_p50": 8.511127752359366e-07,
+      "kl_p95": 0.00010624865068265152,
+      "kl_p99": 0.0027593681704303863,
+      "max_abs_logit_delta": 33.51462745666504,
+      "rows": 801,
+      "strict_margin_min": 0.375,
+      "strict_teacher_nll_mean": 23.49000906533533,
+      "teacher_delta_p_mean": 0.0012480382101747506,
+      "teacher_nll_delta": 0.5756779201563305,
+      "top1_agreement": 0.9987515605493134,
+      "top1_matches": 800,
+      "topk_overlap_mean": 0.7575530586766541
+     },
+     "top1_delta": 0.0
+    }
+   },
+   "by_prompt": {
+    "prompt-corpus-0": {
+     "candidate": {
+      "candidate_teacher_nll_mean": 23.896217809703234,
+      "kl_max": 24.67360839114124,
+      "kl_mean": 0.043735409256386075,
+      "kl_p50": 9.406469981646415e-07,
+      "kl_p95": 0.00012560626563000253,
+      "kl_p99": 0.0023907547840728927,
+      "max_abs_logit_delta": 32.637807846069336,
+      "rows": 801,
+      "strict_margin_min": 0.375,
+      "strict_teacher_nll_mean": 23.49000906533533,
+      "teacher_delta_p_mean": 0.0012480194633557704,
+      "teacher_nll_delta": 0.40620874436790544,
+      "top1_agreement": 0.9987515605493134,
+      "top1_matches": 800,
+      "topk_overlap_mean": 0.7503121098626716
+     },
+     "mean_kl_delta": -0.002734344866314596,
+     "passed": true,
+     "strict": {
+      "candidate_teacher_nll_mean": 24.06568698549166,
+      "kl_max": 26.312621261130786,
+      "kl_mean": 0.04646975412270067,
+      "kl_p50": 8.511127752359366e-07,
+      "kl_p95": 0.00010624865068265152,
+      "kl_p99": 0.0027593681704303863,
+      "max_abs_logit_delta": 33.51462745666504,
+      "rows": 801,
+      "strict_margin_min": 0.375,
+      "strict_teacher_nll_mean": 23.49000906533533,
+      "teacher_delta_p_mean": 0.0012480382101747506,
+      "teacher_nll_delta": 0.5756779201563305,
+      "top1_agreement": 0.9987515605493134,
+      "top1_matches": 800,
+      "topk_overlap_mean": 0.7575530586766541
+     },
+     "top1_delta": 0.0
+    }
+   },
+   "candidate": {
+    "candidate_teacher_nll_mean": 23.896217809703234,
+    "kl_max": 24.67360839114124,
+    "kl_mean": 0.043735409256386075,
+    "kl_p50": 9.406469981646415e-07,
+    "kl_p95": 0.00012560626563000253,
+    "kl_p99": 0.0023907547840728927,
+    "max_abs_logit_delta": 32.637807846069336,
+    "rows": 801,
+    "strict_margin_min": 0.375,
+    "strict_teacher_nll_mean": 23.49000906533533,
+    "teacher_delta_p_mean": 0.0012480194633557704,
+    "teacher_nll_delta": 0.40620874436790544,
+    "top1_agreement": 0.9987515605493134,
+    "top1_matches": 800,
+    "topk_overlap_mean": 0.7503121098626716
+   },
+   "mean_kl_delta": -0.002734344866314596,
+   "paired_prompt_bootstrap_95pct": {
+    "mean_kl_delta": {
+     "high": -0.002734344866314596,
+     "low": -0.002734344866314596
+    },
+    "passed": true,
+    "prompt_count": 1,
+    "top1_delta": {
+     "high": 0.0,
+     "low": 0.0
+    }
+   },
+   "passed": true,
+   "status": "evaluated",
+   "strict": {
+    "candidate_teacher_nll_mean": 24.06568698549166,
+    "kl_max": 26.312621261130786,
+    "kl_mean": 0.04646975412270067,
+    "kl_p50": 8.511127752359366e-07,
+    "kl_p95": 0.00010624865068265152,
+    "kl_p99": 0.0027593681704303863,
+    "max_abs_logit_delta": 33.51462745666504,
+    "rows": 801,
+    "strict_margin_min": 0.375,
+    "strict_teacher_nll_mean": 23.49000906533533,
+    "teacher_delta_p_mean": 0.0012480382101747506,
+    "teacher_nll_delta": 0.5756779201563305,
+    "top1_agreement": 0.9987515605493134,
+    "top1_matches": 800,
+    "topk_overlap_mean": 0.7575530586766541
+   },
+   "thresholds": {
+    "bootstrap_samples": 10000,
+    "bootstrap_seed": 1234,
+    "mean_kl_delta_max": 0.001,
+    "top1_drop_max": 0.01
+   },
+   "top1_delta": 0.0
+  },
+  "protocol": "gemma4-bf16-teacher-v1",
+  "raw_capture_sha256": "35316648eb479d10035fc6321c7775c3757cfc8884ddc00228a45914fcd8d038",
+  "row_alignment": {
+   "requests": 1,
+   "rows": 801,
+   "source": "packet strict-capture row order"
+  },
+  "runtime": "llama.cpp HIP unknown",
+  "shape": [
+   801,
+   262144
+  ],
+  "softcap": {
+   "config_value": 30.0,
+   "note": "raw_max_abs above the model's final_logit_softcapping means the teacher tool did not apply the cap the engine applies",
+   "raw_max_abs": 29.933801651000977,
+   "violation": false
+  }
+ },
+ "campaign_corpus": {
+  "path": "benchmarks/prompts/gemma4-campaign-corpus.jsonl",
+  "rows": 8,
+  "sha256": "d11f05b014f0cbae22b25aaf5a2fbe705734c71632f4eac1efd3e66c4d379944"
+ },
+ "combination": [
+  "gemma4_gguf",
+  "hip_gfx1100",
+  "gguf_q4_k_m"
+ ],
+ "date": "2026-09-30",
+ "gpu": "AMDGPU device 0 (W7900 lane, ROCR_VISIBLE_DEVICES=0)",
+ "head": "0f18b6596185c85b155e2d5173ff5abd4abb7a7c",
+ "host": "epyc",
+ "kind": "gemma4-q4kxl-profile-gate-evidence",
+ "model_artifact": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+ "notes": [
+  "packet quality rows are paired strict/production positions over the same frozen chain; thresholds are the ExecutionThresholds defaults fixed before any of these runs",
+  "bf16_noninferiority is reported by the gate and is not one of the decision's required_checks",
+  "teacher argmax vs packet labels is diagnostic only: the packet chain is the frozen corpus both arms replay"
+ ],
+ "packet_registered_rows": {
+  "command": "scripts/gemma4_control_smoke.py --model .../gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompts benchmarks/prompts/gemma4-campaign-corpus.jsonl --limit 1 --decode-steps 800 --output-dir /tmp/gemma4-c1w6",
+  "gate_verdict": {
+   "decision": {
+    "binding_gates_passed": true,
+    "eligible_for_automatic_admission": true,
+    "status": "passed"
+   },
+   "path": "gate-verdict-bf16.json (copied below by section)",
+   "quality_summary": {
+    "candidate_teacher_nll_mean": 23.896217809703234,
+    "kl_max": 0.005354265441462154,
+    "kl_mean": 1.2025522124285655e-05,
+    "kl_p50": 1.8270916391143157e-07,
+    "kl_p95": 1.7282170379818623e-05,
+    "kl_p99": 0.00011023083595237695,
+    "max_abs_logit_delta": 19.45878314971924,
+    "rows": 801,
+    "strict_margin_min": 6.6875,
+    "strict_teacher_nll_mean": 24.06568698549166,
+    "teacher_delta_p_mean": -1.8746818980247093e-08,
+    "teacher_nll_delta": -0.16946917578842502,
+    "top1_agreement": 1.0,
+    "top1_matches": 801,
+    "topk_overlap_mean": 0.8761548064918853
+   },
+   "sha256": "df3691559230546f256bf2d4890c30a5b7183bfd394b9724e5475a2261091754",
+   "structure": {
+    "batch_invariance_status": "missing",
+    "control_semantics": true,
+    "determinism": true,
+    "generated_id_equality": true,
+    "isolation": true
+   },
+   "thresholds": {
+    "max_kl_max": 0.05,
+    "mean_kl_max": 0.001,
+    "p95_kl_max": 0.005,
+    "p99_kl_max": 0.02,
+    "per_scope_top1_min": 0.97,
+    "review_kl": 0.02,
+    "top1_min": 0.99
+   }
+  },
+  "protocol": "prompt pin = the campaign recipe's exact prompt token ids (exact_prompt_ids, chained) through the registered prefill 1024; both arms teacher-force rows 1024..1823 (band rows of the campaign-verified 1024..2047 span); width auto = 2048 from the ids pin"
+ },
+ "profile_manifests": {
+  "production": "94f72773fba4a983bc329613eed07a5563329c104f4ac31a3f7b90cd3996dedf",
+  "strict": "a24f0e75a63a31db01888c9f99e614ba91e4bcaf518102d65b45c3f363e27730"
+ },
+ "references": {
+  "registration_note": "campaign-recipe quality rows (1023 paired rows) and the template-population control-smoke diagnostic (610 rows, failed envelope) are evidenced there; this artifact adds the registered-row control-smoke packet and the row-aligned BF16 teacher comparison.",
+  "registration_packet": "benchmarks/results/2026-09-30-gemma4-execution-profile-registration.json"
+ },
+ "teacher_model": "/mnt/nvme1/models/gemma-4-26B-A4B-it-F16.gguf"
+}

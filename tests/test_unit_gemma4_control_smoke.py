@@ -18,7 +18,9 @@ import numpy as np
 import pytest
 
 from hipengine.generation.gemma4_profiles import MOE_PREFILL_ENV
+from scripts.gemma4_campaign_bench import CORPUS
 from scripts.gemma4_control_smoke import (
+    _corpus_forced_split,
     _moe_prefill_width,
     _prompt_rows,
     _prompt_token_ids,
@@ -380,3 +382,113 @@ def test_multi_prompt_fixture_offsets_avoid_the_slot_collision_the_gate_raises()
     second = _schedule(step_offset=len(first), request_id="prompt-b")
     summary = summarize_scenario(first + second)
     assert summary["width_sequence"] == [1] * (2 * len(first))
+
+def test_corpus_forced_split_pairs_both_arms_on_the_frozen_chain() -> None:
+    """Registered prefill + teacher-forced band = the campaign's paired rows.
+
+    Both arms must receive the identical chain: the row definition the
+    registered evaluator freezes is paired positions on the cycled corpus at
+    the band ``--prompt 2048 --prefill 1024`` scores, not each arm's own
+    sampled trajectory.
+    """
+
+    tokens = [21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+    prefill_ids, forced, teacher_row_ids = _corpus_forced_split(tokens, 7, 3)
+    assert prefill_ids == tokens[:7]
+    assert forced == tokens[7:10]
+    # Row 0 (prefill-last) is labelled with the next chain token; each decode
+    # row is labelled with the chain id fed at that step.
+    assert teacher_row_ids == [tokens[7], *tokens[7:10]]
+    assert len(teacher_row_ids) == len(forced) + 1
+    # Deterministic and reusable: both arms split identically.
+    assert _corpus_forced_split(tokens, 7, 3) == (prefill_ids, forced, teacher_row_ids)
+
+
+def test_corpus_forced_split_rejects_impossible_splits() -> None:
+    with pytest.raises(ValueError, match="prefill_len and decode_steps"):
+        _corpus_forced_split([1, 2, 3], 2, 0)
+    with pytest.raises(ValueError, match="prefill_len and decode_steps"):
+        _corpus_forced_split([1, 2, 3], 0, 1)
+    with pytest.raises(ValueError, match="prompt chain"):
+        _corpus_forced_split([1, 2, 3], 2, 2)
+    with pytest.raises(ValueError, match="prompt chain"):
+        _corpus_forced_split([], 1, 1)
+
+
+def test_forced_split_rows_feed_the_registered_band_under_both_route_pins() -> None:
+    """The split's band is what the session actually steps, labels aligned."""
+
+    tokens = list(_PROMPT_IDS)  # [11, 12, 13, 14]
+    prefill_ids, forced, teacher_row_ids = _corpus_forced_split(tokens, 2, 2)
+    session = _StubSession()
+    logits, controls, row_specs = _trajectory_with_controls(
+        session,
+        prompt_ids=prefill_ids,
+        forced_input_ids=forced,
+        teacher_row_ids=teacher_row_ids,
+        decode_steps=2,
+        scenario_id="sc",
+        request_id="prompt-p0",
+        route_top_k=8,
+        graph_bucket="c1",
+        rng_seed=0,
+        route_env={MOE_PREFILL_ENV: "grouped"},
+    )
+    assert session.step_inputs == forced
+    assert [spec["teacher_token_id"] for spec in row_specs] == teacher_row_ids
+    assert len(row_specs) == 3  # prefill-last row + two forced steps
+    assert all(env == "grouped" for env in session.prefill_envs + session.step_envs)
+
+
+def test_prompt_rows_accepts_a_pretokenized_ids_row(tmp_path) -> None:
+    """The registered chain travels as ids: text cycling cannot reproduce it."""
+
+    suite = _write_suite(
+        tmp_path / "suite.jsonl",
+        [
+            {"id": "a", "ids": [7, 8, 9], "source_prompt": "provenance"},
+            {"id": "b", "prompt": "plain"},
+        ],
+    )
+    rows = _prompt_rows([suite], limit=10)
+    assert rows[0]["ids"] == [7, 8, 9]
+    # Exactly one of prompt/messages/ids still holds.
+    both = _write_suite(
+        tmp_path / "both.jsonl",
+        [{"id": "c", "ids": [1], "prompt": "no"}],
+    )
+    with pytest.raises(SystemExit, match="exactly one"):
+        _prompt_rows([both], limit=10)
+
+
+def test_prompt_token_ids_returns_a_built_in_chain_without_tokenizing() -> None:
+    def _explode(*args, **kwargs):  # pragma: no cover - must never run
+        raise AssertionError("ids rows must not be re-tokenized or cycled")
+
+    row = {"id": "a", "ids": [5, 6, 7, 8]}
+    assert _prompt_token_ids(_explode, row, min_tokens=4) == [5, 6, 7, 8]
+    assert _prompt_token_ids(_explode, row) == [5, 6, 7, 8]
+
+    short = {"id": "b", "ids": [5]}
+    with pytest.raises(SystemExit, match="pre-tokenized"):
+        _prompt_token_ids(_explode, short, min_tokens=4)
+
+
+def test_campaign_corpus_suite_carries_the_registered_chain_ids() -> None:
+    """Each row holds the exact cycled chain (2048 ids) plus its source text."""
+
+    from scripts.gemma4_control_smoke import CAMPAIGN_GATE_CHAIN_TOKENS
+
+    suite = Path("benchmarks/prompts/gemma4-campaign-corpus.jsonl")
+    rows = [
+        json.loads(line)
+        for line in suite.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(rows) == len(CORPUS)
+    for index, row in enumerate(rows):
+        expected = "\n".join(CORPUS[index:] + CORPUS[:index])
+        assert row["source_prompt"] == expected
+        assert row["id"] == f"corpus-{index}"
+        assert len(row["ids"]) == CAMPAIGN_GATE_CHAIN_TOKENS
+        assert all(isinstance(token, int) for token in row["ids"])
