@@ -573,6 +573,17 @@
   incumbent baseline; those writes are gone (they were no-ops once the flags
   stopped being read). `grep` for `MOE_DECODE_WARP` across `scripts/` is now
   empty. The kernel definitions stay registered, as the bullet below requires.
+- **One harness the obligation did not list was retired rather than fixed.**
+  `scripts/qwen4exp_de1_layer_bisect.sh` drove the deleted logits probe as a
+  subprocess, so it became a dangling reference. Its subject - the warp256
+  gate/up max-KL flip - went away with the route, and even with the probe
+  restored its arms would select the route through the now-unread env vars and
+  **silently measure the incumbent, reporting a clean bisect.** It therefore
+  exits 2 with the reason in its header, and the rest of the file is retained as
+  documentation of the retired experiment. The measurement it produced is
+  immutable in worklog `20260930T023729`. Revisiting the warp kernels needs a
+  **new** harness that selects them directly; restoring that file unedited would
+  restore the silent mismeasurement.
 - **What remains:** the kernel definitions stay registered (the probe scripts can
   still select them directly for future work); only the production routes are
   gone. `scripts/qwen4exp_moe_decode_warp_logits_probe.py`,
