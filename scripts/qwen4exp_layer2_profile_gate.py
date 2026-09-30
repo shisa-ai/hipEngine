@@ -193,6 +193,41 @@ CANDIDATES = {
         dispatch_shape_positions=(7, 8, 9, 10),
         count_registered_dispatch=True,
     ),
+    "mx1_full_route": CandidateSpec(
+        name="mx1_full_route",
+        classification="T1",
+        mechanism=(
+            "MX-1 as specified: F16-WMMA grouped gate/up (Q4_K) AND F16-WMMA "
+            "grouped down (Q5_1), both with no repair pass"
+        ),
+        environment={
+            # Three flags, because the down leg's own chain tests
+            # `exact_grouped_down` BEFORE `q5_wmma`:
+            #   4559 if down == gguf_q5_1
+            #   4571   if q5_mmq:
+            #   4603   elif exact_grouped_down:   <- production chain (repair)
+            #   4751   elif q5_wmma:              <- F16 down owner
+            "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "0",
+            "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": "0",
+            "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
+        },
+        base_profile="production",
+        scenario_id="qwen4exp-mx1-full-route",
+        # Both owners are invoked by direct module-attribute calls, so both
+        # counters are declared. The candidate key names the gate/up owner; the
+        # down owner is counted through the same direct-dispatch mechanism.
+        candidate_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                       "selected_dual_wmma_prefill_compact_bf16_bf16_out"),
+        fallback_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                      "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"),
+        direct_dispatch_target=("hipengine.runtime.qwen4_exp_runner",
+                                "gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out"),
+        direct_dispatch_reference=(
+            "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill",
+            "gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out"),
+        dispatch_shape_positions=(7, 8, 9, 10),
+        count_registered_dispatch=True,
+    ),
     "production_q8_fallback": CandidateSpec(
         name="production_q8_fallback",
         classification="diagnostic",
