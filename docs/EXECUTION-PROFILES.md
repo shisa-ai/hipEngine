@@ -84,7 +84,8 @@ registered plan keeps the migration path, which remains tracked for removal in
 decision section below and keeps a registered strict fallback, so
 `execution_profile="strict"` still selects exact arithmetic, and
 `batch_invariant` still falls back per scope wherever its composition gate has
-not passed.
+not passed. **One of those two `qwen4_exp_gguf` entries fails the numerical envelope; §2.9
+records which, why, and what it costs to change.**
 
 The §2.2 ZBook soak failure (87 completed and 33 rejected of 120) is present
 in both the migration arm and the production arm, so under the shared-failure
@@ -286,6 +287,70 @@ category positive. C8 reaches `1.0057x` its same-arm AR rate. This changes an
 implementation association inside production; it does not widen automatic MTP
 admission. Evidence:
 [`B5 retention packet`](../benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json).
+
+### 2.9 Qwen3.8-Flash-Next `qwen4_exp_gguf` gfx1151 production decision
+
+`qwen4_exp_gguf`/`hip_gfx1151` is registered for two quants, and **the two do
+not have the same certification status**. Both keep a registered strict
+fallback, and both resolve to `production` when the profile is omitted.
+
+**`gguf_ud_q4_k_xl` — numerical gates pass; task gate requires review.** Its
+production plan is the arithmetic-recovery composition: the fifteen unqualified
+arithmetic selectors are disabled before resources are configured, and the
+manifest selects recovery variants while the experimental kernels stay
+registered. Measured on the current tree (18 prompts, 24 decode steps, 3
+repeats, chunk 512, BF16 KV, gfx1151, machine
+`55ea6c509d0b49eea8de7094a1023668`): mean/p95/p99/max KL
+`3.065e-4/1.785e-3/4.271e-3/7.771e-3`, top-1 agreement `0.99556` (448/450),
+**no scope failures and no row over the `2e-2` review boundary**, and the
+`prefill_last` / `prefill_to_c1` scope is bit-identical at mean KL `0.0`. The
+gate's overall status is `requires_task_review` on the task axis, not a full
+pass: 15 of 18 strict-exact task outputs, with three deterministic cross-route
+divergences, which is the same finding recorded for the GDN prefill promotion
+and is not a numerical-envelope failure. Its manifest is `a55324f9…` and is
+unchanged by later GDN work. **It costs throughput**: against the unrecovered
+composition on the same host,
+weighted prefill moves `292.695/309.268/285.790` to
+`172.870/179.721/129.950` (`-40.94/-41.89/-54.53%`) and decode
+`20.171/19.430/18.057` to `17.629/17.015/11.398`
+(`-12.60/-12.43/-36.88%`). Evidence:
+[`cost packet`](../benchmarks/results/2026-09-14-q8-prefill-numerics/README.md),
+[`UD gate`](../benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-gate/gate.json).
+
+**`gguf_q4_k_m` — registered, and it FAILS the numerical envelope.** Its
+production plan is the unrecovered composition, and it **fails the calibrated
+envelope**: max KL `0.05958` against the `0.05` limit on one
+`heldout_general_ja_speculative` row (top-1 unchanged, strict margin `0.9091`,
+top-5 overlap `1.0`), `prefill_last` mean KL `1.333e-3` against the `1e-3` limit
+(18 rows, max `8.572e-3`), five scope failures, gate status `failed`, with all
+1350 dispatches of its own kernel. **This is the composition's result, not a
+route's**: an attribution control that pins the GDN prefill owner to the
+superseded `qwen4exp_gdn_tiled16_prefill` fails the same five scopes with a
+worse tail (max KL `0.06645`, `prefill_last` mean `1.475e-3`) under the
+byte-identical strict teacher. The same composition was measured at max KL
+`0.054642` on 2026-09-14, and its Conservative Recovery section states the
+decision that left this profile unchanged: *"The Q4_K_M profile, model files,
+KV ABI and other backends are unchanged."* Evidence:
+[`q4_k_m gate`](../benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-q4km/gate.json),
+[`attribution control`](../benchmarks/results/2026-09-30-qwen4exp-gdn-tiled16-control/gate.json),
+[`2026-09-14 numerics`](../benchmarks/results/2026-09-14-q8-prefill-numerics/README.md).
+
+**What this means for a caller, stated plainly.** The `qwen4_exp_gguf` model
+plugin declares `default_quant = "gguf_q4_k_m"`, so loading a UD-Q4_K_XL GGUF
+with the quant omitted resolves to the composition above that fails the
+envelope; the in-envelope recovery arithmetic requires naming
+`quant="gguf_ud_q4_k_xl"`. Both are registered, both keep strict fallbacks, and
+neither is hidden.
+
+**No default was changed by this decision, and that is deliberate.** The two
+profiles differ by a measured 40-55% of prefill, so choosing between
+"in-envelope at recovery cost" and "out-of-envelope at full speed" is a
+product policy call rather than a documentation correction. What this section
+fixes is the contract's claim: `gguf_q4_k_m` is listed in §2.1 among
+combinations eligible for the production default, and until now no decision
+section covered either `qwen4_exp_gguf` entry at all. A reader who needs the
+numerical envelope should name the quant; a reader who needs the rate should
+know what it costs numerically.
 
 ## 3. Profile is orthogonal to model representation
 
