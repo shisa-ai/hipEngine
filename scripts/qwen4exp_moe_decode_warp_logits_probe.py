@@ -102,6 +102,19 @@ def main() -> None:
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--case-id", action="append")
+    p.add_argument(
+        "--dp4a-layers",
+        type=str,
+        default=None,
+        help=(
+            "Override HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS after the profile binder "
+            "runs. Comma-separated layer ids; 'none' selects NO layer (the exact "
+            "chain everywhere); 'all' selects every layer. The warp256 gate/up is "
+            "only reachable where use_dp4a is true, so this is the effective layer "
+            "scope for HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP and is how a flip is "
+            "localized to a layer (DE-1's remaining action)."
+        ),
+    )
     p.add_argument("--fixture", type=Path, default=None,
                    help="alternate fixture in the canonical schema with relaxed "
                         "matrix validation (e.g. the 18-prompt admission suite)")
@@ -163,6 +176,7 @@ def main() -> None:
         "comparison": ("strict teacher (production-versus-strict, 6.1)"
                        if a.teacher else "production incumbent (both flags off)"),
         "execution_profile": str(profile),
+        "dp4a_layers_override": a.dp4a_layers,
         "decode_steps": a.decode_steps,
         "runtime_default_changed": False,
         "fixture_sha256": digest,
@@ -218,6 +232,17 @@ def main() -> None:
             ):
                 os.environ[FLAG] = dual_v if enabled == "1" else "0"
                 os.environ[FLAG_DOWN] = down_v if enabled == "1" else "0"
+                if a.dp4a_layers is not None:
+                    # The runner tests `(not dp4a_layers or gate_layer in dp4a_layers)`,
+                    # so an EMPTY value means "no filter" = every layer, not none.
+                    # 'none' must therefore be a list that matches no layer id.
+                    if a.dp4a_layers == "none":
+                        value = "-1"
+                    elif a.dp4a_layers == "all":
+                        value = ""
+                    else:
+                        value = a.dp4a_layers
+                    os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS"] = value
                 rows[label], chain = _forced_logits(
                     generator, case["prompt_token_ids"], a.decode_steps,
                     forced=forced_chain)
