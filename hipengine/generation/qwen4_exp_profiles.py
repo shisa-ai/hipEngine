@@ -358,9 +358,16 @@ def _production_selections(*, dpp: bool = False, recovery: bool = False) -> tupl
     selections = (
         _selection(
             "gdn_recurrence_norm_gate", "prefill_rows_ge16_hk16_hv32_48_d128_layers27_47",
-            "qwen4exp_gdn_tiled16_dpp_prefill" if dpp else "qwen4exp_gdn_tiled16_prefill",
+            # Multi-column supersedes the DPP route: same kernel template with an 8-wide
+            # per-warp column tile instead of 1, so one k-load feeds eight columns. Measured
+            # 1.34x-1.68x faster than the DPP incumbent across 512/1024/2048/4096 tokens at
+            # Hk16/Hv48/Dk=Dv=128 on gfx1151, at NMSE ~1.8e-14 (fp32 round-off). Production
+            # numerical gates pass (mean KL 8.92e-05, max 4.45e-03, top-1 777/780); the one
+            # task finding is shared with the strict arm, not a regression. The DPP route
+            # stays registered as the strict fallback.
+            "qwen4exp_gdn_tiled16_multi_prefill" if dpp else "qwen4exp_gdn_tiled16_prefill",
             "qwen4exp_sigmoid_strict_prefill", "f32_state",
-            evidence="benchmarks/results/2026-09-14-journey-gdn-dpp/artifact.json" if dpp else _GDN_COLWARPS_EVIDENCE,
+            evidence="benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-ab/artifact.json" if dpp else _GDN_COLWARPS_EVIDENCE,
         ),
         _selection("linear","prefill_rows_ge512_k2560_n12288_raw_q",
                    "mmq128_token64_q8_1_d4x3_guarded_f32_f32_out",
@@ -558,6 +565,7 @@ def _production_selections(*, dpp: bool = False, recovery: bool = False) -> tupl
     # Scope identifiers are shared with strict and remain stable. Select the
     # recovered owners while preserving the registered rollback contracts.
     inactive = {
+        "qwen4exp_gdn_tiled16_multi_prefill",
         "qwen4exp_gdn_tiled16_dpp_prefill",
         "qwen4exp_gdn_tiled16_prefill",
         "qwen4exp_gdn_columnwarps_prefill",
@@ -798,7 +806,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         # Decode retains its separately tuned rows==1 owner.
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": (
-            "qwen4exp_gdn_tiled16_dpp_prefill"
+            "qwen4exp_gdn_tiled16_multi_prefill"
             if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
             else ""
         ),

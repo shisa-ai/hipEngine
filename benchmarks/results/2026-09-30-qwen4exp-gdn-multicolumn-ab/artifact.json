@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp-gdn-multicolumn-ab",
+  "performance_claim": true,
+  "date": "2026-09-30",
+  "title": "Multi-column GDN prefill supersedes the DPP route: 1.34x-1.68x",
+  "host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "device_id": "0x1586",
+    "rocm": "HIP 7.15.26333 (therock env)",
+    "note": "AGENTS.md's stated default hardware is W7900/gfx1100; this host is gfx1151. All figures below are gfx1151 and must not be compared against gfx1100 lanes."
+  },
+  "model_quant": "Qwen4Exp gguf_ud_q4_k_xl (GDN prefill scope only)",
+  "geometry": {
+    "num_k_heads": 16,
+    "num_v_heads": 48,
+    "head_k_dim": 128,
+    "head_v_dim": 128,
+    "tokens": [
+      512,
+      1024,
+      2048,
+      4096
+    ]
+  },
+  "command": "python3 scripts/qwen4exp_gdn_multi_column_ab.py --tokens <T> --reps 12..20",
+  "arms": {
+    "incumbent": {
+      "key": "qwen4exp_gdn_tiled16_dpp_prefill",
+      "flags": [
+        "-DHIPENGINE_QWEN4_GDN_DPP=1"
+      ]
+    },
+    "candidate": {
+      "key": "qwen4exp_gdn_tiled16_multi_prefill",
+      "flags": [
+        "-DHIPENGINE_QWEN4_GDN_DPP=1",
+        "-DHIPENGINE_QWEN4_GDN_MULTI_COLUMN=1"
+      ]
+    }
+  },
+  "results": {
+    "512": {
+      "incumbent_ms": 1.8635464366525412,
+      "candidate_ms": 1.1121663264930248,
+      "speedup": 1.6756004855216489,
+      "nmse_core_out": 1.80469273448968e-14,
+      "nmse_state": 7.367990625541181e-15
+    },
+    "1024": {
+      "incumbent_ms": 4.555837484076619,
+      "candidate_ms": 3.1181650701910257,
+      "speedup": 1.4610636003941633,
+      "nmse_core_out": 1.808112229250595e-14,
+      "nmse_state": 7.194109591944297e-15
+    },
+    "2048": {
+      "incumbent_ms": 10.583061026409268,
+      "candidate_ms": 7.706373929977417,
+      "speedup": 1.3732867263605884,
+      "nmse_core_out": 1.8469438065921656e-14,
+      "nmse_state": 7.577073383856945e-15
+    },
+    "4096": {
+      "incumbent_ms": 22.79900969006121,
+      "candidate_ms": 16.99707400985062,
+      "speedup": 1.3413490861337716,
+      "nmse_core_out": 1.7949248336001417e-14,
+      "nmse_state": 7.214732365931942e-15
+    }
+  },
+  "headline": {
+    "speedup_range": [
+      1.3413490861337716,
+      1.6756004855216489
+    ],
+    "median_speedup": 1.42,
+    "claim": "1.34x-1.68x faster than the DPP route across 512-4096 tokens"
+  },
+  "correctness_gate": {
+    "nmse_core_out_range": [
+      1.7949248336001417e-14,
+      1.8469438065921656e-14
+    ],
+    "nmse_state_range": [
+      7.194109591944297e-15,
+      7.577073383856945e-15
+    ],
+    "verdict": "NMSE ~1.8e-14 is fp32 round-off; indistinguishable from the reassociation floor the chunk drift screen measured (5-7e-14)",
+    "production_numerics": {
+      "source": "benchmarks/results/2026-09-15-journey-gdn-multi-restoration/README.md",
+      "short_gate": {
+        "mean_kl": 0.00010724,
+        "p95": 0.00039221,
+        "max": 0.00967834,
+        "top1": "593/594"
+      },
+      "depth_gate": {
+        "mean_kl": 8.92215e-05,
+        "p95": 0.0004206676,
+        "p99": 0.0012666802,
+        "max": 0.0044548289,
+        "top1": "777/780 = 99.615%",
+        "limits": {
+          "mean_kl": 0.001,
+          "p95": 0.005,
+          "p99": 0.02,
+          "max": 0.05,
+          "top1": 0.99
+        }
+      },
+      "verdict": "all declared numerical limits pass"
+    },
+    "task_gate": {
+      "status": "one scoped finding (heldout_general_en_quant)",
+      "not_a_regression": "the artifact records the defects as 'shared instruction-following defects, not new candidate regressions' and 'Strict's own errors and shared omissions remain disclosed'; it also states the finding is 'not proof of worse expected quality or a GDN kernel defect'",
+      "shared_with_strict_arm": true
+    }
+  },
+  "promotion": {
+    "action": "production GDN prefill selection changed to qwen4exp_gdn_tiled16_multi_prefill",
+    "files": [
+      "hipengine/generation/qwen4_exp_profiles.py"
+    ],
+    "strict_fallback_retained": "qwen4exp_gdn_tiled16_dpp_prefill remains registered",
+    "recovery_profile": "unchanged - the multi-column route was added to the recovery path's inactive set so the arithmetic-recovery UD profile keeps its exact owners",
+    "test": "tests/ -k 'profile or recovery or gdn' passes"
+  },
+  "limits": [
+    "One host (gfx1151), one quant (gguf_ud_q4_k_xl), one shape family (Hk16/Hv48/Dk=Dv=128).",
+    "GDN prefill scope only; not a whole-request rate.",
+    "Not bit-exact to the DPP incumbent (NMSE 1.8e-14); admitted on the production numerical envelope.",
+    "The task finding is shared with the strict arm and is not attributable to this change, but it is recorded rather than dismissed."
+  ]
+}

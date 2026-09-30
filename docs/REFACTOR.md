@@ -687,6 +687,16 @@
   recovered UD production profile; remove the multi-column
   path if the numerical or operation-complete performance gate rejects it.
 
+  **RESOLVED (`20260930T`): the path is now the PRODUCTION DEFAULT, so it is no longer removal
+  debt.** Measured 1.34x-1.68x faster than the DPP route it replaces across 512/1024/2048/4096
+  tokens at Hk16/Hv48/Dk=Dv=128 on gfx1151, at NMSE ~1.8e-14 (fp32 round-off), with the
+  production numerical gates passing. It supersedes the DPP route as the production GDN prefill
+  selection; the DPP route stays registered as the strict fallback. **What remains on this
+  entry is the opposite question** - whether to remove the now-inactive DPP route, not the
+  multi-column one. See `benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-ab/`.
+
+  The earlier correction is kept below because it is why the removal never fired.
+
   **CORRECTION (`20260930T`): the "gate rejected it" premise was a misattribution, so the
   removal is not yet justified.** The rejection was read from the ledger's section-7 row,
   which combined `R01` (tiled/DPP) and `R02` (multi-column) under `R01`'s evidence entry.

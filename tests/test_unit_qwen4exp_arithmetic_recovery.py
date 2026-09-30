@@ -44,3 +44,44 @@ def test_other_quant_profile_binding_is_unchanged(monkeypatch):
     profile.binder(SimpleNamespace(), profile)
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] == "1"
+
+
+def test_production_selects_the_multi_column_gdn_prefill_owner(monkeypatch):
+    """The multi-column GDN prefill route supersedes the DPP route.
+
+    The live selection is the ``HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`` env var, not
+    the manifest row: the production plan is built with
+    ``dpp=quant == "gguf_ud_q4_k_xl"`` and ``recovery=quant == "gguf_ud_q4_k_xl"``,
+    the SAME condition, so the recovery pass replaces every ``dpp=True`` tiled
+    selection with its exact owner before the manifest is ever observed. The
+    ``dpp`` branch is therefore inert and only the env binding is live.
+
+    Pinned because that binding is a one-line change the recovery path would
+    silently undo: the recovery pass deactivates tiled variants by NAME, so the
+    multi-column route has to be listed there too or the recovery UD profile
+    starts selecting a tiled owner it must not use - which is what happened on the
+    first attempt at this promotion.
+    """
+    from hipengine.kernels.registry import resolve as resolve_kernel
+
+    monkeypatch.setattr(os, "environ", os.environ.copy())
+    profile = resolve("gguf_ud_q4_k_xl")
+    profile.binder(SimpleNamespace(), profile)
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == (
+        "qwen4exp_gdn_tiled16_multi_prefill")
+
+    # The recovery profile's manifest still keeps its exact owner - the env binding
+    # is only consulted inside the colwarps/tile16 gate, not by the manifest.
+    recovery_gdn = [
+        row["selected_variant"]
+        for row in profile.manifest["selections"]
+        if row["layer"] == "gdn_recurrence_norm_gate"
+    ]
+    assert "qwen4exp_gdn_tiled16_multi_prefill" not in recovery_gdn, recovery_gdn
+
+    # The superseded route stays registered as the strict fallback, so rollback is
+    # a one-line revert rather than a rebuild.
+    assert resolve_kernel(
+        backend="hip_gfx1151", layer="gdn_recurrence_norm_gate",
+        quant="f32_state", variant="qwen4exp_gdn_tiled16_dpp_prefill",
+    ) is not None

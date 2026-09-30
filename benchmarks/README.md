@@ -841,6 +841,22 @@ exact; no decode speedup or broader numerical qualification is claimed.
 The DPP kernel is retained, but the tiled suffix is inactive during recovery.
 [DPP evidence](results/2026-09-14-journey-gdn-dpp/README.md).
 
+The multi-column GDN prefill route is now the production selection for the
+GDN prefill scope, superseding the DPP route. It is the same kernel template
+with an 8-wide per-warp column tile instead of 1, so one k-load feeds eight
+columns instead of one. On the GDN prefill scope at Hk16/Hv48/Dk=Dv=128,
+matched warm medians are **4.556 -> 3.118 ms at 1K tokens**, **1.864 -> 1.112
+ms at 512**, **10.583 -> 7.706 ms at 2K** and **22.799 -> 16.997 ms at 4K**,
+i.e. **1.34x-1.68x faster across the range**. NMSE against the DPP route is
+**~1.8e-14** on the core output and **~7.2e-15** on the recurrent state -
+fp32 round-off - so the route is not bit-exact and is admitted on the
+production numerical envelope (mean KL 8.92e-05, max 4.45e-03, top-1 777/780),
+not on exact generated IDs. Its one task finding is shared with the strict
+arm and is recorded rather than dismissed. The DPP route stays registered as
+the strict fallback. Measured on `gfx1151`, not the default W7900; GDN
+prefill scope only, not a whole-request rate.
+[Multi-column evidence](results/2026-09-30-qwen4exp-gdn-multicolumn-ab/README.md).
+
 Mapping-only random advice for sparse PLE reads is now the gfx1151 production
 default. In the matched file-scoped cold-cache protocol, all-category
 512/1K/4K prefill improves **84.161/134.330/225.864 ->
