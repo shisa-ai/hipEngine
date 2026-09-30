@@ -291,6 +291,7 @@ def _summarize(measured: Sequence[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _provenance() -> dict[str, Any]:
+    import platform
     import subprocess
 
     def git(*args: str) -> str:
@@ -301,10 +302,25 @@ def _provenance() -> dict[str, Any]:
         except Exception:  # pragma: no cover - defensive
             return ""
 
+    def read(path: str) -> str:
+        try:
+            return Path(path).read_text(encoding="utf-8").strip()
+        except OSError:  # pragma: no cover - defensive
+            return ""
+
+    # Physical host identity is part of the evidence policy, and two machines
+    # with the same GPU architecture are independent lanes: without this a
+    # reader cannot tell whether a comparison was same-host. ``machine_id`` is
+    # the identifier the other gfx1151 packets carry, so this artifact can be
+    # matched to them directly.
     return {
         "head": git("rev-parse", "HEAD"),
         "branch": git("rev-parse", "--abbrev-ref", "HEAD"),
         "dirty": bool(git("status", "--porcelain")),
+        "machine_id": read("/etc/machine-id"),
+        "hostname": platform.node(),
+        "product_name": read("/sys/class/dmi/id/product_name"),
+        "command": " ".join(["python3", *sys.argv]),
     }
 
 
@@ -384,6 +400,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "prompt_token_id": int(args.prompt_token_id),
         "candidate_layers": candidate_layers,
         "staged_variant": STAGED_VARIANT,
+        "quant": str(QWEN4_EXP_QUANTS[1]),
         "execution_profile": str(args.execution_profile),
         "prefill_chunk_size": int(args.prefill_chunk_size),
         "warmups": int(args.warmups),

@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_dp8_staged_scope_prefill_ab",
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "prompt_length": 4096,
+  "prompt_token_id": 9707,
+  "candidate_layers": "13,14,15",
+  "staged_variant": "staged_f32_bm128_bn64_bk32",
+  "execution_profile": "production",
+  "prefill_chunk_size": 1024,
+  "warmups": 2,
+  "repetitions": 9,
+  "prefill_anchor_ms": 15741.963,
+  "dense_family_anchor_ms": 4553.007,
+  "provenance": {
+    "head": "2cca23c6c727cc0c2c0e88effe00a26039a5b69d",
+    "branch": "qwen3.8-flash-next",
+    "dirty": true
+  },
+  "engagement": {
+    "launches_by_arm": {
+      "baseline": {
+        "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 4824,
+        "f32_hidden_f32_out": 8640,
+        "pack8_gemv_f32_f32_out": 27
+      },
+      "staged_13_15": {
+        "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 3924,
+        "f32_hidden_f32_out": 8640,
+        "pack8_gemv_f32_f32_out": 27,
+        "staged_f32_bm128_bn64_bk32": 900
+      }
+    },
+    "launches_by_layer": {
+      "baseline": {
+        "unattributed:coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 4824,
+        "unattributed:f32_hidden_f32_out": 8640,
+        "unattributed:pack8_gemv_f32_f32_out": 27
+      },
+      "staged_13_15": {
+        "0:coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 288,
+        "0:f32_hidden_f32_out": 180,
+        "10:coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 288,
+        "10:f32_hidden_f32_out": 180,
+        "11:coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 324,
+        "11:f32_hidden_f32_out": 180,
+        "12:coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 288,
+        "12:f32_hidden_f32_out": 180,
+        "13:f32_hidden_f32_out": 180,
+        "13:staged_f32_bm128_bn64_bk32": 288,
+        "14:f32_hidden_f32_out": 180,
+        "14:staged_f32_bm128_bn64_bk32": 288,
+        "15:f32_hidden_f32_out": 180,
+        "15:staged_f32_bm128_bn64_bk32": 324,
+        "16:f32_hidden_f32_out": 180,
+        "17:f32_hidden_f32_out": 180,
+        "18:f32_hidden_f32_out": 180,
+        "19:f32_hidden_f32_out": 180,
+        "1:coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 360,
+        "1:f32_hidden_f32_out": 180,
+        "20:f32_hidden_f32_out": 180,
+        "21:f32_hidden_f32_out": 180,
+        "22:f32_hidden_f32_out": 180,
+        "23:f32_hidden_f32_out": 180,
+        "24:f32_hidden_f32_out": 180,
+        "25:f32_hidden_f32_out": 180,
+        "26:f32_hidden_f32_out": 180,
+        "27:f32_hidden_f32_out": 180,
+        "28:f32_hidden_f32_out": 180,
+        "29:f32_hidden_f32_out": 180,
+        "2:coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 288,
+        "2:f32_hidden_f32_out": 180,
+        "30:f32_hidden_f32_out": 180,
+        "31:f32_hidden_f32_out": 180,
+        "32:f32_hidden_f32_out": 180,
+        "33:f32_hidden_f32_out": 180,
+        "34:f32_hidden_f32_out": 180,
+        "35:f32_hidden_f32_out": 180,
+        "36:f32_hidden_f32_out": 180,
+        "37:f32_hidden_f32_out": 180,
+        "38:f32_hidden_f32_out": 180,
+        "39:f32_hidden_f32_out": 180,
+        "3:coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 324,
+        "3:f32_hidden_f32_out": 180,
+        "40:f32_hidden_f32_out": 180,
+        "41:f32_hidden_f32_out": 180,
+        "42:f32_hidden_f32_out": 180,
+        "43:f32_hidden_f32_out": 180,
+        "44:f32_hidden_f32_out": 180,
+        "45:f32_hidden_f32_out": 180,
+        "46:f32_hidden_f32_out": 180,
+        "47:f32_hidden_f32_out": 180,
+        "4:coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 288,
+        "4:f32_hidden_f32_out": 180,
+        "5:coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 288,
+        "5:f32_hidden_f32_out": 180,
+        "6:coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 288,
+        "6:f32_hidden_f32_out": 180,
+        "7:coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 324,
+        "7:f32_hidden_f32_out": 180,
+        "8:coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 288,
+        "8:f32_hidden_f32_out": 180,
+        "9:coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": 288,
+        "9:f32_hidden_f32_out": 180,
+        "unattributed:pack8_gemv_f32_f32_out": 27
+      }
+    },
+    "cached_entries_wrapped": 1114,
+    "uncounted_cache_entries_by_arm": {
+      "baseline": 0,
+      "staged_13_15": 0
+    },
+    "candidate_staged_launches": 900,
+    "baseline_staged_launches": 0,
+    "engaged": true,
+    "incomplete": false
+  },
+  "resolved_backend": "hip_gfx1151",
+  "target_arch": "gfx1151",
+  "bound_environment": {
+    "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": "",
+    "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": "1",
+    "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": "16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47",
+    "HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS": null
+  },
+  "summary": {
+    "arms": [
+      "baseline",
+      "staged_13_15"
+    ],
+    "statistics": {
+      "baseline": {
+        "samples_ms": [
+          15112.518538,
+          15136.83587,
+          15124.728189,
+          15201.206365,
+          18015.652632,
+          18381.111016,
+          19205.886223,
+          18271.366947,
+          18049.444298
+        ],
+        "count": 9,
+        "median_ms": 18015.652632,
+        "mean_ms": 16944.305564222224,
+        "min_ms": 15112.518538,
+        "max_ms": 19205.886223,
+        "stdev_ms": 1742.1614486151138
+      },
+      "staged_13_15": {
+        "samples_ms": [
+          15063.367892,
+          15022.815956,
+          15031.992169,
+          15038.355916,
+          17952.023621,
+          18443.31192,
+          18099.132034,
+          18065.938574,
+          17870.171757
+        ],
+        "count": 9,
+        "median_ms": 17870.171757,
+        "mean_ms": 16731.901093222223,
+        "min_ms": 15022.815956,
+        "max_ms": 18443.31192,
+        "stdev_ms": 1613.421179441295
+      }
+    },
+    "paired_candidate_minus_baseline_ms": [
+      -49.15064600000005,
+      -114.01991400000043,
+      -92.73602000000028,
+      -162.85044899999957,
+      -63.6290110000009,
+      62.200904000001174,
+      -1106.754189000003,
+      -205.42837299999883,
+      -179.27254099999845
+    ],
+    "paired_candidate_minus_baseline_median_ms": -114.01991400000043,
+    "candidate_speedup_vs_baseline": 1.0081409891845619,
+    "candidate_wall_delta_percent": -0.8075248672456813,
+    "measured_saving_ms": 145.4808750000011,
+    "measured_saving_percent_of_prefill": 0.9241596807208929,
+    "prefill_anchor_ms": 15741.963,
+    "token_ids": {
+      "baseline": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "staged_13_15": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ]
+    }
+  }
+}
