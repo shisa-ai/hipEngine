@@ -20,7 +20,17 @@ capture/fixture assembly and swaps only the model couplings:
 * **Prompts**: suite JSONL in the shared format. ``messages[]`` rows render
   through the artifact's own chat template (``scripts.gemma4_real_probe``);
   plain ``prompt`` rows encode raw. The format is recorded per run in
-  ``smoke-env.json``.
+  ``smoke-env.json``. The binding packet runs the frozen campaign corpus
+  (``benchmarks/prompts/gemma4-campaign-corpus.jsonl``, pinned to
+  ``gemma4_campaign_bench.CORPUS`` by test): the registered prompt identity,
+  not a suite chosen for how a verdict came out.
+* **Rows**: both arms prefill the prompt's cycled chain prefix and
+  teacher-force its tail, so every row is a paired position on that chain --
+  the row definition ``scripts/gemma4_teacher_forced_gate.py`` freezes
+  ("the frozen prompt ids are forced into every arm, so rows are paired
+  positions rather than each arm's own sampled trajectory"), not each arm's
+  own sampled trajectory. The split, and the tail both arms receive, come
+  from ``_corpus_forced_split``.
 * **No GDN mode / bulk attention mode**: Gemma 4 has neither, and the session
   accepts those kwargs only to honour the shared call-site contract. No
   ``--gdn-mode`` flag exists here rather than one that does nothing.
@@ -46,7 +56,7 @@ Run a small packet::
 
     .venv/bin/python scripts/gemma4_control_smoke.py \\
         --model <artifact>.gguf \\
-        --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \\
+        --prompts benchmarks/prompts/gemma4-campaign-corpus.jsonl \\
         --limit 1 --decode-steps 3 --output-dir /tmp/gemma4-c1
 
 Omit ``--skip-gate`` to invoke ``execution_profile_gate.py`` on the packet it
@@ -104,6 +114,9 @@ DEFAULT_RUN_ID = "gemma4-c1-smoke"
 # baselines are ``--prompt 2048 --prefill 1024``. The packet defaults here so
 # its chain length is protocol-fixed, never chosen after seeing a verdict.
 CAMPAIGN_GATE_CHAIN_TOKENS = 2048
+# The registered prefill of that recipe: rows are the chain positions right
+# after it, the band the campaign baselines already score.
+CAMPAIGN_GATE_PREFILL_TOKENS = 1024
 
 # The arms the registered plans declare: strict pins the grouped exact route,
 # production the auto route the default path already resolves to.
@@ -163,20 +176,34 @@ def _prompt_rows(prompts_paths: list[Path], *, limit: int) -> list[dict]:
                 seen.add(prompt_id)
                 has_prompt = "prompt" in raw
                 has_messages = "messages" in raw
-                if has_prompt and has_messages:
-                    raise SystemExit(f"{prompt_id}: expected exactly one of prompt or messages[]")
+                has_ids = "ids" in raw
+                if sum((has_prompt, has_messages, has_ids)) != 1:
+                    raise SystemExit(
+                        f"{prompt_id}: expected exactly one of prompt, "
+                        "messages[], or ids"
+                    )
                 messages = raw.get("messages")
                 if has_messages and (not isinstance(messages, list) or not messages):
                     raise SystemExit(f"{prompt_id}: expected prompt or messages[]")
-                if not has_prompt and not has_messages:
-                    raise SystemExit(f"{prompt_id}: expected prompt or messages[]")
+                if has_ids:
+                    ids = raw.get("ids")
+                    if (
+                        not isinstance(ids, list)
+                        or not ids
+                        or not all(isinstance(token, int) for token in ids)
+                    ):
+                        raise SystemExit(
+                            f"{prompt_id}: ids must be a non-empty integer list"
+                        )
                 row = {
                     "id": prompt_id,
                     "category": str(raw.get("category", "general_en")),
                     "messages": messages if has_messages else None,
                     "prompt": str(raw["prompt"]) if has_prompt else None,
+                    "ids": [int(token) for token in raw["ids"]] if has_ids else None,
+                    "source_prompt": str(raw.get("source_prompt", "")),
                 }
-                if not row["messages"] and not (row["prompt"] or "").strip():
+                if not row["ids"] and not row["messages"] and not (row["prompt"] or "").strip():
                     raise SystemExit(f"{prompt_id}: prompt text is empty")
                 rows.append(row)
                 if len(rows) >= limit:
@@ -217,7 +244,21 @@ def _prompt_token_ids(tokenizer, row: Mapping, *, min_tokens: int = 0) -> list[i
     """Chat-template rows render through the artifact's own template; the rest
     encode raw. When ``min_tokens`` exceeds the natural length, the row's own
     source text is cycled (re-rendered through the template for messages) until
-    the prefill crosses the MoE route width."""
+    the prefill crosses the MoE route width. Rows that carry pre-tokenized
+    ``ids`` return them unchanged: the registered chain is exact ids, and
+    text cycling cannot reproduce its sentence-boundary tokenization."""
+
+    built_ids = row.get("ids")
+    if built_ids is not None:
+        ids = [int(token) for token in built_ids]
+        if not ids:
+            raise SystemExit("pre-tokenized prompt ids are empty")
+        if min_tokens > len(ids):
+            raise SystemExit(
+                f"pre-tokenized prompt chain has {len(ids)} ids, below the "
+                f"{min_tokens}-token width target"
+            )
+        return ids
 
     text = _render_text(tokenizer, row, repeats=1)
     ids = [int(token) for token in tokenizer.encode(text, add_special_tokens=False)]
@@ -278,6 +319,45 @@ def _default_prompt_tokens(metadata: Mapping) -> tuple[int, str]:
     return target, f"{source} (route min {route_min})"
 
 
+def _corpus_forced_split(
+    tokens: Sequence[int],
+    prefill_len: int,
+    decode_steps: int,
+) -> tuple[list[int], list[int], list[int]]:
+    """Split the cycled prompt chain into the registered prefill and its band.
+
+    Both arms prefill ``tokens[:prefill_len]`` and teacher-force the next
+    ``decode_steps`` chain ids, so every scored row is a paired position on
+    the frozen chain -- the campaign evaluator's row definition
+    (``scripts/gemma4_teacher_forced_gate.py`` forces the frozen prompt ids
+    into every arm) in the row band its registered recipe scores
+    (``--prompt 2048 --prefill 1024``). Returns ``(prefill_ids, forced,
+    teacher_row_ids)`` where ``teacher_row_ids`` labels row 0 (prefill-last)
+    with the next chain token and decode row ``k`` with the token fed at that
+    step.
+    """
+
+    ids = [int(token) for token in tokens]
+    prefill = int(prefill_len)
+    steps = int(decode_steps)
+    if not ids:
+        raise ValueError("prompt chain must be non-empty")
+    if prefill <= 0 or steps <= 0:
+        raise ValueError(
+            f"prefill_len and decode_steps must be positive, got {prefill} "
+            f"and {steps}"
+        )
+    if prefill + steps > len(ids):
+        raise ValueError(
+            f"prefill_len + decode_steps must land inside the prompt chain, "
+            f"got {prefill} + {steps} for {len(ids)} tokens"
+        )
+    prefill_ids = ids[:prefill]
+    forced = ids[prefill : prefill + steps]
+    teacher_row_ids = [forced[0], *forced]
+    return prefill_ids, forced, teacher_row_ids
+
+
 def _trajectory_with_controls(
     session,
     *,
@@ -295,11 +375,12 @@ def _trajectory_with_controls(
 ) -> tuple[np.ndarray, list[dict], list[dict]]:
     """Run prefill + decode under the arm's route pin and return live primitives.
 
-    Same schedule shape as the template: a greedy strict trajectory supplies
-    the teacher chain, candidate runs replay it forced so strict and candidate
-    logits are compared at identical contexts. Control and row-spec assembly is
-    the shared contract with the template; only the route pin and the absence
-    of a GDN context differ.
+    Same schedule shape as the template, but the binding packet runs *both*
+    arms forced on the identical chain tail (``_corpus_forced_split``): rows
+    are paired positions on the frozen chain, the campaign evaluator's row
+    definition, rather than each arm's own sampled trajectory. Control and
+    row-spec assembly is the shared contract with the template; only the
+    route pin and the absence of a GDN context differ.
 
     ``teacher_row_ids`` is the strict chain for every row of a forced run
     (prefill emission first, then one per decode step). Row descriptors must
@@ -616,11 +697,14 @@ def main() -> int:
             # step band; otherwise every prompt's step 0 collides on slot 0.
             step_offset = prompt_index * (int(args.decode_steps) + 1)
 
+            prefill_ids, forced, teacher_row_ids = _corpus_forced_split(
+                tokens, CAMPAIGN_GATE_PREFILL_TOKENS, int(args.decode_steps)
+            )
             strict_logits, strict_controls, strict_row_specs = _trajectory_with_controls(
                 session,
-                prompt_ids=tokens,
-                forced_input_ids=None,
-                teacher_row_ids=None,
+                prompt_ids=prefill_ids,
+                forced_input_ids=forced,
+                teacher_row_ids=teacher_row_ids,
                 decode_steps=int(args.decode_steps),
                 scenario_id=args.scenario_id,
                 request_id=request_id,
@@ -630,10 +714,8 @@ def main() -> int:
                 route_env=_STRICT_ROUTE_ENV,
                 step_offset=step_offset,
             )
-            teacher_chain = [
-                int(spec["teacher_token_id"]) for spec in strict_row_specs
-            ]
-            teacher = teacher_chain[:-1]
+            # Paired rows: both arms receive this identical chain tail.
+            teacher = forced
             teacher_by_prompt[prompt_id] = teacher
             strict_segments.append((strict_logits, strict_controls, strict_row_specs))
 
@@ -644,9 +726,9 @@ def main() -> int:
             ) -> tuple[np.ndarray, list[dict], list[dict]]:
                 return _trajectory_with_controls(
                     session,
-                    prompt_ids=tokens,
+                    prompt_ids=prefill_ids,
                     forced_input_ids=run_forced,
-                    teacher_row_ids=teacher_chain,
+                    teacher_row_ids=teacher_row_ids,
                     decode_steps=int(args.decode_steps),
                     scenario_id=scenario_id,
                     request_id=request_id,
@@ -672,7 +754,7 @@ def main() -> int:
             fixture_records_by_prompt[prompt_id] = schedule_c1_control_records(
                 scenario_id=args.scenario_id,
                 request_id=request_id,
-                prompt_ids=tokens,
+                prompt_ids=prefill_ids,
                 teacher_token_ids=teacher,
                 route_top_k=int(args.top_k),
                 graph_bucket="c1",
@@ -746,7 +828,11 @@ def main() -> int:
         for record in schedule_c1_control_records(
             scenario_id=args.scenario_id + ISOLATION_SCENARIO_SUFFIX,
             request_id=f"prompt-{prompt_id}",
-            prompt_ids=prompt_tokens[prompt_id],
+            prompt_ids=_corpus_forced_split(
+                prompt_tokens[prompt_id],
+                CAMPAIGN_GATE_PREFILL_TOKENS,
+                int(args.decode_steps),
+            )[0],
             teacher_token_ids=teacher_by_prompt[prompt_id],
             route_top_k=int(args.top_k),
             graph_bucket="c1",
