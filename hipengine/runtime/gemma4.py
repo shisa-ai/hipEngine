@@ -30,6 +30,7 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 
 import numpy as np
 
+from hipengine.core.dtype import DType
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
@@ -75,6 +76,11 @@ from hipengine.loading.materialize import DeviceTensorAllocation, load_host_arra
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import launch_gguf_linear
+from hipengine.runtime.gemma4_int8_kv import (
+    Gemma4Int8KVCache,
+    int8_kv_consumer_shared_bytes,
+    int8_kv_resident_bytes,
+)
 
 _BF16_BYTES = 2
 _F32_BYTES = 4
@@ -130,6 +136,8 @@ def _resident_bytes(
     hidden: int,
     config: Any,
     dense_widths: Sequence[int],
+    kv_storage: str = "bf16",
+    kv_scale_dtype: DType = DType.FP16,
 ) -> int:
     """Bytes the runner holds for a prefill block of ``block`` rows.
 
@@ -139,6 +147,9 @@ def _resident_bytes(
     allocates no device memory, because every buffer in one is created on first
     use. The scratch sum is deliberately an upper bound over its whole table
     rather than over the names one path touches.
+
+    The KV term follows the selected storage: BF16 K/V planes, or the INT8
+    payload, scale planes and FP32 consumer scratch of the INT8 owner.
     """
     total = (
         block * _I64_BYTES
@@ -157,9 +168,21 @@ def _resident_bytes(
             expert_intermediate=config.moe_intermediate_size,
         )
         total += scratch.resident_bytes()
-        total += (
-            capacity * attention.num_kv_heads * attention.head_dim * _BF16_BYTES * 2
+    if kv_storage == "int8_per_token_head":
+        attentions = tuple(
+            (a.num_heads, a.num_kv_heads, a.head_dim) for a in config.attention
         )
+        total += int8_kv_resident_bytes(
+            capacity=capacity,
+            max_block=block,
+            attentions=attentions,
+            scale_dtype=kv_scale_dtype,
+        )
+    else:
+        for attention in config.attention:
+            total += (
+                capacity * attention.num_kv_heads * attention.head_dim * _BF16_BYTES * 2
+            )
     return total
 
 
@@ -170,6 +193,8 @@ def _fit_prefill_block(
     hidden: int,
     config: Any,
     dense_widths: Sequence[int],
+    kv_storage: str = "bf16",
+    kv_scale_dtype: DType = DType.FP16,
 ) -> int:
     """Shrink ``block`` until the resident set fits free device memory.
 
@@ -200,6 +225,8 @@ def _fit_prefill_block(
             hidden=hidden,
             config=config,
             dense_widths=dense_widths,
+            kv_storage=kv_storage,
+            kv_scale_dtype=kv_scale_dtype,
         )
         if needed <= budget:
             return block
@@ -638,10 +665,19 @@ class Gemma4Runner:
     weights: Gemma4DeviceWeights
     capacity: int
     max_block: int = 0
+    #: KV storage request. ``bf16`` is the BF16 comparison path; ``auto`` is
+    #: resolved to ``bf16``. ``int8_per_token_head`` selects the BF16-source INT8
+    #: writer and the direct INT8 consumers over the owned INT8 cache.
+    kv_storage: str = "bf16"
+    kv_scale_dtype: str = "fp16"
+    kv_scale_granularity: str = "per_token_head"
     rng: np.random.Generator = field(default_factory=lambda: np.random.default_rng(0))
     _buffers: list[DeviceBuffer] = field(default_factory=list, repr=False)
     _scratches: list[Gemma4LayerScratch] = field(default_factory=list, repr=False)
     _kv: list[Gemma4LayerKV] = field(default_factory=list, repr=False)
+    _int8_kv: Any = field(default=None, repr=False)
+    _kv_storage_resolved: str = field(default="bf16", repr=False)
+    _kv_scale_dtype_resolved: DType = field(default=DType.FP16, repr=False)
     _caches: list[DeviceBuffer] = field(default_factory=list, repr=False)
     _staging: dict[str, tuple[DeviceBuffer, int]] = field(default_factory=dict, repr=False)
     _position: int = field(default=0, repr=False)
@@ -667,8 +703,8 @@ class Gemma4Runner:
             self.max_block = min(self.capacity, DEFAULT_PREFILL_BLOCK)
         if self.max_block > self.capacity:
             raise ValueError("max_block must not exceed capacity")
-        for attention in config.attention:
-            gemma4_attention_shared_bytes(head_dim=attention.head_dim, keys=self.capacity)
+        self._resolve_kv_storage()
+        self._validate_attention_shared_memory(config)
 
         hidden = config.hidden_size
         # Each layer's dense MLP can have its own width. Use the per-layer
@@ -689,6 +725,8 @@ class Gemma4Runner:
                 hidden=hidden,
                 config=config,
                 dense_widths=dense_widths,
+                kv_storage=self._kv_storage_resolved,
+                kv_scale_dtype=self._kv_scale_dtype_resolved,
             )
         # Every buffer taken below is owned by this runner, so a failure
         # partway through construction must release the ones already taken
@@ -726,6 +764,8 @@ class Gemma4Runner:
                         expert_intermediate=config.moe_intermediate_size,
                     )
                 )
+                if self._kv_storage_resolved == "int8_per_token_head":
+                    continue
                 key = self._alloc(
                     self.capacity * attention.num_kv_heads * attention.head_dim * _BF16_BYTES
                 )
@@ -741,12 +781,107 @@ class Gemma4Runner:
                         write_offset=0,
                     )
                 )
+            if self._kv_storage_resolved == "int8_per_token_head":
+                # The INT8 owner allocates the payload, scale planes, page table
+                # and FP32 consumer scratch; the runner keeps no BF16 K/V cache
+                # and no full BF16 shadow.
+                attentions = tuple(
+                    (a.num_heads, a.num_kv_heads, a.head_dim) for a in config.attention
+                )
+                self._int8_kv = Gemma4Int8KVCache(
+                    capacity=self.capacity,
+                    max_block=self.max_block,
+                    attentions=attentions,
+                    backend=str(getattr(self.weights, "backend", "hip_gfx1100")),
+                    scale_dtype=self._kv_scale_dtype_resolved,
+                )
         except BaseException:
             # Mark closed first so a later close() cannot free the same buffers
             # a second time, then release everything taken so far.
             self._closed = True
             self._release_owned()
             raise
+
+    def _validate_attention_shared_memory(self, config: Any) -> None:
+        """Refuse a context the *selected* attention consumer cannot fit.
+
+        The BF16 prefill kernel keeps one logit per live key in LDS; the direct
+        INT8 consumer sizes its logit scratch as ``capacity + head_dim + 2 *
+        num_warps`` floats. Those are different bounds, and at head_dim 512 the
+        INT8 bound is the looser of the two -- a context that fits the selected
+        INT8 consumer can still exceed the BF16 one. Validating the unselected
+        bound would refuse a context the selected consumer runs, so this applies
+        exactly one of them, chosen by the resolved storage. Each bound is
+        enforced by the kernel that owns it and neither is loosened here.
+        """
+
+        if self._kv_storage_resolved == "int8_per_token_head":
+            for attention in config.attention:
+                int8_kv_consumer_shared_bytes(
+                    capacity=self.capacity, head_dim=attention.head_dim
+                )
+            return
+        for attention in config.attention:
+            gemma4_attention_shared_bytes(head_dim=attention.head_dim, keys=self.capacity)
+
+    def _resolve_kv_storage(self) -> None:
+        """Resolve the storage request to a concrete, supported mode.
+
+        ``auto`` is the BF16 comparison path. ``int8_per_token_head`` is the
+        only INT8 layout the writer and consumers implement (per-token/head
+        scales, fp16 or fp32). Anything else is a named capability miss rather
+        than a silent downgrade to BF16.
+        """
+
+        requested = str(self.kv_storage or "auto")
+        if requested == "auto":
+            requested = "bf16"
+        if requested not in {"bf16", "int8_per_token_head"}:
+            raise ValueError(
+                f"unsupported KV storage {self.kv_storage!r}; the Gemma 4 runner "
+                "implements 'bf16' and 'int8_per_token_head'"
+            )
+        self._kv_storage_resolved = requested
+        if requested != "int8_per_token_head":
+            self._kv_scale_dtype_resolved = DType.FP16
+            return
+        granularity = str(self.kv_scale_granularity or "per_token_head")
+        if granularity != "per_token_head":
+            raise ValueError(
+                "the Gemma 4 INT8 KV cache implements per_token_head scale "
+                f"granularity only; got {granularity!r}"
+            )
+        scale_dtype = DType.parse(self.kv_scale_dtype or "fp16")
+        if scale_dtype not in {DType.FP16, DType.FP32}:
+            raise ValueError(
+                "the Gemma 4 INT8 KV cache implements fp16 or fp32 scales; "
+                f"got {self.kv_scale_dtype!r}"
+            )
+        self._kv_scale_dtype_resolved = scale_dtype
+
+    @property
+    def uses_int8_kv(self) -> bool:
+        """Whether this runner holds the INT8 per-token/head KV cache."""
+
+        return self._int8_kv is not None
+
+    @property
+    def kv_cache(self) -> Gemma4Int8KVCache | None:
+        """The owned INT8 KV cache, or ``None`` on the BF16 path."""
+
+        return self._int8_kv
+
+    @property
+    def kv_storage_resolved(self) -> str:
+        """The concrete storage mode this runner was built with."""
+
+        return self._kv_storage_resolved
+
+    @property
+    def kv_scale_dtype_resolved(self) -> DType:
+        """The concrete INT8 scale dtype this runner was built with."""
+
+        return self._kv_scale_dtype_resolved
 
     def _alloc(self, nbytes: int) -> DeviceBuffer:
         if nbytes <= 0:
@@ -795,6 +930,8 @@ class Gemma4Runner:
         # The exposed states belonged to the sequence just rewound; a consumer
         # must not read them for a prompt that no longer exists.
         self._normalized_hidden_rows = 0
+        if self._int8_kv is not None:
+            self._int8_kv.reset()
         for index in range(len(self._kv)):
             self._kv[index] = Gemma4LayerKV(
                 key_cache=self._kv[index].key_cache,
@@ -813,6 +950,9 @@ class Gemma4Runner:
 
         for scratch in self._scratches:
             scratch.free()
+        if self._int8_kv is not None:
+            self._int8_kv.close()
+            self._int8_kv = None
         for buffer in self._buffers:
             free(buffer)
         self._buffers.clear()
@@ -1270,6 +1410,15 @@ class Gemma4Runner:
             stream=stream,
         )
 
+        # INT8 storage stages this block's append positions and live counts once
+        # for every layer, on the same stream, ahead of the writer and consumer
+        # launches that read them.
+        int8_block = None
+        if self._int8_kv is not None:
+            int8_block = self._int8_kv.begin_block(
+                write_offset=kv_write_offset, rows=rows, stream=stream
+            )
+
         for index, layer in enumerate(self.weights.layers):
             attention = config.geometry(index)
             cos_buf, sin_buf = tables[attention.rope]
@@ -1286,12 +1435,17 @@ class Gemma4Runner:
                 mask_buf.ptr,
                 layer,
                 scratch=self._scratches[index],
-                kv=Gemma4LayerKV(
+                kv=None
+                if int8_block is not None
+                else Gemma4LayerKV(
                     key_cache=self._kv[index].key_cache,
                     value_cache=self._kv[index].value_cache,
                     capacity=self.capacity,
                     write_offset=kv_write_offset,
                 ),
+                int8_kv=None
+                if int8_block is None
+                else self._int8_kv.layer_kv(index, int8_block),
                 rows=rows,
                 eps=config.rms_norm_eps,
                 key_begin=key_begin,

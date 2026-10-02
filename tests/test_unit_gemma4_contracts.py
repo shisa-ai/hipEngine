@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from hipengine.core.dtype import DType
 from hipengine.generation.gemma4_gguf import Gemma4GGUFGenerator
 from hipengine.generation.registry import GenerationRequest
 
@@ -31,6 +32,10 @@ def _generator(tokens=(8, 9, 10)):
         forward=lambda ids: calls.append(tuple(ids)),
         forward_argmax=_forward_argmax,
         next_token=lambda logits: next(iterator),
+        # ``_ensure_runner`` reads the resolved storage to decide whether the
+        # injected runner can serve the request; a stub must declare it.
+        kv_storage_resolved="bf16",
+        kv_scale_dtype_resolved=DType.FP16,
     )
     return generator, calls
 
@@ -94,3 +99,49 @@ def test_failed_runner_construction_releases_loaded_weights(monkeypatch):
     assert released == [True]
     assert generator._weights is None
     assert generator._runner is None
+
+
+def test_kv_storage_defaults_to_bf16():
+    from hipengine.generation.gemma4_gguf import _resolve_kv_storage
+
+    assert _resolve_kv_storage(_request()) == ("bf16", "fp16", "per_token_head")
+    assert _resolve_kv_storage(_request(kv_storage="auto")) == (
+        "bf16",
+        "fp16",
+        "per_token_head",
+    )
+
+
+def test_int8_kv_storage_controls_resolve():
+    from hipengine.generation.gemma4_gguf import _resolve_kv_storage
+
+    assert _resolve_kv_storage(
+        _request(kv_storage="int8_per_token_head", kv_scale_dtype="fp32")
+    ) == ("int8_per_token_head", "fp32", "per_token_head")
+
+
+def test_request_validation_accepts_the_implemented_int8_layout():
+    generator, _ = _generator()
+    generator._validate_request(
+        _request(
+            kv_storage="int8_per_token_head",
+            kv_scale_dtype="fp32",
+            kv_scale_granularity="per_token_head",
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"kv_storage": "fp8"},
+        {"kv_storage": "int8_per_token_head", "kv_scale_granularity": "per_channel"},
+        {"kv_storage": "int8_per_token_head", "kv_scale_dtype": "bf16"},
+    ],
+)
+def test_request_validation_rejects_unsupported_kv_storage_by_name(options):
+    generator, _ = _generator()
+    with pytest.raises(NotImplementedError) as excinfo:
+        generator._validate_request(_request(**options))
+    message = str(excinfo.value)
+    assert "KV storage" in message or "INT8 KV storage" in message

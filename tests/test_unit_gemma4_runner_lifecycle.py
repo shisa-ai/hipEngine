@@ -26,6 +26,7 @@ from hipengine.kernels.cpu_reference.gemma4 import (
     Gemma4TextConfig,
 )
 from hipengine.runtime import gemma4 as gemma4_module
+from hipengine.runtime import gemma4_int8_kv as int8_kv_module
 from hipengine.runtime.gemma4 import Gemma4Runner
 
 
@@ -81,6 +82,75 @@ def _weights(config: Gemma4TextConfig) -> SimpleNamespace:
     # ``__post_init__`` reads only ``weights.config``; the projections are only
     # touched by a forward pass, which these lifecycle tests never run.
     return SimpleNamespace(config=config)
+
+
+def _wide_config(*, head_dim: int = 512, num_layers: int = 1) -> Gemma4TextConfig:
+    """A config whose attention layers have a real Gemma 4 global geometry.
+
+    head_dim 512 is where the BF16 prefill bound and the direct INT8 consumer
+    bound actually diverge, so it is the only width that can show which one a
+    runner applies.
+    """
+
+    attention = tuple(
+        Gemma4AttentionGeometry(
+            layer_type="full_attention",
+            num_heads=16,
+            num_kv_heads=2,
+            head_dim=head_dim,
+            rope=Gemma4RopeConfig(
+                rope_theta=10_000.0, head_dim=head_dim, rope_angles=head_dim // 64
+            ),
+            sliding_window=None,
+            k_eq_v=False,
+        )
+        for _ in range(num_layers)
+    )
+    return Gemma4TextConfig(
+        hidden_size=16,
+        intermediate_size=32,
+        moe_intermediate_size=8,
+        num_experts=4,
+        top_k_experts=2,
+        rms_norm_eps=1e-6,
+        attention=attention,
+        vocab_size=64,
+    )
+
+
+def _fake_allocated_runner(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    config: Gemma4TextConfig,
+    capacity: int,
+    max_block: int = 8,
+    kv_storage: str = "bf16",
+) -> tuple[Gemma4Runner, _FakeAllocator, _FakeAllocator]:
+    """Build a runner over fake allocators for both the runner and the INT8 owner.
+
+    No device is touched, so the admission checks can be exercised at contexts a
+    real card could not hold.
+    """
+
+    runner_allocator = _FakeAllocator()
+    monkeypatch.setattr(gemma4_module, "malloc", runner_allocator.malloc)
+    monkeypatch.setattr(gemma4_module, "free", runner_allocator.free)
+    owner_allocator = _FakeAllocator()
+    monkeypatch.setattr(int8_kv_module, "malloc", owner_allocator.malloc)
+    monkeypatch.setattr(int8_kv_module, "free", owner_allocator.free)
+    monkeypatch.setattr(
+        int8_kv_module, "copy_host_to_device", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        int8_kv_module, "enqueue_host_to_device", lambda *args, **kwargs: None
+    )
+    runner = Gemma4Runner(
+        weights=_weights(config),
+        capacity=capacity,
+        max_block=max_block,
+        kv_storage=kv_storage,
+    )
+    return runner, runner_allocator, owner_allocator
 
 
 def _make_runner(
@@ -209,6 +279,228 @@ def test_constructor_failure_after_layer_scratch_frees_the_scratch_too(
     assert sorted(buffer.ptr for buffer in allocator.freed) == sorted(
         buffer.ptr for buffer in allocator.allocated
     )
+
+
+def test_bf16_is_the_default_storage_and_allocates_no_int8_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The default request must leave the comparison path byte-for-byte as it was."""
+
+    runner, allocator = _make_runner(monkeypatch, capacity=64, max_block=8)
+    try:
+        assert runner.uses_int8_kv is False
+        assert runner.kv_cache is None
+        assert runner.kv_storage_resolved == "bf16"
+        # Two layers, key/value each: the BF16 path still owns its caches.
+        assert len(runner._caches) == 4
+        assert all(buffer.nbytes > 0 for buffer in runner._caches)
+        assert allocator.allocated  # sanity: the fake allocator was used
+    finally:
+        runner.close()
+
+
+def test_int8_storage_allocates_the_owner_instead_of_bf16_caches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """INT8 storage replaces the BF16 K/V caches with one owned INT8 cache.
+
+    The runner must hold no BF16 K/V cache and no BF16 shadow on this path, and
+    closing must release the owner's buffers exactly once.
+    """
+
+    allocator = _FakeAllocator()
+    monkeypatch.setattr(gemma4_module, "malloc", allocator.malloc)
+    monkeypatch.setattr(gemma4_module, "free", allocator.free)
+    owner_allocator = _FakeAllocator()
+    monkeypatch.setattr(int8_kv_module, "malloc", owner_allocator.malloc)
+    monkeypatch.setattr(int8_kv_module, "free", owner_allocator.free)
+    monkeypatch.setattr(
+        int8_kv_module, "copy_host_to_device", lambda *args, **kwargs: None
+    )
+
+    runner = Gemma4Runner(
+        weights=_weights(_config()),
+        capacity=64,
+        max_block=8,
+        kv_storage="int8_per_token_head",
+        kv_scale_dtype="fp16",
+        kv_scale_granularity="per_token_head",
+    )
+    try:
+        assert runner.uses_int8_kv is True
+        assert runner.kv_cache is not None
+        assert runner.kv_storage_resolved == "int8_per_token_head"
+        assert runner._kv == []
+        assert runner._caches == []
+        assert owner_allocator.allocated, "the owner allocated nothing"
+        assert runner.kv_cache.allocated_bytes == sum(
+            buffer.nbytes for buffer in owner_allocator.allocated
+        )
+    finally:
+        runner.close()
+
+    assert runner.kv_cache is None
+    assert len(owner_allocator.freed) == len(owner_allocator.allocated)
+    assert sorted(b.ptr for b in owner_allocator.freed) == sorted(
+        b.ptr for b in owner_allocator.allocated
+    )
+
+
+def test_int8_storage_rejects_unsupported_scale_granularity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unsupported layout is a named capability miss, not a silent fallback."""
+
+    allocator = _FakeAllocator()
+    monkeypatch.setattr(gemma4_module, "malloc", allocator.malloc)
+    monkeypatch.setattr(gemma4_module, "free", allocator.free)
+    with pytest.raises(ValueError, match="per_token_head"):
+        Gemma4Runner(
+            weights=_weights(_config()),
+            capacity=64,
+            max_block=8,
+            kv_storage="int8_per_token_head",
+            kv_scale_granularity="per_channel",
+        )
+
+
+def test_unsupported_kv_storage_is_refused_by_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    allocator = _FakeAllocator()
+    monkeypatch.setattr(gemma4_module, "malloc", allocator.malloc)
+    monkeypatch.setattr(gemma4_module, "free", allocator.free)
+    with pytest.raises(ValueError, match="unsupported KV storage"):
+        Gemma4Runner(
+            weights=_weights(_config()), capacity=64, max_block=8, kv_storage="fp8"
+        )
+
+
+def test_int8_reset_rewinds_the_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reset must rewind the INT8 owner too, so a reused runner starts empty."""
+
+    monkeypatch.setattr(gemma4_module, "malloc", _FakeAllocator().malloc)
+    monkeypatch.setattr(gemma4_module, "free", _FakeAllocator().free)
+    monkeypatch.setattr(int8_kv_module, "malloc", _FakeAllocator().malloc)
+    monkeypatch.setattr(int8_kv_module, "free", _FakeAllocator().free)
+    monkeypatch.setattr(
+        int8_kv_module, "copy_host_to_device", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        int8_kv_module, "enqueue_host_to_device", lambda *args, **kwargs: None
+    )
+    runner = Gemma4Runner(
+        weights=_weights(_config()),
+        capacity=64,
+        max_block=8,
+        kv_storage="int8_per_token_head",
+    )
+    try:
+        owner = runner.kv_cache
+        assert owner is not None
+        owner.begin_block(write_offset=4, rows=3, stream=0)
+        assert owner._positions_host[:3].tolist() == [4, 5, 6]
+        runner.reset()
+        assert owner._positions_host[:3].tolist() == [0, 0, 0]
+        assert runner.position == 0
+    finally:
+        runner.close()
+
+
+@pytest.mark.parametrize(
+    "capacity",
+    [8192, 15700, 15856],
+    ids=("unrelated-safe-length", "between-the-two-bounds", "int8-edge"),
+)
+def test_int8_storage_admits_a_context_only_the_selected_consumer_bounds(
+    monkeypatch: pytest.MonkeyPatch, capacity: int
+) -> None:
+    """The selected consumer's bound decides, never the unselected one.
+
+    At head_dim 512 the direct INT8 consumer needs ``(capacity + 512 + 16) * 4``
+    bytes of LDS; the BF16 prefill kernel needs ``(capacity + 512 + 256) * 4``.
+    Between the two bounds -- and at the INT8 edge, exactly 65536 bytes -- the
+    INT8 path is runnable and the BF16 path is not. A runner that validated the
+    BF16 bound regardless of storage refused these contexts.
+
+    The lengths are deliberately not the configured block or window sizes: 8192
+    is unrelated to both bounds, 15700 sits between them, and 15856 is the
+    largest capacity the INT8 consumer fits.
+    """
+
+    runner, _, owner_allocator = _fake_allocated_runner(
+        monkeypatch,
+        config=_wide_config(),
+        capacity=capacity,
+        kv_storage="int8_per_token_head",
+    )
+    try:
+        assert runner.uses_int8_kv is True
+        assert runner.kv_storage_resolved == "int8_per_token_head"
+        assert owner_allocator.allocated, "the INT8 owner allocated nothing"
+    finally:
+        runner.close()
+
+
+def test_int8_storage_refuses_a_context_past_its_own_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One token past the INT8 edge is still a named capability miss."""
+
+    with pytest.raises(ValueError, match="shared memory"):
+        _fake_allocated_runner(
+            monkeypatch,
+            config=_wide_config(),
+            capacity=15857,
+            kv_storage="int8_per_token_head",
+        )
+
+
+def test_bf16_storage_still_refuses_past_its_own_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fix picks the right bound; it does not loosen either consumer's limit."""
+
+    with pytest.raises(NotImplementedError, match="shared memory"):
+        _fake_allocated_runner(
+            monkeypatch,
+            config=_wide_config(),
+            capacity=15700,
+            kv_storage="bf16",
+        )
+
+
+def test_close_releases_an_unused_runner_without_loading_the_hip_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Releasing a runner that never touched a device must not load libamdhip64.
+
+    ``Gemma4LayerScratch.free`` used to acquire the HIP runtime unconditionally,
+    so ``close()`` on a fake-allocated runner failed wherever libamdhip64.so is
+    absent -- a no-ROCm CI or publish runner. An unused scratch owns no events
+    and no buffers, so its release is a pure host operation.
+    """
+
+    import hipengine.core.hip as hip_module
+
+    def _no_runtime(*args: object, **kwargs: object) -> object:
+        raise OSError("libamdhip64.so: cannot open shared object file")
+
+    monkeypatch.setattr(hip_module, "get_hip_runtime", _no_runtime)
+
+    runner, allocator = _make_runner(monkeypatch, capacity=64, max_block=8)
+    runner.close()
+    assert len(allocator.freed) == len(allocator.allocated)
+
+    int8_runner, runner_allocator, owner_allocator = _fake_allocated_runner(
+        monkeypatch,
+        config=_config(),
+        capacity=64,
+        kv_storage="int8_per_token_head",
+    )
+    int8_runner.close()
+    assert len(runner_allocator.freed) == len(runner_allocator.allocated)
+    assert len(owner_allocator.freed) == len(owner_allocator.allocated)
 
 
 def test_close_is_idempotent_and_frees_growth_allocations_once(
