@@ -70,7 +70,34 @@ COLUMNS = QUERY_ROWS * GQA_HEADS
 # the key walk. Measured at 262,144 keys on gfx1151: 8 blocks reach 75 GB/s, 64
 # reach 225, 256 reach 252, so the rate is found somewhere between 8 and 64 and
 # there is nothing to gain by asking for more than this.
+#
+# This is the *prefill* shape's number, and the decode shape does not share it.
+# The two shapes read different amounts per block -- the prefill shape re-reads
+# each KV band once per GQA tile, the decode shape reads each band once -- so a
+# block count that suits one does not suit the other, and a shape whose blocks
+# each move a quarter of the traffic wants a quarter of the blocks, not four
+# times the slices to reach the same grid. See ``split_target_blocks`` on each
+# shape for the two measurements.
 TARGET_BLOCKS = 128
+
+# The decode shape's own target, measured by sweeping the slice count directly
+# (the planner monkeypatched, one full layer, tokens=1, median of 9, gfx1151).
+# The walk is 1.074 GB at 262,144 keys, against the 238.5 GB/s roofline the
+# roofline kernel measured on this device:
+#
+#   keys     slices=8   slices=16   slices=32   slices=64   slices=128
+#   16,384     36.5%       51.3%       39.7%       32.5%       22.1%
+#   65,536     41.9%       66.4%       55.7%       57.4%       49.2%
+#   131,072    42.8%       73.0%       60.8%       63.3%       60.7%
+#   262,144    43.1%       74.7%       61.9%       70.1%       70.4%
+#
+# Sixteen slices is the fastest at every key count, by 1.066x at 262,144 and
+# 1.578x at 16,384. More is worse, not better: the walk is a fixed amount of
+# work, so past the point where the blocks cover the device, extra slices only
+# add wave quantization and a longer combine. The previous value of 64 came from
+# applying the prefill shape's block target to a shape with a quarter of the
+# traffic per block.
+DECODE_SPLIT_TARGET_BLOCKS = 32
 
 
 @dataclass(frozen=True)
@@ -88,6 +115,7 @@ class WmmaFullShape:
     gqa_heads: int
     symbol: str
     output_name: str
+    split_target_blocks: int
 
     @property
     def columns(self) -> int:
@@ -116,9 +144,15 @@ class WmmaFullShape:
         return (self.columns * (HEAD_DIM + 8) + K_BATCH * (HEAD_DIM + 8)) * 2
 
 
-PREFILL_SHAPE = WmmaFullShape(QUERY_ROWS, GQA_HEADS, SYMBOL_PREFILL_WMMA_FULL_BF16, _OUTPUT_NAME)
+PREFILL_SHAPE = WmmaFullShape(
+    QUERY_ROWS, GQA_HEADS, SYMBOL_PREFILL_WMMA_FULL_BF16, _OUTPUT_NAME, TARGET_BLOCKS
+)
 DECODE_SHAPE = WmmaFullShape(
-    DECODE_QUERY_ROWS, DECODE_GQA_HEADS, SYMBOL_DECODE_WMMA_FULL_BF16, _OUTPUT_NAME_DECODE
+    DECODE_QUERY_ROWS,
+    DECODE_GQA_HEADS,
+    SYMBOL_DECODE_WMMA_FULL_BF16,
+    _OUTPUT_NAME_DECODE,
+    DECODE_SPLIT_TARGET_BLOCKS,
 )
 
 
@@ -154,18 +188,22 @@ def plan_gemma4_attention_wmma_full_slices(
     needing at least one K batch per slice, since a slice shorter than a tile
     has no work to overlap.
 
-    The shape matters to the count as well as to the kernel: the decode shape
-    reads each band once where the prefill shape reads it four times, so it has
-    four times less to overlap and needs four times the slices to reach the
-    same grid.
+    The shape matters to the count as well as to the kernel: the two shapes
+    move different amounts of traffic per block, because the prefill shape
+    re-reads each KV band once per GQA tile and the decode shape reads each band
+    once. Each shape therefore carries its own ``split_target_blocks``, and a
+    shape that moves a quarter of the traffic per block wants a quarter of the
+    blocks -- not four times the slices to reach the same grid, which is what
+    this rule used to do and which measured 1.066x to 1.578x slower.
     """
 
     shape = shape_for_tokens(tokens)
     query_tiles = (int(tokens) + shape.query_rows - 1) // shape.query_rows
     base_blocks = query_tiles * int(num_kv_heads) * shape.gqa_tiles
-    if query_tiles != 1 or base_blocks >= TARGET_BLOCKS:
+    target = shape.split_target_blocks
+    if query_tiles != 1 or base_blocks >= target:
         return 1
-    slices = (TARGET_BLOCKS + base_blocks - 1) // base_blocks
+    slices = (target + base_blocks - 1) // base_blocks
     by_walk = int(keys) // K_BATCH
     if slices > by_walk:
         slices = by_walk
