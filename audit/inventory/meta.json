@@ -1,7 +1,7 @@
 {
   "candidates": {
     "campaign_docs_scanned": 63,
-    "candidates": 235
+    "candidates": 243
   },
   "flags": {
     "names": 748,
@@ -9,7 +9,7 @@
   },
   "kernels": {
     "sources": 274,
-    "registry_keys": 310,
+    "registry_keys": 313,
     "backends": [
       "cpu_reference",
       "cuda_sm120a",
@@ -20,21 +20,21 @@
   },
   "ledger": {
     "source": "docs/REFACTOR.md",
-    "headings": 406
+    "headings": 407
   },
-  "generated": "2026-09-29T08:31:37+00:00",
-  "commit": "f149c0787",
+  "generated": "2026-10-02T04:53:11+00:00",
+  "commit": "010904eff",
   "worklog": {
     "source": "worklog/entries",
-    "entries": 10784,
-    "current": 3552,
+    "entries": 10840,
+    "current": 3608,
     "legacy": 7232,
     "unparsable": 0,
-    "rows": 1132,
+    "rows": 1155,
     "by_rule": {
-      "dependency": 39,
+      "dependency": 41,
       "legacy-next": 109,
-      "status": 984
+      "status": 1005
     }
   }
 }

@@ -2,7 +2,7 @@
   "kind": "candidates",
   "meta": {
     "campaign_docs_scanned": 63,
-    "candidates": 235
+    "candidates": 243
   },
   "rows": [
     {
@@ -79,6 +79,361 @@
       },
       "id": "candidate/gemma4-26b-a4b-optimization-5-8-choose-wmma-by-usefu-d3a3557a613b",
       "evidence_hash": "a2508c8910cb"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-d2-b66c488f7311",
+      "title": "D2 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:372",
+      "evidence": {
+        "verdict_word": "deferred",
+        "measurements": [
+          "116 \u00b5s",
+          "55 \u00b5s",
+          "4.28 ms",
+          "0.35 ms",
+          "100%",
+          "12.864 ms"
+        ],
+        "excerpt": "| D2 | attn.sliding | **Flash-decoding (split-K) for the sliding layers.** `gemma4_attention_decode_dimension_kernel` runs 25 launches per token of 128 wave32 workgroups (grid 4096 threads, about one wave per CU on 96 CUs) at 116 \u00b5s, plus the class kernel at 55 \u00b5s. Replace it with many (KV-split \u00d7 KV-head) workgroups, 2 query heads packed per KV head, and a combine kernel; llama.cpp uses `flash_at"
+      },
+      "signals": [
+        "recorded as 'deferred' while citing a measurement",
+        "same row also mentions promotion \u2014 may already be resolved"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "0.35 ms",
+          "100%",
+          "116 \u00b5s",
+          "12.864 ms",
+          "14.9%",
+          "17.5%",
+          "4.28 ms",
+          "55 \u00b5s"
+        ],
+        "tokens": [
+          "128",
+          "attn",
+          "decoding",
+          "flash",
+          "gemma4_attention_decode_dimension_kernel",
+          "launches",
+          "layers",
+          "per",
+          "runs",
+          "sliding",
+          "split",
+          "token",
+          "wave32",
+          "workgroups"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-d2-b66c488f7311",
+      "evidence_hash": "cb404d6f2cab"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-d4-6c048afba3e7",
+      "title": "D4 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:374",
+      "evidence": {
+        "verdict_word": "deferred",
+        "measurements": [
+          "2.82 ms",
+          "100%",
+          "152.5 \u00b5s",
+          "12.810 ms"
+        ],
+        "excerpt": "| D4 | attn.global | **Split-K flash-decoding at head_dim 512.** The same design as D2. Preserve distinct cached K and V loads: sharing the raw projection does not share their normalization or RoPE transforms (P2). | 0.75 \u2192 2.82 ms from 1024 to 4096 context, against llama.cpp's 0.11 \u2192 0.15. | ~0.6 / **~2.7** | **measured \u2014 landed and verified** (`abf639894`) | Flash extended to the global layers ("
+      },
+      "signals": [
+        "recorded as 'deferred' while citing a measurement",
+        "same row also mentions promotion \u2014 may already be resolved"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "100%",
+          "12.810 ms",
+          "152.5 \u00b5s",
+          "2.82 ms"
+        ],
+        "tokens": [
+          "512",
+          "attn",
+          "cached",
+          "decoding",
+          "design",
+          "distinct",
+          "flash",
+          "global",
+          "head_dim",
+          "loads",
+          "preserve",
+          "same",
+          "sharing",
+          "split"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-d4-6c048afba3e7",
+      "evidence_hash": "adadeb21b157"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-d5-bcb9c62137f5",
+      "title": "D5 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:375",
+      "evidence": {
+        "verdict_word": "rejected",
+        "measurements": [
+          "1.29 ms",
+          "0.33 ms",
+          "0.55 ms",
+          "0.6944 ms",
+          "31%",
+          "0.30 ms"
+        ],
+        "excerpt": "| D5 | moe.route_glue + router | **One fused routing kernel for single-token decode:** RMSNorm without weight \u00d7 scale \u2192 router logits (2816 \u00d7 128) \u2192 softmax \u2192 top-8 \u2192 renormalization and per-expert scale \u2192 expert ids. The one-token path needs none of `compact_active` / `prefix` / `count` / `lane_to_row` / `fill`. This matches llama.cpp's single `topk_moe_cuda` launch. | 240 glue launches per token"
+      },
+      "signals": [
+        "recorded as 'rejected' while citing a measurement",
+        "same row also mentions promotion \u2014 may already be resolved"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "0.30 ms",
+          "0.33 ms",
+          "0.55 ms",
+          "0.6944 ms",
+          "0.7%",
+          "0.8%",
+          "1.29 ms",
+          "1.4000 ms",
+          "13.48 \u00b5s",
+          "19.8 \u00b5s",
+          "20 \u00b5s",
+          "28.58 \u00b5s",
+          "3.58 \u00b5s",
+          "31%"
+        ],
+        "tokens": [
+          "decode",
+          "fused",
+          "kernel",
+          "moe",
+          "one",
+          "rmsnorm",
+          "route_glue",
+          "router",
+          "routing",
+          "scale",
+          "single",
+          "token",
+          "weight",
+          "without"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-d5-bcb9c62137f5",
+      "evidence_hash": "3adacd0b3098"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-d6-86eccb7bb490",
+      "title": "D6 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:376",
+      "evidence": {
+        "verdict_word": "deferred",
+        "measurements": [
+          "1.51 ms",
+          "3 us",
+          "7.867 us",
+          "0.59 us",
+          "1.0 us",
+          "16 us"
+        ],
+        "excerpt": "| D6 | norm | **Fuse the per-layer norms that share an input.** Three normalizations read `attn_out` (`ffn_norm`, `pre_ffw_norm_2`, and the weightless router norm), and the tail chain is `post_ffw_norm_1`, `post_ffw_norm_2`, add, `post_ffw_norm`, residual, then layer scale. Emit them from 2\u20133 kernels per layer. The fusion that iteration 45 refuted was Qwen's rmsnorm+rotate, which serializes a redu"
+      },
+      "signals": [
+        "recorded as 'deferred' while citing a measurement",
+        "same row also mentions promotion \u2014 may already be resolved"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "0.03 ms",
+          "0.59 us",
+          "0.65%",
+          "0.86 ms",
+          "1.0 us",
+          "1.51 ms",
+          "1.5159 ms",
+          "16 us",
+          "2711.2 ms",
+          "3 us",
+          "4 us",
+          "6.5 us",
+          "7.867 us"
+        ],
+        "tokens": [
+          "attn_out",
+          "ffn_norm",
+          "fuse",
+          "input",
+          "layer",
+          "norm",
+          "normalizations",
+          "norms",
+          "per",
+          "pre_ffw_norm_2",
+          "read",
+          "share",
+          "three",
+          "weightless"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-d6-86eccb7bb490",
+      "evidence_hash": "f761a97a1233"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-d7-1aedef5c3f65",
+      "title": "D7 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:377",
+      "evidence": {
+        "verdict_word": "rejected",
+        "measurements": [
+          "0.47 ms",
+          "0.12 ms",
+          "17.8 \u00b5s",
+          "2 \u00b5s",
+          "8 x",
+          "0.53 ms"
+        ],
+        "excerpt": "| D7 | moe / elementwise | **Fold the MoE weighted accumulate, the GEGLU and the branch add into neighbouring epilogues.** Weighted accumulate goes into the down GEMV's epilogue, and the GEGLU into the gate_up GEMV. | `gemma4_moe_weighted_accumulate` 0.47 ms per token, GEGLU 0.12, branch add 0.05. | ~0.5 | **branch-add delivered by D6's tail fold (2026-09-30); weighted accumulate delivered by colu"
+      },
+      "signals": [
+        "recorded as 'rejected' while citing a measurement",
+        "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "0.02 ms",
+          "0.060 ms",
+          "0.12 ms",
+          "0.120 ms",
+          "0.4 ms",
+          "0.47 ms",
+          "0.4719 ms",
+          "0.5 ms",
+          "0.53 ms",
+          "0.69 ms",
+          "1 x",
+          "11 tok/s",
+          "13.764 \u00b5s",
+          "17.8 \u00b5s",
+          "2 \u00b5s",
+          "2.0 \u00b5s",
+          "2.4%",
+          "2.5%",
+          "2.9%",
+          "5.386 \u00b5s",
+          "62.83 tok/s",
+          "8 x"
+        ],
+        "tokens": [
+          "accumulate",
+          "add",
+          "branch",
+          "down",
+          "elementwise",
+          "epilogues",
+          "fold",
+          "geglu",
+          "gemv",
+          "goes",
+          "into",
+          "moe",
+          "neighbouring",
+          "weighted"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-d7-1aedef5c3f65",
+      "evidence_hash": "0e4242d2d4ae"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-d9-b416fb604600",
+      "title": "D9 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:379",
+      "evidence": {
+        "verdict_word": "rejected",
+        "measurements": [
+          "2.14 ms",
+          "3.02 ms",
+          "2.14 ms",
+          "6.5%",
+          "2.690 ms",
+          "0.055 ms"
+        ],
+        "excerpt": "| D9 | dense.q8_0 | **Fuse q/k/v, and the shared-MLP gate/up, into one GEMV each** (206 \u2192 ~120 launches), and tune the pack8 GEMV for the 2112 / 4096 / 8192-row shapes. It is already ahead of llama.cpp, but runs at 579 GB/s against a 2.14 ms floor. | 3.02 ms against a 2.14 ms floor. | ~0.5\u20130.9 | **wired -- t16 decode route landed; census dense decode family -6.5%, all gates green** | **This row's "
+      },
+      "signals": [
+        "recorded as 'rejected' while citing a measurement",
+        "same row also mentions promotion \u2014 may already be resolved"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "0.055 ms",
+          "0.19 ms",
+          "0.25 ms",
+          "0.9 ms",
+          "1%",
+          "1.628 GiB",
+          "1.8x",
+          "100%",
+          "12.1 us",
+          "156.0 us",
+          "17.670 GiB",
+          "2.14 ms",
+          "2.672 ms",
+          "2.690 ms",
+          "21.2 us",
+          "25%",
+          "3.02 ms",
+          "32.78 us",
+          "39%",
+          "44.2 us",
+          "6.3%",
+          "6.5%",
+          "6.8%",
+          "85.4 us",
+          "94.9 us",
+          "95%"
+        ],
+        "tokens": [
+          "120",
+          "206",
+          "dense",
+          "each",
+          "fuse",
+          "gate",
+          "gemv",
+          "into",
+          "launches",
+          "mlp",
+          "one",
+          "q8_0",
+          "shared",
+          "tune"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-d9-b416fb604600",
+      "evidence_hash": "e3611d937774"
     },
     {
       "kind": "candidate",
@@ -361,7 +716,7 @@
     },
     {
       "kind": "candidate",
-      "key": "gemma4-26b-a4b-punchlist-p2-3777e396bfb8",
+      "key": "gemma4-26b-a4b-punchlist-p2-48ef5576a493",
       "title": "P2 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
       "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:348",
       "evidence": {
@@ -384,22 +739,58 @@
       "hints": {
         "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
         "refs": [
+          "0.00 ms",
           "0.0091 ms",
           "0.0107 ms",
           "0.0245 ms",
           "0.0374 ms",
           "0.0817 ms",
           "0.4087 ms",
+          "0.56 ms",
+          "0.7%",
+          "0.94%",
           "1.0%",
+          "100.68 ms",
+          "100.93 ms",
+          "104.16 ms",
+          "110.15 ms",
+          "1213.55 ms",
+          "1493.6 tok/s",
+          "176.79 ms",
+          "21.0%",
+          "23.7%",
+          "26.0%",
+          "2650.2 ms",
+          "29.4 ms",
+          "29.92 ms",
+          "3.48 ms",
+          "30.4%",
           "32 ms",
+          "32.53 ms",
+          "3474.4 ms",
+          "378.7 ms",
           "39.2 ms",
           "4 x",
+          "4.2x",
+          "4.35x",
+          "44.41 tok/s",
+          "45.8%",
+          "508.0 ms",
+          "511.50 ms",
           "525 ms",
           "6.6%",
           "6.7 ms",
+          "6.85 ms",
           "610.4 ms",
+          "7 ms",
+          "75.7%",
+          "77.2%",
           "8.1%",
-          "85.7 ms"
+          "8.83 ms",
+          "83.0%",
+          "83.5%",
+          "85.7 ms",
+          "9.39 ms"
         ],
         "tokens": [
           "512",
@@ -418,12 +809,161 @@
           "tiled"
         ]
       },
-      "id": "candidate/gemma4-26b-a4b-punchlist-p2-3777e396bfb8",
+      "id": "candidate/gemma4-26b-a4b-punchlist-p2-48ef5576a493",
       "evidence_hash": "88c60a44bc0f"
     },
     {
       "kind": "candidate",
-      "key": "gemma4-26b-a4b-punchlist-p8-09912cd65c51",
+      "key": "gemma4-26b-a4b-punchlist-p3-451e0bc6fea9",
+      "title": "P3 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:349",
+      "evidence": {
+        "verdict_word": "withdrawn",
+        "measurements": [
+          "21.9 ms",
+          "44.4 ms",
+          "13.8%",
+          "2.6 ms",
+          "60 ms",
+          "13%"
+        ],
+        "excerpt": "| P3 | moe.l29_experts | **Give layer 29's experts a fast owner.** Its Q5_K gate_up runs `gguf_q4_k_selected_dual_grouped_rowbatch` (21.9 ms / 1024) and its Q8_0 down runs `gguf_k_selected_prefill_out_kernel<\u2026,8>` (44.4 ms / 1024). Step 1: determine whether this is routing or a missing leaf. `gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out` guards only on `in_features % 32`, and 704 "
+      },
+      "signals": [
+        "recorded as 'withdrawn' while citing a measurement",
+        "same row also mentions promotion \u2014 may already be resolved"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "0.8 ms",
+          "0.814x",
+          "1.322 ms",
+          "1.43 ms",
+          "13%",
+          "13.8%",
+          "2.6 ms",
+          "20 ms",
+          "21.9 ms",
+          "23.5051 ms",
+          "23.51 ms",
+          "258 ms",
+          "3.3x",
+          "3.6%",
+          "3.9x",
+          "33.6x",
+          "35.8 ms",
+          "36.537 ms",
+          "37 ms",
+          "44.4 ms",
+          "45.8%",
+          "457.575 ms",
+          "494.112 ms",
+          "5%",
+          "5.603 ms",
+          "60 ms",
+          "66.3 ms",
+          "7.3%",
+          "91.7%",
+          "94.7942 ms"
+        ],
+        "tokens": [
+          "1024",
+          "down",
+          "experts",
+          "fast",
+          "gate_up",
+          "gguf_q4_k_selected_dual_grouped_rowbatch",
+          "give",
+          "l29_experts",
+          "layer",
+          "moe",
+          "owner",
+          "q5_k",
+          "q8_0",
+          "runs"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-p3-451e0bc6fea9",
+      "evidence_hash": "226fbcf0f918"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-p6-a482340eb242",
+      "title": "P6 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:352",
+      "evidence": {
+        "verdict_word": "removed",
+        "measurements": [
+          "15 ms",
+          "19.69 us",
+          "27.85 us",
+          "71%",
+          "27 us",
+          "100 us"
+        ],
+        "excerpt": "| P6 | dense.q8_0 | **Concatenate q/k/v, and the shared-MLP gate/up, into one weight each at load.** This must be a replacement layout, not an added copy. **Launch recount 2026-09-28:** the census (`/tmp/gemma4-prefill-census-dual.json`) gives `dense:gguf_q8_0` = **410 calls over 60 layers = 6.83 per layer**, so the row's 412 is right. But the two fusions described here save only **3 launches per "
+      },
+      "signals": [
+        "recorded as 'removed' while citing a measurement",
+        "same row also mentions promotion \u2014 may already be resolved"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "0.055 ms",
+          "0.29%",
+          "0.3 ms",
+          "0.3%",
+          "0.5%",
+          "1.674 ms",
+          "1.7x",
+          "10.8 \u00b5s",
+          "100 us",
+          "101.3 ms",
+          "11.8 \u00b5s",
+          "129.2 ms",
+          "15 ms",
+          "175 x",
+          "19.69 us",
+          "2.1 ms",
+          "27 us",
+          "27.85 us",
+          "2751.4 ms",
+          "28.7 ms",
+          "2x",
+          "30 x",
+          "407.3 ms",
+          "45.8%",
+          "487 GiB",
+          "50.79 ms",
+          "7.8 ms",
+          "71%",
+          "8 ms"
+        ],
+        "tokens": [
+          "added",
+          "concatenate",
+          "dense",
+          "each",
+          "gate",
+          "into",
+          "layout",
+          "load",
+          "mlp",
+          "one",
+          "q8_0",
+          "replacement",
+          "shared",
+          "weight"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-p6-a482340eb242",
+      "evidence_hash": "c7f82cdbab0a"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-p8-90a0e41c3537",
       "title": "P8 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
       "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:354",
       "evidence": {
@@ -439,7 +979,8 @@
         "excerpt": "| P8 | moe.router_gemm | **Router logits through WMMA or hipBLASLt, with the prescale fused in.** **Variant selection shipped 2026-09-28 and is measured**: the route called the generic `qwen35_router_logits_bf16_f32w`, which defaults to `threads=512` with a four-token tile -- at hidden 2816 that leaves threads 352..511 with no K range at all, so 31% of every block idles behind a nine-round barrier"
       },
       "signals": [
-        "recorded as 'rejected' while citing a measurement"
+        "recorded as 'rejected' while citing a measurement",
+        "same row also mentions promotion \u2014 may already be resolved"
       ],
       "hints": {
         "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
@@ -448,18 +989,24 @@
           "0.0666 ms",
           "0.0913 ms",
           "0.0927 ms",
+          "0.1162 ms",
+          "0.1379 ms",
           "0.2091 ms",
           "0.22 ms",
           "0.2309 ms",
           "0.2375 ms",
+          "0.5%",
           "0.75x",
           "0.994 ms",
           "000x",
+          "100x",
+          "104.335 ms",
           "13 ms",
           "14.152 ms",
           "153.1 us",
           "16 ms",
           "2 ms",
+          "2.065 ms",
           "2.2 us",
           "22%",
           "24.8 ms",
@@ -468,15 +1015,21 @@
           "3.5x",
           "31%",
           "31.4 us",
+          "33x",
           "34%",
+          "34.4 us",
           "4.0 ms",
           "4.6 ms",
+          "43.080 ms",
           "469 ms",
+          "5 us",
+          "52.7%",
           "6.2 ms",
           "6.9%",
           "68.905 ms",
           "7.2 ms",
-          "71%"
+          "71%",
+          "8.4%"
         ],
         "tokens": [
           "2026",
@@ -495,12 +1048,12 @@
           "wmma"
         ]
       },
-      "id": "candidate/gemma4-26b-a4b-punchlist-p8-09912cd65c51",
-      "evidence_hash": "0fb058d5923a"
+      "id": "candidate/gemma4-26b-a4b-punchlist-p8-90a0e41c3537",
+      "evidence_hash": "e43bec71e55d"
     },
     {
       "kind": "candidate",
-      "key": "gemma4-26b-a4b-punchlist-v1-7850dd9a693c",
+      "key": "gemma4-26b-a4b-punchlist-v1-d65afd656765",
       "title": "V1 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
       "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:326",
       "evidence": {
@@ -509,7 +1062,9 @@
           "512 x",
           "4.35x",
           "0.94%",
-          "0.56%"
+          "0.56%",
+          "2.2x",
+          "0.5%"
         ],
         "excerpt": "| V1 | attention | **Extend the campaign gate past the window: `--prompt 5120 --prefill 4096 --context 8192`** (1023 scored rows, the campaign row-count standard). The gate requires `prefill < prompt - 1`; capture the baseline and candidate with matching prompt, prefill, context, and block geometry. `capture_chain()` discards the prefill return value and scores subsequent single-token forwards, so"
       },
@@ -521,10 +1076,13 @@
       "hints": {
         "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
         "refs": [
+          "0.5%",
           "0.56%",
           "0.94%",
+          "2.2x",
           "4.35x",
-          "512 x"
+          "512 x",
+          "8%"
         ],
         "tokens": [
           "1023",
@@ -543,8 +1101,8 @@
           "window"
         ]
       },
-      "id": "candidate/gemma4-26b-a4b-punchlist-v1-7850dd9a693c",
-      "evidence_hash": "85281b42b97e"
+      "id": "candidate/gemma4-26b-a4b-punchlist-v1-d65afd656765",
+      "evidence_hash": "07a24dd82b80"
     },
     {
       "kind": "candidate",
