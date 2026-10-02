@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-30 UTC**
+Last updated: **2026-10-02 UTC**
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.
@@ -1176,6 +1176,57 @@ pwilkin `master` and halogen cannot be included: the former has no `qwen4exp`
 architecture, and the latter refuses this quant family by name and publishes its
 figures on `UD-IQ4_XS` instead.
 [Full comparison, kernel attribution and excluded engines](results/2026-09-15-flashnext-engine-comparison/README.md).
+
+### Long context 8K-256K on the same file
+
+The comparison above stops at 4K. Extended to 262,008 tokens on the same host, the
+same file and the same protocol, against two llama.cpp-family builds. Decode is
+the median step over each rung's four categories; prefill is their mean.
+
+| Prompt tokens | hipEngine prefill | upstream prefill | pwilkin prefill | hipEngine step | upstream step | pwilkin step |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 8,192 | 262.0 | 462.0 | 982.7 | **51.6 ms** | 56.1 ms | 47.5 ms |
+| 32,768 | 239.8 | 381.0 | 991.3 | **52.4 ms** | 73.7 ms | 50.7 ms |
+| 131,072 | 183.8 | 233.9 | 894.4 | 345.3 ms | 160.3 ms | 52.2 ms |
+| 262,008 | 149.7 | - | - | 346.5 ms | - | - |
+
+262,008 tokens is the largest prompt this harness can serve inside the model's
+native 262,144 context, since it sizes the allocation at prompt plus the decode
+window. pwilkin `40a9f4d01` runs f16 KV (that fork asserts F16 in its `qwen4exp`
+graph and aborts on bf16, as recorded above); upstream `6011c34ce` runs bf16.
+
+**Prefill is the clean column, and the gap has two different sizes.** Ours falls
+42.5% from 8K to 262,008 (260.5 -> 149.7 tok/s for the `code` case, the one
+category present at every rung); upstream's falls 49.4% (462.0 -> 233.9) and
+pwilkin's is flat (982.7 -> 894.4, -9.0%). So we are **1.8x behind upstream at 8K
+narrowing to 1.3x at 128K, and 3.8x behind pwilkin widening to 4.9x**. The
+flatness is the property to copy.
+
+**The decode column is not a depth curve.** Its two values inside the 8,192 rung
+(13.53 and 6.79 tok/s) are the same case family minutes apart at the same prompt
+size, and they differ by the ratio between this host's boost and base CPU clocks.
+Held still with a 30 s settle before the decode window, the step is flat: 51.6 ms
+at 8,192 and 52.4 ms at 32,768, +1.5% for four times the context, with the host's
+maximum core at 4.9-5.0 GHz and the GPU 79% busy. At 65,536 a 30 s settle cannot
+restore boost after a 310 s prefill, the maximum core reads its 2,000 MHz base
+clock in all 512 in-window samples, and the step is 170.9 ms. Across the whole
+ladder the requested clock reads exactly 2,000 MHz in all 291 samples that cover
+the four largest rungs, and a fixed CPU workload that takes 116-118 ms between
+runs takes 730-762 ms during a comparator rung and 5,800-7,400 ms during the
+256K rung.
+
+**In the settled state our decode sits between the two builds** - 1.09x faster
+than upstream and 1.09x / 1.04x slower than pwilkin at 8K and 32K. The contrast
+that makes the attribution concrete is that a depth curve *is* measurable in this
+family: upstream's step grows 56.1 -> 73.7 -> 160.3 ms from 8K to 128K (+186%)
+while pwilkin's grows 10% and our settled step grows 1.5% from 8K to 32K. Our
+continuous ladder's 4.7x from 8K to 64K is host state, not depth.
+
+What remains ours to fix is the step's dispatch path: 353-545 kernel launches,
+958 JIT build-cache-key resolutions, 375 file opens and 209,933 Python calls per
+decode step, with identical per-step call counts at 1,024 and 65,536 tokens while
+each call costs 9-14x more on the clamped host.
+[Long-context ladder, both host instruments and all rungs](results/2026-10-02-qwen4exp-long-context-ladder/README.md).
 
 ### Identical-operand cross-engine replay
 

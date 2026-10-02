@@ -1,0 +1,379 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_canonical_ar_engine_run",
+  "engine": "hipengine_production",
+  "surface": "synchronized_direct_runner",
+  "status": "completed",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "It seems that tuned daemon is not running, preset profile is not activated.\nPreset profile: accelerator-performance",
+    "cpu_governors": {
+      "powersave": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "fixture": "/tmp/q4x-long/qwen4exp_long_context_p8192_p262144.json",
+  "fixture_sha256": "53facf3c448e92f138e495fa057b5ff241f9b11aed2e83c50275f27f60b44584",
+  "model_root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "e51f9843eac7f305ca7b076470bbccb6788bccee",
+    "tracked_clean": true
+  },
+  "profile": {
+    "requested": "production",
+    "manifest_sha256": "a55324f919900c20b244b65605e37d8e12623fe20ff9b076bc3573f11edf3786",
+    "strict_manifest_sha256": "1335b8244237ffb0cac0ec9e3eb670d17ebd9d8aca607eebb463ca291b9cfbed",
+    "fell_back_to_strict": false
+  },
+  "protocol": {
+    "case_ids": [
+      "code-p131072"
+    ],
+    "ple_cache_mode": "warm",
+    "ple_cache_scope": "per_layer_token_embd.weight file range only",
+    "ple_telemetry": false,
+    "ple_random_access": "off",
+    "warmups_per_case": 1,
+    "measured_repetitions": 1,
+    "decode_transitions": 128,
+    "visible_output_tokens": 129,
+    "prefill_chunk_size": 1024,
+    "timing_boundary": "synchronized runner.prefill including the first greedy output, followed by exactly N synchronized autoregressive runner.step transitions"
+  },
+  "warmups": [
+    {
+      "case_id": "code-p131072",
+      "repetition": 0,
+      "output_token_ids_sha256": "7605d49b1eda85c16e55addb8141cf66ee5c8da38dbb5fb2dfc1c23be842b7f9"
+    }
+  ],
+  "samples": [
+    {
+      "case_id": "code-p131072",
+      "category": "code",
+      "prompt_tokens": 131072,
+      "prompt_token_ids_sha256": "31c36aad16505b6fd2e4a8ee435cc736cfd674790452e6921cc90b1f239e852e",
+      "repetition": 0,
+      "prefill_ms": 713163.551012,
+      "prefill_tok_s": 183.78953861846276,
+      "decode_ms": 44194.734778,
+      "decode_transitions": 128,
+      "decode_tok_s": 2.89627261353581,
+      "client_wall_s": 757.35828579,
+      "output_token_count": 129,
+      "output_token_ids": [
+        248068,
+        198,
+        760,
+        1156,
+        682,
+        3106,
+        264,
+        10632,
+        11173,
+        9640,
+        9859,
+        364,
+        2943,
+        12654,
+        1970,
+        66320,
+        13,
+        17187,
+        279,
+        51623,
+        11,
+        279,
+        4880,
+        1622,
+        369,
+        2708,
+        25,
+        3300,
+        2943,
+        1970,
+        9714,
+        25,
+        271,
+        16,
+        13,
+        1510,
+        18479,
+        87682,
+        1494,
+        40798,
+        44646,
+        471,
+        78161,
+        48142,
+        7629,
+        7308,
+        26126,
+        440,
+        26864,
+        6813,
+        198,
+        17,
+        13,
+        1510,
+        3369,
+        78,
+        17885,
+        37423,
+        11,
+        12454,
+        44646,
+        471,
+        1844,
+        5551,
+        3269,
+        440,
+        10458,
+        17448,
+        11,
+        6813,
+        364,
+        77231,
+        321,
+        73401,
+        4618,
+        198,
+        18,
+        13,
+        1510,
+        19504,
+        5287,
+        1714,
+        63,
+        523,
+        471,
+        496,
+        7,
+        16,
+        8,
+        615,
+        14,
+        611,
+        440,
+        2250,
+        6813,
+        198,
+        19,
+        13,
+        1510,
+        58046,
+        5070,
+        30863,
+        44646,
+        471,
+        31038,
+        11925,
+        72815,
+        48794,
+        1898,
+        494,
+        1103,
+        314,
+        94231,
+        11,
+        14733,
+        3145,
+        1906,
+        11,
+        6813,
+        271,
+        6651,
+        1318,
+        1132,
+        1970,
+        5743,
+        13,
+        6558,
+        728,
+        3165
+      ],
+      "output_token_ids_sha256": "7605d49b1eda85c16e55addb8141cf66ee5c8da38dbb5fb2dfc1c23be842b7f9",
+      "memory_before": {
+        "rss_bytes": 546500608,
+        "rss_anon_bytes": 463101952,
+        "rss_file_bytes": 46735360,
+        "host_mem_available_bytes": 41140391936,
+        "host_mem_free_bytes": 2867081216,
+        "host_swap_free_bytes": 85529538560,
+        "process_read_bytes": 80861421568,
+        "minor_faults": 20249567,
+        "major_faults": 5358
+      },
+      "memory_after": {
+        "rss_bytes": 551337984,
+        "rss_anon_bytes": 467939328,
+        "rss_file_bytes": 46735360,
+        "host_mem_available_bytes": 41084690432,
+        "host_mem_free_bytes": 2701721600,
+        "host_swap_free_bytes": 85531435008,
+        "process_read_bytes": 80861421568,
+        "minor_faults": 20250753,
+        "major_faults": 5358
+      },
+      "memory_delta": {
+        "process_read_bytes": 0,
+        "minor_faults": 1186,
+        "major_faults": 0
+      },
+      "phase_windows_ns": {
+        "prefill": [
+          4234144031437055,
+          4234857194988067
+        ],
+        "decode": [
+          4234857195124192,
+          4234901389858970
+        ]
+      }
+    }
+  ],
+  "ple_cache_advice": [
+    {
+      "phase": "initial",
+      "mode": "warm",
+      "scope": "ple_tensor_file_range",
+      "offset": 682453280,
+      "nbytes": 28800138240,
+      "file_advice_applied": true,
+      "mapping_advice_applied": true,
+      "mapping_reopened": false
+    }
+  ],
+  "summary": {
+    "sample_count": 1,
+    "all_cases_deterministic": true,
+    "cases": {
+      "code-p131072": {
+        "sample_count": 1,
+        "case_count": 1,
+        "prefill_tok_s_weighted": 183.78953861846276,
+        "decode_tok_s_weighted": 2.89627261353581,
+        "client_wall_s_total": 757.35828579,
+        "prefill_tok_s": {
+          "samples": [
+            183.78953861846276
+          ],
+          "median": 183.78953861846276,
+          "mean": 183.78953861846276,
+          "p95": 183.78953861846276,
+          "min": 183.78953861846276,
+          "max": 183.78953861846276,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_tok_s": {
+          "samples": [
+            2.89627261353581
+          ],
+          "median": 2.89627261353581,
+          "mean": 2.89627261353581,
+          "p95": 2.89627261353581,
+          "min": 2.89627261353581,
+          "max": 2.89627261353581,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "category": "code",
+        "prompt_tokens": 131072,
+        "deterministic": true,
+        "output_token_ids_sha256": [
+          "7605d49b1eda85c16e55addb8141cf66ee5c8da38dbb5fb2dfc1c23be842b7f9"
+        ]
+      }
+    },
+    "shapes": {
+      "131072": {
+        "sample_count": 1,
+        "case_count": 1,
+        "prefill_tok_s_weighted": 183.78953861846276,
+        "decode_tok_s_weighted": 2.89627261353581,
+        "client_wall_s_total": 757.35828579,
+        "prefill_tok_s": {
+          "samples": [
+            183.78953861846276
+          ],
+          "median": 183.78953861846276,
+          "mean": 183.78953861846276,
+          "p95": 183.78953861846276,
+          "min": 183.78953861846276,
+          "max": 183.78953861846276,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_tok_s": {
+          "samples": [
+            2.89627261353581
+          ],
+          "median": 2.89627261353581,
+          "mean": 2.89627261353581,
+          "p95": 2.89627261353581,
+          "min": 2.89627261353581,
+          "max": 2.89627261353581,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        }
+      }
+    },
+    "categories": {
+      "code": {
+        "sample_count": 1,
+        "case_count": 1,
+        "prefill_tok_s_weighted": 183.78953861846276,
+        "decode_tok_s_weighted": 2.89627261353581,
+        "client_wall_s_total": 757.35828579,
+        "prefill_tok_s": {
+          "samples": [
+            183.78953861846276
+          ],
+          "median": 183.78953861846276,
+          "mean": 183.78953861846276,
+          "p95": 183.78953861846276,
+          "min": 183.78953861846276,
+          "max": 183.78953861846276,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        },
+        "decode_tok_s": {
+          "samples": [
+            2.89627261353581
+          ],
+          "median": 2.89627261353581,
+          "mean": 2.89627261353581,
+          "p95": 2.89627261353581,
+          "min": 2.89627261353581,
+          "max": 2.89627261353581,
+          "stdev": 0.0,
+          "coefficient_of_variation": 0.0
+        }
+      }
+    }
+  },
+  "memory_before_close": {
+    "current_allocated_bytes": 88679369896,
+    "peak_allocated_bytes": 88679369896,
+    "total_allocated_bytes": 88784227504,
+    "total_freed_bytes": 104857608,
+    "active_allocations": 1622,
+    "peak_allocations": 1622
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 88679369896,
+    "total_allocated_bytes": 88784227504,
+    "total_freed_bytes": 88784227504,
+    "active_allocations": 0,
+    "peak_allocations": 1622
+  }
+}
