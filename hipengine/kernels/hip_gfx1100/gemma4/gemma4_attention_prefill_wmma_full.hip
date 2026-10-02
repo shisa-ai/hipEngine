@@ -295,15 +295,32 @@ GEMMA4_WMMA_FULL_KERNEL_NAME(
   const int lane_lo = lane & 15;
   const int lane_hi = lane >> 4;
 
-  const int query_tile = static_cast<int>(blockIdx.x);
-  const int kv_head = static_cast<int>(blockIdx.y);
-  // The z dimension carries both the GQA tile and the key slice, so a split
-  // walk adds blocks without adding a launch parameter to the grid's other two
-  // axes. `slices == 1` is the unsplit case and the slice index is then 0.
+  // Axis order is a performance decision, not a correctness one: the same work
+  // happens in any order. Each KV band is read once per (query_tile, kv_head,
+  // gqa_tile), so `gqa_tiles` blocks read the *same* band, and the only chance
+  // they have of sharing it is to run together. The LDS a block holds (49.9 KB
+  // against 64 KB per CU) means about one block per CU is resident, so
+  // co-residency is decided entirely by launch order. With query_tile on x the
+  // four readers sit 32 blocks apart and never meet; with gqa_tile on x they
+  // are adjacent and walk the same key tile in lockstep. The key slice rides on
+  // x beside it for the split walk, where consecutive slices read disjoint
+  // ranges and the order is immaterial.
+  //
+  // Measured: 2.7 percent at 262144 keys, 4.2 at 131072, 3.2 at 65536, 8.4 at
+  // 16384 -- small, free (no arithmetic changes, and the parity suite is
+  // bit-identical), and worth keeping. The mechanism is *not* the L2 reuse this
+  // was written expecting. That was tested directly: at 2048 keys the whole band
+  // is 4.2 MB and fits in L2, and the walk still reaches only 122 percent of the
+  // 238.5 GB/s DRAM roofline, so at most ~18 percent of the redundant traffic is
+  // L2-served even when the entire working set is cache-resident. Co-scheduling
+  // the readers is not sufficient to recover the redundancy; the smaller win
+  // here comes from something else and is not attributed.
   const int gqa_ratio = static_cast<int>(num_heads / num_kv_heads);
   const int gqa_tiles = (gqa_ratio + kGqaHeads - 1) / kGqaHeads;
-  const int gqa_tile = static_cast<int>(blockIdx.z) % gqa_tiles;
-  const int slice = static_cast<int>(blockIdx.z) / gqa_tiles;
+  const int gqa_tile = static_cast<int>(blockIdx.x) % gqa_tiles;
+  const int slice = static_cast<int>(blockIdx.x) / gqa_tiles;
+  const int query_tile = static_cast<int>(blockIdx.y);
+  const int kv_head = static_cast<int>(blockIdx.z);
 
   // This wave's column group and output-dimension group.
   const int column_group = wave / kDimGroups;
@@ -647,9 +664,9 @@ __global__ void gemma4_attention_wmma_combine_kernel(
   const int lane_lo = lane & 15;
   const int lane_hi = lane >> 4;
 
-  const int query_tile = static_cast<int>(blockIdx.x);
-  const int kv_head = static_cast<int>(blockIdx.y);
-  const int gqa_tile = static_cast<int>(blockIdx.z);
+  const int query_tile = static_cast<int>(blockIdx.y);
+  const int kv_head = static_cast<int>(blockIdx.z);
+  const int gqa_tile = static_cast<int>(blockIdx.x);
   const int gqa_ratio = static_cast<int>(num_heads / num_kv_heads);
   const int gqa_tiles = (gqa_ratio + kGqaHeads - 1) / kGqaHeads;
 
@@ -770,8 +787,10 @@ extern "C" int GEMMA4_WMMA_FULL_SYMBOL(
 
   hipLaunchKernelGGL(
       GEMMA4_WMMA_FULL_KERNEL_NAME,
-      dim3(static_cast<unsigned int>(query_tiles), static_cast<unsigned int>(num_kv_heads),
-           static_cast<unsigned int>(gqa_tiles * slices)),
+      // See the kernel's axis comment: gqa_tile on x is what puts the readers
+      // of one KV band next to each other. Worth 2.7 percent at 262144 keys.
+      dim3(static_cast<unsigned int>(gqa_tiles * slices), static_cast<unsigned int>(query_tiles),
+           static_cast<unsigned int>(num_kv_heads)),
       dim3(kThreads, 1, 1),
       shared_bytes,
       stream,
@@ -794,8 +813,8 @@ extern "C" int GEMMA4_WMMA_FULL_SYMBOL(
   if (slices > 1) {
     hipLaunchKernelGGL(
         gemma4_attention_wmma_combine_kernel,
-        dim3(static_cast<unsigned int>(query_tiles), static_cast<unsigned int>(num_kv_heads),
-             static_cast<unsigned int>(gqa_tiles)),
+        dim3(static_cast<unsigned int>(gqa_tiles), static_cast<unsigned int>(query_tiles),
+             static_cast<unsigned int>(num_kv_heads)),
         dim3(kThreads, 1, 1),
         0,
         stream,
