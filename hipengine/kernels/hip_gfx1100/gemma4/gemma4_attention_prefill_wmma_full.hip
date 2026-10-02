@@ -244,7 +244,10 @@ gemma4_attention_prefill_wmma_full_kernel(
     int64_t tokens,
     int64_t keys,
     int64_t window,
-    int64_t row_offset) {
+    int64_t row_offset,
+    float* __restrict__ partial,
+    float* __restrict__ partial_stats,
+    int64_t slices) {
   extern __shared__ bf16_t shared[];
   bf16_t* q_tile = shared;                         // [kColumns][kQStride]
   bf16_t* kv_tile = q_tile + kColumns * kQStride;  // [kKBatch][kKvStride]
@@ -257,8 +260,13 @@ gemma4_attention_prefill_wmma_full_kernel(
 
   const int query_tile = static_cast<int>(blockIdx.x);
   const int kv_head = static_cast<int>(blockIdx.y);
-  const int gqa_tile = static_cast<int>(blockIdx.z);
+  // The z dimension carries both the GQA tile and the key slice, so a split
+  // walk adds blocks without adding a launch parameter to the grid's other two
+  // axes. `slices == 1` is the unsplit case and the slice index is then 0.
   const int gqa_ratio = static_cast<int>(num_heads / num_kv_heads);
+  const int gqa_tiles = (gqa_ratio + kGqaHeads - 1) / kGqaHeads;
+  const int gqa_tile = static_cast<int>(blockIdx.z) % gqa_tiles;
+  const int slice = static_cast<int>(blockIdx.z) / gqa_tiles;
 
   // This wave's column group and output-dimension group.
   const int column_group = wave / kDimGroups;
@@ -330,6 +338,24 @@ gemma4_attention_prefill_wmma_full_kernel(
   }
   if (first_kept > walk_end) {
     first_kept = walk_end;
+  }
+  // Key split. A decode step presents one query tile against the whole context,
+  // so the grid is `num_kv_heads * gqa_tiles` blocks -- 8 at this geometry --
+  // and each of them walks every key. Measured on gfx1151 at 262,144 keys, 8
+  // blocks reach 75 GB/s where 64 reach 225 and 256 reach 252, so the kernel is
+  // waiting on itself rather than on memory. Dividing the walk gives the
+  // hardware something to overlap; the per-slice softmax state is combined
+  // afterwards. The slices partition `[first_kept, walk_end)` so their union is
+  // the unsplit walk exactly, and each is rounded up to the K batch so no slice
+  // is left with a partial tile.
+  if (slices > 1) {
+    const int64_t span = walk_end - first_kept;
+    const int64_t per_slice =
+        ((span + slices - 1) / slices + kKBatch - 1) / kKBatch * kKBatch;
+    const int64_t begin = first_kept + static_cast<int64_t>(slice) * per_slice;
+    const int64_t end = begin + per_slice;
+    first_kept = (begin < walk_end) ? begin : walk_end;
+    walk_end = (end < walk_end) ? end : walk_end;
   }
 
   float8_t accumulator[kDimTilesPerWave];
@@ -513,6 +539,33 @@ gemma4_attention_prefill_wmma_full_kernel(
   if (!valid_column) {
     return;
   }
+  // A split walk exports its own softmax state and the combine pass finishes
+  // the reduction. The accumulator is this lane's `kDimTilesPerWave` x 8
+  // elements at the dims the epilogue below would have written, so the export
+  // and the combine share one mapping and neither needs a layout conversion.
+  if (slices > 1) {
+    const int64_t plane =
+        static_cast<int64_t>(num_kv_heads) * gqa_tiles * kColumns;
+    const int64_t base =
+        (static_cast<int64_t>(kv_head) * gqa_tiles + gqa_tile) * kColumns + jc;
+    float* dst = partial + (static_cast<int64_t>(slice) * plane + base) * kHeadDim;
+#pragma unroll
+    for (int dim_tile = 0; dim_tile < kDimTilesPerWave; ++dim_tile) {
+#pragma unroll
+      for (int element = 0; element < 8; ++element) {
+        const int dim = dim_base + dim_tile * 16 + 2 * element + lane_hi;
+        dst[dim] = accumulator[dim_tile][element];
+      }
+    }
+    // The max and the denominator depend only on this column's scores, not on
+    // the output dimensions, so the two waves that share a `jc` compute the
+    // same pair and both store it.
+    float* stats =
+        partial_stats + static_cast<int64_t>(slice) * plane * 2 + base * 2;
+    stats[0] = running_max;
+    stats[1] = running_sum;
+    return;
+  }
   // The strict kernel divides by its denominator and writes the quotient, so a
   // fully masked row is 0/0 there; this divides the same way rather than
   // special-casing it. The division is once per (column, block), not once per
@@ -525,6 +578,99 @@ gemma4_attention_prefill_wmma_full_kernel(
     for (int element = 0; element < 8; ++element) {
       const int dim = dim_base + dim_tile * 16 + 2 * element + lane_hi;
       out[out_base + dim] = float_to_bf16_bits(accumulator[dim_tile][element] / running_sum);
+    }
+  }
+}
+
+// Combine the slices a split walk produced.
+//
+// Each slice's block ran its own online softmax, so slice `s` holds
+// `acc_s = sum_k exp(score_k - m_s) V_k` and `sum_s = sum_k exp(score_k - m_s)`
+// over its own key range. Rescaling every slice to the largest of the `m_s` and
+// adding gives exactly the unsplit result; the arithmetic differs only in which
+// maximum the exponentials were taken against, which is a reassociation and not
+// an approximation.
+//
+// The thread mapping is the main kernel's, so each thread reads back the same
+// `kDimTilesPerWave` x 8 elements it wrote and no shuffle or shared-memory
+// staging is needed. A slice with no visible key left `m_s = -infinity` and
+// `sum_s = 0`; `isfinite` sends it to a zero weight rather than an `expf` of
+// NaN. If every slice is empty the denominator is 0 and the quotient is 0/0,
+// which is what the strict kernel produces for a fully masked row.
+__global__ void gemma4_attention_wmma_combine_kernel(
+    const float* __restrict__ partial,
+    const float* __restrict__ partial_stats,
+    uint16_t* __restrict__ out,
+    int64_t num_heads,
+    int64_t num_kv_heads,
+    int64_t tokens,
+    int64_t slices) {
+  const int lane = static_cast<int>(threadIdx.x) & 31;
+  const int wave = static_cast<int>(threadIdx.x) >> 5;
+  const int lane_lo = lane & 15;
+  const int lane_hi = lane >> 4;
+
+  const int query_tile = static_cast<int>(blockIdx.x);
+  const int kv_head = static_cast<int>(blockIdx.y);
+  const int gqa_tile = static_cast<int>(blockIdx.z);
+  const int gqa_ratio = static_cast<int>(num_heads / num_kv_heads);
+  const int gqa_tiles = (gqa_ratio + kGqaHeads - 1) / kGqaHeads;
+
+  const int column_group = wave / kDimGroups;
+  const int dim_group = wave - column_group * kDimGroups;
+  const int dim_base = dim_group * kDimPerWave;
+  const int jc = column_group * 16 + lane_lo;
+  const int query_local = jc / kGqaHeads;
+  const int gqa_local = jc - query_local * kGqaHeads;
+  const int query_row = query_tile * kQueryRows + query_local;
+  const int gqa_index = gqa_tile * kGqaHeads + gqa_local;
+  if (query_row >= tokens || gqa_index >= gqa_ratio) {
+    return;
+  }
+  const int query_head = kv_head * gqa_ratio + gqa_index;
+
+  const int64_t plane = static_cast<int64_t>(num_kv_heads) * gqa_tiles * kColumns;
+  const int64_t base =
+      (static_cast<int64_t>(kv_head) * gqa_tiles + gqa_tile) * kColumns + jc;
+  const int64_t stat_stride = plane * 2;
+
+  float best = -INFINITY;
+  for (int64_t s = 0; s < slices; ++s) {
+    best = fmaxf(best, partial_stats[s * stat_stride + base * 2]);
+  }
+  float accumulator[kDimTilesPerWave][8];
+#pragma unroll
+  for (int dim_tile = 0; dim_tile < kDimTilesPerWave; ++dim_tile) {
+#pragma unroll
+    for (int element = 0; element < 8; ++element) {
+      accumulator[dim_tile][element] = 0.0f;
+    }
+  }
+  float denominator = 0.0f;
+  for (int64_t s = 0; s < slices; ++s) {
+    const float slice_max = partial_stats[s * stat_stride + base * 2];
+    const float weight = isfinite(slice_max) ? expf(slice_max - best) : 0.0f;
+    denominator += weight * partial_stats[s * stat_stride + base * 2 + 1];
+    const float* src = partial + (s * plane + base) * kHeadDim;
+#pragma unroll
+    for (int dim_tile = 0; dim_tile < kDimTilesPerWave; ++dim_tile) {
+#pragma unroll
+      for (int element = 0; element < 8; ++element) {
+        accumulator[dim_tile][element] +=
+            weight * src[dim_base + dim_tile * 16 + 2 * element + lane_hi];
+      }
+    }
+  }
+
+  const int64_t out_base =
+      (static_cast<int64_t>(query_row) * num_heads + query_head) * kHeadDim;
+#pragma unroll
+  for (int dim_tile = 0; dim_tile < kDimTilesPerWave; ++dim_tile) {
+#pragma unroll
+    for (int element = 0; element < 8; ++element) {
+      const int dim = dim_base + dim_tile * 16 + 2 * element + lane_hi;
+      out[out_base + dim] =
+          float_to_bf16_bits(accumulator[dim_tile][element] / denominator);
     }
   }
 }
@@ -545,7 +691,9 @@ extern "C" int hipengine_gemma4_attention_prefill_wmma_full_bf16(
     hipStream_t stream,
     int64_t keys,
     int64_t window,
-    int64_t row_offset) {
+    int64_t row_offset,
+    void* scratch,
+    int64_t slices) {
   if (query == nullptr || key == nullptr || value == nullptr ||
       keep_mask == nullptr || out == nullptr || tokens <= 0 || keys <= 0 ||
       num_heads <= 0 || num_kv_heads <= 0 || num_heads % num_kv_heads != 0) {
@@ -562,10 +710,31 @@ extern "C" int hipengine_gemma4_attention_prefill_wmma_full_bf16(
   const int gqa_tiles = static_cast<int>((num_heads / num_kv_heads + kGqaHeads - 1) / kGqaHeads);
   const size_t shared_bytes =
       static_cast<size_t>(kColumns * kQStride + kKBatch * kKvStride) * sizeof(bf16_t);
+
+  // The key split. The caller plans it -- see
+  // `plan_gemma4_attention_wmma_full_slices`, which owns the rule and the
+  // measurement behind it -- and this launcher only has to lay the workspace
+  // out and size the grid. `slices == 1` is the unsplit walk: no workspace, no
+  // combine launch, and the epilogue writes the output directly, so every
+  // prefill shape runs exactly the arithmetic it always has.
+  if (slices < 1) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (slices > 1 && scratch == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t planes = static_cast<int64_t>(num_kv_heads) * gqa_tiles;
+  float* partial = nullptr;
+  float* partial_stats = nullptr;
+  if (slices > 1) {
+    partial = static_cast<float*>(scratch);
+    partial_stats = partial + slices * planes * kColumns * kHeadDim;
+  }
+
   hipLaunchKernelGGL(
       gemma4_attention_prefill_wmma_full_kernel,
       dim3(static_cast<unsigned int>(query_tiles), static_cast<unsigned int>(num_kv_heads),
-           static_cast<unsigned int>(gqa_tiles)),
+           static_cast<unsigned int>(gqa_tiles * slices)),
       dim3(kThreads, 1, 1),
       shared_bytes,
       stream,
@@ -581,6 +750,25 @@ extern "C" int hipengine_gemma4_attention_prefill_wmma_full_bf16(
       tokens,
       keys,
       window,
-      row_offset);
+      row_offset,
+      partial,
+      partial_stats,
+      slices);
+  if (slices > 1) {
+    hipLaunchKernelGGL(
+        gemma4_attention_wmma_combine_kernel,
+        dim3(static_cast<unsigned int>(query_tiles), static_cast<unsigned int>(num_kv_heads),
+             static_cast<unsigned int>(gqa_tiles)),
+        dim3(kThreads, 1, 1),
+        0,
+        stream,
+        partial,
+        partial_stats,
+        out,
+        num_heads,
+        num_kv_heads,
+        tokens,
+        slices);
+  }
   return static_cast<int>(hipGetLastError());
 }

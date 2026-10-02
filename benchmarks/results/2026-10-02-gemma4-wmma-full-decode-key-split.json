@@ -1,0 +1,116 @@
+{
+  "kind": "gemma4_wmma_full_decode_key_split",
+  "performance_claim": true,
+  "status": "landed",
+  "recorded": "2026-10-02, gfx1151 Strix Halo (zbook, AMD Radeon 8060S, 124 GB unified), Gemma 4 26B-A4B UD-Q4_K_XL",
+  "why": "The 2026-09-30 boundary diagnostic named the missing tiled decode attention for head_dim 512 / 2 KV heads / GQA 8 as what would clear the context ceiling, and the 2026-10-02 mask result measured the surviving cost as ~750 s of attention walk in a 256K prefill plus a decode that re-reads the whole KV band per query head. The full-layer decode walks every key from 8 blocks, each of which reads its own copy of a KV band it shares with seven sibling GQA heads, so the walk is limited by having nothing to overlap rather than by the memory it asks for.",
+
+  "what_changed": "gemma4_attention_prefill_wmma_full_kernel divides its key walk into slices along grid.z when the query block is a single tile, and gemma4_attention_wmma_combine_kernel merges the per-slice softmax state with a log-sum-exp afterwards. The slice count is planned in Python by plan_gemma4_attention_wmma_full_slices, a pure function of the geometry, so the rule is testable without a device and the launcher only lays out the workspace and sizes the grid. slices == 1 is the unsplit walk: no workspace, no combine launch, and the epilogue writes the output directly.",
+
+  "blocked_grid": {
+    "geometry": "5 full layers, head_dim 512, 16 query heads, 2 KV heads, GQA ratio 8, gqa_tiles 4",
+    "unsplit_grid_for_a_one_token_block": "query_tiles * num_kv_heads * gqa_tiles = 1 * 2 * 4 = 8 blocks",
+    "measured_rate_at_262144_keys": "8 blocks reach 75 GB/s, 64 reach 225, 256 reach 252",
+    "target_blocks": 128,
+    "slices_at_this_geometry": 16,
+    "divided_grid": "8 * 16 = 128 blocks"
+  },
+
+  "scope": {
+    "divided": "a single-query-tile block only, which is the decode step",
+    "not_divided": "a multi-tile query block. A 512-row prefill block is 32 query tiles = 256 blocks, twice the target, so dividing it would reassociate the softmax for no gain and would move every prefill number this kernel has. Every prefill shape therefore runs exactly the arithmetic it has always run.",
+    "cap": "keys // K_BATCH, because a slice with no full K batch in it has nothing to overlap",
+    "workspace": "slices * planes * (kColumns * head_dim + kColumns * 2) * 4 bytes; 8.4 MB at 16 slices and this geometry",
+    "no_scratch_means_whole_walk": "The launcher runs the walk whole when it is given no workspace. The layer always has one, so a production decode always splits; the unsplit path stays reachable for the tests that compare the two."
+  },
+
+  "kernel_ab": {
+    "protocol": "one full layer, tokens=1, identical buffers and arguments in both arms, 7 alternating repetitions, median reported. The only difference is whether a scratch workspace is handed over.",
+    "262144": {
+      "whole_ms": 58.44,
+      "split_ms": 19.04,
+      "speedup": 3.07,
+      "nan_placement_equal": true,
+      "bf16_bit_identical_elements": "7638/8192",
+      "worst_abs_diff": 0.007812,
+      "peak": 3.719,
+      "worst_relative": 2.10e-3
+    },
+    "32768": {
+      "whole_ms": 7.39,
+      "split_ms": 2.46,
+      "speedup": 3.01,
+      "nan_placement_equal": true,
+      "bf16_bit_identical_elements": "8109/8192",
+      "worst_abs_diff": 0.007812,
+      "peak": 3.578,
+      "worst_relative": 2.18e-3
+    },
+    "8192": {
+      "whole_ms": 1.84,
+      "split_ms": 0.73,
+      "speedup": 2.52,
+      "nan_placement_equal": true,
+      "bf16_bit_identical_elements": "7768/8192",
+      "worst_abs_diff": 0.007812,
+      "peak": 3.953,
+      "worst_relative": 1.98e-3
+    },
+    "note": "The worst element differs by 0.007812, which is under one bf16 ulp at the 3.7 peak, so the reassociation moves results by less than the output format's own resolution. It is not bit-identical and is not claimed to be."
+  },
+
+  "end_to_end_ab": {
+    "protocol": "scripts/gemma4_campaign_bench.py's frozen prompt chain through hipengine.LLM.generate_detailed with greedy sampling, one process, arms alternated. The prefill is O(context^2) and the decode O(context), so at any length where the decode is worth improving the prefill dominates the wall: each arm is run twice with different max_tokens and the difference is the decode rate with KV resident at the full length.",
+    "context": 32768,
+    "prompt_tokens": 32560,
+    "arms": {
+      "whole": {"ms_per_token": 75.5, "tokens_per_second": 13.25, "prefill_plus_1_s": 40.73, "prefill_plus_193_s": 55.22},
+      "split": {"ms_per_token": 50.0, "tokens_per_second": 20.00, "prefill_plus_1_s": 41.96, "prefill_plus_193_s": 51.56}
+    },
+    "decode_speedup": 1.510,
+    "generated_ids_equal": true,
+    "attribution": "25.5 ms per token saved, against 5 layers x 4.93 ms = 24.7 ms predicted from the kernel A/B at this length. The decomposition closes, so the saving is the full-layer attention and nothing else moved.",
+    "under_resolved_run": {
+      "extra_tokens": 24,
+      "whole_ms_per_token": 65.2,
+      "split_ms_per_token": 67.2,
+      "ratio": 0.971,
+      "why_it_is_not_the_result": "24 decode tokens is 1.6 s against a 40 s prefill, and the prefill varied by 0.26 s between arms, so the difference carried about 11 ms per token of noise against a 25 ms effect. Reported because it was run, not used as the basis for the decision."
+    }
+  },
+
+  "end_to_end_decode_rate": {
+    "context": 32768,
+    "prompt_tokens": 32736,
+    "ms_per_token": 39.8,
+    "tokens_per_second": 25.15,
+    "route_confirmation": "HIPENGINE_GEMMA4_PREFILL_ATTENTION_LOG shows the sliding layers staying on gemma4_plain for decode, which is correct: their key count is trimmed to the 1024-token window and never approaches the strict decode kernel's bound. The full layers take gemma4_wmma_flash_full, which is where the split lives.",
+    "strict_decode_key_bound": 15856
+  },
+
+  "correctness": {
+    "gpu_parity": "tests/test_gpu_gemma4_attention_prefill_wmma_full.py::test_a_split_key_walk_matches_the_whole_walk runs the kernel twice on identical buffers, once with the caller's whole-walk arm and once with the split, and compares against the file's declared RTOL. All 24 pre-existing parity tests still pass, and the unsplit path is unchanged by construction.",
+    "planner_unit": "tests/test_unit_gemma4_attention_wmma_slices.py, 12 cases, no device needed: the decode grid is short enough to divide, the slice count reaches the target without exceeding it, a multi-tile query block is never divided, a walk shorter than one K batch per slice is not divided, and the workspace covers every slice of every plane.",
+    "teacher_forced_gate": {
+      "artifact": "benchmarks/results/2026-10-02-gemma4-teacher-forced-gate-wmma-full-decode-split.json",
+      "verdict": "passed, kl_max 3.11e-4 against a 0.05 limit, top-1 100% with 0 flips"
+    },
+    "rocprofv3_kernel_trace": {
+      "command": "env -u HIP_VISIBLE_DEVICES HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d <dir> -o wmma_full_split -- python3 <smoke> 262144",
+      "observed": "gemma4_attention_prefill_wmma_full_kernel 2x, gemma4_attention_wmma_combine_kernel 2x, one combine per full-kernel launch",
+      "duration_caveat": "The durations in that trace are not usable and are not reported. rocprofv3 serialises and instruments every launch, so they disagree with the same kernels measured directly by three orders of magnitude. The trace's job here is to name the path that ran.",
+      "prebuild": "The .so is built outside the profiler and the profiled process runs with require_cached plus a precomputed compiler-version file, so it never spawns hipcc (docs/OPTIMIZATION.md section 7)."
+    }
+  },
+
+  "not_supplied": [
+    "category, isolation and task gates",
+    "the 500-1000 paired-row promotion standard is met in row count (527, evidence_level numerical_rows) but this is a single chain",
+    "a 256K end-to-end decode rate: the kernel A/B covers 262144 keys and the end-to-end A/B covers 32768, because a 256K prefill is 998 s per arm"
+  ],
+
+  "what_is_left_on_the_table": {
+    "remaining_redundancy": "The split gives the walk something to overlap but does not change what it reads. A one-token block still presents one (query_tile, kv_head, gqa_tile) plane per slice, so each of the 8 planes reads its own copy of a KV band that the 8 GQA heads sharing it could read once. At 262144 keys the split walk moves about 537 MB per layer where the GQA shape would move 134 MB.",
+    "next_lever": "One block per (token, kv_head) with kGqaHeads 8, which needs the kernel templated on its GQA head count and the plane index split out of the slice index. Estimated 19.04 -> ~5 ms per layer at 262144 keys, and it is the change that would make a 256K decode rate worth measuring end to end."
+  }
+}

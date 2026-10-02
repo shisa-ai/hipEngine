@@ -55,6 +55,60 @@ HEAD_DIM = 512
 K_BATCH = 16
 DIM_GROUPS = 2
 THREADS = 128
+COLUMNS = QUERY_ROWS * GQA_HEADS
+
+# How many blocks a single-query-tile launch aims for before it stops dividing
+# the key walk. Measured at 262,144 keys on gfx1151: 8 blocks reach 75 GB/s, 64
+# reach 225, 256 reach 252, so the rate is found somewhere between 8 and 64 and
+# there is nothing to gain by asking for more than this.
+TARGET_BLOCKS = 128
+
+
+def plan_gemma4_attention_wmma_full_slices(
+    *, tokens: int, keys: int, num_heads: int, num_kv_heads: int
+) -> int:
+    """How many key slices the WMMA full-layer walk should be divided into.
+
+    The unsplit grid is ``query_tiles * num_kv_heads * gqa_tiles``. At this
+    geometry a one-tile query block -- a decode step -- presents 8 blocks
+    against the 64 or more the hardware needs to reach its own memory rate, and
+    each of those blocks walks every key, so the kernel waits on itself rather
+    than on memory. Dividing the walk gives it something to overlap and the
+    per-slice softmax state is combined afterwards.
+
+    Only the single-query-tile case is divided. A prefill block of 512 rows
+    already presents 256 blocks, so splitting it would reassociate its softmax
+    for no gain; leaving it whole also keeps every prefill shape on exactly the
+    arithmetic it has always run. The division is also capped by the walk
+    needing at least one K batch per slice, since a slice shorter than a tile
+    has no work to overlap.
+    """
+
+    query_rows = QUERY_ROWS
+    query_tiles = (int(tokens) + query_rows - 1) // query_rows
+    gqa_tiles = (int(num_heads) // int(num_kv_heads) + GQA_HEADS - 1) // GQA_HEADS
+    base_blocks = query_tiles * int(num_kv_heads) * gqa_tiles
+    if query_tiles != 1 or base_blocks >= TARGET_BLOCKS:
+        return 1
+    slices = (TARGET_BLOCKS + base_blocks - 1) // base_blocks
+    by_walk = int(keys) // K_BATCH
+    if slices > by_walk:
+        slices = by_walk
+    return max(1, slices)
+
+
+def plan_gemma4_attention_wmma_full_scratch_bytes(slices: int, *, num_heads: int, num_kv_heads: int, head_dim: int) -> int:
+    """Bytes the split workspace needs for `slices` slices at this geometry.
+
+    One float per (column, output dimension) of accumulator, plus two floats of
+    softmax state per column, for every slice of every (kv head, GQA tile)
+    plane.
+    """
+
+    gqa_tiles = (int(num_heads) // int(num_kv_heads) + GQA_HEADS - 1) // GQA_HEADS
+    planes = int(num_kv_heads) * gqa_tiles
+    columns = QUERY_ROWS * GQA_HEADS
+    return int(slices) * planes * (columns * int(head_dim) + columns * 2) * 4
 
 # Identical to the strict kernel's prefill signature, including argument order.
 _ARGTYPES = (
@@ -71,6 +125,8 @@ _ARGTYPES = (
     ctypes.c_void_p,
     ctypes.c_int64,
     ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
     ctypes.c_int64,
 )
 
@@ -156,10 +212,18 @@ def gemma4_attention_prefill_wmma_full_bf16(
     count, which may exceed ``tokens`` for a chunked prefill. See the module
     docstring for the mask and offset frame.
 
-    ``scratch`` is accepted and ignored: the strict kernel needs a caller-owned
-    scratch buffer because it materialises logits, and this one stages its K/V
-    tile in LDS instead. It is in the signature so the two launchers are
-    interchangeable at a call site that passes the strict kernel's arguments.
+    ``scratch`` is the layer's attention workspace. The strict kernel needs one
+    because it materialises logits; this one stages its K/V tile in LDS instead
+    and runs without it. What it uses scratch for is the key split: a decode
+    step presents one query tile against the whole context, so the unsplit grid
+    is 8 blocks where the hardware needs about 128 to reach its own memory rate,
+    and the walk is divided and recombined when there is somewhere to put the
+    per-slice softmax state.
+
+    No scratch therefore means the walk is taken whole. That is the correct
+    answer either way and it is what a caller with no workspace is asking for --
+    the layer always has one, so a production decode always splits, and the
+    unsplit path stays reachable for the tests that compare the two.
     """
 
     tokens = int(tokens)
@@ -180,6 +244,21 @@ def gemma4_attention_prefill_wmma_full_bf16(
 
     library = library or build_gemma4_attention_prefill_wmma_full(load=True)
     runtime = runtime or get_hip_runtime()
+    # The split is planned here rather than in the launcher so the decision is a
+    # pure function of the geometry and can be tested without a device.
+    slices = plan_gemma4_attention_wmma_full_slices(
+        tokens=tokens, keys=key_count, num_heads=num_heads, num_kv_heads=num_kv_heads
+    )
+    scratch_ptr = 0
+    if slices > 1 and scratch is None:
+        slices = 1
+    if slices > 1:
+        nbytes = plan_gemma4_attention_wmma_full_scratch_bytes(
+            slices, num_heads=num_heads, num_kv_heads=num_kv_heads, head_dim=head_dim
+        )
+        scratch_ptr = scratch.buffer(
+            nbytes, stream=int(stream), runtime=runtime
+        ).ptr
     fn = signed_kernel_fn(library, SYMBOL_PREFILL_WMMA_FULL_BF16, _ARGTYPES, ctypes.c_int)
     err = fn(
         query_ptr,
@@ -196,6 +275,8 @@ def gemma4_attention_prefill_wmma_full_bf16(
         key_count,
         window,
         row_offset,
+        scratch_ptr,
+        slices,
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))

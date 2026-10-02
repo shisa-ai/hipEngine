@@ -83,6 +83,9 @@ _MARGIN_CHUNK = 64
 # override can be undone inside one process.
 _ORIGINAL_DECODE_SLICES: Any = None
 
+# Likewise the WMMA full-layer walk's key-division rule.
+_ORIGINAL_WMMA_FULL_PLAN: Any = None
+
 
 def row_kl_divergence(baseline_row: np.ndarray, candidate_row: np.ndarray) -> float:
     """KL(baseline || candidate) for one full-vocabulary row, in float64."""
@@ -278,6 +281,56 @@ def observe_decode_routes(routes: list[dict[str, int]]):
         attention._launch_prefill = original
 
 
+@contextmanager
+def observe_wmma_full_split(splits: list[dict[str, int]]):
+    """Record every WMMA full-layer walk's division, and at what geometry.
+
+    The gate's worst failure mode is comparing an arithmetic path with itself:
+    if the candidate never reaches the split, the two arms are the same kernel
+    and every KL is exactly zero. The strict decode split has
+    ``route_summary['split_launches']`` for that, and this is its counterpart for
+    the full layers, which run a different kernel and take a different split.
+
+    Records the plan the *layer's* launch resolved, by wrapping the rule the
+    launcher calls rather than by re-deriving it from the route table: a
+    geometry that reaches the kernel but divides into one slice is a whole walk
+    and has to be visible as one.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4 import (
+        gemma4_attention_prefill_wmma_full as wmma_full,
+    )
+
+    original = wmma_full.plan_gemma4_attention_wmma_full_slices
+
+    def observed(**kwargs):
+        slices = int(original(**kwargs))
+        splits.append({
+            "tokens": int(kwargs["tokens"]),
+            "keys": int(kwargs["keys"]),
+            "head_dim": 0,
+            "slices": slices,
+        })
+        return slices
+
+    wmma_full.plan_gemma4_attention_wmma_full_slices = observed
+    try:
+        yield
+    finally:
+        wmma_full.plan_gemma4_attention_wmma_full_slices = original
+
+
+def wmma_full_split_summary(splits: list[dict[str, int]]) -> dict[str, Any]:
+    divided = [row for row in splits if row["slices"] > 1]
+    return {
+        "plans": len(splits),
+        "divided_plans": len(divided),
+        "divided_key_range": [min(row["keys"] for row in divided),
+                              max(row["keys"] for row in divided)] if divided else None,
+        "slice_counts": sorted({row["slices"] for row in splits}),
+    }
+
+
 def route_summary(routes: list[dict[str, int]]) -> dict[str, Any]:
     # The split family is the multi-slice partials-plus-combine route: the
     # incumbent split (selection 2) and flash-decoding (selection 3, the
@@ -306,9 +359,33 @@ def require_candidate_route(verdict: dict[str, Any], routes: dict[str, Any],
     verdict["passed"] = not verdict["failed"]
 
 
+def require_wmma_full_split(verdict: dict[str, Any], splits: dict[str, Any],
+                            forced_slices: int | None) -> None:
+    """Refuse a verdict whose candidate arm never divided its full-layer walk.
+
+    A pinned arm is exempt for the same reason the strict arm is: asking for the
+    whole walk is a deliberate request to score the arithmetic before the split,
+    and the arm has to be able to say so rather than fail its own check.
+
+    An arm that planned no full-layer walk at all is a different failure from an
+    arm that planned one and did not divide it, and they are reported apart: the
+    first means the geometry never reached the kernel, so the gate says nothing
+    about the split either way.
+    """
+
+    if forced_slices == 1:
+        return
+    if not splits["plans"]:
+        verdict["failed"].append("no_wmma_full_launches_observed")
+    elif not splits["divided_plans"]:
+        verdict["failed"].append("wmma_full_split_not_exercised")
+    verdict["passed"] = not verdict["failed"]
+
+
 def capture_chain(
     runner: Any, prompt_ids: Sequence[int], prefill: int = 0,
     routes: list[dict[str, int]] | None = None,
+    splits: list[dict[str, int]] | None = None,
 ) -> np.ndarray:
     """Teacher-force ``prompt_ids`` and return the scored (rows, vocab) chain.
 
@@ -341,7 +418,11 @@ def capture_chain(
     if prefill:
         runner.forward(ids[:prefill])
     rows: list[np.ndarray] = []
-    with observe_decode_routes(routes) if routes is not None else nullcontext():
+    with (
+        observe_decode_routes(routes) if routes is not None else nullcontext()
+    ), (
+        observe_wmma_full_split(splits) if splits is not None else nullcontext()
+    ):
         for position in range(prefill, len(ids) - 1):
             logits = runner.forward([ids[position]])
             rows.append(np.array(logits, dtype=np.float32, copy=True).reshape(-1))
@@ -349,7 +430,7 @@ def capture_chain(
 
 
 def force_slices(slices: int | None) -> None:
-    """Pin the decode split's slice count for one capture or gate arm.
+    """Pin the strict decode split's slice count for one capture or gate arm.
 
     A harness override, not a product control: nothing in the engine reads it.
     It exists so a baseline can be frozen at the slice count it actually shipped
@@ -359,7 +440,9 @@ def force_slices(slices: int | None) -> None:
     whose chain geometry differs.
 
     ``None`` restores the shipped policy, so the override is reversible within
-    one process rather than only per-invocation.
+    one process rather than only per-invocation. This is
+    ``gemma4_attention.decode_slices``; the WMMA full-layer walk's key division
+    is a separate policy with its own pin, :func:`force_wmma_full_slices`.
     """
 
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention
@@ -373,6 +456,36 @@ def force_slices(slices: int | None) -> None:
     gemma4_attention.decode_slices = (
         lambda keys, head_dim: 1 if slices <= 1 else int(slices)
     )
+
+
+def force_wmma_full_slices(slices: int | None) -> None:
+    """Pin the WMMA full-layer walk's key division for one gate arm.
+
+    Also a harness override and also unread by the engine. It is separate from
+    :func:`force_slices` because the two splits are reached by different
+    geometries: above the strict decode kernel's key bound the full layers run
+    the WMMA kernel and take this split, while the sliding layers keep the
+    strict decode kernel and its value pass at every length. Pinning both at
+    once would move two independent arithmetic paths between the arms and leave
+    the comparison unable to attribute a difference to either.
+
+    ``1`` forces the whole walk, which is the arithmetic this kernel ran before
+    the split existed; ``None`` restores the shipped rule.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4 import (
+        gemma4_attention_prefill_wmma_full as wmma_full,
+    )
+
+    global _ORIGINAL_WMMA_FULL_PLAN
+    if _ORIGINAL_WMMA_FULL_PLAN is None:
+        _ORIGINAL_WMMA_FULL_PLAN = wmma_full.plan_gemma4_attention_wmma_full_slices
+    if slices is None:
+        wmma_full.plan_gemma4_attention_wmma_full_slices = _ORIGINAL_WMMA_FULL_PLAN
+    else:
+        wmma_full.plan_gemma4_attention_wmma_full_slices = (
+            _ORIGINAL_WMMA_FULL_PLAN if slices > 1 else (lambda **_: 1)
+        )
 
 
 def sha256_file(path: Path, chunk: int = 1 << 22) -> str:
@@ -506,6 +619,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             help="pin decode_slices for this arm (1 = strict single-kernel path)",
         )
         p.add_argument(
+            "--wmma-full-slices",
+            type=int,
+            default=None,
+            help="pin the WMMA full-layer walk's key division for this arm "
+            "(1 = whole walk, the arithmetic before the split). Independent of "
+            "--slices: the full layers only reach this split above the strict "
+            "decode kernel's key bound",
+        )
+        p.add_argument(
             "--corpus",
             choices=("frozen", "probe"),
             default="frozen",
@@ -533,26 +655,37 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.slices is not None and args.slices < 1:
         parser.error("--slices must be positive")
+    if args.wmma_full_slices is not None and args.wmma_full_slices < 1:
+        parser.error("--wmma-full-slices must be positive")
     if not 0 <= args.prefill < args.prompt - 1 or args.prompt > args.context:
         parser.error("require 0 <= prefill < prompt - 1 and prompt <= context")
 
     if args.command == "capture":
         started = time.time()
         force_slices(args.slices)
+        force_wmma_full_slices(args.wmma_full_slices)
         runner, prompt_ids, loading, chain_kind = _load_chain(
             args.artifact, args.prompt, args.context,
             corpus=args.corpus, corpus_seed=args.corpus_seed,
         )
         routes = []
+        splits = []
         try:
-            logits = capture_chain(runner, prompt_ids, args.prefill, routes=routes)
+            logits = capture_chain(
+                runner, prompt_ids, args.prefill, routes=routes, splits=splits
+            )
         finally:
             runner.close()
             force_slices(None)
+            force_wmma_full_slices(None)
         provenance = _provenance(args.artifact, loading)
         provenance["observed_routes"] = route_summary(routes)
+        provenance["observed_wmma_full_split"] = wmma_full_split_summary(splits)
         provenance["prefill"] = int(args.prefill)
         provenance["forced_slices"] = None if args.slices is None else int(args.slices)
+        provenance["forced_wmma_full_slices"] = (
+            None if args.wmma_full_slices is None else int(args.wmma_full_slices)
+        )
         provenance["chain_kind"] = chain_kind
         save_capture(args.out, logits, prompt_ids, provenance)
         elapsed = time.time() - started
@@ -568,6 +701,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "prompt_tokens": len(prompt_ids),
             "prefill": int(args.prefill),
             "forced_slices": None if args.slices is None else int(args.slices),
+            "forced_wmma_full_slices": (
+                None if args.wmma_full_slices is None else int(args.wmma_full_slices)
+            ),
             "scored_key_range": [int(args.prefill) + 1, len(prompt_ids) - 1],
             "chain_sha256": chain_sha256(prompt_ids),
             "chain_kind": chain_kind,
@@ -586,6 +722,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     baseline, base_ids, base_provenance = load_capture(args.baseline)
     force_slices(args.slices)
+    force_wmma_full_slices(args.wmma_full_slices)
     runner, prompt_ids, loading, chain_kind = _load_chain(
         args.artifact, args.prompt, args.context,
         corpus=args.corpus, corpus_seed=args.corpus_seed,
@@ -593,6 +730,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if [int(x) for x in base_ids] != [int(x) for x in prompt_ids]:
         runner.close()
         force_slices(None)
+        force_wmma_full_slices(None)
         raise SystemExit(
             "chain mismatch: the candidate chain differs from the frozen "
             "baseline's prompt ids; both arms must teacher-force the same ids"
@@ -603,6 +741,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if base_kind != chain_kind:
         runner.close()
         force_slices(None)
+        force_wmma_full_slices(None)
         raise SystemExit(
             f"chain kind mismatch: baseline {base_kind} vs candidate {chain_kind}; "
             "a probe baseline cannot be gated against a frozen chain"
@@ -610,22 +749,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     if int(base_provenance.get("prefill", 0)) != int(args.prefill):
         runner.close()
         force_slices(None)
+        force_wmma_full_slices(None)
         raise SystemExit(
             "prefill mismatch: the baseline scored a different key range "
             f"(baseline {base_provenance.get('prefill', 0)}, candidate "
             f"{args.prefill}); the comparison would not be paired"
         )
     routes = []
+    splits = []
     try:
-        candidate = capture_chain(runner, prompt_ids, args.prefill, routes=routes)
+        candidate = capture_chain(
+            runner, prompt_ids, args.prefill, routes=routes, splits=splits
+        )
     finally:
         runner.close()
         force_slices(None)
+        force_wmma_full_slices(None)
     verdict = evaluate(baseline, candidate)
     verdict["candidate_provenance"] = _provenance(args.artifact, loading)
     verdict["baseline_provenance"] = base_provenance
     verdict["observed_routes"] = route_summary(routes)
+    verdict["observed_wmma_full_split"] = wmma_full_split_summary(splits)
     require_candidate_route(verdict, verdict["observed_routes"], args.slices)
+    require_wmma_full_split(verdict, verdict["observed_wmma_full_split"], args.wmma_full_slices)
     verdict["prefill"] = int(args.prefill)
     verdict["chain_kind"] = chain_kind
     verdict["scored_key_range"] = [int(args.prefill) + 1, len(prompt_ids) - 1]
