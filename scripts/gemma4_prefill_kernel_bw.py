@@ -41,10 +41,31 @@ cross-block L2 sharing. The ratio between the 16-row and 1-row configurations at
 65,536 keys is 4.09x for 16x the rows, which puts the real per-row-per-key cost
 nearer 1,024 bytes than 4,096 -- one 512-dimension BF16 row.
 
-**The factor is not resolved.** Settling it needs hardware counters rather than
-another model: ``rocprofv3 --pmc`` on the memory unit reports actual DRAM read
-bytes. See
-``worklog/entries/20261002T214320.576122Z-lhl-gemma4-gfx1151-prefill-roofline-unresolved-61614d.md``.
+**The model above is what is wrong, and hardware counters say so.**
+``rocprofv3 --pmc FETCH_SIZE`` reports the actual DRAM traffic, and it was
+calibrated first against the decode shape, which reads each band exactly once:
+``tokens=1, keys=65536`` is 268,435,456 bytes by the model and 262,313.375 KB by
+the counter, 0.06% apart. The same counter on the prefill shape, 65,536 keys,
+one full layer, all-ones mask::
+
+    tokens    grid      ms   DRAM fetch MB   GB/s   % of roofline
+        16    8192    6.51           271.8   41.8             17.5%
+        64     512   19.59           527.5   26.9             11.3%
+       256     512   75.10           708.6    9.4              4.0%
+
+The model says 68.7 GB at the largest point; the counter says 708.6 MB. **It
+over-counts by 97x, and the prefill walk is at 4% of the DRAM roofline, not the
+105-118% that model produced.** The fetch count grows sub-linearly with rows, so
+L2 absorbs most of the 16-row blocks' sharing -- the opposite of what the
+"reads each band once per query-head tile" reasoning predicted.
+
+The kernel is therefore neither DRAM-bound nor tensor-bound. See
+``worklog/entries/20261002T214531.740943Z-lhl-gemma4-gfx1151-prefill-roofline-counters-ad03cb.md``.
+Run it under the counter with::
+
+    env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+        rocprofv3 --pmc FETCH_SIZE -d <dir> -- .venv/bin/python \
+        scripts/gemma4_prefill_kernel_bw.py --reps 1 --keys 65536 --tokens 16 64 256
 
 Usage::
 
