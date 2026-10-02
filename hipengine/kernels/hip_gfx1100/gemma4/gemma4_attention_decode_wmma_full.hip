@@ -22,6 +22,11 @@
 
 #define GEMMA4_WMMA_FULL_QUERY_ROWS 2
 #define GEMMA4_WMMA_FULL_GQA_HEADS 8
+// Two column groups against four dim groups, so the same 128 threads the prefill
+// shape runs. At the shared 2 this build is 64 threads, and the staging loop's
+// own comment -- "128 threads cover two rows per iteration" -- is written for
+// the 128 case: `kRowStep` is 2 there and 1 here.
+#define GEMMA4_WMMA_FULL_DIM_GROUPS 4
 #define GEMMA4_WMMA_FULL_SYMBOL hipengine_gemma4_attention_decode_wmma_full_bf16
 #define GEMMA4_WMMA_FULL_KERNEL_NAME gemma4_attention_decode_wmma_full_kernel
 

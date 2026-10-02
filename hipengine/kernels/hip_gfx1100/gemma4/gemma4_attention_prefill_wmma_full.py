@@ -62,7 +62,12 @@ DECODE_GQA_HEADS = 8
 GQA_RATIO = 8
 HEAD_DIM = 512
 K_BATCH = 16
+# How the head dimension is split across waves. `waves` is `column_groups *
+# dim_groups`, so this is what sets the thread count -- and the thread count is
+# what sets how many loads the staging loop keeps in flight. It is per shape
+# because the two shapes have different column groups and want the same threads.
 DIM_GROUPS = 2
+DECODE_DIM_GROUPS = 4
 THREADS = 128
 COLUMNS = QUERY_ROWS * GQA_HEADS
 
@@ -113,6 +118,7 @@ class WmmaFullShape:
 
     query_rows: int
     gqa_heads: int
+    dim_groups: int
     symbol: str
     output_name: str
     split_target_blocks: int
@@ -127,7 +133,7 @@ class WmmaFullShape:
 
     @property
     def waves(self) -> int:
-        return self.column_groups * DIM_GROUPS
+        return self.column_groups * self.dim_groups
 
     @property
     def threads(self) -> int:
@@ -145,11 +151,17 @@ class WmmaFullShape:
 
 
 PREFILL_SHAPE = WmmaFullShape(
-    QUERY_ROWS, GQA_HEADS, SYMBOL_PREFILL_WMMA_FULL_BF16, _OUTPUT_NAME, TARGET_BLOCKS
+    QUERY_ROWS,
+    GQA_HEADS,
+    DIM_GROUPS,
+    SYMBOL_PREFILL_WMMA_FULL_BF16,
+    _OUTPUT_NAME,
+    TARGET_BLOCKS,
 )
 DECODE_SHAPE = WmmaFullShape(
     DECODE_QUERY_ROWS,
     DECODE_GQA_HEADS,
+    DECODE_DIM_GROUPS,
     SYMBOL_DECODE_WMMA_FULL_BF16,
     _OUTPUT_NAME_DECODE,
     DECODE_SPLIT_TARGET_BLOCKS,
