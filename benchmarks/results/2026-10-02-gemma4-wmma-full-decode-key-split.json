@@ -110,7 +110,13 @@
   ],
 
   "what_is_left_on_the_table": {
-    "remaining_redundancy": "The split gives the walk something to overlap but does not change what it reads. A one-token block still presents one (query_tile, kv_head, gqa_tile) plane per slice, so each of the 8 planes reads its own copy of a KV band that the 8 GQA heads sharing it could read once. At 262144 keys the split walk moves about 537 MB per layer where the GQA shape would move 134 MB.",
-    "next_lever": "One block per (token, kv_head) with kGqaHeads 8, which needs the kernel templated on its GQA head count and the plane index split out of the slice index. Estimated 19.04 -> ~5 ms per layer at 262144 keys, and it is the change that would make a 256K decode rate worth measuring end to end."
+    "remaining_redundancy": "The split gives the walk something to overlap but does not change what it reads. A one-token block still presents one (query_tile, kv_head, gqa_tile) plane per slice, so each of the 4 gqa_tiles reads its own copy of a KV band the 8 GQA heads sharing it could read once. At 262144 keys the split walk moves about 537 MB per layer where a GQA shape would move 134 MB.",
+    "why_the_obvious_fix_does_not_fit": {
+      "what_it_needs": "kGqaHeads 4 to halve the re-reads, or 8 to remove them. kColumns is kQueryRows * kGqaHeads and the Q tile is staged in shared memory at kQStride, so both scale with it.",
+      "shared_memory": "(kColumns * kQStride + kKBatch * kKvStride) * 2 bytes, against a 65536-byte limit: kGqaHeads 2 gives 48.75 KB and fits, 4 gives 81.25 KB and is 1.3x over, 8 gives 146.25 KB and is 2.3x over.",
+      "it_is_the_q_tile_not_the_kv_tile": "At kGqaHeads 4 the Q tile alone is 64 * 520 * 2 = 66.6 KB, which is the entire budget before any K or V is staged. Shrinking kKBatch from 16 to 8 and dropping the Q padding still leaves 74.9 KB, so this is not a tuning margin.",
+      "what_would_make_it_fit": "Tiling head_dim so Q fits, which puts the dimension loop outside the key loop and re-reads KV once per dimension tile -- reintroducing exactly the 4x it was meant to remove. Holding Q in registers instead is 128 VGPRs of Q on top of 128 of accumulator, at the ISA maximum of 256. Neither is free, and neither was built."
+    },
+    "a_different_lever_this_points_at": "The 4x is L2-shareable rather than unavoidable: the 4 sibling gqa_tiles walk the same key range, and they are adjacent in blockIdx.z, but blockIdx.x is the fastest-varying axis so the concurrent window (about 20 blocks against 128) sits inside one gqa_tile for its whole duration and the band is streamed four times in sequence. Making the gqa_tile the fastest-varying axis would put the siblings in flight together. Not attempted here: it changes the grid layout for the prefill as well, which is the topline, so it needs a prefill measurement and not only a decode one."
   }
 }
