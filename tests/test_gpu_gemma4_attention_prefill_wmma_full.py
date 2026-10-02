@@ -354,6 +354,116 @@ def test_scale_is_applied_where_the_strict_kernel_applies_it():
     _assert_matches(strict, candidate, context="scale=0.25")
 
 
+def _run_candidate_split(
+    *,
+    tokens: int,
+    keys: int,
+    mask: np.ndarray,
+    window: int,
+    row_offset: int,
+    split: bool,
+    num_heads: int = FULL_HEADS,
+    num_kv_heads: int = FULL_KV_HEADS,
+    head_dim: int = FULL_HEAD_DIM,
+    scale: float = 1.0,
+    seed: int = 20260930,
+) -> np.ndarray:
+    """Run the candidate alone, with or without the key-split workspace."""
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_array_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import Gemma4AttentionScratch
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_prefill_wmma_full import (
+        gemma4_attention_prefill_wmma_full_bf16 as candidate,
+    )
+
+    rng = np.random.default_rng(seed)
+    query = _bf16(rng.standard_normal((tokens, num_heads, head_dim)).astype(np.float32))
+    key = _bf16(rng.standard_normal((keys, num_kv_heads, head_dim)).astype(np.float32))
+    value = _bf16(rng.standard_normal((keys, num_kv_heads, head_dim)).astype(np.float32))
+    out = np.zeros((tokens, num_heads, head_dim), dtype=np.uint16)
+
+    scratch = Gemma4AttentionScratch() if split else None
+    buffers = []
+    try:
+        for array in (query, key, value, mask, out):
+            buffer = malloc(array.nbytes)
+            buffers.append(buffer)
+            copy_host_array_to_device(buffer, array)
+        candidate(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[2].ptr,
+            buffers[3].ptr,
+            buffers[4].ptr,
+            tokens=tokens,
+            keys=keys,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            scale=scale,
+            window=window,
+            row_offset=row_offset,
+            scratch=scratch,
+        )
+        get_hip_runtime().device_synchronize()
+        copy_device_to_host(host_array_ptr(out), buffers[4])
+    finally:
+        for buffer in buffers:
+            free(buffer)
+        if scratch is not None:
+            scratch.close()
+    return _bf16_to_f32(out)
+
+
+@pytest.mark.parametrize("keys", [4096, 32768, 131072])
+def test_a_split_key_walk_matches_the_whole_walk(keys):
+    """Dividing the walk and recombining must reproduce walking it whole.
+
+    A decode step presents one query tile against the whole context, so the
+    unsplit grid is `num_kv_heads * gqa_tiles` = 8 blocks and each walks every
+    key. Measured at 262,144 keys on gfx1151 that reaches 75 GB/s where 64
+    blocks reach 225 and 256 reach 252, so the kernel is latency-bound and the
+    walk is worth dividing. Dividing it gives each slice its own online-softmax
+    maximum, and the combine rescales every slice to the largest of them; that
+    is a reassociation, so this is not the bit-identity the mask tests assert.
+    It is however the same sum, and the tolerance below is the file's own.
+
+    The unsplit arm is the same kernel with no workspace handed to it, which is
+    the path every prefill shape takes, so this also pins that the split is
+    opt-in rather than a change to the default arithmetic.
+    """
+
+    mask = _causal_keep_mask(1, keys, keys - 1)
+    whole = _run_candidate_split(
+        tokens=1, keys=keys, mask=mask, window=keys, row_offset=keys - 1, split=False
+    )
+    split = _run_candidate_split(
+        tokens=1, keys=keys, mask=mask, window=keys, row_offset=keys - 1, split=True
+    )
+    assert whole.shape == split.shape
+    whole_nan = np.isnan(whole)
+    np.testing.assert_array_equal(
+        whole_nan, np.isnan(split), err_msg=f"keys={keys}: NaN placement differs"
+    )
+    finite = ~whole_nan
+    assert finite.any(), f"keys={keys}: every element was NaN"
+    a, b = whole[finite], split[finite]
+    peak = float(np.abs(a).max())
+    assert peak > 0.0, f"keys={keys}: output was all zero"
+    worst = float(np.abs(a - b).max())
+    assert worst <= RTOL * peak, (
+        f"keys={keys}: the split walk differs by {worst:.4g} of a {peak:.4g} peak "
+        f"against {RTOL * peak:.4g}; that is a different answer, not a reassociation"
+    )
+
+
 def test_the_launcher_refuses_a_geometry_the_kernel_does_not_implement():
     """The head_dim-256 sliding layers are a capability miss, not a fallback."""
 

@@ -1,0 +1,89 @@
+{
+ "baseline": {
+  "chain": {
+   "corpus": "frozen",
+   "corpus_seed": null
+  },
+  "chain_sha256": "7cf9b6b2971e115104a2343207c4d854e36683d5a434f7014bafed23955f84d3",
+  "forced_slices": null,
+  "forced_wmma_full_slices": 1,
+  "sha256": "b620ab16ff78f00359662fa28ba2e45f4946e82552678746ff41e7e38c13a58b",
+  "stored_outside_repo": true
+ },
+ "baseline_command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python scripts/gemma4_teacher_forced_gate.py capture --prompt 16384 --prefill 15856 --context 16384 --wmma-full-slices 1 --out /tmp/gate_wmma_full_whole.npz",
+ "candidate": {
+  "forced_slices": null,
+  "forced_wmma_full_slices": null,
+  "profile": "production",
+  "verdict_sha256": "2ca411c1236e0c75e53b99a0d609111fa8a911b7f39c09b7d93d5835d53498aa"
+ },
+ "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python scripts/gemma4_teacher_forced_gate.py gate --prompt 16384 --prefill 15856 --context 16384 --baseline /tmp/gate_wmma_full_whole.npz",
+ "date": "2026-10-02",
+ "gate": "docs/EXECUTION-PROFILES.md section 6 KL envelope over full-vocabulary teacher-forced rows",
+ "measured": {
+  "kl_max": 0.00031103575548407464,
+  "kl_mean": 1.7141277877095978e-06,
+  "kl_p95": 7.792764443760385e-07,
+  "kl_p99": 2.44113212451447e-05,
+  "top1_flips": 0,
+  "top1_flips_close_margin": 0,
+  "top1_rate": 1.0
+ },
+ "not_supplied_by_this_evaluator": [
+  "category gates",
+  "isolation gates",
+  "task gates",
+  "the 500-1000 paired-row promotion standard (this is 527 single-chain rows)"
+ ],
+ "note": "The arms differ in exactly one thing. --wmma-full-slices 1 pins the WMMA full-layer walk's key division, so the baseline is the whole walk -- the arithmetic this kernel ran before the split existed -- and the candidate is the shipped rule. Every other path is identical between the arms, including the sliding layers' strict decode and its value pass, which a pin on --slices would have moved as well and which is why this pin exists separately.",
+ "observed_routes": {
+  "decode_launches": 13175,
+  "head_dims": [
+   256
+  ],
+  "selections": [
+   2
+  ],
+  "split_key_range": [
+   1024,
+   1024
+  ],
+  "split_launches": 13175
+ },
+ "observed_wmma_full_split": {
+  "divided_key_range": [
+   15857,
+   16383
+  ],
+  "divided_plans": 2635,
+  "plans": 2635,
+  "slice_counts": [
+   16
+  ]
+ },
+ "percentile_method": "nearest-rank",
+ "prefill_tokens": 15856,
+ "route_evidence": "The gate's worst failure mode is comparing an arithmetic path with itself, and at this geometry that is a live risk: the strict decode split's own check is satisfied by the 13,175 sliding-layer launches at 1024 keys, which say nothing about the full layers. observed_wmma_full_split is therefore recorded separately and shows all 2,635 full-layer plans divided, at 16 slices, over keys 15857 to 16383. 2,635 is exactly 5 full layers x 527 scored rows.",
+ "rows": 527,
+ "schema": "hipengine.gemma4.teacher_forced_gate.v1",
+ "scored_key_range": [
+  15857,
+  16383
+ ],
+ "subject": "the WMMA full-layer decode key split (gemma4_attention_prefill_wmma_full_kernel + gemma4_attention_wmma_combine_kernel)",
+ "thresholds": {
+  "kl_max": 0.05,
+  "kl_mean": 0.001,
+  "kl_p95": 0.005,
+  "kl_p99": 0.02,
+  "top1_rate": 0.99
+ },
+ "verdict": {
+  "evidence_level": "numerical_rows",
+  "failed": [],
+  "passed": true,
+  "promotion_qualified": false
+ },
+ "vocab": 262144,
+ "why_this_geometry": "The strict decode kernel serves keys up to 15856, and the full layers only reach the WMMA kernel above that. A chain scored below the bound would gate the strict path and never touch the split, so the scored range starts at 15857. 16 is also the maximum slice count the planner produces at any length, because the target of 128 blocks over 8 base blocks caps it there, so the widest reassociation the kernel can perform is the one gated here."
+}

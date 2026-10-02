@@ -1912,9 +1912,9 @@
     },
     {
       "kind": "stub",
-      "key": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py:175",
+      "key": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py:239",
       "title": "unimplemented: raise NotImplementedError(",
-      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py:175",
+      "location": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py:239",
       "evidence": {
         "fix": "Implement it, or make the caller unable to reach it and say so at the call site. A NotImplementedError a user can hit is a crash with extra steps.",
         "why": "NotImplementedError in runtime code"
@@ -1925,7 +1925,7 @@
       "hints": {
         "anchor": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py",
         "refs": [
-          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py:175"
+          "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py:239"
         ],
         "tokens": [
           "notimplementederror",
@@ -1933,8 +1933,8 @@
           "unimplemented"
         ]
       },
-      "id": "stub/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py:175",
-      "evidence_hash": "92cbcf3e91d0"
+      "id": "stub/hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py:239",
+      "evidence_hash": "362b0b5786d5"
     },
     {
       "kind": "stub",
