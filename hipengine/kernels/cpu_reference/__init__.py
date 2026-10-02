@@ -54,6 +54,7 @@ from hipengine.kernels.cpu_reference.gemma4 import (
 )
 from hipengine.kernels.cpu_reference.gemma4_int8 import (
     gemma4_attention_decode_int8_per_token_head,
+    gemma4_attention_prefill_int8_per_token_head,
 )
 from hipengine.kernels.cpu_reference.laguna import (
     LagunaAttentionConfig,
@@ -290,6 +291,7 @@ __all__ = [
     "gguf_q8_0_gemv",
     "gguf_quant_gemv",
     "gemma4_attention_decode_int8_per_token_head",
+    "gemma4_attention_prefill_int8_per_token_head",
     "gemma4_attention_forward",
     "gemma4_attention_mask",
     "gemma4_decoder_layer_forward",
