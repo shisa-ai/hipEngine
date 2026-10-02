@@ -41,7 +41,9 @@ def test_runner_names_unsupported_context_before_allocating(monkeypatch):
     from types import SimpleNamespace
     from hipengine.runtime import gemma4 as module
 
-    config = SimpleNamespace(attention=(SimpleNamespace(head_dim=768),))
+    config = SimpleNamespace(
+        attention=(SimpleNamespace(head_dim=768, sliding_window=None),)
+    )
     def unexpected(*args, **kwargs):
         raise AssertionError("unsupported geometry reached allocation")
     monkeypatch.setattr(module, "malloc", unexpected)
