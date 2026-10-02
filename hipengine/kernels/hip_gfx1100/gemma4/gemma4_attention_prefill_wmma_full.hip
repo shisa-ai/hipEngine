@@ -37,8 +37,8 @@
 //                    this is the only lever on arithmetic intensity.
 //   COLUMNS     32   QUERY_ROWS * GQA_HEADS, the WMMA column count.
 //   K_BATCH     16   keys per online-softmax batch (one 16-key WMMA tile).
-//   WAVES        4   THREADS 128. Two column groups of sixteen columns and two
-//                    output-dimension groups of 256 dimensions.
+//   WAVES        8   THREADS 256. Two column groups of sixteen columns and four
+//                    output-dimension groups of 128 dimensions.
 //
 // Register pressure is the binding constraint, exactly as at head_dim 256. A
 // wave's accumulator is (columns it owns) * (dimensions it owns) / 32 lanes
@@ -46,15 +46,21 @@
 // natural shape -- one wave per sixteen columns owning all 512 output
 // dimensions -- needs 256 accumulator floats per lane, which is the wave32
 // architectural ceiling before any other state and cannot compile without
-// spilling. Splitting the output dimensions across two waves per column group
-// halves it to the same 128 floats per lane the in-tree INT8 WMMA prefill and
-// the sliding candidate both run at.
+// spilling. Splitting the output dimensions across waves per column group cuts
+// it: two groups give the same 128 floats per lane the in-tree INT8 WMMA prefill
+// and the sliding candidate both run at, and four give 64.
 //
-// That split is not free: the two waves that share a column group each need the
-// full head_dim score for those columns, so the score dot is issued twice. The
-// block issues 1.5x the ideal WMMA count. It does not change the staged bytes,
-// because both dimension groups are served by the same staged V tile, and the
-// tensor unit is not the binding cost here.
+// The score is what the dimension groups have in common, so computing it in each
+// of them is pure redundancy -- and at the two-group shape it was the reason a
+// wider split lost, because a four-group block issued the same dot four times
+// and the extra issue cost more than the smaller accumulator bought. Each wave
+// now walks only its own slice of the head dimension and the partials are summed
+// through LDS before the softmax, so the dot is issued once across the group and
+// the split is free to be as wide as registers and LDS allow. Measured on the
+// one-full-layer probe at 65,536 keys, 256 tokens: the two-group shape 73.70 ms
+// -> 65.84, and the four-group shape 61.11, against 99.90 for a four-group block
+// that duplicated the dot. The decode shape, which shares this file, goes 1.42 ms
+// -> 1.39 at 65,536 keys and 79.2% -> 80.7% of the DRAM roofline.
 //
 // Shared memory is the second constraint and it is why K_BATCH is 16 rather
 // than 32. The Q tile must hold COLUMNS * head_dim BF16 for the whole walk --
@@ -151,7 +157,7 @@ constexpr int kDimTiles = kHeadDim / 16;
 // contiguous read at the walk's grid was *slower* than the strided one (101.1),
 // so it is the thread count and not the KV layout.
 #ifndef GEMMA4_WMMA_FULL_DIM_GROUPS
-#define GEMMA4_WMMA_FULL_DIM_GROUPS 2
+#define GEMMA4_WMMA_FULL_DIM_GROUPS 4
 #endif
 constexpr int kDimGroups = GEMMA4_WMMA_FULL_DIM_GROUPS;
 constexpr int kDimTilesPerWave = kDimTiles / kDimGroups;
@@ -167,8 +173,8 @@ constexpr int kThreads = 32 * kWaves;
 constexpr int kPad = 8;
 constexpr int kKvStride = kHeadDim + kPad;
 constexpr int kQStride = kHeadDim + kPad;
-// Staging geometry: a row is 64 chunks of eight BF16 values, so 128 threads
-// cover two rows per iteration and each thread walks its own key stride.
+// Staging geometry: a row is 64 chunks of eight BF16 values, so kThreads covers
+// kRowStep rows per iteration and each thread walks its own key stride.
 constexpr int kChunksPerRow = kHeadDim / 8;
 constexpr int kRowStep = kThreads / kChunksPerRow;
 
@@ -277,9 +283,16 @@ __device__ __forceinline__ float lane_xor16(float value) {
 // than one per key.
 //
 // The wave's (column group, dimension group) pair is fixed for the whole
-// launch. Every wave computes the complete score for its own sixteen columns --
-// both dimension groups need it -- and accumulates only its own 256 output
-// dimensions, which is what keeps the accumulator at 128 floats per lane.
+// launch. A wave accumulates only its own 256 output dimensions, which is what
+// keeps the accumulator at 128 floats per lane.
+//
+// The score is what the dimension groups have in common: C[key][column] is a dot
+// over the whole head dimension, so every group needs all of it. Computing it
+// independently in each group is therefore pure redundancy, and it is why a
+// wider dimension split lost -- at four groups the dot was issued four times and
+// the extra issue cost more than the smaller accumulator bought. Each wave now
+// walks only its own slice of the head dimension and the partials are summed
+// through LDS before the softmax, so the dot is issued once across the group.
 __global__ void __launch_bounds__(kThreads, 1)
 GEMMA4_WMMA_FULL_KERNEL_NAME(
     const uint16_t* __restrict__ query,
@@ -301,6 +314,12 @@ GEMMA4_WMMA_FULL_KERNEL_NAME(
   extern __shared__ bf16_t shared[];
   bf16_t* q_tile = shared;                         // [kColumns][kQStride]
   bf16_t* kv_tile = q_tile + kColumns * kQStride;  // [kKBatch][kKvStride]
+  // One published partial score tile per (dimension group, column group, lane).
+  // The D-fragment layout is identical across the dimension groups, so a
+  // matching (lane, element) pair is a matching score and the reduction is an
+  // elementwise add that needs no shuffle.
+  float* partial_scores = reinterpret_cast<float*>(kv_tile + kKBatch * kKvStride);
+  constexpr int kPartialStride = kKeyTiles * 8;
 
   const int lane = static_cast<int>(threadIdx.x) & 31;
   const int wave = static_cast<int>(threadIdx.x) >> 5;
@@ -450,24 +469,55 @@ GEMMA4_WMMA_FULL_KERNEL_NAME(
     // dimension tile rather than once per (dimension tile, key tile). At
     // K_BATCH 16 there is one key tile, so this is the same order the sliding
     // candidate runs; it matters only if K_BATCH grows.
+    //
+    // This wave walks only its own slice of the head dimension, so what lands in
+    // `scores` is a partial dot and the dimension groups have to be summed
+    // before the softmax. That costs one barrier and one LDS round trip per K
+    // batch and saves issuing the whole dot once per dimension group.
     float8_t scores[kKeyTiles];
 #pragma unroll
     for (int key_tile = 0; key_tile < kKeyTiles; ++key_tile) {
       scores[key_tile] = zero_float8();
     }
 #pragma unroll
-    for (int dim_tile = 0; dim_tile < kDimTiles; ++dim_tile) {
-      const bf16x16_t query_fragment = load_bf16x16(&q_tile[jc * kQStride + dim_tile * 16]);
+    for (int dim_tile = 0; dim_tile < kDimTilesPerWave; ++dim_tile) {
+      const int tile = dim_group * kDimTilesPerWave + dim_tile;
+      const bf16x16_t query_fragment = load_bf16x16(&q_tile[jc * kQStride + tile * 16]);
 #pragma unroll
       for (int key_tile = 0; key_tile < kKeyTiles; ++key_tile) {
         const bf16x16_t key_fragment =
-            load_bf16x16(&kv_tile[(key_tile * 16 + lane_lo) * kKvStride + dim_tile * 16]);
+            load_bf16x16(&kv_tile[(key_tile * 16 + lane_lo) * kKvStride + tile * 16]);
         scores[key_tile] = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(
             key_fragment, query_fragment, scores[key_tile]);
       }
     }
-    // Every wave is done reading the K tile before V overwrites it.
+    // Publish this wave's partial, then pick up the other groups'.
+    float* partial_mine =
+        partial_scores + ((dim_group * kColumnGroups + column_group) * 32 + lane) * kPartialStride;
+#pragma unroll
+    for (int key_tile = 0; key_tile < kKeyTiles; ++key_tile) {
+      *reinterpret_cast<float8_t*>(partial_mine + key_tile * 8) = scores[key_tile];
+    }
+    // Every wave is done reading the K tile before V overwrites it, and every
+    // partial is published before any wave reads one.
     __syncthreads();
+#pragma unroll
+    for (int key_tile = 0; key_tile < kKeyTiles; ++key_tile) {
+      float8_t total = *reinterpret_cast<const float8_t*>(
+          partial_scores + (column_group * 32 + lane) * kPartialStride + key_tile * 8);
+#pragma unroll
+      for (int group = 1; group < kDimGroups; ++group) {
+        const float8_t other = *reinterpret_cast<const float8_t*>(
+            partial_scores + ((group * kColumnGroups + column_group) * 32 + lane) *
+                                 kPartialStride +
+            key_tile * 8);
+#pragma unroll
+        for (int element = 0; element < 8; ++element) {
+          total[element] += other[element];
+        }
+      }
+      scores[key_tile] = total;
+    }
 
     // --- mask, batch max, and the online-softmax rescale --------------------
     // `scale` is applied here rather than folded into the staged Q, so it is a
@@ -776,7 +826,8 @@ extern "C" int GEMMA4_WMMA_FULL_SYMBOL(
   const int query_tiles = static_cast<int>((tokens + kQueryRows - 1) / kQueryRows);
   const int gqa_tiles = static_cast<int>((num_heads / num_kv_heads + kGqaHeads - 1) / kGqaHeads);
   const size_t shared_bytes =
-      static_cast<size_t>(kColumns * kQStride + kKBatch * kKvStride) * sizeof(bf16_t);
+      static_cast<size_t>(kColumns * kQStride + kKBatch * kKvStride) * sizeof(bf16_t) +
+      static_cast<size_t>(kDimGroups * kColumnGroups * 32 * kKeyTiles * 8) * sizeof(float);
 
   // The key split. The caller plans it -- see
   // `plan_gemma4_attention_wmma_full_slices`, which owns the rule and the

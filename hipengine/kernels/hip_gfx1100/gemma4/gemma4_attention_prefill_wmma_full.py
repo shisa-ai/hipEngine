@@ -66,7 +66,7 @@ K_BATCH = 16
 # dim_groups`, so this is what sets the thread count -- and the thread count is
 # what sets how many loads the staging loop keeps in flight. It is per shape
 # because the two shapes have different column groups and want the same threads.
-DIM_GROUPS = 2
+DIM_GROUPS = 4
 DECODE_DIM_GROUPS = 4
 THREADS = 128
 COLUMNS = QUERY_ROWS * GQA_HEADS
@@ -145,9 +145,17 @@ class WmmaFullShape:
 
     @property
     def shared_bytes(self) -> int:
-        """`(kColumns * kQStride + kKBatch * kKvStride) * sizeof(bf16_t)`."""
+        """Q tile, K/V tile, and the per-dimension-group partial score tiles.
 
-        return (self.columns * (HEAD_DIM + 8) + K_BATCH * (HEAD_DIM + 8)) * 2
+        `(kColumns * kQStride + kKBatch * kKvStride) * sizeof(bf16_t)` plus
+        `kDimGroups * kColumnGroups * 32 * kKeyTiles * 8 * sizeof(float)` for
+        the partials the dimension groups sum through.
+        """
+
+        return (
+            (self.columns * (HEAD_DIM + 8) + K_BATCH * (HEAD_DIM + 8)) * 2
+            + self.dim_groups * (self.columns // 16) * 32 * (K_BATCH // 16) * 8 * 4
+        )
 
 
 PREFILL_SHAPE = WmmaFullShape(

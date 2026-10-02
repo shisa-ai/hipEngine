@@ -78,8 +78,8 @@ class TestShapeSelection:
         assert shape.waves == shape.column_groups * shape.dim_groups
         assert shape.threads == 32 * shape.waves
 
-    def test_both_shapes_run_the_same_threads_from_different_groupings(self):
-        """The two shapes reach 128 threads by different routes, on purpose.
+    def test_each_shape_keeps_its_own_measured_thread_count(self):
+        """The decode runs 128 threads and the prefill 256, each for its own reason.
 
         `kThreads` is what sets how many loads the staging loop keeps in flight,
         and a pure-read probe over the walk's own address sequence put the
@@ -87,31 +87,41 @@ class TestShapeSelection:
         GB/s at the walk's 32x64 grid while 1024x256 reached 231.0, and a flat
         contiguous read at the walk's grid was *slower* than the strided one.
 
-        The decode shape has half the prefill shape's column groups, so it needs
-        twice the dim groups to reach the same threads -- which is also the
-        geometry the staging loop's own comment describes ("128 threads cover
-        two rows per iteration", `kRowStep` 2).
+        The decode shape has one column group against the prefill's two, so at
+        the same four dimension groups it runs half the threads. That is not a
+        drift: 128 is the decode's measured optimum and 256 is worse for it, so
+        the two shapes deliberately stopped sharing a thread count once the
+        partial-score reduction made a wider prefill split pay for itself.
         """
 
         assert PREFILL_SHAPE.column_groups == 2 * DECODE_SHAPE.column_groups
-        assert DECODE_SHAPE.dim_groups == 2 * PREFILL_SHAPE.dim_groups
-        assert PREFILL_SHAPE.threads == DECODE_SHAPE.threads == 128
+        assert DECODE_SHAPE.dim_groups == PREFILL_SHAPE.dim_groups == 4
+        assert DECODE_SHAPE.threads == 128
+        assert PREFILL_SHAPE.threads == 256
         assert 512 % DECODE_SHAPE.dim_groups == 0
         assert 512 % PREFILL_SHAPE.dim_groups == 0
 
     def test_the_decode_shape_fits_in_shared_memory_and_the_prefill_shape_does_too(self):
         """The 64 KB budget is what the sixteen-row decode shape would have blown.
 
-        `(kColumns * kQStride + kKBatch * kKvStride) * 2` against 65536 bytes:
-        32.5 KB for the decode shape, 48.8 KB for the prefill shape, and 81.2 KB
-        for the sixteen-row, eight-head shape that is not built.
+        `(kColumns * kQStride + kKBatch * kKvStride) * 2` for the tiles plus
+        `kDimGroups * kColumnGroups * 32 * kKeyTiles * 8 * 4` for the partial
+        score tiles the dimension groups sum through, against 65536 bytes: 36.5
+        KB for the decode shape, 56.8 KB for the prefill shape, and 89.1 KB for
+        the sixteen-row, eight-head shape that is not built.
         """
 
-        assert DECODE_SHAPE.shared_bytes == (16 * 520 + K_BATCH * 520) * 2
-        assert PREFILL_SHAPE.shared_bytes == (32 * 520 + K_BATCH * 520) * 2
+        def tiles(columns):
+            return (columns * 520 + K_BATCH * 520) * 2
+
+        def partials(shape):
+            return shape.dim_groups * shape.column_groups * 32 * (K_BATCH // 16) * 8 * 4
+
+        assert DECODE_SHAPE.shared_bytes == tiles(16) + partials(DECODE_SHAPE)
+        assert PREFILL_SHAPE.shared_bytes == tiles(32) + partials(PREFILL_SHAPE)
         assert DECODE_SHAPE.shared_bytes < 65536
         assert PREFILL_SHAPE.shared_bytes < 65536
-        assert (16 * 8 * 520 + K_BATCH * 520) * 2 > 65536
+        assert tiles(16 * 8) > 65536
 
 
 class TestSlicePlanning:
