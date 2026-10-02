@@ -140,7 +140,20 @@ constexpr int kGqaRatio = 8;
 constexpr int kColumns = kQueryRows * kGqaHeads;
 constexpr int kColumnGroups = kColumns / 16;
 constexpr int kDimTiles = kHeadDim / 16;
-constexpr int kDimGroups = 2;
+// How the head dimension is split across waves. `kWaves` is
+// `kColumnGroups * kDimGroups` and each wave owns `kDimPerWave` output columns,
+// so this is what sets `kThreads` -- and `kThreads` is what sets how many loads
+// the staging loop has in flight. The prefill shape's `kColumnGroups` is 2 and
+// the decode shape's is 1, so at a shared 2 the decode build runs 64 threads
+// where the prefill runs 128. A pure-read probe over the walk's own address
+// sequence says that grid is the walk's residual: 2,048 threads reached 158.8
+// GB/s at the walk's 32x64 grid while 1024x256 reached 231.0, and a flat
+// contiguous read at the walk's grid was *slower* than the strided one (101.1),
+// so it is the thread count and not the KV layout.
+#ifndef GEMMA4_WMMA_FULL_DIM_GROUPS
+#define GEMMA4_WMMA_FULL_DIM_GROUPS 2
+#endif
+constexpr int kDimGroups = GEMMA4_WMMA_FULL_DIM_GROUPS;
 constexpr int kDimTilesPerWave = kDimTiles / kDimGroups;
 constexpr int kDimPerWave = kHeadDim / kDimGroups;
 constexpr int kKBatch = 16;

@@ -75,8 +75,29 @@ class TestShapeSelection:
         assert shape.columns % 16 == 0
         assert shape.columns == shape.query_rows * shape.gqa_heads
         assert shape.column_groups * 16 == shape.columns
-        assert shape.waves == shape.column_groups * 2
+        assert shape.waves == shape.column_groups * shape.dim_groups
         assert shape.threads == 32 * shape.waves
+
+    def test_both_shapes_run_the_same_threads_from_different_groupings(self):
+        """The two shapes reach 128 threads by different routes, on purpose.
+
+        `kThreads` is what sets how many loads the staging loop keeps in flight,
+        and a pure-read probe over the walk's own address sequence put the
+        residual there rather than in the KV layout: 2,048 threads reached 158.8
+        GB/s at the walk's 32x64 grid while 1024x256 reached 231.0, and a flat
+        contiguous read at the walk's grid was *slower* than the strided one.
+
+        The decode shape has half the prefill shape's column groups, so it needs
+        twice the dim groups to reach the same threads -- which is also the
+        geometry the staging loop's own comment describes ("128 threads cover
+        two rows per iteration", `kRowStep` 2).
+        """
+
+        assert PREFILL_SHAPE.column_groups == 2 * DECODE_SHAPE.column_groups
+        assert DECODE_SHAPE.dim_groups == 2 * PREFILL_SHAPE.dim_groups
+        assert PREFILL_SHAPE.threads == DECODE_SHAPE.threads == 128
+        assert 512 % DECODE_SHAPE.dim_groups == 0
+        assert 512 % PREFILL_SHAPE.dim_groups == 0
 
     def test_the_decode_shape_fits_in_shared_memory_and_the_prefill_shape_does_too(self):
         """The 64 KB budget is what the sixteen-row decode shape would have blown.
