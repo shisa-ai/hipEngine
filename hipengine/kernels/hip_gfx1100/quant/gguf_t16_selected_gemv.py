@@ -4615,6 +4615,23 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
 
+    # D11: the Q5_K gate_up expert stack plans raw plus its Q5T16 tiles side
+    # copy, and its decode rewrite resolves this key when the weight ships
+    # tiles (D11 screen: bit-exact with the raw incumbent and 4.35x faster at
+    # the production geometry, 0.1830 -> 0.0421 ms at rows 8). Same alias
+    # rationale as the q4_k registration above: same launch ABI, raw variant
+    # name, ``linear`` layer binding.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "selected_gemv_bf16_bf16_out",
+        ),
+        gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+        replace=replace,
+    )
+
     register(
         KernelKey(
             "hip_gfx1100",

@@ -1,0 +1,177 @@
+{
+ "schema": "gemma4-d11-expert-decode-wiring/v1",
+ "created_utc": "2026-09-30T12:50:41+00:00",
+ "git_commit": "010904eff",
+ "git_tree": "dirty: the D11 wiring changes (gemma4_experts chain, gguf_device Q5T16 planner, tests)",
+ "arch": "x86_64",
+ "gpu_env": {
+  "ROCR_VISIBLE_DEVICES": "1",
+  "HIP_VISIBLE_DEVICES": "unset"
+ },
+ "change": {
+  "what": "gemma4_project_experts_selected tries three candidates in order, gated on registration and geometry only: (1) the t16 tiles sibling under spec.tiles_quant_key when the weight ships the tiles allocation, (2) the pack8 selected leaf when out_features % 8 == 0, (3) the registered selected_gemv incumbent. Exact is_registered gating, weight pointer follows the candidate (tiles allocation vs raw primary), prefill owners untouched. Planner side: Q5_K expert gate_up stacks that pass Q5_K_T16_SHAPE plan raw plus a Q5T16 tiles side copy; tiles_quant_key names gguf_q5_k_t16_v1.",
+  "screen": "benchmarks/results/2026-09-30-gemma4-d11-l29-expert-decode-screen.json (t16_direct 4.3476x and pack8 3.0522x bit-exact at rows 8)",
+  "capacity": {
+   "q5t16_tiles_side_copy_gib": 0.3323,
+   "l29_gate_up_raw_stack_gib": 0.325,
+   "resident_before_gib": 17.67,
+   "resident_after_gib": 18.002,
+   "loaded_and_ran": true,
+   "note": "Q5T16 tiles are not byte-neutral: 16 raw rows of 176-byte Q5_K blocks (2816 B) repack to one 2880-byte tile block, so the side copy is ~2.3% larger than the raw rows; capacity sums both copies explicitly in _planned_nbytes."
+  },
+  "production_mix_rows1_per_step": {
+   "l29_gate_up_q5_k_tiles_candidate": 1,
+   "l29_down_q8_0_pack8_candidate": 1,
+   "other_expert_projections_incumbent": 58,
+   "chain_substitutions_per_python_side_decode_step": 2
+  }
+ },
+ "census_kernel_trace_ab": {
+  "instrument": "rocprofv3 --kernel-trace around scripts/gemma4_family_census.py drive --prompt 1024 --decode 64 --prefill-repeats 2, off arm = clean worktree at 010904eff, on arm = this change; rollup via scripts/gemma4_family_census.py rollup --decode-steps 64",
+  "rocprof_workaround": "profiled process runs with HIPENGINE_COMPILER_VERSION_FILE set (precomputed hipcc --version file) so the build path never spawns hipcc under the profiler (OPTIMIZATION.md section 7)",
+  "pairs": [
+   {
+    "pair": "a",
+    "off_busy_ms_per_tok": 10.9364,
+    "on_busy_ms_per_tok": 10.8171,
+    "busy_delta_pct": -1.1,
+    "off_l29_family_ms_per_tok": 0.2374,
+    "on_l29_family_ms_per_tok": 0.0,
+    "off_l29_launches": 2,
+    "on_l29_launches": 0,
+    "off_routed_ms": 17.1542,
+    "on_routed_ms": 4.907,
+    "routed_launches": "144 -> 144",
+    "routed_delta_ms_per_tok": -0.1702,
+    "routed_speedup": 3.5,
+    "off_prefill_busy_ms": 441.9737,
+    "on_prefill_busy_ms": 441.1415,
+    "prefill_launch_counts_identical": true
+   },
+   {
+    "pair": "b",
+    "off_busy_ms_per_tok": 10.9537,
+    "on_busy_ms_per_tok": 10.824,
+    "busy_delta_pct": -1.2,
+    "off_l29_family_ms_per_tok": 0.2371,
+    "on_l29_family_ms_per_tok": 0.0,
+    "off_l29_launches": 2,
+    "on_l29_launches": 0,
+    "off_routed_ms": 17.1395,
+    "on_routed_ms": 4.9123,
+    "routed_launches": "144 -> 144",
+    "routed_delta_ms_per_tok": -0.17,
+    "routed_speedup": 3.49,
+    "off_prefill_busy_ms": 442.7986,
+    "on_prefill_busy_ms": 440.0377,
+    "prefill_launch_counts_identical": true
+   }
+  ],
+  "routed_pair_in_situ": {
+   "method": "per-Kernel_Name sums over the full trace CSVs; the two l29 selected projections swap launch-for-launch",
+   "off_incumbents": {
+    "kernels": [
+     "gguf_k_selected_prefill_out_kernel<unsigned short, ...> (two template instantiations)"
+    ],
+    "launches": 144,
+    "total_ms": 17.1542,
+    "ms_per_step": 0.2383
+   },
+   "on_routed": {
+    "kernels": [
+     "qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, ...> (gate_up, 0.0423 ms/launch, the screen's t16_direct winner)",
+     "gguf_k_selected_pack8_prefill_out_kernel<unsigned short, ...> (down, 0.0258 ms/launch)"
+    ],
+    "launches": 144,
+    "total_ms": 4.907,
+    "ms_per_step": 0.0681
+   },
+   "delta_ms_per_token": -0.1702,
+   "speedup": 3.5,
+   "launch_for_launch": true
+  },
+  "two_pair_verdict": "routed-pair saving reproducible across pairs (-0.170 ms/tok both, 3.49-3.50x); decode busy -1.1% / -1.2%; moe.l29_experts eliminated as a family in both on-arms (2 -> 0 launches); prefill launch counts identical in every family both pairs (raw stays primary); span excluded (unstable, D9 precedent)",
+  "family_rollup_decode_pair_a": {
+   "busy_off_ms_per_tok": 10.9364,
+   "busy_on_ms_per_tok": 10.8171,
+   "moe.l29_experts": "0.2374/2 launches -> 0.0/0 (rebucketed to other: 211 -> 213)",
+   "noise_note": "unrelated same-count families moved +-0.08 ms/tok (runtime_copy_fill +0.078, router_gemm -0.026, norm +0.012): run-to-run variance on this instrument; the structural delta is the routed pair"
+  },
+  "prefill_verdict_pair_a_and_b": "neutral: identical launch counts in every family both arms and both pairs, busy 441.97 -> 441.14 and 442.80 -> 440.04 ms (-0.19% / -0.62%); the routed kernels appear only in the decode windows"
+ },
+ "correctness_gates": {
+  "unit_chain_tests": {
+   "file": "tests/test_unit_gemma4_gguf_device.py",
+   "tests": 22,
+   "new": 3,
+   "rc": 0
+  },
+  "changed_surface_bundle": {
+   "files": [
+    "tests/test_unit_gguf_q8_t16_tiles_decode_dispatch.py",
+    "tests/test_gpu_gemma4_*.py"
+   ],
+   "result": "10 passed, 2 failed; both failures reproduced identically on a pristine worktree at 010904eff, so they are pre-existing at this HEAD and zero are new from this change"
+  },
+  "teacher_forced": {
+   "capture": "arm-off = clean worktree at 010904eff (pre-D11 chain), scripts/gemma4_teacher_forced_gate.py capture --prompt 2048 --prefill 1024 -> /mnt/nvme1/gemma4-eval/d11-chain-off-capture.npz",
+   "gate": "arm-on = this change, 1023 paired decode rows",
+   "kl_mean": 0.0,
+   "kl_p95": 0.0,
+   "kl_p99": 0.0,
+   "kl_max": 0.0,
+   "top1_rate": 1.0,
+   "top1_flips": 0,
+   "passed": true
+  },
+  "greedy_differential_128": {
+   "surface": "hipengine.LLM(model=UD-Q4_K_XL artifact) runner path, one process, arm-off = shim of the pre-D11 single-resolve body, arm-on = the committed chain (scratch/d11_expert_chain_differential.py)",
+   "identical": true,
+   "mismatch_count": 0,
+   "arm_off_resolutions": {
+    "gguf_q4_k_t16_v1:incumbent": 1015,
+    "gguf_q5_1:incumbent": 1015,
+    "gguf_q5_k:incumbent": 35,
+    "gguf_q8_0:incumbent": 35,
+    "total": 2100
+   },
+   "arm_on_resolutions": {
+    "gguf_q4_k_t16_v1:incumbent": 1015,
+    "gguf_q5_1:incumbent": 1015,
+    "gguf_q5_k_t16_v1:tiles_candidate": 35,
+    "gguf_q8_0:pack8_candidate": 35,
+    "total": 2100
+   },
+   "non_vacuous": true,
+   "note": "the chain substituted exactly the 35 layer-29 gate_up and 35 layer-29 down resolutions and left 2030 incumbent resolutions identical; counters and tokens were produced by a counting resolve wrapper and an arm-off shim, no product flag"
+  },
+  "default_tier": {
+   "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 PYTHONPATH=. .venv/bin/python -m pytest -p no:cacheprovider --no-header -q",
+   "result": "9 failed, zero new",
+   "failures": [
+    "tests/test_unit_gemma4_gpu_kernels.py::test_layer_incremental_decode_matches_a_dense_prefill",
+    "tests/test_unit_gemma4_gpu_kernels.py::test_weighted_accumulate_is_bitwise_grid_independent",
+    "tests/test_unit_gemma4_runner.py::test_a_prompt_wider_than_max_block_is_chunked_exactly",
+    "tests/test_unit_gemma4_runner.py::test_a_sliding_layer_ignores_positions_beyond_its_window",
+    "tests/test_unit_gemma4_runner.py::test_incremental_decode_matches_a_dense_prefill",
+    "tests/test_unit_gemma4_runner.py::test_reset_rewinds_the_cache",
+    "tests/test_unit_gemma4_runner.py::test_runner_prefill_matches_the_reference",
+    "tests/test_unit_gemma4_runner.py::test_the_softcap_is_applied_and_matches_the_reference",
+    "tests/test_unit_specdec2_perf_gfx1100_bridge.py::test_bridge_contract_accepts_complete_clean_strict_packet"
+   ],
+   "baseline": "the same 9 nodes fail at 010904eff on the pre-change tree (/tmp/d153_tier.log); `diff` of the two sorted FAILED sets is empty, so this change adds no failure and repairs none",
+   "note": "the 9 are the documented pre-existing set (runner x6, gpu_kernels weighted-accumulate bitwise and the order-dependent incremental-decode node, specdec2 bridge)"
+  },
+  "d8_host_probe": {
+   "instrument": "scratch/d8_host_attribution_probe.py, GPU1 solo on an otherwise idle machine (both GPUs 0% before and after)",
+   "wall_ms": 12.5504,
+   "hip_host_ms": 4.4406,
+   "hip_calls": 1063.9,
+   "launch_host_ms": 2.601,
+   "bar": "wall not worse than the recorded 15.67-15.95 pre-D8 band; the pre-change quiet record at c6abac27e is 12.6126 wall / 4.7147 host",
+   "verdict": "passes with margin; host 4.4406 is below the pre-change 4.7147, so the chain adds no measurable host time",
+   "ambient_note": "an earlier run of this probe on 2026-09-30T14:09Z, while the default tier shared the machine, read wall 15.6748 / host 5.3918 with launch_host_ms 3.5436 against 2.601 solo at identical call counts (hip_calls 1063.9 in both) - uniform ambient CPU-contention inflation across every symbol, not a cost of the chain; the solo rerun above is the number of record and the artifact now carries it"
+  }
+ },
+ "gates_verdict": "PASS. Both gates the wiring owed are closed on the quiet machine: the default tier fails exactly the 9 pre-existing nodes (byte-identical set), and the d8 host probe reads 12.5504 ms wall / 4.4406 ms host per decode step, inside the recorded band and below the pre-change host record. Together with the unit chain tests (22/22), the changed-surface bundle (0 new), the teacher-forced gate (KL 0.0 over 1023 rows, 0 flips) and the greedy-128 differential (identical tokens, 2100 -> 2100 resolutions with the exact 2030/35/35 substitution), the wiring is validated for commit."
+}

@@ -566,6 +566,11 @@ def gemma4_project_expert(
 # this one variant name, so the expert forward resolves it from the registry by
 # quant key rather than branching on the type.
 _SELECTED_VARIANT = "selected_gemv_bf16_bf16_out"
+# D11: the pack8 selected leaf shares the raw selected GEMV's launch ABI and
+# sits registered under this sibling variant for quants whose pack-of-8
+# blocks exist (q8_0, q5_k); the chain below prefers it only where
+# out_features meets its out % 8 launch contract.
+_SELECTED_PACK8_VARIANT = "selected_pack8_gemv_bf16_bf16_out"
 
 # Grouped prefill owners that keep one CTA per (expert, output column) and reuse
 # each loaded weight row across ``row_batch`` compact rows, instead of the
@@ -1369,6 +1374,120 @@ def gemma4_project_experts_grouped(
     return True
 
 
+# Memo for the selected-expert route: fingerprint -> (generation, fn,
+# allocation_name). Routing is pure in its fingerprint plus registry state,
+# so a decode projection pays a dict lookup instead of the candidate walk --
+# the walk measured +0.84 ms/step of host time on the d8 attribution probe
+# when paid per call. Any registry register/clear bumps registry.generation()
+# and every entry carries the generation it was computed under, so tests that
+# clear or re-register invalidate themselves without touching this table.
+_SELECTED_ROUTE_CACHE: dict[
+    tuple[str, str, str | None, bool, int], tuple[int, object | None, str | None]
+] = {}
+
+
+def _selected_route(
+    weight: Gemma4Projection, out_features: int
+) -> tuple[object | None, str | None]:
+    """Resolve the chain to ``(fn, allocation_name)``, memoized per fingerprint.
+
+    The candidate walk itself is unchanged: registration-existence and
+    geometry only, exact ``is_registered`` gating, with one restore-and-retry
+    pass when nothing resolves (registry plan tests clear global registrations
+    and pytest restores a collection-time baseline, so a lazy import can be a
+    no-op and a lookup for a kernel that exists can still report it missing;
+    ``_ensure_linear_kernel_registered`` is the repo's answer to exactly that,
+    and is what the GGUF runtime dispatch uses).
+
+    Allocation *pointers* stay outside the fingerprint on purpose: the caller
+    reads them off the weight at launch, so two weights with equal fingerprint
+    share only the resolved function, never a buffer address.
+    """
+
+    from hipengine.kernels.registry import (
+        KernelKey,
+        MissingKernelError,
+        generation,
+        is_registered,
+        resolve,
+    )
+    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+    tiles_quant = getattr(weight.spec, "tiles_quant_key", None)
+    has_tiles = bool(
+        callable(getattr(weight, "has_allocation", None))
+        and weight.has_allocation("tiles")
+    )
+    fingerprint = (
+        weight.backend,
+        weight.spec.quant_key,
+        tiles_quant,
+        has_tiles,
+        out_features,
+    )
+    gen = generation()
+    entry = _SELECTED_ROUTE_CACHE.get(fingerprint)
+    if entry is not None and entry[0] == gen:
+        return entry[1], entry[2]
+
+    candidates: list[tuple[str, str, str | None]] = []
+    if tiles_quant and has_tiles:
+        candidates.append((tiles_quant, _SELECTED_VARIANT, "tiles"))
+    if out_features % 8 == 0:
+        candidates.append(
+            (weight.spec.quant_key, _SELECTED_PACK8_VARIANT, None)
+        )
+    candidates.append((weight.spec.quant_key, _SELECTED_VARIANT, None))
+
+    resolved_fn: object | None = None
+    resolved_alloc: str | None = None
+    for attempt in range(2):
+        for quant, variant, allocation in candidates:
+            key = KernelKey(weight.backend, "linear", quant, variant)
+            # Exact registration only. resolve() walks generic fallbacks
+            # (same layer without variant, fp16 on the same backend, then the
+            # cpu_reference backend), so resolving an *unpromoted*
+            # candidate key would hand back another layer's kernel -- e.g.
+            # cpu_reference's ``linear`` -- and crash at launch. A promoted
+            # candidate therefore has to be registered under its own key or
+            # it is skipped; the incumbent keeps exact-registered semantics
+            # too, because its old fallback answers were never callable here
+            # (they reject the stream keyword).
+            if not is_registered(key):
+                continue
+            try:
+                fn = resolve(
+                    backend=key.backend,
+                    layer=key.layer,
+                    quant=key.quant,
+                    variant=key.variant,
+                )
+            except MissingKernelError:
+                continue
+            resolved_fn, resolved_alloc = fn, allocation
+            break
+        if resolved_fn is not None:
+            break
+        if attempt == 0:
+            _ensure_linear_kernel_registered(
+                KernelKey(
+                    weight.backend, "linear", weight.spec.quant_key, _SELECTED_VARIANT
+                )
+            )
+        else:
+            break
+
+    # Stamp with the generation *after* the walk: the restore pass inside it
+    # may itself have registered the family, and that state is what the
+    # resolved function came from.
+    _SELECTED_ROUTE_CACHE[fingerprint] = (
+        generation(),
+        resolved_fn,
+        resolved_alloc,
+    )
+    return resolved_fn, resolved_alloc
+
+
 def gemma4_project_experts_selected(
     weight: Gemma4Projection,
     x_ptr: int,
@@ -1391,33 +1510,37 @@ def gemma4_project_experts_selected(
     bf16 case: the selected family is a GGUF quantized-block concept and a bf16
     weight is not a GGUF quant, so the caller uses the per-expert offset path.
     That is a check on the weight's storage form, not on a quant name.
+
+    Candidates are tried in order, gated on registration and geometry only --
+    never on identity:
+
+    1. the T16 tiles sibling under ``spec.tiles_quant_key`` when the weight
+       carries the ``tiles`` allocation the planner shipped for it (D11
+       screen: bit-exact with the raw incumbent and 4.35x faster at rows 8,
+       0.1830 -> 0.0421 ms at the layer-29 gate_up geometry);
+    2. the pack8 selected leaf under the same quant when ``out_features``
+       meets the ``out % 8`` contract ``_validate(require_pack8=True)``
+       enforces at launch (D11: 3.05x bit-exact at rows 8 for the layer-29
+       down);
+    3. the registered ``selected_gemv`` incumbent -- every quant that
+       registers neither sibling lands here, and D3's q5_1 logical-t64
+       owner is registered *as* this variant, so the chain never reorders
+       it.
+
+    A candidate whose key is not registered falls through to the next, and
+    the weight pointer follows the candidate: the tiles sibling reads the
+    tiles allocation, every raw candidate reads the primary.
     """
 
     if isinstance(weight, int):
         return False
-    # Registration is not guaranteed to have survived: registry plan tests clear
-    # global registrations and pytest restores a collection-time baseline, so a
-    # lazy import can be a no-op and a lookup for a kernel that exists can still
-    # report it missing. `_ensure_linear_kernel_registered` is the repo's answer
-    # to exactly that, and is what the GGUF runtime dispatch uses.
-    from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
-    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
-
-    key = KernelKey(weight.backend, "linear", weight.spec.quant_key, _SELECTED_VARIANT)
-    _ensure_linear_kernel_registered(key)
-    try:
-        fn = resolve(
-            backend=key.backend,
-            layer=key.layer,
-            quant=key.quant,
-            variant=key.variant,
-        )
-    except MissingKernelError:
+    fn, allocation = _selected_route(weight, out_features)
+    if fn is None:
         return False
     fn(
         x_ptr,
         selected_ptr,
-        weight.allocation().buffer.ptr,
+        weight.allocation(allocation).buffer.ptr,
         out_ptr,
         x_rows,
         rows,

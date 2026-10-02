@@ -909,3 +909,353 @@ def test_raw_layout_launches_refuse_a_t16_weight(reader: GGUFReader) -> None:
         gemma4_project_experts_by_offset(weight, 0, 0, None, 4, 256, 128)
     with pytest.raises(ValueError, match="t16_v1"):
         gemma4_project_expert(weight, 0, 0, 0, 1, 256, 128)
+
+
+# D11: layer-29 expert decode owners (Q5_K gate_up / Q8_0 down)
+# --------------------------------------------------------------------------
+
+
+def _q5k_tiles_nbytes(spec) -> int:
+    """Planned device bytes for a Q5_K gate_up spec's T16 tiles side copy."""
+
+    from hipengine.quant.gguf_t16 import (
+        GGUF_Q5_K_BLOCK_BYTES,
+        GGUF_Q5_K_T16_BLOCK_BYTES,
+        GGUF_T16_COLS,
+    )
+
+    experts, out_features, bytes_per_row = spec.source.byte_shape
+    blocks = bytes_per_row // GGUF_Q5_K_BLOCK_BYTES
+    assert out_features % GGUF_T16_COLS == 0
+    return experts * (out_features // GGUF_T16_COLS) * blocks * GGUF_Q5_K_T16_BLOCK_BYTES
+
+
+def test_gate_up_q5_k_stack_plans_raw_plus_tiles(tmp_path: Path) -> None:
+    """A Q5_K gate_up stack plans raw *and* its Q5T16 tiles side copy.
+
+    Layer 29 of the benchmark fixture carries the artifact's only Q5_K
+    gate_up stack. The D11 screen (``scripts/gguf_l29_gemma_expert_decode_screen``,
+    artifact ``benchmarks/results/2026-09-30-gemma4-d11-l29-expert-decode-screen.json``)
+    measured the t16 selected decode owner bit-exact with the raw incumbent
+    and 4.35x faster at the production geometry (0.1830 -> 0.0421 ms), so the
+    decode rewrite routes on the presence of ``tiles`` alone and the planner
+    is what decides the capability. Raw stays the primary allocation because
+    the prefill owners read stored blocks, and ``tiles_quant_key`` names the
+    registry key the decode rewrite resolves under -- set only where the
+    shape contract admitted the repack.
+    """
+
+    path = write_fixture_gguf(
+        tmp_path / "q5k.gguf",
+        default_fixture_tensors(expert_type=GGMLQuantizationType.Q5_K),
+        fixture_metadata(),
+    )
+    reader = GGUFReader(path)
+    specs = plan_gemma4_gguf_resident_specs(reader)
+
+    gate = [spec for spec in specs if spec.slot_path.endswith(".ffn_gate_up_exps")]
+    assert gate, "fixture should carry gate_up stacks"
+    total_extra = 0
+    for spec in gate:
+        assert spec.quant_key == "gguf_q5_k", spec.slot_path
+        assert spec.layout == LAYOUT_RAW_GGUF, spec.slot_path
+        assert spec.allocation_names == ("raw", "tiles"), spec.slot_path
+        assert spec.tiles_quant_key == "gguf_q5_k_t16_v1", spec.slot_path
+        total_extra += _q5k_tiles_nbytes(spec)
+
+    # The side copy is extra residency at its own (not byte-neutral) size:
+    # Q5T16 tiles are 180 bytes per 16x176 raw block pair, so planning must
+    # count raw + tiles, not 2x raw -- while the fixture's Q8_0 dense duals
+    # stay byte-neutral at exactly 2x. Count every spec at its own plan.
+    expected = 0
+    for spec in specs:
+        expected += int(spec.source.nbytes)
+        if spec.allocation_names == ("raw", "tiles"):
+            if spec.tiles_quant_key is not None:
+                expected += _q5k_tiles_nbytes(spec)
+            else:
+                expected += int(spec.source.nbytes)
+    assert resident_bytes(specs) == expected
+    assert total_extra, "the Q5_K gate_up stacks should plan side copies"
+
+    # Raw is still the primary: prefill resolves owners through quant_key.
+    for spec in gate:
+        assert spec.allocation_names[0] == "raw", spec.slot_path
+
+
+def test_q5_k_t16_selected_key_resolves() -> None:
+    """The q5_k T16 tiles stack's decode selected key resolves its owner.
+
+    The planner may emit ``tiles_quant_key = "gguf_q5_k_t16_v1"`` only when
+    the registry can serve the key its decode rewrite will resolve, or the
+    rewrite would fall back to raw and silently lose the measured 4.35x.
+    """
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
+        gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+        register_gguf_t16_selected_gemv_kernels,
+    )
+    from hipengine.kernels.registry import KernelKey, is_registered, resolve
+    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
+
+    # Same reason as the other key tests: the pytest registry baseline
+    # restore drops import-time registrations, so re-run the registrar the
+    # way production import does.
+    register_gguf_t16_selected_gemv_kernels()
+    key = KernelKey(
+        "hip_gfx1100", "linear", "gguf_q5_k_t16_v1", "selected_gemv_bf16_bf16_out"
+    )
+    _ensure_linear_kernel_registered(key)
+    assert is_registered(key), key.display()
+    assert (
+        resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        is gguf_q5_k_t16_selected_gemv_bf16_bf16_out
+    ), key.display()
+
+
+def test_selected_expert_prefers_tiles_then_pack8_then_incumbent() -> None:
+    """``gemma4_project_experts_selected`` trials its candidates in order.
+
+    The chain is registration-existence and geometry gated, never identity
+    gated:
+
+    1. the T16 tiles sibling when the planner shipped ``tiles_quant_key`` and
+       the weight carries the ``tiles`` allocation (D11 gate_up: 4.35x,
+       bit-exact, at rows 8);
+    2. the pack8 selected leaf when out_features is pack8-eligible (D11 down:
+       3.05x, bit-exact, at rows 8) -- the same ``out % 8`` contract
+       ``_validate(require_pack8=True)`` enforces at launch;
+    3. the registered ``selected_gemv`` incumbent, which stays the answer for
+       every quant that registers neither sibling (D3's q5_1 t64 lives here
+       under the incumbent variant and must not be reordered).
+
+    Every candidate is checked for EXACT registration: resolve()'s generic
+    fallbacks would otherwise hand back another layer's kernel for an
+    unregistered candidate (cpu_reference's ``linear``, which rejects the
+    stream keyword at launch). A candidate that is not registered is
+    skipped, and the weight pointer follows the candidate: the tiles
+    sibling reads the tiles allocation, every raw candidate reads the
+    primary.
+    """
+
+    from types import SimpleNamespace
+
+    import hipengine.kernels.registry as registry
+    import hipengine.runtime.gguf_linear as gguf_linear
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts
+
+    considered: list[tuple[str, str]] = []
+    resolved: list[tuple[str, str]] = []
+    launched: list[tuple] = []
+    stub_fn = lambda *a, **k: launched.append(a)  # noqa: E731
+
+    class _Weight:
+        def __init__(self, quant_key, *, tiles=None, tiles_quant_key=None):
+            self.spec = SimpleNamespace(
+                quant_key=quant_key, tiles_quant_key=tiles_quant_key
+            )
+            self.backend = "hip_gfx1100"
+            self._tiles = tiles
+
+        def has_allocation(self, name):
+            return name == "tiles" and self._tiles is not None
+
+        def allocation(self, name=None):
+            ptr = self._tiles if name == "tiles" else 0x1111
+            return SimpleNamespace(buffer=SimpleNamespace(ptr=ptr))
+
+    def run_case(weight, *, registered, out_features=2816):
+        considered.clear()
+        resolved.clear()
+        launched.clear()
+        # Per-case fake registry state: the route memo is keyed by
+        # fingerprint + registry generation, and these fakes mutate neither,
+        # so each case starts from an empty table (the same discipline the
+        # gguf_linear dispatch caches use in tests).
+        gemma4_experts._SELECTED_ROUTE_CACHE.clear()
+
+        def fake_is_registered(key):
+            entry = (key.quant, key.variant)
+            considered.append(entry)
+            return entry in registered
+
+        def fake_resolve(*, backend, layer, quant, variant):
+            entry = (quant, variant)
+            resolved.append(entry)
+            assert entry in registered, f"resolved an unregistered key {entry}"
+            return stub_fn
+
+        old_is_registered = registry.is_registered
+        old_resolve = registry.resolve
+        old_ensure = gguf_linear._ensure_linear_kernel_registered
+        registry.is_registered = fake_is_registered
+        registry.resolve = fake_resolve
+        gguf_linear._ensure_linear_kernel_registered = lambda key: None
+        try:
+            ok = gemma4_experts.gemma4_project_experts_selected(
+                weight,
+                0x2222,
+                0x3333,
+                0x4444,
+                8,
+                8,
+                128,
+                704,
+                out_features,
+                stream=0,
+            )
+        finally:
+            registry.is_registered = old_is_registered
+            registry.resolve = old_resolve
+            gguf_linear._ensure_linear_kernel_registered = old_ensure
+        return ok
+
+    pack8 = ("gguf_q8_0", "selected_pack8_gemv_bf16_bf16_out")
+    legacy = ("gguf_q8_0", "selected_gemv_bf16_bf16_out")
+
+    # 1. Pack8-eligible raw q8_0 with pack8 registered: pack8 leads and the
+    #    chain stops there (first registered candidate wins). The pack8 key
+    #    is checked for EXACT registration -- resolve()'s generic fallbacks
+    #    would otherwise hand back cpu_reference's linear for an unregistered
+    #    candidate, which crashes at launch on the stream keyword.
+    ok = run_case(
+        _Weight("gguf_q8_0"),
+        registered={pack8, legacy},
+        out_features=2816,
+    )
+    assert ok
+    assert considered == [pack8], considered
+    assert resolved == [pack8], resolved
+    assert launched[0][2] == 0x1111, "pack8 reads the primary (raw) allocation"
+
+    # 2. out_features not pack8-eligible: pack8 never considered.
+    ok = run_case(
+        _Weight("gguf_q8_0"),
+        registered={pack8, legacy},
+        out_features=2814,
+    )
+    assert ok
+    assert considered == [legacy], considered
+    assert resolved == [legacy], resolved
+
+    # 3. Pack8 unregistered: considered, skipped, fall-through reaches the
+    #    incumbent -- without ever resolving pack8 to a fallback kernel.
+    ok = run_case(_Weight("gguf_q8_0"), registered={legacy}, out_features=2816)
+    assert ok
+    assert considered == [pack8, legacy], considered
+    assert resolved == [legacy], resolved
+
+    # 4. Tiles weight: the t16 sibling leads and reads the tiles allocation.
+    t16 = ("gguf_q5_k_t16_v1", "selected_gemv_bf16_bf16_out")
+    q5k_pack8 = ("gguf_q5_k", "selected_pack8_gemv_bf16_bf16_out")
+    q5k_legacy = ("gguf_q5_k", "selected_gemv_bf16_bf16_out")
+    ok = run_case(
+        _Weight("gguf_q5_k", tiles=0x5555, tiles_quant_key="gguf_q5_k_t16_v1"),
+        registered={t16, q5k_pack8, q5k_legacy},
+        out_features=1408,
+    )
+    assert ok
+    assert resolved == [t16], resolved
+    assert launched[0][2] == 0x5555, "the t16 sibling reads the tiles allocation"
+
+    # 5. Tiles shipped but the t16 key unregistered: considered and skipped,
+    #    the chain falls to pack8, and pack8 reads the raw primary.
+    ok = run_case(
+        _Weight("gguf_q5_k", tiles=0x5555, tiles_quant_key="gguf_q5_k_t16_v1"),
+        registered={q5k_pack8, q5k_legacy},
+        out_features=1408,
+    )
+    assert ok
+    assert considered == [t16, q5k_pack8], considered
+    assert resolved == [q5k_pack8], resolved
+    assert launched[0][2] == 0x1111, "pack8 reads the primary (raw) allocation"
+
+
+def test_selected_expert_route_memo_tracks_registry_generation() -> None:
+    """The selected chain memoizes its route and invalidates on registry change.
+
+    Routing is a pure function of ``(backend, quant_key, tiles_quant_key,
+    has_tiles, out_features)`` plus registry state, so the memo is keyed by
+    that fingerprint and stamped with ``registry.generation()``: any
+    registration or clear bumps the generation and the next call recomputes.
+    Recomputing the candidate walk on every decode projection measured
+    +0.84 ms/step of host time on the d8 attribution probe (chain on 5.3407
+    ms vs the pre-chain body 4.4963 under identical ambient); the memo keeps
+    the hot path to a dict lookup plus the launch itself.
+    """
+
+    from types import SimpleNamespace
+
+    import hipengine.kernels.registry as registry
+    import hipengine.runtime.gguf_linear as gguf_linear
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts
+
+    class _Weight:
+        def __init__(self):
+            self.spec = SimpleNamespace(
+                quant_key="gguf_q8_0", tiles_quant_key=None
+            )
+            self.backend = "hip_gfx1100"
+
+        def has_allocation(self, name):
+            return False
+
+        def allocation(self, name=None):
+            return SimpleNamespace(buffer=SimpleNamespace(ptr=0x1111))
+
+    weight = _Weight()
+    resolve_calls: list[tuple[str, str]] = []
+    fn_a = object()
+    fn_b = object()
+    current = {"fn": fn_a}
+
+    def fake_is_registered(key):
+        return (key.quant, key.variant) == ("gguf_q8_0", "selected_pack8_gemv_bf16_bf16_out")
+
+    def fake_resolve(*, backend, layer, quant, variant):
+        resolve_calls.append((quant, variant))
+        return current["fn"]
+
+    old_is_registered = registry.is_registered
+    old_resolve = registry.resolve
+    old_ensure = gguf_linear._ensure_linear_kernel_registered
+    registry.is_registered = fake_is_registered
+    registry.resolve = fake_resolve
+    # Nothing here registers for real: the restore pass must not mutate the
+    # registry behind the memo's back.
+    gguf_linear._ensure_linear_kernel_registered = lambda key: None
+    gemma4_experts._SELECTED_ROUTE_CACHE.clear()
+    try:
+        fn1, alloc1 = gemma4_experts._selected_route(weight, 2816)
+        # Warm memo: a second probe resolves nothing and returns the same fn.
+        fn2, alloc2 = gemma4_experts._selected_route(weight, 2816)
+        assert fn1 is fn_a and fn2 is fn_a
+        assert alloc1 is None and alloc2 is None
+        assert len(resolve_calls) == 1, resolve_calls
+
+        # A different geometry is a different fingerprint: recompute. 2814
+        # skips the pack8 candidate and the incumbent is not in this fake's
+        # registered set, so the route is negative and nothing resolves.
+        fn3, alloc3 = gemma4_experts._selected_route(weight, 2814)
+        assert fn3 is None, fn3
+        assert alloc3 is None
+        assert len(resolve_calls) == 1, resolve_calls
+
+        # A registry mutation bumps the generation: the memo must recompute
+        # and observe the new registration.
+        current["fn"] = fn_b
+        registry._GENERATION += 1
+        fn4, _alloc4 = gemma4_experts._selected_route(weight, 2816)
+        assert fn4 is fn_b, "stale memo survived a registry generation bump"
+        assert len(resolve_calls) == 2, resolve_calls
+    finally:
+        registry.is_registered = old_is_registered
+        registry.resolve = old_resolve
+        gguf_linear._ensure_linear_kernel_registered = old_ensure
+        registry._GENERATION -= 1
+        gemma4_experts._SELECTED_ROUTE_CACHE.clear()
