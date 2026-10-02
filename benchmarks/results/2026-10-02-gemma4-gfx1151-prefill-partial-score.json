@@ -1,0 +1,67 @@
+{
+ "date": "2026-10-02",
+ "device": "AMD Radeon 8060S Graphics (gfx1151, Strix Halo)",
+ "artifact": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+ "change": "The prefill attention kernel's score dot is computed once across the dimension groups instead of once per group. Each wave walks only its own slice of the head dimension and the partials are summed through LDS before the softmax; the D-fragment layout is identical across groups, so matching (lane, element) pairs are matching scores and the reduction needs no shuffle. This is what makes a four-group split pay, halving the accumulator to 64 floats per lane.",
+ "measured": {
+  "end_to_end_262144_prefill_128_out": {
+   "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 262144 --output 128 --context 262272 --samples 1 --warmup 0 --expect-gpu 8060S --out /tmp/partial-score-262144.json --label partial-score-262144",
+   "prefill_s": 878.53,
+   "prefill_tok_s": 298.4,
+   "decode_s": 7.88,
+   "decode_tps": 16.1125,
+   "wall_s": 886.41,
+   "public_wall_s": 916.7,
+   "path_parity": true,
+   "before": {
+    "prefill_tok_s": 263.44,
+    "decode_tps": 15.5604,
+    "source": "worklog/entries/20261002T214104.919910Z-lhl-gemma4-gfx1151-long-context-cumulative-04f516.md"
+   },
+   "delta": {
+    "prefill": "1.133x",
+    "decode": "1.035x"
+   }
+  },
+  "kernel_one_full_layer_256_tokens": {
+   "probe": "scripts/gemma4_prefill_kernel_bw.py",
+   "before": {
+    "16384": 17.56,
+    "65536": 73.7,
+    "262144": 292.64
+   },
+   "after": {
+    "16384": 15.7,
+    "65536": 59.49,
+    "262144": 243.24
+   },
+   "delta": {
+    "16384": "1.12x",
+    "65536": "1.24x",
+    "262144": "1.20x"
+   },
+   "unit": "ms"
+  },
+  "split_ladder_65536_keys_5_runs_each": {
+   "two_groups_duplicated": 73.7,
+   "two_groups_shared": 65.84,
+   "four_groups_shared": 61.11,
+   "four_groups_duplicated": 99.9,
+   "unit": "ms"
+  },
+  "decode_no_regression_65536_keys_median_of_9": {
+   "before_ms": 1.42,
+   "after_ms": 1.39,
+   "before_pct_dram_roofline": 79.2,
+   "after_pct_dram_roofline": 80.7
+  }
+ },
+ "correctness": {
+  "gate": "tests/test_gpu_gemma4_attention_prefill_wmma_full.py 27/27 exit 0",
+  "contract": "The kernel's parity contract is a tolerance, not bit-identity: worst <= RTOL * peak with RTOL = 7.9e-3, and the test header states it is loose enough not to flake on a reordering. Reassociating the score dot is the class of divergence the kernel already declares.",
+  "red_first": "The first attempt produced max abs diff 7.094e+00 against an output peak of 4.656e+00 because the launcher computes the LDS size in the .hip and still sized only the Q and K/V tiles."
+ },
+ "topline": false,
+ "replaces": null,
+ "worklog": "worklog/entries/20261002T222712.596239Z-lhl-gemma4-gfx1151-prefill-partial-score-1bba05.md"
+}
