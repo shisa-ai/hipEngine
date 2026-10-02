@@ -33,6 +33,7 @@ load ROCm until the wrapper is called.
 from __future__ import annotations
 
 import ctypes
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -43,13 +44,21 @@ from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gemma4_attention_prefill_wmma_full.hip")
 _OUTPUT_NAME = "gemma4_attention_prefill_wmma_full.so"
+# The decode shape is the same source built with a different query block, so it
+# is a second object rather than a second kernel. See the .hip for why the pair
+# is 16/2 for prefill and 2/8 for decode.
+_SOURCE_DECODE = Path(__file__).with_name("gemma4_attention_decode_wmma_full.hip")
+_OUTPUT_NAME_DECODE = "gemma4_attention_decode_wmma_full.so"
 
 SYMBOL_PREFILL_WMMA_FULL_BF16 = "hipengine_gemma4_attention_prefill_wmma_full_bf16"
+SYMBOL_DECODE_WMMA_FULL_BF16 = "hipengine_gemma4_attention_decode_wmma_full_bf16"
 
 # The kernel's launch geometry, mirrored from the .hip so the launcher can name
 # a geometry miss before a launch rather than after one.
 QUERY_ROWS = 16
 GQA_HEADS = 2
+DECODE_QUERY_ROWS = 2
+DECODE_GQA_HEADS = 8
 GQA_RATIO = 8
 HEAD_DIM = 512
 K_BATCH = 16
@@ -64,17 +73,79 @@ COLUMNS = QUERY_ROWS * GQA_HEADS
 TARGET_BLOCKS = 128
 
 
+@dataclass(frozen=True)
+class WmmaFullShape:
+    """One query-block shape of the full-layer kernel, and how to launch it.
+
+    ``query_rows`` and ``gqa_heads`` are the two numbers the .hip is built
+    with; everything else follows. They are a property of the build, not of a
+    call, so a caller cannot ask for a shape the loaded object does not contain
+    and the LDS and thread counts below are the ones that object was compiled
+    with rather than a model of them.
+    """
+
+    query_rows: int
+    gqa_heads: int
+    symbol: str
+    output_name: str
+
+    @property
+    def columns(self) -> int:
+        return self.query_rows * self.gqa_heads
+
+    @property
+    def column_groups(self) -> int:
+        return self.columns // 16
+
+    @property
+    def waves(self) -> int:
+        return self.column_groups * DIM_GROUPS
+
+    @property
+    def threads(self) -> int:
+        return 32 * self.waves
+
+    @property
+    def gqa_tiles(self) -> int:
+        return (GQA_RATIO + self.gqa_heads - 1) // self.gqa_heads
+
+    @property
+    def shared_bytes(self) -> int:
+        """`(kColumns * kQStride + kKBatch * kKvStride) * sizeof(bf16_t)`."""
+
+        return (self.columns * (HEAD_DIM + 8) + K_BATCH * (HEAD_DIM + 8)) * 2
+
+
+PREFILL_SHAPE = WmmaFullShape(QUERY_ROWS, GQA_HEADS, SYMBOL_PREFILL_WMMA_FULL_BF16, _OUTPUT_NAME)
+DECODE_SHAPE = WmmaFullShape(
+    DECODE_QUERY_ROWS, DECODE_GQA_HEADS, SYMBOL_DECODE_WMMA_FULL_BF16, _OUTPUT_NAME_DECODE
+)
+
+
+def shape_for_tokens(tokens: int) -> WmmaFullShape:
+    """Which shape a query block of ``tokens`` rows is launched with.
+
+    A decode is one query row against the whole context, which is the case the
+    decode shape exists for; anything wider is a prefill block, which already
+    presents enough blocks that its 4x KV re-read is not what it waits on and
+    which must keep the arithmetic it has always run. Two rows is the decode
+    shape's block width, so a block that fits in it takes it.
+    """
+
+    return DECODE_SHAPE if int(tokens) <= DECODE_SHAPE.query_rows else PREFILL_SHAPE
+
+
 def plan_gemma4_attention_wmma_full_slices(
     *, tokens: int, keys: int, num_heads: int, num_kv_heads: int
 ) -> int:
     """How many key slices the WMMA full-layer walk should be divided into.
 
-    The unsplit grid is ``query_tiles * num_kv_heads * gqa_tiles``. At this
-    geometry a one-tile query block -- a decode step -- presents 8 blocks
-    against the 64 or more the hardware needs to reach its own memory rate, and
-    each of those blocks walks every key, so the kernel waits on itself rather
-    than on memory. Dividing the walk gives it something to overlap and the
-    per-slice softmax state is combined afterwards.
+    The unsplit grid is ``query_tiles * num_kv_heads * gqa_tiles``. A one-tile
+    query block -- a decode step -- presents few blocks against the 64 or more
+    the hardware needs to reach its own memory rate, and each of those blocks
+    walks every key, so the kernel waits on itself rather than on memory.
+    Dividing the walk gives it something to overlap and the per-slice softmax
+    state is combined afterwards.
 
     Only the single-query-tile case is divided. A prefill block of 512 rows
     already presents 256 blocks, so splitting it would reassociate its softmax
@@ -82,12 +153,16 @@ def plan_gemma4_attention_wmma_full_slices(
     arithmetic it has always run. The division is also capped by the walk
     needing at least one K batch per slice, since a slice shorter than a tile
     has no work to overlap.
+
+    The shape matters to the count as well as to the kernel: the decode shape
+    reads each band once where the prefill shape reads it four times, so it has
+    four times less to overlap and needs four times the slices to reach the
+    same grid.
     """
 
-    query_rows = QUERY_ROWS
-    query_tiles = (int(tokens) + query_rows - 1) // query_rows
-    gqa_tiles = (int(num_heads) // int(num_kv_heads) + GQA_HEADS - 1) // GQA_HEADS
-    base_blocks = query_tiles * int(num_kv_heads) * gqa_tiles
+    shape = shape_for_tokens(tokens)
+    query_tiles = (int(tokens) + shape.query_rows - 1) // shape.query_rows
+    base_blocks = query_tiles * int(num_kv_heads) * shape.gqa_tiles
     if query_tiles != 1 or base_blocks >= TARGET_BLOCKS:
         return 1
     slices = (TARGET_BLOCKS + base_blocks - 1) // base_blocks
@@ -97,18 +172,20 @@ def plan_gemma4_attention_wmma_full_slices(
     return max(1, slices)
 
 
-def plan_gemma4_attention_wmma_full_scratch_bytes(slices: int, *, num_heads: int, num_kv_heads: int, head_dim: int) -> int:
+def plan_gemma4_attention_wmma_full_scratch_bytes(
+    slices: int, *, tokens: int, num_heads: int, num_kv_heads: int, head_dim: int
+) -> int:
     """Bytes the split workspace needs for `slices` slices at this geometry.
 
     One float per (column, output dimension) of accumulator, plus two floats of
     softmax state per column, for every slice of every (kv head, GQA tile)
-    plane.
+    plane. The column count is the shape's, so the decode shape's workspace is
+    half the prefill's at the same slice count.
     """
 
-    gqa_tiles = (int(num_heads) // int(num_kv_heads) + GQA_HEADS - 1) // GQA_HEADS
-    planes = int(num_kv_heads) * gqa_tiles
-    columns = QUERY_ROWS * GQA_HEADS
-    return int(slices) * planes * (columns * int(head_dim) + columns * 2) * 4
+    shape = shape_for_tokens(tokens)
+    planes = int(num_kv_heads) * shape.gqa_tiles
+    return int(slices) * planes * (shape.columns * int(head_dim) + shape.columns * 2) * 4
 
 # Identical to the strict kernel's prefill signature, including argument order.
 _ARGTYPES = (
@@ -169,6 +246,37 @@ def build_gemma4_attention_prefill_wmma_full(
     )
 
 
+def build_gemma4_attention_decode_wmma_full(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "prefill",
+    dry_run: bool = False,
+    load: bool = True,
+    require_cached: bool = False,
+) -> ctypes.CDLL | BuildArtifact:
+    """Build the decode query-block shape of the same kernel source.
+
+    A separate object rather than a separate kernel: the .hip is included with
+    the decode shape's macros defined. It is a separate cache entry for the
+    same reason, so a device that has only ever run a prefill has not built it
+    and one that has only ever run a decode has not built the prefill object.
+    """
+
+    return build_hip(
+        sources=[_SOURCE_DECODE],
+        family="gemma4_attention_decode_wmma_full",
+        profile=profile,
+        cache_root=cache_root,
+        compiler_version=compiler_version,
+        include_dirs=[_SOURCE.parent],
+        output_name=_OUTPUT_NAME_DECODE,
+        dry_run=dry_run,
+        load=load,
+        require_cached=require_cached,
+    )
+
+
 def gemma4_attention_prefill_wmma_full_supported(
     *, num_heads: int, num_kv_heads: int, head_dim: int
 ) -> bool:
@@ -212,13 +320,18 @@ def gemma4_attention_prefill_wmma_full_bf16(
     count, which may exceed ``tokens`` for a chunked prefill. See the module
     docstring for the mask and offset frame.
 
+    The query block's width also picks the shape, and so the compiled object:
+    see :func:`shape_for_tokens`. A one-row block is a decode step, which is
+    short of blocks and re-reads each KV band once per GQA tile, so it runs the
+    shape that reads each band once.
+
     ``scratch`` is the layer's attention workspace. The strict kernel needs one
     because it materialises logits; this one stages its K/V tile in LDS instead
     and runs without it. What it uses scratch for is the key split: a decode
     step presents one query tile against the whole context, so the unsplit grid
-    is 8 blocks where the hardware needs about 128 to reach its own memory rate,
-    and the walk is divided and recombined when there is somewhere to put the
-    per-slice softmax state.
+    is a handful of blocks where the hardware needs about 128 to reach its own
+    memory rate, and the walk is divided and recombined when there is somewhere
+    to put the per-slice softmax state.
 
     No scratch therefore means the walk is taken whole. That is the correct
     answer either way and it is what a caller with no workspace is asking for --
@@ -242,7 +355,13 @@ def gemma4_attention_prefill_wmma_full_bf16(
             f"num_kv_heads={num_kv_heads}"
         )
 
-    library = library or build_gemma4_attention_prefill_wmma_full(load=True)
+    shape = shape_for_tokens(tokens)
+    if library is None:
+        library = (
+            build_gemma4_attention_decode_wmma_full(load=True)
+            if shape is DECODE_SHAPE
+            else build_gemma4_attention_prefill_wmma_full(load=True)
+        )
     runtime = runtime or get_hip_runtime()
     # The split is planned here rather than in the launcher so the decision is a
     # pure function of the geometry and can be tested without a device.
@@ -254,12 +373,16 @@ def gemma4_attention_prefill_wmma_full_bf16(
         slices = 1
     if slices > 1:
         nbytes = plan_gemma4_attention_wmma_full_scratch_bytes(
-            slices, num_heads=num_heads, num_kv_heads=num_kv_heads, head_dim=head_dim
+            slices,
+            tokens=tokens,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
         )
         scratch_ptr = scratch.buffer(
             nbytes, stream=int(stream), runtime=runtime
         ).ptr
-    fn = signed_kernel_fn(library, SYMBOL_PREFILL_WMMA_FULL_BF16, _ARGTYPES, ctypes.c_int)
+    fn = signed_kernel_fn(library, shape.symbol, _ARGTYPES, ctypes.c_int)
     err = fn(
         query_ptr,
         key_ptr,

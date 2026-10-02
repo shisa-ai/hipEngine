@@ -86,6 +86,9 @@ _ORIGINAL_DECODE_SLICES: Any = None
 # Likewise the WMMA full-layer walk's key-division rule.
 _ORIGINAL_WMMA_FULL_PLAN: Any = None
 
+# And which query-block shape it launches.
+_ORIGINAL_WMMA_FULL_SHAPE: Any = None
+
 
 def row_kl_divergence(baseline_row: np.ndarray, candidate_row: np.ndarray) -> float:
     """KL(baseline || candidate) for one full-vocabulary row, in float64."""
@@ -302,13 +305,14 @@ def observe_wmma_full_split(splits: list[dict[str, int]]):
     )
 
     original = wmma_full.plan_gemma4_attention_wmma_full_slices
+    shape_for_tokens = wmma_full.shape_for_tokens
 
     def observed(**kwargs):
         slices = int(original(**kwargs))
         splits.append({
             "tokens": int(kwargs["tokens"]),
             "keys": int(kwargs["keys"]),
-            "head_dim": 0,
+            "shape": shape_for_tokens(int(kwargs["tokens"])).query_rows,
             "slices": slices,
         })
         return slices
@@ -328,6 +332,7 @@ def wmma_full_split_summary(splits: list[dict[str, int]]) -> dict[str, Any]:
         "divided_key_range": [min(row["keys"] for row in divided),
                               max(row["keys"] for row in divided)] if divided else None,
         "slice_counts": sorted({row["slices"] for row in splits}),
+        "shapes": sorted({row["shape"] for row in splits}),
     }
 
 
@@ -488,6 +493,34 @@ def force_wmma_full_slices(slices: int | None) -> None:
         )
 
 
+def force_wmma_full_shape(shape: str | None) -> None:
+    """Pin which query-block shape the full layers' decode launches.
+
+    The third harness override, and separate from the other two for the same
+    reason they are separate from each other: the shape is an arithmetic path of
+    its own. The decode shape reads each KV band once where the prefill shape
+    reads it four times, which regroups the softmax over a different set of
+    query heads, so a gate that varied it together with the key split could not
+    attribute a difference to either.
+
+    ``"prefill"`` forces the shape that was the only one before this pin
+    existed; ``None`` restores the shipped rule.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4 import (
+        gemma4_attention_prefill_wmma_full as wmma_full,
+    )
+
+    global _ORIGINAL_WMMA_FULL_SHAPE
+    if _ORIGINAL_WMMA_FULL_SHAPE is None:
+        _ORIGINAL_WMMA_FULL_SHAPE = wmma_full.shape_for_tokens
+    if shape is None:
+        wmma_full.shape_for_tokens = _ORIGINAL_WMMA_FULL_SHAPE
+        return
+    pinned = {"prefill": wmma_full.PREFILL_SHAPE, "decode": wmma_full.DECODE_SHAPE}[shape]
+    wmma_full.shape_for_tokens = lambda tokens, _s=pinned: _s
+
+
 def sha256_file(path: Path, chunk: int = 1 << 22) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
@@ -619,6 +652,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             help="pin decode_slices for this arm (1 = strict single-kernel path)",
         )
         p.add_argument(
+            "--wmma-full-shape",
+            choices=("prefill", "decode"),
+            default=None,
+            help="pin the query-block shape the full layers' decode launches "
+            "(prefill = the only shape before the decode shape existed). "
+            "Independent of --wmma-full-slices and --slices",
+        )
+        p.add_argument(
             "--wmma-full-slices",
             type=int,
             default=None,
@@ -664,6 +705,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         started = time.time()
         force_slices(args.slices)
         force_wmma_full_slices(args.wmma_full_slices)
+        force_wmma_full_shape(args.wmma_full_shape)
         runner, prompt_ids, loading, chain_kind = _load_chain(
             args.artifact, args.prompt, args.context,
             corpus=args.corpus, corpus_seed=args.corpus_seed,
@@ -678,6 +720,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             runner.close()
             force_slices(None)
             force_wmma_full_slices(None)
+            force_wmma_full_shape(None)
         provenance = _provenance(args.artifact, loading)
         provenance["observed_routes"] = route_summary(routes)
         provenance["observed_wmma_full_split"] = wmma_full_split_summary(splits)
@@ -686,6 +729,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         provenance["forced_wmma_full_slices"] = (
             None if args.wmma_full_slices is None else int(args.wmma_full_slices)
         )
+        provenance["forced_wmma_full_shape"] = args.wmma_full_shape
         provenance["chain_kind"] = chain_kind
         save_capture(args.out, logits, prompt_ids, provenance)
         elapsed = time.time() - started
@@ -723,6 +767,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     baseline, base_ids, base_provenance = load_capture(args.baseline)
     force_slices(args.slices)
     force_wmma_full_slices(args.wmma_full_slices)
+    force_wmma_full_shape(args.wmma_full_shape)
     runner, prompt_ids, loading, chain_kind = _load_chain(
         args.artifact, args.prompt, args.context,
         corpus=args.corpus, corpus_seed=args.corpus_seed,
@@ -731,6 +776,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         runner.close()
         force_slices(None)
         force_wmma_full_slices(None)
+        force_wmma_full_shape(None)
         raise SystemExit(
             "chain mismatch: the candidate chain differs from the frozen "
             "baseline's prompt ids; both arms must teacher-force the same ids"
@@ -742,6 +788,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         runner.close()
         force_slices(None)
         force_wmma_full_slices(None)
+        force_wmma_full_shape(None)
         raise SystemExit(
             f"chain kind mismatch: baseline {base_kind} vs candidate {chain_kind}; "
             "a probe baseline cannot be gated against a frozen chain"
@@ -750,6 +797,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         runner.close()
         force_slices(None)
         force_wmma_full_slices(None)
+        force_wmma_full_shape(None)
         raise SystemExit(
             "prefill mismatch: the baseline scored a different key range "
             f"(baseline {base_provenance.get('prefill', 0)}, candidate "
@@ -765,6 +813,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         runner.close()
         force_slices(None)
         force_wmma_full_slices(None)
+        force_wmma_full_shape(None)
     verdict = evaluate(baseline, candidate)
     verdict["candidate_provenance"] = _provenance(args.artifact, loading)
     verdict["baseline_provenance"] = base_provenance
