@@ -52,6 +52,9 @@ from hipengine.kernels.cpu_reference.gemma4 import (
     gemma4_text_weights_from_hf,
     register_gemma4_cpu_reference_kernels,
 )
+from hipengine.kernels.cpu_reference.gemma4_int8 import (
+    gemma4_attention_decode_int8_per_token_head,
+)
 from hipengine.kernels.cpu_reference.laguna import (
     LagunaAttentionConfig,
     LagunaAttentionResult,
@@ -286,6 +289,7 @@ __all__ = [
     "gguf_q6_k_gemv",
     "gguf_q8_0_gemv",
     "gguf_quant_gemv",
+    "gemma4_attention_decode_int8_per_token_head",
     "gemma4_attention_forward",
     "gemma4_attention_mask",
     "gemma4_decoder_layer_forward",

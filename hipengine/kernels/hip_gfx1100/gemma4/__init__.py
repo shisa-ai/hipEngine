@@ -22,6 +22,12 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     plan_gemma4_attention_build,
     register_gemma4_attention_kernels,
 )
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_int8 import (
+    build_gemma4_attention_int8,
+    gemma4_attention_decode_int8_per_token_head_spans,
+    plan_gemma4_attention_int8_build,
+    register_gemma4_int8_attention_kernels,
+)
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_moe import (
     build_gemma4_moe,
     gemma4_gelu_tanh_mul_bf16,
@@ -58,10 +64,12 @@ __all__ = [
     "GEMMA4_ROPE_DEFAULT_TYPE",
     "GEMMA4_ROPE_PROPORTIONAL_TYPE",
     "build_gemma4_attention",
+    "build_gemma4_attention_int8",
     "build_gemma4_moe",
     "build_gemma4_norm",
     "build_gemma4_rotary",
     "gemma4_add_rmsnorm_scale_bf16",
+    "gemma4_attention_decode_int8_per_token_head_spans",
     "gemma4_attention_prefill_bf16",
     "gemma4_attention_prefill_f32",
     "gemma4_branch_add_bf16",
@@ -88,10 +96,12 @@ __all__ = [
     "gemma4_router_topk_bf16",
     "gemma4_router_topk_fused_bf16",
     "plan_gemma4_attention_build",
+    "plan_gemma4_attention_int8_build",
     "plan_gemma4_moe_build",
     "plan_gemma4_norm_build",
     "plan_gemma4_rotary_build",
     "register_gemma4_attention_kernels",
+    "register_gemma4_int8_attention_kernels",
     "register_gemma4_moe_kernels",
     "register_gemma4_norm_kernels",
     "register_gemma4_rotary_kernels",
