@@ -25,6 +25,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_int8 import (
     build_gemma4_attention_int8,
     gemma4_attention_decode_int8_per_token_head_spans,
+    gemma4_attention_prefill_int8_per_token_head_spans,
     plan_gemma4_attention_int8_build,
     register_gemma4_int8_attention_kernels,
 )
@@ -70,6 +71,7 @@ __all__ = [
     "build_gemma4_rotary",
     "gemma4_add_rmsnorm_scale_bf16",
     "gemma4_attention_decode_int8_per_token_head_spans",
+    "gemma4_attention_prefill_int8_per_token_head_spans",
     "gemma4_attention_prefill_bf16",
     "gemma4_attention_prefill_f32",
     "gemma4_branch_add_bf16",
