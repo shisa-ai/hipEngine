@@ -332,15 +332,16 @@ class Gemma4GGUFGenerator:
             self._runner = None
         # Refuse an unservable context before loading the artifact. The attention
         # geometry comes from metadata alone, and the ceiling depends only on that
-        # geometry, on context_length and on the selected storage, so discovering
-        # it after a multi-gigabyte load would charge the user for the refusal.
-        # Gemma4Runner repeats the check when it is constructed; this is the same
-        # check, earlier, and it names the selected INT8 bound when INT8 is asked
-        # for rather than the BF16 one.
+        # geometry, on context_length, on the selected storage and on the selected
+        # attention paths, so discovering it after a multi-gigabyte load would
+        # charge the user for the refusal. Gemma4Runner repeats the check when it
+        # is constructed; this is the same check, earlier, and it names the
+        # selected INT8 bound when INT8 is asked for rather than the BF16 one.
         gemma4_require_context_capacity(
             gemma4_text_config_from_reader(self.reader),
             self.context_length,
             kv_storage=storage,
+            variants=self._resolve_prefill_attention_variants(),
         )
         started = time.perf_counter()
         weights = self._weights

@@ -251,6 +251,47 @@ def test_chunked_prefill_matches_the_strict_kernel(tokens, keys, row_offset):
     _assert_matches(strict, candidate, context=f"chunked row_offset={row_offset}")
 
 
+@pytest.mark.parametrize("keys", [512, 1024, 4096, 15360])
+def test_one_token_decode_matches_the_strict_decode_kernel(keys):
+    """The shape a full layer's decode presents, which this candidate now serves.
+
+    Above the strict decode kernel's LDS bound this candidate is the only path
+    that runs for the full layers, and it gets there with ``tokens == 1``: the
+    kernel's 16-row query tiling is fifteen sixteenths padding. That is the
+    shape being asserted here rather than assumed.
+
+    The frame is the one ``gemma4_layer`` passes for a full layer's decode. No
+    keys are skipped, so ``key_begin`` is 0, the single row sits at
+    ``row_offset = keys - 1``, and ``window`` is the whole context. The mask is
+    therefore all ones: a decode step keeps every key.
+    """
+
+    mask = _causal_keep_mask(1, keys, keys - 1)
+    strict, candidate = _run_both(
+        tokens=1, keys=keys, mask=mask, window=keys, row_offset=keys - 1
+    )
+    _assert_matches(strict, candidate, context=f"decode keys={keys}")
+
+
+@pytest.mark.parametrize("tokens,keys,row_offset", [(512, 15360, 14848)])
+def test_the_longest_prefill_block_the_strict_kernel_can_serve(tokens, keys, row_offset):
+    """The deep end of the strict prefill's own range, where this kernel takes over.
+
+    15,360 keys is the largest key count the strict prefill can hold in LDS at a
+    512-row block -- ``(head_dim + keys + threads) * 4`` is exactly 65,536 there
+    -- so this is the last prefill shape both kernels can run and therefore the
+    last one a comparison is possible at. Every longer context reaches this
+    candidate with the strict kernel no longer available as an oracle, which is
+    why the comparison has to be made at the boundary rather than near it.
+    """
+
+    mask = _causal_keep_mask(tokens, keys, row_offset)
+    strict, candidate = _run_both(
+        tokens=tokens, keys=keys, mask=mask, window=keys, row_offset=row_offset
+    )
+    _assert_matches(strict, candidate, context=f"deep prefill keys={keys}")
+
+
 @pytest.mark.parametrize("mode", ["random", "blocky", "fully_masked_row"])
 def test_window_zero_with_an_arbitrary_mask_matches_the_strict_kernel(mode):
     """``window == 0`` is the no-promise case, so only the mask decides.
