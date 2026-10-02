@@ -110,6 +110,11 @@
 
   "decision": {
     "shipped": true,
+    "superseded_in_part": {
+      "by": "worklog/entries/20261002T184536.237268Z-lhl-gemma4-gfx1151-decode-split-target-db74f3.md (commit 58609c484)",
+      "what": "The gate breach recorded below is RESOLVED. It was not the 2-row decode shape -- it was the 64-way key split, which that unit inherited from the prefill shape's block target. With the split corrected to 16 slices the same gate passes at kl_max 0.0229 against 0.05, and the decode shape's KL report becomes bit-identical to the WMMA prefill shape's at the same slice count, so the shape does not change the arithmetic at all. This artifact's 'not_established' note under gate.isolation is answered there.",
+      "unchanged": "The end-to-end decode gains recorded here, and the correctness window this unit closed, both stand."
+    },
     "reasoning": [
       "The measured win is large and paired: 1.688x decode at 8192 keys, 1.113x at 4096.",
       "top-1 is identical on all 4095 scored rows (top1_flips 0, top1_rate 1.0), so greedy output is unchanged everywhere in the range.",
