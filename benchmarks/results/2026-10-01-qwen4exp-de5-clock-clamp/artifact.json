@@ -1,0 +1,1797 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_de5_clock_clamp",
+  "date": "2026-10-01",
+  "row": "DE-5",
+  "host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S (integrated, gfx1151)",
+    "note": "not the gfx1100/W7900 default hardware",
+    "cpu": "32-thread APU; amd-pstate-epp, powersave governor, boost=1",
+    "ptrace_scope": 1,
+    "clock_write_permission": false
+  },
+  "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL",
+  "profile": "production (qwen4exp)",
+  "case": "code-p1024 (and code-p512 for the duration arm)",
+  "decode_boundary": "device-argmax (capture_logits=False, token_id_resident=True)",
+  "harness": "scripts/qwen4exp_de5_wall_split.py",
+  "runs": {
+    "mechanism_counters": {
+      "case": "code-p1024",
+      "steps": 128,
+      "gc_disabled_in_decode": null,
+      "instrumented": null,
+      "rows": [
+        {
+          "arm": "warmup",
+          "steps": 128,
+          "wall_ms_per_token": 52.67,
+          "decode_tok_s": 18.99,
+          "busy_mean_pct": 93.8,
+          "prefill_ms": 4590.7,
+          "step_ms_by_eighth": [
+            58.416,
+            52.05,
+            51.583,
+            51.499,
+            51.535,
+            51.988,
+            52.138,
+            52.047
+          ],
+          "step_ms_min": 49.21,
+          "step_ms_max": 153.18,
+          "captures_moe_by_eighth": [
+            48,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "eager_layer_by_eighth": [
+            1728,
+            1728,
+            1728,
+            1728,
+            1728,
+            1728,
+            1728,
+            1728
+          ],
+          "alloc_mib_by_eighth": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "gc0_collections_by_eighth": [],
+          "gc0_collected_by_eighth": [],
+          "prefill_delta": {
+            "active_allocations": 5,
+            "alloc_bytes": 167772176,
+            "freed_bytes": 52428808,
+            "layer_capture": 0,
+            "layer_eager": 0,
+            "moe_capture": 0,
+            "moe_eager": 0
+          }
+        },
+        {
+          "arm": "rep1",
+          "steps": 128,
+          "wall_ms_per_token": 64.01,
+          "decode_tok_s": 15.62,
+          "busy_mean_pct": 81.4,
+          "prefill_ms": 4054.4,
+          "step_ms_by_eighth": [
+            148.447,
+            65.844,
+            50.372,
+            49.282,
+            49.312,
+            49.349,
+            49.876,
+            49.514
+          ],
+          "step_ms_min": 49.11,
+          "step_ms_max": 169.04,
+          "captures_moe_by_eighth": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "eager_layer_by_eighth": [
+            1728,
+            1728,
+            1728,
+            1728,
+            1728,
+            1728,
+            1728,
+            1728
+          ],
+          "alloc_mib_by_eighth": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "gc0_collections_by_eighth": [],
+          "gc0_collected_by_eighth": [],
+          "prefill_delta": {
+            "active_allocations": 0,
+            "alloc_bytes": 0,
+            "freed_bytes": 0,
+            "layer_capture": 0,
+            "layer_eager": 0,
+            "moe_capture": 0,
+            "moe_eager": 0
+          }
+        },
+        {
+          "arm": "rep2",
+          "steps": 128,
+          "wall_ms_per_token": 64.62,
+          "decode_tok_s": 15.47,
+          "busy_mean_pct": 80.9,
+          "prefill_ms": 4053.2,
+          "step_ms_by_eighth": [
+            150.965,
+            67.869,
+            51.11,
+            49.319,
+            49.346,
+            49.38,
+            49.393,
+            49.476
+          ],
+          "step_ms_min": 49.07,
+          "step_ms_max": 159.15,
+          "captures_moe_by_eighth": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "eager_layer_by_eighth": [
+            1728,
+            1728,
+            1728,
+            1728,
+            1728,
+            1728,
+            1728,
+            1728
+          ],
+          "alloc_mib_by_eighth": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "gc0_collections_by_eighth": [],
+          "gc0_collected_by_eighth": [],
+          "prefill_delta": {
+            "active_allocations": 0,
+            "alloc_bytes": 0,
+            "freed_bytes": 0,
+            "layer_capture": 0,
+            "layer_eager": 0,
+            "moe_capture": 0,
+            "moe_eager": 0
+          }
+        }
+      ]
+    },
+    "host_device_split": {
+      "case": "code-p1024",
+      "steps": 96,
+      "gc_disabled_in_decode": null,
+      "instrumented": null,
+      "rows": [
+        {
+          "arm": "warmup",
+          "steps": 96,
+          "wall_ms_per_token": 53.05,
+          "decode_tok_s": 18.85,
+          "busy_mean_pct": 93.3,
+          "prefill_ms": 4634.0,
+          "step_ms_by_eighth": [
+            61.702,
+            52.018,
+            52.007,
+            51.524,
+            51.625,
+            51.91,
+            51.45,
+            51.876
+          ],
+          "step_ms_min": 49.27,
+          "step_ms_max": 167.31,
+          "call_ms_by_eighth": [
+            61.702,
+            52.018,
+            52.007,
+            51.524,
+            51.625,
+            51.91,
+            51.45,
+            51.876
+          ],
+          "wait_ms_by_eighth": [
+            0.035,
+            0.034,
+            0.029,
+            0.034,
+            0.03,
+            0.033,
+            0.032,
+            0.035
+          ],
+          "captures_moe_by_eighth": [
+            48,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "eager_layer_by_eighth": [
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296
+          ],
+          "alloc_mib_by_eighth": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "gc0_collections_by_eighth": [],
+          "gc0_collected_by_eighth": [],
+          "prefill_delta": {
+            "active_allocations": 5,
+            "alloc_bytes": 167772176,
+            "freed_bytes": 52428808,
+            "layer_capture": 0,
+            "layer_eager": 0,
+            "moe_capture": 0,
+            "moe_eager": 0
+          }
+        },
+        {
+          "arm": "rep1",
+          "steps": 96,
+          "wall_ms_per_token": 69.06,
+          "decode_tok_s": 14.48,
+          "busy_mean_pct": 77.0,
+          "prefill_ms": 4059.4,
+          "step_ms_by_eighth": [
+            153.816,
+            90.292,
+            61.131,
+            49.402,
+            49.305,
+            49.288,
+            49.389,
+            49.406
+          ],
+          "step_ms_min": 49.17,
+          "step_ms_max": 159.26,
+          "call_ms_by_eighth": [
+            153.816,
+            90.292,
+            61.131,
+            49.402,
+            49.305,
+            49.288,
+            49.389,
+            49.406
+          ],
+          "wait_ms_by_eighth": [
+            0.135,
+            0.076,
+            0.052,
+            0.04,
+            0.034,
+            0.032,
+            0.035,
+            0.044
+          ],
+          "captures_moe_by_eighth": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "eager_layer_by_eighth": [
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296
+          ],
+          "alloc_mib_by_eighth": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "gc0_collections_by_eighth": [],
+          "gc0_collected_by_eighth": [],
+          "prefill_delta": {
+            "active_allocations": 0,
+            "alloc_bytes": 0,
+            "freed_bytes": 0,
+            "layer_capture": 0,
+            "layer_eager": 0,
+            "moe_capture": 0,
+            "moe_eager": 0
+          }
+        }
+      ]
+    },
+    "process_cpu_time": {
+      "case": "code-p1024",
+      "steps": 96,
+      "gc_disabled_in_decode": false,
+      "instrumented": false,
+      "rows": [
+        {
+          "arm": "warmup",
+          "steps": 96,
+          "wall_ms_per_token": 60.44,
+          "decode_tok_s": 16.55,
+          "busy_mean_pct": 84.6,
+          "prefill_ms": 4745.8,
+          "step_ms_by_eighth": [
+            64.361,
+            52.028,
+            52.404,
+            66.704,
+            61.419,
+            65.064,
+            59.863,
+            61.4
+          ],
+          "step_ms_min": 49.11,
+          "step_ms_max": 180.45,
+          "process_cpu_ms_by_eighth": [
+            93.975,
+            77.923,
+            77.708,
+            84.196,
+            78.877,
+            80.446,
+            79.315,
+            79.178
+          ],
+          "process_cpu_ms_mean": 81.45,
+          "call_ms_by_eighth": [
+            64.361,
+            52.028,
+            52.404,
+            66.704,
+            61.419,
+            65.064,
+            59.863,
+            61.4
+          ],
+          "wait_ms_by_eighth": [
+            0.033,
+            0.028,
+            0.032,
+            0.029,
+            0.031,
+            0.027,
+            0.03,
+            0.032
+          ]
+        },
+        {
+          "arm": "rep1",
+          "steps": 96,
+          "wall_ms_per_token": 68.7,
+          "decode_tok_s": 14.56,
+          "busy_mean_pct": 77.3,
+          "prefill_ms": 4055.2,
+          "step_ms_by_eighth": [
+            153.681,
+            87.108,
+            60.81,
+            49.258,
+            49.47,
+            50.03,
+            49.348,
+            49.486
+          ],
+          "step_ms_min": 49.11,
+          "step_ms_max": 162.19,
+          "process_cpu_ms_by_eighth": [
+            193.016,
+            122.326,
+            94.361,
+            78.738,
+            81.348,
+            82.932,
+            80.908,
+            81.092
+          ],
+          "process_cpu_ms_mean": 101.84,
+          "call_ms_by_eighth": [
+            153.681,
+            87.108,
+            60.81,
+            49.258,
+            49.47,
+            50.03,
+            49.348,
+            49.486
+          ],
+          "wait_ms_by_eighth": [
+            0.125,
+            0.056,
+            0.044,
+            0.03,
+            0.039,
+            0.035,
+            0.032,
+            0.035
+          ]
+        }
+      ]
+    },
+    "gc_counters": {
+      "case": "code-p1024",
+      "steps": 96,
+      "gc_disabled_in_decode": false,
+      "instrumented": true,
+      "rows": [
+        {
+          "arm": "warmup",
+          "steps": 96,
+          "wall_ms_per_token": 55.9,
+          "decode_tok_s": 17.89,
+          "busy_mean_pct": 89.2,
+          "prefill_ms": 4707.5,
+          "step_ms_by_eighth": [
+            61.082,
+            52.378,
+            52.183,
+            51.791,
+            51.743,
+            52.139,
+            51.454,
+            51.975
+          ],
+          "step_ms_min": 49.28,
+          "step_ms_max": 156.91,
+          "captures_moe_by_eighth": [
+            48,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "eager_layer_by_eighth": [
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296
+          ],
+          "alloc_mib_by_eighth": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "gc0_collections_by_eighth": [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "gc0_collected_by_eighth": [
+            45,
+            9,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "prefill_delta": {
+            "active_allocations": 5,
+            "alloc_bytes": 167772176,
+            "freed_bytes": 52428808,
+            "gc0_collected": 0,
+            "gc0_collections": 8,
+            "gc1_collected": 0,
+            "gc1_collections": 1,
+            "gc2_collected": 0,
+            "gc2_collections": 0,
+            "layer_capture": 0,
+            "layer_eager": 0,
+            "moe_capture": 0,
+            "moe_eager": 0
+          }
+        },
+        {
+          "arm": "rep1",
+          "steps": 96,
+          "wall_ms_per_token": 70.35,
+          "decode_tok_s": 14.21,
+          "busy_mean_pct": 75.6,
+          "prefill_ms": 4057.6,
+          "step_ms_by_eighth": [
+            152.433,
+            78.221,
+            54.772,
+            49.264,
+            49.31,
+            49.462,
+            49.441,
+            49.475
+          ],
+          "step_ms_min": 49.17,
+          "step_ms_max": 160.57,
+          "captures_moe_by_eighth": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "eager_layer_by_eighth": [
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296
+          ],
+          "alloc_mib_by_eighth": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "gc0_collections_by_eighth": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ],
+          "gc0_collected_by_eighth": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "prefill_delta": {
+            "active_allocations": 0,
+            "alloc_bytes": 0,
+            "freed_bytes": 0,
+            "gc0_collected": 0,
+            "gc0_collections": 1,
+            "gc1_collected": 0,
+            "gc1_collections": 1,
+            "gc2_collected": 0,
+            "gc2_collections": 0,
+            "layer_capture": 0,
+            "layer_eager": 0,
+            "moe_capture": 0,
+            "moe_eager": 0
+          }
+        }
+      ]
+    },
+    "gc_disabled": {
+      "case": "code-p1024",
+      "steps": 96,
+      "gc_disabled_in_decode": true,
+      "instrumented": true,
+      "rows": [
+        {
+          "arm": "warmup",
+          "steps": 96,
+          "wall_ms_per_token": 52.66,
+          "decode_tok_s": 18.99,
+          "busy_mean_pct": 93.7,
+          "prefill_ms": 4670.2,
+          "step_ms_by_eighth": [
+            57.617,
+            52.391,
+            52.187,
+            51.668,
+            51.69,
+            52.056,
+            51.451,
+            52.084
+          ],
+          "step_ms_min": 49.22,
+          "step_ms_max": 119.55,
+          "captures_moe_by_eighth": [
+            48,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "eager_layer_by_eighth": [
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296
+          ],
+          "alloc_mib_by_eighth": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "gc0_collections_by_eighth": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "gc0_collected_by_eighth": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "prefill_delta": {
+            "active_allocations": 5,
+            "alloc_bytes": 167772176,
+            "freed_bytes": 52428808,
+            "gc0_collected": 0,
+            "gc0_collections": 8,
+            "gc1_collected": 0,
+            "gc1_collections": 1,
+            "gc2_collected": 0,
+            "gc2_collections": 0,
+            "layer_capture": 0,
+            "layer_eager": 0,
+            "moe_capture": 0,
+            "moe_eager": 0
+          }
+        },
+        {
+          "arm": "rep1",
+          "steps": 96,
+          "wall_ms_per_token": 67.54,
+          "decode_tok_s": 14.81,
+          "busy_mean_pct": 78.4,
+          "prefill_ms": 4065.1,
+          "step_ms_by_eighth": [
+            151.063,
+            84.326,
+            57.946,
+            49.256,
+            49.438,
+            49.34,
+            49.301,
+            49.392
+          ],
+          "step_ms_min": 49.06,
+          "step_ms_max": 160.36,
+          "captures_moe_by_eighth": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "eager_layer_by_eighth": [
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296,
+            1296
+          ],
+          "alloc_mib_by_eighth": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "gc0_collections_by_eighth": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "gc0_collected_by_eighth": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "prefill_delta": {
+            "active_allocations": 0,
+            "alloc_bytes": 0,
+            "freed_bytes": 0,
+            "gc0_collected": 0,
+            "gc0_collections": 4,
+            "gc1_collected": 0,
+            "gc1_collections": 0,
+            "gc2_collected": 0,
+            "gc2_collections": 0,
+            "layer_capture": 0,
+            "layer_eager": 0,
+            "moe_capture": 0,
+            "moe_eager": 0
+          }
+        }
+      ]
+    },
+    "clock_p1024": {
+      "case": "code-p1024",
+      "steps": 96,
+      "gc_disabled_in_decode": false,
+      "instrumented": false,
+      "rows": [
+        {
+          "arm": "warmup",
+          "steps": 96,
+          "wall_ms_per_token": 53.12,
+          "decode_tok_s": 18.83,
+          "busy_mean_pct": 93.0,
+          "prefill_ms": 4857.8,
+          "step_ms_by_eighth": [
+            59.966,
+            52.548,
+            52.313,
+            51.984,
+            51.97,
+            52.142,
+            51.797,
+            52.148
+          ],
+          "step_ms_min": 49.19,
+          "step_ms_max": 141.87,
+          "process_cpu_ms_by_eighth": [
+            89.598,
+            78.563,
+            78.121,
+            78.273,
+            78.327,
+            78.71,
+            79.546,
+            79.089
+          ],
+          "process_cpu_ms_mean": 80.03,
+          "cpu_max_freq_mhz_by_sixteenth": [
+            3227.143,
+            3716.863,
+            5081.812,
+            5092.854,
+            5088.253,
+            5107.404,
+            5050.388,
+            4983.687,
+            4968.496,
+            4971.516,
+            4816.206,
+            4935.719,
+            4317.781,
+            4630.476,
+            4833.547,
+            4838.15,
+            4714.742
+          ],
+          "cpu_max_freq_mhz_mean": 4728.7,
+          "cpu_max_freq_mhz_min": 2000.0,
+          "cpu0_avg_freq_mhz_head": [
+            1495,
+            1493,
+            1493,
+            1493,
+            1489,
+            1489,
+            1489,
+            1496,
+            1485,
+            1485,
+            2724,
+            2724
+          ]
+        },
+        {
+          "arm": "rep1",
+          "steps": 96,
+          "wall_ms_per_token": 68.96,
+          "decode_tok_s": 14.5,
+          "busy_mean_pct": 78.3,
+          "prefill_ms": 4055.0,
+          "step_ms_by_eighth": [
+            159.916,
+            87.093,
+            57.682,
+            49.642,
+            49.26,
+            49.247,
+            49.307,
+            49.435
+          ],
+          "step_ms_min": 48.94,
+          "step_ms_max": 171.49,
+          "process_cpu_ms_by_eighth": [
+            205.166,
+            123.664,
+            90.86,
+            81.51,
+            81.569,
+            81.976,
+            81.159,
+            81.559
+          ],
+          "process_cpu_ms_mean": 103.43,
+          "cpu_max_freq_mhz_by_sixteenth": [
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2003.425,
+            3578.005,
+            4129.815,
+            2993.54,
+            3415.738,
+            3507.405,
+            3345.649,
+            3128.912,
+            2650.232,
+            2800.985
+          ],
+          "cpu_max_freq_mhz_mean": 2722.1,
+          "cpu_max_freq_mhz_min": 2000.0,
+          "cpu0_avg_freq_mhz_head": [
+            598,
+            597,
+            597,
+            597,
+            598,
+            597,
+            596,
+            597,
+            596,
+            598,
+            596,
+            597
+          ]
+        },
+        {
+          "arm": "rep2",
+          "steps": 96,
+          "wall_ms_per_token": 70.69,
+          "decode_tok_s": 14.15,
+          "busy_mean_pct": 76.8,
+          "prefill_ms": 4057.6,
+          "step_ms_by_eighth": [
+            162.299,
+            93.433,
+            61.905,
+            49.178,
+            49.257,
+            49.544,
+            49.626,
+            50.179
+          ],
+          "step_ms_min": 49.07,
+          "step_ms_max": 169.91,
+          "process_cpu_ms_by_eighth": [
+            207.709,
+            129.869,
+            95.8,
+            81.351,
+            81.284,
+            81.246,
+            81.51,
+            82.915
+          ],
+          "process_cpu_ms_mean": 105.21,
+          "cpu_max_freq_mhz_by_sixteenth": [
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2218.895,
+            4020.505,
+            3743.044,
+            3592.068,
+            2785.015,
+            2253.588,
+            2268.889,
+            2425.41,
+            2193.524,
+            2520.71
+          ],
+          "cpu_max_freq_mhz_mean": 2469.6,
+          "cpu_max_freq_mhz_min": 2000.0,
+          "cpu0_avg_freq_mhz_head": [
+            599,
+            596,
+            598,
+            598,
+            597,
+            596,
+            597,
+            596,
+            596,
+            597,
+            597,
+            598
+          ]
+        }
+      ]
+    },
+    "clock_p1024_prefill": {
+      "case": "code-p1024",
+      "steps": 96,
+      "gc_disabled_in_decode": false,
+      "instrumented": false,
+      "rows": [
+        {
+          "arm": "warmup",
+          "steps": 96,
+          "wall_ms_per_token": 53.08,
+          "decode_tok_s": 18.84,
+          "busy_mean_pct": 93.3,
+          "prefill_ms": 4746.6,
+          "step_ms_by_eighth": [
+            59.512,
+            52.679,
+            52.372,
+            52.113,
+            51.796,
+            52.248,
+            51.59,
+            52.256
+          ],
+          "step_ms_min": 49.26,
+          "step_ms_max": 138.82,
+          "process_cpu_ms_by_eighth": [
+            89.093,
+            79.235,
+            77.785,
+            78.661,
+            79.246,
+            78.312,
+            77.89,
+            79.459
+          ],
+          "process_cpu_ms_mean": 79.96,
+          "cpu_max_freq_mhz_by_sixteenth": [
+            3267.46,
+            3552.527,
+            4724.14,
+            5116.692,
+            5092.667,
+            5110.432,
+            5097.013,
+            5085.701,
+            5031.298,
+            4967.987,
+            4968.075,
+            4969.175,
+            4863.909,
+            4933.3,
+            4780.104,
+            4575.399
+          ],
+          "cpu_max_freq_mhz_mean": 4758.5,
+          "cpu_max_freq_mhz_min": 2000.0,
+          "cpu0_avg_freq_mhz_head": [
+            603,
+            2000,
+            2000,
+            2000,
+            1170,
+            1170,
+            1482,
+            1482,
+            1482,
+            1511,
+            1589,
+            1589
+          ],
+          "prefill_cpu_max_freq_mhz_by_eighth": [
+            3541.497,
+            2438.106,
+            2000.0,
+            2000.0,
+            2086.328,
+            2000.0,
+            2000.0,
+            2000.0
+          ],
+          "prefill_gpu_busy_by_eighth": [
+            3.685,
+            14.011,
+            48.708,
+            72.854,
+            83.506,
+            89.124,
+            93.719,
+            96.315,
+            97.0
+          ]
+        },
+        {
+          "arm": "rep1",
+          "steps": 96,
+          "wall_ms_per_token": 68.24,
+          "decode_tok_s": 14.65,
+          "busy_mean_pct": 79.0,
+          "prefill_ms": 4054.9,
+          "step_ms_by_eighth": [
+            162.112,
+            80.098,
+            56.54,
+            49.316,
+            49.502,
+            49.327,
+            49.405,
+            49.495
+          ],
+          "step_ms_min": 48.9,
+          "step_ms_max": 171.15,
+          "process_cpu_ms_by_eighth": [
+            208.343,
+            115.725,
+            89.256,
+            80.188,
+            82.787,
+            81.296,
+            82.058,
+            82.269
+          ],
+          "process_cpu_ms_mean": 102.74,
+          "cpu_max_freq_mhz_by_sixteenth": [
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2032.026,
+            3940.48,
+            4547.408,
+            3934.3,
+            3642.287,
+            3972.228,
+            3938.66,
+            3542.891,
+            3664.701,
+            3724.004
+          ],
+          "cpu_max_freq_mhz_mean": 3058.7,
+          "cpu_max_freq_mhz_min": 2000.0,
+          "cpu0_avg_freq_mhz_head": [
+            597,
+            598,
+            599,
+            599,
+            598,
+            599,
+            599,
+            599,
+            600,
+            595,
+            595,
+            598
+          ],
+          "prefill_cpu_max_freq_mhz_by_eighth": [
+            2445.664,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0
+          ],
+          "prefill_gpu_busy_by_eighth": [
+            94.961,
+            96.636,
+            97.74,
+            97.831,
+            94.74,
+            96.584,
+            97.805,
+            98.481,
+            99.0
+          ]
+        }
+      ]
+    },
+    "clock_p512_prefill": {
+      "case": "code-p512",
+      "steps": 96,
+      "gc_disabled_in_decode": false,
+      "instrumented": false,
+      "rows": [
+        {
+          "arm": "warmup",
+          "steps": 96,
+          "wall_ms_per_token": 51.25,
+          "decode_tok_s": 19.51,
+          "busy_mean_pct": 90.9,
+          "prefill_ms": 2746.2,
+          "step_ms_by_eighth": [
+            56.719,
+            50.647,
+            50.674,
+            50.143,
+            50.427,
+            49.985,
+            50.577,
+            50.783
+          ],
+          "step_ms_min": 47.56,
+          "step_ms_max": 120.37,
+          "process_cpu_ms_by_eighth": [
+            85.985,
+            76.418,
+            75.393,
+            75.761,
+            77.185,
+            76.08,
+            76.349,
+            76.794
+          ],
+          "process_cpu_ms_mean": 77.5,
+          "cpu_max_freq_mhz_by_sixteenth": [
+            3397.865,
+            3704.413,
+            5098.07,
+            5121.708,
+            5097.865,
+            5103.838,
+            5116.494,
+            5118.711,
+            5084.246,
+            5123.97,
+            5121.756,
+            5115.277,
+            5092.984,
+            5085.912,
+            5123.197,
+            5086.05,
+            5100.148
+          ],
+          "cpu_max_freq_mhz_mean": 4923.1,
+          "cpu_max_freq_mhz_min": 2000.0,
+          "cpu0_avg_freq_mhz_head": [
+            657,
+            1468,
+            1550,
+            1768,
+            1768,
+            1768,
+            3538,
+            3522,
+            3536,
+            3544,
+            3543,
+            3541
+          ],
+          "prefill_cpu_max_freq_mhz_by_eighth": [
+            3552.209,
+            3539.497,
+            3034.47,
+            2206.533,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0
+          ],
+          "prefill_gpu_busy_by_eighth": [
+            3.745,
+            2.941,
+            6.196,
+            27.706,
+            48.098,
+            63.294,
+            75.078,
+            82.098,
+            85.0
+          ]
+        },
+        {
+          "arm": "rep1",
+          "steps": 96,
+          "wall_ms_per_token": 55.73,
+          "decode_tok_s": 17.94,
+          "busy_mean_pct": 88.1,
+          "prefill_ms": 1986.1,
+          "step_ms_by_eighth": [
+            102.263,
+            58.381,
+            47.427,
+            47.438,
+            47.598,
+            47.541,
+            47.519,
+            47.598
+          ],
+          "step_ms_min": 47.3,
+          "step_ms_max": 176.93,
+          "process_cpu_ms_by_eighth": [
+            141.588,
+            91.653,
+            76.737,
+            77.921,
+            78.155,
+            78.624,
+            78.88,
+            78.808
+          ],
+          "process_cpu_ms_mean": 87.8,
+          "cpu_max_freq_mhz_by_sixteenth": [
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2258.082,
+            3699.645,
+            4597.194,
+            4298.162,
+            4182.763,
+            4074.725,
+            4156.003,
+            3647.747,
+            3587.159,
+            3652.753,
+            3594.056,
+            3715.925,
+            3632.118,
+            3654.476
+          ],
+          "cpu_max_freq_mhz_mean": 3360.3,
+          "cpu_max_freq_mhz_min": 2000.0,
+          "cpu0_avg_freq_mhz_head": [
+            597,
+            2000,
+            2000,
+            2000,
+            601,
+            601,
+            601,
+            599,
+            598,
+            597,
+            597,
+            598
+          ],
+          "prefill_cpu_max_freq_mhz_by_eighth": [
+            2870.64,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0
+          ],
+          "prefill_gpu_busy_by_eighth": [
+            93.676,
+            94.811,
+            95.973,
+            96.892,
+            97.135,
+            98.0,
+            98.0,
+            98.162,
+            98.0
+          ]
+        }
+      ]
+    },
+    "settle_5s": {
+      "case": "code-p1024",
+      "steps": 96,
+      "gc_disabled_in_decode": false,
+      "instrumented": false,
+      "rows": [
+        {
+          "arm": "warmup",
+          "steps": 96,
+          "wall_ms_per_token": 52.87,
+          "decode_tok_s": 18.91,
+          "busy_mean_pct": 75.0,
+          "prefill_ms": 4796.0,
+          "step_ms_by_eighth": [
+            58.205,
+            52.655,
+            52.324,
+            52.028,
+            51.89,
+            52.192,
+            51.677,
+            51.961
+          ],
+          "step_ms_min": 49.17,
+          "step_ms_max": 119.32,
+          "process_cpu_ms_by_eighth": [
+            87.958,
+            80.535,
+            78.409,
+            79.15,
+            79.916,
+            78.063,
+            79.653,
+            78.515
+          ],
+          "process_cpu_ms_mean": 80.27,
+          "cpu_max_freq_mhz_by_sixteenth": [
+            3547.239,
+            3555.658,
+            4398.629,
+            5055.508,
+            5083.21,
+            5079.024,
+            5096.541,
+            5057.016,
+            5081.132,
+            5086.745,
+            5102.608,
+            5118.583,
+            5101.837,
+            5077.143,
+            5026.363,
+            5068.947,
+            5099.155,
+            5075.492
+          ],
+          "cpu_max_freq_mhz_mean": 4865.8,
+          "cpu_max_freq_mhz_min": 3539.9,
+          "cpu0_avg_freq_mhz_head": [
+            3183,
+            3542,
+            3543,
+            3545,
+            3539,
+            3543,
+            3536,
+            3543,
+            3541,
+            3543,
+            3542,
+            3540
+          ],
+          "prefill_cpu_max_freq_mhz_by_eighth": [
+            3535.887,
+            2782.148,
+            2000.0,
+            2000.0,
+            2124.526,
+            2000.0,
+            2000.0,
+            2000.0
+          ],
+          "prefill_gpu_busy_by_eighth": [
+            3.544,
+            12.344,
+            47.967,
+            72.456,
+            83.278,
+            89.067,
+            93.644,
+            96.222
+          ]
+        },
+        {
+          "arm": "rep1",
+          "steps": 96,
+          "wall_ms_per_token": 49.34,
+          "decode_tok_s": 20.27,
+          "busy_mean_pct": 78.4,
+          "prefill_ms": 4058.8,
+          "step_ms_by_eighth": [
+            49.348,
+            49.141,
+            49.216,
+            49.42,
+            49.373,
+            49.386,
+            49.407,
+            49.406
+          ],
+          "step_ms_min": 48.97,
+          "step_ms_max": 51.26,
+          "process_cpu_ms_by_eighth": [
+            80.087,
+            78.614,
+            78.017,
+            80.921,
+            79.072,
+            79.575,
+            79.175,
+            78.677
+          ],
+          "process_cpu_ms_mean": 79.27,
+          "cpu_max_freq_mhz_by_sixteenth": [
+            3553.218,
+            3678.321,
+            5077.289,
+            5084.933,
+            5097.068,
+            5065.667,
+            5059.877,
+            4919.222,
+            5037.092,
+            5044.37,
+            5080.224,
+            5033.45,
+            5065.076,
+            5055.292,
+            5058.664,
+            5091.072,
+            5100.602
+          ],
+          "cpu_max_freq_mhz_mean": 4877.8,
+          "cpu_max_freq_mhz_min": 3528.9,
+          "cpu0_avg_freq_mhz_head": [
+            3529,
+            3520,
+            3520,
+            3520,
+            3520,
+            2000,
+            2000,
+            2000,
+            2000,
+            2000,
+            2000,
+            3535
+          ],
+          "prefill_cpu_max_freq_mhz_by_eighth": [
+            2277.857,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0,
+            2000.0
+          ],
+          "prefill_gpu_busy_by_eighth": [
+            94.421,
+            96.461,
+            97.618,
+            98.026,
+            94.803,
+            96.579,
+            97.776,
+            98.118,
+            98.857
+          ]
+        }
+      ]
+    },
+    "profile_windows": {
+      "case": "code-p1024",
+      "steps": 96,
+      "gc_disabled_in_decode": false,
+      "instrumented": false,
+      "rows": [
+        {
+          "arm": "warmup",
+          "steps": 96,
+          "wall_ms_per_token": 72.95,
+          "decode_tok_s": 13.71,
+          "busy_mean_pct": 76.3,
+          "prefill_ms": 4802.8,
+          "step_ms_by_eighth": [
+            100.356,
+            70.278,
+            68.953,
+            68.827,
+            68.515,
+            69.354,
+            67.625,
+            69.627
+          ],
+          "step_ms_min": 64.82,
+          "step_ms_max": 300.43,
+          "process_cpu_ms_by_eighth": [
+            134.195,
+            101.461,
+            99.191,
+            100.476,
+            99.597,
+            100.032,
+            99.548,
+            101.587
+          ],
+          "process_cpu_ms_mean": 104.51,
+          "profile_transient_top": [
+            "ncalls  tottime  percall  cumtime  percall filename:lineno(function)",
+            "22880    0.400    0.000    0.981    0.000 /home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py:1189(_launch)",
+            "805966    0.288    0.000    0.699    0.000 <frozen os>:709(__getitem__)",
+            "34592    0.251    0.000    2.680    0.000 /home/lhl/hipEngine/hipengine/runtime/gguf_linear.py:3734(launch_gguf_linear)",
+            "805966    0.199    0.000    0.344    0.000 <frozen os>:791(encode)",
+            "34592    0.180    0.000    0.301    0.000 /home/lhl/hipEngine/hipengine/runtime/gguf_linear.py:3147(_q8_dense_wide_layers)",
+            "805966    0.176    0.000    0.875    0.000 <frozen _collections_abc>:804(get)",
+            "10944    0.150    0.000    0.159    0.000 /home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/linear/dense_gemv.py:512(dense_gemv_out_f32)",
+            "59778    0.146    0.000    1.510    0.000 /home/lhl/hipEngine/hipengine/core/build.py:234(build_hip)"
+          ],
+          "profile_steady_top": [
+            "ncalls  tottime  percall  cumtime  percall filename:lineno(function)",
+            "11296    0.195    0.000    0.464    0.000 /home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py:1189(_launch)",
+            "396192    0.133    0.000    0.321    0.000 <frozen os>:709(__getitem__)",
+            "17056    0.112    0.000    1.231    0.000 /home/lhl/hipEngine/hipengine/runtime/gguf_linear.py:3734(launch_gguf_linear)",
+            "396192    0.092    0.000    0.158    0.000 <frozen os>:791(encode)",
+            "17056    0.084    0.000    0.140    0.000 /home/lhl/hipEngine/hipengine/runtime/gguf_linear.py:3147(_q8_dense_wide_layers)",
+            "396192    0.081    0.000    0.402    0.000 <frozen _collections_abc>:804(get)",
+            "5376    0.072    0.000    0.076    0.000 /home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/linear/dense_gemv.py:512(dense_gemv_out_f32)",
+            "29408    0.067    0.000    0.692    0.000 /home/lhl/hipEngine/hipengine/core/build.py:234(build_hip)"
+          ]
+        },
+        {
+          "arm": "rep1",
+          "steps": 96,
+          "wall_ms_per_token": 83.78,
+          "decode_tok_s": 11.94,
+          "busy_mean_pct": 68.5,
+          "prefill_ms": 4058.4,
+          "step_ms_by_eighth": [
+            205.153,
+            65.856,
+            66.271,
+            66.888,
+            66.148,
+            65.929,
+            67.049,
+            66.793
+          ],
+          "step_ms_min": 63.28,
+          "step_ms_max": 502.86,
+          "process_cpu_ms_by_eighth": [
+            252.487,
+            101.44,
+            101.218,
+            102.2,
+            102.264,
+            101.553,
+            104.139,
+            101.309
+          ],
+          "process_cpu_ms_mean": 120.83,
+          "profile_transient_top": [
+            "ncalls  tottime  percall  cumtime  percall filename:lineno(function)",
+            "22592    0.411    0.000    1.140    0.000 /home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py:1189(_launch)",
+            "792384    0.393    0.000    0.960    0.000 <frozen os>:709(__getitem__)",
+            "34112    0.323    0.000    3.482    0.000 /home/lhl/hipEngine/hipengine/runtime/gguf_linear.py:3734(launch_gguf_linear)",
+            "792384    0.275    0.000    0.476    0.000 <frozen os>:791(encode)",
+            "34112    0.250    0.000    0.416    0.000 /home/lhl/hipEngine/hipengine/runtime/gguf_linear.py:3147(_q8_dense_wide_layers)",
+            "792384    0.240    0.000    1.200    0.000 <frozen _collections_abc>:804(get)",
+            "58816    0.204    0.000    2.080    0.000 /home/lhl/hipEngine/hipengine/core/build.py:234(build_hip)",
+            "10752    0.156    0.000    0.167    0.000 /home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/linear/dense_gemv.py:512(dense_gemv_out_f32)"
+          ],
+          "profile_steady_top": [
+            "ncalls  tottime  percall  cumtime  percall filename:lineno(function)",
+            "11296    0.191    0.000    0.467    0.000 /home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py:1189(_launch)",
+            "396192    0.134    0.000    0.329    0.000 <frozen os>:709(__getitem__)",
+            "17056    0.114    0.000    1.241    0.000 /home/lhl/hipEngine/hipengine/runtime/gguf_linear.py:3734(launch_gguf_linear)",
+            "396192    0.094    0.000    0.163    0.000 <frozen os>:791(encode)",
+            "17056    0.086    0.000    0.143    0.000 /home/lhl/hipEngine/hipengine/runtime/gguf_linear.py:3147(_q8_dense_wide_layers)",
+            "396192    0.083    0.000    0.412    0.000 <frozen _collections_abc>:804(get)",
+            "5376    0.072    0.000    0.076    0.000 /home/lhl/hipEngine/hipengine/kernels/hip_gfx1100/linear/dense_gemv.py:512(dense_gemv_out_f32)",
+            "29408    0.068    0.000    0.710    0.000 /home/lhl/hipEngine/hipengine/core/build.py:234(build_hip)"
+          ]
+        }
+      ]
+    },
+    "burst_control": {
+      "seconds": 5.0,
+      "interval_ms": 100.0,
+      "cores": 32,
+      "arms": {
+        "idle": {
+          "max_mhz_median": 3533.2,
+          "max_mhz_min": 2017.7,
+          "max_mhz_max": 3599.8,
+          "mean_mhz_median": 2047.9,
+          "copies": 0
+        },
+        "cpu": {
+          "max_mhz_median": 5117.2,
+          "max_mhz_min": 2007.2,
+          "max_mhz_max": 5165.6,
+          "mean_mhz_median": 2194.2,
+          "copies": 0
+        },
+        "cpu_mem": {
+          "max_mhz_median": 5117.3,
+          "max_mhz_min": 5107.7,
+          "max_mhz_max": 5128.9,
+          "mean_mhz_median": 2194.7,
+          "copies": 0
+        },
+        "gpu": {
+          "max_mhz_median": 3535.8,
+          "max_mhz_min": 3510.1,
+          "max_mhz_max": 5118.5,
+          "mean_mhz_median": 2088.6,
+          "copies": 474
+        },
+        "both": {
+          "max_mhz_median": 5117.7,
+          "max_mhz_min": 3531.8,
+          "max_mhz_max": 5132.9,
+          "mean_mhz_median": 2242.2,
+          "copies": 478
+        },
+        "mem_gpu": {
+          "max_mhz_median": 3554.8,
+          "max_mhz_min": 3532.8,
+          "max_mhz_max": 5134.4,
+          "mean_mhz_median": 2192.9,
+          "copies": 447
+        },
+        "release": {
+          "max_mhz_median": 3556.5,
+          "max_mhz_min": 2000.0,
+          "max_mhz_max": 3605.9,
+          "mean_mhz_median": 2048.7,
+          "copies": 0
+        }
+      }
+    }
+  },
+  "summary": {
+    "mechanism": "host CPU package clock clamp",
+    "warmup_decode_max_core_mhz_median": 5091.0,
+    "post_prefill_decode_max_core_mhz_floor": 2000.0,
+    "clamp_release_s": 2.0,
+    "excluded": [
+      "graph capture (0 captures in every post-warmup decode)",
+      "device allocation churn (0 bytes in every band of every rep)",
+      "cyclic GC (0 collections in the transient; GC disabled changes nothing)",
+      "cgroup CPU throttling (nr_periods 0, nr_throttled 0)",
+      "pure CPU burst, host memory burst, GPU D2D burst, and their pairs (no clamp)"
+    ],
+    "warmup_decode_start_mhz": 3267,
+    "repeat_decode_start_mhz": 2000,
+    "clamped_share_of_prefill_samples": {
+      "warmups": "0.65-0.78",
+      "repeats": "0.97-0.98"
+    },
+    "step_ms_at_clamp_and_after": {
+      "clamped_2.0GHz": 49.3,
+      "boost_3.9-4.5GHz": 49.3,
+      "settled_5.0-5.1GHz": 49.35
+    },
+    "steady_state_is_host_bound": false
+  }
+}
