@@ -48,7 +48,9 @@ from hipengine.kernels.cpu_reference.gemma4 import (
     Gemma4TextConfig,
     gemma4_text_config_from_hf,
 )
-from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import gemma4_attention_shared_bytes
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+    gemma4_attention_serves_keys,
+)
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rope import gemma4_rope_cos_sin_tables
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
     Gemma4LayerGeometry,
@@ -497,12 +499,40 @@ def gemma4_require_context_capacity(
     *,
     rows: int | None = None,
     kv_storage: str = "bf16",
+    variants: Sequence[str] | None = None,
 ) -> None:
-    """Validate the selected consumer before loading weights.
+    """Raise if no selected attention path can serve ``capacity`` positions.
 
-    BF16 256/512-head attention uses global scores beyond its LDS bound.
-    Other BF16 geometries are charged the layer's actual key band. The INT8
-    consumer has its own context-sized LDS contract and is checked separately.
+    The question is asked of the *selected* consumer, and of the family rather
+    than of one kernel in it.
+
+    BF16 256/512-head attention moves its logits to request-owned global scratch
+    when a resident row would exceed the LDS budget, so that geometry is
+    servable at any key count. Other BF16 geometries are charged the layer's
+    actual key band. The INT8 consumer has its own context-sized LDS contract
+    and is checked separately.
+
+    ``gemma4_attention_serves_keys`` holds the strict kernel to one logit per
+    live key in LDS. Each layer is charged the key count it actually presents,
+    from :func:`gemma4_layer_key_count`: the whole context for a windowless
+    layer, and ``window + rows - 1`` for a windowed one.
+
+    A layer the strict kernel cannot serve is not automatically unservable. The
+    WMMA flash prefills stage a fixed K/V tile and walk the keys in online-softmax
+    batches, so their shared memory does not grow with the context, and a
+    ``variants`` request that selects one of them for this geometry serves the
+    layer. The question is asked through
+    :func:`gemma4_attention_serves_keys`, which owns it, so the answer cannot
+    drift from what the launchers do.
+
+    ``rows`` is the widest block that will be submitted, and it widens a windowed
+    layer's band. It defaults to the block ``Gemma4Runner`` derives when it is not
+    told one, so a caller checking the geometry before a load reaches the same
+    answer the runner will.
+
+    This is a capability refusal and it is deliberately loud and named. It is also
+    deliberately callable without weights, so a caller can raise it before paying
+    for a load rather than after.
     """
 
     capacity = int(capacity)
@@ -518,10 +548,20 @@ def gemma4_require_context_capacity(
             )
         return
     for attention in config.attention:
-        gemma4_attention_shared_bytes(
+        keys = gemma4_layer_key_count(attention, capacity, rows=int(rows))
+        reason = gemma4_attention_serves_keys(
             head_dim=attention.head_dim,
-            keys=gemma4_layer_key_count(attention, capacity, rows=int(rows)),
+            num_heads=attention.num_heads,
+            num_kv_heads=attention.num_kv_heads,
+            keys=keys,
+            requested_variant=variants,
         )
+        if reason is not None:
+            raise NotImplementedError(
+                f"no attention path serves {keys} keys for head_dim="
+                f"{attention.head_dim} with {attention.num_heads}q/"
+                f"{attention.num_kv_heads}kv at capacity {capacity}: {reason}"
+            )
 
 
 def load_gemma4_device_weights(
@@ -824,6 +864,9 @@ class Gemma4Runner:
             self.max_block = min(self.capacity, DEFAULT_PREFILL_BLOCK)
         if self.max_block > self.capacity:
             raise ValueError("max_block must not exceed capacity")
+        # A capability refusal, raised here rather than at request time. Callers
+        # that can reach the geometry without loading weights should call
+        # gemma4_require_context_capacity first so the refusal costs nothing.
         self._resolve_kv_storage()
         self._validate_attention_shared_memory(config)
 
@@ -943,7 +986,11 @@ class Gemma4Runner:
         """
 
         gemma4_require_context_capacity(
-            config, self.capacity, kv_storage=self._kv_storage_resolved
+            config,
+            self.capacity,
+            rows=self.max_block,
+            kv_storage=self._kv_storage_resolved,
+            variants=self.prefill_attention_variants,
         )
 
     def _resolve_kv_storage(self) -> None:

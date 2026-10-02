@@ -174,6 +174,18 @@ def aotriton_prefill_admits(
         return False
     probe = aotriton_prefill_available if available is None else available
     return bool(probe(int(head_dim)))
+
+
+# One gfx11 workgroup can allocate 64 KiB of LDS, and the strict family spends it
+# on one logit per live key. Named once because three places ask the same
+# question of it: the launcher's own validation, the decode path's key bound, and
+# the capacity guard.
+_LDS_BUDGET_BYTES = 64 * 1024
+# The key-class decode kernel's fixed LDS on top of the keys: a 256-lane partial
+# per 256-thread group plus one max slot per warp.
+_DECODE_LDS_FLOATS = 256 * 2 + 16
+
+
 class Gemma4AttentionScratch:
     """Split workspace owned by one caller on one runtime/device.
 
@@ -456,7 +468,7 @@ def _resident_attention_shared_bytes(*, head_dim: int, keys: int) -> int:
     threads = min(256, 1 << (int(head_dim) - 1).bit_length())
     return max(
         (int(head_dim) + int(keys) + threads) * 4,
-        (int(keys) + 256 * 2 + 16) * 4,
+        (int(keys) + _DECODE_LDS_FLOATS) * 4,
     )
 
 
@@ -471,15 +483,98 @@ def gemma4_attention_shared_bytes(*, head_dim: int, keys: int) -> int:
     if head_dim <= 0 or keys <= 0:
         raise ValueError("head_dim and keys must be positive")
     required = _resident_attention_shared_bytes(head_dim=head_dim, keys=keys)
-    if required > 64 * 1024 and head_dim in (256, 512):
-        return (256 * 2 + 16) * 4
-    if required > 64 * 1024:
+    if required > _LDS_BUDGET_BYTES and head_dim in (256, 512):
+        return _DECODE_LDS_FLOATS * 4
+    if required > _LDS_BUDGET_BYTES:
         raise NotImplementedError(
             f"Gemma 4 gfx1100 attention requires {required} bytes of shared memory "
             f"for head_dim={head_dim}, keys={keys}; this kernel supports at most "
-            "65536 bytes and needs tiled attention for this context"
+            f"{_LDS_BUDGET_BYTES} bytes and needs tiled attention for this context"
         )
     return required
+
+
+def gemma4_decode_max_keys() -> int:
+    """The largest key count the strict decode kernel can hold in LDS.
+
+    The key-class kernel stores one logit per live key plus a 256-lane partial
+    per 256-thread group plus one max slot per warp, so its requirement is
+    ``keys + 528`` floats. That term does not mention ``head_dim``, which is why
+    a single number bounds every geometry the decode path serves rather than one
+    number per head width.
+    """
+
+    return _LDS_BUDGET_BYTES // 4 - _DECODE_LDS_FLOATS
+
+
+def gemma4_attention_serves_keys(
+    *,
+    head_dim: int,
+    num_heads: int,
+    num_kv_heads: int,
+    keys: int,
+    requested_variant: str | Sequence[str] | None = None,
+) -> str | None:
+    """Whether some path serves this layer at ``keys`` keys; the reason if not.
+
+    ``None`` means served. The strict kernel is the family's unconditional entry
+    point, so it is tried first. Where its LDS budget cannot hold ``keys`` logits,
+    a *selected* tiled variant can still serve the layer: both WMMA flash
+    prefills stage a fixed K/V tile and walk the keys in online-softmax batches,
+    so their shared memory is the same at 1,024 keys as at 262,144 and only the
+    head geometry decides whether they apply.
+
+    This is a capability question about the kernels, answered without a device
+    and without weights, so a caller can refuse a context before paying for a
+    load. It is deliberately not a performance question: a variant being
+    unmeasured, or being a changed-arithmetic production candidate, has nothing
+    to do with whether it runs.
+    """
+
+    try:
+        gemma4_attention_shared_bytes(head_dim=head_dim, keys=keys)
+        return None
+    except NotImplementedError as strict_miss:
+        strict_reason = str(strict_miss)
+    refusals = [strict_reason]
+    for request in _requested_variants(requested_variant):
+        if request == PREFILL_ATTENTION_WMMA_FLASH:
+            from .gemma4_attention_prefill_wmma import (
+                gemma4_attention_prefill_wmma_supported,
+            )
+
+            if gemma4_attention_prefill_wmma_supported(
+                num_heads=num_heads, num_kv_heads=num_kv_heads, head_dim=head_dim
+            ):
+                return None
+            refusals.append(f"{request} does not implement this head geometry")
+            continue
+        if request == PREFILL_ATTENTION_WMMA_FLASH_FULL:
+            from .gemma4_attention_prefill_wmma_full import (
+                gemma4_attention_prefill_wmma_full_supported,
+            )
+
+            if gemma4_attention_prefill_wmma_full_supported(
+                num_heads=num_heads, num_kv_heads=num_kv_heads, head_dim=head_dim
+            ):
+                return None
+            refusals.append(f"{request} does not implement this head geometry")
+            continue
+        refusals.append(f"unknown variant {request!r}")
+    return "; ".join(refusals)
+
+
+def _strict_decode_serves(keys: int | None) -> bool:
+    """Whether the strict decode kernel can hold this key count in LDS.
+
+    An unknown key count keeps the incumbent routing rather than guessing: the
+    decode kernel is the exact-tiling path, and a caller that did not say how
+    many keys it has is not evidence that it has too many.
+    """
+
+    if keys is None:
+        return True
+    return int(keys) <= gemma4_decode_max_keys()
 
 
 def _check_prefill_shape(tokens: int, num_heads: int, num_kv_heads: int, head_dim: int) -> None:
@@ -547,7 +642,7 @@ def _launch_prefill(
     gemma4_attention_shared_bytes(head_dim=head_dim, keys=key_count)
     global_logits = _resident_attention_shared_bytes(
         head_dim=head_dim, keys=key_count,
-    ) > 64 * 1024
+    ) > _LDS_BUDGET_BYTES
     if global_logits:
         # Bound resident global scratch as well as LDS: allocating a full
         # 128-query block independently in every model layer exhausts VRAM.
@@ -1010,6 +1105,7 @@ def _select_prefill_attention(
     num_kv_heads: int,
     head_dim: int,
     tokens: int | None = None,
+    keys: int | None = None,
 ) -> PrefillAttentionSelection:
     """Resolve a prefill-attention variant for one head geometry.
 
@@ -1024,7 +1120,11 @@ def _select_prefill_attention(
     query rows wide, so one row wastes fifteen sixteenths of every WMMA op, and
     the strict path has a dedicated decode kernel for exactly that case (see
     :func:`gemma4_attention_prefill_bf16`). A one-token block therefore keeps the
-    strict kernel whatever geometry it has. ``None`` means the caller is asking
+    strict kernel wherever that decode kernel can serve it -- and ``keys`` is
+    what decides that, because the decode kernel holds one logit per live key in
+    LDS and stops at :func:`gemma4_decode_max_keys`. Above that bound it cannot
+    run at all, and a candidate that walks keys in online-softmax batches is then
+    the only path that serves the layer. ``None`` means the caller is asking
     about the geometry alone and accepts the multi-row answer.
     """
 
@@ -1036,7 +1136,7 @@ def _select_prefill_attention(
             requested_variant=requested_variant,
             reason="strict",
         )
-    if tokens is not None and tokens <= 1:
+    if tokens is not None and tokens <= 1 and _strict_decode_serves(keys):
         return PrefillAttentionSelection(
             variant=PREFILL_ATTENTION_PLAIN,
             launcher=gemma4_attention_prefill_bf16,
@@ -1131,13 +1231,15 @@ def select_prefill_attention(
     num_kv_heads: int,
     head_dim: int,
     tokens: int | None = None,
+    keys: int | None = None,
 ) -> PrefillAttentionSelection:
     """Resolve a prefill-attention variant for one head geometry, and report it.
 
     The selection itself is :func:`_select_prefill_attention`; this wrapper adds
-    the one-shot diagnostic the log env var turns on. ``tokens`` is passed
-    through: see that function for why a one-token block keeps the strict
-    kernel.
+    the one-shot diagnostic the log env var turns on. ``tokens`` and ``keys`` are
+    passed through: see that function for why a one-token block keeps the strict
+    kernel while the decode kernel can hold the keys, and takes a candidate when
+    it cannot.
     """
 
     selection = _select_prefill_attention(
@@ -1146,6 +1248,7 @@ def select_prefill_attention(
         num_kv_heads=num_kv_heads,
         head_dim=head_dim,
         tokens=tokens,
+        keys=keys,
     )
     if os.environ.get(PREFILL_ATTENTION_LOG_ENV, "").strip():
         marker = (selection.variant, int(head_dim))
