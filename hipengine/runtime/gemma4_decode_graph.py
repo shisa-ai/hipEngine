@@ -200,6 +200,19 @@ class Gemma4DecodeGraphSession:
         """
 
         runner = self._runner
+        if runner.uses_int8_kv:
+            # The direct INT8 consumer validates its live counts, row positions
+            # and page table with a synchronous device-to-host read, so it
+            # cannot run inside a HIP graph capture. Refusing capture up front
+            # names the limitation instead of silently disabling the storage
+            # the caller asked for; the requested INT8 cache is still exactly
+            # what runs without capture. Nothing is staged before the refusal.
+            raise RuntimeError(
+                "decode-graph capture is not supported with int8_per_token_head KV "
+                "storage: the direct INT8 consumer performs a checked device-to-host "
+                "readback that is not graph-capturable. Run without capture, or "
+                "request bf16 KV storage."
+            )
         position = runner.position
         if int(token) < 0:
             raise ValueError(f"token {token} must be non-negative")

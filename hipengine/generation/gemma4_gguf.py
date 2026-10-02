@@ -39,6 +39,36 @@ _GEMMA4_QUANT = "gguf_q4_k_m"
 _GEMMA4_DEFAULT_CONTEXT = 8_192
 
 
+def _resolve_kv_storage(request: GenerationRequest) -> tuple[str, str, str]:
+    """Map a request's KV storage controls onto the runner's constructor args.
+
+    ``auto`` is the BF16 comparison path. ``int8_per_token_head`` is the only
+    INT8 layout the Gemma 4 writer and consumers implement: per-token/head
+    scales in fp16 or fp32. The request validator rejects the unsupported
+    combinations before this runs, so the failure here is defensive.
+    """
+
+    storage = str(request.kv_storage or "auto")
+    if storage == "auto":
+        storage = "bf16"
+    if storage == "bf16":
+        return "bf16", "fp16", "per_token_head"
+    if storage != "int8_per_token_head":
+        raise NotImplementedError(
+            f"Gemma 4 KV storage {request.kv_storage!r} is not implemented "
+            "(bf16 or int8_per_token_head)"
+        )
+    granularity = str(request.kv_scale_granularity or "per_token_head")
+    if granularity != "per_token_head":
+        raise NotImplementedError(
+            "Gemma 4 INT8 KV storage implements per_token_head scale granularity only"
+        )
+    scale_dtype = str(request.kv_scale_dtype or "fp16")
+    if scale_dtype not in {"fp16", "fp32"}:
+        raise NotImplementedError("Gemma 4 INT8 KV storage implements fp16 or fp32 scales only")
+    return storage, scale_dtype, granularity
+
+
 @dataclass
 class Gemma4GGUFGenerator:
     """Greedy generator over a resident Gemma 4 GGUF artifact."""
@@ -160,9 +190,12 @@ class Gemma4GGUFGenerator:
 
     def generate_detailed(self, request: GenerationRequest) -> tuple[GenerationOutput, ...]:
         self._validate_request(request)
+        storage, scale_dtype, granularity = _resolve_kv_storage(request)
         with self._lock:
             self._require_open()
-            runner = self._ensure_runner()
+            runner = self._ensure_runner(
+                storage=storage, scale_dtype=scale_dtype, granularity=granularity
+            )
             outputs: list[GenerationOutput] = []
             for row_index in range(len(request.prompts)):
                 raise_if_generation_deadline_expired(request)
@@ -237,15 +270,47 @@ class Gemma4GGUFGenerator:
                 self._weights.free()
                 self._weights = None
 
-    def _ensure_runner(self) -> Gemma4Runner:
+    def _ensure_runner(
+        self,
+        *,
+        storage: str = "bf16",
+        scale_dtype: str = "fp16",
+        granularity: str = "per_token_head",
+    ) -> Gemma4Runner:
         if self._runner is not None:
-            return self._runner
+            # Storage is fixed for a runner's lifetime. A request that changes
+            # it rebuilds rather than silently reusing the previous mode, which
+            # would give the caller a different cache than it asked for.
+            if (
+                self._runner.kv_storage_resolved == storage
+                and (
+                    storage != "int8_per_token_head"
+                    or scale_dtype == self._runner.kv_scale_dtype_resolved.value
+                )
+            ):
+                return self._runner
+            self._runner.close()
+            self._runner = None
         started = time.perf_counter()
-        weights = load_gemma4_device_weights(self.reader, backend=self.backend)
+        weights = self._weights
+        loaded_here = False
+        if weights is None:
+            weights = load_gemma4_device_weights(self.reader, backend=self.backend)
+            loaded_here = True
         try:
-            runner = Gemma4Runner(weights=weights, capacity=self.context_length)
+            runner = Gemma4Runner(
+                weights=weights,
+                capacity=self.context_length,
+                kv_storage=storage,
+                kv_scale_dtype=scale_dtype,
+                kv_scale_granularity=granularity,
+            )
         except BaseException:
-            weights.free()
+            # A failure while building the runner releases weights loaded for
+            # this call. Weights already cached by a prior successful load are
+            # left for a later retry; only the new allocations are rolled back.
+            if loaded_here:
+                weights.free()
             raise
         self._weights = weights
         self._runner = runner
@@ -282,8 +347,18 @@ class Gemma4GGUFGenerator:
             blockers.append("thinking budget controls are not implemented")
         if request.min_tokens or request.logprobs or request.top_logprobs:
             blockers.append("min_tokens/logprobs are not implemented")
-        if request.kv_storage not in {"auto", "bf16"}:
-            blockers.append("only BF16 KV storage is implemented")
+        if request.kv_storage not in {"auto", "bf16", "int8_per_token_head"}:
+            blockers.append(
+                f"KV storage {request.kv_storage!r} is not implemented "
+                "(bf16 or int8_per_token_head)"
+            )
+        elif request.kv_storage == "int8_per_token_head":
+            if request.kv_scale_granularity != "per_token_head":
+                blockers.append(
+                    "INT8 KV storage implements per_token_head scale granularity only"
+                )
+            if request.kv_scale_dtype not in {"fp16", "fp32"}:
+                blockers.append("INT8 KV storage implements fp16 or fp32 scales only")
         if blockers:
             raise NotImplementedError("Gemma 4 basic runner: " + "; ".join(blockers))
 

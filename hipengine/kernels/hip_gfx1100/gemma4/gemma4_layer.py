@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer, free as hip_free, malloc
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     Gemma4AttentionScratch,
@@ -261,12 +262,19 @@ class Gemma4LayerScratch:
         return buf
 
     def free(self) -> None:
-        from hipengine.core.hip import get_hip_runtime
+        # Acquiring the HIP runtime is itself a device action: it loads
+        # libamdhip64.so. An unused scratch owns no events, no buffers and no
+        # sub-scratch buffers, so releasing it must be a pure host operation.
+        # Only an event actually created by the parallel MoE branch needs the
+        # runtime, and it is created with one, so its presence implies the
+        # runtime was already acquired.
+        if self._moe_entry_event is not None or self._moe_exit_event is not None:
+            from hipengine.core.hip import get_hip_runtime
 
-        runtime = get_hip_runtime()
-        for event in (self._moe_entry_event, self._moe_exit_event):
-            if event is not None:
-                runtime.event_destroy(event)
+            runtime = get_hip_runtime()
+            for event in (self._moe_entry_event, self._moe_exit_event):
+                if event is not None:
+                    runtime.event_destroy(event)
         self._moe_entry_event = None
         self._moe_exit_event = None
         self.attention.close()
@@ -391,6 +399,161 @@ def _append_kv(
 
 _last_prefill_route: str | None = None
 
+# The writer/consumer keys the most recent INT8 layer forward selected. The
+# registry is the selection mechanism; this records what it returned so a
+# caller can confirm the intended kernels ran rather than inferring it from
+# finite output. Diagnostic only; nothing reads it to decide anything.
+_last_int8_route: dict[str, str] | None = None
+
+_INT8_ATTENTION_QUANT = "int8_per_token_head"
+_INT8_ATTENTION_VARIANT = "gemma4_direct_spans"
+
+
+def last_int8_kv_route() -> dict[str, str] | None:
+    """The registered writer/consumer keys the last INT8 layer forward selected."""
+
+    return None if _last_int8_route is None else dict(_last_int8_route)
+
+
+def _select_int8_kv_kernels(int8_kv, rows: int):
+    """Resolve the INT8 writer and attention consumer from the registry.
+
+    The writer route comes from ``plan_paged_kv_write`` on the writer spans
+    (BF16 source, per-token/head granularity); the consumer is the Gemma 4
+    direct-spans variant registered by ``gemma4_attention_int8``. Selection is
+    by declared capability and launch shape, never by model or artifact
+    identity.
+    """
+
+    from hipengine.dispatch.kv import PagedKVWriteKind, plan_paged_kv_write
+    from hipengine.kernels.registry import KernelKey, is_registered, resolve
+
+    # Importing the writer module registers its kernels; nothing else on the
+    # Gemma runtime path imports it.
+    from hipengine.kernels.hip_gfx1100.attention import paged_kv_write  # noqa: F401
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_int8 import (
+        register_gemma4_int8_attention_kernels,
+    )
+
+    backend = str(int8_kv.backend)
+    kind = PagedKVWriteKind.PROMPT if int(rows) > 1 else PagedKVWriteKind.DECODE
+    write_selection = plan_paged_kv_write(
+        int8_kv.writer_spans, kind=kind, source_dtype=DType.BF16
+    )
+    writer = resolve(
+        backend=backend,
+        layer=write_selection.layer,
+        quant=write_selection.quant,
+        variant=write_selection.variant,
+    )
+    consumer_layer = "paged_attn_prefill" if int(rows) > 1 else "paged_attn_decode"
+    consumer_key = KernelKey(
+        backend, consumer_layer, _INT8_ATTENTION_QUANT, _INT8_ATTENTION_VARIANT
+    )
+    if not is_registered(consumer_key):
+        register_gemma4_int8_attention_kernels()
+    consumer = resolve(
+        backend=backend,
+        layer=consumer_layer,
+        quant=_INT8_ATTENTION_QUANT,
+        variant=_INT8_ATTENTION_VARIANT,
+    )
+    return write_selection, writer, consumer_layer, consumer
+
+
+def _run_int8_attention(
+    int8_kv,
+    *,
+    query_bf16: int,
+    key_bf16: int,
+    value_bf16: int,
+    context_bf16: int,
+    rows: int,
+    geometry: Gemma4LayerGeometry,
+    stream: int,
+) -> None:
+    """Append this block to the INT8 cache and attend over it.
+
+    The consumers take FP32 queries and emit FP32 rows, so the BF16 query is
+    widened into the owner's FP32 scratch and the FP32 context is narrowed back
+    into the layer's BF16 ``context`` buffer. The reconstruction is the
+    writer's own representation -- ``float32(int8) * float32(scale)`` -- never a
+    BF16 rounding of it.
+    """
+
+    from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
+
+    global _last_int8_route
+
+    num_heads = geometry.num_heads
+    num_kv_heads = geometry.num_kv_heads
+    head_dim = geometry.head_dim
+    q_width = num_heads * head_dim
+    write_selection, writer, consumer_layer, consumer = _select_int8_kv_kernels(
+        int8_kv, rows
+    )
+    _last_int8_route = {
+        "writer": f"{write_selection.quant}/{write_selection.variant}",
+        "consumer": f"{consumer_layer}/{_INT8_ATTENTION_QUANT}/{_INT8_ATTENTION_VARIANT}",
+    }
+
+    bf16_to_f32(query_bf16, int8_kv.query_f32, rows * q_width, stream=stream)
+    if rows > 1:
+        writer(
+            key_bf16,
+            value_bf16,
+            int8_kv.key_cache,
+            int8_kv.value_cache,
+            int8_kv.k_scale,
+            int8_kv.v_scale,
+            int8_kv.writer_spans,
+            rows,
+            int8_kv.block_size,
+            num_kv_heads,
+            head_dim,
+            stream=stream,
+        )
+    else:
+        writer(
+            key_bf16,
+            value_bf16,
+            int8_kv.key_cache,
+            int8_kv.value_cache,
+            int8_kv.k_scale,
+            int8_kv.v_scale,
+            int8_kv.writer_spans,
+            int8_kv.block_size,
+            num_kv_heads,
+            head_dim,
+            stream=stream,
+        )
+    # The multi-row prefill consumer takes the row count between its spans and
+    # its context bound; the decode consumer has no row argument because it is
+    # always one row. Passing the wrong arity is a launch-time metadata refusal,
+    # not a wrong answer, so the two shapes are built explicitly.
+    consumer_args = [
+        int8_kv.query_f32,
+        int8_kv.key_cache,
+        int8_kv.value_cache,
+        int8_kv.context_f32,
+        int8_kv.consumer_spans,
+    ]
+    if rows > 1:
+        consumer_args.append(rows)
+    consumer_args.extend(
+        [
+            int8_kv.max_context_len,
+            int8_kv.block_size,
+            num_heads,
+            num_kv_heads,
+            head_dim,
+            geometry.scale,
+            geometry.sliding_window,
+        ]
+    )
+    consumer(*consumer_args, stream=stream)
+    f32_to_bf16(int8_kv.context_f32, context_bf16, rows * q_width, stream=stream)
+
 # The second stream the parallel MoE branch runs on, created once per process.
 # Deliberately module-level rather than per-runner: HIP streams are cheap and
 # this mirrors the single default stream the rest of the layer already assumes.
@@ -484,6 +647,7 @@ def gemma4_layer_forward_bf16(
     *,
     scratch: Gemma4LayerScratch,
     kv: Gemma4LayerKV | None = None,
+    int8_kv: object | None = None,
     rows: int | None = None,
     eps: float = 1e-6,
     rotary_dim: int | None = None,
@@ -517,6 +681,19 @@ def gemma4_layer_forward_bf16(
     the assertion, and a mask carrying eviction or window bounds that the flash
     kernel does not read would silently change the result.
 
+    ``int8_kv`` selects the INT8 per-token/head storage route instead of the BF16
+    cache: the block's BF16 K/V is quantized by the registered BF16-source writer
+    and attended by the registered direct INT8 consumer. The consumer takes FP32
+    queries and emits FP32 rows, so the query is widened into the owner's FP32
+    scratch and the context narrowed back into the layer's BF16 buffer. When
+    ``int8_kv`` is set, ``kv`` must be None; the two routes are mutually
+    exclusive. ``keep_mask_ptr`` and ``key_begin`` are unused on the INT8 route:
+    it derives the mask from the consumer's own sliding-window and position
+    semantics, so it can honour exactly the causal/window contract and requires
+    ``attention_mask_is_causal=True``. A caller asking for any other mask
+    semantics is refused before device work rather than having its extra
+    exclusions silently dropped.
+
     Returns ``hidden_ptr`` so the call reads as a pipeline stage.
     """
 
@@ -532,6 +709,20 @@ def gemma4_layer_forward_bf16(
         raise ValueError("rows must be positive")
     if rows > scratch.tokens:
         raise ValueError(f"rows={rows} exceeds scratch capacity {scratch.tokens}")
+    if int8_kv is not None:
+        if kv is not None:
+            raise ValueError("a layer forward takes either a BF16 or an INT8 KV cache, not both")
+        if not attention_mask_is_causal:
+            # The INT8 consumer derives its own mask from causal order plus the
+            # layer's sliding window and never reads keep_mask_ptr. It can
+            # therefore honour exactly the causal/window contract and nothing
+            # else; an arbitrary exclusion mask would be silently dropped. This
+            # is a contract refusal, so it happens before any device work.
+            raise ValueError(
+                "the INT8 KV route derives its mask from causal order plus the "
+                "layer's sliding window and cannot honour an arbitrary exclusion "
+                "mask, so it requires attention_mask_is_causal=True"
+            )
     hidden_size = scratch.hidden_size
     geometry = scratch.geometry
     num_heads = geometry.num_heads
@@ -637,100 +828,119 @@ def gemma4_layer_forward_bf16(
     # block lands at position write_offset + p of the cache with no stride
     # change. The mask is already (rows, write_offset + rows), so the stale slots
     # past the live context are masked out rather than read.
-    if kv is not None:
-        _append_kv(
-            kv.key_cache,
-            buf("k_rot"),
-            kv.write_offset * kv_width,
-            rows * kv_width,
-            stream,
-        )
-        _append_kv(
-            kv.value_cache,
-            buf("v"),
-            kv.write_offset * kv_width,
-            rows * kv_width,
-            stream,
-        )
-
-    key_begin = int(key_begin)
-    if key_begin < 0:
-        raise ValueError(f"key_begin must be non-negative, got {key_begin}")
-    if key_begin and kv is None:
-        raise ValueError("key_begin requires a cache to skip into")
-
-    key_count = rows if kv is None else kv.write_offset + rows - key_begin
-    route = _select_prefill_route(
-        rows=rows,
-        keys=key_count,
-        num_heads=num_heads,
-        num_kv_heads=num_kv_heads,
-        head_dim=head_dim,
-        sliding_window=geometry.sliding_window,
-        mask_is_causal=attention_mask_is_causal,
-    )
-    _last_prefill_route = route
-    if route == "tiled":
-        # head_dim 512: Gemma 4's five global layers. The tiled kernel stages
-        # its own dtype buffers inside the HIP source, so unlike the other two
-        # routes it takes no scratch arena.
-        gemma4_attention_prefill_tiled(
-            buf("q_rot"),
-            (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
-            if kv is not None
-            else buf("k_rot"),
-            (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
-            if kv is not None
-            else buf("v"),
-            keep_mask_ptr + key_begin,
-            buf("context"),
-            tokens=rows,
-            keys=key_count,
-            num_heads=num_heads,
-            num_kv_heads=num_kv_heads,
-            head_dim=head_dim,
-            scale=geometry.scale,
-            **kwargs,
-        )
-    elif route == "aotriton":
-        gemma4_attention_prefill_aotriton(
-            buf("q_rot"),
-            (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
-            if kv is not None
-            else buf("k_rot"),
-            (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
-            if kv is not None
-            else buf("v"),
-            buf("context"),
-            tokens=rows,
-            keys=key_count,
-            scratch=scratch.attention,
-            num_heads=num_heads,
-            num_kv_heads=num_kv_heads,
-            head_dim=head_dim,
-            scale=geometry.scale,
-            **kwargs,
+    #
+    # INT8 storage takes the writer/consumer route instead: the block's BF16 K/V
+    # is quantized into the owned INT8 cache and the direct INT8 consumer
+    # reconstructs it in FP32. The two routes are mutually exclusive; the caller
+    # check above refuses a caller that supplies both, and this branch owns the
+    # whole attention block so neither route's mask semantics leak into the
+    # other.
+    if int8_kv is not None:
+        _run_int8_attention(
+            int8_kv,
+            query_bf16=buf("q_rot"),
+            key_bf16=buf("k_rot"),
+            value_bf16=buf("v"),
+            context_bf16=buf("context"),
+            rows=rows,
+            geometry=geometry,
+            stream=stream,
         )
     else:
-        gemma4_attention_prefill_bf16(
-            buf("q_rot"),
-            (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
-            if kv is not None
-            else buf("k_rot"),
-            (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
-            if kv is not None
-            else buf("v"),
-            keep_mask_ptr + key_begin,
-            buf("context"),
-            tokens=rows,
+        if kv is not None:
+            _append_kv(
+                kv.key_cache,
+                buf("k_rot"),
+                kv.write_offset * kv_width,
+                rows * kv_width,
+                stream,
+            )
+            _append_kv(
+                kv.value_cache,
+                buf("v"),
+                kv.write_offset * kv_width,
+                rows * kv_width,
+                stream,
+            )
+
+        key_begin = int(key_begin)
+        if key_begin < 0:
+            raise ValueError(f"key_begin must be non-negative, got {key_begin}")
+        if key_begin and kv is None:
+            raise ValueError("key_begin requires a cache to skip into")
+
+        key_count = rows if kv is None else kv.write_offset + rows - key_begin
+        route = _select_prefill_route(
+            rows=rows,
             keys=key_count,
-            scratch=scratch.attention,
             num_heads=num_heads,
             num_kv_heads=num_kv_heads,
             head_dim=head_dim,
-            scale=geometry.scale,
-            **kwargs,
+            sliding_window=geometry.sliding_window,
+            mask_is_causal=attention_mask_is_causal,
         )
+        _last_prefill_route = route
+        if route == "tiled":
+            # head_dim 512: Gemma 4's five global layers. The tiled kernel stages
+            # its own dtype buffers inside the HIP source, so unlike the other two
+            # routes it takes no scratch arena.
+            gemma4_attention_prefill_tiled(
+                buf("q_rot"),
+                (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
+                if kv is not None
+                else buf("k_rot"),
+                (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
+                if kv is not None
+                else buf("v"),
+                keep_mask_ptr + key_begin,
+                buf("context"),
+                tokens=rows,
+                keys=key_count,
+                num_heads=num_heads,
+                num_kv_heads=num_kv_heads,
+                head_dim=head_dim,
+                scale=geometry.scale,
+                **kwargs,
+            )
+        elif route == "aotriton":
+            gemma4_attention_prefill_aotriton(
+                buf("q_rot"),
+                (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
+                if kv is not None
+                else buf("k_rot"),
+                (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
+                if kv is not None
+                else buf("v"),
+                buf("context"),
+                tokens=rows,
+                keys=key_count,
+                scratch=scratch.attention,
+                num_heads=num_heads,
+                num_kv_heads=num_kv_heads,
+                head_dim=head_dim,
+                scale=geometry.scale,
+                **kwargs,
+            )
+        else:
+            gemma4_attention_prefill_bf16(
+                buf("q_rot"),
+                (kv.key_cache + key_begin * kv_width * _BF16_BYTES)
+                if kv is not None
+                else buf("k_rot"),
+                (kv.value_cache + key_begin * kv_width * _BF16_BYTES)
+                if kv is not None
+                else buf("v"),
+                keep_mask_ptr + key_begin,
+                buf("context"),
+                tokens=rows,
+                keys=key_count,
+                scratch=scratch.attention,
+                num_heads=num_heads,
+                num_kv_heads=num_kv_heads,
+                head_dim=head_dim,
+                scale=geometry.scale,
+                **kwargs,
+            )
     gemma4_project(
         buf("context"), layer.o_proj, buf("attn_out"), rows, q_width, hidden_size, **kwargs
     )
