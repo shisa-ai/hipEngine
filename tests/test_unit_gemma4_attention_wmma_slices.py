@@ -21,7 +21,6 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_prefill_wmma_full imp
     DECODE_SHAPE,
     PREFILL_SHAPE,
     K_BATCH,
-    TARGET_BLOCKS,
     plan_gemma4_attention_wmma_full_scratch_bytes,
     plan_gemma4_attention_wmma_full_slices,
     shape_for_tokens,
@@ -96,33 +95,54 @@ class TestShapeSelection:
 
 class TestSlicePlanning:
     def test_the_decode_grid_is_short_enough_to_divide(self):
-        """Two blocks at this geometry, against a target of 128."""
+        """Two blocks at this geometry, against the decode shape's own target."""
 
         assert _base_blocks(DECODE_SHAPE, 1) == 2
-        assert _base_blocks(DECODE_SHAPE, 1) < TARGET_BLOCKS
+        assert _base_blocks(DECODE_SHAPE, 1) < DECODE_SHAPE.split_target_blocks
         assert _slices(1, 262144) > 1
 
     def test_a_single_query_tile_divides_to_about_the_target(self):
-        """The slice count is what it takes to reach the target, not more."""
+        """The slice count is what it takes to reach the target, not more.
+
+        Each shape divides against its own target, because the two move
+        different amounts of traffic per block.
+        """
 
         for shape, tokens in ((DECODE_SHAPE, 1), (PREFILL_SHAPE, 16)):
             base = _base_blocks(shape, tokens)
-            expected = (TARGET_BLOCKS + base - 1) // base
-            assert base * expected >= TARGET_BLOCKS
-        assert _slices(1, 262144) == (TARGET_BLOCKS + 2 - 1) // 2
+            target = shape.split_target_blocks
+            expected = (target + base - 1) // base
+            assert base * expected >= target
+            assert base * (expected - 1) < target
+            assert _slices(tokens, 262144) == expected
 
-    def test_the_decode_shape_needs_more_slices_than_the_prefill_shape(self):
-        """Fewer planes means fewer blocks to start with, so more division.
+    def test_the_decode_shape_does_not_inherit_the_prefill_shapes_target(self):
+        """The two shapes' block targets are separate, measured numbers.
 
-        The decode shape reads each band once where the prefill shape reads it
-        four times, so at the same query-tile count it presents a quarter of the
-        blocks and has to divide four times as far to reach the same grid.
+        This test used to assert the opposite -- that the decode shape divides
+        four times as far as the prefill shape, on the reasoning that it reads
+        each band once where the prefill shape reads it four times and so has
+        four times less to overlap. That reasoning double-counts. The shape
+        change already cut each block's traffic to a quarter; multiplying the
+        slice count by four then cut each slice's work to a sixteenth. Sweeping
+        the slice count directly, on one full layer at tokens=1, puts the decode
+        shape's optimum at 16 slices (32 blocks) and measures the old 64 (128
+        blocks) at 1.066x slower at 262,144 keys and 1.578x slower at 16,384.
+
+        Both shapes now land on 16 slices, from different targets and different
+        base block counts -- which is the coincidence, not the rule.
         """
 
         decode = _base_blocks(DECODE_SHAPE, 1)
         prefill = _base_blocks(PREFILL_SHAPE, PREFILL_SHAPE.query_rows)
         assert prefill == decode * 4
-        assert (TARGET_BLOCKS + decode - 1) // decode == 4 * ((TARGET_BLOCKS + prefill - 1) // prefill)
+        assert DECODE_SHAPE.split_target_blocks < PREFILL_SHAPE.split_target_blocks
+        # The decode shape presents a quarter of the blocks and asks for a
+        # quarter of the target, so the two land on the same slice count.
+        assert _slices(1, 262144) == _slices(PREFILL_SHAPE.query_rows, 262144) == 16
+        # The decode shape's target is sized for its own base blocks, not for the
+        # prefill shape's: 32 blocks is what 16 slices of 2 base blocks reaches.
+        assert DECODE_SHAPE.split_target_blocks == 16 * decode
 
     @pytest.mark.parametrize("tokens", [PREFILL_SHAPE.query_rows + 1, 64, 128, 512])
     def test_a_multi_tile_query_block_is_never_divided(self, tokens):
@@ -143,7 +163,7 @@ class TestSlicePlanning:
         tile stays whole rather than launching blocks that walk nothing.
         """
 
-        want = (TARGET_BLOCKS + 2 - 1) // 2
+        want = (DECODE_SHAPE.split_target_blocks + 2 - 1) // 2
         assert _slices(1, keys) == max(1, min(want, keys // K_BATCH))
 
 
@@ -161,7 +181,7 @@ class TestScratch:
         assert 1e6 < nbytes < 1e8
 
     def test_the_decode_workspace_is_smaller_than_the_prefill_workspace(self):
-        """Half the columns and a quarter of the planes, at four times the slices."""
+        """Half the columns and a quarter of the planes, at the same slice count."""
 
         decode = plan_gemma4_attention_wmma_full_scratch_bytes(
             _slices(1, 262144), tokens=1, num_heads=FULL_HEADS,
