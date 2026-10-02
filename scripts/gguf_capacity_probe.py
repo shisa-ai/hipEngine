@@ -23,6 +23,14 @@ THE CAPACITY PROTOCOL (see benchmarks/HARNESSES.md "Capacity testing"):
 The 2026-09-09 lesson this encodes: full-prompt ladder points cost
 ~90 minutes each on the 27B at 160K+ tokens while the allocation
 decision they were run for is made in the first ~3 minutes.
+
+The probe routes on the artifact's ``general.architecture``. The qwen35
+branch drives ``Qwen35GGUFResidentSession`` directly, which is the
+capacity route that family's ladders were measured on. The gemma4 branch
+resolves the same generator ``hipengine.LLM`` would and drives its runner,
+so the envelope it certifies is the one a user reaches. Adding a branch
+here is how a new architecture gets a tier-1 answer; without one the
+protocol's only option is the expensive tier-2 point it exists to avoid.
 """
 
 from __future__ import annotations
@@ -61,11 +69,7 @@ def main() -> int:
     args = parser.parse_args()
 
     import numpy as np
-    from hipengine.core.hip import get_hip_runtime
-    from hipengine.core.memory import memory_stats, reset_memory_stats
-    from hipengine.kvcache import resolve_kv_policy
-    from hipengine.runtime.prefill import PrefillConfig
-    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+    from hipengine.loading.gguf import GGUFReader
 
     result = {
         "kind": "gguf_capacity_probe",
@@ -77,7 +81,113 @@ def main() -> int:
         "decode_tokens": int(args.decode_tokens),
         "max_batch_size": int(args.max_batch_size),
     }
+    architecture = GGUFReader(args.model).info.architecture
+    result["architecture"] = architecture
     prompt_ids = [9707] * int(args.prompt_length)
+
+    if architecture == "gemma4":
+        # The gemma4 branch certifies the envelope ``LLM`` creates, so the
+        # generator's own KV route applies and ``--kv-storage`` is not used.
+        # Recording that here keeps the artifact from claiming a policy the
+        # probe did not select.
+        result["kv_storage"] = None
+        result["kv_storage_note"] = "the generator's own route; --kv-storage does not apply to gemma4"
+        _probe_gemma4(args, result, prompt_ids, np=np)
+    elif architecture in ("qwen35", "qwen35moe"):
+        _probe_qwen35(args, result, prompt_ids, np=np)
+    else:
+        # Named, and named before any allocation: falling through to the
+        # qwen35 branch would raise a confusing "expected architecture" error
+        # from deep inside a loader that was never going to serve this file.
+        raise SystemExit(
+            f"unsupported GGUF architecture {architecture!r}: this probe has a "
+            f"tier-1 capacity branch for gemma4, qwen35 and qwen35moe. Add a "
+            f"branch for {architecture!r} rather than running the expensive "
+            f"tier-2 point this probe exists to avoid."
+        )
+
+    payload = json.dumps(result, indent=2)
+    print(payload)
+    if args.json is not None:
+        args.json.parent.mkdir(parents=True, exist_ok=True)
+        args.json.write_text(payload + "\n", encoding="utf-8")
+    return 0 if result.get("status") == "pass" else 1
+
+
+def _probe_gemma4(args, result: dict, prompt_ids: list[int], *, np) -> None:
+    """Certify a Gemma 4 envelope by the same short-prompt route.
+
+    Everything the declared context sizes -- weights, the per-layer KV
+    planes, and the persistent scratch -- is acquired when the runner is
+    built, not when the prompt arrives, so a short prompt at the target
+    ``max_sequence_length`` exercises the same allocation the full-length
+    point would. The generator is resolved through ``LLM`` rather than
+    built by hand so the probe certifies the envelope the public surface
+    actually creates, including the execution profile's variant selection.
+    """
+    import hipengine
+
+    from hipengine.core.memory import memory_stats, reset_memory_stats
+
+    llm = hipengine.LLM(
+        model=str(args.model),
+        max_sequence_length=int(args.max_sequence_length),
+        max_active_requests=int(args.max_batch_size),
+    )
+    generator = llm._get_text_generator()
+    # ``LLM`` wraps the model generator in a scheduler adapter; the runner
+    # lives on the inner object.
+    inner = getattr(generator, "_inner", None)
+    if inner is not None:
+        generator = inner
+    result["generator"] = type(generator).__name__
+    result["execution_profile"] = getattr(generator, "execution_profile", None)
+
+    try:
+        runner = generator._ensure_runner()
+        resident_bytes = int(memory_stats().get("current_allocated_bytes", 0))
+        process_peak_bytes = int(memory_stats().get("peak_allocated_bytes", 0))
+        reset_memory_stats()
+
+        logits = np.asarray(runner.forward(prompt_ids), dtype=np.float32)
+        finite = bool(np.all(np.isfinite(logits)))
+        next_token = int(np.argmax(logits))
+        for _ in range(int(args.decode_tokens) - 1):
+            logits = np.asarray(runner.forward([next_token]), dtype=np.float32)
+            finite = finite and bool(np.all(np.isfinite(logits)))
+            next_token = int(np.argmax(logits))
+
+        peak_bytes = int(memory_stats().get("peak_allocated_bytes", 0))
+        result.update(
+            {
+                "status": "pass" if finite else "nonfinite_logits",
+                "finite_logits": finite,
+                "first_token": next_token,
+                "tracked_peak_gib": round(process_peak_bytes / 2**30, 6),
+                "resident_gib": round(resident_bytes / 2**30, 6),
+                "resident_plus_transient_peak_gib": round(peak_bytes / 2**30, 6),
+                "transient_peak_gib": round((peak_bytes - resident_bytes) / 2**30, 6),
+                "runner_capacity": int(runner.capacity),
+                "layers": len(getattr(runner, "_scratches", ())),
+            }
+        )
+    except Exception as exc:  # hip OOM surfaces as HipError; MemoryError for host paths
+        message = str(exc)
+        if "out of memory" in message.lower() or "oom" in message.lower():
+            result["status"] = "oom"
+            result["error"] = message[:200]
+        else:
+            raise
+
+
+def _probe_qwen35(args, result: dict, prompt_ids: list[int], *, np) -> None:
+    """Certify a qwen35 envelope through its resident session."""
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import memory_stats, reset_memory_stats
+    from hipengine.kvcache import resolve_kv_policy
+    from hipengine.runtime.prefill import PrefillConfig
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
     runtime = get_hip_runtime()
     policy = resolve_kv_policy(
         args.kv_storage,
@@ -131,13 +241,6 @@ def main() -> int:
             result["error"] = message[:200]
         else:
             raise
-
-    payload = json.dumps(result, indent=2)
-    print(payload)
-    if args.json is not None:
-        args.json.parent.mkdir(parents=True, exist_ok=True)
-        args.json.write_text(payload + "\n", encoding="utf-8")
-    return 0 if result.get("status") == "pass" else 1
 
 
 if __name__ == "__main__":
