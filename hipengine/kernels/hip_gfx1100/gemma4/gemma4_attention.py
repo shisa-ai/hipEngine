@@ -564,17 +564,54 @@ def gemma4_attention_serves_keys(
     return "; ".join(refusals)
 
 
-def _strict_decode_serves(keys: int | None) -> bool:
-    """Whether the strict decode kernel can hold this key count in LDS.
+# The measured crossover between the strict decode kernel and the WMMA decode
+# shape for a one-token block. Below it the strict kernel wins; above it the
+# WMMA shape wins, by a margin that grows super-linearly.
+#
+# One layer, tokens=1, identical buffers and arguments in both arms, alternating
+# repetitions, median of 9, gfx1151 (benchmarks/results/
+# 2026-10-02-gemma4-gfx1151-long-context-ladder.json):
+#
+#   keys    strict    wmma-decode   wmma/strict
+#    512    0.12 ms      0.27 ms       2.35x
+#   1024    0.21 ms      0.47 ms       2.21x
+#   2048    0.37 ms      0.50 ms       1.33x
+#   4096    0.87 ms      0.55 ms       0.64x
+#   8192    3.35 ms      0.64 ms       0.19x
+#
+# The rule this replaces kept the strict kernel up to ``gemma4_decode_max_keys``
+# on the reasoning that the WMMA kernels tile 16 query rows wide, so one row
+# wastes fifteen sixteenths of every op. That reasoning was stale twice over. A
+# one-token block selects the 2-row, 8-GQA-head decode shape, so one of *two*
+# rows is wasted rather than fifteen of sixteen; and the strict decode kernel's
+# own grid is ``tokens * num_heads`` = 16 blocks, the same low-parallelism
+# limitation the key split exists to work around, which is why its cost turns
+# super-linear (0.87 ms at 4096 keys, 3.35 at 8192) while the WMMA shape stays
+# nearly flat.
+#
+# The old bound also promised more than the launcher delivers. At head_dim 512
+# the strict path cannot launch above 15616 keys -- its shared-memory validation
+# takes the max of the block and decode requirements -- so a context in
+# [15617, 15856] was admitted by the selection, prefilled successfully, and then
+# raised on its first decode. The measured crossover is below both bounds, so
+# this rule cannot reach that window.
+_STRICT_DECODE_WINS_UNTIL_KEYS = 4096
 
-    An unknown key count keeps the incumbent routing rather than guessing: the
-    decode kernel is the exact-tiling path, and a caller that did not say how
-    many keys it has is not evidence that it has too many.
+
+def _strict_decode_preferred(keys: int | None) -> bool:
+    """Whether a one-token block should take the strict decode kernel.
+
+    A routing decision, and a measured one -- see
+    :data:`_STRICT_DECODE_WINS_UNTIL_KEYS` for the numbers and for why the rule
+    it replaces was wrong twice over. An unknown key count keeps the incumbent
+    routing rather than guessing: the strict kernel is the exact-tiling path,
+    and a caller that did not say how many keys it has is not evidence that it
+    has many.
     """
 
     if keys is None:
         return True
-    return int(keys) <= gemma4_decode_max_keys()
+    return int(keys) <= min(_STRICT_DECODE_WINS_UNTIL_KEYS, gemma4_decode_max_keys())
 
 
 def _check_prefill_shape(tokens: int, num_heads: int, num_kv_heads: int, head_dim: int) -> None:
@@ -1116,16 +1153,13 @@ def _select_prefill_attention(
     covers every geometry the family serves.
 
     ``tokens`` is the query-block width of the call being served, and a block of
-    one is a decode step. The candidates are prefill kernels: their tiling is 16
-    query rows wide, so one row wastes fifteen sixteenths of every WMMA op, and
-    the strict path has a dedicated decode kernel for exactly that case (see
-    :func:`gemma4_attention_prefill_bf16`). A one-token block therefore keeps the
-    strict kernel wherever that decode kernel can serve it -- and ``keys`` is
-    what decides that, because the decode kernel holds one logit per live key in
-    LDS and stops at :func:`gemma4_decode_max_keys`. Above that bound it cannot
-    run at all, and a candidate that walks keys in online-softmax batches is then
-    the only path that serves the layer. ``None`` means the caller is asking
-    about the geometry alone and accepts the multi-row answer.
+    one is a decode step. The strict path has a dedicated decode kernel for that
+    case (see :func:`gemma4_attention_prefill_bf16`), and which of the two a
+    one-token block takes is a **measured** routing decision: the strict kernel
+    is faster below :data:`_STRICT_DECODE_WINS_UNTIL_KEYS` and the WMMA decode
+    shape is faster above it, by a margin that grows super-linearly. ``None``
+    means the caller is asking about the geometry alone and accepts the
+    multi-row answer.
     """
 
     requests = _requested_variants(requested_variant)
@@ -1136,14 +1170,16 @@ def _select_prefill_attention(
             requested_variant=requested_variant,
             reason="strict",
         )
-    if tokens is not None and tokens <= 1 and _strict_decode_serves(keys):
+    if tokens is not None and tokens <= 1 and _strict_decode_preferred(keys):
         return PrefillAttentionSelection(
             variant=PREFILL_ATTENTION_PLAIN,
             launcher=gemma4_attention_prefill_bf16,
             requested_variant=requested_variant,
             reason=(
                 f"decode: a {tokens}-token block routes to the decode kernel, "
-                "and the requested variants are multi-row prefill kernels"
+                f"which is the faster path at {keys} keys"
+                if keys is not None
+                else f"decode: a {tokens}-token block routes to the decode kernel"
             ),
         )
     refusals: list[str] = []

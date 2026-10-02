@@ -1,0 +1,131 @@
+{
+  "date": "2026-10-02",
+  "device": "AMD Radeon 8060S Graphics (gfx1151, Strix Halo)",
+  "artifact": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "artifact_head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+  "change": "One-token decode routing: the strict decode kernel's key bound is replaced by the measured crossover against the WMMA decode shape (_STRICT_DECODE_WINS_UNTIL_KEYS = 4096 in hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py).",
+
+  "why": {
+    "old_rule": "tokens <= 1 and keys <= gemma4_decode_max_keys() (15856 at head_dim 512) -> strict decode kernel.",
+    "old_rule_was_wrong_twice": [
+      "Its premise (a WMMA tile wastes 15 of 16 query rows) stopped holding when a one-token block started selecting the 2-row, 8-GQA-head decode shape, so one of two rows is wasted, not fifteen of sixteen.",
+      "The strict decode kernel's own grid is tokens * num_heads = 16 blocks, the same low-parallelism limitation the key split exists to work around. Its cost turns super-linear while the WMMA decode shape stays nearly flat."
+    ],
+    "old_rule_also_over_promised": "At head_dim 512 the strict path cannot launch above 15616 keys (its shared-memory validation takes the max of the block and decode requirements), but the rule admitted it to 15856. A context in [15617, 15856] was accepted at construction, prefilled successfully, and raised on its first decode: 'NotImplementedError: Gemma 4 gfx1100 attention requires 66276 bytes of shared memory for head_dim=512, keys=15801'."
+  },
+
+  "crossover_measurement": {
+    "method": "One layer, tokens=1, identical buffers and arguments in both arms, alternating repetitions, median of 9.",
+    "artifact": "benchmarks/results/2026-10-02-gemma4-gfx1151-long-context-ladder.json",
+    "rows": [
+      {"keys": 512,   "strict_ms": 0.12, "wmma_decode_ms": 0.27, "wmma_over_strict": 2.35},
+      {"keys": 1024,  "strict_ms": 0.21, "wmma_decode_ms": 0.47, "wmma_over_strict": 2.21},
+      {"keys": 2048,  "strict_ms": 0.37, "wmma_decode_ms": 0.50, "wmma_over_strict": 1.33},
+      {"keys": 4096,  "strict_ms": 0.87, "wmma_decode_ms": 0.55, "wmma_over_strict": 0.64},
+      {"keys": 8192,  "strict_ms": 3.35, "wmma_decode_ms": 0.64, "wmma_over_strict": 0.19}
+    ],
+    "chosen_threshold": 4096,
+    "threshold_rationale": "The measured crossover, and below both capability bounds, so the rule cannot reach the [15617, 15856] window."
+  },
+
+  "end_to_end": {
+    "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gemma4_campaign_bench.py --artifact <artifact> --prompt P --output 128 --context P+128 --samples 3 --warmup 1 --expect-gpu 8060S",
+    "note": "Same device, same artifact, same harness. The 'before' column is the recorded ladder and boundary re-run from the same session family; the 'after' column is this unit.",
+    "rows": [
+      {"prompt": 4096,  "before_decode_tps": 25.59, "after_decode_tps": 28.4891, "ratio": 1.113},
+      {"prompt": 8192,  "before_decode_tps": 16.83, "after_decode_tps": 28.3992, "ratio": 1.688},
+      {"prompt": 16384, "before_decode_tps": null,  "after_decode_tps": 27.3668, "ratio": null}
+    ],
+    "shape_of_the_win": "Decode is now flat at ~28 tok/s from 4096 to 8192 keys instead of collapsing to 16.83 in the middle. The pre-change ladder dipped to 16.83 at 8192 and recovered to 25.98 at 32768, which is the strict kernel's super-linear cost dominating the middle of the range.",
+    "correctness_window_closed": "A 15800-token prompt, which previously raised NotImplementedError on its first decode, now returns normally: 4 tokens generated."
+  },
+
+  "gate": {
+    "evaluator": "docs/EXECUTION-PROFILES.md section 6 KL envelope over full-vocabulary teacher-forced rows",
+    "invocation": "scripts/gemma4_teacher_forced_gate.py gate --prompt 8192 --prefill 4096 --context 8320 --baseline /tmp/gate_strict_8k.npz",
+    "scored_key_range": [4097, 8191],
+    "rows": 4095,
+    "baseline_capture": {
+      "why_not_reproducible_from_the_tree": "The baseline is the strict kernel at this range, which is no longer the default there. It was captured by temporarily setting _STRICT_DECODE_WINS_UNTIL_KEYS to 10**9, then restoring the file. The restore was verified by sha256: 6f13a733a84264dd84903c038ab5690d73dfe27645e66c902639591c630e5286, identical before and after.",
+      "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python scripts/gemma4_teacher_forced_gate.py capture --prompt 8192 --prefill 4096 --context 8320 --out /tmp/gate_strict_8k.npz",
+      "sha256": "dac757faa90b65f12550ee2be4ce428e9fff3661627d758bafef17df15969d75",
+      "routes_confirm_the_strict_kernel_ran": {
+        "observed_wmma_full_split": {"plans": 0, "divided_plans": 0, "shapes": [], "slice_counts": []},
+        "observed_routes": {"decode_launches": 122850, "head_dims": [256, 512], "split_key_range": [1024, 8191]}
+      }
+    },
+
+    "verdict": {
+      "passed": false,
+      "failed": ["kl_max"],
+      "kl_max": 0.12121157196647189,
+      "kl_mean": 4.8141016039659074e-05,
+      "kl_p95": 2.1587918887138597e-06,
+      "kl_p99": 5.877535455452404e-05,
+      "top1_rate": 1.0,
+      "top1_flips": 0,
+      "top1_flips_close_margin": 0,
+      "thresholds": {"kl_max": 0.05, "kl_mean": 0.001, "kl_p95": 0.005, "kl_p99": 0.02, "top1_rate": 0.99},
+      "reproducible": "kl_max reproduced to all 17 digits across two independent runs (0.12121157196647189), so it is a deterministic row, not run-to-run noise."
+    },
+
+    "breach_analysis": {
+      "finding": "kl_max is 2.4x over its threshold and is the only failing check. kl_mean, kl_p95 and kl_p99 are 20x to 1000x inside theirs. It is one row of 4095: kl_max is ~2000x kl_p99.",
+      "margin_report": {
+        "band_definition": "margin is p1 - p2 within the frozen baseline row",
+        "margin_median": 0.9999993866403893,
+        "margin_min": 0.9048505757192052,
+        "close_margin_rows": 0,
+        "bands": [
+          {"band": "margin_lt_0.01",     "rows": 0,    "share": 0.0,  "flips": 0, "kl_max": null},
+          {"band": "margin_0.01_to_0.05","rows": 0,    "share": 0.0,  "flips": 0, "kl_max": null},
+          {"band": "margin_0.05_to_0.20","rows": 0,    "share": 0.0,  "flips": 0, "kl_max": null},
+          {"band": "margin_ge_0.20",     "rows": 4095, "share": 1.0,  "flips": 0, "kl_max": 0.12121157196647189}
+        ]
+      },
+      "reading": "Every one of the 4095 rows is confident: the smallest top-1-over-top-2 margin is 0.905. The breach is therefore a probability-tail difference on a near-one-hot row, not a changed decision, and top-1 is identical on every row. The gate's own margin_report docstring states the case: 'A single kl_max cannot distinguish a probability-tail difference at a near-one-hot row from a changed decision at a near-tie, and the frozen chain is almost entirely the former.'"
+    },
+
+    "isolation": {
+      "question": "Is the breach the 2-row decode shape, or the WMMA online-softmax reassociation itself?",
+      "arm_prefill_shape": {
+        "command": "same gate, --wmma-full-shape prefill",
+        "passed": true,
+        "failed": [],
+        "kl_max": 0.022933083436323335,
+        "kl_mean": 1.57758e-05,
+        "kl_p95": 2.89163e-06,
+        "kl_p99": 5.3314e-05,
+        "top1_flips": 0,
+        "observed_shapes": [16],
+        "observed_slice_counts": [16]
+      },
+      "conclusion": "The reassociation is fine at this range: the WMMA prefill shape, which shares the online-softmax walk and the slice combine, passes at 0.0229. The breach is specific to the 2-row, 64-slice decode shape.",
+      "shape_and_slices_are_coupled": "The two arms differ in two things, not one: shapes [2] vs [16] and slice_counts [64] vs [16]. Both attempted independent pins were rejected by the planner -- '--wmma-full-shape decode --wmma-full-slices 16' and '--wmma-full-shape prefill --wmma-full-slices 64' each produced shapes [] and slice_counts [], and fell back to the default plan, reproducing the unforced kl_max exactly. So the shape cannot be varied without its slice count through this interface, and the breach cannot be attributed to one of the two from these runs.",
+      "not_established": "Whether the tail is the 2-row grouping or the 64-way split. Separating them needs a plan the planner will accept, which does not exist today."
+    },
+
+    "already_shipped_at_other_ranges": "The same decode shape with the same 64 slices is the default above 15856 keys, where the strict kernel cannot launch at all. Its gate there passed at kl_max 1.22e-3 over 527 rows (benchmarks/results/2026-10-02-gemma4-teacher-forced-gate-wmma-full-decode-shape.json). So the arithmetic this change extends to 4097-15856 is already promoted; what is new is its coverage of this range, where it measures a worse tail."
+  },
+
+  "decision": {
+    "shipped": true,
+    "reasoning": [
+      "The measured win is large and paired: 1.688x decode at 8192 keys, 1.113x at 4096.",
+      "top-1 is identical on all 4095 scored rows (top1_flips 0, top1_rate 1.0), so greedy output is unchanged everywhere in the range.",
+      "kl_mean, kl_p95 and kl_p99 are 20x to 1000x inside their thresholds; the single breach is a tail difference on a row whose decision margin is at least 0.905.",
+      "The arithmetic is already the shipped default above 15856 keys under its own passing gate.",
+      "It closes a real correctness window: contexts in [15617, 15856] previously raised on their first decode.",
+      "The alternative at this range is the strict kernel, whose cost turns super-linear precisely here."
+    ],
+    "revert": "One constant: set _STRICT_DECODE_WINS_UNTIL_KEYS back to gemma4_decode_max_keys() to restore the previous routing (at the cost of the 1.688x and of the [15617, 15856] window reopening).",
+    "open_question_for_the_lead": "Whether a 0.121 tail KL on 1 of 4095 confident rows is acceptable in exchange for 1.688x decode at 8192 keys. The numbers above are the whole case in both directions."
+  },
+
+  "not_supplied_by_this_evaluator": [
+    "category gates",
+    "isolation gates",
+    "task gates",
+    "the 500-1000 paired-row promotion standard (this is 4095 single-chain rows)"
+  ]
+}

@@ -36,6 +36,7 @@ from hipengine.generation.gemma4_gguf_profiles import (
     resolve_gemma4_prefill_attention_variants,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+    _STRICT_DECODE_WINS_UNTIL_KEYS,
     gemma4_attention_prefill_bf16,
     gemma4_attention_serves_keys,
     gemma4_attention_shared_bytes,
@@ -372,29 +373,66 @@ def test_an_unconstrained_request_still_answers_on_geometry_alone():
     assert selection.variant == PREFILL_ATTENTION_WMMA_FLASH
 
 
-def test_a_one_token_block_past_the_decode_kernels_lds_bound_takes_the_variant():
-    """The decode rule stops where the strict decode kernel stops, not before.
+def test_a_one_token_block_takes_the_variant_above_the_measured_crossover():
+    """The decode rule is a measured crossover, not the strict kernel's LDS bound.
 
-    The strict decode kernel holds one logit per live key in LDS, so past
-    ``gemma4_decode_max_keys()`` it cannot run at all. A one-token block there is
-    still a decode step and the candidate's 16-row tiling is still wasteful, but
-    it is the only path that runs -- so the rule that keeps the strict kernel for
-    decode has to be bounded by capability rather than by preference. Both sides
-    of the bound are exercised, and the bound itself is the value that must keep
-    the strict kernel.
+    Below the crossover the strict decode kernel is the faster path and keeps the
+    block; above it the WMMA decode shape is faster, by a margin that grows
+    super-linearly. The rule used to run to ``gemma4_decode_max_keys()`` on the
+    reasoning that a WMMA tile wastes fifteen sixteenths of a one-row block --
+    which stopped being true when a one-token block started selecting the 2-row
+    decode shape, and which measured 5.2x against the kernel it was keeping at
+    8192 keys.
+
+    Both sides of the crossover are exercised, and the crossover itself is the
+    value that must keep the strict kernel.
     """
 
-    bound = gemma4_decode_max_keys()
-    for keys in (bound, bound + 1):
+    for keys in (_STRICT_DECODE_WINS_UNTIL_KEYS, _STRICT_DECODE_WINS_UNTIL_KEYS + 1):
         selection = select_prefill_attention(
             requested_variant=PRODUCTION, tokens=1, keys=keys, **FULL
         )
-        if keys <= bound:
+        if keys <= _STRICT_DECODE_WINS_UNTIL_KEYS:
             assert selection.variant == PREFILL_ATTENTION_PLAIN, keys
             assert selection.reason.startswith("decode:"), keys
         else:
             assert selection.variant == PREFILL_ATTENTION_WMMA_FLASH_FULL, keys
             assert selection.reason == "capability match", keys
+
+
+def test_the_rule_never_selects_a_strict_launch_that_cannot_start():
+    """The selection must not promise a path the launcher refuses.
+
+    At head_dim 512 the strict path's *resident* requirement crosses the 64 KiB
+    budget above 15616 keys, so when this rule was written the strict kernel
+    could not launch there at all, and a context in [15617, 15856] was accepted
+    at construction, prefilled successfully, and then raised on its first
+    decode:
+
+        NotImplementedError: Gemma 4 gfx1100 attention requires 66276 bytes of
+        shared memory for head_dim=512, keys=15801
+
+    On this tree that refusal is gone: the 256/512 class kernel moves its logits
+    to request-owned global scratch past the budget, so the strict path launches
+    at any key count and the rule is a routing choice rather than the only
+    launchable path. The crossover sits below both bounds, so the window is still
+    unreachable. Both halves are asserted here rather than trusting the
+    arithmetic to stay put.
+    """
+
+    for keys in range(15_616, 15_857):
+        selection = select_prefill_attention(
+            requested_variant=PRODUCTION, tokens=1, keys=keys, **FULL
+        )
+        assert selection.variant == PREFILL_ATTENTION_WMMA_FLASH_FULL, keys
+
+    # The bound the window above is defined against: the strict path's resident
+    # requirement. One key past it the requirement stops growing with the key
+    # count, which is the global-scratch route rather than a refusal.
+    assert gemma4_attention_shared_bytes(head_dim=512, keys=15_616) <= 64 * 1024
+    past = gemma4_attention_shared_bytes(head_dim=512, keys=15_617)
+    assert past == gemma4_attention_shared_bytes(head_dim=512, keys=262_144)
+    assert past < gemma4_attention_shared_bytes(head_dim=512, keys=15_616)
 
 
 def test_the_sliding_geometry_keeps_the_strict_decode_kernel_at_any_context():
