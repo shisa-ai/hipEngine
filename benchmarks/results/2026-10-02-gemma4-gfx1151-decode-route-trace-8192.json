@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-02",
+  "device": "AMD Radeon 8060S Graphics (gfx1151, Strix Halo)",
+  "artifact": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "artifact_head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+  "purpose": "Task #30 acceptance criterion: 'A one-token block at 8192 keys reaches the WMMA decode shape, confirmed by the routed variant and by a rocprofv3 kernel trace naming gemma4_attention_decode_wmma_full_kernel.'",
+  "completes": "benchmarks/results/2026-10-02-gemma4-gfx1151-decode-crossover.json, which recorded the crossover, the end-to-end gains and the closed correctness window but left this trace outstanding.",
+
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=production rocprofv3 --kernel-trace --kernel-include-regex gemma4_attention -d <dir> -- .venv/bin/python scripts/gemma4_campaign_bench.py --artifact <artifact> --prompt 8192 --output 16 --context 8320 --samples 1 --warmup 0 --expect-gpu 8060S",
+
+  "finding": {
+    "gemma4_attention_decode_wmma_full_kernel": {"launches": 150, "total_ms": 25.88, "role": "the full-layer (head_dim 512) decode, one launch per full layer per token"},
+    "gemma4_attention_wmma_combine_kernel": {"launches": 150, "total_ms": 8.15, "role": "the split walk's combine pass, one per decode launch"},
+    "gemma4_attention_prefill_wmma_full_kernel": {"launches": 160, "total_ms": 1518.34, "role": "the full layer's prefill, over the 8192-token prompt"},
+    "gemma4_attention_prefill_wmma_kernel": {"launches": 800, "total_ms": 1470.64, "role": "the sliding layers' prefill"},
+    "gemma4_attention_decode_dimension_kernel": {"launches": 750, "total_ms": 86.37, "role": "the sliding layers' decode (head_dim 256), which correctly stays on the strict family at 1024 window keys"},
+    "gemma4_attention_decode_class_kernel": {"launches": 750, "total_ms": 41.39, "role": "the sliding layers' decode, class stage"},
+    "strict_full_layer_decode_kernel": {"launches": 0, "note": "ABSENT from the trace. Before this unit it was the path taken at 8192 keys, at 5.2x the WMMA decode shape's cost."}
+  },
+
+  "reading": "The full layer's decode at 8192 keys launches the WMMA decode shape and the combine pass, and the strict kernel it used to take does not appear at all. The sliding layers keep their own strict decode kernels, which is the half the crossover must not move -- a sliding layer presents 1024 window keys at any configured context, so it is below the threshold and stays put.",
+
+  "caveats": [
+    "The run is under a profiler, so the wall-clock and the per-launch timings are inflated (decode_tps 2.30 against 29.41 untraced) and are not quoted as measurements. The kernel NAMES and the launch presence/absence are what this artifact is for.",
+    "Launch counts include the profiler-visible warmup and the full prefill, so they are not per-token rates."
+  ],
+
+  "not_supplied_by_this_evaluator": [
+    "category gates",
+    "isolation gates",
+    "task gates",
+    "the 500-1000 paired-row promotion standard"
+  ]
+}
