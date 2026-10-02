@@ -30,9 +30,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import cProfile
+import gc
+import io
 import json
 import os
 import pathlib
+import pstats
 import statistics
 import sys
 import threading
@@ -48,6 +52,11 @@ DEFAULT_FIXTURE = ROOT / "benchmarks" / "fixtures" / "qwen4exp_canonical_ar_p512
 BUSY_PATH = pathlib.Path("/sys/class/drm/card1/device/gpu_busy_percent")
 SCLK_PATH = pathlib.Path("/sys/class/drm/card1/device/pp_dpm_sclk")
 MCLK_PATH = pathlib.Path("/sys/class/drm/card1/device/pp_dpm_mclk")
+CPU_AVG_FREQ_PATH = pathlib.Path(
+    "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_avg_freq"
+)
+CPU_CORE_FREQ_TEMPLATE = "/sys/devices/system/cpu/cpu{core}/cpufreq/scaling_cur_freq"
+CPU_CORE_COUNT = os.cpu_count() or 1
 
 
 class BusySampler:
@@ -68,6 +77,10 @@ class BusySampler:
         self.sclk: list[float] = []
         self.mclk: list[float] = []
         self.errors = 0
+        self.cpu_avg: list[float] = []
+        self.cpu_max: list[float] = []
+        self.cpu_mean: list[float] = []
+        self._tick = 0
 
     @staticmethod
     def _active_mhz(path: pathlib.Path) -> float:
@@ -90,6 +103,36 @@ class BusySampler:
                 self.mclk.append(self._active_mhz(MCLK_PATH))
             except Exception:
                 self.errors += 1
+            # Host CPU clocks.  The GPU clocks above are flat in this harness, but
+            # the host thread is the bottleneck, so a package power limit shared
+            # with the GPU would show up here and nowhere else.  ``cpuinfo_avg_freq``
+            # is cpu0's own hardware average; the max across cores is what the busy
+            # thread actually gets, and it is sampled every fifth tick because 32
+            # sysfs reads per 5 ms would perturb the loop being measured.
+            try:
+                self.cpu_avg.append(
+                    float(CPU_AVG_FREQ_PATH.read_text().strip()) / 1000.0
+                )
+            except Exception:
+                self.errors += 1
+            self._tick += 1
+            if self._tick % 5 == 1:
+                values = []
+                for core in range(CPU_CORE_COUNT):
+                    try:
+                        values.append(
+                            float(
+                                pathlib.Path(
+                                    CPU_CORE_FREQ_TEMPLATE.format(core=core)
+                                ).read_text().strip()
+                            )
+                            / 1000.0
+                        )
+                    except Exception:
+                        self.errors += 1
+                if values:
+                    self.cpu_max.append(max(values))
+                    self.cpu_mean.append(sum(values) / len(values))
             self._stop.wait(self._interval)
 
     def start(self) -> None:
@@ -118,6 +161,24 @@ def main() -> int:
                     help="Synchronize after every step and record the call (host) and wait "
                          "(device) halves separately.  Adds a sync per step so it is an "
                          "attribution probe, not a throughput measurement.")
+    ap.add_argument("--instrument", action="store_true",
+                    help="Sample the graph-cache counters and the hipEngine allocation "
+                         "counters after every step, so the loop-start transient can be "
+                         "attributed to a mechanism (capture or churn) instead of inferred. "
+                         "The earlier churn probe was void because it used the device "
+                         "memory_info API, which returns None here; these are host-side counters.")
+    ap.add_argument("--prefill-clocks", action="store_true",
+                    help="Also sample the host CPU clock across the prefill window, so the clamp "
+                         "can be attributed to the prefill burst rather than to the decode.")
+    ap.add_argument("--profile-steps", type=int, default=0,
+                    help="cProfile the first N steps and the last N steps of every decode loop "
+                         "and print the top functions by self time for each window.  The two "
+                         "windows do the same work, so a function that grows in the first "
+                         "window is the transient's owner.")
+    ap.add_argument("--no-gc", action="store_true",
+                    help="Disable cyclic GC for the decode loop (re-enabled after it).  A causal "
+                         "test: if the loop-start transient is the collection of the prefill's "
+                         "unreachable objects, removing collections removes the transient.")
     ap.add_argument("--json-out", type=pathlib.Path, default=None)
     args = ap.parse_args()
 
@@ -125,6 +186,7 @@ def main() -> int:
 
     from dataclasses import replace as _replace
 
+    from hipengine.core.memory import memory_stats
     from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
     from hipengine.generation.qwen4_exp_profiles import (
         QWEN4_EXP_BACKEND,
@@ -177,7 +239,39 @@ def main() -> int:
         runtime = runner.runtime
         token_ids = [int(t) for t in case["prompt_token_ids"]]
 
+        def counters() -> dict:
+            """Host-side mechanism counters: graph cache state plus tracked allocations."""
+            stats = memory_stats()
+            sample = {
+                "alloc_bytes": int(stats["total_allocated_bytes"]),
+                "freed_bytes": int(stats["total_freed_bytes"]),
+                "active_allocations": int(stats["active_allocations"]),
+                "current_bytes": int(stats["current_allocated_bytes"]),
+            }
+            # Cyclic-GC counters.  A prefill leaves a large volume of unreachable
+            # Python objects; the collections that reclaim them are host time and
+            # land inside the first decode steps.
+            for generation, generation_stats in enumerate(gc.get_stats()):
+                sample[f"gc{generation}_collections"] = int(generation_stats["collections"])
+                sample[f"gc{generation}_collected"] = int(generation_stats["collected"])
+            sample["gc_tracked_objects"] = len(gc.get_objects()) if gc.isenabled() else -1
+            for name, cache in (
+                ("moe", runner.moe_graph_cache),
+                ("layer", runner.layer_graph_cache),
+            ):
+                if cache is None:
+                    continue
+                cache_stats = cache.stats
+                for field in ("capture", "replay", "eager", "reject"):
+                    sample[f"{name}_{field}"] = int(cache_stats[field])
+            return sample
+
         for rep in range(int(args.repeats) + 1):
+            before_prefill = counters() if args.instrument else None
+            prefill_sampler = None
+            if args.prefill_clocks:
+                prefill_sampler = BusySampler(BUSY_PATH, args.sample_interval_ms / 1000.0)
+                prefill_sampler.start()
             prefill_started = time.perf_counter_ns()
             result = runner.prefill(
                 token_ids,
@@ -193,10 +287,22 @@ def main() -> int:
             resync_started = time.perf_counter_ns()
             runtime.device_synchronize()
             resync_ns = time.perf_counter_ns() - resync_started
+            after_prefill = counters() if args.instrument else None
+            prefill_clocks = None
+            if prefill_sampler is not None:
+                prefill_sampler.stop()
+                prefill_clocks = {
+                    "samples": len(prefill_sampler.cpu_max),
+                    "cpu_max_freq_mhz": list(prefill_sampler.cpu_max),
+                    "cpu_mean_freq_mhz": list(prefill_sampler.cpu_mean),
+                    "gpu_busy_pct": list(prefill_sampler.samples),
+                }
             settle_ms = float(args.settle_ms)
             if settle_ms > 0:
                 time.sleep(settle_ms / 1000.0)
             current = int(result.token_id)
+            if args.no_gc:
+                gc.disable()
 
             sampler = BusySampler(BUSY_PATH, args.sample_interval_ms / 1000.0)
             sampler.start()
@@ -204,8 +310,20 @@ def main() -> int:
             step_ns: list[int] = []
             call_ns: list[int] = []
             wait_ns: list[int] = []
+            cpu_ns: list[int] = []
+            step_counters: list[dict] = []
             split = bool(args.split_steps)
-            for _ in range(int(args.steps)):
+            window = max(1, int(args.profile_steps))
+            profile_a = cProfile.Profile() if window > 1 else None
+            profile_b = cProfile.Profile() if window > 1 else None
+            if profile_a is not None:
+                profile_a.enable()
+            for step_index in range(int(args.steps)):
+                if profile_b is not None and step_index == max(0, int(args.steps) - window):
+                    if profile_a is not None:
+                        profile_a.disable()
+                    profile_b.enable()
+                cpu_started = time.process_time_ns()
                 t0 = time.perf_counter_ns()
                 result = runner.step(
                     current,
@@ -216,6 +334,9 @@ def main() -> int:
                 current = int(result.token_id)
                 t1 = time.perf_counter_ns()
                 step_ns.append(t1 - t0)
+                cpu_ns.append(time.process_time_ns() - cpu_started)
+                if args.instrument:
+                    step_counters.append(counters())
                 if split:
                     runtime.device_synchronize()
                     t2 = time.perf_counter_ns()
@@ -224,6 +345,13 @@ def main() -> int:
             runtime.device_synchronize()
             ended = time.perf_counter_ns()
             sampler.stop()
+            if profile_a is not None:
+                profile_a.disable()
+            if profile_b is not None:
+                profile_b.disable()
+            if args.no_gc:
+                gc.enable()
+                gc.collect()
 
             wall_ms = (ended - started) / 1_000_000.0
             per_token_ms = wall_ms / int(args.steps)
@@ -251,7 +379,22 @@ def main() -> int:
                 "sclk_mean_mhz": statistics.fmean(sampler.sclk) if sampler.sclk else None,
                 "sclk_min_mhz": min(sampler.sclk) if sampler.sclk else None,
                 "sclk_max_mhz": max(sampler.sclk) if sampler.sclk else None,
+                "cpu_avg_freq_mhz": list(sampler.cpu_avg),
+                "cpu_max_freq_mhz": list(sampler.cpu_max),
+                "cpu_mean_freq_mhz": list(sampler.cpu_mean),
+                "cpu_avg_freq_mean_mhz": (
+                    statistics.fmean(sampler.cpu_avg) if sampler.cpu_avg else None
+                ),
+                "cpu_max_freq_mean_mhz": (
+                    statistics.fmean(sampler.cpu_max) if sampler.cpu_max else None
+                ),
+                "cpu_max_freq_min_mhz": (
+                    min(sampler.cpu_max) if sampler.cpu_max else None
+                ),
+                "prefill_clocks": prefill_clocks,
                 "step_ms": [n / 1e6 for n in step_ns],
+                "cpu_ms": [n / 1e6 for n in cpu_ns],
+                "cpu_ms_mean": statistics.fmean(cpu_ns) / 1e6 if cpu_ns else None,
                 "call_ms": [n / 1e6 for n in call_ns],
                 "wait_ms": [n / 1e6 for n in wait_ns],
                 "step_ms_mean": statistics.fmean(step_ns) / 1e6 if step_ns else None,
@@ -267,6 +410,41 @@ def main() -> int:
                 "implied_gpu_ms_per_token": per_token_ms * busy_mean / 100.0,
                 "implied_host_ms_per_token": per_token_ms * idle_share,
             }
+            if args.instrument:
+                series = [after_prefill, *step_counters]
+                n = len(step_counters)
+                q = max(1, n // 8)
+                fields = (
+                    "moe_capture", "layer_capture", "moe_eager", "layer_eager",
+                    "alloc_bytes", "freed_bytes", "active_allocations",
+                    "gc0_collections", "gc1_collections", "gc2_collections",
+                    "gc0_collected", "gc1_collected", "gc2_collected",
+                )
+                bands: dict[str, list[int]] = {}
+                for field in fields:
+                    values = []
+                    for i in range(0, n, q):
+                        end = min(i + q, n)
+                        values.append(
+                            series[end].get(field, 0) - series[i].get(field, 0)
+                        )
+                    bands[field] = values
+                row["instrument_bands"] = bands
+                row["instrument_prefill"] = {
+                    field: after_prefill.get(field, 0) - before_prefill.get(field, 0)
+                    for field in fields
+                }
+                row["step_counters"] = step_counters
+            for tag, profiler in (("transient", profile_a), ("steady", profile_b)):
+                if profiler is None:
+                    continue
+                stream = io.StringIO()
+                pstats.Stats(profiler, stream=stream).sort_stats("tottime").print_stats(14)
+                text = stream.getvalue()
+                row[f"profile_{tag}"] = text
+                print(f"        --- {tag} window: top functions by self time ---", flush=True)
+                for line in text.splitlines()[4:22]:
+                    print(f"        {line}", flush=True)
             rows.append(row)
             tag = "warmup" if rep == 0 else f"rep{rep}"
             print(
@@ -299,6 +477,51 @@ def main() -> int:
                         + f"   (mean {statistics.fmean(sampler.mclk):5.0f} MHz)",
                         flush=True,
                     )
+            if prefill_clocks and prefill_clocks["cpu_max_freq_mhz"]:
+                values = prefill_clocks["cpu_max_freq_mhz"]
+                q = max(1, len(values) // 8)
+                bands = [statistics.fmean(values[i:i + q]) for i in range(0, len(values), q)]
+                busy = prefill_clocks["gpu_busy_pct"]
+                bq = max(1, len(busy) // 8)
+                busy_bands = [statistics.fmean(busy[i:i + bq]) for i in range(0, len(busy), bq)]
+                print(
+                    "        prefill host cpu MHz by eighth (max core): "
+                    + " ".join(f"{v:5.0f}" for v in bands),
+                    flush=True,
+                )
+                print(
+                    "        prefill gpu busy by eighth:                "
+                    + " ".join(f"{v:5.0f}" for v in busy_bands),
+                    flush=True,
+                )
+            if sampler.cpu_max:
+                q = max(1, len(sampler.cpu_max) // 16)
+                max_bands = [
+                    statistics.fmean(sampler.cpu_max[i:i + q])
+                    for i in range(0, len(sampler.cpu_max), q)
+                ]
+                mean_bands = [
+                    statistics.fmean(sampler.cpu_mean[i:i + q])
+                    for i in range(0, len(sampler.cpu_mean), q)
+                ]
+                package = (
+                    f"cpu0 avg {statistics.fmean(sampler.cpu_avg):5.0f} MHz"
+                    if sampler.cpu_avg
+                    else "cpu0 avg n/a"
+                )
+                print(
+                    "        host cpu MHz by sixteenth (max core): "
+                    + " ".join(f"{v:5.0f}" for v in max_bands),
+                    flush=True,
+                )
+                print(
+                    "        host cpu MHz by sixteenth (mean of "
+                    + f"{CPU_CORE_COUNT}): "
+                    + " ".join(f"{v:5.0f}" for v in mean_bands)
+                    + f"   (max {max(sampler.cpu_max):5.0f} "
+                    + f"min {min(sampler.cpu_max):5.0f} MHz; {package})",
+                    flush=True,
+                )
             if step_ns:
                 n = len(step_ns)
                 q = max(1, n // 8)
@@ -316,6 +539,70 @@ def main() -> int:
                 wb = [statistics.fmean(wait_ns[i:i + q]) / 1e6 for i in range(0, n, q)]
                 print("        call ms by eighth: " + " ".join(f"{v:6.2f}" for v in cb), flush=True)
                 print("        wait ms by eighth: " + " ".join(f"{v:6.2f}" for v in wb), flush=True)
+            if cpu_ns:
+                n = len(cpu_ns)
+                q = max(1, n // 8)
+                ub = [statistics.fmean(cpu_ns[i:i + q]) / 1e6 for i in range(0, n, q)]
+                print(
+                    "        cpu ms by eighth:  " + " ".join(f"{v:6.2f}" for v in ub)
+                    + "   (process CPU time; it stays flat when the wall is inflated by "
+                      "blocking on a device-paced queue)",
+                    flush=True,
+                )
+            if args.instrument:
+                bands = row["instrument_bands"]
+                print(
+                    "        captures by eighth (moe/layer): "
+                    + " ".join(
+                        f"{a}/{b}" for a, b in zip(bands["moe_capture"], bands["layer_capture"])
+                    ),
+                    flush=True,
+                )
+                print(
+                    "        eager by eighth (moe/layer):    "
+                    + " ".join(
+                        f"{a}/{b}" for a, b in zip(bands["moe_eager"], bands["layer_eager"])
+                    ),
+                    flush=True,
+                )
+                print(
+                    "        alloc MiB by eighth:            "
+                    + " ".join(f"{v / 1048576.0:6.2f}" for v in bands["alloc_bytes"]),
+                    flush=True,
+                )
+                print(
+                    "        live allocs by eighth:          "
+                    + " ".join(f"{v:+5d}" for v in bands["active_allocations"])
+                    + "   prefill delta "
+                    + ", ".join(
+                        f"{k}={v}" for k, v in sorted(row["instrument_prefill"].items())
+                    ),
+                    flush=True,
+                )
+                print(
+                    "        gc collections by eighth (0/1/2): "
+                    + " ".join(
+                        f"{a}/{b}/{c}"
+                        for a, b, c in zip(
+                            bands["gc0_collections"],
+                            bands["gc1_collections"],
+                            bands["gc2_collections"],
+                        )
+                    ),
+                    flush=True,
+                )
+                print(
+                    "        gc collected by eighth (0/1/2):   "
+                    + " ".join(
+                        f"{a}/{b}/{c}"
+                        for a, b, c in zip(
+                            bands["gc0_collected"],
+                            bands["gc1_collected"],
+                            bands["gc2_collected"],
+                        )
+                    ),
+                    flush=True,
+                )
     finally:
         try:
             generator.close()
@@ -333,6 +620,8 @@ def main() -> int:
         "sclk_counter": str(SCLK_PATH),
         "mclk_counter": str(MCLK_PATH),
         "sample_interval_ms": float(args.sample_interval_ms),
+        "gc_disabled_in_decode": bool(args.no_gc),
+        "instrumented": bool(args.instrument),
         "rows": rows,
         "measured": measured,
         "summary": {
