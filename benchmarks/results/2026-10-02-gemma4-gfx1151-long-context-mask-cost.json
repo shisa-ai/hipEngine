@@ -1,0 +1,86 @@
+{
+  "kind": "gemma4_gfx1151_long_context_mask_cost",
+  "performance_claim": false,
+  "status": "negative-result-and-diagnostic",
+  "not_a_topline": "This adds and replaces no topline row. It records what the keep-mask costs at 262,144 positions, what a mask-free derived-causal path costs, and why the derived path was reverted rather than landed. benchmarks/README.md is unchanged.",
+
+  "recorded": "2026-10-02, gfx1151 Strix Halo (zbook, AMD Radeon 8060S, 124 GB unified), Gemma 4 26B-A4B UD-Q4_K_XL",
+
+  "artifact": {
+    "path": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+  },
+
+  "why": "The previous unit made 262,144 positions runnable at 998.1 s for a 262,140-token prefill. The follow-up premise was that the runtime's dense (rows, keys) uint8 keep-mask was a large part of that: 512 x 260,608 = 133 MB per full-layer block, ~342 GB across a prefill. The arithmetic was right and the conclusion was wrong, and the cost of acting on it was measured before and after the change.",
+
+  "mask_cost_measured": {
+    "method": "_keep_mask(geometry, start, rows) called directly on the real geometries, host wall clock, no GPU. Summed over every 512-row block of a 262,144-token prefill for both layer geometries, as the runner does it (once per distinct sliding_window).",
+    "full_layer_deepest_block": {"shape": [512, 262144], "mb": 134.2, "ms": 25, "gb_per_s": 5.47},
+    "full_layer_first_block": {"shape": [512, 512], "mb": 0.3, "ms": 0, "gb_per_s": 2.43},
+    "sliding_layer_deepest_block": {"shape": [512, 1535], "mb": 0.8, "ms": 1, "gb_per_s": 0.53},
+    "whole_prefill_both_geometries": {"gb": 34.8, "seconds": 6.4},
+    "fraction_of_998_1_s_baseline": 0.006,
+    "note": "The sliding layer's mask is 0.8 MB rather than 134 MB because _sliding_read_range trims the band to window + rows - 1 columns, so only the 5 full layers pay."
+  },
+
+  "kernel_ab": {
+    "kernel": "gemma4_attention_prefill_wmma_full_bf16",
+    "method": "same device buffers, same arguments, both arms alternated within one process so thermal drift shows in both; 2 warmup launches per arm; median of N",
+    "arms": "explicit (the caller's mask is passed and read) against derived (null pointer, kernel computes key_position <= row_position and the window term)",
+    "rows": [
+      {"keys": 65536, "row_offset": 65024, "reps": 5, "explicit_ms": 152.93, "derived_ms": 164.03, "ratio": 1.073},
+      {"keys": 65536, "row_offset": 65024, "reps": 15, "explicit_ms": 154.77, "derived_ms": 162.38, "ratio": 1.049},
+      {"keys": 131072, "row_offset": 130560, "reps": 7, "explicit_ms": 314.93, "derived_ms": 329.01, "ratio": 1.045},
+      {"keys": 65536, "row_offset": 65024, "reps": 15, "explicit_ms": 150.55, "derived_ms": 153.58, "ratio": 1.020, "after": "the derived comparison narrowed from int64_t to int"}
+    ],
+    "separation_at_15_reps": {"explicit_range_ms": [143.0, 152.0], "derived_range_ms": [146.2, 156.0]},
+    "finding": "Deriving is slower than reading, and most of the gap was the implementation: a 64-bit compare is three scalar instructions on this ISA where a 32-bit compare is one, which this codebase already documents for first_kept and walk_end. Narrowing to int halved the regression from 4.5 percent to 2.0 percent. The remaining 2 percent is the branch between the two paths inside the unrolled key loop."
+  },
+
+  "end_to_end": {
+    "protocol": "hipengine.LLM(model=artifact, max_sequence_length=262144), a 262,140-token prompt from scripts/gemma4_campaign_bench.py's corpus, SamplingParams(max_tokens=4, temperature=0.0, ignore_eos=True)",
+    "baseline_reads_the_mask": {"wall_s": 998.1, "prompt_tok_per_s": 262.6, "generated_ids": [237032, 239185, 236945, 239691], "text": "と秋の紅"},
+    "derived_mask": {"wall_s": 1182.7, "prompt_tok_per_s": 221.6, "generated_ids": [237032, 239185, 236945, 239691], "text": "と秋の紅"},
+    "reading": "Same ids, so the derived path is correct end to end. The 18.5 percent wall gap is larger than the micro-benchmark predicts and is not explained; one sample per arm, with construction times of 20.6 s and 16.9 s showing an 18 percent spread between them. The decision rests on the micro-benchmark, not on this pair."
+  },
+
+  "decision": {
+    "action": "reverted",
+    "reason": "The walk is about 75 percent of a 256K prefill and the mask is 0.6 percent, so +2 percent on the walk costs about 15 s against the 6.4 s saved. Net negative. Closing the remaining 2 percent would need the key loop specialized on whether the mask is derived, which is real kernel complexity and a second parity surface, and its ceiling is the 6.4 s it saves.",
+    "scope_reverted": [
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.hip",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.hip",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.py",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_layer.py",
+      "hipengine/runtime/gemma4.py",
+      "tests/test_gpu_gemma4_attention_prefill_wmma.py",
+      "tests/test_gpu_gemma4_attention_prefill_wmma_full.py",
+      "tests/test_unit_gemma4_prefill_attention_selection.py"
+    ],
+    "tree_state": "at the base commit; the change was reverted from a saved patch after the measurement"
+  },
+
+  "correctness_of_the_reverted_path": {
+    "why_recorded": "It bounds what a future attempt would have to re-establish, and it separates 'this was wrong' from 'this was not worth it'.",
+    "parity_cases": 12,
+    "method": "each kernel run twice on identical buffers, once with the caller's mask and once with null, asserting explicit.view(uint32) == derived.view(uint32) -- bit-identical, not within tolerance",
+    "shapes_covered": "tokens 512/512/512/512/1/16 against keys 512/4096/2048/2048/4096/40, with row_offset 0/3584/1024/1536/4095/24 and window 512/4096/1024/512/4096/40, including a window narrower than the block, a one-token decode, and keys < K_BATCH",
+    "result": "all pass, alongside all 44 pre-existing parity tests in those two files",
+    "end_to_end": "identical generated ids to the baseline"
+  },
+
+  "prefill_decomposition_at_256k": {
+    "total_s": 998.1,
+    "non_attention_s": 240,
+    "keep_mask_s": 6.4,
+    "attention_walk_s": 752,
+    "attention_fraction": 0.75,
+    "attention_flop": 5.6e15,
+    "attention_tflop_per_s": 7.5,
+    "basis": "non-attention from the 8,188-token prefill measured at 1,092 tok/s in the same session; attention FLOP from sum over blocks of 512 rows x 512(b+1) keys x 5 full layers x 16 heads x 2 x 512 dims",
+    "reading": "The long-context cost is the 5 full layers' key walk, which grows with each block's own position, and it runs at about 7.5 TFLOP/s. That is what a long-context unit should be aimed at, not the mask."
+  },
+
+  "limits": "Device validation is gfx1151 only; no gfx1100 claim. The 6.4 s mask figure is for this geometry, this block size and this host, and it is quadratic in context, so re-measure before assuming it. The end-to-end pair is one sample per arm and is reported as measured rather than as the basis for the decision. The 7.5 TFLOP/s attention figure is derived from an estimated non-attention split, not from a profiler trace."
+}
