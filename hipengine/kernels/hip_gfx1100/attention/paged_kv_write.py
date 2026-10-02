@@ -34,6 +34,24 @@ _SYMBOL_INT8_SCALE_F32_PROMPT = "hipengine_qwen35_write_paged_kv_int8_per_token_
 _SYMBOL_INT8_SCALE_FP16 = "hipengine_qwen35_write_paged_kv_int8_per_token_head_scale_fp16_spans"
 _SYMBOL_INT8_SCALE_FP16_BATCH = "hipengine_qwen35_write_paged_kv_int8_per_token_head_scale_fp16_batch_spans"
 _SYMBOL_INT8_SCALE_FP16_PROMPT = "hipengine_qwen35_write_paged_kv_int8_per_token_head_scale_fp16_prompt_spans"
+_SYMBOL_INT8_BF16SRC_SCALE_F32 = (
+    "hipengine_qwen35_write_paged_kv_int8_per_token_head_bf16src_scale_f32_spans"
+)
+_SYMBOL_INT8_BF16SRC_SCALE_F32_BATCH = (
+    "hipengine_qwen35_write_paged_kv_int8_per_token_head_bf16src_scale_f32_batch_spans"
+)
+_SYMBOL_INT8_BF16SRC_SCALE_F32_PROMPT = (
+    "hipengine_qwen35_write_paged_kv_int8_per_token_head_bf16src_scale_f32_prompt_spans"
+)
+_SYMBOL_INT8_BF16SRC_SCALE_FP16 = (
+    "hipengine_qwen35_write_paged_kv_int8_per_token_head_bf16src_scale_fp16_spans"
+)
+_SYMBOL_INT8_BF16SRC_SCALE_FP16_BATCH = (
+    "hipengine_qwen35_write_paged_kv_int8_per_token_head_bf16src_scale_fp16_batch_spans"
+)
+_SYMBOL_INT8_BF16SRC_SCALE_FP16_PROMPT = (
+    "hipengine_qwen35_write_paged_kv_int8_per_token_head_bf16src_scale_fp16_prompt_spans"
+)
 _SYMBOL_INT8_BLOCK16_SCALE_F32 = "hipengine_qwen35_write_paged_kv_int8_block16_scale_f32_spans"
 _SYMBOL_INT8_BLOCK16_SCALE_F32_BATCH = "hipengine_qwen35_write_paged_kv_int8_block16_scale_f32_batch_spans"
 _SYMBOL_INT8_BLOCK16_SCALE_F32_PROMPT = "hipengine_qwen35_write_paged_kv_int8_block16_scale_f32_prompt_spans"
@@ -592,6 +610,125 @@ def qwen35_write_paged_kv_int8_per_token_head_prompt_spans(
     )
 
 
+def qwen35_write_paged_kv_int8_per_token_head_bf16_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    v_scale_ptr: int,
+    spans: KVLiveSpans,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append one BF16 K/V row to INT8 KV cache with per-token/head scales.
+
+    The source payload is BF16; the writer decodes it to FP32 before applying
+    the same codec as the FP32-source sibling (max(abs(row))/127 scale,
+    round-to-nearest-even quantize, stored fp16/fp32 scale, zero row -> zero).
+    """
+
+    _launch_int8_write(
+        _int8_bf16src_symbol(spans, batch=False, prompt=False),
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        k_scale_ptr,
+        v_scale_ptr,
+        spans,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_write_paged_kv_int8_per_token_head_bf16_batch_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    v_scale_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append batched BF16 K/V rows into row-major INT8 KV cache arenas."""
+
+    _launch_int8_write_batch(
+        _int8_bf16src_symbol(spans, batch=True, prompt=False),
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        k_scale_ptr,
+        v_scale_ptr,
+        spans,
+        rows,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        row_major_cache=True,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_write_paged_kv_int8_per_token_head_bf16_prompt_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    v_scale_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append prompt BF16 K/V rows into one shared INT8 KV cache arena."""
+
+    _launch_int8_write_batch(
+        _int8_bf16src_symbol(spans, batch=True, prompt=True),
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        k_scale_ptr,
+        v_scale_ptr,
+        spans,
+        rows,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        row_major_cache=False,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_write_paged_kv_int8_block16_spans(
     key_ptr: int,
     value_ptr: int,
@@ -1007,6 +1144,31 @@ def register_qwen35_paged_kv_write_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paged_kv_write", "int8_per_token_head", "per_token_head_batch_spans"),
         qwen35_write_paged_kv_int8_per_token_head_batch_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_per_token_head", "per_token_head_bf16_spans"),
+        qwen35_write_paged_kv_int8_per_token_head_bf16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "paged_kv_write",
+            "int8_per_token_head",
+            "per_token_head_bf16_prompt_spans",
+        ),
+        qwen35_write_paged_kv_int8_per_token_head_bf16_prompt_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "paged_kv_write",
+            "int8_per_token_head",
+            "per_token_head_bf16_batch_spans",
+        ),
+        qwen35_write_paged_kv_int8_per_token_head_bf16_batch_spans,
         replace=replace,
     )
     register(
@@ -1801,6 +1963,31 @@ def _int8_symbol(spans: KVLiveSpans, *, batch: bool, prompt: bool) -> str:
     if batch:
         return _SYMBOL_INT8_SCALE_F32_BATCH
     return _SYMBOL_INT8_SCALE_F32
+
+
+def _int8_bf16src_symbol(spans: KVLiveSpans, *, batch: bool, prompt: bool) -> str:
+    metadata = spans.scale_metadata
+    if metadata is None:
+        raise ValueError(
+            "BF16-source INT8 per-token/head writer requires int8_per_token_head scale metadata"
+        )
+    if metadata.granularity != "per_token_head":
+        raise ValueError(
+            "BF16-source INT8 per-token/head writer requires per_token_head scale "
+            f"granularity; got {metadata.granularity!r}"
+        )
+    scale_dtype = metadata.scale_dtype
+    if scale_dtype == DType.FP16:
+        if prompt:
+            return _SYMBOL_INT8_BF16SRC_SCALE_FP16_PROMPT
+        if batch:
+            return _SYMBOL_INT8_BF16SRC_SCALE_FP16_BATCH
+        return _SYMBOL_INT8_BF16SRC_SCALE_FP16
+    if prompt:
+        return _SYMBOL_INT8_BF16SRC_SCALE_F32_PROMPT
+    if batch:
+        return _SYMBOL_INT8_BF16SRC_SCALE_F32_BATCH
+    return _SYMBOL_INT8_BF16SRC_SCALE_F32
 
 
 def _int8_block16_symbol(spans: KVLiveSpans, *, batch: bool, prompt: bool) -> str:

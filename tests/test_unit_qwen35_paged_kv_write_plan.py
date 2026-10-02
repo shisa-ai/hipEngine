@@ -178,6 +178,27 @@ def test_qwen35_paged_kv_write_registers_span_variants() -> None:
         )
         is qwen35_write_paged_kv_int8_per_token_head_batch_spans
     )
+    bf16_src_variants = {
+        "per_token_head_bf16_spans": "qwen35_write_paged_kv_int8_per_token_head_bf16_spans",
+        "per_token_head_bf16_prompt_spans": (
+            "qwen35_write_paged_kv_int8_per_token_head_bf16_prompt_spans"
+        ),
+        "per_token_head_bf16_batch_spans": (
+            "qwen35_write_paged_kv_int8_per_token_head_bf16_batch_spans"
+        ),
+    }
+    for variant, wrapper_name in bf16_src_variants.items():
+        wrapper = getattr(paged_kv_write_module, wrapper_name, None)
+        assert callable(wrapper), f"missing BF16-source INT8 writer wrapper {wrapper_name}"
+        assert (
+            resolve(
+                backend="hip_gfx1100",
+                layer="paged_kv_write",
+                quant="int8_per_token_head",
+                variant=variant,
+            )
+            is wrapper
+        )
 
 
 def test_qwen35_shared_batch_kv_write_is_not_aliased_to_gfx1151() -> None:
@@ -193,6 +214,47 @@ def test_qwen35_shared_batch_kv_write_is_not_aliased_to_gfx1151() -> None:
             "mixed_bf16_shared_batch_spans",
         )
     )
+
+
+def _grouped_int8_spans(granularity: str) -> KVLiveSpans:
+    """Correctly shaped grouped INT8 metadata for the BF16-source refusal test."""
+
+    groups = 2 if granularity == "block16" else 1  # head_dim=32, group 16 or 32
+    metadata = KVScaleMetadata(
+        k_scale=_tensor(0x3000, (1, 4, 2, groups), "fp16"),
+        v_scale=_tensor(0x4000, (1, 4, 2, groups), "fp16"),
+        scale_dtype="fp16",
+        granularity=granularity,
+    )
+    return KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1000, (1,), "int32"),
+        live_counts=_tensor(0x2000, (1,), "int64"),
+        max_live_count=2,
+        storage_dtype="int8_per_token_head",
+        scale_metadata=metadata,
+    )
+
+
+def test_bf16_source_writer_rejects_grouped_granularity_before_gpu(monkeypatch) -> None:
+    """All three BF16-source wrappers refuse grouped granularities pre-build."""
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("GPU build must not run for a refused granularity")
+
+    monkeypatch.setattr(paged_kv_write_module, "build_qwen35_paged_kv_write", _boom)
+    launchers = (
+        ("qwen35_write_paged_kv_int8_per_token_head_bf16_spans", ()),
+        ("qwen35_write_paged_kv_int8_per_token_head_bf16_batch_spans", (1,)),
+        ("qwen35_write_paged_kv_int8_per_token_head_bf16_prompt_spans", (1,)),
+    )
+    for granularity in ("block16", "hadamard_group32"):
+        spans = _grouped_int8_spans(granularity)
+        k_scale_ptr = spans.scale_metadata.k_scale.ptr
+        v_scale_ptr = spans.scale_metadata.v_scale.ptr
+        for name, row_arg in launchers:
+            wrapper = getattr(paged_kv_write_module, name)
+            with pytest.raises(ValueError, match="per_token_head"):
+                wrapper(0, 0, 0, 0, k_scale_ptr, v_scale_ptr, spans, *row_arg, 4, 2, 32)
 
 
 def test_qwen35_paged_kv_write_build_plan_is_dry_run_safe(tmp_path) -> None:
