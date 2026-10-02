@@ -1,0 +1,1467 @@
+{
+ "all_replays_faithful": false,
+ "arithmetic_order_notes": "CPU control: keys @ q via numpy (BLAS order), np.exp softmax with a max subtraction, weighted V summed in slot order, all FP32. GPU INT8 consumer: per-warp strided partial dot products reduced by a shuffle tree, expf softmax with a block max, weighted V summed in slot order, all FP32. GPU BF16 consumer (decode kernel): the same products and stride-tree order as the exact prefill kernel, output narrowed to BF16. The CPU and GPU orders differ in reduction order and exp implementation; the frozen tolerances are evaluated as declared and may fail when BF16 rounding exceeds them.",
+ "attention_geometry": [
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 512,
+   "k_eq_v": true,
+   "layer_type": "full_attention",
+   "num_heads": 16,
+   "num_kv_heads": 2,
+   "sliding_window": null
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 512,
+   "k_eq_v": true,
+   "layer_type": "full_attention",
+   "num_heads": 16,
+   "num_kv_heads": 2,
+   "sliding_window": null
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 512,
+   "k_eq_v": true,
+   "layer_type": "full_attention",
+   "num_heads": 16,
+   "num_kv_heads": 2,
+   "sliding_window": null
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 512,
+   "k_eq_v": true,
+   "layer_type": "full_attention",
+   "num_heads": 16,
+   "num_kv_heads": 2,
+   "sliding_window": null
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 256,
+   "k_eq_v": false,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "sliding_window": 1024
+  },
+  {
+   "head_dim": 512,
+   "k_eq_v": true,
+   "layer_type": "full_attention",
+   "num_heads": 16,
+   "num_kv_heads": 2,
+   "sliding_window": null
+  }
+ ],
+ "attention_logit_softcap": null,
+ "attention_scale": 1.0,
+ "cpu_shared_function_self_check_passed": true,
+ "cpu_shared_function_self_check_rel_l2": {
+  "0": 0.0,
+  "5": 0.0
+ },
+ "diagnostic_only": true,
+ "frozen_chain": {
+  "chain_sha256": "ac020238439bfd683dc7ec9a7200440b182277f7931cad3c83ceeae5a80d9e32",
+  "first_scored_decode_position": 63,
+  "frozen_artifact": "benchmarks/results/2026-10-02-gemma4-d12-int8-kv-teacher-forced.json",
+  "name": "prose_en_short",
+  "prefill": 63,
+  "prompt_ids": [
+   818,
+   5279,
+   529,
+   7001,
+   563,
+   9079,
+   236764,
+   532,
+   506,
+   3207,
+   815,
+   1010,
+   496,
+   3988,
+   529,
+   1610,
+   532,
+   6647,
+   573,
+   24744,
+   236761,
+   9567,
+   41850,
+   2768,
+   4146,
+   600,
+   15184,
+   506,
+   32281,
+   2846,
+   1343,
+   506,
+   1861,
+   1719,
+   236761,
+   49660,
+   30445,
+   47874,
+   26808,
+   236764,
+   1813,
+   532,
+   6800,
+   26314,
+   1131,
+   22422,
+   532,
+   12123,
+   4888,
+   506,
+   151412,
+   236751,
+   529,
+   3826,
+   6485,
+   236761,
+   79290,
+   26527,
+   30016,
+   5387,
+   2101,
+   506,
+   13401,
+   236793,
+   506,
+   26291,
+   22745,
+   7057,
+   23076,
+   1813,
+   46649,
+   1082,
+   506,
+   2634,
+   2787,
+   1623,
+   529,
+   16962,
+   3879,
+   236761,
+   818,
+   5279,
+   529,
+   7001,
+   563,
+   9079,
+   236764,
+   532,
+   506,
+   3207,
+   815,
+   1010,
+   496,
+   3988,
+   529,
+   1610
+  ],
+  "prompt_tokens": 96,
+  "scored_rows": 32
+ },
+ "interpretation": {
+  "bf16_consumer_frozen_tolerance_passed": false,
+  "bf16_consumer_matches_readback_floor_exactly_per_layer": {
+   "0": true,
+   "5": false
+  },
+  "bf16_consumer_within_readback_floor": true,
+  "bf16_production_matches_rounded_cpu_raw_bytes": {
+   "0": true,
+   "5": false
+  },
+  "earliest_prefill_divergence": null,
+  "earliest_prefill_divergence_note": "prefill hidden input and context were captured only at the replay layers, so the earliest prefill divergence across all layers was not captured; the localization above is a decode-boundary statement.",
+  "first_observed_decode_input_divergence_layer": 1,
+  "first_observed_decode_output_divergence_layer": 0,
+  "int8_consumer_faithful_on_fixed_input": true,
+  "notes": [
+   "First observed decode-boundary attention output divergence is layer 0; its whole-model decode-row inputs are bit-identical.",
+   "First observed decode-boundary attention input divergence is layer 1.",
+   "Layer 0: frozen INT8 consumer tolerance passed; frozen BF16 consumer tolerance FAILED (observed max abs 0.0297155 against frozen 0.005); the observed BF16 error exactly equals the BF16 readback floor; BF16 production matches the BF16-rounded CPU control by raw bytes: True.",
+   "Layer 0: whole-model decode-row inputs are identical and written prefill K/V over all history are identical, so its whole-model arms are a fixed-input comparison; the replay INT8-vs-whole-model raw-byte equality is True.",
+   "Layer 5: frozen INT8 consumer tolerance passed; frozen BF16 consumer tolerance FAILED (observed max abs 0.00777078 against frozen 0.005); the observed BF16 error does not exceed the recorded BF16 readback floor plus 1e-6, but does not equal the floor; BF16 production matches the BF16-rounded CPU control by raw bytes: False.",
+   "Layer 5: whole-model decode-row inputs are already different and written prefill K/V over all history are already different, so its whole-model arms are not a fixed-input comparison; the replay INT8-vs-whole-model raw-byte equality is False."
+  ],
+  "wholemodel_decode_row_inputs_equal_at_replayed_layers": {
+   "0": true,
+   "5": false
+  },
+  "wholemodel_fixed_input_at_replayed_layers": {
+   "0": true,
+   "5": false
+  },
+  "wholemodel_prefill_kv_equal_at_replayed_layers": {
+   "0": true,
+   "5": false
+  }
+ },
+ "kind": "gemma4_d12_int8_kv_attention_boundary_localization",
+ "localization": {
+  "first_divergent_input_layer": 1,
+  "first_divergent_output_layer": 0,
+  "layers": {
+   "0": {
+    "bf16_route": "exact",
+    "context_changed_elements": 3821,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 0.078125,
+    "context_rel_l2": 0.01972922058636048,
+    "hidden_input_equal": true,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": true,
+    "q_equal": true,
+    "v_equal": true
+   },
+   "1": {
+    "bf16_route": "exact",
+    "context_changed_elements": 3899,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 0.09375,
+    "context_rel_l2": 0.01959197464607242,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "10": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4014,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 0.18927001953125,
+    "context_rel_l2": 0.0483395969574667,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "11": {
+    "bf16_route": "exact",
+    "context_changed_elements": 7967,
+    "context_elements": 8192,
+    "context_equal": false,
+    "context_max_abs_diff": 0.375,
+    "context_rel_l2": 0.07041732562164016,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "12": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4044,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 0.478515625,
+    "context_rel_l2": 0.11011000648471216,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "13": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4051,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 0.5546875,
+    "context_rel_l2": 0.09952026632566272,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "14": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4067,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 0.697265625,
+    "context_rel_l2": 0.13702364960257302,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "15": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4060,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 2.734375,
+    "context_rel_l2": 0.18569549424547854,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "16": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4065,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 5.171875,
+    "context_rel_l2": 0.21028024619602428,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "17": {
+    "bf16_route": "exact",
+    "context_changed_elements": 8151,
+    "context_elements": 8192,
+    "context_equal": false,
+    "context_max_abs_diff": 2.28125,
+    "context_rel_l2": 0.2230118276250219,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "18": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4073,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 3.359375,
+    "context_rel_l2": 0.3050255144462515,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "19": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4065,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 4.5,
+    "context_rel_l2": 0.31643008775048853,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "2": {
+    "bf16_route": "exact",
+    "context_changed_elements": 3878,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 0.375,
+    "context_rel_l2": 0.030937198021686915,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "20": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4070,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 4.21875,
+    "context_rel_l2": 0.37235139148913043,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "21": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4069,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 2.859375,
+    "context_rel_l2": 0.22687583204490075,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "22": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4073,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 8.6015625,
+    "context_rel_l2": 0.4611860643236889,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "23": {
+    "bf16_route": "exact",
+    "context_changed_elements": 8164,
+    "context_elements": 8192,
+    "context_equal": false,
+    "context_max_abs_diff": 9.3125,
+    "context_rel_l2": 0.6267258346289033,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "24": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4079,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 4.921875,
+    "context_rel_l2": 0.32694304505692573,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "25": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4086,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 3.671875,
+    "context_rel_l2": 0.22975394970585516,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "26": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4075,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 3.796875,
+    "context_rel_l2": 0.3130397387284708,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "27": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4077,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 2.140625,
+    "context_rel_l2": 0.27724740699271,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "28": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4078,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 5.46875,
+    "context_rel_l2": 0.24507161147870538,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "29": {
+    "bf16_route": "exact",
+    "context_changed_elements": 8127,
+    "context_elements": 8192,
+    "context_equal": false,
+    "context_max_abs_diff": 1.09375,
+    "context_rel_l2": 0.21609508801134172,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "3": {
+    "bf16_route": "exact",
+    "context_changed_elements": 3897,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 0.24761962890625,
+    "context_rel_l2": 0.03338323756718655,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "4": {
+    "bf16_route": "exact",
+    "context_changed_elements": 3930,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 0.5234375,
+    "context_rel_l2": 0.032571364882458986,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "5": {
+    "bf16_route": "exact",
+    "context_changed_elements": 7768,
+    "context_elements": 8192,
+    "context_equal": false,
+    "context_max_abs_diff": 0.1455078125,
+    "context_rel_l2": 0.03434864681177374,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "6": {
+    "bf16_route": "exact",
+    "context_changed_elements": 3933,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 0.236328125,
+    "context_rel_l2": 0.04463685438417376,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "7": {
+    "bf16_route": "exact",
+    "context_changed_elements": 3973,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 1.5625,
+    "context_rel_l2": 0.07229745172171537,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "8": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4016,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 2.0859375,
+    "context_rel_l2": 0.07788488810564513,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   },
+   "9": {
+    "bf16_route": "exact",
+    "context_changed_elements": 4002,
+    "context_elements": 4096,
+    "context_equal": false,
+    "context_max_abs_diff": 0.30908203125,
+    "context_rel_l2": 0.056997973724668465,
+    "hidden_input_equal": false,
+    "int8_route": {
+     "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+     "writer": "int8_per_token_head/per_token_head_bf16_spans"
+    },
+    "k_equal": false,
+    "q_equal": false,
+    "v_equal": false
+   }
+  },
+  "num_layers_compared": 30
+ },
+ "mask_semantics": "causal (key <= query) plus the per-layer sliding window; the INT8 route reads no evict mask",
+ "npz_path": "/mnt/nvme1/gemma4-eval/d12-localize/parent-gpu0-final.npz",
+ "npz_sha256": "b6aa1bdb8ab05811426333bd3d001d696ea9199479c90ba5e121f03f1669094e",
+ "overall": {
+  "failed": [
+   "replay_consumer_control:layer0",
+   "replay_consumer_control:layer5"
+  ],
+  "passed": false
+ },
+ "performance_claim": false,
+ "promotion_qualified": false,
+ "provenance": {
+  "arithmetic_order_notes": "CPU control: keys @ q via numpy (BLAS order), np.exp softmax with a max subtraction, weighted V summed in slot order, all FP32. GPU INT8 consumer: per-warp strided partial dot products reduced by a shuffle tree, expf softmax with a block max, weighted V summed in slot order, all FP32. GPU BF16 consumer (decode kernel): the same products and stride-tree order as the exact prefill kernel, output narrowed to BF16. The CPU and GPU orders differ in reduction order and exp implementation; the frozen tolerances are evaluated as declared and may fail when BF16 rounding exceeds them.",
+  "artifact": {
+   "bytes": 17010980576,
+   "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+   "mtime": "2026-09-22T10:30:20.793299+00:00",
+   "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+  },
+  "attention_source_sha256": {
+   "gemma4_attention.hip": "e548eab497909117aade4e2170e1229c41efad5486c85439545089637ad710a1",
+   "gemma4_attention.py": "9f9671318a40e359cd8dc690b0d238096360ae40ddfd9b983796ed41711b446a",
+   "gemma4_attention_int8.hip": "ba744b768cf6e69245f01e5f13533ccac9550b2eb01fc2c390783525b3fe6a21",
+   "gemma4_attention_int8.py": "8e65448de048a7c3d9e7400c41e140f70bb2d20a63c6be0a7decf0ecec918a89",
+   "gemma4_layer.py": "dad91d7fa87368c9d83858ee974b92d75ecadc885b35d7f583fab3924716f705"
+  },
+  "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_d12_int8_kv_localize.py run --out /mnt/nvme1/gemma4-eval/d12-localize/parent-gpu0-final.json --npz /mnt/nvme1/gemma4-eval/d12-localize/parent-gpu0-final.npz",
+  "context_length": 8192,
+  "cpu_control_source_sha256": {
+   "cpu_dequant": "2fcb0d093ca66a15c40dc0ce4ac8668ad5bdccf18f318ad0836866e5696b0ea2",
+   "cpu_oracle": "f15a990953158ef0daf63a119d3c76bce4296657452fad3087cd4bb0f64c8bab"
+  },
+  "env": {
+   "HIPENGINE_GEMMA4_MOE_PREFILL": "auto",
+   "HIP_INCLUDE_PATH": "/opt/rocm/include",
+   "HIP_LIB_PATH": "/opt/rocm/lib",
+   "HIP_PATH": "/opt/rocm",
+   "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+   "HSA_SCRATCH_SINGLE_LIMIT": "8388608",
+   "ROCR_VISIBLE_DEVICES": "0"
+  },
+  "evaluator_source_sha256": "4a22dc4a3460a65be4aa96c4fec711c1d9210e3d19e00d67bbfc156ccca15d73",
+  "execution_identity": {
+   "fell_back_to_strict": false,
+   "legacy_path": false,
+   "manifest": {
+    "attribute": "execution_profile_manifest",
+    "value": {
+     "backend": "hip_gfx1100",
+     "execution_profile": "production",
+     "graph_policy": "serial_eager",
+     "kind": "hipengine_execution_profile_manifest",
+     "kv_policy": "paged_bf16",
+     "model": "gemma4_gguf",
+     "quant": "gguf_q4_k_m",
+     "schema_version": 1,
+     "selections": [
+      {
+       "evidence_artifact": null,
+       "layer": "embedding",
+       "registry_quant": "gguf_q8_0",
+       "scope": "lookup_q8_0",
+       "selected_variant": "lookup_bf16_out",
+       "strict_fallback_variant": "lookup_bf16_out"
+      },
+      {
+       "evidence_artifact": null,
+       "layer": "linear",
+       "registry_quant": "gguf_q8_0",
+       "scope": "dense_decode_q8_0",
+       "selected_variant": "pack8_gemv_bf16_bf16_out",
+       "strict_fallback_variant": "pack8_gemv_bf16_bf16_out"
+      },
+      {
+       "evidence_artifact": null,
+       "layer": "linear",
+       "registry_quant": "gguf_q8_0",
+       "scope": "dense_prefill_q8_0",
+       "selected_variant": "wmma_prefill_bf16_bf16_out",
+       "strict_fallback_variant": "wmma_prefill_bf16_bf16_out"
+      },
+      {
+       "evidence_artifact": null,
+       "layer": "linear",
+       "registry_quant": "gguf_q8_0",
+       "scope": "lm_head_f32_q8_0",
+       "selected_variant": "pack8_gemv_bf16_f32_out",
+       "strict_fallback_variant": "pack8_gemv_bf16_f32_out"
+      },
+      {
+       "evidence_artifact": null,
+       "layer": "linear",
+       "registry_quant": "gguf_q4_k_t16_v1",
+       "scope": "moe_decode_q4_k",
+       "selected_variant": "selected_gemv_bf16_bf16_out",
+       "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+      },
+      {
+       "evidence_artifact": null,
+       "layer": "linear",
+       "registry_quant": "gguf_q5_1",
+       "scope": "moe_decode_q5_1",
+       "selected_variant": "selected_gemv_bf16_bf16_out",
+       "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+      },
+      {
+       "evidence_artifact": null,
+       "layer": "linear",
+       "registry_quant": "gguf_q5_k",
+       "scope": "moe_decode_q5_k",
+       "selected_variant": "selected_gemv_bf16_bf16_out",
+       "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+      },
+      {
+       "evidence_artifact": null,
+       "layer": "linear",
+       "registry_quant": "gguf_q8_0",
+       "scope": "moe_selected_q8_0",
+       "selected_variant": "selected_gemv_bf16_bf16_out",
+       "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+      },
+      {
+       "evidence_artifact": null,
+       "layer": "moe_linear",
+       "registry_quant": "gguf_q5_1",
+       "scope": "down_q5_1",
+       "selected_variant": "selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+       "strict_fallback_variant": "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
+      },
+      {
+       "evidence_artifact": null,
+       "layer": "moe_linear",
+       "registry_quant": "gguf_q4_k_t16_v1",
+       "scope": "gate_up_q4_k",
+       "selected_variant": "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out",
+       "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out"
+      },
+      {
+       "evidence_artifact": null,
+       "layer": "moe_linear",
+       "registry_quant": "gguf_q5_k",
+       "scope": "gate_up_q5_k",
+       "selected_variant": "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out",
+       "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
+      }
+     ]
+    }
+   },
+   "manifest_sha256": "940b514e0828f9cc2e69dddaebe31fd4e4c58eb864c3556f2e29444d127e41ac",
+   "manifest_status": "exposed",
+   "requested_profile": null,
+   "requested_profile_status": "constructor/environment selector",
+   "resolved_profile": {
+    "attribute": "resolved_execution_profile",
+    "value": "production"
+   },
+   "resolved_profile_status": "exposed",
+   "scope": "resolved model execution plan; not INT8 KV numerical qualification",
+   "strict_manifest_sha256": "81447202ecc4e4e544c72afa200bcba8a441420b246d877ff2b802e66708509c"
+  },
+  "git_commit": "fe157bca73aebb2a0f4ee4a34c65d5edcd2a7e9a",
+  "git_dirty": true,
+  "git_dirty_files": [
+   "M audit/findings/stub.json",
+   " M audit/findings/unguarded-hip-test.json",
+   " M audit/inventory/candidates.json",
+   " M audit/inventory/flags.json",
+   " M audit/inventory/kernels.json",
+   " M audit/inventory/ledger.json",
+   " M audit/inventory/meta.json",
+   " M audit/inventory/worklog.json",
+   " M audit/triage/stub.jsonl",
+   "?? audit/runs/20261002T182303Z/",
+   "?? benchmarks/results/2026-09-30-gemma4-p4096-revert-router-at41-w7900.json",
+   "?? benchmarks/results/2026-10-02-gemma4-d12-int8-kv-boundary-localization.json",
+   "?? scratch/d3_down_t64_census/",
+   "?? scratch/d3_down_t64_census_rollup.json",
+   "?? scratch/d3_q5_1_down_screen.json",
+   "?? scratch/d3_q5_1_down_screen_r1.json",
+   "?? scratch/d3_q5_1_down_screen_r16.json",
+   "?? scratch/d3_q5_1_down_screen_r8.json",
+   "?? scratch/p2-tiled-attn/",
+   "?? scratch/t16_fused_mmq32_probe.py",
+   "?? scripts/gemma4_d12_int8_kv_localize.py",
+   "?? tests/test_gpu_gemma4_d12_int8_kv_localize.py",
+   "?? tests/test_unit_gemma4_d12_int8_kv_localize.py",
+   "?? worklog/entries/20261002T204309.300562Z-lhl-gemma4-d12-int8-kv-boundary-localization-e35009.md"
+  ],
+  "gpu_binding": {
+   "HIP_VISIBLE_DEVICES": null,
+   "ROCR_VISIBLE_DEVICES": "0"
+  },
+  "gpu_name_device0": "AMD Radeon Pro W7900",
+  "hipcc": [
+   "HIP version: 7.2.53211-3d9ef42",
+   "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+  ],
+  "int8_source_sha256": {
+   "owner": "27470ce35322a43cb81f085421f86731a2a35eb7c1fdbbeaca506c28e4aa72dc",
+   "runtime": "16f7b103d817ff4c1d68b6c4efab2321c90d58738f431a686d78a2e8dcf2e5ac",
+   "writer_hip": "2c77fbca1faa0fdc44f6fe69e25798bd5dba8f8f0d3d433717c746efa93e2722",
+   "writer_py": "58b70dc44592af9b7bcf2bda3d298703d9650229e5a521b4b4bc596824745bcc"
+  },
+  "max_block": 1024,
+  "physical_host": {
+   "hostname": "epyc",
+   "platform_node": "epyc"
+  },
+  "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+  "python": "3.11.11",
+  "rocm_smi_clock_power": [
+   "============================ ROCm System Management Interface ============================",
+   "====================================== Temperature =======================================",
+   "GPU[0]\t\t: Temperature (Sensor edge) (C): 29.0",
+   "GPU[0]\t\t: Temperature (Sensor junction) (C): 45.0",
+   "GPU[0]\t\t: Temperature (Sensor memory) (C): 42.0",
+   "GPU[1]\t\t: Temperature (Sensor edge) (C): 29.0",
+   "GPU[1]\t\t: Temperature (Sensor junction) (C): 36.0",
+   "GPU[1]\t\t: Temperature (Sensor memory) (C): 42.0",
+   "==========================================================================================",
+   "=============================== Current clock frequencies ================================",
+   "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+   "GPU[0]\t\t: fclk clock level: 4: (1801Mhz)",
+   "GPU[0]\t\t: mclk clock level: 3: (1124Mhz)",
+   "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+   "GPU[0]\t\t: socclk clock level: 1: (1200Mhz)",
+   "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+   "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+   "GPU[1]\t\t: fclk clock level: 1: (1000Mhz)",
+   "GPU[1]\t\t: mclk clock level: 0: (96Mhz)",
+   "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+   "GPU[1]\t\t: socclk clock level: 1: (600Mhz)",
+   "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+   "==========================================================================================",
+   "=================================== Power Consumption ====================================",
+   "GPU[0]\t\t: Average Graphics Package Power (W): 59.0",
+   "GPU[1]\t\t: Average Graphics Package Power (W): 7.0",
+   "==========================================================================================",
+   "================================== End of ROCm SMI Log ==================================="
+  ],
+  "wrapper_source_sha256": "ed4eb66c82a90e42ff16cbf480fd393887ba5da180870e534d214f4d1dca460c"
+ },
+ "replay": {
+  "0": {
+   "attention_logit_softcap": null,
+   "attention_scale": 1.0,
+   "bf16_consumer_matches_readback_floor_exactly": true,
+   "bf16_consumer_vs_cpu_max_abs": 0.029715538024902344,
+   "bf16_consumer_vs_cpu_rel_l2": 0.0015571220083769061,
+   "bf16_consumer_within_readback_floor": true,
+   "bf16_production_matches_rounded_cpu_raw_bytes": {
+    "a_dtype": "uint16",
+    "a_shape": [
+     4096
+    ],
+    "b_dtype": "uint16",
+    "b_shape": [
+     4096
+    ],
+    "dtype_match": true,
+    "raw_bytes_equal": true,
+    "shape_match": true
+   },
+   "bf16_readback_floor_comparison_allowance": 1e-06,
+   "bf16_readback_rounding_floor_max_abs": 0.029715538024902344,
+   "bf16_readback_rounding_floor_rel_l2": 0.0015571220083769061,
+   "bf16_route": "exact",
+   "context": 64,
+   "cpu_bf16_output_l2": 43.42069401523501,
+   "cpu_int8_output_l2": 43.43176868032642,
+   "cpu_shared_function_self_check_rel_l2": 0.0,
+   "cpu_shared_function_self_check_scope": "the common CPU algorithm calls _attention_head_row and the mask loop from the existing quantized oracle, so this is a shared-function consistency check, not an independent second oracle",
+   "fixed_input_bf16_vs_int8_bf16_max_abs": 0.078125,
+   "fixed_input_bf16_vs_int8_bf16_rel_l2": 0.01972922058636048,
+   "head_dim": 256,
+   "int8_consumer_bf16_vs_cpu_rel_l2": 0.001504618261309732,
+   "int8_consumer_vs_cpu_max_abs": 2.6151537895202637e-06,
+   "int8_consumer_vs_cpu_rel_l2": 3.86350209462952e-07,
+   "int8_replay_vs_wholemodel_context_f32_literal": {
+    "a_dtype": "float32",
+    "a_shape": [
+     4096
+    ],
+    "b_dtype": "float32",
+    "b_shape": [
+     4096
+    ],
+    "dtype_match": true,
+    "raw_bytes_equal": true,
+    "shape_match": true
+   },
+   "int8_replay_vs_wholemodel_context_f32_rel_l2": 0.0,
+   "int8_route": {
+    "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+    "writer": "int8_per_token_head/per_token_head_bf16_spans"
+   },
+   "k_eq_v": false,
+   "kv_reconstruction": {
+    "key": {
+     "elements": 131072,
+     "exact_equal_elements": 225,
+     "original_bf16_vs_reconstructed_literal": {
+      "a_dtype": "float32",
+      "a_shape": [
+       64,
+       8,
+       256
+      ],
+      "b_dtype": "float32",
+      "b_shape": [
+       64,
+       8,
+       256
+      ],
+      "dtype_match": true,
+      "raw_bytes_equal": false,
+      "shape_match": true
+     },
+     "original_vs_reconstructed_max_abs": 0.00655364990234375,
+     "original_vs_reconstructed_rel_l2": 0.014835627024740032,
+     "reconstructed_shape": [
+      64,
+      8,
+      256
+     ],
+     "shape": [
+      64,
+      8,
+      256
+     ]
+    },
+    "slots": 64,
+    "value": {
+     "elements": 131072,
+     "exact_equal_elements": 207,
+     "original_bf16_vs_reconstructed_literal": {
+      "a_dtype": "float32",
+      "a_shape": [
+       64,
+       8,
+       256
+      ],
+      "b_dtype": "float32",
+      "b_shape": [
+       64,
+       8,
+       256
+      ],
+      "dtype_match": true,
+      "raw_bytes_equal": false,
+      "shape_match": true
+     },
+     "original_vs_reconstructed_max_abs": 0.05975341796875,
+     "original_vs_reconstructed_rel_l2": 0.016750697577371503,
+     "reconstructed_shape": [
+      64,
+      8,
+      256
+     ],
+     "shape": [
+      64,
+      8,
+      256
+     ]
+    }
+   },
+   "layer": 0,
+   "layer_type": "sliding_attention",
+   "num_heads": 16,
+   "num_kv_heads": 8,
+   "quantization_cpu_bf16_vs_cpu_int8_max_abs": 0.0699465274810791,
+   "quantization_cpu_bf16_vs_cpu_int8_rel_l2": 0.019581337482696342,
+   "query_position": 63,
+   "replay_context_bf16_vs_f32_rounding_literal": {
+    "a_dtype": "uint16",
+    "a_shape": [
+     4096
+    ],
+    "b_dtype": "uint16",
+    "b_shape": [
+     4096
+    ],
+    "dtype_match": true,
+    "raw_bytes_equal": true,
+    "shape_match": true
+   },
+   "sliding_window": 1024,
+   "verdict": {
+    "bf16_consumer_faithful": false,
+    "failed": [
+     "bf16_consumer_vs_cpu"
+    ],
+    "int8_consumer_faithful": true,
+    "passed": false
+   },
+   "wholemodel_prefill_kv_equal": {
+    "k_equal": true,
+    "v_equal": true
+   }
+  },
+  "5": {
+   "attention_logit_softcap": null,
+   "attention_scale": 1.0,
+   "bf16_consumer_matches_readback_floor_exactly": false,
+   "bf16_consumer_vs_cpu_max_abs": 0.0077707767486572266,
+   "bf16_consumer_vs_cpu_rel_l2": 0.001656424772309105,
+   "bf16_consumer_within_readback_floor": true,
+   "bf16_production_matches_rounded_cpu_raw_bytes": {
+    "a_dtype": "uint16",
+    "a_shape": [
+     8192
+    ],
+    "b_dtype": "uint16",
+    "b_shape": [
+     8192
+    ],
+    "dtype_match": true,
+    "raw_bytes_equal": false,
+    "shape_match": true
+   },
+   "bf16_readback_floor_comparison_allowance": 1e-06,
+   "bf16_readback_rounding_floor_max_abs": 0.0077707767486572266,
+   "bf16_readback_rounding_floor_rel_l2": 0.0016564211406748489,
+   "bf16_route": "exact",
+   "context": 64,
+   "cpu_bf16_output_l2": 65.91509168642628,
+   "cpu_int8_output_l2": 65.8856552395986,
+   "cpu_shared_function_self_check_rel_l2": 0.0,
+   "cpu_shared_function_self_check_scope": "the common CPU algorithm calls _attention_head_row and the mask loop from the existing quantized oracle, so this is a shared-function consistency check, not an independent second oracle",
+   "fixed_input_bf16_vs_int8_bf16_max_abs": 0.0234375,
+   "fixed_input_bf16_vs_int8_bf16_rel_l2": 0.008077650550955164,
+   "head_dim": 512,
+   "int8_consumer_bf16_vs_cpu_rel_l2": 0.0016345052338811812,
+   "int8_consumer_vs_cpu_max_abs": 1.2814998626708984e-06,
+   "int8_consumer_vs_cpu_rel_l2": 1.6932127853713434e-07,
+   "int8_replay_vs_wholemodel_context_f32_literal": {
+    "a_dtype": "float32",
+    "a_shape": [
+     8192
+    ],
+    "b_dtype": "float32",
+    "b_shape": [
+     8192
+    ],
+    "dtype_match": true,
+    "raw_bytes_equal": false,
+    "shape_match": true
+   },
+   "int8_replay_vs_wholemodel_context_f32_rel_l2": 0.03568153355178248,
+   "int8_route": {
+    "consumer": "paged_attn_decode/int8_per_token_head/gemma4_direct_spans",
+    "writer": "int8_per_token_head/per_token_head_bf16_spans"
+   },
+   "k_eq_v": true,
+   "kv_reconstruction": {
+    "key": {
+     "elements": 65536,
+     "exact_equal_elements": 239,
+     "original_bf16_vs_reconstructed_literal": {
+      "a_dtype": "float32",
+      "a_shape": [
+       64,
+       2,
+       512
+      ],
+      "b_dtype": "float32",
+      "b_shape": [
+       64,
+       2,
+       512
+      ],
+      "dtype_match": true,
+      "raw_bytes_equal": false,
+      "shape_match": true
+     },
+     "original_vs_reconstructed_max_abs": 0.00238800048828125,
+     "original_vs_reconstructed_rel_l2": 0.01084222465414502,
+     "reconstructed_shape": [
+      64,
+      2,
+      512
+     ],
+     "shape": [
+      64,
+      2,
+      512
+     ]
+    },
+    "slots": 64,
+    "value": {
+     "elements": 65536,
+     "exact_equal_elements": 150,
+     "original_bf16_vs_reconstructed_literal": {
+      "a_dtype": "float32",
+      "a_shape": [
+       64,
+       2,
+       512
+      ],
+      "b_dtype": "float32",
+      "b_shape": [
+       64,
+       2,
+       512
+      ],
+      "dtype_match": true,
+      "raw_bytes_equal": false,
+      "shape_match": true
+     },
+     "original_vs_reconstructed_max_abs": 0.0382080078125,
+     "original_vs_reconstructed_rel_l2": 0.010807623658215568,
+     "reconstructed_shape": [
+      64,
+      2,
+      512
+     ],
+     "shape": [
+      64,
+      2,
+      512
+     ]
+    }
+   },
+   "layer": 5,
+   "layer_type": "full_attention",
+   "num_heads": 16,
+   "num_kv_heads": 2,
+   "quantization_cpu_bf16_vs_cpu_int8_max_abs": 0.022150754928588867,
+   "quantization_cpu_bf16_vs_cpu_int8_rel_l2": 0.007759269620498743,
+   "query_position": 63,
+   "replay_context_bf16_vs_f32_rounding_literal": {
+    "a_dtype": "uint16",
+    "a_shape": [
+     8192
+    ],
+    "b_dtype": "uint16",
+    "b_shape": [
+     8192
+    ],
+    "dtype_match": true,
+    "raw_bytes_equal": true,
+    "shape_match": true
+   },
+   "sliding_window": null,
+   "verdict": {
+    "bf16_consumer_faithful": false,
+    "failed": [
+     "bf16_consumer_vs_cpu"
+    ],
+    "int8_consumer_faithful": true,
+    "passed": false
+   },
+   "wholemodel_prefill_kv_equal": {
+    "k_equal": false,
+    "v_equal": false
+   }
+  }
+ },
+ "replay_layers": [
+  0,
+  5
+ ],
+ "run_seconds": 25.0,
+ "tolerances": {
+  "bf16_consumer_vs_cpu_max_abs": 0.005,
+  "bf16_consumer_vs_cpu_rel_l2": 0.005,
+  "cpu_shared_function_self_check_rel_l2": 1e-06,
+  "int8_consumer_vs_cpu_max_abs": 0.0001,
+  "int8_consumer_vs_cpu_rel_l2": 0.0001
+ },
+ "wholemodel_prefill_kv_equality": {
+  "0": {
+   "k_equal": true,
+   "v_equal": true
+  },
+  "5": {
+   "k_equal": false,
+   "v_equal": false
+  }
+ }
+}
