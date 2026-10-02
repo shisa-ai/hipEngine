@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_de8_head_bandwidth_screen",
+  "date": "2026-10-01",
+  "row": "DE-8",
+  "measurement_class": "re-derivation from existing artifacts; no new run",
+  "host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S (integrated, gfx1151)",
+    "note": "not the gfx1100/W7900 default hardware; no cross-host rate is used"
+  },
+  "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL",
+  "profile": "production (qwen4exp)",
+  "case": "code-p4096, live count 4097",
+  "decode_boundary": "device-argmax (capture_logits=False, token_id_resident=True)",
+  "head": {
+    "role": "linear:root.lm_head",
+    "tensor": "output.weight",
+    "ggml_type": "Q8_0",
+    "shape": [
+      248320,
+      2560
+    ],
+    "bytes": 675430400,
+    "kernels_per_step": 1,
+    "ms_per_step": 2.9797646666666666,
+    "gb_per_s": 226.7,
+    "share_of_decode_kernel_ms": 5.5,
+    "share_of_decode_wall_49_3ms": 6.04,
+    "grid_x": 3973120,
+    "workgroup_size_x": 128,
+    "vgpr": 48,
+    "lds": 512,
+    "scratch": 0
+  },
+  "sibling_q8_0_decode_gemv_families": [
+    {
+      "family": "linear:attn_qkv",
+      "bytes_per_step": 1002700800,
+      "mb_per_step": 1002.7,
+      "ms_per_step": 4.658018666666665,
+      "gb_per_s": 215.3,
+      "source": "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/attribution.json"
+    },
+    {
+      "family": "linear:attn_gate",
+      "bytes_per_step": 601620480,
+      "mb_per_step": 601.6,
+      "ms_per_step": 2.8899976666666665,
+      "gb_per_s": 208.2,
+      "source": "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/attribution.json"
+    },
+    {
+      "family": "linear:ssm_out",
+      "bytes_per_step": 601620480,
+      "mb_per_step": 601.6,
+      "ms_per_step": 2.8418766666666664,
+      "gb_per_s": 211.7,
+      "source": "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/attribution.json"
+    },
+    {
+      "family": "linear:attn_output",
+      "bytes_per_step": 200540160,
+      "mb_per_step": 200.5,
+      "ms_per_step": 0.947,
+      "gb_per_s": 211.8,
+      "source": "benchmarks/results/2026-09-29-qwen4exp-x4-decode-split/attribution.json"
+    }
+  ],
+  "sibling_gb_per_s": {
+    "min": 208.2,
+    "median": 211.8,
+    "max": 215.3
+  },
+  "ratio_head_to_sibling_median": 1.071,
+  "ratio_head_to_fastest_sibling": 1.053,
+  "head_ms_at_sibling_median_rate": 3.19,
+  "head_ms_at_fastest_sibling_rate": 3.137,
+  "conclusion": "the head is the FASTEST of the five Q8_0 decode GEMV families in its own capture; its 2.98 ms is a 675.4 MB weight read at 226.7 GB/s and there is no head-specific inefficiency. The only ways to reduce it are reading fewer bytes (forbidden by the row: preserve the full target vocabulary) or amortizing the read across a batch (c>N, DE-10).",
+  "limits": [
+    "no new measurement: every figure is from the 2026-09-29 X-4 decode capture",
+    "the sibling comparison bounds the head against its own kernel family, not against the hardware's true read roof",
+    "one host, one model, one quant, one profile, one case (code-p4096 at live count 4097)",
+    "the c=1 path only; nothing here speaks to c>N"
+  ]
+}
