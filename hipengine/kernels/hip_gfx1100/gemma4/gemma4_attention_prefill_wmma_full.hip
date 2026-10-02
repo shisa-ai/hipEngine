@@ -96,9 +96,46 @@ using bf16x2_t = bf16_t __attribute__((ext_vector_type(2)));
 using bf16x16_t = bf16_t __attribute__((ext_vector_type(16)));
 using float8_t = float __attribute__((ext_vector_type(8)));
 
+// The query-block shape is a build-time parameter, not a runtime one.
+//
+// `kColumns` is `kQueryRows * kGqaHeads` and must be a whole number of WMMA M
+// tiles, and `gqa_tiles` is the GQA ratio over `kGqaHeads` -- so the pair sets
+// both the shared-memory the Q tile costs and how many times the KV band is
+// read. Prefill and decode want opposite ends of that trade, so they are built
+// as two objects from this one source rather than reconciled in one shape:
+//
+//   prefill  kQueryRows 16, kGqaHeads 2 -> kColumns 32, gqa_tiles 4, LDS 48.8 KB
+//   decode   kQueryRows  2, kGqaHeads 8 -> kColumns 16, gqa_tiles 1, LDS 32.5 KB
+//
+// A 512-row prefill block is 32 query tiles and already presents 256 blocks, so
+// its 4x KV re-read is paid to keep the Q tile at 32.5 KB and is not what it is
+// waiting on. A decode block is one query tile against the whole context: it
+// has blocks to spare and nothing to spend them on but the walk, and at
+// `kGqaHeads` 8 each band is read exactly once. Sixteen rows is what makes the
+// decode shape not fit -- at `kQueryRows` 16 and `kGqaHeads` 8 the Q tile alone
+// is 130 KB against a 64 KB budget -- and two rows is all a decode needs, with
+// the second row padding the WMMA M tile to sixteen columns.
+#ifndef GEMMA4_WMMA_FULL_QUERY_ROWS
+#define GEMMA4_WMMA_FULL_QUERY_ROWS 16
+#endif
+#ifndef GEMMA4_WMMA_FULL_GQA_HEADS
+#define GEMMA4_WMMA_FULL_GQA_HEADS 2
+#endif
+#ifndef GEMMA4_WMMA_FULL_SYMBOL
+#define GEMMA4_WMMA_FULL_SYMBOL hipengine_gemma4_attention_prefill_wmma_full_bf16
+#endif
+// The device kernel is in an anonymous namespace, so its name is what a
+// `rocprofv3` trace reports and it is the only thing that distinguishes the two
+// shapes there -- the launcher symbol does not appear in a kernel trace. It
+// carries the query-block shape for that reason: "confirm the intended path
+// ran" is not answerable if both objects dispatch a kernel of the same name.
+#ifndef GEMMA4_WMMA_FULL_KERNEL_NAME
+#define GEMMA4_WMMA_FULL_KERNEL_NAME gemma4_attention_prefill_wmma_full_kernel
+#endif
+
 constexpr int kHeadDim = 512;
-constexpr int kQueryRows = 16;
-constexpr int kGqaHeads = 2;
+constexpr int kQueryRows = GEMMA4_WMMA_FULL_QUERY_ROWS;
+constexpr int kGqaHeads = GEMMA4_WMMA_FULL_GQA_HEADS;
 constexpr int kGqaRatio = 8;
 constexpr int kColumns = kQueryRows * kGqaHeads;
 constexpr int kColumnGroups = kColumns / 16;
@@ -231,7 +268,7 @@ __device__ __forceinline__ float lane_xor16(float value) {
 // both dimension groups need it -- and accumulates only its own 256 output
 // dimensions, which is what keeps the accumulator at 128 floats per lane.
 __global__ void __launch_bounds__(kThreads, 1)
-gemma4_attention_prefill_wmma_full_kernel(
+GEMMA4_WMMA_FULL_KERNEL_NAME(
     const uint16_t* __restrict__ query,
     const uint16_t* __restrict__ key,
     const uint16_t* __restrict__ value,
@@ -677,7 +714,7 @@ __global__ void gemma4_attention_wmma_combine_kernel(
 
 }  // namespace
 
-extern "C" int hipengine_gemma4_attention_prefill_wmma_full_bf16(
+extern "C" int GEMMA4_WMMA_FULL_SYMBOL(
     const uint16_t* query,
     const uint16_t* key,
     const uint16_t* value,
@@ -732,7 +769,7 @@ extern "C" int hipengine_gemma4_attention_prefill_wmma_full_bf16(
   }
 
   hipLaunchKernelGGL(
-      gemma4_attention_prefill_wmma_full_kernel,
+      GEMMA4_WMMA_FULL_KERNEL_NAME,
       dim3(static_cast<unsigned int>(query_tiles), static_cast<unsigned int>(num_kv_heads),
            static_cast<unsigned int>(gqa_tiles * slices)),
       dim3(kThreads, 1, 1),

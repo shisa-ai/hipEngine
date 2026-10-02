@@ -1,10 +1,11 @@
-"""How the WMMA full-layer attention divides its key walk.
+"""How the WMMA full-layer attention picks its query-block shape and divides its walk.
 
-The rule is a pure function of the geometry, so it is tested here without a
-device: `plan_gemma4_attention_wmma_full_slices` decides, and the launcher only
-lays out the workspace and sizes the grid. What the numbers are for is recorded
-with the function; what matters here is the boundary between the shapes that get
-divided and the shapes that must not be.
+Both rules are pure functions of the geometry, so they are tested here without a
+device: `shape_for_tokens` decides which compiled object a query block runs, and
+`plan_gemma4_attention_wmma_full_slices` decides how far that object divides its
+key walk. What the numbers are for is recorded with each function; what matters
+here is the boundaries between the shapes and between the divided and undivided
+walks.
 
 The split is a reassociation of the softmax -- each slice takes its own maximum
 and the combine rescales every slice to the largest of them -- so it is worth
@@ -17,20 +18,25 @@ from __future__ import annotations
 import pytest
 
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_prefill_wmma_full import (
-    GQA_HEADS,
+    DECODE_SHAPE,
+    PREFILL_SHAPE,
     K_BATCH,
-    QUERY_ROWS,
     TARGET_BLOCKS,
     plan_gemma4_attention_wmma_full_scratch_bytes,
     plan_gemma4_attention_wmma_full_slices,
+    shape_for_tokens,
 )
 
 # The full layers of gemma-4-26B-A4B: head_dim 512, 16 query heads, 2 KV heads,
-# GQA ratio 8, so `gqa_tiles` is 8 / 2 = 4.
+# GQA ratio 8.
 FULL_HEADS = 16
 FULL_KV_HEADS = 2
-GQA_TILES = (FULL_HEADS // FULL_KV_HEADS + GQA_HEADS - 1) // GQA_HEADS
-BASE_BLOCKS = FULL_KV_HEADS * GQA_TILES  # query_tiles == 1
+GQA_RATIO = FULL_HEADS // FULL_KV_HEADS
+
+
+def _base_blocks(shape, tokens: int) -> int:
+    query_tiles = (tokens + shape.query_rows - 1) // shape.query_rows
+    return query_tiles * FULL_KV_HEADS * shape.gqa_tiles
 
 
 def _slices(tokens: int, keys: int) -> int:
@@ -39,65 +45,130 @@ def _slices(tokens: int, keys: int) -> int:
     )
 
 
-def test_the_decode_grid_is_short_enough_to_divide():
-    """A one-tile query block presents `BASE_BLOCKS` blocks against the target.
+class TestShapeSelection:
+    """A one-row query block is a decode, and the shapes are not interchangeable."""
 
-    This is the case the split exists for: 8 blocks at this geometry, each
-    walking every key, measured at 75 GB/s where 64 blocks reach 225.
-    """
+    def test_a_decode_takes_the_shape_that_reads_each_band_once(self):
+        """The decode shape's whole reason is `gqa_tiles == 1`."""
 
-    assert BASE_BLOCKS == 8
-    assert BASE_BLOCKS < TARGET_BLOCKS
-    assert _slices(1, 262144) > 1
+        assert shape_for_tokens(1) is DECODE_SHAPE
+        assert DECODE_SHAPE.gqa_heads == GQA_RATIO
+        assert DECODE_SHAPE.gqa_tiles == 1
+
+    def test_the_prefill_shape_rereads_each_band_once_per_gqa_tile(self):
+        assert PREFILL_SHAPE.gqa_heads == 2
+        assert PREFILL_SHAPE.gqa_tiles == 4
+
+    def test_a_block_that_fits_the_decode_width_takes_it(self):
+        """Two rows is the decode shape's width, so two rows is still a decode."""
+
+        assert shape_for_tokens(DECODE_SHAPE.query_rows) is DECODE_SHAPE
+        assert shape_for_tokens(DECODE_SHAPE.query_rows + 1) is PREFILL_SHAPE
+
+    @pytest.mark.parametrize("tokens", [3, 16, 64, 512, 4096])
+    def test_anything_wider_is_a_prefill(self, tokens):
+        assert shape_for_tokens(tokens) is PREFILL_SHAPE
+
+    @pytest.mark.parametrize("shape", [PREFILL_SHAPE, DECODE_SHAPE])
+    def test_both_shapes_are_a_whole_number_of_wmma_tiles(self, shape):
+        """`kColumns` is the WMMA M dimension, so it must divide by sixteen."""
+
+        assert shape.columns % 16 == 0
+        assert shape.columns == shape.query_rows * shape.gqa_heads
+        assert shape.column_groups * 16 == shape.columns
+        assert shape.waves == shape.column_groups * 2
+        assert shape.threads == 32 * shape.waves
+
+    def test_the_decode_shape_fits_in_shared_memory_and_the_prefill_shape_does_too(self):
+        """The 64 KB budget is what the sixteen-row decode shape would have blown.
+
+        `(kColumns * kQStride + kKBatch * kKvStride) * 2` against 65536 bytes:
+        32.5 KB for the decode shape, 48.8 KB for the prefill shape, and 81.2 KB
+        for the sixteen-row, eight-head shape that is not built.
+        """
+
+        assert DECODE_SHAPE.shared_bytes == (16 * 520 + K_BATCH * 520) * 2
+        assert PREFILL_SHAPE.shared_bytes == (32 * 520 + K_BATCH * 520) * 2
+        assert DECODE_SHAPE.shared_bytes < 65536
+        assert PREFILL_SHAPE.shared_bytes < 65536
+        assert (16 * 8 * 520 + K_BATCH * 520) * 2 > 65536
 
 
-def test_a_single_query_tile_divides_to_about_the_target():
-    """The slice count is what it takes to reach the target, not more."""
+class TestSlicePlanning:
+    def test_the_decode_grid_is_short_enough_to_divide(self):
+        """Two blocks at this geometry, against a target of 128."""
 
-    slices = _slices(1, 262144)
-    assert slices == (TARGET_BLOCKS + BASE_BLOCKS - 1) // BASE_BLOCKS
-    assert BASE_BLOCKS * slices >= TARGET_BLOCKS
+        assert _base_blocks(DECODE_SHAPE, 1) == 2
+        assert _base_blocks(DECODE_SHAPE, 1) < TARGET_BLOCKS
+        assert _slices(1, 262144) > 1
+
+    def test_a_single_query_tile_divides_to_about_the_target(self):
+        """The slice count is what it takes to reach the target, not more."""
+
+        for shape, tokens in ((DECODE_SHAPE, 1), (PREFILL_SHAPE, 16)):
+            base = _base_blocks(shape, tokens)
+            expected = (TARGET_BLOCKS + base - 1) // base
+            assert base * expected >= TARGET_BLOCKS
+        assert _slices(1, 262144) == (TARGET_BLOCKS + 2 - 1) // 2
+
+    def test_the_decode_shape_needs_more_slices_than_the_prefill_shape(self):
+        """Fewer planes means fewer blocks to start with, so more division.
+
+        The decode shape reads each band once where the prefill shape reads it
+        four times, so at the same query-tile count it presents a quarter of the
+        blocks and has to divide four times as far to reach the same grid.
+        """
+
+        decode = _base_blocks(DECODE_SHAPE, 1)
+        prefill = _base_blocks(PREFILL_SHAPE, PREFILL_SHAPE.query_rows)
+        assert prefill == decode * 4
+        assert (TARGET_BLOCKS + decode - 1) // decode == 4 * ((TARGET_BLOCKS + prefill - 1) // prefill)
+
+    @pytest.mark.parametrize("tokens", [PREFILL_SHAPE.query_rows + 1, 64, 128, 512])
+    def test_a_multi_tile_query_block_is_never_divided(self, tokens):
+        """A prefill block already fills the machine, so it keeps its own arithmetic.
+
+        A 512-row block is 32 query tiles, which is 256 blocks at this geometry --
+        twice the target. Dividing it would reassociate the softmax for no gain
+        and would move every prefill number this kernel has.
+        """
+
+        assert _slices(tokens, 262144) == 1
+
+    @pytest.mark.parametrize("keys", [1, K_BATCH - 1, K_BATCH])
+    def test_a_walk_shorter_than_one_batch_per_slice_is_not_divided(self, keys):
+        """A slice with no full K batch in it has nothing to overlap.
+
+        `keys // K_BATCH` is the cap, so a walk that cannot give every slice a
+        tile stays whole rather than launching blocks that walk nothing.
+        """
+
+        want = (TARGET_BLOCKS + 2 - 1) // 2
+        assert _slices(1, keys) == max(1, min(want, keys // K_BATCH))
 
 
-@pytest.mark.parametrize("tokens", [QUERY_ROWS + 1, 64, 128, 512])
-def test_a_multi_tile_query_block_is_never_divided(tokens):
-    """A prefill block already fills the machine, so it keeps its own arithmetic.
-
-    A 512-row block is 32 query tiles, which is 256 blocks at this geometry --
-    twice the target. Dividing it would reassociate the softmax for no gain and
-    would move every prefill number this kernel has.
-    """
-
-    assert _slices(tokens, 262144) == 1
-
-
-@pytest.mark.parametrize("tokens", [1, QUERY_ROWS])
-def test_a_single_query_tile_divides_for_any_short_walk(tokens):
-    assert _slices(tokens, 65536) > 1
-
-
-@pytest.mark.parametrize("keys", [1, K_BATCH - 1, K_BATCH])
-def test_a_walk_shorter_than_one_batch_per_slice_is_not_divided(keys):
-    """A slice with no full K batch in it has nothing to overlap.
-
-    `keys // K_BATCH` is the cap, so a walk that cannot give every slice a tile
-    stays whole rather than launching blocks that walk nothing.
-    """
-
-    slices = _slices(1, keys)
-    assert slices == max(1, min((TARGET_BLOCKS + BASE_BLOCKS - 1) // BASE_BLOCKS, keys // K_BATCH))
-
-
-def test_the_scratch_covers_every_slice_of_every_plane():
+class TestScratch:
     """One accumulator float per (column, dimension), two state floats per column."""
 
-    slices = _slices(1, 262144)
-    nbytes = plan_gemma4_attention_wmma_full_scratch_bytes(
-        slices, num_heads=FULL_HEADS, num_kv_heads=FULL_KV_HEADS, head_dim=512
-    )
-    columns = QUERY_ROWS * GQA_HEADS
-    expected = slices * BASE_BLOCKS * (columns * 512 + columns * 2) * 4
-    assert nbytes == expected
-    # At this geometry a 256K decode needs a few tens of MB, not the gigabytes a
-    # whole-context workspace would.
-    assert 1e6 < nbytes < 1e8
+    def test_the_decode_workspace_covers_every_slice_of_every_plane(self):
+        slices = _slices(1, 262144)
+        nbytes = plan_gemma4_attention_wmma_full_scratch_bytes(
+            slices, tokens=1, num_heads=FULL_HEADS, num_kv_heads=FULL_KV_HEADS, head_dim=512
+        )
+        columns = DECODE_SHAPE.columns
+        expected = slices * FULL_KV_HEADS * DECODE_SHAPE.gqa_tiles * (columns * 512 + columns * 2) * 4
+        assert nbytes == expected
+        assert 1e6 < nbytes < 1e8
+
+    def test_the_decode_workspace_is_smaller_than_the_prefill_workspace(self):
+        """Half the columns and a quarter of the planes, at four times the slices."""
+
+        decode = plan_gemma4_attention_wmma_full_scratch_bytes(
+            _slices(1, 262144), tokens=1, num_heads=FULL_HEADS,
+            num_kv_heads=FULL_KV_HEADS, head_dim=512,
+        )
+        prefill = plan_gemma4_attention_wmma_full_scratch_bytes(
+            _slices(PREFILL_SHAPE.query_rows, 262144), tokens=PREFILL_SHAPE.query_rows,
+            num_heads=FULL_HEADS, num_kv_heads=FULL_KV_HEADS, head_dim=512,
+        )
+        assert decode < prefill
