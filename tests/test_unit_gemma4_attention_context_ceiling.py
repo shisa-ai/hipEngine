@@ -11,7 +11,11 @@ from hipengine.kernels.cpu_reference.gemma4 import (
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import gemma4_attention_shared_bytes
 from hipengine.runtime import gemma4 as gemma4_module
-from hipengine.runtime.gemma4 import Gemma4Runner, gemma4_require_context_capacity
+from hipengine.runtime.gemma4 import (
+    Gemma4Runner,
+    gemma4_layer_key_count,
+    gemma4_require_context_capacity,
+)
 
 
 def _config(*, head_dim: int, window: int | None) -> Gemma4TextConfig:
@@ -62,6 +66,79 @@ def test_int8_admission_uses_its_own_consumer_not_the_bf16_global_path() -> None
     gemma4_require_context_capacity(config, 16_384, kv_storage="bf16")
     with pytest.raises(ValueError, match="INT8 attention consumer"):
         gemma4_require_context_capacity(config, 16_384, kv_storage="int8_per_token_head")
+
+
+def test_a_sliding_window_lifts_the_ceiling_it_is_charged(monkeypatch) -> None:
+    """A window does help, and by exactly the band the layer reads.
+
+    The previous reading charged every layer the whole capacity. A windowed layer
+    with window 1024 reads ``window + rows - 1`` columns whatever the context
+    length is, so at capacity 15,857 it was being asked for 1,050,688 bytes of LDS
+    to read 1,024 keys. The window is what bounds the read, so the window is what
+    the check has to be written against. A windowless layer keeps the capacity
+    bound, which the refusal test above still pins.
+    """
+
+    with pytest.raises(AssertionError, match="before any allocation"):
+        _construct(_config(head_dim=256, window=1024), 15_857, monkeypatch)
+
+
+def test_a_windowed_layer_is_charged_its_band_not_the_capacity() -> None:
+    """The band is ``window + rows - 1`` and ``rows`` is the widest submitted block.
+
+    ``_keep_mask`` gives a windowed layer column 0 as key ``max(0, start - window +
+    1)`` and its last column as key ``start + rows - 1``, so the span is ``window +
+    rows - 1`` however long the context grows. ``rows`` is the widest block the
+    runner submits, which is ``max_block``; a decode step is the narrow case and
+    reads exactly the window. Charging the capacity instead asks the kernel to hold
+    logits for keys the mask has already zeroed.
+    """
+
+    geometry = _config(head_dim=256, window=1024).attention[0]
+    assert gemma4_layer_key_count(geometry, 262_144, rows=1) == 1024
+    assert gemma4_layer_key_count(geometry, 262_144, rows=512) == 1535
+    # A block can never be wider than the context, so the band is capped by it.
+    assert gemma4_layer_key_count(geometry, 200, rows=512) == 200
+
+
+def test_a_windowless_layer_is_charged_the_whole_capacity() -> None:
+    """The full layers have no window, so the band is the context and stays so.
+
+    This is the half of the guard the sliding fix must not loosen: the five full
+    layers of Gemma 4 26B-A4B read every cached position, and they are what the
+    tiled-attention work exists for.
+    """
+
+    geometry = _config(head_dim=512, window=None).attention[0]
+    assert gemma4_layer_key_count(geometry, 262_144, rows=1) == 262_144
+    assert gemma4_layer_key_count(geometry, 262_144, rows=512) == 262_144
+
+
+def test_the_guard_checks_the_widest_block_the_runner_will_submit(monkeypatch) -> None:
+    """The default ``rows`` is the runner's own prefill block, not one.
+
+    ``Gemma4Runner`` derives ``max_block`` as ``min(capacity, DEFAULT_PREFILL_BLOCK)``
+    and the generator's pre-load check has to reach the same answer without the
+    runner. If the two disagreed, the early check would admit a context the
+    construction-time check then refused, or the reverse.
+    """
+
+    geometry = _config(head_dim=256, window=1024).attention[0]
+    assert gemma4_layer_key_count(
+        geometry, 262_144, rows=min(262_144, gemma4_module.DEFAULT_PREFILL_BLOCK)
+    ) == gemma4_layer_key_count(geometry, 262_144, rows=512)
+
+
+def test_a_sliding_only_config_is_served_at_a_long_context(monkeypatch) -> None:
+    """The ceiling a windowed layer imposes is its band, not the context length.
+
+    A windowed head_dim 256 layer at 262,144 positions needs 6,208 bytes of LDS,
+    against the 1,050,688 it was charged. This is the assertion that the ceiling
+    now belongs to the windowless layers alone.
+    """
+
+    with pytest.raises(AssertionError, match="before any allocation"):
+        _construct(_config(head_dim=256, window=1024), 262_144, monkeypatch)
 
 
 @pytest.mark.parametrize("head_dim,servable", [(128, False), (512, True)])

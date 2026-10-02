@@ -481,34 +481,33 @@ def gemma4_text_config_from_reader(
     return gemma4_text_config_from_gguf(gguf, tensor_names=tensor_names)
 
 
+def gemma4_layer_key_count(
+    attention: Gemma4AttentionGeometry, capacity: int, *, rows: int = 1
+) -> int:
+    """Return the cached key span presented by a layer's widest block."""
+    capacity = int(capacity)
+    if attention.sliding_window is None:
+        return capacity
+    return min(capacity, int(attention.sliding_window) + int(rows) - 1)
+
+
 def gemma4_require_context_capacity(
     config: Gemma4TextConfig,
     capacity: int,
     *,
+    rows: int | None = None,
     kv_storage: str = "bf16",
 ) -> None:
-    """Raise if the *selected* attention consumer cannot serve ``capacity``.
+    """Validate the selected consumer before loading weights.
 
-    BF16 attention moves logits to owned global scratch for the implemented
-    256/512 head geometries when the LDS requirement is too large. The direct
-    INT8 consumer instead keeps context-sized logits in LDS. Admission checks
-    only the selected storage consumer, rather than applying one storage's
-    resource bound to another.
-
-    ``gemma4_attention_shared_bytes`` is the repaired BF16 bound: the 256/512
-    head-dimension class kernel moves its logits to request-owned global scratch
-    beyond 64 KiB rather than refusing the context, so a long global-logit
-    context is servable and this does not reintroduce the old 256/512 LDS cap.
-
-    The check is on ``capacity`` and not on any live count, so a sliding window
-    does not lift it: the runner validates the configured context, not the keys
-    a particular query attends to.
-
-    This is a capability refusal and it is deliberately loud and named. It is
-    also deliberately callable without weights, so a caller can raise it before
-    paying for a load rather than after.
+    BF16 256/512-head attention uses global scores beyond its LDS bound.
+    Other BF16 geometries are charged the layer's actual key band. The INT8
+    consumer has its own context-sized LDS contract and is checked separately.
     """
 
+    capacity = int(capacity)
+    if rows is None:
+        rows = min(capacity, DEFAULT_PREFILL_BLOCK)
     resolved = str(kv_storage or "auto")
     if resolved == "auto":
         resolved = "bf16"
@@ -520,7 +519,8 @@ def gemma4_require_context_capacity(
         return
     for attention in config.attention:
         gemma4_attention_shared_bytes(
-            head_dim=attention.head_dim, keys=int(capacity)
+            head_dim=attention.head_dim,
+            keys=gemma4_layer_key_count(attention, capacity, rows=int(rows)),
         )
 
 
