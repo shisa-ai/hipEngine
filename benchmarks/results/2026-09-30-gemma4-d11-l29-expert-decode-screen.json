@@ -1,0 +1,154 @@
+{
+ "fixture": {
+  "note": "read from the benchmark fixture; byte_shape drives the screen geometry, synthetic valid blocks stand in for the tensor bytes",
+  "tensor_shapes": {
+   "blk.29.ffn_down_exps.weight": [
+    128,
+    2816,
+    704
+   ],
+   "blk.29.ffn_gate_up_exps.weight": [
+    128,
+    1408,
+    2816
+   ]
+  }
+ },
+ "kind": "gemma4-d11-l29-expert-decode-screen",
+ "projections": {
+  "down": {
+   "agreement": {
+    "pack8": {
+     "accepted": true,
+     "bit_equal_fraction": 1.0,
+     "kl_vs_production": 0.0,
+     "max_abs": 0.0,
+     "rel_to_peak": 0.0
+    }
+   },
+   "launch_errors": {},
+   "reference": {
+    "census_situ_us": 62.5,
+    "note": "in-situ census: moe.l29_experts launch at grid (180224, 8, 1), wg 128, from the 2026-09-30 kernel trace of the fixture (prompt 8, 8 decode steps)",
+    "production_ms_over_situ": 0.9361045062541962
+   },
+   "shape": {
+    "bytes_per_row": 748,
+    "experts": 128,
+    "in_features": 704,
+    "out_features": 2816,
+    "quant": "gguf_q8_0",
+    "raw_stack_nbytes": 269615104,
+    "rows": 8,
+    "selected_bytes": 16850944
+   },
+   "speedup_production_over": {
+    "pack8": 3.0522109017058514,
+    "production": 1.0
+   },
+   "timing": {
+    "pack8": {
+     "accepted": true,
+     "gbps": 879.0921891683479,
+     "ms_per_call": 0.01916857436299324
+    },
+    "production": {
+     "accepted": true,
+     "gbps": 288.0181669874227,
+     "ms_per_call": 0.05850653164088726
+    }
+   }
+  },
+  "gate_up": {
+   "agreement": {
+    "pack8": {
+     "accepted": true,
+     "bit_equal_fraction": 1.0,
+     "kl_vs_production": 0.0,
+     "max_abs": 0.0,
+     "rel_to_peak": 0.0
+    },
+    "pack8_dp4a": {
+     "accepted": false,
+     "bit_equal_fraction": 0.0,
+     "kl_vs_production": 391795.99899349915,
+     "max_abs": 561149.125,
+     "rel_to_peak": 53762.790419161676
+    },
+    "t16_direct": {
+     "accepted": true,
+     "bit_equal_fraction": 1.0,
+     "kl_vs_production": 0.0,
+     "max_abs": 0.0,
+     "rel_to_peak": 0.0
+    }
+   },
+   "launch_errors": {},
+   "reference": {
+    "census_situ_us": 179.2,
+    "note": "in-situ census: moe.l29_experts launch at grid (180224, 8, 1), wg 128, from the 2026-09-30 kernel trace of the fixture (prompt 8, 8 decode steps)",
+    "production_ms_over_situ": 1.0214406626930994
+   },
+   "shape": {
+    "bytes_per_row": 1936,
+    "experts": 128,
+    "extra_t16_tiles_nbytes": 356843520,
+    "in_features": 2816,
+    "out_features": 1408,
+    "quant": "gguf_q5_k",
+    "raw_stack_nbytes": 348913664,
+    "rows": 8,
+    "selected_bytes": 21807104
+   },
+   "speedup_production_over": {
+    "pack8": 1.0915899295929046,
+    "pack8_dp4a": 3.8152911347781377,
+    "production": 1.0,
+    "t16_direct": 4.347567074937675
+   },
+   "timing": {
+    "pack8": {
+     "accepted": true,
+     "gbps": 130.04880537662495,
+     "ms_per_call": 0.16768400091677904
+    },
+    "pack8_dp4a": {
+     "accepted": false,
+     "gbps": 454.54253542533763,
+     "ms_per_call": 0.0479759369045496
+    },
+    "production": {
+     "accepted": true,
+     "gbps": 119.1370512415089,
+     "ms_per_call": 0.18304216675460339
+    },
+    "t16_direct": {
+     "accepted": true,
+     "gbps": 517.9563213827468,
+     "ms_per_call": 0.042102206498384476
+    }
+   }
+  }
+ },
+ "provenance": {
+  "command_args": {
+   "arms": null,
+   "down_in": 704,
+   "down_out": 2816,
+   "experts": 128,
+   "gate_up_in": 2816,
+   "gate_up_out": 1408,
+   "iters": 200,
+   "out": "benchmarks/results/2026-09-30-gemma4-d11-l29-expert-decode-screen.json",
+   "rows": 8,
+   "warmup": 20
+  },
+  "git": "010904effddfea8bfdda0b911b79a2b3df871213",
+  "gpu_env": {
+   "ROCR_VISIBLE_DEVICES": "1"
+  },
+  "iters": 200,
+  "protocol": "same-run same-bytes A/B; all launchable arms warmed before timing (agreement phase runs every arm against production first; D3 screen protocol)",
+  "warmup": 20
+ }
+}

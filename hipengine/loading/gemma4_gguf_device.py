@@ -53,7 +53,12 @@ from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_TILE16_COLS,
     repack_gguf_q4_k_tile16,
 )
-from hipengine.quant.gguf_repack import Q4_K_T16_SHAPE, Q8_0_T16_SHAPE
+from hipengine.quant.gguf_repack import Q4_K_T16_SHAPE, Q5_K_T16_SHAPE, Q8_0_T16_SHAPE
+from hipengine.quant.gguf_t16 import (
+    GGUF_Q5_K_BLOCK_BYTES,
+    GGUF_Q5_K_T16_BLOCK_BYTES,
+    GGUF_T16_COLS,
+)
 
 __all__ = [
     "LAYOUT_DENSE_F32",
@@ -100,6 +105,13 @@ class Gemma4GGUFWeightSpec:
     quant_key: str
     layout: str
     allocation_names: tuple[str, ...] = ("raw",)
+    # Registry quant key for the tiles side copy's decode owner, set only
+    # where a raw-plus-tiles dual plans one (Q5_K gate_up stacks). The
+    # decode rewrite resolves this key when -- and only when -- the weight
+    # carries the tiles allocation; ``None`` means raw keeps the owner it
+    # has. The Q8_0 dense dual predates the field and derives its t16 key
+    # in the linear dispatch itself.
+    tiles_quant_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -242,6 +254,34 @@ def _plan_one(
                 layout=LAYOUT_RAW_GGUF,
                 allocation_names=("raw", "tiles"),
             )
+    # A Q5_K gate_up expert stack plans raw *plus* its Q5T16 tiles side
+    # copy (D11 screen: the t16 selected decode owner is bit-exact with the
+    # raw incumbent and 4.35x faster at the production geometry, 0.1830 ->
+    # 0.0421 ms at rows 8, while the prefill owners keep reading raw
+    # blocks). Raw stays primary so prefill resolution is unchanged, and
+    # ``tiles_quant_key`` names the registry key the decode rewrite
+    # resolves under. The slot names the dispatch role -- down stacks have
+    # no q5_k t16 selected owner at this ABI -- and the shape contract is
+    # ``Q5_K_T16_SHAPE``'s, so a stack it rejects keeps raw residency alone,
+    # the same fail-open gate the rules above use.
+    if (
+        qtype is GGMLQuantizationType.Q5_K
+        and slot_path.endswith(".ffn_gate_up_exps")
+        and len(source.shape) == 3
+    ):
+        try:
+            Q5_K_T16_SHAPE.validate(source.byte_shape)
+        except ValueError:
+            pass
+        else:
+            return Gemma4GGUFWeightSpec(
+                slot_path=slot_path,
+                source=source,
+                quant_key=f"gguf_{source.ggml_type_name.lower()}",
+                layout=LAYOUT_RAW_GGUF,
+                allocation_names=("raw", "tiles"),
+                tiles_quant_key="gguf_q5_k_t16_v1",
+            )
     return Gemma4GGUFWeightSpec(
         slot_path=slot_path,
         source=source,
@@ -311,6 +351,19 @@ def _planned_nbytes(spec: Gemma4GGUFWeightSpec) -> int:
         )
     if spec.layout == LAYOUT_RAW_GGUF:
         if "tiles" in spec.allocation_names:
+            if spec.tiles_quant_key is not None:
+                # Q5T16 tiles are not byte-neutral: 16 raw rows of 176-byte
+                # Q5_K blocks (2816) repack to one 2880-byte tile block, so
+                # the side copy is ~2.3% larger than the raw rows it holds.
+                # Planning counts raw + tiles at their own sizes.
+                experts, out_features, bytes_per_row = spec.source.byte_shape
+                blocks = bytes_per_row // GGUF_Q5_K_BLOCK_BYTES
+                return int(spec.source.nbytes) + (
+                    experts
+                    * (out_features // GGUF_T16_COLS)
+                    * blocks
+                    * GGUF_Q5_K_T16_BLOCK_BYTES
+                )
             # The Q8T16 side allocation is the same 34-byte Q8_0 blocks per
             # 16 rows, transposed: exactly the raw byte count again.
             # Capacity checks must sum both copies, so the doubling is
@@ -356,10 +409,21 @@ def materialize_gemma4_gguf_device_weight(
             )
         dtype, source_dtype = DType.INT8, "I8"
         if "tiles" in spec.allocation_names:
-            from hipengine.quant.gguf_t16 import repack_gguf_q8_0_tile16
+            # Type-keyed like the planner's rules: Q8_0 dense projections
+            # ship the byte-neutral Q8T16 copy, Q5_K gate_up stacks the
+            # ~102.3% Q5T16 copy their decode rewrite reads.
+            from hipengine.quant.gguf_t16 import (
+                repack_gguf_q5_k_tile16,
+                repack_gguf_q8_0_tile16,
+            )
 
+            repacks = {
+                GGMLQuantizationType.Q8_0: repack_gguf_q8_0_tile16,
+                GGMLQuantizationType.Q5_K: repack_gguf_q5_k_tile16,
+            }
+            repack = repacks[int(spec.source.ggml_type)]
             uploads["tiles"] = (
-                repack_gguf_q8_0_tile16(
+                repack(
                     np.frombuffer(raw, dtype=np.uint8).reshape(spec.source.byte_shape)
                 ).tiles,
             )

@@ -24,7 +24,11 @@ from typing import Mapping, Sequence
 import numpy as np
 
 from hipengine.quant.gguf import GGMLQuantizationType, LlamaFileType
-from tests._gguf_synthetic_weights import make_q4_k_weight, make_q8_0_weight
+from tests._gguf_synthetic_weights import (
+    make_q4_k_weight,
+    make_q5_k_weight,
+    make_q8_0_weight,
+)
 
 GGUF_MAGIC = b"GGUF"
 GGUF_VERSION = 3
@@ -195,6 +199,8 @@ def payload_bytes(shape: Sequence[int], qtype: GGMLQuantizationType) -> bytes:
         return make_q8_0_weight(out_features, in_features).tobytes()
     if qtype == GGMLQuantizationType.Q4_K:
         return make_q4_k_weight(out_features, in_features).tobytes()
+    if qtype == GGMLQuantizationType.Q5_K:
+        return make_q5_k_weight(out_features, in_features).tobytes()
     raise ValueError(f"no fixture payload builder for {qtype.name}")
 
 
