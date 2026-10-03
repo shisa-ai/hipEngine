@@ -3908,19 +3908,30 @@ def test_wmma_prefill_threads_silently_dropped_on_wmma_path() -> None:
 
 
 def test_t16_pair_concat_fuses_q8_shared_gate_up() -> None:
-    """Resident Q8T16 shared gate/up can use the concatenated dual ABI."""
+    """Resident Q8T16 shared gate/up fuses into one dual GEMV launch.
+
+    At rows==1 the pair is routed through the wave-strided-loop split kernel,
+    which writes the two halves of the concatenated output directly and is
+    bit-identical to the concat kernel. At rows>1 the concat kernel is kept.
+    """
 
     weight_a = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
     weight_b = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
     import hipengine.runtime.gguf_linear as gl
 
-    pair_calls: list[tuple] = []
+    split_calls: list[tuple] = []
+    concat_calls: list[tuple] = []
 
-    def fake_pair(*args, **kwargs):
-        pair_calls.append((args, kwargs))
+    def fake_split(*args, **kwargs):
+        split_calls.append((args, kwargs))
 
-    original = gl.gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out
-    gl.gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out = fake_pair  # type: ignore[assignment]
+    def fake_concat(*args, **kwargs):
+        concat_calls.append((args, kwargs))
+
+    original_split = gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out
+    original_concat = gl.gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out
+    gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = fake_split  # type: ignore[assignment]
+    gl.gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out = fake_concat  # type: ignore[assignment]
     try:
         fused = launch_gguf_linear_pair_concat(
             weight_a,
@@ -3933,12 +3944,32 @@ def test_t16_pair_concat_fuses_q8_shared_gate_up() -> None:
             stream=7,
             runtime="runtime-sentinel",
         )
+        fused_rows4 = launch_gguf_linear_pair_concat(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_ptr=200,
+            rows=4,
+            in_features=2048,
+            out_features=512,
+            stream=7,
+            runtime="runtime-sentinel",
+            use_wmma_prefill=False,
+        )
     finally:
-        gl.gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out = original  # type: ignore[assignment]
+        gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = original_split  # type: ignore[assignment]
+        gl.gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out = original_concat  # type: ignore[assignment]
 
     assert fused is True
-    assert pair_calls == [
-        ((100, 14, 14, 200, 1, 2048, 512, 512), {"threads": 0, "stream": 7, "runtime": "runtime-sentinel"})
+    assert fused_rows4 is True
+    assert split_calls == [
+        (
+            (100, 14, 14, 200, 200 + 512 * 2, 1, 2048, 512, 512),
+            {"threads": 0, "stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+    assert concat_calls == [
+        ((100, 14, 14, 200, 4, 2048, 512, 512), {"threads": 0, "stream": 7, "runtime": "runtime-sentinel"})
     ]
 
 

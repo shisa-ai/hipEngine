@@ -1529,6 +1529,21 @@ is not bit-exact and costs more at 64K. Production rows after promotion are
 Evidence:
 [`chunk promotion`](results/2026-10-03-gfx1151-h2048moe-prefill-chunk-1024/README.md).
 
+**Shared-expert gate+up wave-strided loop (2026-10-03).** The Q8T16 shared
+gate+up pair was the worst-bandwidth stage in the decode step that was not
+already explained (87.1 MiB/token at 103 GB/s against 199 GB/s for the main
+dense GEMVs). At `rows == 1` it now runs `q8_0_t16_dual_split_gemv_kernel`
+(`WAVE_BLOCK_INDEX = true`) instead of `q8_0_t16_dual_gemv_kernel`. The change is
+**bit-identical** — with 128 threads the concat enumeration `k = tid + 128j` maps
+to `block_idx = tid/32 + 4j`, `lane = tid & 31`, exactly the split enumeration,
+so the per-thread FP32 accumulation order and the reduction tree are identical
+and a warp reads one Q8_0 block per iteration in both — and register pressure is
+identical (VGPR 56, SGPR 128, LDS 512). Isolated: **117.9 -> 142.5 GB/s
+(+20.8%)**. Real decode step, same-session A/B: `decode_ffn_moe_shared_gate_up`
+**-13.84%** (30182.3 -> 26006.3 us/32tok), decode **53.1877 -> 53.5820 tok/s
+(+0.741%)**. Evidence:
+[`shared-expert wave loop`](results/2026-10-03-gfx1151-shexp-wave-loop/README.md).
+
 ### Laguna S 2.1
 
 | Platform / format | Workload | Prefill | Decode | Evidence |

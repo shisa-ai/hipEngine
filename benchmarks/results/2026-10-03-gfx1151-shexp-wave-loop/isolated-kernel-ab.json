@@ -1,0 +1,56 @@
+{
+ "host": "gfx1151 Strix Halo Radeon 8060S",
+ "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "shapes": {
+  "ffn_gate_shexp": [
+   2048,
+   512
+  ],
+  "ffn_up_shexp": [
+   2048,
+   512
+  ],
+  "ffn_down_shexp": [
+   512,
+   2048
+  ]
+ },
+ "quant": "gguf_q8_0_t16_v1",
+ "measurement": "cold stream, pools larger than L2/MALL",
+ "rows": 1,
+ "gate_up_pair_grid_64_128thr": {
+  "dual_concat_previous": {
+   "us": 18.9,
+   "GB/s": 117.9
+  },
+  "dual_split_new": {
+   "us": 15.6,
+   "GB/s": 142.5
+  },
+  "two_singles_fallback": {
+   "us": 30.0,
+   "GB/s": 74.4
+  },
+  "delta_new_vs_previous_pct": 20.8
+ },
+ "down_grid_128_128thr": {
+  "single_previous": {
+   "us": 10.2,
+   "GB/s": 109.1
+  },
+  "dual_split_2x1024": {
+   "us": 9.8,
+   "GB/s": 114.3
+  }
+ },
+ "bit_identity": {
+  "gate_up_dual_split": true,
+  "down_dual_split_2x1024": true,
+  "down_dual_concat_2x1024": true
+ },
+ "ceiling_reference": {
+  "single_8192x2048_at_512_blocks_GB/s": 181.7,
+  "d2d_memcpy_1GiB_GB/s": 210.2
+ },
+ "command": "source /tmp/reprof/env.sh && PYTHONPATH=/home/lhl/hipEngine $PY /tmp/reprof/shexp_ab.py"
+}
