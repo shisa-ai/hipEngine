@@ -16,6 +16,9 @@ class YuE2Model:
     name: str = "yue2"
     architectures: tuple[str, ...] = ("YuE2ForCausalLM",)
     default_quant: str = "bf16"
+    #: YuE2 produces audio, not text: its surface is the song pipeline in
+    #: ``hipengine.generation.yue2_song``, so text endpoints must refuse it.
+    generation_surfaces: tuple[str, ...] = ("song",)
 
     def layer_sequence(self):
         return (

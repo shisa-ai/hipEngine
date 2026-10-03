@@ -1,6 +1,6 @@
 """Model plugins and registry."""
 
-from hipengine.models.base import ModelPlugin
+from hipengine.models.base import DEFAULT_GENERATION_SURFACES, ModelPlugin, generation_surfaces
 from hipengine.models.vibevoice_asr import VIBEVOICE_ASR, VibeVoiceASRModel
 from hipengine.models.vibevoice_tts import VIBEVOICE_TTS, VibeVoiceTTSModel
 from hipengine.models.kv_capabilities import (
@@ -80,6 +80,7 @@ from hipengine.models.timesfm3 import (
 )
 
 __all__ = [
+    "DEFAULT_GENERATION_SURFACES",
     "LAGUNA_GGUF",
     "MAPLE",
     "MAPLE_LAYER_PATTERN",
@@ -101,6 +102,7 @@ __all__ = [
     "TIMESFM3",
     "TIMESFM3_ARCHITECTURE",
     "TIMESFM_ARCHITECTURE",
+    "generation_surfaces",
     "DuplicateModelError",
     "KVCapabilityDeclaration",
     "KVCapabilityEvidence",
