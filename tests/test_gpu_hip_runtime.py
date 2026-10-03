@@ -55,7 +55,9 @@ class FakeHipLibrary:
         self.hipStreamDestroy = FakeFunction(lambda stream: 0)
         self.hipStreamSynchronize = FakeFunction(lambda stream: 0)
         self.hipStreamWaitEvent = FakeFunction(lambda stream, event, flags: 0)
-        self.hipStreamBeginCapture = FakeFunction(lambda stream, mode: 0)
+        self.capture_status = 0
+        self.hipStreamBeginCapture = FakeFunction(self._stream_begin_capture)
+        self.hipStreamIsCapturing = FakeFunction(self._stream_is_capturing)
         self.hipStreamEndCapture = FakeFunction(self._stream_end_capture)
         self.hipGraphInstantiate = FakeFunction(self._graph_instantiate)
         self.hipGraphLaunch = FakeFunction(lambda graph_exec, stream: 0)
@@ -124,7 +126,16 @@ class FakeHipLibrary:
         out_stream._obj.value = 0x5100 + int(priority.value)
         return 0
 
+    def _stream_begin_capture(self, stream, mode):
+        self.capture_status = 1
+        return 0
+
+    def _stream_is_capturing(self, stream, out_status):
+        out_status._obj.value = self.capture_status
+        return 0
+
     def _stream_end_capture(self, stream, out_graph):
+        self.capture_status = 0
         out_graph._obj.value = 0x6000
         return 0
 
@@ -188,8 +199,13 @@ def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:
     low_priority_stream = runtime.stream_create(priority=least_priority)
     runtime.memcpy_async(ptr, 0x3000, 8, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
     runtime.memset_async(ptr, 0xAB, 8, stream)
+    assert not runtime.stream_is_capturing(stream)
     runtime.stream_begin_capture(stream)
+    assert runtime.stream_is_capturing(stream)
+    lib.capture_status = 2  # Invalidated capture still forbids synchronization.
+    assert runtime.stream_is_capturing(stream)
     graph = runtime.stream_end_capture(stream)
+    assert not runtime.stream_is_capturing(stream)
     graph_exec = runtime.graph_instantiate(graph)
     runtime.graph_launch(graph_exec, stream)
     runtime.stream_wait_event(stream, 0x8100)
