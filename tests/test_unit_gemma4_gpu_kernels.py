@@ -2576,7 +2576,44 @@ def test_attention_prefill_serves_a_decode_step_over_a_kv_cache():
     )
 
 
-def test_layer_incremental_decode_matches_a_dense_prefill():
+@pytest.mark.parametrize("stream", [0, 91])
+def test_expert_offset_fallback_waits_for_its_producer(monkeypatch, stream):
+    """Host offsets must be collected after nonblocking-stream compaction."""
+    from types import SimpleNamespace
+
+    from hipengine.core import hip
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_experts as experts
+
+    calls = []
+    monkeypatch.setattr(
+        hip, "get_hip_runtime",
+        lambda: SimpleNamespace(stream_synchronize=lambda s: calls.append(("wait", s))),
+    )
+
+    def read(buffer, count):
+        calls.append(("read", count))
+        return np.array([0, 2, 3], dtype=np.int64)
+
+    monkeypatch.setattr(experts, "_read_int64", read)
+    monkeypatch.setattr(
+        experts, "gemma4_project_expert",
+        lambda *args, **kwargs: calls.append(("project", args, kwargs)),
+    )
+    experts.gemma4_project_experts_by_offset(
+        100, 200, 300, object(), 2, 4, 5, stream=stream,
+    )
+    prefix = [("wait", stream), ("read", 3)] if stream else [("read", 3)]
+    assert calls[:len(prefix)] == prefix
+    projections = [call for call in calls if call[0] == "project"]
+    assert [call[1][1:5] for call in projections] == [
+        (0, 200, 300, 2), (1, 216, 320, 1),
+    ]
+    assert all(call[2] == {"stream": stream} for call in projections)
+    assert len(calls) == (4 if stream else 3)
+
+
+@pytest.mark.parametrize("seed", [777, 778, 991])
+def test_layer_incremental_decode_matches_a_dense_prefill(seed):
     """Decoding one token at a time through a KV cache matches a dense prefill.
 
     This is the contract generation depends on. The same layer runs twice over
@@ -2602,7 +2639,7 @@ def test_layer_incremental_decode_matches_a_dense_prefill():
     hidden_size, geometry = 64, (4, 2, 16)
     dense_intermediate, num_experts, top_k, expert_intermediate = 48, 8, 3, 32
     weights, config, attn_geometry = _layer_fixture(
-        777,
+        seed,
         total,
         hidden_size,
         geometry,
