@@ -287,10 +287,11 @@ def main() -> int:
                     "transcript_chars": sum(len(m["content"]) for m in messages),
                 })
                 transcript_chars = sum(len(m["content"]) for m in messages)
-                print(f"  p{index} turn{turn}: "
-                      f"{res.error or f'ttft={res.ttft_s*1000:.0f}ms deltas={res.deltas} '
-                                       f'transcript={transcript_chars}ch'}",
-                      flush=True)
+                status = res.error or (
+                    f"ttft={res.ttft_s*1000:.0f}ms deltas={res.deltas} "
+                    f"transcript={transcript_chars}ch"
+                )
+                print(f"  p{index} turn{turn}: {status}", flush=True)
                 if res.error:
                     break
                 # Greedy, so the reply is deterministic and turn N+1's prefix is
