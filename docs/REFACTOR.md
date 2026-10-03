@@ -113,20 +113,25 @@
     single larger owner), which is admission accounting, not this selector. Any
     removal must keep the chunk-1024 default's own tests
     (`tests/test_unit_engine_loop_prefill_chunk.py`) intact.
-  - **The capacity question is necessary but not sufficient (2026-10-03).** Owner
-    admission alone cannot reach the measured `chunk 1024 -> 4096` step
-    (`-4.94%`), because the chunk the engine runs is
-    `min(prefill_chunk_size, round_prefill_token_budget)`
-    (`hipengine/generation/engine_loop.py:2266`) and the round budget is 1024 - a
-    4096-row owner under a 1024 budget still executes `4 x 1024`, the
-    measured-slow configuration. That is the same scratch-not-size mechanism this
-    section already records. Reaching 4096 requires raising
-    `round_prefill_token_budget` to 4096, which quadruples per-tick prefill work
-    and therefore the worst-case delay before a decoding peer gets its next step
-    - a real fairness trade, unlike the landed `256 -> 1024` promotion whose
-    per-tick work was unchanged. The missing measurement is decode interleaving
-    under concurrency at the raised round budget, not a capacity probe. See
-    `worklog/entries/20261003T152724.639601Z-lhl-rt-1-chunk-4096-is-gated-on-the-round-prefill-bu-3e7462.md`.
+  - **The capacity question is not the 4096 lever, and the tick bound is (2026-10-03).** Owner
+    admission cannot reach the measured `chunk 1024 -> 4096` step (`-4.94%`),
+    because the owner does not set the chunk: the cap does. The workspace is
+    scratch and kernel work scales with the actual token count - the same
+    scratch-not-size mechanism this section already records - so a 4096-row owner
+    with a 1024 cap still executes `4 x 1024`, the measured-slow configuration.
+    What gates the step is the **per-tick prefill bound**: under the default
+    `protect_decode` policy one round is exactly one chunk of
+    `max_prefill_chunk_tokens` (`hipengine/generation/engine_loop.py:2245`), so
+    raising the cap to 4096 quadruples per-tick prefill work and the worst-case
+    delay before a decoding peer gets its next step. (Under
+    `prefill_decode_policy == "token_budget"` the chunk is
+    `min(prefill_chunk_size, round_prefill_token_budget)` at `:2266`, so the cap
+    alone is inert there and the round budget must rise with it - lengthening the
+    tick for the same reason.) That is a real fairness trade, unlike the landed
+    `256 -> 1024` promotion whose per-tick work was argued unchanged. The missing
+    measurement is decode interleaving under concurrency at a 4096 chunk, not a
+    capacity probe. See
+    `worklog/entries/20261003T152924.135144Z-lhl-correction-the-round-budget-does-not-bound-the-d-67c4d6.md`, which corrects the mechanism in `worklog/entries/20261003T152724.639601Z-lhl-rt-1-chunk-4096-is-gated-on-the-round-prefill-bu-3e7462.md`.
 
 ## GR Staged-F32 Selector (HC-1)
 
