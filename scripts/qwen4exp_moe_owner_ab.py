@@ -78,9 +78,20 @@ ROUTES = {
         "row_bytes": (HIDDEN // QK_K) * Q4_K_BLOCK_BYTES,
         "owners": [
             "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+            "selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
             "selected_dual_wmma_prefill_compact_bf16_bf16_out",
         ],
+        # The iu8-risk owners are the same kernel at two template heights, so
+        # each has to see a row map built at its own height or its launcher
+        # rejects the grid (``wmma_total_rows % TILE_ROWS != 0``).  Timing them
+        # against a shared map would compare a 16-tall kernel on a 32-padded row
+        # space against a 32-tall one, which is the confound this field exists
+        # to remove.
+        "owner_tile_rows": {
+            "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": 16,
+            "selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out": 32,
+        },
     },
     "down": {
         "in_features": FFN,
@@ -202,18 +213,24 @@ def main() -> int:
         counts = _mkc._counts_for(rows, EXPERTS, distribution, seed=args.seed)
         if sum(counts) != rows:
             raise SystemExit("count synthesis failed")
-        compact, padded, tile_expert, padded_rows = _mkc._maps(counts, args.tile_rows)
+        owner_tiles = route.get("owner_tile_rows", {})
+        # One row map *and device copy* per distinct owner height, so a
+        # height-specific owner is never timed against another height's padding.
+        def build(height: int):
+            compact, padded, tile_expert, padded_rows = _mkc._maps(counts, height)
+            devices = []
+            for values in (compact, padded, tile_expert or [0]):
+                host = np.asarray(values, dtype=np.int64)
+                device = malloc(max(8, host.nbytes))
+                copy_host_to_device(device, host_array_ptr(host), host.nbytes)
+                devices.append(device)
+            return (*devices, padded_rows)
 
-        compact_dev = malloc(np.asarray(compact, dtype=np.int64).nbytes)
-        padded_dev = malloc(np.asarray(padded, dtype=np.int64).nbytes)
-        tile_dev = malloc(max(8, np.asarray(tile_expert, dtype=np.int64).nbytes))
-        for device, values in (
-            (compact_dev, compact),
-            (padded_dev, padded),
-            (tile_dev, tile_expert or [0]),
-        ):
-            host = np.asarray(values, dtype=np.int64)
-            copy_host_to_device(device, host_array_ptr(host), host.nbytes)
+        maps_by_tile = {args.tile_rows: build(args.tile_rows)}
+        for height in sorted(set(owner_tiles.values())):
+            if height not in maps_by_tile:
+                maps_by_tile[height] = build(height)
+
         risk_count = malloc(4)
         risk_indices = malloc(4)
         runtime.memset(risk_count.ptr, 0, 4)
@@ -221,6 +238,9 @@ def main() -> int:
         if route["quant"] == "gguf_q4_k":
 
             def wmma() -> None:
+                compact_dev, padded_dev, tile_dev, padded_rows = maps_by_tile[
+                    owner_tiles.get("selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+                                    args.tile_rows)]
                 gu.gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out(
                     x.ptr, compact_dev.ptr, padded_dev.ptr, tile_dev.ptr,
                     w_a.ptr, w_b.ptr, out_dual.ptr,
@@ -228,13 +248,25 @@ def main() -> int:
                     rows, in_features, out_features, out_features, EXPERTS, padded_rows,
                 )
 
+            def j32() -> None:
+                compact_dev, padded_dev, tile_dev, padded_rows = maps_by_tile[
+                    owner_tiles["selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out"]]
+                gu.gguf_q4_k_selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out(
+                    x.ptr, compact_dev.ptr, padded_dev.ptr, tile_dev.ptr,
+                    w_a.ptr, w_b.ptr, out_dual.ptr,
+                    risk_count.ptr, risk_indices.ptr, 0, _mkc.RISK_MULTIPLIER,
+                    rows, in_features, out_features, out_features, EXPERTS, padded_rows,
+                )
+
             def grouped() -> None:
+                compact_dev = maps_by_tile[args.tile_rows][0]
                 gu.gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
                     x.ptr, compact_dev.ptr, w_a.ptr, w_b.ptr,
                     out_a.ptr, out_b.ptr, rows, EXPERTS, in_features, out_features,
                 )
 
             def f16_compact() -> None:
+                compact_dev, padded_dev, tile_dev, padded_rows = maps_by_tile[args.tile_rows]
                 gu.gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
                     x.ptr, compact_dev.ptr, padded_dev.ptr, tile_dev.ptr,
                     w_a.ptr, w_b.ptr, out_dual.ptr,
@@ -244,6 +276,7 @@ def main() -> int:
 
             arms = {
                 "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out": wmma,
+                "selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out": j32,
                 "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out": grouped,
                 "selected_dual_wmma_prefill_compact_bf16_bf16_out": f16_compact,
             }
@@ -251,18 +284,21 @@ def main() -> int:
         else:
 
             def pair2() -> None:
+                compact_dev = maps_by_tile[args.tile_rows][0]
                 dn.qwen4_exp_q5_1_selected_grouped_prefill_pair2_row_publish_bf16_bf16_out(
                     x.ptr, compact_dev.ptr, w_a.ptr, out_a.ptr,
                     rows, EXPERTS, in_features, out_features,
                 )
 
             def compact8() -> None:
+                compact_dev = maps_by_tile[args.tile_rows][0]
                 dn.qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out(
                     x.ptr, compact_dev.ptr, w_a.ptr, out_a.ptr,
                     rows, EXPERTS, in_features, out_features,
                 )
 
             def wmma_down() -> None:
+                compact_dev, padded_dev, tile_dev, padded_rows = maps_by_tile[args.tile_rows]
                 dn.qwen4_exp_q5_1_selected_wmma_iu8_risk_prefill_bf16_bf16_out(
                     x.ptr, compact_dev.ptr, padded_dev.ptr, tile_dev.ptr,
                     w_a.ptr, out_a.ptr,
