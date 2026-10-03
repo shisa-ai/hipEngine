@@ -1,0 +1,2326 @@
+{
+  "schema": 1,
+  "kind": "gemma4_same_gpu_five_length_diagnostic",
+  "date": "2026-10-03",
+  "status": "complete_with_hipengine_16k_capability_failure",
+  "performance_claim": false,
+  "promotion_qualified": false,
+  "physical_host": "epyc",
+  "physical_gpu": {
+    "name": "RX 7900 XTX",
+    "index": 1,
+    "pci": "0000:10:00.0"
+  },
+  "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "kv_storage": "bf16",
+  "execution_profile": "production",
+  "protocol": {
+    "outputs": 128,
+    "decode_forwards": 127,
+    "sampling": "greedy, EOS ignored, no MTP",
+    "corpus": "scripts/gemma4_campaign_bench.py CORPUS cycled to exact token count",
+    "warmups_per_block": 1,
+    "samples_per_block": 3,
+    "blocks": 2,
+    "order": [
+      "hipengine,llamacpp",
+      "llamacpp,hipengine"
+    ],
+    "aggregation": "median of six per-sample rates; min/max of all six samples",
+    "capacity": {
+      "512": 8192,
+      "1024": 8192,
+      "4096": 8192,
+      "8192": 8448,
+      "16384": 16640
+    }
+  },
+  "limitations": [
+    "BF16 continuation profile numerical failure remains open; this is diagnostic timing, not numerical promotion.",
+    "hipEngine instrumented timing uses host logits/sampling; the untouched device-argmax public path is separately checked for IDs and wall time.",
+    "llama.cpp predicted_ms also includes first greedy sample; both rates use 127 subsequent forwards as numerator.",
+    "Single frozen mixed corpus, single request, not HTTP serving throughput or general task quality.",
+    "No cross-engine generated-ID equality or new full numerical gate is asserted."
+  ],
+  "invalid_initial_probes": {
+    "capacity-8448.json": "actual runner capacity 8192",
+    "capacity-16640.json": "actual runner capacity 8192"
+  },
+  "harness_repair": "37732bb78, only public-constructor context propagation; no production arithmetic change",
+  "rows": [
+    {
+      "prompt_tokens": 512,
+      "engines": {
+        "hipengine": {
+          "status": "ok",
+          "prefill_tps": 2388.923396199733,
+          "decode_tps": 78.39422660858465,
+          "prefill_min_max": [
+            2377.5519891514023,
+            2394.075698771266
+          ],
+          "decode_min_max": [
+            77.43941029778134,
+            78.82323929000515
+          ],
+          "blocks": [
+            {
+              "label": "hipengine-p512-b0",
+              "source_artifact_sha256": "52ed572e4f4c9e8b1f7942d8a7fd9a094890b7a5fe58b3896cf60c7d6592fa37",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 512 --output 128 --samples 3 --warmup 1 --context 8192 --label hipengine-p512-b0 --out /tmp/gemma4-five-length-20261003/hipengine-p512-b0.json",
+              "samples": [
+                {
+                  "prefill_s": 0.21386124100536108,
+                  "decode_s": 1.6399918273091316,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 2394.075698771266,
+                  "decode_tps": 77.43941029778134,
+                  "generated_ids_sha256": "358d69801f6b5776b453385b3dbce9364b91e58e974b40acda5962fd81e376e1"
+                },
+                {
+                  "prefill_s": 0.21388755179941654,
+                  "decode_s": 1.6111999601125717,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 2393.7811980762344,
+                  "decode_tps": 78.82323929000515,
+                  "generated_ids_sha256": "358d69801f6b5776b453385b3dbce9364b91e58e974b40acda5962fd81e376e1"
+                },
+                {
+                  "prefill_s": 0.2145730210468173,
+                  "decode_s": 1.6185464384034276,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 2386.134088536171,
+                  "decode_tps": 78.46546567133149,
+                  "generated_ids_sha256": "358d69801f6b5776b453385b3dbce9364b91e58e974b40acda5962fd81e376e1"
+                }
+              ],
+              "provenance": {
+                "git_commit": "ab89f293cec7f2c0633de0bcdadaa210516bf2b5",
+                "git_dirty": true,
+                "git_dirty_files": [
+                  "M audit/findings/stub.json",
+                  " M audit/findings/unguarded-hip-test.json",
+                  " M audit/inventory/candidates.json",
+                  " M audit/inventory/flags.json",
+                  " M audit/inventory/kernels.json",
+                  " M audit/inventory/ledger.json",
+                  " M audit/inventory/meta.json",
+                  " M audit/inventory/worklog.json",
+                  " M audit/triage/stub.jsonl",
+                  "?? audit/runs/20261002T182303Z/",
+                  "?? benchmarks/results/2026-09-30-gemma4-p4096-revert-router-at41-w7900.json",
+                  "?? scratch/d3_down_t64_census/",
+                  "?? scratch/d3_down_t64_census_rollup.json",
+                  "?? scratch/d3_q5_1_down_screen.json",
+                  "?? scratch/d3_q5_1_down_screen_r1.json",
+                  "?? scratch/d3_q5_1_down_screen_r16.json",
+                  "?? scratch/d3_q5_1_down_screen_r8.json",
+                  "?? scratch/p2-tiled-attn/",
+                  "?? scratch/t16_fused_mmq32_probe.py",
+                  "?? worklog/entries/20261003T011430.287229Z-lhl-gemma4-five-length-baseline-6ee020.md"
+                ],
+                "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+                "artifact": {
+                  "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                  "bytes": 17010980576,
+                  "mtime": "2026-09-22T10:30:20.793299+00:00",
+                  "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+                },
+                "env": {
+                  "HIPENGINE_EXECUTION_PROFILE": "production",
+                  "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                  "HIP_LIB_PATH": "/opt/rocm/lib",
+                  "HIP_PATH": "/opt/rocm",
+                  "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                  "ROCR_VISIBLE_DEVICES": "1"
+                },
+                "hipcc": [
+                  "HIP version: 7.2.53211-3d9ef42",
+                  "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+                ],
+                "rocm_smi_clock_power": [
+                  "============================ ROCm System Management Interface ============================",
+                  "====================================== Temperature =======================================",
+                  "GPU[0]\t\t: Temperature (Sensor edge) (C): 25.0",
+                  "GPU[0]\t\t: Temperature (Sensor junction) (C): 32.0",
+                  "GPU[0]\t\t: Temperature (Sensor memory) (C): 38.0",
+                  "GPU[1]\t\t: Temperature (Sensor edge) (C): 34.0",
+                  "GPU[1]\t\t: Temperature (Sensor junction) (C): 44.0",
+                  "GPU[1]\t\t: Temperature (Sensor memory) (C): 56.0",
+                  "==========================================================================================",
+                  "=============================== Current clock frequencies ================================",
+                  "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+                  "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+                  "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+                  "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[1]\t\t: fclk clock level: 4: (2000Mhz)",
+                  "GPU[1]\t\t: mclk clock level: 3: (1249Mhz)",
+                  "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[1]\t\t: socclk clock level: 1: (1285Mhz)",
+                  "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "==========================================================================================",
+                  "=================================== Power Consumption ====================================",
+                  "GPU[0]\t\t: Average Graphics Package Power (W): 12.0",
+                  "GPU[1]\t\t: Average Graphics Package Power (W): 65.0",
+                  "==========================================================================================",
+                  "================================== End of ROCm SMI Log ==================================="
+                ],
+                "python": "3.11.11",
+                "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44"
+              },
+              "loading": {
+                "resolve_s": 0.8627975257113576,
+                "load_s": 22.297482608817518,
+                "internal_load_s": 22.297477588057518,
+                "resolution": {
+                  "_resolved_backend": "hip_gfx1100",
+                  "_resolved_quant": "gguf_q4_k_m",
+                  "_resolved_execution_profile": "production",
+                  "generator_type": "SubmitPollTextGenerator"
+                },
+                "context_length": 8192,
+                "runner_capacity": 8192,
+                "max_block": 256
+              },
+              "memory": {
+                "total_bytes": 25753026560,
+                "used_bytes": {
+                  "before_load": 37748736,
+                  "after_load": 21596471296,
+                  "after_runs": 24051990528
+                },
+                "peak_used_bytes": 24051990528,
+                "labels": [
+                  "before_load",
+                  "after_load",
+                  "after_runs"
+                ]
+              },
+              "llamacpp_commit": null,
+              "server_command": null,
+              "environment": null,
+              "text_probe": null,
+              "public": {
+                "public_wall_s": 1.8334941351786256,
+                "public_tps": 69.81205859572044,
+                "generated_tokens": 128,
+                "finish_reason": "length",
+                "sampler_mode": "greedy",
+                "public_path_parity": true,
+                "public_path_first_divergence": null,
+                "public_generated_equals_expected": true
+              }
+            },
+            {
+              "label": "hipengine-p512-b1",
+              "source_artifact_sha256": "ab18386cbe58c5e2a62aa21041949f1e80e460ad27f0096a2adfb0b3d2e6bb5d",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 512 --output 128 --samples 3 --warmup 1 --context 8192 --label hipengine-p512-b1 --out /tmp/gemma4-five-length-20261003/hipengine-p512-b1.json",
+              "samples": [
+                {
+                  "prefill_s": 0.21428945008665323,
+                  "decode_s": 1.6173084592446685,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 2389.291679048876,
+                  "decode_tps": 78.52552756653039,
+                  "generated_ids_sha256": "358d69801f6b5776b453385b3dbce9364b91e58e974b40acda5962fd81e376e1"
+                },
+                {
+                  "prefill_s": 0.21534755174070597,
+                  "decode_s": 1.6252713901922107,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 2377.5519891514023,
+                  "decode_tps": 78.1407959103867,
+                  "generated_ids_sha256": "358d69801f6b5776b453385b3dbce9364b91e58e974b40acda5962fd81e376e1"
+                },
+                {
+                  "prefill_s": 0.2143555311486125,
+                  "decode_s": 1.621490752324462,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 2388.5551133505896,
+                  "decode_tps": 78.3229875458378,
+                  "generated_ids_sha256": "358d69801f6b5776b453385b3dbce9364b91e58e974b40acda5962fd81e376e1"
+                }
+              ],
+              "provenance": {
+                "git_commit": "ab89f293cec7f2c0633de0bcdadaa210516bf2b5",
+                "git_dirty": true,
+                "git_dirty_files": [
+                  "M audit/findings/stub.json",
+                  " M audit/findings/unguarded-hip-test.json",
+                  " M audit/inventory/candidates.json",
+                  " M audit/inventory/flags.json",
+                  " M audit/inventory/kernels.json",
+                  " M audit/inventory/ledger.json",
+                  " M audit/inventory/meta.json",
+                  " M audit/inventory/worklog.json",
+                  " M audit/triage/stub.jsonl",
+                  "?? audit/runs/20261002T182303Z/",
+                  "?? benchmarks/results/2026-09-30-gemma4-p4096-revert-router-at41-w7900.json",
+                  "?? scratch/d3_down_t64_census/",
+                  "?? scratch/d3_down_t64_census_rollup.json",
+                  "?? scratch/d3_q5_1_down_screen.json",
+                  "?? scratch/d3_q5_1_down_screen_r1.json",
+                  "?? scratch/d3_q5_1_down_screen_r16.json",
+                  "?? scratch/d3_q5_1_down_screen_r8.json",
+                  "?? scratch/p2-tiled-attn/",
+                  "?? scratch/t16_fused_mmq32_probe.py",
+                  "?? worklog/entries/20261003T011430.287229Z-lhl-gemma4-five-length-baseline-6ee020.md"
+                ],
+                "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+                "artifact": {
+                  "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                  "bytes": 17010980576,
+                  "mtime": "2026-09-22T10:30:20.793299+00:00",
+                  "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+                },
+                "env": {
+                  "HIPENGINE_EXECUTION_PROFILE": "production",
+                  "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                  "HIP_LIB_PATH": "/opt/rocm/lib",
+                  "HIP_PATH": "/opt/rocm",
+                  "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                  "ROCR_VISIBLE_DEVICES": "1"
+                },
+                "hipcc": [
+                  "HIP version: 7.2.53211-3d9ef42",
+                  "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+                ],
+                "rocm_smi_clock_power": [
+                  "============================ ROCm System Management Interface ============================",
+                  "====================================== Temperature =======================================",
+                  "GPU[0]\t\t: Temperature (Sensor edge) (C): 26.0",
+                  "GPU[0]\t\t: Temperature (Sensor junction) (C): 33.0",
+                  "GPU[0]\t\t: Temperature (Sensor memory) (C): 38.0",
+                  "GPU[1]\t\t: Temperature (Sensor edge) (C): 44.0",
+                  "GPU[1]\t\t: Temperature (Sensor junction) (C): 55.0",
+                  "GPU[1]\t\t: Temperature (Sensor memory) (C): 70.0",
+                  "==========================================================================================",
+                  "=============================== Current clock frequencies ================================",
+                  "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+                  "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+                  "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+                  "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[1]\t\t: fclk clock level: 4: (2000Mhz)",
+                  "GPU[1]\t\t: mclk clock level: 3: (1249Mhz)",
+                  "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[1]\t\t: socclk clock level: 1: (1285Mhz)",
+                  "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "==========================================================================================",
+                  "=================================== Power Consumption ====================================",
+                  "GPU[0]\t\t: Average Graphics Package Power (W): 8.0",
+                  "GPU[1]\t\t: Average Graphics Package Power (W): 64.0",
+                  "==========================================================================================",
+                  "================================== End of ROCm SMI Log ==================================="
+                ],
+                "python": "3.11.11",
+                "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44"
+              },
+              "loading": {
+                "resolve_s": 0.8841211572289467,
+                "load_s": 22.59765340667218,
+                "internal_load_s": 22.59764907695353,
+                "resolution": {
+                  "_resolved_backend": "hip_gfx1100",
+                  "_resolved_quant": "gguf_q4_k_m",
+                  "_resolved_execution_profile": "production",
+                  "generator_type": "SubmitPollTextGenerator"
+                },
+                "context_length": 8192,
+                "runner_capacity": 8192,
+                "max_block": 256
+              },
+              "memory": {
+                "total_bytes": 25753026560,
+                "used_bytes": {
+                  "before_load": 37748736,
+                  "after_load": 21596471296,
+                  "after_runs": 24051990528
+                },
+                "peak_used_bytes": 24051990528,
+                "labels": [
+                  "before_load",
+                  "after_load",
+                  "after_runs"
+                ]
+              },
+              "llamacpp_commit": null,
+              "server_command": null,
+              "environment": null,
+              "text_probe": null,
+              "public": {
+                "public_wall_s": 1.8308282615616918,
+                "public_tps": 69.91371210908463,
+                "generated_tokens": 128,
+                "finish_reason": "length",
+                "sampler_mode": "greedy",
+                "public_path_parity": true,
+                "public_path_first_divergence": null,
+                "public_generated_equals_expected": true
+              }
+            }
+          ]
+        },
+        "llamacpp": {
+          "status": "ok",
+          "prefill_tps": 3596.692792712698,
+          "decode_tps": 83.18078875077697,
+          "prefill_min_max": [
+            3363.5748493946226,
+            3607.717132428585
+          ],
+          "decode_min_max": [
+            82.6285508318483,
+            84.46726760361041
+          ],
+          "blocks": [
+            {
+              "label": "llamacpp-p512-b0",
+              "source_artifact_sha256": "a63e8f2605f20498a2cd7b7d3c20126e7bd455594dd040545f25c8e7498123dc",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --prompt 512 --output 128 --samples 3 --warmup 1 --context 8192 --label llamacpp-p512-b0 --out /tmp/gemma4-five-length-20261003/llamacpp-p512-b0.json",
+              "samples": [
+                {
+                  "prefill_s": 0.152219,
+                  "decode_s": 1.5354919999999999,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3363.5748493946226,
+                  "decode_tps": 82.70964615901615
+                },
+                {
+                  "prefill_s": 0.14233400000000002,
+                  "decode_s": 1.536999,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3597.1728469655877,
+                  "decode_tps": 82.6285508318483
+                },
+                {
+                  "prefill_s": 0.142004,
+                  "decode_s": 1.520937,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3605.5322385284926,
+                  "decode_tps": 83.50115751014013
+                }
+              ],
+              "provenance": {},
+              "loading": null,
+              "memory": null,
+              "llamacpp_commit": "8cfc315a8abd654938f21d64ec683f8035d403fa",
+              "server_command": [
+                "/mnt/nvme1/llama-gemma4/build-hip/bin/llama-server",
+                "-m",
+                "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                "-ngl",
+                "99",
+                "-fa",
+                "on",
+                "-ctk",
+                "bf16",
+                "-ctv",
+                "bf16",
+                "-c",
+                "8192",
+                "-np",
+                "1",
+                "-b",
+                "4096",
+                "-ub",
+                "1024",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "18793",
+                "--no-cache-prompt",
+                "--fit",
+                "off"
+              ],
+              "environment": {
+                "HIPENGINE_EXECUTION_PROFILE": "production",
+                "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                "HIP_LIB_PATH": "/opt/rocm/lib",
+                "HIP_PATH": "/opt/rocm",
+                "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                "ROCR_VISIBLE_DEVICES": "1"
+              },
+              "text_probe": {
+                "match": true,
+                "bos": null,
+                "tokens": 512,
+                "llama_tokens": 512,
+                "expected": 512
+              }
+            },
+            {
+              "label": "llamacpp-p512-b1",
+              "source_artifact_sha256": "c84a249f7b947d1198df261b0198b848a74589dc092758517f2d099827765c40",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --prompt 512 --output 128 --samples 3 --warmup 1 --context 8192 --label llamacpp-p512-b1 --out /tmp/gemma4-five-length-20261003/llamacpp-p512-b1.json",
+              "samples": [
+                {
+                  "prefill_s": 0.149871,
+                  "decode_s": 1.5326980000000001,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3416.271326674273,
+                  "decode_tps": 82.86041999141382
+                },
+                {
+                  "prefill_s": 0.14237200000000003,
+                  "decode_s": 1.503541,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3596.212738459809,
+                  "decode_tps": 84.46726760361041
+                },
+                {
+                  "prefill_s": 0.14191800000000002,
+                  "decode_s": 1.505196,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3607.717132428585,
+                  "decode_tps": 84.37439376665895
+                }
+              ],
+              "provenance": {},
+              "loading": null,
+              "memory": null,
+              "llamacpp_commit": "8cfc315a8abd654938f21d64ec683f8035d403fa",
+              "server_command": [
+                "/mnt/nvme1/llama-gemma4/build-hip/bin/llama-server",
+                "-m",
+                "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                "-ngl",
+                "99",
+                "-fa",
+                "on",
+                "-ctk",
+                "bf16",
+                "-ctv",
+                "bf16",
+                "-c",
+                "8192",
+                "-np",
+                "1",
+                "-b",
+                "4096",
+                "-ub",
+                "1024",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "18793",
+                "--no-cache-prompt",
+                "--fit",
+                "off"
+              ],
+              "environment": {
+                "HIPENGINE_EXECUTION_PROFILE": "production",
+                "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                "HIP_LIB_PATH": "/opt/rocm/lib",
+                "HIP_PATH": "/opt/rocm",
+                "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                "ROCR_VISIBLE_DEVICES": "1"
+              },
+              "text_probe": {
+                "match": true,
+                "bos": null,
+                "tokens": 512,
+                "llama_tokens": 512,
+                "expected": 512
+              }
+            }
+          ]
+        }
+      },
+      "prompt_ids_sha256": "fba226ff8653b8b10e532f12d1d9b8fa364e57f552f51fab8c9079b23b0b268c",
+      "hipengine_over_llamacpp": {
+        "prefill_tps": 0.6642000120332654,
+        "decode_tps": 0.9424559178377878
+      }
+    },
+    {
+      "prompt_tokens": 1024,
+      "engines": {
+        "hipengine": {
+          "status": "ok",
+          "prefill_tps": 2341.4735938809845,
+          "decode_tps": 83.09911544649813,
+          "prefill_min_max": [
+            2332.216701794633,
+            2348.34501356038
+          ],
+          "decode_min_max": [
+            82.36334166518392,
+            84.31140812977604
+          ],
+          "blocks": [
+            {
+              "label": "hipengine-p1024-b0",
+              "source_artifact_sha256": "867247055328916e5e38351370b6441dfc87bcca11e97d334a2304211399c739",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 1024 --output 128 --samples 3 --warmup 1 --context 8192 --label hipengine-p1024-b0 --out /tmp/gemma4-five-length-20261003/hipengine-p1024-b0.json",
+              "samples": [
+                {
+                  "prefill_s": 0.4377303095534444,
+                  "decode_s": 1.541948121972382,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 2339.3399489394405,
+                  "decode_tps": 82.36334166518392,
+                  "generated_ids_sha256": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+                },
+                {
+                  "prefill_s": 0.43605177011340857,
+                  "decode_s": 1.5373695297166705,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 2348.34501356038,
+                  "decode_tps": 82.60863607945025,
+                  "generated_ids_sha256": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+                },
+                {
+                  "prefill_s": 0.43693328090012074,
+                  "decode_s": 1.5379705941304564,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 2343.607238822528,
+                  "decode_tps": 82.57635125449438,
+                  "generated_ids_sha256": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+                }
+              ],
+              "provenance": {
+                "git_commit": "ab89f293cec7f2c0633de0bcdadaa210516bf2b5",
+                "git_dirty": true,
+                "git_dirty_files": [
+                  "M audit/findings/stub.json",
+                  " M audit/findings/unguarded-hip-test.json",
+                  " M audit/inventory/candidates.json",
+                  " M audit/inventory/flags.json",
+                  " M audit/inventory/kernels.json",
+                  " M audit/inventory/ledger.json",
+                  " M audit/inventory/meta.json",
+                  " M audit/inventory/worklog.json",
+                  " M audit/triage/stub.jsonl",
+                  "?? audit/runs/20261002T182303Z/",
+                  "?? benchmarks/results/2026-09-30-gemma4-p4096-revert-router-at41-w7900.json",
+                  "?? scratch/d3_down_t64_census/",
+                  "?? scratch/d3_down_t64_census_rollup.json",
+                  "?? scratch/d3_q5_1_down_screen.json",
+                  "?? scratch/d3_q5_1_down_screen_r1.json",
+                  "?? scratch/d3_q5_1_down_screen_r16.json",
+                  "?? scratch/d3_q5_1_down_screen_r8.json",
+                  "?? scratch/p2-tiled-attn/",
+                  "?? scratch/t16_fused_mmq32_probe.py",
+                  "?? worklog/entries/20261003T011430.287229Z-lhl-gemma4-five-length-baseline-6ee020.md"
+                ],
+                "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+                "artifact": {
+                  "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                  "bytes": 17010980576,
+                  "mtime": "2026-09-22T10:30:20.793299+00:00",
+                  "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+                },
+                "env": {
+                  "HIPENGINE_EXECUTION_PROFILE": "production",
+                  "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                  "HIP_LIB_PATH": "/opt/rocm/lib",
+                  "HIP_PATH": "/opt/rocm",
+                  "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                  "ROCR_VISIBLE_DEVICES": "1"
+                },
+                "hipcc": [
+                  "HIP version: 7.2.53211-3d9ef42",
+                  "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+                ],
+                "rocm_smi_clock_power": [
+                  "============================ ROCm System Management Interface ============================",
+                  "====================================== Temperature =======================================",
+                  "GPU[0]\t\t: Temperature (Sensor edge) (C): 26.0",
+                  "GPU[0]\t\t: Temperature (Sensor junction) (C): 33.0",
+                  "GPU[0]\t\t: Temperature (Sensor memory) (C): 38.0",
+                  "GPU[1]\t\t: Temperature (Sensor edge) (C): 45.0",
+                  "GPU[1]\t\t: Temperature (Sensor junction) (C): 54.0",
+                  "GPU[1]\t\t: Temperature (Sensor memory) (C): 71.0",
+                  "==========================================================================================",
+                  "=============================== Current clock frequencies ================================",
+                  "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+                  "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+                  "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+                  "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[1]\t\t: fclk clock level: 4: (2000Mhz)",
+                  "GPU[1]\t\t: mclk clock level: 3: (1249Mhz)",
+                  "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[1]\t\t: socclk clock level: 1: (1285Mhz)",
+                  "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "==========================================================================================",
+                  "=================================== Power Consumption ====================================",
+                  "GPU[0]\t\t: Average Graphics Package Power (W): 12.0",
+                  "GPU[1]\t\t: Average Graphics Package Power (W): 64.0",
+                  "==========================================================================================",
+                  "================================== End of ROCm SMI Log ==================================="
+                ],
+                "python": "3.11.11",
+                "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44"
+              },
+              "loading": {
+                "resolve_s": 0.8771788133308291,
+                "load_s": 22.32844244223088,
+                "internal_load_s": 22.328438280150294,
+                "resolution": {
+                  "_resolved_backend": "hip_gfx1100",
+                  "_resolved_quant": "gguf_q4_k_m",
+                  "_resolved_execution_profile": "production",
+                  "generator_type": "SubmitPollTextGenerator"
+                },
+                "context_length": 8192,
+                "runner_capacity": 8192,
+                "max_block": 256
+              },
+              "memory": {
+                "total_bytes": 25753026560,
+                "used_bytes": {
+                  "before_load": 37748736,
+                  "after_load": 21596471296,
+                  "after_runs": 24087642112
+                },
+                "peak_used_bytes": 24087642112,
+                "labels": [
+                  "before_load",
+                  "after_load",
+                  "after_runs"
+                ]
+              },
+              "llamacpp_commit": null,
+              "server_command": null,
+              "environment": null,
+              "text_probe": null,
+              "public": {
+                "public_wall_s": 1.9414316769689322,
+                "public_tps": 65.9307260298959,
+                "generated_tokens": 128,
+                "finish_reason": "length",
+                "sampler_mode": "greedy",
+                "public_path_parity": true,
+                "public_path_first_divergence": null,
+                "public_generated_equals_expected": true
+              }
+            },
+            {
+              "label": "hipengine-p1024-b1",
+              "source_artifact_sha256": "f4c2a18880e77cd7a9ff4b705bf15b1b50d125f341ac1551b4a9ff6012aa2506",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 1024 --output 128 --samples 3 --warmup 1 --context 8192 --label hipengine-p1024-b1 --out /tmp/gemma4-five-length-20261003/hipengine-p1024-b1.json",
+              "samples": [
+                {
+                  "prefill_s": 0.43682299368083477,
+                  "decode_s": 1.5162261920049787,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 2344.1989428518655,
+                  "decode_tps": 83.76058972577292,
+                  "generated_ids_sha256": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+                },
+                {
+                  "prefill_s": 0.43831584230065346,
+                  "decode_s": 1.5193278575316072,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 2336.2148961469866,
+                  "decode_tps": 83.58959481354601,
+                  "generated_ids_sha256": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+                },
+                {
+                  "prefill_s": 0.43906726129353046,
+                  "decode_s": 1.506320470944047,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 2332.216701794633,
+                  "decode_tps": 84.31140812977604,
+                  "generated_ids_sha256": "b90e0ff53fdd9e49bf1f615dea1b3c49a8805d04cfea7e21024d98486bc06fd1"
+                }
+              ],
+              "provenance": {
+                "git_commit": "ab89f293cec7f2c0633de0bcdadaa210516bf2b5",
+                "git_dirty": true,
+                "git_dirty_files": [
+                  "M audit/findings/stub.json",
+                  " M audit/findings/unguarded-hip-test.json",
+                  " M audit/inventory/candidates.json",
+                  " M audit/inventory/flags.json",
+                  " M audit/inventory/kernels.json",
+                  " M audit/inventory/ledger.json",
+                  " M audit/inventory/meta.json",
+                  " M audit/inventory/worklog.json",
+                  " M audit/triage/stub.jsonl",
+                  "?? audit/runs/20261002T182303Z/",
+                  "?? benchmarks/results/2026-09-30-gemma4-p4096-revert-router-at41-w7900.json",
+                  "?? scratch/d3_down_t64_census/",
+                  "?? scratch/d3_down_t64_census_rollup.json",
+                  "?? scratch/d3_q5_1_down_screen.json",
+                  "?? scratch/d3_q5_1_down_screen_r1.json",
+                  "?? scratch/d3_q5_1_down_screen_r16.json",
+                  "?? scratch/d3_q5_1_down_screen_r8.json",
+                  "?? scratch/p2-tiled-attn/",
+                  "?? scratch/t16_fused_mmq32_probe.py",
+                  "?? worklog/entries/20261003T011430.287229Z-lhl-gemma4-five-length-baseline-6ee020.md"
+                ],
+                "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+                "artifact": {
+                  "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                  "bytes": 17010980576,
+                  "mtime": "2026-09-22T10:30:20.793299+00:00",
+                  "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+                },
+                "env": {
+                  "HIPENGINE_EXECUTION_PROFILE": "production",
+                  "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                  "HIP_LIB_PATH": "/opt/rocm/lib",
+                  "HIP_PATH": "/opt/rocm",
+                  "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                  "ROCR_VISIBLE_DEVICES": "1"
+                },
+                "hipcc": [
+                  "HIP version: 7.2.53211-3d9ef42",
+                  "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+                ],
+                "rocm_smi_clock_power": [
+                  "============================ ROCm System Management Interface ============================",
+                  "====================================== Temperature =======================================",
+                  "GPU[0]\t\t: Temperature (Sensor edge) (C): 28.0",
+                  "GPU[0]\t\t: Temperature (Sensor junction) (C): 35.0",
+                  "GPU[0]\t\t: Temperature (Sensor memory) (C): 40.0",
+                  "GPU[1]\t\t: Temperature (Sensor edge) (C): 44.0",
+                  "GPU[1]\t\t: Temperature (Sensor junction) (C): 54.0",
+                  "GPU[1]\t\t: Temperature (Sensor memory) (C): 72.0",
+                  "==========================================================================================",
+                  "=============================== Current clock frequencies ================================",
+                  "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+                  "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+                  "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+                  "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[1]\t\t: fclk clock level: 4: (2000Mhz)",
+                  "GPU[1]\t\t: mclk clock level: 3: (1249Mhz)",
+                  "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[1]\t\t: socclk clock level: 1: (1285Mhz)",
+                  "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "==========================================================================================",
+                  "=================================== Power Consumption ====================================",
+                  "GPU[0]\t\t: Average Graphics Package Power (W): 8.0",
+                  "GPU[1]\t\t: Average Graphics Package Power (W): 65.0",
+                  "==========================================================================================",
+                  "================================== End of ROCm SMI Log ==================================="
+                ],
+                "python": "3.11.11",
+                "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44"
+              },
+              "loading": {
+                "resolve_s": 0.8818256901577115,
+                "load_s": 22.34600530564785,
+                "internal_load_s": 22.34600132610649,
+                "resolution": {
+                  "_resolved_backend": "hip_gfx1100",
+                  "_resolved_quant": "gguf_q4_k_m",
+                  "_resolved_execution_profile": "production",
+                  "generator_type": "SubmitPollTextGenerator"
+                },
+                "context_length": 8192,
+                "runner_capacity": 8192,
+                "max_block": 256
+              },
+              "memory": {
+                "total_bytes": 25753026560,
+                "used_bytes": {
+                  "before_load": 37748736,
+                  "after_load": 21596471296,
+                  "after_runs": 24087642112
+                },
+                "peak_used_bytes": 24087642112,
+                "labels": [
+                  "before_load",
+                  "after_load",
+                  "after_runs"
+                ]
+              },
+              "llamacpp_commit": null,
+              "server_command": null,
+              "environment": null,
+              "text_probe": null,
+              "public": {
+                "public_wall_s": 1.9400777174159884,
+                "public_tps": 65.97673838060707,
+                "generated_tokens": 128,
+                "finish_reason": "length",
+                "sampler_mode": "greedy",
+                "public_path_parity": true,
+                "public_path_first_divergence": null,
+                "public_generated_equals_expected": true
+              }
+            }
+          ]
+        },
+        "llamacpp": {
+          "status": "ok",
+          "prefill_tps": 3881.397414385033,
+          "decode_tps": 80.30358872842984,
+          "prefill_min_max": [
+            2908.2316588280737,
+            4033.210971594221
+          ],
+          "decode_min_max": [
+            77.23768834288667,
+            81.87642719638352
+          ],
+          "blocks": [
+            {
+              "label": "llamacpp-p1024-b0",
+              "source_artifact_sha256": "0fa4e7eece383c2963b43c6780446a09a02996d0072426f6286eec5c3dc607be",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --prompt 1024 --output 128 --samples 3 --warmup 1 --context 8192 --label llamacpp-p1024-b0 --out /tmp/gemma4-five-length-20261003/llamacpp-p1024-b0.json",
+              "samples": [
+                {
+                  "prefill_s": 0.260276,
+                  "decode_s": 1.5719949999999998,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3934.285143463093,
+                  "decode_tps": 80.78906103390915
+                },
+                {
+                  "prefill_s": 0.253892,
+                  "decode_s": 1.551118,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 4033.210971594221,
+                  "decode_tps": 81.87642719638352
+                },
+                {
+                  "prefill_s": 0.255675,
+                  "decode_s": 1.583532,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 4005.0845800332454,
+                  "decode_tps": 80.20046326818783
+                }
+              ],
+              "provenance": {},
+              "loading": null,
+              "memory": null,
+              "llamacpp_commit": "8cfc315a8abd654938f21d64ec683f8035d403fa",
+              "server_command": [
+                "/mnt/nvme1/llama-gemma4/build-hip/bin/llama-server",
+                "-m",
+                "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                "-ngl",
+                "99",
+                "-fa",
+                "on",
+                "-ctk",
+                "bf16",
+                "-ctv",
+                "bf16",
+                "-c",
+                "8192",
+                "-np",
+                "1",
+                "-b",
+                "4096",
+                "-ub",
+                "1024",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "18793",
+                "--no-cache-prompt",
+                "--fit",
+                "off"
+              ],
+              "environment": {
+                "HIPENGINE_EXECUTION_PROFILE": "production",
+                "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                "HIP_LIB_PATH": "/opt/rocm/lib",
+                "HIP_PATH": "/opt/rocm",
+                "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                "ROCR_VISIBLE_DEVICES": "1"
+              },
+              "text_probe": {
+                "match": true,
+                "bos": null,
+                "tokens": 1024,
+                "llama_tokens": 1024,
+                "expected": 1024
+              }
+            },
+            {
+              "label": "llamacpp-p1024-b1",
+              "source_artifact_sha256": "69463d9358e691c5b46c5c2a63f4c81062a72ef64caba2d1163e621c9681826e",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --prompt 1024 --output 128 --samples 3 --warmup 1 --context 8192 --label llamacpp-p1024-b1 --out /tmp/gemma4-five-length-20261003/llamacpp-p1024-b1.json",
+              "samples": [
+                {
+                  "prefill_s": 0.267467,
+                  "decode_s": 1.581181,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3828.509685306972,
+                  "decode_tps": 80.31971039368675
+                },
+                {
+                  "prefill_s": 0.352104,
+                  "decode_s": 1.581816,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 2908.2316588280737,
+                  "decode_tps": 80.28746706317295
+                },
+                {
+                  "prefill_s": 0.272728,
+                  "decode_s": 1.6442750000000002,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3754.6566542489218,
+                  "decode_tps": 77.23768834288667
+                }
+              ],
+              "provenance": {},
+              "loading": null,
+              "memory": null,
+              "llamacpp_commit": "8cfc315a8abd654938f21d64ec683f8035d403fa",
+              "server_command": [
+                "/mnt/nvme1/llama-gemma4/build-hip/bin/llama-server",
+                "-m",
+                "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                "-ngl",
+                "99",
+                "-fa",
+                "on",
+                "-ctk",
+                "bf16",
+                "-ctv",
+                "bf16",
+                "-c",
+                "8192",
+                "-np",
+                "1",
+                "-b",
+                "4096",
+                "-ub",
+                "1024",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "18793",
+                "--no-cache-prompt",
+                "--fit",
+                "off"
+              ],
+              "environment": {
+                "HIPENGINE_EXECUTION_PROFILE": "production",
+                "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                "HIP_LIB_PATH": "/opt/rocm/lib",
+                "HIP_PATH": "/opt/rocm",
+                "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                "ROCR_VISIBLE_DEVICES": "1"
+              },
+              "text_probe": {
+                "match": true,
+                "bos": null,
+                "tokens": 1024,
+                "llama_tokens": 1024,
+                "expected": 1024
+              }
+            }
+          ]
+        }
+      },
+      "prompt_ids_sha256": "9730ebf884a19ea6f10c23dcc84061702b7663d53f092f8a75832667b472e211",
+      "hipengine_over_llamacpp": {
+        "prefill_tps": 0.603255308308069,
+        "decode_tps": 1.0348119774263411
+      }
+    },
+    {
+      "prompt_tokens": 4096,
+      "engines": {
+        "hipengine": {
+          "status": "ok",
+          "prefill_tps": 1435.697388859191,
+          "decode_tps": 79.87511517891897,
+          "prefill_min_max": [
+            1433.377454624825,
+            1436.1280912018815
+          ],
+          "decode_min_max": [
+            78.07552414052269,
+            80.35257577679248
+          ],
+          "blocks": [
+            {
+              "label": "hipengine-p4096-b0",
+              "source_artifact_sha256": "b7641148b8978bc17a63a2e435e0a5a7203ac3748a0a92693407b77118f23dd5",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 4096 --output 128 --samples 3 --warmup 1 --context 8192 --label hipengine-p4096-b0 --out /tmp/gemma4-five-length-20261003/hipengine-p4096-b0.json",
+              "samples": [
+                {
+                  "prefill_s": 2.853448855690658,
+                  "decode_s": 1.5943282768130302,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 1435.4559016648611,
+                  "decode_tps": 79.65737160095136,
+                  "generated_ids_sha256": "7fa4a4f93de9ebc89cb2cf7ea9bcf05de722aa2c8bc0146d3f1db53e5d7ed53c"
+                },
+                {
+                  "prefill_s": 2.8575864555314183,
+                  "decode_s": 1.5956268599256873,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 1433.377454624825,
+                  "decode_tps": 79.59254333805508,
+                  "generated_ids_sha256": "7fa4a4f93de9ebc89cb2cf7ea9bcf05de722aa2c8bc0146d3f1db53e5d7ed53c"
+                },
+                {
+                  "prefill_s": 2.855551083572209,
+                  "decode_s": 1.5805342737585306,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 1434.3991335206747,
+                  "decode_tps": 80.35257577679248,
+                  "generated_ids_sha256": "7fa4a4f93de9ebc89cb2cf7ea9bcf05de722aa2c8bc0146d3f1db53e5d7ed53c"
+                }
+              ],
+              "provenance": {
+                "git_commit": "ab89f293cec7f2c0633de0bcdadaa210516bf2b5",
+                "git_dirty": true,
+                "git_dirty_files": [
+                  "M audit/findings/stub.json",
+                  " M audit/findings/unguarded-hip-test.json",
+                  " M audit/inventory/candidates.json",
+                  " M audit/inventory/flags.json",
+                  " M audit/inventory/kernels.json",
+                  " M audit/inventory/ledger.json",
+                  " M audit/inventory/meta.json",
+                  " M audit/inventory/worklog.json",
+                  " M audit/triage/stub.jsonl",
+                  "?? audit/runs/20261002T182303Z/",
+                  "?? benchmarks/results/2026-09-30-gemma4-p4096-revert-router-at41-w7900.json",
+                  "?? scratch/d3_down_t64_census/",
+                  "?? scratch/d3_down_t64_census_rollup.json",
+                  "?? scratch/d3_q5_1_down_screen.json",
+                  "?? scratch/d3_q5_1_down_screen_r1.json",
+                  "?? scratch/d3_q5_1_down_screen_r16.json",
+                  "?? scratch/d3_q5_1_down_screen_r8.json",
+                  "?? scratch/p2-tiled-attn/",
+                  "?? scratch/t16_fused_mmq32_probe.py",
+                  "?? worklog/entries/20261003T011430.287229Z-lhl-gemma4-five-length-baseline-6ee020.md"
+                ],
+                "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+                "artifact": {
+                  "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                  "bytes": 17010980576,
+                  "mtime": "2026-09-22T10:30:20.793299+00:00",
+                  "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+                },
+                "env": {
+                  "HIPENGINE_EXECUTION_PROFILE": "production",
+                  "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                  "HIP_LIB_PATH": "/opt/rocm/lib",
+                  "HIP_PATH": "/opt/rocm",
+                  "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                  "ROCR_VISIBLE_DEVICES": "1"
+                },
+                "hipcc": [
+                  "HIP version: 7.2.53211-3d9ef42",
+                  "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+                ],
+                "rocm_smi_clock_power": [
+                  "============================ ROCm System Management Interface ============================",
+                  "====================================== Temperature =======================================",
+                  "GPU[0]\t\t: Temperature (Sensor edge) (C): 28.0",
+                  "GPU[0]\t\t: Temperature (Sensor junction) (C): 35.0",
+                  "GPU[0]\t\t: Temperature (Sensor memory) (C): 40.0",
+                  "GPU[1]\t\t: Temperature (Sensor edge) (C): 48.0",
+                  "GPU[1]\t\t: Temperature (Sensor junction) (C): 60.0",
+                  "GPU[1]\t\t: Temperature (Sensor memory) (C): 75.0",
+                  "==========================================================================================",
+                  "=============================== Current clock frequencies ================================",
+                  "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+                  "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+                  "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+                  "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[1]\t\t: fclk clock level: 4: (2000Mhz)",
+                  "GPU[1]\t\t: mclk clock level: 3: (1249Mhz)",
+                  "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[1]\t\t: socclk clock level: 1: (1285Mhz)",
+                  "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "==========================================================================================",
+                  "=================================== Power Consumption ====================================",
+                  "GPU[0]\t\t: Average Graphics Package Power (W): 9.0",
+                  "GPU[1]\t\t: Average Graphics Package Power (W): 68.0",
+                  "==========================================================================================",
+                  "================================== End of ROCm SMI Log ==================================="
+                ],
+                "python": "3.11.11",
+                "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44"
+              },
+              "loading": {
+                "resolve_s": 0.8826719261705875,
+                "load_s": 22.79044894129038,
+                "internal_load_s": 22.79044514056295,
+                "resolution": {
+                  "_resolved_backend": "hip_gfx1100",
+                  "_resolved_quant": "gguf_q4_k_m",
+                  "_resolved_execution_profile": "production",
+                  "generator_type": "SubmitPollTextGenerator"
+                },
+                "context_length": 8192,
+                "runner_capacity": 8192,
+                "max_block": 256
+              },
+              "memory": {
+                "total_bytes": 25753026560,
+                "used_bytes": {
+                  "before_load": 37748736,
+                  "after_load": 21596471296,
+                  "after_runs": 24091836416
+                },
+                "peak_used_bytes": 24091836416,
+                "labels": [
+                  "before_load",
+                  "after_load",
+                  "after_runs"
+                ]
+              },
+              "llamacpp_commit": null,
+              "server_command": null,
+              "environment": null,
+              "text_probe": null,
+              "public": {
+                "public_wall_s": 4.462100959382951,
+                "public_tps": 28.686038519778513,
+                "generated_tokens": 128,
+                "finish_reason": "length",
+                "sampler_mode": "greedy",
+                "public_path_parity": true,
+                "public_path_first_divergence": null,
+                "public_generated_equals_expected": true
+              }
+            },
+            {
+              "label": "hipengine-p4096-b1",
+              "source_artifact_sha256": "64a6876a3ab4380fdb96b2d491dcdbf5600d8b412548f28611c927d5e9ca190c",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 4096 --output 128 --samples 3 --warmup 1 --context 8192 --label hipengine-p4096-b1 --out /tmp/gemma4-five-length-20261003/hipengine-p4096-b1.json",
+              "samples": [
+                {
+                  "prefill_s": 2.8521132795140147,
+                  "decode_s": 1.6266301302239299,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 1436.1280912018815,
+                  "decode_tps": 78.07552414052269,
+                  "generated_ids_sha256": "7fa4a4f93de9ebc89cb2cf7ea9bcf05de722aa2c8bc0146d3f1db53e5d7ed53c"
+                },
+                {
+                  "prefill_s": 2.852489105425775,
+                  "decode_s": 1.5805518180131912,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 1435.9388760535207,
+                  "decode_tps": 80.35168385661878,
+                  "generated_ids_sha256": "7fa4a4f93de9ebc89cb2cf7ea9bcf05de722aa2c8bc0146d3f1db53e5d7ed53c"
+                },
+                {
+                  "prefill_s": 2.85240778606385,
+                  "decode_s": 1.585659470409155,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 1435.9798132693475,
+                  "decode_tps": 80.09285875688657,
+                  "generated_ids_sha256": "7fa4a4f93de9ebc89cb2cf7ea9bcf05de722aa2c8bc0146d3f1db53e5d7ed53c"
+                }
+              ],
+              "provenance": {
+                "git_commit": "ab89f293cec7f2c0633de0bcdadaa210516bf2b5",
+                "git_dirty": true,
+                "git_dirty_files": [
+                  "M audit/findings/stub.json",
+                  " M audit/findings/unguarded-hip-test.json",
+                  " M audit/inventory/candidates.json",
+                  " M audit/inventory/flags.json",
+                  " M audit/inventory/kernels.json",
+                  " M audit/inventory/ledger.json",
+                  " M audit/inventory/meta.json",
+                  " M audit/inventory/worklog.json",
+                  " M audit/triage/stub.jsonl",
+                  "?? audit/runs/20261002T182303Z/",
+                  "?? benchmarks/results/2026-09-30-gemma4-p4096-revert-router-at41-w7900.json",
+                  "?? scratch/d3_down_t64_census/",
+                  "?? scratch/d3_down_t64_census_rollup.json",
+                  "?? scratch/d3_q5_1_down_screen.json",
+                  "?? scratch/d3_q5_1_down_screen_r1.json",
+                  "?? scratch/d3_q5_1_down_screen_r16.json",
+                  "?? scratch/d3_q5_1_down_screen_r8.json",
+                  "?? scratch/p2-tiled-attn/",
+                  "?? scratch/t16_fused_mmq32_probe.py",
+                  "?? worklog/entries/20261003T011430.287229Z-lhl-gemma4-five-length-baseline-6ee020.md"
+                ],
+                "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+                "artifact": {
+                  "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                  "bytes": 17010980576,
+                  "mtime": "2026-09-22T10:30:20.793299+00:00",
+                  "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+                },
+                "env": {
+                  "HIPENGINE_EXECUTION_PROFILE": "production",
+                  "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                  "HIP_LIB_PATH": "/opt/rocm/lib",
+                  "HIP_PATH": "/opt/rocm",
+                  "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                  "ROCR_VISIBLE_DEVICES": "1"
+                },
+                "hipcc": [
+                  "HIP version: 7.2.53211-3d9ef42",
+                  "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+                ],
+                "rocm_smi_clock_power": [
+                  "============================ ROCm System Management Interface ============================",
+                  "====================================== Temperature =======================================",
+                  "GPU[0]\t\t: Temperature (Sensor edge) (C): 30.0",
+                  "GPU[0]\t\t: Temperature (Sensor junction) (C): 37.0",
+                  "GPU[0]\t\t: Temperature (Sensor memory) (C): 40.0",
+                  "GPU[1]\t\t: Temperature (Sensor edge) (C): 47.0",
+                  "GPU[1]\t\t: Temperature (Sensor junction) (C): 58.0",
+                  "GPU[1]\t\t: Temperature (Sensor memory) (C): 76.0",
+                  "==========================================================================================",
+                  "=============================== Current clock frequencies ================================",
+                  "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+                  "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+                  "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+                  "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[1]\t\t: fclk clock level: 4: (2000Mhz)",
+                  "GPU[1]\t\t: mclk clock level: 3: (1249Mhz)",
+                  "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[1]\t\t: socclk clock level: 1: (1285Mhz)",
+                  "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "==========================================================================================",
+                  "=================================== Power Consumption ====================================",
+                  "GPU[0]\t\t: Average Graphics Package Power (W): 12.0",
+                  "GPU[1]\t\t: Average Graphics Package Power (W): 66.0",
+                  "==========================================================================================",
+                  "================================== End of ROCm SMI Log ==================================="
+                ],
+                "python": "3.11.11",
+                "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44"
+              },
+              "loading": {
+                "resolve_s": 0.8908771639689803,
+                "load_s": 22.2830218244344,
+                "internal_load_s": 22.28301776573062,
+                "resolution": {
+                  "_resolved_backend": "hip_gfx1100",
+                  "_resolved_quant": "gguf_q4_k_m",
+                  "_resolved_execution_profile": "production",
+                  "generator_type": "SubmitPollTextGenerator"
+                },
+                "context_length": 8192,
+                "runner_capacity": 8192,
+                "max_block": 256
+              },
+              "memory": {
+                "total_bytes": 25753026560,
+                "used_bytes": {
+                  "before_load": 37748736,
+                  "after_load": 21596471296,
+                  "after_runs": 24091836416
+                },
+                "peak_used_bytes": 24091836416,
+                "labels": [
+                  "before_load",
+                  "after_load",
+                  "after_runs"
+                ]
+              },
+              "llamacpp_commit": null,
+              "server_command": null,
+              "environment": null,
+              "text_probe": null,
+              "public": {
+                "public_wall_s": 4.4439102075994015,
+                "public_tps": 28.803462270932236,
+                "generated_tokens": 128,
+                "finish_reason": "length",
+                "sampler_mode": "greedy",
+                "public_path_parity": true,
+                "public_path_first_divergence": null,
+                "public_generated_equals_expected": true
+              }
+            }
+          ]
+        },
+        "llamacpp": {
+          "status": "ok",
+          "prefill_tps": 3934.3275019042176,
+          "decode_tps": 76.4063506491325,
+          "prefill_min_max": [
+            3668.0717459072257,
+            3984.6955005822365
+          ],
+          "decode_min_max": [
+            76.15273960979816,
+            77.41490303935785
+          ],
+          "blocks": [
+            {
+              "label": "llamacpp-p4096-b0",
+              "source_artifact_sha256": "9f63579d0723e7342595d40689f6f506fffa40acb647f0fbd736a5f879946657",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --prompt 4096 --output 128 --samples 3 --warmup 1 --context 8192 --label llamacpp-p4096-b0 --out /tmp/gemma4-five-length-20261003/llamacpp-p4096-b0.json",
+              "samples": [
+                {
+                  "prefill_s": 1.027933,
+                  "decode_s": 1.6621400000000002,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3984.6955005822365,
+                  "decode_tps": 76.40752283201174
+                },
+                {
+                  "prefill_s": 1.032897,
+                  "decode_s": 1.667701,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3965.545451288948,
+                  "decode_tps": 76.15273960979816
+                },
+                {
+                  "prefill_s": 1.116663,
+                  "decode_s": 1.6562970000000001,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3668.0717459072257,
+                  "decode_tps": 76.67706939033276
+                }
+              ],
+              "provenance": {},
+              "loading": null,
+              "memory": null,
+              "llamacpp_commit": "8cfc315a8abd654938f21d64ec683f8035d403fa",
+              "server_command": [
+                "/mnt/nvme1/llama-gemma4/build-hip/bin/llama-server",
+                "-m",
+                "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                "-ngl",
+                "99",
+                "-fa",
+                "on",
+                "-ctk",
+                "bf16",
+                "-ctv",
+                "bf16",
+                "-c",
+                "8192",
+                "-np",
+                "1",
+                "-b",
+                "4096",
+                "-ub",
+                "1024",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "18793",
+                "--no-cache-prompt",
+                "--fit",
+                "off"
+              ],
+              "environment": {
+                "HIPENGINE_EXECUTION_PROFILE": "production",
+                "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                "HIP_LIB_PATH": "/opt/rocm/lib",
+                "HIP_PATH": "/opt/rocm",
+                "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                "ROCR_VISIBLE_DEVICES": "1"
+              },
+              "text_probe": {
+                "match": true,
+                "bos": null,
+                "tokens": 4096,
+                "llama_tokens": 4096,
+                "expected": 4096
+              }
+            },
+            {
+              "label": "llamacpp-p4096-b1",
+              "source_artifact_sha256": "0178f68964690d39ec387732af32c966bf526b483b14c4124563b8d3424a4276",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --prompt 4096 --output 128 --samples 3 --warmup 1 --context 8192 --label llamacpp-p4096-b1 --out /tmp/gemma4-five-length-20261003/llamacpp-p4096-b1.json",
+              "samples": [
+                {
+                  "prefill_s": 1.048589,
+                  "decode_s": 1.662191,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3906.201571826521,
+                  "decode_tps": 76.40517846625328
+                },
+                {
+                  "prefill_s": 1.033703,
+                  "decode_s": 1.640511,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3962.4534319819136,
+                  "decode_tps": 77.41490303935785
+                },
+                {
+                  "prefill_s": 1.072491,
+                  "decode_s": 1.664779,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3819.1462678940893,
+                  "decode_tps": 76.28640197888129
+                }
+              ],
+              "provenance": {},
+              "loading": null,
+              "memory": null,
+              "llamacpp_commit": "8cfc315a8abd654938f21d64ec683f8035d403fa",
+              "server_command": [
+                "/mnt/nvme1/llama-gemma4/build-hip/bin/llama-server",
+                "-m",
+                "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                "-ngl",
+                "99",
+                "-fa",
+                "on",
+                "-ctk",
+                "bf16",
+                "-ctv",
+                "bf16",
+                "-c",
+                "8192",
+                "-np",
+                "1",
+                "-b",
+                "4096",
+                "-ub",
+                "1024",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "18793",
+                "--no-cache-prompt",
+                "--fit",
+                "off"
+              ],
+              "environment": {
+                "HIPENGINE_EXECUTION_PROFILE": "production",
+                "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                "HIP_LIB_PATH": "/opt/rocm/lib",
+                "HIP_PATH": "/opt/rocm",
+                "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                "ROCR_VISIBLE_DEVICES": "1"
+              },
+              "text_probe": {
+                "match": true,
+                "bos": null,
+                "tokens": 4096,
+                "llama_tokens": 4096,
+                "expected": 4096
+              }
+            }
+          ]
+        }
+      },
+      "prompt_ids_sha256": "6c4163ef1d578f47a2346c8b7657c627d796a4878448e36edf0383972b57d55a",
+      "hipengine_over_llamacpp": {
+        "prefill_tps": 0.36491557659201285,
+        "decode_tps": 1.0453989033675417
+      }
+    },
+    {
+      "prompt_tokens": 8192,
+      "engines": {
+        "hipengine": {
+          "status": "ok",
+          "prefill_tps": 1126.8828876686991,
+          "decode_tps": 75.6332632891677,
+          "prefill_min_max": [
+            1124.9319705938333,
+            1128.0687117494313
+          ],
+          "decode_min_max": [
+            74.22032793063869,
+            76.2413886923405
+          ],
+          "blocks": [
+            {
+              "label": "hipengine-p8192-corrected-b0",
+              "source_artifact_sha256": "0680d84f0c8bc0c5c0cf0d8f4ac1adf0d3a1d59ffcce6b00deef3456385eb29c",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 8192 --output 128 --samples 3 --warmup 1 --context 8448 --label hipengine-p8192-corrected-b0 --out /tmp/gemma4-five-length-20261003/hipengine-p8192-corrected-b0.json",
+              "samples": [
+                {
+                  "prefill_s": 7.261968987062573,
+                  "decode_s": 1.7111215153709054,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 1128.0687117494313,
+                  "decode_tps": 74.22032793063869,
+                  "generated_ids_sha256": "290a81252dc6230835867ada9545d432ca0e706a9fa3c577519065ad62607758"
+                },
+                {
+                  "prefill_s": 7.265359469689429,
+                  "decode_s": 1.6757881045341492,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 1127.542282550017,
+                  "decode_tps": 75.78523779729575,
+                  "generated_ids_sha256": "290a81252dc6230835867ada9545d432ca0e706a9fa3c577519065ad62607758"
+                },
+                {
+                  "prefill_s": 7.269661031663418,
+                  "decode_s": 1.6657618936151266,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 1126.8750997218829,
+                  "decode_tps": 76.2413886923405,
+                  "generated_ids_sha256": "290a81252dc6230835867ada9545d432ca0e706a9fa3c577519065ad62607758"
+                }
+              ],
+              "provenance": {
+                "git_commit": "ab89f293cec7f2c0633de0bcdadaa210516bf2b5",
+                "git_dirty": true,
+                "git_dirty_files": [
+                  "M audit/findings/stub.json",
+                  " M audit/findings/unguarded-hip-test.json",
+                  " M audit/inventory/candidates.json",
+                  " M audit/inventory/flags.json",
+                  " M audit/inventory/kernels.json",
+                  " M audit/inventory/ledger.json",
+                  " M audit/inventory/meta.json",
+                  " M audit/inventory/worklog.json",
+                  " M audit/triage/stub.jsonl",
+                  " M scripts/gemma4_campaign_bench.py",
+                  " M tests/test_unit_gemma4_campaign_bench.py",
+                  "?? audit/runs/20261002T182303Z/",
+                  "?? benchmarks/results/2026-09-30-gemma4-p4096-revert-router-at41-w7900.json",
+                  "?? scratch/d3_down_t64_census/",
+                  "?? scratch/d3_down_t64_census_rollup.json",
+                  "?? scratch/d3_q5_1_down_screen.json",
+                  "?? scratch/d3_q5_1_down_screen_r1.json",
+                  "?? scratch/d3_q5_1_down_screen_r16.json",
+                  "?? scratch/d3_q5_1_down_screen_r8.json",
+                  "?? scratch/p2-tiled-attn/",
+                  "?? scratch/t16_fused_mmq32_probe.py",
+                  "?? worklog/entries/20261003T011430.287229Z-lhl-gemma4-five-length-baseline-6ee020.md",
+                  "?? worklog/entries/20261003T012807.374701Z-lhl-gemma4-bench-context-propagation-3ba080.md"
+                ],
+                "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+                "artifact": {
+                  "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                  "bytes": 17010980576,
+                  "mtime": "2026-09-22T10:30:20.793299+00:00",
+                  "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+                },
+                "env": {
+                  "HIPENGINE_EXECUTION_PROFILE": "production",
+                  "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                  "HIP_LIB_PATH": "/opt/rocm/lib",
+                  "HIP_PATH": "/opt/rocm",
+                  "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                  "ROCR_VISIBLE_DEVICES": "1"
+                },
+                "hipcc": [
+                  "HIP version: 7.2.53211-3d9ef42",
+                  "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+                ],
+                "rocm_smi_clock_power": [
+                  "============================ ROCm System Management Interface ============================",
+                  "====================================== Temperature =======================================",
+                  "GPU[0]\t\t: Temperature (Sensor edge) (C): 31.0",
+                  "GPU[0]\t\t: Temperature (Sensor junction) (C): 38.0",
+                  "GPU[0]\t\t: Temperature (Sensor memory) (C): 42.0",
+                  "GPU[1]\t\t: Temperature (Sensor edge) (C): 37.0",
+                  "GPU[1]\t\t: Temperature (Sensor junction) (C): 45.0",
+                  "GPU[1]\t\t: Temperature (Sensor memory) (C): 52.0",
+                  "==========================================================================================",
+                  "=============================== Current clock frequencies ================================",
+                  "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+                  "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+                  "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+                  "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[1]\t\t: fclk clock level: 1: (1000Mhz)",
+                  "GPU[1]\t\t: mclk clock level: 0: (96Mhz)",
+                  "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[1]\t\t: socclk clock level: 1: (600Mhz)",
+                  "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "==========================================================================================",
+                  "=================================== Power Consumption ====================================",
+                  "GPU[0]\t\t: Average Graphics Package Power (W): 12.0",
+                  "GPU[1]\t\t: Average Graphics Package Power (W): 5.0",
+                  "==========================================================================================",
+                  "================================== End of ROCm SMI Log ==================================="
+                ],
+                "python": "3.11.11",
+                "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44"
+              },
+              "loading": {
+                "resolve_s": 0.8928184006363153,
+                "load_s": 22.170522580854595,
+                "internal_load_s": 22.1705184513703,
+                "resolution": {
+                  "_resolved_backend": "hip_gfx1100",
+                  "_resolved_quant": "gguf_q4_k_m",
+                  "_resolved_execution_profile": "production",
+                  "generator_type": "SubmitPollTextGenerator"
+                },
+                "context_length": 8448,
+                "runner_capacity": 8448,
+                "max_block": 256
+              },
+              "memory": {
+                "total_bytes": 25753026560,
+                "used_bytes": {
+                  "before_load": 37748736,
+                  "after_load": 21722300416,
+                  "after_runs": 24240734208
+                },
+                "peak_used_bytes": 24240734208,
+                "labels": [
+                  "before_load",
+                  "after_load",
+                  "after_runs"
+                ]
+              },
+              "llamacpp_commit": null,
+              "server_command": null,
+              "environment": null,
+              "text_probe": null,
+              "public": {
+                "public_wall_s": 8.948049489408731,
+                "public_tps": 14.304793480579864,
+                "generated_tokens": 128,
+                "finish_reason": "length",
+                "sampler_mode": "greedy",
+                "public_path_parity": true,
+                "public_path_first_divergence": null,
+                "public_generated_equals_expected": true
+              }
+            },
+            {
+              "label": "hipengine-p8192-corrected-b1",
+              "source_artifact_sha256": "1b05ed265456cc6d8f84cabb68ec9ac07ab357d62dfe4bee4efe6448615353ad",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 8192 --output 128 --samples 3 --warmup 1 --context 8448 --label hipengine-p8192-corrected-b1 --out /tmp/gemma4-five-length-20261003/hipengine-p8192-corrected-b1.json",
+              "samples": [
+                {
+                  "prefill_s": 7.26956055033952,
+                  "decode_s": 1.6825361894443631,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 1126.8906756155154,
+                  "decode_tps": 75.48128878103965,
+                  "generated_ids_sha256": "290a81252dc6230835867ada9545d432ca0e706a9fa3c577519065ad62607758"
+                },
+                {
+                  "prefill_s": 7.2752060713246465,
+                  "decode_s": 1.6674650497734547,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 1126.0162144807023,
+                  "decode_tps": 76.16351540156988,
+                  "generated_ids_sha256": "290a81252dc6230835867ada9545d432ca0e706a9fa3c577519065ad62607758"
+                },
+                {
+                  "prefill_s": 7.28221813775599,
+                  "decode_s": 1.6968049285933375,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 1124.9319705938333,
+                  "decode_tps": 74.84655298902499,
+                  "generated_ids_sha256": "290a81252dc6230835867ada9545d432ca0e706a9fa3c577519065ad62607758"
+                }
+              ],
+              "provenance": {
+                "git_commit": "37732bb789254ecd48283019c056615999c2cf54",
+                "git_dirty": true,
+                "git_dirty_files": [
+                  "M audit/findings/stub.json",
+                  " M audit/findings/unguarded-hip-test.json",
+                  " M audit/inventory/candidates.json",
+                  " M audit/inventory/flags.json",
+                  " M audit/inventory/kernels.json",
+                  " M audit/inventory/ledger.json",
+                  " M audit/inventory/meta.json",
+                  " M audit/inventory/worklog.json",
+                  " M audit/triage/stub.jsonl",
+                  "?? audit/runs/20261002T182303Z/",
+                  "?? benchmarks/results/2026-09-30-gemma4-p4096-revert-router-at41-w7900.json",
+                  "?? scratch/d3_down_t64_census/",
+                  "?? scratch/d3_down_t64_census_rollup.json",
+                  "?? scratch/d3_q5_1_down_screen.json",
+                  "?? scratch/d3_q5_1_down_screen_r1.json",
+                  "?? scratch/d3_q5_1_down_screen_r16.json",
+                  "?? scratch/d3_q5_1_down_screen_r8.json",
+                  "?? scratch/p2-tiled-attn/",
+                  "?? scratch/t16_fused_mmq32_probe.py",
+                  "?? worklog/entries/20261003T011430.287229Z-lhl-gemma4-five-length-baseline-6ee020.md"
+                ],
+                "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+                "artifact": {
+                  "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                  "bytes": 17010980576,
+                  "mtime": "2026-09-22T10:30:20.793299+00:00",
+                  "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+                },
+                "env": {
+                  "HIPENGINE_EXECUTION_PROFILE": "production",
+                  "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                  "HIP_LIB_PATH": "/opt/rocm/lib",
+                  "HIP_PATH": "/opt/rocm",
+                  "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                  "ROCR_VISIBLE_DEVICES": "1"
+                },
+                "hipcc": [
+                  "HIP version: 7.2.53211-3d9ef42",
+                  "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+                ],
+                "rocm_smi_clock_power": [
+                  "============================ ROCm System Management Interface ============================",
+                  "====================================== Temperature =======================================",
+                  "GPU[0]\t\t: Temperature (Sensor edge) (C): 32.0",
+                  "GPU[0]\t\t: Temperature (Sensor junction) (C): 39.0",
+                  "GPU[0]\t\t: Temperature (Sensor memory) (C): 42.0",
+                  "GPU[1]\t\t: Temperature (Sensor edge) (C): 46.0",
+                  "GPU[1]\t\t: Temperature (Sensor junction) (C): 57.0",
+                  "GPU[1]\t\t: Temperature (Sensor memory) (C): 75.0",
+                  "==========================================================================================",
+                  "=============================== Current clock frequencies ================================",
+                  "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+                  "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+                  "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+                  "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+                  "GPU[1]\t\t: fclk clock level: 4: (2000Mhz)",
+                  "GPU[1]\t\t: mclk clock level: 3: (1249Mhz)",
+                  "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+                  "GPU[1]\t\t: socclk clock level: 1: (1285Mhz)",
+                  "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+                  "==========================================================================================",
+                  "=================================== Power Consumption ====================================",
+                  "GPU[0]\t\t: Average Graphics Package Power (W): 5.0",
+                  "GPU[1]\t\t: Average Graphics Package Power (W): 67.0",
+                  "==========================================================================================",
+                  "================================== End of ROCm SMI Log ==================================="
+                ],
+                "python": "3.11.11",
+                "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44"
+              },
+              "loading": {
+                "resolve_s": 0.8898839578032494,
+                "load_s": 22.719056624919176,
+                "internal_load_s": 22.71905226446688,
+                "resolution": {
+                  "_resolved_backend": "hip_gfx1100",
+                  "_resolved_quant": "gguf_q4_k_m",
+                  "_resolved_execution_profile": "production",
+                  "generator_type": "SubmitPollTextGenerator"
+                },
+                "context_length": 8448,
+                "runner_capacity": 8448,
+                "max_block": 256
+              },
+              "memory": {
+                "total_bytes": 25753026560,
+                "used_bytes": {
+                  "before_load": 37748736,
+                  "after_load": 21722300416,
+                  "after_runs": 24240734208
+                },
+                "peak_used_bytes": 24240734208,
+                "labels": [
+                  "before_load",
+                  "after_load",
+                  "after_runs"
+                ]
+              },
+              "llamacpp_commit": null,
+              "server_command": null,
+              "environment": null,
+              "text_probe": null,
+              "public": {
+                "public_wall_s": 8.97552637849003,
+                "public_tps": 14.261002040699665,
+                "generated_tokens": 128,
+                "finish_reason": "length",
+                "sampler_mode": "greedy",
+                "public_path_parity": true,
+                "public_path_first_divergence": null,
+                "public_generated_equals_expected": true
+              }
+            }
+          ]
+        },
+        "llamacpp": {
+          "status": "ok",
+          "prefill_tps": 3995.7204598543117,
+          "decode_tps": 75.49074357076654,
+          "prefill_min_max": [
+            3988.270822673359,
+            4023.621091986796
+          ],
+          "decode_min_max": [
+            75.38170147777812,
+            76.28108679526336
+          ],
+          "blocks": [
+            {
+              "label": "llamacpp-p8192-corrected-b0",
+              "source_artifact_sha256": "9ab1b0b8a48f3a6ee2f425d8cc8aa9e1f55b08ddc1f4a174a7ae886a3c9da47e",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --prompt 8192 --output 128 --samples 3 --warmup 1 --context 8448 --label llamacpp-p8192-corrected-b0 --out /tmp/gemma4-five-length-20261003/llamacpp-p8192-corrected-b0.json",
+              "samples": [
+                {
+                  "prefill_s": 2.053013,
+                  "decode_s": 1.684445,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3990.2328918521216,
+                  "decode_tps": 75.39575349744278
+                },
+                {
+                  "prefill_s": 2.054023,
+                  "decode_s": 1.679934,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3988.270822673359,
+                  "decode_tps": 75.59820802483907
+                },
+                {
+                  "prefill_s": 2.0504360000000004,
+                  "decode_s": 1.683278,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3995.2478399715956,
+                  "decode_tps": 75.4480246281363
+                }
+              ],
+              "provenance": {},
+              "loading": null,
+              "memory": null,
+              "llamacpp_commit": "8cfc315a8abd654938f21d64ec683f8035d403fa",
+              "server_command": [
+                "/mnt/nvme1/llama-gemma4/build-hip/bin/llama-server",
+                "-m",
+                "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                "-ngl",
+                "99",
+                "-fa",
+                "on",
+                "-ctk",
+                "bf16",
+                "-ctv",
+                "bf16",
+                "-c",
+                "8448",
+                "-np",
+                "1",
+                "-b",
+                "4096",
+                "-ub",
+                "1024",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "18793",
+                "--no-cache-prompt",
+                "--fit",
+                "off"
+              ],
+              "environment": {
+                "HIPENGINE_EXECUTION_PROFILE": "production",
+                "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                "HIP_LIB_PATH": "/opt/rocm/lib",
+                "HIP_PATH": "/opt/rocm",
+                "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                "ROCR_VISIBLE_DEVICES": "1"
+              },
+              "text_probe": {
+                "match": true,
+                "bos": null,
+                "tokens": 8192,
+                "llama_tokens": 8192,
+                "expected": 8192
+              }
+            },
+            {
+              "label": "llamacpp-p8192-corrected-b1",
+              "source_artifact_sha256": "f5261f722a852aac900e9ab6e99bd8fd0fac1999bb35cfa6de3797ecc3381878",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --prompt 8192 --output 128 --samples 3 --warmup 1 --context 8448 --label llamacpp-p8192-corrected-b1 --out /tmp/gemma4-five-length-20261003/llamacpp-p8192-corrected-b1.json",
+              "samples": [
+                {
+                  "prefill_s": 2.049951,
+                  "decode_s": 1.6847590000000001,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3996.193079737028,
+                  "decode_tps": 75.38170147777812
+                },
+                {
+                  "prefill_s": 2.036841,
+                  "decode_s": 1.681374,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 4021.9143271369735,
+                  "decode_tps": 75.53346251339678
+                },
+                {
+                  "prefill_s": 2.035977,
+                  "decode_s": 1.664895,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 4023.621091986796,
+                  "decode_tps": 76.28108679526336
+                }
+              ],
+              "provenance": {},
+              "loading": null,
+              "memory": null,
+              "llamacpp_commit": "8cfc315a8abd654938f21d64ec683f8035d403fa",
+              "server_command": [
+                "/mnt/nvme1/llama-gemma4/build-hip/bin/llama-server",
+                "-m",
+                "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                "-ngl",
+                "99",
+                "-fa",
+                "on",
+                "-ctk",
+                "bf16",
+                "-ctv",
+                "bf16",
+                "-c",
+                "8448",
+                "-np",
+                "1",
+                "-b",
+                "4096",
+                "-ub",
+                "1024",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "18793",
+                "--no-cache-prompt",
+                "--fit",
+                "off"
+              ],
+              "environment": {
+                "HIPENGINE_EXECUTION_PROFILE": "production",
+                "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                "HIP_LIB_PATH": "/opt/rocm/lib",
+                "HIP_PATH": "/opt/rocm",
+                "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                "ROCR_VISIBLE_DEVICES": "1"
+              },
+              "text_probe": {
+                "match": true,
+                "bos": null,
+                "tokens": 8192,
+                "llama_tokens": 8192,
+                "expected": 8192
+              }
+            }
+          ]
+        }
+      },
+      "prompt_ids_sha256": "ea1766ee5530c7028e61cc93c4162cee2e0f54738e9b3a097306013efe8daaba",
+      "hipengine_over_llamacpp": {
+        "prefill_tps": 0.282022453520131,
+        "decode_tps": 1.0018879098503986
+      }
+    },
+    {
+      "prompt_tokens": 16384,
+      "engines": {
+        "hipengine": {
+          "status": "capability_failure",
+          "error": "Gemma 4 gfx1100 attention requires 68672 bytes of shared memory for head_dim=256, keys=16640; this kernel supports at most 65536 bytes and needs tiled attention for this context",
+          "prefill_tps": null,
+          "decode_tps": null
+        },
+        "llamacpp": {
+          "status": "ok",
+          "prefill_tps": 3510.201263740222,
+          "decode_tps": 71.38505181068338,
+          "prefill_min_max": [
+            3409.0095728584247,
+            3550.798810534412
+          ],
+          "decode_min_max": [
+            71.29004100580705,
+            72.07199027084881
+          ],
+          "blocks": [
+            {
+              "label": "llamacpp-p16384-b0",
+              "source_artifact_sha256": "561ce62f195092acc5a867630d980a03e9a3780413cbd7c6c4237cd37a47dc6a",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --prompt 16384 --output 128 --samples 3 --warmup 1 --context 16640 --label llamacpp-p16384-b0 --out /tmp/gemma4-five-length-20261003/llamacpp-p16384-b0.json",
+              "samples": [
+                {
+                  "prefill_s": 4.690792999999999,
+                  "decode_s": 1.7793800000000002,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3492.799618316136,
+                  "decode_tps": 71.37317492609785
+                },
+                {
+                  "prefill_s": 4.806088,
+                  "decode_s": 1.781134,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3409.0095728584247,
+                  "decode_tps": 71.30288905831902
+                },
+                {
+                  "prefill_s": 4.655761,
+                  "decode_s": 1.7714,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3519.0809837532465,
+                  "decode_tps": 71.69470475330247
+                }
+              ],
+              "provenance": {},
+              "loading": null,
+              "memory": null,
+              "llamacpp_commit": "8cfc315a8abd654938f21d64ec683f8035d403fa",
+              "server_command": [
+                "/mnt/nvme1/llama-gemma4/build-hip/bin/llama-server",
+                "-m",
+                "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                "-ngl",
+                "99",
+                "-fa",
+                "on",
+                "-ctk",
+                "bf16",
+                "-ctv",
+                "bf16",
+                "-c",
+                "16640",
+                "-np",
+                "1",
+                "-b",
+                "4096",
+                "-ub",
+                "1024",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "18793",
+                "--no-cache-prompt",
+                "--fit",
+                "off"
+              ],
+              "environment": {
+                "HIPENGINE_EXECUTION_PROFILE": "production",
+                "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                "HIP_LIB_PATH": "/opt/rocm/lib",
+                "HIP_PATH": "/opt/rocm",
+                "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                "ROCR_VISIBLE_DEVICES": "1"
+              },
+              "text_probe": {
+                "match": true,
+                "bos": null,
+                "tokens": 16384,
+                "llama_tokens": 16384,
+                "expected": 16384
+              }
+            },
+            {
+              "label": "llamacpp-p16384-b1",
+              "source_artifact_sha256": "0a86c578da356ccdecbbf38a5b595f7036f266c61ddf35a7cb7344d5a340befb",
+              "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --prompt 16384 --output 128 --samples 3 --warmup 1 --context 16640 --label llamacpp-p16384-b1 --out /tmp/gemma4-five-length-20261003/llamacpp-p16384-b1.json",
+              "samples": [
+                {
+                  "prefill_s": 4.679376,
+                  "decode_s": 1.762127,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3501.3215437271974,
+                  "decode_tps": 72.07199027084881
+                },
+                {
+                  "prefill_s": 4.614173,
+                  "decode_s": 1.778788,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3550.798810534412,
+                  "decode_tps": 71.39692869526891
+                },
+                {
+                  "prefill_s": 4.614807,
+                  "decode_s": 1.781455,
+                  "generated_tokens": 128,
+                  "decode_forwards": 127,
+                  "prefill_tps": 3550.310988086826,
+                  "decode_tps": 71.29004100580705
+                }
+              ],
+              "provenance": {},
+              "loading": null,
+              "memory": null,
+              "llamacpp_commit": "8cfc315a8abd654938f21d64ec683f8035d403fa",
+              "server_command": [
+                "/mnt/nvme1/llama-gemma4/build-hip/bin/llama-server",
+                "-m",
+                "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+                "-ngl",
+                "99",
+                "-fa",
+                "on",
+                "-ctk",
+                "bf16",
+                "-ctv",
+                "bf16",
+                "-c",
+                "16640",
+                "-np",
+                "1",
+                "-b",
+                "4096",
+                "-ub",
+                "1024",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "18793",
+                "--no-cache-prompt",
+                "--fit",
+                "off"
+              ],
+              "environment": {
+                "HIPENGINE_EXECUTION_PROFILE": "production",
+                "HIP_INCLUDE_PATH": "/opt/rocm/include",
+                "HIP_LIB_PATH": "/opt/rocm/lib",
+                "HIP_PATH": "/opt/rocm",
+                "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+                "ROCR_VISIBLE_DEVICES": "1"
+              },
+              "text_probe": {
+                "match": true,
+                "bos": null,
+                "tokens": 16384,
+                "llama_tokens": 16384,
+                "expected": 16384
+              }
+            }
+          ]
+        }
+      },
+      "prompt_ids_sha256": "7cf9b6b2971e115104a2343207c4d854e36683d5a434f7014bafed23955f84d3"
+    }
+  ],
+  "capacity_probes": {
+    "8192": {
+      "protocol_tier": 1,
+      "capacity": 8192,
+      "kv_storage": "bf16",
+      "performance_claim": false,
+      "status": "pass",
+      "loading": {
+        "resolve_s": 0.8130660345777869,
+        "load_s": 22.937378666363657,
+        "internal_load_s": 22.9373744064942,
+        "resolution": {
+          "_resolved_backend": "hip_gfx1100",
+          "_resolved_quant": "gguf_q4_k_m",
+          "_resolved_execution_profile": "production",
+          "generator_type": "SubmitPollTextGenerator"
+        },
+        "context_length": 8192,
+        "runner_capacity": 8192,
+        "max_block": 256
+      },
+      "prompt_tokens": 256,
+      "finite_logits": true,
+      "memory": {
+        "current_allocated_bytes": 23190781632,
+        "peak_allocated_bytes": 23190781632,
+        "total_allocated_bytes": 23190781632,
+        "total_freed_bytes": 0,
+        "active_allocations": 1953,
+        "peak_allocations": 1953
+      }
+    },
+    "8448": {
+      "protocol_tier": 1,
+      "capacity": 8448,
+      "kv_storage": "bf16",
+      "performance_claim": false,
+      "status": "pass",
+      "loading": {
+        "resolve_s": 0.8338315980508924,
+        "load_s": 22.598288722336292,
+        "internal_load_s": 22.59828477166593,
+        "resolution": {
+          "_resolved_backend": "hip_gfx1100",
+          "_resolved_quant": "gguf_q4_k_m",
+          "_resolved_execution_profile": "production",
+          "generator_type": "SubmitPollTextGenerator"
+        },
+        "context_length": 8448,
+        "runner_capacity": 8448,
+        "max_block": 256
+      },
+      "prompt_tokens": 256,
+      "finite_logits": true,
+      "memory": {
+        "current_allocated_bytes": 23248453312,
+        "peak_allocated_bytes": 23248453312,
+        "total_allocated_bytes": 23248453312,
+        "total_freed_bytes": 0,
+        "active_allocations": 1953,
+        "peak_allocations": 1953
+      }
+    },
+    "16640": {
+      "protocol_tier": 1,
+      "capacity": 16640,
+      "kv_storage": "bf16",
+      "performance_claim": false,
+      "status": "failed",
+      "error_type": "NotImplementedError",
+      "error": "Gemma 4 gfx1100 attention requires 68672 bytes of shared memory for head_dim=256, keys=16640; this kernel supports at most 65536 bytes and needs tiled attention for this context"
+    }
+  },
+  "known_quality_evidence": "2026-09-30-gemma4-execution-profile-registration.json",
+  "capacity_probe_reproduction": {
+    "source": "import json, sys, time\nfrom pathlib import Path\nimport numpy as np\nROOT = Path('<gemma4-worktree>')\nsys.path.insert(0, str(ROOT))\nfrom scripts.gemma4_campaign_bench import DEFAULT_ARTIFACT, _resolve_generator, exact_prompt_ids\nfrom hipengine.core.hip import get_hip_runtime\nfrom hipengine.core.memory import memory_stats\ncapacity = int(sys.argv[1])\nout = Path(sys.argv[2])\nresult = {'protocol_tier': 1, 'capacity': capacity, 'kv_storage': 'bf16', 'performance_claim': False}\nllm = None\ntry:\n    llm, runner, loading = _resolve_generator(DEFAULT_ARTIFACT, capacity)\n    if runner.capacity != capacity:\n        raise AssertionError(f'requested capacity {capacity}, runner capacity {runner.capacity}')\n    generator = llm._get_text_generator()\n    ids = exact_prompt_ids(generator.tokenize, runner.max_block)\n    logits = runner.forward(ids)\n    finite = bool(np.isfinite(logits).all())\n    for _ in range(3):\n        logits = runner.forward([runner.next_token(logits)])\n        finite = finite and bool(np.isfinite(logits).all())\n    get_hip_runtime().device_synchronize()\n    result.update(status='pass' if finite else 'nonfinite_logits', loading=loading,\n                  prompt_tokens=len(ids), finite_logits=finite, memory=memory_stats())\nexcept Exception as exc:\n    result.update(status='failed', error_type=type(exc).__name__, error=str(exc))\nfinally:\n    if llm is not None:\n        llm.close()\nout.write_text(json.dumps(result, indent=2) + '\\n')\nprint(json.dumps(result), flush=True)\nsys.exit(0 if result['status'] == 'pass' else 1)\n",
+    "original_source_sha256": "3ae6a9885b1073a08942895a704746993c20955c0a3d11b0fe65b622db632c46",
+    "command": "ROCR_VISIBLE_DEVICES=1 HIPENGINE_EXECUTION_PROFILE=production PYTHONPATH=. .venv/bin/python <probe.py> <capacity> <out.json>",
+    "note": "Original 8192 probe preceded the explicit capacity-equality assertion; recorded actual and requested capacities agree."
+  }
+}
