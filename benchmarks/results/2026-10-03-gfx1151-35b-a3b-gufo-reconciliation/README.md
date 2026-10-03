@@ -25,9 +25,27 @@ deficit actually live?
 ~2048-token turn plus 128 output tokens. The prefix is never timed on either
 side, so prefix caching changes what is *paid for*, not what is *measured*.
 Their `pp` is new-tokens/s at depth `d`; ours is the average over a 0->D ramp.
-Fitting our own 512/4K/32K/64K ladder (1369/1430/1145/936 tok/s) gives ~1380
-tok/s marginal at depth 4096, so correcting to their basis widens the prefill
-gap from 2.16x to ~2.24x rather than narrowing it.
+The protocol was then measured directly (cached prefix at depth `d`, timed
+2048-token new turn plus 128 decode tokens, one resident session, warm iteration
+discarded, 2 measured repetitions):
+
+| depth | pp tok/s (new turn) | tg tok/s |
+| ---: | ---: | ---: |
+| 0 | **1457.7** | 55.46 |
+| 4096 | **1456.1** | 54.46 |
+| 16384 | **1451.5** | 48.85 |
+| gufo | **3095** | 68.43 |
+
+**Our marginal prefill rate is flat in depth** (1457.7 -> 1451.5 tok/s from
+depth 0 to 16384, **-0.4%**), so the ratio against gufo is **2.12x / 2.13x /
+2.13x** - constant. The steep decline in the published ladder (1369 / 1430 /
+1145 / 936) is the average over a 0->D ramp, not the marginal rate; a full-prompt
+"prompt processing" row is a ramp average and is not comparable to a
+cached-prefix marginal rate. Correcting to their basis therefore does not narrow
+the gap, and the gap is a kernel-efficiency gap rather than a depth-scaling one.
+Decode under the same protocol is 55.46 / 54.46 / 48.85 tok/s, i.e. **1.23x /
+1.26x / 1.40x** - the decode gap does widen with depth where the prefill gap
+does not.
 
 **Host power state.** `tuned` was inactive and `scaling_governor=powersave`,
 which DE-5 showed costs a 3.3x post-prefill decode transient (162 ms vs 49.3 ms
@@ -173,7 +191,7 @@ constructor, after the resolver and after any explicit `PrefillConfig`:
 | file | 22.4 GB, dense Q6_K, experts Q4_K/Q5_K, lm_head Q6_K | 22.66 GB, dense Q8_0, experts Q4_K/Q5_K, lm_head Q6_K |
 | bytes/token (top-8/256) | 2.126 GiB | 2.446 GiB |
 | decode | 68.43 tok/s = 156.2 GB/s | 56.29 tok/s = 147.8 GB/s |
-| prefill | 3095 tok/s | 1459 tok/s |
+| prefill | 3095 tok/s | 1456 tok/s marginal (flat in depth) |
 | workload | pp2048/tg128 on a cached prefix | pp{512,4K,32K,64K}/tg128, no prefix |
 | KV | F16 prefill + int8 decode copy | BF16 (int8 available, admission-gated) |
 
@@ -192,14 +210,15 @@ fewer bytes/token) and ~1.06x achieved bandwidth.
 | `decode-graph-replay-ab-4k.json` | graph replay vs eager, 4K/128 |
 | `prefill-chunk-sweep-4k.json` | 512/1024/2048 chunk sweep with per-rep clocks |
 | `harness-512.json`, `harness-4k.json`, `harness-32768.json`, `harness-65536.json` | harness summaries under the fixed host state |
+| `gufo-protocol.json` | cached-prefix protocol measurement at depths 0/4096/16384 |
 
 ## Limits
 
 One host, one model, one quant, one profile, one prompt family. The 237 GB/s
 ceiling is inferred from our own `decode_lm_head_sample` stage, not from an
-isolated bandwidth microbenchmark. The marginal-prefill figure (~1380 tok/s at
-depth 4096) is a fit to our published ladder, not a measurement of gufo's
-protocol; measuring that protocol directly is a separate task. The chunk-sweep
+isolated bandwidth microbenchmark. Gufo's own per-depth values are not
+reproduced, so the 2.13x is against their headline 3095 rather than against a
+matched depth; the cached prefix is a repeated token rather than real text. The chunk-sweep
 ordering was measured with the clock clamp controlled but not eliminated — all
 arms ran with the same idle-parking distribution and the same ~5.11 GHz max
 core.

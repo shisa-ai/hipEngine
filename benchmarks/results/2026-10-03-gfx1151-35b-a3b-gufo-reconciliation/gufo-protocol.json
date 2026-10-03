@@ -1,0 +1,44 @@
+{
+ "turn_tokens": 2048,
+ "decode_tokens": 128,
+ "reps": 2,
+ "depths": {
+  "0": {
+   "pp_tok_s": 1457.7,
+   "tg_tok_s": 55.46,
+   "pp_samples": [
+    1458.0,
+    1457.4
+   ],
+   "tg_samples": [
+    55.47,
+    55.46
+   ]
+  },
+  "4096": {
+   "pp_tok_s": 1456.1,
+   "tg_tok_s": 54.46,
+   "pp_samples": [
+    1455.7,
+    1456.5
+   ],
+   "tg_samples": [
+    54.94,
+    53.97
+   ]
+  },
+  "16384": {
+   "pp_tok_s": 1451.5,
+   "tg_tok_s": 48.85,
+   "pp_samples": [
+    1451.9,
+    1451.1
+   ],
+   "tg_samples": [
+    49.09,
+    48.62
+   ]
+  }
+ },
+ "gpu_busy_mean": 62.19
+}
