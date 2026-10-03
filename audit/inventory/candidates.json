@@ -2,7 +2,7 @@
   "kind": "candidates",
   "meta": {
     "campaign_docs_scanned": 63,
-    "candidates": 243
+    "candidates": 244
   },
   "rows": [
     {
@@ -79,6 +79,71 @@
       },
       "id": "candidate/gemma4-26b-a4b-optimization-5-8-choose-wmma-by-usefu-d3a3557a613b",
       "evidence_hash": "a2508c8910cb"
+    },
+    {
+      "kind": "candidate",
+      "key": "gemma4-26b-a4b-punchlist-d11-60c9b39c9671",
+      "title": "D11 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
+      "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:381",
+      "evidence": {
+        "verdict_word": "rejected",
+        "measurements": [
+          "0.24 ms",
+          "0.03 ms",
+          "4.35x",
+          "0.0421 ms",
+          "3.05x",
+          "0.332 GiB"
+        ],
+        "excerpt": "| D11 | moe.l29_experts | **Decode owners for layer 29's Q5_K / Q8_0 experts** (together with P3). | 0.24 ms against 0.03 ms. | ~0.2 | **measured \u2014 wired, gated and landed** (`7d13b08e8`) | The decode half of the P3/D11 pair is closed. The screen (`scripts/gguf_l29_gemma_expert_decode_screen.py`, artifact `benchmarks/results/2026-09-30-gemma4-d11-l29-expert-decode-screen.json`) won **4.35x** on la"
+      },
+      "signals": [
+        "recorded as 'rejected' while citing a measurement",
+        "cites an exactness bar \u2014 OPTIMIZATION.md 4.1 says that alone cannot reject a production-correct candidate",
+        "same row also mentions promotion \u2014 may already be resolved"
+      ],
+      "hints": {
+        "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+        "refs": [
+          "0.03 ms",
+          "0.0421 ms",
+          "0.0681 ms",
+          "0.17 ms",
+          "0.170 ms",
+          "0.19%",
+          "0.2 ms",
+          "0.2371 ms",
+          "0.24 ms",
+          "0.332 GiB",
+          "0.62%",
+          "1.1%",
+          "1.2%",
+          "12.5504 ms",
+          "3.05x",
+          "3.49x",
+          "3.50x",
+          "4.35x",
+          "4.4406 ms"
+        ],
+        "tokens": [
+          "against",
+          "d11",
+          "decode",
+          "experts",
+          "gated",
+          "l29_experts",
+          "layer",
+          "measured",
+          "moe",
+          "owners",
+          "q5_k",
+          "q8_0",
+          "together",
+          "wired"
+        ]
+      },
+      "id": "candidate/gemma4-26b-a4b-punchlist-d11-60c9b39c9671",
+      "evidence_hash": "6ca3bcd9aaa6"
     },
     {
       "kind": "candidate",
@@ -814,7 +879,7 @@
     },
     {
       "kind": "candidate",
-      "key": "gemma4-26b-a4b-punchlist-p3-451e0bc6fea9",
+      "key": "gemma4-26b-a4b-punchlist-p3-561dae23e6d4",
       "title": "P3 \u2014 GEMMA4-26B-A4B-PUNCHLIST.md",
       "location": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md:349",
       "evidence": {
@@ -836,6 +901,7 @@
       "hints": {
         "anchor": "docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
         "refs": [
+          "0.170 ms",
           "0.8 ms",
           "0.814x",
           "1.322 ms",
@@ -849,6 +915,7 @@
           "23.51 ms",
           "258 ms",
           "3.3x",
+          "3.50x",
           "3.6%",
           "3.9x",
           "33.6x",
@@ -884,7 +951,7 @@
           "runs"
         ]
       },
-      "id": "candidate/gemma4-26b-a4b-punchlist-p3-451e0bc6fea9",
+      "id": "candidate/gemma4-26b-a4b-punchlist-p3-561dae23e6d4",
       "evidence_hash": "226fbcf0f918"
     },
     {
