@@ -210,8 +210,9 @@ File layout:
 
 Orchestration is model-owned: `Yue2Session` exposes `plan`, `generate_semantic`,
 `synthesize`, `decode`, and the end-to-end `generate`, so the engine keeps no
-model switch. There is no `LLM` convenience method for YuE2 yet, and the existing
-TTS script contract is not its surface.
+model switch. `LLM.generate_song()` and `LLM.song_generator()` wrap that session
+for library callers, and `hipengine serve` exposes it as
+`POST /v1/audio/songs`; the TTS script contract is not its surface.
 Results carry ABC IDs/text, raw semantic codes, latent/audio identities, sample
 rate, per-phase truncation, effective settings, timings, revisions, and manifest.
 Saved stages must validate hashes, configuration compatibility, shapes, and token
@@ -219,9 +220,41 @@ domains on reload; tokens and tensors are data, not executable pickle objects.
 
 ### Running it
 
-The entry point is the model-owned `Yue2Session`, built from the two checkpoints
-and the tokenizer. Nothing is downloaded automatically, so the loader takes local
+The session, the library call, and the server endpoint are three views of the
+same pipeline. Nothing is downloaded automatically, so the loader takes local
 directories: the `m-a-p/YuE2-3B` snapshot and the `m-a-p/YuE2-Vae` snapshot.
+
+The shortest path is the library call, which builds the session on first use:
+
+```python
+from hipengine import LLM
+
+llm = LLM("path/to/YuE2-3B", vae_model="path/to/YuE2-Vae")
+song = llm.generate_song(
+    style="Warm acoustic pop, clear lead vocal, fingerpicked guitar",
+    lyrics="[verse]\nMorning light across the floor",
+    cot="off",
+    seed=20260916,
+)
+song.audio  # [2, samples] float32 at 48 kHz, unclipped
+```
+
+Over HTTP, the same request is one `POST /v1/audio/songs`:
+
+```bash
+hipengine serve --model path/to/YuE2-3B --vae-model path/to/YuE2-Vae
+curl -sS http://127.0.0.1:8000/v1/audio/songs \
+  -H 'Content-Type: application/json' \
+  -d '{"style": "warm acoustic pop", "lyrics": "[verse]\nMorning light"}' \
+  --output song.wav
+```
+
+See [API.md](../API.md) for the request fields, the response headers, and the
+JSON provenance form.
+
+`LLM.song_generator()` returns the resident `Yue2Session`-backed generator when a
+caller wants one stage at a time. The explicit construction below is the same
+pipeline without the convenience wrapper:
 
 ```python
 from hipengine.generation.yue2 import SongRequest

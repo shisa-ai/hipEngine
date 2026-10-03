@@ -329,6 +329,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--vae-model",
+        default=os.environ.get("HIPENGINE_YUE2_VAE_DIR"),
+        help=(
+            "Companion decoder checkpoint for a model that needs one (YuE2 "
+            "decodes with m-a-p/YuE2-Vae; env HIPENGINE_YUE2_VAE_DIR)"
+        ),
+    )
+    parser.add_argument(
         "--vision-max-pixels",
         type=_positive_int,
         default=(
@@ -475,6 +483,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         draft_model=args.draft_model,
         speculative_candidate_budget=args.speculative_candidate_budget,
         vision_model=args.vision_model,
+        vae_model=args.vae_model,
         vision_max_pixels=args.vision_max_pixels,
         vision_max_image_bytes=args.vision_max_image_bytes,
     )

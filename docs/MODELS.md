@@ -50,7 +50,7 @@ engines on a single [Framework Desktop](https://frame.work/desktop) host.
 | Surya OCR 2 | `datalab-to/surya-ocr-2`, BF16 safetensors loaded into the FP32 runtime; GGUF is a cross-check only | `gfx1151` | Implemented | [Surya](model-cards/MODEL-SURYA.md) |
 | VibeVoice ASR | `microsoft/VibeVoice-ASR-HF`, bf16 safetensors; standalone [Q4_K_M GGUF](https://huggingface.co/shisa-ai/VibeVoice-ASR-Q4_K_M) | `gfx1151` | Native `LLM.transcribe()`; production measurements incomplete | [VibeVoice ASR](model-cards/MODEL-VIBEVOICE-ASR.md) |
 | VibeVoice TTS | `microsoft/VibeVoice-1.5B`, bf16 safetensors | `gfx1151` | Experimental `LLM.synthesize()`; measurements partial | [VibeVoice TTS](model-cards/MODEL-VIBEVOICE-TTS.md) |
-| YuE2 | `m-a-p/YuE2-3B` with the `m-a-p/YuE2-Vae` decoder, BF16 safetensors | `gfx1151` | Implemented; torch-free AR, acoustic solver, and VAE decode measured end to end | [YuE2](model-cards/MODEL-YUE2.md) |
+| YuE2 | `m-a-p/YuE2-3B` with the `m-a-p/YuE2-Vae` decoder, BF16 safetensors | `gfx1151` | Implemented; `LLM.generate_song()` and `POST /v1/audio/songs`, with torch-free AR, acoustic solver, and VAE decode measured end to end | [YuE2](model-cards/MODEL-YUE2.md) |
 | EVIE 4.5B / 8B | `tencent/EVIE-4.5B` / `EVIE-8B`, Safetensors `fp32`, `fp16` | `gfx1151` | Complete; multimodal document retrieval encoding | [EVIE](model-cards/MODEL-EVIE.md) |
 | TimesFM 2.5 200M | `google/timesfm-2.5-200m-pytorch`, Safetensors `fp32` | `gfx1151` | Complete; GPU decode | [TimesFM 2.5](model-cards/MODEL-TIMESFM.md) |
 | TimesFM 3.0 500M | `google/timesfm-3.0-pytorch`, safetensors; `fp16` production / `fp32` strict execution | `gfx1151` | Complete; GPU decode | [TimesFM 3.0](model-cards/MODEL-TIMESFM3.md) |
