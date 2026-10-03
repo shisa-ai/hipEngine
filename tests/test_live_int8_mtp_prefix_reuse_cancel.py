@@ -47,12 +47,24 @@ import pytest
 
 from hipengine import LLM, SamplingParams
 from hipengine.generation.deadline import GenerationCancellationToken
+from hipengine.kernels.backends import detect_hip_target_arches
 
 MODEL = Path(
     os.environ.get("HIPENGINE_INT8_MTP_MODEL", "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 )
 PROMPTS = Path("benchmarks/prompts/mtpbench-code-general-ja.jsonl")
 BACKEND = "hip_gfx1151"
+# The module drives the ``hip_gfx1151`` backend, whose package JIT-builds every
+# kernel for the gfx1151 target arch (``HIPENGINE_HIP_ARCH``). A gfx1100 device
+# cannot execute those code objects, and HIP 7.2 aborts the process with a host
+# segmentation fault at the first launch instead of returning a named error, so
+# the arms below require a physical gfx1151 device. The arms also depend on the
+# gfx1151 INT8 direct route: its resumable layer-outer prefill captures the
+# 256-token prompt boundary mid-prefill, whereas the gfx1100 INT8 route declines
+# that executor for a prompt that fits one prefill round and prefills the whole
+# prompt once, so no boundary is ever captured and the reuse arms cannot pass
+# there. A host without gfx1151 therefore skips rather than crashing the run.
+REQUIRED_HOST_ARCH = "gfx1151"
 CACHE_MODES = ("radix", "off")
 
 # The engine retains a boundary only for a prompt longer than 256 tokens, and
@@ -79,8 +91,15 @@ def _hip_available() -> bool:
 
 
 pytestmark = pytest.mark.skipif(
-    not (_hip_available() and MODEL.exists()),
-    reason="requires ROCm + the dense GGUF model",
+    not (
+        _hip_available()
+        and MODEL.exists()
+        and REQUIRED_HOST_ARCH in detect_hip_target_arches()
+    ),
+    reason=(
+        "requires ROCm, the dense GGUF model, and a physical "
+        f"{REQUIRED_HOST_ARCH} device for the {BACKEND} backend"
+    ),
 )
 
 
